@@ -1,16 +1,18 @@
 import {
   MIN_FLOAT_HEIGHT,
   MIN_FLOAT_WIDTH,
-  applyDrop,
   floatAtRect,
+  getDockLeafLayouts,
+  simulateDrop,
+  snapPaneToGridRect,
   type DockLeafLayout,
   type DropTarget,
   type FloatingRect,
+  type FloatingResizeCorner,
   type LayoutBounds,
 } from "../../../../plugins/pane-manager";
 import type { DesktopDockPreviewState } from "../../../../types/desktop-window";
 import type { LayoutConfig } from "../../../../types/config";
-import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE } from "../../pane/header";
 
 export interface HoverOverlay {
   targetId: string;
@@ -18,32 +20,41 @@ export interface HoverOverlay {
   cells: Array<{ position: "top" | "left" | "center" | "right" | "bottom"; rect: LayoutBounds }>;
 }
 
-type SnapGuidePosition =
-  | "left"
-  | "right"
-  | "top"
-  | "bottom"
-  | "top-left"
-  | "top-right"
-  | "bottom-left"
-  | "bottom-right";
+type SnapGuidePosition = `cell-${number}-${number}`;
 
 export interface SnapGuide {
   position: SnapGuidePosition;
+  column: number;
+  row: number;
   triggerRect: LayoutBounds;
   previewRect: FloatingRect;
 }
 
+export interface DragPreviewRect {
+  instanceId: string;
+  rect: LayoutBounds;
+}
+
 export type DragPreview =
+  | {
+    kind: "compact";
+    layout: LayoutConfig;
+    rect: LayoutBounds;
+    rects: DragPreviewRect[];
+  }
   | {
     kind: "dock";
     target: DropTarget;
+    layout: LayoutConfig;
     rect: LayoutBounds;
+    rects: DragPreviewRect[];
   }
   | {
     kind: "snap";
     position: SnapGuidePosition;
+    layout: LayoutConfig;
     rect: FloatingRect;
+    rects: DragPreviewRect[];
   };
 
 export interface PaneDragReleaseResult {
@@ -59,6 +70,7 @@ export interface PaneDragRectState {
 }
 
 export interface FloatResizeDragState {
+  corner: FloatingResizeCorner;
   startX: number;
   startY: number;
   origRect: FloatingRect;
@@ -67,6 +79,48 @@ export interface FloatResizeDragState {
 const DOCK_DIVIDER_SIZE = 1;
 export const PANE_DRAG_THRESHOLD = 2;
 export const PRECISE_PANE_DRAG_THRESHOLD = 0.15;
+export const LAYOUT_GRID_COLUMNS = 6;
+export const LAYOUT_GRID_ROWS = 6;
+
+export interface LayoutGridCell {
+  column: number;
+  row: number;
+  rect: LayoutBounds;
+}
+
+export function makeLayoutGridCells(
+  width: number,
+  height: number,
+  columns = LAYOUT_GRID_COLUMNS,
+  rows = LAYOUT_GRID_ROWS,
+): LayoutGridCell[] {
+  const safeWidth = Math.max(1, Math.floor(width));
+  const safeHeight = Math.max(1, Math.floor(height));
+  const columnCount = Math.max(1, Math.min(Math.floor(columns), safeWidth));
+  const rowCount = Math.max(1, Math.min(Math.floor(rows), safeHeight));
+  const cells: LayoutGridCell[] = [];
+
+  for (let row = 0; row < rowCount; row += 1) {
+    const y = Math.floor((safeHeight * row) / rowCount);
+    const bottom = Math.floor((safeHeight * (row + 1)) / rowCount);
+    for (let column = 0; column < columnCount; column += 1) {
+      const x = Math.floor((safeWidth * column) / columnCount);
+      const right = Math.floor((safeWidth * (column + 1)) / columnCount);
+      cells.push({
+        column,
+        row,
+        rect: {
+          x,
+          y,
+          width: Math.max(1, right - x),
+          height: Math.max(1, bottom - y),
+        },
+      });
+    }
+  }
+
+  return cells;
+}
 
 export function pointInRect(rect: LayoutBounds, x: number, y: number): boolean {
   return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
@@ -94,8 +148,8 @@ export function constrainFloatingRectToBounds(
 ): FloatingRect {
   const boundsWidth = Math.max(1, Number.isFinite(totalWidth) ? totalWidth : 1);
   const boundsHeight = Math.max(1, Number.isFinite(totalHeight) ? totalHeight : 1);
-  const width = fitFloatingDimension(rect.width, MIN_FLOAT_WIDTH, boundsWidth);
-  const height = fitFloatingDimension(rect.height, MIN_FLOAT_HEIGHT, boundsHeight);
+  const width = fitFloatingDimension(rect.width, rect.fixedGeometry ? 1 : MIN_FLOAT_WIDTH, boundsWidth);
+  const height = fitFloatingDimension(rect.height, rect.fixedGeometry ? 1 : MIN_FLOAT_HEIGHT, boundsHeight);
   const maxX = Math.max(0, boundsWidth - width);
   const maxY = Math.max(0, boundsHeight - height);
 
@@ -139,6 +193,7 @@ export function resolvePaneDragFloatingRect(
   }
 
   return constrainFloatingRectToBounds({
+    ...drag.origRect,
     x: drag.origRect.x + (pointerX - drag.startX),
     y: drag.origRect.y + (pointerY - drag.startY),
     width: drag.origRect.width,
@@ -153,12 +208,38 @@ export function resolveFloatResizeRect(
   totalWidth: number,
   totalHeight: number,
 ): FloatingRect {
+  const dx = pointerX - drag.startX;
+  const dy = pointerY - drag.startY;
+  const minWidth = drag.origRect.fixedGeometry ? 1 : MIN_FLOAT_WIDTH;
+  const minHeight = drag.origRect.fixedGeometry ? 1 : MIN_FLOAT_HEIGHT;
+  let left = drag.origRect.x;
+  let top = drag.origRect.y;
+  let right = drag.origRect.x + drag.origRect.width;
+  let bottom = drag.origRect.y + drag.origRect.height;
+  const affectsLeft = drag.corner === "top-left" || drag.corner === "bottom-left" || drag.corner === "left";
+  const affectsRight = drag.corner === "top-right" || drag.corner === "bottom-right" || drag.corner === "right";
+  const affectsTop = drag.corner === "top-left" || drag.corner === "top-right" || drag.corner === "top";
+  const affectsBottom = drag.corner === "bottom-left" || drag.corner === "bottom-right" || drag.corner === "bottom";
+
+  if (affectsLeft) {
+    left = Math.max(0, Math.min(left + dx, right - minWidth));
+  } else if (affectsRight) {
+    right = Math.min(totalWidth, Math.max(right + dx, left + minWidth));
+  }
+
+  if (affectsTop) {
+    top = Math.max(0, Math.min(top + dy, bottom - minHeight));
+  } else if (affectsBottom) {
+    bottom = Math.min(totalHeight, Math.max(bottom + dy, top + minHeight));
+  }
+
   return constrainFloatingRectToBounds({
-    x: drag.origRect.x,
-    y: drag.origRect.y,
-    width: Math.max(MIN_FLOAT_WIDTH, Math.min(totalWidth - drag.origRect.x, drag.origRect.width + (pointerX - drag.startX))),
-    height: Math.max(MIN_FLOAT_HEIGHT, Math.min(totalHeight - drag.origRect.y, drag.origRect.height + (pointerY - drag.startY))),
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
     zIndex: drag.origRect.zIndex,
+    fixedGeometry: drag.origRect.fixedGeometry,
   }, totalWidth, totalHeight);
 }
 
@@ -234,6 +315,113 @@ export function resolveHoverOverlay(
   };
 }
 
+function sameRect(left: LayoutBounds, right: LayoutBounds): boolean {
+  return left.x === right.x
+    && left.y === right.y
+    && left.width === right.width
+    && left.height === right.height;
+}
+
+export function changedDockPreviewRects(
+  layout: LayoutConfig,
+  nextLayout: LayoutConfig,
+  bounds: LayoutBounds,
+  options?: Parameters<typeof getDockLeafLayouts>[2],
+): DragPreviewRect[] {
+  const currentRects = new Map(
+    getDockLeafLayouts(layout, bounds, options).map((leaf) => [leaf.instanceId, leaf.rect]),
+  );
+  return getDockLeafLayouts(nextLayout, bounds, options)
+    .filter((leaf) => {
+      const currentRect = currentRects.get(leaf.instanceId);
+      return !currentRect || !sameRect(currentRect, leaf.rect);
+    })
+    .map(({ instanceId, rect }) => ({ instanceId, rect }));
+}
+
+export function createLeafDropPreview(
+  layout: LayoutConfig,
+  paneId: string,
+  target: DropTarget,
+  bounds: LayoutBounds,
+  options?: Parameters<typeof getDockLeafLayouts>[2],
+): Extract<DragPreview, { kind: "dock" }> | null {
+  const simulation = simulateDrop(layout, paneId, target, bounds, options);
+  if (!simulation.previewRect) return null;
+  return {
+    kind: "dock",
+    target,
+    layout: simulation.layout,
+    rect: simulation.previewRect,
+    rects: changedDockPreviewRects(layout, simulation.layout, bounds, options),
+  };
+}
+
+function resolveCompactedDropPosition(
+  targetRect: LayoutBounds,
+  pointerX: number,
+  pointerY: number,
+): "top" | "left" | "right" | "bottom" {
+  const horizontal = (pointerX - (targetRect.x + (targetRect.width / 2))) / Math.max(1, targetRect.width);
+  const vertical = (pointerY - (targetRect.y + (targetRect.height / 2))) / Math.max(1, targetRect.height);
+  if (Math.abs(horizontal) >= Math.abs(vertical)) {
+    return horizontal < 0 ? "left" : "right";
+  }
+  return vertical < 0 ? "top" : "bottom";
+}
+
+export function createCompactedDropPreview(
+  layout: LayoutConfig,
+  paneId: string,
+  targetLeaf: DockLeafLayout,
+  pointerX: number,
+  pointerY: number,
+  bounds: LayoutBounds,
+  options?: Parameters<typeof getDockLeafLayouts>[2],
+): Extract<DragPreview, { kind: "compact" }> | null {
+  const preview = createLeafDropPreview(
+    layout,
+    paneId,
+    {
+      kind: "leaf",
+      targetId: targetLeaf.instanceId,
+      position: resolveCompactedDropPosition(targetLeaf.rect, pointerX, pointerY),
+    },
+    bounds,
+    options,
+  );
+  return preview
+    ? {
+      kind: "compact",
+      layout: preview.layout,
+      rect: preview.rect,
+      rects: preview.rects,
+    }
+    : null;
+}
+
+export function createSnapDropPreview(
+  layout: LayoutConfig,
+  paneId: string,
+  position: SnapGuidePosition,
+  targetRect: LayoutBounds,
+  bounds: LayoutBounds,
+  options?: Parameters<typeof getDockLeafLayouts>[2],
+): Extract<DragPreview, { kind: "snap" }> {
+  const nextLayout = snapPaneToGridRect(layout, paneId, targetRect, bounds);
+  return {
+    kind: "snap",
+    position,
+    layout: nextLayout,
+    rect: targetRect,
+    rects: [
+      { instanceId: paneId, rect: targetRect },
+      ...changedDockPreviewRects(layout, nextLayout, bounds, options)
+        .filter((entry) => entry.instanceId !== paneId),
+    ],
+  };
+}
+
 export function resolveDividerPreviewRect(
   axis: "horizontal" | "vertical",
   bounds: LayoutBounds,
@@ -273,17 +461,24 @@ export function finalizePaneDragRelease(
   previewRect: FloatingRect,
   dockPreview: DragPreview | null,
 ): PaneDragReleaseResult {
+  if (dockPreview?.kind === "compact") {
+    return {
+      nextLayout: dockPreview.layout,
+      shouldShowGridlockTip: false,
+    };
+  }
+
   if (dockPreview?.kind === "dock") {
     return {
-      nextLayout: applyDrop(layout, paneId, dockPreview.target),
+      nextLayout: dockPreview.layout,
       shouldShowGridlockTip: false,
     };
   }
 
   if (dockPreview?.kind === "snap") {
     return {
-      nextLayout: floatAtRect(layout, paneId, dockPreview.rect),
-      shouldShowGridlockTip: true,
+      nextLayout: dockPreview.layout,
+      shouldShowGridlockTip: false,
     };
   }
 
@@ -294,135 +489,52 @@ export function finalizePaneDragRelease(
 }
 
 export function makeSnapGuides(width: number, height: number): SnapGuide[] {
-  const halfWidth = Math.max(1, Math.floor(width / 2));
-  const halfHeight = Math.max(1, Math.floor(height / 2));
-  const cornerWidth = Math.max(8, Math.min(16, Math.floor(width * 0.2)));
-  const cornerHeight = Math.max(4, Math.min(8, Math.floor(height * 0.22)));
-  const edgeWidth = Math.max(6, Math.min(10, Math.floor(width * 0.1)));
-  const topBottomEdgeHeight = Math.max(2, Math.min(4, Math.floor(height * 0.1)));
-
-  return [
-    {
-      position: "top-left",
-      triggerRect: { x: 0, y: 0, width: cornerWidth, height: cornerHeight },
-      previewRect: { x: 0, y: 0, width: halfWidth, height: halfHeight },
-    },
-    {
-      position: "top-right",
-      triggerRect: { x: Math.max(0, width - cornerWidth), y: 0, width: cornerWidth, height: cornerHeight },
-      previewRect: { x: Math.max(0, width - halfWidth), y: 0, width: halfWidth, height: halfHeight },
-    },
-    {
-      position: "bottom-left",
-      triggerRect: { x: 0, y: Math.max(0, height - cornerHeight), width: cornerWidth, height: cornerHeight },
-      previewRect: { x: 0, y: Math.max(0, height - halfHeight), width: halfWidth, height: halfHeight },
-    },
-    {
-      position: "bottom-right",
-      triggerRect: {
-        x: Math.max(0, width - cornerWidth),
-        y: Math.max(0, height - cornerHeight),
-        width: cornerWidth,
-        height: cornerHeight,
-      },
-      previewRect: {
-        x: Math.max(0, width - halfWidth),
-        y: Math.max(0, height - halfHeight),
-        width: halfWidth,
-        height: halfHeight,
-      },
-    },
-    {
-      position: "left",
-      triggerRect: { x: 0, y: cornerHeight, width: edgeWidth, height: Math.max(1, height - (cornerHeight * 2)) },
-      previewRect: { x: 0, y: 0, width: halfWidth, height },
-    },
-    {
-      position: "right",
-      triggerRect: {
-        x: Math.max(0, width - edgeWidth),
-        y: cornerHeight,
-        width: edgeWidth,
-        height: Math.max(1, height - (cornerHeight * 2)),
-      },
-      previewRect: { x: Math.max(0, width - halfWidth), y: 0, width: halfWidth, height },
-    },
-    {
-      position: "top",
-      triggerRect: { x: cornerWidth, y: 0, width: Math.max(1, width - (cornerWidth * 2)), height: topBottomEdgeHeight },
-      previewRect: { x: 0, y: 0, width, height: halfHeight },
-    },
-    {
-      position: "bottom",
-      triggerRect: {
-        x: cornerWidth,
-        y: Math.max(0, height - topBottomEdgeHeight),
-        width: Math.max(1, width - (cornerWidth * 2)),
-        height: topBottomEdgeHeight,
-      },
-      previewRect: { x: 0, y: Math.max(0, height - halfHeight), width, height: halfHeight },
-    },
-  ];
+  return makeLayoutGridCells(width, height).map((cell) => ({
+    position: `cell-${cell.column + 1}-${cell.row + 1}`,
+    column: cell.column,
+    row: cell.row,
+    triggerRect: cell.rect,
+    previewRect: cell.rect,
+  }));
 }
 
 export function resolveSnapGuide(x: number, y: number, guides: SnapGuide[]): SnapGuide | null {
   return guides.find((guide) => pointInRect(guide.triggerRect, x, y)) ?? null;
 }
 
-export function resolveHeaderHitAreas(
-  width: number,
-  options: { floating: boolean; focused: boolean },
-): {
-  actionStart: number | null;
-  closeStart: number | null;
-} {
-  // Focused panes and all floating panes render corner chrome around the header.
-  let rightEdge = options.focused || options.floating ? width - 2 : width;
-  let closeStart: number | null = null;
-  let actionStart: number | null = null;
-
-  if (options.floating) {
-    closeStart = Math.max(0, rightEdge - PANE_HEADER_CLOSE.length);
-    rightEdge = closeStart;
-  }
-
-  actionStart = Math.max(0, rightEdge - PANE_HEADER_ACTION.length);
-
-  return { actionStart, closeStart };
-}
-
 export function resolveExternalDockPreview(
   preview: DesktopDockPreviewState | null | undefined,
   bounds: LayoutBounds,
+  layout: LayoutConfig,
+  options?: Parameters<typeof getDockLeafLayouts>[2],
 ): DragPreview | null {
   if (!preview?.paneId || !preview.edge) return null;
+  const target: DropTarget = { kind: "frame", edge: preview.edge };
+  const resolved = createLeafDropPreview(layout, preview.paneId, target, bounds, options);
+  if (!resolved) return null;
 
   switch (preview.edge) {
     case "left":
       return {
-        kind: "dock",
-        target: { kind: "frame", edge: "left" },
+        ...resolved,
         rect: { x: bounds.x, y: bounds.y, width: Math.max(1, Math.floor(bounds.width / 2)), height: bounds.height },
       };
     case "right": {
       const width = Math.max(1, Math.floor(bounds.width / 2));
       return {
-        kind: "dock",
-        target: { kind: "frame", edge: "right" },
+        ...resolved,
         rect: { x: bounds.x + Math.max(0, bounds.width - width), y: bounds.y, width, height: bounds.height },
       };
     }
     case "top":
       return {
-        kind: "dock",
-        target: { kind: "frame", edge: "top" },
+        ...resolved,
         rect: { x: bounds.x, y: bounds.y, width: bounds.width, height: Math.max(1, Math.floor(bounds.height / 2)) },
       };
     case "bottom": {
       const height = Math.max(1, Math.floor(bounds.height / 2));
       return {
-        kind: "dock",
-        target: { kind: "frame", edge: "bottom" },
+        ...resolved,
         rect: { x: bounds.x, y: bounds.y + Math.max(0, bounds.height - height), width: bounds.width, height },
       };
     }

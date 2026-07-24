@@ -3,7 +3,7 @@ import type { NativeOccluder, NativePaneLayer } from "../../../chart/native/surf
 import { DEFAULT_HEADER_HEIGHT } from "../chrome";
 import type { DragPreview, HoverOverlay } from "../drag";
 import { MENU_Z_INDEX } from "../menu";
-import type { WindowEditDockMovePreview } from "../../window-edit/mode";
+import type { WindowEditDockMovePreview } from "../../window-edit/presentation";
 
 export interface FloatingPreviewRect {
   paneId: string;
@@ -71,11 +71,13 @@ export function buildNativeTransientOccluders({
   }
 
   if (dockPreview) {
-    occluders.push({
-      id: `dock-preview:${dockPreview.kind}`,
-      rect: dockPreview.rect,
-      zIndex: 96,
-    });
+    for (const preview of dockPreview.rects) {
+      occluders.push({
+        id: `dock-preview:${dockPreview.kind}:${preview.instanceId}`,
+        rect: preview.rect,
+        zIndex: 96,
+      });
+    }
   }
 
   if (windowModeDockMovePreview) {

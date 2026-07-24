@@ -180,6 +180,7 @@ export function swapPanes(layout: LayoutConfig, firstId: string, secondId: strin
         width: floatingEntry.width,
         height: floatingEntry.height,
         zIndex: floatingEntry.zIndex,
+        fixedGeometry: floatingEntry.fixedGeometry,
       },
     ],
   });

@@ -20,6 +20,7 @@ import {
   resolveNativeFloatingResizeCornerRect,
 } from "../../window-edit/status";
 import { MENU_Z_INDEX, truncateMenuText } from "../menu";
+import { ShellLayoutGridOverlay } from "../drag/overlays";
 
 interface ShellWindowModeOverlaysProps {
   bounds: LayoutBounds;
@@ -91,9 +92,19 @@ export function ShellWindowModeOverlays({
   const highlightedZIndex = highlightedFloatingPane
     ? (highlightedFloatingPane.pane.floating?.zIndex ?? 50) + 1
     : 3;
+  const gridExcludedRows = [
+    ...dockLeafLayouts.map((leaf) => leaf.rect.y),
+    ...visibleFloatingPanes.map(({ pane, rect }) => (
+      dragFloatingRect?.paneId === pane.instance.instanceId ? dragFloatingRect.rect.y : rect.y
+    )),
+  ];
 
   return (
     <>
+      {windowMode && (
+        <ShellLayoutGridOverlay width={width} height={contentHeight} excludedRows={gridExcludedRows} />
+      )}
+
       {windowModeDockMovePreview && (
         <Box
           position="absolute"

@@ -14,7 +14,7 @@ import {
   resolveNativeDockDividers,
   type DividerPreviewState,
 } from "./window-state";
-import type { WindowEditDockMovePreview } from "../../window-edit/mode";
+import type { WindowEditDockMovePreview } from "../../window-edit/presentation";
 
 interface ShellNativeSurfaceMenuState {
   paneId: string;

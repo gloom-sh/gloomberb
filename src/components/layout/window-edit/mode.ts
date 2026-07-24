@@ -35,7 +35,16 @@ export interface WindowEditState {
 
 export type WindowEditDirection = "left" | "right" | "up" | "down";
 
-const FLOATING_RESIZE_CORNERS: FloatingResizeCorner[] = ["top-left", "bottom-right"];
+const FLOATING_RESIZE_CORNERS: FloatingResizeCorner[] = [
+  "top-left",
+  "top",
+  "top-right",
+  "right",
+  "bottom-right",
+  "bottom",
+  "bottom-left",
+  "left",
+];
 const WINDOW_EDIT_MOVE_STEP = { x: 2, y: 1 };
 const WINDOW_EDIT_FAST_STEP = { x: 10, y: 5 };
 

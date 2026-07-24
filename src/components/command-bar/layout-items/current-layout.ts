@@ -1,6 +1,8 @@
 import {
+  applyLayoutPreset,
   gridlockAllPanes,
   removeFloatingPanes,
+  type LayoutPresetId,
 } from "../../../plugins/pane-manager";
 import {
   DEFAULT_LAYOUT,
@@ -24,8 +26,31 @@ export function buildCurrentLayoutItems({
   const layoutHistory = state.layoutHistory[state.config.activeLayoutIndex];
   const floatingPaneCount = currentLayout.floating.length;
   const floatingPaneLabel = floatingPaneCount === 1 ? "floating pane" : "floating panes";
+  const presetItems = ([
+    ["single", "Single Column", "Stack all visible panes in one column"],
+    ["2x2", "2x2 Grid", "Arrange visible panes in a two-column grid"],
+    ["3x3", "3x3 Grid", "Arrange visible panes in a three-column grid"],
+    ["left-main", "Left Main + Right Stack", "Make the first pane primary and stack the rest on the right"],
+  ] satisfies Array<[LayoutPresetId, string, string]>).map(([preset, label, detail]) => ({
+    id: `layout-preset:${preset}`,
+    label,
+    detail,
+    category: "Layout Presets",
+    kind: "action" as const,
+    action: () => {
+      const { width, height } = pluginRegistry.getTermSizeFn();
+      persistLayoutChange(applyLayoutPreset(
+        currentLayout,
+        preset,
+        { x: 0, y: 0, width, height },
+        pluginRegistry.panes,
+      ));
+      closeAll({ revertThemePreview: false });
+    },
+  }));
 
   return [
+    ...presetItems,
     {
       id: "layout-undo",
       label: "Undo Layout Change",

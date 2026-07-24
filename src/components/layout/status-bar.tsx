@@ -42,6 +42,7 @@ type StatusBarViewProps = {
   layoutTabItems: LayoutTabItem[];
   layoutTabsWidth: number;
   openCommandBar: (event?: StatusBarEvent) => void;
+  openLayouts: (event?: StatusBarEvent) => void;
   openLayoutContextMenu: (index: number, event: any) => void | Promise<unknown>;
   setHoveredControl: SetHoveredControl;
   showGridlockTip: boolean;
@@ -136,6 +137,12 @@ export function StatusBar() {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
+  };
+
+  const openLayouts = (event?: StatusBarEvent) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    dispatch({ type: "SET_COMMAND_BAR", open: true, query: "LAY " });
   };
 
   const layoutContextMenuItems = useCallback((index: number): ContextMenuItem[] => {
@@ -237,6 +244,7 @@ export function StatusBar() {
     layoutTabItems,
     layoutTabsWidth,
     openCommandBar,
+    openLayouts,
     openLayoutContextMenu,
     setHoveredControl,
     showGridlockTip,
@@ -251,9 +259,19 @@ export function StatusBar() {
 
 function NativeStatusBar({
   activeLayoutIdx,
+  activeLayoutValue,
+  dismissGridlockTip,
+  handleGridlockTip,
+  handleLayoutSelect,
+  hasMultipleLayouts,
+  hoveredControl,
+  layoutTabItems,
+  layoutTabsWidth,
+  openCommandBar,
+  openLayouts,
   openLayoutContextMenu,
+  setHoveredControl,
   showGridlockTip,
-  ...props
 }: StatusBarViewProps) {
   return (
     <Box
@@ -271,18 +289,46 @@ function NativeStatusBar({
         paddingInline: 8,
       }}
     >
-      <StatusBarLayoutControl activeLayoutIdx={activeLayoutIdx} nativePaneChrome {...props} />
-      {showGridlockTip && <NativeGridlockTip {...props} />}
-      <StatusBarWidgets {...props} />
+      <StatusBarLayoutControl
+        activeLayoutValue={activeLayoutValue}
+        handleLayoutSelect={handleLayoutSelect}
+        hasMultipleLayouts={hasMultipleLayouts}
+        hoveredControl={hoveredControl}
+        layoutTabItems={layoutTabItems}
+        layoutTabsWidth={layoutTabsWidth}
+        nativePaneChrome
+        openCommandBar={openCommandBar}
+        openLayouts={openLayouts}
+        setHoveredControl={setHoveredControl}
+      />
+      {showGridlockTip && (
+        <NativeGridlockTip
+          dismissGridlockTip={dismissGridlockTip}
+          handleGridlockTip={handleGridlockTip}
+          hoveredControl={hoveredControl}
+          setHoveredControl={setHoveredControl}
+        />
+      )}
+      <StatusBarWidgets />
     </Box>
   );
 }
 
 function TerminalStatusBar({
   activeLayoutIdx,
+  activeLayoutValue,
+  dismissGridlockTip,
+  handleGridlockTip,
+  handleLayoutSelect,
+  hasMultipleLayouts,
+  hoveredControl,
+  layoutTabItems,
+  layoutTabsWidth,
+  openCommandBar,
+  openLayouts,
   openLayoutContextMenu,
+  setHoveredControl,
   showGridlockTip,
-  ...props
 }: StatusBarViewProps) {
   return (
     <Box
@@ -295,9 +341,27 @@ function TerminalStatusBar({
         void openLayoutContextMenu(activeLayoutIdx, event);
       }}
     >
-      <StatusBarLayoutControl activeLayoutIdx={activeLayoutIdx} nativePaneChrome={false} {...props} />
-      {showGridlockTip && <TerminalGridlockTip {...props} />}
-      <StatusBarWidgets {...props} />
+      <StatusBarLayoutControl
+        activeLayoutValue={activeLayoutValue}
+        handleLayoutSelect={handleLayoutSelect}
+        hasMultipleLayouts={hasMultipleLayouts}
+        hoveredControl={hoveredControl}
+        layoutTabItems={layoutTabItems}
+        layoutTabsWidth={layoutTabsWidth}
+        nativePaneChrome={false}
+        openCommandBar={openCommandBar}
+        openLayouts={openLayouts}
+        setHoveredControl={setHoveredControl}
+      />
+      {showGridlockTip && (
+        <TerminalGridlockTip
+          dismissGridlockTip={dismissGridlockTip}
+          handleGridlockTip={handleGridlockTip}
+          hoveredControl={hoveredControl}
+          setHoveredControl={setHoveredControl}
+        />
+      )}
+      <StatusBarWidgets />
     </Box>
   );
 }
@@ -311,6 +375,7 @@ function StatusBarLayoutControl({
   layoutTabsWidth,
   nativePaneChrome,
   openCommandBar,
+  openLayouts,
   setHoveredControl,
 }: Pick<
   StatusBarViewProps,
@@ -321,6 +386,7 @@ function StatusBarLayoutControl({
   | "layoutTabItems"
   | "layoutTabsWidth"
   | "openCommandBar"
+  | "openLayouts"
   | "setHoveredControl"
 > & { nativePaneChrome: boolean }) {
   return (
@@ -348,6 +414,50 @@ function StatusBarLayoutControl({
           setHoveredControl={setHoveredControl}
         />
       )}
+      <LayoutsButton
+        hoveredControl={hoveredControl}
+        nativePaneChrome={nativePaneChrome}
+        openLayouts={openLayouts}
+        setHoveredControl={setHoveredControl}
+      />
+    </Box>
+  );
+}
+
+function LayoutsButton({
+  hoveredControl,
+  nativePaneChrome,
+  openLayouts,
+  setHoveredControl,
+}: Pick<StatusBarViewProps, "hoveredControl" | "openLayouts" | "setHoveredControl"> & {
+  nativePaneChrome: boolean;
+}) {
+  const hovered = hoveredControl === "layouts";
+  return (
+    <Box
+      marginLeft={1}
+      height={1}
+      alignItems="center"
+      onMouseOver={() => setHoveredControl((current) => (current === "layouts" ? current : "layouts"))}
+      onMouseDown={openLayouts}
+      data-gloom-role="layout-presets-button"
+      data-gloom-interactive="true"
+      aria-label="Open layout presets"
+      title="Layouts and presets"
+      {...(nativePaneChrome ? {
+        style: {
+          cursor: "pointer",
+          borderRadius: 4,
+          paddingInline: 6,
+          backgroundColor: hovered ? hoverBg() : blendHex(colors.panel, colors.header, 0.18),
+        },
+      } : {
+        backgroundColor: hovered ? hoverBg() : colors.header,
+      })}
+    >
+      <Text fg={nativePaneChrome ? (hovered ? colors.textBright : colors.text) : colors.headerText}>
+        {nativePaneChrome ? "Layouts" : " Layouts "}
+      </Text>
     </Box>
   );
 }

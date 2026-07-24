@@ -16,7 +16,15 @@ export type DropTarget =
   | { kind: "frame"; edge: "left" | "right" | "top" | "bottom" }
   | { kind: "leaf"; targetId: string; position: LeafDropPosition };
 
-export type FloatingResizeCorner = "top-left" | "top-right" | "bottom-left" | "bottom-right";
+export type FloatingResizeCorner =
+  | "top-left"
+  | "top-right"
+  | "bottom-left"
+  | "bottom-right"
+  | "top"
+  | "bottom"
+  | "left"
+  | "right";
 
 export interface LayoutSimulation {
   layout: LayoutConfig;

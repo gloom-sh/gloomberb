@@ -200,5 +200,9 @@ export function useCommandBarKeyboardShortcuts({
       }
       activateListSelection();
     }
-  }, { phase: "before", allowEditable: true });
+  }, {
+    phase: "before",
+    allowEditable: true,
+    interceptNative: (event) => event.targetEditable === true,
+  });
 }

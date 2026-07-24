@@ -9,6 +9,7 @@ type KeyboardTargetLike = EventTarget & {
 };
 
 type WebKeyDefaultEvent = Pick<KeyboardEvent, "key" | "ctrlKey" | "metaKey" | "shiftKey" | "target"> & {
+  altKey?: boolean;
   defaultPrevented?: boolean;
   isComposing?: boolean;
 };
@@ -58,7 +59,8 @@ function isNativeKeyboardControlTarget(target: EventTarget | null): boolean {
   if (!element) return false;
 
   const tagName = getTargetTagName(element);
-  if (tagName === "BUTTON" || tagName === "A" || tagName === "SUMMARY") return true;
+  if (tagName === "BUTTON" || tagName === "SUMMARY") return true;
+  if (tagName === "A" && element.getAttribute?.("href") != null) return true;
 
   return targetHasClosest(element, "button, a[href], summary");
 }
@@ -76,8 +78,21 @@ function isNativeControlActivationKey(event: WebKeyDefaultEvent): boolean {
   return key === "return" || key === "enter" || key === "space";
 }
 
+export function shouldDispatchWebAppKeyDown(event: WebKeyDefaultEvent): boolean {
+  if (isNativeKeyboardControlTarget(event.target) && isNativeControlActivationKey(event)) return false;
+  return normalizeWebKeyName(event.key) !== "tab"
+    || !!event.ctrlKey
+    || !!event.metaKey
+    || !!event.altKey;
+}
+
+export function shouldDispatchWebNativeKeyDown(event: WebKeyDefaultEvent): boolean {
+  return !isEditableKeyboardTarget(event.target) && shouldDispatchWebAppKeyDown(event);
+}
+
 export function shouldConsumeWebAppKeyDown(event: WebKeyDefaultEvent): boolean {
   if (event.defaultPrevented || event.isComposing) return false;
+  if (!shouldDispatchWebAppKeyDown(event)) return false;
   if (isEditableKeyboardTarget(event.target)) return false;
   if (isBrowserModifierShortcut(event)) return false;
   if (isNativeKeyboardControlTarget(event.target) && isNativeControlActivationKey(event)) return false;

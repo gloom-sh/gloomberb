@@ -38,6 +38,7 @@ const EDITABLE_SELECTOR = "input, textarea, [contenteditable='true']";
 const MENU_SURFACE_SELECTOR = [
   "[data-gloom-context-menu-surface='true']",
   "[data-gloom-role='pane-header']",
+  "[data-gloom-role='pane-float-toggle']",
   "[data-gloom-role='pane-action']",
   "[data-gloom-role='pane-close']",
   "[data-gloom-role='status-bar']",

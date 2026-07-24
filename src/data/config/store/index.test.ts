@@ -138,6 +138,7 @@ describe("sanitizeLayout", () => {
               y: 4,
               width: 0,
               height: 7,
+              fixedGeometry: true,
             },
           },
         },
@@ -155,8 +156,39 @@ describe("sanitizeLayout", () => {
         y: 4,
         width: 1,
         height: 7,
+        fixedGeometry: true,
       },
     });
+  });
+
+  test("preserves explicit fixed floating geometry through layout sanitization", () => {
+    const layout = sanitizeLayout({
+      dockRoot: null,
+      instances: [{
+        instanceId: "portfolio-list:main",
+        paneId: "portfolio-list",
+        binding: { kind: "none" },
+      }],
+      floating: [{
+        instanceId: "portfolio-list:main",
+        x: 50,
+        y: 30,
+        width: 10,
+        height: 3,
+        fixedGeometry: true,
+      }],
+      detached: [],
+    }, DEFAULT_LAYOUT);
+
+    expect(layout.floating).toEqual([{
+      instanceId: "portfolio-list:main",
+      x: 50,
+      y: 30,
+      width: 10,
+      height: 3,
+      fixedGeometry: true,
+      zIndex: undefined,
+    }]);
   });
 
   test("falls back to the default layout when given an obsolete column layout", () => {

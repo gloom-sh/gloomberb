@@ -1,12 +1,24 @@
-import { Box, Span, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
+import { Box, Span, Text, useNativeRenderer, useUiCapabilities, useUiHost } from "../../../ui";
 import { useCallback, useRef, type ReactNode } from "react";
 import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import {
+  PANE_HEADER_ACTION,
+  PANE_HEADER_CLOSE,
+  PANE_HEADER_FLOATING,
+  PANE_HEADER_TILED,
+  resolveTerminalPaneHeaderGeometry,
+} from "./terminal-header-geometry";
+
+export {
+  PANE_HEADER_ACTION,
+  PANE_HEADER_CLOSE,
+  PANE_HEADER_FLOATING,
+  PANE_HEADER_TILED,
+} from "./terminal-header-geometry";
 
 const PANE_HEADER_HEIGHT = 1;
 const PANE_HEADER_GRIP = ":: ";
-export const PANE_HEADER_ACTION = " ... ";
-export const PANE_HEADER_CLOSE = " x ";
 
 interface PaneHeaderProps {
   title: string;
@@ -21,6 +33,7 @@ interface PaneHeaderProps {
   onHeaderMouseDragEnd?: (event: any) => void;
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
+  onFloatToggleMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
 }
 
@@ -40,26 +53,38 @@ function captureTerminalPointerDrag(renderer: unknown, renderable: unknown): voi
   capture.call(renderer, renderable);
 }
 
-function DesktopPaneButton({
+export function DesktopPaneButton({
+  label,
   icon,
-  onMouseDown,
+  onActivate,
+  role,
 }: {
+  label: string;
   icon: ReactNode;
-  onMouseDown?: (event: any) => void;
+  onActivate?: (event: any) => void;
+  role: string;
 }) {
   return (
-    <Box
-      height={1}
-      alignItems="center"
-      justifyContent="center"
-      onMouseDown={onMouseDown}
-      data-gloom-interactive={onMouseDown ? "true" : undefined}
+    <button
+      type="button"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={onActivate}
+      data-gloom-role={role}
+      data-gloom-interactive={onActivate ? "true" : undefined}
+      aria-label={label}
+      title={label}
       style={{
+        appearance: "none",
+        border: 0,
         borderRadius: 4,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
         minWidth: 20,
         paddingInline: 4,
         backgroundColor: "transparent",
-        cursor: onMouseDown ? "pointer" : "default",
+        cursor: onActivate ? "pointer" : "default",
       }}
     >
       <Span
@@ -74,7 +99,7 @@ function DesktopPaneButton({
       >
         {icon}
       </Span>
-    </Box>
+    </button>
   );
 }
 
@@ -92,7 +117,8 @@ function TerminalPaneButton({
   return (
     <Box
       height={1}
-      width={text.length}
+      width={displayWidth(text)}
+      flexShrink={0}
       flexDirection="row"
       data-gloom-role={role}
       data-gloom-interactive={onMouseDown ? "true" : undefined}
@@ -116,16 +142,25 @@ export function PaneHeader({
   onHeaderMouseDragEnd,
   onHeaderContextMenu,
   onActionMouseDown,
+  onFloatToggleMouseDown,
   onCloseMouseDown,
 }: PaneHeaderProps) {
   const { nativePaneChrome } = useUiCapabilities();
+  const uiKind = useUiHost().kind;
   const nativeRenderer = useNativeRenderer();
   const terminalHeaderRef = useRef<unknown>(null);
   const visuallyFocused = focused || windowModeSelected;
   const backgroundColor = floating ? floatingPaneTitleBg(visuallyFocused) : paneTitleBg(visuallyFocused);
-  const actionText = showActions ? PANE_HEADER_ACTION : "     ";
-  const closeText = floating ? PANE_HEADER_CLOSE : "";
+  const floatToggleText = floating ? PANE_HEADER_FLOATING : PANE_HEADER_TILED;
+  const floatToggleLabel = floating
+    ? "Pane is floating — tile pane"
+    : "Pane is tiled — float pane";
   const textColor = paneTitleText(visuallyFocused, floating);
+  const terminalGeometry = resolveTerminalPaneHeaderGeometry(width, {
+    floating,
+    focused: visuallyFocused,
+    showActions,
+  });
   const handleTerminalHeaderMouseDown = useCallback((event: any) => {
     captureTerminalPointerDrag(nativeRenderer, terminalHeaderRef.current);
     onHeaderMouseDown?.(event);
@@ -173,35 +208,72 @@ export function PaneHeader({
             {title}
           </Text>
         </Box>
-        <Box data-gloom-role="pane-action">
-          {showActions ? (
+        <Box data-gloom-role="pane-header-actions" position="relative" zIndex={2}>
+          {uiKind === "opentui" ? (
+            <TerminalPaneButton
+              text={floatToggleText}
+              fg={colors.textDim}
+              role="pane-float-toggle"
+              onMouseDown={onFloatToggleMouseDown}
+            />
+          ) : (
             <DesktopPaneButton
-              onMouseDown={onActionMouseDown}
-              icon={(
+              label={floatToggleLabel}
+              onActivate={onFloatToggleMouseDown}
+              role="pane-float-toggle"
+              icon={floating ? (
                 <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                  <circle cx="2" cy="6" r="1.1" fill="currentColor" />
-                  <circle cx="6" cy="6" r="1.1" fill="currentColor" />
-                  <circle cx="10" cy="6" r="1.1" fill="currentColor" />
+                  <rect x="1.5" y="1.5" width="7" height="7" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <rect x="4.5" y="4.5" width="6" height="6" rx="1" fill={backgroundColor} stroke="currentColor" strokeWidth="1.2" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                  <rect x="1" y="1" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M6 1V11M1 6H11" stroke="currentColor" strokeWidth="1" />
                 </svg>
               )}
             />
+          )}
+          {showActions ? (
+            uiKind === "opentui" ? (
+              <TerminalPaneButton text={PANE_HEADER_ACTION} fg={colors.textDim} role="pane-action" onMouseDown={onActionMouseDown} />
+            ) : (
+              <DesktopPaneButton
+                label="Pane actions"
+                onActivate={onActionMouseDown}
+                role="pane-action"
+                icon={(
+                  <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                    <circle cx="2" cy="6" r="1.1" fill="currentColor" />
+                    <circle cx="6" cy="6" r="1.1" fill="currentColor" />
+                    <circle cx="10" cy="6" r="1.1" fill="currentColor" />
+                  </svg>
+                )}
+              />
+            )
           ) : <Box width={2} />}
         </Box>
         {floating && (
-          <Box data-gloom-role="pane-close" marginLeft={1}>
-            <DesktopPaneButton
-              onMouseDown={onCloseMouseDown}
-              icon={(
-                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
-                  <path
-                    d="M3 3L9 9M9 3L3 9"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              )}
-            />
+          <Box data-gloom-role="pane-close" marginLeft={1} position="relative" zIndex={2}>
+            {uiKind === "opentui" ? (
+              <TerminalPaneButton text={PANE_HEADER_CLOSE} fg={colors.textDim} role="pane-close" onMouseDown={onCloseMouseDown} />
+            ) : (
+              <DesktopPaneButton
+                label="Close pane"
+                onActivate={onCloseMouseDown}
+                role="pane-close"
+                icon={(
+                  <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                    <path
+                      d="M3 3L9 9M9 3L3 9"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                )}
+              />
+            )}
           </Box>
         )}
       </Box>
@@ -209,14 +281,11 @@ export function PaneHeader({
   }
 
   if (visuallyFocused || floating) {
-    // Build: ┌─:: Title ─────────── ... x─┐
-    // Reserve 2 for corners, 1 for ─ after ┌, 1 for ─ before ┐
     const borderColor = visuallyFocused ? colors.borderFocused : colors.border;
-    const innerWidth = Math.max(0, width - 4);
-    const contentWidth = PANE_HEADER_GRIP.length + closeText.length + actionText.length;
-    const titleWidth = Math.max(0, innerWidth - contentWidth);
+    const grip = truncateTitle(PANE_HEADER_GRIP, terminalGeometry.contentWidth);
+    const titleWidth = Math.max(0, terminalGeometry.contentWidth - displayWidth(grip));
     const clippedTitle = truncateTitle(title, titleWidth);
-    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - displayWidth(clippedTitle) - actionText.length - closeText.length);
+    const fillLen = Math.max(0, terminalGeometry.contentWidth - displayWidth(grip) - displayWidth(clippedTitle));
     const fill = "─".repeat(fillLen);
 
     return (
@@ -231,29 +300,55 @@ export function PaneHeader({
         onMouseDrag={onHeaderMouseDrag}
         onMouseDragEnd={onHeaderMouseDragEnd}
       >
-        <Text fg={borderColor} selectable={false}>{"┌─"}</Text>
-        <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}`}</Text>
-        <Text fg={borderColor} selectable={false}>{fill}</Text>
-        <TerminalPaneButton
-          text={actionText}
-          fg={textColor}
-          role="pane-action"
-          onMouseDown={onActionMouseDown}
-        />
-        {floating && (
+        <Text
+          width={displayWidth(terminalGeometry.leftBorder)}
+          flexShrink={0}
+          fg={borderColor}
+          selectable={false}
+        >
+          {terminalGeometry.leftBorder}
+        </Text>
+        <Text width={terminalGeometry.contentWidth} flexShrink={0} fg={textColor} selectable={false}>
+          {`${grip}${clippedTitle}${fill}`}
+        </Text>
+        {terminalGeometry.controls.toggle && (
           <TerminalPaneButton
-            text={closeText}
+            text={terminalGeometry.controls.toggle.text}
+            fg={visuallyFocused ? colors.borderFocused : textColor}
+            role="pane-float-toggle"
+            onMouseDown={onFloatToggleMouseDown}
+          />
+        )}
+        {terminalGeometry.controls.action && (
+          <TerminalPaneButton
+            text={terminalGeometry.controls.action.text}
+            fg={textColor}
+            role="pane-action"
+            onMouseDown={onActionMouseDown}
+          />
+        )}
+        {terminalGeometry.controls.close && (
+          <TerminalPaneButton
+            text={terminalGeometry.controls.close.text}
             fg={textColor}
             role="pane-close"
             onMouseDown={onCloseMouseDown}
           />
         )}
-        <Text fg={borderColor} selectable={false}>{"─┐"}</Text>
+        <Text
+          width={displayWidth(terminalGeometry.rightBorder)}
+          flexShrink={0}
+          fg={borderColor}
+          selectable={false}
+        >
+          {terminalGeometry.rightBorder}
+        </Text>
       </Box>
     );
   }
 
-  const titleWidth = Math.max(0, width - PANE_HEADER_GRIP.length - actionText.length - closeText.length);
+  const grip = truncateTitle(PANE_HEADER_GRIP, terminalGeometry.contentWidth);
+  const titleWidth = Math.max(0, terminalGeometry.contentWidth - displayWidth(grip));
   const clippedTitle = truncateTitle(title, titleWidth);
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
 
@@ -269,21 +364,23 @@ export function PaneHeader({
       onMouseDrag={onHeaderMouseDrag}
       onMouseDragEnd={onHeaderMouseDragEnd}
     >
-      <Text fg={textColor} selectable={false}>
-        {`${PANE_HEADER_GRIP}${clippedTitle}${padding}`}
+      <Text width={terminalGeometry.contentWidth} flexShrink={0} fg={textColor} selectable={false}>
+        {`${grip}${clippedTitle}${padding}`}
       </Text>
-      <TerminalPaneButton
-        text={actionText}
-        fg={textColor}
-        role="pane-action"
-        onMouseDown={onActionMouseDown}
-      />
-      {floating && (
+      {terminalGeometry.controls.toggle && (
         <TerminalPaneButton
-          text={closeText}
+          text={terminalGeometry.controls.toggle.text}
           fg={textColor}
-          role="pane-close"
-          onMouseDown={onCloseMouseDown}
+          role="pane-float-toggle"
+          onMouseDown={onFloatToggleMouseDown}
+        />
+      )}
+      {terminalGeometry.controls.action && (
+        <TerminalPaneButton
+          text={terminalGeometry.controls.action.text}
+          fg={textColor}
+          role="pane-action"
+          onMouseDown={onActionMouseDown}
         />
       )}
     </Box>

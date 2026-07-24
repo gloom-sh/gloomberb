@@ -100,6 +100,7 @@ function capturePlacementMemory(layout: LayoutConfig): LayoutConfig {
         y: floating.y,
         width: floating.width,
         height: floating.height,
+        fixedGeometry: floating.fixedGeometry,
       } : previous.floating;
       const detached = detachedById.get(instance.instanceId);
       const nextDetached = detached ? {

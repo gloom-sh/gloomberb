@@ -10,6 +10,7 @@ export interface FloatingRect {
   width: number;
   height: number;
   zIndex?: number;
+  fixedGeometry?: boolean;
 }
 
 interface LayoutBoundsLike {
@@ -20,8 +21,8 @@ interface LayoutBoundsLike {
 }
 
 export function clampFloatingRect(rect: FloatingRect, termWidth?: number, termHeight?: number): FloatingRect {
-  const width = Math.max(MIN_FLOAT_WIDTH, Math.round(rect.width));
-  const height = Math.max(MIN_FLOAT_HEIGHT, Math.round(rect.height));
+  const width = Math.max(rect.fixedGeometry ? 1 : MIN_FLOAT_WIDTH, Math.round(rect.width));
+  const height = Math.max(rect.fixedGeometry ? 1 : MIN_FLOAT_HEIGHT, Math.round(rect.height));
   const maxX = typeof termWidth === "number" ? Math.max(0, termWidth - width) : Number.POSITIVE_INFINITY;
   const maxY = typeof termHeight === "number" ? Math.max(0, termHeight - height) : Number.POSITIVE_INFINITY;
   return {
@@ -30,12 +31,13 @@ export function clampFloatingRect(rect: FloatingRect, termWidth?: number, termHe
     width,
     height,
     zIndex: rect.zIndex,
+    fixedGeometry: rect.fixedGeometry,
   };
 }
 
 export function clampFloatingRectWithinBounds(rect: FloatingRect, bounds: LayoutBoundsLike): FloatingRect {
-  const width = Math.min(Math.max(MIN_FLOAT_WIDTH, Math.round(rect.width)), Math.max(1, bounds.width));
-  const height = Math.min(Math.max(MIN_FLOAT_HEIGHT, Math.round(rect.height)), Math.max(1, bounds.height));
+  const width = Math.min(Math.max(rect.fixedGeometry ? 1 : MIN_FLOAT_WIDTH, Math.round(rect.width)), Math.max(1, bounds.width));
+  const height = Math.min(Math.max(rect.fixedGeometry ? 1 : MIN_FLOAT_HEIGHT, Math.round(rect.height)), Math.max(1, bounds.height));
   const maxX = bounds.x + Math.max(0, bounds.width - width);
   const maxY = bounds.y + Math.max(0, bounds.height - height);
   return {
@@ -44,6 +46,7 @@ export function clampFloatingRectWithinBounds(rect: FloatingRect, bounds: Layout
     width,
     height,
     zIndex: rect.zIndex,
+    fixedGeometry: rect.fixedGeometry,
   };
 }
 

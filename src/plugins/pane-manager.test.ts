@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../types/config";
 import {
   addPaneFloating,
+  applyLayoutPreset,
   applyDrop,
+  compactDockedPaneAtRect,
+  dockFloatingPaneAtCurrentRect,
   floatAtRect,
   getDockResizeTargets,
   gridlockAllPanes,
@@ -13,9 +16,20 @@ import {
   moveFloatingPane,
   resizeFloatingPaneFromCorner,
   simulateDrop,
+  snapPaneToGridRect,
 } from "./pane-manager";
 
 const BOUNDS = { x: 0, y: 0, width: 120, height: 40 };
+
+function rectsOverlap(
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number },
+): boolean {
+  return first.x < second.x + second.width
+    && first.x + first.width > second.x
+    && first.y < second.y + second.height
+    && first.y + first.height > second.y;
+}
 
 describe("pane-manager split-tree drops", () => {
   test("docks the first floating pane into an empty dock root", () => {
@@ -170,6 +184,155 @@ describe("pane-manager split-tree drops", () => {
     expect(getLeafRect(next, bottomRightPane.instanceId, BOUNDS)).toEqual({ x: 60, y: 20, width: 60, height: 20 });
   });
 
+  test("builds grid and left-main presets from every visible pane without changing the schema", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-preset-test");
+    let layout = cloneLayout(config.layout);
+    layout = addPaneFloating(layout, createPaneInstance("chat"), 120, 40);
+    const visibleIds = new Set([
+      ...getDockedPaneIds(layout),
+      ...layout.floating.map((entry) => entry.instanceId),
+    ]);
+
+    for (const preset of ["single", "2x2", "3x3", "left-main"] as const) {
+      const next = applyLayoutPreset(layout, preset, BOUNDS);
+      expect(new Set(getDockedPaneIds(next))).toEqual(visibleIds);
+      expect(next.floating).toEqual([]);
+      expect(next.instances).toHaveLength(layout.instances.length);
+      expect(next.detached).toEqual(layout.detached);
+    }
+
+    const leftMain = applyLayoutPreset(layout, "left-main", BOUNDS);
+    const leaves = getDockLeafLayouts(leftMain, BOUNDS, { precise: true });
+    const main = leaves.find((leaf) => leaf.instanceId === getDockedPaneIds(layout)[0]);
+    const stack = leaves.filter((leaf) => leaf.instanceId !== main?.instanceId);
+    expect(main?.rect).toEqual({ x: 0, y: 0, width: 60, height: 40 });
+    expect(stack.every((leaf) => leaf.rect.x === 60 && leaf.rect.width === 60)).toBe(true);
+  });
+
+  test("keeps a snapped grid cell as exact committed floating geometry", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-cell-snap-test");
+    const floatingPane = createPaneInstance("chat", { instanceId: "chat:floating" });
+    const layout = addPaneFloating(cloneLayout(config.layout), floatingPane, 120, 40);
+
+    const next = snapPaneToGridRect(
+      layout,
+      floatingPane.instanceId,
+      { x: 80, y: 0, width: 20, height: 10 },
+      BOUNDS,
+    );
+
+    expect(getDockedPaneIds(next)).not.toContain(floatingPane.instanceId);
+    expect(next.floating.find((entry) => entry.instanceId === floatingPane.instanceId)).toEqual(expect.objectContaining({
+      x: 80,
+      y: 0,
+      width: 20,
+      height: 10,
+      fixedGeometry: true,
+    }));
+  });
+
+  test("keeps snapped cell geometry when center-swapping with a docked pane", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-cell-swap-test");
+    const floatingPane = createPaneInstance("chat", { instanceId: "chat:floating" });
+    const dockedPaneId = "ticker-detail:main";
+    const snapped = snapPaneToGridRect(
+      addPaneFloating(cloneLayout(config.layout), floatingPane, 120, 40),
+      floatingPane.instanceId,
+      { x: 80, y: 4, width: 6, height: 6 },
+      BOUNDS,
+    );
+    const snappedEntry = snapped.floating.find((entry) => entry.instanceId === floatingPane.instanceId)!;
+
+    const swapped = applyDrop(snapped, floatingPane.instanceId, {
+      kind: "leaf",
+      targetId: dockedPaneId,
+      position: "center",
+    });
+    const replacement = swapped.floating.find((entry) => entry.instanceId === dockedPaneId);
+
+    expect(replacement).toEqual({ ...snappedEntry, instanceId: dockedPaneId });
+    expect(replacement).toEqual(expect.objectContaining({
+      x: 80,
+      y: 4,
+      width: 6,
+      height: 6,
+      fixedGeometry: true,
+    }));
+    expect(getDockedPaneIds(swapped)).toContain(floatingPane.instanceId);
+    expect(getDockedPaneIds(swapped)).not.toContain(dockedPaneId);
+
+    const clamped = moveFloatingPane(swapped, dockedPaneId, 0, 0, BOUNDS);
+    expect(clamped.floating.find((entry) => entry.instanceId === dockedPaneId)).toEqual(replacement);
+  });
+
+  test("rejects an overlapping auto-compact candidate without rebuilding the dock tree", () => {
+    const layout: LayoutConfig = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.5,
+        first: { kind: "pane", instanceId: "left:main" },
+        second: {
+          kind: "split",
+          axis: "vertical",
+          ratio: 0.5,
+          first: { kind: "pane", instanceId: "top-right:main" },
+          second: { kind: "pane", instanceId: "bottom-right:main" },
+        },
+      },
+      instances: [
+        createPaneInstance("left", { instanceId: "left:main" }),
+        createPaneInstance("top-right", { instanceId: "top-right:main" }),
+        createPaneInstance("bottom-right", { instanceId: "bottom-right:main" }),
+        createPaneInstance("floating", { instanceId: "floating:main" }),
+        createPaneInstance("detached", { instanceId: "detached:main" }),
+      ],
+      floating: [{ instanceId: "floating:main", x: 45, y: 10, width: 30, height: 12, zIndex: 77 }],
+      detached: [{ instanceId: "detached:main", x: 10, y: 10, width: 50, height: 20 }],
+    };
+    const next = compactDockedPaneAtRect(
+      layout,
+      "left:main",
+      { x: 60, y: 20, width: 60, height: 20 },
+      BOUNDS,
+    );
+    expect(next).toBe(layout);
+    expect(next.dockRoot).toEqual(layout.dockRoot);
+    expect(getDockLeafLayouts(next, BOUNDS)).toEqual(getDockLeafLayouts(layout, BOUNDS));
+  });
+
+  test("restores a floated tile to its target-relative dock placement", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const unrelated = createPaneInstance("chat");
+    let layout = addPaneFloating(cloneLayout(config.layout), unrelated, 120, 40);
+    layout = floatAtRect(layout, unrelated.instanceId, { x: 5, y: 5, width: 25, height: 10, zIndex: 80 });
+    const paneId = "ticker-detail:main";
+    const tiledRect = getLeafRect(layout, paneId, BOUNDS)!;
+
+    const floated = floatAtRect(layout, paneId, tiledRect);
+
+    expect(getDockedPaneIds(floated)).not.toContain(paneId);
+    expect(floated.floating.find((entry) => entry.instanceId === paneId)).toEqual(expect.objectContaining(tiledRect));
+    expect(floated.floating.find((entry) => entry.instanceId === unrelated.instanceId)).toEqual(
+      layout.floating.find((entry) => entry.instanceId === unrelated.instanceId),
+    );
+
+    const docked = dockFloatingPaneAtCurrentRect(floated, paneId, BOUNDS);
+    const leaves = getDockLeafLayouts(docked, BOUNDS);
+
+    expect(getDockedPaneIds(docked)).toContain(paneId);
+    expect(getDockedPaneIds(docked)).toEqual(getDockedPaneIds(layout));
+    expect(docked.floating.some((entry) => entry.instanceId === paneId)).toBe(false);
+    expect(docked.floating.find((entry) => entry.instanceId === unrelated.instanceId)).toEqual(
+      layout.floating.find((entry) => entry.instanceId === unrelated.instanceId),
+    );
+    for (let firstIndex = 0; firstIndex < leaves.length; firstIndex += 1) {
+      for (let secondIndex = firstIndex + 1; secondIndex < leaves.length; secondIndex += 1) {
+        expect(rectsOverlap(leaves[firstIndex]!.rect, leaves[secondIndex]!.rect)).toBe(false);
+      }
+    }
+  });
+
   test("moves floating panes repeatedly within the terminal bounds", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const pane = createPaneInstance("chat");
@@ -208,6 +371,26 @@ describe("pane-manager split-tree drops", () => {
       width: 105,
       height: 34,
     }));
+  });
+
+  test("resizes floating panes from each edge without changing the orthogonal axis", () => {
+    const cases = [
+      { corner: "right", deltaX: 10, deltaY: 99, expected: { x: 20, y: 8, width: 50, height: 14 } },
+      { corner: "left", deltaX: -5, deltaY: 99, expected: { x: 15, y: 8, width: 45, height: 14 } },
+      { corner: "bottom", deltaX: 99, deltaY: 6, expected: { x: 20, y: 8, width: 40, height: 20 } },
+      { corner: "top", deltaX: 99, deltaY: -3, expected: { x: 20, y: 5, width: 40, height: 17 } },
+    ] as const;
+
+    for (const { corner, deltaX, deltaY, expected } of cases) {
+      const config = createDefaultConfig("/tmp/gloomberb-test");
+      const pane = createPaneInstance("chat");
+      let layout = addPaneFloating(cloneLayout(config.layout), pane, 120, 40);
+      layout = floatAtRect(layout, pane.instanceId, { x: 20, y: 8, width: 40, height: 14 });
+
+      layout = resizeFloatingPaneFromCorner(layout, pane.instanceId, corner, deltaX, deltaY, BOUNDS);
+
+      expect(layout.floating.find((entry) => entry.instanceId === pane.instanceId)).toEqual(expect.objectContaining(expected));
+    }
   });
 
   test("finds dock resize targets from the focused pane ancestors", () => {

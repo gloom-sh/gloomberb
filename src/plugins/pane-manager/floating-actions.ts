@@ -16,6 +16,8 @@ import {
   type FloatingRect,
 } from "./floating";
 import type { LayoutBounds } from "./dock-tree";
+import { inferCompactedDockTree } from "./gridlock-inference";
+import { dockPane } from "./docking";
 import type { FloatingResizeCorner } from "./types";
 import { detachPane, ensurePaneInstance, finalizeLayout } from "./layout-state";
 
@@ -53,8 +55,25 @@ export function floatAtRect(layout: LayoutConfig, instanceId: string, rect: Floa
         width: rect.width,
         height: rect.height,
         zIndex: rect.zIndex ?? maxFloatingZ(layout) + 1,
+        fixedGeometry: rect.fixedGeometry,
       },
     ],
+  });
+}
+
+export function dockFloatingPaneAtCurrentRect(
+  layout: LayoutConfig,
+  instanceId: string,
+  bounds: LayoutBounds,
+): LayoutConfig {
+  const floating = layout.floating.find((entry) => entry.instanceId === instanceId);
+  if (!floating) return layout;
+  const dockRoot = inferCompactedDockTree(layout, instanceId, floating, bounds);
+  if (!dockRoot) return dockPane(layout, instanceId);
+  return finalizeLayout({
+    ...layout,
+    dockRoot,
+    floating: layout.floating.filter((entry) => entry.instanceId !== instanceId),
   });
 }
 
@@ -85,22 +104,29 @@ export function resizeFloatingPaneFromCorner(
 ): LayoutConfig {
   const floating = layout.floating.find((entry) => entry.instanceId === instanceId);
   if (!floating) return layout;
+  const minWidth = floating.fixedGeometry ? 1 : MIN_FLOAT_WIDTH;
+  const minHeight = floating.fixedGeometry ? 1 : MIN_FLOAT_HEIGHT;
 
   let left = floating.x;
   let top = floating.y;
   let right = floating.x + floating.width;
   let bottom = floating.y + floating.height;
 
-  if (corner === "top-left" || corner === "bottom-left") {
-    left = Math.max(bounds.x, Math.min(left + deltaX, right - MIN_FLOAT_WIDTH));
-  } else {
-    right = Math.min(bounds.x + bounds.width, Math.max(right + deltaX, left + MIN_FLOAT_WIDTH));
+  const affectsLeft = corner === "top-left" || corner === "bottom-left" || corner === "left";
+  const affectsRight = corner === "top-right" || corner === "bottom-right" || corner === "right";
+  const affectsTop = corner === "top-left" || corner === "top-right" || corner === "top";
+  const affectsBottom = corner === "bottom-left" || corner === "bottom-right" || corner === "bottom";
+
+  if (affectsLeft) {
+    left = Math.max(bounds.x, Math.min(left + deltaX, right - minWidth));
+  } else if (affectsRight) {
+    right = Math.min(bounds.x + bounds.width, Math.max(right + deltaX, left + minWidth));
   }
 
-  if (corner === "top-left" || corner === "top-right") {
-    top = Math.max(bounds.y, Math.min(top + deltaY, bottom - MIN_FLOAT_HEIGHT));
-  } else {
-    bottom = Math.min(bounds.y + bounds.height, Math.max(bottom + deltaY, top + MIN_FLOAT_HEIGHT));
+  if (affectsTop) {
+    top = Math.max(bounds.y, Math.min(top + deltaY, bottom - minHeight));
+  } else if (affectsBottom) {
+    bottom = Math.min(bounds.y + bounds.height, Math.max(bottom + deltaY, top + minHeight));
   }
 
   return finalizeLayout(updateFloatingPane(layout, instanceId, {

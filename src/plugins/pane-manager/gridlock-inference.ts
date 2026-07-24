@@ -1,5 +1,5 @@
-import type { DockLayoutNode } from "../../types/config";
-import type { LayoutBounds } from "./dock-tree";
+import type { DockLayoutNode, LayoutConfig } from "../../types/config";
+import { getDockLeafLayouts, type LayoutBounds } from "./dock-tree";
 
 export interface GridlockRect {
   instanceId: string;
@@ -7,6 +7,13 @@ export interface GridlockRect {
   y: number;
   width: number;
   height: number;
+}
+
+function rectsOverlap(left: LayoutBounds, right: LayoutBounds): boolean {
+  return left.x < right.x + right.width
+    && left.x + left.width > right.x
+    && left.y < right.y + right.height
+    && left.y + left.height > right.y;
 }
 
 export function boundsForRects(rects: GridlockRect[]): LayoutBounds {
@@ -123,4 +130,32 @@ export function inferDockTreeFromRects(rects: GridlockRect[], bounds?: LayoutBou
     first: inferDockTreeFromRects(chosen.first, boundsForRects(chosen.first))!,
     second: inferDockTreeFromRects(chosen.second, boundsForRects(chosen.second))!,
   };
+}
+
+export function inferCompactedDockTree(
+  layout: LayoutConfig,
+  draggedInstanceId: string,
+  targetRect: LayoutBounds,
+  bounds: LayoutBounds,
+): DockLayoutNode | null {
+  const siblingLeaves = getDockLeafLayouts(layout, bounds)
+    .filter((leaf) => leaf.instanceId !== draggedInstanceId);
+  if (siblingLeaves.some((leaf) => rectsOverlap(targetRect, leaf.rect))) {
+    return null;
+  }
+
+  let replacedDraggedPane = false;
+  const rects: GridlockRect[] = getDockLeafLayouts(layout, bounds).map((leaf) => {
+    if (leaf.instanceId !== draggedInstanceId) {
+      return { instanceId: leaf.instanceId, ...leaf.rect };
+    }
+    replacedDraggedPane = true;
+    return { instanceId: draggedInstanceId, ...targetRect };
+  });
+
+  if (!replacedDraggedPane) {
+    rects.push({ instanceId: draggedInstanceId, ...targetRect });
+  }
+
+  return inferDockTreeFromRects(rects, bounds);
 }

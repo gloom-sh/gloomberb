@@ -1,8 +1,9 @@
 import type { DesktopWindowBridge } from "../../../types/desktop-window";
 import {
-  applyDrop,
-  floatPane,
+  dockFloatingPaneAtCurrentRect,
+  floatAtRect,
   removePane,
+  type LayoutBounds,
   type ResolvedPane,
 } from "../../../plugins/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
@@ -23,6 +24,7 @@ export const MENU_Z_INDEX = 10_000;
 
 export function menuForPane(
   pane: ResolvedPane,
+  rect: LayoutBounds,
   layout: LayoutConfig,
   width: number,
   contentHeight: number,
@@ -57,7 +59,11 @@ export function menuForPane(
       label: "Dock Pane",
       accelerator: PANE_MANAGEMENT_ACCELERATORS.toggleFloating,
       onSelect: () => {
-        persistLayout(applyDrop(layout, pane.instance.instanceId, { kind: "frame", edge: "right" }));
+        persistLayout(dockFloatingPaneAtCurrentRect(
+          layout,
+          pane.instance.instanceId,
+          { x: 0, y: 0, width, height: contentHeight },
+        ));
         focusPane(pane.instance.instanceId);
       },
     });
@@ -67,7 +73,7 @@ export function menuForPane(
       label: "Float Pane",
       accelerator: PANE_MANAGEMENT_ACCELERATORS.toggleFloating,
       onSelect: () => {
-        persistLayout(floatPane(layout, pane.instance.instanceId, width, contentHeight, pane.def));
+        persistLayout(floatAtRect(layout, pane.instance.instanceId, rect));
         focusPane(pane.instance.instanceId);
       },
     });

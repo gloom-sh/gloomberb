@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
+import { getDockedPaneIds } from "../../../plugins/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { CommandBarRoute } from "../workflow/types";
 import type { LayoutItemsContext } from "./types";
@@ -67,6 +68,25 @@ function createLayoutItemsContext(
 }
 
 describe("buildCurrentLayoutItems", () => {
+  test("exposes one-action presets that tile every visible pane", () => {
+    const layouts: LayoutConfig[] = [];
+    const confirmations: InlineConfirmOptions[] = [];
+    const items = buildCurrentLayoutItems(createLayoutItemsContext({ layouts, confirmations }));
+
+    expect(items.filter((entry) => entry.category === "Layout Presets").map((entry) => entry.label)).toEqual([
+      "Single Column",
+      "2x2 Grid",
+      "3x3 Grid",
+      "Left Main + Right Stack",
+    ]);
+
+    items.find((entry) => entry.id === "layout-preset:2x2")?.action();
+
+    expect(layouts).toHaveLength(1);
+    expect(layouts[0]?.floating).toEqual([]);
+    expect(getDockedPaneIds(layouts[0]!)).toHaveLength(3);
+  });
+
   test("closes all floating panes from the current layout", () => {
     const layouts: LayoutConfig[] = [];
     const confirmations: InlineConfirmOptions[] = [];

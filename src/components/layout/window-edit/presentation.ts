@@ -114,11 +114,19 @@ export function getFloatingResizeCornerPosition(rect: FloatingRect, corner: Floa
   switch (corner) {
     case "top-left":
       return { x: rect.x, y: rect.y, marker: "◤" };
+    case "top":
+      return { x: rect.x + Math.floor(rect.width / 2), y: rect.y, marker: "┬" };
     case "top-right":
       return { x: rect.x + rect.width - 1, y: rect.y, marker: "◥" };
+    case "right":
+      return { x: rect.x + rect.width - 1, y: rect.y + Math.floor(rect.height / 2), marker: "┤" };
+    case "bottom":
+      return { x: rect.x + Math.floor(rect.width / 2), y: rect.y + rect.height - 1, marker: "┴" };
     case "bottom-left":
       return { x: rect.x, y: rect.y + rect.height - 1, marker: "◣" };
     case "bottom-right":
       return { x: rect.x + rect.width - 1, y: rect.y + rect.height - 1, marker: "◢" };
+    case "left":
+      return { x: rect.x, y: rect.y + Math.floor(rect.height / 2), marker: "├" };
   }
 }

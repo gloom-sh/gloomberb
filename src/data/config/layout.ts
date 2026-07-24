@@ -41,7 +41,13 @@ function sanitizeFloatingPlacementMemory(value: unknown): FloatingPlacementMemor
   const width = typeof (value as FloatingPlacementMemory).width === "number" ? Math.max(1, Math.round((value as FloatingPlacementMemory).width)) : null;
   const height = typeof (value as FloatingPlacementMemory).height === "number" ? Math.max(1, Math.round((value as FloatingPlacementMemory).height)) : null;
   if (x === null || y === null || width === null || height === null) return undefined;
-  return { x, y, width, height };
+  return {
+    x,
+    y,
+    width,
+    height,
+    fixedGeometry: (value as FloatingPlacementMemory).fixedGeometry === true ? true : undefined,
+  };
 }
 
 function sanitizeDetachedPlacementMemory(value: unknown): DetachedPlacementMemory | undefined {
@@ -171,6 +177,7 @@ function sanitizeFloatingEntries(value: unknown, validInstanceIds: Set<string>):
       width: Math.max(1, Math.round(entry.width)),
       height: Math.max(1, Math.round(entry.height)),
       zIndex: typeof entry.zIndex === "number" ? Math.round(entry.zIndex) : entry.zIndex,
+      fixedGeometry: entry.fixedGeometry === true ? true : undefined,
     }));
 }
 

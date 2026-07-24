@@ -1,7 +1,8 @@
 import {
-  dockPane,
-  floatPane,
+  dockFloatingPaneAtCurrentRect,
+  floatAtRect,
   getDockedPaneIds,
+  getLeafRect,
   removePane,
 } from "../../../plugins/pane-manager";
 import { findPaneInstance } from "../../../types/config";
@@ -46,9 +47,15 @@ export function buildFocusedPaneLayoutItems({
       kind: "action",
       action: () => {
         const { width, height } = pluginRegistry.getTermSizeFn();
+        const bounds = { x: 0, y: 0, width, height };
+        const tiledRect = focusedFloating
+          ? null
+          : getLeafRect(currentLayout, focusedPane.instanceId, bounds);
         const nextLayout = focusedFloating
-          ? dockPane(currentLayout, focusedPane.instanceId)
-          : floatPane(currentLayout, focusedPane.instanceId, width, height, focusedPaneDef);
+          ? dockFloatingPaneAtCurrentRect(currentLayout, focusedPane.instanceId, bounds)
+          : tiledRect
+            ? floatAtRect(currentLayout, focusedPane.instanceId, tiledRect)
+            : currentLayout;
         persistLayoutChange(nextLayout);
         closeAll({ revertThemePreview: false });
       },

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useShortcut } from "../../../../react/input";
 import {
-  dockPane,
-  floatPane,
+  dockFloatingPaneAtCurrentRect,
+  floatAtRect,
+  getDockLeafLayouts,
   isPaneInLayout,
   type DockGeometryOptions,
   type LayoutBounds,
@@ -37,6 +38,7 @@ interface UseShellWindowModeOptions {
   focusedPaneId: string | null;
   hasActiveDrag: () => boolean;
   nativePaneChrome: boolean;
+  overlayOpen: boolean;
   persistLayout: (nextLayout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
   pluginRegistry: PluginRegistry;
   visibleLayout: LayoutConfig;
@@ -53,6 +55,7 @@ export function useShellWindowMode({
   focusedPaneId,
   hasActiveDrag,
   nativePaneChrome,
+  overlayOpen,
   persistLayout,
   pluginRegistry,
   visibleLayout,
@@ -128,6 +131,10 @@ export function useShellWindowMode({
     setWindowMode(null);
   }, []);
 
+  useLayoutEffect(() => {
+    if (overlayOpen && windowMode) cancelWindowMode();
+  }, [cancelWindowMode, overlayOpen, windowMode]);
+
   const commitWindowMode = useCallback(() => {
     if (!windowMode) return;
     const committedLayout = resolveWindowEditCommitLayout(windowMode, bounds, dockGeometryOptions);
@@ -200,9 +207,15 @@ export function useShellWindowMode({
           const paneDef = paneInstance ? pluginRegistry.panes.get(paneInstance.paneId) : undefined;
           if (!paneDef) return current;
           const isFloating = current.previewLayout.floating.some((entry) => entry.instanceId === current.paneId);
+          const tiledRect = isFloating
+            ? null
+            : getDockLeafLayouts(current.previewLayout, bounds, dockGeometryOptions)
+              .find((leaf) => leaf.instanceId === current.paneId)?.rect;
           const nextLayout = isFloating
-            ? dockPane(current.previewLayout, current.paneId)
-            : floatPane(current.previewLayout, current.paneId, width, contentHeight, paneDef);
+            ? dockFloatingPaneAtCurrentRect(current.previewLayout, current.paneId, bounds)
+            : tiledRect
+              ? floatAtRect(current.previewLayout, current.paneId, tiledRect)
+              : current.previewLayout;
           return {
             ...current,
             previewLayout: nextLayout,
@@ -252,7 +265,12 @@ export function useShellWindowMode({
       event.preventDefault();
       event.stopPropagation();
     }
-  }, { phase: "before", enabled: !!windowMode });
+  }, {
+    phase: "before",
+    enabled: !!windowMode,
+    allowEditable: true,
+    interceptNative: true,
+  });
 
   return {
     activeLayout,

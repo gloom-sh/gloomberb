@@ -3,6 +3,7 @@ import type {
   DockDividerLayout,
   DockLeafLayout,
   FloatingRect,
+  FloatingResizeCorner,
   LayoutBounds,
   ResolvedPane,
 } from "../../../../plugins/pane-manager";
@@ -37,6 +38,7 @@ interface ShellPaneLayersProps {
   handleNativePaneContextMenu: (paneId: string, rect: LayoutBounds, event: any) => void;
   handleNativePaneMouseDown: (paneId: string, event: any) => void;
   handlePaneAction: (paneId: string, rect: LayoutBounds, event: any) => void;
+  handlePaneFloatToggle: (paneId: string, event: any) => void;
   hoveredPaneId: string | null;
   menuPaneId: string | null;
   nativeContextMenu?: boolean;
@@ -47,7 +49,7 @@ interface ShellPaneLayersProps {
   startNativeDividerDrag: (divider: DockDividerLayout, event: any) => void;
   startNativeDockedDrag: (paneId: string, rect: LayoutBounds, event: any) => void;
   startNativeFloatingDrag: (paneId: string, rect: FloatingRect, event: any) => void;
-  startNativeFloatResize: (paneId: string, rect: FloatingRect, event: any) => void;
+  startNativeFloatResize: (paneId: string, rect: FloatingRect, corner: FloatingResizeCorner, event: any) => void;
   transientFocusActive: boolean;
   transientFocusPaneId: string | null;
   visibleFloatingPanes: VisibleFloatingPane[];
@@ -70,6 +72,7 @@ export function ShellPaneLayers({
   handleNativePaneContextMenu,
   handleNativePaneMouseDown,
   handlePaneAction,
+  handlePaneFloatToggle,
   hoveredPaneId,
   menuPaneId,
   nativeContextMenu,
@@ -138,6 +141,7 @@ export function ShellPaneLayers({
                     onHeaderMouseDragEnd={nativePaneChrome && !transientFocusActive ? handleNativeDrag : undefined}
                     onHeaderContextMenu={nativePaneChrome && nativeContextMenu === true ? (event) => handleNativePaneContextMenu(leaf.instanceId, rect, event) : undefined}
                     onActionMouseDown={(event) => handlePaneAction(leaf.instanceId, rect, event)}
+                    onFloatToggleMouseDown={nativePaneChrome ? (event) => handlePaneFloatToggle(leaf.instanceId, event) : undefined}
                   >
                     <PaneContent
                       component={pane.def.component}
@@ -198,8 +202,11 @@ export function ShellPaneLayers({
                   onHeaderMouseDragEnd={nativePaneChrome ? handleNativeDrag : undefined}
                   onHeaderContextMenu={nativePaneChrome && nativeContextMenu === true ? (event) => handleNativePaneContextMenu(pane.instance.instanceId, preview, event) : undefined}
                   onActionMouseDown={(event) => handlePaneAction(pane.instance.instanceId, preview, event)}
+                  onFloatToggleMouseDown={nativePaneChrome ? (event) => handlePaneFloatToggle(pane.instance.instanceId, event) : undefined}
                   onCloseMouseDown={(event) => handleFloatingCloseMouseDown(pane.instance.instanceId, event)}
-                  onResizeMouseDown={nativePaneChrome ? (event) => startNativeFloatResize(pane.instance.instanceId, preview, event) : undefined}
+                  onResizeMouseDown={nativePaneChrome
+                    ? (corner, event) => startNativeFloatResize(pane.instance.instanceId, preview, corner, event)
+                    : undefined}
                   onResizeMouseDrag={nativePaneChrome ? handleNativeDrag : undefined}
                   onResizeMouseDragEnd={nativePaneChrome ? handleNativeDrag : undefined}
                 >

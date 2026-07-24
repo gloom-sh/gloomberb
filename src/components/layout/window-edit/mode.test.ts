@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { LayoutConfig } from "../../../types/config";
 import {
+  applyWindowEditDirection,
+  cycleWindowEditFocus,
   cycleWindowEditPane,
   cycleWindowEditTarget,
   getWindowEditPaneIds,
@@ -122,5 +124,111 @@ describe("window edit mode", () => {
 
     expect(resolveWindowEditDockMovePreview(state, bounds, { reserveDividerGutters: true })?.rect)
       .toEqual({ x: 61, y: 0, width: 59, height: 40 });
+  });
+
+  test("resizes floating panes from an edge and a corner", () => {
+    const layout: LayoutConfig = {
+      dockRoot: null,
+      instances: [pane("float-a")],
+      floating: [{ instanceId: "float-a", x: 20, y: 8, width: 40, height: 14, zIndex: 50 }],
+      detached: [],
+    };
+    const edgeState: WindowEditState = {
+      paneId: "float-a",
+      previewLayout: layout,
+      mode: "resize",
+      focus: { kind: "floating-resize", corner: "right" },
+      dirty: false,
+    };
+
+    const edgeNext = applyWindowEditDirection(edgeState, "right", false, bounds, {});
+    expect(edgeNext.previewLayout.floating[0]).toEqual(expect.objectContaining({
+      x: 20,
+      y: 8,
+      width: 42,
+      height: 14,
+    }));
+    expect(edgeNext.dirty).toBe(true);
+
+    let cornerNext = applyWindowEditDirection({
+      ...edgeState,
+      focus: { kind: "floating-resize", corner: "bottom-left" },
+    }, "left", false, bounds, {});
+    cornerNext = applyWindowEditDirection(cornerNext, "down", false, bounds, {});
+    expect(cornerNext.previewLayout.floating[0]).toEqual(expect.objectContaining({
+      x: 18,
+      y: 8,
+      width: 42,
+      height: 15,
+    }));
+    expect(cornerNext.dirty).toBe(true);
+  });
+
+  test("resizes a small snapped pane without applying ordinary float minimums", () => {
+    const layout: LayoutConfig = {
+      dockRoot: null,
+      instances: [pane("float-a")],
+      floating: [{
+        instanceId: "float-a",
+        x: 20,
+        y: 8,
+        width: 6,
+        height: 3,
+        zIndex: 50,
+        fixedGeometry: true,
+      }],
+      detached: [],
+    };
+    const state: WindowEditState = {
+      paneId: "float-a",
+      previewLayout: layout,
+      mode: "resize",
+      focus: { kind: "floating-resize", corner: "bottom-right" },
+      dirty: false,
+    };
+
+    const next = applyWindowEditDirection(state, "right", false, bounds, {});
+
+    expect(next.previewLayout.floating[0]).toEqual({
+      instanceId: "float-a",
+      x: 20,
+      y: 8,
+      width: 8,
+      height: 3,
+      zIndex: 50,
+      fixedGeometry: true,
+    });
+    expect(next.dirty).toBe(true);
+  });
+
+  test("cycles through all eight floating resize handles", () => {
+    const layout: LayoutConfig = {
+      dockRoot: null,
+      instances: [pane("float-a")],
+      floating: [{ instanceId: "float-a", x: 20, y: 8, width: 40, height: 14, zIndex: 50 }],
+      detached: [],
+    };
+    const expectedCorners = [
+      "top-left",
+      "top",
+      "top-right",
+      "right",
+      "bottom-right",
+      "bottom",
+      "bottom-left",
+      "left",
+    ] as const;
+    let focus: WindowEditState["focus"] = { kind: "floating-resize", corner: "top-left" };
+    const visited = [focus.corner];
+
+    for (let index = 1; index < expectedCorners.length; index += 1) {
+      focus = cycleWindowEditFocus(focus, layout, "float-a", "resize", bounds, {}, 1);
+      expect(focus.kind).toBe("floating-resize");
+      if (focus.kind === "floating-resize") visited.push(focus.corner);
+    }
+
+    expect(visited).toEqual([...expectedCorners]);
+    expect(cycleWindowEditFocus(focus, layout, "float-a", "resize", bounds, {}, 1))
+      .toEqual({ kind: "floating-resize", corner: "top-left" });
   });
 });

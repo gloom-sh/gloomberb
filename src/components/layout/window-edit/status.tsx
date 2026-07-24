@@ -32,12 +32,24 @@ export function resolveNativeWindowEditPanelRect(width: number, contentHeight: n
 
 export function resolveNativeFloatingResizeCornerRect(rect: FloatingRect, corner: FloatingResizeCorner): LayoutBounds {
   const size = Math.max(1, Math.min(NATIVE_WINDOW_EDIT_CORNER_SIZE, rect.width, rect.height));
-  const x = corner === "top-left" || corner === "bottom-left"
+  const x = corner === "left"
     ? rect.x
-    : Math.max(rect.x, rect.x + rect.width - size);
-  const y = corner === "top-left" || corner === "top-right"
+    : corner === "right"
+      ? Math.max(rect.x, rect.x + rect.width - size)
+      : corner === "top" || corner === "bottom"
+        ? rect.x + Math.floor((rect.width - size) / 2)
+        : corner === "top-left" || corner === "bottom-left"
+          ? rect.x
+          : Math.max(rect.x, rect.x + rect.width - size);
+  const y = corner === "top"
     ? rect.y
-    : Math.max(rect.y, rect.y + rect.height - size);
+    : corner === "bottom"
+      ? Math.max(rect.y, rect.y + rect.height - size)
+      : corner === "left" || corner === "right"
+        ? rect.y + Math.floor((rect.height - size) / 2)
+        : corner === "top-left" || corner === "top-right"
+          ? rect.y
+          : Math.max(rect.y, rect.y + rect.height - size);
   return { x, y, width: size, height: size };
 }
 

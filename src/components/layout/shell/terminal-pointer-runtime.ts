@@ -3,14 +3,18 @@ import type {
   DockDividerLayout,
   DockLeafLayout,
   FloatingRect,
+  FloatingResizeCorner,
   LayoutBounds,
   ResolvedPane,
 } from "../../../plugins/pane-manager";
 import {
   constrainFloatingRectToBounds,
   pointInRect,
-  resolveHeaderHitAreas,
 } from "./drag";
+import {
+  resolveTerminalPaneHeaderGeometry,
+  terminalPaneHeaderControlAt,
+} from "../pane/terminal-header-geometry";
 import type { ActionMenuState } from "./action-menu-overlay";
 import type {
   ShellDragRuntimeState,
@@ -30,6 +34,7 @@ interface UseShellTerminalPointerRuntimeOptions {
   focusedPaneId: string | null;
   handleActiveDrag: (event: ShellMouseEvent) => void;
   handleFloatingClose: (paneId: string) => void;
+  hoveredPaneId: string | null;
   menuState: ActionMenuState | null;
   openPaneMenu: (
     paneId: string,
@@ -41,6 +46,7 @@ interface UseShellTerminalPointerRuntimeOptions {
   setHoveredMenuItemId: Dispatch<SetStateAction<string | null>>;
   setMenuState: Dispatch<SetStateAction<ActionMenuState | null>>;
   transientFocusActive: boolean;
+  togglePaneFloating: (paneId: string) => boolean;
   visibleFloatingPanes: VisibleFloatingPane[];
   width: number;
   windowMode: WindowEditState | null;
@@ -62,6 +68,27 @@ function sortedFloatingPanes(visibleFloatingPanes: VisibleFloatingPane[]): Visib
   return [...visibleFloatingPanes].sort((a, b) => (b.pane.floating?.zIndex ?? 50) - (a.pane.floating?.zIndex ?? 50));
 }
 
+function resolveTerminalResizeHandle(
+  relativeX: number,
+  relativeY: number,
+  rect: { width: number; height: number },
+): FloatingResizeCorner | null {
+  const nearLeft = relativeX <= 1;
+  const nearRight = relativeX >= rect.width - 2;
+  const nearTop = relativeY <= 0;
+  const nearBottom = relativeY >= rect.height - 1;
+
+  if (nearBottom && nearRight) return "bottom-right";
+  if (nearBottom && nearLeft) return "bottom-left";
+  if (nearTop && nearRight) return "top-right";
+  if (nearTop && nearLeft) return "top-left";
+  if (nearBottom) return "bottom";
+  if (nearLeft) return "left";
+  if (nearRight) return "right";
+  // The TUI header owns the interior top row for dragging and header actions.
+  return null;
+}
+
 export function useShellTerminalPointerRuntime({
   appHeaderHeight,
   closePaneMenu,
@@ -73,6 +100,7 @@ export function useShellTerminalPointerRuntime({
   focusedPaneId,
   handleActiveDrag,
   handleFloatingClose,
+  hoveredPaneId,
   menuState,
   openPaneMenu,
   paneMap,
@@ -80,6 +108,7 @@ export function useShellTerminalPointerRuntime({
   setHoveredMenuItemId,
   setMenuState,
   transientFocusActive,
+  togglePaneFloating,
   visibleFloatingPanes,
   width,
   windowMode,
@@ -88,6 +117,7 @@ export function useShellTerminalPointerRuntime({
     dragFloatingRect,
     dragRef,
     updateDividerPreview,
+    updateDockPreview,
     updateDragFloatingRect,
   } = dragRuntime;
 
@@ -117,15 +147,17 @@ export function useShellTerminalPointerRuntime({
         const relativeY = shellY - rect.y;
         selectWindowModePane(paneId);
 
-        if (relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
+        const resizeHandle = resolveTerminalResizeHandle(relativeX, relativeY, rect);
+        if (resizeHandle) {
           dragRef.current = {
             type: "float-resize",
             paneId,
+            corner: resizeHandle,
             startX: preciseX,
             startY: preciseShellY,
-            origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            origRect: { ...rect },
           };
-          updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+          updateDragFloatingRect({ paneId, rect: { ...rect } });
         }
 
         event.stopPropagation();
@@ -182,54 +214,63 @@ export function useShellTerminalPointerRuntime({
         const relativeX = event.x - rect.x;
         const relativeY = shellY - rect.y;
         const isFocused = focusedPaneId === paneId;
-        const headerAreas = resolveHeaderHitAreas(rect.width, {
+        const headerGeometry = resolveTerminalPaneHeaderGeometry(rect.width, {
           floating: true,
           focused: isFocused,
+          showActions: isFocused || hoveredPaneId === paneId || menuState?.paneId === paneId,
         });
+        const headerControl = relativeY === 0
+          ? terminalPaneHeaderControlAt(headerGeometry, relativeX)
+          : null;
         focusPane(paneId);
         if (event.button === 2 && relativeY === 0) {
           openPaneMenu(paneId, rect, event);
           return;
         }
-        if (relativeY === 0 && headerAreas.closeStart != null && relativeX >= headerAreas.closeStart && relativeX < rect.width) {
+        if (headerControl === "close") {
           handleFloatingClose(paneId);
           event.stopPropagation();
           event.preventDefault();
           return;
         }
-        if (relativeY === 0
-          && headerAreas.actionStart != null
-          && headerAreas.closeStart != null
-          && relativeX >= headerAreas.actionStart
-          && relativeX < headerAreas.closeStart) {
+        if (headerControl === "action") {
           openPaneMenu(paneId, rect, event);
           event.stopPropagation();
           event.preventDefault();
           return;
         }
-        if (relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
+        if (headerControl === "toggle") {
+          togglePaneFloating(paneId);
+          event.stopPropagation();
+          event.preventDefault();
+          return;
+        }
+        const resizeHandle = resolveTerminalResizeHandle(relativeX, relativeY, rect);
+        if (resizeHandle) {
           dragRef.current = {
             type: "float-resize",
             paneId,
+            corner: resizeHandle,
             startX: preciseX,
             startY: preciseShellY,
-            origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            origRect: { ...rect },
           };
-          updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+          updateDragFloatingRect({ paneId, rect: { ...rect } });
           event.stopPropagation();
           event.preventDefault();
           return;
         }
         if (relativeY === 0) {
+          updateDockPreview(null);
           dragRef.current = {
             type: "pane-drag",
             paneId,
             mode: "floating",
             startX: preciseX,
             startY: preciseShellY,
-            origRect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            origRect: { ...rect },
           };
-          updateDragFloatingRect({ paneId, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } });
+          updateDragFloatingRect({ paneId, rect: { ...rect } });
           event.stopPropagation();
           event.preventDefault();
           return;
@@ -265,19 +306,27 @@ export function useShellTerminalPointerRuntime({
         const relativeX = event.x - leaf.rect.x;
         const relativeY = shellY - leaf.rect.y;
         const isFocused = focusedPaneId === leaf.instanceId;
-        const headerAreas = resolveHeaderHitAreas(leaf.rect.width, {
+        const headerGeometry = resolveTerminalPaneHeaderGeometry(leaf.rect.width, {
           floating: false,
           focused: isFocused,
+          showActions: isFocused || hoveredPaneId === leaf.instanceId || menuState?.paneId === leaf.instanceId,
         });
+        const headerControl = relativeY === 0
+          ? terminalPaneHeaderControlAt(headerGeometry, relativeX)
+          : null;
         focusPane(leaf.instanceId);
         if (event.button === 2 && relativeY === 0) {
           openPaneMenu(leaf.instanceId, leaf.rect, event);
           return;
         }
-        if (relativeY === 0
-          && headerAreas.actionStart != null
-          && relativeX >= headerAreas.actionStart) {
+        if (headerControl === "action") {
           openPaneMenu(leaf.instanceId, leaf.rect, event);
+          event.stopPropagation();
+          event.preventDefault();
+          return;
+        }
+        if (headerControl === "toggle") {
+          togglePaneFloating(leaf.instanceId);
           event.stopPropagation();
           event.preventDefault();
           return;
@@ -288,6 +337,7 @@ export function useShellTerminalPointerRuntime({
           return;
         }
         if (relativeY === 0) {
+          updateDockPreview(null);
           dragRef.current = {
             type: "pane-drag",
             paneId: leaf.instanceId,
@@ -319,6 +369,7 @@ export function useShellTerminalPointerRuntime({
     focusedPaneId,
     handleActiveDrag,
     handleFloatingClose,
+    hoveredPaneId,
     menuState,
     openPaneMenu,
     paneMap,
@@ -326,7 +377,9 @@ export function useShellTerminalPointerRuntime({
     setHoveredMenuItemId,
     setMenuState,
     transientFocusActive,
+    togglePaneFloating,
     updateDividerPreview,
+    updateDockPreview,
     updateDragFloatingRect,
     visibleFloatingPanes,
     windowMode,

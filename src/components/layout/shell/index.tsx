@@ -193,15 +193,19 @@ export function Shell({
     focusedPaneId,
     hasActiveDrag,
     nativePaneChrome,
+    overlayOpen,
     persistLayout,
     pluginRegistry,
     visibleLayout,
     width,
   });
   const transientFocusActive = !windowMode && transientFocusLayoutState?.active === true;
-  const activeLayout = transientFocusActive && transientFocusLayoutState
+  const interactionLayout = transientFocusActive && transientFocusLayoutState
     ? transientFocusLayoutState.layout
     : windowModeLayout;
+  const activeLayout = !windowMode && dockPreview
+    ? dockPreview.layout
+    : interactionLayout;
   const transientFocusPaneId = transientFocusActive ? transientFocusLayoutState?.paneId ?? null : null;
 
   useEffect(() => {
@@ -255,6 +259,7 @@ export function Shell({
     openPaneSettings,
     popOutFocusedPane,
     toggleFocusedPaneFloating,
+    togglePaneFloating,
   } = useShellPaneActions({
     closePaneMenu,
     contentHeight,
@@ -385,16 +390,20 @@ export function Shell({
     toggleFocusedPaneFloating,
   });
 
+  const interactionDockLeafLayouts = useMemo(
+    () => getDockLeafLayouts(interactionLayout, bounds, dockGeometryOptions),
+    [bounds, dockGeometryOptions, interactionLayout],
+  );
   const dockLeafLayouts = useMemo(() => getDockLeafLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
   const dockDividerLayouts = useMemo(() => getDockDividerLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
   const snapGuides = useMemo(() => makeSnapGuides(width, contentHeight), [contentHeight, width]);
   const externalDockPreview = useMemo(
-    () => resolveExternalDockPreview(desktopDockPreview, bounds),
-    [bounds, desktopDockPreview],
+    () => resolveExternalDockPreview(desktopDockPreview, bounds, visibleLayout, dockGeometryOptions),
+    [bounds, desktopDockPreview, dockGeometryOptions, visibleLayout],
   );
   const activePaneDrag = dragRef.current?.type === "pane-drag" ? dragRef.current : null;
-  const activeHoverOverlay = activePaneDrag && dragCursor
-    ? resolveHoverOverlay(dragCursor.x, dragCursor.y, dockLeafLayouts, activePaneDrag.paneId)
+  const activeHoverOverlay = activePaneDrag && dragCursor && dockPreview?.kind !== "compact"
+    ? resolveHoverOverlay(dragCursor.x, dragCursor.y, interactionDockLeafLayouts, activePaneDrag.paneId)
     : null;
   const effectiveDockPreview = dockPreview ?? externalDockPreview;
   useShellNativeSurfaceWindowState({
@@ -438,6 +447,7 @@ export function Shell({
     };
     const items = menuForPane(
       pane,
+      rect,
       visibleLayout,
       width,
       contentHeight,
@@ -479,6 +489,7 @@ export function Shell({
     handleNativePaneContextMenu,
     handleNativePaneMouseDown,
     handlePaneAction,
+    handlePaneFloatToggle,
     startNativeDividerDrag,
     startNativeDockedDrag,
     startNativeFloatingDrag,
@@ -491,11 +502,12 @@ export function Shell({
     dispatch,
     dockGeometryOptions,
     dockDividerLayouts,
-    dockLeafLayouts,
+    dockLeafLayouts: interactionDockLeafLayouts,
     dragRuntime,
     focusPane,
     focusedPaneId,
     handleFloatingClose,
+    hoveredPaneId,
     menuState,
     nativePaneChrome,
     openPaneMenu,
@@ -507,6 +519,7 @@ export function Shell({
     setMenuState,
     snapGuides,
     transientFocusActive,
+    togglePaneFloating,
     updateWindowModePreviewLayout,
     visibleFloatingPanes,
     visibleLayout,
@@ -568,6 +581,7 @@ export function Shell({
         handleNativePaneContextMenu={handleNativePaneContextMenu}
         handleNativePaneMouseDown={handleNativePaneMouseDown}
         handlePaneAction={handlePaneAction}
+        handlePaneFloatToggle={handlePaneFloatToggle}
         hoveredPaneId={hoveredPaneId}
         menuPaneId={menuState?.paneId ?? null}
         nativeContextMenu={nativeContextMenu}
@@ -612,6 +626,15 @@ export function Shell({
         dockPreview={dockPreview}
         dragFloatingRect={dragFloatingRect}
         effectiveDockPreview={effectiveDockPreview}
+        gridHeight={contentHeight}
+        gridWidth={width}
+        gridExcludedRows={[
+          ...dockLeafLayouts.map((leaf) => leaf.rect.y),
+          ...visibleFloatingPanes.map(({ pane, rect }) => (
+            dragFloatingRect?.paneId === pane.instance.instanceId ? dragFloatingRect.rect.y : rect.y
+          )),
+        ]}
+        showGrid={!!dragRef.current && !windowMode}
       />
 
       <ShellActionMenuOverlay

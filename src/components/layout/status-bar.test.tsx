@@ -78,6 +78,29 @@ describe("StatusBar", () => {
     expect(actions).toContainEqual({ type: "SET_COMMAND_BAR", open: true, query: "" });
   });
 
+  test("opens the discoverable layout preset menu", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-layout-menu-test");
+    config.layouts = [{ name: "Home", layout: cloneLayout(config.layout) }];
+    const state = { ...createInitialState(config), statusBarVisible: true };
+    const actions: Array<{ type: string; open?: boolean; query?: string }> = [];
+
+    testSetup = await testRender(
+      <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string; open?: boolean; query?: string }) }}>
+        <StatusBar />
+      </AppContext>,
+      { width: 120, height: 1 },
+    );
+    await testSetup.renderOnce();
+
+    const frame = testSetup.captureCharFrame();
+    const layoutsX = frame.split("\n")[0]?.indexOf("Layouts") ?? -1;
+    expect(layoutsX).toBeGreaterThanOrEqual(0);
+    await testSetup.mockMouse.click(layoutsX + 1, 0);
+    await testSetup.renderOnce();
+
+    expect(actions).toContainEqual({ type: "SET_COMMAND_BAR", open: true, query: "LAY " });
+  });
+
   test("shows a transient focus layout tab without replacing saved layouts", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-transient-layout-test");
     config.layouts = [
