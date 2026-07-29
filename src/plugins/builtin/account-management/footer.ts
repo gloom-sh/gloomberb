@@ -3,6 +3,7 @@ import { usePaneFooter, type PaneHint } from "../../../components";
 import type { AccountProfile } from "../../../api-client";
 import { formatPlan, type AccountDraft } from "./model";
 import { t } from "../../../i18n";
+import { useAppLanguage } from "../../../i18n/react";
 
 export function useAccountManagementFooter({
   busy,
@@ -19,9 +20,10 @@ export function useAccountManagementFooter({
   profile: AccountProfile | null;
   saveProfile: () => Promise<void>;
 }) {
+  const language = useAppLanguage();
   const footerHints = useMemo<PaneHint[]>(() => [
     { id: "save", key: "Ctrl+S", label: t("save"), onPress: () => { void saveProfile(); }, disabled: !!busy || !hasSession },
-  ], [busy, hasSession, saveProfile]);
+  ], [busy, hasSession, language, saveProfile]);
 
   usePaneFooter("account-management", () => ({
     info: [
@@ -33,5 +35,5 @@ export function useAccountManagementFooter({
       ] : []),
     ],
     hints: footerHints,
-  }), [draft.profilePublic, footerHints, message, profile]);
+  }), [draft.profilePublic, footerHints, language, message, profile]);
 }

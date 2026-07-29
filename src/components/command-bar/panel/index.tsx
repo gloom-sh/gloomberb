@@ -11,6 +11,7 @@ import {
   commandBarSubtleText,
   commandBarText,
 } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import { CommandBarPanelBody } from "./body";
 import type { CommandBarPanelProps } from "./types";
 
@@ -68,15 +69,16 @@ export function CommandBarPanel({
   visibleListState,
   workflowScrollRef,
 }: CommandBarPanelProps) {
-  const paletteBg = commandBarBg();
-  const paletteHeadingText = commandBarHeadingText();
-  const paletteHoverBg = commandBarHoverBg();
-  const paletteSelectedBg = commandBarSelectedBg();
-  const paletteSelectedText = commandBarSelectedText();
-  const paletteText = commandBarText();
-  const paletteSubtleText = commandBarSubtleText();
-  const panelBg = nativePaneChrome ? commandBarPanelBg() : paletteBg;
-  const inputBg = nativePaneChrome ? commandBarInputBg() : paletteBg;
+  const colors = useThemeColors();
+  const paletteBg = commandBarBg(colors);
+  const paletteHeadingText = commandBarHeadingText(colors);
+  const paletteHoverBg = commandBarHoverBg(colors);
+  const paletteSelectedBg = commandBarSelectedBg(colors);
+  const paletteSelectedText = commandBarSelectedText(colors);
+  const paletteText = commandBarText(colors);
+  const paletteSubtleText = commandBarSubtleText(colors);
+  const panelBg = nativePaneChrome ? commandBarPanelBg(colors) : paletteBg;
+  const inputBg = nativePaneChrome ? commandBarInputBg(colors) : paletteBg;
 
   useLayoutEffect(() => {
     const scrollBox = nativeListScrollRef.current;

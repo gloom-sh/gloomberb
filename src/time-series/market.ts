@@ -41,7 +41,7 @@ interface AggregatedPricePoint {
 }
 
 /** Aggregates OHLCV correctly: first open, max high, min low, last close, summed volume. */
-export function aggregatePriceHistory(
+function aggregatePriceHistory(
   points: readonly PricePoint[],
   period: SeriesPeriod,
 ): PricePoint[] {

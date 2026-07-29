@@ -1,5 +1,5 @@
 import type { Dispatch } from "react";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { findPaneInstance, isTickerPaneId, type AppConfig } from "../../types/config";
 import type { CachedFinancialsTarget, DataProvider } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
@@ -47,7 +47,7 @@ const startupLog = debugLog.createLogger("startup");
 
 export interface InitializeAppStateArgs {
   config: AppConfig;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   dataProvider: DataProvider;
   sessionSnapshot?: AppSessionSnapshot | null;
   dispatch: Dispatch<AppAction>;

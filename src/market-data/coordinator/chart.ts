@@ -1,4 +1,4 @@
-import { isIntradayResolution, TIME_RANGE_ORDER } from "../../components/chart/core/resolution";
+import { isIntradayResolution, TIME_RANGE_ORDER } from "../../time-series/resolution";
 import type { PricePoint } from "../../types/financials";
 import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "../../utils/price-history";
 import type { ChartRequest, InstrumentRef } from "../request-types";

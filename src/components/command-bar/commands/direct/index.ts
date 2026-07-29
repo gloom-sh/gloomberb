@@ -248,7 +248,7 @@ export function runDirectCommandAction(options: {
       persistConfig(nextConfig);
       applyLanguagePreference(next);
       const languageLabel = next === "auto" ? t(LANGUAGE_DISPLAY_NAMES.auto) : LANGUAGE_DISPLAY_NAMES[next];
-      notify(`${t("Language")}: ${languageLabel} · ${t("Restart to apply everywhere")}`, { type: "success" });
+      notify(`${t("Language")}: ${languageLabel}`, { type: "success" });
       closeAll({ revertThemePreview: false });
       return;
     }

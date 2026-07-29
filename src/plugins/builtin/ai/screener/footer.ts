@@ -1,5 +1,6 @@
 import { usePaneFooter } from "../../../../components";
 import { t } from "../../../../i18n";
+import { useAppLanguage } from "../../../../i18n/react";
 import type { AiScreenerTab, RunState, ScreenerEditorState } from "./model";
 
 interface UseAiScreenerFooterOptions {
@@ -27,6 +28,7 @@ export function useAiScreenerFooter({
   onRefresh,
   onSaveEditor,
 }: UseAiScreenerFooterOptions) {
+  const language = useAppLanguage();
   usePaneFooter("ai-screener", () => ({
     info: isRunningActiveTab && runState
       ? [{
@@ -75,7 +77,7 @@ export function useAiScreenerFooter({
             {
               id: "new",
               key: "t",
-              label: t("ab"),
+              label: t("new"),
               onPress: onAddTab,
             },
             {
@@ -97,6 +99,7 @@ export function useAiScreenerFooter({
     activeTab,
     editorState,
     isRunningActiveTab,
+    language,
     onAddTab,
     onCancelRun,
     onCloseEditor,

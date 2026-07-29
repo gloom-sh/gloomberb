@@ -12,7 +12,7 @@ import { Box } from "../../../../ui";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../runtime";
 import { getSharedMarketData, setSharedMarketDataForTests, setSharedRegistryForTests } from "../../../registry";
 import { AiScreenerPane } from "./pane";
-import { __setDetectedProvidersForTests, type AiProvider } from "../providers";
+import { setDetectedProviders, type AiProvider } from "../providers";
 import { setAiRunHost, setAiRuntimeCatalog, type AiRunHost } from "../runner";
 
 const PANE_ID = "ai-screener:test";
@@ -175,7 +175,7 @@ beforeEach(() => {
 afterEach(() => {
   setAiRunHost(null);
   setAiRuntimeCatalog({ providers: [], accounts: [], models: [] });
-  __setDetectedProvidersForTests(null);
+  setDetectedProviders(null);
   setSharedRegistryForTests(undefined);
   setSharedMarketDataForTests(undefined);
   if (testSetup) {
@@ -187,7 +187,7 @@ afterEach(() => {
 describe("AiScreenerPane", () => {
   test("shows the account connection message before trying to run", async () => {
     const provider = makeProvider("anthropic", "Claude");
-    __setDetectedProvidersForTests([provider]);
+    setDetectedProviders([provider]);
     setAiRunHost({
       run() {
         throw new Error("provider should not run before it is connected");
@@ -216,7 +216,7 @@ describe("AiScreenerPane", () => {
       '{"title":"Compounders","summary":"Initial pass","tickers":[{"symbol":"AAPL","exchange":"NASDAQ","reason":"Strong cash flow durability"}]}',
       '{"title":"Compounders","summary":"Second pass","tickers":[{"symbol":"MSFT","exchange":"NASDAQ","reason":"Fresh rerun result"}]}',
     );
-    __setDetectedProvidersForTests([provider]);
+    setDetectedProviders([provider]);
 
     const dataProvider = createTestDataProvider();
     setSharedMarketDataForTests(dataProvider);
@@ -251,7 +251,7 @@ describe("AiScreenerPane", () => {
   });
 
   test("uses pane runner overrides without rewriting the seeded tab", async () => {
-    __setDetectedProvidersForTests([
+    setDetectedProviders([
       makeProvider("anthropic", "Claude"),
       makeProvider("openai-codex", "OpenAI"),
     ]);
@@ -294,7 +294,7 @@ describe("AiScreenerPane", () => {
       '{"title":"Compounders","summary":"Initial pass","tickers":[{"symbol":"AAPL","exchange":"NASDAQ","reason":"Strong cash flow durability"}]}',
       '{"title":"Compounders","summary":"Second pass","tickers":[{"symbol":"MSFT","exchange":"NASDAQ","reason":"Fresh rerun result"}]}',
     );
-    __setDetectedProvidersForTests([provider]);
+    setDetectedProviders([provider]);
 
     const dataProvider = createTestDataProvider();
     setSharedMarketDataForTests(dataProvider);
@@ -333,7 +333,7 @@ describe("AiScreenerPane", () => {
       '{"title":"Compounders","summary":"Initial pass","tickers":[{"symbol":"AAPL","exchange":"NASDAQ","reason":"Strong cash flow durability"}]}',
       '{"title":"Compounders","summary":"Second pass","tickers":[{"symbol":"MSFT","exchange":"NASDAQ","reason":"Fresh rerun result"}]}',
     );
-    __setDetectedProvidersForTests([provider]);
+    setDetectedProviders([provider]);
 
     const dataProvider = createTestDataProvider();
     setSharedMarketDataForTests(dataProvider);
@@ -368,7 +368,7 @@ describe("AiScreenerPane", () => {
 
   test("does not show a stale prompt-changed status while a refresh is active", async () => {
     const provider = makeProvider("anthropic", "Claude");
-    __setDetectedProvidersForTests([provider]);
+    setDetectedProviders([provider]);
     installHost(() => new Promise<string>(() => {}));
 
     const dataProvider = createTestDataProvider();
@@ -401,7 +401,7 @@ describe("AiScreenerPane", () => {
       '{"title":"Compounders","summary":"Initial pass","tickers":[{"symbol":"AAPL","exchange":"NASDAQ","reason":"Strong cash flow durability"}]}',
       "not-json",
     );
-    __setDetectedProvidersForTests([provider]);
+    setDetectedProviders([provider]);
 
     const dataProvider = createTestDataProvider();
     setSharedMarketDataForTests(dataProvider);

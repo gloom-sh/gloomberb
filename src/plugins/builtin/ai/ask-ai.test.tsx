@@ -12,9 +12,8 @@ import {
   AskAiResearchTab as AskAiTab,
   __resetAskAiHistoryForTests,
   __setAskAiHistoryForTests,
-  __setDetectedProvidersForTests,
-  type AiProvider,
 } from "./ask-ai-detail-tab";
+import { setDetectedProviders, type AiProvider } from "./providers";
 import { setAiRunHost, setAiRuntimeCatalog, type AiRunHost } from "./runner";
 import type { TickerRecord } from "../../../types/ticker";
 
@@ -93,7 +92,7 @@ async function flushFrame() {
 }
 
 function setProviders(providers: AiProvider[]) {
-  __setDetectedProvidersForTests(providers);
+  setDetectedProviders(providers);
 }
 
 function readyProvider(id: AiProvider["id"] = "anthropic"): AiProvider {
@@ -113,7 +112,7 @@ afterEach(async () => {
     });
     testSetup = undefined;
   }
-  __setDetectedProvidersForTests(null);
+  setDetectedProviders(null);
   __resetAskAiHistoryForTests();
   setAiRunHost(null);
   setAiRuntimeCatalog({ providers: [], accounts: [], models: [] });

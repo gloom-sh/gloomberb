@@ -19,8 +19,8 @@ import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
 import { createBaseConverter } from "../base-converter";
-import { initMarketData } from "../context";
-import { closeAndFail } from "../errors";
+import { initMarketData, withMarketData } from "../context";
+import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import {
   formatBidAsk,
@@ -40,7 +40,7 @@ const SEC_FILING_LIMIT = 5;
 
 interface TickerCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
-  closeAndFail?: typeof closeAndFail;
+  fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
 }
 
@@ -443,74 +443,73 @@ function buildTickerStructuredData({
 
 export async function ticker(symbol: string, dependencies: TickerCommandDependencies = {}) {
   const initMarketDataFn = dependencies.initMarketData ?? initMarketData;
-  const closeAndFailCommand = dependencies.closeAndFail ?? closeAndFail;
-  const { config, store, dataProvider, persistence, dataDir } = await initMarketDataFn();
-  const normalized = symbol.trim().toUpperCase();
-  const tickerFile = await store.loadTicker(normalized);
-  const exchange = tickerFile?.metadata.exchange ?? "";
-  const toBase = createBaseConverter(dataProvider, config.baseCurrency);
+  const failCommand = dependencies.fail ?? fail;
+  await withMarketData(initMarketDataFn, async ({ config, store, dataProvider, dataDir }) => {
+    const normalized = symbol.trim().toUpperCase();
+    const tickerFile = await store.loadTicker(normalized);
+    const exchange = tickerFile?.metadata.exchange ?? "";
+    const toBase = createBaseConverter(dataProvider, config.baseCurrency);
 
-  let financials: TickerFinancials | null = null;
-  try {
-    financials = await dataProvider.getTickerFinancials(normalized, exchange);
-  } catch (error) {
-    closeAndFailCommand(
-      persistence,
-      `Failed to fetch data for ${normalized}.`,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
+    let financials: TickerFinancials | null = null;
+    try {
+      financials = await dataProvider.getTickerFinancials(normalized, exchange);
+    } catch (error) {
+      failCommand(
+        `Failed to fetch data for ${normalized}.`,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
 
-  if (!financials?.quote) {
-    closeAndFailCommand(persistence, `No quote data available for ${normalized}.`);
-  }
-  const resolvedFinancials = financials as TickerFinancials;
-  const quote = resolvedFinancials.quote!;
+    if (!financials?.quote) {
+      failCommand(`No quote data available for ${normalized}.`);
+    }
+    const resolvedFinancials = financials as TickerFinancials;
+    const quote = resolvedFinancials.quote!;
 
-  const notesFiles = new NotesFiles(dataDir);
-  const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
-    notesFiles.load(normalized),
-    dataProvider.getNews({
-      feed: "ticker",
-      scope: "ticker",
-      ticker: normalized,
-      exchange: exchange || quote.exchangeName || "",
-      tickerTier: "primary",
-      limit: NEWS_ITEM_LIMIT,
-    }),
-    shouldFetchSecFilings(tickerFile, resolvedFinancials) && dataProvider.getSecFilings
-      ? dataProvider.getSecFilings(normalized, SEC_FILING_LIMIT, exchange || quote.exchangeName || "")
-      : Promise.resolve([]),
-  ]);
+    const notesFiles = new NotesFiles(dataDir);
+    const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
+      notesFiles.load(normalized),
+      dataProvider.getNews({
+        feed: "ticker",
+        scope: "ticker",
+        ticker: normalized,
+        exchange: exchange || quote.exchangeName || "",
+        tickerTier: "primary",
+        limit: NEWS_ITEM_LIMIT,
+      }),
+      shouldFetchSecFilings(tickerFile, resolvedFinancials) && dataProvider.getSecFilings
+        ? dataProvider.getSecFilings(normalized, SEC_FILING_LIMIT, exchange || quote.exchangeName || "")
+        : Promise.resolve([]),
+    ]);
 
-  const notes = notesResult.status === "fulfilled" ? notesResult.value : "";
-  const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
-  const recentSecFilings = secFilingsResult.status === "fulfilled" ? secFilingsResult.value : [];
+    const notes = notesResult.status === "fulfilled" ? notesResult.value : "";
+    const recentNews = newsResult.status === "fulfilled" ? newsResult.value : [];
+    const recentSecFilings = secFilingsResult.status === "fulfilled" ? secFilingsResult.value : [];
 
-  if (dependencies.printResult) {
-    dependencies.printResult({
-      data: buildTickerStructuredData({
+    if (dependencies.printResult) {
+      dependencies.printResult({
+        data: buildTickerStructuredData({
+          symbol: normalized,
+          tickerFile,
+          financials: resolvedFinancials,
+          config,
+          notes,
+          recentNews,
+          recentSecFilings,
+        }),
+      });
+      return;
+    }
+
+    console.log(await buildTickerReport({
         symbol: normalized,
         tickerFile,
         financials: resolvedFinancials,
         config,
+        toBase,
         notes,
         recentNews,
         recentSecFilings,
-      }),
-    });
-  } else {
-    console.log(await buildTickerReport({
-      symbol: normalized,
-      tickerFile,
-      financials: resolvedFinancials,
-      config,
-      toBase,
-      notes,
-      recentNews,
-      recentSecFilings,
     }));
-  }
-
-  persistence.close();
+  });
 }

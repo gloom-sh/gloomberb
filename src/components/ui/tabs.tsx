@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut } from "../../react/input";
 import { Box, ScrollBox, Text, useUiHost } from "../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
-import { colors, hoverBg } from "../../theme/colors";
+import { hoverBg } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
+import { useAppLanguage } from "../../i18n/react";
 import { displayWidth } from "../../utils/format";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 
@@ -55,9 +57,11 @@ export function Tabs({
   scrollable = true,
   scrollId,
 }: TabsProps) {
+  const language = useAppLanguage();
+  const colors = useThemeColors();
   const tabs = useMemo(() => rawTabs.map((tab) => (
     { ...tab, label: t(tab.label) }
-  )), [rawTabs]);
+  )), [language, rawTabs]);
   const ui = useUiHost();
   const NativeTabs = ui.Tabs;
   const navigationValueRef = useRef<string | null>(activeValue);
@@ -74,7 +78,7 @@ export function Tabs({
     activeUnderline: focused ? colors.textBright : colors.borderFocused,
     inactiveUnderline: colors.bg,
     hoverUnderline: colors.border,
-    hoverBg: hoverBg(),
+    hoverBg: hoverBg(colors),
     activeBg: colors.selected,
     activePillFg: colors.selectedText,
     closeFg: colors.textMuted,

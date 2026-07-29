@@ -29,21 +29,33 @@ export function PageStackView({
   backHint,
 }: PageStackViewProps) {
   const HostPageStackView = useUiHost().PageStackView as ComponentType<PageStackViewProps> | undefined;
+  const props = {
+    focused,
+    detailOpen,
+    onBack,
+    rootContent,
+    detailContent,
+    detailTitle,
+    backLabel,
+    backHint,
+  };
   if (HostPageStackView) {
-    return (
-      <HostPageStackView
-        focused={focused}
-        detailOpen={detailOpen}
-        onBack={onBack}
-        rootContent={rootContent}
-        detailContent={detailContent}
-        detailTitle={detailTitle}
-        backLabel={backLabel}
-        backHint={backHint}
-      />
-    );
+    return <HostPageStackView {...props} />;
   }
 
+  return <OpenTuiPageStackView {...props} />;
+}
+
+function OpenTuiPageStackView({
+  focused,
+  detailOpen,
+  onBack,
+  rootContent,
+  detailContent,
+  detailTitle,
+  backLabel,
+  backHint,
+}: PageStackViewProps) {
   const goBack = useCallback((event?: {
     preventDefault?: () => void;
     stopPropagation?: () => void;

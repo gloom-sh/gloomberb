@@ -5,7 +5,7 @@ import { aiPlugin } from "./index";
 import {
   AI_PROVIDER_IDS,
   getAiProviderDefinition,
-  __setDetectedProvidersForTests,
+  setDetectedProviders,
   type AiProviderId,
 } from "./providers";
 import {
@@ -109,7 +109,7 @@ function setupPlugin(config = createDefaultConfig("/tmp/gloomberb-ai-plugin")) {
 }
 
 afterEach(() => {
-  __setDetectedProvidersForTests(null);
+  setDetectedProviders(null);
   setAiRunHost(null);
   setAiRuntimeCatalog({ providers: [], accounts: [], models: [] });
 });

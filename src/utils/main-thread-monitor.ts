@@ -84,7 +84,7 @@ export function startMainThreadMonitor(
   }, SAMPLE_INTERVAL_MS);
 
   const ObserverCtor = (globalThis as { PerformanceObserver?: unknown }).PerformanceObserver;
-  let observer: { disconnect?: () => void } | null = null;
+  let observer: { observe: (options: { entryTypes: string[] }) => void; disconnect?: () => void } | null = null;
   if (typeof ObserverCtor === "function") {
     try {
       observer = new (ObserverCtor as new (callback: (list: { getEntries: () => unknown[] }) => void) => {

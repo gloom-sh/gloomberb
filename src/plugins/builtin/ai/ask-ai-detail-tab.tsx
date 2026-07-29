@@ -16,8 +16,6 @@ import { buildTickerAiContext } from "./ticker-context";
 import {
   migrateLegacyAiProviderId,
   resolveDefaultAiProviderId,
-  __setDetectedProvidersForTests,
-  type AiProvider,
 } from "./providers";
 import { runAiPrompt, type AiConversationMessage } from "./runner";
 import { isAiProviderReady, resolveReadyAiRunnerDefault } from "./runner-selection";
@@ -46,9 +44,6 @@ const LEGACY_HISTORY_PROVIDER_IDS: Readonly<Record<string, string>> = {
   "openai-codex": "codex",
   google: "gemini",
 };
-
-export { __setDetectedProvidersForTests };
-export type { AiProvider };
 
 function sameMessages(left: readonly ChatMessage[], right: readonly ChatMessage[]): boolean {
   return left.length === right.length && left.every((message, index) => {

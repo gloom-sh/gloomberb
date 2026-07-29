@@ -14,12 +14,26 @@ import type { LoadedExternalPlugin } from "../plugins/loader";
 import { fail } from "./errors";
 import type { ConfigContext, MarketContext } from "./types";
 
+export { withCliServices, withConfigData, withMarketData } from "./scoped-context";
+
 interface CliContextOptions {
   plugins?: GloomPlugin[];
 }
 
 interface CliServicesOptions {
   externalPlugins?: LoadedExternalPlugin[];
+}
+
+export async function ensureCliServicesReady<T extends { ready: Promise<unknown>; destroy(): void }>(
+  services: T,
+): Promise<T> {
+  try {
+    await services.ready;
+    return services;
+  } catch (error) {
+    services.destroy();
+    throw error;
+  }
 }
 
 function resolveCliCapabilities(config: AppConfig, plugins: GloomPlugin[]): PluginCapability[] {
@@ -83,7 +97,7 @@ export async function initCliServices(options: CliServicesOptions = {}) {
     plugins: getLoadablePlugins(options.externalPlugins ?? []),
   });
   services.providerRouter.setConfigAccessor(() => config);
-  await services.ready;
+  await ensureCliServicesReady(services);
   return {
     config,
     dataDir,

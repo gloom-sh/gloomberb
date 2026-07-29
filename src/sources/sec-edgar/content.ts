@@ -1,3 +1,5 @@
+import { decodeHtmlEntities } from "../../utils/html-entities";
+
 const MAX_CONTENT_CHARS = 16_000;
 const OWNERSHIP_FORMS = new Set(["3", "3/A", "4", "4/A", "5", "5/A"]);
 
@@ -9,18 +11,6 @@ export function isPdfDocument(body: string, contentType = "", url = ""): boolean
     || /^\s*%PDF-/i.test(body)
     || /^\s*begin 644 [^\n]+\.pdf/im.test(body)
     || /<PDF>/i.test(body);
-}
-
-function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, digits: string) => String.fromCodePoint(Number(digits)))
-    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
 function collapseDocumentLines(text: string): string[] {

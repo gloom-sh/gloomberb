@@ -1,5 +1,6 @@
 import { apiClient } from "../../api-client";
 import type { CliCommandDef } from "../../types/plugin";
+import { withCliServices, withConfigData } from "../context";
 import { formatCompact } from "../../utils/format";
 import { attachFearGreedPersistence, loadFearGreed, resetFearGreedPersistence } from "../../plugins/builtin/fear-greed/cache";
 import { createPluginPersistence } from "../../plugins/plugin-persistence";
@@ -43,17 +44,14 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
   const category = screenerCategory(args[0]);
   const limit = ctx.cliOptions.limit ?? 25;
   if (category === "trending") {
-    const services = await ctx.initServices();
-    try {
+    await withCliServices(ctx, async (services) => {
       const trending = await fetchTrending(limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
       const results = await services.dataProvider.getQuotesBatch(
         trending.map(({ symbol }) => ({ symbol, exchange: "" })),
         { forceRefresh: ctx.cliOptions.refresh },
       );
       ctx.printResult({ data: quoteRows(results), metadata: { category } });
-    } finally {
-      services.destroy();
-    }
+    });
     return;
   }
 
@@ -71,8 +69,7 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
 }
 
 async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["execute"]>[1], metadata: Record<string, unknown>) {
-  const services = await ctx.initServices();
-  try {
+  await withCliServices(ctx, async (services) => {
     const results = await services.dataProvider.getQuotesBatch(
       symbols.map((symbol) => ({ symbol, exchange: "" })),
       { forceRefresh: ctx.cliOptions.refresh },
@@ -86,45 +83,42 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
         { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
       ],
     });
-  } finally {
-    services.destroy();
-  }
+  });
 }
 
 async function runFearGreed(_args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const context = await ctx.initConfigData();
-  attachFearGreedPersistence(createPluginPersistence(
-    context.persistence.pluginState,
-    context.persistence.resources,
-    "plugin:fear-greed",
-    "fear-greed",
-  ));
-  try {
-    const data = await loadFearGreed(ctx.cliOptions.refresh);
-    ctx.printResult({
-      data: [{
-        score: data.overall.score,
-        rating: data.overall.rating,
-        updatedAt: data.overall.updatedAt?.toISOString() ?? "",
-        previousClose: data.overall.previousClose,
-        previousWeek: data.overall.previousWeek,
-        previousMonth: data.overall.previousMonth,
-        previousYear: data.overall.previousYear,
-      }],
-      metadata: { indicators: data.indicators.map((indicator) => ({ id: indicator.definition.id, score: indicator.score, rating: indicator.rating })) },
-    });
-  } finally {
-    resetFearGreedPersistence();
-    context.persistence.close();
-  }
+  await withConfigData(ctx, async (context) => {
+    attachFearGreedPersistence(createPluginPersistence(
+      context.persistence.pluginState,
+      context.persistence.resources,
+      "plugin:fear-greed",
+      "fear-greed",
+    ));
+    try {
+      const data = await loadFearGreed(ctx.cliOptions.refresh);
+      ctx.printResult({
+        data: [{
+          score: data.overall.score,
+          rating: data.overall.rating,
+          updatedAt: data.overall.updatedAt?.toISOString() ?? "",
+          previousClose: data.overall.previousClose,
+          previousWeek: data.overall.previousWeek,
+          previousMonth: data.overall.previousMonth,
+          previousYear: data.overall.previousYear,
+        }],
+        metadata: { indicators: data.indicators.map((indicator) => ({ id: indicator.definition.id, score: indicator.score, rating: indicator.rating })) },
+      });
+    } finally {
+      resetFearGreedPersistence();
+    }
+  });
 }
 
 async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const rawArgs = [...args];
   const country = (takeOption(rawArgs, "--country") ?? "all") as CountryFilter;
   const impact = (takeOption(rawArgs, "--impact") ?? "all") as ImpactFilter;
-  const services = await ctx.initServices();
-  try {
+  await withCliServices(ctx, async (services) => {
     const events = await loadCalendar(ctx.cliOptions.refresh);
     const rows = events
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
@@ -152,9 +146,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
         { key: "prior", header: "Prior" },
       ],
     });
-  } finally {
-    services.destroy();
-  }
+  });
 }
 
 async function runFred(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -185,8 +177,7 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
 async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const left = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
   const right = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb correlation <symbol-a> <symbol-b>", ctx);
-  const services = await ctx.initServices();
-  try {
+  await withCliServices(ctx, async (services) => {
     const [leftHistory, rightHistory] = await Promise.all([
       services.dataProvider.getPriceHistory(left, "", "1Y"),
       services.dataProvider.getPriceHistory(right, "", "1Y"),
@@ -204,9 +195,7 @@ async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["exe
       ? numerator / Math.sqrt(leftVariance * rightVariance)
       : null;
     ctx.printResult({ data: [{ left, right, samples: pairs.length, correlation }] });
-  } finally {
-    services.destroy();
-  }
+  });
 }
 
 export const overviewCliCommands: CliCommandDef[] = [

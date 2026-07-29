@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Box, Span, Text } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
+import { useAppLanguage } from "../../../../i18n/react";
 import { MESSAGE_ACTION_WIDTH, normalizeInlinePreview } from "../layout";
 import { ChatActionChip } from "./action-chip";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
@@ -30,6 +31,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
 }) {
+  useAppLanguage();
   const state = getChatMessageRenderState({ msg, index, messages, selectedIdx, hoveredIdx, canSend });
   const canEditMessage = msg.id === latestEditableMessageId;
   const showInlineReplyAction = !state.grouped && canSend;

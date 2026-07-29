@@ -107,17 +107,15 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     }
   }, [news.length, selectedIdx, setSelectedIdx]);
 
-  const footerInfo = useMemo(() => [
-    ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(error ? [{ id: "error", parts: [{ text: "error", tone: "warning" as const }] }] : []),
-    ...(loadingSummary ? [{ id: "summary", parts: [{ text: "summary loading", tone: "muted" as const }] }] : []),
-  ], [error, loading, loadingSummary]);
-
   useNewsArticleFooter({
     registrationId: "news",
     focused,
     article: openArticle,
-    info: footerInfo,
+    loading,
+    error,
+    info: loadingSummary
+      ? [{ id: "summary", parts: [{ text: "summary loading", tone: "muted" as const }] }]
+      : undefined,
   });
 
   if (!ticker) return <Text fg={colors.textDim}>Select a ticker to view news.</Text>;

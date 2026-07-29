@@ -7,7 +7,6 @@ import {
   useUiCapabilities,
   useUiHost,
 } from "../../ui";
-import { colors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import type { PricePoint } from "../../types/financials";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../chart/native/bitmap-support";
@@ -37,16 +36,18 @@ function DesktopPriceSparkline({
   width,
   height,
   color,
+  emptyColor,
 }: {
   values: number[];
   width: number;
   height: number;
   color: string;
+  emptyColor: string;
 }) {
   const svgWidth = Math.max(24, width * 8);
   const svgHeight = Math.max(18, height * 18);
   const path = svgPath(buildSamples(values, svgWidth, svgHeight, 2));
-  if (!path) return <Text fg={colors.textMuted}>{" "}</Text>;
+  if (!path) return <Text fg={emptyColor}>{" "}</Text>;
 
   return (
     <Box width={width} height={height} justifyContent="center" overflow="hidden">
@@ -149,7 +150,7 @@ export function PriceSparkline({
   height?: number;
   area?: boolean;
 }) {
-  useThemeColors();
+  const colors = useThemeColors();
   const uiHost = useUiHost();
   const sparklineHistory = useMemo(() => resolveSparklineHistory(priceHistory ?? [], period), [period, priceHistory]);
   const values = useMemo(() => sparklineValues(sparklineHistory), [sparklineHistory]);
@@ -157,9 +158,9 @@ export function PriceSparkline({
     return <Text fg={colors.textMuted}>{" "}</Text>;
   }
 
-  const color = sparklineColor(values, trend);
+  const color = sparklineColor(values, trend, colors);
   return uiHost.kind === "desktop-web"
-    ? <DesktopPriceSparkline values={values} width={width} height={height} color={color} />
+    ? <DesktopPriceSparkline values={values} width={width} height={height} color={color} emptyColor={colors.textMuted} />
     : <TerminalPriceSparkline priceHistory={sparklineHistory} values={values} width={width} height={height} color={color} area={area} />;
 }
 
@@ -172,13 +173,13 @@ export function PriceAreaSparklineBackground({
   trend?: PriceSparklineTrend;
   period?: PriceSparklinePeriod;
 }) {
-  useThemeColors();
+  const colors = useThemeColors();
   const uiHost = useUiHost();
   const sparklineHistory = useMemo(() => resolveSparklineHistory(priceHistory ?? [], period), [period, priceHistory]);
   const values = useMemo(() => sparklineValues(sparklineHistory), [sparklineHistory]);
   if (uiHost.kind !== "desktop-web" || values.length < 2) return null;
 
-  const color = sparklineColor(values, trend);
+  const color = sparklineColor(values, trend, colors);
   const baseline = 100;
   const samples = buildSamples(values, 100, baseline, 0);
   const linePath = svgPath(samples);

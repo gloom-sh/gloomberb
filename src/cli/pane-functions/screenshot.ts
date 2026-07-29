@@ -29,12 +29,12 @@ import type {
   GraphKind,
   GraphMetricKey,
 } from "../../time-series/reporting";
-import type { TimeRange } from "../../components/chart/core/types";
-import { appendLiveQuotePoint } from "../../components/chart/core/data";
+import type { TimeRange } from "../../time-series/range";
+import { appendLiveQuotePoint } from "../../time-series/chart-data";
+import { subtractTimeRange } from "../../time-series/date-window";
 import {
   buildPresetDateWindow,
   getVisibleWindowForDateRange,
-  subtractTimeRange,
 } from "../../components/chart/core/date-window";
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { publicTickerKey } from "../../utils/exchanges";

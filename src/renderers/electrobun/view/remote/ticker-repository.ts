@@ -3,11 +3,11 @@ import { backendRequest } from "../backend-rpc";
 
 export class RemoteTickerRepository {
   async loadAllTickers(): Promise<TickerRecord[]> {
-    return backendRequest<TickerRecord[]>("ticker.loadAll");
+    return backendRequest("ticker.loadAll");
   }
 
   async loadTicker(symbol: string): Promise<TickerRecord | null> {
-    return backendRequest<TickerRecord | null>("ticker.load", { symbol });
+    return backendRequest("ticker.load", { symbol });
   }
 
   async saveTicker(ticker: TickerRecord): Promise<void> {

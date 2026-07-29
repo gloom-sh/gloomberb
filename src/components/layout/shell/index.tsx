@@ -28,7 +28,6 @@ import {
   selectLayout,
   selectStatusBarVisible,
 } from "../../../state/selectors-ui";
-import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { getPaneDisplayTitle } from "../pane/title";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
@@ -90,7 +89,7 @@ export function Shell({
   desktopDockPreview,
   commandBarNativeOccluder = null,
 }: ShellProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const config = useAppSelector((state) => state.config);
   const paneState = useAppSelector((state) => state.paneState);

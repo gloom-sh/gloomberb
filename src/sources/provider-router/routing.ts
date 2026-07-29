@@ -1,19 +1,32 @@
 import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
 import { shouldLogProviderError } from "../provider-errors";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
+import { buildVariantKey } from "./cache";
 
-export function makeRouterRevalidationKey(
+export interface RouterRequestIdentity {
+  kind: string;
+  entityKey: string;
+  variantKey: string;
+  revalidationKey: string;
+}
+
+export function makeRouterRequestIdentity(
   deps: Pick<ProviderRouterCoreDeps, "getEntityKey">,
-  kind: string,
-  ticker: string,
-  context?: MarketDataRequestContext,
-  extra?: string | number,
-): string {
-  return [
-    kind,
-    deps.getEntityKey(ticker, context?.instrument),
-    extra != null ? String(extra) : "",
-  ].join("|");
+  input: {
+    kind: string;
+    ticker: string;
+    context?: MarketDataRequestContext;
+    variantParts?: Array<[string, string | number | undefined | null]>;
+  },
+): RouterRequestIdentity {
+  const entityKey = deps.getEntityKey(input.ticker, input.context?.instrument);
+  const variantKey = buildVariantKey(input.variantParts ?? []);
+  return {
+    kind: input.kind,
+    entityKey,
+    variantKey,
+    revalidationKey: [input.kind, entityKey, variantKey].join("|"),
+  };
 }
 
 export function scheduleRouterRevalidation(

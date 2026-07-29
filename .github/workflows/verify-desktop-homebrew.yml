@@ -12,11 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - name: Configure Apple signing
         env:

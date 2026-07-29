@@ -16,7 +16,7 @@ export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
  * These aliases exist only to migrate persisted pre-Pi selections. Runtime
  * catalogs and requests always use the canonical Pi provider ids above.
  */
-export const LEGACY_AI_PROVIDER_ID_ALIASES = {
+const LEGACY_AI_PROVIDER_ID_ALIASES = {
   claude: "anthropic",
   codex: "openai-codex",
   gemini: "google",
@@ -158,12 +158,6 @@ export function detectProviders(): AiProvider[] {
   return detectedProviders;
 }
 
-export function getAvailableProviders(
-  providers: readonly AiProvider[] = detectProviders(),
-): AiProvider[] {
-  return providers.filter((provider) => provider.available);
-}
-
 export function getAiProvider(
   providerId: string | null | undefined,
   providers: readonly AiProvider[] = detectProviders(),
@@ -195,5 +189,3 @@ export function setDetectedProviders(providers: AiProvider[] | null): void {
     outputModes: [...provider.outputModes],
   })) ?? null;
 }
-
-export const __setDetectedProvidersForTests = setDetectedProviders;

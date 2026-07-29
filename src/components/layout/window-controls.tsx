@@ -1,6 +1,7 @@
 import { Box, useRendererHost } from "../../ui";
 import { useCallback } from "react";
 import { t } from "../../i18n";
+import { useAppLanguage } from "../../i18n/react";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "./titlebar-overlay";
 
 const WINDOWS_CONTROL_SIZE_PX = TITLEBAR_OVERLAY_HEIGHT_PX;
@@ -10,11 +11,11 @@ type WindowControlAction = "minimize" | "toggle-maximize" | "close";
 
 const WINDOWS_CONTROLS: Array<{
   action: WindowControlAction;
-  label: string;
+  labelKey: string;
 }> = [
-  { action: "minimize", label: t("Minimize") },
-  { action: "toggle-maximize", label: t("Maximize") },
-  { action: "close", label: t("Close") },
+  { action: "minimize", labelKey: "Minimize" },
+  { action: "toggle-maximize", labelKey: "Maximize" },
+  { action: "close", labelKey: "Close" },
 ];
 
 function stopMouse(event: { stopPropagation?: () => void; preventDefault?: () => void }) {
@@ -51,6 +52,7 @@ interface WindowControlsProps {
 }
 
 export function WindowControls({ windowKind = "main" }: WindowControlsProps) {
+  useAppLanguage();
   const rendererHost = useRendererHost();
 
   const controlWindow = useCallback((action: WindowControlAction, event: { stopPropagation?: () => void; preventDefault?: () => void }) => {
@@ -88,8 +90,8 @@ export function WindowControls({ windowKind = "main" }: WindowControlsProps) {
           data-window-control-action={control.action}
           data-gloom-interactive="true"
           role="button"
-          aria-label={control.label}
-          title={control.label}
+          aria-label={t(control.labelKey)}
+          title={t(control.labelKey)}
           onMouseDown={(event: { stopPropagation?: () => void; preventDefault?: () => void }) => controlWindow(control.action, event)}
         >
           <WindowControlIcon action={control.action} />

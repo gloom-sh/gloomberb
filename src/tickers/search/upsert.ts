@@ -1,6 +1,6 @@
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord, TickerMetadata } from "../../types/ticker";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import {
   classifyInstrumentKind,
 } from "./ranking";
@@ -10,7 +10,7 @@ import {
 } from "./result";
 
 export async function upsertTickerFromSearchResult(
-  tickerRepository: TickerRepository,
+  tickerRepository: AppTickerRepositoryPort,
   result: InstrumentSearchResult,
 ): Promise<{ ticker: TickerRecord; created: boolean }> {
   const symbol = getSearchResultSymbol(result);

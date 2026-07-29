@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "files": [
+    "src/renderers/electrobun/bun/index.ts"
+  ]
+}

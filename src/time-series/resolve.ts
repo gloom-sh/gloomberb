@@ -1,8 +1,8 @@
-import { appendLiveQuotePoint } from "../components/chart/core/data";
+import { appendLiveQuotePoint } from "./chart-data";
 import {
   getTimeRangeForDateWindow,
   subtractTimeRange,
-} from "../components/chart/core/date-window";
+} from "./date-window";
 import {
   CHART_RESOLUTION_STEP_MS,
   clampTimeRangeToMaxRange,
@@ -14,8 +14,8 @@ import {
   TIME_RANGE_ORDER,
   type ChartResolutionSupport,
   type ManualChartResolution,
-} from "../components/chart/core/resolution";
-import type { TimeRange } from "../components/chart/core/types";
+} from "./resolution";
+import type { TimeRange } from "./range";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { Quote, TickerFinancials } from "../types/financials";
 import type { FredSeriesLoadResult, FredSeriesRequest } from "../data/fred-series";

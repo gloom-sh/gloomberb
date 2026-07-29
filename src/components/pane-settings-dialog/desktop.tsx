@@ -1,5 +1,3 @@
-/// <reference lib="dom" />
-
 import { Box, Text } from "../../ui";
 import type { ReactNode } from "react";
 import type { PaneSettingField } from "../../types/plugin";

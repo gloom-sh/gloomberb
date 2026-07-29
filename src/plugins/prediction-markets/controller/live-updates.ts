@@ -65,6 +65,11 @@ export function applyPredictionTradeUpdate(
   const normalizedYesPrice = isYes
     ? trade.price
     : Math.max(0, 1 - trade.price);
+  const normalizedTrade: PredictionTrade = {
+    ...trade,
+    outcome: isYes ? "yes" : "no",
+    price: trade.price,
+  };
   return {
     ...detailEntry,
     summary: {
@@ -74,11 +79,7 @@ export function applyPredictionTradeUpdate(
       noPrice: Math.max(0, 1 - normalizedYesPrice),
     },
     trades: [
-      {
-        ...trade,
-        outcome: isYes ? "yes" : "no",
-        price: trade.price,
-      },
+      normalizedTrade,
       ...detailEntry.trades,
     ].slice(0, 40),
   };

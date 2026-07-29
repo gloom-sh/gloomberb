@@ -9,87 +9,21 @@ import {
   cloneLayout,
   createDefaultConfig,
   CURRENT_CONFIG_VERSION,
-  DEFAULT_COLUMNS,
-  DEFAULT_PORTFOLIO_COLUMN_IDS,
 } from "../../../types/config";
 import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { isLanguagePreference } from "../../../i18n/languages";
-import {
-  normalizeBuiltinDisabledPluginIds,
-  normalizeBuiltinPaneStatePluginOwners,
-  normalizeBuiltinPluginStateMap,
-} from "../../../plugins/ownership";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
-import {
-  extractLegacyChartIndicatorSelection,
-  hasLegacyChartIndicatorConfig,
-  migrateLegacyChartSavedPaneState,
-  stripLegacyChartPluginConfig,
-  type LegacyChartMigrationContext,
-} from "../chart-settings";
+import { migrateSavedConfig } from "./migrations";
 
-const LEGACY_MAIN_PORTFOLIO_COLUMN_IDS = DEFAULT_COLUMNS.map((column) => column.id);
-const PRE_SPARKLINE_PORTFOLIO_COLUMN_IDS = [
-  ...DEFAULT_COLUMNS.map((column) => column.id),
-  "shares",
-  "avg_cost",
-  "cost_basis",
-  "mkt_value",
-  "pnl",
-  "pnl_pct",
-];
-const PRE_DAY_PNL_PORTFOLIO_COLUMN_IDS = [
-  ...DEFAULT_COLUMNS.map((column) => column.id),
-  "sparkline",
-  "shares",
-  "avg_cost",
-  "cost_basis",
-  "mkt_value",
-  "pnl",
-  "pnl_pct",
-];
-const BUILTIN_SOURCE_IDS = new Set(["yahoo", "gloomberb-cloud"]);
-const CLOUD_MACRO_SPLIT_CONFIG_VERSION = 15;
-const PORTFOLIO_DEFAULT_COLUMNS_MIGRATION_VERSION = 17;
+const CURRENT_CHART_SANITIZATION = { migrateLegacy: false } as const;
 
 export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: string): { config: AppConfig; needsSave: boolean } {
   const defaults = createDefaultConfig(dataDir);
-  const shouldMigrateLegacyConfig =
-    typeof saved.configVersion !== "number" || saved.configVersion < CURRENT_CONFIG_VERSION;
-  const shouldMigratePortfolioDefaults =
-    typeof saved.configVersion !== "number" || saved.configVersion < PORTFOLIO_DEFAULT_COLUMNS_MIGRATION_VERSION;
-  const shouldEnableCloudDefault =
-    typeof saved.configVersion !== "number" || saved.configVersion < 13;
-  const normalizedPluginConfig = sanitizePluginConfig(saved.pluginConfig);
-  const chartIndicatorSelection = extractLegacyChartIndicatorSelection(
-    normalizedPluginConfig,
-    shouldMigrateLegacyConfig,
-  );
-  const chartPreferences = isPlainRecord(saved.chartPreferences) ? saved.chartPreferences : {};
-  const storedRenderMode = chartPreferences.defaultRenderMode;
-  const chartMigration: LegacyChartMigrationContext = {
-    ...(shouldMigrateLegacyConfig
-      ? {
-        defaultRenderMode: storedRenderMode === "area"
-          || storedRenderMode === "line"
-          || storedRenderMode === "candles"
-          || storedRenderMode === "ohlc"
-          || storedRenderMode === "hlc"
-          ? storedRenderMode
-          : "area",
-      }
-      : {}),
-    ...(chartIndicatorSelection ? { indicatorSelection: chartIndicatorSelection } : {}),
-  };
-  const directLayout = migrateLegacyPortfolioDefaultColumns(
-    sanitizeLayout(saved.layout, defaults.layout, chartMigration),
-    shouldMigratePortfolioDefaults,
-  );
-  const layouts = sanitizeSavedLayouts(saved.layouts, directLayout, chartMigration).map((entry) => ({
-    ...entry,
-    layout: migrateLegacyPortfolioDefaultColumns(entry.layout, shouldMigratePortfolioDefaults),
-  }));
-  const activeLayoutIndex = sanitizeActiveLayoutIndex(saved.activeLayoutIndex, layouts.length);
+  const migration = migrateSavedConfig(saved, dataDir);
+  const candidate = migration.config;
+  const directLayout = sanitizeLayout(candidate.layout, defaults.layout, CURRENT_CHART_SANITIZATION);
+  const layouts = sanitizeSavedLayouts(candidate.layouts, directLayout);
+  const activeLayoutIndex = sanitizeActiveLayoutIndex(candidate.activeLayoutIndex, layouts.length);
   const layout = cloneLayout(layouts[activeLayoutIndex]?.layout ?? directLayout);
   const syncedLayouts = layouts.map((entry, index) => (
     index === activeLayoutIndex
@@ -97,60 +31,51 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
       : entry
   ));
 
-  const disabledPlugins = sanitizeDisabledPlugins(saved, defaults.disabledPlugins, {
-    enableCloudDefault: shouldEnableCloudDefault,
-  });
+  const disabledPlugins = sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins);
 
   const config: AppConfig = {
     dataDir,
     configVersion: CURRENT_CONFIG_VERSION,
-    baseCurrency: typeof saved.baseCurrency === "string" ? saved.baseCurrency : defaults.baseCurrency,
-    refreshIntervalMinutes: typeof saved.refreshIntervalMinutes === "number" ? saved.refreshIntervalMinutes : defaults.refreshIntervalMinutes,
-    portfolios: sanitizePortfolios(saved.portfolios, defaults.portfolios),
-    watchlists: sanitizeWatchlists(saved.watchlists, defaults.watchlists),
+    baseCurrency: typeof candidate.baseCurrency === "string" ? candidate.baseCurrency : defaults.baseCurrency,
+    refreshIntervalMinutes: typeof candidate.refreshIntervalMinutes === "number" ? candidate.refreshIntervalMinutes : defaults.refreshIntervalMinutes,
+    portfolios: sanitizePortfolios(candidate.portfolios, defaults.portfolios),
+    watchlists: sanitizeWatchlists(candidate.watchlists, defaults.watchlists),
     layout,
     layouts: syncedLayouts,
     activeLayoutIndex,
-    brokerInstances: sanitizeBrokerInstances(saved.brokerInstances),
+    brokerInstances: sanitizeBrokerInstances(candidate.brokerInstances),
     disabledPlugins,
-    disabledSources: sanitizeDisabledSources(saved, defaults.disabledSources, disabledPlugins),
-    pluginConfig: stripLegacyChartPluginConfig(normalizedPluginConfig),
-    theme: typeof saved.theme === "string" ? saved.theme : defaults.theme,
-    chartPreferences: sanitizeChartPreferences(saved.chartPreferences, defaults.chartPreferences),
-    valueFlashingEnabled: typeof saved.valueFlashingEnabled === "boolean" ? saved.valueFlashingEnabled : defaults.valueFlashingEnabled,
-    recentTickers: sanitizeStringArray(saved.recentTickers, defaults.recentTickers),
-    language: isLanguagePreference(saved.language) ? saved.language : undefined,
-    onboardingComplete: typeof saved.onboardingComplete === "boolean" ? saved.onboardingComplete : defaults.onboardingComplete,
+    disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
+    pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
+    theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,
+    chartPreferences: sanitizeChartPreferences(candidate.chartPreferences, defaults.chartPreferences),
+    valueFlashingEnabled: typeof candidate.valueFlashingEnabled === "boolean" ? candidate.valueFlashingEnabled : defaults.valueFlashingEnabled,
+    recentTickers: sanitizeStringArray(candidate.recentTickers, defaults.recentTickers),
+    language: isLanguagePreference(candidate.language) ? candidate.language : undefined,
+    onboardingComplete: typeof candidate.onboardingComplete === "boolean" ? candidate.onboardingComplete : defaults.onboardingComplete,
   };
 
   const needsSave =
-    saved.configVersion !== CURRENT_CONFIG_VERSION
-    || !isLayoutConfig(saved.layout)
-    || !Array.isArray((saved.layout as { instances?: unknown })?.instances)
-    || !Array.isArray(saved.layouts)
-    || !Array.isArray(saved.brokerInstances)
-    || !Array.isArray(saved.disabledSources)
-    || !isPluginConfigMap(saved.pluginConfig)
-    || hasLegacyChartIndicatorConfig(normalizedPluginConfig)
-    || (isPlainRecord(saved.chartPreferences)
-      && Object.prototype.hasOwnProperty.call(saved.chartPreferences, "defaultRenderMode"))
-    || !isChartPreferences(saved.chartPreferences)
-    || (saved.language !== undefined && !isLanguagePreference(saved.language))
-    || typeof saved.valueFlashingEnabled !== "boolean"
-    || typeof saved.activeLayoutIndex !== "number";
+    migration.migrated
+    || candidate.configVersion !== CURRENT_CONFIG_VERSION
+    || !isLayoutConfig(candidate.layout)
+    || !Array.isArray((candidate.layout as { instances?: unknown })?.instances)
+    || !Array.isArray(candidate.layouts)
+    || !Array.isArray(candidate.brokerInstances)
+    || !Array.isArray(candidate.disabledSources)
+    || !isPluginConfigMap(candidate.pluginConfig)
+    || !isChartPreferences(candidate.chartPreferences)
+    || (candidate.language !== undefined && !isLanguagePreference(candidate.language))
+    || typeof candidate.valueFlashingEnabled !== "boolean"
+    || typeof candidate.activeLayoutIndex !== "number";
 
   return { config, needsSave };
 }
 
 export function normalizeConfigForSave(config: AppConfig): AppConfig {
   const defaults = createDefaultConfig(config.dataDir);
-  const normalizedPluginConfig = sanitizePluginConfig(config.pluginConfig);
-  const chartIndicatorSelection = extractLegacyChartIndicatorSelection(normalizedPluginConfig, false);
-  const chartMigration: LegacyChartMigrationContext = chartIndicatorSelection
-    ? { indicatorSelection: chartIndicatorSelection }
-    : {};
-  const directLayout = sanitizeLayout(config.layout, defaults.layout, chartMigration);
-  const sanitizedLayouts = sanitizeSavedLayouts(config.layouts, directLayout, chartMigration);
+  const directLayout = sanitizeLayout(config.layout, defaults.layout, CURRENT_CHART_SANITIZATION);
+  const sanitizedLayouts = sanitizeSavedLayouts(config.layouts, directLayout);
   const activeLayoutIndex = sanitizeActiveLayoutIndex(config.activeLayoutIndex, sanitizedLayouts.length || 1);
   const layout = cloneLayout(sanitizedLayouts[activeLayoutIndex]?.layout ?? directLayout);
   const layouts = sanitizedLayouts.map((entry, index) => (
@@ -168,9 +93,9 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     layouts,
     activeLayoutIndex,
     brokerInstances: sanitizeBrokerInstances(config.brokerInstances),
-    disabledPlugins: sanitizeDisabledPluginList(config.disabledPlugins),
+    disabledPlugins: sanitizeUniqueStringList(config.disabledPlugins),
     disabledSources: sanitizeUniqueStringList(config.disabledSources),
-    pluginConfig: stripLegacyChartPluginConfig(normalizedPluginConfig),
+    pluginConfig: sanitizePluginConfig(config.pluginConfig),
     chartPreferences: sanitizeChartPreferences(config.chartPreferences, defaults.chartPreferences),
     valueFlashingEnabled: config.valueFlashingEnabled !== false,
     recentTickers: sanitizeStringArray(config.recentTickers, []),
@@ -187,38 +112,6 @@ function sanitizeStringArray(value: unknown, fallback: string[]): string[] {
 
 function sanitizeUniqueStringList(value: unknown): string[] {
   return [...new Set(sanitizeStringArray(value, []))];
-}
-
-function sanitizeDisabledPluginList(value: unknown, options: { expandLegacyCloudMacro?: boolean } = {}): string[] {
-  const raw = sanitizeUniqueStringList(value);
-  const disabled = normalizeBuiltinDisabledPluginIds(raw);
-  if (options.expandLegacyCloudMacro && raw.includes("gloomberb-cloud")) {
-    disabled.push("macro");
-  }
-  return [...new Set(disabled)];
-}
-
-function sanitizeDisabledPlugins(
-  saved: Record<string, unknown>,
-  fallback: string[],
-  options: { enableCloudDefault?: boolean } = {},
-): string[] {
-  const expandLegacyCloudMacro =
-    !options.enableCloudDefault
-    && (typeof saved.configVersion !== "number" || saved.configVersion < CLOUD_MACRO_SPLIT_CONFIG_VERSION);
-  const disabled = sanitizeDisabledPluginList(saved.disabledPlugins ?? fallback, {
-    expandLegacyCloudMacro,
-  });
-  return options.enableCloudDefault
-    ? disabled.filter((pluginId) => pluginId !== "gloomberb-cloud")
-    : disabled;
-}
-
-function sanitizeDisabledSources(saved: Record<string, unknown>, fallback: string[], disabledPlugins: string[]): string[] {
-  const explicit = sanitizeUniqueStringList(saved.disabledSources ?? fallback);
-  const legacyPluginIds = sanitizeUniqueStringList(disabledPlugins)
-    .filter((pluginId) => BUILTIN_SOURCE_IDS.has(pluginId));
-  return [...new Set([...explicit, ...legacyPluginIds])];
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -260,7 +153,7 @@ function sanitizeSavedPaneState(
       })
       .filter((entry): entry is [string, Record<string, unknown>] => isPlainRecord(entry[1])),
   );
-  return normalizeBuiltinPaneStatePluginOwners(paneState);
+  return paneState;
 }
 
 function isPluginConfigMap(value: unknown): value is Record<string, Record<string, unknown>> {
@@ -270,7 +163,9 @@ function isPluginConfigMap(value: unknown): value is Record<string, Record<strin
 
 function sanitizePluginConfig(value: unknown): Record<string, Record<string, unknown>> {
   if (!isPluginConfigMap(value)) return {};
-  return normalizeBuiltinPluginStateMap(value);
+  return Object.fromEntries(
+    Object.entries(value).map(([pluginId, state]) => [pluginId, { ...state }]),
+  );
 }
 
 function isChartPreferences(value: unknown): value is ChartPreferences {
@@ -338,45 +233,9 @@ function sanitizeBrokerInstances(value: unknown): BrokerInstanceConfig[] {
     }));
 }
 
-function hasExactColumnIds(value: unknown, expected: string[]): boolean {
-  return Array.isArray(value)
-    && value.length === expected.length
-    && value.every((entry, index) => entry === expected[index]);
-}
-
-function shouldMigratePortfolioColumnIds(value: unknown): boolean {
-  return hasExactColumnIds(value, LEGACY_MAIN_PORTFOLIO_COLUMN_IDS)
-    || hasExactColumnIds(value, PRE_SPARKLINE_PORTFOLIO_COLUMN_IDS)
-    || hasExactColumnIds(value, PRE_DAY_PNL_PORTFOLIO_COLUMN_IDS);
-}
-
-function migrateLegacyPortfolioDefaultColumns(layout: LayoutConfig, enabled: boolean): LayoutConfig {
-  if (!enabled) return layout;
-
-  const instanceIndices = layout.instances.flatMap((instance, index) => (
-    instance.paneId === "portfolio-list" && shouldMigratePortfolioColumnIds(instance.settings?.columnIds)
-      ? [index]
-      : []
-  ));
-  if (instanceIndices.length === 0) return layout;
-
-  const nextLayout = cloneLayout(layout);
-  for (const instanceIndex of instanceIndices) {
-    nextLayout.instances[instanceIndex] = {
-      ...nextLayout.instances[instanceIndex]!,
-      settings: {
-        ...(nextLayout.instances[instanceIndex]?.settings ?? {}),
-        columnIds: [...DEFAULT_PORTFOLIO_COLUMN_IDS],
-      },
-    };
-  }
-  return nextLayout;
-}
-
 function sanitizeSavedLayouts(
   value: unknown,
   fallbackLayout: LayoutConfig,
-  chartMigration: LegacyChartMigrationContext = {},
 ): SavedLayout[] {
   if (!Array.isArray(value) || value.length === 0) {
     return [{ name: "Default", layout: cloneLayout(fallbackLayout) }];
@@ -389,14 +248,13 @@ function sanitizeSavedLayouts(
       && typeof (entry as SavedLayout).name === "string",
     )
     .map((entry) => {
-      const layout = sanitizeLayout(entry.layout, fallbackLayout, chartMigration);
+      const layout = sanitizeLayout(entry.layout, fallbackLayout, CURRENT_CHART_SANITIZATION);
       const paneState = sanitizeSavedPaneState((entry as { paneState?: unknown }).paneState, layout);
-      const migrated = migrateLegacyChartSavedPaneState(layout, paneState, entry.layout);
       return {
         id: typeof entry.id === "string" ? entry.id : undefined,
         name: entry.name,
-        layout: migrated.layout,
-        paneState: migrated.paneState,
+        layout,
+        paneState,
         focusedPaneId: typeof entry.focusedPaneId === "string" || entry.focusedPaneId === null
           ? entry.focusedPaneId
           : undefined,

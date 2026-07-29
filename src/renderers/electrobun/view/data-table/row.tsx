@@ -1,8 +1,6 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { memo, type CSSProperties } from "react";
 import { TextAttributes } from "../../../../ui/host";
-import { useThemeColors } from "../../../../theme/theme-context";
 import type {
   DataTableCell,
   DataTableColumn,
@@ -72,7 +70,6 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   sortColumnId: string | null;
   sortDirection: "asc" | "desc";
 }) {
-  useThemeColors();
   return (
     <div
       data-gloom-role="data-table-header-row"
@@ -183,7 +180,6 @@ function WebDataTableRowInner<
   rowContextMenuSurface: boolean;
   selected: boolean;
 }) {
-  useThemeColors();
   const sectionHeader: DataTableSectionHeader | null =
     renderSectionHeader?.(item, index) ?? null;
   const baseRowStyle: CSSProperties = {

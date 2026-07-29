@@ -1,6 +1,6 @@
 import { Box, SpinnerMark, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../ui";
 import { useCallback, useEffect, type ReactNode } from "react";
-import { blendHex, colors, priceColor } from "../../theme/colors";
+import { blendHex, priceColor } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppActive } from "../../state/app/activity";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
@@ -26,21 +26,24 @@ const UPDATE_NOTICE_DURATION_MS = 5_000;
 
 function DesktopHeaderPill({
   children,
-  backgroundColor = blendHex(colors.header, colors.bg, 0.28),
-  borderColor = blendHex(colors.border, colors.headerText, 0.22),
+  backgroundColor,
+  borderColor,
 }: {
   children: ReactNode;
   backgroundColor?: string;
   borderColor?: string;
 }) {
+  const colors = useThemeColors();
+  const resolvedBackgroundColor = backgroundColor ?? blendHex(colors.header, colors.bg, 0.28);
+  const resolvedBorderColor = borderColor ?? blendHex(colors.border, colors.headerText, 0.22);
   return (
     <Box
       height={1}
       flexDirection="row"
       alignItems="center"
-      backgroundColor={backgroundColor}
+      backgroundColor={resolvedBackgroundColor}
       style={{
-        border: `1px solid ${borderColor}`,
+        border: `1px solid ${resolvedBorderColor}`,
         borderRadius: 5,
         paddingInline: 6,
       }}
@@ -51,6 +54,7 @@ function DesktopHeaderPill({
 }
 
 function UpdateStatus() {
+  const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const updateAvailable = useAppSelector(selectUpdateAvailable);
   const updateProgress = useAppSelector(selectUpdateProgress);
@@ -91,7 +95,7 @@ function UpdateStatus() {
       return <Text fg={colors.headerText}>{t(updateProgress.message ?? "Update installed, restart to apply")}</Text>;
     }
     if (updateProgress.phase === "error") {
-      return <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error })}</Text>;
+      return <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error ?? "Unknown error" })}</Text>;
     }
   }
 
@@ -130,7 +134,7 @@ function UpdateStatus() {
 }
 
 export function Header() {
-  useThemeColors();
+  const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const baseCurrency = useAppSelector(selectBaseCurrency);
   const appActive = useAppActive();
@@ -153,7 +157,7 @@ export function Header() {
   }, [appActive]);
 
   const activeSpyQuote = getActiveQuoteDisplay(spyQuote);
-  const spyColor = activeSpyQuote ? priceColor(activeSpyQuote.change) : colors.headerText;
+  const spyColor = activeSpyQuote ? priceColor(activeSpyQuote.change, colors) : colors.headerText;
   const spyText = activeSpyQuote
     ? `SPY ${formatMarketPrice(activeSpyQuote.price, { assetCategory: "ETF" })} ${formatPercentRaw(activeSpyQuote.changePercent)}`
     : "SPY —";
@@ -166,7 +170,7 @@ export function Header() {
   // Market status
   const mktState = spyQuote?.marketState;
   const mktLabel = mktState ? t(marketStateLabel(mktState)) : "";
-  const mktColor = mktState ? marketStateColor(mktState) : colors.headerText;
+  const mktColor = mktState ? marketStateColor(mktState, colors) : colors.headerText;
 
   if (titleBarOverlay) {
     return (

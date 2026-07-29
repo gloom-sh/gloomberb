@@ -1,7 +1,7 @@
 import { useCallback, type Dispatch } from "react";
 import { restoreBrokerPortfoliosFromTickerPositions, syncBrokerInstance, syncBrokerInstances } from "../../brokers/sync-broker-instance";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
 import type { AppAction, AppState } from "../../state/app/context";
@@ -28,7 +28,7 @@ export function useBrokerImportRuntime({
   pluginRegistry: PluginRegistry;
   refreshQuote: (symbol: string, exchange?: string, tickerOverride?: TickerRecord | null, priority?: number) => void;
   stateRef: { current: AppState };
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }): AppBrokerImportRuntime {
   const applyBrokerImportResult = useCallback(async (
     instanceId: string,

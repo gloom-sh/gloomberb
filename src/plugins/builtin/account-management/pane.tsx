@@ -48,6 +48,7 @@ import { useCloudSyncStatus } from "../../../sync/react";
 import { cloudSyncController } from "../../../sync/controller";
 import { setSyncedProfileAnalytics } from "../../../sync/profile-analytics";
 import { t } from "../../../i18n";
+import { useAppLanguage } from "../../../i18n/react";
 import {
   consumeRequestedAccountManagementTab,
   subscribeRequestedAccountManagementTab,
@@ -286,6 +287,7 @@ function PlanComparison({
 }
 
 export function AccountManagementPane({ focused, width, height }: PaneProps) {
+  const language = useAppLanguage();
   const dialog = useDialog();
   const renderer = useRendererHost();
   const isDesktop = useUiHost().kind === "desktop-web";
@@ -335,7 +337,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const portfolioHoldingCounts = useMemo(() => countPortfolioHoldings(tickers), [tickers]);
   const portfolioChoices = useMemo(
     () => buildPortfolioChoices(portfolios, portfolioHoldingCounts),
-    [portfolioHoldingCounts, portfolios],
+    [language, portfolioHoldingCounts, portfolios],
   );
   const selectedAnalyticsPortfolio = useMemo(
     () => portfolios.find((portfolio) => portfolio.id === draft.sharedPortfolioId) ?? null,
@@ -419,6 +421,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     [
       beta,
       draft.sharedPortfolioId,
+      language,
       portfolioTickers,
       selectedAnalyticsPortfolio,
       oneYearReturn,
@@ -448,6 +451,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     [
       draft.profilePublic,
       draft.sharedPortfolioId,
+      language,
       profile,
       selectedAnalyticsPortfolio,
       syncStatus.phase,
@@ -469,6 +473,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }, [
     draft.profilePublic,
     draft.sharedPortfolioId,
+    language,
     profile,
     syncStatus.phase,
   ]);

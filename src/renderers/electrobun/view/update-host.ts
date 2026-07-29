@@ -9,7 +9,7 @@ import { backendRequest, onUpdateProgress } from "./backend-rpc";
 export function installElectrobunUpdateHost(): void {
   setUpdateHost({
     checkForUpdateDetailed(currentVersion: string): Promise<UpdateCheckResult> {
-      return backendRequest<UpdateCheckResult>("update.check", { currentVersion });
+      return backendRequest("update.check", { currentVersion });
     },
     performUpdate(release: ReleaseInfo, onProgress: (progress: UpdateProgress) => void): Promise<void> {
       return new Promise((resolve) => {

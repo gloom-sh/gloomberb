@@ -22,15 +22,6 @@ export function getChartPixelLayout(scene: ChartScene, pixelWidth: number, pixel
   };
 }
 
-export function getComparisonPixelLayout(pixelWidth: number, pixelHeight: number) {
-  return {
-    plotLeft: 0,
-    plotTop: 0,
-    plotRight: Math.max(pixelWidth - 1, 0),
-    plotBottom: Math.max(pixelHeight - 1, 0),
-  };
-}
-
 export function projectX(index: number, count: number, left: number, right: number): number {
   if (count <= 1) return (left + right) / 2;
   return lerp(left, right, index / (count - 1));
@@ -40,7 +31,9 @@ export function isOhlcLikeMode(mode: ChartRenderMode): boolean {
   return mode === "ohlc" || mode === "hlc";
 }
 
-export function isHighLowMode(mode: ChartRenderMode): boolean {
+export function isHighLowMode(
+  mode: ChartRenderMode,
+): mode is Extract<ChartRenderMode, "candles" | "ohlc" | "hlc"> {
   return mode === "candles" || isOhlcLikeMode(mode);
 }
 

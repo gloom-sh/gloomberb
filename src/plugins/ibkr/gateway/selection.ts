@@ -22,8 +22,8 @@ export function useIbkrGatewaySelection(
 ) {
   const activePortfolio = config.portfolios.find((portfolio) => portfolio.id === collectionId);
   const gatewayInstances = getConfiguredIbkrGatewayInstances(config);
-  const lockedBrokerInstanceId = getLockedIbkrTradingInstanceId(config, collectionId);
-  const selectedBrokerInstanceId = resolveIbkrTradingInstanceId(config, collectionId, preferredInstanceId);
+  const lockedBrokerInstanceId = getLockedIbkrTradingInstanceId(config, collectionId ?? null);
+  const selectedBrokerInstanceId = resolveIbkrTradingInstanceId(config, collectionId ?? null, preferredInstanceId);
   const selectedInstance = getBrokerInstance(config.brokerInstances, selectedBrokerInstanceId);
   const gatewaySnapshot = useGatewaySnapshot(selectedBrokerInstanceId);
   const gatewayService = selectedBrokerInstanceId ? ibkrGatewayManager.getService(selectedBrokerInstanceId) : null;

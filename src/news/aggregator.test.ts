@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, mock } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { NewsService } from "./aggregator";
 import { newsProvider, type NewsCapability } from "../capabilities";
 import type { MarketNewsItem } from "../types/news-source";
@@ -67,6 +67,10 @@ describe("NewsService", () => {
 
   beforeEach(() => {
     agg = new NewsService();
+  });
+
+  afterEach(() => {
+    agg.stop();
   });
 
   it("deduplicates by URL, keeping higher importance", async () => {
@@ -222,6 +226,98 @@ describe("NewsService", () => {
     dispose();
     await agg.poll({ feed: "breaking", breaking: true, limit: 20 });
     expect(states).toHaveLength(callCount);
+  });
+
+  it("polls referenced queries only and stops after the last watcher leaves", async () => {
+    const query = { feed: "latest" as const, limit: 20 };
+    let fetchCount = 0;
+    const source = newsProvider({
+      id: "poll-lifecycle",
+      name: "poll-lifecycle",
+      provider: {
+        fetchNews: async () => {
+          fetchCount++;
+          return [];
+        },
+      },
+    });
+    agg.register(source);
+    await agg.load(query);
+    expect(fetchCount).toBe(1);
+
+    agg.start();
+    agg.register(makeSource("inactive-trigger", []));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchCount).toBe(1);
+
+    const dispose = agg.watchQuery(query, () => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchCount).toBe(2);
+
+    const disposeSecond = agg.watchQuery(query, () => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchCount).toBe(3);
+
+    agg.register(makeSource("active-trigger", []));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchCount).toBe(4);
+
+    dispose();
+    agg.register(makeSource("single-watcher-trigger", []));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchCount).toBe(5);
+
+    disposeSecond();
+    agg.register(makeSource("disposed-trigger", []));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchCount).toBe(5);
+  });
+
+  it("retains inactive query state for remounts", async () => {
+    const item = makeItem({ url: "https://remount.example.com/1" });
+    const query = { feed: "latest" as const, limit: 20 };
+    agg.register(makeSource("remount", [item]));
+    await agg.load(query);
+
+    const firstStates: string[][] = [];
+    const dispose = agg.watchQuery(query, (state) => {
+      firstStates.push(state.articles.map((article) => article.url));
+    });
+    dispose();
+
+    const remountedStates: string[][] = [];
+    const disposeRemount = agg.watchQuery(query, (state) => {
+      remountedStates.push(state.articles.map((article) => article.url));
+    });
+
+    expect(firstStates[0]).toEqual([item.url]);
+    expect(remountedStates[0]).toEqual([item.url]);
+    disposeRemount();
+  });
+
+  it("bounds inactive query state by LRU and TTL", async () => {
+    let now = 0;
+    agg = new NewsService({
+      inactiveQueryTtlMs: 10,
+      maxInactiveQueries: 2,
+      now: () => now,
+    });
+    agg.register(makeSource("bounded", [makeItem({ url: "https://bounded.example.com/1" })]));
+    const first = { feed: "latest" as const, topics: ["first"], limit: 20 };
+    const second = { feed: "latest" as const, topics: ["second"], limit: 20 };
+    const third = { feed: "latest" as const, topics: ["third"], limit: 20 };
+
+    await agg.load(first);
+    now = 1;
+    await agg.load(second);
+    now = 2;
+    await agg.load(third);
+
+    expect(agg.getQueryState(first).phase).toBe("idle");
+    expect(agg.getQueryState(third).phase).toBe("ready");
+
+    now = 20;
+    expect(agg.getQueryState(third).phase).toBe("idle");
   });
 
   it("seeds cached source items immediately on register", () => {

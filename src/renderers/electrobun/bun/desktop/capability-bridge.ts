@@ -1,4 +1,5 @@
 import type { AppServices } from "../../../../core/app-services";
+import type { DesktopCapabilityRequest } from "../../shared/protocol";
 import { encodeRpcValue } from "../../view/rpc-codec";
 
 type CapabilityRegistry = AppServices["pluginRegistry"]["capabilities"];
@@ -45,26 +46,25 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
 
   async handle(
     rpc: Rpc,
-    method: string,
-    payload: Record<string, unknown>,
+    request: DesktopCapabilityRequest,
   ): Promise<unknown> {
     const registry = this.options.getRegistry();
-    switch (method) {
+    switch (request.method) {
       case "capability.invoke":
         return registry.invoke(
-          payload.capabilityId as string,
-          payload.operationId as string,
-          payload.payload,
+          request.payload.capabilityId,
+          request.payload.operationId,
+          request.payload.payload,
           { renderer: true },
         );
       case "capability.subscribe": {
-        const clientSubscriptionId = payload.subscriptionId as string;
+        const clientSubscriptionId = request.payload.subscriptionId;
         const scopedSubscriptionId = this.scopeClientId(rpc, clientSubscriptionId);
         this.subscriptions.get(scopedSubscriptionId)?.();
         await registry.subscribe(
-          payload.capabilityId as string,
-          payload.operationId as string,
-          payload.payload,
+          request.payload.capabilityId,
+          request.payload.operationId,
+          request.payload.payload,
           (event) => {
             rpc.send["capability.event"]({
               subscriptionId: clientSubscriptionId,
@@ -77,13 +77,15 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
         return null;
       }
       case "capability.unsubscribe": {
-        const scopedSubscriptionId = this.scopeClientId(rpc, payload.subscriptionId as string);
+        const scopedSubscriptionId = this.scopeClientId(rpc, request.payload.subscriptionId);
         this.subscriptions.get(scopedSubscriptionId)?.();
         this.subscriptions.delete(scopedSubscriptionId);
         return null;
       }
-      default:
-        throw new Error(`Unknown capability method: ${method}`);
+      default: {
+        const exhaustive: never = request;
+        throw new Error(`Unknown capability method: ${String(exhaustive)}`);
+      }
     }
   }
 

@@ -9,7 +9,11 @@ import {
 } from "../../../../data/config/store";
 import type { AppConfig } from "../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../types/desktop-window";
-import type { ReleaseInfo } from "../../../../updater";
+import type {
+  DesktopBackendRequestPayload,
+  DesktopBackendRequestResponse,
+  DesktopCoreRequest,
+} from "../../shared/protocol";
 import {
   checkElectrobunDesktopUpdate,
 } from "./update";
@@ -17,22 +21,6 @@ import {
   createDesktopWorkspace,
   type DesktopWorkspace,
 } from "./workspace";
-
-const UNHANDLED_BACKEND_REQUEST = Symbol("unhandled backend request");
-
-interface DesktopBackendRequestHandled {
-  handled: true;
-  value: unknown;
-}
-
-interface DesktopBackendRequestUnhandled {
-  handled: false;
-  value: typeof UNHANDLED_BACKEND_REQUEST;
-}
-
-export type DesktopBackendRequestResult =
-  | DesktopBackendRequestHandled
-  | DesktopBackendRequestUnhandled;
 
 interface DesktopBackendRequestOptions {
   clearCurrentConfig: () => void;
@@ -42,8 +30,7 @@ interface DesktopBackendRequestOptions {
   getDesktopWorkspace: () => DesktopWorkspace | null;
   getServices: () => AppServices;
   getSessionSnapshot: () => AppSessionSnapshot | null;
-  method: string;
-  payload: Record<string, unknown>;
+  request: DesktopCoreRequest;
   reconcileDetachedWindows: () => void;
   registerCoreCapabilities: () => void;
   sendDesktopState: (snapshot: DesktopSharedStateSnapshot) => void;
@@ -55,19 +42,10 @@ interface DesktopBackendRequestOptions {
   teardownServices: () => void;
 }
 
-function handled(value: unknown): DesktopBackendRequestHandled {
-  return { handled: true, value };
-}
-
-function unhandled(): DesktopBackendRequestUnhandled {
-  return { handled: false, value: UNHANDLED_BACKEND_REQUEST };
-}
-
 async function importDesktopConfig({
   closeAllDetachedWindows,
   getConfig,
   getSessionSnapshot,
-  payload,
   reconcileDetachedWindows,
   registerCoreCapabilities,
   sendDesktopState,
@@ -76,11 +54,13 @@ async function importDesktopConfig({
   setServices,
   syncConfigAccessors,
   teardownServices,
-}: DesktopBackendRequestOptions): Promise<AppConfig> {
+}: DesktopBackendRequestOptions,
+  payload: DesktopBackendRequestPayload<"config.import">,
+): Promise<AppConfig> {
   closeAllDetachedWindows();
   setDesktopWorkspace(null);
   teardownServices();
-  setCurrentConfig(await importConfig(payload.dataDir as string, payload.srcPath as string));
+  setCurrentConfig(await importConfig(payload.dataDir, payload.srcPath));
   setServices(createAppServices({
     config: getConfig(),
     plugins: getDesktopBackendPlugins(),
@@ -96,7 +76,7 @@ async function importDesktopConfig({
 
 export async function handleDesktopBackendRequest(
   options: DesktopBackendRequestOptions,
-): Promise<DesktopBackendRequestResult> {
+): Promise<DesktopBackendRequestResponse<DesktopCoreRequest["method"]>> {
   const {
     clearCurrentConfig,
     closeAllDetachedWindows,
@@ -104,64 +84,68 @@ export async function handleDesktopBackendRequest(
     getConfig,
     getDesktopWorkspace,
     getServices,
-    method,
-    payload,
+    request,
     setCurrentConfig,
     setDesktopWorkspace,
     startUpdate,
     teardownServices,
   } = options;
 
-  switch (method) {
+  switch (request.method) {
     case "update.check":
-      return handled(checkElectrobunDesktopUpdate(
-        typeof payload.currentVersion === "string" ? payload.currentVersion : "",
-      ));
+      return checkElectrobunDesktopUpdate(
+        typeof request.payload.currentVersion === "string" ? request.payload.currentVersion : "",
+      );
     case "update.start": {
-      const release = payload.release && typeof payload.release === "object"
-        ? payload.release as Partial<ReleaseInfo>
-        : null;
-      startUpdate(typeof payload.currentVersion === "string" ? payload.currentVersion : release?.version ?? "");
-      return handled(null);
+      const { release, currentVersion } = request.payload;
+      startUpdate(typeof currentVersion === "string" ? currentVersion : release.version);
+      return null;
     }
     case "ticker.loadAll":
-      return handled(getServices().tickerRepository.loadAllTickers());
+      return getServices().tickerRepository.loadAllTickers();
     case "ticker.load":
-      return handled(getServices().tickerRepository.loadTicker(payload.symbol as string));
+      return getServices().tickerRepository.loadTicker(request.payload.symbol);
     case "ticker.save":
-      return handled(getServices().tickerRepository.saveTicker(payload.ticker as never));
+      await getServices().tickerRepository.saveTicker(request.payload.ticker);
+      return null;
     case "ticker.delete":
-      return handled(getServices().tickerRepository.deleteTicker(payload.symbol as string));
+      await getServices().tickerRepository.deleteTicker(request.payload.symbol);
+      return null;
     case "config.save": {
-      setCurrentConfig(payload.config as AppConfig);
+      setCurrentConfig(request.payload.config);
       const desktopWorkspace = getDesktopWorkspace();
       if (desktopWorkspace) {
         await commitDesktopSnapshot(desktopWorkspace.replaceConfig(getConfig(), { layoutChanged: true }));
-        return handled(null);
+        return null;
       }
-      return handled(saveConfig(getConfig()));
+      await saveConfig(getConfig());
+      return null;
     }
     case "config.resetAllData":
       closeAllDetachedWindows();
       setDesktopWorkspace(null);
       teardownServices();
       clearCurrentConfig();
-      return handled(resetAllData(payload.dataDir as string));
+      await resetAllData(request.payload.dataDir);
+      return null;
     case "config.export":
-      return handled(exportConfig(payload.config as AppConfig, payload.destPath as string));
+      await exportConfig(request.payload.config, request.payload.destPath);
+      return null;
     case "config.import":
-      return handled(await importDesktopConfig(options));
+      return importDesktopConfig(options, request.payload);
     case "session.set":
       getServices().persistence.sessions.set(
-        payload.sessionId as string,
-        payload.value,
-        payload.schemaVersion as number | undefined,
+        request.payload.sessionId,
+        request.payload.value,
+        request.payload.schemaVersion,
       );
-      return handled(null);
+      return null;
     case "session.delete":
-      getServices().persistence.sessions.delete(payload.sessionId as string);
-      return handled(null);
-    default:
-      return unhandled();
+      getServices().persistence.sessions.delete(request.payload.sessionId);
+      return null;
+    default: {
+      const exhaustive: never = request;
+      throw new Error(`Unknown core backend method: ${String(exhaustive)}`);
+    }
   }
 }

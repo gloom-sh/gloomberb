@@ -27,6 +27,8 @@ import { PredictionMarketRulesView } from "./rules";
 import { truncatePredictionText } from "./shared";
 import { PredictionMarketTradesView } from "./trades";
 
+type RelatedMarketPointerEvent = { preventDefault(): void };
+
 interface MetricCell {
   label: string;
   value: string;
@@ -215,7 +217,7 @@ export function PredictionMarketDetailPane({
           {relatedSiblings.map((sibling) => (
             <Box
               key={sibling.key}
-              onMouseDown={(event) => {
+              onMouseDown={(event: RelatedMarketPointerEvent) => {
                 event.preventDefault();
                 onSelectMarket(sibling.key);
               }}

@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { createRoot } from "react-dom/client";
 import { App } from "../../../app";
@@ -9,7 +8,6 @@ import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
   backendRequest,
   initElectrobunBackend,
-  requestMainWindowRemoteControl,
   setElectrobunRemoteRequestHandler,
 } from "./backend-rpc";
 import { installElectrobunAiHost } from "./ai-host";
@@ -30,6 +28,7 @@ import { createApplicationMenuBridge } from "./application-menu-bridge";
 import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
+import { createElectrobunAppServices } from "./app-services";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -100,7 +99,7 @@ async function boot() {
   const webUiHost = createWebUiHost(init.desktopPlatform);
   const remoteControlAdapter = init.windowKind === "main"
     ? { registerHandler: setElectrobunRemoteRequestHandler }
-    : { handleRequest: requestMainWindowRemoteControl };
+    : undefined;
   measurePerfAsync("startup.electrobun.root-render", async () => {
     root.render(
       <ElectrobunErrorBoundary>
@@ -110,6 +109,7 @@ async function boot() {
               <WebDialogHostProvider>
                 <App
                   config={config}
+                  servicesFactory={createElectrobunAppServices}
                   desktopWindowBridge={desktopWindowBridge}
                   desktopApplicationMenuBridge={desktopApplicationMenuBridge}
                   desktopDeepLinkBridge={desktopDeepLinkBridge}

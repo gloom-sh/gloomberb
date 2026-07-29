@@ -131,6 +131,7 @@ export function BrokerDetailContent({
   if (!row) return <Box flexGrow={1} />;
 
   const detailStatusMessage = isBrokerErrorMessage(message) ? message : row.message || t("No status message.");
+  const editAdapter = row.adapter;
 
   return (
     <ScrollBox flexGrow={1} scrollY>
@@ -152,7 +153,7 @@ export function BrokerDetailContent({
         <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatBrokerUpdatedAt(row.updatedAt) })}</Text>
         <Box height={1} />
 
-        {editDraft && row.adapter ? (
+        {editDraft && editAdapter ? (
           <Box flexDirection="column" gap={1}>
             <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Edit Profile")}</Text>
             <Box onMouseDown={() => onActiveEditKeyChange("label")}>
@@ -184,7 +185,7 @@ export function BrokerDetailContent({
                 field={field}
                 draft={editDraft}
                 previous={row.instance}
-                adapter={row.adapter}
+                adapter={editAdapter}
                 focused={activeEditKey === field.key}
                 onFocus={() => onActiveEditKeyChange(field.key)}
                 onChange={onDraftValueChange}

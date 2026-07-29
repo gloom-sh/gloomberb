@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { SessionStore } from "../../data/session-store";
+import type { AppSessionStorePort } from "../../core/app-service-ports";
 import {
   buildAppSessionSnapshot,
   type AppSessionSnapshot,
@@ -12,7 +12,7 @@ import {
 } from "../persist-scheduler";
 
 export function usePersistSessionSnapshot(
-  sessionStore: SessionStore | undefined,
+  sessionStore: AppSessionStorePort | undefined,
   state: AppState,
   sessionId: string,
   schemaVersion: number,

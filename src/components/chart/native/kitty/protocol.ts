@@ -55,7 +55,7 @@ export function encodeKittyTransmitRgba(options: KittyTransmitOptions): string[]
   // ponytail: level 3 compresses chart pixels ~2.5x faster than the default for
   // ~40% more bytes; crosshair moves retransmit the whole plot every frame, so
   // CPU is the constraint on a local pty. Raise it if bandwidth ever is.
-  const compressed = deflateSync(Buffer.from(options.rgba), { level: 3 });
+  const compressed = deflateSync(options.rgba, { level: 3 });
   const chunks = chunkBase64Payload(compressed.toString("base64"), options.chunkSize);
 
   return chunks.map((chunk, index) => {

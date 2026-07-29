@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { createRoot } from "react-dom/client";
 import { useEffect, type ComponentType, type ReactNode } from "react";
@@ -23,21 +22,21 @@ import { FloatingPaneWrapper } from "../../../components/layout/floating-pane";
 import { PaneContent } from "../../../components/layout/pane/content";
 import { resolvePaneBodyFrame } from "../../../components/layout/pane/sizing";
 import { getPaneDisplayTitle } from "../../../components/layout/pane/title";
-import { subtractTimeRange } from "../../../components/chart/core/date-window";
 import {
   getPresetResolution,
   normalizeChartResolutionSupport,
   TIME_RANGE_ORDER,
-} from "../../../components/chart/core/resolution";
+} from "../../../time-series/resolution";
 import type { TimeRange } from "../../../components/chart/core/types";
 import type { AppConfig } from "../../../types/config";
 import type { CachedFinancialsTarget, DataProvider, QuoteSubscriptionTarget } from "../../../types/data-provider";
-import type { OptionsChain, PricePoint, TickerFinancials } from "../../../types/financials";
+import type { OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { AppState, PaneRuntimeState } from "../../../core/state/app/state";
 import type { PaneDef } from "../../../types/plugin";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { hydrateFredSeries, type FredSeriesCacheEntry } from "../../../data/fred-series";
+import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 
 interface CliPaneShotPayload {
   config: AppConfig;
@@ -96,22 +95,6 @@ const rendererHost: RendererHost = {
 
 function normalizeSymbol(value: string): string {
   return value.trim().replace(/^\$/, "").toUpperCase();
-}
-
-function clipShotPriceHistory(points: PricePoint[], range: TimeRange): PricePoint[] {
-  if (range === "ALL" || points.length === 0) return points;
-  const dated = points.flatMap((point) => {
-    const date = point.date instanceof Date ? point.date : new Date(point.date);
-    return Number.isFinite(date.getTime()) ? [{ point, date }] : [];
-  });
-  const end = dated.reduce<Date | null>((latest, entry) => (
-    !latest || entry.date.getTime() > latest.getTime() ? entry.date : latest
-  ), null);
-  if (!end) return [];
-  const start = subtractTimeRange(end, range);
-  return dated
-    .filter(({ date }) => date.getTime() >= start.getTime() && date.getTime() <= end.getTime())
-    .map(({ point }) => point);
 }
 
 function updatePendingShotWork(next: number): void {
@@ -294,12 +277,12 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
     },
     getPriceHistory(ticker, exchange, range) {
       return trackShotWork(Promise.resolve().then(() => (
-        clipShotPriceHistory(getFinancials(ticker, exchange).priceHistory ?? [], range)
+        clipPriceHistoryToRange(getFinancials(ticker, exchange).priceHistory ?? [], range)
       )));
     },
     getPriceHistoryForResolution(ticker, exchange, bufferRange) {
       return trackShotWork(Promise.resolve().then(() => (
-        clipShotPriceHistory(getFinancials(ticker, exchange).priceHistory ?? [], bufferRange)
+        clipPriceHistoryToRange(getFinancials(ticker, exchange).priceHistory ?? [], bufferRange)
       )));
     },
     getChartResolutionSupport() {

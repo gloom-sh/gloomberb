@@ -98,7 +98,7 @@ function createCoreCliCommands(renderHelp: () => string): CliCommandDef[] {
         }
         await ticker(symbol!, {
           initMarketData: ctx.initMarketData,
-          closeAndFail: ctx.closeAndFail,
+          fail: ctx.fail,
           ...(ctx.cliOptions.format === "text" ? {} : { printResult: ctx.printResult }),
         });
       },

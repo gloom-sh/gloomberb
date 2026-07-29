@@ -8,7 +8,6 @@ import {
 } from "./providers";
 import { AiScreenerPane } from "./screener/pane";
 import { buildAiScreenerPaneSettingsDef, getAiScreenerPaneSettings } from "./settings";
-import { t } from "../../../i18n";
 import {
   LOCAL_AGENT_WORKSPACE_SCHEMA_VERSION,
   LOCAL_AGENT_WORKSPACE_STATE_KEY,
@@ -185,7 +184,7 @@ export const aiPlugin: GloomPlugin = {
   id: "ai",
   name: "AI",
   version: "1.0.0",
-  description: t("Use AI providers with your financial data."),
+  description: "Use AI providers with your financial data.",
   toggleable: true,
 
   setup(ctx) {
@@ -205,12 +204,12 @@ export const aiPlugin: GloomPlugin = {
       ...screenerRunnerWizard,
       {
         key: "prompt",
-        label: t("Screener Prompt"),
+        label: "Screener Prompt",
         type: "textarea" as const,
-        placeholder: t("Examples: humanoid robot suppliers, defense software compounders, EM payment rails, obesity-drug picks-and-shovels..."),
+        placeholder: "Examples: humanoid robot suppliers, defense software compounders, EM payment rails, obesity-drug picks-and-shovels...",
         body: [
-          t("Describe the screening idea in plain English."),
-          t("The AI will return validated ticker ideas with a short reason for each one."),
+          "Describe the screening idea in plain English.",
+          "The AI will return validated ticker ideas with a short reason for each one.",
         ],
       },
     ];
@@ -253,7 +252,7 @@ export const aiPlugin: GloomPlugin = {
 
     ctx.registerTickerResearchTab({
       id: "ai-chat",
-      name: t("Ask AI"),
+      name: "Ask AI",
       order: 60,
       component: AskAiResearchTab,
     });
@@ -326,7 +325,7 @@ export const aiPlugin: GloomPlugin = {
 
     ctx.registerPane({
       id: "ai-screener",
-      name: t("AI Screener"),
+      name: "AI Screener",
       icon: "A",
       component: AiScreenerPane,
       defaultPosition: "right",
@@ -377,8 +376,8 @@ export const aiPlugin: GloomPlugin = {
     ctx.registerPaneTemplate({
       id: "new-ai-screener-pane",
       paneId: "ai-screener",
-      label: t("AI Screener"),
-      description: t("Create a prompt-driven AI screener pane with reusable screening tabs."),
+      label: "AI Screener",
+      description: "Create a prompt-driven AI screener pane with reusable screening tabs.",
       keywords: ["ai", "screener", "screen", "watchlist", "prompt"],
       shortcut: { prefix: "AI", argPlaceholder: "prompt", argKind: "text" },
       wizard: screenerWizard,
@@ -406,7 +405,7 @@ export const aiPlugin: GloomPlugin = {
           providerId === readyDefaults.providerId ? readyDefaults.modelId : null,
         );
         return {
-          title: t("AI Screener"),
+          title: "AI Screener",
           placement: "floating",
           params: {
             prompt,

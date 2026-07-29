@@ -6,6 +6,11 @@ import { trySqliteBusyOperation, withSqliteBusyRetry } from "./sqlite/retry";
 
 const RESOURCE_CACHE_SOFT_ROW_LIMIT = 25_000;
 const RESOURCE_CACHE_SOFT_SIZE_LIMIT = 100 * 1024 * 1024;
+const RESOURCE_CACHE_MAINTENANCE_WRITE_INTERVAL = 250;
+const RESOURCE_CACHE_MAINTENANCE_BYTE_INTERVAL = Math.floor(
+  RESOURCE_CACHE_SOFT_SIZE_LIMIT / RESOURCE_CACHE_MAINTENANCE_WRITE_INTERVAL,
+);
+const RESOURCE_CACHE_MAINTENANCE_TIME_INTERVAL_MS = 5 * 60_000;
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 const EMPTY_VARIANT_KEY = "";
 const EMPTY_SOURCE_KEY = "";
@@ -89,6 +94,10 @@ function sortRows(rows: ResourceCacheRow[]): ResourceCacheRow[] {
 }
 
 export class ResourceStore {
+  private writesSinceMaintenance = 0;
+  private bytesWrittenSinceMaintenance = 0;
+  private lastMaintenanceAt = 0;
+
   constructor(private readonly db: Database) {}
 
   private toCachedResource<T>(row: ResourceCacheRow): CachedResourceRecord<T> | null {
@@ -179,16 +188,37 @@ export class ResourceStore {
     const remainingSize = remaining?.total_size ?? 0;
     if (remainingCount <= RESOURCE_CACHE_SOFT_ROW_LIMIT && remainingSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT) return;
 
-    const rowsToDelete = withSqliteBusyRetry("select cached resources to prune", () => (
+    const pruneCandidates = withSqliteBusyRetry("select cached resources to prune", () => (
       this.db
-        .query<{ namespace: string; kind: string; entity_key: string; variant_key: string; source_key: string }, [number]>(
-          `SELECT namespace, kind, entity_key, variant_key, source_key
+        .query<{
+          namespace: string;
+          kind: string;
+          entity_key: string;
+          variant_key: string;
+          source_key: string;
+          size_bytes: number;
+        }, []>(
+          `SELECT namespace, kind, entity_key, variant_key, source_key, size_bytes
            FROM resource_cache
-           ORDER BY last_accessed_at ASC, fetched_at ASC
-           LIMIT ?`,
+           ORDER BY last_accessed_at ASC, fetched_at ASC`,
         )
-        .all(Math.max(Math.ceil((remainingCount - RESOURCE_CACHE_SOFT_ROW_LIMIT) + 250), 250))
+        .all()
     ));
+
+    let projectedCount = remainingCount;
+    let projectedSize = remainingSize;
+    const rowsToDelete = [] as typeof pruneCandidates;
+    for (const row of pruneCandidates) {
+      if (
+        projectedCount <= RESOURCE_CACHE_SOFT_ROW_LIMIT
+        && projectedSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT
+      ) {
+        break;
+      }
+      rowsToDelete.push(row);
+      projectedCount -= 1;
+      projectedSize -= row.size_bytes;
+    }
 
     if (rowsToDelete.length === 0) return;
     withSqliteBusyRetry("prune least recently used cached resources", () => {
@@ -203,6 +233,21 @@ export class ResourceStore {
       });
       tx();
     });
+  }
+
+  private maintainCacheAfterWrite(now: number, sizeBytes: number): void {
+    this.writesSinceMaintenance += 1;
+    this.bytesWrittenSinceMaintenance += sizeBytes;
+    const maintenanceDue = this.lastMaintenanceAt === 0
+      || this.writesSinceMaintenance >= RESOURCE_CACHE_MAINTENANCE_WRITE_INTERVAL
+      || this.bytesWrittenSinceMaintenance >= RESOURCE_CACHE_MAINTENANCE_BYTE_INTERVAL
+      || now - this.lastMaintenanceAt >= RESOURCE_CACHE_MAINTENANCE_TIME_INTERVAL_MS;
+    if (!maintenanceDue) return;
+
+    this.pruneIfNeeded();
+    this.writesSinceMaintenance = 0;
+    this.bytesWrittenSinceMaintenance = 0;
+    this.lastMaintenanceAt = now;
   }
 
   get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {
@@ -304,6 +349,10 @@ export class ResourceStore {
     const now = options.fetchedAt ?? Date.now();
     const payload = serializeJson(value);
     const provenance = options.provenance == null ? null : serializeJson(options.provenance);
+    const schemaVersion = options.schemaVersion ?? DEFAULT_RESOURCE_SCHEMA_VERSION;
+    const staleAt = now + options.cachePolicy.staleMs;
+    const expiresAt = now + options.cachePolicy.expireMs;
+    const sizeBytes = Buffer.byteLength(payload, "utf8");
     const rowKey = {
       namespace: key.namespace,
       kind: key.kind,
@@ -326,19 +375,31 @@ export class ResourceStore {
           rowKey.entityKey,
           rowKey.variantKey,
           rowKey.sourceKey,
-          options.schemaVersion ?? DEFAULT_RESOURCE_SCHEMA_VERSION,
+          schemaVersion,
           payload,
           provenance,
           now,
-          now + options.cachePolicy.staleMs,
-          now + options.cachePolicy.expireMs,
+          staleAt,
+          expiresAt,
           now,
-          Buffer.byteLength(payload, "utf8"),
+          sizeBytes,
         );
     });
 
-    this.pruneIfNeeded();
-    return this.get<T>(rowKey, { allowExpired: true, touch: false })!;
+    this.maintainCacheAfterWrite(Date.now(), sizeBytes);
+    return {
+      ...rowKey,
+      value: JSON.parse(payload) as T,
+      schemaVersion,
+      provenance: provenance == null ? null : JSON.parse(provenance) as JsonValue,
+      fetchedAt: now,
+      staleAt,
+      expiresAt,
+      lastAccessedAt: now,
+      sizeBytes,
+      stale: isStale(staleAt),
+      expired: isExpired(expiresAt),
+    };
   }
 
   delete(key: ResourceCacheKey): void {

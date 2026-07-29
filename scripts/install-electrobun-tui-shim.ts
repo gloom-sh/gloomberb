@@ -205,8 +205,9 @@ function createWindowsIcon(resourcesPath: string): string {
   if (converted.exitCode !== 0) {
     process.exit(converted.exitCode ?? 1);
   }
-  writeFileSync(iconPath, converted.stdout);
-  writeFileSync(appIconPath, converted.stdout);
+  const iconBytes = Uint8Array.from(converted.stdout);
+  writeFileSync(iconPath, iconBytes);
+  writeFileSync(appIconPath, iconBytes);
   assertWindowsIconFile(iconPath);
   assertWindowsIconFile(appIconPath);
   return iconPath;

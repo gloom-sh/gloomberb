@@ -2,6 +2,10 @@ import type {
   ApplicationMenuSelectMessage,
   CapabilityEventMessage,
   ContextMenuSelectMessage,
+  DesktopBackendRequestArgs,
+  DesktopBackendRequestMethod,
+  DesktopBackendRequestPayload,
+  DesktopBackendRequestResponse,
   DesktopDockPreviewMessage,
   DesktopRestartMessage,
   DesktopStateMessage,
@@ -16,7 +20,15 @@ function unsubscribe(): () => void {
   return () => {};
 }
 
-export async function backendRequest<T = unknown>(): Promise<T> {
+export function backendRequest<T = unknown>(
+  method: "capability.invoke",
+  payload: DesktopBackendRequestPayload<"capability.invoke">,
+): Promise<T>;
+export function backendRequest<K extends Exclude<DesktopBackendRequestMethod, "capability.invoke">>(
+  method: K,
+  ...args: DesktopBackendRequestArgs<K>
+): Promise<DesktopBackendRequestResponse<K>>;
+export async function backendRequest(): Promise<unknown> {
   throw new Error("Electrobun backend requests are unavailable in the CLI screenshot renderer.");
 }
 

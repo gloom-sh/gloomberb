@@ -217,12 +217,6 @@ export const chartComposerModule: PluginModule = {
   },
 };
 
-export { CHART_COMPOSER_PANE_ID } from "../../../types/config";
-export { ChartComposerPane, ChartComposerResearchTab, ChartComposerSurface } from "./pane";
-export { DateWindowDialog } from "./date-window-dialog";
-export { SeriesEditorDialog } from "./editor";
 export * from "./chart-spec";
 export * from "./presets";
 export * from "./settings";
-
-export default chartComposerModule;

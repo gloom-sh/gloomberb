@@ -10,7 +10,7 @@ import { createStatefulTestPluginRuntime } from "../../../../../test-support/plu
 import { createDefaultConfig } from "../../../../../types/config";
 import { Box } from "../../../../../ui";
 import { PluginRenderProvider } from "../../../../runtime";
-import { __setDetectedProvidersForTests } from "../../../ai/providers";
+import { setDetectedProviders } from "../../../ai/providers";
 import { setAiRunHost } from "../../../ai/runner";
 import { BreakingPane } from "./pane";
 
@@ -53,17 +53,15 @@ function createReadyNewsService(articles: NewsArticle[]): { service: NewsService
     updatedAt: Date.now(),
     sourceIds: ["test"],
   };
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(state: NewsQueryState) => void>();
   let queryStateCalls = 0;
   const service = {
-    subscribe(listener: () => void) {
+    watchQuery(_query: unknown, listener: (state: NewsQueryState) => void) {
       listeners.add(listener);
+      listener(state);
       return () => {
         listeners.delete(listener);
       };
-    },
-    getVersion() {
-      return 1;
     },
     getQueryState() {
       queryStateCalls += 1;
@@ -110,7 +108,7 @@ function createHarness() {
 afterEach(async () => {
   setSharedNewsService(null);
   setAiRunHost(null);
-  __setDetectedProvidersForTests(null);
+  setDetectedProviders(null);
   if (testSetup) {
     await act(async () => {
       testSetup!.renderer.destroy();
@@ -124,7 +122,7 @@ describe("BreakingPane", () => {
     let runCalls = 0;
     const newsService = createReadyNewsService([makeArticle()]);
     setSharedNewsService(newsService.service);
-    __setDetectedProvidersForTests([
+    setDetectedProviders([
       {
         id: "anthropic",
         name: "Claude",

@@ -1,10 +1,9 @@
 import { Text } from "../../../ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingItem } from "../../../types/data-provider";
 import {
   useResolvedEntryValue,
-  useSecFilingContent,
   useSecFilingsQuery,
 } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -24,6 +23,7 @@ import {
   formatFilingShortDate,
   renderFilingNotice,
 } from "../sec/filing-display";
+import { useSecFilingContentCache } from "../sec/filing-content";
 
 const FORM4_LIMIT = 20;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
@@ -125,34 +125,10 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       ? (filingsEntry.error?.message ?? "Failed to load SEC filings")
       : null;
 
-  // Fetch content for each Form 4 filing sequentially via an index pointer
-  const [contentMap, setContentMap] = useState<Map<string, string | null>>(new Map());
-  const [fetchPointer, setFetchPointer] = useState(0);
-
-  // Reset when ticker changes
-  useEffect(() => {
-    setContentMap(new Map());
-    setFetchPointer(0);
-  }, [ticker?.metadata.ticker]);
-
-  // Pick the next un-fetched filing to load
-  const nextToFetch = form4Filings.find((f) => !contentMap.has(f.accessionNumber)) ?? null;
-  const contentEntry = useSecFilingContent(nextToFetch);
-  const contentValue = useResolvedEntryValue(contentEntry);
-
-  useEffect(() => {
-    if (!nextToFetch) return;
-    if (contentEntry?.phase === "error") {
-      setContentMap((prev) => new Map(prev).set(nextToFetch.accessionNumber, null));
-      setFetchPointer((p) => p + 1);
-      return;
-    }
-    if (contentValue !== null && contentValue !== undefined) {
-      setContentMap((prev) => new Map(prev).set(nextToFetch.accessionNumber, contentValue));
-      setFetchPointer((p) => p + 1);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentValue, contentEntry?.phase, nextToFetch?.accessionNumber, fetchPointer]);
+  const { contentCache: contentMap, pendingCount } = useSecFilingContentCache({
+    scopeKey: `${ticker?.metadata.ticker ?? "none"}:${ticker?.metadata.exchange ?? ""}`,
+    targets: form4Filings,
+  });
 
   const allParsed: ParsedFiling[] = useMemo(() => form4Filings.map((filing) => {
     const hasContent = contentMap.has(filing.accessionNumber);
@@ -172,7 +148,6 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   ), [allParsed, nameFilter]);
   const feedItems = useMemo(() => toFeedItems(parsed), [parsed]);
   const summary = useMemo(() => buildSummary(allParsed), [allParsed]);
-  const pendingCount = form4Filings.filter((f) => !contentMap.has(f.accessionNumber)).length;
   const selectedTransaction = parsed[selectedIdx]?.transaction ?? null;
   const openFiling = openItemId
     ? parsed.find(({ filing }) => filing.accessionNumber === openItemId)?.filing ?? null

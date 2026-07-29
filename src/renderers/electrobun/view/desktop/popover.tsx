@@ -1,10 +1,9 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { HostPopoverProps } from "../../../../ui";
-import { blendHex, colors } from "../../../../theme/colors";
+import { blendHex } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 
 const VIEWPORT_MARGIN = 10;
@@ -31,7 +30,7 @@ export function WebPopover({
   maxWidth = "min(420px, calc(100vw - 20px))",
   label,
 }: HostPopoverProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const [position, setPosition] = useState<PopoverPosition>({ left: 0, top: 0, visible: false });

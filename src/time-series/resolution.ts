@@ -1,5 +1,5 @@
-import type { ChartResolution, TimeRange } from "./types";
-import { TIME_RANGES } from "./types";
+import type { ChartResolution, TimeRange } from "./range";
+import { TIME_RANGES } from "./range";
 import { isDateWindowWithinTimeRange } from "./date-window";
 
 export type ManualChartResolution = Exclude<ChartResolution, "auto">;
@@ -71,10 +71,6 @@ export const CHART_RESOLUTION_STEP_MS: Record<ManualChartResolution, number> = {
   "1mo": 30 * 24 * 60 * 60_000,
 };
 
-export function getChartResolutionStepMs(resolution: ChartResolution): number | null {
-  return resolution === "auto" ? null : CHART_RESOLUTION_STEP_MS[resolution];
-}
-
 const CHART_RESOLUTION_POINTS_PER_DAY: Record<ManualChartResolution, number> = {
   "1m": 390,
   "5m": 78,
@@ -88,22 +84,6 @@ const CHART_RESOLUTION_POINTS_PER_DAY: Record<ManualChartResolution, number> = {
 };
 
 const TIME_RANGE_INDEX = new Map(TIME_RANGE_ORDER.map((range, index) => [range, index]));
-const RANGE_PRESETS_BY_RESOLUTION = TIME_RANGE_ORDER.reduce<Record<ManualChartResolution, TimeRange[]>>((acc, range) => {
-  const resolution = RANGE_PRESET_RESOLUTION[range];
-  acc[resolution] ??= [];
-  acc[resolution].push(range);
-  return acc;
-}, {
-  "1m": [],
-  "5m": [],
-  "15m": [],
-  "30m": [],
-  "45m": [],
-  "1h": [],
-  "1d": [],
-  "1wk": [],
-  "1mo": [],
-});
 
 function getTimeRangeIndex(range: TimeRange): number {
   return TIME_RANGE_INDEX.get(range) ?? 0;
@@ -131,14 +111,6 @@ export function getChartResolutionLabel(resolution: ChartResolution): string {
 
 export function getPresetResolution(range: TimeRange): ManualChartResolution {
   return RANGE_PRESET_RESOLUTION[range];
-}
-
-function getManualResolutionOrderIndex(resolution: ManualChartResolution): number {
-  return CHART_RESOLUTION_ORDER.indexOf(resolution);
-}
-
-function getPresetBufferRange(range: TimeRange): TimeRange {
-  return RANGE_PRELOAD_BUFFER[range];
 }
 
 export function getNextBufferRange(range: TimeRange): TimeRange {
@@ -201,12 +173,6 @@ export function intersectChartResolutionSupport(
   }));
 }
 
-export function buildChartResolutionSupportMap(
-  support: readonly ChartResolutionSupport[],
-): ReadonlyMap<ManualChartResolution, TimeRange> {
-  return new Map(normalizeChartResolutionSupport(support).map((entry) => [entry.resolution, entry.maxRange] as const));
-}
-
 export function getSupportMaxRange(
   support: readonly ChartResolutionSupport[] | ReadonlyMap<ManualChartResolution, TimeRange>,
   resolution: ManualChartResolution,
@@ -221,11 +187,7 @@ function minTimeRange(left: TimeRange, right: TimeRange): TimeRange {
   return compareTimeRange(left, right) <= 0 ? left : right;
 }
 
-export function maxTimeRange(left: TimeRange, right: TimeRange): TimeRange {
-  return compareTimeRange(left, right) >= 0 ? left : right;
-}
-
-export function isTimeRangeAtOrBelow(candidate: TimeRange, maxRange: TimeRange): boolean {
+function isTimeRangeAtOrBelow(candidate: TimeRange, maxRange: TimeRange): boolean {
   return compareTimeRange(candidate, maxRange) <= 0;
 }
 
@@ -253,43 +215,6 @@ export function isRangePresetSupported(
   }
   const maxRange = getSupportMaxRange(support as readonly ChartResolutionSupport[], resolution);
   return maxRange !== null && isTimeRangeAtOrBelow(range, maxRange);
-}
-
-export function getWidestPresetForResolution(
-  resolution: ManualChartResolution,
-  maxRange: TimeRange,
-): TimeRange {
-  const presets = RANGE_PRESETS_BY_RESOLUTION[resolution] ?? [];
-  const supported = presets.filter((range) => isTimeRangeAtOrBelow(range, maxRange));
-  if (supported.length > 0) {
-    return supported[supported.length - 1]!;
-  }
-  const fallback = TIME_RANGE_ORDER.filter((range) => isTimeRangeAtOrBelow(range, maxRange));
-  return fallback[fallback.length - 1] ?? "1D";
-}
-
-export function getBestSupportedResolutionForPreset(
-  range: TimeRange,
-  support: readonly ChartResolutionSupport[] | ReadonlyMap<ManualChartResolution, TimeRange>,
-  preferredResolution = getPresetResolution(range),
-): ManualChartResolution | null {
-  const supportedResolutions = CHART_RESOLUTION_ORDER
-    .filter((resolution): resolution is ManualChartResolution => resolution !== "auto")
-    .filter((resolution) => {
-      const maxRange = getSupportMaxRange(support, resolution);
-      return maxRange !== null && isTimeRangeAtOrBelow(range, maxRange);
-    });
-
-  if (supportedResolutions.length === 0) return null;
-  if (supportedResolutions.includes(preferredResolution)) return preferredResolution;
-
-  const preferredIndex = getManualResolutionOrderIndex(preferredResolution);
-  const coarserResolution = supportedResolutions.find((resolution) => (
-    getManualResolutionOrderIndex(resolution) > preferredIndex
-  ));
-  if (coarserResolution) return coarserResolution;
-
-  return supportedResolutions[supportedResolutions.length - 1] ?? null;
 }
 
 export function getBestSupportedResolutionForVisibleWindow(
@@ -321,28 +246,4 @@ export function getBestSupportedResolutionForVisibleWindow(
   }
 
   return supportedResolutions[0] ?? null;
-}
-
-export function getNextFallbackResolution(
-  range: TimeRange,
-  currentResolution: ManualChartResolution,
-  support: readonly ChartResolutionSupport[] | ReadonlyMap<ManualChartResolution, TimeRange>,
-): ChartResolution | null {
-  const currentIndex = getManualResolutionOrderIndex(currentResolution);
-  const nextResolution = CHART_RESOLUTION_ORDER
-    .filter((resolution): resolution is ManualChartResolution => resolution !== "auto")
-    .find((resolution) => (
-      getManualResolutionOrderIndex(resolution) > currentIndex
-      && (() => {
-        const maxRange = getSupportMaxRange(support, resolution);
-        return maxRange !== null && isTimeRangeAtOrBelow(range, maxRange);
-      })()
-    ));
-
-  return nextResolution ?? "auto";
-}
-
-export function getCompatibleBufferRange(presetRange: TimeRange, maxRange: TimeRange | null): TimeRange {
-  const preloadRange = getPresetBufferRange(presetRange);
-  return maxRange ? clampTimeRangeToMaxRange(preloadRange, maxRange) : preloadRange;
 }

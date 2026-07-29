@@ -129,7 +129,7 @@ function reconcileBasePanels(
   ));
 }
 
-export function replaceChartSeriesFromExpression(
+function replaceChartSeriesFromExpression(
   spec: ChartSpec,
   expression: string,
 ): ChartSpec {

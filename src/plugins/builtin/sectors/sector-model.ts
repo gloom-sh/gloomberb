@@ -1,6 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 import type { PricePoint } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { getPricePointTimestamp } from "../../../utils/price-history";
 import {
   getSectorCollection,
   type SectorCollectionId,
@@ -99,13 +100,6 @@ export function updateRowsForCollection(
     ...rowsByCollection,
     [collectionId]: updater(normalizeRowsForCollection(rowsByCollection, collectionId)),
   };
-}
-
-function getPricePointTimestamp(point: PricePoint): number {
-  const value = point.date as Date | string | number | null | undefined;
-  if (value instanceof Date) return value.getTime();
-  if (value == null) return Number.NaN;
-  return new Date(value).getTime();
 }
 
 function getSortedHistory(history: readonly PricePoint[]): Array<{ point: PricePoint; timestamp: number }> {

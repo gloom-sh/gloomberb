@@ -1,7 +1,7 @@
 import { useEffect, type Dispatch } from "react";
 import { loadPersistedBrokerAccountMap } from "../../brokers/account-cache";
 import type { AppSessionSnapshot } from "../../core/state/session-persistence";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import { chatController } from "../../plugins/builtin/chat/controller";
@@ -36,7 +36,7 @@ interface UseAppStartupRuntimeOptions {
   refreshTickersBatch: InitializeAppStateArgs["refreshTickersBatch"];
   sessionSnapshot?: AppSessionSnapshot | null;
   state: AppState;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }
 
 export function useAppStartupRuntime({

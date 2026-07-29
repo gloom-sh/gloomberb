@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import type { RendererHost, UiHost } from "../../../ui/host";
@@ -190,7 +189,7 @@ export const webRendererHost: RendererHost = {
     try {
       return await navigator.clipboard.readText();
     } catch {
-      return await backendRequest<string>("host.readText");
+      return await backendRequest("host.readText");
     }
   },
   notify(notification) {

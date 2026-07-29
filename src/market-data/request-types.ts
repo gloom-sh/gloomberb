@@ -1,5 +1,5 @@
-import type { TimeRange } from "../components/chart/core/types";
-import type { ManualChartResolution } from "../components/chart/core/resolution";
+import type { TimeRange } from "../time-series/range";
+import type { ManualChartResolution } from "../time-series/resolution";
 import type { QuoteSubscriptionTarget } from "../types/data-provider";
 import type { BrokerContractRef } from "../types/instrument";
 import type { TickerRecord } from "../types/ticker";
@@ -95,7 +95,7 @@ export function quoteSubscriptionTargetFromTicker(
   return quoteSubscriptionTargetFromInstrument(instrument, route);
 }
 
-export function quoteSubscriptionTargetFromInstrument(
+function quoteSubscriptionTargetFromInstrument(
   instrument: InstrumentRef | null | undefined,
   route: QuoteSubscriptionTarget["route"] = "auto",
 ): QuoteSubscriptionTarget | null {

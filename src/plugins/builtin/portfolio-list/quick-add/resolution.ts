@@ -19,8 +19,10 @@ interface ResolvedQuickAdd {
 export type QuickAddValidation =
   | { status: "idle"; query: "" }
   | { status: "checking"; query: string }
-  | (ResolvedQuickAdd & { status: "ready" | "duplicate" })
-  | { status: "missing" | "error"; query: string; message: string };
+  | (ResolvedQuickAdd & { status: "ready" })
+  | (ResolvedQuickAdd & { status: "duplicate" })
+  | { status: "missing"; query: string; message: string }
+  | { status: "error"; query: string; message: string };
 
 export const IDLE_VALIDATION: QuickAddValidation = { status: "idle", query: "" };
 

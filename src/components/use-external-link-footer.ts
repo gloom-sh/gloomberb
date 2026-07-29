@@ -15,6 +15,7 @@ interface UseExternalLinkFooterOptions {
   info?: PaneFooterSegment[];
   hints?: PaneHint[];
   label?: string;
+  showHint?: boolean;
 }
 
 const EMPTY_INFO: PaneFooterSegment[] = [];
@@ -33,6 +34,7 @@ export function useExternalLinkFooter({
   info = EMPTY_INFO,
   hints = EMPTY_HINTS,
   label = "link",
+  showHint = true,
 }: UseExternalLinkFooterOptions) {
   const rendererHost = useRendererHost();
   const url = normalizeUrl(rawUrl);
@@ -68,10 +70,10 @@ export function useExternalLinkFooter({
       info: [...info, ...linkInfo],
       hints: [
         ...hints,
-        ...(url ? [{ id: "open", key: "o", label: "pen", onPress: openUrl }] : []),
+        ...(url && showHint ? [{ id: "open", key: "o", label: "pen", onPress: openUrl }] : []),
       ],
     };
-  }, [hints, info, label, openUrl, sourceLabel, url]);
+  }, [hints, info, label, openUrl, showHint, sourceLabel, url]);
 
   usePaneFooter(registrationId, () => footer, [footer]);
 

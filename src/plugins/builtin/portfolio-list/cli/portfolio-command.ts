@@ -1,4 +1,5 @@
 import { saveConfig } from "../../../../data/config/store";
+import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { cliStyles, renderStat } from "../../../../utils/cli-output";
@@ -16,115 +17,102 @@ import { renderCollectionOverview, showCollection } from "./render";
 import { parseFiniteNumber, requireManualPortfolio } from "./shared";
 
 async function listCollections(ctx: CliCommandContext) {
-  const { config, store, persistence } = await ctx.initConfigData();
-  const tickers = await store.loadAllTickers();
-  if (ctx.cliOptions.format !== "text") {
-    ctx.printResult({
-      data: {
-        portfolios: config.portfolios.map((portfolio) => ({
-          id: portfolio.id,
-          name: portfolio.name,
-          currency: portfolio.currency,
-          brokerId: portfolio.brokerId ?? "",
-          brokerInstanceId: portfolio.brokerInstanceId ?? "",
-          brokerAccountId: portfolio.brokerAccountId ?? "",
-          tickerCount: countCollectionTickers(tickers, "portfolios", portfolio.id),
-        })),
-        watchlists: config.watchlists.map((watchlist) => ({
-          id: watchlist.id,
-          name: watchlist.name,
-          tickerCount: countCollectionTickers(tickers, "watchlists", watchlist.id),
-        })),
-      },
-    });
-    persistence.close();
-    return;
-  }
-  console.log(renderCollectionOverview(config, tickers));
-  persistence.close();
+  await withConfigData(ctx, async ({ config, store }) => {
+    const tickers = await store.loadAllTickers();
+    if (ctx.cliOptions.format !== "text") {
+      ctx.printResult({
+        data: {
+          portfolios: config.portfolios.map((portfolio) => ({
+            id: portfolio.id,
+            name: portfolio.name,
+            currency: portfolio.currency,
+            brokerId: portfolio.brokerId ?? "",
+            brokerInstanceId: portfolio.brokerInstanceId ?? "",
+            brokerAccountId: portfolio.brokerAccountId ?? "",
+            tickerCount: countCollectionTickers(tickers, "portfolios", portfolio.id),
+          })),
+          watchlists: config.watchlists.map((watchlist) => ({
+            id: watchlist.id,
+            name: watchlist.name,
+            tickerCount: countCollectionTickers(tickers, "watchlists", watchlist.id),
+          })),
+        },
+      });
+      return;
+    }
+    console.log(renderCollectionOverview(config, tickers));
+  });
 }
 
 async function createPortfolioCommand(name: string, ctx: CliCommandContext) {
-  const { config, persistence } = await ctx.initConfigData();
-
-  try {
-    const result = createManualPortfolio(config, name, config.baseCurrency);
-    await saveConfig(result.config);
-    console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}".`));
-    console.log(renderStat("ID", result.portfolio.id));
-  } catch (error: any) {
-    ctx.closeAndFail(persistence, error?.message || `Failed to create portfolio "${name}".`);
-  }
-
-  persistence.close();
+  await withConfigData(ctx, async ({ config }) => {
+    try {
+      const result = createManualPortfolio(config, name, config.baseCurrency);
+      await saveConfig(result.config);
+      console.log(cliStyles.success(`Created portfolio "${result.portfolio.name}".`));
+      console.log(renderStat("ID", result.portfolio.id));
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : `Failed to create portfolio "${name}".`);
+    }
+  });
 }
 
 async function deletePortfolioCommand(name: string, ctx: CliCommandContext) {
-  const { config, store, persistence } = await ctx.initConfigData();
-
-  try {
-    const portfolio = requireManualPortfolio(config, name);
-    const result = deleteManualPortfolio(config, await store.loadAllTickers(), portfolio.id);
-    for (const ticker of result.tickers) {
-      await store.saveTicker(ticker);
+  await withConfigData(ctx, async ({ config, store }) => {
+    try {
+      const portfolio = requireManualPortfolio(config, name);
+      const result = deleteManualPortfolio(config, await store.loadAllTickers(), portfolio.id);
+      for (const ticker of result.tickers) {
+        await store.saveTicker(ticker);
+      }
+      await saveConfig(result.config);
+      console.log(cliStyles.success(`Deleted portfolio "${result.portfolio.name}".`));
+      console.log(renderStat("Cleaned Tickers", String(result.cleanedTickerCount)));
+      console.log(renderStat("Removed Positions", String(result.removedPositionCount)));
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : `Failed to delete portfolio "${name}".`);
     }
-    await saveConfig(result.config);
-    console.log(cliStyles.success(`Deleted portfolio "${result.portfolio.name}".`));
-    console.log(renderStat("Cleaned Tickers", String(result.cleanedTickerCount)));
-    console.log(renderStat("Removed Positions", String(result.removedPositionCount)));
-  } catch (error: any) {
-    ctx.closeAndFail(persistence, error?.message || `Failed to delete portfolio "${name}".`);
-  }
-
-  persistence.close();
+  });
 }
 
 async function addTickerToPortfolioCommand(portfolioName: string, symbol: string, ctx: CliCommandContext) {
-  const { config, store, dataProvider, persistence } = await ctx.initMarketData();
-
-  try {
-    const portfolio = requireManualPortfolio(config, portfolioName);
-    const ticker = await resolveTickerForCli(symbol, store, dataProvider);
-    const result = addTickerToPortfolio(ticker, portfolio.id);
-    if (!result.changed) {
-      console.log(cliStyles.warning(`${ticker.metadata.ticker} is already in "${portfolio.name}".`));
-      persistence.close();
-      return;
+  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+    try {
+      const portfolio = requireManualPortfolio(config, portfolioName);
+      const ticker = await resolveTickerForCli(symbol, store, dataProvider);
+      const result = addTickerToPortfolio(ticker, portfolio.id);
+      if (!result.changed) {
+        console.log(cliStyles.warning(`${ticker.metadata.ticker} is already in "${portfolio.name}".`));
+        return;
+      }
+      await store.saveTicker(result.ticker);
+      console.log(cliStyles.success(`Added ${result.ticker.metadata.ticker} to "${portfolio.name}".`));
+      if (result.ticker.metadata.name) {
+        console.log(renderStat("Name", result.ticker.metadata.name));
+      }
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : `Failed to add ${symbol} to "${portfolioName}".`);
     }
-    await store.saveTicker(result.ticker);
-    console.log(cliStyles.success(`Added ${result.ticker.metadata.ticker} to "${portfolio.name}".`));
-    if (result.ticker.metadata.name) {
-      console.log(renderStat("Name", result.ticker.metadata.name));
-    }
-  } catch (error: any) {
-    ctx.closeAndFail(persistence, error?.message || `Failed to add ${symbol} to "${portfolioName}".`);
-  }
-
-  persistence.close();
+  });
 }
 
 async function removeTickerFromPortfolioCommand(portfolioName: string, symbol: string, ctx: CliCommandContext) {
-  const { config, store, persistence } = await ctx.initConfigData();
-  const normalized = symbol.trim().toUpperCase();
+  await withConfigData(ctx, async ({ config, store }) => {
+    const normalized = symbol.trim().toUpperCase();
 
-  try {
-    const portfolio = requireManualPortfolio(config, portfolioName);
-    const ticker = await store.loadTicker(normalized);
-    if (!ticker) {
-      ctx.closeAndFail(persistence, `Ticker "${normalized}" was not found in your local data.`);
+    try {
+      const portfolio = requireManualPortfolio(config, portfolioName);
+      const ticker = await store.loadTicker(normalized);
+      if (!ticker) ctx.fail(`Ticker "${normalized}" was not found in your local data.`);
+      const result = removeTickerFromPortfolio(ticker, portfolio.id);
+      if (!result.changed) ctx.fail(`${normalized} is not in "${portfolio.name}".`);
+      await store.saveTicker(result.ticker);
+      console.log(cliStyles.success(`Removed ${normalized} from "${portfolio.name}".`));
+      console.log(renderStat("Removed Positions", String(result.removedPositionCount)));
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : `Failed to remove ${symbol} from "${portfolioName}".`);
     }
-    const result = removeTickerFromPortfolio(ticker, portfolio.id);
-    if (!result.changed) {
-      ctx.closeAndFail(persistence, `${normalized} is not in "${portfolio.name}".`);
-    }
-    await store.saveTicker(result.ticker);
-    console.log(cliStyles.success(`Removed ${normalized} from "${portfolio.name}".`));
-    console.log(renderStat("Removed Positions", String(result.removedPositionCount)));
-  } catch (error: any) {
-    ctx.closeAndFail(persistence, error?.message || `Failed to remove ${symbol} from "${portfolioName}".`);
-  }
-
-  persistence.close();
+  });
 }
 
 async function setPositionCommand(
@@ -135,29 +123,27 @@ async function setPositionCommand(
   rawCurrency: string | undefined,
   ctx: CliCommandContext,
 ) {
-  const { config, store, dataProvider, persistence } = await ctx.initMarketData();
-
-  try {
-    const portfolio = requireManualPortfolio(config, portfolioName);
-    const ticker = await resolveTickerForCli(symbol, store, dataProvider);
-    const shares = parseFiniteNumber(sharesValue, "Shares");
-    const avgCost = parseFiniteNumber(avgCostValue, "Average cost");
-    const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
-    const result = setManualPortfolioPosition(ticker, portfolio.id, {
-      shares,
-      avgCost,
-      currency,
-    });
-    await store.saveTicker(result.ticker);
-    console.log(cliStyles.success(`Set position for ${result.ticker.metadata.ticker} in "${portfolio.name}".`));
-    console.log(renderStat("Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })));
-    console.log(renderStat("Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })));
-    console.log(renderStat("Currency", currency));
-  } catch (error: any) {
-    ctx.closeAndFail(persistence, error?.message || `Failed to set position for ${symbol} in "${portfolioName}".`);
-  }
-
-  persistence.close();
+  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+    try {
+      const portfolio = requireManualPortfolio(config, portfolioName);
+      const ticker = await resolveTickerForCli(symbol, store, dataProvider);
+      const shares = parseFiniteNumber(sharesValue, "Shares");
+      const avgCost = parseFiniteNumber(avgCostValue, "Average cost");
+      const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
+      const result = setManualPortfolioPosition(ticker, portfolio.id, {
+        shares,
+        avgCost,
+        currency,
+      });
+      await store.saveTicker(result.ticker);
+      console.log(cliStyles.success(`Set position for ${result.ticker.metadata.ticker} in "${portfolio.name}".`));
+      console.log(renderStat("Shares", formatMarketQuantity(shares, { assetCategory: result.ticker.metadata.assetCategory })));
+      console.log(renderStat("Average Cost", formatMarketCostWithCurrency(avgCost, currency, { assetCategory: result.ticker.metadata.assetCategory })));
+      console.log(renderStat("Currency", currency));
+    } catch (error) {
+      ctx.fail(error instanceof Error ? error.message : `Failed to set position for ${symbol} in "${portfolioName}".`);
+    }
+  });
 }
 
 export const portfolioCliCommand: CliCommandDef = {

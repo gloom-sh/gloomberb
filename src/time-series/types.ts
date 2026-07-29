@@ -1,4 +1,4 @@
-import type { ChartResolution, TimeRange } from "../components/chart/core/types";
+import type { ChartResolution, TimeRange } from "./range";
 import type { InstrumentRef } from "../market-data/request-types";
 
 export const CHART_SPEC_VERSION = 1 as const;

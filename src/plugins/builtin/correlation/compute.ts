@@ -1,4 +1,5 @@
 import type { PricePoint } from "../../../types/financials";
+import { getPricePointTimestamp } from "../../../utils/price-history";
 
 export interface DatedReturn {
   dateKey: string;
@@ -10,21 +11,14 @@ export interface CorrelationResult {
   sampleSize: number;
 }
 
-function getPointTimestamp(point: PricePoint): number {
-  const value = point.date as Date | string | number | null | undefined;
-  if (value instanceof Date) return value.getTime();
-  if (value == null) return Number.NaN;
-  return new Date(value).getTime();
-}
-
 function toDateKey(point: PricePoint): string | null {
-  const timestamp = getPointTimestamp(point);
+  const timestamp = getPricePointTimestamp(point);
   if (!Number.isFinite(timestamp)) return null;
   return new Date(timestamp).toISOString().slice(0, 10);
 }
 
 function comparePricePointsByDate(left: PricePoint, right: PricePoint): number {
-  return getPointTimestamp(left) - getPointTimestamp(right);
+  return getPricePointTimestamp(left) - getPricePointTimestamp(right);
 }
 
 export function computeReturns(closes: number[]): number[] {
@@ -40,7 +34,7 @@ export function computeReturns(closes: number[]): number[] {
 
 export function computeDatedReturns(points: PricePoint[]): DatedReturn[] {
   const sorted = [...points]
-    .filter((point) => Number.isFinite(getPointTimestamp(point)) && Number.isFinite(point.close))
+    .filter((point) => Number.isFinite(getPricePointTimestamp(point)) && Number.isFinite(point.close))
     .sort(comparePricePointsByDate);
   const byDate = new Map<string, number>();
 

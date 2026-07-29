@@ -1,17 +1,11 @@
 import type { PluginRegistry } from "../../../../plugins/registry";
 import type { PersistedAuthUser } from "../../../../api-client";
 import { apiClient } from "../../../../api-client";
-
-interface PluginStateBackendSetEntry {
-  pluginId: string;
-  key: string;
-  value: unknown;
-  schemaVersion?: number;
-}
+import type { DesktopPluginStateRequest, DesktopPluginStateSetEntry } from "../../shared/protocol";
 
 interface PluginStateBackendStore {
   set(pluginId: string, key: string, value: unknown, schemaVersion?: number): void;
-  setMany(entries: PluginStateBackendSetEntry[]): void;
+  setMany(entries: DesktopPluginStateSetEntry[]): void;
   delete(pluginId: string, key: string): void;
 }
 
@@ -20,7 +14,7 @@ interface PersistedCloudSession {
   user?: PersistedAuthUser | null;
 }
 
-function normalizePluginStateSetEntry(entry: unknown): PluginStateBackendSetEntry | null {
+function normalizePluginStateSetEntry(entry: unknown): DesktopPluginStateSetEntry | null {
   if (!entry || typeof entry !== "object") return null;
   const record = entry as Record<string, unknown>;
   if (typeof record.pluginId !== "string" || typeof record.key !== "string") return null;
@@ -47,17 +41,18 @@ function syncBackendCloudAuthState(pluginId: string, key: string, value: unknown
 
 export function handleDesktopPluginStateRequest(
   store: PluginStateBackendStore,
-  method: string,
-  payload: Record<string, unknown>,
+  request: DesktopPluginStateRequest,
 ): null {
-  switch (method) {
-    case "pluginState.set":
-      store.set(payload.pluginId as string, payload.key as string, payload.value, payload.schemaVersion as number | undefined);
-      syncBackendCloudAuthState(payload.pluginId as string, payload.key as string, payload.value);
+  switch (request.method) {
+    case "pluginState.set": {
+      const { pluginId, key, value, schemaVersion } = request.payload;
+      store.set(pluginId, key, value, schemaVersion);
+      syncBackendCloudAuthState(pluginId, key, value);
       return null;
+    }
     case "pluginState.setMany": {
-      const entries = Array.isArray(payload.entries)
-        ? payload.entries.flatMap((entry) => {
+      const entries = Array.isArray(request.payload.entries)
+        ? request.payload.entries.flatMap((entry) => {
             const normalized = normalizePluginStateSetEntry(entry);
             return normalized ? [normalized] : [];
           })
@@ -68,12 +63,16 @@ export function handleDesktopPluginStateRequest(
       }
       return null;
     }
-    case "pluginState.delete":
-      store.delete(payload.pluginId as string, payload.key as string);
-      syncBackendCloudAuthState(payload.pluginId as string, payload.key as string, null);
+    case "pluginState.delete": {
+      const { pluginId, key } = request.payload;
+      store.delete(pluginId, key);
+      syncBackendCloudAuthState(pluginId, key, null);
       return null;
-    default:
-      throw new Error(`Unknown plugin state method: ${method}`);
+    }
+    default: {
+      const exhaustive: never = request;
+      throw new Error(`Unknown plugin state method: ${String(exhaustive)}`);
+    }
   }
 }
 

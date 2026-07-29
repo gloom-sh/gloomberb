@@ -1,5 +1,4 @@
 import { Box, Text, TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Button, Spinner } from "../../ui";
 import {
@@ -281,6 +280,7 @@ function CommandBarConfirmBody({
   queryDisplayWidth: number;
   onConfirm: () => void;
 }) {
+  const themeColors = useThemeColors();
   return (
     <Box flexDirection="column" height={bodyHeight} paddingX={contentPadding}>
       {route.body.map((line, index) => (
@@ -291,7 +291,7 @@ function CommandBarConfirmBody({
       <Box height={1} />
       {route.error && (
         <Box height={1}>
-          <Text fg={colors.negative}>{truncateText(route.error, queryDisplayWidth)}</Text>
+          <Text fg={themeColors.negative}>{truncateText(route.error, queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.pending && (

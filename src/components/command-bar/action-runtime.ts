@@ -4,7 +4,7 @@ import {
   type MutableRefObject,
   type SetStateAction,
 } from "react";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
@@ -45,7 +45,7 @@ interface UseCommandBarActionRuntimeOptions {
   state: AppState;
   stateRef: MutableRefObject<AppState>;
   themePickerRef: MutableRefObject<ThemePickerHandle | null>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   tickers: AppState["tickers"];
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }

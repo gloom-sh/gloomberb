@@ -115,7 +115,7 @@ export function usePredictionControllerKeyboard({
     if (!scrollBox) return;
     const maxScrollTop = Math.max(
       0,
-      scrollBox.scrollHeight - scrollBox.viewport.height,
+      scrollBox.scrollHeight - (scrollBox.viewport?.height ?? 0),
     );
     scrollBox.scrollTop = Math.max(
       0,

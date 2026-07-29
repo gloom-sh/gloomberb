@@ -7,16 +7,15 @@ import { setSharedNewsService } from "../news/hooks";
 import { PluginRegistry } from "../plugins/registry";
 import { AssetDataRouter } from "../sources/provider-router";
 import { assetDataProvider, newsProvider } from "../capabilities";
-import type { AppConfig } from "../types/config";
 import type { DataProvider } from "../types/data-provider";
-import type { GloomPlugin } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../utils/perf-marks";
 import { setIbkrPortfolioPerformanceResourceStore } from "../plugins/ibkr/portfolio-performance";
+import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
 
 const servicesLog = debugLog.createLogger("services");
 
-export interface AppServices {
+export interface AppServices extends AppRuntimeServices {
   persistence: AppPersistence;
   tickerRepository: TickerRepository;
   providerRouter: AssetDataRouter;
@@ -31,10 +30,7 @@ export interface AppServices {
 export function createAppServices({
   config,
   plugins,
-}: {
-  config: AppConfig;
-  plugins: readonly GloomPlugin[];
-}): AppServices {
+}: AppServicesFactoryOptions): AppServices {
   servicesLog.info("create services start", {
     pluginCount: plugins.length,
     brokerInstanceCount: config.brokerInstances.length,
@@ -49,14 +45,20 @@ export function createAppServices({
   const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence);
   const newsService = new NewsService();
   pluginRegistry.capabilities.register("core", assetDataProvider(providerRouter));
-  pluginRegistry.capabilities.register("core", newsProvider({
-    id: "core",
-    name: "News",
-    provider: {
-      fetchNews: async (query) => (await newsService.load(query)).articles,
-      getCachedNews: (query) => newsService.getQueryState(query).articles,
-    },
-  }));
+  pluginRegistry.capabilities.register("core", {
+    ...newsProvider({
+      id: "core",
+      name: "News",
+      provider: {
+        fetchNews: async (query) => (await newsService.load(query)).articles,
+        getCachedNews: (query) => newsService.getQueryState(query).articles,
+      },
+    }),
+    // This capability exposes the aggregate service to remote renderers. Giving
+    // it the router source id prevents the router from rediscovering its own
+    // aggregate facade alongside the underlying plugin news sources.
+    sourceId: providerRouter.id,
+  });
 
   providerRouter.attachRegistry(pluginRegistry);
   pluginRegistry.getConfigFn = () => config;

@@ -2,6 +2,7 @@ import { Box, ScrollBox, Text } from "../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { t } from "../../i18n";
+import { useAppLanguage } from "../../i18n/react";
 import { displayWidth, formatTimeAgo } from "../../utils/format";
 import { colors } from "../../theme/colors";
 import { isPlainKey } from "../../utils/keyboard";
@@ -148,6 +149,7 @@ export function FeedDataTableStackView({
   onOpenItem,
   onOpenItemIdChange,
 }: FeedDataTableStackViewProps) {
+  const language = useAppLanguage();
   const [sortPreference, setSortPreference] = useState<SortPreference>({
     columnId: "time",
     direction: "desc",
@@ -157,7 +159,7 @@ export function FeedDataTableStackView({
   const detailTextWidth = Math.max(width - 2, 12);
   const columns = useMemo(
     () => buildColumns(width, t(sourceLabel), t(titleLabel), items),
-    [items, sourceLabel, titleLabel, width],
+    [items, language, sourceLabel, titleLabel, width],
   );
   const sortedRows = useMemo(() => {
     return sortIndexedStackRows(items, sortPreference, compareRows);

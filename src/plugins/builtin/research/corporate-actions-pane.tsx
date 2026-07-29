@@ -19,8 +19,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import { formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
-import { useResolvedEntryValue, useSecFilingContent, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
-import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { useAssetData } from "../../runtime";
@@ -28,12 +27,15 @@ import { handleRefreshKey, loadingErrorFooterInfo, refreshFooterHint } from "../
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
 import {
   documentContentKey,
-  documentContentTarget,
   documentHeading,
   formatCompactDocumentLabel,
   isDefaultVisibleFilingDocument,
   isInlineExhibitDocument,
 } from "../sec/filing-documents";
+import {
+  buildInlineFilingContentTargets,
+  useSecFilingContentCache,
+} from "../sec/filing-content";
 
 type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split";
 
@@ -523,9 +525,6 @@ export function CorporateActionsView({
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
-  const [inlineContent, setInlineContent] = useState<Map<string, string | null>>(new Map());
-  const documentFetchStartedRef = useRef(new Set<string>());
-  const documentFetchGenRef = useRef(0);
   const todayKey = todayDateKey();
   const futureRowBackground = blendHex(colors.bg, colors.positive, 0.16);
   const loading = actionsLoading || analystLoading || financialsLoading;
@@ -561,16 +560,26 @@ export function CorporateActionsView({
     || documentsEntry?.phase === "loading"
     || documentsEntry?.phase === "refreshing"
   );
-  const hasInlineExhibits = documents.some(isInlineExhibitDocument);
-  const filingContentEntry = useSecFilingContent(
-    matchedFiling && !documentsLoading && !hasInlineExhibits ? matchedFiling : null,
+  const inlineTargets = useMemo(
+    () => buildInlineFilingContentTargets(matchedFiling, documents),
+    [documents, matchedFiling],
   );
-  const primaryContent = useResolvedEntryValue(filingContentEntry);
-  const primaryContentLoading = !!matchedFiling && (
-    filingContentEntry?.phase === "idle"
-    || filingContentEntry?.phase === "loading"
-    || filingContentEntry?.phase === "refreshing"
-  );
+  const filingContentTargets = useMemo(() => {
+    if (!matchedFiling || documentsLoading) return [];
+    return inlineTargets.length > 0 ? inlineTargets : [matchedFiling];
+  }, [documentsLoading, inlineTargets, matchedFiling]);
+  const { contentCache: inlineContent } = useSecFilingContentCache({
+    scopeKey: `${symbol}:${exchange}`,
+    targets: filingContentTargets,
+  });
+  const hasInlineExhibits = inlineTargets.length > 0;
+  const primaryContent = matchedFiling
+    ? inlineContent.get(matchedFiling.accessionNumber) ?? null
+    : null;
+  const primaryContentLoading = !!matchedFiling
+    && !documentsLoading
+    && !hasInlineExhibits
+    && !inlineContent.has(matchedFiling.accessionNumber);
 
   useEffect(() => {
     if (rows.length > 0 && selectedIdx >= rows.length) {
@@ -590,43 +599,6 @@ export function CorporateActionsView({
     if (scrollBox) scrollBox.scrollTop = 0;
   }, [openRowId]);
 
-  useEffect(() => {
-    setInlineContent(new Map());
-    documentFetchStartedRef.current.clear();
-    documentFetchGenRef.current += 1;
-  }, [exchange, symbol]);
-
-  useEffect(() => {
-    if (!matchedFiling || documents.length === 0) return;
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator) return;
-    const gen = documentFetchGenRef.current;
-    const documentsToFetch = documents.filter((document) => {
-      if (!isInlineExhibitDocument(document)) return false;
-      const key = documentContentKey(matchedFiling, document);
-      return !inlineContent.has(key) && !documentFetchStartedRef.current.has(key);
-    });
-    if (documentsToFetch.length === 0) return;
-
-    for (const document of documentsToFetch) {
-      documentFetchStartedRef.current.add(documentContentKey(matchedFiling, document));
-    }
-
-    (async () => {
-      for (const document of documentsToFetch) {
-        if (documentFetchGenRef.current !== gen) return;
-        const key = documentContentKey(matchedFiling, document);
-        try {
-          const entry = await coordinator.loadSecFilingContent(documentContentTarget(matchedFiling, document));
-          if (documentFetchGenRef.current !== gen) return;
-          setInlineContent((prev) => new Map(prev).set(key, entry.data ?? entry.lastGoodData ?? null));
-        } catch {
-          if (documentFetchGenRef.current !== gen) return;
-          setInlineContent((prev) => new Map(prev).set(key, null));
-        }
-      }
-    })();
-  }, [documents, inlineContent, matchedFiling]);
   const detailBody = openRow
     ? buildEventDetailBody({
         row: openRow,

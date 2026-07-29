@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../../components/ui/list-view";
-import { blendHex, colors, hoverBg } from "../../../../theme/colors";
+import { blendHex, hoverBg, type ThemeColors } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import {
   CONTROL_RADIUS,
@@ -19,6 +19,7 @@ function DefaultDesktopRow({
   item: ListViewItem;
   selected: boolean;
 }) {
+  const colors = useThemeColors();
   return (
     <Box
       flexDirection="row"
@@ -50,7 +51,7 @@ function DefaultDesktopRow({
   );
 }
 
-function listRowStyle(selected: boolean): CSSProperties {
+function listRowStyle(selected: boolean, colors: ThemeColors): CSSProperties {
   return {
     borderRadius: CONTROL_RADIUS,
     border: `1px solid ${selected ? colors.borderFocused : "transparent"}`,
@@ -85,12 +86,12 @@ export function WebListView({
   selectOnHover = false,
   autoScrollToIndex = true,
 }: ListViewProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const baseBg = bgColor ?? colors.bg;
-  const activeBg = selectedBgColor ?? selectedPanelFill();
-  const rowHoverBg = hoverBgColor ?? hoverBg();
+  const activeBg = selectedBgColor ?? selectedPanelFill(colors);
+  const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
   const effectiveSurface = surface ?? (scrollable ? "framed" : "plain");
@@ -102,10 +103,10 @@ export function WebListView({
       backgroundColor: "transparent",
     }
     : {
-      border: `1px solid ${panelBorder()}`,
+      border: `1px solid ${panelBorder(colors)}`,
       borderRadius: CONTROL_RADIUS,
       padding: 4,
-      backgroundColor: subtlePanelFill(),
+      backgroundColor: subtlePanelFill(colors),
     };
 
   useEffect(() => {
@@ -113,7 +114,7 @@ export function WebListView({
     const scrollBox = scrollRef.current;
     if (!scrollBox) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
-    const viewportHeight = Math.max(scrollBox.viewport.height, 1);
+    const viewportHeight = Math.max(scrollBox.viewport?.height ?? 0, 1);
     const rowTop = safeIndex * rowHeight;
     const rowBottom = rowTop + rowHeight;
     if (rowTop < scrollBox.scrollTop) {
@@ -127,7 +128,9 @@ export function WebListView({
     if (!scrollable) return;
     const scrollBox = scrollRef.current;
     if (!scrollBox) return;
-    scrollBox.verticalScrollBar.visible = items.length * rowHeight > scrollBox.viewport.height;
+    if (scrollBox.verticalScrollBar) {
+      scrollBox.verticalScrollBar.visible = items.length * rowHeight > (scrollBox.viewport?.height ?? 0);
+    }
   }, [items.length, height, flexGrow, rowHeight, scrollable]);
 
   const rows = items.length === 0
@@ -163,7 +166,7 @@ export function WebListView({
             onActivate?.(item, index);
           }}
           data-gloom-role="desktop-list-row"
-          style={listRowStyle(selected)}
+          style={listRowStyle(selected, colors)}
         >
           {renderRow
             ? renderRow(item, state, index)
@@ -196,9 +199,9 @@ export function WebListView({
       {showSelectedDescription && selectedItem?.description && (
         <Box
           flexDirection="row"
-          backgroundColor={subtlePanelFill()}
+          backgroundColor={subtlePanelFill(colors)}
           style={{
-            border: `1px solid ${panelBorder()}`,
+            border: `1px solid ${panelBorder(colors)}`,
             borderRadius: CONTROL_RADIUS,
             paddingInline: 10,
           }}

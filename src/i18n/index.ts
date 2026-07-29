@@ -77,13 +77,25 @@ function detectLanguage(): AppLanguage {
 }
 
 let currentLanguage: AppLanguage = detectLanguage();
+const languageListeners = new Set<() => void>();
+
+function updateLanguage(language: AppLanguage): void {
+  if (currentLanguage === language) return;
+  currentLanguage = language;
+  for (const listener of languageListeners) listener();
+}
 
 export function getLanguage(): AppLanguage {
   return currentLanguage;
 }
 
 export function setLanguage(language: AppLanguage): void {
-  currentLanguage = language;
+  updateLanguage(language);
+}
+
+export function subscribeLanguage(listener: () => void): () => void {
+  languageListeners.add(listener);
+  return () => languageListeners.delete(listener);
 }
 
 /**
@@ -94,13 +106,16 @@ export function setLanguage(language: AppLanguage): void {
 export function applyLanguageFromConfig(config: { language?: string } | null | undefined): void {
   const override = getEnvironmentLanguageOverride();
   if (override) {
-    currentLanguage = override;
+    updateLanguage(override);
     return;
   }
   const configured = config?.language;
-  if (!configured || configured === "auto") return;
+  if (!configured || configured === "auto") {
+    updateLanguage(detectLanguage());
+    return;
+  }
   const normalized = normalizeLanguageTag(configured);
-  if (normalized) currentLanguage = normalized;
+  if (normalized) updateLanguage(normalized);
 }
 
 /**
@@ -108,8 +123,10 @@ export function applyLanguageFromConfig(config: { language?: string } | null | u
  * command). "auto" re-runs environment detection.
  */
 export function applyLanguagePreference(preference: LanguagePreference): void {
-  currentLanguage = getEnvironmentLanguageOverride()
-    ?? (preference === "auto" ? detectLanguage() : preference);
+  updateLanguage(
+    getEnvironmentLanguageOverride()
+      ?? (preference === "auto" ? detectLanguage() : preference),
+  );
 }
 
 /**

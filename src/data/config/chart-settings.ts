@@ -1,4 +1,4 @@
-import type { ChartResolution, TimeRange } from "../../components/chart/core/types";
+import type { ChartResolution, TimeRange } from "../../time-series/range";
 import type { LayoutConfig, PaneBinding } from "../../types/config";
 import type {
   ChartPanelSpec,
@@ -55,6 +55,7 @@ export interface LegacyChartIndicatorSelection {
 }
 
 export interface LegacyChartMigrationContext {
+  migrateLegacy?: boolean;
   defaultRenderMode?: SeriesStyle;
   indicatorSelection?: LegacyChartIndicatorSelection;
 }
@@ -362,6 +363,7 @@ export function migrateChartPaneSettings(
   settings: Record<string, unknown> | undefined,
   context: LegacyChartMigrationContext = {},
 ): Record<string, unknown> | undefined {
+  if (context.migrateLegacy === false) return settings;
   if (paneId === "chart-composer") {
     const retained = stripKeys(settings, [
       "chartAxisMode",
@@ -493,15 +495,6 @@ export function extractLegacyChartIndicatorSelection(
   return state.chartIndicatorsVersion === 2
     ? { ids, explicit: true }
     : { ids: normalizedLegacyIndicatorIds(["volume", ...ids]), explicit: true };
-}
-
-export function hasLegacyChartIndicatorConfig(
-  pluginConfig: Record<string, Record<string, unknown>>,
-): boolean {
-  return ["ticker-research", "ticker-detail", "company-research"].some((pluginId) => {
-    const state = pluginConfig[pluginId];
-    return hasOwn(state, "chartIndicators") || hasOwn(state, "chartIndicatorsVersion");
-  });
 }
 
 export function stripLegacyChartPluginConfig(

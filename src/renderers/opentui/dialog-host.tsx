@@ -2,6 +2,10 @@ import type { ReactNode } from "react";
 import { useMemo } from "react";
 import {
   DialogProvider as OpenTuiDialogProvider,
+  type AlertContext as OpenTuiAlertContext,
+  type AlertOptions as OpenTuiAlertOptions,
+  type PromptContext as OpenTuiPromptContext,
+  type PromptOptions as OpenTuiPromptOptions,
   useDialog as useOpenTuiDialog,
   useDialogState as useOpenTuiDialogState,
 } from "@opentui-ui/dialog/react";
@@ -45,9 +49,21 @@ function OpenTuiDialogBridge({ children }: { children: ReactNode }) {
   const openTuiDialog = useOpenTuiDialog();
   const isOpen = useOpenTuiDialogState((state) => state.isOpen);
   const dialog = useMemo<DialogApi>(() => {
-    const wrapOptions = (options: Record<string, unknown>) => ({
+    const wrapAlertOptions = (options: Record<string, unknown>): OpenTuiAlertOptions => ({
       ...options,
-      content: (context: Record<string, unknown>) => {
+      content: (context: OpenTuiAlertContext) => {
+        const dialogId = normalizeDialogId(context.dialogId);
+        return (
+          <OpenTuiDialogContentBridge dialog={dialog} dialogId={dialogId}>
+            {renderDialogContent(options.content, { ...context, dialogId })}
+          </OpenTuiDialogContentBridge>
+        );
+      },
+    });
+
+    const wrapPromptOptions = <T,>(options: Record<string, unknown>): OpenTuiPromptOptions<T> => ({
+      ...options,
+      content: (context: OpenTuiPromptContext<T>) => {
         const dialogId = normalizeDialogId(context.dialogId);
         return (
           <OpenTuiDialogContentBridge dialog={dialog} dialogId={dialogId}>
@@ -58,8 +74,8 @@ function OpenTuiDialogBridge({ children }: { children: ReactNode }) {
     });
 
     return {
-      alert: (options) => openTuiDialog.alert(wrapOptions(options)),
-      prompt: (options) => openTuiDialog.prompt(wrapOptions(options)),
+      alert: (options) => openTuiDialog.alert(wrapAlertOptions(options)),
+      prompt: <T,>(options: Record<string, unknown>) => openTuiDialog.prompt<T>(wrapPromptOptions<T>(options)),
     };
   }, [openTuiDialog]);
 

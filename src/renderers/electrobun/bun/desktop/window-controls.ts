@@ -1,4 +1,6 @@
-export type DesktopWindowControlAction = "minimize" | "toggle-maximize" | "close";
+import type { DesktopWindowControlAction } from "../../shared/protocol";
+
+export type { DesktopWindowControlAction } from "../../shared/protocol";
 
 interface DesktopWindowFrame {
   x: number;

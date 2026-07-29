@@ -1,7 +1,6 @@
-import type { PricePoint, TickerFinancials } from "../../types/financials";
+import type { TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
-import type { TimeRange } from "../../components/chart/core/types";
-import { subtractTimeRange } from "../../components/chart/core/date-window";
+export { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { CHART_COMPOSER_PANE_ID, LEGACY_TICKER_DETAIL_PANE_ID } from "../../types/config";
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
@@ -101,20 +100,4 @@ export function collectShotSymbols(resolved: ResolvedPaneFunction, rawArg: strin
     symbols = [...symbols, "SPY"];
   }
   return [...new Set(symbols.map(cleanTickerInput).filter(Boolean))];
-}
-
-export function clipPriceHistoryToRange(points: PricePoint[], range: TimeRange): PricePoint[] {
-  if (range === "ALL" || points.length === 0) return points;
-  const dated = points.flatMap((point) => {
-    const date = point.date instanceof Date ? point.date : new Date(point.date);
-    return Number.isFinite(date.getTime()) ? [{ point, date }] : [];
-  });
-  const end = dated.reduce<Date | null>((latest, entry) => (
-    !latest || entry.date.getTime() > latest.getTime() ? entry.date : latest
-  ), null);
-  if (!end) return [];
-  const start = subtractTimeRange(end, range);
-  return dated
-    .filter(({ date }) => date.getTime() >= start.getTime() && date.getTime() <= end.getTime())
-    .map(({ point }) => point);
 }

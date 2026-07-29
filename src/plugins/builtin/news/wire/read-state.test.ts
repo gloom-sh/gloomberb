@@ -3,6 +3,7 @@ import {
   MAX_READ_ARTICLE_IDS,
   markNewsArticleRead,
   normalizeNewsReadState,
+  type NewsReadState,
 } from "./read-state";
 
 describe("news read state", () => {
@@ -26,5 +27,11 @@ describe("news read state", () => {
     expect(state.articleIds).toHaveLength(MAX_READ_ARTICLE_IDS);
     expect(state.articleIds[0]).toBe("id-0");
     expect(state.articleIds.at(-1)).toBe(`id-${MAX_READ_ARTICLE_IDS - 1}`);
+  });
+
+  test("repairs persisted state with a missing article list", () => {
+    const state = normalizeNewsReadState({} as NewsReadState);
+
+    expect(state).toEqual({ articleIds: [] });
   });
 });

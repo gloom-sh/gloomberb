@@ -477,7 +477,7 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
     setStreamingOutput("");
 
     let streamedOutput = "";
-    let completedAgentMessages: AiAgentHistoryMessage[] | null = null;
+    let completedAgentMessages: AiAgentHistoryMessage[] = [];
     try {
       const controller = runAiPrompt({
         providerId: provider.id,
@@ -499,7 +499,7 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
       if (!mountedRef.current) return;
       setRunningMessageId(null);
       setStreamingOutput("");
-      const transcriptDelta = completedAgentMessages?.length
+      const transcriptDelta = completedAgentMessages.length
         ? completedAgentMessages
         : [
             { role: "user" as const, content: prompt },

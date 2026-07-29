@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import type { Dispatch, ReactNode } from "react";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
@@ -9,14 +9,7 @@ import type { RemoteControlRequest, RemoteControlResponse } from "./types";
 
 export type RemoteControlHandler = (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
 
-const RemoteControlHandlerContext = createContext<RemoteControlHandler | null>(null);
-
-export function useRemoteControlHandler(): RemoteControlHandler | null {
-  return useContext(RemoteControlHandlerContext);
-}
-
 export interface RemoteControlAdapter {
-  handleRequest?: RemoteControlHandler;
   startServer?(options: { dataDir: string; handle: RemoteControlHandler }): void | (() => void | Promise<void>);
   registerHandler?(handler: RemoteControlHandler | null): void | (() => void);
 }
@@ -82,9 +75,5 @@ export function RemoteControlHost({
     };
   }, [adapter, controller]);
 
-  return (
-    <RemoteControlHandlerContext value={adapter?.handleRequest ?? (adapter ? controller.handle : null)}>
-      {children}
-    </RemoteControlHandlerContext>
-  );
+  return children;
 }

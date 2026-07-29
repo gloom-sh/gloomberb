@@ -13,7 +13,7 @@ import { shouldLogProviderError } from "../provider-errors";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
 import {
   firstProviderResult,
-  makeRouterRevalidationKey,
+  makeRouterRequestIdentity,
   resolveProviderBySourceKey,
   scheduleRouterRevalidation,
 } from "./routing";
@@ -24,15 +24,20 @@ export class ProviderRouterDocumentRoutes {
   constructor(private readonly deps: ProviderRouterCoreDeps) {}
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
-    const entityKey = this.deps.getEntityKey(ticker, context?.instrument);
+    const identity = makeRouterRequestIdentity(this.deps, {
+      kind: "sec-filings",
+      ticker,
+      context,
+      variantParts: [["exchange", canonicalExchange(exchange)], ["count", count]],
+    });
     const variantKeys = [
-      buildVariantKey([["exchange", canonicalExchange(exchange)], ["count", count]]),
+      identity.variantKey,
       buildVariantKey([["count", count]]),
       "",
     ];
-    const cached = selectCachedResource<SecFilingItem[]>(this.deps.resources, "sec-filings", entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
+    const cached = selectCachedResource<SecFilingItem[]>(this.deps.resources, identity.kind, identity.entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
     if (cached) {
-      scheduleRouterRevalidation(this.revalidationInFlight, makeRouterRevalidationKey(this.deps, "sec-filings", ticker, context, count), async () => {
+      scheduleRouterRevalidation(this.revalidationInFlight, identity.revalidationKey, async () => {
         await this.revalidateSecFilings(ticker, count, exchange, context);
       });
       return cached.value;

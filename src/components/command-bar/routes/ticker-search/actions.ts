@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import type { AppState } from "../../../../state/app/context";
-import type { TickerRepository } from "../../../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import {
   rankTickerSearchItems,
@@ -19,7 +19,7 @@ interface UseCommandBarTickerSearchActionsOptions {
   dispatch: (action: any) => void;
   focusTicker: (symbol: string, options?: { forceNewPane?: boolean }) => void;
   pluginRegistry: Pick<PluginRegistry, "events">;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   tickers: AppState["tickers"];
 }
 

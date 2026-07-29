@@ -10,6 +10,8 @@ import {
 import type { PredictionListRow } from "../types";
 import { sortPredictionOutcomeMarkets } from "../outcome-order";
 
+type OutcomePointerEvent = { preventDefault(): void };
+
 export function PredictionMarketOutcomesView({
   detailWidth,
   onSelectMarket,
@@ -54,7 +56,7 @@ export function PredictionMarketOutcomesView({
             flexDirection="row"
             height={1}
             backgroundColor={selected ? colors.selected : undefined}
-            onMouseDown={(event) => {
+            onMouseDown={(event: OutcomePointerEvent) => {
               event.preventDefault();
               onSelectMarket(market.key);
             }}

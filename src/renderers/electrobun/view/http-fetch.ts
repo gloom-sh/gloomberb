@@ -1,15 +1,7 @@
-/// <reference lib="dom" />
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
+import type { DesktopHttpFetchResponse } from "../shared/protocol";
 import { backendRequest } from "./backend-rpc";
-
-interface ElectrobunHttpFetchResponse {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  setCookie?: string[];
-  body: string;
-}
 
 const CLOUD_MARKET_HTTP_TIMEOUT_MS = 10_000;
 
@@ -81,8 +73,8 @@ async function requestBackendHttpFetch(
   url: string,
   init?: RequestInit,
   timeoutMs?: number,
-): Promise<ElectrobunHttpFetchResponse> {
-  return backendRequest<ElectrobunHttpFetchResponse>("http.fetch", {
+): Promise<DesktopHttpFetchResponse> {
+  return backendRequest("http.fetch", {
     url,
     init: {
       method: init?.method,

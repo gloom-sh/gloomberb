@@ -1,5 +1,5 @@
 import type { CliCommandDef } from "../../types/plugin";
-import type { TimeRange } from "../../components/chart/core/types";
+import type { TimeRange } from "../../time-series/range";
 import type { EarningsEvent, QuoteBatchResult, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
@@ -12,6 +12,7 @@ import type {
 } from "../../types/financials";
 import { formatMarketPriceWithCurrency } from "../../market-data/market/format";
 import { formatCompact } from "../../utils/format";
+import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 
 const VALID_RANGES = new Set<TimeRange>(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"]);
@@ -202,8 +203,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
   const symbols = normalizeSymbols(args);
   if (symbols.length === 0) ctx.fail("Usage: gloomberb quote <symbol...>");
 
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const results = await market.dataProvider.getQuotesBatch(
       symbols.map((symbol) => ({ symbol, exchange })),
       { forceRefresh: ctx.cliOptions.refresh },
@@ -214,9 +214,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       error: errorMessage(result.error),
     }));
     ctx.printResult({ data }, { rows: quoteRows, columns: quoteColumns() });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -224,8 +222,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const range = parseRange(takeOption(args, "--range"));
   const requestedExchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb history <symbol> [--range 1Y]", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const localTicker = requestedExchange ? null : await market.store.loadTicker(symbol);
     const exchange = requestedExchange || localTicker?.metadata.exchange || "";
     const points = await market.dataProvider.getPriceHistory(symbol, exchange, range);
@@ -240,17 +237,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "volume", header: "Volume", align: "right" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], fundamentalsOnly = false) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), fundamentalsOnly ? "Usage: gloomberb fundamentals <symbol>" : "Usage: gloomberb financials <symbol>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const financials = await market.dataProvider.getTickerFinancials(symbol, exchange, {
       cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
     });
@@ -285,17 +279,14 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         { key: "eps", header: "EPS", align: "right" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
   const ticker = args[0]?.toUpperCase();
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const limit = ctx.cliOptions.limit ?? 20;
     const articles = await market.dataProvider.getNews({
       feed: feed ?? (ticker ? "ticker" : "latest"),
@@ -313,9 +304,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
         { key: "url", header: "URL" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -323,8 +312,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const count = parsePositiveInt(takeOption(args, "--count"), ctx.cliOptions.limit ?? 15, "Count", ctx);
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb filings <symbol>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const filings = await market.dataProvider.getSecFilings(symbol, count, exchange);
     ctx.printResult({ data: filings, metadata: { symbol } }, {
       rows: filingRows,
@@ -335,17 +323,14 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "url", header: "URL" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runHolders(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], ownerTypes?: Set<string>) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb holders <symbol>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const data = await market.dataProvider.getHolders(symbol, exchange);
     ctx.printResult({ data, metadata: { symbol, summary: data.summary } }, {
       rows: (holderData) => holderRows(holderData, ownerTypes),
@@ -358,17 +343,14 @@ async function runHolders(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "percentHeld", header: "% Held", align: "right" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb analyst <symbol>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const data = await market.dataProvider.getAnalystResearch(symbol, exchange);
     ctx.printResult({
       data,
@@ -388,17 +370,14 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "target", header: "Target", align: "right" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb events <symbol>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const data = await market.dataProvider.getCorporateActions(symbol, exchange);
     ctx.printResult({ data, metadata: { symbol } }, {
       rows: corporateActionRows,
@@ -408,9 +387,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
         { key: "detail", header: "Detail" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
@@ -418,8 +395,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const expiration = takeOption(args, "--expiration");
   const exchange = takeOption(args, "--exchange") ?? "";
   const symbol = requireArg(args[0]?.toUpperCase(), "Usage: gloomberb options <symbol>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const chain = await market.dataProvider.getOptionsChain(
       symbol,
       exchange,
@@ -439,15 +415,12 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "openInterest", header: "OI", align: "right" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const currency = requireArg(rawArgs[0]?.toUpperCase(), "Usage: gloomberb fx <currency>", ctx);
-  const market = await ctx.initMarketData();
-  try {
+  await withMarketData(ctx, async (market) => {
     const rate = await market.dataProvider.getExchangeRate(currency);
     ctx.printResult({ data: [{ currency, baseCurrency: market.config.baseCurrency, rate }] }, {
       columns: [
@@ -456,16 +429,13 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
         { key: "rate", header: "Rate", align: "right" },
       ],
     });
-  } finally {
-    market.persistence.close();
-  }
+  });
 }
 
 async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const symbols = normalizeSymbols([...rawArgs]);
   if (symbols.length === 0) ctx.fail("Usage: gloomberb earnings <symbol...>");
-  const services = await ctx.initServices();
-  try {
+  await withCliServices(ctx, async (services) => {
     const events = await services.dataProvider.getEarningsCalendar(symbols);
     ctx.printResult({ data: events }, {
       rows: earningsRows,
@@ -478,9 +448,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
         { key: "epsActual", header: "EPS", align: "right" },
       ],
     });
-  } finally {
-    services.destroy();
-  }
+  });
 }
 
 export const marketDataCliCommands: CliCommandDef[] = [
@@ -488,13 +456,10 @@ export const marketDataCliCommands: CliCommandDef[] = [
   { name: "provider-search", description: "Search provider instruments", help: { usage: ["provider-search <query>"] }, execute: async (args, ctx) => {
     const query = args.join(" ");
     if (!query) ctx.fail("Usage: gloomberb provider-search <query>");
-    const market = await ctx.initMarketData();
-    try {
+    await withMarketData(ctx, async (market) => {
       const results = await market.dataProvider.search(query);
       ctx.printResult({ data: results.slice(0, ctx.cliOptions.limit ?? results.length) });
-    } finally {
-      market.persistence.close();
-    }
+    });
   } },
   { name: "history", description: "Fetch historical prices", help: { usage: ["history <symbol> [--range 1Y]"] }, execute: runHistory },
   { name: "financials", description: "Fetch annual financial statements", help: { usage: ["financials <symbol>"] }, execute: (args, ctx) => runFinancials(args, ctx, false) },

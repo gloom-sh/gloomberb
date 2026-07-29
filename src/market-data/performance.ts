@@ -27,7 +27,7 @@ function coercePointDate(value: Date | string | number): Date | null {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-export function normalizePriceReturnHistory(points: readonly PricePoint[]): PricePoint[] {
+function normalizePriceReturnHistory(points: readonly PricePoint[]): PricePoint[] {
   const byTimestamp = new Map<number, PricePoint>();
   for (const point of points) {
     const date = coercePointDate(point.date as Date | string | number);

@@ -46,6 +46,104 @@ test("does not push local state when the initial pull fails", async () => {
   expect(controller.getStatus()).toMatchObject({ phase: "error", error: "pull failed" });
 });
 
+test("rejects incompatible snapshot versions before applying or pushing", async () => {
+  let applied = 0;
+  let pushes = 0;
+  const contributor: SyncContributor = {
+    id: "test.settings",
+    schemaVersion: 2,
+    collect: () => ({ local: true }),
+    apply: () => {
+      applied += 1;
+    },
+  };
+  const snapshot = {
+    schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION + 1,
+    appId: "gloomberb",
+    clientId: "future-client",
+    createdAt: "2026-07-26T00:00:00.000Z",
+    contributors: {},
+  } as unknown as SyncSnapshot;
+  const transport: SyncTransport = {
+    id: "future-snapshot",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot, revision: 1, updatedAt: snapshot.createdAt }),
+    pushSnapshot: async () => {
+      pushes += 1;
+      return { revision: 2, updatedAt: snapshot.createdAt };
+    },
+  };
+  const controller = new CloudSyncController();
+  controller.setRuntime({
+    getState: () => ({} as AppState),
+    dispatch: () => {},
+    tickerRepository: {} as TickerRepository,
+    getContributors: () => [{ pluginId: "test", contributor }],
+    getTransport: () => ({ pluginId: "test", transport }),
+  });
+
+  await controller.requestSync({ force: true });
+
+  expect(applied).toBe(0);
+  expect(pushes).toBe(0);
+  expect(controller.getStatus()).toMatchObject({
+    phase: "error",
+    error: `Unsupported sync snapshot schema version ${SYNC_SNAPSHOT_SCHEMA_VERSION + 1}; expected ${SYNC_SNAPSHOT_SCHEMA_VERSION}`,
+  });
+});
+
+test("rejects incompatible contributor versions before applying or pushing", async () => {
+  let applied = 0;
+  let pushes = 0;
+  const contributor: SyncContributor = {
+    id: "test.settings",
+    schemaVersion: 2,
+    collect: () => ({ local: true }),
+    apply: () => {
+      applied += 1;
+    },
+  };
+  const snapshot: SyncSnapshot = {
+    schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
+    appId: "gloomberb",
+    clientId: "old-client",
+    createdAt: "2026-07-26T00:00:00.000Z",
+    contributors: {
+      "test.settings": {
+        schemaVersion: 1,
+        updatedAt: "2026-07-26T00:00:00.000Z",
+        payload: { remote: true },
+      },
+    },
+  };
+  const transport: SyncTransport = {
+    id: "old-contributor",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({ snapshot, revision: 1, updatedAt: snapshot.createdAt }),
+    pushSnapshot: async () => {
+      pushes += 1;
+      return { revision: 2, updatedAt: snapshot.createdAt };
+    },
+  };
+  const controller = new CloudSyncController();
+  controller.setRuntime({
+    getState: () => ({} as AppState),
+    dispatch: () => {},
+    tickerRepository: {} as TickerRepository,
+    getContributors: () => [{ pluginId: "test", contributor }],
+    getTransport: () => ({ pluginId: "test", transport }),
+  });
+
+  await controller.requestSync({ force: true });
+
+  expect(applied).toBe(0);
+  expect(pushes).toBe(0);
+  expect(controller.getStatus()).toMatchObject({
+    phase: "error",
+    error: "Unsupported sync contributor schema for test.settings: 1; expected 2",
+  });
+});
+
 test("keeps startup layout changes while serializing pull and push", async () => {
   let state = createInitialState(createDefaultConfig("/tmp/gloomberb-sync-controller-test"));
   const dispatch = (action: AppAction) => {

@@ -8,9 +8,9 @@ type TradeColumnId = "time" | "side" | "outcome" | "price" | "size";
 type TradeColumn = DataTableColumn & { id: TradeColumnId };
 
 const TRADE_COLUMNS: TradeColumn[] = [
-  { id: "time", label: "TIME", width: 16 },
-  { id: "side", label: "SIDE", width: 6 },
-  { id: "outcome", label: "OUT", width: 4 },
+  { id: "time", label: "TIME", width: 16, align: "left" },
+  { id: "side", label: "SIDE", width: 6, align: "left" },
+  { id: "outcome", label: "OUT", width: 4, align: "left" },
   { id: "price", label: "PRICE", width: 8, align: "right" },
   { id: "size", label: "SIZE", width: 10, align: "right" },
 ];

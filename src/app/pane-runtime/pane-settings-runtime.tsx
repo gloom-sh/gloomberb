@@ -3,7 +3,7 @@ import {
   applyPaneSettingFieldValue as applyPaneSettingFieldValueShared,
 } from "../../components/command-bar/workflow/ops";
 import { PaneSettingsDialogContent } from "../../components/pane-settings-dialog";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { LayoutConfig } from "../../types/config";
@@ -19,7 +19,7 @@ interface UseAppPaneSettingsRuntimeOptions {
   pluginRegistry: PluginRegistry;
   resolvePaneTarget: (paneId: string, layout?: LayoutConfig) => string | null;
   stateRef: { current: AppState };
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }
 
 export function useAppPaneSettingsRuntime({

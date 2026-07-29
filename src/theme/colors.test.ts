@@ -3,6 +3,7 @@ import {
   applyTheme,
   clearTransientThemePreview,
   getCurrentThemeId,
+  getThemeColors,
   previewTheme,
   syncTheme,
 } from "./colors";
@@ -43,6 +44,15 @@ afterEach(() => {
 });
 
 describe("theme colors", () => {
+  test("provides immutable palette snapshots while the compatibility facade follows the active theme", () => {
+    const amber = getThemeColors(DEFAULT_THEME);
+    const midnight = getThemeColors("midnight");
+
+    expect(Object.isFrozen(amber)).toBe(true);
+    expect(Object.isFrozen(midnight)).toBe(true);
+    expect(amber).not.toBe(midnight);
+  });
+
   test("syncs CSS variables when a theme is applied", () => {
     const values = installDocumentStyleMock();
     const theme = getTheme("midnight");

@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { Component, useMemo, useState, type ErrorInfo, type ReactNode } from "react";
 import { backendRequest, requestElectrobunRestart } from "./backend-rpc";

@@ -1,0 +1,39 @@
+name: Verify
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Typecheck production runtimes
+        run: bun run typecheck
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Test
+        run: bun test
+
+      - name: Build Electrobun view
+        run: bun run desktop:view:build
+
+      - name: Build core binary
+        run: bun run build

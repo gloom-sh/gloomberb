@@ -1,9 +1,11 @@
-import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../../../../types/media";
+import type { ResolvedLiveStream } from "../../../../types/media";
 import { getTvChannel, TV_CHANNELS } from "../../../../plugins/builtin/tv/channels";
 import { resolveTvStream } from "../../../../plugins/builtin/tv/youtube-stream";
+import type { DesktopBackendRequestPayload } from "../../shared/protocol";
 
-export async function resolveDesktopLiveStream(payload: Record<string, unknown>): Promise<ResolvedLiveStream> {
-  const request = payload as Partial<LiveStreamResolveRequest>;
+export async function resolveDesktopLiveStream(
+  request: DesktopBackendRequestPayload<"media.resolveLiveStream">,
+): Promise<ResolvedLiveStream> {
   if (request.provider !== "youtube") {
     throw new Error("Unsupported live-stream provider.");
   }

@@ -1,6 +1,6 @@
 import type { Quote, TickerFinancials, PricePoint, OptionsChain } from "./financials";
-import type { TimeRange } from "../components/chart/core/types";
-import type { ChartResolutionSupport, ManualChartResolution } from "../components/chart/core/resolution";
+import type { TimeRange } from "../time-series/range";
+import type { ChartResolutionSupport, ManualChartResolution } from "../time-series/resolution";
 import type { BrokerInstanceConfig } from "./config";
 import type { QuoteSubscriptionTarget } from "./data-provider";
 import type { BrokerContractRef, InstrumentSearchResult } from "./instrument";

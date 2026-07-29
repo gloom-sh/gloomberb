@@ -3,8 +3,7 @@ import { createRemoteBrokerAdapter } from "../../../brokers/remote-broker-adapte
 import { NewsService } from "../../../news/aggregator";
 import { setSharedNewsService } from "../../../news/hooks";
 import { PluginRegistry } from "../../../plugins/registry";
-import type { AppServices } from "../../../core/app-services";
-import type { AppConfig } from "../../../types/config";
+import type { AppRuntimeServices, AppServicesFactoryOptions } from "../../../core/app-service-ports";
 import { newsProvider } from "../../../capabilities";
 import { debugLog } from "../../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../../utils/perf-marks";
@@ -15,7 +14,7 @@ import { RemoteTickerRepository } from "./remote/ticker-repository";
 
 const servicesLog = debugLog.createLogger("services");
 
-export function createAppServices({ config }: { config: AppConfig }): AppServices {
+export function createElectrobunAppServices({ config }: AppServicesFactoryOptions): AppRuntimeServices {
   servicesLog.info("create desktop web services start", {
     brokerInstanceCount: config.brokerInstances.length,
   });
@@ -23,7 +22,7 @@ export function createAppServices({ config }: { config: AppConfig }): AppService
   const tickerRepository = measurePerf("startup.services.ticker-repository", () => new RemoteTickerRepository());
   const dataProvider = measurePerf("startup.services.data-provider", () => createRemoteAssetDataClient());
   const marketData = new MarketDataCoordinator(dataProvider);
-  const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository as never, persistence as never, {
+  const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence, {
     enableCapabilityHandlers: false,
     wrapBrokerAdapter: (broker) => createRemoteBrokerAdapter(broker),
   });
@@ -59,13 +58,11 @@ export function createAppServices({ config }: { config: AppConfig }): AppService
   servicesLog.info("create desktop web services complete", { pluginCount: plugins.length });
 
   return {
-    persistence: persistence as never,
-    tickerRepository: tickerRepository as never,
-    providerRouter: dataProvider as never,
+    persistence,
+    tickerRepository,
     dataProvider,
     marketData,
     pluginRegistry,
-    newsService,
     ready: Promise.all(pluginReadyPromises).then(() => {}),
     destroy() {
       setSharedMarketDataCoordinator(null);

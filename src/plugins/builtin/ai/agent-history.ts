@@ -52,18 +52,20 @@ function optionalString(value: unknown): string | undefined {
 function normalizeAssistantContent(value: unknown): AiAgentAssistantContent | null {
   if (!isRecord(value)) return null;
   if (value.type === "text" && typeof value.text === "string") {
+    const textSignature = optionalString(value.textSignature);
     return {
       type: "text",
       text: value.text,
-      ...(optionalString(value.textSignature) ? { textSignature: value.textSignature } : {}),
+      ...(textSignature ? { textSignature } : {}),
     };
   }
   if (value.type === "thinking" && typeof value.thinking === "string") {
+    const thinkingSignature = optionalString(value.thinkingSignature);
     return {
       type: "thinking",
       thinking: value.thinking,
-      ...(optionalString(value.thinkingSignature)
-        ? { thinkingSignature: value.thinkingSignature }
+      ...(thinkingSignature
+        ? { thinkingSignature }
         : {}),
       ...(typeof value.redacted === "boolean" ? { redacted: value.redacted } : {}),
     };
@@ -74,13 +76,14 @@ function normalizeAssistantContent(value: unknown): AiAgentAssistantContent | nu
     && typeof value.name === "string"
     && isRecord(value.arguments)
   ) {
+    const thoughtSignature = optionalString(value.thoughtSignature);
     return {
       type: "toolCall",
       id: value.id,
       name: value.name,
       arguments: { ...value.arguments },
-      ...(optionalString(value.thoughtSignature)
-        ? { thoughtSignature: value.thoughtSignature }
+      ...(thoughtSignature
+        ? { thoughtSignature }
         : {}),
     };
   }
@@ -91,14 +94,15 @@ function normalizeToolResultContent(value: unknown): AiAgentTextContent | null {
   if (!isRecord(value) || value.type !== "text" || typeof value.text !== "string") {
     return null;
   }
+  const textSignature = optionalString(value.textSignature);
   return {
     type: "text",
     text: value.text,
-    ...(optionalString(value.textSignature) ? { textSignature: value.textSignature } : {}),
+    ...(textSignature ? { textSignature } : {}),
   };
 }
 
-export function normalizeAiAgentHistoryMessage(value: unknown): AiAgentHistoryMessage | null {
+function normalizeAiAgentHistoryMessage(value: unknown): AiAgentHistoryMessage | null {
   if (!isRecord(value)) return null;
   if (value.role === "user" && typeof value.content === "string") {
     return { role: "user", content: value.content };

@@ -4,6 +4,7 @@ import {
   applyLanguagePreference,
   getLanguage,
   setLanguage,
+  subscribeLanguage,
 } from ".";
 import { ja } from "./ja";
 import { ko } from "./ko";
@@ -23,6 +24,22 @@ function placeholders(value: string): string[] {
 }
 
 describe("language selection", () => {
+  test("notifies subscribers only when the resolved language changes", () => {
+    const previousLanguage = getLanguage();
+    let notifications = 0;
+    const unsubscribe = subscribeLanguage(() => {
+      notifications += 1;
+    });
+    try {
+      setLanguage(previousLanguage === "ja" ? "ko" : "ja");
+      setLanguage(getLanguage());
+      expect(notifications).toBe(1);
+    } finally {
+      unsubscribe();
+      setLanguage(previousLanguage);
+    }
+  });
+
   test("keeps a valid environment override ahead of runtime preferences", () => {
     const previousOverride = process.env.GLOOMBERB_LANG;
     const previousLanguage = getLanguage();

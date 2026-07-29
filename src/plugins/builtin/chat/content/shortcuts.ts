@@ -88,7 +88,6 @@ export function useChatContentShortcuts({
       || event.meta
       || event.super
       || event.alt
-      || event.option
     ) {
       return;
     }

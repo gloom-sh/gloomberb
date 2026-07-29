@@ -349,6 +349,82 @@ describe("AssetDataRouter chart history", () => {
     expect(await router.getChartResolutionCapabilities("AAPL", "NASDAQ")).toEqual(["1d", "1wk"]);
   });
 
+  test("refreshes each history request type before falling back to its cached value", async () => {
+    const dbPath = createTempDbPath("forced-history-refresh");
+    const persistence = new AppPersistence(dbPath);
+    const startDate = new Date("2026-03-28T09:30:00Z");
+    const endDate = new Date("2026-03-28T16:00:00Z");
+    const seedProvider: DataProvider = {
+      ...fallbackProvider,
+      async getPriceHistory() {
+        return [{ date: endDate, close: 101 }];
+      },
+      async getPriceHistoryForResolution() {
+        return [{ date: endDate, close: 102 }];
+      },
+      async getDetailedPriceHistory() {
+        return [{ date: endDate, close: 103 }];
+      },
+    };
+    const seedRouter = new AssetDataRouter(seedProvider, [], persistence.resources);
+    await seedRouter.getPriceHistory("AAPL", "NASDAQ", "1Y");
+    await seedRouter.getPriceHistoryForResolution("AAPL", "NASDAQ", "1Y", "1d");
+    await seedRouter.getDetailedPriceHistory("AAPL", "NASDAQ", startDate, endDate, "15m");
+
+    const calls = { range: 0, resolution: 0, detailed: 0 };
+    const refreshProvider: DataProvider = {
+      ...fallbackProvider,
+      async getPriceHistory() {
+        calls.range += 1;
+        return [];
+      },
+      async getPriceHistoryForResolution() {
+        calls.resolution += 1;
+        return [];
+      },
+      async getDetailedPriceHistory() {
+        calls.detailed += 1;
+        return [];
+      },
+    };
+    const refreshRouter = new AssetDataRouter(refreshProvider, [], persistence.resources);
+
+    const range = await refreshRouter.getPriceHistory("AAPL", "NASDAQ", "1Y", { cacheMode: "refresh" });
+    const resolution = await refreshRouter.getPriceHistoryForResolution(
+      "AAPL",
+      "NASDAQ",
+      "1Y",
+      "1d",
+      { cacheMode: "refresh" },
+    );
+    const detailed = await refreshRouter.getDetailedPriceHistory(
+      "AAPL",
+      "NASDAQ",
+      startDate,
+      endDate,
+      "15m",
+      { cacheMode: "refresh" },
+    );
+
+    expect(calls).toEqual({ range: 1, resolution: 1, detailed: 1 });
+    expect([range[0]?.close, resolution[0]?.close, detailed[0]?.close]).toEqual([101, 102, 103]);
+
+    persistence.close();
+  });
+
+  test("preserves each history request type's missing-provider result", async () => {
+    const router = new AssetDataRouter(null);
+    const startDate = new Date("2026-03-28T09:30:00Z");
+    const endDate = new Date("2026-03-28T16:00:00Z");
+
+    await expect(router.getPriceHistory("AAPL", "NASDAQ", "1Y"))
+      .rejects.toThrow("No history provider available for AAPL");
+    await expect(router.getPriceHistoryForResolution("AAPL", "NASDAQ", "1Y", "1d"))
+      .rejects.toThrow("No resolution-aware history provider available for AAPL");
+    await expect(router.getDetailedPriceHistory("AAPL", "NASDAQ", startDate, endDate, "15m"))
+      .resolves.toEqual([]);
+  });
+
   test("falls back to later providers when detailed chart history is empty", async () => {
     const cloudProvider: DataProvider = {
       ...fallbackProvider,

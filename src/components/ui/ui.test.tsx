@@ -19,6 +19,7 @@ import { Tabs } from "./tabs";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { DataTableView } from "../data-table/view";
+import { setLanguage } from "../../i18n";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setListSelection: ((index: number) => void) | null = null;
@@ -277,9 +278,9 @@ async function emitKeypress(event: { name?: string; sequence?: string; ctrl?: bo
   await testSetup!.renderOnce();
 }
 
-afterEach(() => {
+afterEach(async () => {
   if (testSetup) {
-    testSetup.renderer.destroy();
+    await act(async () => testSetup?.renderer.destroy());
     testSetup = undefined;
   }
   setListSelection = null;
@@ -290,9 +291,29 @@ afterEach(() => {
   addedTab = false;
   resolvedChoice = null;
   multiSelectOpenStates = [];
+  setLanguage("en");
 });
 
 describe("shared UI kit", () => {
+  test("retranslates stable tab items when the app language changes", async () => {
+    const tabs = [{ label: "Open", value: "open" }];
+    testSetup = await testRender(
+      <Tabs tabs={tabs} activeValue="open" onSelect={() => {}} />,
+      { width: 20, height: 2 },
+    );
+
+    await act(async () => testSetup?.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("Open");
+
+    await act(async () => {
+      setLanguage("zh-CN");
+      await testSetup?.renderOnce();
+      await testSetup?.renderOnce();
+    });
+
+    expect(testSetup.captureCharFrame()).toContain("打开");
+  });
+
   test("scrolls overflowing tabs horizontally with the mouse wheel", async () => {
     testSetup = await testRender(
       <Tabs

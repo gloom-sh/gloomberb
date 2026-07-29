@@ -11,6 +11,7 @@ import {
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
+import { useAppLanguage } from "../../../i18n/react";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
@@ -31,6 +32,7 @@ import {
 } from "./table";
 
 export function BrokersPane({ focused, width, height }: PaneProps) {
+  const language = useAppLanguage();
   const dispatch = useAppDispatch();
   const config = useAppSelector((state) => state.config);
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
@@ -62,7 +64,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
 
   const rows = useMemo(
     () => buildBrokerProfileRows(config, adapters, brokerAccounts),
-    [adapters, brokerAccounts, config, statusVersion],
+    [adapters, brokerAccounts, config, language, statusVersion],
   );
   const selectedRow = rows[Math.min(selectedIndex, rows.length - 1)] ?? null;
   const selectedAccounts = selectedRow ? brokerAccounts[selectedRow.id] ?? [] : [];
@@ -175,7 +177,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
   const errorCount = rows.filter((row) => row.state === "error" || row.state === "unavailable").length;
   const bodyHeight = Math.max(5, height - 4);
   const tableWidth = Math.max(24, width - 2);
-  const columns = useMemo(() => buildBrokerColumns(tableWidth), [tableWidth]);
+  const columns = useMemo(() => buildBrokerColumns(tableWidth), [language, tableWidth]);
 
   const openSelectedDetail = useCallback((index: number, _row: BrokerProfileRow) => {
     setSelectedIndex(index);

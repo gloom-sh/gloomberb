@@ -1,4 +1,4 @@
-import type { TimeRange } from "../../components/chart/core/types";
+import type { TimeRange } from "../../time-series/range";
 import {
   buildCorrelationMatrix,
   pairKey,

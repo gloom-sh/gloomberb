@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useRendererHost } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import {
   DataTableStackView,
   TickerBadgeList,
-  usePaneFooter,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
@@ -34,6 +33,7 @@ import {
   type TweetSortColumnId,
   type TweetSortDirection,
 } from "./model";
+import { usePaneStatusLinkFooter } from "../shared/pane-footer";
 
 function isAuthError(error: string | null): boolean {
   return !!error && /unauthorized|verification/i.test(error);
@@ -172,7 +172,6 @@ export function TweetSearchTable({
   emptyStateTitle?: string;
   emptyStateHint?: string;
 }) {
-  const rendererHost = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
   const { data, loading, error, reload } = useTweetSearchData(requestKey, load, onResult, onError, enabled);
   const [selectedTweetId, setSelectedTweetId] = useState<string | null>(null);
@@ -186,6 +185,16 @@ export function TweetSearchTable({
   const selectedIndex = rows.findIndex((tweet) => tweet.id === selectedTweetId);
   const activeIndex = selectedIndex >= 0 ? selectedIndex : rows.length > 0 ? 0 : -1;
   const selectedTweet = rows[activeIndex] ?? null;
+  const openSelectedTweet = usePaneStatusLinkFooter({
+    registrationId: footerId,
+    focused,
+    url: detailOpen ? selectedTweet?.url : null,
+    source: detailOpen && selectedTweet
+      ? `@${selectedTweet.author.userName || selectedTweet.author.name}`
+      : null,
+    loading,
+    error,
+  });
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -198,9 +207,6 @@ export function TweetSearchTable({
     }
   }, [rows, selectedIndex, selectedTweetId]);
 
-  const openSelectedTweet = useCallback(() => {
-    if (selectedTweet?.url) void rendererHost.openExternal(selectedTweet.url);
-  }, [rendererHost, selectedTweet]);
   const openUsernameFeed = useCallback((username: string) => {
     const normalizedUsername = normalizeTwitterUsername(username);
     if (!normalizedUsername) return;
@@ -246,17 +252,6 @@ export function TweetSearchTable({
     openSelectedTweet();
     return true;
   }, [openSelectedTweet]);
-
-  usePaneFooter(footerId, () => ({
-    info: [
-      ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-    ],
-    hints: [
-      { id: "refresh", key: "r", label: "efresh", onPress: reload },
-      ...(detailOpen ? [{ id: "open", key: "o", label: "pen", onPress: openSelectedTweet, disabled: !selectedTweet?.url }] : []),
-    ],
-  }), [detailOpen, error, footerId, loading, openSelectedTweet, reload, selectedTweet?.url]);
 
   const renderCell = useCallback((
     tweet: CloudTweetPayload,

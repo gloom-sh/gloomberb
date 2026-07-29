@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { editableTextContextMenuItems } from "../../../../ui/context-menu";
 import { backendRequest, onContextMenuSelect } from "../backend-rpc";

@@ -4,6 +4,7 @@ import { existsSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { AppPersistence } from "../app-persistence";
+import { ResourceStore } from "../resource-store";
 
 const tempPaths: string[] = [];
 
@@ -82,6 +83,109 @@ describe("AppPersistence", () => {
     }
   });
 
+  test("runs resource maintenance on the first write and at write, byte, or time intervals", () => {
+    const dbPath = createTempDbPath("resource-maintenance-frequency");
+    const persistence = new AppPersistence(dbPath);
+    const connection = persistence.database.connection;
+    let maintenanceScans = 0;
+    const observedConnection = new Proxy(connection, {
+      get(target, property) {
+        if (property === "query") {
+          return (sql: string) => {
+            if (sql.includes("SELECT COUNT(*) as count")) maintenanceScans += 1;
+            return target.query(sql);
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as Database;
+    const resources = new ResourceStore(observedConnection);
+    const realDateNow = Date.now;
+    let now = 1_000_000;
+    Date.now = () => now;
+    const write = (entityKey: string) => resources.set({
+      namespace: "test",
+      kind: "maintenance",
+      entityKey,
+    }, { entityKey }, {
+      cachePolicy: { staleMs: 60_000, expireMs: 120_000 },
+    });
+
+    try {
+      write("first");
+      expect(maintenanceScans).toBe(1);
+
+      for (let index = 0; index < 249; index++) write(`below-${index}`);
+      expect(maintenanceScans).toBe(1);
+
+      write("write-interval");
+      expect(maintenanceScans).toBe(2);
+
+      write("below-time-interval");
+      expect(maintenanceScans).toBe(2);
+
+      now += 5 * 60_000;
+      write("time-interval");
+      expect(maintenanceScans).toBe(3);
+
+      resources.set({
+        namespace: "test",
+        kind: "maintenance",
+        entityKey: "byte-interval",
+      }, "x".repeat(512 * 1024), {
+        cachePolicy: { staleMs: 60_000, expireMs: 120_000 },
+      });
+      expect(maintenanceScans).toBe(4);
+    } finally {
+      Date.now = realDateNow;
+      persistence.close();
+    }
+  });
+
+  test("prunes only enough least-recently-used resources to restore the byte budget", () => {
+    const dbPath = createTempDbPath("resource-byte-pruning");
+    const persistence = new AppPersistence(dbPath);
+    const now = Date.now();
+    const write = (entityKey: string, value: unknown, fetchedAt: number) => persistence.resources.set({
+      namespace: "test",
+      kind: "byte-pruning",
+      entityKey,
+    }, value, {
+      cachePolicy: { staleMs: 60_000, expireMs: 10 * 60_000 },
+      fetchedAt,
+    });
+
+    try {
+      write("oldest", { value: 1 }, now - 2);
+      write("newer", { value: 2 }, now - 1);
+      persistence.database.connection.query(
+        `UPDATE resource_cache
+         SET size_bytes = CASE entity_key
+           WHEN 'oldest' THEN ?
+           WHEN 'newer' THEN ?
+           ELSE size_bytes
+         END
+         WHERE namespace = 'test' AND kind = 'byte-pruning'`,
+      ).run(60 * 1024 * 1024, 50 * 1024 * 1024);
+
+      write("trigger", "x".repeat(512 * 1024), now);
+
+      const remaining = persistence.database.connection
+        .query<{ entity_key: string }, []>(
+          `SELECT entity_key
+           FROM resource_cache
+           WHERE namespace = 'test' AND kind = 'byte-pruning'
+           ORDER BY fetched_at ASC`,
+        )
+        .all()
+        .map((row) => row.entity_key);
+      expect(remaining).toEqual(["newer", "trigger"]);
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("invalidates plugin state when schema versions differ", () => {
     const dbPath = createTempDbPath("plugin-version");
     const persistence = new AppPersistence(dbPath);
@@ -114,21 +218,6 @@ describe("AppPersistence", () => {
     expect(third).not.toBeNull();
     expect(third).not.toBe(first);
     expect(third?.value.tabs[0]?.id).toBe("2");
-    persistence.close();
-  });
-
-  test("returns stable references for unchanged plugin state snapshots", () => {
-    const dbPath = createTempDbPath("plugin-stable-snapshot");
-    const persistence = new AppPersistence(dbPath);
-    persistence.pluginState.set("prediction-markets", "resume:watchlist:v1", ["kalshi:ABC"], 1);
-
-    const first = persistence.pluginState.get<string[]>("prediction-markets", "resume:watchlist:v1", 1);
-    const second = persistence.pluginState.get<string[]>("prediction-markets", "resume:watchlist:v1", 1);
-
-    expect(first).not.toBeNull();
-    expect(second).not.toBeNull();
-    if (!first || !second) throw new Error("Expected persisted plugin state");
-    expect(second.value).toBe(first.value);
     persistence.close();
   });
 

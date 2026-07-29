@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 
 type KeyboardTargetLike = EventTarget & {
   tagName?: string;

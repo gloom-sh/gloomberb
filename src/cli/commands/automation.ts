@@ -10,6 +10,7 @@ import {
 } from "../../plugins/builtin/ai/providers";
 import { createRssNewsCapability } from "../../plugins/builtin/news/wire/rss/source";
 import type { CliCommandDef } from "../../types/plugin";
+import { withCliServices, withConfigData } from "../context";
 import { requireArg, takeOption } from "./command-utils";
 
 function deferredResult(command: string, code: "auth_required" | "not_implemented", message: string) {
@@ -28,8 +29,7 @@ export const brokerCliCommand: CliCommandDef = {
   help: { usage: ["broker list", "broker status", "broker add|edit|remove|connect|sync"] },
   execute: async (args, ctx) => {
     const action = args[0] ?? "list";
-    const services = await ctx.initServices();
-    try {
+    await withCliServices(ctx, async (services) => {
       if (action === "list" || action === "status") {
         const rows = services.config.brokerInstances.map((instance) => ({
           id: instance.id,
@@ -46,9 +46,7 @@ export const brokerCliCommand: CliCommandDef = {
       ctx.printResult({
         data: deferredResult("broker", "not_implemented", "Broker mutation and connection commands need shared non-UI broker service extraction before they can safely run headless."),
       });
-    } finally {
-      services.destroy();
-    }
+    });
   },
 };
 
@@ -63,8 +61,7 @@ export const ibkrCliCommand: CliCommandDef = {
     if ((action === "place" || action === "cancel") && (!profile || !account || !ctx.cliOptions.yes)) {
       ctx.fail(`ibkr ${action} requires --profile, --account, and --yes.`);
     }
-    const services = await ctx.initServices();
-    try {
+    await withCliServices(ctx, async (services) => {
       const ibkrProfiles = services.config.brokerInstances.filter((instance) => instance.brokerType === "ibkr");
       if (action === "accounts" || action === "status") {
         ctx.printResult({ data: ibkrProfiles.map((instance) => ({
@@ -86,9 +83,7 @@ export const ibkrCliCommand: CliCommandDef = {
           confirmed: ctx.cliOptions.yes,
         },
       });
-    } finally {
-      services.destroy();
-    }
+    });
   },
 };
 
@@ -161,8 +156,7 @@ export function createAiCliCommand(options: CreateAiCliCommandOptions = {}): Cli
         ctx.fail("Usage: gloomberb ai ask [--provider id] [--model id] <prompt>");
       }
 
-      const context = await ctx.initConfigData();
-      try {
+      await withConfigData(ctx, async (context) => {
         const runtime = createRuntime(context.dataDir);
         const catalog = await runtime.getCatalog();
         if (action === "providers") {
@@ -229,9 +223,7 @@ export function createAiCliCommand(options: CreateAiCliCommandOptions = {}): Cli
             text,
           },
         });
-      } finally {
-        context.persistence.close();
-      }
+      });
     },
   };
 }

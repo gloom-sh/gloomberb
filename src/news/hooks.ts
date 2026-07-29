@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 import { buildNewsQueryKey, type NewsService } from "./aggregator";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
 
@@ -8,34 +8,27 @@ export function setSharedNewsService(service: NewsService | null): void {
   sharedService = service;
 }
 
-function idleState(): NewsQueryState {
-  return {
-    phase: "idle",
-    articles: [],
-    error: null,
-    updatedAt: null,
-    sourceIds: [],
-  };
-}
-
-function useNewsServiceVersion(): number {
-  if (!sharedService) return 0;
-  return useSyncExternalStore(
-    (cb) => sharedService!.subscribe(cb),
-    () => sharedService!.getVersion(),
-  );
-}
+const IDLE_NEWS_QUERY_STATE: NewsQueryState = {
+  phase: "idle",
+  articles: [],
+  error: null,
+  updatedAt: null,
+  sourceIds: [],
+};
 
 export function useNewsArticles(query: NewsQuery | null | undefined): NewsQueryState {
+  const service = sharedService;
   const key = query ? buildNewsQueryKey(query) : null;
-  useNewsServiceVersion();
+  const subscribe = useCallback((listener: () => void) => {
+    if (!query || !service) return () => {};
+    return service.watchQuery(query, () => listener());
+  }, [key, service]);
+  const getSnapshot = useCallback(
+    () => query && service ? service.getQueryState(query) : IDLE_NEWS_QUERY_STATE,
+    [key, service],
+  );
 
-  useEffect(() => {
-    if (!query || !sharedService) return;
-    void sharedService.load(query);
-  }, [key]);
-
-  return query && sharedService ? sharedService.getQueryState(query) : idleState();
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 export function useLoadNewsStory(): (storyId: string) => Promise<NewsArticle | null> {

@@ -4,8 +4,8 @@ import {
   type ContractDetails,
   type IBApiNext,
 } from "@stoqey/ib";
-import type { TimeRange } from "../../../../components/chart/core/types";
-import type { ChartResolutionSupport, ManualChartResolution } from "../../../../components/chart/core/resolution";
+import type { TimeRange } from "../../../../time-series/range";
+import type { ChartResolutionSupport, ManualChartResolution } from "../../../../time-series/resolution";
 import type { BrokerConnectionStatus, BrokerPosition } from "../../../../types/broker";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import type { Quote, PricePoint, TickerFinancials } from "../../../../types/financials";

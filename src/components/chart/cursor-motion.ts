@@ -4,10 +4,8 @@ interface ChartCursorPosition {
   y: number | null;
 }
 
-export type ChartCursorMotionKind = "pixel" | "cell" | "discrete";
-
 const CELL_CURSOR_EASING = 0.72;
-export const CELL_CURSOR_SNAP_DISTANCE = 0.035;
+const CELL_CURSOR_SNAP_DISTANCE = 0.035;
 
 function sameNullableNumber(left: number | null, right: number | null, epsilon = 0): boolean {
   if (left === right) return true;
@@ -15,7 +13,7 @@ function sameNullableNumber(left: number | null, right: number | null, epsilon =
   return Math.abs(left - right) <= epsilon;
 }
 
-export function sameCursorPosition(
+function sameCursorPosition(
   left: ChartCursorPosition,
   right: ChartCursorPosition,
   epsilon = 0,

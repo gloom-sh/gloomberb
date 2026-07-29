@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
-import type { AppPersistence } from "../../data/app-persistence";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { BrokerAdapter } from "../../types/broker";
 import {
   CapabilityRegistry,
@@ -80,8 +79,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
   readonly events: EventBus;
   readonly capabilities: CapabilityRegistry;
   readonly marketData: DataProvider;
-  readonly tickerRepository: TickerRepository;
-  readonly persistence: AppPersistence;
+  readonly tickerRepository: AppTickerRepositoryPort;
+  readonly persistence: AppPersistencePort;
   private readonly enableCapabilityHandlers: boolean;
   private readonly wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
 
@@ -184,8 +183,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   constructor(
     marketData: DataProvider,
-    tickerRepository: TickerRepository,
-    persistence: AppPersistence,
+    tickerRepository: AppTickerRepositoryPort,
+    persistence: AppPersistencePort,
     options: PluginRegistryOptions = {},
   ) {
     this.marketData = marketData;

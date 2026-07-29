@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import Hls from "hls.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";

@@ -1,6 +1,6 @@
 import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../core/state/app/state";
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import { stableStringify } from "../remote/revision";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
@@ -25,7 +25,7 @@ export interface CloudSyncStatus {
 interface SyncRuntime {
   getState: () => AppState;
   dispatch: Dispatch<AppAction>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   getContributors: () => RegisteredSyncContributor[];
   getTransport: () => RegisteredSyncTransport | null;
 }
@@ -223,11 +223,12 @@ export class CloudSyncController {
       if (!this.isCurrent(runtime, transport)) return false;
 
       if (response.snapshot) {
+        this.assertSnapshotCompatible(response.snapshot, runtime.getContributors());
         for (const entry of runtime.getContributors()) {
           if (!this.isCurrent(runtime, transport)) return false;
-          const payload = response.snapshot.contributors[entry.contributor.id]?.payload;
-          if (payload === undefined || !entry.contributor.apply) continue;
-          await entry.contributor.apply(payload, {
+          const contributorPayload = response.snapshot.contributors[entry.contributor.id];
+          if (!contributorPayload || !entry.contributor.apply) continue;
+          await entry.contributor.apply(contributorPayload.payload, {
             snapshot: response.snapshot,
             baselineState,
             state: runtime.getState(),
@@ -257,6 +258,29 @@ export class CloudSyncController {
         error: error instanceof Error ? error.message : String(error),
       });
       return false;
+    }
+  }
+
+  private assertSnapshotCompatible(
+    snapshot: SyncSnapshot,
+    contributors: RegisteredSyncContributor[],
+  ): void {
+    if (snapshot.appId !== "gloomberb") {
+      throw new Error(`Unsupported sync snapshot app: ${String(snapshot.appId)}`);
+    }
+    if (snapshot.schemaVersion !== SYNC_SNAPSHOT_SCHEMA_VERSION) {
+      throw new Error(
+        `Unsupported sync snapshot schema version ${String(snapshot.schemaVersion)}; expected ${SYNC_SNAPSHOT_SCHEMA_VERSION}`,
+      );
+    }
+    for (const entry of contributors) {
+      const payload = snapshot.contributors[entry.contributor.id];
+      if (!payload || !entry.contributor.apply) continue;
+      if (payload.schemaVersion !== entry.contributor.schemaVersion) {
+        throw new Error(
+          `Unsupported sync contributor schema for ${entry.contributor.id}: ${payload.schemaVersion}; expected ${entry.contributor.schemaVersion}`,
+        );
+      }
     }
   }
 

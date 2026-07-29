@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 import type { AuthUser } from "./index";
 import { apiClient, setCloudApiFetchTransport } from "./index";
 
@@ -37,6 +37,66 @@ function mockFetch(handler: (input: Request | string | URL, init?: RequestInit) 
   return handler as unknown as typeof fetch;
 }
 
+class TestWebSocket {
+  readyState: number;
+  onopen: ((event: unknown) => void) | null = null;
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: ((event: unknown) => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
+  readonly sent: unknown[] = [];
+  closeCalls = 0;
+
+  constructor(
+    readonly url: string,
+    initialReadyState: number,
+  ) {
+    this.readyState = initialReadyState;
+  }
+
+  send(payload: string): void {
+    this.sent.push(JSON.parse(payload));
+  }
+
+  close(): void {
+    this.closeCalls += 1;
+    this.readyState = 3;
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.onopen?.({});
+  }
+
+  receive(payload: unknown): void {
+    this.onmessage?.({ data: JSON.stringify(payload) });
+  }
+
+  closeWith(event: { code: number; reason: string }): void {
+    this.readyState = 3;
+    this.onclose?.(event);
+  }
+}
+
+function installTestWebSocket(initialReadyState = 1): TestWebSocket[] {
+  const sockets: TestWebSocket[] = [];
+
+  class InstalledTestWebSocket extends TestWebSocket {
+    static readonly OPEN = 1;
+
+    constructor(url: string) {
+      super(url, initialReadyState);
+      sockets.push(this);
+    }
+  }
+
+  globalThis.WebSocket = InstalledTestWebSocket as unknown as typeof WebSocket;
+  return sockets;
+}
+
+function flushQuoteSubscriptionUpdates(): void {
+  jest.runAllTimers();
+}
+
 afterEach(() => {
   apiClient.dispose();
   globalThis.fetch = originalFetch;
@@ -44,6 +104,7 @@ afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   apiClient.setWebSocketToken(null);
+  jest.useRealTimers();
 });
 
 describe("apiClient auth cookies", () => {
@@ -164,36 +225,11 @@ describe("apiClient auth cookies", () => {
     expect(apiClient.getWebSocketToken()).toBeNull();
     expect(apiClient.getCurrentUser()).toBeNull();
   });
+});
 
+describe("apiClient quote socket", () => {
   test("drops a stale websocket token after socket close so reconnect can use the session token", () => {
-    const sockets: Array<{
-      url: string;
-      readyState: number;
-      onclose: ((event: unknown) => void) | null;
-      close: () => void;
-    }> = [];
-
-    class FakeWebSocket {
-      static OPEN = 1;
-      readyState = 0;
-      onopen: ((event: unknown) => void) | null = null;
-      onmessage: ((event: { data: string }) => void) | null = null;
-      onclose: ((event: unknown) => void) | null = null;
-      onerror: ((event: unknown) => void) | null = null;
-
-      constructor(readonly url: string) {
-        sockets.push(this);
-      }
-
-      send(): void {}
-
-      close(): void {
-        this.readyState = 3;
-        this.onclose?.({ code: 1000, reason: "closed" });
-      }
-    }
-
-    globalThis.WebSocket = FakeWebSocket as any;
+    const sockets = installTestWebSocket(0);
     apiClient.setSessionToken("session-token");
     apiClient.setWebSocketToken("stale-ws-token");
     apiClient.restoreCachedUser(verifiedUser);
@@ -203,7 +239,7 @@ describe("apiClient auth cookies", () => {
     expect(sockets).toHaveLength(1);
     expect(sockets[0]!.url).toContain("token=stale-ws-token");
 
-    sockets[0]!.onclose?.({ code: 1008, reason: "Unauthorized" });
+    sockets[0]!.closeWith({ code: 1008, reason: "Unauthorized" });
 
     expect(apiClient.getWebSocketToken()).toBeNull();
     expect(apiClient.getSessionToken()).toBe("session-token");
@@ -212,36 +248,7 @@ describe("apiClient auth cookies", () => {
   });
 
   test("opens an anonymous market websocket and sends quote priority hints", () => {
-    const sent: unknown[] = [];
-    const sockets: Array<{
-      url: string;
-      readyState: number;
-      onopen: ((event: unknown) => void) | null;
-      close: () => void;
-    }> = [];
-
-    class FakeWebSocket {
-      static OPEN = 1;
-      readyState = 1;
-      onopen: ((event: unknown) => void) | null = null;
-      onmessage: ((event: { data: string }) => void) | null = null;
-      onclose: ((event: unknown) => void) | null = null;
-      onerror: ((event: unknown) => void) | null = null;
-
-      constructor(readonly url: string) {
-        sockets.push(this);
-      }
-
-      send(payload: string): void {
-        sent.push(JSON.parse(payload));
-      }
-
-      close(): void {
-        this.readyState = 3;
-      }
-    }
-
-    globalThis.WebSocket = FakeWebSocket as any;
+    const sockets = installTestWebSocket();
 
     const unsubscribe = apiClient.subscribeQuotes([{
       symbol: "AAPL",
@@ -251,11 +258,11 @@ describe("apiClient auth cookies", () => {
       selected: true,
       weight: 100,
     }], () => {});
-    sockets[0]!.onopen?.({});
+    sockets[0]!.open();
 
     expect(sockets).toHaveLength(1);
     expect(sockets[0]!.url).toBe("wss://api.gloom.sh/cloud/ws");
-    expect(sent).toContainEqual({
+    expect(sockets[0]!.sent).toContainEqual({
       type: "market.subscribe",
       symbols: [{
         symbol: "AAPL",
@@ -270,62 +277,151 @@ describe("apiClient auth cookies", () => {
     unsubscribe();
   });
 
+  test("does not invent quote priority hints when opening a socket", () => {
+    const sockets = installTestWebSocket();
+
+    const unsubscribe = apiClient.subscribeQuotes([{ symbol: "AAPL", exchange: "NASDAQ" }], () => {});
+    sockets[0]!.open();
+
+    expect(sockets[0]!.sent).toContainEqual({
+      type: "market.subscribe",
+      symbols: [{ symbol: "AAPL", exchange: "NASDAQ" }],
+    });
+
+    unsubscribe();
+  });
+
+  test("recomputes quote priority when overlapping subscriptions are removed", () => {
+    jest.useFakeTimers();
+    const sockets = installTestWebSocket();
+    const deliveredSurfaces: string[] = [];
+    const unsubscribeInline = apiClient.subscribeQuotes([{
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      surface: "inline",
+      weight: 1,
+    }], (target) => {
+      deliveredSurfaces.push(target.surface ?? "unknown");
+    });
+    const socket = sockets[0]!;
+    socket.open();
+    flushQuoteSubscriptionUpdates();
+    socket.sent.length = 0;
+
+    const unsubscribeDetail = apiClient.subscribeQuotes([{
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      surface: "detail",
+      visible: true,
+      selected: true,
+      weight: 50,
+    }], (target) => {
+      deliveredSurfaces.push(target.surface ?? "unknown");
+    });
+    flushQuoteSubscriptionUpdates();
+
+    expect(socket.sent.at(-1)).toEqual({
+      type: "market.subscribe",
+      symbols: [{
+        symbol: "AAPL",
+        exchange: "NASDAQ",
+        surface: "detail",
+        visible: true,
+        selected: true,
+        weight: 50,
+      }],
+    });
+
+    socket.receive({
+      type: "market.quote",
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      quote: { symbol: "AAPL", price: 123 },
+    });
+    expect(deliveredSurfaces).toEqual(["inline", "detail"]);
+
+    unsubscribeDetail();
+    flushQuoteSubscriptionUpdates();
+    expect(socket.sent.at(-1)).toEqual({
+      type: "market.subscribe",
+      symbols: [{
+        symbol: "AAPL",
+        exchange: "NASDAQ",
+        surface: "inline",
+        weight: 1,
+      }],
+    });
+
+    unsubscribeInline();
+  });
+
+  test("unsubscribes a server-side quote when queued priority updates are removed", () => {
+    jest.useFakeTimers();
+    const sockets = installTestWebSocket();
+    const unsubscribeMsft = apiClient.subscribeQuotes([{ symbol: "MSFT", exchange: "NASDAQ" }], () => {});
+    const socket = sockets[0]!;
+    socket.open();
+    flushQuoteSubscriptionUpdates();
+
+    const unsubscribeInline = apiClient.subscribeQuotes([{
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      surface: "inline",
+      weight: 1,
+    }], () => {});
+    flushQuoteSubscriptionUpdates();
+    expect(socket.sent.at(-1)).toEqual({
+      type: "market.subscribe",
+      symbols: [{ symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 }],
+    });
+
+    socket.sent.length = 0;
+    const unsubscribeDetail = apiClient.subscribeQuotes([{
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      surface: "detail",
+      visible: true,
+      selected: true,
+      weight: 50,
+    }], () => {});
+    unsubscribeDetail();
+    unsubscribeInline();
+    flushQuoteSubscriptionUpdates();
+
+    expect(socket.sent).toEqual([{
+      type: "market.unsubscribe",
+      symbols: [{ symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 }],
+    }]);
+    unsubscribeMsft();
+  });
+
   test("keeps an anonymous market websocket open after auth rejection", () => {
     const seenPrices: number[] = [];
-    let closeCalls = 0;
-    const sockets: Array<{
-      readyState: number;
-      onopen: ((event: unknown) => void) | null;
-      onmessage: ((event: { data: string }) => void) | null;
-      close: () => void;
-    }> = [];
-
-    class FakeWebSocket {
-      static OPEN = 1;
-      readyState = 1;
-      onopen: ((event: unknown) => void) | null = null;
-      onmessage: ((event: { data: string }) => void) | null = null;
-      onclose: ((event: unknown) => void) | null = null;
-      onerror: ((event: unknown) => void) | null = null;
-
-      constructor(readonly _url: string) {
-        sockets.push(this);
-      }
-
-      send(): void {}
-
-      close(): void {
-        closeCalls += 1;
-        this.readyState = 3;
-      }
-    }
-
-    globalThis.WebSocket = FakeWebSocket as any;
+    const sockets = installTestWebSocket();
 
     const unsubscribe = apiClient.subscribeQuotes([{ symbol: "AAPL" }], (_target, quote) => {
       seenPrices.push(quote.price);
     });
-    sockets[0]!.onopen?.({});
-    sockets[0]!.onmessage?.({ data: JSON.stringify({ type: "auth.unverified" }) });
-    sockets[0]!.onmessage?.({
-      data: JSON.stringify({
-        type: "market.quote",
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive({ type: "auth.unverified" });
+    socket.receive({
+      type: "market.quote",
+      symbol: "AAPL",
+      exchange: "",
+      quote: {
         symbol: "AAPL",
-        exchange: "",
-        quote: {
-          symbol: "AAPL",
-          price: 123,
-          currency: "USD",
-          change: 0,
-          changePercent: 0,
-          lastUpdated: 1,
-          providerId: "gloomberb-cloud",
-          dataSource: "live",
-        },
-      }),
+        price: 123,
+        currency: "USD",
+        change: 0,
+        changePercent: 0,
+        lastUpdated: 1,
+        providerId: "gloomberb-cloud",
+        dataSource: "live",
+      },
     });
 
-    expect(closeCalls).toBe(0);
+    expect(socket.closeCalls).toBe(0);
     expect(seenPrices).toEqual([123]);
 
     unsubscribe();

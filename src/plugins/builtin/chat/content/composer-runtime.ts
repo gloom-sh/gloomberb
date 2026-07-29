@@ -364,7 +364,7 @@ export function useChatComposerRuntime({
   const inputPlaceholder = editingMessage
     ? t("Edit message...")
     : replyTo
-      ? tf("Reply to @{username}...", { username: replyTo.user.username })
+      ? tf("Reply to @{username}...", { username: replyTo.user.username ?? "unknown" })
       : t("Type a message...");
 
   return {

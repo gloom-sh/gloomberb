@@ -3,7 +3,7 @@ import {
   applyPaneSettingFieldValue as applyPaneSettingFieldValueShared,
   createPaneTemplateOrThrow,
 } from "../../components/command-bar/workflow/ops";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import {
   isPaneInLayout,
@@ -65,7 +65,7 @@ interface BindAppPanePluginRegistryOptions {
   state: AppState;
   stateRef: { current: AppState };
   switchTickerResearchTab: (tabId: string, preferredPaneId?: string | null) => void;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }
 
 export function bindAppPanePluginRegistry({

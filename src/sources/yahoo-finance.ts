@@ -1,10 +1,10 @@
 import type { Quote, PricePoint, TickerFinancials, OptionsChain, CompanyProfile, HolderData, AnalystResearchData, CorporateActionsData } from "../types/financials";
 import type { DataProvider, EarningsEvent, MarketDataRequestContext, NewsItem, SecFilingItem } from "../types/data-provider";
-import type { TimeRange } from "../components/chart/core/types";
+import type { TimeRange } from "../time-series/range";
 import {
   type ChartResolutionSupport,
   type ManualChartResolution,
-} from "../components/chart/core/resolution";
+} from "../time-series/resolution";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { parseOptionSymbol } from "../utils/options";
 import { SecEdgarClient } from "./sec-edgar";

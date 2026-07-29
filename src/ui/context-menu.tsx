@@ -8,6 +8,7 @@ import {
   contextMenuDivider,
   hasRunnableContextMenuItem,
   type ContextMenuContext,
+  type ContextMenuDividerItem,
   type ContextMenuItem,
 } from "../types/context-menu";
 import { useRendererHost, useUiCapabilities } from "./host";
@@ -44,19 +45,19 @@ const MENU_SURFACE_SELECTOR = [
   "[data-gloom-role='tab-button']",
 ].join(", ");
 
-function isDivider(item: ContextMenuItem): boolean {
+function isDivider(item: ContextMenuItem): item is ContextMenuDividerItem {
   return item.type === "divider";
 }
 
 export function compactContextMenuItems(items: ContextMenuItem[]): ContextMenuItem[] {
   const result: ContextMenuItem[] = [];
   for (const item of items) {
-    if (item.hidden === true) continue;
     if (isDivider(item)) {
       if (result.length === 0 || isDivider(result[result.length - 1]!)) continue;
       result.push(item);
       continue;
     }
+    if (item.hidden === true) continue;
     const nextItem = item.type === "normal" || item.type == null
       ? {
         ...item,

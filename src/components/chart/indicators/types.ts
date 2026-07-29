@@ -24,12 +24,3 @@ export interface BollingerResult {
   middle: OverlayPoint[];
   lower: OverlayPoint[];
 }
-
-/** Active indicator configuration for a chart pane */
-export interface IndicatorConfig {
-  sma?: number[];        // e.g. [20, 50, 200]
-  ema?: number[];        // e.g. [12, 26]
-  rsi?: number | null;   // e.g. 14
-  macd?: { fast: number; slow: number; signal: number } | null;
-  bollinger?: { period: number; stdDev: number } | null;
-}

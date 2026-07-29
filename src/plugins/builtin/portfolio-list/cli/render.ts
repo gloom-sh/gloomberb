@@ -1,4 +1,5 @@
 import { createBaseConverter } from "../../../../cli/base-converter";
+import { withMarketData } from "../../../../cli/scoped-context";
 import {
   countCollectionTickers,
   formatSignedCurrency,
@@ -16,6 +17,7 @@ import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMark
 import { exchangeShortName } from "../../../../market-data/market/status";
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
+import type { MarketContext } from "../../../../cli/types";
 import type { TickerRecord } from "../../../../types/ticker";
 
 export function renderCollectionOverview(config: AppConfig, tickers: TickerRecord[]): string {
@@ -60,7 +62,14 @@ export function renderCollectionOverview(config: AppConfig, tickers: TickerRecor
 }
 
 export async function showCollection(name: string, ctx: CliCommandContext) {
-  const { config, store, dataProvider, persistence } = await ctx.initMarketData();
+  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context));
+}
+
+async function showCollectionWithMarketData(
+  name: string,
+  ctx: CliCommandContext,
+  { config, store, dataProvider }: MarketContext,
+) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
   );
@@ -76,8 +85,7 @@ export async function showCollection(name: string, ctx: CliCommandContext) {
   );
 
   if (!matchedPortfolio && !matchedWatchlist) {
-    ctx.closeAndFail(
-      persistence,
+    ctx.fail(
       `Collection "${name}" was not found.`,
       `Available: ${[...config.portfolios.map((portfolio) => portfolio.name), ...config.watchlists.map((watchlist) => watchlist.name)].join(", ")}`,
     );
@@ -94,7 +102,6 @@ export async function showCollection(name: string, ctx: CliCommandContext) {
   if (filtered.length === 0) {
     console.log(cliStyles.bold(displayName));
     console.log(cliStyles.muted("No tickers in this collection."));
-    persistence.close();
     return;
   }
 
@@ -199,5 +206,4 @@ export async function showCollection(name: string, ctx: CliCommandContext) {
     ));
   }
 
-  persistence.close();
 }

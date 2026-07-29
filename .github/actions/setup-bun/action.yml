@@ -1,0 +1,25 @@
+name: Set up Bun
+description: Install the pinned Bun toolchain and locked dependencies
+
+inputs:
+  install:
+    description: Install dependencies from bun.lock
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - id: bun-version
+      shell: bash
+      run: |
+        package_manager="$(node -p 'require("./package.json").packageManager')"
+        echo "version=${package_manager#bun@}" >> "$GITHUB_OUTPUT"
+
+    - uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ steps.bun-version.outputs.version }}
+
+    - if: inputs.install == 'true'
+      shell: bash
+      run: bun install --frozen-lockfile

@@ -1,5 +1,6 @@
 import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
+import { getPricePointTimestamp } from "../../../utils/price-history";
 
 export interface DatedReturn {
   dateKey: string;
@@ -9,13 +10,6 @@ export interface DatedReturn {
 export interface WeightedReturnSeries {
   weight: number;
   returns: DatedReturn[];
-}
-
-function getPricePointTimestamp(point: PricePoint): number {
-  const value = point.date as Date | string | number | null | undefined;
-  if (value instanceof Date) return value.getTime();
-  if (value == null) return Number.NaN;
-  return new Date(value).getTime();
 }
 
 function toDateKey(timestamp: number): string {

@@ -3,6 +3,7 @@ import { Box, Text, type InputRenderable } from "../../ui";
 import { useViewport } from "../../react/input";
 import { colors, applyTheme } from "../../theme/colors";
 import { t } from "../../i18n";
+import { useAppLanguage } from "../../i18n/react";
 import { getThemeIds } from "../../theme/themes";
 import type { AppConfig } from "../../types/config";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -32,6 +33,7 @@ interface OnboardingWizardProps {
 }
 
 export function OnboardingWizard({ config, pluginRegistry, onComplete }: OnboardingWizardProps) {
+  const language = useAppLanguage();
   const { width: termWidth, height: termHeight } = useViewport();
   const [step, setStep] = useState<OnboardingStep>("welcome");
   const [themeIdx, setThemeIdx] = useState(0);
@@ -67,7 +69,7 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
       });
     }
     return choices;
-  }, [brokerOptions]);
+  }, [brokerOptions, language]);
 
   const activeBrokerFields = useMemo((): BrokerConfigField[] => {
     if (!selectedBrokerId) return [];

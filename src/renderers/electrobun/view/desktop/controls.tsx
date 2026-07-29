@@ -3,7 +3,7 @@ import { useRef, type RefObject } from "react";
 import { Box, Input, Text, Textarea, editableTextContextMenuItems, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { TextAttributes, type InputRenderable } from "../../../../ui";
 import { useShortcut } from "../../../../react/input";
-import { blendHex, colors } from "../../../../theme/colors";
+import { blendHex, type ThemeColors } from "../../../../theme/colors";
 import { contrastRatio } from "../../../../theme/color-utils";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { isDetailBackNavigationKey } from "../../../../utils/back-navigation";
@@ -35,8 +35,8 @@ export function WebButton({
   width,
   height,
 }: ButtonProps) {
-  useThemeColors();
-  const palette = buttonPalette({ variant, active, disabled });
+  const colors = useThemeColors();
+  const palette = buttonPalette({ variant, active, disabled }, colors);
 
   return (
     <Box
@@ -56,7 +56,7 @@ export function WebButton({
         borderRadius: CONTROL_RADIUS,
         paddingLeft: 8,
         paddingRight: 8,
-        boxShadow: controlShadow(active),
+        boxShadow: controlShadow(active, colors),
         cursor: disabled ? "default" : "pointer",
       }}
     >
@@ -81,7 +81,7 @@ export function WebButton({
   );
 }
 
-function checkboxAccentColor(): string {
+function checkboxAccentColor(colors: ThemeColors): string {
   const base = colors.borderFocused;
   const nativeCheckmark = "#ffffff";
   const candidates = [
@@ -112,15 +112,15 @@ export function WebCheckbox({
   description,
   width,
 }: CheckboxProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   const textColor = disabled
     ? colors.textMuted
     : active
     ? colors.textBright
     : colors.text;
   const visibleLabel = displayLabel ?? label;
-  const accentColor = checkboxAccentColor();
-  const borderColor = checked ? accentColor : controlBorderColor(active, false);
+  const accentColor = checkboxAccentColor(colors);
+  const borderColor = checked ? accentColor : controlBorderColor(active, false, colors);
   return (
     <Box
       flexDirection="column"
@@ -164,7 +164,7 @@ export function WebCheckbox({
             width: 14,
             height: 14,
             margin: 0,
-            backgroundColor: checked ? accentColor : panelFill(),
+            backgroundColor: checked ? accentColor : panelFill(colors),
             backgroundImage: checked ? checkboxCheckImage() : undefined,
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
@@ -217,12 +217,15 @@ export function WebTextField({
   hint,
   type = "text",
   variant = "default",
-  backgroundColor = colors.bg,
-  textColor = colors.text,
-  placeholderColor = colors.textDim,
+  backgroundColor,
+  textColor,
+  placeholderColor,
   onMouseDown,
 }: TextFieldProps) {
-  useThemeColors();
+  const colors = useThemeColors();
+  const resolvedBackgroundColor = backgroundColor ?? colors.bg;
+  const resolvedTextColor = textColor ?? colors.text;
+  const resolvedPlaceholderColor = placeholderColor ?? colors.textDim;
   const localInputRef = useRef<InputRenderable>(null);
   const resolvedInputRef = inputRef ?? localInputRef;
   const renderer = useRendererHost();
@@ -234,7 +237,7 @@ export function WebTextField({
       {label && (
         <Box height={1}>
           <Text
-            fg={focused ? colors.textBright : placeholderColor}
+            fg={focused ? colors.textBright : resolvedPlaceholderColor}
             style={{ fontWeight: 600 }}
           >
             {label}
@@ -245,7 +248,7 @@ export function WebTextField({
         height={1}
         width={width}
         alignItems="center"
-        backgroundColor={plain ? "transparent" : backgroundColor}
+        backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
         onMouseDown={() => {
           onMouseDown?.();
           resolvedInputRef.current?.focus?.();
@@ -259,9 +262,9 @@ export function WebTextField({
         }}
         data-gloom-role="desktop-text-field"
         style={{
-          border: plain ? "none" : `1px solid ${controlBorderColor(focused, false)}`,
+          border: plain ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
           borderRadius: plain ? 0 : CONTROL_RADIUS,
-          boxShadow: plain ? undefined : controlShadow(focused),
+          boxShadow: plain ? undefined : controlShadow(focused, colors),
           overflow: "hidden",
         }}
       >
@@ -272,11 +275,11 @@ export function WebTextField({
           type={type}
           placeholder={placeholder}
           focused={focused}
-          textColor={textColor}
-          focusedTextColor={textColor}
-          placeholderColor={placeholderColor}
-          backgroundColor={plain ? "transparent" : backgroundColor}
-          focusedBackgroundColor={plain ? "transparent" : backgroundColor}
+          textColor={resolvedTextColor}
+          focusedTextColor={resolvedTextColor}
+          placeholderColor={resolvedPlaceholderColor}
+          backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
+          focusedBackgroundColor={plain ? "transparent" : resolvedBackgroundColor}
           cursorColor={colors.textBright}
           style={{
             paddingLeft: plain ? 0 : 10,
@@ -318,7 +321,7 @@ export function WebMessageComposer({
   keyBindings,
   wrapText = false,
 }: MessageComposerProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   const borderColor = focused
     ? blendHex(colors.borderFocused, colors.textBright, 0.24)
     : colors.border;
@@ -336,7 +339,7 @@ export function WebMessageComposer({
       flexDirection="row"
       width={width}
       height={height}
-      backgroundColor={panelFill()}
+      backgroundColor={panelFill(colors)}
       onMouseDown={requestFocus}
       data-gloom-role="desktop-message-composer"
       style={{
@@ -378,13 +381,13 @@ export function WebSegmentedControl({
   value,
   onChange,
 }: SegmentedControlProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   return (
     <Box
       flexDirection="row"
-      backgroundColor={panelFill()}
+      backgroundColor={panelFill(colors)}
       style={{
-        border: `1px solid ${panelBorder()}`,
+        border: `1px solid ${panelBorder(colors)}`,
         borderRadius: CONTROL_RADIUS,
         padding: 2,
       }}
@@ -428,7 +431,7 @@ export function WebDialogFrame({
   footer,
   showTitleDivider = false,
 }: DialogFrameProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   return (
     <Box flexDirection="column" style={{ padding: 14 }}>
       <Box
@@ -436,7 +439,7 @@ export function WebDialogFrame({
         flexDirection="row"
         alignItems="center"
         style={{
-          borderBottom: showTitleDivider ? `1px solid ${panelBorder()}` : "none",
+          borderBottom: showTitleDivider ? `1px solid ${panelBorder(colors)}` : "none",
           paddingBottom: showTitleDivider ? 8 : 0,
           marginBottom: showTitleDivider ? 10 : 14,
         }}
@@ -450,7 +453,7 @@ export function WebDialogFrame({
         <Box
           height={1}
           style={{
-            borderTop: `1px solid ${panelBorder()}`,
+            borderTop: `1px solid ${panelBorder(colors)}`,
             paddingTop: 8,
             marginTop: 10,
           }}
@@ -474,7 +477,7 @@ export function WebPageStackView({
   backLabel = "Back",
   backHint,
 }: PageStackViewProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   useShortcut((event) => {
     if (!focused || !detailOpen || !isDetailBackNavigationKey(event)) return;
     event.stopPropagation?.();
@@ -506,7 +509,7 @@ export function WebPageStackView({
           height={1}
           flexDirection="row"
           alignItems="center"
-          backgroundColor={panelFill()}
+          backgroundColor={panelFill(colors)}
           onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
             event.preventDefault?.();
             event.stopPropagation?.();
@@ -514,7 +517,7 @@ export function WebPageStackView({
           }}
           data-gloom-interactive="true"
           style={{
-            border: `1px solid ${panelBorder()}`,
+            border: `1px solid ${panelBorder(colors)}`,
             borderRadius: CONTROL_RADIUS,
             paddingInline: 8,
             cursor: "pointer",

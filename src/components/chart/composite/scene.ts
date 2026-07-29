@@ -27,7 +27,7 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-export function resolveTimeSeriesPointValue(point: TimeSeriesPoint): number | null {
+function resolveTimeSeriesPointValue(point: TimeSeriesPoint): number | null {
   if (finiteNumber(point.value)) return point.value;
   if (finiteNumber(point.close)) return point.close;
   return null;

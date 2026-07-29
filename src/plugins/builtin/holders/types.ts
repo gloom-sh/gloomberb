@@ -5,7 +5,6 @@ export type ViewMode = "table" | "chart";
 export type HolderColumnId = "holder" | "value" | "shares" | "changeShares" | "changePercent" | "percentHeld" | "reportDate";
 export type HolderColumn = DataTableColumn & { id: HolderColumnId };
 export type SortDirection = "asc" | "desc";
-export type PreventableMouseEvent = { preventDefault(): void };
 
 export interface SortPreference {
   columnId: HolderColumnId;

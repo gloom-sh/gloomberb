@@ -606,10 +606,15 @@ export class PiAiRuntime {
         const finalAssistant = resultMessages.findLast(isAssistantMessage);
         const finalText = finalAssistant ? assistantText(finalAssistant) : cumulativeText;
         if (finalText && finalText !== cumulativeText) request.onChunk?.(finalText);
+        const userMessage: AgentMessage = {
+          role: "user",
+          content: request.prompt,
+          timestamp: Date.now(),
+        };
         return {
           text: finalText,
           messages: [
-            { role: "user", content: request.prompt, timestamp: Date.now() },
+            userMessage,
             ...resultMessages,
           ],
         };
@@ -628,8 +633,4 @@ export class PiAiRuntime {
       },
     };
   }
-}
-
-export function createPiAiRuntime(options: PiAiRuntimeOptions): PiAiRuntime {
-  return new PiAiRuntime(options);
 }

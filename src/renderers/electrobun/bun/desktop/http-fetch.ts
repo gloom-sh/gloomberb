@@ -1,3 +1,5 @@
+import type { DesktopBackendRequestPayload, DesktopHttpFetchResponse } from "../../shared/protocol";
+
 function normalizeHttpFetchHeaders(headers: unknown): Record<string, string> {
   if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
     return {};
@@ -8,7 +10,9 @@ function normalizeHttpFetchHeaders(headers: unknown): Record<string, string> {
   );
 }
 
-export async function handleHttpFetch(payload: Record<string, unknown>) {
+export async function handleHttpFetch(
+  payload: DesktopBackendRequestPayload<"http.fetch">,
+): Promise<DesktopHttpFetchResponse> {
   if (typeof payload.url !== "string") {
     throw new Error("http.fetch requires a URL.");
   }

@@ -648,6 +648,28 @@ describe("loadConfig", () => {
     expect(config.disabledPlugins).toEqual(["news"]);
   });
 
+  test("runs the Cloud-to-Macro split only before its v15 boundary", async () => {
+    const beforeDir = await createTempConfigDir();
+    await writeConfigJson(beforeDir, createSavedConfig({
+      configVersion: 14,
+      disabledPlugins: ["gloomberb-cloud"],
+      disabledSources: [],
+    }));
+    const before = await loadConfig(beforeDir);
+    expect(before.disabledPlugins).toEqual(["gloomberb-cloud", "macro"]);
+    expect(before.disabledSources).toEqual(["gloomberb-cloud"]);
+
+    const atBoundaryDir = await createTempConfigDir();
+    await writeConfigJson(atBoundaryDir, createSavedConfig({
+      configVersion: 15,
+      disabledPlugins: ["gloomberb-cloud"],
+      disabledSources: [],
+    }));
+    const atBoundary = await loadConfig(atBoundaryDir);
+    expect(atBoundary.disabledPlugins).toEqual(["gloomberb-cloud"]);
+    expect(atBoundary.disabledSources).toEqual([]);
+  });
+
   test("preserves IBKR gateway configs without migration rewrites", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
@@ -679,6 +701,7 @@ describe("loadConfig", () => {
   test("migrates legacy saved pane tab IDs and preserves focus metadata", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
+      configVersion: CURRENT_CONFIG_VERSION - 1,
       layouts: [{
         name: "Chart",
         layout: DEFAULT_LAYOUT,
@@ -726,6 +749,80 @@ describe("loadConfig", () => {
     expect(persisted.layouts[0]?.activePanel).toBe("right");
   });
 
+  test("does not replay historical migrations for current configs or saves", async () => {
+    const dataDir = await createTempConfigDir();
+    const selectedPortfolioColumns = DEFAULT_COLUMNS.map((column) => column.id);
+    const currentLayout = {
+      ...DEFAULT_LAYOUT,
+      instances: DEFAULT_LAYOUT.instances.map((instance) => (
+        instance.instanceId === "ticker-detail:main"
+          ? {
+            ...instance,
+            settings: {
+              ...(instance.settings ?? {}),
+              chartRangePreset: "6M",
+              chartResolution: "1d",
+            },
+          }
+          : instance.instanceId === "portfolio-list:main"
+            ? {
+              ...instance,
+              settings: {
+                ...(instance.settings ?? {}),
+                columnIds: selectedPortfolioColumns,
+              },
+            }
+          : instance
+      )),
+    };
+    const legacyPaneState = {
+      "ticker-detail:main": {
+        activeTabId: "fundamental-graphs",
+        pluginState: {
+          "ticker-detail": { detailMetric: "revenue", shared: "legacy" },
+          "ticker-research": { shared: "canonical" },
+        },
+      },
+    };
+    const legacyPluginConfig = {
+      "ticker-detail": {
+        chartIndicators: ["sma50"],
+        chartIndicatorsVersion: 2,
+        retainedPreference: "keep",
+      },
+    };
+    await writeConfigJson(dataDir, createSavedConfig({
+      layout: currentLayout,
+      layouts: [{ name: "Current", layout: currentLayout, paneState: legacyPaneState }],
+      pluginConfig: legacyPluginConfig,
+      disabledPlugins: ["options", "gloomberb-cloud"],
+      disabledSources: [],
+    }));
+
+    const config = await loadConfig(dataDir);
+    expect(findPaneInstance(config.layout, "ticker-detail:main")?.settings).toEqual(expect.objectContaining({
+      chartRangePreset: "6M",
+      chartResolution: "1d",
+    }));
+    expect(config.layouts[0]?.paneState).toEqual(legacyPaneState);
+    expect(config.pluginConfig).toEqual(legacyPluginConfig);
+    expect(config.disabledPlugins).toEqual(["options", "gloomberb-cloud"]);
+    expect(findPaneInstance(config.layout, "portfolio-list:main")?.settings?.columnIds)
+      .toEqual(selectedPortfolioColumns);
+
+    await saveConfig(config);
+    const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as typeof config;
+    expect(persisted.layouts[0]?.paneState).toEqual(legacyPaneState);
+    expect(persisted.pluginConfig).toEqual(legacyPluginConfig);
+    expect(persisted.disabledPlugins).toEqual(["options", "gloomberb-cloud"]);
+    expect(findPaneInstance(persisted.layout, "portfolio-list:main")?.settings?.columnIds)
+      .toEqual(selectedPortfolioColumns);
+    expect(findPaneInstance(persisted.layout, "ticker-detail:main")?.settings).toEqual(expect.objectContaining({
+      chartRangePreset: "6M",
+      chartResolution: "1d",
+    }));
+  });
+
   test("migrates legacy main portfolio panes to the portfolio default columns", async () => {
     const dataDir = await createTempConfigDir();
     const legacyColumnIds = DEFAULT_COLUMNS.map((column) => column.id);
@@ -757,7 +854,7 @@ describe("loadConfig", () => {
       .toEqual(DEFAULT_PORTFOLIO_COLUMN_IDS);
   });
 
-  test("does not replay the portfolio column migration for version 19 configs", async () => {
+  test("does not replay the portfolio column migration at its v17 boundary", async () => {
     const dataDir = await createTempConfigDir();
     const selectedColumnIds = DEFAULT_COLUMNS.map((column) => column.id);
     const layout = {
@@ -776,7 +873,7 @@ describe("loadConfig", () => {
     };
 
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: 19,
+      configVersion: 17,
       layout,
       layouts: [{ name: "Default", layout }],
     }));

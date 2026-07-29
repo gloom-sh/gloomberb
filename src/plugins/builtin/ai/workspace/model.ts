@@ -173,15 +173,6 @@ export function createLocalAgentThread(
   };
 }
 
-export function selectLocalAgentThread(
-  state: LocalAgentWorkspaceState,
-  threadId: string,
-): LocalAgentWorkspaceState {
-  return state.threads.some((thread) => thread.id === threadId)
-    ? { ...state, activeThreadId: threadId }
-    : state;
-}
-
 export function updateLocalAgentThread(
   state: LocalAgentWorkspaceState,
   threadId: string,
@@ -220,22 +211,6 @@ export function appendLocalAgentMessages(
   });
 }
 
-export function replaceLocalAgentMessage(
-  state: LocalAgentWorkspaceState,
-  threadId: string,
-  messageId: string,
-  update: Pick<LocalAgentMessage, "content"> & Pick<Partial<LocalAgentMessage>, "status">,
-  now = Date.now(),
-): LocalAgentWorkspaceState {
-  return updateLocalAgentThread(state, threadId, (thread) => ({
-    ...thread,
-    updatedAt: now,
-    messages: thread.messages.map((message) => (
-      message.id === messageId ? { ...message, ...update } : message
-    )),
-  }));
-}
-
 export function removeLocalAgentMessages(
   state: LocalAgentWorkspaceState,
   threadId: string,
@@ -267,9 +242,9 @@ export function buildLocalAgentTranscript(
   thread: LocalAgentThread,
 ): AiAgentHistoryMessage[] {
   if (thread.agentMessages.length > 0) return thread.agentMessages;
-  return buildLocalAgentHistory(thread).map((message) => (
+  return buildLocalAgentHistory(thread).map((message): AiAgentHistoryMessage => (
     message.role === "user"
-      ? message
+      ? { role: "user", content: message.content }
       : {
           role: "assistant",
           content: [{ type: "text", text: message.content }],

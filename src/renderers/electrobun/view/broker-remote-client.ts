@@ -39,12 +39,12 @@ function invokeBrokerCapability<T>(operationId: string, payload: unknown): Promi
   });
 }
 
-function subscribeBrokerCapability(
+async function subscribeBrokerCapability(
   subscriptionId: string,
   operationId: string,
   payload: unknown,
 ): Promise<void> {
-  return backendRequest("capability.subscribe", {
+  await backendRequest("capability.subscribe", {
     subscriptionId,
     capabilityId: BROKER_CAPABILITY_ID,
     operationId,

@@ -66,17 +66,17 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   const financialsBySymbol = useAppSelector((state) => state.financials);
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const valueFlashingEnabled = useAppSelector((state) => state.config.valueFlashingEnabled);
-  const streamingTargets = useMemo(() => (
-    symbols
-      .map((symbol) => {
+  const streamingTargets = useMemo<QuoteSubscriptionTarget[]>(() => {
+    const targets: QuoteSubscriptionTarget[] = [];
+    for (const symbol of symbols) {
         const ticker = tickersBySymbol.get(symbol) ?? (fallbackTicker?.metadata.ticker === symbol ? fallbackTicker : null);
         const target = quoteSubscriptionTargetFromTicker(ticker, symbol, "provider");
-        return target
-          ? { ...target, surface: "monitor" as const, visible: true, selected: symbol === fallbackSymbol, weight: symbol === fallbackSymbol ? 100 : 90 }
-          : null;
-      })
-      .filter((target): target is QuoteSubscriptionTarget => target != null)
-  ), [fallbackTicker, symbols, tickersBySymbol]);
+        if (target) {
+          targets.push({ ...target, surface: "monitor", visible: true, selected: symbol === fallbackSymbol, weight: symbol === fallbackSymbol ? 100 : 90 });
+        }
+    }
+    return targets;
+  }, [fallbackSymbol, fallbackTicker, symbols, tickersBySymbol]);
   useQuoteStreaming(streamingTargets);
   const { pinTicker } = usePluginTickerActions();
   const { openPaneSettings } = usePluginAppActions();
@@ -99,7 +99,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
     );
   }
 
-  const columns = resolveGridColumnCount(symbols.length, width, height, nativePaneChrome);
+  const columns = resolveGridColumnCount(symbols.length, width, height, nativePaneChrome === true);
   const rows = chunkSymbols(symbols, columns);
   const contentWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
   const contentHeight = Math.max(3, height);

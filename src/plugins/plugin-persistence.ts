@@ -1,10 +1,9 @@
-import type { PluginStateStore } from "../data/plugin-state-store";
-import type { ResourceStore } from "../data/resource-store";
+import type { AppPluginStateStorePort, AppResourceStorePort } from "../core/app-service-ports";
 import type { PluginPersistence } from "../types/plugin";
 
 export function createPluginPersistence(
-  pluginState: PluginStateStore,
-  resources: ResourceStore,
+  pluginState: AppPluginStateStorePort,
+  resources: AppResourceStorePort,
   namespace: string,
   pluginId: string,
 ): PluginPersistence {

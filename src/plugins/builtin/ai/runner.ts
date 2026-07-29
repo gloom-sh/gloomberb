@@ -217,12 +217,6 @@ export function getAiRuntimeCatalog(): AiRuntimeCatalog {
   return cloneCatalog(runtimeCatalog);
 }
 
-export async function refreshAiRuntimeCatalog(): Promise<AiRuntimeCatalog> {
-  if (!configuredHost?.getCatalog) return getAiRuntimeCatalog();
-  publishCatalog(await configuredHost.getCatalog());
-  return getAiRuntimeCatalog();
-}
-
 export async function connectAiRuntimeProvider(
   providerId: string,
   authType?: AiRuntimeAuthType,

@@ -79,6 +79,8 @@ export function CommandBarWorkflowFieldRow({
   const fieldBg = nativePaneChrome ? "transparent" : active ? inputBg : panelBg;
   const useNativeSelect = nativePaneChrome && field.type === "select";
   const fieldDescription = getWorkflowFieldDescription(field, active);
+  const fieldLabel = t(field.label);
+  const translatedFieldDescription = translateWorkflowFieldDescription(fieldDescription);
   const submitOrMoveNext = () => {
     if (isLastField) {
       void onSubmit(route);
@@ -96,7 +98,7 @@ export function CommandBarWorkflowFieldRow({
 
   useRemoteUiNode({
     role: "command-bar-field",
-    label: field.label,
+    label: fieldLabel,
     disabled: route.pending,
     actions: {
       focus: focusOrOpenField,
@@ -106,12 +108,12 @@ export function CommandBarWorkflowFieldRow({
     metadata: {
       scope: "command-bar",
       surface: "workflow",
-      routeTitle: route.title,
+      routeTitle: t(route.title),
       fieldId: field.id,
       fieldType: field.type,
       active,
       value: summarizeWorkflowFieldValue(field, value),
-      description: fieldDescription,
+      description: translatedFieldDescription,
     },
   });
 
@@ -132,7 +134,7 @@ export function CommandBarWorkflowFieldRow({
     >
       <Box height={1}>
         <Text fg={active ? paletteText : paletteSubtleText} attributes={active ? TextAttributes.BOLD : 0}>
-          {field.label}
+          {fieldLabel}
         </Text>
       </Box>
       {isWorkflowTextField(field) ? (
@@ -140,7 +142,7 @@ export function CommandBarWorkflowFieldRow({
           <NumberField
             inputRef={getWorkflowInputRef(field.id) as RefObject<InputRenderable | null>}
             value={coerceFieldString(value)}
-            placeholder={field.placeholder}
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
             focused={active && !route.pending}
             variant="default"
             backgroundColor={nativePaneChrome ? inputBg : fieldBg}
@@ -175,7 +177,7 @@ export function CommandBarWorkflowFieldRow({
               />
             ) : (
               <Box flexDirection="column" paddingX={1} paddingY={0}>
-                {buildTextareaPreviewLines(coerceFieldString(value), field.placeholder, queryDisplayWidth).map((line, index) => (
+                {buildTextareaPreviewLines(coerceFieldString(value), field.placeholder ? t(field.placeholder) : undefined, queryDisplayWidth).map((line, index) => (
                   <Box key={`${field.id}:preview:${index}`} height={1}>
                     <Text fg={coerceFieldString(value).trim() ? paletteText : paletteSubtleText}>{line || " "}</Text>
                   </Box>
@@ -188,7 +190,7 @@ export function CommandBarWorkflowFieldRow({
             inputRef={getWorkflowInputRef(field.id) as RefObject<InputRenderable | null>}
             type={field.type === "password" ? "password" : "text"}
             value={coerceFieldString(value)}
-            placeholder={field.placeholder}
+            placeholder={field.placeholder ? t(field.placeholder) : undefined}
             focused={active && !route.pending}
             variant="default"
             backgroundColor={nativePaneChrome ? inputBg : fieldBg}
@@ -199,7 +201,11 @@ export function CommandBarWorkflowFieldRow({
       ) : useNativeSelect ? (
         <NativeSelect
           value={coerceFieldString(value)}
-          options={field.options}
+          options={field.options.map((option) => ({
+            ...option,
+            label: t(option.label),
+            description: option.description ? t(option.description) : undefined,
+          }))}
           width="100%"
           selectRef={(element) => onNativeSelectRef(field.id, element)}
           onFocus={() => onFieldFocus(field.id)}
@@ -216,19 +222,27 @@ export function CommandBarWorkflowFieldRow({
           style={nativePaneChrome ? { borderRadius: 4 } : undefined}
         >
           <Text fg={active ? paletteText : paletteSubtleText}>
-            {truncateText(summarizeWorkflowFieldValue(field, value), queryDisplayWidth)}
+            {truncateText(t(summarizeWorkflowFieldValue(field, value)), queryDisplayWidth)}
           </Text>
         </Box>
       )}
-      {fieldDescription && (
+      {translatedFieldDescription && (
         <Box height={1}>
           <Text fg={paletteSubtleText}>
-            {truncateText(fieldDescription, queryDisplayWidth)}
+            {truncateText(translatedFieldDescription, queryDisplayWidth)}
           </Text>
         </Box>
       )}
     </Box>
   );
+}
+
+function translateWorkflowFieldDescription(description: string | null): string | null {
+  if (!description) return null;
+  const submitSuffix = " Ctrl+S submits.";
+  return description.endsWith(submitSuffix)
+    ? `${t(description.slice(0, -submitSuffix.length))} ${t(submitSuffix.trim())}`
+    : t(description);
 }
 
 function buildTextareaPreviewLines(value: string, placeholder: string | undefined, queryDisplayWidth: number): string[] {

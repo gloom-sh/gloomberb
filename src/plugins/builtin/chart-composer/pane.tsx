@@ -76,7 +76,7 @@ function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number
     : undefined;
 }
 
-export interface ChartComposerSurfaceProps {
+interface ChartComposerSurfaceProps {
   spec: ChartSpec;
   setSpec: (next: ChartSpec) => void;
   focused: boolean;
@@ -93,7 +93,7 @@ function isPriceStudyTarget(spec: ChartSpec): boolean {
   ));
 }
 
-export function ChartComposerSurface({
+function ChartComposerSurface({
   spec,
   setSpec,
   focused,

@@ -1,5 +1,4 @@
-import type { AppPersistence } from "../../data/app-persistence";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { BrokerInstanceConfig, LayoutConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
@@ -30,8 +29,8 @@ export interface RegistryPluginContextOptions {
   contributions: RegistryContributions;
   enableCapabilityHandlers: boolean;
   marketData: DataProvider;
-  tickerRepository: TickerRepository;
-  persistence: AppPersistence;
+  tickerRepository: AppTickerRepositoryPort;
+  persistence: AppPersistencePort;
   getLayout: () => LayoutConfig;
   updateLayout: (layout: LayoutConfig) => void;
   resolvePaneTarget: (paneId: string) => string | undefined;

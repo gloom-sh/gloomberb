@@ -99,12 +99,12 @@ export function CommandBarWorkflowBody({
     <>
       {route.subtitle && (
         <Box height={1}>
-          <Text fg={paletteSubtleText}>{truncateText(route.subtitle, queryDisplayWidth)}</Text>
+          <Text fg={paletteSubtleText}>{truncateText(t(route.subtitle), queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.description?.map((line, index) => (
         <Box key={`workflow-desc:${index}`} height={1}>
-          <Text fg={paletteSubtleText}>{truncateText(line, queryDisplayWidth)}</Text>
+          <Text fg={paletteSubtleText}>{truncateText(t(line), queryDisplayWidth)}</Text>
         </Box>
       ))}
       {route.subtitle || (route.description?.length ?? 0) > 0 ? <Box height={1} /> : null}
@@ -144,7 +144,7 @@ export function CommandBarWorkflowBody({
       )}
       {route.pendingLabel && route.pending && (
         <Box height={1}>
-          <Spinner label={route.pendingLabel} />
+          <Spinner label={t(route.pendingLabel)} />
         </Box>
       )}
       {!nativePaneChrome && <Box flexGrow={1} />}

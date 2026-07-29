@@ -1,4 +1,5 @@
 import type { MarketNewsItem } from "../../../../../types/news-source";
+import { decodeHtmlEntities } from "../../../../../utils/html-entities";
 import { hashString } from "../hash";
 
 export interface RssFeedConfig {
@@ -8,17 +9,6 @@ export interface RssFeedConfig {
   category?: string;
   authority: number; // 0-100
   enabled: boolean;
-}
-
-function decodeHtmlEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, " ");
 }
 
 function stripCdata(s: string): string {

@@ -16,7 +16,9 @@ class RemoteSessionStore {
     schemaVersion: number;
   }>({
     delayMs: SESSION_SAVE_DEBOUNCE_MS,
-    save: ({ sessionId, value, schemaVersion }) => backendRequest("session.set", { sessionId, value, schemaVersion }),
+    save: async ({ sessionId, value, schemaVersion }) => {
+      await backendRequest("session.set", { sessionId, value, schemaVersion });
+    },
   });
 
   get<T>(sessionId = "app", schemaVersion = 1) {
@@ -138,7 +140,9 @@ class RemotePluginStateStore {
     this.pendingBackendSaves.clear();
     const save = this.backendSaveInFlight
       .catch(() => {})
-      .then(() => backendRequest<void>("pluginState.setMany", { entries }))
+      .then(async () => {
+        await backendRequest("pluginState.setMany", { entries });
+      })
       .catch(() => {});
     this.backendSaveInFlight = save;
     return save;

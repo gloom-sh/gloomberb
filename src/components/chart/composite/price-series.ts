@@ -74,5 +74,3 @@ export function pricePointsToResolvedSeries(
     warning: options.warning,
   };
 }
-
-export const resolvedPriceSeries = pricePointsToResolvedSeries;

@@ -1,8 +1,11 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { colors, getCurrentThemeId, syncTheme } from "./colors";
-import type { Theme } from "./themes";
-
-type ThemeColors = Omit<Theme, "name" | "description">;
+import {
+  colors,
+  getCurrentThemeId,
+  getThemeColors,
+  syncTheme,
+  type ThemeColors,
+} from "./colors";
 
 interface ThemeContextValue {
   themeId: string;
@@ -13,7 +16,8 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ themeId, children }: { themeId: string; children: ReactNode }) {
   syncTheme(themeId);
-  const value = useMemo(() => ({ themeId, colors }), [themeId]);
+  const themeColors = useMemo(() => getThemeColors(themeId), [themeId]);
+  const value = useMemo(() => ({ themeId, colors: themeColors }), [themeColors, themeId]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 

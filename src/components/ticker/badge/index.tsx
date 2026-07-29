@@ -1,6 +1,6 @@
 import { Box, Text, useTickerContextMenu, useUiCapabilities } from "../../../ui";
 import { TextAttributes } from "../../../ui";
-import { colors, priceColor } from "../../../theme/colors";
+import { blendHex, colors, priceColor } from "../../../theme/colors";
 import { getSharedRegistry } from "../../../plugins/registry";
 import type { Quote } from "../../../types/financials";
 import { getTickerBadgeText } from "./format";
@@ -14,23 +14,6 @@ export interface TickerBadgeProps {
   onHoverStart?: () => void;
   onHoverEnd?: () => void;
   onOpen: (symbol: string) => void;
-}
-
-function blendHex(base: string, accent: string, ratio: number): string {
-  const parse = (hex: string) => {
-    const value = hex.replace("#", "");
-    return [
-      parseInt(value.slice(0, 2), 16),
-      parseInt(value.slice(2, 4), 16),
-      parseInt(value.slice(4, 6), 16),
-    ] as const;
-  };
-  const [br, bg, bb] = parse(base);
-  const [ar, ag, ab] = parse(accent);
-  const mix = (left: number, right: number) => Math.round(left + (right - left) * ratio)
-    .toString(16)
-    .padStart(2, "0");
-  return `#${mix(br, ar)}${mix(bg, ag)}${mix(bb, ab)}`;
 }
 
 export function TickerBadge({

@@ -1,7 +1,7 @@
 import {
   CHART_RESOLUTION_STEP_MS,
   type ManualChartResolution,
-} from "../components/chart/core/resolution";
+} from "./resolution";
 import { isMarketFieldId } from "./field-catalog";
 import type { ChartSeriesSpec, SeriesPeriod } from "./types";
 
@@ -27,7 +27,7 @@ export function isResolutionFineEnoughForMarketPeriod(
 }
 
 /** Returns the finest fetch cadence required by explicit market periods. */
-export function finestExplicitMarketPeriodResolution(
+function finestExplicitMarketPeriodResolution(
   series: readonly ChartSeriesSpec[],
 ): ManualChartResolution | null {
   let finest: ManualChartResolution | null = null;

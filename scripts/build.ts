@@ -2,12 +2,9 @@ import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, 
 import { tmpdir } from "os";
 import { join } from "path";
 import { gzipSync } from "zlib";
-import { syncVersion } from "./sync-version";
 import { OPEN_TUI_NATIVE_SMOKE_COMMAND } from "../src/cli/native-smoke";
 
 const rootDir = join(import.meta.dir, "..");
-
-syncVersion();
 
 interface BuildTarget {
   os: "darwin" | "linux" | "windows";
@@ -139,7 +136,9 @@ function buildCompileEntrySource(nativePackageName: string): string {
 
 function compressGzip(path: string): string {
   const compressedPath = `${path}.gz`;
-  writeFileSync(compressedPath, gzipSync(readFileSync(path), { level: 9 }));
+  const source = Uint8Array.from(readFileSync(path));
+  const compressed = Uint8Array.from(gzipSync(source, { level: 9 }));
+  writeFileSync(compressedPath, compressed);
   rmSync(path);
   return compressedPath;
 }

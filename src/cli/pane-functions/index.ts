@@ -1,6 +1,7 @@
 import { extname, resolve } from "path";
 import type { CliCommandContext } from "../../types/plugin";
 import type { MarketContext } from "../types";
+import { withMarketData } from "../context";
 import {
   filterPaneCatalogEntries,
   renderPaneCatalogReport,
@@ -38,15 +39,15 @@ async function withPaneRuntime<T>(
   }) => Promise<T>,
 ): Promise<T> {
   const parsed = parsePaneFunctionArgs(args);
-  const context = await ctx.initMarketData();
-  const registry = await createPaneCatalog(context, ctx.plugins);
-  try {
-    const resolved = await resolvePaneFunction(registry, context, parsed);
-    return await run({ parsed, context, registry, resolved });
-  } finally {
-    registry.destroy();
-    context.persistence.close();
-  }
+  return withMarketData(ctx, async (context) => {
+    const registry = await createPaneCatalog(context, ctx.plugins);
+    try {
+      const resolved = await resolvePaneFunction(registry, context, parsed);
+      return await run({ parsed, context, registry, resolved });
+    } finally {
+      registry.destroy();
+    }
+  });
 }
 
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
@@ -133,23 +134,23 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
       ...parsed,
       limit: ctx.cliOptions.limit ?? parsed.limit,
     };
-    const context = await ctx.initMarketData();
-    const registry = await createPaneCatalog(context, ctx.plugins);
-    try {
-      const entries = await buildPaneCatalogEntries(registry, context);
-      const botSafeEntries = effectiveParsed.botSafeOnly
-        ? entries.filter((entry) => entry.capability.botSafe)
-        : entries;
-      const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
-      if (ctx.cliOptions.format === "text") {
-        console.log(renderPaneCatalogReport(filtered, effectiveParsed));
-      } else {
-        ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) });
+    await withMarketData(ctx, async (context) => {
+      const registry = await createPaneCatalog(context, ctx.plugins);
+      try {
+        const entries = await buildPaneCatalogEntries(registry, context);
+        const botSafeEntries = effectiveParsed.botSafeOnly
+          ? entries.filter((entry) => entry.capability.botSafe)
+          : entries;
+        const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
+        if (ctx.cliOptions.format === "text") {
+          console.log(renderPaneCatalogReport(filtered, effectiveParsed));
+        } else {
+          ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) });
+        }
+      } finally {
+        registry.destroy();
       }
-    } finally {
-      registry.destroy();
-      context.persistence.close();
-    }
+    });
   });
 }
 

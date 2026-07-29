@@ -7,11 +7,20 @@ export interface JimpImageLike {
   bitmap: {
     width: number;
     height: number;
-    data: Uint8Array;
+    data: ArrayLike<number>;
   };
   clone(): JimpImageLike;
   contain(options: { w: number; h: number }): JimpImageLike;
   cover(options: { w: number; h: number }): JimpImageLike;
+}
+
+function adaptJimpImage(image: JimpImageLike): JimpImageLike {
+  return {
+    bitmap: image.bitmap,
+    clone: () => adaptJimpImage(image.clone()),
+    contain: (options) => adaptJimpImage(image.contain(options)),
+    cover: (options) => adaptJimpImage(image.cover(options)),
+  };
 }
 
 interface ImageBitmapOptions {
@@ -58,7 +67,8 @@ function loadSourceImage(src: string): Promise<JimpImageLike> {
   if (cached) return cached;
 
   const promise = fetchImageBytes(src)
-    .then((bytes) => Jimp.read(bytes) as Promise<JimpImageLike>)
+    .then((bytes) => Jimp.read(bytes))
+    .then(adaptJimpImage)
     .catch((error) => {
       sourceImageCache.delete(src);
       throw error;

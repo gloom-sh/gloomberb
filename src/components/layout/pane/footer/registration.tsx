@@ -17,6 +17,7 @@ import {
   type PaneFooterRegistration,
   type PaneHint,
 } from "./model";
+import { useAppLanguage } from "../../../../i18n/react";
 
 const usePaneFooterRegistrationEffect =
   typeof document === "undefined" ? useEffect : useLayoutEffect;
@@ -86,6 +87,7 @@ export function usePaneFooter(
   factory: () => PaneFooterRegistration | null | undefined,
   deps: DependencyList,
 ) {
+  const language = useAppLanguage();
   const context = useContext(PaneFooterContext);
   const previousRegistrationRef = useRef<PaneFooterRegistration | null>(null);
 
@@ -103,7 +105,7 @@ export function usePaneFooter(
     previousRegistrationRef.current = nextRegistration;
     context.register(registrationId, nextRegistration);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [context, registrationId, ...deps]);
+  }, [context, language, registrationId, ...deps]);
 }
 
 export function usePaneHints(

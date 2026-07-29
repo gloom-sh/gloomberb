@@ -15,11 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - name: Test
         run: bun test src/updater.test.ts src/app/global-shortcuts.test.tsx
@@ -39,11 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-
-      - run: bun install
+      - uses: ./.github/actions/setup-bun
 
       - name: Build Windows desktop package
         shell: pwsh

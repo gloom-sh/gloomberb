@@ -5,19 +5,18 @@ import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
 import { useOptionsQuery, useResolvedEntryValue } from "../../../market-data/hooks";
-import { DataTableView, Spinner, Tabs, usePaneFooter, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, Spinner, Tabs, type DataTableKeyEvent } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import {
   OPTION_COLUMNS,
   buildStrikeList,
   findNearestStrikeIndex,
-  formatIv,
-  formatStrikeLabel,
   optionColumnColor,
   renderOptionCell,
   resolveDefaultStrikeTarget,
 } from "./table";
 import type { OptionColumn, OptionTableRow, OptionsViewProps } from "./types";
+import { usePaneStatusFooter } from "../shared/pane-footer";
 
 export function OptionsView({ width, focused, onCapture = () => {} }: OptionsViewProps) {
   const { ticker, financials } = usePaneTicker();
@@ -124,32 +123,12 @@ export function OptionsView({ width, focused, onCapture = () => {} }: OptionsVie
     put: putsByStrike.get(strike),
     isPositionStrike: !!parsed && Math.abs(strike - parsed.strike) < 0.01,
   })), [callsByStrike, parsed, putsByStrike, strikes]);
-  const selectedStrike = strikes[strikeIdx];
-  const selectedCall = selectedStrike != null ? callsByStrike.get(selectedStrike) : undefined;
-  const selectedPut = selectedStrike != null ? putsByStrike.get(selectedStrike) : undefined;
   const optionColumns: OptionColumn[] = OPTION_COLUMNS.map((column) => ({
     ...column,
     headerColor: optionColumnColor(column.id, colors.panel),
   }));
 
-  usePaneFooter("options", () => {
-    const info = [
-      ...(selectedExpiration != null ? [{ id: "exp", parts: [{ text: formatExpDate(selectedExpiration), tone: "muted" as const }] }] : []),
-      ...(selectedStrike != null ? [{ id: "strike", parts: [{ text: `Strike ${formatStrikeLabel(selectedStrike)}`, tone: "value" as const, bold: true }] }] : []),
-      ...(selectedCall ? [{ id: "call-iv", parts: [{ text: "Call IV", tone: "label" as const }, { text: formatIv(selectedCall.impliedVolatility), tone: "value" as const }] }] : []),
-      ...(selectedPut ? [{ id: "put-iv", parts: [{ text: "Put IV", tone: "label" as const }, { text: formatIv(selectedPut.impliedVolatility), tone: "value" as const }] }] : []),
-      ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(error ? [{ id: "error", parts: [{ text: "error", tone: "warning" as const }] }] : []),
-    ];
-    return info.length > 0 ? { info } : null;
-  }, [
-    error,
-    loading,
-    selectedCall?.impliedVolatility,
-    selectedExpiration,
-    selectedPut?.impliedVolatility,
-    selectedStrike,
-  ]);
+  usePaneStatusFooter({ registrationId: "options", loading, error });
 
   useEffect(() => {
     setStrikeIdx((index) => {

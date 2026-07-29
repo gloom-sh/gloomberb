@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import type { DataProvider } from "../../../types/data-provider";
-import type { TickerRepository } from "../../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
@@ -37,7 +37,7 @@ interface UseCommandBarWorkflowCoordinatorOptions {
   setActiveCollection: (collectionId: string) => void;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
   stateRef: MutableRefObject<AppState>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
 }
 

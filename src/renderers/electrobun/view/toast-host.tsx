@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { colors } from "../../../theme/colors";

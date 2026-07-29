@@ -1,6 +1,7 @@
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import type { InstrumentRef } from "../request-types";
+import { mergeQuoteSubscriptionTargets } from "../quote-subscription-target";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
 import { buildQuoteKey, toMarketDataContext } from "../selectors";
@@ -62,45 +63,6 @@ const STREAM_QUOTE_FIELDS: Array<keyof Quote> = [
   "mark",
   "dataSource",
 ];
-
-function quoteSubscriptionPriorityScore(target: QuoteSubscriptionTarget): number {
-  let score = Number.isFinite(target.weight) ? Math.max(0, target.weight ?? 0) : 0;
-  if (target.selected) score += 10_000;
-  if (target.visible) score += 5_000;
-  if (target.surface === "detail" || target.surface === "monitor") score += 4_000;
-  if (target.surface === "portfolio" || target.surface === "watchlist") score += 1_000;
-  if (target.surface === "screener") score += 700;
-  if (target.surface === "inline") score += 200;
-  return score;
-}
-
-function mergeQuoteSubscriptionTargets(targets: Iterable<QuoteSubscriptionTarget>): QuoteSubscriptionTarget | null {
-  let selectedTarget: QuoteSubscriptionTarget | null = null;
-  let selectedScore = -1;
-  let visible = false;
-  let selected = false;
-  let weight = 0;
-
-  for (const target of targets) {
-    const score = quoteSubscriptionPriorityScore(target);
-    if (!selectedTarget || score > selectedScore) {
-      selectedTarget = target;
-      selectedScore = score;
-    }
-    visible ||= target.visible === true;
-    selected ||= target.selected === true;
-    weight = Math.max(weight, Number.isFinite(target.weight) ? Math.max(0, target.weight ?? 0) : 0);
-  }
-
-  return selectedTarget
-    ? {
-      ...selectedTarget,
-      visible,
-      selected,
-      weight,
-    }
-    : null;
-}
 
 function quoteTargetFromInstrument(
   instrument: InstrumentRef,

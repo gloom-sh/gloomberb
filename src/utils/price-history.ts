@@ -8,7 +8,7 @@ interface PriceHistoryFreshnessOptions {
   exchange?: string;
 }
 
-function getPointTimestamp(point: PricePoint): number {
+export function getPricePointTimestamp(point: PricePoint): number {
   const value = point.date as Date | string | number | null | undefined;
   if (value instanceof Date) return value.getTime();
   if (value == null) return Number.NaN;
@@ -20,8 +20,8 @@ function hasValidClose(point: PricePoint): boolean {
 }
 
 function comparePricePointsByDate(left: PricePoint, right: PricePoint): number {
-  const leftTime = getPointTimestamp(left);
-  const rightTime = getPointTimestamp(right);
+  const leftTime = getPricePointTimestamp(left);
+  const rightTime = getPricePointTimestamp(right);
   const leftValid = Number.isFinite(leftTime);
   const rightValid = Number.isFinite(rightTime);
 
@@ -41,7 +41,7 @@ export function normalizePriceHistory(points: PricePoint[]): PricePoint[] {
   let requiresSort = false;
 
   for (const point of points) {
-    const time = getPointTimestamp(point);
+    const time = getPricePointTimestamp(point);
     if (!Number.isFinite(time)) continue;
     if (!hasValidClose(point)) continue;
 
@@ -77,7 +77,7 @@ export function isPriceHistoryStaleForCurrentWindow(
   const latest = normalized.at(-1);
   if (!latest) return false;
 
-  const latestTime = getPointTimestamp(latest);
+  const latestTime = getPricePointTimestamp(latest);
   if (!Number.isFinite(latestTime) || now - latestTime <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) {
     return false;
   }

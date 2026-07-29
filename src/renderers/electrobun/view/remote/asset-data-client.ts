@@ -4,6 +4,7 @@ import type { DataProvider, QuoteSubscriptionTarget } from "../../../../types/da
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import { backendRequest, getElectrobunBackendInitSnapshot, onCapabilityEvent } from "../backend-rpc";
 import { createCapabilityInvoker } from "./capability-invoker";
+import { RemoteQuoteSubscriptionRegistry } from "./quote-subscription-registry";
 
 const ASSET_DATA_CAPABILITY_ID = "asset-data.asset-data-router";
 const NEWS_CAPABILITY_ID = "news.core";
@@ -75,16 +76,9 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
   const assetDataOperations = getRendererOperationIds(ASSET_DATA_CAPABILITY_ID);
   const newsOperations = getRendererOperationIds(NEWS_CAPABILITY_ID);
   let nextSubscriptionId = 1;
-  const quoteListeners = new Map<string, {
-    target: QuoteSubscriptionTarget;
-    listeners: Set<(target: QuoteSubscriptionTarget, quote: Quote) => void>;
-  }>();
   let quoteBackendSubscriptionId: string | null = null;
   let disposeQuoteBackendMessages: (() => void) | null = null;
   let quoteBackendFlushTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const quoteTargetKey = (target: QuoteSubscriptionTarget) =>
-    `${target.symbol}:${target.exchange ?? ""}:${target.context?.brokerId ?? ""}:${target.context?.brokerInstanceId ?? ""}:${target.context?.instrument?.conId ?? target.context?.instrument?.localSymbol ?? target.context?.instrument?.symbol ?? ""}`;
 
   const scheduleQuoteBackendSubscriptionFlush = () => {
     if (quoteBackendFlushTimer) return;
@@ -94,9 +88,11 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
     }, 25);
   };
 
+  const quoteSubscriptions = new RemoteQuoteSubscriptionRegistry(scheduleQuoteBackendSubscriptionFlush);
+
   const flushQuoteBackendSubscription = () => {
     if (!hasRendererOperation(assetDataOperations, "subscribeQuotes")) return;
-    const targets = [...quoteListeners.values()].map((entry) => entry.target);
+    const targets = quoteSubscriptions.backendTargets();
     const previousSubscriptionId = quoteBackendSubscriptionId;
     if (previousSubscriptionId) {
       quoteBackendSubscriptionId = null;
@@ -110,10 +106,7 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
     quoteBackendSubscriptionId = subscriptionId;
     disposeQuoteBackendMessages = onCapabilityEvent(subscriptionId, (message) => {
       const event = message.event as { target: QuoteSubscriptionTarget; quote: Quote };
-      const key = quoteTargetKey(event.target);
-      for (const listener of quoteListeners.get(key)?.listeners ?? []) {
-        listener(event.target, event.quote);
-      }
+      quoteSubscriptions.dispatch(event.target, event.quote);
     });
     void backendRequest("capability.subscribe", {
       subscriptionId,
@@ -145,38 +138,7 @@ export function createRemoteAssetDataClient(): RemoteAssetDataClient {
     ),
     subscribeQuotes: (targets, onQuote) => {
       if (!hasRendererOperation(assetDataOperations, "subscribeQuotes")) return () => {};
-      const uniqueTargets = [...new Map(
-        targets.map((target) => [
-          quoteTargetKey(target),
-          target,
-        ] as const),
-      ).values()];
-      if (uniqueTargets.length === 0) return () => {};
-
-      let disposed = false;
-      for (const target of uniqueTargets) {
-        const key = quoteTargetKey(target);
-        const entry = quoteListeners.get(key) ?? { target, listeners: new Set() };
-        entry.target = target;
-        entry.listeners.add(onQuote);
-        quoteListeners.set(key, entry);
-      }
-      scheduleQuoteBackendSubscriptionFlush();
-
-      return () => {
-        if (disposed) return;
-        disposed = true;
-        for (const target of uniqueTargets) {
-          const key = quoteTargetKey(target);
-          const entry = quoteListeners.get(key);
-          if (!entry) continue;
-          entry.listeners.delete(onQuote);
-          if (entry.listeners.size === 0) {
-            quoteListeners.delete(key);
-          }
-        }
-        scheduleQuoteBackendSubscriptionFlush();
-      };
+      return quoteSubscriptions.subscribe(targets, onQuote);
     },
   };
 

@@ -24,6 +24,7 @@ import {
   MAIN_WINDOW_RPC_KEY,
   paneIdFromDetachedRpcKey,
 } from "../window/focus";
+import type { DesktopBackendRequestPayload, ElectrobunBackendInit } from "../../shared/protocol";
 
 interface DesktopWindowTarget {
   kind: "main" | "detached";
@@ -39,7 +40,7 @@ interface InitializeDesktopBackendOptions<TRpc> {
   getSessionSnapshot: () => AppSessionSnapshot | null;
   getThemePreview: () => DesktopThemePreviewState;
   markWindowRpcReady: (rpc: TRpc) => void;
-  payload: Record<string, unknown>;
+  payload: DesktopBackendRequestPayload<"init">;
   reconcileDetachedWindows: () => void;
   registerCoreCapabilities: () => void;
   rpc: TRpc;
@@ -50,14 +51,14 @@ interface InitializeDesktopBackendOptions<TRpc> {
 }
 
 interface InitializationPayloadOptions {
-  desktopThemePreview?: DesktopThemePreviewState;
+  desktopThemePreview: DesktopThemePreviewState;
   getDesktopSnapshot: () => DesktopSharedStateSnapshot | null;
   getSessionSnapshot: () => AppSessionSnapshot | null;
 }
 
 function normalizeInitWindowTarget<TRpc>(
   rpc: TRpc,
-  payload: Record<string, unknown>,
+  payload: DesktopBackendRequestPayload<"init">,
   getRpcWindowKey: (rpc: TRpc) => string | undefined,
 ): DesktopWindowTarget {
   const rpcKey = getRpcWindowKey(rpc);
@@ -85,7 +86,7 @@ function buildInitializationPayload(
   services: AppServices,
   windowTarget: DesktopWindowTarget,
   options: InitializationPayloadOptions,
-) {
+): ElectrobunBackendInit {
   return {
     config,
     sessionSnapshot: options.getSessionSnapshot(),
@@ -109,7 +110,7 @@ async function resolveDesktopDataDir(): Promise<string> {
 
 export async function initializeDesktopBackend<TRpc>(
   options: InitializeDesktopBackendOptions<TRpc>,
-) {
+): Promise<ElectrobunBackendInit> {
   const windowTarget = normalizeInitWindowTarget(options.rpc, options.payload, options.getRpcWindowKey);
   options.markWindowRpcReady(options.rpc);
 
@@ -120,7 +121,11 @@ export async function initializeDesktopBackend<TRpc>(
       options.setDesktopWorkspace(createDesktopWorkspace(currentConfig, options.getSessionSnapshot()));
       options.reconcileDetachedWindows();
     }
-    return buildInitializationPayload(currentConfig, currentServices, windowTarget, options);
+    return buildInitializationPayload(currentConfig, currentServices, windowTarget, {
+      getDesktopSnapshot: options.getDesktopSnapshot,
+      getSessionSnapshot: options.getSessionSnapshot,
+      desktopThemePreview: options.getThemePreview(),
+    });
   }
 
   options.setCurrentConfig(await initDataDir(await resolveDesktopDataDir()));

@@ -3,7 +3,7 @@ import {
   clearPersistedBrokerAccounts,
   getBrokerAccountCacheSourceKey,
 } from "../../brokers/account-cache";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker } from "../../market-data/request-types";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -32,7 +32,7 @@ export function bindPluginRegistryRuntimeAccess({
   marketData: MarketDataCoordinator;
   pluginRegistry: PluginRegistry;
   state: AppState;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }) {
   pluginRegistry.getTickerFn = (symbol) => state.tickers.get(symbol) ?? null;
   pluginRegistry.getDataFn = (symbol) => {

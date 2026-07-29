@@ -1,5 +1,5 @@
 import type { MarketState, Quote, QuoteFieldProvenance } from "../../types/financials";
-import { blendHex, colors, priceColor } from "../../theme/colors";
+import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colors";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 
@@ -20,14 +20,14 @@ export function marketStateLabel(state: MarketState): string {
   }
 }
 
-export function marketStateColor(state: MarketState): string {
+export function marketStateColor(state: MarketState, palette: ThemeColors = colors): string {
   switch (state) {
-    case "REGULAR": return colors.positive;
+    case "REGULAR": return palette.positive;
     case "PRE":
-    case "POST": return colors.textBright;
+    case "POST": return palette.textBright;
     case "PREPRE":
     case "POSTPOST":
-    case "CLOSED": return colors.textDim;
+    case "CLOSED": return palette.textDim;
   }
 }
 
@@ -47,7 +47,7 @@ export function marketStateDot(state?: MarketState): string {
   }
 }
 
-export function isClosedMarketState(state?: MarketState): boolean {
+function isClosedMarketState(state?: MarketState): boolean {
   return state === "CLOSED" || state === "PREPRE" || state === "POSTPOST";
 }
 

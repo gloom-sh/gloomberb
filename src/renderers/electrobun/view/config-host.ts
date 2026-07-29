@@ -26,7 +26,7 @@ const electrobunConfigStoreHost: ConfigStoreHost = {
     await backendRequest("config.export", { config, destPath });
   },
   async importConfig(dataDir: string, srcPath: string) {
-    return backendRequest<AppConfig>("config.import", { dataDir, srcPath });
+    return backendRequest("config.import", { dataDir, srcPath });
   },
 };
 

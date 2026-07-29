@@ -1,11 +1,11 @@
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { BrokerPosition } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
 import type { BrokerContractRef } from "../types/instrument";
 import type { TickerMetadata, TickerPosition, TickerRecord } from "../types/ticker";
 
 export async function loadTickerMap(
-  tickerRepository: TickerRepository,
+  tickerRepository: AppTickerRepositoryPort,
   existingTickers?: Map<string, TickerRecord>,
 ): Promise<Map<string, TickerRecord>> {
   if (existingTickers) {
@@ -114,7 +114,7 @@ export async function upsertBrokerPositionTicker({
   portfolioId,
   position,
 }: {
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   tickers: Map<string, TickerRecord>;
   instance: BrokerInstanceConfig;
   portfolioId: string;

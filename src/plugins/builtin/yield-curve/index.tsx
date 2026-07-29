@@ -1,7 +1,7 @@
 import { Box, ScrollBox, Text } from "../../../ui";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut } from "../../../react/input";
-import { StaticChartSurface, usePaneFooter } from "../../../components";
+import { StaticChartSurface, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
@@ -14,6 +14,7 @@ import {
   TREASURY_MATURITIES,
   type YieldPoint,
 } from "./treasury-data";
+import { usePaneStatusFooter } from "../shared/pane-footer";
 
 function formatYield(y: number | null): string {
   if (y == null) return "—";
@@ -70,15 +71,16 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   const inverted = isInverted(points);
   const bp = spreadBp(points);
 
-  usePaneFooter("yield-curve", () => ({
-    info: [
+  const yieldStatus = useMemo<PaneFooterSegment[]>(() => [
       ...(inverted ? [{ id: "inverted", parts: [{ text: "INVERTED", tone: "warning" as const, bold: true }] }] : []),
       ...(bp != null ? [{ id: "spread", parts: [{ text: `2Y-10Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
-      ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-    ],
-    hints: [{ id: "refresh", key: "r", label: "efresh", onPress: () => load() }],
-  }), [bp, error, inverted, load, loading]);
+  ], [bp, inverted]);
+  usePaneStatusFooter({
+    registrationId: "yield-curve",
+    loading,
+    error,
+    info: yieldStatus,
+  });
 
   if (loading && points.length === 0) {
     return (

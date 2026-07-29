@@ -12,7 +12,7 @@ import {
   type SetStateAction,
   type ReactNode,
 } from "react";
-import type { SessionStore } from "../../../data/session-store";
+import type { AppSessionStorePort } from "../../../core/app-service-ports";
 import { ThemeProvider } from "../../../theme/theme-context";
 import {
   findPaneInstance,
@@ -333,7 +333,7 @@ export function AppProvider({
 }: {
   config: AppConfig;
   children: ReactNode;
-  sessionStore?: SessionStore;
+  sessionStore?: AppSessionStorePort;
   sessionSnapshot?: AppSessionSnapshot | null;
   desktopBridge?: DesktopWindowBridge;
   desktopSnapshot?: DesktopSharedStateSnapshot | null;

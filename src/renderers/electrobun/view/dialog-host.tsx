@@ -1,8 +1,7 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DialogHostProvider, type DialogApi } from "../../../ui/dialog";
-import { blendHex, colors } from "../../../theme/colors";
+import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 
 interface DialogState {
@@ -27,7 +26,7 @@ export function shouldFocusDialogContainer(
 }
 
 export function WebDialogHostProvider({ children }: { children: ReactNode }) {
-  useThemeColors();
+  const colors = useThemeColors();
   const [dialogState, setDialogState] = useState<DialogState | null>(null);
   const dialogStateRef = useRef<DialogState | null>(null);
   const dialogElementRef = useRef<HTMLDivElement | null>(null);

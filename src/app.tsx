@@ -19,7 +19,8 @@ import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
-import type { TickerRepository } from "./data/ticker-repository";
+import type { LoadedExternalPlugin } from "./plugins/loader";
+import type { AppServicesFactory, AppTickerRepositoryPort } from "./core/app-service-ports";
 import { ThemeProvider, useThemeColors } from "./theme/theme-context";
 import type { AppConfig } from "./types/config";
 import type { DesktopDeepLinkBridge } from "./types/desktop-deeplink";
@@ -31,7 +32,6 @@ import type { LayoutBounds } from "./plugins/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
-import { createAppServices } from "./core/app-services";
 import { getLoadablePlugins } from "./plugins/catalog";
 import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
@@ -53,10 +53,14 @@ import {
 } from "./app/app-bootstrap-state";
 import { scheduleConfigSave } from "./state/config-save-scheduler";
 import { measurePerf } from "./utils/perf-marks";
+import { useAppLanguage } from "./i18n/react";
+import { AppLanguageConfigObserver } from "./app/language-observer";
+
+const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
 
 interface AppInnerProps {
   pluginRegistry: PluginRegistry;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   dataProvider: DataProvider;
   marketData: MarketDataCoordinator;
   sessionSnapshot?: AppSessionSnapshot | null;
@@ -384,7 +388,8 @@ function AppInner({
 
 interface AppProps {
   config: AppConfig;
-  externalPlugins?: import("./plugins/loader").LoadedExternalPlugin[];
+  servicesFactory: AppServicesFactory;
+  externalPlugins?: LoadedExternalPlugin[];
   cliLaunchRequest?: CliLaunchRequest | null;
   desktopWindowBridge?: DesktopWindowBridge;
   desktopApplicationMenuBridge?: DesktopApplicationMenuBridge;
@@ -396,7 +401,8 @@ interface AppProps {
 
 export function App({
   config: initialConfig,
-  externalPlugins = [],
+  servicesFactory,
+  externalPlugins: providedExternalPlugins,
   cliLaunchRequest = null,
   desktopWindowBridge,
   desktopApplicationMenuBridge,
@@ -405,6 +411,8 @@ export function App({
   desktopThemePreview = null,
   remoteControlAdapter,
 }: AppProps) {
+  useAppLanguage();
+  const externalPlugins = providedExternalPlugins ?? EMPTY_EXTERNAL_PLUGINS;
   const renderer = useNativeRenderer();
   const effectiveInitialConfig = useMemo(() => {
     return resolveInitialAppConfig({
@@ -432,7 +440,7 @@ export function App({
 
   const services = useMemo(() => {
     return measurePerf("startup.app.create-services", () => (
-      createAppServices({
+      servicesFactory({
         config,
         plugins: getLoadablePlugins(externalPlugins),
       })
@@ -441,7 +449,7 @@ export function App({
       disabledPluginCount: config.disabledPlugins.length,
       brokerInstanceCount: config.brokerInstances.length,
     });
-  }, [config.dataDir, externalPlugins]);
+  }, [config.dataDir, externalPlugins, servicesFactory]);
 
   useEffect(() => {
     return () => services.destroy();
@@ -483,6 +491,7 @@ export function App({
         desktopSnapshot={desktopSnapshot}
         initialThemePreview={desktopThemePreview}
       >
+        <AppLanguageConfigObserver />
         <AppInner
           pluginRegistry={services.pluginRegistry}
           tickerRepository={services.tickerRepository}

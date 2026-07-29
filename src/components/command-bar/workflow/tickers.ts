@@ -1,6 +1,6 @@
 import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../../../state/app/context";
-import type { TickerRepository } from "../../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { isManualPortfolio } from "../../../plugins/builtin/portfolio-list/mutations";
 import type { DataProvider } from "../../../types/data-provider";
@@ -10,7 +10,7 @@ import { parseTickerListInput } from "../../../tickers/list";
 
 export interface SharedWorkflowDeps {
   dataProvider: DataProvider;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   pluginRegistry: PluginRegistry;
   dispatch: Dispatch<AppAction>;
   getState: () => AppState;

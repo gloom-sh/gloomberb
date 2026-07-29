@@ -21,8 +21,8 @@ interface BookRow {
 }
 
 const BOOK_COLUMNS: BookColumn[] = [
-  { id: "outcome", label: "OUT", width: 5 },
-  { id: "side", label: "SIDE", width: 6 },
+  { id: "outcome", label: "OUT", width: 5, align: "left" },
+  { id: "side", label: "SIDE", width: 6, align: "left" },
   { id: "price", label: "PRICE", width: 8, align: "right" },
   { id: "size", label: "SIZE", width: 10, align: "right" },
 ];

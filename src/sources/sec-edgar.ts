@@ -1,6 +1,7 @@
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { FinancialStatement } from "../types/financials";
 import { truncateWithEllipsis } from "../utils/text-wrap";
+import { decodeHtmlEntities } from "../utils/html-entities";
 import {
   PDF_FALLBACK_MESSAGE,
   extractFilingContent,
@@ -161,20 +162,8 @@ function normalizeDocumentName(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();
 }
 
-function decodeSecHtmlEntities(text: string): string {
-  return text
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, "\"")
-    .replace(/&#39;|&#x27;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, digits: string) => String.fromCodePoint(Number(digits)))
-    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => String.fromCodePoint(parseInt(hex, 16)));
-}
-
 function cleanSecTableText(value: string): string {
-  return decodeSecHtmlEntities(
+  return decodeHtmlEntities(
     value
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")

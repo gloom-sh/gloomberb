@@ -1,5 +1,5 @@
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
-import type { TimeRange } from "../../components/chart/core/types";
+import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { PricePoint } from "../../types/financials";
 import type { CachePolicy, CachePolicyMap } from "../../types/persistence";

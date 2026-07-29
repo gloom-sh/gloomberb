@@ -249,11 +249,6 @@ export function TwitterFeedPane({ focused, width, height }: PaneProps) {
 
   useTwitterFeedFooter({
     activeFeed,
-    addFeed,
-    blurSearch,
-    focusSearch,
-    removeFeed,
-    searchFocused,
   });
 
   const searchBar = activeFeed ? (

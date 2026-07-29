@@ -7,6 +7,7 @@ import { createAlert, deserializeAlerts, serializeAlerts } from "../../plugins/b
 import type { AlertCondition } from "../../plugins/builtin/alerts/types";
 import type { CliCommandDef } from "../../types/plugin";
 import { debugLog, type LogLevel } from "../../utils/debug-log";
+import { withCliServices, withConfigData } from "../context";
 import { parsePositiveInt, requireArg, takeOption } from "./command-utils";
 
 const ALERTS_PLUGIN_ID = "alerts";
@@ -51,9 +52,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     execute: async (_args, ctx) => {
       let dataDir: string | null = null;
       try {
-        const config = await ctx.initConfigData();
-        dataDir = config.dataDir;
-        config.persistence.close();
+        dataDir = await withConfigData(ctx, ({ dataDir: configuredDataDir }) => configuredDataDir);
       } catch {
         dataDir = null;
       }
@@ -74,17 +73,15 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     description: "Check local CLI runtime, config, plugins, and capability health",
     execute: async (_args, ctx) => {
       const checks: Array<{ check: string; status: string; detail: string }> = [];
-      let services: Awaited<ReturnType<typeof ctx.initServices>> | null = null;
       try {
-        services = await ctx.initServices();
-        checks.push({ check: "config", status: "ok", detail: services.dataDir });
-        checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
-        checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
-        checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
+        await withCliServices(ctx, async (services) => {
+          checks.push({ check: "config", status: "ok", detail: services.dataDir });
+          checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
+          checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
+          checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
+        });
       } catch (error) {
         checks.push({ check: "runtime", status: "error", detail: error instanceof Error ? error.message : String(error) });
-      } finally {
-        services?.destroy();
       }
       ctx.printResult({ data: checks }, {
         columns: [
@@ -102,8 +99,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     help: { usage: ["config list", "config get <key>", "config set <key> <value>"] },
     execute: async (args, ctx) => {
       const action = args[0] ?? "list";
-      const context = await ctx.initConfigData();
-      try {
+      await withConfigData(ctx, async (context) => {
         const safeConfig: Record<string, unknown> = {
           dataDir: context.config.dataDir,
           baseCurrency: context.config.baseCurrency,
@@ -146,9 +142,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           return;
         }
         ctx.fail("Usage: gloomberb config list|get|set");
-      } finally {
-        context.persistence.close();
-      }
+      });
     },
   };
 
@@ -158,8 +152,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     help: { usage: ["cache status", "cache clear [namespace]"] },
     execute: async (args, ctx) => {
       const action = args[0] ?? "status";
-      const services = await ctx.initServices();
-      try {
+      await withCliServices(ctx, async (services) => {
         if (action === "status") {
           ctx.printResult({ data: [resourceCacheStats(services)] });
           return;
@@ -173,9 +166,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           return;
         }
         ctx.fail("Usage: gloomberb cache status|clear");
-      } finally {
-        services.destroy();
-      }
+      });
     },
   };
 
@@ -185,8 +176,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     description: "Inspect provider/source capability status",
     help: { usage: ["provider status"] },
     execute: async (_args, ctx) => {
-      const services = await ctx.initServices();
-      try {
+      await withCliServices(ctx, async (services) => {
         const disabledSources = new Set(services.config.disabledSources ?? []);
         const rows = services.services.pluginRegistry.capabilities.manifests().map((manifest) => ({
           id: manifest.sourceId ?? manifest.id,
@@ -203,9 +193,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
             { key: "operations", header: "Operations" },
           ],
         });
-      } finally {
-        services.destroy();
-      }
+      });
     },
   };
 
@@ -215,8 +203,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     help: { usage: ["plugin list", "plugin info <id>", "plugin enable <id>", "plugin disable <id>", "plugin doctor"] },
     execute: async (args, ctx) => {
       const action = args[0] ?? "list";
-      const services = await ctx.initServices();
-      try {
+      await withCliServices(ctx, async (services) => {
         const pluginRows = () => [...services.services.pluginRegistry.allPlugins.values()].map((plugin) => ({
           id: plugin.id,
           name: plugin.name,
@@ -255,9 +242,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           return;
         }
         ctx.fail("Usage: gloomberb plugin list|info|enable|disable|doctor");
-      } finally {
-        services.destroy();
-      }
+      });
     },
   };
 
@@ -265,8 +250,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     name: "layout",
     description: "Inspect saved layouts",
     execute: async (_args, ctx) => {
-      const config = await ctx.initConfigData();
-      try {
+      await withConfigData(ctx, async (config) => {
         const rows = config.config.layouts.map((layout, index) => ({
           index,
           active: index === config.config.activeLayoutIndex,
@@ -276,9 +260,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           detached: layout.layout.detached.length,
         }));
         ctx.printResult({ data: rows });
-      } finally {
-        config.persistence.close();
-      }
+      });
     },
   };
 
@@ -287,8 +269,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     description: "Inspect pane and pane-template inventory",
     help: { usage: ["pane list"] },
     execute: async (_args, ctx) => {
-      const services = await ctx.initServices();
-      try {
+      await withCliServices(ctx, async (services) => {
         const rows = [
           ...[...services.services.pluginRegistry.panes.entries()].map(([id, pane]) => ({
             kind: "pane",
@@ -311,9 +292,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
             { key: "owner", header: "Owner" },
           ],
         });
-      } finally {
-        services.destroy();
-      }
+      });
     },
   };
 
@@ -322,9 +301,8 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     description: "Read and mutate ticker or quick notes",
     help: { usage: ["notes show <symbol>", "notes set <symbol> TEXT", "notes delete <symbol>", "notes quick list"] },
     execute: async (args, ctx) => {
-      const config = await ctx.initConfigData();
-      const notes = new NotesFiles(config.dataDir);
-      try {
+      await withConfigData(ctx, async (config) => {
+        const notes = new NotesFiles(config.dataDir);
         const action = args[0] ?? "list";
         if (action === "quick") {
           const subaction = args[1] ?? "list";
@@ -352,9 +330,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           return;
         }
         ctx.fail("Usage: gloomberb notes show|set|delete|quick");
-      } finally {
-        config.persistence.close();
-      }
+      });
     },
   };
 
@@ -365,8 +341,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     help: { usage: ["alerts list", "alerts add <symbol> <above|below|crosses> <price>", "alerts delete <id>", "alerts rearm <id>"] },
     execute: async (args, ctx) => {
       const action = args[0] ?? "list";
-      const config = await ctx.initConfigData();
-      try {
+      await withConfigData(ctx, async (config) => {
         const raw = config.config.pluginConfig[ALERTS_PLUGIN_ID]?.[ALERTS_KEY];
         const alerts = deserializeAlerts(typeof raw === "string" ? raw : "[]");
         const saveAlerts = async (nextAlerts: typeof alerts) => {
@@ -413,9 +388,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           return;
         }
         ctx.fail("Usage: gloomberb alerts list|add|delete|rearm");
-      } finally {
-        config.persistence.close();
-      }
+      });
     },
   };
 
@@ -485,8 +458,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     description: "Show CLI coverage for panes, templates, capabilities, and deferred exceptions",
     execute: async (_args, ctx) => {
       const commandNames = new Set(allCommands().map((command) => command.name));
-      const services = await ctx.initServices();
-      try {
+      await withCliServices(ctx, async (services) => {
         const rows = [
           ...[...services.services.pluginRegistry.panes.entries()].map(([id, pane]) => ({
             surface: "pane",
@@ -531,9 +503,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
             { key: "label", header: "Label" },
           ],
         });
-      } finally {
-        services.destroy();
-      }
+      });
     },
   };
 

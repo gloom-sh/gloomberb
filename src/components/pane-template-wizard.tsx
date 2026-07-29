@@ -6,6 +6,7 @@ import type { WizardStep } from "../types/plugin";
 import { colors } from "../theme/colors";
 import { isPlainKey } from "../utils/keyboard";
 import { DialogFrame, ListView, TextField } from "./ui";
+import { t } from "../i18n";
 
 export function PaneTemplateInfoStep({
   dismiss,
@@ -24,7 +25,7 @@ export function PaneTemplateInfoStep({
       <Box flexDirection="column">
         {step.body?.map((line, index) => (
           <Box key={`${step.key}:${index}`} height={1}>
-            <Text fg={colors.textDim}>{line || " "}</Text>
+            <Text fg={colors.textDim}>{line ? t(line) : " "}</Text>
           </Box>
         ))}
       </Box>
@@ -55,14 +56,14 @@ export function PaneTemplateInputStep({
       <Box flexDirection="column">
         {step.body?.map((line, index) => (
           <Box key={`${step.key}:${index}`} height={1}>
-            <Text fg={colors.textDim}>{line || " "}</Text>
+            <Text fg={colors.textDim}>{line ? t(line) : " "}</Text>
           </Box>
         ))}
         <Box height={1} />
         <TextField
           inputRef={inputRef}
           value={value}
-          placeholder={step.placeholder || ""}
+          placeholder={step.placeholder ? t(step.placeholder) : ""}
           type={step.type === "password" ? "password" : "text"}
           focused
           onChange={setValue}
@@ -112,7 +113,7 @@ export function PaneTemplateTextareaStep({
       <Box flexDirection="column" flexGrow={1}>
         {step.body?.map((line, index) => (
           <Box key={`${step.key}:${index}`} height={1}>
-            <Text fg={colors.textDim}>{line || " "}</Text>
+            <Text fg={colors.textDim}>{line ? t(line) : " "}</Text>
           </Box>
         ))}
         <Box height={1} />
@@ -126,7 +127,7 @@ export function PaneTemplateTextareaStep({
           <Textarea
             ref={textareaRef}
             initialValue={step.defaultValue ?? ""}
-            placeholder={step.placeholder || ""}
+            placeholder={step.placeholder ? t(step.placeholder) : ""}
             focused
             textColor={colors.text}
             placeholderColor={colors.textDim}
@@ -141,13 +142,13 @@ export function PaneTemplateTextareaStep({
             backgroundColor={colors.selected}
             onMouseDown={commit}
           >
-            <Text fg={colors.selectedText}>{` Save `}</Text>
+            <Text fg={colors.selectedText}>{` ${t("Save")} `}</Text>
           </Box>
           <Box
             backgroundColor={colors.panel}
             onMouseDown={() => resolve("")}
           >
-            <Text fg={colors.text}>{` Cancel `}</Text>
+            <Text fg={colors.text}>{` ${t("Cancel")} `}</Text>
           </Box>
         </Box>
       </Box>
@@ -186,14 +187,14 @@ export function PaneTemplateSelectStep({
       <Box flexDirection="column">
         {step.body?.map((line, index) => (
           <Box key={`${step.key}:${index}`} height={1}>
-            <Text fg={colors.textDim}>{line || " "}</Text>
+            <Text fg={colors.textDim}>{line ? t(line) : " "}</Text>
           </Box>
         ))}
         <Box height={1} />
         <ListView
           items={options.map((option) => ({
             id: option.value,
-            label: option.label,
+            label: t(option.label),
           }))}
           selectedIndex={selectedIndex}
           bgColor={colors.commandBg}

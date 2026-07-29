@@ -24,6 +24,7 @@ import { createPiAiHost } from "../../plugins/builtin/ai/pi";
 import {
   installAiRunHost,
 } from "../../plugins/builtin/ai/runner";
+import { createAppServices } from "../../core/app-services";
 
 const AI_STARTUP_READINESS_TIMEOUT_MS = 5_000;
 
@@ -140,6 +141,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
             >
               <App
                 config={config}
+                servicesFactory={createAppServices}
                 externalPlugins={externalPlugins}
                 cliLaunchRequest={cliLaunchRequest}
                 remoteControlAdapter={remoteControlAdapter}

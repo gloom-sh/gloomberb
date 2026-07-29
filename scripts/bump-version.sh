@@ -10,10 +10,9 @@ Usage: ./scripts/bump-version.sh <version> [--skip-push]
 
 Steps:
 1. Update package.json
-2. Run bun run scripts/sync-version.ts
-3. Commit package.json and src/version.ts as v<version>
-4. Create tag v<version>
-5. Push commit and tag with git push --atomic origin HEAD v<version>
+2. Commit package.json as v<version>
+3. Create tag v<version>
+4. Push commit and tag with git push --atomic origin HEAD v<version>
 
 Options:
   --skip-push   Prepare the release locally without pushing to origin
@@ -81,9 +80,7 @@ bun -e '
   await Bun.write(path, `${JSON.stringify(pkg, null, 2)}\n`);
 ' "$VERSION"
 
-bun run scripts/sync-version.ts
-
-git add package.json src/version.ts
+git add package.json
 git commit -m "$TAG"
 git tag -a "$TAG" -m "$TAG"
 

@@ -1,6 +1,6 @@
 import type { Dispatch } from "react";
 import type { DataProvider } from "../../../types/data-provider";
-import type { TickerRepository } from "../../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { AppAction, AppState } from "../../../state/app/context";
 import {
@@ -46,7 +46,7 @@ export function createCommandBarCollectionWorkflowActions(options: {
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   setActiveCollection: (collectionId: string) => void;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }): CommandBarCollectionWorkflowActions {
   const {
     activeCollectionId,

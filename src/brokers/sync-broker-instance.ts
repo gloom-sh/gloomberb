@@ -1,5 +1,4 @@
-import type { ResourceStore } from "../data/resource-store";
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppResourceStorePort, AppTickerRepositoryPort } from "../core/app-service-ports";
 import { persistBrokerAccounts } from "./account-cache";
 import type { BrokerAdapter, BrokerPosition } from "../types/broker";
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
@@ -23,9 +22,9 @@ export interface SyncBrokerInstanceArgs {
   config: AppConfig;
   instanceId: string;
   brokers: ReadonlyMap<string, BrokerAdapter>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   existingTickers?: Map<string, TickerRecord>;
-  resources?: ResourceStore;
+  resources?: AppResourceStorePort;
   persistResolvedBrokerConfig?: boolean;
 }
 
@@ -42,9 +41,9 @@ export interface SyncBrokerInstanceResult {
 export interface SyncBrokerInstancesArgs {
   config: AppConfig;
   brokers: ReadonlyMap<string, BrokerAdapter>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   existingTickers: Map<string, TickerRecord>;
-  resources?: ResourceStore;
+  resources?: AppResourceStorePort;
   persistResolvedBrokerConfig?: boolean;
   onResult?: (result: SyncBrokerInstanceResult, instance: BrokerInstanceConfig, previousConfig: AppConfig) => void | Promise<void>;
 }

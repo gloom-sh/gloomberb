@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 import type { NativeRendererHost } from "../../../ui";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "./input-host";
 import { hasWebCtrlModifier, normalizeWebKeyName, shouldConsumeWebAppKeyDown, webKeySequence } from "./key-event";

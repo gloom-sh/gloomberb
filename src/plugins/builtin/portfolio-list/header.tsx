@@ -18,6 +18,11 @@ import {
   type ResolvedPortfolioAccountState,
 } from "./summary";
 
+type CashDrawerPointerEvent = {
+  preventDefault(): void;
+  stopPropagation(): void;
+};
+
 export function shouldToggleCashMarginDrawer(key: string | undefined, showCashDrawer: boolean): boolean {
   return key === "c" && showCashDrawer;
 }
@@ -91,12 +96,12 @@ export function PortfolioCashMarginDrawer({
         height={drawerHeight}
         flexDirection="row"
         backgroundColor={colors.bg}
-        onMouseDown={(event) => {
+        onMouseDown={(event: CashDrawerPointerEvent) => {
           event.preventDefault();
           event.stopPropagation();
           onToggle();
         }}
-        onMouseUp={(event) => {
+        onMouseUp={(event: CashDrawerPointerEvent) => {
           event.preventDefault();
           event.stopPropagation();
         }}
@@ -118,12 +123,12 @@ export function PortfolioCashMarginDrawer({
         height={1}
         flexDirection="row"
         backgroundColor={colors.bg}
-        onMouseDown={(event) => {
+        onMouseDown={(event: CashDrawerPointerEvent) => {
           event.preventDefault();
           event.stopPropagation();
           onToggle();
         }}
-        onMouseUp={(event) => {
+        onMouseUp={(event: CashDrawerPointerEvent) => {
           event.preventDefault();
           event.stopPropagation();
         }}

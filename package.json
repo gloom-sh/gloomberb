@@ -1,6 +1,7 @@
 {
   "name": "gloomberb",
   "version": "0.10.1",
+  "packageManager": "bun@1.3.11",
   "description": "Market research and portfolio tracker for the terminal",
   "module": "src/index.tsx",
   "type": "module",
@@ -23,6 +24,11 @@
     "desktop:release": "electrobun build --env=stable",
     "desktop:release:windows": "electrobun build --env=stable --targets=win-x64",
     "i18n:audit": "bun run scripts/i18n-audit.ts",
+    "typecheck": "bun run typecheck:opentui && bun run typecheck:electrobun-bun && bun run typecheck:electrobun-view && bun run typecheck:scripts",
+    "typecheck:opentui": "tsc --project tsconfig.opentui.json",
+    "typecheck:electrobun-bun": "tsc --project tsconfig.electrobun-bun.json",
+    "typecheck:electrobun-view": "tsc --project tsconfig.electrobun-view.json",
+    "typecheck:scripts": "tsc --project tsconfig.scripts.json",
     "test": "bun test",
     "release": "./scripts/release.sh"
   },
@@ -41,6 +47,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "@types/react-dom": "^19.2.3",
+    "@types/three": "0.165.0",
     "electrobun": "^1.18.1",
     "png-to-ico": "^2.1.8",
     "rcedit": "^4.0.1"

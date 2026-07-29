@@ -197,7 +197,12 @@ export function QuickAddTickerInput({
         return;
       }
       if (currentValidation.status !== "ready") {
-        notify({ type: "error", body: currentValidation.status === "idle" ? "Ticker symbol is required." : currentValidation.message });
+        const body = currentValidation.status === "idle"
+          ? "Ticker symbol is required."
+          : currentValidation.status === "checking"
+            ? "Ticker lookup is still in progress."
+            : currentValidation.message;
+        notify({ type: "error", body });
         return;
       }
 

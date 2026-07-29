@@ -1,5 +1,5 @@
 import { useCallback, type Dispatch } from "react";
-import type { TickerRepository } from "../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import {
   addPaneFloating,
   addPaneToLayout,
@@ -54,7 +54,7 @@ interface AppPaneRuntimeArgs {
   pluginRegistry: PluginRegistry;
   state: AppState;
   stateRef: { current: AppState };
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }
 
 export function useAppPaneRuntime({

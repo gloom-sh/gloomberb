@@ -1,5 +1,3 @@
-/// <reference lib="dom" />
-
 import { useUiHost } from "../ui";
 import { type AlertContext, useDialog, useDialogKeyboard } from "../ui/dialog";
 import { useEffect, useRef, useState } from "react";

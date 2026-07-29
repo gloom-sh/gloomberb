@@ -11,6 +11,7 @@ import {
 } from "./normalizers";
 import { debugLog } from "../utils/debug-log";
 import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
+import { mergeQuoteSubscriptionTargets } from "../market-data/quote-subscription-target";
 
 const QUOTE_SUBSCRIPTION_FLUSH_MS = 25;
 const cloudApiLog = debugLog.createLogger("cloud-api");
@@ -19,6 +20,18 @@ type ChannelListener = (message: ChatMessage) => void;
 type ChatNotificationListener = (notification: ChatNotification) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
 type QuoteListener = (target: QuoteStreamTarget, quote: CloudQuotePayload) => void;
+type QuoteSubscription = {
+  target: QuoteStreamTarget;
+  listener: QuoteListener;
+};
+
+function mergeQuoteStreamSubscriptions(
+  subscriptions: Iterable<QuoteSubscription>,
+): QuoteStreamTarget | null {
+  return mergeQuoteSubscriptionTargets(
+    [...subscriptions].map((subscription) => subscription.target),
+  );
+}
 
 type CloudApiSocketDelegate = {
   getBaseUrl: () => string;
@@ -49,7 +62,8 @@ export class CloudApiSocket {
   private readonly channelListeners = new Map<string, Set<ChannelListener>>();
   private readonly chatNotificationListeners = new Set<ChatNotificationListener>();
   private readonly chatPresenceListeners = new Set<ChatPresenceListener>();
-  private readonly quoteListeners = new Map<string, Set<QuoteListener>>();
+  private nextQuoteSubscriptionId = 1;
+  private readonly quoteSubscriptions = new Map<string, Map<number, QuoteSubscription>>();
   private readonly quoteTargets = new Map<string, QuoteStreamTarget>();
   private readonly pendingQuoteSubscribes = new Map<string, QuoteStreamTarget>();
   private readonly pendingQuoteUnsubscribes = new Map<string, QuoteStreamTarget>();
@@ -150,6 +164,7 @@ export class CloudApiSocket {
     targets: QuoteStreamTarget[],
     onQuote: (target: QuoteStreamTarget, quote: CloudQuotePayload) => void,
   ): () => void {
+    const subscriptionId = this.nextQuoteSubscriptionId++;
     const uniqueTargets = [...new Map(
       targets
         .filter((target) => typeof target.symbol === "string" && target.symbol.trim().length > 0)
@@ -170,18 +185,17 @@ export class CloudApiSocket {
     const updatedSubscriptions: QuoteStreamTarget[] = [];
     for (const target of uniqueTargets) {
       const key = marketKey(target.symbol, target.exchange);
-      const listeners = this.quoteListeners.get(key) ?? new Set<QuoteListener>();
-      if (listeners.size === 0) {
+      const subscriptions = this.quoteSubscriptions.get(key) ?? new Map<number, QuoteSubscription>();
+      const previousTarget = this.quoteTargets.get(key);
+      subscriptions.set(subscriptionId, { target, listener: onQuote });
+      this.quoteSubscriptions.set(key, subscriptions);
+      const mergedTarget = mergeQuoteStreamSubscriptions(subscriptions.values()) ?? target;
+      if (!previousTarget) {
         newSubscriptions.push(target);
-      } else {
-        const existing = this.quoteTargets.get(key);
-        if (JSON.stringify(this.serializeQuoteStreamTarget(existing ?? target)) !== JSON.stringify(this.serializeQuoteStreamTarget(target))) {
-          updatedSubscriptions.push(target);
-        }
+      } else if (!this.areQuoteStreamTargetsEquivalent(previousTarget, mergedTarget)) {
+        updatedSubscriptions.push(mergedTarget);
       }
-      listeners.add(onQuote);
-      this.quoteListeners.set(key, listeners);
-      this.quoteTargets.set(key, target);
+      this.quoteTargets.set(key, mergedTarget);
     }
 
     this.ensureSocket();
@@ -196,20 +210,29 @@ export class CloudApiSocket {
 
     return () => {
       const removedTargets: QuoteStreamTarget[] = [];
+      const updatedTargets: QuoteStreamTarget[] = [];
 
       for (const target of uniqueTargets) {
         const key = marketKey(target.symbol, target.exchange);
-        const listeners = this.quoteListeners.get(key);
-        if (!listeners) continue;
-        listeners.delete(onQuote);
-        if (listeners.size === 0) {
-          this.quoteListeners.delete(key);
-          const storedTarget = this.quoteTargets.get(key);
-          if (storedTarget) {
-            removedTargets.push(storedTarget);
-          }
+        const subscriptions = this.quoteSubscriptions.get(key);
+        if (!subscriptions || !subscriptions.delete(subscriptionId)) continue;
+        const previousTarget = this.quoteTargets.get(key);
+        if (subscriptions.size === 0) {
+          this.quoteSubscriptions.delete(key);
+          if (previousTarget) removedTargets.push(previousTarget);
           this.quoteTargets.delete(key);
+          continue;
         }
+        const mergedTarget = mergeQuoteStreamSubscriptions(subscriptions.values());
+        if (!mergedTarget) continue;
+        this.quoteTargets.set(key, mergedTarget);
+        if (previousTarget && !this.areQuoteStreamTargetsEquivalent(previousTarget, mergedTarget)) {
+          updatedTargets.push(mergedTarget);
+        }
+      }
+
+      if (updatedTargets.length > 0) {
+        this.queueQuoteSubscribes(updatedTargets);
       }
 
       if (removedTargets.length > 0) {
@@ -234,7 +257,7 @@ export class CloudApiSocket {
     this.channelListeners.clear();
     this.chatNotificationListeners.clear();
     this.chatPresenceListeners.clear();
-    this.quoteListeners.clear();
+    this.quoteSubscriptions.clear();
     this.quoteTargets.clear();
     this.pendingQuoteSubscribes.clear();
     this.pendingQuoteUnsubscribes.clear();
@@ -302,12 +325,8 @@ export class CloudApiSocket {
 
     if (parsed?.type === "market.quote" && parsed.quote && typeof parsed.symbol === "string") {
       const key = marketKey(parsed.symbol, parsed.exchange);
-      const target = this.quoteTargets.get(key) ?? {
-        symbol: normalizeSymbol(parsed.symbol),
-        exchange: canonicalExchange(parsed.exchange),
-      };
-      for (const listener of this.quoteListeners.get(key) ?? []) {
-        listener(target, parsed.quote as CloudQuotePayload);
+      for (const subscription of this.quoteSubscriptions.get(key)?.values() ?? []) {
+        subscription.listener(subscription.target, parsed.quote as CloudQuotePayload);
       }
     }
   }
@@ -440,7 +459,7 @@ export class CloudApiSocket {
   private queueQuoteUnsubscribes(targets: QuoteStreamTarget[]): void {
     for (const target of targets) {
       const key = marketKey(target.symbol, target.exchange);
-      if (this.pendingQuoteSubscribes.delete(key)) continue;
+      this.pendingQuoteSubscribes.delete(key);
       this.pendingQuoteUnsubscribes.set(key, target);
     }
     this.scheduleQuoteSubscriptionFlush();
@@ -479,5 +498,10 @@ export class CloudApiSocket {
       ...(target.selected ? { selected: true } : {}),
       ...(Number.isFinite(target.weight) ? { weight: target.weight } : {}),
     };
+  }
+
+  private areQuoteStreamTargetsEquivalent(left: QuoteStreamTarget, right: QuoteStreamTarget): boolean {
+    return JSON.stringify(this.serializeQuoteStreamTarget(left))
+      === JSON.stringify(this.serializeQuoteStreamTarget(right));
   }
 }

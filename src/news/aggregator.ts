@@ -17,15 +17,28 @@ export { buildNewsQueryKey } from "./news-model";
 
 export interface NewsServiceOptions {
   pollIntervalMs?: number;
+  inactiveQueryTtlMs?: number;
+  maxInactiveQueries?: number;
+  now?: () => number;
 }
 
 export type NewsQueryListener = (state: NewsQueryState) => void;
 
 const DEFAULT_POLL_INTERVAL_MS = 2 * 60 * 1000;
+const DEFAULT_INACTIVE_QUERY_TTL_MS = 10 * 60 * 1000;
+const DEFAULT_MAX_INACTIVE_QUERIES = 50;
 
 interface SourceFetchResult {
   articles: NewsArticle[];
   sourceIds: string[];
+}
+
+interface NewsQueryEntry {
+  query: NewsQuery;
+  state: NewsQueryState;
+  inFlight: Promise<NewsQueryState> | null;
+  refs: number;
+  lastAccessedAt: number;
 }
 
 function newsCapabilityPriority(source: NewsCapability): number {
@@ -39,17 +52,20 @@ function newsCapabilitySourceId(source: NewsCapability): string {
 export class NewsService {
   private readonly sources = new Map<string, NewsCapability>();
   private readonly listeners = new Set<() => void>();
-  private readonly queryStates = new Map<string, NewsQueryState>();
-  private readonly queryByKey = new Map<string, NewsQuery>();
-  private readonly watchedQueries = new Map<string, { query: NewsQuery; refs: number }>();
-  private readonly inFlight = new Map<string, Promise<NewsQueryState>>();
+  private readonly queries = new Map<string, NewsQueryEntry>();
   private articles: NewsArticle[] = [];
   private version = 0;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private readonly pollIntervalMs: number;
+  private readonly inactiveQueryTtlMs: number;
+  private readonly maxInactiveQueries: number;
+  private readonly now: () => number;
 
   constructor(options: NewsServiceOptions = {}) {
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    this.inactiveQueryTtlMs = Math.max(1, options.inactiveQueryTtlMs ?? DEFAULT_INACTIVE_QUERY_TTL_MS);
+    this.maxInactiveQueries = Math.max(1, Math.floor(options.maxInactiveQueries ?? DEFAULT_MAX_INACTIVE_QUERIES));
+    this.now = options.now ?? Date.now;
   }
 
   register(source: NewsCapability): () => void {
@@ -89,29 +105,24 @@ export class NewsService {
   watchQuery(query: NewsQuery, listener: NewsQueryListener): () => void {
     const normalized = normalizeNewsQuery(query);
     const key = buildNewsQueryKey(normalized);
-    const currentWatch = this.watchedQueries.get(key);
-    this.watchedQueries.set(key, {
-      query: normalized,
-      refs: (currentWatch?.refs ?? 0) + 1,
-    });
+    const entry = this.getOrCreateQueryEntry(normalized);
+    entry.refs++;
 
-    const emit = () => listener(this.queryStates.get(key) ?? createIdleNewsQueryState());
+    const emit = () => listener(this.queries.get(key)?.state ?? createIdleNewsQueryState());
     const unsubscribe = this.subscribe(emit);
     emit();
-    void this.refreshQuery(normalized, false, { track: false });
+    void this.refreshQuery(normalized, false);
 
     let disposed = false;
     return () => {
       if (disposed) return;
       disposed = true;
       unsubscribe();
-      const watch = this.watchedQueries.get(key);
-      if (!watch) return;
-      if (watch.refs <= 1) {
-        this.watchedQueries.delete(key);
-      } else {
-        this.watchedQueries.set(key, { query: watch.query, refs: watch.refs - 1 });
-      }
+      const current = this.queries.get(key);
+      if (!current) return;
+      current.refs = Math.max(0, current.refs - 1);
+      current.lastAccessedAt = this.now();
+      this.pruneInactiveQueries();
     };
   }
 
@@ -128,9 +139,7 @@ export class NewsService {
 
   getQueryState(query: NewsQuery): NewsQueryState {
     const normalized = normalizeNewsQuery(query);
-    const key = buildNewsQueryKey(normalized);
-    this.queryByKey.set(key, normalized);
-    return this.queryStates.get(key) ?? createIdleNewsQueryState();
+    return this.getOrCreateQueryEntry(normalized).state;
   }
 
   async load(query: NewsQuery): Promise<NewsQueryState> {
@@ -160,36 +169,28 @@ export class NewsService {
   }
 
   private async pollActiveQueries(): Promise<void> {
-    const queries = new Map<string, NewsQuery>();
-    for (const query of this.queryByKey.values()) {
-      queries.set(buildNewsQueryKey(query), query);
-    }
-    for (const [key, watch] of this.watchedQueries) {
-      queries.set(key, watch.query);
-    }
-    if (queries.size === 0) return;
-    await Promise.allSettled([...queries.values()].map((query) => this.refreshQuery(query, false, { track: false })));
+    this.pruneInactiveQueries();
+    const queries = [...this.queries.values()]
+      .filter((entry) => entry.refs > 0)
+      .map((entry) => entry.query);
+    if (queries.length === 0) return;
+    await Promise.allSettled(queries.map((query) => this.refreshQuery(query, false)));
   }
 
   private async refreshQuery(
     query: NewsQuery,
     showLoading: boolean,
-    options: { track?: boolean } = {},
   ): Promise<NewsQueryState> {
-    const key = buildNewsQueryKey(query);
-    if (options.track !== false) {
-      this.queryByKey.set(key, query);
-    }
-    const existingFlight = this.inFlight.get(key);
-    if (existingFlight) return existingFlight;
+    const entry = this.getOrCreateQueryEntry(query);
+    if (entry.inFlight) return entry.inFlight;
 
-    const current = this.queryStates.get(key) ?? createIdleNewsQueryState();
+    const current = entry.state;
     if (showLoading) {
-      this.queryStates.set(key, {
+      entry.state = {
         ...current,
         phase: current.articles.length > 0 ? "refreshing" : "loading",
         error: null,
-      });
+      };
       this.notify();
     }
 
@@ -201,10 +202,11 @@ export class NewsService {
           phase: "ready",
           articles,
           error: null,
-          updatedAt: Date.now(),
+          updatedAt: this.now(),
           sourceIds: result.sourceIds,
         };
-        this.queryStates.set(key, state);
+        entry.state = state;
+        entry.lastAccessedAt = this.now();
         this.rebuildArticlePool();
         this.notify();
         return state;
@@ -214,16 +216,58 @@ export class NewsService {
           phase: "error",
           error: error instanceof Error ? error.message : String(error),
         };
-        this.queryStates.set(key, state);
+        entry.state = state;
+        entry.lastAccessedAt = this.now();
         this.notify();
         return state;
       } finally {
-        this.inFlight.delete(key);
+        entry.inFlight = null;
+        this.pruneInactiveQueries();
       }
     })();
 
-    this.inFlight.set(key, promise);
+    entry.inFlight = promise;
     return promise;
+  }
+
+  private getOrCreateQueryEntry(query: NewsQuery): NewsQueryEntry {
+    const key = buildNewsQueryKey(query);
+    const now = this.now();
+    this.pruneInactiveQueries(now);
+    const existing = this.queries.get(key);
+    if (existing) {
+      existing.lastAccessedAt = now;
+      return existing;
+    }
+    const entry: NewsQueryEntry = {
+      query,
+      state: createIdleNewsQueryState(),
+      inFlight: null,
+      refs: 0,
+      lastAccessedAt: now,
+    };
+    this.queries.set(key, entry);
+    this.pruneInactiveQueries(now);
+    return entry;
+  }
+
+  private pruneInactiveQueries(now = this.now()): void {
+    const inactive = [...this.queries.entries()]
+      .filter(([, entry]) => entry.refs === 0 && entry.inFlight === null)
+      .sort((left, right) => right[1].lastAccessedAt - left[1].lastAccessedAt);
+
+    let retained = 0;
+    let changed = false;
+    for (const [key, entry] of inactive) {
+      const expired = now - entry.lastAccessedAt >= this.inactiveQueryTtlMs;
+      if (expired || retained >= this.maxInactiveQueries) {
+        this.queries.delete(key);
+        changed = true;
+      } else {
+        retained++;
+      }
+    }
+    if (changed) this.rebuildArticlePool();
   }
 
   private enabledSources(query: NewsQuery): NewsCapability[] {
@@ -277,7 +321,7 @@ export class NewsService {
 
   private seedCachedSource(source: NewsCapability): void {
     const news = source.provider;
-    const queries = [...this.queryByKey.values()];
+    const queries = [...this.queries.values()].map((entry) => entry.query);
     if (queries.length === 0) queries.push(DEFAULT_GLOBAL_QUERY);
 
     let changed = false;
@@ -286,15 +330,14 @@ export class NewsService {
       const cached = (news.getCachedNews?.(query) ?? [])
         .map((article) => markDetailCapableArticle(source, article));
       if (cached.length === 0) continue;
-      const key = buildNewsQueryKey(query);
-      const current = this.queryStates.get(key) ?? createIdleNewsQueryState();
-      this.queryStates.set(key, {
+      const entry = this.getOrCreateQueryEntry(query);
+      entry.state = {
         phase: "ready",
-        articles: filterNewsArticlesForQuery(dedupeNewsArticles([...current.articles, ...cached]), query),
+        articles: filterNewsArticlesForQuery(dedupeNewsArticles([...entry.state.articles, ...cached]), query),
         error: null,
-        updatedAt: Date.now(),
-        sourceIds: [...new Set([...current.sourceIds, newsCapabilitySourceId(source)])],
-      });
+        updatedAt: this.now(),
+        sourceIds: [...new Set([...entry.state.sourceIds, newsCapabilitySourceId(source)])],
+      };
       changed = true;
     }
     if (changed) {
@@ -304,21 +347,21 @@ export class NewsService {
   }
 
   private rebuildArticlePool(): void {
-    this.articles = dedupeNewsArticles([...this.queryStates.values()].flatMap((state) => state.articles));
+    this.articles = dedupeNewsArticles([...this.queries.values()].flatMap((entry) => entry.state.articles));
   }
 
   private mergeStoryDetail(article: NewsArticle): void {
     let changed = false;
-    for (const [key, state] of this.queryStates) {
+    for (const entry of this.queries.values()) {
       let stateChanged = false;
-      const nextArticles = state.articles.map((existing) => {
+      const nextArticles = entry.state.articles.map((existing) => {
         if (existing.id !== article.id) return existing;
         stateChanged = true;
         changed = true;
         return mergeNewsArticle(existing, article);
       });
       if (stateChanged) {
-        this.queryStates.set(key, { ...state, articles: nextArticles });
+        entry.state = { ...entry.state, articles: nextArticles };
       }
     }
 

@@ -1,4 +1,5 @@
 import type { CliCommandDef } from "../../types/plugin";
+import { withCliServices } from "../context";
 import { parseJsonPayload, requireArg, takeOption } from "./command-utils";
 
 function splitOperationTarget(target: string): { capabilityId: string; operationId: string } {
@@ -34,9 +35,7 @@ export const apiCliCommand: CliCommandDef = {
   execute: async (rawArgs, ctx) => {
     const action = rawArgs[0] ?? "list";
     const args = rawArgs.slice(1);
-    const services = await ctx.initServices();
-
-    try {
+    await withCliServices(ctx, async (services) => {
       if (action === "list") {
         const kind = takeOption(args, "--kind");
         const manifests = services.services.pluginRegistry.capabilities
@@ -112,8 +111,6 @@ export const apiCliCommand: CliCommandDef = {
       }
 
       ctx.fail("Usage: gloomberb api list|get|invoke|subscribe");
-    } finally {
-      services.destroy();
-    }
+    });
   },
 };

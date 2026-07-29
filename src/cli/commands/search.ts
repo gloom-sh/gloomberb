@@ -9,7 +9,7 @@ import {
   searchTickerCandidates,
   type TickerSearchCandidate,
 } from "../../tickers/search";
-import { initMarketData } from "../context";
+import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext } from "../../types/plugin";
@@ -135,33 +135,31 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     failCommand("Usage: gloomberb search <query>");
   }
 
-  const { store, dataProvider, persistence } = await initMarketDataFn();
-  const tickers = await store.loadAllTickers();
-  const candidates = await searchCandidatesForCli({
-    query: trimmedQuery,
-    tickers,
-    dataProvider,
-  });
-
-  if (dependencies.printResult) {
-    dependencies.printResult({ data: searchCandidateRows(candidates), metadata: { query: trimmedQuery } }, {
-      columns: [
-        { key: "category", header: "Category" },
-        { key: "symbol", header: "Symbol" },
-        { key: "name", header: "Name" },
-        { key: "exchange", header: "Exchange" },
-        { key: "type", header: "Type" },
-        { key: "source", header: "Source" },
-      ],
+  await withMarketData(initMarketDataFn, async ({ store, dataProvider }) => {
+    const tickers = await store.loadAllTickers();
+    const candidates = await searchCandidatesForCli({
+      query: trimmedQuery,
+      tickers,
+      dataProvider,
     });
-    persistence.close();
-    return;
-  }
 
-  console.log(buildSearchReport({
-    query: trimmedQuery,
-    candidates,
-  }));
+    if (dependencies.printResult) {
+      dependencies.printResult({ data: searchCandidateRows(candidates), metadata: { query: trimmedQuery } }, {
+        columns: [
+          { key: "category", header: "Category" },
+          { key: "symbol", header: "Symbol" },
+          { key: "name", header: "Name" },
+          { key: "exchange", header: "Exchange" },
+          { key: "type", header: "Type" },
+          { key: "source", header: "Source" },
+        ],
+      });
+      return;
+    }
 
-  persistence.close();
+    console.log(buildSearchReport({
+      query: trimmedQuery,
+      candidates,
+    }));
+  });
 }

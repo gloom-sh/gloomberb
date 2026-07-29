@@ -96,7 +96,8 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
   const surfaceId = useRef(`opentui-chart:${nextChartSurfaceId++}`).current;
   const renderableRef = useRef<NativeRenderableNode | null>(null);
   const [target, setTarget] = useState<SurfaceTarget | null>(null);
-  const nativeBitmap = (bitmaps?.[0] ?? bitmap ?? null) as NativeChartBitmap | null;
+  const firstBitmap = Array.isArray(bitmaps) ? bitmaps[0] : null;
+  const nativeBitmap = (firstBitmap ?? bitmap ?? null) as NativeChartBitmap | null;
   const nativeCrosshair = (crosshair ?? null) as ChartCrosshairOverlay | null;
   const nativeBitmapKey = useMemo(() => (nativeBitmap ? bitmapKey(nativeBitmap) : null), [nativeBitmap]);
 

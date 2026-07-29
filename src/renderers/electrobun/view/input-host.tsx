@@ -1,12 +1,11 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
-import { useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore, type ReactNode } from "react";
+import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
 import {
+  createShortcutRegistry,
   InputHostProvider,
-  shouldDeliverShortcut,
+  useRegisteredShortcut,
   type InputHost,
   type KeyEventLike,
-  type ShortcutOptions,
 } from "../../../react/input";
 import {
   isMouseBackNavigationButton,
@@ -76,16 +75,6 @@ function toMouseBackKeyEventLike(event: MouseEvent): KeyEventLike {
   };
 }
 
-interface ShortcutEntry {
-  handlerRef: { current: (event: KeyEventLike) => void };
-  enabledRef: { current: boolean };
-  allowEditableRef: { current: boolean };
-  phase: NonNullable<ShortcutOptions["phase"]>;
-  order: number;
-}
-
-let nextShortcutOrder = 1;
-
 function subscribeViewport(listener: () => void): () => void {
   window.addEventListener("resize", listener);
   return () => window.removeEventListener("resize", listener);
@@ -103,30 +92,17 @@ function getViewport() {
 }
 
 export function WebInputHostProvider({ children }: { children: ReactNode }) {
-  const shortcutsRef = useRef<ShortcutEntry[]>([]);
-
-  const dispatchShortcut = (shortcutEvent: KeyEventLike) => {
-    for (const phase of ["before", "normal", "after"] as const) {
-      if (phase === "after" && (shortcutEvent.defaultPrevented || shortcutEvent.propagationStopped)) break;
-      for (const entry of shortcutsRef.current) {
-        if (entry.phase !== phase || !entry.enabledRef.current) continue;
-        if (!shouldDeliverShortcut(shortcutEvent, entry.allowEditableRef.current)) continue;
-        entry.handlerRef.current(shortcutEvent);
-        if (shortcutEvent.propagationStopped) break;
-      }
-      if (shortcutEvent.propagationStopped) break;
-    }
-  };
+  const shortcutRegistry = useMemo(() => createShortcutRegistry(), []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const shortcutEvent = toKeyEventLike(event);
-      dispatchShortcut(shortcutEvent);
+      shortcutRegistry.dispatch(shortcutEvent);
       if (shouldConsumeWebAppKeyDown(event)) event.preventDefault();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [shortcutRegistry]);
 
   useEffect(() => {
     const preventBrowserBack = (event: MouseEvent) => {
@@ -138,7 +114,7 @@ export function WebInputHostProvider({ children }: { children: ReactNode }) {
       if (!isMouseBackNavigationButton(event.button)) return;
       event.preventDefault();
       event.stopPropagation();
-      dispatchShortcut(toMouseBackKeyEventLike(event));
+      shortcutRegistry.dispatch(toMouseBackKeyEventLike(event));
     };
 
     window.addEventListener("mousedown", preventBrowserBack, true);
@@ -149,35 +125,16 @@ export function WebInputHostProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("auxclick", preventBrowserBack, true);
       window.removeEventListener("mouseup", onMouseUp, true);
     };
-  }, []);
+  }, [shortcutRegistry]);
 
   const host = useMemo<InputHost>(() => ({
     useShortcut(handler, options) {
-      const handlerRef = useRef(handler);
-      const enabledRef = useRef(options?.enabled !== false);
-      const allowEditableRef = useRef(options?.allowEditable === true);
-      handlerRef.current = handler;
-      enabledRef.current = options?.enabled !== false;
-      allowEditableRef.current = options?.allowEditable === true;
-
-      useLayoutEffect(() => {
-        const entry: ShortcutEntry = {
-          handlerRef,
-          enabledRef,
-          allowEditableRef,
-          phase: options?.phase ?? "normal",
-          order: nextShortcutOrder++,
-        };
-        shortcutsRef.current = [...shortcutsRef.current, entry].sort((a, b) => a.order - b.order);
-        return () => {
-          shortcutsRef.current = shortcutsRef.current.filter((current) => current !== entry);
-        };
-      }, [options?.phase, options?.scope]);
+      useRegisteredShortcut(shortcutRegistry, handler, options);
     },
     useViewport() {
       return useSyncExternalStore(subscribeViewport, getViewport, getViewport);
     },
-  }), []);
+  }), [shortcutRegistry]);
 
   return (
     <InputHostProvider host={host}>

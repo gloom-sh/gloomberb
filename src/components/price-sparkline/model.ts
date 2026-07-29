@@ -1,5 +1,6 @@
-import { colors } from "../../theme/colors";
+import { colors, type ThemeColors } from "../../theme/colors";
 import type { PricePoint } from "../../types/financials";
+import { getPricePointTimestamp } from "../../utils/price-history";
 
 const SPARKLINE_FALLBACK_POINTS = 22;
 
@@ -29,22 +30,15 @@ function closeValue(point: PricePoint): number | null {
   return Number.isFinite(point.close) ? point.close : null;
 }
 
-function getPointTime(point: PricePoint): number {
-  const value = point.date as Date | string | number | null | undefined;
-  if (value instanceof Date) return value.getTime();
-  if (value == null) return Number.NaN;
-  return new Date(value).getTime();
-}
-
 export function resolveSparklineHistory(priceHistory: PricePoint[], period: PriceSparklinePeriod = "1M"): PricePoint[] {
-  const validHistory = priceHistory.filter((point) => Number.isFinite(getPointTime(point)));
+  const validHistory = priceHistory.filter((point) => Number.isFinite(getPricePointTimestamp(point)));
   const latest = validHistory.at(-1);
   if (!latest) return [];
 
-  const latestTime = getPointTime(latest);
+  const latestTime = getPricePointTimestamp(latest);
   if (Number.isFinite(latestTime)) {
     const cutoffTime = latestTime - PERIOD_WINDOW_DAYS[period] * 86_400_000;
-    const windowHistory = validHistory.filter((point) => getPointTime(point) >= cutoffTime);
+    const windowHistory = validHistory.filter((point) => getPricePointTimestamp(point) >= cutoffTime);
     if (windowHistory.length >= 2) return windowHistory;
   }
 
@@ -57,15 +51,19 @@ export function sparklineValues(priceHistory: PricePoint[]): number[] {
     .filter((value): value is number => value != null);
 }
 
-export function sparklineColor(values: number[], trend?: PriceSparklineTrend): string {
-  if (trend === "positive") return colors.positive;
-  if (trend === "negative") return colors.negative;
-  if (trend === "neutral") return colors.textMuted;
+export function sparklineColor(
+  values: number[],
+  trend?: PriceSparklineTrend,
+  palette: ThemeColors = colors,
+): string {
+  if (trend === "positive") return palette.positive;
+  if (trend === "negative") return palette.negative;
+  if (trend === "neutral") return palette.textMuted;
 
   const first = values[0];
   const last = values.at(-1);
-  if (first == null || last == null) return colors.textMuted;
-  return last >= first ? colors.positive : colors.negative;
+  if (first == null || last == null) return palette.textMuted;
+  return last >= first ? palette.positive : palette.negative;
 }
 
 export function buildSamples(values: number[], width: number, height: number, padding: number): SparklineSample[] {

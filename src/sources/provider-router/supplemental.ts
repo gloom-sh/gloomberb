@@ -25,7 +25,7 @@ import {
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
 import {
   firstProviderResult,
-  makeRouterRevalidationKey,
+  makeRouterRequestIdentity,
   resolveProviderBySourceKey,
   scheduleRouterRevalidation,
 } from "./routing";
@@ -68,12 +68,17 @@ export class ProviderRouterSupplementalRoutes {
   }
 
   async getHolders(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData> {
-    const entityKey = this.deps.getEntityKey(ticker, context?.instrument);
-    const variantKeys = this.deps.getTickerVariantCandidates(exchange);
-    const cached = selectCachedResource<HolderData>(this.deps.resources, "holders", entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
+    const identity = makeRouterRequestIdentity(this.deps, {
+      kind: "holders",
+      ticker,
+      context,
+      variantParts: [["exchange", canonicalExchange(exchange)]],
+    });
+    const variantKeys = [...new Set([identity.variantKey, ""])];
+    const cached = selectCachedResource<HolderData>(this.deps.resources, identity.kind, identity.entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
     const forceRefresh = context?.cacheMode === "refresh";
     if (cached && !forceRefresh) {
-      scheduleRouterRevalidation(this.revalidationInFlight, makeRouterRevalidationKey(this.deps, "holders", ticker, context), async () => {
+      scheduleRouterRevalidation(this.revalidationInFlight, identity.revalidationKey, async () => {
         await this.revalidateHolders(ticker, exchange, context);
       });
       return cached.value;
@@ -86,12 +91,17 @@ export class ProviderRouterSupplementalRoutes {
   }
 
   async getAnalystResearch(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<AnalystResearchData> {
-    const entityKey = this.deps.getEntityKey(ticker, context?.instrument);
-    const variantKeys = this.deps.getTickerVariantCandidates(exchange);
-    const cached = this.selectCachedAnalystResearch(entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
+    const identity = makeRouterRequestIdentity(this.deps, {
+      kind: "analystResearch",
+      ticker,
+      context,
+      variantParts: [["exchange", canonicalExchange(exchange)]],
+    });
+    const variantKeys = [...new Set([identity.variantKey, ""])];
+    const cached = this.selectCachedAnalystResearch(identity.entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
     const forceRefresh = context?.cacheMode === "refresh";
     if (cached && !forceRefresh && !isAnalystResearchMissingRatingTargets(cached.value)) {
-      scheduleRouterRevalidation(this.revalidationInFlight, makeRouterRevalidationKey(this.deps, "analystResearch", ticker, context), async () => {
+      scheduleRouterRevalidation(this.revalidationInFlight, identity.revalidationKey, async () => {
         await this.revalidateAnalystResearch(ticker, exchange, context);
       });
       return cached.value;
@@ -104,12 +114,17 @@ export class ProviderRouterSupplementalRoutes {
   }
 
   async getCorporateActions(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData> {
-    const entityKey = this.deps.getEntityKey(ticker, context?.instrument);
-    const variantKeys = this.deps.getTickerVariantCandidates(exchange);
-    const cached = selectCachedResource<CorporateActionsData>(this.deps.resources, "corporateActions", entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
+    const identity = makeRouterRequestIdentity(this.deps, {
+      kind: "corporateActions",
+      ticker,
+      context,
+      variantParts: [["exchange", canonicalExchange(exchange)]],
+    });
+    const variantKeys = [...new Set([identity.variantKey, ""])];
+    const cached = selectCachedResource<CorporateActionsData>(this.deps.resources, identity.kind, identity.entityKey, variantKeys, this.deps.getProviderSourceKeys(), false);
     const forceRefresh = context?.cacheMode === "refresh";
     if (cached && !forceRefresh) {
-      scheduleRouterRevalidation(this.revalidationInFlight, makeRouterRevalidationKey(this.deps, "corporateActions", ticker, context), async () => {
+      scheduleRouterRevalidation(this.revalidationInFlight, identity.revalidationKey, async () => {
         await this.revalidateCorporateActions(ticker, exchange, context);
       });
       return cached.value;
@@ -167,9 +182,14 @@ export class ProviderRouterSupplementalRoutes {
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, context?: MarketDataRequestContext): Promise<OptionsChain> {
-    const entityKey = this.deps.getEntityKey(ticker, context?.instrument);
+    const identity = makeRouterRequestIdentity(this.deps, {
+      kind: "options-chain",
+      ticker,
+      context,
+      variantParts: [["exchange", canonicalExchange(exchange)], ["expiration", expirationDate ?? "default"]],
+    });
     const variantKeys = [
-      buildVariantKey([["exchange", canonicalExchange(exchange)], ["expiration", expirationDate ?? "default"]]),
+      identity.variantKey,
       buildVariantKey([["expiration", expirationDate ?? "default"]]),
       "",
     ];
@@ -177,9 +197,9 @@ export class ProviderRouterSupplementalRoutes {
       ...this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate)),
       ...this.deps.getProviderSourceKeys(),
     ];
-    const cached = selectCachedResource<OptionsChain>(this.deps.resources, "options-chain", entityKey, variantKeys, sourceKeys, false);
+    const cached = selectCachedResource<OptionsChain>(this.deps.resources, identity.kind, identity.entityKey, variantKeys, sourceKeys, false);
     if (cached) {
-      scheduleRouterRevalidation(this.revalidationInFlight, makeRouterRevalidationKey(this.deps, "options-chain", ticker, context, expirationDate ?? "default"), async () => {
+      scheduleRouterRevalidation(this.revalidationInFlight, identity.revalidationKey, async () => {
         await this.revalidateOptionsChain(ticker, exchange, expirationDate, context);
       });
       return cached.value;

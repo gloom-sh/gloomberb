@@ -1,7 +1,7 @@
 import { Box } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { DataTableStackView, usePaneFooter, type DataTableCell } from "../../../components";
+import { DataTableStackView, type DataTableCell, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
@@ -30,6 +30,7 @@ import {
   type ImpactFilter,
 } from "./calendar-model";
 import { attachFredSeriesPersistence } from "../../../data/fred-series";
+import { usePaneStatusFooter } from "../shared/pane-footer";
 
 function EconCalendarPane({ focused, width, height }: PaneProps) {
   const [initialCache] = useState(() => getCalendarCache());
@@ -221,24 +222,21 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       ].filter(Boolean).join(" · ") || undefined
     : undefined;
 
-  usePaneFooter("econ-calendar", () => ({
-    info: [
-      { id: "impact", parts: [{ text: `impact: ${impactFilter}`, tone: impactFilter === "all" ? "muted" : "value" }] },
-      { id: "country", parts: [{ text: `country: ${countryFilter}`, tone: countryFilter === "all" ? "muted" : "value" }] },
-      ...(nextEvent && nextCountdown ? [{
-        id: "next",
-        parts: [{ text: `Next: ${nextEvent.event.length > 18 ? nextEvent.event.slice(0, 18).trimEnd() : nextEvent.event} ${nextCountdown}`, tone: "muted" as const }],
-      }] : []),
-      ...(staleness ? [{ id: "stale", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-      ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-    ],
-    hints: [
-      { id: "impact", key: "f", label: "impact", onPress: cycleImpactFilter },
-      { id: "country", key: "c", label: "ountry", onPress: cycleCountryFilter },
-      { id: "refresh", key: "r", label: "efresh", onPress: () => load(true) },
-    ],
-  }), [countryFilter, cycleCountryFilter, cycleImpactFilter, error, impactFilter, load, loading, nextCountdown, nextEvent?.event, staleness]);
+  const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
+    ...(impactFilter !== "all" ? [{ id: "impact", parts: [{ text: `impact: ${impactFilter}`, tone: "value" as const }] }] : []),
+    ...(countryFilter !== "all" ? [{ id: "country", parts: [{ text: `country: ${countryFilter}`, tone: "value" as const }] }] : []),
+    ...(nextEvent && nextCountdown ? [{
+      id: "next",
+      parts: [{ text: `Next: ${nextEvent.event.length > 18 ? nextEvent.event.slice(0, 18).trimEnd() : nextEvent.event} ${nextCountdown}`, tone: "muted" as const }],
+    }] : []),
+    ...(staleness ? [{ id: "stale", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
+  ], [countryFilter, impactFilter, nextCountdown, nextEvent?.event, staleness]);
+  usePaneStatusFooter({
+    registrationId: "econ-calendar",
+    loading,
+    error,
+    info: calendarStatus,
+  });
 
   const handleHeaderClick = useCallback(() => {}, []);
   const openDisplayRow = useCallback((row: DisplayRow) => {

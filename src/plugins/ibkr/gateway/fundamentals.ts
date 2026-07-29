@@ -1,5 +1,5 @@
 import type { Contract, IBApiNext } from "@stoqey/ib";
-import type { TimeRange } from "../../../components/chart/core/types";
+import type { TimeRange } from "../../../time-series/range";
 import type { Quote, PricePoint, TickerFinancials } from "../../../types/financials";
 import type { BrokerContractRef } from "../../../types/instrument";
 import { parseFinStatements, parseReportSnapshot } from "../fundamental-parser";

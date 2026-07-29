@@ -1,4 +1,4 @@
-import type { ResourceStore } from "../data/resource-store";
+import type { AppResourceStorePort } from "../core/app-service-ports";
 import type { BrokerAdapter } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
 import type { CachePolicy } from "../types/persistence";
@@ -42,7 +42,7 @@ function getBrokerAccountCachePolicy(
 }
 
 function pruneMismatchedSnapshots(
-  resources: ResourceStore,
+  resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,
   sourceKey: string,
 ): void {
@@ -67,7 +67,7 @@ function pruneMismatchedSnapshots(
 }
 
 export function loadPersistedBrokerAccounts(
-  resources: ResourceStore,
+  resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,
   broker?: BrokerAdapter | null,
 ): BrokerAccount[] | null {
@@ -85,7 +85,7 @@ export function loadPersistedBrokerAccounts(
 }
 
 export function persistBrokerAccounts(
-  resources: ResourceStore,
+  resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,
   broker: BrokerAdapter,
   accounts: BrokerAccount[],
@@ -108,7 +108,7 @@ export function persistBrokerAccounts(
 }
 
 export function loadPersistedBrokerAccountMap(
-  resources: ResourceStore,
+  resources: AppResourceStorePort,
   brokerInstances: BrokerInstanceConfig[],
   brokers: ReadonlyMap<string, BrokerAdapter>,
 ): Record<string, BrokerAccount[]> {
@@ -126,7 +126,7 @@ export function loadPersistedBrokerAccountMap(
 }
 
 export function clearPersistedBrokerAccounts(
-  resources: ResourceStore,
+  resources: AppResourceStorePort,
   instance: BrokerInstanceConfig,
 ): void {
   const records = resources.list<PersistedBrokerAccountSnapshot>({

@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, ChartSurface, Text, type BoxRenderable, type ChartSurfaceProps, useUiCapabilities } from "../../../../ui";
-import { colors as themeColors } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { PriceAxisLabels } from "../../price-axis-labels";
 import type { ProjectedChartPoint } from "../../core/data";
@@ -102,7 +101,7 @@ export function StaticChartSurface({
   yAxisColor,
   formatYAxisValue,
 }: StaticChartSurfaceProps) {
-  useThemeColors();
+  const themeColors = useThemeColors();
   const { cellWidthPx = 8, cellHeightPx = 18 } = useUiCapabilities();
   const plotRef = useRef<BoxRenderable | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);

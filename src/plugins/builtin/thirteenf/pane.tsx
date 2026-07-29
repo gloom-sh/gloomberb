@@ -13,7 +13,7 @@ import {
   InputSearchBar,
   Spinner,
   Tabs,
-  usePaneFooter,
+  type PaneFooterSegment,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
 } from "../../../components";
@@ -51,11 +51,6 @@ import {
   sortTimelineRows,
 } from "./model";
 import {
-  formatMoneyCompact,
-  formatPercentMaybe,
-  formatRawPercentMaybe,
-} from "./format";
-import {
   renderFilingPositionCell,
   renderBrowserCell,
   renderHoldingCell,
@@ -80,6 +75,7 @@ import type {
   ThirteenFDetailTab,
   ThirteenFHoldingRecord,
 } from "./types";
+import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
 
 interface FundSeed {
   cik: string;
@@ -271,24 +267,17 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
     setDetailSeed({ cik: row.cik, name: row.name });
   }, []);
 
-  usePaneFooter(THIRTEENF_PANE_ID, () => {
-    if (detailSeed) return null;
-    return {
-      info: [
-        ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+  const browserStatusInfo = useMemo<PaneFooterSegment[]>(() => [
         ...(loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
-        ...(error ? [{ id: "error", parts: [{ text: "error", tone: "warning" as const }] }] : []),
         ...(warning ? [{ id: "warning", parts: [{ text: warning, tone: "warning" as const }] }] : []),
-        ...(browserMode === "byTicker" && query ? [{ id: "ticker", parts: [{ text: query.toUpperCase(), tone: "value" as const }] }] : []),
-        ...(period ? [{ id: "period", parts: [{ text: period, tone: "value" as const }] }] : []),
-        ...(quarter && !period ? [{ id: "quarter", parts: [{ text: quarter, tone: "value" as const }] }] : []),
-      ],
-      hints: [
-        { id: "refresh", key: "r", label: "efresh", onPress: refresh },
-        { id: "search", key: "/", label: searchFocused ? "done" : "search", onPress: searchFocused ? blurSearch : focusSearch },
-      ],
-    };
-  }, [blurSearch, browserMode, detailSeed, error, focusSearch, loadingMore, period, quarter, query, refresh, searchFocused, status, warning]);
+  ], [loadingMore, warning]);
+  usePaneStatusFooter({
+    registrationId: THIRTEENF_PANE_ID,
+    enabled: !detailSeed,
+    loading: status === "loading",
+    error,
+    info: browserStatusInfo,
+  });
 
   const rootBefore = (
     <Box flexDirection="column">
@@ -466,18 +455,6 @@ function FundDetailView({
     ? openFiling?.url ?? selectedFiling?.url
     : latestForm?.url;
   const statusFiling = openFiling ?? latestForm;
-  const openFilingIndex = openFiling
-    ? filingRows.findIndex((row) => row.id === openFiling.id)
-    : -1;
-  const statusPreviousPeriod = openFiling
-    ? filingRows[openFilingIndex + 1]?.periodOfReport
-    : data?.previousForm?.periodOfReport;
-  const valueChangeText = openFiling?.valueChangePercent != null
-    ? `value chg ${formatPercentMaybe(openFiling.valueChangePercent)}`
-    : latestForm?.tableValueTotal && data?.previousForm?.tableValueTotal
-      ? `value chg ${formatRawPercentMaybe(((latestForm.tableValueTotal - data.previousForm.tableValueTotal) / data.previousForm.tableValueTotal) * 100)}`
-    : "";
-
   useEffect(() => {
     if (holdingSelectedId && visibleHoldingRows.some((row) => row.id === holdingSelectedId)) return;
     setHoldingSelectedId(visibleHoldingRows[0]?.id ?? null);
@@ -495,9 +472,6 @@ function FundDetailView({
   }, [filingRows, openFilingId]);
 
   const refresh = useCallback(() => load(true), [load]);
-  const openSource = useCallback(() => {
-    if (currentSourceUrl) void rendererHost.openExternal(currentSourceUrl);
-  }, [currentSourceUrl, rendererHost]);
   const openTicker = useCallback(() => {
     if (selectedHolding?.ticker) pinTicker(selectedHolding.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
   }, [pinTicker, selectedHolding?.ticker]);
@@ -555,43 +529,20 @@ function FundDetailView({
     }
   });
 
-  usePaneFooter("thirteenf-detail", () => ({
-    info: [
-      ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(error ? [{ id: "error", parts: [{ text: "error", tone: "warning" as const }] }] : []),
-      ...(statusFiling?.periodOfReport ? [{ id: "period", parts: [{ text: `${statusFiling.periodOfReport} report`, tone: "value" as const }] }] : []),
-      ...(statusFiling?.filedAsOfDate ? [{ id: "filed", parts: [{ text: `filed ${statusFiling.filedAsOfDate}`, tone: "muted" as const }] }] : []),
-      ...(statusFiling?.tableValueTotal != null ? [{ id: "value", parts: [{ text: formatMoneyCompact(statusFiling.tableValueTotal), tone: "value" as const }] }] : []),
-      ...(statusFiling?.tableEntryTotal != null ? [{ id: "rows", parts: [{ text: `${statusFiling.tableEntryTotal} rows`, tone: "muted" as const }] }] : []),
-      ...(statusPreviousPeriod ? [{ id: "prev", parts: [{ text: `prev ${statusPreviousPeriod}`, tone: "muted" as const }] }] : []),
-      ...(valueChangeText ? [{ id: "value-change", parts: [{ text: valueChangeText, tone: "value" as const }] }] : []),
-      ...(statusFiling?.isAmendment ? [{ id: "amended", parts: [{ text: "amended", tone: "warning" as const }] }] : []),
-    ],
-    hints: [
-      { id: "refresh", key: "r", label: "efresh", onPress: refresh },
-      ...(selectedHolding?.ticker ? [{ id: "ticker", key: "t", label: "icker", onPress: openTicker }] : []),
-      ...(filingTarget ? [{ id: "filing", key: "f", label: "iling", onPress: openSelectedFilingInPane }] : []),
-      ...(openFiling && currentSourceUrl ? [{ id: "source", key: "o", label: "pen", onPress: openSource }] : []),
-    ],
-  }), [
-    currentSourceUrl,
+  const detailStatusInfo = useMemo<PaneFooterSegment[]>(() => (
+    statusFiling?.isAmendment
+      ? [{ id: "amended", parts: [{ text: "amended", tone: "warning" }] }]
+      : []
+  ), [statusFiling?.isAmendment]);
+  usePaneStatusLinkFooter({
+    registrationId: "thirteenf-detail",
+    focused,
+    url: openFiling ? currentSourceUrl : null,
+    source: openFiling ? "SEC 13F" : null,
+    loading: status === "loading",
     error,
-    filingTarget,
-    statusFiling?.filedAsOfDate,
-    statusFiling?.isAmendment,
-    statusFiling?.periodOfReport,
-    statusFiling?.tableEntryTotal,
-    statusFiling?.tableValueTotal,
-    statusPreviousPeriod,
-    openSource,
-    openSelectedFilingInPane,
-    openTicker,
-    openFiling,
-    refresh,
-    selectedHolding?.ticker,
-    status,
-    valueChangeText,
-  ]);
+    info: detailStatusInfo,
+  });
 
   if ((status === "loading" || status === "idle") && !data) {
     return (

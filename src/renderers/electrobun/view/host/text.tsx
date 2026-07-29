@@ -1,4 +1,3 @@
-/// <reference lib="dom" />
 /** @jsxImportSource react */
 import type { CSSProperties, ReactNode } from "react";
 import {

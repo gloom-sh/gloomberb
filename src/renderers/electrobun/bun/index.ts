@@ -12,7 +12,13 @@ import type { AppSessionSnapshot } from "../../../core/state/session-persistence
 import { syncConfigActiveLayoutState, type PaneRuntimeState } from "../../../core/state/app/state";
 import type { DesktopSharedStateSnapshot, DesktopThemePreviewState } from "../../../types/desktop-window";
 import type { UpdateProgress } from "../../../updater";
-import { ELECTROBUN_CONTEXT_MENU_ACTION, type DesktopRestartMessage, type ElectrobunDesktopRpcSchema } from "../shared/protocol";
+import {
+  ELECTROBUN_CONTEXT_MENU_ACTION,
+  type DesktopBackendRequest,
+  type DesktopBackendRequestPayload,
+  type DesktopRestartMessage,
+  type ElectrobunDesktopRpcSchema,
+} from "../shared/protocol";
 import { decodeRpcValue, encodeRpcValue } from "../view/rpc-codec";
 import { contextMenuSelectionMessage } from "./context-menu/click";
 import type { DesktopWorkspace } from "./desktop/workspace";
@@ -388,7 +394,7 @@ function controlWindowForRpcKey(windowKey: string | undefined, action: DesktopWi
 
 async function initialize(
   rpc: DesktopRpc,
-  payload: Record<string, unknown>,
+  payload: DesktopBackendRequestPayload<"init">,
 ) {
   const init = await initializeDesktopBackend({
     getCurrentConfig: () => currentConfig,
@@ -423,88 +429,116 @@ async function initialize(
 
 async function handleBackendRequest(
   rpc: DesktopRpc,
-  method: string,
-  rawPayload: unknown,
+  request: DesktopBackendRequest,
 ) {
-  const payload = decodeRpcValue<Record<string, unknown>>(rawPayload ?? {});
-
-  if (method === "init") return initialize(rpc, payload);
-  if (method === "http.fetch") return handleHttpFetch(payload);
-  if (method === "media.resolveLiveStream") return resolveDesktopLiveStream(payload);
-  if (method === "remote.forward") {
-    return forwardRemoteControlRequest(payload.request as RemoteControlRequest);
+  switch (request.method) {
+    case "init":
+      return initialize(rpc, request.payload);
+    case "http.fetch":
+      return handleHttpFetch(request.payload);
+    case "media.resolveLiveStream":
+      return resolveDesktopLiveStream(request.payload);
+    case "remote.forward":
+      return forwardRemoteControlRequest(request.payload.request);
+    case "capability.invoke":
+    case "capability.subscribe":
+    case "capability.unsubscribe":
+      return capabilityBridge.handle(rpc, request);
+    case "desktop.syncMainState":
+    case "desktop.setThemePreview":
+    case "desktop.replaceDetachedPaneState":
+    case "desktop.popOutPane":
+    case "desktop.dockDetachedPane":
+    case "desktop.closeDetachedPane":
+    case "desktop.focusDetachedPane":
+      return handleDesktopWorkspaceRequest({
+        workspace: requireDesktopWorkspace(),
+        request,
+        setCurrentConfig,
+        sendThemePreview,
+        clearDockPreview,
+        sendDesktopState,
+        reconcileDetachedWindows,
+        commitDesktopSnapshot,
+        resolveDetachedFrame: (paneId) => detachedWindowManager.resolveFrame(paneId),
+        focusDetachedPane: (paneId) => detachedWindowManager.focusDetachedPane(paneId),
+      });
+    case "pluginState.set":
+    case "pluginState.setMany":
+    case "pluginState.delete":
+      return handleDesktopPluginStateRequest(requireServices().persistence.pluginState, request);
+    case "host.restart":
+    case "host.exit":
+    case "host.windowControl":
+    case "host.openExternal":
+    case "host.copyText":
+    case "host.focusWindow":
+    case "host.copyPngImage":
+    case "host.readText":
+    case "host.notify":
+    case "host.showContextMenu":
+      return handleDesktopHostRequest({
+        clearMainWindow: () => {
+          mainWindow = null;
+        },
+        closeAllDetachedWindows,
+        focusWindowForRpcKey: (windowKey) => detachedWindowManager.focusWindowForRpcKey(windowKey),
+        getMainWindow: () => mainWindow,
+        getRpcWindowKey,
+        request,
+        restartDesktopApp,
+        rpc,
+        teardownServices,
+        controlWindowForRpcKey,
+        trackContextMenuRequest: (requestId, targetRpc) => {
+          contextMenuRequestRpcs.clear();
+          contextMenuRequestRpcs.set(requestId, targetRpc);
+        },
+      });
+    case "update.check":
+    case "update.start":
+    case "ticker.loadAll":
+    case "ticker.load":
+    case "ticker.save":
+    case "ticker.delete":
+    case "config.save":
+    case "config.resetAllData":
+    case "config.export":
+    case "config.import":
+    case "session.set":
+    case "session.delete":
+      return handleDesktopBackendRequest({
+        clearCurrentConfig: () => {
+          currentConfig = null;
+        },
+        closeAllDetachedWindows,
+        commitDesktopSnapshot,
+        getConfig: requireConfig,
+        getDesktopWorkspace: () => desktopWorkspace,
+        getServices: requireServices,
+        getSessionSnapshot,
+        request,
+        reconcileDetachedWindows,
+        registerCoreCapabilities,
+        sendDesktopState,
+        setCurrentConfig,
+        setDesktopWorkspace: (workspace) => {
+          desktopWorkspace = workspace;
+        },
+        setServices: (nextServices) => {
+          services = nextServices;
+        },
+        startUpdate: (currentVersion) => {
+          void runDesktopUpdate(rpc, currentVersion);
+        },
+        syncConfigAccessors,
+        teardownServices,
+      });
+    default: {
+      const exhaustive: never = request;
+      throw new Error(`Unknown backend request: ${String(exhaustive)}`);
+    }
   }
-  if (method.startsWith("capability.")) return capabilityBridge.handle(rpc, method, payload);
-  if (method.startsWith("desktop.")) {
-    return handleDesktopWorkspaceRequest({
-      workspace: requireDesktopWorkspace(),
-      method,
-      payload,
-      setCurrentConfig,
-      sendThemePreview,
-      clearDockPreview,
-      sendDesktopState,
-      reconcileDetachedWindows,
-      commitDesktopSnapshot,
-      resolveDetachedFrame: (paneId) => detachedWindowManager.resolveFrame(paneId),
-      focusDetachedPane: (paneId) => detachedWindowManager.focusDetachedPane(paneId),
-    });
-  }
-  if (method.startsWith("pluginState.")) {
-    return handleDesktopPluginStateRequest(requireServices().persistence.pluginState, method, payload);
-  }
-  if (method.startsWith("host.")) {
-    return handleDesktopHostRequest({
-      clearMainWindow: () => {
-        mainWindow = null;
-      },
-      closeAllDetachedWindows,
-      focusWindowForRpcKey: (windowKey) => detachedWindowManager.focusWindowForRpcKey(windowKey),
-      getMainWindow: () => mainWindow,
-      getRpcWindowKey,
-      method,
-      payload,
-      restartDesktopApp,
-      rpc,
-      teardownServices,
-      controlWindowForRpcKey,
-      trackContextMenuRequest: (requestId, targetRpc) => {
-        contextMenuRequestRpcs.clear();
-        contextMenuRequestRpcs.set(requestId, targetRpc);
-      },
-    });
-  }
-
-  const backendResult = await handleDesktopBackendRequest({
-    clearCurrentConfig: () => {
-      currentConfig = null;
-    },
-    closeAllDetachedWindows,
-    commitDesktopSnapshot,
-    getConfig: requireConfig,
-    getDesktopWorkspace: () => desktopWorkspace,
-    getServices: requireServices,
-    getSessionSnapshot,
-    method,
-    payload,
-    reconcileDetachedWindows,
-    registerCoreCapabilities,
-    sendDesktopState,
-    setCurrentConfig,
-    setDesktopWorkspace: (workspace) => {
-      desktopWorkspace = workspace;
-    },
-    setServices: (nextServices) => {
-      services = nextServices;
-    },
-    startUpdate: (currentVersion) => {
-      void runDesktopUpdate(rpc, currentVersion);
-    },
-    syncConfigAccessors,
-    teardownServices,
-  });
-  if (backendResult.handled) return backendResult.value;
-  throw new Error(`Unknown backend method: ${method}`);
 }
 
 function installApplicationMenu() {
@@ -516,7 +550,13 @@ function createWindowRpc(key: string): DesktopRpc {
   rpc = BrowserView.defineRPC<ElectrobunDesktopRpcSchema>({
     handlers: {
       requests: {
-        "backend.request": async ({ method, payload }) => encodeRpcValue(await handleBackendRequest(rpc, method, payload)),
+        "backend.request": async ({ method, payload }) => {
+          const request = {
+            method,
+            payload: decodeRpcValue(payload ?? null),
+          } as DesktopBackendRequest;
+          return encodeRpcValue(await handleBackendRequest(rpc, request));
+        },
       },
       messages: {
         "host.restart": (message) => {

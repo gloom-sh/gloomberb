@@ -1,4 +1,4 @@
-const NAMED_ENTITIES: Record<string, string> = {
+const NAMED_ENTITIES: Readonly<Record<string, string>> = {
   amp: "&",
   apos: "'",
   gt: ">",
@@ -18,13 +18,11 @@ export function decodeHtmlEntities(value: string): string {
     const normalized = entity.toLowerCase();
 
     if (normalized.startsWith("#x")) {
-      const codePoint = Number.parseInt(normalized.slice(2), 16);
-      return decodeCodePoint(codePoint, match);
+      return decodeCodePoint(Number.parseInt(normalized.slice(2), 16), match);
     }
 
     if (normalized.startsWith("#")) {
-      const codePoint = Number.parseInt(normalized.slice(1), 10);
-      return decodeCodePoint(codePoint, match);
+      return decodeCodePoint(Number.parseInt(normalized.slice(1), 10), match);
     }
 
     return NAMED_ENTITIES[normalized] ?? match;

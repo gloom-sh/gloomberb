@@ -127,13 +127,6 @@ export function alignTimeSeries(
   return rows;
 }
 
-export function firstCommonValueDate(series: readonly ResolvedSeries[]): Date | null {
-  const row = alignTimeSeries(series, { mode: "intersection" }).find((entry) => (
-    series.every(({ id }) => finiteNumber(entry.values[id]?.value))
-  ));
-  return row ? new Date(row.date) : null;
-}
-
 /** Returns visible points and optionally the prior step anchor needed to draw continuity. */
 export function clipSeriesToWindow(
   series: ResolvedSeries,

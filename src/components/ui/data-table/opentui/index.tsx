@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
-import { colors, hoverBg } from "../../../../theme/colors";
+import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
@@ -67,7 +67,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
-  useThemeColors();
+  const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const appViewport = useViewport();
@@ -376,7 +376,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                 const rowBg = selected
                   ? colors.selected
                   : rowBackgroundColor ?? colors.bg;
-                const rowHoverBg = selected ? undefined : hoverBg();
+                const rowHoverBg = selected ? undefined : hoverBg(colors);
 
                 return (
                   <Box

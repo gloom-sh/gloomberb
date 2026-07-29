@@ -10,7 +10,7 @@ export const AI_DEFAULT_PROVIDER_SETTING_KEY = "defaultProviderId";
 export const AI_DEFAULT_MODEL_SETTING_KEY = "defaultModelId";
 export const AI_PANE_PROVIDER_SETTING_KEY = "providerId";
 export const AI_PANE_MODEL_SETTING_KEY = "modelId";
-export const AI_INHERIT_SETTING_VALUE = "";
+const AI_INHERIT_SETTING_VALUE = "";
 
 export interface AiSharedDefaults {
   providerId: string;

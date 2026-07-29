@@ -1,6 +1,6 @@
 import { createElement, type SVGProps } from "react";
 import { Box } from "../../ui";
-import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import {
   compactSegmentLabel,
   formatGaugeValue,
@@ -54,6 +54,7 @@ export function DesktopSpeedometerGauge({
   maxWidth,
   compact,
 }: Required<SpeedometerGaugeProps>) {
+  const colors = useThemeColors();
   const gaugeWidth = Math.min(Math.max(width - 2, minWidth), maxWidth);
   const gaugeHeight = compact ? 9 : 12;
   const viewBoxHeight = compact ? DESKTOP_COMPACT_VIEWBOX_HEIGHT : DESKTOP_VIEWBOX_HEIGHT;

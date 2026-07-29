@@ -13,7 +13,7 @@ export function InputDialog({ resolve, step }: PromptContext<string> & { step: W
   const [value, setValue] = useState("");
 
   useEffect(() => {
-    inputRef.current?.focus();
+    inputRef.current?.focus?.();
   }, []);
 
   return (
@@ -31,8 +31,8 @@ export function InputDialog({ resolve, step }: PromptContext<string> & { step: W
         textColor={colors.text}
         placeholderColor={colors.textDim}
         backgroundColor={colors.bg}
-        onInput={(nextValue) => setValue(nextValue)}
-        onChange={(nextValue) => setValue(nextValue)}
+        onInput={(nextValue: string) => setValue(nextValue)}
+        onChange={(nextValue: string) => setValue(nextValue)}
         onSubmit={() => resolve(value.trim())}
       />
     </Box>

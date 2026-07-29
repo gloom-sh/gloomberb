@@ -1,5 +1,5 @@
-import type { ChartResolution, TimeRange } from "../components/chart/core/types";
-import { getChartResolutionLabel } from "../components/chart/core/resolution";
+import type { ChartResolution, TimeRange } from "./range";
+import { getChartResolutionLabel } from "./resolution";
 import {
   canonicalTimeSeriesFieldId,
   getTimeSeriesField,

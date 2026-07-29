@@ -1,21 +1,5 @@
 import type { ContextMenuActionItem, ContextMenuItem, ContextMenuRoleItem } from "../../../types/context-menu";
-import { ELECTROBUN_CONTEXT_MENU_ACTION } from "../shared/protocol";
-
-type DesktopContextMenuItem =
-  | { type: "divider" }
-  | {
-    type?: "normal";
-    label?: string;
-    tooltip?: string;
-    action?: string;
-    role?: string;
-    data?: unknown;
-    submenu?: DesktopContextMenuItem[];
-    enabled?: boolean;
-    checked?: boolean;
-    hidden?: boolean;
-    accelerator?: string;
-  };
+import { ELECTROBUN_CONTEXT_MENU_ACTION, type DesktopContextMenuItem } from "../shared/protocol";
 
 export interface PreparedDesktopContextMenu {
   menu: DesktopContextMenuItem[];

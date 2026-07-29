@@ -6,7 +6,7 @@ import { useAppDispatch, useAppSelector } from "../../state/app/context";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { findPaneInstance } from "../../types/config";
 import type { PluginRegistry } from "../../plugins/registry";
-import { colors, floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
+import { floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { hasPaneFooterContent, PaneFooterBar, PaneFooterProvider } from "./pane/footer";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
@@ -32,7 +32,7 @@ function stopMouse(event?: { stopPropagation?: () => void; preventDefault?: () =
 }
 
 export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: DetachedPaneShellProps) {
-  useThemeColors();
+  const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const rendererHost = useRendererHost();
   const config = useAppSelector((state) => state.config);
@@ -134,8 +134,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const renderFooter = reserveFooter || showFooter;
         const headerHeightRows = titleBarOverlay ? TITLEBAR_OVERLAY_HEIGHT_PX / cellHeightPx : 1;
-        const background = floatingPaneBg(focused);
-        const titleBackground = floatingPaneTitleBg(focused);
+        const background = floatingPaneBg(focused, colors);
+        const titleBackground = floatingPaneTitleBg(focused, colors);
         const bodyFrame = resolvePaneBodyFrame({
           width,
           height,
@@ -184,11 +184,11 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                 style={{ position: "relative" }}
               >
                 <Box flexGrow={1} minWidth={0} overflow="hidden">
-                  <Text fg={paneTitleText(focused, true)} selectable={false} data-gloom-role="pane-title">{title}</Text>
+                  <Text fg={paneTitleText(focused, true, colors)} selectable={false} data-gloom-role="pane-title">{title}</Text>
                 </Box>
                 {hasPaneSettings && (
                   <Text
-                    fg={paneTitleText(focused, true)}
+                    fg={paneTitleText(focused, true, colors)}
                     selectable={false}
                     className="electrobun-webkit-app-region-no-drag"
                     data-gloom-role="pane-action"

@@ -1,5 +1,5 @@
-import type { TimeRange } from "../components/chart/core/types";
-import type { ManualChartResolution } from "../components/chart/core/resolution";
+import type { TimeRange } from "../time-series/range";
+import type { ManualChartResolution } from "../time-series/resolution";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
 import type { QuoteSubscriptionTarget } from "../types/data-provider";

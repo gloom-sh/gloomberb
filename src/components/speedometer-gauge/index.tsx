@@ -1,5 +1,4 @@
 import { useUiHost } from "../../ui";
-import { useThemeColors } from "../../theme/theme-context";
 import { DesktopSpeedometerGauge } from "./desktop";
 import {
   DEFAULT_MAX_WIDTH,
@@ -25,7 +24,6 @@ export function SpeedometerGauge({
   maxWidth = DEFAULT_MAX_WIDTH,
   compact = false,
 }: SpeedometerGaugeProps) {
-  useThemeColors();
   const props = {
     value,
     valueLabel,

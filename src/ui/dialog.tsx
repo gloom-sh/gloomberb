@@ -11,8 +11,8 @@ export interface PromptContext<T> extends AlertContext {
 }
 
 export interface DialogApi {
-  alert<T = void>(options: Record<string, unknown>): Promise<T>;
-  prompt<T = string>(options: Record<string, unknown>): Promise<T>;
+  alert(options: Record<string, unknown>): Promise<void>;
+  prompt<T = string>(options: Record<string, unknown>): Promise<T | undefined>;
 }
 
 interface DialogContextValue {

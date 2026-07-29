@@ -1,8 +1,9 @@
 import { useCallback, useMemo } from "react";
-import { useExternalLinkFooter, type PaneFooterSegment, type PaneHint } from "../../../../../components";
+import type { PaneFooterSegment } from "../../../../../components";
 import { useShortcut } from "../../../../../react/input";
 import { useRendererHost } from "../../../../../ui";
 import { apiClient } from "../../../../../api-client";
+import { usePaneStatusLinkFooter } from "../../../shared/pane-footer";
 
 const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud";
 
@@ -16,7 +17,8 @@ interface UseNewsArticleFooterOptions {
   focused: boolean;
   article: NewsFooterArticle | null | undefined;
   info?: PaneFooterSegment[];
-  hints?: PaneHint[];
+  loading?: boolean;
+  error?: string | null;
 }
 
 function hasRealtimeNewsAccess(): boolean {
@@ -29,7 +31,8 @@ export function useNewsArticleFooter({
   focused,
   article,
   info,
-  hints,
+  loading = false,
+  error,
 }: UseNewsArticleFooterOptions) {
   const rendererHost = useRendererHost();
   const hasRealtimeAccess = hasRealtimeNewsAccess();
@@ -60,18 +63,15 @@ export function useNewsArticleFooter({
         parts: [{ text: "delayed 12h, upgrade for realtime", tone: "warning" }],
       }]
   ), [hasRealtimeAccess, openUpgrade, showAccessFooter]);
-  const upgradeHints = useMemo<PaneHint[]>(() => (
-    showAccessFooter && !hasRealtimeAccess ? [{ id: "upgrade", key: "u", label: "pgrade", onPress: openUpgrade }] : []
-  ), [hasRealtimeAccess, openUpgrade, showAccessFooter]);
   const footerInfo = useMemo(() => [...accessInfo, ...(info ?? [])], [accessInfo, info]);
-  const footerHints = useMemo(() => [...upgradeHints, ...(hints ?? [])], [hints, upgradeHints]);
 
-  useExternalLinkFooter({
+  usePaneStatusLinkFooter({
     registrationId,
     focused,
     url: article?.url,
     source: article?.source,
     info: footerInfo,
-    hints: footerHints,
+    loading,
+    error,
   });
 }

@@ -1,10 +1,13 @@
-/// <reference lib="dom" />
 import { Electroview } from "electrobun/view";
 import {
   type ApplicationMenuSelectMessage,
   type CapabilityEventMessage,
   type ContextMenuSelectMessage,
   type DesktopDeepLinkMessage,
+  type DesktopBackendRequestArgs,
+  type DesktopBackendRequestMethod,
+  type DesktopBackendRequestPayload,
+  type DesktopBackendRequestResponse,
   type DesktopDockPreviewMessage,
   type DesktopRestartMessage,
   type DesktopStateMessage,
@@ -155,21 +158,28 @@ async function waitForBridgeReady(): Promise<void> {
   throw new Error("Electrobun RPC socket did not open in time.");
 }
 
-export async function backendRequest<T = unknown>(method: string, payload: unknown = null): Promise<T> {
+export function backendRequest<T = unknown>(
+  method: "capability.invoke",
+  payload: DesktopBackendRequestPayload<"capability.invoke">,
+): Promise<T>;
+export function backendRequest<K extends Exclude<DesktopBackendRequestMethod, "capability.invoke">>(
+  method: K,
+  ...args: DesktopBackendRequestArgs<K>
+): Promise<DesktopBackendRequestResponse<K>>;
+export async function backendRequest(
+  method: DesktopBackendRequestMethod,
+  payload: unknown = null,
+): Promise<unknown> {
   await waitForBridgeReady();
   const result = await rpc.request["backend.request"]({
     method,
     payload: encodeRpcValue(payload),
   });
-  return decodeRpcValue<T>(result);
-}
-
-export function requestMainWindowRemoteControl(request: RemoteControlRequest): Promise<RemoteControlResponse> {
-  return backendRequest("remote.forward", { request });
+  return decodeRpcValue(result);
 }
 
 export async function initElectrobunBackend(payload?: { kind?: "main" | "detached"; paneId?: string }): Promise<ElectrobunBackendInit> {
-  initSnapshot = await backendRequest<ElectrobunBackendInit>("init", payload ?? null);
+  initSnapshot = await backendRequest("init", payload ?? {});
   return initSnapshot;
 }
 

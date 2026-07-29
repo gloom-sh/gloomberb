@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore, type Dispatch } from "react";
 import type { AppAction, AppState } from "../core/state/app/state";
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { PluginRegistry } from "../plugins/registry";
 import { cloudSyncController } from "./controller";
 
@@ -8,7 +8,7 @@ interface CloudSyncRuntimeOptions {
   state: AppState;
   getState: () => AppState;
   dispatch: Dispatch<AppAction>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   pluginRegistry: PluginRegistry;
   initialized: boolean;
 }

@@ -1,4 +1,5 @@
 import type { ChartColors } from "./types";
+import { blendHex } from "../../../theme/color-utils";
 
 interface ChartPaletteInput {
   bg: string;
@@ -15,18 +16,6 @@ export interface ResolvedChartPalette extends ChartColors {
   candleDown: string;
   wickUp: string;
   wickDown: string;
-}
-
-function blendHex(a: string, b: string, ratio: number): string {
-  const parse = (hex: string) => {
-    const h = hex.replace("#", "");
-    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)] as const;
-  };
-
-  const [ar, ag, ab] = parse(a);
-  const [br, bg, bb] = parse(b);
-  const mix = (x: number, y: number) => Math.round(x + (y - x) * ratio).toString(16).padStart(2, "0");
-  return `#${mix(ar, br)}${mix(ag, bg)}${mix(ab, bb)}`;
 }
 
 export function resolveChartPalette(

@@ -3,7 +3,8 @@ import { Box, ChartSurface, Span, Text, TextAttributes, useNativeRenderer, useUi
 import type { NativeChartBitmap } from "../chart/native/chart-rasterizer";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../chart/native/bitmap-support";
 import { drawCircle, drawLine, parseHex } from "../chart/native/raster/primitives";
-import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
+import type { ThemeColors } from "../../theme/colors";
 import {
   compactSegmentLabel,
   formatGaugeValue,
@@ -73,7 +74,7 @@ function renderLabelRow(width: number, min: number, max: number, segments: Speed
   return cellsToChunks(cells);
 }
 
-function renderTickRow(width: number, min: number, max: number): GaugeChunk[] {
+function renderTickRow(width: number, min: number, max: number, colors: Pick<ThemeColors, "textDim">): GaugeChunk[] {
   const cells = blankGaugeLine(width);
   for (const tick of [min, min + (max - min) * 0.25, min + (max - min) * 0.5, min + (max - min) * 0.75, max]) {
     placeText(cells, formatGaugeValue(tick), normalizeValue(tick, min, max) * (width - 1), colors.textDim);
@@ -81,7 +82,14 @@ function renderTickRow(width: number, min: number, max: number): GaugeChunk[] {
   return cellsToChunks(cells);
 }
 
-function renderArcRows(value: number, min: number, max: number, width: number, segments: SpeedometerSegment[]): GaugeChunk[][] {
+function renderArcRows(
+  value: number,
+  min: number,
+  max: number,
+  width: number,
+  segments: SpeedometerSegment[],
+  colors: Pick<ThemeColors, "textDim" | "textBright">,
+): GaugeChunk[][] {
   const dialHeight = 7;
   const dial = Array.from({ length: dialHeight }, () => blankGaugeLine(width));
   const centerX = Math.floor((width - 1) / 2);
@@ -144,6 +152,7 @@ function renderGaugeBitmap(
   segments: SpeedometerSegment[],
   pixelWidth: number,
   pixelHeight: number,
+  colors: Pick<ThemeColors, "textDim" | "textBright">,
 ): NativeChartBitmap {
   const pixels = new Uint8Array(pixelWidth * pixelHeight * 4);
   const centerX = pixelWidth / 2;
@@ -193,6 +202,7 @@ export function TerminalSpeedometerGauge({
   minWidth,
   maxWidth,
 }: Required<SpeedometerGaugeProps>) {
+  const colors = useThemeColors();
   const {
     nativeCharts,
     cellWidthPx = 8,
@@ -202,8 +212,14 @@ export function TerminalSpeedometerGauge({
   const nativeRenderer = useNativeRenderer();
   const gaugeWidth = Math.max(minWidth, Math.min(maxWidth, Math.floor(width - 4)));
   const labelRow = useMemo(() => renderLabelRow(gaugeWidth, min, max, segments), [gaugeWidth, max, min, segments]);
-  const tickRow = useMemo(() => renderTickRow(gaugeWidth, min, max), [gaugeWidth, max, min]);
-  const arcRows = useMemo(() => renderArcRows(value, min, max, gaugeWidth, segments), [gaugeWidth, max, min, segments, value]);
+  const tickRow = useMemo(
+    () => renderTickRow(gaugeWidth, min, max, colors),
+    [colors.textDim, gaugeWidth, max, min],
+  );
+  const arcRows = useMemo(
+    () => renderArcRows(value, min, max, gaugeWidth, segments, colors),
+    [colors.textBright, colors.textDim, gaugeWidth, max, min, segments, value],
+  );
   const rendererCapabilities = nativeRenderer.capabilities;
   const rendererResolution = nativeRenderer.resolution;
   const rendererTerminalWidth = nativeRenderer.terminalWidth;
@@ -227,11 +243,14 @@ export function TerminalSpeedometerGauge({
       segments,
       bitmapSize.pixelWidth,
       bitmapSize.pixelHeight,
+      colors,
     );
   }, [
     arcRows.length,
     cellHeightPx,
     cellWidthPx,
+    colors.textBright,
+    colors.textDim,
     gaugeWidth,
     max,
     min,

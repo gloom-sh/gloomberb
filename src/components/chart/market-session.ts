@@ -136,17 +136,6 @@ export function resolveChartMarketSession(sources: readonly MarketSessionSource[
   return hasSupportedSource ? US_EXTENDED_HOURS_SESSION : null;
 }
 
-export function getChartMarketSessionKey(session: ChartMarketSession | null | undefined): string {
-  if (!session) return "session:none";
-  return [
-    session.timeZone,
-    session.preMarketStartMinutes,
-    session.regularStartMinutes,
-    session.regularEndMinutes,
-    session.postMarketEndMinutes,
-  ].join(":");
-}
-
 export function resolveExtendedHoursBackgroundSpans(
   values: readonly (Date | string | number)[],
   session: ChartMarketSession | null | undefined,

@@ -1,4 +1,4 @@
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { SearchRequestContext, DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import {
@@ -21,7 +21,7 @@ export async function resolveTickerOpenTarget({
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
   dataProvider: DataProvider;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   searchContext?: SearchRequestContext;
 }): Promise<TickerOpenTarget | null> {
   const symbol = normalizeTickerInput(null, query);

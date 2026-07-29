@@ -1,9 +1,9 @@
-import type { TimeRange } from "../../components/chart/core/types";
+import type { TimeRange } from "../../time-series/range";
 import {
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
   type ManualChartResolution,
-} from "../../components/chart/core/resolution";
+} from "../../time-series/resolution";
 import { assetDataProvider, newsProvider, type PluginCapability } from "../../capabilities";
 import type {
   AssetDataProvider,

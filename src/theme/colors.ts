@@ -1,9 +1,24 @@
 import { blendForContrast, blendHex, higherContrast } from "./color-utils";
 import { getTheme, DEFAULT_THEME, type Theme } from "./themes";
 
-// Mutable colors object — properties are updated in-place when the theme changes.
-// React components re-read these on each render triggered by the SET_THEME action.
-export const colors: Omit<Theme, "name" | "description"> = { ...getTheme(DEFAULT_THEME) };
+export type ThemeColors = Readonly<Omit<Theme, "name" | "description">>;
+
+export function getThemeColors(id: string): ThemeColors {
+  const { name: _name, description: _description, ...palette } = getTheme(id);
+  return Object.freeze(palette);
+}
+
+let currentColors = getThemeColors(DEFAULT_THEME);
+
+/** Compatibility facade for non-React formatting and rendering helpers. */
+export const colors = new Proxy({ ...currentColors } as ThemeColors, {
+  get: (_target, property) => currentColors[property as keyof ThemeColors],
+  getOwnPropertyDescriptor: (_target, property) => ({
+    configurable: true,
+    enumerable: true,
+    value: currentColors[property as keyof ThemeColors],
+  }),
+}) as ThemeColors;
 
 type ColorKey = keyof typeof colors;
 
@@ -38,10 +53,8 @@ export function getCurrentThemeId(): string {
 }
 
 export function applyTheme(id: string): void {
-  const theme = getTheme(id);
   currentThemeId = id;
-  // Mutate in-place so every existing import sees the new values
-  Object.assign(colors, theme);
+  currentColors = getThemeColors(id);
   syncThemeCssVariables();
 }
 
@@ -73,22 +86,6 @@ export function syncTheme(id: string): void {
 
 export { blendHex } from "./color-utils";
 
-export function getComparisonSeriesColor(index: number): string {
-  const seriesColors = [
-    colors.borderFocused,
-    colors.warning,
-    colors.positive,
-    colors.negative,
-    colors.textBright,
-    colors.neutral,
-    blendHex(colors.borderFocused, colors.positive, 0.45),
-    blendHex(colors.warning, colors.negative, 0.35),
-    blendHex(colors.textBright, colors.positive, 0.35),
-    blendHex(colors.borderFocused, colors.negative, 0.35),
-  ];
-  return seriesColors[((index % seriesColors.length) + seriesColors.length) % seriesColors.length]!;
-}
-
 export function getChartIndicatorColor(index: number): string {
   const accent = higherContrast(colors.warning, colors.borderFocused, colors.bg);
   const indicatorColors = [
@@ -112,8 +109,8 @@ export function getChartIndicatorColor(index: number): string {
 }
 
 /** Returns a hover background color derived from bg and selected */
-export function hoverBg(): string {
-  return blendHex(colors.bg, colors.selected, 0.5);
+export function hoverBg(palette: ThemeColors = colors): string {
+  return blendHex(palette.bg, palette.selected, 0.5);
 }
 
 function syncThemeCssVariables(): void {
@@ -126,62 +123,62 @@ function syncThemeCssVariables(): void {
   cssThemeId = currentThemeId;
   cssThemeDocument = documentLike;
   for (const [key, name] of THEME_CSS_VARIABLES) {
-    style.setProperty(name, colors[key]);
+    style.setProperty(name, currentColors[key]);
   }
   style.setProperty("--gloom-hover-bg", hoverBg());
 }
 
-export function commandBarBg(): string {
-  const base = higherContrast(colors.commandBg, colors.panel, colors.bg);
-  const accent = higherContrast(colors.textBright, colors.borderFocused, base);
-  return blendForContrast(base, colors.bg, accent, 1.45);
+export function commandBarBg(palette: ThemeColors = colors): string {
+  const base = higherContrast(palette.commandBg, palette.panel, palette.bg);
+  const accent = higherContrast(palette.textBright, palette.borderFocused, base);
+  return blendForContrast(base, palette.bg, accent, 1.45);
 }
 
-export function commandBarPanelBg(): string {
-  return blendHex(commandBarBg(), colors.panel, 0.28);
+export function commandBarPanelBg(palette: ThemeColors = colors): string {
+  return blendHex(commandBarBg(palette), palette.panel, 0.28);
 }
 
-export function commandBarInputBg(): string {
-  return blendHex(commandBarPanelBg(), colors.bg, 0.22);
+export function commandBarInputBg(palette: ThemeColors = colors): string {
+  return blendHex(commandBarPanelBg(palette), palette.bg, 0.22);
 }
 
-export function commandBarSelectedBg(): string {
-  const base = commandBarBg();
-  const accent = higherContrast(colors.selectedText, colors.textBright, colors.selected);
-  return blendForContrast(colors.selected, base, accent, 1.45);
+export function commandBarSelectedBg(palette: ThemeColors = colors): string {
+  const base = commandBarBg(palette);
+  const accent = higherContrast(palette.selectedText, palette.textBright, palette.selected);
+  return blendForContrast(palette.selected, base, accent, 1.45);
 }
 
-export function commandBarHoverBg(): string {
-  return blendHex(commandBarBg(), commandBarSelectedBg(), 0.45);
+export function commandBarHoverBg(palette: ThemeColors = colors): string {
+  return blendHex(commandBarBg(palette), commandBarSelectedBg(palette), 0.45);
 }
 
-export function commandBarText(): string {
-  const base = commandBarBg();
-  const fallback = higherContrast(colors.textBright, "#f2f2f2", base);
-  return blendForContrast(colors.text, base, fallback, 5.4);
+export function commandBarText(palette: ThemeColors = colors): string {
+  const base = commandBarBg(palette);
+  const fallback = higherContrast(palette.textBright, "#f2f2f2", base);
+  return blendForContrast(palette.text, base, fallback, 5.4);
 }
 
-export function commandBarHeadingText(): string {
-  const base = commandBarBg();
+export function commandBarHeadingText(palette: ThemeColors = colors): string {
+  const base = commandBarBg(palette);
   const fallback = higherContrast(
-    higherContrast(colors.textDim, colors.text, base),
-    higherContrast(colors.textBright, colors.selectedText, base),
+    higherContrast(palette.textDim, palette.text, base),
+    higherContrast(palette.textBright, palette.selectedText, base),
     base,
   );
-  return blendForContrast(colors.textMuted, base, fallback, 3.6);
+  return blendForContrast(palette.textMuted, base, fallback, 3.6);
 }
 
-export function commandBarSubtleText(): string {
-  const base = commandBarBg();
-  const fallback = higherContrast(commandBarText(), "#d8d8d8", base);
-  return blendForContrast(colors.textDim, base, fallback, 4.1);
+export function commandBarSubtleText(palette: ThemeColors = colors): string {
+  const base = commandBarBg(palette);
+  const fallback = higherContrast(commandBarText(palette), "#d8d8d8", base);
+  return blendForContrast(palette.textDim, base, fallback, 4.1);
 }
 
-export function commandBarSelectedText(): string {
-  const base = commandBarSelectedBg();
-  const preferred = higherContrast(colors.selectedText, colors.text, base);
+export function commandBarSelectedText(palette: ThemeColors = colors): string {
+  const base = commandBarSelectedBg(palette);
+  const preferred = higherContrast(palette.selectedText, palette.text, base);
   const fallback = higherContrast(
-    higherContrast(colors.textBright, colors.text, base),
+    higherContrast(palette.textBright, palette.text, base),
     higherContrast("#ffffff", "#000000", base),
     base,
   );
@@ -189,44 +186,44 @@ export function commandBarSelectedText(): string {
 }
 
 /** Background for docked pane bodies */
-export function paneBg(focused: boolean): string {
-  if (focused) return blendHex(colors.bg, colors.borderFocused, 0.06);
-  return blendHex(colors.panel, colors.border, 0.08);
+export function paneBg(focused: boolean, palette: ThemeColors = colors): string {
+  if (focused) return blendHex(palette.bg, palette.borderFocused, 0.06);
+  return blendHex(palette.panel, palette.border, 0.08);
 }
 
 /** Background for floating pane bodies — elevated above docked panes */
-export function floatingPaneBg(focused: boolean): string {
-  if (focused) return blendHex(colors.bg, colors.borderFocused, 0.08);
-  return blendHex(colors.panel, colors.border, 0.18);
+export function floatingPaneBg(focused: boolean, palette: ThemeColors = colors): string {
+  if (focused) return blendHex(palette.bg, palette.borderFocused, 0.08);
+  return blendHex(palette.panel, palette.border, 0.18);
 }
 
 /** Background for pane title bars */
-export function paneTitleBg(focused: boolean): string {
-  if (focused) return blendHex(colors.bg, colors.borderFocused, 0.22);
-  return blendHex(colors.panel, colors.border, 0.15);
+export function paneTitleBg(focused: boolean, palette: ThemeColors = colors): string {
+  if (focused) return blendHex(palette.bg, palette.borderFocused, 0.22);
+  return blendHex(palette.panel, palette.border, 0.15);
 }
 
 /** Background for floating pane title bars */
-export function floatingPaneTitleBg(focused: boolean): string {
-  if (focused) return blendHex(colors.bg, colors.borderFocused, 0.25);
-  return blendHex(colors.panel, colors.border, 0.25);
+export function floatingPaneTitleBg(focused: boolean, palette: ThemeColors = colors): string {
+  if (focused) return blendHex(palette.bg, palette.borderFocused, 0.25);
+  return blendHex(palette.panel, palette.border, 0.25);
 }
 
 /** Title text color for panes */
-export function paneTitleText(focused: boolean, floating = false): string {
-  const background = floating ? floatingPaneTitleBg(focused) : paneTitleBg(focused);
+export function paneTitleText(focused: boolean, floating = false, palette: ThemeColors = colors): string {
+  const background = floating ? floatingPaneTitleBg(focused, palette) : paneTitleBg(focused, palette);
   const preferred = focused
-    ? higherContrast(colors.textBright, colors.headerText, background)
-    : colors.textDim;
+    ? higherContrast(palette.textBright, palette.headerText, background)
+    : palette.textDim;
   const fallback = focused
-    ? higherContrast(colors.text, "#f2f2f2", background)
-    : higherContrast(colors.text, colors.textBright, background);
+    ? higherContrast(palette.text, "#f2f2f2", background)
+    : higherContrast(palette.text, palette.textBright, background);
   return blendForContrast(preferred, background, fallback, focused ? 5.2 : 4.5);
 }
 
 /** Returns green for positive, red for negative, neutral for zero */
-export function priceColor(value: number): string {
-  if (value > 0) return colors.positive;
-  if (value < 0) return colors.negative;
-  return colors.neutral;
+export function priceColor(value: number, palette: ThemeColors = colors): string {
+  if (value > 0) return palette.positive;
+  if (value < 0) return palette.negative;
+  return palette.neutral;
 }

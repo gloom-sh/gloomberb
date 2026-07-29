@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import type { DataProvider } from "../../../types/data-provider";
-import type { TickerRepository } from "../../../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { useRouteListState } from "../routing/list-state";
@@ -16,7 +16,7 @@ import { useCommandBarActionRuntime } from "../action-runtime";
 
 interface CommandBarProps {
   dataProvider: DataProvider;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
   pluginRegistry: PluginRegistry;
   quitApp: () => void;
   onCheckForUpdates?: () => void | Promise<void>;

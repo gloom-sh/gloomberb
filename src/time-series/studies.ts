@@ -156,7 +156,7 @@ function studyPeriod(spec: ChartStudySpec, fallback: number): number {
   return positiveInteger(spec.parameters.period, fallback);
 }
 
-export function studyWarmupPoints(spec: ChartStudySpec): number {
+function studyWarmupPoints(spec: ChartStudySpec): number {
   if (spec.kind === "sma" || spec.kind === "ema" || spec.kind === "bollinger") {
     return studyPeriod(spec, 20) - 1;
   }

@@ -30,7 +30,7 @@ import {
 } from "../../../utils/exchanges";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
 
-export const CHART_FIELD_IDS = {
+const CHART_FIELD_IDS = {
   price: "market.ohlcv",
   close: "market.close",
   volume: "market.volume",
@@ -44,8 +44,6 @@ export const CHART_FIELD_IDS = {
   forwardPE: "valuation.forwardPE",
   evEbitda: "valuation.evEbitda",
 } as const;
-
-export type ChartComposerPreset = "G" | "GP" | "GIP" | "CMP" | "GF" | "GE";
 
 export type ParsedSeriesExpression =
   | { kind: "security"; symbol: string; exchange?: string; fieldId: string; label?: string }
@@ -645,22 +643,6 @@ export function buildValuationChartPreset(
     index,
     { style: normalized.length === 1 ? "line" : "columns", axis: "left" },
   )));
-}
-
-export function buildPresetChartSpec(
-  preset: ChartComposerPreset,
-  symbols: readonly string[],
-  expression = "",
-): ChartSpec {
-  const primary = symbols[0] ?? "";
-  switch (preset) {
-    case "G": return buildCustomChartPreset(expression, primary || null);
-    case "GP": return buildPriceChartPreset(primary);
-    case "GIP": return buildIntradayPriceChartPreset(primary);
-    case "CMP": return buildComparisonChartPreset(symbols);
-    case "GF": return buildFundamentalChartPreset(symbols);
-    case "GE": return buildValuationChartPreset(symbols);
-  }
 }
 
 const STUDY_DEFAULTS = {

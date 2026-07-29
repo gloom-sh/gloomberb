@@ -8,14 +8,16 @@ import {
   usePaneFooter,
 } from "./index";
 import { useExternalLinkFooter } from "../../../use-external-link-footer";
+import { setLanguage, t } from "../../../../i18n";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
-afterEach(() => {
+afterEach(async () => {
   if (testSetup) {
-    testSetup.renderer.destroy();
+    await act(async () => testSetup?.renderer.destroy());
     testSetup = undefined;
   }
+  setLanguage("en");
 });
 
 function Registration({
@@ -54,6 +56,26 @@ function ExternalLinkRegistration() {
   return null;
 }
 
+function TranslatedRegistration() {
+  usePaneFooter("translated", () => ({
+    info: [{ id: "state", parts: [{ text: t("Open"), tone: "value" }] }],
+  }), []);
+  return null;
+}
+
+function TranslatedFooterHarness() {
+  return (
+    <PaneFooterProvider>
+      {(footer) => (
+        <Box width={40} height={1}>
+          <TranslatedRegistration />
+          <PaneFooterBar footer={footer} focused width={40} />
+        </Box>
+      )}
+    </PaneFooterProvider>
+  );
+}
+
 function FooterHarness({
   focused = false,
   onRefresh,
@@ -89,6 +111,27 @@ function ExternalLinkFooterHarness() {
 }
 
 describe("PaneFooterBar", () => {
+  test("rebuilds translated registrations when the app language changes", async () => {
+    testSetup = await testRender(<TranslatedFooterHarness />, { width: 40, height: 1 });
+    await act(async () => {
+      await testSetup?.renderOnce();
+      await testSetup?.renderOnce();
+    });
+    expect(testSetup.captureCharFrame()).toContain("Open");
+
+    await act(async () => {
+      setLanguage("zh-CN");
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await testSetup?.renderOnce();
+      await testSetup?.renderOnce();
+      await Promise.resolve();
+      await testSetup?.renderOnce();
+    });
+    expect(testSetup.captureCharFrame()).toContain("打开");
+  });
+
   test("hides hints on inactive footers but keeps info visible", async () => {
     testSetup = await testRender(<FooterHarness />, { width: 64, height: 1 });
     await act(async () => {

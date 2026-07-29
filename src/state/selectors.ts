@@ -1,19 +1,10 @@
 import type { AppState } from "./app/context";
-import type { TickerRecord } from "../types/ticker";
 
 function getCollectionMembershipKey(state: AppState, collectionId: string | null): "portfolios" | "watchlists" | null {
   if (!collectionId) return null;
   if (state.config.portfolios.some((portfolio) => portfolio.id === collectionId)) return "portfolios";
   if (state.config.watchlists.some((watchlist) => watchlist.id === collectionId)) return "watchlists";
   return null;
-}
-
-export function getCollectionTickers(state: AppState, collectionId: string | null): TickerRecord[] {
-  const membershipKey = getCollectionMembershipKey(state, collectionId);
-  if (!collectionId || !membershipKey) return [];
-  return [...state.tickers.values()]
-    .filter((ticker) => ticker.metadata[membershipKey].includes(collectionId))
-    .sort((a, b) => a.metadata.ticker.localeCompare(b.metadata.ticker));
 }
 
 export function getCollectionTickerCount(state: AppState, collectionId: string | null): number {

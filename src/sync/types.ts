@@ -1,6 +1,6 @@
 import type { Dispatch } from "react";
 import type { AppAction, AppState } from "../core/state/app/state";
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 
 export const SYNC_SNAPSHOT_SCHEMA_VERSION = 1;
 
@@ -30,7 +30,7 @@ export interface SyncApplyContext {
   getState: () => AppState;
   isCurrent: () => boolean;
   dispatch: Dispatch<AppAction>;
-  tickerRepository: TickerRepository;
+  tickerRepository: AppTickerRepositoryPort;
 }
 
 export interface SyncContributor {
