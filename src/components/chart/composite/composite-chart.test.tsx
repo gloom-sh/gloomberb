@@ -4,6 +4,7 @@ import {
   createElement,
   forwardRef,
   useMemo,
+  useState,
   type ForwardedRef,
   type ReactNode,
 } from "react";
@@ -180,8 +181,8 @@ describe("CompositeChart", () => {
     expect(frame).toContain("ACME Price");
     expect(frame).toContain("OTHER Revenue");
     expect(frame).toContain("$103");
-    expect(frame.match(/2025-01-01/g)).toHaveLength(1);
-    expect(frame.match(/2025-01-03/g)).toHaveLength(1);
+    expect(frame.match(/Jan 1/g)).toHaveLength(1);
+    expect(frame.match(/Jan 3/g)).toHaveLength(1);
   });
 
   test("keeps legend items compact and anchors an accessory to the right edge", async () => {
@@ -464,11 +465,8 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("2025-01-01");
-    expect(viewportChanges).toEqual([{
-      start: "2025-01-01T00:00:00.000Z",
-      end: "2025-01-09T00:00:00.000Z",
-    }]);
+    expect(testSetup.captureCharFrame()).toContain("Jan 1");
+    expect(viewportChanges).toEqual([]);
 
     const zoomIn = keyEvent("=");
     zoomIn.sequence = "+";
@@ -477,16 +475,76 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     expect(zoomIn.defaultPrevented).toBe(true);
-    expect(testSetup.captureCharFrame()).not.toContain("2025-01-01");
+    expect(testSetup.captureCharFrame()).not.toContain("Jan 1");
     expect(viewportChanges.at(-1)?.start).not.toBe("2025-01-01T00:00:00.000Z");
 
     await act(async () => chartShortcut?.(keyEvent("0")));
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("2025-01-01");
-    expect(viewportChanges.at(-1)).toEqual({
-      start: "2025-01-01T00:00:00.000Z",
-      end: "2025-01-09T00:00:00.000Z",
+    expect(testSetup.captureCharFrame()).toContain("Jan 1");
+    expect(viewportChanges.at(-1)).toBeNull();
+  });
+
+  test("preserves a zoomed viewport when adaptive data refreshes its buffer", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    let replacePoints: ((points: TimeSeriesPoint[]) => void) | null = null;
+    const initialPoints = series(
+      "price",
+      "main",
+      "left",
+      "USD",
+      [100, 101, 102, 103, 104, 105, 106, 107, 108],
+    ).points;
+    function Harness() {
+      const [points, setPoints] = useState(initialPoints);
+      replacePoints = setPoints;
+      return (
+        <InputHostProvider host={chartInputHost}>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            series={[{
+              ...series("price", "main", "left", "USD", []),
+              points,
+            }]}
+            panels={[{ id: "main" }]}
+            viewport={{
+              start: new Date("2025-01-01T00:00:00.000Z"),
+              end: new Date("2025-01-09T00:00:00.000Z"),
+            }}
+            onViewportChange={(next) => viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null)}
+          />
+        </InputHostProvider>
+      );
+    }
+
+    testSetup = await testRender(
+      <Harness />,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    for (let index = 0; index < 2; index += 1) {
+      const zoomIn = keyEvent("=");
+      zoomIn.sequence = "+";
+      zoomIn.shift = true;
+      await act(async () => chartShortcut?.(zoomIn));
+      await act(async () => testSetup!.renderOnce());
+    }
+    const zoomedViewport = viewportChanges.at(-1);
+    expect(zoomedViewport?.start).not.toBe("2025-01-01T00:00:00.000Z");
+    const changeCount = viewportChanges.length;
+
+    await act(async () => replacePoints?.(initialPoints.slice(2)));
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
     });
+
+    expect(viewportChanges).toHaveLength(changeCount);
+    expect(viewportChanges.at(-1)).toEqual(zoomedViewport);
   });
 
   test("activates and navigates a buffered viewport from the first mouse gesture", async () => {
@@ -515,7 +573,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("2025-01-05");
+    expect(testSetup.captureCharFrame()).toContain("Jan 5");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseDown(pointerEvent(10, 3));
@@ -526,7 +584,7 @@ describe("CompositeChart", () => {
 
     expect(activations).toBe(1);
     expect(cursorChanges.length).toBeGreaterThan(0);
-    expect(testSetup.captureCharFrame()).toContain("2025-01-03");
+    expect(testSetup.captureCharFrame()).toContain("Jan 3");
   });
 
   test("maps the pointer crosshair level through both axes and labels its date", async () => {
@@ -584,7 +642,7 @@ describe("CompositeChart", () => {
     );
 
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("2025-01-09");
+    expect(testSetup.captureCharFrame()).toContain("Jan 9");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
@@ -594,7 +652,77 @@ describe("CompositeChart", () => {
     });
     await act(async () => testSetup!.renderOnce());
 
-    expect(testSetup.captureCharFrame()).not.toContain("2025-01-09");
+    expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
+  });
+
+  test("keeps the date axis and mouse recovery when refreshed data misses the zoomed window", async () => {
+    let replacePoints: ((points: TimeSeriesPoint[]) => void) | null = null;
+    function Harness() {
+      const [points, setPoints] = useState(
+        series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108]).points,
+      );
+      replacePoints = setPoints;
+      return (
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[{
+            ...series("price", "main", "left", "USD", []),
+            points,
+          }]}
+          panels={[{ id: "main" }]}
+          viewport={{
+            start: new Date("2025-01-01T00:00:00.000Z"),
+            end: new Date("2025-01-09T00:00:00.000Z"),
+          }}
+        />
+      );
+    }
+
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <Harness />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    for (let index = 0; index < 8; index += 1) {
+      await act(async () => {
+        capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+          ctrl: true,
+          scroll: { direction: "up", delta: 8 },
+        }));
+      });
+      await act(async () => testSetup!.renderOnce());
+    }
+
+    await act(async () => {
+      replacePoints?.([
+        point("2025-01-01", 100),
+        point("2025-01-09", 108),
+      ]);
+    });
+    await act(async () => testSetup!.renderOnce());
+
+    const emptyFrame = testSetup.captureCharFrame();
+    expect(emptyFrame).toContain("No chart data");
+    expect(emptyFrame).toContain("Jan ");
+    expect(typeof capturedSurfaceProps!.onMouseScroll).toBe("function");
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+        ctrl: true,
+        scroll: { direction: "down", delta: 4 },
+      }));
+    });
+    await act(async () => testSetup!.renderOnce());
+
+    const recoveredFrame = testSetup.captureCharFrame();
+    expect(recoveredFrame).not.toContain("No chart data");
+    expect(recoveredFrame).toContain("2025-01-01");
+    expect(recoveredFrame).toContain("Jan 9");
   });
 
   test("shows useful UTC times for an intraday shared cursor and time axis", async () => {

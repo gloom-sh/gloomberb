@@ -30,6 +30,10 @@ const EMPTY_RESULT: ChartResolutionResult = {
   warnings: [],
 };
 
+function hasRenderableData(result: ChartResolutionResult): boolean {
+  return (result.bufferedSeries ?? result.series).some((series) => series.points.length > 0);
+}
+
 function withQuoteOverrides(
   sources: ChartResolveSources,
   liveOverrides: ReadonlyMap<string, Quote>,
@@ -49,6 +53,8 @@ export function useChartResolution(
   options: UseChartResolutionOptions = {},
 ): UseChartResolutionResult {
   const [result, setResult] = useState<ChartResolutionResult>(EMPTY_RESULT);
+  const resultRef = useRef(result);
+  resultRef.current = result;
   const [revision, setRevision] = useState(0);
   const generationRef = useRef(0);
   const liveSubscriptionGenerationRef = useRef(0);
@@ -89,7 +95,13 @@ export function useChartResolution(
       cacheIdentityRef.current = { spec, sources, revision };
     }
     const cache = resolveCacheRef.current;
-    setResult((current) => ({ ...current, loading: true, errors: [] }));
+    const current = resultRef.current;
+    const backgroundRefresh = !resetCache
+      && !current.loading
+      && hasRenderableData(current);
+    if (!backgroundRefresh) {
+      setResult((currentResult) => ({ ...currentResult, loading: true, errors: [] }));
+    }
     resolveChartSpecData(
       spec,
       withQuoteOverrides(sources, liveQuoteOverridesRef.current),
@@ -97,10 +109,13 @@ export function useChartResolution(
       resolveOptions,
     )
       .then((next) => {
-        if (generationRef.current === generation) setResult(next);
+        if (generationRef.current !== generation) return;
+        if (backgroundRefresh && !hasRenderableData(next)) return;
+        setResult(next);
       })
       .catch((error) => {
         if (generationRef.current !== generation) return;
+        if (backgroundRefresh) return;
         setResult({
           series: [],
           loading: false,
@@ -138,7 +153,14 @@ export function useChartResolution(
             liveSubscriptionGenerationRef.current === subscriptionGeneration
             && generationRef.current === generation
           ) {
-            setResult(next);
+            setResult((current) => (
+              request.options.autoViewport
+              && !current.loading
+              && hasRenderableData(current)
+              && !hasRenderableData(next)
+                ? current
+                : next
+            ));
           }
         } catch (error) {
           if (

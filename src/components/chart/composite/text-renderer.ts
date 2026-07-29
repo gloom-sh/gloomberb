@@ -1,7 +1,12 @@
-import { compositeAxisTicks, formatCompositeTimeAxisDate } from "./format";
-import { resolveCompositeTimeAxisDate } from "./scene";
+import { compositeAxisTicks } from "./format";
+import type { CompositeViewportRange } from "./interactions";
+import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue } from "./scene";
+import {
+  buildCompositeTimeAxisLayout,
+  buildCompositeViewportTimeAxisLayout,
+} from "./time-axis";
 import type {
   CompositeAxisDomain,
   CompositeChartScene,
@@ -159,6 +164,8 @@ function renderOhlc(
   width: number,
   height: number,
 ): void {
+  const candleWidth = resolveCompositeTextOhlcWidth(series.points, width);
+  const halfCandleWidth = Math.floor(candleWidth / 2);
   for (const projected of series.points) {
     const source = projected.point;
     const x = cellPoint(projected, width, height).x;
@@ -173,12 +180,31 @@ function renderOhlc(
     if (closeRow === null || highRow === null || lowRow === null) continue;
     drawLine(rows, x, highRow, x, lowRow, "│");
     if (series.source.style === "candles" && openRow !== null) {
-      drawLine(rows, x, openRow, x, closeRow, "█");
+      for (let row = Math.min(openRow, closeRow); row <= Math.max(openRow, closeRow); row += 1) {
+        for (let offset = -halfCandleWidth; offset <= halfCandleWidth; offset += 1) {
+          setCell(rows, x + offset, row, "█");
+        }
+      }
       continue;
     }
-    if (series.source.style === "ohlc" && openRow !== null) setCell(rows, Math.max(0, x - 1), openRow, "─");
-    setCell(rows, Math.min(width - 1, x + 1), closeRow, "─");
+    const tickWidth = Math.max(1, halfCandleWidth);
+    if (series.source.style === "ohlc" && openRow !== null) {
+      drawLine(rows, Math.max(0, x - tickWidth), openRow, x, openRow, "─");
+    }
+    drawLine(rows, x, closeRow, Math.min(width - 1, x + tickWidth), closeRow, "─");
   }
+}
+
+export function resolveCompositeTextOhlcWidth(
+  points: CompositeProjectedPoint[],
+  width: number,
+): number {
+  const maximum = clamp(Math.floor(width / 16), 3, 7);
+  const resolved = Math.max(
+    1,
+    Math.floor(resolveCompositeObservationWidth(points, width, 1, maximum)),
+  );
+  return resolved % 2 === 0 ? Math.max(1, resolved - 1) : resolved;
 }
 
 export function renderCompositePanelText(
@@ -259,27 +285,13 @@ export function renderCompositeAxisText(
   return rows;
 }
 
-function placeLabel(chars: string[], label: string, center: number): void {
-  const start = clamp(Math.round(center - label.length / 2), 0, Math.max(chars.length - label.length, 0));
-  for (let index = 0; index < label.length && start + index < chars.length; index += 1) {
-    chars[start + index] = label[index]!;
-  }
+export function renderCompositeViewportTimeAxis(
+  viewport: CompositeViewportRange,
+  width: number,
+): string {
+  return buildCompositeViewportTimeAxisLayout(viewport, width).text;
 }
 
 export function renderCompositeTimeAxis(scene: CompositeChartScene, width: number): string {
-  const chars = Array(Math.max(1, width)).fill(" ");
-  const formatDate = (ratio: number) => formatCompositeTimeAxisDate(
-    resolveCompositeTimeAxisDate(scene, ratio),
-    scene.startTime,
-    scene.endTime,
-  );
-  const startLabel = formatDate(0);
-  const midpointLabel = formatDate(0.5);
-  const endLabel = formatDate(1);
-  placeLabel(chars, startLabel, 0);
-  if (chars.length >= startLabel.length + midpointLabel.length + endLabel.length + 4) {
-    placeLabel(chars, midpointLabel, (chars.length - 1) / 2);
-  }
-  placeLabel(chars, endLabel, chars.length - 1);
-  return chars.join("");
+  return buildCompositeTimeAxisLayout(scene, width).text;
 }

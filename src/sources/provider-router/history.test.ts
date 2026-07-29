@@ -349,6 +349,39 @@ describe("AssetDataRouter chart history", () => {
     expect(await router.getChartResolutionCapabilities("AAPL", "NASDAQ")).toEqual(["1d", "1wk"]);
   });
 
+  test("skips unavailable providers when resolving chart resolution support", async () => {
+    let cloudSupportCalls = 0;
+    const cloudProvider: DataProvider = {
+      ...fallbackProvider,
+      id: "cloud",
+      name: "Cloud",
+      priority: 100,
+      async canProvide() {
+        return false;
+      },
+      getChartResolutionSupport() {
+        cloudSupportCalls += 1;
+        return [{ resolution: "1m", maxRange: "1W" }];
+      },
+    };
+    const yahooProvider: DataProvider = {
+      ...fallbackProvider,
+      id: "yahoo",
+      name: "Yahoo",
+      priority: 1000,
+      getChartResolutionSupport() {
+        return [{ resolution: "1d", maxRange: "5Y" }];
+      },
+    };
+
+    const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
+
+    expect(await router.getChartResolutionSupport("AAPL", "NASDAQ")).toEqual([
+      { resolution: "1d", maxRange: "5Y" },
+    ]);
+    expect(cloudSupportCalls).toBe(0);
+  });
+
   test("refreshes each history request type before falling back to its cached value", async () => {
     const dbPath = createTempDbPath("forced-history-refresh");
     const persistence = new AppPersistence(dbPath);

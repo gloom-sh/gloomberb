@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import {
+  compositeViewportHasObservations,
   panCompositeViewport,
   resolveCompositeChartInteraction,
   resolveCompositeMinimumSpanMs,
@@ -65,16 +66,54 @@ describe("composite chart interactions", () => {
     expect(clampedNewer).toEqual(viewport(7, 11));
   });
 
-  test("uses the finest real observation step as the zoom floor", () => {
-    const data = series([1, 2, 5, 11]);
+  test("uses representative cadence instead of a stray fine gap as the zoom floor", () => {
+    const data = series([1, 2, 5, 8, 11]);
     const bounds = resolveCompositeNavigationBounds([data]);
     expect(bounds).toEqual(viewport(1, 11));
-    expect(resolveCompositeMinimumSpanMs([data], bounds!)).toBe(DAY_MS);
+    expect(resolveCompositeMinimumSpanMs([data], bounds!)).toBe(3 * DAY_MS);
   });
 
   test("keeps the selected window separate from wider loaded navigation bounds", () => {
     const data = series([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(resolveCompositeNavigationBounds([data], viewport(5, 9))).toEqual(viewport(1, 9));
+  });
+
+  test("clamps overlapping requested bounds to real data but preserves disjoint requests", () => {
+    const data = series([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+    expect(resolveCompositeNavigationBounds([data], viewport(5, 12))).toEqual(viewport(1, 9));
+    expect(resolveCompositeNavigationBounds([data], viewport(20, 30))).toEqual(viewport(20, 30));
+  });
+
+  test("requires distinct renderable observations inside a viewport", () => {
+    const data = series([1, 2, 3]);
+    const emptyPoint = point(4);
+    emptyPoint.value = null;
+    data.points.push(emptyPoint);
+
+    expect(compositeViewportHasObservations([data], viewport(1, 2))).toBe(true);
+    expect(compositeViewportHasObservations([data], viewport(2, 2))).toBe(false);
+    expect(compositeViewportHasObservations([data], viewport(3, 4))).toBe(false);
+  });
+
+  test("does not zoom or pan a populated viewport into fewer than two observations", () => {
+    const data = series([1, 5, 10, 11]);
+    const bounds = viewport(1, 11);
+    const populated = viewport(1, 5);
+
+    expect(zoomCompositeViewport(populated, bounds, 2, 0.5, 1, [data])).toEqual(populated);
+    expect(panCompositeViewport(populated, bounds, -1, [data])).toEqual(populated);
+    expect(panCompositeViewport(populated, bounds, -1.5, [data])).toEqual(viewport(7, 11));
+  });
+
+  test("allows zoom-out to recover when refreshed data has already emptied the viewport", () => {
+    const data = series([1, 2, 10, 11]);
+    const bounds = viewport(1, 11);
+    const empty = viewport(5, 6);
+    const expanded = zoomCompositeViewport(empty, bounds, 0.5, 0.5, 1, [data]);
+
+    expect(expanded.end.getTime() - expanded.start.getTime()).toBe(2 * DAY_MS);
+    expect(compositeViewportHasObservations([data], expanded)).toBe(false);
   });
 
   test("keeps live viewport drift but resets deliberate range/window changes", () => {

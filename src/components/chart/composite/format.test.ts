@@ -8,7 +8,10 @@ import {
   formatCompositeTimeAxisDate,
 } from "./format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
-import { renderCompositeTimeAxis } from "./text-renderer";
+import {
+  renderCompositeTimeAxis,
+  renderCompositeViewportTimeAxis,
+} from "./text-renderer";
 
 function scene(start: string, end: string): CompositeChartScene {
   const startTime = Date.parse(start);
@@ -38,7 +41,7 @@ describe("composite chart timestamp formatting", () => {
     expect(formatCompositeTimeAxisDate(cursor, intraday.startTime, intraday.endTime))
       .toBe("12:05 UTC");
     expect(renderCompositeTimeAxis(intraday, 60)).toContain("09:30 UTC");
-    expect(renderCompositeTimeAxis(intraday, 60)).toContain("12:45 UTC");
+    expect(renderCompositeTimeAxis(intraday, 60)).toContain("12:00");
     expect(renderCompositeTimeAxis(intraday, 60)).toContain("16:00 UTC");
   });
 
@@ -51,9 +54,9 @@ describe("composite chart timestamp formatting", () => {
       overnight.endTime,
     )).toBe("01-02 00:15 UTC");
     const axis = renderCompositeTimeAxis(overnight, 80);
-    expect(axis).toContain("01-01 23:30 UTC");
-    expect(axis).toContain("01-02 00:00 UTC");
-    expect(axis).toContain("01-02 00:30 UTC");
+    expect(axis).toContain("Jan 1 23:30 UTC");
+    expect(axis).toContain("Jan 2 00:00");
+    expect(axis).toContain("Jan 2 00:30 UTC");
   });
 
   test("keeps longer chart spans as concise UTC calendar dates", () => {
@@ -62,8 +65,18 @@ describe("composite chart timestamp formatting", () => {
 
     expect(formatCompositeCursorDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
     expect(formatCompositeTimeAxisDate(cursor, weekly.startTime, weekly.endTime)).toBe("2025-01-04");
-    expect(renderCompositeTimeAxis(weekly, 60)).toContain("2025-01-01");
-    expect(renderCompositeTimeAxis(weekly, 60)).toContain("2025-01-08");
+    expect(renderCompositeTimeAxis(weekly, 60)).toContain("Jan 1");
+    expect(renderCompositeTimeAxis(weekly, 60)).toContain("Jan 8");
+  });
+
+  test("renders recovery-shell dates directly from a viewport", () => {
+    const axis = renderCompositeViewportTimeAxis({
+      start: new Date("2025-01-01T00:00:00.000Z"),
+      end: new Date("2025-01-08T00:00:00.000Z"),
+    }, 60);
+
+    expect(axis).toContain("Jan 1");
+    expect(axis).toContain("Jan 8");
   });
 });
 

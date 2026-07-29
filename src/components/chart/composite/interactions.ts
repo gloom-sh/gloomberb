@@ -44,10 +44,18 @@ function normalizeViewport(
   };
 }
 
+function hasRenderableValue(point: ResolvedSeries["points"][number]): boolean {
+  return (
+    (typeof point.value === "number" && Number.isFinite(point.value))
+    || (typeof point.close === "number" && Number.isFinite(point.close))
+  );
+}
+
 function pointTimestamps(series: ResolvedSeries[]): number[] {
   const timestamps = new Set<number>();
   for (const entry of series) {
     for (const point of entry.points) {
+      if (!hasRenderableValue(point)) continue;
       const timestamp = point.date instanceof Date
         ? point.date.getTime()
         : new Date(point.date).getTime();
@@ -55,6 +63,33 @@ function pointTimestamps(series: ResolvedSeries[]): number[] {
     }
   }
   return [...timestamps].sort((left, right) => left - right);
+}
+
+function viewportHasTimestamps(
+  timestamps: readonly number[],
+  viewport: CompositeViewportRange,
+  minimumCount: number,
+): boolean {
+  const start = finiteTime(viewport.start);
+  const end = finiteTime(viewport.end);
+  if (start === null || end === null || start > end) return false;
+  const required = Math.max(1, Math.floor(minimumCount));
+  let count = 0;
+  for (const timestamp of timestamps) {
+    if (timestamp < start) continue;
+    if (timestamp > end) break;
+    count += 1;
+    if (count >= required) return true;
+  }
+  return false;
+}
+
+export function compositeViewportHasObservations(
+  series: ResolvedSeries[],
+  viewport: CompositeViewportRange,
+  minimumCount = 2,
+): boolean {
+  return viewportHasTimestamps(pointTimestamps(series), viewport, minimumCount);
 }
 
 export function resolveCompositeNavigationBounds(
@@ -70,10 +105,12 @@ export function resolveCompositeNavigationBounds(
   });
   if (!requested) return data;
   if (!data) return requested;
-  return normalizeViewport({
-    start: new Date(Math.min(requested.start.getTime(), data.start.getTime())),
-    end: new Date(Math.max(requested.end.getTime(), data.end.getTime())),
-  });
+  const overlapsData = requested.end.getTime() >= data.start.getTime()
+    && requested.start.getTime() <= data.end.getTime();
+  // Loaded series can include a buffer outside the authored viewport. Use the
+  // complete real-data extent when the two ranges overlap, but do not clamp a
+  // newly authored, disjoint request to stale observations.
+  return overlapsData ? data : requested;
 }
 
 export function resolveCompositeMinimumSpanMs(
@@ -83,14 +120,18 @@ export function resolveCompositeMinimumSpanMs(
   const start = bounds.start.getTime();
   const end = bounds.end.getTime();
   const timestamps = pointTimestamps(series).filter((timestamp) => timestamp >= start && timestamp <= end);
-  let minimumStep = Number.POSITIVE_INFINITY;
+  const steps: number[] = [];
   for (let index = 1; index < timestamps.length; index += 1) {
     const step = timestamps[index]! - timestamps[index - 1]!;
-    if (step > 0) minimumStep = Math.min(minimumStep, step);
+    if (step > 0) steps.push(step);
   }
   const boundsSpan = Math.max(end - start, 1);
-  return Number.isFinite(minimumStep)
-    ? Math.min(Math.max(minimumStep, 1), boundsSpan)
+  steps.sort((left, right) => left - right);
+  // Use an observed upper median rather than the absolute minimum. This keeps
+  // one near-duplicate live observation from lowering a daily chart's floor.
+  const representativeStep = steps[Math.floor(steps.length / 2)];
+  return representativeStep !== undefined
+    ? Math.min(Math.max(representativeStep, 1), boundsSpan)
     : Math.max(Math.min(boundsSpan, FALLBACK_SINGLE_POINT_SPAN_MS), 1);
 }
 
@@ -136,6 +177,7 @@ export function zoomCompositeViewport(
   zoomFactor: number,
   anchorRatio: number,
   minimumSpanMs: number,
+  series?: ResolvedSeries[],
 ): CompositeViewportRange {
   const current = clampCompositeViewport(viewport, bounds);
   if (!Number.isFinite(zoomFactor) || zoomFactor <= 0) return current;
@@ -151,10 +193,24 @@ export function zoomCompositeViewport(
   );
   const ratio = clamp(anchorRatio, 0, 1);
   const anchor = start + currentSpan * ratio;
-  return clampCompositeViewport({
+  const candidate = clampCompositeViewport({
     start: new Date(anchor - nextSpan * ratio),
     end: new Date(anchor + nextSpan * (1 - ratio)),
   }, bounds);
+  if (!series) return candidate;
+
+  const timestamps = pointTimestamps(series)
+    .filter((timestamp) => timestamp >= bounds.start.getTime() && timestamp <= bounds.end.getTime());
+  if (timestamps.length < 2 || viewportHasTimestamps(timestamps, candidate, 2)) {
+    return candidate;
+  }
+
+  const currentHasObservations = viewportHasTimestamps(timestamps, current, 2);
+  const candidateSpan = candidate.end.getTime() - candidate.start.getTime();
+  // An adaptive response can invalidate an existing viewport. Let zoom-out
+  // keep expanding from that state until observations re-enter the window.
+  if (!currentHasObservations && candidateSpan > currentSpan) return candidate;
+  return current;
 }
 
 /**
@@ -165,15 +221,23 @@ export function panCompositeViewport(
   viewport: CompositeViewportRange,
   bounds: CompositeViewportRange,
   shiftRatio: number,
+  series?: ResolvedSeries[],
 ): CompositeViewportRange {
   const current = clampCompositeViewport(viewport, bounds);
   if (!Number.isFinite(shiftRatio) || shiftRatio === 0) return current;
   const span = Math.max(current.end.getTime() - current.start.getTime(), 1);
   const shift = span * shiftRatio;
-  return clampCompositeViewport({
+  const candidate = clampCompositeViewport({
     start: new Date(current.start.getTime() - shift),
     end: new Date(current.end.getTime() - shift),
   }, bounds);
+  if (!series) return candidate;
+
+  const timestamps = pointTimestamps(series)
+    .filter((timestamp) => timestamp >= bounds.start.getTime() && timestamp <= bounds.end.getTime());
+  return timestamps.length < 2 || viewportHasTimestamps(timestamps, candidate, 2)
+    ? candidate
+    : current;
 }
 
 export function resolveCompositeWheelPanRatio(

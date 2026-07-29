@@ -97,10 +97,6 @@ function median(values: number[]): number | null {
     : sorted[middle]!;
 }
 
-function observationGaps(points: CompositeProjectedPoint[], pixelWidth: number): number[] {
-  return ratioGaps(points.map((point) => point.xRatio), pixelWidth);
-}
-
 function ratioGaps(ratios: readonly number[], pixelWidth: number): number[] {
   const xs = ratios.map((ratio) => ratio * Math.max(pixelWidth - 1, 0)).sort((left, right) => left - right);
   const positiveGaps: number[] = [];
@@ -111,9 +107,14 @@ function ratioGaps(ratios: readonly number[], pixelWidth: number): number[] {
   return positiveGaps;
 }
 
-function observationWidth(points: CompositeProjectedPoint[], pixelWidth: number, maximum: number): number {
-  const minimumGap = Math.min(...observationGaps(points, pixelWidth));
-  return clamp(Number.isFinite(minimumGap) ? minimumGap * 0.58 : maximum, 2, maximum);
+export function resolveCompositeObservationWidth(
+  points: CompositeProjectedPoint[],
+  extent: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const typicalGap = median(ratioGaps(points.map((point) => point.xRatio), extent));
+  return clamp(typicalGap === null ? maximum : typicalGap * 0.58, minimum, maximum);
 }
 
 function columnObservationWidth(
@@ -171,7 +172,8 @@ export function resolveCompositeOhlcWidth(
   points: CompositeProjectedPoint[],
   pixelWidth: number,
 ): number {
-  return observationWidth(points, pixelWidth, 9);
+  const maximum = clamp(pixelWidth * 0.03, 12, 36);
+  return resolveCompositeObservationWidth(points, pixelWidth, 2, maximum);
 }
 
 function columnPixelGeometry(

@@ -8,6 +8,11 @@ export interface StaticChartXMarker {
   lineChar?: string;
 }
 
+export interface StaticChartXAxisLabel {
+  label: string;
+  ratio: number;
+}
+
 export function clampRatio(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
@@ -28,6 +33,7 @@ function alignAxisLabel(label: string, width: number, index: number, count: numb
 
 export function StaticXAxisLabels({
   labels,
+  positionedLabels,
   width,
   color,
   cursorColumn,
@@ -37,6 +43,7 @@ export function StaticXAxisLabels({
   cursorBackgroundColor,
 }: {
   labels: string[];
+  positionedLabels?: readonly StaticChartXAxisLabel[];
   width: number;
   color?: string;
   cursorColumn?: number | null;
@@ -45,11 +52,17 @@ export function StaticXAxisLabels({
   cursorColor?: string;
   cursorBackgroundColor?: string;
 }) {
+  const uiHost = useUiHost();
   const { cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
   const visibleLabels = labels.filter(Boolean);
-  if (visibleLabels.length === 0 || width <= 0) return null;
-  const baseWidth = Math.floor(width / visibleLabels.length);
-  let remainder = width - baseWidth * visibleLabels.length;
+  const visiblePositionedLabels = positionedLabels?.filter((entry) => (
+    entry.label.length > 0 && Number.isFinite(entry.ratio)
+  )) ?? [];
+  if (visibleLabels.length === 0 && visiblePositionedLabels.length === 0) return null;
+  if (width <= 0) return null;
+  const segmentCount = Math.max(visibleLabels.length, 1);
+  const baseWidth = Math.floor(width / segmentCount);
+  let remainder = width - baseWidth * segmentCount;
   const clippedCursorLabel = cursorLabel ? cursorLabel.slice(0, width) : null;
   const cursorLabelWidth = clippedCursorLabel?.length ?? 0;
   const usePixelOverlay = fractionalViewport
@@ -83,17 +96,49 @@ export function StaticXAxisLabels({
       position="relative"
       overflow="hidden"
     >
-      <Box width={width} height={1} flexDirection="row">
-        {visibleLabels.map((label, index) => {
-          const cellWidth = baseWidth + (remainder > 0 ? 1 : 0);
-          remainder -= remainder > 0 ? 1 : 0;
-          return (
-            <Box key={`${label}:${index}`} width={cellWidth} overflow="hidden">
-              <Text fg={color}>{alignAxisLabel(label, cellWidth, index, visibleLabels.length)}</Text>
-            </Box>
-          );
-        })}
-      </Box>
+      {uiHost.kind === "desktop-web" && visiblePositionedLabels.length > 0 ? (
+        <Box position="absolute" left={0} top={0} width={width} height={1}>
+          {visiblePositionedLabels.map((entry, index) => {
+            const ratio = clampRatio(entry.ratio);
+            const edgeStyle = ratio <= 0
+              ? { left: 0 }
+              : ratio >= 1
+                ? { right: 0 }
+                : {
+                  left: `${ratio * 100}%`,
+                  transform: "translateX(-50%)",
+                };
+            return (
+              <Text
+                key={`${entry.label}:${entry.ratio}:${index}`}
+                fg={color}
+                selectable={false}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  whiteSpace: "pre",
+                  pointerEvents: "none",
+                  ...edgeStyle,
+                }}
+              >
+                {entry.label}
+              </Text>
+            );
+          })}
+        </Box>
+      ) : (
+        <Box width={width} height={1} flexDirection="row">
+          {visibleLabels.map((label, index) => {
+            const cellWidth = baseWidth + (remainder > 0 ? 1 : 0);
+            remainder -= remainder > 0 ? 1 : 0;
+            return (
+              <Box key={`${label}:${index}`} width={cellWidth} overflow="hidden">
+                <Text fg={color}>{alignAxisLabel(label, cellWidth, index, visibleLabels.length)}</Text>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
       {clippedCursorLabel && (cursorLeftPercent !== null || cursorLeft !== null) ? (
         <Text
           fg={cursorColor}

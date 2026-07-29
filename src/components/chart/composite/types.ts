@@ -134,6 +134,7 @@ export interface CompositeChartProps {
   emptyMessage?: string;
   formatValue?: (value: number, series: ResolvedSeries) => string;
   onCursorDateChange?: (date: Date | null) => void;
+  /** Reports a user-created viewport, or null when the user resets to the authored viewport. */
   onViewportChange?: (viewport: { start: Date; end: Date } | null) => void;
   onActivate?: () => void;
   onToggleSeries?: (seriesId: string) => void;

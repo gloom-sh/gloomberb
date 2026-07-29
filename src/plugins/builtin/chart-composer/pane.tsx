@@ -66,7 +66,7 @@ const RESOLUTION_TABS_WIDTH = RESOLUTION_TABS.reduce(
   (width, tab) => width + [...tab.label].length + 1,
   0,
 );
-const AUTO_VIEWPORT_DEBOUNCE_MS = 120;
+const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 
 function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number } | undefined {
   const x = event?.pixelX;

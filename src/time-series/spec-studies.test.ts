@@ -281,6 +281,21 @@ describe("study resolution", () => {
     expect(maxStudyWarmupPoints(specs)).toBe(33);
   });
 
+  test("omits empty-volume noise while preserving analytical history warnings", () => {
+    const input = resolved("a");
+    input.points = input.points.map(({ volume: _volume, ...point }) => point);
+
+    const result = resolveStudies([input], [
+      study("volume", "volume", ["a"]),
+      study("sma", "sma", ["a"], { period: 100 }),
+    ]);
+
+    expect(result.series.find(({ id }) => id === "volume")?.points).toEqual([]);
+    expect(result.warnings).toEqual([
+      "sma: not enough valid history to calculate sma.",
+    ]);
+  });
+
   test("aligns pair formulas to the latest available value even when display interpolation is off", () => {
     const point = (date: string, value: number): TimeSeriesPoint => {
       const availableAt = new Date(`${date}T00:00:00Z`);

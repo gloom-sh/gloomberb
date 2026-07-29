@@ -7,7 +7,10 @@ import {
 } from "./rasterizer";
 import { buildCompositeColumnLayout } from "./column-layout";
 import { buildCompositeChartScene } from "./scene";
-import { renderCompositePanelText } from "./text-renderer";
+import {
+  renderCompositePanelText,
+  resolveCompositeTextOhlcWidth,
+} from "./text-renderer";
 
 function point(date: string, value: number): TimeSeriesPoint {
   const observedAt = new Date(`${date}T00:00:00.000Z`);
@@ -569,7 +572,51 @@ describe("composite chart renderers", () => {
     expect(resolveCompositeOhlcWidth(
       scene.panels[0]!.series[0]!.points,
       2_000,
-    )).toBeLessThan(4);
+    )).toBe(36);
+  });
+
+  test("widens candle bodies as the visible observation spacing grows", () => {
+    const candles = series("price", "candles", [], "left");
+    candles.points = Array.from({ length: 100 }, (_, index) => {
+      const observedAt = new Date(Date.UTC(2025, 0, index + 1));
+      return {
+        date: observedAt,
+        observedAt,
+        value: 10,
+        open: 8,
+        high: 11,
+        low: 7,
+        close: 10,
+      };
+    });
+    const fullScene = buildCompositeChartScene(
+      [candles],
+      [{ id: "main" }],
+      { width: 81, height: 9 },
+    )!;
+    const zoomedScene = buildCompositeChartScene(
+      [candles],
+      [{ id: "main" }],
+      {
+        width: 81,
+        height: 9,
+        viewport: {
+          start: new Date(Date.UTC(2025, 0, 98)),
+          end: new Date(Date.UTC(2025, 0, 100)),
+        },
+      },
+    )!;
+    const fullPoints = fullScene.panels[0]!.series[0]!.points;
+    const zoomedPoints = zoomedScene.panels[0]!.series[0]!.points;
+
+    expect(resolveCompositeOhlcWidth(fullPoints, 800)).toBeLessThan(
+      resolveCompositeOhlcWidth(zoomedPoints, 800),
+    );
+    expect(resolveCompositeTextOhlcWidth(fullPoints, 81)).toBe(1);
+    expect(resolveCompositeTextOhlcWidth(zoomedPoints, 81)).toBe(5);
+
+    const zoomedText = renderCompositePanelText(zoomedScene.panels[0]!, 81, null, null).join("\n");
+    expect(zoomedText).toContain("█████");
   });
 
   test("marks a standalone line observation without extending it through time", () => {

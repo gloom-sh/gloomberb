@@ -554,7 +554,10 @@ export function resolveStudies(
       }
       outputs = resolvePairStudy(spec, input, pairedInput, color);
     }
-    if (outputs.length === 0 || outputs.every((output) => output.points.length === 0)) {
+    if (
+      spec.kind !== "volume"
+      && (outputs.length === 0 || outputs.every((output) => output.points.length === 0))
+    ) {
       warnings.push(`${spec.id}: not enough valid history to calculate ${spec.kind}.`);
     }
     resolved.push(...outputs);

@@ -186,6 +186,9 @@ export class ProviderRouterHistoryRoutes {
     if (brokerSupport) return brokerSupport.value;
 
     const providerSupport = await this.firstProviderArrayResult(async (provider) => {
+      if (provider.canProvide && !await provider.canProvide(ticker, exchange, context)) {
+        return null;
+      }
       if (provider.getChartResolutionSupport) {
         return normalizeChartResolutionSupport(await provider.getChartResolutionSupport(ticker, exchange, context));
       }

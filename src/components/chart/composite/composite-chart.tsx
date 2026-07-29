@@ -64,8 +64,11 @@ import {
 import {
   renderCompositeAxisText,
   renderCompositePanelText,
-  renderCompositeTimeAxis,
 } from "./text-renderer";
+import {
+  buildCompositeTimeAxisLayout,
+  buildCompositeViewportTimeAxisLayout,
+} from "./time-axis";
 import type {
   CompositeChartColors,
   CompositeChartProps,
@@ -788,79 +791,73 @@ export function CompositeChart({
         : navigationBounds
       : null
   ), [navigationBounds, viewport]);
-  const previousNavigationBoundsRef = useRef<CompositeViewportRange | null>(navigationBounds);
-  const previousInitialViewportRef = useRef<CompositeViewportRange | null>(initialViewport);
+  const previousAuthoredViewportRef = useRef<CompositeViewportRange | null>(viewport ?? null);
   const [interactionViewport, setInteractionViewport] = useState<CompositeViewportRange | null>(null);
-  const navigationBoundsChanged = shouldResetCompositeViewport(
-    previousNavigationBoundsRef.current,
-    navigationBounds,
+  const authoredViewportChanged = shouldResetCompositeViewport(
+    previousAuthoredViewportRef.current,
+    viewport ?? null,
   );
-  const initialViewportChanged = shouldResetCompositeViewport(
-    previousInitialViewportRef.current,
-    initialViewport,
-  );
-  const interactionViewportStillValid = !!interactionViewport
-    && !!navigationBounds
-    && sameCompositeViewport(
-      clampCompositeViewport(interactionViewport, navigationBounds),
-      interactionViewport,
-    );
-  const shouldResetInteractionViewport = initialViewportChanged
-    || (navigationBoundsChanged && !interactionViewportStillValid);
-  const currentInteractionViewport = shouldResetInteractionViewport ? null : interactionViewport;
+  const currentInteractionViewport = authoredViewportChanged
+    ? null
+    : interactionViewport && navigationBounds
+      ? clampCompositeViewport(interactionViewport, navigationBounds)
+      : interactionViewport;
   const effectiveViewport = navigationBounds
     ? currentInteractionViewport
       ? clampCompositeViewport(currentInteractionViewport, navigationBounds)
       : initialViewport
     : null;
-  const effectiveViewportStart = effectiveViewport?.start.getTime() ?? null;
-  const effectiveViewportEnd = effectiveViewport?.end.getTime() ?? null;
+  const interactionViewportStart = currentInteractionViewport?.start.getTime() ?? null;
+  const interactionViewportEnd = currentInteractionViewport?.end.getTime() ?? null;
   const viewportSeriesKey = visibleLegendSeries
     .map((entry) => `${entry.id}:${entry.label}`)
     .join("|");
   const lastReportedViewportRef = useRef<string | null>(null);
   useEffect(() => {
     if (!onViewportChange) return;
-    const viewportKey = effectiveViewportStart === null || effectiveViewportEnd === null
+    const viewportKey = interactionViewportStart === null || interactionViewportEnd === null
       ? "none"
-      : `${effectiveViewportStart}:${effectiveViewportEnd}`;
+      : `${interactionViewportStart}:${interactionViewportEnd}`;
     const key = `${viewportSeriesKey}|${viewportKey}`;
+    // The callback drives adaptive data loading. Seed it from the authored
+    // viewport without echoing that controlled value back into the loader.
+    if (lastReportedViewportRef.current === null) {
+      lastReportedViewportRef.current = key;
+      return;
+    }
     if (lastReportedViewportRef.current === key) return;
     lastReportedViewportRef.current = key;
     onViewportChange(
-      effectiveViewportStart === null || effectiveViewportEnd === null
+      interactionViewportStart === null || interactionViewportEnd === null
         ? null
         : {
-            start: new Date(effectiveViewportStart),
-            end: new Date(effectiveViewportEnd),
+            start: new Date(interactionViewportStart),
+            end: new Date(interactionViewportEnd),
           },
     );
-  }, [effectiveViewportEnd, effectiveViewportStart, onViewportChange, viewportSeriesKey]);
+  }, [interactionViewportEnd, interactionViewportStart, onViewportChange, viewportSeriesKey]);
   const minimumViewportSpanMs = useMemo(
     () => navigationBounds ? resolveCompositeMinimumSpanMs(visibleSeries, navigationBounds) : 1,
     [navigationBounds, visibleSeries],
   );
 
   useEffect(() => {
-    const previousBounds = previousNavigationBoundsRef.current;
-    const previousInitial = previousInitialViewportRef.current;
-    previousNavigationBoundsRef.current = navigationBounds;
-    previousInitialViewportRef.current = initialViewport;
-    if (
-      shouldResetCompositeViewport(previousInitial, initialViewport)
-      || (
-        shouldResetCompositeViewport(previousBounds, navigationBounds)
-        && interactionViewport
-        && navigationBounds
-        && !sameCompositeViewport(
-          clampCompositeViewport(interactionViewport, navigationBounds),
-          interactionViewport,
-        )
-      )
-    ) {
+    const authoredChanged = shouldResetCompositeViewport(
+      previousAuthoredViewportRef.current,
+      viewport ?? null,
+    );
+    previousAuthoredViewportRef.current = viewport ?? null;
+    if (authoredChanged || (interactionViewport && !navigationBounds)) {
       setInteractionViewport(null);
+      return;
     }
-  }, [initialViewport, interactionViewport, navigationBounds]);
+    if (interactionViewport && navigationBounds) {
+      const clamped = clampCompositeViewport(interactionViewport, navigationBounds);
+      if (!sameCompositeViewport(clamped, interactionViewport)) {
+        setInteractionViewport(clamped);
+      }
+    }
+  }, [interactionViewport, navigationBounds, viewport]);
 
   const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
     if (!navigationBounds || !initialViewport) return;
@@ -872,10 +869,11 @@ export function CompositeChart({
         zoomFactor,
         anchorRatio,
         minimumViewportSpanMs,
+        visibleSeries,
       );
       return sameCompositeViewport(next, initialViewport) ? null : next;
     });
-  }, [initialViewport, minimumViewportSpanMs, navigationBounds]);
+  }, [initialViewport, minimumViewportSpanMs, navigationBounds, visibleSeries]);
   const panViewport = useCallback((
     shiftRatio: number,
     fromViewport?: CompositeViewportRange,
@@ -883,10 +881,10 @@ export function CompositeChart({
     if (!navigationBounds || !initialViewport) return;
     setInteractionViewport((current) => {
       const base = fromViewport ?? current ?? initialViewport;
-      const next = panCompositeViewport(base, navigationBounds, shiftRatio);
+      const next = panCompositeViewport(base, navigationBounds, shiftRatio, visibleSeries);
       return sameCompositeViewport(next, initialViewport) ? null : next;
     });
-  }, [initialViewport, navigationBounds]);
+  }, [initialViewport, navigationBounds, visibleSeries]);
   const resetViewport = useCallback(() => {
     setInteractionViewport(null);
   }, []);
@@ -955,6 +953,30 @@ export function CompositeChart({
       )
       : null
   ), [baseScene, normalizedCursorTimestamp]);
+  const handleEmptyMouseScroll = useCallback((event: ChartMouseEvent) => {
+    const direction = event.scroll?.direction;
+    if (!interactive || !navigationBounds || !direction) return;
+    onActivate?.();
+    consumeChartMouseEvent(event);
+    if (event.modifiers.ctrl) {
+      const zoomIn = direction === "up" || direction === "left";
+      if (!zoomIn) {
+        resetViewport();
+        return;
+      }
+      const magnitude = Math.min(Math.max(Math.abs(event.scroll?.delta ?? 1), 1), 8);
+      zoomViewport(1 + magnitude * 0.04, 0.5);
+      return;
+    }
+    panViewport(resolveCompositeWheelPanRatio(direction, event.scroll?.delta));
+  }, [
+    interactive,
+    navigationBounds,
+    onActivate,
+    panViewport,
+    resetViewport,
+    zoomViewport,
+  ]);
   const keyboardCursorDateRef = useRef<Date | null>(scene?.cursorDate ?? null);
   keyboardCursorDateRef.current = scene?.cursorDate ?? null;
   const lastCursorTimestampRef = useRef<number | null>(normalizedCursorTimestamp);
@@ -1049,9 +1071,25 @@ export function CompositeChart({
     }
   }, { enabled: focused && interactive });
 
+  const leftPadding = leftAxisWidth + (leftAxisWidth ? axisGap : 0);
+  const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0);
+  const timeAxisLayout = scene && showTimeAxis
+    ? buildCompositeTimeAxisLayout(scene, plotWidth)
+    : null;
+  const emptyTimeAxisLayout = !scene && showTimeAxis && effectiveViewport
+    ? buildCompositeViewportTimeAxisLayout(effectiveViewport, plotWidth)
+    : null;
+
   if (!scene) {
+    const emptyPlotHeight = Math.max(0, totalHeight - legendRows - timeAxisRows);
     return (
-      <Box flexDirection="column" width={totalWidth} height={totalHeight} overflow="hidden">
+      <Box
+        flexDirection="column"
+        width={totalWidth}
+        height={totalHeight}
+        overflow="hidden"
+        data-gloom-role="composite-chart"
+      >
         {legendRows > 0 && legendAccessory ? (
           <CompositeLegend
             scene={null}
@@ -1067,22 +1105,41 @@ export function CompositeChart({
             keyboardIndex={legendKeyboardIndex}
           />
         ) : null}
-        {totalHeight > legendRows ? (
-          <Box
-            width={totalWidth}
-            height={totalHeight - legendRows}
-            alignItems="center"
-            justifyContent="center"
-          >
-            <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
+        {emptyPlotHeight > 0 ? (
+          <Box flexDirection="row" width={totalWidth} height={emptyPlotHeight}>
+            {leftPadding > 0 ? <Box width={leftPadding} /> : null}
+            <ChartSurface
+              width={plotWidth}
+              height={emptyPlotHeight}
+              alignItems="center"
+              justifyContent="center"
+              onMouseScroll={interactive && navigationBounds ? handleEmptyMouseScroll : undefined}
+              cursor={interactive && navigationBounds ? "grab" : undefined}
+              data-gloom-interactive={interactive && navigationBounds ? "true" : undefined}
+              data-gloom-role="composite-chart-empty"
+              data-gloom-label={emptyMessage}
+            >
+              <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
+            </ChartSurface>
+            {rightPadding > 0 ? <Box width={rightPadding} /> : null}
+          </Box>
+        ) : null}
+        {emptyTimeAxisLayout ? (
+          <Box flexDirection="row" width={totalWidth} height={1}>
+            {leftPadding > 0 ? <Box width={leftPadding} /> : null}
+            <StaticXAxisLabels
+              labels={[emptyTimeAxisLayout.text]}
+              positionedLabels={emptyTimeAxisLayout.ticks}
+              width={plotWidth}
+              color={resolvedColors.textDim}
+            />
+            {rightPadding > 0 ? <Box width={rightPadding} /> : null}
           </Box>
         ) : null}
       </Box>
     );
   }
 
-  const leftPadding = leftAxisWidth + (leftAxisWidth ? axisGap : 0);
-  const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0);
   const timeAxisCursorColumn = scene.cursorXRatio === null
     ? null
     : scene.cursorXRatio * Math.max(plotWidth - 1, 0);
@@ -1127,11 +1184,12 @@ export function CompositeChart({
           onZoomViewport={zoomViewport}
         />
       ))}
-      {showTimeAxis ? (
+      {timeAxisLayout ? (
         <Box flexDirection="row" width={totalWidth} height={1}>
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXAxisLabels
-            labels={[renderCompositeTimeAxis(scene, plotWidth)]}
+            labels={[timeAxisLayout.text]}
+            positionedLabels={timeAxisLayout.ticks}
             width={plotWidth}
             color={resolvedColors.textDim}
             cursorColumn={timeAxisCursorColumn}
