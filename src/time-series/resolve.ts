@@ -482,6 +482,7 @@ function prepareBaseSeriesForStudies(
   series: ResolvedSeries,
   bounds: DateBounds,
   clipToBounds = false,
+  fallbackBaselineBounds?: DateBounds,
 ): ResolvedSeries {
   const baselineTransform = series.transform === "percent" || series.transform === "index100";
   let source = series;
@@ -490,10 +491,14 @@ function prepareBaseSeriesForStudies(
   } else if (clipToBounds) {
     source = { ...series, points: filterPoints(series.points, bounds) };
   }
+  const baseline = baselineTransform
+    ? scalarBaseline(series, bounds)
+      ?? (fallbackBaselineBounds ? scalarBaseline(series, fallbackBaselineBounds) : null)
+    : null;
   return applyResolvedSeriesTransform(
     source,
     source.transform,
-    baselineTransform ? { baseline: scalarBaseline(series, bounds) } : undefined,
+    baselineTransform ? { baseline } : undefined,
   );
 }
 
@@ -531,6 +536,7 @@ function applyStudyPresentationTransforms(
   studies: readonly ChartSpec["studies"][number][],
   rawSeries: readonly ResolvedSeries[],
   visibleBounds: DateBounds,
+  fallbackBaselineBounds?: DateBounds,
 ): ResolvedSeries[] {
   const rawById = new Map(rawSeries.map((series) => [series.id, series] as const));
   return outputs.map((output) => {
@@ -542,6 +548,7 @@ function applyStudyPresentationTransforms(
     if (!input || input.transform === "raw") return output;
     const baseline = input.transform === "percent" || input.transform === "index100"
       ? scalarBaseline(input, visibleBounds)
+        ?? (fallbackBaselineBounds ? scalarBaseline(input, fallbackBaselineBounds) : null)
       : undefined;
     return applyResolvedSeriesTransform(output, input.transform, { baseline });
   });
@@ -764,6 +771,9 @@ export async function resolveChartSpecData(
   }));
 
   const rawSeries = loaded.filter((entry): entry is ResolvedSeries => !!entry);
+  const marketTimelineSeries = primaryMarketSeries?.visible === false
+    ? rawSeries.filter((entry) => entry.id === primaryMarketSeries.id)
+    : [];
   // Preset ranges describe a window ending at the requested reference time,
   // even when the newest filing or economic observation lags that endpoint.
   // Re-anchoring to the latest observation both mislabels the range and asks
@@ -773,7 +783,7 @@ export async function resolveChartSpecData(
   const studyBounds = initialCalculationBounds;
   const baseSeries = rawSeries
     .filter((entry) => visibleSeriesIds.has(entry.id))
-    .map((entry) => prepareBaseSeriesForStudies(entry, bounds));
+    .map((entry) => prepareBaseSeriesForStudies(entry, bounds, false, requestVisibleBounds));
   const calculationSeries = rawSeries.map((entry) => rawCalculationSeries(entry, studyBounds));
   let resolved = baseSeries;
 
@@ -782,7 +792,13 @@ export async function resolveChartSpecData(
     const studyResult = resolveStudies(calculationSeries, spec.studies);
     resolved = [
       ...resolved,
-      ...applyStudyPresentationTransforms(studyResult.series, spec.studies, rawSeries, bounds),
+      ...applyStudyPresentationTransforms(
+        studyResult.series,
+        spec.studies,
+        rawSeries,
+        bounds,
+        requestVisibleBounds,
+      ),
     ];
     warnings.push(...studyResult.warnings);
     errors.push(...studyResult.errors);
@@ -803,7 +819,7 @@ export async function resolveChartSpecData(
   const resolvedById = new Map(resolved.map((entry) => [entry.id, entry] as const));
   const hiddenBaseSeries = rawSeries
     .filter((entry) => !visibleSeriesIds.has(entry.id))
-    .map((entry) => prepareBaseSeriesForStudies(entry, bounds, true));
+    .map((entry) => prepareBaseSeriesForStudies(entry, bounds, true, requestVisibleBounds));
   const hiddenBaseById = new Map(hiddenBaseSeries.map((entry) => [entry.id, entry] as const));
   const legendSeries = [
     ...spec.series.flatMap((seriesSpec) => {
@@ -836,6 +852,7 @@ export async function resolveChartSpecData(
     series: resolved,
     legendSeries,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
+    ...(marketTimelineSeries.length > 0 ? { timelineSeries: marketTimelineSeries } : {}),
     loading: false,
     errors,
     warnings: [...new Set([...priorityWarnings, ...warnings])],

@@ -174,7 +174,7 @@ export function useChartResolution(
             && generationRef.current === generation
           ) {
             setResult((current) => (
-              request.options.autoViewport
+              (request.options.autoViewport || request.options.requestViewport)
               && !current.loading
               && hasRenderableData(current)
               && !hasRenderableData(next)

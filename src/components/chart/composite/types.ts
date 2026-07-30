@@ -115,6 +115,8 @@ export interface CompositeChartProps {
   series: ResolvedSeries[];
   /** Optional legend model; can include hidden series that are not plotted. */
   legendSeries?: ResolvedSeries[];
+  /** Optional hidden market series used to preserve session-time navigation. */
+  timelineSeries?: ResolvedSeries[];
   panels: ChartPanelSpec[];
   width: number;
   height: number;

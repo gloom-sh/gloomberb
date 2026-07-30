@@ -25,6 +25,10 @@ import {
   type KeyEventLike,
 } from "../../../react/input";
 import { CompositeChart } from "./composite-chart";
+import {
+  resolveCompositeMinimumSpanMs,
+  zoomCompositeViewport,
+} from "./interactions";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let chartShortcut: ((event: KeyEventLike) => void) | null = null;
@@ -939,6 +943,114 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
+  });
+
+  test("uses a supplied market timeline to keep control-wheel zoom under the pointer", async () => {
+    const anchor = twoSessionCandles();
+    const display = {
+      ...anchor,
+      id: "secondary",
+      label: "Secondary",
+      timeBasis: undefined,
+    };
+    const viewport = {
+      start: new Date(anchor.points[0]!.date.getTime()),
+      end: new Date(anchor.points.at(-1)!.date.getTime()),
+    };
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[display]}
+          timelineSeries={[anchor]}
+          panels={[{ id: "main" }]}
+          viewport={viewport}
+          onViewportChange={(next) => viewportChanges.push(next
+            ? { start: next.start.toISOString(), end: next.end.toISOString() }
+            : null)}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+
+    await act(async () => testSetup!.renderOnce());
+    const pointerX = 35;
+    const plotWidth = capturedSurfaceNode!.width as number;
+    const minimumSpan = resolveCompositeMinimumSpanMs([display], viewport);
+    const expected = zoomCompositeViewport(
+      viewport,
+      viewport,
+      1 + 4 * 0.04,
+      pointerX / Math.max(plotWidth - 1, 1),
+      minimumSpan,
+      [anchor],
+    );
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseScroll(pointerEvent(pointerX, 3, {
+        ctrl: true,
+        scroll: { direction: "up", delta: 4 },
+      }));
+    });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(viewportChanges.at(-1)).toEqual({
+      start: expected.start.toISOString(),
+      end: expected.end.toISOString(),
+    });
+  });
+
+  test("clears a drag interaction when the pointer returns to the authored viewport", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    const interactions: string[] = [];
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+          viewport={{
+            start: new Date("2025-01-05T00:00:00.000Z"),
+            end: new Date("2025-01-09T00:00:00.000Z"),
+          }}
+          onViewportChange={(next, interaction) => {
+            interactions.push(interaction);
+            viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null);
+          }}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+
+    await act(async () => testSetup!.renderOnce());
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(20, 3));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 3));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(viewportChanges.at(-1)).not.toBeNull();
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(20, 3));
+      capturedSurfaceProps!.onMouseUp(pointerEvent(20, 3));
+    });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(viewportChanges.at(-1)).toBeNull();
+    expect(interactions.at(-1)).toBe("pan");
   });
 
   test("always treats horizontal control-wheel movement as a pan", async () => {

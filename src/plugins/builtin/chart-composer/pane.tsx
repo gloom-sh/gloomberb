@@ -116,6 +116,7 @@ function ChartComposerSurface({
     range: spec.viewport.range,
     resolution: spec.viewport.resolution,
     dateWindow: spec.viewport.dateWindow ?? null,
+    maxPoints: spec.viewport.maxPoints ?? null,
     sources: spec.series.map((entry) => entry.source.kind === "security"
       ? [
           entry.id,
@@ -129,7 +130,7 @@ function ChartComposerSurface({
             ?? "",
         ]
       : [entry.id, entry.source.kind, entry.source.seriesId]),
-  }), [spec.series, spec.viewport.dateWindow, spec.viewport.range, spec.viewport.resolution]);
+  }), [spec.series, spec.viewport.dateWindow, spec.viewport.maxPoints, spec.viewport.range, spec.viewport.resolution]);
   const [runtimeViewportState, setRuntimeViewportState] = useState<{
     key: string;
     adaptiveViewport: RuntimeChartViewport | null;
@@ -594,6 +595,7 @@ function ChartComposerSurface({
         <CompositeChart
           series={plottedSeries}
           legendSeries={resolution.legendSeries}
+          timelineSeries={resolution.timelineSeries}
           panels={spec.panels}
           viewport={viewport}
           viewportResetKey={authoredViewportKey}

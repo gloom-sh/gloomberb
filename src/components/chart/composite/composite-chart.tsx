@@ -413,17 +413,9 @@ function CompositePanelSurface({
       const zoomIn = direction === "up";
       const magnitude = Math.min(Math.max(Math.abs(event.scroll?.delta ?? 1), 1), 8);
       const pointerRatio = pointer.cellX / Math.max(plotWidth - 1, 1);
-      const anchorDate = resolveCompositeCursorDate(scene, pointer.cellX);
-      const viewportSpan = Math.max(viewport.end.getTime() - viewport.start.getTime(), 1);
-      const viewportAnchorRatio = anchorDate
-        ? Math.max(0, Math.min(
-            1,
-            (anchorDate.getTime() - viewport.start.getTime()) / viewportSpan,
-          ))
-        : pointerRatio;
       onZoomViewport(
         zoomIn ? 1 + magnitude * 0.04 : 1 / (1 + magnitude * 0.04),
-        viewportAnchorRatio,
+        pointerRatio,
       );
       updateCursor(event);
       return;
@@ -743,6 +735,7 @@ function CompositeLegend({
 export function CompositeChart({
   series,
   legendSeries,
+  timelineSeries,
   panels,
   width,
   height,
@@ -772,6 +765,12 @@ export function CompositeChart({
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
   const visibleSeries = useMemo(() => series.filter((entry) => entry.points.length > 0), [series]);
+  const marketTimelineSeries = useMemo(() => {
+    const supplied = timelineSeries?.filter((entry) => entry.points.length > 0) ?? [];
+    return supplied.some((entry) => entry.timeBasis?.kind === "market")
+      ? supplied
+      : visibleSeries;
+  }, [timelineSeries, visibleSeries]);
   const visibleLegendSeries = useMemo(
     () => (legendSeries ?? visibleSeries).filter((entry) => entry.points.length > 0),
     [legendSeries, visibleSeries],
@@ -905,12 +904,12 @@ export function CompositeChart({
         zoomFactor,
         anchorRatio,
         minimumViewportSpanMs,
-        visibleSeries,
+        marketTimelineSeries,
       );
       if (sameCompositeViewport(next, base)) return current;
       return current === null && sameCompositeViewport(next, initialViewport) ? null : next;
     });
-  }, [initialViewport, minimumViewportSpanMs, navigationBounds, visibleSeries]);
+  }, [initialViewport, marketTimelineSeries, minimumViewportSpanMs, navigationBounds]);
   const panViewport = useCallback((
     shiftRatio: number,
     fromViewport?: CompositeViewportRange,
@@ -919,11 +918,14 @@ export function CompositeChart({
     viewportInteractionRef.current = "pan";
     setInteractionViewport((current) => {
       const base = fromViewport ?? current ?? initialViewport;
-      const next = panCompositeViewport(base, navigationBounds, shiftRatio, visibleSeries);
-      if (sameCompositeViewport(next, base)) return current;
-      return current === null && sameCompositeViewport(next, initialViewport) ? null : next;
+      const next = panCompositeViewport(base, navigationBounds, shiftRatio, marketTimelineSeries);
+      if (sameCompositeViewport(next, base)) {
+        if (!fromViewport) return current;
+        return sameCompositeViewport(base, initialViewport) ? null : base;
+      }
+      return sameCompositeViewport(next, initialViewport) ? null : next;
     });
-  }, [initialViewport, navigationBounds, visibleSeries]);
+  }, [initialViewport, marketTimelineSeries, navigationBounds]);
   const resetViewport = useCallback(() => {
     viewportInteractionRef.current = "reset";
     setInteractionViewport(null);
@@ -955,8 +957,8 @@ export function CompositeChart({
     width: 1,
     height: Math.max(panelCount, 1),
     viewport: effectiveViewport ?? undefined,
-    timelineSeries: visibleSeries,
-  }), [effectiveViewport, panelCount, panels, visibleSeries]);
+    timelineSeries: marketTimelineSeries,
+  }), [effectiveViewport, marketTimelineSeries, panelCount, panels, visibleSeries]);
   const layoutPanels = useMemo<CompositePanelScene[] | null>(() => {
     if (!projectedScene) return null;
     const panelSpecById = new Map(panels.map((panel) => [panel.id, panel] as const));

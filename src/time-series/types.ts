@@ -154,6 +154,8 @@ export interface ChartResolutionResult {
   legendSeries?: ResolvedSeries[];
   /** Loaded observations retained outside the visible window for interactive navigation. */
   bufferedSeries?: ResolvedSeries[];
+  /** Hidden market data retained as a deterministic session-time anchor. */
+  timelineSeries?: ResolvedSeries[];
   loading: boolean;
   errors: string[];
   warnings: string[];

@@ -15,6 +15,7 @@ type AutoViewport = NonNullable<Parameters<typeof useChartResolution>[2]["autoVi
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setAutoViewport: ((viewport: AutoViewport | null) => void) | null = null;
+let setRequestViewport: ((viewport: AutoViewport | null) => void) | null = null;
 let latestResult: UseChartResolutionResult | null = null;
 
 const EMPTY_FINANCIALS: TickerFinancials = {
@@ -87,10 +88,13 @@ function ResolutionHarness({
 }: {
   sources: ChartResolveSources;
 }) {
-  const [viewport, setViewport] = useState<AutoViewport | null>(null);
-  setAutoViewport = setViewport;
+  const [autoViewport, setAutoViewportState] = useState<AutoViewport | null>(null);
+  const [requestViewport, setRequestViewportState] = useState<AutoViewport | null>(null);
+  setAutoViewport = setAutoViewportState;
+  setRequestViewport = setRequestViewportState;
   latestResult = useChartResolution(SPEC, sources, {
-    autoViewport: viewport,
+    autoViewport,
+    requestViewport,
     targetPointCount: 100,
     liveRefreshIntervalMs: 0,
   });
@@ -125,6 +129,7 @@ afterEach(async () => {
     testSetup = undefined;
   }
   setAutoViewport = null;
+  setRequestViewport = null;
   latestResult = null;
 });
 
@@ -184,6 +189,71 @@ describe("useChartResolution", () => {
     expect(latestResult?.series).toBe(lastGoodSeries);
     expect(latestResult?.bufferedSeries).toBe(lastGoodBufferedSeries);
     expect(latestResult?.errors).toEqual([]);
+
+    await act(async () => {
+      quoteHandler!(quoteTarget!, {
+        symbol: "TEST",
+        price: 105,
+        currency: "USD",
+        change: 1,
+        changePercent: 0.96,
+        lastUpdated: Date.parse("2025-01-03T20:00:00.000Z"),
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await testSetup!.renderOnce();
+    });
+    await flushEffects(3);
+
+    expect(latestResult?.loading).toBe(false);
+    expect(latestResult?.series).toBe(lastGoodSeries);
+    expect(latestResult?.bufferedSeries).toBe(lastGoodBufferedSeries);
+    expect(latestResult?.errors).toEqual([]);
+  });
+
+  test("keeps renderable data through an empty panned-history live refresh", async () => {
+    let detailedCalls = 0;
+    let fixedHistoryCalls = 0;
+    let quoteHandler: Parameters<NonNullable<DataProvider["subscribeQuotes"]>>[1] | null = null;
+    let quoteTarget: Parameters<NonNullable<DataProvider["subscribeQuotes"]>>[0][number] | null = null;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => {
+        fixedHistoryCalls += 1;
+        return fixedHistoryCalls === 1 ? INITIAL_HISTORY : [];
+      },
+      getDetailedPriceHistory: async () => {
+        detailedCalls += 1;
+        return [];
+      },
+      getPriceHistory: async () => [],
+      subscribeQuotes: (targets, onQuote) => {
+        quoteTarget = targets[0] ?? null;
+        quoteHandler = onQuote;
+        return () => {};
+      },
+    });
+    const sources = sourcesFor(provider);
+    testSetup = await testRender(<ResolutionHarness sources={sources} />, {
+      width: 24,
+      height: 1,
+    });
+
+    await waitFor(() => latestResult?.loading === false && latestResult.series[0]?.points.length === 2);
+    const lastGoodSeries = latestResult!.series;
+    const lastGoodBufferedSeries = latestResult!.bufferedSeries;
+
+    await act(async () => {
+      setRequestViewport?.({
+        start: new Date("2024-12-20T00:00:00.000Z"),
+        end: new Date("2024-12-27T00:00:00.000Z"),
+      });
+      await testSetup!.renderOnce();
+    });
+    await waitFor(() => detailedCalls === 1);
+    await flushEffects(3);
+
+    expect(latestResult?.series).toBe(lastGoodSeries);
+    expect(latestResult?.bufferedSeries).toBe(lastGoodBufferedSeries);
 
     await act(async () => {
       quoteHandler!(quoteTarget!, {
