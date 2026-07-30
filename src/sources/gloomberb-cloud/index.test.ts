@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createGloomberbCloudCapabilities, GloomberbCloudProvider } from "./index";
+import { getRangeStartDate, toHistoryRequest } from "./normalizers";
 import type { NewsCapability } from "../../capabilities";
 import { apiClient, type AuthUser, type CloudNewsPayload } from "../../api-client";
 
@@ -24,6 +25,17 @@ const originalGetCloudOptionsChain = apiClient.getCloudOptionsChain.bind(apiClie
 const originalGetCloudNews = apiClient.getCloudNews.bind(apiClient);
 const originalGetCloudNewsStory = apiClient.getCloudNewsStory.bind(apiClient);
 const originalSubscribeQuotes = apiClient.subscribeQuotes.bind(apiClient);
+
+test("requests fifty years of cloud history for the ALL range", () => {
+  const endDate = new Date("2026-07-30T20:00:00.000Z");
+
+  expect(getRangeStartDate("ALL", endDate).toISOString()).toBe("1976-07-30T20:00:00.000Z");
+  expect(toHistoryRequest("ALL")).toEqual({
+    interval: "1month",
+    outputsize: 600,
+    rangeKey: "ALL",
+  });
+});
 
 function makeCloudNewsPayload(overrides: Partial<CloudNewsPayload> = {}): CloudNewsPayload {
   return {

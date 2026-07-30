@@ -135,6 +135,59 @@ describe("AssetDataRouter chart history", () => {
     persistence.close();
   });
 
+  test("ignores the previous chart history cache generation", async () => {
+    const dbPath = createTempDbPath("previous-chart-cache-generation");
+    const persistence = new AppPersistence(dbPath);
+    const latestDate = new Date(Date.now() - 60_000);
+    const previousDate = new Date(latestDate.getTime() - 5 * 60_000);
+
+    persistence.resources.set(
+      {
+        namespace: "market",
+        kind: "price-history",
+        entityKey: "META",
+        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=2",
+        sourceKey: "provider:gloomberb-cloud",
+      },
+      [
+        { date: previousDate, close: 620 },
+        { date: latestDate, close: 680 },
+      ],
+      {
+        cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
+      },
+    );
+
+    let providerCalls = 0;
+    const router = new AssetDataRouter({
+      ...fallbackProvider,
+      id: "gloomberb-cloud",
+      name: "Gloomberb Cloud",
+      async getPriceHistoryForResolution() {
+        providerCalls += 1;
+        return [
+          { date: previousDate, close: 620 },
+          { date: latestDate, close: 560 },
+        ];
+      },
+    }, [], persistence.resources);
+
+    const history = await router.getPriceHistoryForResolution("META", "NASDAQ", "1M", "5m");
+
+    expect(providerCalls).toBe(1);
+    expect(history.map((point) => point.close)).toEqual([620, 560]);
+
+    const cachedRows = persistence.database.connection
+      .query("SELECT variant_key FROM resource_cache WHERE namespace = ? AND kind = ? AND entity_key = ? ORDER BY variant_key")
+      .all("market", "price-history", "META") as Array<{ variant_key: string }>;
+    expect(cachedRows.map((row) => row.variant_key)).toEqual([
+      "exchange=NASDAQ;range=1M;resolution=5m;version=2",
+      "exchange=NASDAQ;range=1M;resolution=5m;version=3",
+    ]);
+
+    persistence.close();
+  });
+
   test("ignores legacy unversioned sub-unit chart history caches", async () => {
     const dbPath = createTempDbPath("subunit-chart-cache");
     const persistence = new AppPersistence(dbPath);
@@ -180,7 +233,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "FTC") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=LSE;range=ALL;resolution=1wk",
-      "exchange=LSE;range=ALL;resolution=1wk;version=2;unit=GBP",
+      "exchange=LSE;range=ALL;resolution=1wk;version=3;unit=GBP",
     ]);
 
     persistence.close();

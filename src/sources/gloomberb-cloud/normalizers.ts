@@ -326,7 +326,7 @@ export function getRangeStartDate(
       startDate.setFullYear(startDate.getFullYear() - 5);
       break;
     case "ALL":
-      startDate.setFullYear(startDate.getFullYear() - 20);
+      startDate.setFullYear(startDate.getFullYear() - 50);
       break;
   }
   return startDate;
@@ -353,7 +353,7 @@ export function toHistoryRequest(range: TimeRange): {
     case "5Y":
       return { interval: "1week", outputsize: 261, rangeKey: range };
     case "ALL":
-      return { interval: "1month", outputsize: 240, rangeKey: range };
+      return { interval: "1month", outputsize: 600, rangeKey: range };
     default:
       return { interval: "1day", outputsize: 366, rangeKey: range };
   }

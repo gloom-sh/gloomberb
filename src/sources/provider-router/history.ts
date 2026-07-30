@@ -29,7 +29,7 @@ type PriceHistoryCachePolicyKey = Extract<
   ProviderRouterCachePolicyKey,
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
-const PRICE_HISTORY_CACHE_VERSION = 2;
+const PRICE_HISTORY_CACHE_VERSION = 3;
 
 interface HistoryRequestDescriptor {
   identity: RouterRequestIdentity;
