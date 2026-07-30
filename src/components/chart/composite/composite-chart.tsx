@@ -80,13 +80,6 @@ import type {
 // live-data paints or depending on a foreground animation frame.
 const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
-const MAX_PENDING_VIEWPORT_ECHOES = 8;
-
-function viewportRangeKey(viewport: CompositeViewportRange | null): string {
-  return viewport
-    ? `${viewport.start.getTime()}:${viewport.end.getTime()}`
-    : "none";
-}
 
 function renderPanelBitmap(
   panel: CompositePanelScene,
@@ -750,6 +743,7 @@ export function CompositeChart({
   focused = false,
   cursorDate,
   viewport,
+  viewportResetKey,
   colors,
   interactive = true,
   axisWidth = 9,
@@ -802,18 +796,17 @@ export function CompositeChart({
     .map((entry) => `${entry.id}:${entry.label}`)
     .join("|");
   const previousAuthoredViewportRef = useRef<CompositeViewportRange | null>(viewport ?? null);
+  const previousViewportResetKeyRef = useRef(viewportResetKey);
   const [interactionViewport, setInteractionViewport] = useState<CompositeViewportRange | null>(null);
-  const pendingViewportEchoesRef = useRef(new Set<string>());
-  const authoredViewportChanged = shouldResetCompositeViewport(
-    previousAuthoredViewportRef.current,
-    viewport ?? null,
-  );
-  const authoredViewportKey = `${viewportSeriesKey}|${viewportRangeKey(viewport ?? null)}`;
-  const authoredViewportEchoesInteraction = authoredViewportChanged
-    && pendingViewportEchoesRef.current.has(authoredViewportKey);
-  const resetInteractionForAuthoredViewport = authoredViewportChanged
-    && !authoredViewportEchoesInteraction;
-  const currentInteractionViewport = resetInteractionForAuthoredViewport
+  const hasViewportResetKey = viewportResetKey !== undefined
+    || previousViewportResetKeyRef.current !== undefined;
+  const authoredViewportChanged = hasViewportResetKey
+    ? previousViewportResetKeyRef.current !== viewportResetKey
+    : shouldResetCompositeViewport(
+        previousAuthoredViewportRef.current,
+        viewport ?? null,
+      );
+  const currentInteractionViewport = authoredViewportChanged
     ? null
     : interactionViewport && navigationBounds
       ? clampCompositeViewport(interactionViewport, navigationBounds)
@@ -840,16 +833,6 @@ export function CompositeChart({
     }
     if (lastReportedViewportRef.current === key) return;
     lastReportedViewportRef.current = key;
-    if (interactionKey === "none") {
-      pendingViewportEchoesRef.current.clear();
-    } else {
-      pendingViewportEchoesRef.current.add(key);
-      while (pendingViewportEchoesRef.current.size > MAX_PENDING_VIEWPORT_ECHOES) {
-        const oldest = pendingViewportEchoesRef.current.values().next().value;
-        if (!oldest) break;
-        pendingViewportEchoesRef.current.delete(oldest);
-      }
-    }
     onViewportChange(
       interactionViewportStart === null || interactionViewportEnd === null
         ? null
@@ -866,15 +849,9 @@ export function CompositeChart({
 
   useEffect(() => {
     previousAuthoredViewportRef.current = viewport ?? null;
-    if (authoredViewportChanged) {
-      if (authoredViewportEchoesInteraction) {
-        pendingViewportEchoesRef.current.delete(authoredViewportKey);
-      } else {
-        pendingViewportEchoesRef.current.clear();
-      }
-    }
+    previousViewportResetKeyRef.current = viewportResetKey;
     if (
-      resetInteractionForAuthoredViewport
+      authoredViewportChanged
       || (interactionViewport && !navigationBounds)
     ) {
       setInteractionViewport(null);
@@ -888,12 +865,10 @@ export function CompositeChart({
     }
   }, [
     authoredViewportChanged,
-    authoredViewportEchoesInteraction,
-    authoredViewportKey,
     interactionViewport,
     navigationBounds,
-    resetInteractionForAuthoredViewport,
     viewport,
+    viewportResetKey,
   ]);
 
   const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {

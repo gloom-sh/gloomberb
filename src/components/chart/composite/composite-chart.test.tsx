@@ -547,26 +547,46 @@ describe("CompositeChart", () => {
     expect(viewportChanges.at(-1)).toEqual(zoomedViewport);
   });
 
-  test("keeps the latest pan when an older adaptive viewport arrives first", async () => {
+  test("keeps the latest pan through delayed adaptive viewport and series echoes", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
-    let publishViewport: ((next: { start: string; end: string }) => void) | null = null;
+    let publishViewport: ((
+      next: { start: string; end: string },
+      showSecondary?: boolean,
+    ) => void) | null = null;
+    let publishExternalViewport: (() => void) | null = null;
     function Harness() {
       const [viewport, setViewport] = useState({
         start: new Date("2025-01-05T00:00:00.000Z"),
         end: new Date("2025-01-09T00:00:00.000Z"),
       });
-      publishViewport = (next) => setViewport({
-        start: new Date(next.start),
-        end: new Date(next.end),
-      });
+      const [showSecondary, setShowSecondary] = useState(false);
+      const [viewportResetKey, setViewportResetKey] = useState("price:1D:auto");
+      publishViewport = (next, nextShowSecondary = showSecondary) => {
+        setViewport({
+          start: new Date(next.start),
+          end: new Date(next.end),
+        });
+        setShowSecondary(nextShowSecondary);
+      };
+      publishExternalViewport = () => {
+        setViewport({
+          start: new Date("2025-01-01T00:00:00.000Z"),
+          end: new Date("2025-01-09T00:00:00.000Z"),
+        });
+        setViewportResetKey("price:1W:auto");
+      };
       return (
         <CompositeChart
           width={60}
           height={12}
           interactive
-          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          series={[
+            series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108]),
+            series("secondary", "main", "left", "USD", showSecondary ? [90, 91, 92] : []),
+          ]}
           panels={[{ id: "main" }]}
           viewport={viewport}
+          viewportResetKey={viewportResetKey}
           onViewportChange={(next) => {
             viewportChanges.push(next
               ? { start: next.start.toISOString(), end: next.end.toISOString() }
@@ -584,47 +604,47 @@ describe("CompositeChart", () => {
     );
     await act(async () => testSetup!.renderOnce());
 
-    await act(async () => {
-      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
-        scroll: { direction: "up", delta: 4 },
-      }));
-    });
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
+    for (let index = 0; index < 10; index += 1) {
+      await act(async () => {
+        capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+          scroll: { direction: "up", delta: 1 },
+        }));
+      });
+      await act(async () => {
+        await testSetup!.renderOnce();
+        await testSetup!.renderOnce();
+      });
+    }
     const firstPan = viewportChanges[0]!;
-
-    await act(async () => {
-      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
-        scroll: { direction: "up", delta: 4 },
-      }));
-    });
-    await act(async () => {
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
-    });
-    const secondPan = viewportChanges[1]!;
-
+    const latestPan = viewportChanges.at(-1)!;
     expect(firstPan).not.toBeNull();
-    expect(secondPan).not.toBeNull();
-    expect(secondPan).not.toEqual(firstPan);
+    expect(latestPan).not.toBeNull();
+    expect(latestPan).not.toEqual(firstPan);
 
-    await act(async () => publishViewport!(firstPan));
+    await act(async () => publishViewport!(firstPan, true));
     await act(async () => {
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();
     });
-    expect(viewportChanges).toEqual([firstPan, secondPan]);
+    expect(viewportChanges).not.toContain(null);
+    expect(viewportChanges.at(-1)).toEqual(latestPan);
 
-    await act(async () => publishViewport!(secondPan));
+    await act(async () => publishViewport!(latestPan));
     await act(async () => {
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();
     });
-    expect(viewportChanges).toEqual([firstPan, secondPan]);
+    expect(viewportChanges).not.toContain(null);
+    expect(viewportChanges.at(-1)).toEqual(latestPan);
+
+    await act(async () => publishExternalViewport!());
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    expect(viewportChanges.at(-1)).toBeNull();
   });
 
   test("activates and navigates a buffered viewport from the first mouse gesture", async () => {

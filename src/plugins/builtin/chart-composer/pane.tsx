@@ -566,6 +566,7 @@ function ChartComposerSurface({
           legendSeries={resolution.legendSeries}
           panels={spec.panels}
           viewport={viewport}
+          viewportResetKey={authoredViewportKey}
           width={Math.max(1, width)}
           height={Math.max(4, height - 1)}
           focused={focused}

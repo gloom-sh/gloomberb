@@ -125,6 +125,11 @@ export interface CompositeChartProps {
     start: Date;
     end: Date;
   };
+  /**
+   * Stable identity for the authored viewport. Changing it resets user navigation;
+   * viewport updates under the same key are treated as adaptive data refreshes.
+   */
+  viewportResetKey?: string;
   colors?: Partial<CompositeChartColors>;
   axisWidth?: number;
   showLegend?: boolean;
