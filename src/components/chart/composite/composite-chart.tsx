@@ -907,7 +907,7 @@ export function CompositeChart({
         marketTimelineSeries,
       );
       if (sameCompositeViewport(next, base)) return current;
-      return current === null && sameCompositeViewport(next, initialViewport) ? null : next;
+      return sameCompositeViewport(next, initialViewport) ? null : next;
     });
   }, [initialViewport, marketTimelineSeries, minimumViewportSpanMs, navigationBounds]);
   const panViewport = useCallback((

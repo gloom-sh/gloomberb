@@ -566,6 +566,42 @@ describe("CompositeChart", () => {
     expect(viewportInteractions.at(-1)).toBe("reset");
   });
 
+  test("clears the interaction when zoom returns to the authored viewport", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    testSetup = await testRender(
+      <InputHostProvider host={chartInputHost}>
+        <CompositeChart
+          width={60}
+          height={12}
+          focused
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+          viewport={{
+            start: new Date("2025-01-01T00:00:00.000Z"),
+            end: new Date("2025-01-09T00:00:00.000Z"),
+          }}
+          onViewportChange={(next) => viewportChanges.push(next
+            ? { start: next.start.toISOString(), end: next.end.toISOString() }
+            : null)}
+        />
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+
+    await act(async () => testSetup!.renderOnce());
+    const zoomIn = keyEvent("=");
+    zoomIn.sequence = "+";
+    zoomIn.shift = true;
+    await act(async () => chartShortcut?.(zoomIn));
+    await act(async () => testSetup!.renderOnce());
+    expect(viewportChanges.at(-1)).not.toBeNull();
+
+    await act(async () => chartShortcut?.(keyEvent("-")));
+    await act(async () => testSetup!.renderOnce());
+
+    expect(viewportChanges.at(-1)).toBeNull();
+  });
+
   test("preserves a zoomed viewport when adaptive data refreshes its buffer", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     let replacePoints: ((points: TimeSeriesPoint[]) => void) | null = null;
