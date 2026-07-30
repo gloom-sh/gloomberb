@@ -2,7 +2,7 @@ import type { PricePoint } from "../../types/financials";
 import { getPricePointTimestamp } from "../../utils/price-history";
 
 const MAX_NEIGHBOR_GAP_MS = 60 * 60 * 1000;
-const STABLE_NEIGHBOR_CLOSE_RATIO = 0.02;
+const STABLE_NEIGHBOR_CLOSE_RATIO = 0.01;
 const ISOLATED_OHLC_OUTLIER_RATIO = 0.04;
 
 function relativeDifference(value: number, reference: number): number {

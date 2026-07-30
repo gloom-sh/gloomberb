@@ -202,6 +202,46 @@ describe("GloomberbCloudProvider", () => {
     ).rejects.toThrow("failed OHLC validation");
   });
 
+  test("preserves a wide cloud bar during a continuing price move", async () => {
+    apiClient.ensureVerifiedSession = async () => verifiedUser;
+    apiClient.getCloudHistory = async () => ({
+      status: "success",
+      data: [
+        {
+          date: "2026-07-29T20:10:00Z",
+          open: 561.1,
+          high: 561.3,
+          low: 560.7,
+          close: 560.8994,
+        },
+        {
+          date: "2026-07-29T20:15:00Z",
+          open: 560.11,
+          high: 585.61,
+          low: 553.41,
+          close: 555.4,
+        },
+        {
+          date: "2026-07-29T20:20:00Z",
+          open: 555.2,
+          high: 556,
+          low: 548.9,
+          close: 549.01,
+        },
+      ],
+    });
+
+    const provider = new GloomberbCloudProvider();
+    const history = await provider.getPriceHistoryForResolution(
+      "META",
+      "NASDAQ",
+      "1W",
+      "5m",
+    );
+
+    expect(history).toHaveLength(3);
+  });
+
   test("does not reject an explicitly Yahoo-backed cloud history response", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
     apiClient.getCloudHistory = async () => ({
