@@ -217,8 +217,9 @@ function ChartComposerSurface({
   }, [authoredViewportKey]);
   const handleChartViewportChange = useCallback((
     next: { start: Date; end: Date } | null,
-    interaction: "pan" | "reset" | "zoom",
+    interaction: "pan" | "reset" | "sync" | "zoom",
   ) => {
+    if (interaction === "sync") return;
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);
       runtimeViewportTimerRef.current = null;

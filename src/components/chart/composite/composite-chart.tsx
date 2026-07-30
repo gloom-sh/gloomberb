@@ -815,11 +815,15 @@ export function CompositeChart({
   const viewportSeriesKey = visibleLegendSeries
     .map((entry) => `${entry.id}:${entry.label}`)
     .join("|");
+  const clampedInteractionViewport = interactionViewport && navigationBounds
+    ? clampCompositeViewport(interactionViewport, navigationBounds)
+    : interactionViewport;
+  const interactionViewportNeedsSync = !!interactionViewport
+    && !!clampedInteractionViewport
+    && !sameCompositeViewport(interactionViewport, clampedInteractionViewport);
   const currentInteractionViewport = authoredViewportChanged
     ? null
-    : interactionViewport && navigationBounds
-      ? clampCompositeViewport(interactionViewport, navigationBounds)
-      : interactionViewport;
+    : clampedInteractionViewport;
   const effectiveViewport = navigationBounds
     ? currentInteractionViewport
       ? clampCompositeViewport(currentInteractionViewport, navigationBounds)
@@ -828,9 +832,10 @@ export function CompositeChart({
   const interactionViewportStart = currentInteractionViewport?.start.getTime() ?? null;
   const interactionViewportEnd = currentInteractionViewport?.end.getTime() ?? null;
   const lastReportedViewportRef = useRef<string | null>(null);
-  const viewportInteractionRef = useRef<"pan" | "reset" | "zoom">("reset");
+  const viewportInteractionRef = useRef<"pan" | "reset" | "sync" | "zoom">("reset");
   useEffect(() => {
     if (!onViewportChange) return;
+    if (interactionViewportNeedsSync) return;
     const interactionKey = interactionViewportStart === null || interactionViewportEnd === null
       ? "none"
       : `${interactionViewportStart}:${interactionViewportEnd}`;
@@ -852,7 +857,13 @@ export function CompositeChart({
           },
       viewportInteractionRef.current,
     );
-  }, [interactionViewportEnd, interactionViewportStart, onViewportChange, viewportSeriesKey]);
+  }, [
+    interactionViewportEnd,
+    interactionViewportNeedsSync,
+    interactionViewportStart,
+    onViewportChange,
+    viewportSeriesKey,
+  ]);
   const minimumViewportSpanMs = useMemo(
     () => navigationBounds ? resolveCompositeMinimumSpanMs(visibleSeries, navigationBounds) : 1,
     [navigationBounds, visibleSeries],
@@ -869,15 +880,15 @@ export function CompositeChart({
       setInteractionViewport(null);
       return;
     }
-    if (interactionViewport && navigationBounds) {
-      const clamped = clampCompositeViewport(interactionViewport, navigationBounds);
-      if (!sameCompositeViewport(clamped, interactionViewport)) {
-        setInteractionViewport(clamped);
-      }
+    if (interactionViewportNeedsSync && clampedInteractionViewport) {
+      viewportInteractionRef.current = "sync";
+      setInteractionViewport(clampedInteractionViewport);
     }
   }, [
     authoredViewportChanged,
+    clampedInteractionViewport,
     interactionViewport,
+    interactionViewportNeedsSync,
     navigationBounds,
     viewport,
     viewportResetKey,

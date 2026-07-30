@@ -142,7 +142,7 @@ export interface CompositeChartProps {
   /** Reports a user-created viewport, or null when the user resets to the authored viewport. */
   onViewportChange?: (
     viewport: { start: Date; end: Date } | null,
-    interaction: "pan" | "reset" | "zoom",
+    interaction: "pan" | "reset" | "sync" | "zoom",
   ) => void;
   onActivate?: () => void;
   onToggleSeries?: (seriesId: string) => void;

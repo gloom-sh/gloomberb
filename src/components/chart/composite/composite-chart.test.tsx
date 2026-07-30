@@ -627,6 +627,7 @@ describe("CompositeChart", () => {
 
   test("keeps a panned viewport when backfill moves beyond the authored range", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    const viewportInteractions: string[] = [];
     let replacePoints: ((points: TimeSeriesPoint[]) => void) | null = null;
     const initialPoints = series(
       "price",
@@ -636,7 +637,9 @@ describe("CompositeChart", () => {
       [100, 101, 102, 103, 104, 105, 106, 107, 108],
     ).points;
     const olderPoints = Array.from({ length: 11 }, (_, index) => {
-      const date = new Date(Date.UTC(2024, 11, 25 + index));
+      const date = new Date(
+        Date.UTC(2024, 11, 25 + index) - (index === 10 ? 60_000 : 0),
+      );
       return { date, observedAt: date, value: 90 + index };
     });
     function Harness() {
@@ -657,9 +660,12 @@ describe("CompositeChart", () => {
               start: new Date("2025-01-06T00:00:00.000Z"),
               end: new Date("2025-01-09T00:00:00.000Z"),
             }}
-            onViewportChange={(next) => viewportChanges.push(next
-              ? { start: next.start.toISOString(), end: next.end.toISOString() }
-              : null)}
+            onViewportChange={(next, interaction) => {
+              viewportInteractions.push(interaction);
+              viewportChanges.push(next
+                ? { start: next.start.toISOString(), end: next.end.toISOString() }
+                : null);
+            }}
           />
         </InputHostProvider>
       );
@@ -685,7 +691,11 @@ describe("CompositeChart", () => {
       await testSetup!.renderOnce();
     });
 
-    expect(viewportChanges.at(-1)).toEqual(pannedViewport);
+    expect(viewportChanges.at(-1)).toEqual({
+      start: "2024-12-31T23:59:00.000Z",
+      end: "2025-01-03T23:59:00.000Z",
+    });
+    expect(viewportInteractions.at(-1)).toBe("sync");
     expect(testSetup.captureCharFrame()).not.toContain("No chart data");
     expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
   });
