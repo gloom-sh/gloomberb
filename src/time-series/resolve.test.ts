@@ -111,6 +111,64 @@ describe("resolveChartSpecData", () => {
     ]);
   });
 
+  test("resolves a missing exchange from the quote before requesting intraday history", async () => {
+    const historyExchanges: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => ({
+        ...emptyFinancials(),
+        quote: {
+          symbol: "SNDK",
+          price: 1_240,
+          currency: "USD",
+          change: 20,
+          changePercent: 1.64,
+          lastUpdated: Date.parse("2026-07-30T15:25:00Z"),
+          listingExchangeName: "XNAS",
+        },
+      }),
+      getPriceHistoryForResolution: async (_symbol, exchange) => {
+        historyExchanges.push(exchange);
+        return [{
+          date: new Date("2026-07-30T15:20:00Z"),
+          open: 1_235,
+          high: 1_242,
+          low: 1_233,
+          close: 1_240,
+        }];
+      },
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1D", resolution: "5m" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "SNDK" },
+          fieldId: "market.ohlcv",
+        },
+        style: "candles",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider,
+      now: new Date("2026-07-30T15:30:00Z"),
+      loadFredSeries: async () => fredLoad(),
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(historyExchanges).toEqual(["XNAS"]);
+    expect(result.series[0]?.points.at(-1)?.date.toISOString())
+      .toBe("2026-07-30T15:25:00.000Z");
+  });
+
   test("uses provider-default history as a valid fallback for Auto resolution", async () => {
     let genericHistoryCalls = 0;
     const provider = createTestDataProvider({

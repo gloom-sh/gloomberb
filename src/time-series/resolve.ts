@@ -122,6 +122,22 @@ function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "secur
   return publicTickerKey(spec.instrument.symbol, spec.instrument.exchange);
 }
 
+function withQuoteExchange(
+  source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+  quote: Quote | undefined,
+): Extract<ChartSeriesSpec["source"], { kind: "security" }> {
+  if (source.instrument.exchange?.trim()) return source;
+  const exchange = quote?.listingExchangeName?.trim() || quote?.exchangeName?.trim();
+  if (!exchange) return source;
+  return {
+    ...source,
+    instrument: {
+      ...source.instrument,
+      exchange,
+    },
+  };
+}
+
 function finiteDate(value: string | Date | undefined): Date | null {
   if (!value) return null;
   const date = value instanceof Date ? new Date(value) : new Date(value);
@@ -676,13 +692,25 @@ export async function resolveChartSpecData(
       const marketField = isMarketFieldId(source.fieldId);
       const quoteDerivedValuation = valuationSeriesUsesLiveQuote(source.fieldId);
       const needsHistory = marketField || quoteDerivedValuation;
-      const [financials, history] = await Promise.all([
-        loadFinancials(source),
-        needsHistory ? loadHistory(source, quoteDerivedValuation) : Promise.resolve(null),
-      ]);
       const quoteOverride = marketField || quoteDerivedValuation
         ? sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source))
         : undefined;
+      const financialsPromise = loadFinancials(source);
+      let financials: TickerFinancials | null;
+      let history: TickerFinancials["priceHistory"] | null;
+      if (needsHistory && !source.instrument.exchange?.trim()) {
+        financials = await financialsPromise;
+        const historySource = withQuoteExchange(
+          source,
+          latestQuote(financials?.quote, quoteOverride),
+        );
+        history = await loadHistory(historySource, quoteDerivedValuation);
+      } else {
+        [financials, history] = await Promise.all([
+          financialsPromise,
+          needsHistory ? loadHistory(source, quoteDerivedValuation) : Promise.resolve(null),
+        ]);
+      }
       const liveBarResolution = isOhlcSeriesStyle(seriesSpec.style) ? initialResolution : undefined;
       const merged = history
         ? mergeHistory(financials, history, quoteOverride, referenceNow.getTime(), liveBarResolution)
