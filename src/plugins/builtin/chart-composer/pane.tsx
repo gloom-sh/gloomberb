@@ -69,6 +69,11 @@ const RESOLUTION_TABS_WIDTH = RESOLUTION_TABS.reduce(
 );
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 
+interface RuntimeChartViewport {
+  start: Date;
+  end: Date;
+}
+
 function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number } | undefined {
   const x = event?.pixelX;
   const y = event?.pixelY;
@@ -125,17 +130,25 @@ function ChartComposerSurface({
         ]
       : [entry.id, entry.source.kind, entry.source.seriesId]),
   }), [spec.series, spec.viewport.dateWindow, spec.viewport.range, spec.viewport.resolution]);
-  const [autoViewportState, setAutoViewportState] = useState<{
+  const [runtimeViewportState, setRuntimeViewportState] = useState<{
     key: string;
-    viewport: { start: Date; end: Date };
+    adaptiveViewport: RuntimeChartViewport | null;
+    requestViewport: RuntimeChartViewport;
   } | null>(null);
-  const autoViewportTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-  const autoViewport = autoViewportState?.key === authoredViewportKey
-    && spec.viewport.resolution === "auto"
-    ? autoViewportState.viewport
+  const runtimeViewportTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+  const adaptiveViewportRef = useRef<RuntimeChartViewport | null>(null);
+  const requestViewportRef = useRef<RuntimeChartViewport | null>(null);
+  const activeRuntimeViewport = runtimeViewportState?.key === authoredViewportKey
+    ? runtimeViewportState
     : null;
   const targetPointCount = Math.max(60, Math.floor(width * 1.25));
-  const resolution = useResolvedChartSpec(spec, { autoViewport, targetPointCount });
+  const resolution = useResolvedChartSpec(spec, {
+    autoViewport: spec.viewport.resolution === "auto"
+      ? activeRuntimeViewport?.adaptiveViewport
+      : null,
+    requestViewport: activeRuntimeViewport?.requestViewport,
+    targetPointCount,
+  });
   const selectedStudies = getSelectedBuiltinStudies(spec);
   const selectedPairStudies = getSelectedPairStudies(spec);
   const inlineStyleTarget = useMemo(() => getChartInlineStyleTarget(spec), [spec]);
@@ -188,15 +201,17 @@ function ChartComposerSurface({
     if (!focused) dispatch({ type: "FOCUS_PANE", paneId });
   }, [dispatch, focused, paneId]);
   useEffect(() => {
-    if (autoViewportTimerRef.current !== null) {
-      clearTimeout(autoViewportTimerRef.current);
-      autoViewportTimerRef.current = null;
+    if (runtimeViewportTimerRef.current !== null) {
+      clearTimeout(runtimeViewportTimerRef.current);
+      runtimeViewportTimerRef.current = null;
     }
-    setAutoViewportState((current) => current?.key === authoredViewportKey ? current : null);
+    adaptiveViewportRef.current = null;
+    requestViewportRef.current = null;
+    setRuntimeViewportState((current) => current?.key === authoredViewportKey ? current : null);
     return () => {
-      if (autoViewportTimerRef.current !== null) {
-        clearTimeout(autoViewportTimerRef.current);
-        autoViewportTimerRef.current = null;
+      if (runtimeViewportTimerRef.current !== null) {
+        clearTimeout(runtimeViewportTimerRef.current);
+        runtimeViewportTimerRef.current = null;
       }
     };
   }, [authoredViewportKey]);
@@ -204,30 +219,36 @@ function ChartComposerSurface({
     next: { start: Date; end: Date } | null,
     interaction: "pan" | "reset" | "zoom",
   ) => {
-    if (interaction === "pan") return;
-    if (autoViewportTimerRef.current !== null) {
-      clearTimeout(autoViewportTimerRef.current);
-      autoViewportTimerRef.current = null;
+    if (runtimeViewportTimerRef.current !== null) {
+      clearTimeout(runtimeViewportTimerRef.current);
+      runtimeViewportTimerRef.current = null;
     }
-    if (spec.viewport.resolution !== "auto" || !next) {
-      setAutoViewportState(null);
+    if (!next) {
+      adaptiveViewportRef.current = null;
+      requestViewportRef.current = null;
+      setRuntimeViewportState(null);
       return;
     }
     const start = next.start.getTime();
     const end = next.end.getTime();
     if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return;
-    autoViewportTimerRef.current = globalThis.setTimeout(() => {
-      autoViewportTimerRef.current = null;
-      setAutoViewportState((current) => (
-        current?.key === authoredViewportKey
-          && current.viewport.start.getTime() === start
-          && current.viewport.end.getTime() === end
-          ? current
-          : {
-              key: authoredViewportKey,
-              viewport: { start: new Date(start), end: new Date(end) },
-            }
-      ));
+    const viewport = { start: new Date(start), end: new Date(end) };
+    requestViewportRef.current = viewport;
+    if (interaction === "zoom" && spec.viewport.resolution === "auto") {
+      adaptiveViewportRef.current = viewport;
+    }
+    runtimeViewportTimerRef.current = globalThis.setTimeout(() => {
+      runtimeViewportTimerRef.current = null;
+      const requestViewport = requestViewportRef.current;
+      if (!requestViewport) return;
+      const adaptiveViewport = spec.viewport.resolution === "auto"
+        ? adaptiveViewportRef.current
+        : null;
+      setRuntimeViewportState({
+        key: authoredViewportKey,
+        adaptiveViewport,
+        requestViewport,
+      });
     }, AUTO_VIEWPORT_DEBOUNCE_MS);
   }, [authoredViewportKey, spec.viewport.resolution]);
 

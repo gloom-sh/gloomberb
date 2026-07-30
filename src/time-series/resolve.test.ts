@@ -325,7 +325,7 @@ describe("resolveChartSpecData", () => {
     expect(requests).toEqual([{ range: "1W", resolution: "5m" }]);
   });
 
-  test("adapts Auto to a zoomed historical window without changing the authored viewport", async () => {
+  test("keeps Auto zoom selection while loading a separately panned history window", async () => {
     const detailedRequests: Array<{
       start: string;
       end: string;
@@ -377,6 +377,10 @@ describe("resolveChartSpecData", () => {
       new ChartResolveCache(),
       {
         autoViewport: {
+          start: new Date("2025-03-10T00:00:00.000Z"),
+          end: new Date("2025-03-17T00:00:00.000Z"),
+        },
+        requestViewport: {
           start: new Date("2025-01-10T00:00:00.000Z"),
           end: new Date("2025-01-17T00:00:00.000Z"),
         },

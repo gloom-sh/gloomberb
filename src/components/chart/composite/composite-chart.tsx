@@ -787,20 +787,6 @@ export function CompositeChart({
         : Math.min(current, visibleLegendSeries.length - 1)
     ));
   }, [visibleLegendSeries.length]);
-  const navigationBounds = useMemo(
-    () => resolveCompositeNavigationBounds(visibleSeries, viewport),
-    [viewport, visibleSeries],
-  );
-  const initialViewport = useMemo(() => (
-    navigationBounds
-      ? viewport
-        ? clampCompositeViewport(viewport, navigationBounds)
-        : navigationBounds
-      : null
-  ), [navigationBounds, viewport]);
-  const viewportSeriesKey = visibleLegendSeries
-    .map((entry) => `${entry.id}:${entry.label}`)
-    .join("|");
   const previousAuthoredViewportRef = useRef<CompositeViewportRange | null>(viewport ?? null);
   const previousViewportResetKeyRef = useRef(viewportResetKey);
   const [interactionViewport, setInteractionViewport] = useState<CompositeViewportRange | null>(null);
@@ -812,6 +798,23 @@ export function CompositeChart({
         previousAuthoredViewportRef.current,
         viewport ?? null,
       );
+  const navigationAnchorViewport = authoredViewportChanged
+    ? viewport
+    : interactionViewport ?? viewport;
+  const navigationBounds = useMemo(
+    () => resolveCompositeNavigationBounds(visibleSeries, navigationAnchorViewport),
+    [navigationAnchorViewport, visibleSeries],
+  );
+  const initialViewport = useMemo(() => (
+    navigationBounds
+      ? viewport
+        ? clampCompositeViewport(viewport, navigationBounds)
+        : navigationBounds
+      : null
+  ), [navigationBounds, viewport]);
+  const viewportSeriesKey = visibleLegendSeries
+    .map((entry) => `${entry.id}:${entry.label}`)
+    .join("|");
   const currentInteractionViewport = authoredViewportChanged
     ? null
     : interactionViewport && navigationBounds

@@ -20,6 +20,7 @@ export interface UseChartResolutionResult extends ChartResolutionResult {
 export interface UseChartResolutionOptions {
   liveRefreshIntervalMs?: number;
   autoViewport?: ChartResolveOptions["autoViewport"];
+  requestViewport?: ChartResolveOptions["requestViewport"];
   targetPointCount?: number;
 }
 
@@ -74,9 +75,19 @@ export function useChartResolution(
       && autoViewportStart <= autoViewportEnd
     ? { start: new Date(autoViewportStart), end: new Date(autoViewportEnd) }
     : null;
+  const requestViewportStart = options.requestViewport?.start.getTime();
+  const requestViewportEnd = options.requestViewport?.end.getTime();
+  const validRequestViewport = typeof requestViewportStart === "number"
+      && Number.isFinite(requestViewportStart)
+      && typeof requestViewportEnd === "number"
+      && Number.isFinite(requestViewportEnd)
+      && requestViewportStart <= requestViewportEnd
+    ? { start: new Date(requestViewportStart), end: new Date(requestViewportEnd) }
+    : null;
   const adaptiveTargetPointCount = validAutoViewport ? options.targetPointCount : undefined;
   const resolveOptions: ChartResolveOptions = {
     autoViewport: validAutoViewport,
+    requestViewport: validRequestViewport,
     targetPointCount: adaptiveTargetPointCount,
   };
   const latestRequestRef = useRef({ spec, sources, options: resolveOptions });
@@ -126,7 +137,16 @@ export function useChartResolution(
     return () => {
       if (generationRef.current === generation) generationRef.current += 1;
     };
-  }, [adaptiveTargetPointCount, autoViewportEnd, autoViewportStart, revision, sources, spec]);
+  }, [
+    adaptiveTargetPointCount,
+    autoViewportEnd,
+    autoViewportStart,
+    requestViewportEnd,
+    requestViewportStart,
+    revision,
+    sources,
+    spec,
+  ]);
 
   const liveTargetSignature = liveChartQuoteTargetSignature(spec);
   const liveRefreshIntervalMs = options.liveRefreshIntervalMs ?? LIVE_CHART_REFRESH_INTERVAL_MS;

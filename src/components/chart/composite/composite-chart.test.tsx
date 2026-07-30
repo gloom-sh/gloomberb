@@ -625,6 +625,71 @@ describe("CompositeChart", () => {
     expect(viewportChanges.at(-1)).toEqual(zoomedViewport);
   });
 
+  test("keeps a panned viewport when backfill moves beyond the authored range", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    let replacePoints: ((points: TimeSeriesPoint[]) => void) | null = null;
+    const initialPoints = series(
+      "price",
+      "main",
+      "left",
+      "USD",
+      [100, 101, 102, 103, 104, 105, 106, 107, 108],
+    ).points;
+    const olderPoints = Array.from({ length: 11 }, (_, index) => {
+      const date = new Date(Date.UTC(2024, 11, 25 + index));
+      return { date, observedAt: date, value: 90 + index };
+    });
+    function Harness() {
+      const [points, setPoints] = useState(initialPoints);
+      replacePoints = setPoints;
+      return (
+        <InputHostProvider host={chartInputHost}>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            series={[{
+              ...series("price", "main", "left", "USD", []),
+              points,
+            }]}
+            panels={[{ id: "main" }]}
+            viewport={{
+              start: new Date("2025-01-06T00:00:00.000Z"),
+              end: new Date("2025-01-09T00:00:00.000Z"),
+            }}
+            onViewportChange={(next) => viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null)}
+          />
+        </InputHostProvider>
+      );
+    }
+
+    testSetup = await testRender(<Harness />, { width: 62, height: 14 });
+    await act(async () => testSetup!.renderOnce());
+    for (let index = 0; index < 120; index += 1) {
+      const panOlder = keyEvent("left");
+      panOlder.shift = true;
+      await act(async () => chartShortcut?.(panOlder));
+      await act(async () => testSetup!.renderOnce());
+    }
+    const pannedViewport = viewportChanges.at(-1);
+    expect(pannedViewport).toEqual({
+      start: "2025-01-01T00:00:00.000Z",
+      end: "2025-01-04T00:00:00.000Z",
+    });
+
+    await act(async () => replacePoints?.(olderPoints));
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(viewportChanges.at(-1)).toEqual(pannedViewport);
+    expect(testSetup.captureCharFrame()).not.toContain("No chart data");
+    expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
+  });
+
   test("keeps the latest pan through delayed adaptive viewport and series echoes", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     let publishViewport: ((

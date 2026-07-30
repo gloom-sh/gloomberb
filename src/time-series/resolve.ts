@@ -75,8 +75,10 @@ export interface ChartResolveSources {
 }
 
 export interface ChartResolveOptions {
-  /** Runtime interaction window used only while the authored resolution is Auto. */
+  /** Runtime zoom window used only to choose an adaptive Auto resolution. */
   autoViewport?: { start: Date; end: Date } | null;
+  /** Runtime interaction window used to load history around the visible chart. */
+  requestViewport?: { start: Date; end: Date } | null;
   /** Approximate number of horizontal observations the current surface can use. */
   targetPointCount?: number;
 }
@@ -179,6 +181,18 @@ function requestedBounds(spec: ChartSpec, latestObservation: Date): DateBounds {
 function runtimeAutoBounds(options: ChartResolveOptions): DateBounds | null {
   const start = options.autoViewport?.start.getTime();
   const end = options.autoViewport?.end.getTime();
+  return typeof start === "number"
+      && Number.isFinite(start)
+      && typeof end === "number"
+      && Number.isFinite(end)
+      && start <= end
+    ? { start, end }
+    : null;
+}
+
+function runtimeRequestBounds(options: ChartResolveOptions): DateBounds | null {
+  const start = options.requestViewport?.start.getTime();
+  const end = options.requestViewport?.end.getTime();
   return typeof start === "number"
       && Number.isFinite(start)
       && typeof end === "number"
@@ -608,9 +622,10 @@ export async function resolveChartSpecData(
     );
   };
 
-  const runtimeBounds = spec.viewport.resolution === "auto"
+  const adaptiveBounds = spec.viewport.resolution === "auto"
     ? runtimeAutoBounds(options)
     : null;
+  const requestBounds = runtimeRequestBounds(options) ?? adaptiveBounds;
   const activeMarketSources = [...new Map(spec.series.flatMap((entry) => (
     calculationSeriesIds.has(entry.id)
       && entry.source.kind === "security"
@@ -618,14 +633,14 @@ export async function resolveChartSpecData(
       ? [[instrumentKey(entry.source), entry.source] as const]
       : []
   ))).values()];
-  const resolutionSupportSources = runtimeBounds
+  const resolutionSupportSources = adaptiveBounds
     ? await Promise.all(activeMarketSources.map(async (source) => (
         source.instrument.exchange?.trim()
           ? source
           : sourceWithResolvedExchange(source, await loadFinancials(source))
       )))
     : activeMarketSources;
-  const sharedSupport = runtimeBounds && activeMarketSources.length > 0
+  const sharedSupport = adaptiveBounds && activeMarketSources.length > 0
     ? intersectChartResolutionSupport(await Promise.all(
         resolutionSupportSources.map((source) => loadResolutionSupport(source)),
       ))
@@ -637,14 +652,14 @@ export async function resolveChartSpecData(
     options,
     sharedSupport,
   );
-  const requestVisibleBounds = runtimeBounds ?? initialVisibleBounds;
+  const requestVisibleBounds = requestBounds ?? initialVisibleBounds;
   const initialCalculationBounds = calculationBounds(
     spec,
     requestVisibleBounds,
     initialResolution,
   );
   const hasExplicitWindow = explicitBounds(spec) !== null
-    || (runtimeBounds !== null && !sameBounds(runtimeBounds, initialVisibleBounds));
+    || (requestBounds !== null && !sameBounds(requestBounds, initialVisibleBounds));
 
   const loadHistory = async (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
