@@ -797,7 +797,13 @@ export function CompositeChart({
     previousAuthoredViewportRef.current,
     viewport ?? null,
   );
-  const currentInteractionViewport = authoredViewportChanged
+  const authoredViewportEchoesInteraction = interactionViewport !== null
+    && viewport !== null
+    && viewport !== undefined
+    && sameCompositeViewport(interactionViewport, viewport);
+  const resetInteractionForAuthoredViewport = authoredViewportChanged
+    && !authoredViewportEchoesInteraction;
+  const currentInteractionViewport = resetInteractionForAuthoredViewport
     ? null
     : interactionViewport && navigationBounds
       ? clampCompositeViewport(interactionViewport, navigationBounds)
@@ -842,12 +848,11 @@ export function CompositeChart({
   );
 
   useEffect(() => {
-    const authoredChanged = shouldResetCompositeViewport(
-      previousAuthoredViewportRef.current,
-      viewport ?? null,
-    );
     previousAuthoredViewportRef.current = viewport ?? null;
-    if (authoredChanged || (interactionViewport && !navigationBounds)) {
+    if (
+      resetInteractionForAuthoredViewport
+      || (interactionViewport && !navigationBounds)
+    ) {
       setInteractionViewport(null);
       return;
     }
@@ -857,7 +862,12 @@ export function CompositeChart({
         setInteractionViewport(clamped);
       }
     }
-  }, [interactionViewport, navigationBounds, viewport]);
+  }, [
+    interactionViewport,
+    navigationBounds,
+    resetInteractionForAuthoredViewport,
+    viewport,
+  ]);
 
   const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
     if (!navigationBounds || !initialViewport) return;

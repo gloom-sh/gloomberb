@@ -547,6 +547,54 @@ describe("CompositeChart", () => {
     expect(viewportChanges.at(-1)).toEqual(zoomedViewport);
   });
 
+  test("keeps a panned viewport when the parent echoes the adaptive window", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    function Harness() {
+      const [viewport, setViewport] = useState({
+        start: new Date("2025-01-05T00:00:00.000Z"),
+        end: new Date("2025-01-09T00:00:00.000Z"),
+      });
+      return (
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+          viewport={viewport}
+          onViewportChange={(next) => {
+            viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null);
+            if (next) setViewport(next);
+          }}
+        />
+      );
+    }
+
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <Harness />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+        scroll: { direction: "up", delta: 4 },
+      }));
+    });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(viewportChanges).toHaveLength(1);
+    expect(viewportChanges[0]).not.toBeNull();
+  });
+
   test("activates and navigates a buffered viewport from the first mouse gesture", async () => {
     let activations = 0;
     const cursorChanges: string[] = [];
