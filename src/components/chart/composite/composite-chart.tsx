@@ -80,6 +80,13 @@ import type {
 // live-data paints or depending on a foreground animation frame.
 const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
+const MAX_PENDING_VIEWPORT_ECHOES = 8;
+
+function viewportRangeKey(viewport: CompositeViewportRange | null): string {
+  return viewport
+    ? `${viewport.start.getTime()}:${viewport.end.getTime()}`
+    : "none";
+}
 
 function renderPanelBitmap(
   panel: CompositePanelScene,
@@ -791,16 +798,19 @@ export function CompositeChart({
         : navigationBounds
       : null
   ), [navigationBounds, viewport]);
+  const viewportSeriesKey = visibleLegendSeries
+    .map((entry) => `${entry.id}:${entry.label}`)
+    .join("|");
   const previousAuthoredViewportRef = useRef<CompositeViewportRange | null>(viewport ?? null);
   const [interactionViewport, setInteractionViewport] = useState<CompositeViewportRange | null>(null);
+  const pendingViewportEchoesRef = useRef(new Set<string>());
   const authoredViewportChanged = shouldResetCompositeViewport(
     previousAuthoredViewportRef.current,
     viewport ?? null,
   );
-  const authoredViewportEchoesInteraction = interactionViewport !== null
-    && viewport !== null
-    && viewport !== undefined
-    && sameCompositeViewport(interactionViewport, viewport);
+  const authoredViewportKey = `${viewportSeriesKey}|${viewportRangeKey(viewport ?? null)}`;
+  const authoredViewportEchoesInteraction = authoredViewportChanged
+    && pendingViewportEchoesRef.current.has(authoredViewportKey);
   const resetInteractionForAuthoredViewport = authoredViewportChanged
     && !authoredViewportEchoesInteraction;
   const currentInteractionViewport = resetInteractionForAuthoredViewport
@@ -815,16 +825,13 @@ export function CompositeChart({
     : null;
   const interactionViewportStart = currentInteractionViewport?.start.getTime() ?? null;
   const interactionViewportEnd = currentInteractionViewport?.end.getTime() ?? null;
-  const viewportSeriesKey = visibleLegendSeries
-    .map((entry) => `${entry.id}:${entry.label}`)
-    .join("|");
   const lastReportedViewportRef = useRef<string | null>(null);
   useEffect(() => {
     if (!onViewportChange) return;
-    const viewportKey = interactionViewportStart === null || interactionViewportEnd === null
+    const interactionKey = interactionViewportStart === null || interactionViewportEnd === null
       ? "none"
       : `${interactionViewportStart}:${interactionViewportEnd}`;
-    const key = `${viewportSeriesKey}|${viewportKey}`;
+    const key = `${viewportSeriesKey}|${interactionKey}`;
     // The callback drives adaptive data loading. Seed it from the authored
     // viewport without echoing that controlled value back into the loader.
     if (lastReportedViewportRef.current === null) {
@@ -833,6 +840,16 @@ export function CompositeChart({
     }
     if (lastReportedViewportRef.current === key) return;
     lastReportedViewportRef.current = key;
+    if (interactionKey === "none") {
+      pendingViewportEchoesRef.current.clear();
+    } else {
+      pendingViewportEchoesRef.current.add(key);
+      while (pendingViewportEchoesRef.current.size > MAX_PENDING_VIEWPORT_ECHOES) {
+        const oldest = pendingViewportEchoesRef.current.values().next().value;
+        if (!oldest) break;
+        pendingViewportEchoesRef.current.delete(oldest);
+      }
+    }
     onViewportChange(
       interactionViewportStart === null || interactionViewportEnd === null
         ? null
@@ -849,6 +866,13 @@ export function CompositeChart({
 
   useEffect(() => {
     previousAuthoredViewportRef.current = viewport ?? null;
+    if (authoredViewportChanged) {
+      if (authoredViewportEchoesInteraction) {
+        pendingViewportEchoesRef.current.delete(authoredViewportKey);
+      } else {
+        pendingViewportEchoesRef.current.clear();
+      }
+    }
     if (
       resetInteractionForAuthoredViewport
       || (interactionViewport && !navigationBounds)
@@ -863,6 +887,9 @@ export function CompositeChart({
       }
     }
   }, [
+    authoredViewportChanged,
+    authoredViewportEchoesInteraction,
+    authoredViewportKey,
     interactionViewport,
     navigationBounds,
     resetInteractionForAuthoredViewport,

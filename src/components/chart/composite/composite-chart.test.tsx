@@ -547,12 +547,17 @@ describe("CompositeChart", () => {
     expect(viewportChanges.at(-1)).toEqual(zoomedViewport);
   });
 
-  test("keeps a panned viewport when the parent echoes the adaptive window", async () => {
+  test("keeps the latest pan when an older adaptive viewport arrives first", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    let publishViewport: ((next: { start: string; end: string }) => void) | null = null;
     function Harness() {
       const [viewport, setViewport] = useState({
         start: new Date("2025-01-05T00:00:00.000Z"),
         end: new Date("2025-01-09T00:00:00.000Z"),
+      });
+      publishViewport = (next) => setViewport({
+        start: new Date(next.start),
+        end: new Date(next.end),
       });
       return (
         <CompositeChart
@@ -566,7 +571,6 @@ describe("CompositeChart", () => {
             viewportChanges.push(next
               ? { start: next.start.toISOString(), end: next.end.toISOString() }
               : null);
-            if (next) setViewport(next);
           }}
         />
       );
@@ -588,11 +592,39 @@ describe("CompositeChart", () => {
     await act(async () => {
       await testSetup!.renderOnce();
       await testSetup!.renderOnce();
+    });
+    const firstPan = viewportChanges[0]!;
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+        scroll: { direction: "up", delta: 4 },
+      }));
+    });
+    await act(async () => {
+      await testSetup!.renderOnce();
       await testSetup!.renderOnce();
     });
+    const secondPan = viewportChanges[1]!;
 
-    expect(viewportChanges).toHaveLength(1);
-    expect(viewportChanges[0]).not.toBeNull();
+    expect(firstPan).not.toBeNull();
+    expect(secondPan).not.toBeNull();
+    expect(secondPan).not.toEqual(firstPan);
+
+    await act(async () => publishViewport!(firstPan));
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    expect(viewportChanges).toEqual([firstPan, secondPan]);
+
+    await act(async () => publishViewport!(secondPan));
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    expect(viewportChanges).toEqual([firstPan, secondPan]);
   });
 
   test("activates and navigates a buffered viewport from the first mouse gesture", async () => {
