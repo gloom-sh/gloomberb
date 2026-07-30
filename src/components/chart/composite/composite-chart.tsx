@@ -81,6 +81,12 @@ import type {
 const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 
+function isVerticalWheelDirection(
+  direction: "up" | "down" | "left" | "right",
+): direction is "up" | "down" {
+  return direction === "up" || direction === "down";
+}
+
 function renderPanelBitmap(
   panel: CompositePanelScene,
   bitmapSize: StaticChartBitmapSize,
@@ -403,8 +409,8 @@ function CompositePanelSurface({
     consumeChartMouseEvent(event);
     const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
     const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
-    if (event.modifiers.ctrl && pointer) {
-      const zoomIn = direction === "up" || direction === "left";
+    if (event.modifiers.ctrl && pointer && isVerticalWheelDirection(direction)) {
+      const zoomIn = direction === "up";
       const magnitude = Math.min(Math.max(Math.abs(event.scroll?.delta ?? 1), 1), 8);
       const pointerRatio = pointer.cellX / Math.max(plotWidth - 1, 1);
       const anchorDate = resolveCompositeCursorDate(scene, pointer.cellX);
@@ -819,6 +825,7 @@ export function CompositeChart({
   const interactionViewportStart = currentInteractionViewport?.start.getTime() ?? null;
   const interactionViewportEnd = currentInteractionViewport?.end.getTime() ?? null;
   const lastReportedViewportRef = useRef<string | null>(null);
+  const viewportInteractionRef = useRef<"pan" | "reset" | "zoom">("reset");
   useEffect(() => {
     if (!onViewportChange) return;
     const interactionKey = interactionViewportStart === null || interactionViewportEnd === null
@@ -840,6 +847,7 @@ export function CompositeChart({
             start: new Date(interactionViewportStart),
             end: new Date(interactionViewportEnd),
           },
+      viewportInteractionRef.current,
     );
   }, [interactionViewportEnd, interactionViewportStart, onViewportChange, viewportSeriesKey]);
   const minimumViewportSpanMs = useMemo(
@@ -854,6 +862,7 @@ export function CompositeChart({
       authoredViewportChanged
       || (interactionViewport && !navigationBounds)
     ) {
+      viewportInteractionRef.current = "reset";
       setInteractionViewport(null);
       return;
     }
@@ -873,6 +882,7 @@ export function CompositeChart({
 
   const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
     if (!navigationBounds || !initialViewport) return;
+    viewportInteractionRef.current = "zoom";
     setInteractionViewport((current) => {
       const base = current ?? initialViewport;
       const next = zoomCompositeViewport(
@@ -892,6 +902,7 @@ export function CompositeChart({
     fromViewport?: CompositeViewportRange,
   ) => {
     if (!navigationBounds || !initialViewport) return;
+    viewportInteractionRef.current = "pan";
     setInteractionViewport((current) => {
       const base = fromViewport ?? current ?? initialViewport;
       const next = panCompositeViewport(base, navigationBounds, shiftRatio, visibleSeries);
@@ -900,6 +911,7 @@ export function CompositeChart({
     });
   }, [initialViewport, navigationBounds, visibleSeries]);
   const resetViewport = useCallback(() => {
+    viewportInteractionRef.current = "reset";
     setInteractionViewport(null);
   }, []);
   const hasLeftAxis = visibleSeries.some((entry) => entry.axis === "left");
@@ -929,8 +941,8 @@ export function CompositeChart({
     width: 1,
     height: Math.max(panelCount, 1),
     viewport: effectiveViewport ?? undefined,
-    timelineSeries: visibleLegendSeries,
-  }), [effectiveViewport, panelCount, panels, visibleLegendSeries, visibleSeries]);
+    timelineSeries: visibleSeries,
+  }), [effectiveViewport, panelCount, panels, visibleSeries]);
   const layoutPanels = useMemo<CompositePanelScene[] | null>(() => {
     if (!projectedScene) return null;
     const panelSpecById = new Map(panels.map((panel) => [panel.id, panel] as const));
@@ -972,8 +984,8 @@ export function CompositeChart({
     if (!interactive || !navigationBounds || !direction) return;
     onActivate?.();
     consumeChartMouseEvent(event);
-    if (event.modifiers.ctrl) {
-      const zoomIn = direction === "up" || direction === "left";
+    if (event.modifiers.ctrl && isVerticalWheelDirection(direction)) {
+      const zoomIn = direction === "up";
       if (!zoomIn) {
         resetViewport();
         return;

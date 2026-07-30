@@ -11,6 +11,10 @@ import {
   zoomCompositeViewport,
   type CompositeViewportRange,
 } from "./interactions";
+import {
+  buildCompositeTimeScale,
+  projectCompositeTimestamp,
+} from "./time-scale";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -44,6 +48,27 @@ function viewport(startDay: number, endDay: number): CompositeViewportRange {
   };
 }
 
+function intradayMarketSeries(): ResolvedSeries {
+  const points: TimeSeriesPoint[] = [];
+  for (const day of [2, 3]) {
+    const sessionStart = Date.UTC(2025, 0, day, 13, 30);
+    for (let index = 0; index < 78; index += 1) {
+      const date = new Date(sessionStart + index * 5 * 60_000);
+      points.push({ date, observedAt: date, value: 100 + points.length });
+    }
+  }
+  return {
+    ...series([]),
+    nativeFrequency: "intraday",
+    timeBasis: {
+      kind: "market",
+      timeZone: "America/New_York",
+      cadenceMs: 5 * 60_000,
+    },
+    points,
+  };
+}
+
 describe("composite chart interactions", () => {
   test("zooms around the right edge and clamps zoom-out to loaded bounds", () => {
     const bounds = viewport(1, 11);
@@ -64,6 +89,29 @@ describe("composite chart interactions", () => {
 
     const clampedNewer = panCompositeViewport(visible, bounds, -10);
     expect(clampedNewer).toEqual(viewport(7, 11));
+  });
+
+  test("keeps the same market-slot span while panning across a closed session", () => {
+    const data = intradayMarketSeries();
+    const bounds = resolveCompositeNavigationBounds([data])!;
+    const visible = {
+      start: new Date("2025-01-03T13:30:00.000Z"),
+      end: new Date("2025-01-03T17:00:00.000Z"),
+    };
+    const panned = panCompositeViewport(visible, bounds, 0.5, [data]);
+    const scale = buildCompositeTimeScale(
+      [data],
+      bounds.start.getTime(),
+      bounds.end.getTime(),
+    );
+    const projectedSpan = (window: CompositeViewportRange) => (
+      projectCompositeTimestamp(scale, window.end.getTime())!.ratio
+      - projectCompositeTimestamp(scale, window.start.getTime())!.ratio
+    );
+
+    expect(panned.end.getTime() - panned.start.getTime())
+      .not.toBe(visible.end.getTime() - visible.start.getTime());
+    expect(Math.abs(projectedSpan(panned) - projectedSpan(visible))).toBeLessThan(1e-12);
   });
 
   test("uses representative cadence instead of a stray fine gap as the zoom floor", () => {

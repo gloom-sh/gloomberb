@@ -155,6 +155,42 @@ function series(id: string, panelId: string, axis: ResolvedSeries["axis"], unit:
   };
 }
 
+function twoSessionCandles(): ResolvedSeries {
+  const points = [
+    ...Array.from({ length: 7 }, (_, index) => (
+      Date.UTC(2025, 0, 2, 17, index * 30)
+    )),
+    ...Array.from({ length: 8 }, (_, index) => (
+      Date.UTC(2025, 0, 3, 13, 30 + index * 30)
+    )),
+  ].map((timestamp, index) => {
+    const date = new Date(timestamp);
+    const value = 100 + index * 0.1;
+    return {
+      date,
+      observedAt: date,
+      value,
+      open: value,
+      high: value + 1,
+      low: value - 1,
+      close: value,
+      volume: 100,
+    };
+  });
+  return {
+    ...series("price", "main", "left", "USD", []),
+    nativeFrequency: "intraday",
+    dataShape: "ohlc",
+    style: "candles",
+    timeBasis: {
+      kind: "market",
+      timeZone: "America/New_York",
+      cadenceMs: 30 * 60_000,
+    },
+    points,
+  };
+}
+
 describe("CompositeChart", () => {
   test("lays out mixed panels with one shared legend and time axis", async () => {
     testSetup = await testRender(
@@ -243,6 +279,42 @@ describe("CompositeChart", () => {
     });
 
     expect(testSetup.captureCharFrame()).toContain("OTHER Revenue");
+  });
+
+  test("uses buffered market anchors so closed sessions do not create chart holes", async () => {
+    const candles = twoSessionCandles();
+    const currentSession = {
+      ...candles,
+      points: candles.points.filter((point) => point.date.getUTCDate() === 3),
+    };
+    testSetup = await testRender(
+      <CompositeChart
+        width={72}
+        height={12}
+        series={[candles]}
+        legendSeries={[currentSession]}
+        panels={[{ id: "main" }]}
+        viewport={{
+          start: new Date("2025-01-02T17:00:00.000Z"),
+          end: new Date("2025-01-03T17:00:00.000Z"),
+        }}
+        showLegend={false}
+      />,
+      { width: 74, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    const bodyColumns = [...new Set(testSetup.captureCharFrame()
+      .split("\n")
+      .flatMap((line) => [...line].flatMap((cell, index) => cell === "█" ? [index] : [])))]
+      .sort((left, right) => left - right);
+    const largestGap = bodyColumns.slice(1).reduce(
+      (largest, column, index) => Math.max(largest, column - bodyColumns[index]!),
+      0,
+    );
+
+    expect(bodyColumns.length).toBeGreaterThan(10);
+    expect(largestGap).toBeLessThan(10);
   });
 
   test("shows an explicit legend toggle action on hover", async () => {
@@ -444,6 +516,7 @@ describe("CompositeChart", () => {
 
   test("zooms with plus and resets the interaction viewport with zero", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    const viewportInteractions: string[] = [];
     testSetup = await testRender(
       <InputHostProvider host={chartInputHost}>
         <CompositeChart
@@ -456,9 +529,12 @@ describe("CompositeChart", () => {
             start: new Date("2025-01-01T00:00:00.000Z"),
             end: new Date("2025-01-09T00:00:00.000Z"),
           }}
-          onViewportChange={(next) => viewportChanges.push(next
-            ? { start: next.start.toISOString(), end: next.end.toISOString() }
-            : null)}
+          onViewportChange={(next, interaction) => {
+            viewportInteractions.push(interaction);
+            viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null);
+          }}
         />
       </InputHostProvider>,
       { width: 62, height: 14 },
@@ -477,11 +553,13 @@ describe("CompositeChart", () => {
     expect(zoomIn.defaultPrevented).toBe(true);
     expect(testSetup.captureCharFrame()).not.toContain("Jan 1");
     expect(viewportChanges.at(-1)?.start).not.toBe("2025-01-01T00:00:00.000Z");
+    expect(viewportInteractions.at(-1)).toBe("zoom");
 
     await act(async () => chartShortcut?.(keyEvent("0")));
     await act(async () => testSetup!.renderOnce());
     expect(testSetup.captureCharFrame()).toContain("Jan 1");
     expect(viewportChanges.at(-1)).toBeNull();
+    expect(viewportInteractions.at(-1)).toBe("reset");
   });
 
   test("preserves a zoomed viewport when adaptive data refreshes its buffer", async () => {
@@ -786,6 +864,41 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     expect(testSetup.captureCharFrame()).not.toContain("Jan 9");
+  });
+
+  test("always treats horizontal control-wheel movement as a pan", async () => {
+    const interactions: string[] = [];
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[twoSessionCandles()]}
+          panels={[{ id: "main" }]}
+          viewport={{
+            start: new Date("2025-01-03T13:30:00.000Z"),
+            end: new Date("2025-01-03T17:00:00.000Z"),
+          }}
+          onViewportChange={(_next, interaction) => interactions.push(interaction)}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+
+    await act(async () => testSetup!.renderOnce());
+    await act(async () => {
+      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+        ctrl: true,
+        scroll: { direction: "left", delta: 4 },
+      }));
+    });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(interactions.at(-1)).toBe("pan");
   });
 
   test("keeps the date axis and mouse recovery when refreshed data misses the zoomed window", async () => {

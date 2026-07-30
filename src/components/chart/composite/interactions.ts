@@ -1,4 +1,9 @@
 import type { ResolvedSeries } from "../../../time-series/types";
+import {
+  buildCompositeTimeScale,
+  projectCompositeTimestamp,
+  unprojectCompositeTimestamp,
+} from "./time-scale";
 
 export interface CompositeViewportRange {
   start: Date;
@@ -139,6 +144,47 @@ function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+function marketViewportProjection(
+  viewport: CompositeViewportRange,
+  bounds: CompositeViewportRange,
+  series: ResolvedSeries[] | undefined,
+): {
+  scale: Extract<ReturnType<typeof buildCompositeTimeScale>, { kind: "market" }>;
+  startRatio: number;
+  endRatio: number;
+} | null {
+  if (!series?.some((entry) => entry.timeBasis?.kind === "market")) return null;
+  const scale = buildCompositeTimeScale(
+    series,
+    bounds.start.getTime(),
+    bounds.end.getTime(),
+  );
+  if (scale.kind !== "market") return null;
+  const startRatio = projectCompositeTimestamp(scale, viewport.start.getTime())?.ratio;
+  const endRatio = projectCompositeTimestamp(scale, viewport.end.getTime())?.ratio;
+  if (
+    typeof startRatio !== "number"
+    || !Number.isFinite(startRatio)
+    || typeof endRatio !== "number"
+    || !Number.isFinite(endRatio)
+    || startRatio >= endRatio
+  ) {
+    return null;
+  }
+  return { scale, startRatio, endRatio };
+}
+
+function viewportFromMarketRatios(
+  scale: Extract<ReturnType<typeof buildCompositeTimeScale>, { kind: "market" }>,
+  startRatio: number,
+  endRatio: number,
+): CompositeViewportRange {
+  return {
+    start: new Date(unprojectCompositeTimestamp(scale, startRatio)),
+    end: new Date(unprojectCompositeTimestamp(scale, endRatio)),
+  };
+}
+
 export function clampCompositeViewport(
   viewport: CompositeViewportRange,
   bounds: CompositeViewportRange,
@@ -186,17 +232,54 @@ export function zoomCompositeViewport(
   const end = current.end.getTime();
   const boundsSpan = Math.max(bounds.end.getTime() - bounds.start.getTime(), 1);
   const currentSpan = Math.max(end - start, 1);
-  const nextSpan = clamp(
-    currentSpan / zoomFactor,
-    Math.min(Math.max(minimumSpanMs, 1), boundsSpan),
-    boundsSpan,
-  );
   const ratio = clamp(anchorRatio, 0, 1);
-  const anchor = start + currentSpan * ratio;
-  const candidate = clampCompositeViewport({
-    start: new Date(anchor - nextSpan * ratio),
-    end: new Date(anchor + nextSpan * (1 - ratio)),
-  }, bounds);
+  const marketProjection = marketViewportProjection(current, bounds, series);
+  const candidate = marketProjection
+    ? (() => {
+        const {
+          scale,
+          startRatio,
+          endRatio,
+        } = marketProjection;
+        const currentMarketSpan = endRatio - startRatio;
+        const totalMarketPositions = Math.max(
+          scale.endPosition - scale.startPosition,
+          Number.EPSILON,
+        );
+        const minimumMarketSpan = clamp(
+          Math.max(minimumSpanMs, 1) / scale.cadenceMs / totalMarketPositions,
+          Number.EPSILON,
+          1,
+        );
+        const nextMarketSpan = clamp(
+          currentMarketSpan / zoomFactor,
+          minimumMarketSpan,
+          1,
+        );
+        const anchor = startRatio + currentMarketSpan * ratio;
+        const candidateStart = clamp(
+          anchor - nextMarketSpan * ratio,
+          0,
+          1 - nextMarketSpan,
+        );
+        return viewportFromMarketRatios(
+          scale,
+          candidateStart,
+          candidateStart + nextMarketSpan,
+        );
+      })()
+    : (() => {
+        const nextSpan = clamp(
+          currentSpan / zoomFactor,
+          Math.min(Math.max(minimumSpanMs, 1), boundsSpan),
+          boundsSpan,
+        );
+        const anchor = start + currentSpan * ratio;
+        return clampCompositeViewport({
+          start: new Date(anchor - nextSpan * ratio),
+          end: new Date(anchor + nextSpan * (1 - ratio)),
+        }, bounds);
+      })();
   if (!series) return candidate;
 
   const timestamps = pointTimestamps(series)
@@ -225,12 +308,30 @@ export function panCompositeViewport(
 ): CompositeViewportRange {
   const current = clampCompositeViewport(viewport, bounds);
   if (!Number.isFinite(shiftRatio) || shiftRatio === 0) return current;
-  const span = Math.max(current.end.getTime() - current.start.getTime(), 1);
-  const shift = span * shiftRatio;
-  const candidate = clampCompositeViewport({
-    start: new Date(current.start.getTime() - shift),
-    end: new Date(current.end.getTime() - shift),
-  }, bounds);
+  const marketProjection = marketViewportProjection(current, bounds, series);
+  const candidate = marketProjection
+    ? (() => {
+        const {
+          scale,
+          startRatio,
+          endRatio,
+        } = marketProjection;
+        const span = endRatio - startRatio;
+        const nextStart = clamp(
+          startRatio - span * shiftRatio,
+          0,
+          1 - span,
+        );
+        return viewportFromMarketRatios(scale, nextStart, nextStart + span);
+      })()
+    : (() => {
+        const span = Math.max(current.end.getTime() - current.start.getTime(), 1);
+        const shift = span * shiftRatio;
+        return clampCompositeViewport({
+          start: new Date(current.start.getTime() - shift),
+          end: new Date(current.end.getTime() - shift),
+        }, bounds);
+      })();
   if (!series) return candidate;
 
   const timestamps = pointTimestamps(series)

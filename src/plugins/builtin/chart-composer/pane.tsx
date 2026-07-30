@@ -200,7 +200,11 @@ function ChartComposerSurface({
       }
     };
   }, [authoredViewportKey]);
-  const handleChartViewportChange = useCallback((next: { start: Date; end: Date } | null) => {
+  const handleChartViewportChange = useCallback((
+    next: { start: Date; end: Date } | null,
+    interaction: "pan" | "reset" | "zoom",
+  ) => {
+    if (interaction === "pan") return;
     if (autoViewportTimerRef.current !== null) {
       clearTimeout(autoViewportTimerRef.current);
       autoViewportTimerRef.current = null;
