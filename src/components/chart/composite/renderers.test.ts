@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { CompositePanelScene } from "./types";
 import {
   renderCompositePanelBitmap,
   resolveCompositeColumnWidth,
@@ -502,6 +503,64 @@ describe("composite chart renderers", () => {
     expect(bitmap.pixels).toHaveLength(62 * 36 * 4);
     expect(bitmap.pixels.filter((_, index) => index % 4 === 3).every((alpha) => alpha === 255)).toBe(true);
     expect(new Set(bitmap.pixels)).not.toEqual(new Set([16, 255]));
+  });
+
+  test("keeps grid lines from showing through candle bodies", () => {
+    const source = series("price", "candles", [], "left", "#00ff00");
+    const observedAt = new Date("2025-01-01T00:00:00.000Z");
+    const candle = {
+      date: observedAt,
+      observedAt,
+      value: 75,
+      open: 25,
+      high: 90,
+      low: 10,
+      close: 75,
+    };
+    source.points = [candle];
+    const panel: CompositePanelScene = {
+      id: "main",
+      height: 9,
+      scale: "linear",
+      axes: {
+        left: {
+          side: "left",
+          min: 0,
+          max: 100,
+          scale: "linear",
+          unit: "USD",
+          unitGroup: "currency",
+          seriesIds: [source.id],
+        },
+      },
+      series: [{
+        source,
+        points: [{
+          point: candle,
+          timestamp: observedAt.getTime(),
+          value: candle.close,
+          xRatio: 0.5,
+          yRatio: 0.25,
+          breakBefore: true,
+        }],
+      }],
+    };
+    const bitmap = renderCompositePanelBitmap(panel, {
+      pixelWidth: 101,
+      pixelHeight: 101,
+      colors: {
+        background: "#000000",
+        grid: "#ff00ff",
+        crosshair: "#ffffff",
+        text: "#eeeeee",
+        textDim: "#999999",
+        negative: "#ff0000",
+      },
+    });
+    const bodyPixelOffset = (50 * bitmap.width + 47) * 4;
+
+    expect([...bitmap.pixels.slice(bodyPixelOffset, bodyPixelOffset + 4)])
+      .toEqual([0, 255, 0, 255]);
   });
 
   test("measures column spacing once per series instead of once per observation", () => {

@@ -272,7 +272,6 @@ function drawOhlc(
         x + candleWidth / 2,
         Math.max(openY, closeY) + 1,
         candleColor,
-        0.88,
       );
       continue;
     }
