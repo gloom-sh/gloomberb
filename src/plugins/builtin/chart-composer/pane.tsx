@@ -41,6 +41,7 @@ import {
   buildPriceChartPreset,
   applySeriesStyle,
   chartSeriesLabel,
+  defaultFinancialTimestampMode,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
   setBuiltinStudies,
@@ -118,6 +119,9 @@ function ChartComposerSurface({
           entry.source.instrument.exchange ?? "",
           entry.source.fieldId,
           entry.source.period ?? "auto",
+          entry.source.timestampMode
+            ?? defaultFinancialTimestampMode(entry.source.fieldId)
+            ?? "",
         ]
       : [entry.id, entry.source.kind, entry.source.seriesId]),
   }), [spec.series, spec.viewport.dateWindow, spec.viewport.range, spec.viewport.resolution]);

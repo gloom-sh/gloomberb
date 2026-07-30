@@ -639,6 +639,39 @@ describe("CompositeChart", () => {
     expect(viewportChanges).not.toContain(null);
     expect(viewportChanges.at(-1)).toEqual(latestPan);
 
+    for (let index = 0; index < 32; index += 1) {
+      await act(async () => {
+        capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+          scroll: { direction: "up", delta: 100 },
+        }));
+      });
+      await act(async () => {
+        await testSetup!.renderOnce();
+        await testSetup!.renderOnce();
+      });
+    }
+    const boundaryViewport = viewportChanges.at(-1)!;
+    expect(boundaryViewport).not.toBeNull();
+
+    await act(async () => publishViewport!(boundaryViewport));
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    const boundaryChangeCount = viewportChanges.length;
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseScroll(pointerEvent(25, 3, {
+        scroll: { direction: "up", delta: 100 },
+      }));
+    });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+    expect(viewportChanges).toHaveLength(boundaryChangeCount);
+    expect(viewportChanges).not.toContain(null);
+
     await act(async () => publishExternalViewport!());
     await act(async () => {
       await testSetup!.renderOnce();

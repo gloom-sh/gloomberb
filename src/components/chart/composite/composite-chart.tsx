@@ -883,7 +883,8 @@ export function CompositeChart({
         minimumViewportSpanMs,
         visibleSeries,
       );
-      return sameCompositeViewport(next, initialViewport) ? null : next;
+      if (sameCompositeViewport(next, base)) return current;
+      return current === null && sameCompositeViewport(next, initialViewport) ? null : next;
     });
   }, [initialViewport, minimumViewportSpanMs, navigationBounds, visibleSeries]);
   const panViewport = useCallback((
@@ -894,7 +895,8 @@ export function CompositeChart({
     setInteractionViewport((current) => {
       const base = fromViewport ?? current ?? initialViewport;
       const next = panCompositeViewport(base, navigationBounds, shiftRatio, visibleSeries);
-      return sameCompositeViewport(next, initialViewport) ? null : next;
+      if (sameCompositeViewport(next, base)) return current;
+      return current === null && sameCompositeViewport(next, initialViewport) ? null : next;
     });
   }, [initialViewport, navigationBounds, visibleSeries]);
   const resetViewport = useCallback(() => {
