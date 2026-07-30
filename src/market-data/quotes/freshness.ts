@@ -21,6 +21,7 @@ function isQuoteMissingActiveSessionPrice(quote: Quote): boolean {
 
 export function isQuoteStaleForCurrentSession(quote: Quote | null | undefined, now = Date.now()): boolean {
   if (!quote) return false;
+  if (quote.stale === true) return true;
   if (isQuoteMissingActiveSessionPrice(quote)) return true;
 
   return isTimestampStaleForExchangeSession(

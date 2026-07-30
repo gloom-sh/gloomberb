@@ -41,6 +41,8 @@ const PRICE_FIELD_KEYS = [
   "mark",
   "lastUpdated",
   "receivedAt",
+  "delivery",
+  "stale",
 ] as const;
 
 const SESSION_FIELD_KEYS = [
@@ -441,6 +443,8 @@ export function resolveCanonicalQuote(
     name: resolved.name as Quote["name"],
     lastUpdated: Number(resolved.lastUpdated ?? priceProvider?.lastUpdated ?? sessionProvider?.lastUpdated ?? now),
     receivedAt: resolved.receivedAt as Quote["receivedAt"],
+    delivery: resolved.delivery as Quote["delivery"],
+    stale: resolved.stale as Quote["stale"],
     exchangeName: resolved.exchangeName as Quote["exchangeName"],
     fullExchangeName: resolved.fullExchangeName as Quote["fullExchangeName"],
     listingExchangeName: resolved.listingExchangeName as Quote["listingExchangeName"],

@@ -70,11 +70,7 @@ class GloomApiClient {
       requireCapturedSession: (message) => this.requireCapturedSession(message),
       setCurrentUser: (user) => this.setCurrentUser(user),
       setSessionToken: (token) => this.setSessionToken(token),
-      updateCurrentUser: (updater) => {
-        if (this.currentUser) {
-          this.currentUser = updater(this.currentUser);
-        }
-      },
+      updateCurrentUser: (updater) => this.updateCurrentUser(updater),
     });
     this.socket = new CloudApiSocket({
       getBaseUrl: () => this.transport.baseUrl,
@@ -88,10 +84,10 @@ class GloomApiClient {
         }
       },
       updateCurrentUserFromSocket: (user) => {
-        this.currentUser = {
-          ...(this.currentUser ?? {}),
+        this.updateCurrentUser((currentUser) => ({
+          ...currentUser,
           ...user,
-        } as AuthUser;
+        }));
       },
     });
     this.chat = new CloudChatApi({
@@ -110,18 +106,18 @@ class GloomApiClient {
   }
 
   setSessionToken(token: string | null): void {
+    const changed = this.transport.getSessionToken() !== token;
     this.transport.setSessionToken(token);
     if (!token) {
       this.currentUser = null;
-      this.socket.teardown();
     }
+    this.socket.syncAuthState({ reconnect: changed });
   }
 
   setWebSocketToken(token: string | null): void {
+    const changed = this.transport.getWebSocketToken() !== token;
     this.transport.setWebSocketToken(token);
-    if (!token) {
-      this.socket.teardown();
-    }
+    this.socket.syncAuthState({ reconnect: changed });
   }
 
   getCurrentUser(): AuthUser | null {
@@ -137,8 +133,23 @@ class GloomApiClient {
   }
 
   private setCurrentUser(user: AuthUser | null): void {
+    const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.currentUser = user;
-    this.socket.syncAuthState();
+    this.socket.syncAuthState({ reconnect: changed });
+  }
+
+  private updateCurrentUser(updater: (user: AuthUser) => AuthUser): void {
+    if (!this.currentUser) return;
+    this.setCurrentUser(updater(this.currentUser));
+  }
+
+  private socketEntitlementKey(user: AuthUser | null): string {
+    if (!user) return "anonymous";
+    return [
+      user.id,
+      user.emailVerified === true ? "verified" : "unverified",
+      user.plan,
+    ].join(":");
   }
 
   private requireCapturedSession(message: string): void {

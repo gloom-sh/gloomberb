@@ -217,6 +217,12 @@ export function mapOptionsChain(
     expirationDates: chain.expirationDates ?? [],
     calls: chain.calls ?? [],
     puts: chain.puts ?? [],
+    providerId: chain.providerId,
+    dataSource: chain.dataSource,
+    feed: chain.feed,
+    delayMinutes: chain.delayMinutes,
+    realtimeEligible: chain.realtimeEligible,
+    asOf: chain.asOf,
   };
 }
 

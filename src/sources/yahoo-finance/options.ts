@@ -105,6 +105,11 @@ export async function loadYahooOptionsChainResult({
           expirationDates: result.expirationDates ?? [],
           calls: (opts?.calls ?? []).map((contract) => mapYahooOptionContract(contract)),
           puts: (opts?.puts ?? []).map((contract) => mapYahooOptionContract(contract)),
+          dataSource: "delayed",
+          feed: "yahoo",
+          delayMinutes: 15,
+          realtimeEligible: false,
+          asOf: new Date().toISOString(),
         },
         underlyingMarketState: normalizeYahooMarketState(result.quote?.marketState),
       };

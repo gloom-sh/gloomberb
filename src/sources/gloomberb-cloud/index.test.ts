@@ -470,6 +470,11 @@ describe("GloomberbCloudProvider", () => {
           providerId: "gloomberb-cloud",
           underlyingSymbol: "AMD",
           expirationDates: [1_800_000_000],
+          dataSource: "live",
+          feed: "opra",
+          delayMinutes: 0,
+          realtimeEligible: true,
+          asOf: "2027-01-15T14:30:00.000Z",
           calls: [{
             contractSymbol: "AMD270917C00230000",
             strike: 230,
@@ -501,6 +506,14 @@ describe("GloomberbCloudProvider", () => {
     });
     expect(chain.underlyingSymbol).toBe("AMD");
     expect(chain.calls[0]?.contractSymbol).toBe("AMD270917C00230000");
+    expect(chain).toMatchObject({
+      providerId: "gloomberb-cloud",
+      dataSource: "live",
+      feed: "opra",
+      delayMinutes: 0,
+      realtimeEligible: true,
+      asOf: "2027-01-15T14:30:00.000Z",
+    });
   });
 
   test("preserves original target context when streaming quotes", () => {

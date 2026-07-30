@@ -303,9 +303,13 @@ export class MarketDataCoordinator {
     });
   }
 
-  async loadOptions(request: OptionsRequest): Promise<QueryEntry<OptionsChain>> {
+  async loadOptions(
+    request: OptionsRequest,
+    options: { forceRefresh?: boolean } = {},
+  ): Promise<QueryEntry<OptionsChain>> {
     return loadOptionsEntry({
       dataProvider: this.dataProvider,
+      forceRefresh: options.forceRefresh,
       request,
       store: this.optionsStore,
       runSingleFlight: (key, task) => this.runSingleFlight(key, task),
@@ -364,11 +368,13 @@ export class MarketDataCoordinator {
   private applyStreamQuote(instrument: InstrumentRef, quote: Quote): void {
     const key = buildQuoteKey(instrument);
     const current = this.quoteStore.get(key);
-    const resolvedQuote = this.resolveIncomingQuote(instrument, quote);
+    const resolvedQuote = quote.stale === true ? quote : this.resolveIncomingQuote(instrument, quote);
     if (areStreamQuotesEquivalent(current.data ?? current.lastGoodData, resolvedQuote)) return;
-    const receivedAt = Date.now();
-    const attempts = [createAttempt(resolvedQuote.providerId ?? this.dataProvider.id, receivedAt, "success")];
-    this.quoteStore.set(key, readyQuoteEntry(current, { ...resolvedQuote, receivedAt }, resolvedQuote.providerId ?? this.dataProvider.id, attempts));
+    const startedAt = Date.now();
+    const receivedAt = resolvedQuote.stale === true ? resolvedQuote.receivedAt : startedAt;
+    const storedQuote = receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt };
+    const attempts = [createAttempt(resolvedQuote.providerId ?? this.dataProvider.id, startedAt, "success")];
+    this.quoteStore.set(key, readyQuoteEntry(current, storedQuote, resolvedQuote.providerId ?? this.dataProvider.id, attempts));
   }
 
   private resolveIncomingQuote(instrument: InstrumentRef, quote: Quote): Quote {

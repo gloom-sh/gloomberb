@@ -54,10 +54,9 @@ import {
   subscribeRequestedAccountManagementTab,
   type AccountManagementTab,
 } from "./navigation";
+import { CLOUD_UPGRADE_URL } from "../shared/cloud-upgrade";
 
 type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | null;
-const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
-
 const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = [
   { label: "Profile", value: "profile" },
   { label: "Emails", value: "emails" },
@@ -89,7 +88,8 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
 };
 
 const PLAN_COMPARISON_ROWS = [
-  { capability: "Market data", free: "Delayed", pro: "Real-time", proTone: "positive" },
+  { capability: "US equities", free: "15m delay", pro: "Real-time", proTone: "positive" },
+  { capability: "Options data", free: "15m delay", pro: "Real-time", proTone: "positive" },
   { capability: "News", free: "12h delay", pro: "Real-time wire", proTone: "positive" },
   { capability: "Cloud sync", free: "Included", pro: "Included", proTone: "neutral" },
   { capability: "X data", free: "No", pro: "Included", proTone: "positive" },

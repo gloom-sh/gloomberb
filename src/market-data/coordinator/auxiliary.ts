@@ -32,6 +32,7 @@ type RunSingleFlight = <T>(key: string, task: () => Promise<T>) => Promise<T>;
 
 interface AuxiliaryLoaderOptions<T> {
   dataProvider: DataProvider;
+  forceRefresh?: boolean;
   key: string;
   store: QueryStore<T>;
   ttlMs: number;
@@ -41,14 +42,16 @@ interface AuxiliaryLoaderOptions<T> {
 
 export function loadOptionsEntry(options: {
   dataProvider: DataProvider;
+  forceRefresh?: boolean;
   request: OptionsRequest;
   store: QueryStore<OptionsChain>;
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<OptionsChain>> {
-  const { dataProvider, request, store, runSingleFlight } = options;
+  const { dataProvider, forceRefresh = false, request, store, runSingleFlight } = options;
   const key = buildOptionsKey(request);
   return loadAuxiliaryEntry({
     dataProvider,
+    forceRefresh,
     key,
     store,
     ttlMs: OPTIONS_CACHE_TTL_MS,
@@ -213,6 +216,7 @@ export function loadFxRateEntry(options: {
 
 function loadAuxiliaryEntry<T>({
   dataProvider,
+  forceRefresh = false,
   key,
   store,
   ttlMs,
@@ -220,10 +224,10 @@ function loadAuxiliaryEntry<T>({
   load,
 }: AuxiliaryLoaderOptions<T>): Promise<QueryEntry<T>> {
   const current = store.get(key);
-  if (hasFreshReadyEntry(current, ttlMs)) {
+  if (!forceRefresh && hasFreshReadyEntry(current, ttlMs)) {
     return Promise.resolve(current);
   }
-  return runSingleFlight(key, async () => {
+  return runSingleFlight(forceRefresh ? `${key}|refresh` : key, async () => {
     store.update(key, loadingEntry);
     const startedAt = Date.now();
     try {

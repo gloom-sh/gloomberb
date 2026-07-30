@@ -530,7 +530,7 @@ export interface CloudVerificationResponse {
 export interface QuoteStreamTarget {
   symbol: string;
   exchange?: string;
-  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "screener" | "unknown";
+  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "options" | "screener" | "unknown";
   visible?: boolean;
   selected?: boolean;
   weight?: number;

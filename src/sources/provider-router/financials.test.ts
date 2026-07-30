@@ -22,6 +22,20 @@ describe("provider-router financial quote usability", () => {
     }), "FWB2")).toBe(false);
   });
 
+  test("accepts a streamed 15-minute delayed quote during the active session", () => {
+    expect(
+      isProviderQuoteUsableForCurrentSession(
+        makeQuote({
+          dataSource: "delayed",
+          listingExchangeName: "NASDAQ",
+          marketState: "REGULAR",
+          lastUpdated: Date.now() - 15 * 60_000,
+        }),
+        "NASDAQ",
+      ),
+    ).toBe(true);
+  });
+
   test("rejects empty zero provider quotes", () => {
     expect(isProviderQuoteUsableForCurrentSession(makeQuote({
       price: 0,

@@ -30,6 +30,10 @@ interface ChartQueryOptions {
   refreshIntervalMs?: number;
 }
 
+interface OptionsQueryOptions {
+  refreshIntervalMs?: number;
+}
+
 type SharedCoordinator = NonNullable<ReturnType<typeof getSharedMarketDataCoordinator>>;
 
 function loadChartRequests(
@@ -180,6 +184,34 @@ export function useQuoteEntry(symbol: string | null | undefined, ticker: TickerR
   return entry;
 }
 
+/**
+ * Observe quote entries already populated by the shared stream without issuing
+ * one HTTP snapshot request per instrument.
+ */
+export function useQuoteEntries(
+  instruments: readonly InstrumentRef[],
+): Map<string, QueryEntry<Quote>> {
+  const instrumentKey = instruments
+    .map((instrument) => buildQuoteKey(instrument))
+    .join("\u001f");
+  const keys = useMemo(
+    () => instruments.map((instrument) => buildQuoteKey(instrument)),
+    [instrumentKey],
+  );
+  const keysVersion = useCoordinatorKeysVersion(keys);
+  const coordinator = getSharedMarketDataCoordinator();
+
+  return useMemo(() => {
+    if (!coordinator) return new Map<string, QueryEntry<Quote>>();
+    return new Map(
+      instruments.map((instrument) => [
+        buildQuoteKey(instrument),
+        coordinator.getQuoteEntry(instrument),
+      ]),
+    );
+  }, [coordinator, instrumentKey, keysVersion]);
+}
+
 export function useChartQuery(
   request: ChartRequest | null | undefined,
   options: ChartQueryOptions = {},
@@ -275,17 +307,31 @@ export function useChartQueries(
   return useMemo(() => new Map(entries), [entries]);
 }
 
-export function useOptionsQuery(request: OptionsRequest | null | undefined): QueryEntry<OptionsChain> | null {
+export function useOptionsQuery(
+  request: OptionsRequest | null | undefined,
+  options: OptionsQueryOptions = {},
+): QueryEntry<OptionsChain> | null {
   const requestKey = request ? buildOptionsKey(request) : null;
   useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
   const coordinator = getSharedMarketDataCoordinator();
   const entry = coordinator && request ? coordinator.getOptionsEntry(request) : null;
+  const appActive = useAppActive();
+  const refreshIntervalMs = Math.max(0, options.refreshIntervalMs ?? 0);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator || !request) return;
     void coordinator.loadOptions(request).catch(() => {});
   }, [requestKey]);
+
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (!coordinator || !request || !appActive || refreshIntervalMs <= 0) return;
+    const interval = setInterval(() => {
+      void coordinator.loadOptions(request, { forceRefresh: true }).catch(() => {});
+    }, refreshIntervalMs);
+    return () => clearInterval(interval);
+  }, [appActive, refreshIntervalMs, requestKey]);
 
   return entry;
 }

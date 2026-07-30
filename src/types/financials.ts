@@ -2,6 +2,7 @@
 export type MarketState = "PRE" | "REGULAR" | "POST" | "PREPRE" | "POSTPOST" | "CLOSED";
 export type SessionConfidence = "explicit" | "derived" | "unknown";
 export type QuoteDataSource = "live" | "delayed" | "snapshot";
+export type QuoteDelivery = "stream" | "poll";
 
 export interface QuoteFieldProvenance {
   providerId: string;
@@ -33,6 +34,8 @@ export interface Quote {
   name?: string;
   lastUpdated: number; // timestamp ms
   receivedAt?: number; // local receipt timestamp ms for streamed/display freshness
+  delivery?: QuoteDelivery;
+  stale?: boolean;
   exchangeName?: string;
   fullExchangeName?: string;
   listingExchangeName?: string;
@@ -395,6 +398,8 @@ export interface OptionContract {
   inTheMoney: boolean;
   expiration: number;
   lastTradeDate: number;
+  /** Millisecond timestamp for the latest streamed quote applied to this snapshot. */
+  lastUpdated?: number;
 }
 
 export interface OptionsChain {
@@ -402,4 +407,11 @@ export interface OptionsChain {
   expirationDates: number[];
   calls: OptionContract[];
   puts: OptionContract[];
+  providerId?: string;
+  dataSource?: "live" | "delayed";
+  feed?: "opra" | "yahoo";
+  delayMinutes?: number;
+  realtimeEligible?: boolean;
+  /** ISO timestamp for the upstream options snapshot. */
+  asOf?: string;
 }

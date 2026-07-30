@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { MarketDataCoordinator } from "./index";
 import { buildQuoteKey } from "../selectors";
 import { createTestDataProvider } from "../../test-support/data-provider";
@@ -117,6 +117,43 @@ describe("MarketDataCoordinator key subscriptions", () => {
     });
   });
 
+  test("replaces a capped target window without retaining pending removals", () => {
+    jest.useFakeTimers();
+    try {
+      const subscriptions: string[][] = [];
+      let disposals = 0;
+      const provider = createTestDataProvider({
+        id: "test-provider",
+        subscribeQuotes: (targets) => {
+          subscriptions.push(targets.map((target) => target.symbol));
+          return () => {
+            disposals += 1;
+          };
+        },
+      });
+      const coordinator = new MarketDataCoordinator(provider);
+      const oldTargets = Array.from({ length: 16 }, (_, index) => ({
+        instrument: { symbol: `OPT${index}`, exchange: "OPTIONS" },
+      }));
+      const newTargets = Array.from({ length: 16 }, (_, index) => ({
+        instrument: { symbol: `OPT${index + 2}`, exchange: "OPTIONS" },
+      }));
+
+      const unsubscribeOld = coordinator.subscribeQuotes(oldTargets);
+      unsubscribeOld();
+      const unsubscribeNew = coordinator.subscribeQuotes(newTargets);
+
+      expect(disposals).toBe(1);
+      expect(subscriptions).toHaveLength(2);
+      expect(subscriptions[1]).toEqual(newTargets.map(({ instrument }) => instrument.symbol).sort());
+
+      unsubscribeNew();
+      jest.runAllTimers();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test("notifies listeners for changed keys only", async () => {
     const { provider, emitQuote } = createProvider();
     const coordinator = new MarketDataCoordinator(provider);
@@ -203,6 +240,57 @@ describe("MarketDataCoordinator key subscriptions", () => {
       expect(coordinator.getQuoteEntry(aapl).data?.price).toBe(101);
       expect(coordinator.getQuoteEntry(aapl).data?.lastUpdated).toBe(firstTimestamp + 10_000);
       expect(coordinator.getQuoteEntry(aapl).data?.receivedAt).toBe(firstTimestamp + 20_000);
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
+  test("does not refresh receipt time from an explicitly stale polled quote", async () => {
+    const realDateNow = Date.now;
+    const { provider, emitQuote } = createProvider();
+    const coordinator = new MarketDataCoordinator(provider);
+    const option = { symbol: "AAPL260731C00110000", exchange: "OPTIONS" };
+    const firstTimestamp = 1_800_000_000_000;
+    try {
+      coordinator.subscribeQuotes([{ instrument: option }]);
+
+      Date.now = () => firstTimestamp;
+      emitQuote(
+        option,
+        quote(option.symbol, 2.5, {
+          lastUpdated: firstTimestamp,
+          dataSource: "live",
+          delivery: "stream",
+          stale: false,
+        }),
+      );
+      await flushCoordinator();
+
+      expect(coordinator.getQuoteEntry(option).data).toMatchObject({
+        delivery: "stream",
+        stale: false,
+        receivedAt: firstTimestamp,
+      });
+
+      Date.now = () => firstTimestamp + 10_000;
+      emitQuote(
+        option,
+        quote(option.symbol, 2.5, {
+          lastUpdated: firstTimestamp,
+          dataSource: "live",
+          delivery: "poll",
+          stale: true,
+        }),
+      );
+      await flushCoordinator();
+
+      const entry = coordinator.getQuoteEntry(option);
+      expect(entry.data).toBeNull();
+      expect(entry.lastGoodData).toMatchObject({
+        delivery: "stream",
+        stale: false,
+        receivedAt: firstTimestamp,
+      });
     } finally {
       Date.now = realDateNow;
     }

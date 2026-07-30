@@ -178,6 +178,32 @@ describe("MarketDataCoordinator", () => {
     expect(optionsCalls).toBe(1);
   });
 
+  it("force refreshes an options chain for periodic Greeks and IV updates", async () => {
+    let optionsCalls = 0;
+    const provider = createProvider({
+      getOptionsChain: async () => {
+        optionsCalls += 1;
+        return {
+          underlyingSymbol: "AAPL",
+          expirationDates: [1_800_000_000],
+          calls: [],
+          puts: [],
+        };
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const request = {
+      instrument: { symbol: "AAPL", exchange: "NASDAQ" },
+      expirationDate: 1_800_000_000,
+    };
+
+    await coordinator.loadOptions(request);
+    await coordinator.loadOptions(request);
+    await coordinator.loadOptions(request, { forceRefresh: true });
+
+    expect(optionsCalls).toBe(2);
+  });
+
   it("uses cached chart data while a wider range request is loading", async () => {
     const oneYearHistory = [
       { date: new Date("2024-01-01"), close: 100 },

@@ -6,7 +6,8 @@ import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { cloneLayout, createDefaultConfig } from "../../../types/config";
-import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatExpDate } from "../../../utils/options";
 import { OptionsView } from "./view";
@@ -161,6 +162,75 @@ test("defaults the table around the nearest strike to the current quote", async 
   const frame = testSetup!.captureCharFrame();
   expect(frame).toContain("120");
   expect(frame).not.toContain(" 50 ");
+});
+
+test("streams a bounded options window and overlays live contract quotes", async () => {
+  const strikes = Array.from({ length: 100 }, (_, index) => 50 + index);
+  const subscriptions: QuoteSubscriptionTarget[][] = [];
+  let emitQuote:
+    | ((target: QuoteSubscriptionTarget, quote: Quote) => void)
+    | null = null;
+  const provider = createTestDataProvider({
+    getOptionsChain: async () => makeChain(strikes, 120),
+    subscribeQuotes: (targets, onQuote) => {
+      subscriptions.push(targets);
+      emitQuote = onQuote;
+      return () => {};
+    },
+  });
+  const coordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(coordinator);
+
+  await act(async () => {
+    testSetup = await testRender(
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={120.2} />,
+      {
+        width: 124,
+        height: 16,
+      },
+    );
+  });
+  await renderSettled();
+
+  const targets = subscriptions.at(-1) ?? [];
+  expect(targets.length).toBeGreaterThan(0);
+  expect(targets.length).toBeLessThanOrEqual(80);
+  expect(
+    targets.every(
+      (target) => target.exchange === "OPTIONS" && target.surface === "options",
+    ),
+  ).toBe(true);
+  const selectedCall = targets.find(
+    (target) => target.symbol === makeContract(120, "C").contractSymbol,
+  );
+  expect(selectedCall).toMatchObject({ selected: true });
+
+  await act(async () => {
+    emitQuote?.(selectedCall!, {
+      symbol: selectedCall!.symbol,
+      providerId: "gloomberb-cloud",
+      price: 99.9,
+      mark: 99.99,
+      bid: 99.98,
+      ask: 100,
+      currency: "USD",
+      change: 0,
+      changePercent: 0,
+      lastUpdated: Date.now(),
+      dataSource: "live",
+    });
+    await Promise.resolve();
+    await testSetup!.renderOnce();
+  });
+  await renderSettled();
+
+  expect(
+    coordinator.getQuoteEntry({
+      symbol: selectedCall!.symbol,
+      exchange: "OPTIONS",
+    }).data?.mark,
+  ).toBe(99.99);
+  expect(testSetup!.captureCharFrame()).toContain("99.99");
 });
 
 test("lets the expiration tab row use the full available width", async () => {

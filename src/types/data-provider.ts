@@ -100,7 +100,7 @@ export interface QuoteSubscriptionTarget {
   exchange?: string;
   context?: MarketDataRequestContext;
   route?: "auto" | "provider" | "broker";
-  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "screener" | "unknown";
+  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "options" | "screener" | "unknown";
   visible?: boolean;
   selected?: boolean;
   weight?: number;

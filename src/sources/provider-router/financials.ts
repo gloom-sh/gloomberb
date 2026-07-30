@@ -82,12 +82,17 @@ function finitePositiveNumber(value: unknown): value is number {
 }
 
 const ACTIVE_PROVIDER_QUOTE_MAX_AGE_MS = 10 * 60_000;
+const ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS = 20 * 60_000;
 const ACTIVE_QUOTE_MARKET_STATES = new Set(["PRE", "REGULAR", "POST"]);
 
 function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now()): boolean {
   if (!ACTIVE_QUOTE_MARKET_STATES.has(quote.marketState ?? "")) return false;
   if (!Number.isFinite(quote.lastUpdated)) return false;
-  return now - quote.lastUpdated > ACTIVE_PROVIDER_QUOTE_MAX_AGE_MS;
+  const maxAge =
+    quote.dataSource === "delayed"
+      ? ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS
+      : ACTIVE_PROVIDER_QUOTE_MAX_AGE_MS;
+  return now - quote.lastUpdated > maxAge;
 }
 
 export function isProviderQuoteUsableForCurrentSession(quote: Quote | null | undefined, exchange?: string): quote is Quote {

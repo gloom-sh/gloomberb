@@ -277,6 +277,126 @@ describe("apiClient quote socket", () => {
     unsubscribe();
   });
 
+  test("reconnects and replays quote targets when market entitlement changes", () => {
+    const sockets = installTestWebSocket();
+    apiClient.setSessionToken("session-token");
+    apiClient.restoreCachedUser({ ...verifiedUser, plan: "free" });
+    const target = {
+      symbol: "AAPL260731C00110000",
+      exchange: "OPTIONS",
+      surface: "options" as const,
+      visible: true,
+    };
+    const unsubscribe = apiClient.subscribeQuotes([target], () => {});
+    sockets[0]!.open();
+
+    apiClient.restoreCachedUser({ ...verifiedUser, plan: "pro" });
+
+    expect(sockets).toHaveLength(2);
+    expect(sockets[0]!.closeCalls).toBe(1);
+    expect(sockets[1]!.url).toContain("token=session-token");
+    sockets[1]!.open();
+    expect(sockets[1]!.sent).toContainEqual({
+      type: "market.subscribe",
+      symbols: [target],
+    });
+    unsubscribe();
+  });
+
+  test("serializes and dispatches compact OCC option quote targets", () => {
+    const sockets = installTestWebSocket();
+    const seen: Array<{ symbol: string; dataSource: string | undefined }> = [];
+    const unsubscribe = apiClient.subscribeQuotes(
+      [
+        {
+          symbol: "AAPL260731C00110000",
+          exchange: "OPTIONS",
+          surface: "options",
+          visible: true,
+          selected: true,
+          weight: 100,
+        },
+      ],
+      (target, quote) => {
+        seen.push({ symbol: target.symbol, dataSource: quote.dataSource });
+      },
+    );
+    const socket = sockets[0]!;
+    socket.open();
+
+    expect(socket.sent).toContainEqual({
+      type: "market.subscribe",
+      symbols: [
+        {
+          symbol: "AAPL260731C00110000",
+          exchange: "OPTIONS",
+          surface: "options",
+          visible: true,
+          selected: true,
+          weight: 100,
+        },
+      ],
+    });
+
+    socket.receive({
+      type: "market.quote",
+      symbol: "AAPL260731C00110000",
+      exchange: "OPTIONS",
+      quote: {
+        symbol: "AAPL260731C00110000",
+        providerId: "gloomberb-cloud",
+        price: 2.5,
+        currency: "USD",
+        change: 0,
+        changePercent: 0,
+        lastUpdated: 1_800_000_000_000,
+        dataSource: "live",
+      },
+    });
+
+    expect(seen).toEqual([
+      {
+        symbol: "AAPL260731C00110000",
+        dataSource: "live",
+      },
+    ]);
+    unsubscribe();
+  });
+
+  test("preserves quote delivery and stale metadata from websocket messages", () => {
+    const sockets = installTestWebSocket();
+    const seen: Array<{ delivery?: string; stale?: boolean }> = [];
+    const unsubscribe = apiClient.subscribeQuotes(
+      [{ symbol: "AAPL260731C00110000", exchange: "OPTIONS" }],
+      (_target, quote) => {
+        seen.push({ delivery: quote.delivery, stale: quote.stale });
+      },
+    );
+    const socket = sockets[0]!;
+    socket.open();
+
+    socket.receive({
+      type: "market.quote",
+      symbol: "AAPL260731C00110000",
+      exchange: "OPTIONS",
+      delivery: "poll",
+      stale: true,
+      quote: {
+        symbol: "AAPL260731C00110000",
+        providerId: "gloomberb-cloud",
+        price: 2.5,
+        currency: "USD",
+        change: 0,
+        changePercent: 0,
+        lastUpdated: 1_800_000_000_000,
+        dataSource: "live",
+      },
+    });
+
+    expect(seen).toEqual([{ delivery: "poll", stale: true }]);
+    unsubscribe();
+  });
+
   test("does not invent quote priority hints when opening a socket", () => {
     const sockets = installTestWebSocket();
 
@@ -393,6 +513,41 @@ describe("apiClient quote socket", () => {
       symbols: [{ symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 }],
     }]);
     unsubscribeMsft();
+  });
+
+  test("unsubscribes removed quote targets before subscribing replacements", () => {
+    jest.useFakeTimers();
+    const sockets = installTestWebSocket();
+    const oldTargets = Array.from({ length: 16 }, (_, index) => ({
+      symbol: `OPT${index}`,
+      exchange: "OPTIONS",
+    }));
+    const newTargets = Array.from({ length: 16 }, (_, index) => ({
+      symbol: `OPT${index + 2}`,
+      exchange: "OPTIONS",
+    }));
+    const unsubscribeOld = apiClient.subscribeQuotes(oldTargets, () => {});
+    const socket = sockets[0]!;
+    socket.open();
+    flushQuoteSubscriptionUpdates();
+    socket.sent.length = 0;
+
+    const unsubscribeNew = apiClient.subscribeQuotes(newTargets, () => {});
+    unsubscribeOld();
+    flushQuoteSubscriptionUpdates();
+
+    expect(socket.sent.map((message) => (message as { type: string }).type)).toEqual([
+      "market.unsubscribe",
+      "market.subscribe",
+    ]);
+    expect(socket.sent[0]).toMatchObject({
+      symbols: [{ symbol: "OPT0" }, { symbol: "OPT1" }],
+    });
+    expect(socket.sent[1]).toMatchObject({
+      symbols: [{ symbol: "OPT16" }, { symbol: "OPT17" }],
+    });
+
+    unsubscribeNew();
   });
 
   test("keeps an anonymous market websocket open after auth rejection", () => {

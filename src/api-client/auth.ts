@@ -38,6 +38,7 @@ export class CloudAuthApi {
       username: typeof user.username === "string" ? user.username : null,
       emailVerified: user.emailVerified === true,
       image: typeof user.image === "string" ? user.image : null,
+      plan: user.plan,
       syncEnabled: user.syncEnabled === false ? false : true,
       weeklyRoundupEnabled: user.weeklyRoundupEnabled === false ? false : true,
       positionAlertsEnabled: user.positionAlertsEnabled === false ? false : true,

@@ -7,6 +7,7 @@ import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
 import { useOptionsQuery, useResolvedEntryValue } from "../../../market-data/hooks";
 import { DataTableView, Spinner, Tabs, type DataTableKeyEvent } from "../../../components";
 import { useShortcut } from "../../../react/input";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import {
   OPTION_COLUMNS,
   buildStrikeList,
@@ -16,9 +17,15 @@ import {
   resolveDefaultStrikeTarget,
 } from "./table";
 import type { OptionColumn, OptionTableRow, OptionsViewProps } from "./types";
-import { usePaneStatusFooter } from "../shared/pane-footer";
+import {
+  buildOptionQuoteTargets,
+  hasLiveOptionQuote,
+  OPTIONS_CHAIN_REFRESH_INTERVAL_MS,
+  overlayOptionRowQuotes,
+} from "./live-quotes";
+import { useOptionsAccessFooter } from "./footer";
 
-export function OptionsView({ width, focused, onCapture = () => {} }: OptionsViewProps) {
+export function OptionsView({ width, height, focused, onCapture = () => {} }: OptionsViewProps) {
   const { ticker, financials } = usePaneTicker();
   const [expIdx, setExpIdx] = useState(0);
   const [strikeIdx, setStrikeIdx] = useState(0);
@@ -51,6 +58,7 @@ export function OptionsView({ width, focused, onCapture = () => {} }: OptionsVie
     baseRequest && selectedExpiration != null
       ? { ...baseRequest, expirationDate: selectedExpiration }
       : null,
+    { refreshIntervalMs: OPTIONS_CHAIN_REFRESH_INTERVAL_MS },
   );
   const expirationChain = useResolvedEntryValue(expirationChainEntry);
   const chain = expirationChain ?? initialChain;
@@ -117,18 +125,46 @@ export function OptionsView({ width, focused, onCapture = () => {} }: OptionsVie
     () => new Map(chain?.puts.map((p) => [p.strike, p]) ?? []),
     [chain],
   );
-  const rows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => ({
+  const snapshotRows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => ({
     strike,
     call: callsByStrike.get(strike),
     put: putsByStrike.get(strike),
     isPositionStrike: !!parsed && Math.abs(strike - parsed.strike) < 0.01,
   })), [callsByStrike, parsed, putsByStrike, strikes]);
+  const optionQuoteTargets = useMemo(
+    () => buildOptionQuoteTargets(snapshotRows, strikeIdx, height),
+    [height, snapshotRows, strikeIdx],
+  );
+  const {
+    entries: optionQuoteEntries,
+    freshnessNow,
+    subscriptionStartedAt,
+  } = useLiveQuoteEntries(optionQuoteTargets);
+  const optionQuoteFreshness = useMemo(
+    () => ({
+      chainAsOf: chain?.asOf,
+      chainDataSource: chain?.dataSource,
+      now: freshnessNow,
+      subscriptionStartedAt,
+    }),
+    [chain?.asOf, chain?.dataSource, freshnessNow, subscriptionStartedAt],
+  );
+  const rows = useMemo(
+    () => overlayOptionRowQuotes(snapshotRows, optionQuoteEntries, optionQuoteFreshness),
+    [optionQuoteEntries, optionQuoteFreshness, snapshotRows],
+  );
   const optionColumns: OptionColumn[] = OPTION_COLUMNS.map((column) => ({
     ...column,
     headerColor: optionColumnColor(column.id, colors.panel),
   }));
 
-  usePaneStatusFooter({ registrationId: "options", loading, error });
+  useOptionsAccessFooter({
+    chain,
+    error,
+    focused,
+    hasLiveQuote: hasLiveOptionQuote(optionQuoteEntries, optionQuoteFreshness),
+    loading,
+  });
 
   useEffect(() => {
     setStrikeIdx((index) => {

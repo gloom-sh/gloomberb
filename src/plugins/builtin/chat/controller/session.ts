@@ -8,6 +8,7 @@ export type ChatApiSession = {
   username?: string | null;
   name?: string | null;
   emailVerified?: boolean | null;
+  plan?: "free" | "pro";
 };
 
 export function getSessionIdentity(user: ChatSessionUser | null): string {
@@ -19,6 +20,7 @@ export function sessionUserFromApiSession(session: ChatApiSession): ChatSessionU
     id: session.id,
     username: session.username ?? session.name ?? "account",
     emailVerified: !!session.emailVerified,
+    plan: session.plan,
   };
 }
 

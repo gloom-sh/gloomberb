@@ -62,6 +62,8 @@ const STREAM_QUOTE_FIELDS: Array<keyof Quote> = [
   "low",
   "mark",
   "dataSource",
+  "delivery",
+  "stale",
 ];
 
 function quoteTargetFromInstrument(
@@ -251,7 +253,7 @@ export class QuoteSubscriptionManager {
     if (!this.dataProvider.subscribeQuotes) return;
 
     const activeEntries = [...this.quoteSubscriptions.entries()]
-      .filter(([, entry]) => entry.targets.size > 0 || entry.removeTimer)
+      .filter(([, entry]) => entry.targets.size > 0)
       .sort(([left], [right]) => left.localeCompare(right));
     const nextSignature = activeEntries.map(([key, entry]) => [
       key,

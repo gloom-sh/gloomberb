@@ -1,5 +1,5 @@
 export interface QuoteSubscriptionPriorityTarget {
-  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "screener" | "unknown";
+  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "options" | "screener" | "unknown";
   visible?: boolean;
   selected?: boolean;
   weight?: number;
@@ -9,7 +9,7 @@ function quoteSubscriptionPriorityScore(target: QuoteSubscriptionPriorityTarget)
   let score = Number.isFinite(target.weight) ? Math.max(0, target.weight ?? 0) : 0;
   if (target.selected) score += 10_000;
   if (target.visible) score += 5_000;
-  if (target.surface === "detail" || target.surface === "monitor") score += 4_000;
+  if (target.surface === "detail" || target.surface === "monitor" || target.surface === "options") score += 4_000;
   if (target.surface === "portfolio" || target.surface === "watchlist") score += 1_000;
   if (target.surface === "screener") score += 700;
   if (target.surface === "inline") score += 200;

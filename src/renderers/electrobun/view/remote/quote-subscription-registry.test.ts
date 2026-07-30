@@ -56,4 +56,31 @@ describe("RemoteQuoteSubscriptionRegistry", () => {
     expect(registry.backendTargets()).toEqual([]);
     expect(changes).toBe(4);
   });
+
+  test("preserves options stream scope across the desktop backend bridge", () => {
+    const target: QuoteSubscriptionTarget = {
+      symbol: "AAPL260731C00110000",
+      exchange: "OPTIONS",
+      surface: "options",
+      visible: true,
+      selected: true,
+      weight: 100,
+    };
+    const optionQuote: Quote = {
+      ...quote,
+      symbol: target.symbol,
+      price: 2.5,
+      bid: 2.45,
+      ask: 2.55,
+      dataSource: "live",
+    };
+    const events: Quote[] = [];
+    const registry = new RemoteQuoteSubscriptionRegistry();
+
+    registry.subscribe([target], (_eventTarget, event) => events.push(event));
+
+    expect(registry.backendTargets()).toEqual([target]);
+    registry.dispatch(target, optionQuote);
+    expect(events).toEqual([optionQuote]);
+  });
 });

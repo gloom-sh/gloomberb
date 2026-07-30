@@ -71,10 +71,13 @@ export class CloudApiSocket {
 
   constructor(private readonly delegate: CloudApiSocketDelegate) {}
 
-  syncAuthState(): void {
+  syncAuthState(options: { reconnect?: boolean } = {}): void {
     if (!this.shouldKeepSocketOpen()) {
       this.teardown();
       return;
+    }
+    if (options.reconnect) {
+      this.teardown();
     }
     this.ensureSocket();
   }
@@ -325,8 +328,15 @@ export class CloudApiSocket {
 
     if (parsed?.type === "market.quote" && parsed.quote && typeof parsed.symbol === "string") {
       const key = marketKey(parsed.symbol, parsed.exchange);
+      const quote: CloudQuotePayload = {
+        ...(parsed.quote as CloudQuotePayload),
+        ...(parsed.delivery === "stream" || parsed.delivery === "poll"
+          ? { delivery: parsed.delivery }
+          : {}),
+        ...(typeof parsed.stale === "boolean" ? { stale: parsed.stale } : {}),
+      };
       for (const subscription of this.quoteSubscriptions.get(key)?.values() ?? []) {
-        subscription.listener(subscription.target, parsed.quote as CloudQuotePayload);
+        subscription.listener(subscription.target, quote);
       }
     }
   }
@@ -385,7 +395,8 @@ export class CloudApiSocket {
         reason: closeEvent?.reason,
         tokenSource: usingWebSocketToken ? "websocket" : "session",
       });
-      if (activeSocket && usingWebSocketToken && this.delegate.clearWebSocketTokenForFallback()) {
+      if (!activeSocket) return;
+      if (usingWebSocketToken && this.delegate.clearWebSocketTokenForFallback()) {
         this.reconnectDelayMs = 1000;
         cloudApiLog.warn("cleared websocket token after socket close; falling back to session token");
       }
@@ -475,16 +486,16 @@ export class CloudApiSocket {
     const unsubscribes = [...this.pendingQuoteUnsubscribes.values()];
     this.pendingQuoteSubscribes.clear();
     this.pendingQuoteUnsubscribes.clear();
-    if (subscribes.length > 0) {
-      this.sendSocketMessage({
-        type: "market.subscribe",
-        symbols: subscribes.map((target) => this.serializeQuoteStreamTarget(target)),
-      });
-    }
     if (unsubscribes.length > 0) {
       this.sendSocketMessage({
         type: "market.unsubscribe",
         symbols: unsubscribes.map((target) => this.serializeQuoteStreamTarget(target)),
+      });
+    }
+    if (subscribes.length > 0) {
+      this.sendSocketMessage({
+        type: "market.subscribe",
+        symbols: subscribes.map((target) => this.serializeQuoteStreamTarget(target)),
       });
     }
   }

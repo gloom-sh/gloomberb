@@ -21,6 +21,7 @@ export interface ChatSessionUser {
   id: string;
   username: string;
   emailVerified: boolean;
+  plan?: "free" | "pro";
 }
 
 export function readChatSessionState(
@@ -40,6 +41,7 @@ export function normalizeSessionUser(user: PersistedAuthUser | null | undefined)
       id: user.id,
       username: user.username ?? user.name ?? "account",
       emailVerified: user.emailVerified === true,
+      plan: user.plan,
     }
     : null;
 }

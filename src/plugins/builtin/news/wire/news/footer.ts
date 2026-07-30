@@ -4,8 +4,7 @@ import { useShortcut } from "../../../../../react/input";
 import { useRendererHost } from "../../../../../ui";
 import { apiClient } from "../../../../../api-client";
 import { usePaneStatusLinkFooter } from "../../../shared/pane-footer";
-
-const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud";
+import { CLOUD_UPGRADE_URL } from "../../../shared/cloud-upgrade";
 
 interface NewsFooterArticle {
   source?: string | null;
