@@ -27,6 +27,7 @@ import {
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { canonicalTickerKey } from "../../utils/exchanges";
+import { normalizePriceHistory } from "../../utils/price-history";
 import { createProviderMiss } from "../provider-errors";
 import { hasMalformedCloudIntradayHistory } from "./history-quality";
 import {
@@ -98,10 +99,12 @@ function mapCloudPriceHistory(
     response.currency ?? response.providerMeta?.currency,
     exchange,
   );
-  const points = unwrapRequiredCloudResponse(
-    response,
-    `Cloud chart data is unavailable for ${ticker}`,
-  ).map((point) => mapPricePoint(point, divisor, exchange));
+  const points = normalizePriceHistory(
+    unwrapRequiredCloudResponse(
+      response,
+      `Cloud chart data is unavailable for ${ticker}`,
+    ).map((point) => mapPricePoint(point, divisor, exchange)),
+  );
   const upstream = (
     response.providerMeta?.provider
     ?? response.providerMeta?.upstream

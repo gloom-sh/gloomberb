@@ -163,6 +163,45 @@ describe("GloomberbCloudProvider", () => {
     ).rejects.toThrow("failed OHLC validation");
   });
 
+  test("validates an outlier after normalizing descending cloud history", async () => {
+    apiClient.ensureVerifiedSession = async () => verifiedUser;
+    apiClient.getCloudHistory = async () => ({
+      status: "success",
+      data: [
+        {
+          date: "2026-07-29T20:48:00Z",
+          open: 728.6,
+          high: 728.7,
+          low: 728.1,
+          close: 728.3,
+          volume: 0,
+        },
+        {
+          date: "2026-07-29T20:47:00Z",
+          open: 686.98,
+          high: 728.67,
+          low: 686.98,
+          close: 728.6,
+          volume: 0,
+        },
+        {
+          date: "2026-07-29T20:46:00Z",
+          open: 728.4,
+          high: 728.7,
+          low: 728.3,
+          close: 728.5,
+          volume: 0,
+        },
+      ],
+    });
+
+    const provider = new GloomberbCloudProvider();
+
+    await expect(
+      provider.getPriceHistoryForResolution("SPY", "NYSEARCA", "1W", "1m"),
+    ).rejects.toThrow("failed OHLC validation");
+  });
+
   test("does not reject an explicitly Yahoo-backed cloud history response", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
     apiClient.getCloudHistory = async () => ({
