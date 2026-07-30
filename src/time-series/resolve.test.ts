@@ -181,6 +181,75 @@ describe("resolveChartSpecData", () => {
       .toBe("2026-07-30T15:26:00.000Z");
   });
 
+  test("resolves the exchange before selecting an adaptive Auto resolution", async () => {
+    const supportExchanges: string[] = [];
+    const historyRequests: Array<{ exchange: string; resolution: string }> = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => ({
+        ...emptyFinancials(),
+        quote: {
+          symbol: "SNDK",
+          price: 1_240,
+          currency: "USD",
+          change: 20,
+          changePercent: 1.64,
+          lastUpdated: Date.parse("2026-07-30T15:25:00Z"),
+          listingExchangeName: "XNAS",
+        },
+      }),
+      getChartResolutionSupport: (_symbol, exchange) => {
+        supportExchanges.push(exchange);
+        return exchange === "XNAS"
+          ? [{ resolution: "5m", maxRange: "1W" }]
+          : [{ resolution: "1d", maxRange: "5Y" }];
+      },
+      getDetailedPriceHistory: async (_symbol, exchange, _start, _end, resolution) => {
+        historyRequests.push({ exchange, resolution });
+        return [{ date: new Date("2026-07-30T15:20:00Z"), close: 1_240 }];
+      },
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1D", resolution: "auto" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "SNDK" },
+          fieldId: "market.close",
+        },
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+
+    const result = await resolveChartSpecData(
+      spec,
+      {
+        dataProvider: provider,
+        now: new Date("2026-07-30T15:30:00Z"),
+        loadFredSeries: async () => fredLoad(),
+      },
+      new ChartResolveCache(),
+      {
+        autoViewport: {
+          start: new Date("2026-07-30T09:30:00Z"),
+          end: new Date("2026-07-30T15:30:00Z"),
+        },
+        targetPointCount: 100,
+      },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(supportExchanges).toEqual(["XNAS"]);
+    expect(historyRequests).toEqual([{ exchange: "XNAS", resolution: "5m" }]);
+  });
+
   test("uses provider-default history as a valid fallback for Auto resolution", async () => {
     let genericHistoryCalls = 0;
     const provider = createTestDataProvider({

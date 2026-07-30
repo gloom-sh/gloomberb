@@ -595,6 +595,18 @@ export async function resolveChartSpecData(
     }
     return pending;
   };
+  const sourceWithResolvedExchange = (
+    source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+    financials: TickerFinancials | null,
+  ) => {
+    const quoteOverride = sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source));
+    return withQuoteExchange(
+      source,
+      latestQuote(financials?.quote, quoteOverride),
+      financials?.quote,
+      quoteOverride,
+    );
+  };
 
   const runtimeBounds = spec.viewport.resolution === "auto"
     ? runtimeAutoBounds(options)
@@ -606,9 +618,16 @@ export async function resolveChartSpecData(
       ? [[instrumentKey(entry.source), entry.source] as const]
       : []
   ))).values()];
+  const resolutionSupportSources = runtimeBounds
+    ? await Promise.all(activeMarketSources.map(async (source) => (
+        source.instrument.exchange?.trim()
+          ? source
+          : sourceWithResolvedExchange(source, await loadFinancials(source))
+      )))
+    : activeMarketSources;
   const sharedSupport = runtimeBounds && activeMarketSources.length > 0
     ? intersectChartResolutionSupport(await Promise.all(
-        activeMarketSources.map((source) => loadResolutionSupport(source)),
+        resolutionSupportSources.map((source) => loadResolutionSupport(source)),
       ))
     : [];
   const initialResolution = requestResolution(
@@ -702,12 +721,7 @@ export async function resolveChartSpecData(
       let history: TickerFinancials["priceHistory"] | null;
       if (needsHistory && !source.instrument.exchange?.trim()) {
         financials = await financialsPromise;
-        const historySource = withQuoteExchange(
-          source,
-          latestQuote(financials?.quote, quoteOverride),
-          financials?.quote,
-          quoteOverride,
-        );
+        const historySource = sourceWithResolvedExchange(source, financials);
         history = await loadHistory(historySource, quoteDerivedValuation);
       } else {
         [financials, history] = await Promise.all([
