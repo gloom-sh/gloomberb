@@ -124,10 +124,12 @@ function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "secur
 
 function withQuoteExchange(
   source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
-  quote: Quote | undefined,
+  ...quotes: Array<Quote | undefined>
 ): Extract<ChartSeriesSpec["source"], { kind: "security" }> {
   if (source.instrument.exchange?.trim()) return source;
-  const exchange = quote?.listingExchangeName?.trim() || quote?.exchangeName?.trim();
+  const exchange = quotes
+    .map((quote) => quote?.listingExchangeName?.trim() || quote?.exchangeName?.trim())
+    .find((value): value is string => !!value);
   if (!exchange) return source;
   return {
     ...source,
@@ -703,6 +705,8 @@ export async function resolveChartSpecData(
         const historySource = withQuoteExchange(
           source,
           latestQuote(financials?.quote, quoteOverride),
+          financials?.quote,
+          quoteOverride,
         );
         history = await loadHistory(historySource, quoteDerivedValuation);
       } else {

@@ -111,8 +111,13 @@ describe("resolveChartSpecData", () => {
     ]);
   });
 
-  test("resolves a missing exchange from the quote before requesting intraday history", async () => {
+  test("keeps the snapshot exchange when a newer quote omits it", async () => {
     const historyExchanges: string[] = [];
+    const source = {
+      kind: "security" as const,
+      instrument: { symbol: "SNDK" },
+      fieldId: "market.ohlcv",
+    };
     const provider = createTestDataProvider({
       getTickerFinancials: async () => ({
         ...emptyFinancials(),
@@ -143,11 +148,7 @@ describe("resolveChartSpecData", () => {
       panels: [{ id: "main" }],
       series: [{
         id: "price",
-        source: {
-          kind: "security",
-          instrument: { symbol: "SNDK" },
-          fieldId: "market.ohlcv",
-        },
+        source,
         style: "candles",
         transform: "raw",
         axis: "left",
@@ -160,13 +161,24 @@ describe("resolveChartSpecData", () => {
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
       now: new Date("2026-07-30T15:30:00Z"),
+      quoteOverrides: new Map([[
+        chartQuoteOverrideKeyForSource(source),
+        {
+          symbol: "SNDK",
+          price: 1_245,
+          currency: "USD",
+          change: 25,
+          changePercent: 2.05,
+          lastUpdated: Date.parse("2026-07-30T15:26:00Z"),
+        },
+      ]]),
       loadFredSeries: async () => fredLoad(),
     });
 
     expect(result.errors).toEqual([]);
     expect(historyExchanges).toEqual(["XNAS"]);
     expect(result.series[0]?.points.at(-1)?.date.toISOString())
-      .toBe("2026-07-30T15:25:00.000Z");
+      .toBe("2026-07-30T15:26:00.000Z");
   });
 
   test("uses provider-default history as a valid fallback for Auto resolution", async () => {
