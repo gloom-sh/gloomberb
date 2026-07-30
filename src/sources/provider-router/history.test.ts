@@ -180,7 +180,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "FTC") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=LSE;range=ALL;resolution=1wk",
-      "exchange=LSE;range=ALL;resolution=1wk;unit=GBP",
+      "exchange=LSE;range=ALL;resolution=1wk;version=2;unit=GBP",
     ]);
 
     persistence.close();

@@ -29,6 +29,7 @@ type PriceHistoryCachePolicyKey = Extract<
   ProviderRouterCachePolicyKey,
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
+const PRICE_HISTORY_CACHE_VERSION = 2;
 
 interface HistoryRequestDescriptor {
   identity: RouterRequestIdentity;
@@ -47,7 +48,13 @@ function priceHistoryVariantParts(
   exchange: string,
 ): Array<[string, string | number | undefined | null]> {
   const unit = resolvePriceHistoryCurrencyUnit(null, exchange);
-  return unit.divisor === 1 ? parts : [...parts, ["unit", unit.currency]];
+  const versionedParts: Array<[string, string | number | undefined | null]> = [
+    ...parts,
+    ["version", PRICE_HISTORY_CACHE_VERSION],
+  ];
+  return unit.divisor === 1
+    ? versionedParts
+    : [...versionedParts, ["unit", unit.currency]];
 }
 
 function makeHistoryRequestIdentity(
