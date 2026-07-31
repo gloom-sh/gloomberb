@@ -745,6 +745,7 @@ export function CompositeChart({
   viewportResetKey,
   colors,
   interactive = true,
+  allowHistoricalBackfill = false,
   axisWidth = 9,
   showLegend = true,
   legendAccessory,
@@ -801,8 +802,12 @@ export function CompositeChart({
     ? viewport
     : interactionViewport ?? viewport;
   const navigationBounds = useMemo(
-    () => resolveCompositeNavigationBounds(visibleSeries, navigationAnchorViewport),
-    [navigationAnchorViewport, visibleSeries],
+    () => resolveCompositeNavigationBounds(
+      visibleSeries,
+      navigationAnchorViewport,
+      { historicalPaddingRatio: allowHistoricalBackfill ? 1 : 0 },
+    ),
+    [allowHistoricalBackfill, navigationAnchorViewport, visibleSeries],
   );
   const initialViewport = useMemo(() => (
     navigationBounds
@@ -918,14 +923,20 @@ export function CompositeChart({
     viewportInteractionRef.current = "pan";
     setInteractionViewport((current) => {
       const base = fromViewport ?? current ?? initialViewport;
-      const next = panCompositeViewport(base, navigationBounds, shiftRatio, marketTimelineSeries);
+      const next = panCompositeViewport(
+        base,
+        navigationBounds,
+        shiftRatio,
+        marketTimelineSeries,
+        allowHistoricalBackfill,
+      );
       if (sameCompositeViewport(next, base)) {
         if (!fromViewport) return current;
         return sameCompositeViewport(base, initialViewport) ? null : base;
       }
       return sameCompositeViewport(next, initialViewport) ? null : next;
     });
-  }, [initialViewport, marketTimelineSeries, navigationBounds]);
+  }, [allowHistoricalBackfill, initialViewport, marketTimelineSeries, navigationBounds]);
   const resetViewport = useCallback(() => {
     viewportInteractionRef.current = "reset";
     setInteractionViewport(null);

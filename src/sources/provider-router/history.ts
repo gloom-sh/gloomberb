@@ -9,6 +9,7 @@ import {
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../time-series/resolution";
+import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
 import { canonicalExchange } from "../../utils/exchanges";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "../../utils/price-history";
@@ -29,7 +30,7 @@ type PriceHistoryCachePolicyKey = Extract<
   ProviderRouterCachePolicyKey,
   "priceHistoryIntraday" | "priceHistoryDaily"
 >;
-const PRICE_HISTORY_CACHE_VERSION = 3;
+const PRICE_HISTORY_CACHE_VERSION = 4;
 
 interface HistoryRequestDescriptor {
   identity: RouterRequestIdentity;
@@ -81,6 +82,16 @@ function makeHistoryRequestIdentity(
       buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange)),
     ],
   };
+}
+
+function normalizeRequestHistory(
+  points: PricePoint[],
+  request: Pick<HistoryRequestDescriptor, "cachePolicyKey">,
+): PricePoint[] {
+  const normalized = normalizePriceHistory(points);
+  return request.cachePolicyKey === "priceHistoryIntraday"
+    ? repairIsolatedIntradayOhlcOutliers(normalized)
+    : normalized;
 }
 
 export class ProviderRouterHistoryRoutes {
@@ -282,7 +293,7 @@ export class ProviderRouterHistoryRoutes {
       sourceKeys,
       false,
     );
-    const cachedValue = cached ? normalizePriceHistory(cached.value) : [];
+    const cachedValue = cached ? normalizeRequestHistory(cached.value, request) : [];
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
     if (cachedValue.length > 0 && !forceRefresh && cached && !cached.stale && !cachedHistoryStale) {
@@ -308,7 +319,7 @@ export class ProviderRouterHistoryRoutes {
     return this.firstBrokerResult(candidates, async (candidate) => {
       const fetched = await request.fetchBroker(candidate);
       if (fetched === null) return null;
-      const value = normalizePriceHistory(fetched);
+      const value = normalizeRequestHistory(fetched, request);
       if (request.isFetchedValueStale(value)) return null;
       this.deps.cacheResource(
         request.identity.kind,
@@ -326,7 +337,7 @@ export class ProviderRouterHistoryRoutes {
     return this.firstProviderArrayResult(async (provider) => {
       const fetched = await request.fetchProvider(provider);
       if (fetched === null) return null;
-      const value = normalizePriceHistory(fetched);
+      const value = normalizeRequestHistory(fetched, request);
       if (request.isFetchedValueStale(value)) return null;
       this.deps.cacheResource(
         request.identity.kind,

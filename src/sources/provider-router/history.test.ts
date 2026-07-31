@@ -146,7 +146,7 @@ describe("AssetDataRouter chart history", () => {
         namespace: "market",
         kind: "price-history",
         entityKey: "META",
-        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=2",
+        variantKey: "exchange=NASDAQ;range=1M;resolution=5m;version=3",
         sourceKey: "provider:gloomberb-cloud",
       },
       [
@@ -181,8 +181,8 @@ describe("AssetDataRouter chart history", () => {
       .query("SELECT variant_key FROM resource_cache WHERE namespace = ? AND kind = ? AND entity_key = ? ORDER BY variant_key")
       .all("market", "price-history", "META") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
-      "exchange=NASDAQ;range=1M;resolution=5m;version=2",
       "exchange=NASDAQ;range=1M;resolution=5m;version=3",
+      "exchange=NASDAQ;range=1M;resolution=5m;version=4",
     ]);
 
     persistence.close();
@@ -233,7 +233,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "FTC") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=LSE;range=ALL;resolution=1wk",
-      "exchange=LSE;range=ALL;resolution=1wk;version=3;unit=GBP",
+      "exchange=LSE;range=ALL;resolution=1wk;version=4;unit=GBP",
     ]);
 
     persistence.close();

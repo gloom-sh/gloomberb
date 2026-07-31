@@ -14,6 +14,7 @@ import { CompositeChart } from "../../../components/chart/composite";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, SeriesStyle } from "../../../time-series/types";
+import { getSupportedChartResolutionsForViewport } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { useShortcut } from "../../../react/input";
 import { useDialog, useDialogState, type PromptContext } from "../../../ui/dialog";
@@ -62,11 +63,6 @@ import { resolveChartComposerShortcut } from "./shortcuts";
 import { ChartSeriesQuickAdd } from "./quick-add";
 
 const RANGE_TABS = RANGES.map((range, index) => ({ label: `${index + 1}:${range}`, value: range }));
-const RESOLUTION_TABS = RESOLUTIONS.map((value) => ({ label: value.toUpperCase(), value }));
-const RESOLUTION_TABS_WIDTH = RESOLUTION_TABS.reduce(
-  (width, tab) => width + [...tab.label].length + 1,
-  0,
-);
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 
 interface RuntimeChartViewport {
@@ -150,6 +146,34 @@ function ChartComposerSurface({
     requestViewport: activeRuntimeViewport?.requestViewport,
     targetPointCount,
   });
+  const availableResolutions = useMemo<ChartResolution[]>(() => {
+    if (!resolution.resolutionSupport) {
+      if (!resolution.loading) return RESOLUTIONS;
+      return spec.viewport.resolution === "auto"
+        ? ["auto"]
+        : ["auto", spec.viewport.resolution];
+    }
+    const supported = new Set(getSupportedChartResolutionsForViewport(
+      spec.viewport.range,
+      resolution.resolutionSupport,
+      spec.viewport.dateWindow,
+    ));
+    return RESOLUTIONS.filter((value) => value === "auto" || supported.has(value));
+  }, [
+    resolution.loading,
+    resolution.resolutionSupport,
+    spec.viewport.dateWindow,
+    spec.viewport.range,
+    spec.viewport.resolution,
+  ]);
+  const resolutionTabs = useMemo(
+    () => availableResolutions.map((value) => ({ label: value.toUpperCase(), value })),
+    [availableResolutions],
+  );
+  const resolutionTabsWidth = useMemo(
+    () => resolutionTabs.reduce((total, tab) => total + [...tab.label].length + 1, 0),
+    [resolutionTabs],
+  );
   const selectedStudies = getSelectedBuiltinStudies(spec);
   const selectedPairStudies = getSelectedPairStudies(spec);
   const inlineStyleTarget = useMemo(() => getChartInlineStyleTarget(spec), [spec]);
@@ -257,7 +281,11 @@ function ChartComposerSurface({
   useRemoteUiNode({
     role: "chart-data",
     label: "Rendered chart composer data",
-    metadata: chartComposerSemanticMetadata(spec, resolution),
+    metadata: chartComposerSemanticMetadata(
+      spec,
+      resolution,
+      activeRuntimeViewport?.requestViewport,
+    ),
   });
 
   const openSeriesEditor = useCallback(async () => {
@@ -310,6 +338,15 @@ function ChartComposerSurface({
   const setResolution = useCallback((next: ChartResolution) => {
     setSpec({ ...spec, viewport: { ...spec.viewport, resolution: next } });
   }, [setSpec, spec]);
+  useEffect(() => {
+    if (
+      spec.viewport.resolution === "auto"
+      || availableResolutions.includes(spec.viewport.resolution)
+    ) {
+      return;
+    }
+    setResolution("auto");
+  }, [availableResolutions, setResolution, spec.viewport.resolution]);
   const setInlineStyle = useCallback((style: SeriesStyle) => {
     if (!inlineStyleTarget || !styles.includes(style)) return;
     setSpec({
@@ -352,7 +389,7 @@ function ChartComposerSurface({
             {...context}
             title="Chart Resolution"
             selectedChoiceId={spec.viewport.resolution}
-            choices={RESOLUTIONS.map((value) => ({
+            choices={availableResolutions.map((value) => ({
               id: value,
               label: value.toUpperCase(),
               description: value === "auto"
@@ -362,11 +399,17 @@ function ChartComposerSurface({
           />
         ),
       }).catch(() => "");
-      if (RESOLUTIONS.includes(next as ChartResolution)) setResolution(next as ChartResolution);
+      if (availableResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
     } finally {
       setInteractionCaptured("prompt", false);
     }
-  }, [dialog, setInteractionCaptured, setResolution, spec.viewport.resolution]);
+  }, [
+    availableResolutions,
+    dialog,
+    setInteractionCaptured,
+    setResolution,
+    spec.viewport.resolution,
+  ]);
   const openModePicker = useCallback(async () => {
     if (styles.length === 0) return;
     setInteractionCaptured("prompt", true);
@@ -522,13 +565,13 @@ function ChartComposerSurface({
         <Box
           flexShrink={1}
           minWidth={0}
-          width={RESOLUTION_TABS_WIDTH}
+          width={resolutionTabsWidth}
           height={1}
           overflow="hidden"
           data-gloom-role="chart-resolution-control"
         >
           <Tabs
-            tabs={RESOLUTION_TABS}
+            tabs={resolutionTabs}
             activeValue={spec.viewport.resolution}
             onSelect={(value) => setResolution(value as ChartResolution)}
             compact
@@ -603,6 +646,7 @@ function ChartComposerSurface({
           height={Math.max(4, height - 1)}
           focused={focused}
           interactive={surfaceInteractive}
+          allowHistoricalBackfill
           onViewportChange={handleChartViewportChange}
           onActivate={activatePane}
           onToggleSeries={toggleSeries}

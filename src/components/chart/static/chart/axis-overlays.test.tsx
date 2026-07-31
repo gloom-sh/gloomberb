@@ -49,6 +49,8 @@ describe("StaticXAxisLabels", () => {
   test("positions desktop labels by chart ratio instead of font-space advances", () => {
     const html = renderAxis("desktop-web");
 
+    expect(html).toContain('data-gloom-role="chart-time-axis"');
+    expect(html).toContain('data-gloom-label="Nov 3 2025 Mar Jul 29 2026"');
     expect(html).toContain("left:50%");
     expect(html).toContain("transform:translateX(-50%)");
     expect(html).toContain("right:0");

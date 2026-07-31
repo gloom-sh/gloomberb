@@ -100,6 +100,7 @@ export function compositeViewportHasObservations(
 export function resolveCompositeNavigationBounds(
   series: ResolvedSeries[],
   requestedViewport?: CompositeViewportRange | null,
+  options: { historicalPaddingRatio?: number } = {},
 ): CompositeViewportRange | null {
   const requested = normalizeViewport(requestedViewport);
   const timestamps = pointTimestamps(series);
@@ -115,7 +116,14 @@ export function resolveCompositeNavigationBounds(
   // Loaded series can include a buffer outside the authored viewport. Use the
   // complete real-data extent when the two ranges overlap, but do not clamp a
   // newly authored, disjoint request to stale observations.
-  return overlapsData ? data : requested;
+  if (!overlapsData) return requested;
+  const paddingRatio = Math.max(options.historicalPaddingRatio ?? 0, 0);
+  if (paddingRatio === 0) return data;
+  const requestedSpan = Math.max(requested.end.getTime() - requested.start.getTime(), 1);
+  return {
+    start: new Date(Math.min(data.start.getTime(), requested.start.getTime()) - requestedSpan * paddingRatio),
+    end: data.end,
+  };
 }
 
 export function resolveCompositeMinimumSpanMs(
@@ -305,34 +313,17 @@ export function panCompositeViewport(
   bounds: CompositeViewportRange,
   shiftRatio: number,
   series?: ResolvedSeries[],
+  allowEmpty = false,
 ): CompositeViewportRange {
   const current = clampCompositeViewport(viewport, bounds);
   if (!Number.isFinite(shiftRatio) || shiftRatio === 0) return current;
-  const marketProjection = marketViewportProjection(current, bounds, series);
-  const candidate = marketProjection
-    ? (() => {
-        const {
-          scale,
-          startRatio,
-          endRatio,
-        } = marketProjection;
-        const span = endRatio - startRatio;
-        const nextStart = clamp(
-          startRatio - span * shiftRatio,
-          0,
-          1 - span,
-        );
-        return viewportFromMarketRatios(scale, nextStart, nextStart + span);
-      })()
-    : (() => {
-        const span = Math.max(current.end.getTime() - current.start.getTime(), 1);
-        const shift = span * shiftRatio;
-        return clampCompositeViewport({
-          start: new Date(current.start.getTime() - shift),
-          end: new Date(current.end.getTime() - shift),
-        }, bounds);
-      })();
-  if (!series) return candidate;
+  const span = Math.max(current.end.getTime() - current.start.getTime(), 1);
+  const shift = span * shiftRatio;
+  const candidate = clampCompositeViewport({
+    start: new Date(current.start.getTime() - shift),
+    end: new Date(current.end.getTime() - shift),
+  }, bounds);
+  if (!series || allowEmpty) return candidate;
 
   const timestamps = pointTimestamps(series)
     .filter((timestamp) => timestamp >= bounds.start.getTime() && timestamp <= bounds.end.getTime());

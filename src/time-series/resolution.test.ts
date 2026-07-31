@@ -4,10 +4,12 @@ import {
   getBestSupportedResolutionForVisibleWindow,
   getExpandedBufferRange,
   getPresetResolution,
+  getSupportedChartResolutionsForViewport,
   isRangePresetSupported,
   normalizeChartResolution,
   sortChartResolutions,
 } from "./resolution";
+import { TIME_RANGES } from "./range";
 
 describe("chart-resolution", () => {
   test("maps range presets to their default manual resolutions", () => {
@@ -78,5 +80,54 @@ describe("chart-resolution", () => {
     }, support, 100)).toBe("1m");
 
     expect(CHART_RESOLUTION_STEP_MS["1h"]).toBe(60 * 60_000);
+  });
+
+  test("exposes only intervals that can cover and chart the authored viewport", () => {
+    const support = [
+      { resolution: "1m", maxRange: "1W" },
+      { resolution: "15m", maxRange: "3M" },
+      { resolution: "30m", maxRange: "6M" },
+      { resolution: "1h", maxRange: "1Y" },
+      { resolution: "1d", maxRange: "ALL" },
+    ] as const;
+
+    expect(getSupportedChartResolutionsForViewport("1M", support))
+      .toEqual(["15m", "30m", "1h", "1d"]);
+    expect(getSupportedChartResolutionsForViewport("1Y", support))
+      .toEqual(["1h", "1d"]);
+    expect(getSupportedChartResolutionsForViewport("1M", support, {
+      start: "2024-01-01",
+      end: "2026-01-01",
+    })).toEqual(["1d"]);
+  });
+
+  test("hides intervals too coarse to form a chart for the selected range", () => {
+    const support = (Object.keys(CHART_RESOLUTION_STEP_MS) as Array<
+      keyof typeof CHART_RESOLUTION_STEP_MS
+    >).map((resolution) => ({ resolution, maxRange: "ALL" as const }));
+
+    expect(getSupportedChartResolutionsForViewport("1D", support))
+      .toEqual(["1m", "5m", "15m", "30m", "45m", "1h"]);
+    expect(getSupportedChartResolutionsForViewport("1W", support))
+      .toEqual(["1m", "5m", "15m", "30m", "45m", "1h", "1d"]);
+    expect(getSupportedChartResolutionsForViewport("1M", support))
+      .toEqual(["1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk"]);
+    expect(getSupportedChartResolutionsForViewport("3M", support))
+      .toEqual(Object.keys(CHART_RESOLUTION_STEP_MS));
+  });
+
+  test("evaluates every range and resolution capability boundary", () => {
+    const resolutions = ["1m", "5m", "15m", "30m", "45m", "1h"] as const;
+    const support = resolutions.map((resolution, index) => ({
+      resolution,
+      maxRange: TIME_RANGES[Math.min(index, TIME_RANGES.length - 1)]!,
+    }));
+
+    for (const [rangeIndex, range] of TIME_RANGES.entries()) {
+      const available = new Set(getSupportedChartResolutionsForViewport(range, support));
+      for (const [resolutionIndex, resolution] of resolutions.entries()) {
+        expect(available.has(resolution)).toBe(rangeIndex <= resolutionIndex);
+      }
+    }
   });
 });

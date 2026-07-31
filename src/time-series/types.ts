@@ -1,4 +1,5 @@
 import type { ChartResolution, TimeRange } from "./range";
+import type { ChartResolutionSupport } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
 
 export const CHART_SPEC_VERSION = 1 as const;
@@ -150,6 +151,8 @@ export interface TimeSeriesFieldDefinition {
 
 export interface ChartResolutionResult {
   series: ResolvedSeries[];
+  /** Provider capabilities shared by every active market series. */
+  resolutionSupport?: ChartResolutionSupport[];
   /** Series available to the legend, including hidden base series that can be restored. */
   legendSeries?: ResolvedSeries[];
   /** Loaded observations retained outside the visible window for interactive navigation. */

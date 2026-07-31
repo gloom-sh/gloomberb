@@ -95,6 +95,10 @@ export function StaticXAxisLabels({
       flexDirection="row"
       position="relative"
       overflow="hidden"
+      data-gloom-role="chart-time-axis"
+      data-gloom-label={(visiblePositionedLabels.length > 0
+        ? visiblePositionedLabels.map((entry) => entry.label)
+        : visibleLabels).join(" ")}
     >
       {uiHost.kind === "desktop-web" && visiblePositionedLabels.length > 0 ? (
         <Box position="absolute" left={0} top={0} width={width} height={1}>

@@ -7,7 +7,7 @@ import {
   resolveCompositeOhlcWidth,
 } from "./rasterizer";
 import { buildCompositeColumnLayout } from "./column-layout";
-import { buildCompositeChartScene } from "./scene";
+import { buildCompositeChartScene, projectCompositeValue } from "./scene";
 import {
   renderCompositePanelText,
   resolveCompositeTextOhlcWidth,
@@ -676,6 +676,66 @@ describe("composite chart renderers", () => {
 
     const zoomedText = renderCompositePanelText(zoomedScene.panels[0]!, 81, null, null).join("\n");
     expect(zoomedText).toContain("█████");
+  });
+
+  test("keeps the first and last candle bodies fully inside the bitmap", () => {
+    const candles = series("price", "candles", [], "left", "#00ff66");
+    candles.points = ["2025-01-01", "2025-01-02", "2025-01-03"].map((date) => ({
+      ...point(date, 10),
+      open: 8,
+      high: 13,
+      low: 7,
+      close: 10,
+    }));
+    const scene = buildCompositeChartScene(
+      [candles],
+      [{ id: "main" }],
+      {
+        width: 81,
+        height: 9,
+        viewport: {
+          start: new Date("2025-01-01T00:00:00.000Z"),
+          end: new Date("2025-01-03T00:00:00.000Z"),
+        },
+      },
+    )!;
+    const panel = scene.panels[0]!;
+    const bitmap = renderCompositePanelBitmap(panel, {
+      pixelWidth: 101,
+      pixelHeight: 51,
+      colors: {
+        background: "#000000",
+        grid: "#202020",
+        crosshair: "#ffffff",
+        text: "#eeeeee",
+        textDim: "#999999",
+        negative: "#ff0000",
+      },
+    });
+    const domain = panel.axes.left!;
+    const bodyYRatio = (
+      projectCompositeValue(8, domain)!
+      + projectCompositeValue(10, domain)!
+    ) / 2;
+    const bodyY = Math.round(bodyYRatio * (bitmap.height - 1));
+    const coloredColumns = Array.from({ length: bitmap.width }, (_, x) => x)
+      .filter((x) => {
+        const offset = (bodyY * bitmap.width + x) * 4;
+        return bitmap.pixels[offset]! < 20
+          && bitmap.pixels[offset + 1]! > 220
+          && bitmap.pixels[offset + 2]! > 70;
+      });
+    const runs: number[][] = [];
+    for (const x of coloredColumns) {
+      const last = runs.at(-1);
+      if (last?.at(-1) === x - 1) last.push(x);
+      else runs.push([x]);
+    }
+
+    expect(runs).toHaveLength(3);
+    expect(runs.map((run) => run.length)).toEqual([13, 13, 13]);
+    expect(runs[0]?.[0]).toBe(0);
+    expect(runs.at(-1)?.at(-1)).toBe(bitmap.width - 1);
   });
 
   test("marks a standalone line observation without extending it through time", () => {

@@ -11,11 +11,6 @@ import {
   zoomCompositeViewport,
   type CompositeViewportRange,
 } from "./interactions";
-import {
-  buildCompositeTimeScale,
-  projectCompositeTimestamp,
-} from "./time-scale";
-
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function point(day: number): TimeSeriesPoint {
@@ -91,7 +86,7 @@ describe("composite chart interactions", () => {
     expect(clampedNewer).toEqual(viewport(7, 11));
   });
 
-  test("keeps the same market-slot span while panning across a closed session", () => {
+  test("never changes the viewport span while panning across a closed session", () => {
     const data = intradayMarketSeries();
     const bounds = resolveCompositeNavigationBounds([data])!;
     const visible = {
@@ -99,19 +94,9 @@ describe("composite chart interactions", () => {
       end: new Date("2025-01-03T17:00:00.000Z"),
     };
     const panned = panCompositeViewport(visible, bounds, 0.5, [data]);
-    const scale = buildCompositeTimeScale(
-      [data],
-      bounds.start.getTime(),
-      bounds.end.getTime(),
-    );
-    const projectedSpan = (window: CompositeViewportRange) => (
-      projectCompositeTimestamp(scale, window.end.getTime())!.ratio
-      - projectCompositeTimestamp(scale, window.start.getTime())!.ratio
-    );
 
     expect(panned.end.getTime() - panned.start.getTime())
-      .not.toBe(visible.end.getTime() - visible.start.getTime());
-    expect(Math.abs(projectedSpan(panned) - projectedSpan(visible))).toBeLessThan(1e-12);
+      .toBe(visible.end.getTime() - visible.start.getTime());
   });
 
   test("uses representative cadence instead of a stray fine gap as the zoom floor", () => {
@@ -124,6 +109,42 @@ describe("composite chart interactions", () => {
   test("keeps the selected window separate from wider loaded navigation bounds", () => {
     const data = series([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(resolveCompositeNavigationBounds([data], viewport(5, 9))).toEqual(viewport(1, 9));
+  });
+
+  test("reserves an older unloaded window without extending into the future", () => {
+    const data = series([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    const requested = viewport(5, 9);
+    const bounds = resolveCompositeNavigationBounds(
+      [data],
+      requested,
+      { historicalPaddingRatio: 1 },
+    );
+
+    expect(bounds).toEqual(viewport(-3, 9));
+    expect(panCompositeViewport(requested, bounds!, 1, [data], true))
+      .toEqual(viewport(1, 5));
+    expect(panCompositeViewport(requested, bounds!, -10, [data], true))
+      .toEqual(viewport(5, 9));
+  });
+
+  test("enters unloaded history from a full market-session viewport without changing span", () => {
+    const data = intradayMarketSeries();
+    const requested = {
+      start: data.points[0]!.date,
+      end: data.points.at(-1)!.date,
+    };
+    const bounds = resolveCompositeNavigationBounds(
+      [data],
+      requested,
+      { historicalPaddingRatio: 1 },
+    )!;
+
+    const older = panCompositeViewport(requested, bounds, 1, [data], true);
+    expect(older).not.toEqual(requested);
+    expect(older.end.getTime()).toBe(requested.start.getTime());
+    expect(older.end.getTime() - older.start.getTime())
+      .toBe(requested.end.getTime() - requested.start.getTime());
+    expect(panCompositeViewport(older, bounds, -1, [data], true)).toEqual(requested);
   });
 
   test("clamps overlapping requested bounds to real data but preserves disjoint requests", () => {

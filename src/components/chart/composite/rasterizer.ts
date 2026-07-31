@@ -250,7 +250,12 @@ function drawOhlc(
   const candleWidth = resolveCompositeOhlcWidth(series.points, width);
   for (const projected of series.points) {
     const source = projected.point;
-    const x = pixelPoint(projected, width, height).x;
+    const halfWidth = Math.min(candleWidth / 2, Math.max(width - 1, 0) / 2);
+    const x = clamp(
+      pixelPoint(projected, width, height).x,
+      halfWidth,
+      Math.max(width - 1 - halfWidth, halfWidth),
+    );
     const close = source.close ?? projected.value;
     const open = source.open ?? close;
     const high = source.high ?? Math.max(open, close);

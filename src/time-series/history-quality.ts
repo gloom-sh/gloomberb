@@ -1,5 +1,5 @@
-import type { PricePoint } from "../../types/financials";
-import { getPricePointTimestamp } from "../../utils/price-history";
+import type { PricePoint } from "../types/financials";
+import { getPricePointTimestamp } from "../utils/price-history";
 
 const MAX_NEIGHBOR_GAP_MS = 60 * 60 * 1000;
 const STABLE_NEIGHBOR_CLOSE_RATIO = 0.01;
@@ -34,11 +34,35 @@ function isIsolatedOhlcOutlier(
   ));
 }
 
-export function hasMalformedCloudIntradayHistory(points: readonly PricePoint[]): boolean {
+export function hasMalformedIntradayHistory(points: readonly PricePoint[]): boolean {
   for (let index = 1; index < points.length - 1; index += 1) {
     if (isIsolatedOhlcOutlier(points[index - 1]!, points[index]!, points[index + 1]!)) {
       return true;
     }
   }
   return false;
+}
+
+export function repairIsolatedIntradayOhlcOutliers(
+  points: readonly PricePoint[],
+): PricePoint[] {
+  return points.map((point, index) => {
+    const previous = points[index - 1];
+    const next = points[index + 1];
+    if (!previous || !next || !isIsolatedOhlcOutlier(previous, point, next)) return point;
+
+    const isOutlier = (value: number | undefined) => (
+      typeof value === "number"
+      && Number.isFinite(value)
+      && relativeDifference(value, point.close) > ISOLATED_OHLC_OUTLIER_RATIO
+    );
+    const open = isOutlier(point.open) ? previous.close : point.open;
+    const bodyOpen = open ?? point.close;
+    return {
+      ...point,
+      open,
+      high: isOutlier(point.high) ? Math.max(bodyOpen, point.close) : point.high,
+      low: isOutlier(point.low) ? Math.min(bodyOpen, point.close) : point.low,
+    };
+  });
 }

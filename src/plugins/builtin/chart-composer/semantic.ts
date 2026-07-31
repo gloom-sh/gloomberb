@@ -15,6 +15,15 @@ function pointEvidence(point: TimeSeriesPoint | undefined) {
     : null;
 }
 
+function viewportEvidence(viewport: UseChartResolutionResult["viewport"]) {
+  if (!viewport) return null;
+  return {
+    start: viewport.start.toISOString(),
+    end: viewport.end.toISOString(),
+    spanMs: viewport.end.getTime() - viewport.start.getTime(),
+  };
+}
+
 function sourceEvidence(series: ChartSeriesSpec) {
   return series.source.kind === "security"
     ? {
@@ -36,6 +45,7 @@ function sourceEvidence(series: ChartSeriesSpec) {
 export function chartComposerSemanticMetadata(
   spec: ChartSpec,
   resolution: UseChartResolutionResult,
+  runtimeViewport?: { start: Date; end: Date } | null,
 ): Record<string, unknown> {
   const resolvedById = new Map(resolution.series.map((series) => [series.id, series] as const));
   const symbols = [...new Set(spec.series.flatMap((series) => (
@@ -69,7 +79,16 @@ export function chartComposerSemanticMetadata(
     loading: resolution.loading,
     errors: resolution.errors,
     warnings: resolution.warnings,
+    resolutionSupport: resolution.resolutionSupport ?? null,
+    viewport: viewportEvidence(runtimeViewport ?? resolution.viewport),
+    authoredViewport: viewportEvidence(resolution.viewport),
     baseSeries,
+    bufferedSeries: (resolution.bufferedSeries ?? []).map((series) => ({
+      id: series.id,
+      pointCount: series.points.length,
+      first: pointEvidence(series.points[0]),
+      last: pointEvidence(series.points.at(-1)),
+    })),
     resolvedSeries: resolution.series.map((series) => ({
       id: series.id,
       label: series.label,
@@ -77,6 +96,7 @@ export function chartComposerSemanticMetadata(
       transform: series.transform,
       axis: series.axis,
       panelId: series.panelId,
+      timeBasis: series.timeBasis ?? null,
       pointCount: series.points.length,
       first: pointEvidence(series.points[0]),
       last: pointEvidence(series.points.at(-1)),

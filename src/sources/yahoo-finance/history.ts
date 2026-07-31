@@ -1,9 +1,11 @@
 import type { TimeRange } from "../../time-series/range";
 import {
+  isIntradayResolution,
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../time-series/resolution";
+import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
 import type { PricePoint } from "../../types/financials";
 import { normalizeSubUnitCurrency } from "./mappers";
 import { getYahooSymbolsToTry } from "./symbols";
@@ -101,7 +103,9 @@ export async function loadYahooPriceHistoryForResolution({
         }
       }
 
-      return history;
+      return isIntradayResolution(resolution)
+        ? repairIsolatedIntradayOhlcOutliers(history)
+        : history;
     } catch (err) {
       lastError = err;
     }

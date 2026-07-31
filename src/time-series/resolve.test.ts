@@ -111,6 +111,56 @@ describe("resolveChartSpecData", () => {
     ]);
   });
 
+  test("falls back from an unsupported manual interval while exposing source capabilities", async () => {
+    const requestedResolutions: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [
+        { resolution: "15m", maxRange: "1M" },
+        { resolution: "1h", maxRange: "3M" },
+      ],
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requestedResolutions.push(resolution);
+        return [{ date: new Date("2026-07-30T15:00:00Z"), close: 100 }];
+      },
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1M", resolution: "45m" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "TEST", exchange: "NASDAQ" },
+          fieldId: "market.close",
+        },
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00Z"),
+      loadFredSeries: async () => fredLoad(),
+    });
+
+    expect(requestedResolutions).toEqual(["15m"]);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toContain(
+      "45M data is unavailable for this range. Auto resolution was used instead.",
+    );
+    expect(result.resolutionSupport).toEqual([
+      { resolution: "15m", maxRange: "1M" },
+      { resolution: "1h", maxRange: "3M" },
+    ]);
+  });
+
   test("keeps the snapshot exchange when a newer quote omits it", async () => {
     const historyExchanges: string[] = [];
     const source = {
@@ -179,6 +229,11 @@ describe("resolveChartSpecData", () => {
     expect(historyExchanges).toEqual(["XNAS"]);
     expect(result.series[0]?.points.at(-1)?.date.toISOString())
       .toBe("2026-07-30T15:26:00.000Z");
+    expect(result.series[0]?.timeBasis).toMatchObject({
+      kind: "market",
+      timeZone: "America/New_York",
+      cadenceMs: 5 * 60_000,
+    });
   });
 
   test("resolves the exchange before selecting an adaptive Auto resolution", async () => {
@@ -399,6 +454,87 @@ describe("resolveChartSpecData", () => {
       timeZone: "America/New_York",
       cadenceMs: 15 * 60 * 1_000,
     });
+  });
+
+  test("accumulates historical windows without replacing the current tail", async () => {
+    const detailedRequests: Array<{ start: string; end: string }> = [];
+    const currentHistory = [
+      { date: "2026-01-02T16:00:00.000Z" as unknown as Date, close: 110 },
+      { date: new Date("2026-07-30T16:00:00.000Z"), close: 120 },
+    ];
+    const historicalHistory = [
+      { date: new Date("2024-08-01T16:00:00.000Z"), close: 90 },
+      { date: new Date("2025-07-29T16:00:00.000Z"), close: 100 },
+    ];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [
+        { resolution: "1h", maxRange: "1Y" },
+        { resolution: "1d", maxRange: "ALL" },
+      ],
+      getPriceHistoryForResolution: async () => currentHistory,
+      getDetailedPriceHistory: async (_symbol, _exchange, start, end) => {
+        detailedRequests.push({
+          start: start.toISOString(),
+          end: end.toISOString(),
+        });
+        return historicalHistory;
+      },
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1Y", resolution: "1h" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "TEST", exchange: "NASDAQ" },
+          fieldId: "market.close",
+        },
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+    const sources = {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00.000Z"),
+      loadFredSeries: async () => fredLoad(),
+    };
+    const cache = new ChartResolveCache();
+
+    const current = await resolveChartSpecData(spec, sources, cache);
+    const historical = await resolveChartSpecData(spec, sources, cache, {
+      requestViewport: {
+        start: new Date("2024-07-30T16:00:00.000Z"),
+        end: new Date("2025-07-30T16:00:00.000Z"),
+      },
+    });
+    const revisitedCurrent = await resolveChartSpecData(spec, sources, cache);
+    const bufferedDates = (result: typeof current) => (
+      result.bufferedSeries?.[0]?.points.map((point) => point.date.toISOString())
+    );
+
+    expect(detailedRequests).toEqual([{
+      start: "2024-07-30T16:00:00.000Z",
+      end: "2025-07-30T16:00:00.001Z",
+    }]);
+    expect(current.resolutionSupport).toEqual([
+      { resolution: "1h", maxRange: "1Y" },
+      { resolution: "1d", maxRange: "ALL" },
+    ]);
+    expect(bufferedDates(historical)).toEqual([
+      "2024-08-01T16:00:00.000Z",
+      "2025-07-29T16:00:00.000Z",
+      "2026-01-02T16:00:00.000Z",
+      "2026-07-30T16:00:00.000Z",
+    ]);
+    expect(bufferedDates(revisitedCurrent)).toEqual(bufferedDates(historical));
+    expect(revisitedCurrent.bufferedSeries?.[0]?.points.at(-1)?.value).toBe(120);
   });
 
   test("keeps percent transforms and studies defined in a panned history window", async () => {

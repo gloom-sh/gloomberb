@@ -83,6 +83,19 @@ const CHART_RESOLUTION_POINTS_PER_DAY: Record<ManualChartResolution, number> = {
   "1mo": 1 / 21,
 };
 
+const TIME_RANGE_APPROXIMATE_DAYS: Record<TimeRange, number> = {
+  "1D": 1,
+  "1W": 7,
+  "1M": 30,
+  "3M": 90,
+  "6M": 180,
+  "1Y": 365,
+  "5Y": 5 * 365,
+  "ALL": 50 * 365,
+};
+
+const MINIMUM_USEFUL_CHART_POINTS = 2;
+
 const TIME_RANGE_INDEX = new Map(TIME_RANGE_ORDER.map((range, index) => [range, index]));
 
 function getTimeRangeIndex(range: TimeRange): number {
@@ -181,6 +194,34 @@ export function getSupportMaxRange(
     return (support as ReadonlyMap<ManualChartResolution, TimeRange>).get(resolution) ?? null;
   }
   return normalizeChartResolutionSupport(support).find((entry) => entry.resolution === resolution)?.maxRange ?? null;
+}
+
+export function getSupportedChartResolutionsForViewport(
+  range: TimeRange,
+  support: readonly ChartResolutionSupport[],
+  dateWindow?: { start: string | Date; end: string | Date },
+): ManualChartResolution[] {
+  const start = dateWindow ? new Date(dateWindow.start) : null;
+  const end = dateWindow ? new Date(dateWindow.end) : null;
+  const hasValidDateWindow = !!start
+    && Number.isFinite(start.getTime())
+    && !!end
+    && Number.isFinite(end.getTime())
+    && start.getTime() <= end.getTime();
+  const viewportSpanMs = hasValidDateWindow
+    ? Math.max(end.getTime() - start.getTime(), 0)
+    : TIME_RANGE_APPROXIMATE_DAYS[range] * CHART_RESOLUTION_STEP_MS["1d"];
+  return normalizeChartResolutionSupport(support)
+    .filter((entry) => (
+      hasValidDateWindow
+        ? isDateWindowWithinTimeRange(start, end, entry.maxRange)
+        : isTimeRangeAtOrBelow(range, entry.maxRange)
+    ))
+    .filter((entry) => (
+      viewportSpanMs / CHART_RESOLUTION_STEP_MS[entry.resolution]
+        >= MINIMUM_USEFUL_CHART_POINTS
+    ))
+    .map((entry) => entry.resolution);
 }
 
 function minTimeRange(left: TimeRange, right: TimeRange): TimeRange {

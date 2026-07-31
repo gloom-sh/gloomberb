@@ -122,6 +122,8 @@ export interface CompositeChartProps {
   height: number;
   focused?: boolean;
   interactive?: boolean;
+  /** Permit panning into an older unloaded window so the owner can backfill it. */
+  allowHistoricalBackfill?: boolean;
   cursorDate?: Date | null;
   viewport?: {
     start: Date;

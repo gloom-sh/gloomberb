@@ -339,6 +339,14 @@ describe("GloomberbCloudProvider", () => {
   test("does not advertise unsupported 45 minute chart resolution", () => {
     const provider = new GloomberbCloudProvider();
     expect(provider.getChartResolutionCapabilities()).not.toContain("45m");
+    expect(provider.getChartResolutionSupport()).toContainEqual({
+      resolution: "1d",
+      maxRange: "5Y",
+    });
+    expect(provider.getChartResolutionSupport()).toContainEqual({
+      resolution: "1wk",
+      maxRange: "5Y",
+    });
   });
 
   test("normalizes sub-unit cloud quotes to their main currency", async () => {

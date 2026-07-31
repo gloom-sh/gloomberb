@@ -29,7 +29,7 @@ import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { canonicalTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory } from "../../utils/price-history";
 import { createProviderMiss } from "../provider-errors";
-import { hasMalformedCloudIntradayHistory } from "./history-quality";
+import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
 import {
   cloudNewsParams,
   mapCloudNewsArticle,
@@ -55,8 +55,8 @@ const CLOUD_RESOLUTION_SUPPORT = normalizeChartResolutionSupport([
   { resolution: "15m", maxRange: "3M" },
   { resolution: "30m", maxRange: "6M" },
   { resolution: "1h", maxRange: "1Y" },
-  { resolution: "1d", maxRange: "ALL" },
-  { resolution: "1wk", maxRange: "ALL" },
+  { resolution: "1d", maxRange: "5Y" },
+  { resolution: "1wk", maxRange: "5Y" },
   { resolution: "1mo", maxRange: "ALL" },
 ]);
 const CLOUD_PROVIDER_MISS_PATTERNS = [
@@ -113,7 +113,7 @@ function mapCloudPriceHistory(
   if (
     /(min|h)$/i.test(interval)
     && upstream !== "yahoo"
-    && hasMalformedCloudIntradayHistory(points)
+    && hasMalformedIntradayHistory(points)
   ) {
     throw createProviderMiss(`Cloud chart data failed OHLC validation for ${ticker}`);
   }

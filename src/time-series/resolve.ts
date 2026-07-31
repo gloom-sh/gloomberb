@@ -1,6 +1,7 @@
 import { appendLiveQuotePoint } from "./chart-data";
 import {
   getTimeRangeForDateWindow,
+  isDateWindowWithinTimeRange,
   subtractTimeRange,
 } from "./date-window";
 import {
@@ -45,6 +46,7 @@ import {
   publicTickerKey,
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
+import { getPricePointTimestamp } from "../utils/price-history";
 import type {
   ChartResolutionResult,
   ChartSeriesSpec,
@@ -87,6 +89,7 @@ export interface ChartResolveOptions {
 export class ChartResolveCache {
   readonly financialsByInstrument = new Map<string, Promise<TickerFinancials | null>>();
   readonly priceHistoryByRequest = new Map<string, Promise<TickerFinancials["priceHistory"]>>();
+  readonly accumulatedPriceHistory = new Map<string, TickerFinancials["priceHistory"]>();
   readonly resolutionSupportByInstrument = new Map<string, Promise<ChartResolutionSupport[]>>();
   readonly fredSeriesByRequest = new Map<string, Promise<FredSeriesLoadResult>>();
 }
@@ -99,6 +102,7 @@ interface DateBounds {
 
 interface PriceHistoryRequest {
   bounds: DateBounds;
+  visibleBounds: DateBounds;
   explicitWindow: boolean;
   fallbackRange: TimeRange;
   resolution: ManualChartResolution;
@@ -221,7 +225,21 @@ function requestResolution(
   options: ChartResolveOptions,
   sharedSupport: readonly ChartResolutionSupport[],
 ): ManualChartResolution {
-  if (spec.viewport.resolution !== "auto") return spec.viewport.resolution;
+  if (spec.viewport.resolution !== "auto") {
+    const maxRange = getSupportMaxRange(sharedSupport, spec.viewport.resolution);
+    const supported = sharedSupport.length === 0
+      || (
+        maxRange !== null
+        && bounds.start !== null
+        && bounds.end !== null
+        && isDateWindowWithinTimeRange(
+          new Date(bounds.start),
+          new Date(bounds.end),
+          maxRange,
+        )
+      );
+    if (supported) return spec.viewport.resolution;
+  }
   const runtimeBounds = runtimeAutoBounds(options);
   const adaptive = runtimeBounds && runtimeBounds.start !== null && runtimeBounds.end !== null
     ? getBestSupportedResolutionForVisibleWindow(
@@ -284,6 +302,48 @@ function emptyFinancials(priceHistory: TickerFinancials["priceHistory"] = []): T
   return { annualStatements: [], quarterlyStatements: [], priceHistory };
 }
 
+function mergePriceHistoryWindows(
+  current: TickerFinancials["priceHistory"],
+  incoming: TickerFinancials["priceHistory"],
+): TickerFinancials["priceHistory"] {
+  const byTimestamp = new Map<number, TickerFinancials["priceHistory"][number]>();
+  for (const point of [...current, ...incoming]) {
+    const timestamp = getPricePointTimestamp(point);
+    if (Number.isFinite(timestamp)) {
+      byTimestamp.set(
+        timestamp,
+        point.date instanceof Date ? point : { ...point, date: new Date(timestamp) },
+      );
+    }
+  }
+  return [...byTimestamp.values()].sort(
+    (left, right) => getPricePointTimestamp(left) - getPricePointTimestamp(right),
+  );
+}
+
+function historyIntersectsBounds(
+  history: TickerFinancials["priceHistory"],
+  bounds: DateBounds,
+): boolean {
+  if (history.length === 0) return false;
+  if (bounds.start === null || bounds.end === null) return true;
+  return history.some((point) => {
+    const timestamp = getPricePointTimestamp(point);
+    return Number.isFinite(timestamp) && timestamp >= bounds.start! && timestamp <= bounds.end!;
+  });
+}
+
+function clampHistoryBoundsToSupport(
+  bounds: DateBounds,
+  maxRange: TimeRange | null,
+): DateBounds {
+  if (bounds.start === null || bounds.end === null || !maxRange || maxRange === "ALL") {
+    return bounds;
+  }
+  const supportedStart = subtractTimeRange(new Date(bounds.end), maxRange).getTime();
+  return { start: Math.max(bounds.start, supportedStart), end: bounds.end };
+}
+
 function latestQuote(snapshot: Quote | undefined, override: Quote | undefined): Quote | undefined {
   if (!snapshot) return override;
   if (!override) return snapshot;
@@ -326,7 +386,7 @@ async function loadPriceHistory(
         request.resolution,
         context,
       );
-      if (detailed.length > 0) return detailed;
+      if (historyIntersectsBounds(detailed, request.visibleBounds)) return detailed;
     } catch {
       // Fall through to trailing history when a provider cannot serve the exact window.
     }
@@ -340,7 +400,12 @@ async function loadPriceHistory(
         request.resolution,
         context,
       );
-      if (resolved.length > 0) return resolved;
+      if (
+        resolved.length > 0
+        && (!request.explicitWindow || historyIntersectsBounds(resolved, request.visibleBounds))
+      ) {
+        return resolved;
+      }
     } catch {
       // Some providers expose the resolution API but only support a subset.
     }
@@ -352,12 +417,20 @@ async function loadPriceHistory(
       `Requested ${request.resolution} price history is unavailable for ${instrumentLabel(source)}. Choose Auto or a supported interval.`,
     );
   }
-  return provider.getPriceHistory(
+  const fallback = await provider.getPriceHistory(
     source.instrument.symbol,
     source.instrument.exchange ?? "",
     request.fallbackRange,
     context,
   );
+  if (
+    request.explicitWindow
+    && fallback.length > 0
+    && !historyIntersectsBounds(fallback, request.visibleBounds)
+  ) {
+    throw new Error(`Price history for the requested window is unavailable for ${instrumentLabel(source)}.`);
+  }
+  return fallback;
 }
 
 function baseSecuritySeries(
@@ -640,14 +713,12 @@ export async function resolveChartSpecData(
       ? [[instrumentKey(entry.source), entry.source] as const]
       : []
   ))).values()];
-  const resolutionSupportSources = adaptiveBounds
-    ? await Promise.all(activeMarketSources.map(async (source) => (
-        source.instrument.exchange?.trim()
-          ? source
-          : sourceWithResolvedExchange(source, await loadFinancials(source))
-      )))
-    : activeMarketSources;
-  const sharedSupport = adaptiveBounds && activeMarketSources.length > 0
+  const resolutionSupportSources = await Promise.all(activeMarketSources.map(async (source) => (
+    source.instrument.exchange?.trim()
+      ? source
+      : sourceWithResolvedExchange(source, await loadFinancials(source))
+  )));
+  const sharedSupport = activeMarketSources.length > 0
     ? intersectChartResolutionSupport(await Promise.all(
         resolutionSupportSources.map((source) => loadResolutionSupport(source)),
       ))
@@ -659,6 +730,14 @@ export async function resolveChartSpecData(
     options,
     sharedSupport,
   );
+  if (
+    spec.viewport.resolution !== "auto"
+    && initialResolution !== spec.viewport.resolution
+  ) {
+    warnings.push(
+      `${spec.viewport.resolution.toUpperCase()} data is unavailable for this range. Auto resolution was used instead.`,
+    );
+  }
   const requestVisibleBounds = requestBounds ?? initialVisibleBounds;
   const initialCalculationBounds = calculationBounds(
     spec,
@@ -672,16 +751,18 @@ export async function resolveChartSpecData(
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
     all = false,
   ) => {
-    const requestedFallbackRange = all
-      ? "ALL"
-      : trailingRangeForStart(initialCalculationBounds.start, referenceNow);
     const support = await loadResolutionSupport(source);
     const maxRange = getSupportMaxRange(support, initialResolution);
+    const historyBounds = clampHistoryBoundsToSupport(initialCalculationBounds, maxRange);
+    const requestedFallbackRange = all
+      ? "ALL"
+      : trailingRangeForStart(historyBounds.start, referenceNow);
     const fallbackRange = maxRange
       ? clampTimeRangeToMaxRange(requestedFallbackRange, maxRange)
       : requestedFallbackRange;
     const request: PriceHistoryRequest = {
-      bounds: initialCalculationBounds,
+      bounds: historyBounds,
+      visibleBounds: requestVisibleBounds,
       explicitWindow: hasExplicitWindow,
       fallbackRange,
       resolution: initialResolution,
@@ -700,7 +781,24 @@ export async function resolveChartSpecData(
       pending = loadPriceHistory(sources.dataProvider!, source, request);
       cache.priceHistoryByRequest.set(key, pending);
     }
-    return pending;
+    const history = await pending;
+    const accumulationKey = `${instrumentKey(source)}|${request.resolution}`;
+    const previousHistory = cache.accumulatedPriceHistory.get(accumulationKey) ?? [];
+    if (
+      request.explicitWindow
+      && !historyIntersectsBounds(history, request.visibleBounds)
+      && !historyIntersectsBounds(previousHistory, request.visibleBounds)
+    ) {
+      throw new Error(
+        `Price history for the requested window is unavailable for ${instrumentLabel(source)}.`,
+      );
+    }
+    const accumulated = mergePriceHistoryWindows(
+      previousHistory,
+      history,
+    );
+    cache.accumulatedPriceHistory.set(accumulationKey, accumulated);
+    return accumulated;
   };
 
   const loadEconomicSeries = (request: FredSeriesRequest) => {
@@ -739,17 +837,19 @@ export async function resolveChartSpecData(
         ? sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source))
         : undefined;
       const financialsPromise = loadFinancials(source);
+      let resolvedSource = source;
       let financials: TickerFinancials | null;
       let history: TickerFinancials["priceHistory"] | null;
       if (needsHistory && !source.instrument.exchange?.trim()) {
         financials = await financialsPromise;
-        const historySource = sourceWithResolvedExchange(source, financials);
-        history = await loadHistory(historySource, quoteDerivedValuation);
+        resolvedSource = sourceWithResolvedExchange(source, financials);
+        history = await loadHistory(resolvedSource, quoteDerivedValuation);
       } else {
         [financials, history] = await Promise.all([
           financialsPromise,
           needsHistory ? loadHistory(source, quoteDerivedValuation) : Promise.resolve(null),
         ]);
+        resolvedSource = sourceWithResolvedExchange(source, financials);
       }
       const liveBarResolution = isOhlcSeriesStyle(seriesSpec.style) ? initialResolution : undefined;
       const merged = history
@@ -758,7 +858,12 @@ export async function resolveChartSpecData(
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;
       if (!merged) throw new Error(`No financial data is available for ${instrumentLabel(source)}.`);
-      const result = baseSecuritySeries(seriesSpec, merged, index, initialResolution);
+      const result = baseSecuritySeries(
+        resolvedSource === source ? seriesSpec : { ...seriesSpec, source: resolvedSource },
+        merged,
+        index,
+        initialResolution,
+      );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
       if (isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {
         result.warning = "Publication dates are unavailable for some observations; period-end dates are used as a fallback.";
@@ -850,6 +955,7 @@ export async function resolveChartSpecData(
     : undefined;
   return {
     series: resolved,
+    ...(sharedSupport.length > 0 ? { resolutionSupport: sharedSupport } : {}),
     legendSeries,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
     ...(marketTimelineSeries.length > 0 ? { timelineSeries: marketTimelineSeries } : {}),
