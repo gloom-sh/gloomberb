@@ -5,7 +5,13 @@ import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
 import { useOptionsQuery, useResolvedEntryValue } from "../../../market-data/hooks";
-import { DataTableView, Spinner, Tabs, type DataTableKeyEvent } from "../../../components";
+import {
+  DataTableView,
+  Spinner,
+  Tabs,
+  type DataTableKeyEvent,
+  type DataTableVisibleRange,
+} from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import {
@@ -19,9 +25,9 @@ import {
 import type { OptionColumn, OptionTableRow, OptionsViewProps } from "./types";
 import {
   buildOptionQuoteTargets,
-  hasLiveOptionQuote,
   OPTIONS_CHAIN_REFRESH_INTERVAL_MS,
   overlayOptionRowQuotes,
+  resolveOptionQuoteCoverage,
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
 
@@ -31,6 +37,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const [strikeIdx, setStrikeIdx] = useState(0);
   const [autoScrollVersion, setAutoScrollVersion] = useState(0);
   const [scrollToIndexAlign, setScrollToIndexAlign] = useState<"nearest" | "center">("nearest");
+  const [visibleStrikeViewport, setVisibleStrikeViewport] = useState<{
+    key: string;
+    range: DataTableVisibleRange;
+  } | null>(null);
   const [interactive, setInteractive] = useState(false);
   const userSelectedStrikeRef = useRef(false);
   const onCaptureRef = useRef(onCapture);
@@ -54,6 +64,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const initialChainEntry = useOptionsQuery(baseRequest);
   const initialChain = useResolvedEntryValue(initialChainEntry);
   const selectedExpiration = initialChain?.expirationDates[expIdx];
+  const viewportKey = `${effectiveTicker}:${selectedExpiration ?? "initial"}`;
   const expirationChainEntry = useOptionsQuery(
     baseRequest && selectedExpiration != null
       ? { ...baseRequest, expirationDate: selectedExpiration }
@@ -131,27 +142,51 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     put: putsByStrike.get(strike),
     isPositionStrike: !!parsed && Math.abs(strike - parsed.strike) < 0.01,
   })), [callsByStrike, parsed, putsByStrike, strikes]);
+  const visibleStrikeRange = visibleStrikeViewport?.key === viewportKey
+    ? visibleStrikeViewport.range
+    : null;
+  const handleVisibleStrikeRangeChange = useCallback((range: DataTableVisibleRange) => {
+    setVisibleStrikeViewport((current) => (
+      current?.key === viewportKey
+      && current.range.start === range.start
+      && current.range.end === range.end
+        ? current
+        : { key: viewportKey, range }
+    ));
+  }, [viewportKey]);
   const optionQuoteTargets = useMemo(
-    () => buildOptionQuoteTargets(snapshotRows, strikeIdx, height),
-    [height, snapshotRows, strikeIdx],
+    () => buildOptionQuoteTargets(snapshotRows, {
+      fallbackHeight: height,
+      selectedIndex: strikeIdx,
+      visibleRange: visibleStrikeRange,
+    }),
+    [height, snapshotRows, strikeIdx, visibleStrikeRange],
   );
   const {
     entries: optionQuoteEntries,
     freshnessNow,
     subscriptionStartedAt,
-  } = useLiveQuoteEntries(optionQuoteTargets);
+  } = useLiveQuoteEntries(optionQuoteTargets, {
+    freshnessScopeKey: viewportKey,
+  });
   const optionQuoteFreshness = useMemo(
     () => ({
-      chainAsOf: chain?.asOf,
-      chainDataSource: chain?.dataSource,
       now: freshnessNow,
       subscriptionStartedAt,
     }),
-    [chain?.asOf, chain?.dataSource, freshnessNow, subscriptionStartedAt],
+    [freshnessNow, subscriptionStartedAt],
   );
   const rows = useMemo(
     () => overlayOptionRowQuotes(snapshotRows, optionQuoteEntries, optionQuoteFreshness),
     [optionQuoteEntries, optionQuoteFreshness, snapshotRows],
+  );
+  const optionQuoteCoverage = useMemo(
+    () => resolveOptionQuoteCoverage(
+      optionQuoteTargets,
+      optionQuoteEntries,
+      optionQuoteFreshness,
+    ),
+    [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets],
   );
   const optionColumns: OptionColumn[] = OPTION_COLUMNS.map((column) => ({
     ...column,
@@ -162,8 +197,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     chain,
     error,
     focused,
-    hasLiveQuote: hasLiveOptionQuote(optionQuoteEntries, optionQuoteFreshness),
     loading,
+    quoteCoverage: optionQuoteCoverage,
   });
 
   useEffect(() => {
@@ -333,6 +368,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         sortDirection="asc"
         onHeaderClick={() => {}}
         onTableMouseDown={enterInteractive}
+        visibleRangeKey={viewportKey}
+        onVisibleRangeChange={handleVisibleStrikeRangeChange}
         getItemKey={(row) => String(row.strike)}
         renderCell={renderOptionCell}
         emptyStateTitle="No strikes available."

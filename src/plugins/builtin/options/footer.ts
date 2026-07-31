@@ -7,21 +7,22 @@ import type { OptionsChain } from "../../../types/financials";
 import { useRendererHost } from "../../../ui";
 import { CLOUD_UPGRADE_URL } from "../shared/cloud-upgrade";
 import { usePaneStatusFooter } from "../shared/pane-footer";
+import type { OptionQuoteCoverage } from "./live-quotes";
 
 export interface OptionsAccessFooterState {
   canUpgrade: boolean;
   text: string;
-  tone: "positive" | "warning";
+  tone: "muted" | "positive" | "warning";
 }
 
 export function resolveOptionsAccessFooterState({
   chain,
   clientPlan,
-  hasLiveQuote,
+  quoteCoverage,
 }: {
   chain: OptionsChain | null | undefined;
   clientPlan: "free" | "pro" | null;
-  hasLiveQuote: boolean;
+  quoteCoverage: Pick<OptionQuoteCoverage, "status">;
 }): OptionsAccessFooterState {
   if (clientPlan !== "pro") {
     const delayMinutes = chain?.delayMinutes && chain.delayMinutes > 0 ? chain.delayMinutes : 15;
@@ -34,11 +35,25 @@ export function resolveOptionsAccessFooterState({
     };
   }
 
-  if (hasLiveQuote) {
+  if (quoteCoverage.status === "live") {
     return {
       canUpgrade: false,
       text: t("real-time options"),
       tone: "positive",
+    };
+  }
+  if (quoteCoverage.status === "mixed") {
+    return {
+      canUpgrade: false,
+      text: t("mixed real-time and delayed options"),
+      tone: "warning",
+    };
+  }
+  if (quoteCoverage.status === "connecting") {
+    return {
+      canUpgrade: false,
+      text: t("connecting real-time options"),
+      tone: "muted",
     };
   }
 
@@ -64,14 +79,14 @@ export function useOptionsAccessFooter({
   chain,
   error,
   focused,
-  hasLiveQuote,
   loading,
+  quoteCoverage,
 }: {
   chain: OptionsChain | null | undefined;
   error?: string | null;
   focused: boolean;
-  hasLiveQuote: boolean;
   loading?: boolean;
+  quoteCoverage: Pick<OptionQuoteCoverage, "status">;
 }): OptionsAccessFooterState {
   const rendererHost = useRendererHost();
   const user = apiClient.getCurrentUser();
@@ -79,7 +94,7 @@ export function useOptionsAccessFooter({
   const state = resolveOptionsAccessFooterState({
     chain,
     clientPlan,
-    hasLiveQuote,
+    quoteCoverage,
   });
   const openUpgrade = useCallback(() => {
     void rendererHost.openExternal(CLOUD_UPGRADE_URL);

@@ -369,10 +369,10 @@ export class MarketDataCoordinator {
     const key = buildQuoteKey(instrument);
     const current = this.quoteStore.get(key);
     const resolvedQuote = quote.stale === true ? quote : this.resolveIncomingQuote(instrument, quote);
-    if (areStreamQuotesEquivalent(current.data ?? current.lastGoodData, resolvedQuote)) return;
     const startedAt = Date.now();
     const receivedAt = resolvedQuote.stale === true ? resolvedQuote.receivedAt : startedAt;
     const storedQuote = receivedAt == null ? resolvedQuote : { ...resolvedQuote, receivedAt };
+    if (areStreamQuotesEquivalent(current.data ?? current.lastGoodData, storedQuote)) return;
     const attempts = [createAttempt(resolvedQuote.providerId ?? this.dataProvider.id, startedAt, "success")];
     this.quoteStore.set(key, readyQuoteEntry(current, storedQuote, resolvedQuote.providerId ?? this.dataProvider.id, attempts));
   }

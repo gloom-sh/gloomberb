@@ -19,7 +19,9 @@ import {
 import type {
   DataTableColumn,
   DataTableProps,
+  DataTableVisibleRange,
 } from "../types";
+import { resolveDataTableVisibleRange } from "../visible-range";
 import {
   resolveDataTableScrollTop,
   resolveDataTableVisibleWindow,
@@ -47,6 +49,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   onSelect,
   onActivate,
   onTableMouseDown,
+  visibleRangeKey,
+  onVisibleRangeChange,
   onRowMouseDown,
   onRowContextMenu,
   rowContextMenuSurface = false,
@@ -74,6 +78,10 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const nativeRenderer = useNativeRenderer();
   const [scrollVersion, setScrollVersion] = useState(0);
   const lastAppliedScrollRequestRef = useRef<string | null>(null);
+  const lastVisibleRangeRef = useRef<{
+    key: string | number | undefined;
+    range: DataTableVisibleRange;
+  } | null>(null);
   const scrollTop = virtualize ? (scrollRef.current?.scrollTop ?? 0) : 0;
   const measuredViewportHeight = scrollRef.current?.viewport?.height;
   const tableWindow = useMemo(
@@ -123,6 +131,25 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => expandTableColumns(columns, contentWidth, columnGap, horizontalPadding),
     [columnGap, columns, contentWidth, horizontalPadding],
   );
+  const emitVisibleRange = useCallback(() => {
+    if (!onVisibleRangeChange) return;
+    const scrollBox = scrollRef.current;
+    const range = resolveDataTableVisibleRange({
+      itemCount: items.length,
+      rowSize: 1,
+      scrollOffset: scrollBox?.scrollTop ?? scrollTop,
+      viewportSize: scrollBox?.viewport?.height ?? viewportHeight,
+    });
+    const previous = lastVisibleRangeRef.current;
+    if (
+      previous !== null
+      && previous.key === visibleRangeKey
+      && previous.range.start === range.start
+      && previous.range.end === range.end
+    ) return;
+    lastVisibleRangeRef.current = { key: visibleRangeKey, range };
+    onVisibleRangeChange(range);
+  }, [items.length, onVisibleRangeChange, scrollRef, scrollTop, viewportHeight, visibleRangeKey]);
   const handleRowMouseDown =
     useDoubleClickActivation<DataTableRowPointerTarget<T>>({
       onSelect: ({ item, index }) => {
@@ -140,13 +167,26 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       setScrollVersion((current) => current + 1);
     }
     onBodyScrollActivity();
+    emitVisibleRange();
     nativeRenderer.requestRender();
-  }, [nativeRenderer, onBodyScrollActivity, virtualize]);
+  }, [emitVisibleRange, nativeRenderer, onBodyScrollActivity, virtualize]);
   useScrollBoxScrollActivity({
     scrollRef,
     onVerticalScroll: handleBodyScrollActivity,
     onHorizontalScroll: syncHeaderScroll,
   });
+  const handleBodySizeChange = useCallback(() => {
+    measureContentWidth();
+    if (virtualize) {
+      setScrollVersion((current) => current + 1);
+    }
+    queueMicrotask(emitVisibleRange);
+  }, [emitVisibleRange, measureContentWidth, virtualize]);
+
+  useEffect(() => {
+    emitVisibleRange();
+    queueMicrotask(emitVisibleRange);
+  }, [emitVisibleRange]);
   const focusPane = useCallback(() => {
     if (!paneInstanceId) return;
     dispatch({ type: "FOCUS_PANE", paneId: paneInstanceId });
@@ -178,6 +218,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       setScrollVersion((current) => current + 1);
     }
     syncHeaderScroll();
+    queueMicrotask(emitVisibleRange);
     return true;
   }, [
     appViewport.height,
@@ -185,6 +226,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef,
     scrollToIndex,
     scrollToIndexAlign,
+    emitVisibleRange,
     syncHeaderScroll,
     virtualize,
   ]);
@@ -324,7 +366,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           focusPane();
           onTableMouseDown?.({});
         }}
-        onSizeChange={measureContentWidth}
+        onSizeChange={handleBodySizeChange}
       >
         {items.length === 0 ? (
           emptyContent ?? (

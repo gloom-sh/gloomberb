@@ -164,7 +164,7 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
-test("streams a bounded options window and overlays live contract quotes", async () => {
+test("streams every visible option row and overlays live contract quotes", async () => {
   const strikes = Array.from({ length: 100 }, (_, index) => 50 + index);
   const subscriptions: QuoteSubscriptionTarget[][] = [];
   let emitQuote:
@@ -193,8 +193,9 @@ test("streams a bounded options window and overlays live contract quotes", async
   await renderSettled();
 
   const targets = subscriptions.at(-1) ?? [];
-  expect(targets.length).toBeGreaterThan(0);
+  expect(targets.length).toBeGreaterThan(16);
   expect(targets.length).toBeLessThanOrEqual(80);
+  expect(targets.filter((target) => target.visible === true).length).toBeGreaterThan(16);
   expect(
     targets.every(
       (target) => target.exchange === "OPTIONS" && target.surface === "options",
@@ -218,6 +219,8 @@ test("streams a bounded options window and overlays live contract quotes", async
       changePercent: 0,
       lastUpdated: Date.now(),
       dataSource: "live",
+      delivery: "stream",
+      stale: false,
     });
     await Promise.resolve();
     await testSetup!.renderOnce();

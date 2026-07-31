@@ -13,6 +13,7 @@ export type {
   DataTableColumn,
   DataTableProps,
   DataTableSectionHeader,
+  DataTableVisibleRange,
 } from "./types";
 
 export function DataTable<T, C extends DataTableColumn = DataTableColumn>(

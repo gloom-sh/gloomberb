@@ -245,6 +245,45 @@ describe("MarketDataCoordinator key subscriptions", () => {
     }
   });
 
+  test("advances receipt freshness for an identical live stream heartbeat", async () => {
+    const realDateNow = Date.now;
+    const { provider, emitQuote } = createProvider();
+    const coordinator = new MarketDataCoordinator(provider);
+    const option = { symbol: "AAPL260731C00110000", exchange: "OPTIONS" };
+    const firstTimestamp = 1_800_000_000_000;
+    let calls = 0;
+
+    try {
+      coordinator.subscribeKeys([buildQuoteKey(option)], () => { calls += 1; });
+      coordinator.subscribeQuotes([{ instrument: option }]);
+
+      Date.now = () => firstTimestamp;
+      const heartbeat = quote(option.symbol, 2.5, {
+        lastUpdated: firstTimestamp,
+        bid: 2.4,
+        ask: 2.6,
+        mark: 2.5,
+        dataSource: "live",
+        delivery: "stream",
+        stale: false,
+      });
+      emitQuote(option, heartbeat);
+      await flushCoordinator();
+
+      Date.now = () => firstTimestamp + 60_000;
+      emitQuote(option, heartbeat);
+      await flushCoordinator();
+
+      expect(calls).toBe(2);
+      expect(coordinator.getQuoteEntry(option).data).toMatchObject({
+        lastUpdated: firstTimestamp,
+        receivedAt: firstTimestamp + 60_000,
+      });
+    } finally {
+      Date.now = realDateNow;
+    }
+  });
+
   test("does not refresh receipt time from an explicitly stale polled quote", async () => {
     const realDateNow = Date.now;
     const { provider, emitQuote } = createProvider();

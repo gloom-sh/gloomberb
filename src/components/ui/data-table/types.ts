@@ -33,6 +33,13 @@ export interface DataTableRowState {
   selected: boolean;
 }
 
+export interface DataTableVisibleRange {
+  /** First visible row index. */
+  start: number;
+  /** Exclusive end of the visible row range. */
+  end: number;
+}
+
 export interface DataTableProps<
   T,
   C extends DataTableColumn = DataTableColumn,
@@ -53,6 +60,9 @@ export interface DataTableProps<
   onSelect: (item: T, index: number) => void;
   onActivate?: (item: T, index: number) => void;
   onTableMouseDown?: (event: any) => void;
+  /** Changes when the meaning of row indexes changes without changing table geometry. */
+  visibleRangeKey?: string | number;
+  onVisibleRangeChange?: (range: DataTableVisibleRange) => void;
   onRowMouseDown?: (item: T, index: number, event: any) => boolean | void;
   onRowContextMenu?: (item: T, index: number, event: any) => void;
   rowContextMenuSurface?: boolean;

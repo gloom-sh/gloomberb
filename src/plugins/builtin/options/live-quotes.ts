@@ -7,14 +7,11 @@ import type { OptionTableRow } from "./types";
 export const OPTIONS_QUOTE_EXCHANGE = "OPTIONS";
 export const OPTIONS_CHAIN_REFRESH_INTERVAL_MS = 10 * 60_000;
 export const OPTIONS_STREAM_FRESHNESS_MS = 2 * 60_000;
+export const OPTIONS_STREAM_CONNECTING_GRACE_MS = 15_000;
 
-const OPTIONS_STREAM_MAX_TARGETS = 16;
-const OPTIONS_STREAM_MAX_ROWS = OPTIONS_STREAM_MAX_TARGETS / 2;
 const OPTIONS_STREAM_OVERSCAN_ROWS = 4;
 
 export interface OptionsQuoteFreshness {
-  chainAsOf?: string;
-  chainDataSource?: "live" | "delayed";
   now: number;
   subscriptionStartedAt: number;
 }
@@ -23,35 +20,64 @@ function isFiniteNumber(value: number | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function optionStreamRowCount(height: number): number {
-  const visibleRows = Math.max(1, Math.floor(height) - 3);
-  return Math.min(
-    OPTIONS_STREAM_MAX_ROWS,
-    visibleRows + OPTIONS_STREAM_OVERSCAN_ROWS,
-  );
+export interface OptionQuoteTargetWindow {
+  fallbackHeight: number;
+  selectedIndex: number;
+  visibleRange: { start: number; end: number } | null;
 }
 
-function optionStreamWindow(totalRows: number, selectedIndex: number, height: number): [number, number] {
-  const count = Math.min(totalRows, optionStreamRowCount(height));
+export type OptionQuoteCoverageStatus = "live" | "mixed" | "connecting" | "delayed";
+
+export interface OptionQuoteCoverage {
+  fallbackCount: number;
+  liveCount: number;
+  status: OptionQuoteCoverageStatus;
+  totalCount: number;
+}
+
+function fallbackVisibleRange(
+  totalRows: number,
+  selectedIndex: number,
+  height: number,
+): { start: number; end: number } {
+  const count = Math.min(totalRows, Math.max(1, Math.floor(height) - 3));
   const clampedIndex = Math.max(0, Math.min(selectedIndex, Math.max(0, totalRows - 1)));
   const start = Math.max(0, Math.min(clampedIndex - Math.floor(count / 2), totalRows - count));
-  return [start, start + count];
+  return { start, end: start + count };
+}
+
+function normalizeVisibleRange(
+  totalRows: number,
+  window: OptionQuoteTargetWindow,
+): { start: number; end: number } {
+  if (!window.visibleRange) {
+    return fallbackVisibleRange(totalRows, window.selectedIndex, window.fallbackHeight);
+  }
+  const start = Math.max(0, Math.min(totalRows, Math.floor(window.visibleRange.start)));
+  const end = Math.max(start, Math.min(totalRows, Math.ceil(window.visibleRange.end)));
+  return { start, end };
 }
 
 export function buildOptionQuoteTargets(
   rows: readonly OptionTableRow[],
-  selectedIndex: number,
-  height: number,
+  window: OptionQuoteTargetWindow,
 ): QuoteSubscriptionTarget[] {
   if (rows.length === 0) return [];
-  const [start, end] = optionStreamWindow(rows.length, selectedIndex, height);
+  const visibleRange = normalizeVisibleRange(rows.length, window);
+  const start = Math.max(0, visibleRange.start - OPTIONS_STREAM_OVERSCAN_ROWS);
+  const end = Math.min(rows.length, visibleRange.end + OPTIONS_STREAM_OVERSCAN_ROWS);
   const targets = new Map<string, QuoteSubscriptionTarget>();
 
-  for (let index = start; index < end; index += 1) {
+  const addRow = (index: number) => {
     const row = rows[index];
-    if (!row) continue;
-    const selected = index === selectedIndex;
-    const distance = Math.abs(index - selectedIndex);
+    if (!row) return;
+    const selected = index === window.selectedIndex;
+    const visible = index >= visibleRange.start && index < visibleRange.end;
+    const distance = visible
+      ? 0
+      : index < visibleRange.start
+        ? visibleRange.start - index
+        : index - visibleRange.end + 1;
     for (const contract of [row.call, row.put]) {
       const symbol = contract?.contractSymbol.trim().toUpperCase();
       if (!symbol) continue;
@@ -59,11 +85,18 @@ export function buildOptionQuoteTargets(
         symbol,
         exchange: OPTIONS_QUOTE_EXCHANGE,
         surface: "options",
-        visible: true,
+        visible,
         selected,
-        weight: Math.max(50, 100 - distance),
+        weight: selected ? 100 : visible ? 80 : Math.max(50, 70 - distance),
       });
     }
+  };
+
+  for (let index = start; index < end; index += 1) {
+    addRow(index);
+  }
+  if (window.selectedIndex < start || window.selectedIndex >= end) {
+    addRow(window.selectedIndex);
   }
 
   return [...targets.values()];
@@ -99,18 +132,8 @@ function freshOptionQuote(entry: QueryEntry<Quote> | undefined, freshness: Optio
   const receivedAt = quote.receivedAt ?? 0;
   if (
     !Number.isFinite(receivedAt) ||
-    receivedAt <= freshness.subscriptionStartedAt ||
+    receivedAt < freshness.subscriptionStartedAt ||
     freshness.now - receivedAt > OPTIONS_STREAM_FRESHNESS_MS
-  ) {
-    return null;
-  }
-  const chainAsOf = freshness.chainAsOf ? Date.parse(freshness.chainAsOf) : Number.NaN;
-  if (
-    freshness.chainDataSource === "live" &&
-    quote.dataSource === "live" &&
-    Number.isFinite(chainAsOf) &&
-    Number.isFinite(quote.lastUpdated) &&
-    quote.lastUpdated < chainAsOf
   ) {
     return null;
   }
@@ -135,13 +158,44 @@ export function overlayOptionRowQuotes(
   }));
 }
 
-export function hasLiveOptionQuote(
+export function resolveOptionQuoteCoverage(
+  targets: readonly QuoteSubscriptionTarget[],
   quoteEntries: ReadonlyMap<string, QueryEntry<Quote>>,
   freshness: OptionsQuoteFreshness,
-): boolean {
-  for (const entry of quoteEntries.values()) {
-    const quote = freshOptionQuote(entry, freshness);
-    if (quote?.dataSource === "live" && quote.delivery === "stream") return true;
+): OptionQuoteCoverage {
+  const visibleSymbols = new Set(
+    targets
+      .filter((target) => target.visible === true)
+      .map((target) => target.symbol.trim().toUpperCase())
+      .filter(Boolean),
+  );
+  let liveCount = 0;
+  let fallbackCount = 0;
+  for (const symbol of visibleSymbols) {
+    const quote = freshOptionQuote(
+      quoteEntries.get(buildOptionQuoteKey(symbol)),
+      freshness,
+    );
+    if (
+      quote?.dataSource === "live"
+      && quote.delivery === "stream"
+      && quote.stale === false
+    ) {
+      liveCount += 1;
+    } else if (quote) {
+      fallbackCount += 1;
+    }
   }
-  return false;
+
+  const totalCount = visibleSymbols.size;
+  const status: OptionQuoteCoverageStatus = totalCount > 0 && liveCount === totalCount
+    ? "live"
+    : liveCount > 0
+      ? "mixed"
+      : fallbackCount === 0
+        && totalCount > 0
+        && freshness.now - freshness.subscriptionStartedAt < OPTIONS_STREAM_CONNECTING_GRACE_MS
+        ? "connecting"
+        : "delayed";
+  return { fallbackCount, liveCount, status, totalCount };
 }

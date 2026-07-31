@@ -21,7 +21,7 @@ describe("options access footer", () => {
         realtimeEligible: false,
       }),
       clientPlan: "free",
-      hasLiveQuote: false,
+      quoteCoverage: { status: "delayed" },
     });
     let upgrades = 0;
     const segment = buildOptionsAccessFooterSegment(state, () => {
@@ -37,7 +37,7 @@ describe("options access footer", () => {
     expect(upgrades).toBe(1);
   });
 
-  test("claims real-time only for a Pro user with a fresh live stream", () => {
+  test("reports complete, mixed, connecting, and delayed Pro coverage", () => {
     expect(
       resolveOptionsAccessFooterState({
         chain: chain({
@@ -46,7 +46,7 @@ describe("options access footer", () => {
           realtimeEligible: true,
         }),
         clientPlan: "pro",
-        hasLiveQuote: false,
+        quoteCoverage: { status: "delayed" },
       }),
     ).toMatchObject({
       canUpgrade: false,
@@ -62,21 +62,33 @@ describe("options access footer", () => {
           realtimeEligible: true,
         }),
         clientPlan: "pro",
-        hasLiveQuote: false,
+        quoteCoverage: { status: "connecting" },
       }),
     ).toMatchObject({
       canUpgrade: false,
-      text: "options delayed fallback",
-      tone: "warning",
+      text: "connecting real-time options",
+      tone: "muted",
     });
 
     expect(
       resolveOptionsAccessFooterState({
         chain: chain({ realtimeEligible: false }),
         clientPlan: "pro",
-        hasLiveQuote: true,
+        quoteCoverage: { status: "live" },
       }).text,
     ).toBe("real-time options");
+
+    expect(
+      resolveOptionsAccessFooterState({
+        chain: chain({ realtimeEligible: true }),
+        clientPlan: "pro",
+        quoteCoverage: { status: "mixed" },
+      }),
+    ).toMatchObject({
+      canUpgrade: false,
+      text: "mixed real-time and delayed options",
+      tone: "warning",
+    });
   });
 
   test("makes the current plan authoritative over cached chain metadata", () => {
@@ -88,7 +100,7 @@ describe("options access footer", () => {
           realtimeEligible: true,
         }),
         clientPlan: "free",
-        hasLiveQuote: true,
+        quoteCoverage: { status: "live" },
       }),
     ).toMatchObject({
       canUpgrade: true,
@@ -104,7 +116,7 @@ describe("options access footer", () => {
           realtimeEligible: false,
         }),
         clientPlan: "pro",
-        hasLiveQuote: true,
+        quoteCoverage: { status: "live" },
       }),
     ).toMatchObject({
       canUpgrade: false,

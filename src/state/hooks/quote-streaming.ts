@@ -101,7 +101,10 @@ export function useQuoteStreaming(targets: QuoteSubscriptionTarget[]): void {
  * Subscribe to a bounded target set and observe the coordinator entries filled
  * by that stream. This intentionally avoids per-symbol HTTP quote loads.
  */
-export function useLiveQuoteEntries(targets: QuoteSubscriptionTarget[]): {
+export function useLiveQuoteEntries(
+  targets: QuoteSubscriptionTarget[],
+  options: { freshnessScopeKey?: string } = {},
+): {
   entries: Map<string, QueryEntry<Quote>>;
   freshnessNow: number;
   subscriptionStartedAt: number;
@@ -115,7 +118,7 @@ export function useLiveQuoteEntries(targets: QuoteSubscriptionTarget[]): {
     .map((target) => buildQuoteStreamSubscriptionKey(target))
     .sort()
     .join("\u001f");
-  const subscriptionKey = `${appActive ? "active" : "inactive"}\u001f${targetKey}`;
+  const subscriptionKey = `${appActive ? "active" : "inactive"}\u001f${options.freshnessScopeKey ?? targetKey}`;
   const subscriptionRef = useRef({
     key: subscriptionKey,
     startedAt: Date.now(),

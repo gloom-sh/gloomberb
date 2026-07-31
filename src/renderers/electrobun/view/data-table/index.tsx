@@ -15,7 +15,9 @@ import { measurePerf } from "../../../../utils/perf-marks";
 import type {
   DataTableColumn,
   DataTableProps,
+  DataTableVisibleRange,
 } from "../../../../components/ui/data-table";
+import { resolveDataTableVisibleRange } from "../../../../components/ui/data-table/visible-range";
 import {
   buildTableGridTemplateColumns,
   getTableWidth,
@@ -57,6 +59,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   onSelect,
   onActivate,
   onTableMouseDown,
+  visibleRangeKey,
+  onVisibleRangeChange,
   onRowMouseDown,
   onRowContextMenu,
   rowContextMenuSurface = false,
@@ -80,6 +84,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
+  const lastVisibleRangeRef = useRef<{
+    key: string | number | undefined;
+    range: DataTableVisibleRange;
+  } | null>(null);
   const headerHorizontal = useScrollbarState(false);
   const headerVertical = useScrollbarState(false);
   const bodyHorizontal = useScrollbarState(showHorizontalScrollbar);
@@ -106,10 +114,32 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     dispatch({ type: "FOCUS_PANE", paneId: paneInstanceId });
   }, [dispatch, paneInstanceId]);
 
+  const emitVisibleRange = useCallback(() => {
+    if (!onVisibleRangeChange) return;
+    const element = bodyElementRef.current;
+    if (!element) return;
+    const range = resolveDataTableVisibleRange({
+      itemCount: items.length,
+      rowSize: WEB_CELL_HEIGHT,
+      scrollOffset: element.scrollTop,
+      viewportSize: Math.max(0, element.clientHeight - WEB_CELL_HEIGHT),
+    });
+    const previous = lastVisibleRangeRef.current;
+    if (
+      previous !== null
+      && previous.key === visibleRangeKey
+      && previous.range.start === range.start
+      && previous.range.end === range.end
+    ) return;
+    lastVisibleRangeRef.current = { key: visibleRangeKey, range };
+    onVisibleRangeChange(range);
+  }, [items.length, onVisibleRangeChange, visibleRangeKey]);
   const handleBodyScrollActivity = useCallback(() => {
     onBodyScrollActivity();
-  }, [onBodyScrollActivity]);
+    emitVisibleRange();
+  }, [emitVisibleRange, onBodyScrollActivity]);
   const scheduleBodyScrollActivity = useRafCallback(handleBodyScrollActivity);
+  const scheduleVisibleRangeMeasure = useRafCallback(emitVisibleRange);
 
   const rowVirtualizer = useVirtualizer({
     count: items.length,
@@ -154,12 +184,20 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
 
   useEffect(() => {
     measureViewportWidth();
+    scheduleVisibleRangeMeasure();
     const element = bodyElementRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(scheduleViewportWidthMeasure);
+    const observer = new ResizeObserver(() => {
+      scheduleViewportWidthMeasure();
+      scheduleVisibleRangeMeasure();
+    });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [measureViewportWidth, scheduleViewportWidthMeasure]);
+  }, [measureViewportWidth, scheduleViewportWidthMeasure, scheduleVisibleRangeMeasure]);
+
+  useEffect(() => {
+    scheduleVisibleRangeMeasure();
+  }, [items.length, scheduleVisibleRangeMeasure, visibleRangeKey]);
 
   useEffect(() => {
     if (scrollToIndex == null || items.length === 0) return;
@@ -168,6 +206,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       rowVirtualizer.scrollToIndex(targetIndex, {
         align: scrollToIndexAlign === "center" ? "center" : "auto",
       });
+      scheduleVisibleRangeMeasure();
       return;
     }
     const element = bodyElementRef.current;
@@ -185,12 +224,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     if (nextTop !== currentTop) {
       element.scrollTop = nextTop * WEB_CELL_HEIGHT;
     }
+    scheduleVisibleRangeMeasure();
   }, [
     items.length,
     rowVirtualizer,
     scrollToIndex,
     scrollToIndexAlign,
     scrollToIndexVersion,
+    scheduleVisibleRangeMeasure,
     virtualize,
   ]);
 

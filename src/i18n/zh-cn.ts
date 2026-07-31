@@ -645,6 +645,8 @@ export const zhCN: Record<string, string> = {
   "{count}-minute delayed options, upgrade for real-time":
     "期权行情延迟 {count} 分钟，升级以获取实时数据",
   "real-time options": "实时期权",
+  "mixed real-time and delayed options": "实时与延迟期权混合",
+  "connecting real-time options": "正在连接实时期权",
   "options delayed fallback": "期权延迟备用数据",
   "News": "新闻",
   "12h delay": "延迟 12 小时",
