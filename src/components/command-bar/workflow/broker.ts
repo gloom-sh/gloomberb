@@ -23,6 +23,7 @@ export interface CommandBarBrokerChoice {
 export function buildBrokerChoices(brokers: ReadonlyMap<string, BrokerAdapter>): CommandBarBrokerChoice[] {
   return [...brokers.values()]
     .filter((adapter) => adapter.configSchema.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name))
     .map((adapter) => ({
       id: adapter.id,
       label: adapter.name,
