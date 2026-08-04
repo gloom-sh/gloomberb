@@ -3,6 +3,9 @@ import { act, useState } from "react";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../market-data/coordinator";
 import { createTestDataProvider } from "../../test-support/data-provider";
+import { AppProvider, PaneInstanceProvider } from "../../state/app/context";
+import { createDefaultConfig } from "../../types/config";
+import { useLiveStreamingSetting } from "../../plugins/builtin/shared/live-streaming";
 import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -48,6 +51,15 @@ function QuotePollingPriorityHarness() {
     pollIntervalMs: 1_000,
   });
   return <text>{selected ? "selected" : "idle"}</text>;
+}
+
+function FollowedQuoteStreamingHarness() {
+  const liveStreaming = useLiveStreamingSetting();
+  useQuoteUpdates([{
+    symbol: "AMD",
+    exchange: "NASDAQ",
+  }], { liveStreaming });
+  return <text>{liveStreaming ? "live" : "polling"}</text>;
 }
 
 function LiveQuoteFreshnessHarness() {
@@ -140,6 +152,39 @@ describe("useQuoteStreaming", () => {
       await new Promise((resolve) => setTimeout(resolve, 45));
     });
     expect(loadCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  test("inherits disabled streaming from a followed portfolio pane", async () => {
+    let subscribeCalls = 0;
+    let loadCalls = 0;
+    const config = createDefaultConfig("/tmp/gloomberb-live-streaming-test");
+    const portfolioPane = config.layout.instances.find((pane) => pane.instanceId === "portfolio-list:main");
+    if (!portfolioPane) throw new Error("expected default portfolio pane");
+    portfolioPane.settings = { ...portfolioPane.settings, liveStreaming: false };
+    setSharedMarketDataCoordinator({
+      subscribeQuotes: () => {
+        subscribeCalls += 1;
+        return () => {};
+      },
+      loadQuotesBatch: async () => {
+        loadCalls += 1;
+        return [];
+      },
+    } as unknown as MarketDataCoordinator);
+
+    testSetup = await testRender(
+      <AppProvider config={config}>
+        <PaneInstanceProvider paneId="ticker-detail:main">
+          <FollowedQuoteStreamingHarness />
+        </PaneInstanceProvider>
+      </AppProvider>,
+      { width: 20, height: 1 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    expect(testSetup.captureCharFrame()).toContain("polling");
+    expect(subscribeCalls).toBe(0);
+    expect(loadCalls).toBe(1);
   });
 
   test("does not restart polling when only subscription priority changes", async () => {

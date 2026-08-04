@@ -112,14 +112,16 @@ export function usePortfolioPaneStreaming({
     const quoteSnapshotQueue: TickerRecord[] = [];
     const snapshotQueue: TickerRecord[] = [];
     const snapshotQueueSymbols = new Set<string>();
-    const useSnapshotForQuoteWarmup = sortPreferenceUsesQuote(activeSort);
-    const quoteWarmupTickers = selectQuoteWarmupTickers(
-      sortedTickers,
-      streamWindow,
-      financialsMap,
-      activeSort,
-      nowTimestamp,
-    );
+    const useSnapshotForQuoteWarmup = liveStreaming && sortPreferenceUsesQuote(activeSort);
+    const quoteWarmupTickers = liveStreaming
+      ? selectQuoteWarmupTickers(
+        sortedTickers,
+        streamWindow,
+        financialsMap,
+        activeSort,
+        nowTimestamp,
+      )
+      : [];
     for (const ticker of quoteWarmupTickers) {
       const financials = financialsMap.get(ticker.metadata.ticker);
       const quoteKey = visibleWarmupKey("quote", ticker);
@@ -212,7 +214,7 @@ export function usePortfolioPaneStreaming({
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [activeSort, appActive, financialsMap, instrumentOptions, sharedCoordinator, sortedTickers, streamWindow, visibleFinancialTickers, visibleWarmupRequirements]);
+  }, [activeSort, appActive, financialsMap, instrumentOptions, liveStreaming, sharedCoordinator, sortedTickers, streamWindow, visibleFinancialTickers, visibleWarmupRequirements]);
 
   useEffect(() => {
     if (!liveStreaming || !appActive) return;

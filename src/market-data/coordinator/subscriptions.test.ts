@@ -1,6 +1,7 @@
 import { describe, expect, jest, test } from "bun:test";
 import { MarketDataCoordinator } from "./index";
 import { buildQuoteKey } from "../selectors";
+import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -206,6 +207,38 @@ describe("MarketDataCoordinator key subscriptions", () => {
 
     expect(calls).toBe(1);
     expect(coordinator.getVersion()).toBe(1);
+  });
+
+  test("coalesces bursty stream quotes into one readable update cadence", () => {
+    jest.useFakeTimers();
+    const originalDateNow = Date.now;
+    let now = 1_700_000_000_000;
+    Date.now = () => now;
+
+    try {
+      const { provider, emitQuote } = createProvider();
+      const coordinator = new MarketDataCoordinator(provider);
+      const amd = { symbol: "AMD", exchange: "NASDAQ" };
+      const msft = { symbol: "MSFT", exchange: "NASDAQ" };
+      coordinator.subscribeQuotes([{ instrument: amd }, { instrument: msft }]);
+
+      emitQuote(amd, quote("AMD", 100));
+      expect(coordinator.getQuoteEntry(amd).data?.price).toBe(100);
+
+      now += 100;
+      emitQuote(msft, quote("MSFT", 200));
+      emitQuote(amd, quote("AMD", 101));
+      expect(coordinator.getQuoteEntry(amd).data?.price).toBe(100);
+      expect(coordinator.getQuoteEntry(msft).data).toBeNull();
+
+      now += QUOTE_STREAM_UPDATE_THROTTLE_MS - 100;
+      jest.advanceTimersByTime(QUOTE_STREAM_UPDATE_THROTTLE_MS - 100);
+      expect(coordinator.getQuoteEntry(amd).data?.price).toBe(101);
+      expect(coordinator.getQuoteEntry(msft).data?.price).toBe(200);
+    } finally {
+      Date.now = originalDateNow;
+      jest.useRealTimers();
+    }
   });
 
   test("applies repeated stream quotes that refresh quote freshness", async () => {

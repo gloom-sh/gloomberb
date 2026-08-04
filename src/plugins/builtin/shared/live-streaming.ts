@@ -1,4 +1,5 @@
-import { usePaneSettingValue } from "../../../state/app/context";
+import { useAppSelector, usePaneInstanceId } from "../../../state/app/context";
+import { findPaneInstance, type LayoutConfig } from "../../../types/config";
 import type {
   PaneQuickSettingDef,
   PaneSettingField,
@@ -17,7 +18,7 @@ export const LIVE_STREAMING_SETTING_FIELD: PaneSettingField = {
   type: "toggle",
   key: LIVE_STREAMING_SETTING_KEY,
   label: "Live streaming",
-  description: "Stream quote updates continuously. Turn off to refresh quotes once per minute.",
+  description: "Stream quote updates continuously. Turn off to refresh quotes once per minute. Follow panes inherit their source pane's setting.",
 };
 
 export function withLiveStreamingSetting(
@@ -37,7 +38,23 @@ export function withLiveStreamingSetting(
   };
 }
 
+export function resolveLiveStreamingSetting(
+  layout: LayoutConfig,
+  paneId: string,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(paneId)) return false;
+
+  const pane = findPaneInstance(layout, paneId);
+  if (!pane) return true;
+  if (pane.settings?.[LIVE_STREAMING_SETTING_KEY] === false) return false;
+  if (pane.binding?.kind !== "follow") return true;
+
+  seen.add(paneId);
+  return resolveLiveStreamingSetting(layout, pane.binding.sourceInstanceId, seen);
+}
+
 export function useLiveStreamingSetting(): boolean {
-  const [enabled] = usePaneSettingValue(LIVE_STREAMING_SETTING_KEY, true);
-  return enabled;
+  const paneId = usePaneInstanceId();
+  return useAppSelector((state) => resolveLiveStreamingSetting(state.config.layout, paneId));
 }

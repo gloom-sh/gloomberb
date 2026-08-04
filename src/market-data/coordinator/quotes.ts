@@ -1,6 +1,7 @@
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import type { InstrumentRef } from "../request-types";
+import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
 import { mergeQuoteSubscriptionTargets } from "../quote-subscription-target";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
@@ -22,6 +23,11 @@ export interface QuoteSubscriptionEntry {
   target: QuoteSubscriptionTarget;
   targets: Map<number, QuoteSubscriptionTarget>;
   removeTimer: ReturnType<typeof setTimeout> | null;
+}
+
+interface PendingStreamQuote {
+  instrument: InstrumentRef;
+  quote: Quote;
 }
 
 const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
@@ -189,6 +195,9 @@ export async function loadQuoteBatchEntries({
 
 export class QuoteSubscriptionManager {
   private readonly quoteSubscriptions = new Map<string, QuoteSubscriptionEntry>();
+  private readonly pendingStreamQuotes = new Map<string, PendingStreamQuote>();
+  private lastStreamQuoteBatchAppliedAt: number | null = null;
+  private pendingStreamQuoteTimer: ReturnType<typeof setTimeout> | null = null;
   private nextQuoteSubscriptionId = 1;
   private quoteSubscriptionDispose: (() => void) | null = null;
   private quoteSubscriptionSignature = "";
@@ -239,10 +248,12 @@ export class QuoteSubscriptionManager {
           continue;
         }
         if (existing.removeTimer) continue;
+        this.clearPendingStreamQuote(key);
         existing.removeTimer = setTimeout(() => {
           const current = this.quoteSubscriptions.get(key);
           if (!current || current.targets.size > 0) return;
           this.quoteSubscriptions.delete(key);
+          this.clearPendingStreamQuote(key);
           this.flush();
         }, QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS);
       }
@@ -280,8 +291,59 @@ export class QuoteSubscriptionManager {
         brokerInstanceId: target.context?.brokerInstanceId,
         instrument: target.context?.instrument ?? null,
       };
-      this.applyQuote(instrument, quote);
+      this.enqueueStreamQuote(instrument, quote);
     });
+  }
+
+  private enqueueStreamQuote(instrument: InstrumentRef, quote: Quote): void {
+    const key = buildQuoteKey(instrument);
+    const subscription = this.quoteSubscriptions.get(key);
+    if (!subscription || subscription.targets.size === 0) return;
+
+    this.pendingStreamQuotes.set(key, { instrument, quote });
+    const elapsed = this.lastStreamQuoteBatchAppliedAt == null
+      ? Number.POSITIVE_INFINITY
+      : Date.now() - this.lastStreamQuoteBatchAppliedAt;
+    if (elapsed >= QUOTE_STREAM_UPDATE_THROTTLE_MS) {
+      this.flushPendingStreamQuotes();
+      return;
+    }
+    this.schedulePendingStreamQuoteFlush(QUOTE_STREAM_UPDATE_THROTTLE_MS - elapsed);
+  }
+
+  private schedulePendingStreamQuoteFlush(delayMs: number): void {
+    if (this.pendingStreamQuoteTimer !== null) return;
+    this.pendingStreamQuoteTimer = setTimeout(() => {
+      this.pendingStreamQuoteTimer = null;
+      this.flushPendingStreamQuotes();
+    }, Math.max(0, delayMs));
+  }
+
+  private flushPendingStreamQuotes(): void {
+    const pendingQuotes = [...this.pendingStreamQuotes.entries()];
+    this.pendingStreamQuotes.clear();
+    if (this.pendingStreamQuoteTimer !== null) clearTimeout(this.pendingStreamQuoteTimer);
+    this.pendingStreamQuoteTimer = null;
+    if (pendingQuotes.length === 0) return;
+
+    this.lastStreamQuoteBatchAppliedAt = Date.now();
+    for (const [key, pending] of pendingQuotes) {
+      const subscription = this.quoteSubscriptions.get(key);
+      if (subscription?.targets.size) {
+        this.applyQuote(pending.instrument, pending.quote);
+      }
+    }
+  }
+
+  private clearPendingStreamQuote(key: string): void {
+    this.pendingStreamQuotes.delete(key);
+    if (this.pendingStreamQuotes.size === 0 && this.pendingStreamQuoteTimer !== null) {
+      clearTimeout(this.pendingStreamQuoteTimer);
+      this.pendingStreamQuoteTimer = null;
+    }
+    if (![...this.quoteSubscriptions.values()].some((entry) => entry.targets.size > 0)) {
+      this.lastStreamQuoteBatchAppliedAt = null;
+    }
   }
 }
 
