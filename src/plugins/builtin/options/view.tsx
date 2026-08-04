@@ -30,9 +30,11 @@ import {
   resolveOptionQuoteCoverage,
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 
 export function OptionsView({ width, height, focused, onCapture = () => {} }: OptionsViewProps) {
   const { ticker, financials } = usePaneTicker();
+  const liveStreaming = useLiveStreamingSetting();
   const [expIdx, setExpIdx] = useState(0);
   const [strikeIdx, setStrikeIdx] = useState(0);
   const [autoScrollVersion, setAutoScrollVersion] = useState(0);
@@ -168,6 +170,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     subscriptionStartedAt,
   } = useLiveQuoteEntries(optionQuoteTargets, {
     freshnessScopeKey: viewportKey,
+    liveStreaming,
   });
   const optionQuoteFreshness = useMemo(
     () => ({

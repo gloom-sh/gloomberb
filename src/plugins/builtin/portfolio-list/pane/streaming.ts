@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
-import { useQuoteStreaming } from "../../../../state/hooks/quote-streaming";
+import { useQuoteUpdates } from "../../../../state/hooks/quote-streaming";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { CollectionSortPreference } from "../../../../state/app/context";
@@ -32,6 +32,7 @@ export function usePortfolioPaneStreaming({
   activeSort,
   financialsMap,
   visibleWarmupRequirements,
+  liveStreaming,
 }: {
   appActive: boolean;
   activeCollectionId?: string;
@@ -42,6 +43,7 @@ export function usePortfolioPaneStreaming({
   activeSort: CollectionSortPreference;
   financialsMap: Map<string, TickerFinancials>;
   visibleWarmupRequirements: VisibleWarmupRequirements;
+  liveStreaming: boolean;
 }) {
   const sharedCoordinator = getSharedMarketDataCoordinator();
   const mountedRef = useRef(true);
@@ -213,7 +215,7 @@ export function usePortfolioPaneStreaming({
   }, [activeSort, appActive, financialsMap, instrumentOptions, sharedCoordinator, sortedTickers, streamWindow, visibleFinancialTickers, visibleWarmupRequirements]);
 
   useEffect(() => {
-    if (!appActive) return;
+    if (!liveStreaming || !appActive) return;
     if (!sharedCoordinator) return;
 
     let cancelled = false;
@@ -262,7 +264,7 @@ export function usePortfolioPaneStreaming({
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [appActive, sharedCoordinator]);
+  }, [appActive, liveStreaming, sharedCoordinator]);
 
-  useQuoteStreaming(streamTargets);
+  useQuoteUpdates(streamTargets, { liveStreaming });
 }

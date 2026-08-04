@@ -2,7 +2,7 @@ import { Box, useUiCapabilities } from "../../../ui";
 import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
-import { PaneHeader } from "./header";
+import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
 
@@ -15,6 +15,7 @@ interface PaneWrapperProps {
   height?: number | `${number}%` | "auto";
   flexGrow?: number;
   showActions?: boolean;
+  quickSettings?: PaneHeaderQuickSetting[];
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
   onHeaderMouseMove?: (event: any) => void;
@@ -36,6 +37,7 @@ export function PaneWrapper({
   height,
   flexGrow,
   showActions = false,
+  quickSettings,
   onMouseDown,
   onMouseDownCapture,
   onHeaderMouseMove,
@@ -87,6 +89,7 @@ export function PaneWrapper({
           focused={focused}
           windowModeSelected={windowModeSelected}
           showActions={showActions}
+          quickSettings={quickSettings}
           onHeaderMouseMove={onHeaderMouseMove}
           onHeaderMouseDown={onHeaderMouseDown}
           onHeaderMouseDrag={onHeaderMouseDrag}

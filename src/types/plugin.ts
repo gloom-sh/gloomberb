@@ -53,6 +53,15 @@ export interface PaneDef {
   defaultFloatingSize?: { width: number; height: number };
   defaultMode?: "docked" | "floating";
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);
+  /** Compact controls surfaced next to the pane title. Toggle keys reference toggle fields in settings. */
+  quickSettings?: readonly PaneQuickSettingDef[];
+}
+
+export interface PaneQuickSettingDef {
+  type: "toggle";
+  key: string;
+  icon: "zap";
+  label?: string;
 }
 
 export interface PaneSettingsContext {

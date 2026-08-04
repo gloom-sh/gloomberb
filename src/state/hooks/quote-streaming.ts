@@ -11,6 +11,17 @@ import type { QueryEntry } from "../../market-data/result-types";
 import { buildQuoteKey } from "../../market-data/selectors";
 
 const quoteStreamLog = debugLog.createLogger("quote-stream");
+export const DEFAULT_QUOTE_POLL_INTERVAL_MS = 60_000;
+
+export interface QuoteStreamingOptions {
+  enabled?: boolean;
+}
+
+export interface QuoteUpdateOptions {
+  liveStreaming?: boolean;
+  pollIntervalMs?: number;
+  freshnessScopeKey?: string;
+}
 
 export function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget | null {
   const symbol = normalizeSymbol(target.symbol);
@@ -42,7 +53,10 @@ export function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget)
   ].join("|");
 }
 
-export function useQuoteStreaming(targets: QuoteSubscriptionTarget[]): void {
+export function useQuoteStreaming(
+  targets: QuoteSubscriptionTarget[],
+  { enabled = true }: QuoteStreamingOptions = {},
+): void {
   const appActive = useAppActive();
   const coordinator = getSharedMarketDataCoordinator();
 
@@ -58,9 +72,12 @@ export function useQuoteStreaming(targets: QuoteSubscriptionTarget[]): void {
   const subscriptionKey = sortedEntries.map(([key]) => key).join("|");
 
   useEffect(() => {
-    if (!appActive) {
+    if (!enabled || !appActive) {
       if (normalizedTargets.length > 0) {
-        quoteStreamLog.info("skipping subscription while inactive", { targets: subscriptionKey });
+        quoteStreamLog.info("skipping subscription", {
+          reason: enabled ? "inactive" : "disabled",
+          targets: subscriptionKey,
+        });
       }
       return;
     }
@@ -94,7 +111,71 @@ export function useQuoteStreaming(targets: QuoteSubscriptionTarget[]): void {
       });
       unsubscribe?.();
     };
-  }, [appActive, coordinator, subscriptionKey]);
+  }, [appActive, coordinator, enabled, subscriptionKey]);
+}
+
+export function useQuoteUpdates(
+  targets: QuoteSubscriptionTarget[],
+  {
+    liveStreaming = true,
+    pollIntervalMs = DEFAULT_QUOTE_POLL_INTERVAL_MS,
+  }: QuoteUpdateOptions = {},
+): void {
+  const appActive = useAppActive();
+  const coordinator = getSharedMarketDataCoordinator();
+  const normalizedTargets = targets.flatMap((target) => {
+    const normalized = normalizeQuoteStreamSubscriptionTarget(target);
+    return normalized ? [normalized] : [];
+  });
+  const instrumentKey = normalizedTargets
+    .map((target) => buildQuoteKey({
+      symbol: target.symbol,
+      exchange: target.exchange,
+      brokerId: target.context?.brokerId,
+      brokerInstanceId: target.context?.brokerInstanceId,
+      instrument: target.context?.instrument ?? null,
+    }))
+    .sort()
+    .join("\u001f");
+  const instruments = useMemo(() => {
+    const unique = new Map<string, InstrumentRef>();
+    for (const target of normalizedTargets) {
+      const instrument: InstrumentRef = {
+        symbol: target.symbol,
+        exchange: target.exchange,
+        brokerId: target.context?.brokerId,
+        brokerInstanceId: target.context?.brokerInstanceId,
+        instrument: target.context?.instrument ?? null,
+      };
+      unique.set(buildQuoteKey(instrument), instrument);
+    }
+    return [...unique.values()];
+  }, [instrumentKey]);
+
+  useQuoteStreaming(targets, { enabled: liveStreaming });
+
+  useEffect(() => {
+    if (liveStreaming || !appActive || !coordinator || instruments.length === 0) return;
+    let cancelled = false;
+    let inFlight = false;
+    const refresh = async () => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        await coordinator.loadQuotesBatch(instruments, { forceRefresh: true });
+      } catch {
+        // Polling is best effort and the coordinator retains the last good quote.
+      } finally {
+        inFlight = false;
+      }
+    };
+    void refresh();
+    const intervalId = setInterval(() => void refresh(), pollIntervalMs);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [appActive, coordinator, instrumentKey, instruments, liveStreaming, pollIntervalMs]);
 }
 
 /**
@@ -103,7 +184,7 @@ export function useQuoteStreaming(targets: QuoteSubscriptionTarget[]): void {
  */
 export function useLiveQuoteEntries(
   targets: QuoteSubscriptionTarget[],
-  options: { freshnessScopeKey?: string } = {},
+  options: QuoteUpdateOptions = {},
 ): {
   entries: Map<string, QueryEntry<Quote>>;
   freshnessNow: number;
@@ -118,7 +199,9 @@ export function useLiveQuoteEntries(
     .map((target) => buildQuoteStreamSubscriptionKey(target))
     .sort()
     .join("\u001f");
-  const subscriptionKey = `${appActive ? "active" : "inactive"}\u001f${options.freshnessScopeKey ?? targetKey}`;
+  const liveStreaming = options.liveStreaming !== false;
+  const freshnessKey = options.freshnessScopeKey ?? targetKey;
+  const subscriptionKey = `${appActive ? "active" : "inactive"}\u001f${liveStreaming ? "live" : "poll"}\u001f${freshnessKey}`;
   const subscriptionRef = useRef({
     key: subscriptionKey,
     startedAt: Date.now(),
@@ -152,7 +235,7 @@ export function useLiveQuoteEntries(
     return () => clearInterval(interval);
   }, [appActive, targetKey]);
 
-  useQuoteStreaming(targets);
+  useQuoteUpdates(targets, options);
   return {
     entries: useQuoteEntries(instruments),
     freshnessNow,

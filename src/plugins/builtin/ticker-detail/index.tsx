@@ -19,6 +19,10 @@ import {
   getTickerResearchPaneSettings,
 } from "./settings";
 import { formatTickerListInput } from "../../../tickers/list";
+import {
+  LIVE_STREAMING_QUICK_SETTING,
+  withLiveStreamingSetting,
+} from "../shared/live-streaming";
 
 function hasStatementFinancials(financials: TickerFinancials | null | undefined): boolean {
   return (financials?.annualStatements.length ?? 0) > 0 || (financials?.quarterlyStatements.length ?? 0) > 0;
@@ -50,7 +54,11 @@ export const tickerDetailModule: PluginModule = {
       component: TickerResearchPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      settings: (context) => buildTickerResearchSettingsDef(getTickerResearchPaneSettings(context.settings)),
+      quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      settings: (context) => withLiveStreamingSetting(
+        buildTickerResearchSettingsDef(getTickerResearchPaneSettings(context.settings)),
+        context.settings,
+      ),
     },
     {
       id: "financial-analysis",
@@ -69,7 +77,8 @@ export const tickerDetailModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 72, height: 10 },
-      settings: buildQuoteMonitorSettingsDef(),
+      quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      settings: (context) => withLiveStreamingSetting(buildQuoteMonitorSettingsDef(), context.settings),
     },
     {
       id: "historical-prices",

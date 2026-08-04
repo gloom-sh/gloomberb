@@ -3,10 +3,11 @@ import { act, useState } from "react";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../market-data/coordinator";
 import { createTestDataProvider } from "../../test-support/data-provider";
-import { useLiveQuoteEntries, useQuoteStreaming } from "./quote-streaming";
+import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote-streaming";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let bumpHarness: (() => void) | null = null;
+let togglePollingPriority: (() => void) | null = null;
 let updateLiveTargets: ((symbol: string) => void) | null = null;
 let updateFreshnessScope: ((scope: string) => void) | null = null;
 let observedSubscriptionStartedAt = 0;
@@ -21,6 +22,32 @@ function QuoteStreamingHarness() {
   }]);
 
   return <text>{String(tick)}</text>;
+}
+
+function QuotePollingHarness() {
+  useQuoteUpdates([{
+    symbol: "AAPL",
+    exchange: "NASDAQ",
+  }], {
+    liveStreaming: false,
+    pollIntervalMs: 30,
+  });
+  return <text>polling</text>;
+}
+
+function QuotePollingPriorityHarness() {
+  const [selected, setSelected] = useState(false);
+  togglePollingPriority = () => setSelected((current) => !current);
+  useQuoteUpdates([{
+    symbol: "AAPL",
+    exchange: "NASDAQ",
+    selected,
+    weight: selected ? 100 : 10,
+  }], {
+    liveStreaming: false,
+    pollIntervalMs: 1_000,
+  });
+  return <text>{selected ? "selected" : "idle"}</text>;
 }
 
 function LiveQuoteFreshnessHarness() {
@@ -43,6 +70,7 @@ afterEach(async () => {
     testSetup = undefined;
   }
   bumpHarness = null;
+  togglePollingPriority = null;
   updateLiveTargets = null;
   updateFreshnessScope = null;
   observedSubscriptionStartedAt = 0;
@@ -85,6 +113,56 @@ describe("useQuoteStreaming", () => {
 
     expect(subscribeCalls).toBe(1);
     expect(unsubscribeCalls).toBe(0);
+  });
+
+  test("uses forced polling instead of a subscription when live streaming is disabled", async () => {
+    let subscribeCalls = 0;
+    let loadCalls = 0;
+    const coordinator = {
+      subscribeQuotes: () => {
+        subscribeCalls += 1;
+        return () => {};
+      },
+      loadQuotesBatch: async (_instruments: unknown[], options: { forceRefresh?: boolean }) => {
+        expect(options.forceRefresh).toBe(true);
+        loadCalls += 1;
+        return [];
+      },
+    };
+    setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
+
+    testSetup = await testRender(<QuotePollingHarness />, { width: 20, height: 1 });
+    await act(async () => testSetup!.renderOnce());
+    expect(subscribeCalls).toBe(0);
+    expect(loadCalls).toBe(1);
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 45));
+    });
+    expect(loadCalls).toBeGreaterThanOrEqual(2);
+  });
+
+  test("does not restart polling when only subscription priority changes", async () => {
+    let loadCalls = 0;
+    const coordinator = {
+      subscribeQuotes: () => () => {},
+      loadQuotesBatch: async () => {
+        loadCalls += 1;
+        return [];
+      },
+    };
+    setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
+
+    testSetup = await testRender(<QuotePollingPriorityHarness />, { width: 20, height: 1 });
+    await act(async () => testSetup!.renderOnce());
+    expect(loadCalls).toBe(1);
+
+    await act(async () => {
+      togglePollingPriority?.();
+      await Promise.resolve();
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(loadCalls).toBe(1);
   });
 
   test("keeps quote freshness stable while targets move within one surface", async () => {

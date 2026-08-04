@@ -2,7 +2,7 @@ import { Box, Text, useUiCapabilities } from "../../ui";
 import type { ReactNode } from "react";
 import { colors, floatingPaneBg } from "../../theme/colors";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
-import { PaneHeader } from "./pane/header";
+import { PaneHeader, type PaneHeaderQuickSetting } from "./pane/header";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
 
@@ -17,6 +17,7 @@ interface FloatingPaneWrapperProps {
   focused: boolean;
   windowModeSelected?: boolean;
   showActions?: boolean;
+  quickSettings?: PaneHeaderQuickSetting[];
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
   onHeaderMouseMove?: (event: any) => void;
@@ -63,6 +64,7 @@ export function FloatingPaneWrapper({
   focused,
   windowModeSelected = false,
   showActions = false,
+  quickSettings,
   onMouseDown,
   onMouseDownCapture,
   onHeaderMouseMove,
@@ -115,6 +117,7 @@ export function FloatingPaneWrapper({
         windowModeSelected={windowModeSelected}
         floating
         showActions={showActions}
+        quickSettings={quickSettings}
         onHeaderMouseMove={onHeaderMouseMove}
         onHeaderMouseDown={onHeaderMouseDown}
         onHeaderMouseDrag={onHeaderMouseDrag}

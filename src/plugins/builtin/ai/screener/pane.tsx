@@ -52,12 +52,14 @@ import {
   AI_DEFAULT_PROVIDER_SETTING_KEY,
   resolveAiPaneSelection,
 } from "../pane-settings";
+import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
 export function AiScreenerPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
   const paneId = usePaneInstanceId();
   const paneInstance = usePaneInstance();
+  const liveStreaming = useLiveStreamingSetting();
   const dispatch = useAppDispatch();
   const tickers = useAppSelector((state) => state.tickers);
   const providers = useAiRuntimeProviders();
@@ -169,6 +171,7 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
     resultMap,
     setCursorSymbol,
     tickers,
+    liveStreaming,
   });
 
   const updateTabs = useCallback((updater: (tabs: AiScreenerTab[]) => AiScreenerTab[]) => {

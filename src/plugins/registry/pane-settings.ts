@@ -7,6 +7,8 @@ import { getPaneSettings } from "../../pane-settings";
 import type { AppConfig, LayoutConfig, PaneInstanceConfig } from "../../types/config";
 import type {
   PaneDef,
+  PaneQuickSettingDef,
+  PaneSettingField,
   PaneSettingsContext,
   PaneSettingsDef,
 } from "../../types/plugin";
@@ -19,6 +21,33 @@ export interface ResolvedRegistryPaneSettings {
   settingsDef: PaneSettingsDef;
   rawSettings: Record<string, unknown>;
   context: PaneSettingsContext;
+}
+
+export interface ResolvedRegistryPaneQuickSetting extends PaneQuickSettingDef {
+  label: string;
+  description?: string;
+  value: boolean;
+  field: PaneSettingField & { type: "toggle" };
+}
+
+export function resolveRegistryPaneQuickSettings(
+  resolved: ResolvedRegistryPaneSettings | null,
+): ResolvedRegistryPaneQuickSetting[] {
+  if (!resolved?.paneDef.quickSettings?.length) return [];
+
+  return resolved.paneDef.quickSettings.flatMap((quickSetting) => {
+    const field = resolved.settingsDef.fields.find((candidate) => (
+      candidate.key === quickSetting.key && candidate.type === "toggle"
+    ));
+    if (!field || field.type !== "toggle") return [];
+    return [{
+      ...quickSetting,
+      label: quickSetting.label ?? field.label,
+      description: field.description,
+      value: resolved.context.settings[quickSetting.key] === true,
+      field,
+    }];
+  });
 }
 
 export function resolveRegistryPaneSettings({

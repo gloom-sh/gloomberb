@@ -9,6 +9,10 @@ import {
 } from "./settings";
 import { portfolioCliCommand } from "./cli/portfolio-command";
 import { watchlistCliCommand } from "./cli/watchlist-command";
+import {
+  LIVE_STREAMING_QUICK_SETTING,
+  withLiveStreamingSetting,
+} from "../shared/live-streaming";
 
 export { shouldToggleCashMarginDrawer };
 
@@ -43,10 +47,14 @@ export const portfolioListModule: PluginModule = {
       defaultPosition: "left",
       defaultMode: "floating",
       defaultWidth: "40%",
-      settings: (context) => buildPortfolioPaneSettingsDef(
-        context.config,
-        getPortfolioPaneSettings(context.settings),
-        context.activeCollectionId,
+      quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      settings: (context) => withLiveStreamingSetting(
+        buildPortfolioPaneSettingsDef(
+          context.config,
+          getPortfolioPaneSettings(context.settings),
+          context.activeCollectionId,
+        ),
+        context.settings,
       ),
     },
   ],

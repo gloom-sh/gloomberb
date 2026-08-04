@@ -1,4 +1,4 @@
-import { Box, Text, useRendererHost, useUiCapabilities } from "../../ui";
+import { Box, Span, Text, useRendererHost, useUiCapabilities } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
@@ -49,6 +49,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, desktopWindowBridge.paneId) ?? null);
   const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) ?? null : null;
   const hasPaneSettings = !!instance && pluginRegistry.hasPaneSettings(instance.instanceId);
+  const quickSettings = instance ? pluginRegistry.resolvePaneQuickSettings(instance.instanceId) : [];
   const titleState = useMemo(
     () => ({ config, paneState }) as Parameters<typeof getPaneDisplayTitle>[0],
     [config, paneState],
@@ -118,6 +119,16 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     stopMouse(event);
     pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
   }, [desktopWindowBridge.paneId, pluginRegistry]);
+  const toggleQuickSetting = useCallback((key: string, event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
+    stopMouse(event);
+    focusPane();
+    void pluginRegistry.togglePaneQuickSetting(desktopWindowBridge.paneId, key).catch((error) => {
+      pluginRegistry.notify({
+        body: error instanceof Error ? error.message : "Could not update pane setting.",
+        type: "error",
+      });
+    });
+  }, [desktopWindowBridge.paneId, focusPane, pluginRegistry]);
 
   if (!instance || !paneDef) {
     return (
@@ -183,9 +194,36 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                 paddingRight={showWindowControls ? 0 : 1}
                 style={{ position: "relative" }}
               >
-                <Box flexGrow={1} minWidth={0} overflow="hidden">
+                <Box minWidth={0} flexShrink={1} overflow="hidden">
                   <Text fg={paneTitleText(focused, true, colors)} selectable={false} data-gloom-role="pane-title">{title}</Text>
                 </Box>
+                {quickSettings.map((setting) => (
+                  <Box
+                    key={setting.key}
+                    height={1}
+                    minWidth={20}
+                    paddingLeft={1}
+                    paddingRight={1}
+                    alignItems="center"
+                    justifyContent="center"
+                    className="electrobun-webkit-app-region-no-drag"
+                    data-gloom-role="pane-quick-setting"
+                    data-setting-key={setting.key}
+                    data-gloom-interactive="true"
+                    aria-label={`${setting.label}: ${setting.value ? "on" : "off"}`}
+                    aria-pressed={setting.value}
+                    title={`${setting.label}: ${setting.value ? "on" : "off"}`}
+                    style={{ cursor: "pointer" }}
+                    onMouseDown={(event: any) => toggleQuickSetting(setting.key, event)}
+                  >
+                    <Span style={{ display: "inline-flex", width: 12, height: 12, color: setting.value ? colors.warning : colors.textDim }}>
+                      <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                        <path d="M7.1 1.2 2.7 6.5h3.1l-.7 4.3 4.4-5.5H6.4l.7-4.1Z" fill="currentColor" />
+                      </svg>
+                    </Span>
+                  </Box>
+                ))}
+                <Box flexGrow={1} minWidth={0} />
                 {hasPaneSettings && (
                   <Text
                     fg={paneTitleText(focused, true, colors)}

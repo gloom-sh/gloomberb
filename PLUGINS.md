@@ -490,6 +490,42 @@ function MyPane() {
 }
 ```
 
+### Pane quick settings
+
+A pane can surface important toggle settings next to its title. Each quick setting references a `toggle` field from the pane's normal settings definition, so the header control and settings dialog share the same persisted value and update behavior.
+
+```typescript
+ctx.registerPane({
+  id: "live-prices",
+  name: "Live Prices",
+  component: LivePricesPane,
+  defaultPosition: "right",
+  quickSettings: [
+    { type: "toggle", key: "liveStreaming", icon: "zap" },
+  ],
+  settings: (context) => ({
+    values: {
+      liveStreaming: context.settings.liveStreaming !== false,
+    },
+    fields: [
+      {
+        key: "liveStreaming",
+        label: "Live streaming",
+        description: "Stream updates continuously when enabled.",
+        type: "toggle",
+      },
+    ],
+  }),
+});
+
+function LivePricesPane() {
+  const [liveStreaming] = usePaneSettingValue("liveStreaming", true);
+  // Use liveStreaming to select continuous updates or a slower polling path.
+}
+```
+
+Quick settings currently support toggle fields with the `zap` icon. Unknown keys and non-toggle fields are ignored.
+
 ### Events
 
 Subscribe to and emit app events:

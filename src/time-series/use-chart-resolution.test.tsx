@@ -103,6 +103,14 @@ function ResolutionHarness({
   return <text>{`${latestResult.loading ? "loading" : "settled"}:${pointCount}`}</text>;
 }
 
+function PollingResolutionHarness({ sources }: { sources: ChartResolveSources }) {
+  latestResult = useChartResolution(SPEC, sources, {
+    liveStreaming: false,
+    quotePollingIntervalMs: 30,
+  });
+  return <text>{latestResult.loading ? "loading" : "settled"}</text>;
+}
+
 async function flushEffects(iterations = 1): Promise<void> {
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     await act(async () => {
@@ -134,6 +142,35 @@ afterEach(async () => {
 });
 
 describe("useChartResolution", () => {
+  test("polls chart data without opening a quote subscription when live streaming is disabled", async () => {
+    let historyCalls = 0;
+    let subscribeCalls = 0;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => {
+        historyCalls += 1;
+        return INITIAL_HISTORY;
+      },
+      subscribeQuotes: () => {
+        subscribeCalls += 1;
+        return () => {};
+      },
+    });
+    testSetup = await testRender(<PollingResolutionHarness sources={sourcesFor(provider)} />, {
+      width: 24,
+      height: 1,
+    });
+
+    await waitFor(() => historyCalls >= 2 && latestResult?.loading === false);
+    expect(subscribeCalls).toBe(0);
+
+    const callsAfterImmediatePoll = historyCalls;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 45));
+    });
+    await waitFor(() => historyCalls > callsAfterImmediatePoll);
+  });
+
   test("keeps renderable data settled through empty adaptive and live refreshes", async () => {
     const adaptiveHistory = deferred<PricePoint[]>();
     let detailedCalls = 0;

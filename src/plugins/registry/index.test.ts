@@ -414,6 +414,57 @@ describe("PluginRegistry pane settings", () => {
     expect(descriptor?.pluginId).toBe("news");
     expect(descriptor?.context.settings.breakingNewsNotificationsEnabled).toBe(true);
   });
+
+  test("resolves and applies toggle-backed pane quick settings", async () => {
+    const registry = createRegistry();
+    const config = createDefaultConfig("/tmp/gloomberb-pane-quick-settings-test");
+    config.layout = {
+      dockRoot: { kind: "pane", instanceId: "test-pane:main" },
+      instances: [{
+        instanceId: "test-pane:main",
+        paneId: "test-pane",
+        binding: { kind: "none" },
+        settings: {},
+      }],
+      floating: [],
+      detached: [],
+    };
+    registry.getConfigFn = () => config;
+    registry.getLayoutFn = () => config.layout;
+
+    await registry.register(plugin("quotes", (ctx) => {
+      ctx.registerPane({
+        id: "test-pane",
+        name: "Test Pane",
+        defaultPosition: "right",
+        component: () => null,
+        quickSettings: [{ type: "toggle", key: "liveStreaming", icon: "zap" }],
+        settings: {
+          values: { liveStreaming: true },
+          fields: [{
+            key: "liveStreaming",
+            label: "Live streaming",
+            type: "toggle",
+          }],
+        },
+      });
+    }));
+
+    const applied: Array<{ key: string; value: unknown }> = [];
+    registry.applyPaneSettingValueFn = async (_paneId, field, value) => {
+      applied.push({ key: field.key, value });
+    };
+
+    expect(registry.resolvePaneQuickSettings("test-pane:main")).toMatchObject([{
+      key: "liveStreaming",
+      icon: "zap",
+      label: "Live streaming",
+      value: true,
+    }]);
+
+    await registry.togglePaneQuickSetting("test-pane:main", "liveStreaming");
+    expect(applied).toEqual([{ key: "liveStreaming", value: false }]);
+  });
 });
 
 describe("PluginRegistry broker runtime", () => {

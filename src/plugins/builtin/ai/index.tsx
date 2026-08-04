@@ -46,6 +46,10 @@ import {
   normalizeTabs,
   type PersistedAiScreenerPaneState,
 } from "./screener/model";
+import {
+  LIVE_STREAMING_QUICK_SETTING,
+  withLiveStreamingSetting,
+} from "../shared/live-streaming";
 
 function settingOrFallback(
   settings: Record<string, unknown>,
@@ -331,6 +335,7 @@ export const aiPlugin: GloomPlugin = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 76, height: 24 },
+      quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => {
         const providers = detectProviders();
         const screenerProviders = providers.filter((provider) => (
@@ -351,7 +356,7 @@ export const aiPlugin: GloomPlugin = {
           ? context.paneState.activeTabId
           : null;
         const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0] ?? null;
-        return buildAiPaneSettingsDef({
+        return withLiveStreamingSetting(buildAiPaneSettingsDef({
           title: "AI Screener Settings",
           providers: settingsProviders(screenerProviders),
           models: settingsModels(providerIds),
@@ -369,7 +374,7 @@ export const aiPlugin: GloomPlugin = {
           additional: buildAiScreenerPaneSettingsDef(
             getAiScreenerPaneSettings(context.settings),
           ),
-        });
+        }), context.settings);
       },
     });
 

@@ -5,13 +5,14 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
 import { quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
 import { useAppSelector, usePaneInstance, usePaneTicker } from "../../../../state/app/context";
-import { useQuoteStreaming } from "../../../../state/hooks/quote-streaming";
+import { useQuoteUpdates } from "../../../../state/hooks/quote-streaming";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { colors } from "../../../../theme/colors";
 import { EmptyState } from "../../../../components";
 import { getQuoteMonitorPaneSettings } from "../settings";
 import { useShortcut } from "../../../../react/input";
 import { QuoteMonitorCard } from "./card";
+import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
 function chunkSymbols(symbols: string[], columns: number): string[][] {
   const rows: string[][] = [];
@@ -58,6 +59,7 @@ function resolveGridColumnCount(symbolCount: number, width: number, height: numb
 export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { symbol: fallbackSymbol, ticker: fallbackTicker } = usePaneTicker();
+  const liveStreaming = useLiveStreamingSetting();
   const settings = useMemo(
     () => getQuoteMonitorPaneSettings(pane?.settings, fallbackSymbol),
     [fallbackSymbol, pane?.settings],
@@ -77,7 +79,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
     }
     return targets;
   }, [fallbackSymbol, fallbackTicker, symbols, tickersBySymbol]);
-  useQuoteStreaming(streamingTargets);
+  useQuoteUpdates(streamingTargets, { liveStreaming });
   const { pinTicker } = usePluginTickerActions();
   const { openPaneSettings } = usePluginAppActions();
   const { nativePaneChrome } = useUiCapabilities();

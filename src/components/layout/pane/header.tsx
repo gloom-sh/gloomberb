@@ -15,6 +15,7 @@ interface PaneHeaderProps {
   windowModeSelected?: boolean;
   floating?: boolean;
   showActions?: boolean;
+  quickSettings?: PaneHeaderQuickSetting[];
   onHeaderMouseMove?: (event: any) => void;
   onHeaderMouseDown?: (event: any) => void;
   onHeaderMouseDrag?: (event: any) => void;
@@ -22,6 +23,15 @@ interface PaneHeaderProps {
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
+}
+
+export interface PaneHeaderQuickSetting {
+  key: string;
+  icon: "zap";
+  label: string;
+  description?: string;
+  active: boolean;
+  onMouseDown?: (event: any) => void;
 }
 
 function truncateTitle(title: string, maxWidth: number): string {
@@ -43,9 +53,15 @@ function captureTerminalPointerDrag(renderer: unknown, renderable: unknown): voi
 function DesktopPaneButton({
   icon,
   onMouseDown,
+  color = colors.textDim,
+  label,
+  pressed,
 }: {
   icon: ReactNode;
   onMouseDown?: (event: any) => void;
+  color?: string;
+  label?: string;
+  pressed?: boolean;
 }) {
   return (
     <Box
@@ -54,6 +70,9 @@ function DesktopPaneButton({
       justifyContent="center"
       onMouseDown={onMouseDown}
       data-gloom-interactive={onMouseDown ? "true" : undefined}
+      aria-label={label}
+      aria-pressed={pressed}
+      title={label}
       style={{
         borderRadius: 4,
         minWidth: 20,
@@ -69,7 +88,7 @@ function DesktopPaneButton({
           justifyContent: "center",
           width: 12,
           height: 12,
-          color: colors.textDim,
+          color,
         }}
       >
         {icon}
@@ -92,7 +111,7 @@ function TerminalPaneButton({
   return (
     <Box
       height={1}
-      width={text.length}
+      width={displayWidth(text)}
       flexDirection="row"
       data-gloom-role={role}
       data-gloom-interactive={onMouseDown ? "true" : undefined}
@@ -110,6 +129,7 @@ export function PaneHeader({
   windowModeSelected = false,
   floating = false,
   showActions = false,
+  quickSettings = [],
   onHeaderMouseMove,
   onHeaderMouseDown,
   onHeaderMouseDrag,
@@ -125,6 +145,7 @@ export function PaneHeader({
   const backgroundColor = floating ? floatingPaneTitleBg(visuallyFocused) : paneTitleBg(visuallyFocused);
   const actionText = showActions ? PANE_HEADER_ACTION : "     ";
   const closeText = floating ? PANE_HEADER_CLOSE : "";
+  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(" ⚡ "), 0);
   const textColor = paneTitleText(visuallyFocused, floating);
   const handleTerminalHeaderMouseDown = useCallback((event: any) => {
     captureTerminalPointerDrag(nativeRenderer, terminalHeaderRef.current);
@@ -158,7 +179,7 @@ export function PaneHeader({
         <Text fg={visuallyFocused ? colors.borderFocused : colors.textMuted} selectable={false} data-gloom-role="pane-grip">
           {PANE_HEADER_GRIP}
         </Text>
-        <Box flexGrow={1} minWidth={0} overflow="hidden">
+        <Box minWidth={0} flexShrink={1} overflow="hidden">
           <Text
             fg={textColor}
             selectable={false}
@@ -173,6 +194,25 @@ export function PaneHeader({
             {title}
           </Text>
         </Box>
+        {quickSettings.map((setting) => (
+          <Box key={setting.key} data-gloom-role="pane-quick-setting" data-setting-key={setting.key}>
+            <DesktopPaneButton
+              onMouseDown={setting.onMouseDown}
+              color={setting.active ? colors.warning : colors.textDim}
+              label={`${setting.label}: ${setting.active ? "on" : "off"}`}
+              pressed={setting.active}
+              icon={(
+                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                  <path
+                    d="M7.1 1.2 2.7 6.5h3.1l-.7 4.3 4.4-5.5H6.4l.7-4.1Z"
+                    fill="currentColor"
+                  />
+                </svg>
+              )}
+            />
+          </Box>
+        ))}
+        <Box flexGrow={1} minWidth={0} />
         <Box data-gloom-role="pane-action">
           {showActions ? (
             <DesktopPaneButton
@@ -213,10 +253,10 @@ export function PaneHeader({
     // Reserve 2 for corners, 1 for ─ after ┌, 1 for ─ before ┐
     const borderColor = visuallyFocused ? colors.borderFocused : colors.border;
     const innerWidth = Math.max(0, width - 4);
-    const contentWidth = PANE_HEADER_GRIP.length + closeText.length + actionText.length;
+    const contentWidth = PANE_HEADER_GRIP.length + terminalQuickSettingsWidth + closeText.length + actionText.length;
     const titleWidth = Math.max(0, innerWidth - contentWidth);
     const clippedTitle = truncateTitle(title, titleWidth);
-    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - displayWidth(clippedTitle) - actionText.length - closeText.length);
+    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - displayWidth(clippedTitle) - terminalQuickSettingsWidth - actionText.length - closeText.length);
     const fill = "─".repeat(fillLen);
 
     return (
@@ -233,6 +273,15 @@ export function PaneHeader({
       >
         <Text fg={borderColor} selectable={false}>{"┌─"}</Text>
         <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}`}</Text>
+        {quickSettings.map((setting) => (
+          <TerminalPaneButton
+            key={setting.key}
+            text=" ⚡ "
+            fg={setting.active ? colors.warning : colors.textDim}
+            role="pane-quick-setting"
+            onMouseDown={setting.onMouseDown}
+          />
+        ))}
         <Text fg={borderColor} selectable={false}>{fill}</Text>
         <TerminalPaneButton
           text={actionText}
@@ -253,7 +302,7 @@ export function PaneHeader({
     );
   }
 
-  const titleWidth = Math.max(0, width - PANE_HEADER_GRIP.length - actionText.length - closeText.length);
+  const titleWidth = Math.max(0, width - PANE_HEADER_GRIP.length - terminalQuickSettingsWidth - actionText.length - closeText.length);
   const clippedTitle = truncateTitle(title, titleWidth);
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
 
@@ -272,6 +321,15 @@ export function PaneHeader({
       <Text fg={textColor} selectable={false}>
         {`${PANE_HEADER_GRIP}${clippedTitle}${padding}`}
       </Text>
+      {quickSettings.map((setting) => (
+        <TerminalPaneButton
+          key={setting.key}
+          text=" ⚡ "
+          fg={setting.active ? colors.warning : colors.textDim}
+          role="pane-quick-setting"
+          onMouseDown={setting.onMouseDown}
+        />
+      ))}
       <TerminalPaneButton
         text={actionText}
         fg={textColor}

@@ -51,6 +51,8 @@ import {
 } from "./data";
 import { usePortfolioPaneStreaming } from "./streaming";
 import { usePortfolioSupplementalData } from "./supplemental";
+import { useLiveStreamingSetting } from "../../shared/live-streaming";
+import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
@@ -63,6 +65,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   const brokerAccounts = useAppSelector((state) => state.brokerAccounts);
   const refreshingSize = useAppSelector((state) => state.refreshing.size);
   const paneCollection = usePaneCollection();
+  const liveStreaming = useLiveStreamingSetting();
 
   const [currentCollectionId, setCurrentCollectionId] = usePaneStateValue<string>("collectionId", paneCollection.collectionId ?? "");
   const [committedCursorSymbol, setCommittedCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
@@ -169,9 +172,26 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   ]);
 
   const activeSort = resolveCollectionSortPreference(activeCollectionId, isPortfolioTab, collectionSorts);
-  const sortedTickers = useMemo(
+  const candidateSortedTickers = useMemo(
     () => sortTickers(tickers, financialsMap, activeSort, columnContext, columns),
     [tickers, financialsMap, activeSort, columnContext, columns],
+  );
+  const candidateSymbols = useMemo(
+    () => candidateSortedTickers.map((ticker) => ticker.metadata.ticker),
+    [candidateSortedTickers],
+  );
+  const orderResetKey = `${activeCollectionId}|${activeSort.columnId ?? ""}|${activeSort.direction}`;
+  const orderedSymbols = useThrottledTickerOrder(candidateSymbols, orderResetKey);
+  const tickerBySymbol = useMemo(
+    () => new Map(candidateSortedTickers.map((ticker) => [ticker.metadata.ticker, ticker])),
+    [candidateSortedTickers],
+  );
+  const sortedTickers = useMemo(
+    () => orderedSymbols.flatMap((symbol) => {
+      const ticker = tickerBySymbol.get(symbol);
+      return ticker ? [ticker] : [];
+    }),
+    [orderedSymbols, tickerBySymbol],
   );
 
   const selectedIdx = sortedTickers.findIndex((ticker) => ticker.metadata.ticker === cursorSymbol);
@@ -322,6 +342,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     activeSort,
     financialsMap,
     visibleWarmupRequirements,
+    liveStreaming,
   });
 
   const summaryFooterInfo = useMemo(() => buildPortfolioFooterSegments({

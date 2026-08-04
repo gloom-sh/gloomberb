@@ -61,6 +61,7 @@ import {
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { ChartSeriesQuickAdd } from "./quick-add";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 
 const RANGE_TABS = RANGES.map((range, index) => ({ label: `${index + 1}:${range}`, value: range }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
@@ -107,6 +108,7 @@ function ChartComposerSurface({
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const paneId = usePaneInstanceId();
+  const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
   const authoredViewportKey = useMemo(() => JSON.stringify({
     range: spec.viewport.range,
@@ -145,6 +147,7 @@ function ChartComposerSurface({
       : null,
     requestViewport: activeRuntimeViewport?.requestViewport,
     targetPointCount,
+    liveStreaming,
   });
   const availableResolutions = useMemo<ChartResolution[]>(() => {
     if (!resolution.resolutionSupport) {

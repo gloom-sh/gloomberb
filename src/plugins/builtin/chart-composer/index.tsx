@@ -20,6 +20,10 @@ import {
 } from "./presets";
 import { buildChartComposerPaneSettingsDef } from "./settings";
 import type { PluginModule } from "../plugin-module";
+import {
+  LIVE_STREAMING_QUICK_SETTING,
+  withLiveStreamingSetting,
+} from "../shared/live-streaming";
 
 const CHART_COMPOSER_TEMPLATE_ID = "chart-composer-pane";
 
@@ -199,9 +203,13 @@ export const chartComposerModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 32 },
-    settings: (context) => buildChartComposerPaneSettingsDef(
+    quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+    settings: (context) => withLiveStreamingSetting(
+      buildChartComposerPaneSettingsDef(
+        context.settings,
+        context.activeTicker,
+      ),
       context.settings,
-      context.activeTicker,
     ),
   }],
   paneTemplates: chartComposerTemplates,

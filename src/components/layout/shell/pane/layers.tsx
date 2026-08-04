@@ -12,6 +12,7 @@ import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
 import { PaneWrapper } from "../../pane";
+import type { PaneHeaderQuickSetting } from "../../pane/header";
 import { hasPaneFooterContent, PaneFooterProvider } from "../../pane/footer";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "../../pane/sizing";
 import type { DividerPreviewState } from "../native/window-state";
@@ -31,6 +32,7 @@ interface ShellPaneLayersProps {
   dragFloatingRect: { paneId: string; rect: FloatingRect } | null;
   focusedPaneId: string | null;
   getPaneTitle: (pane: ResolvedPane) => string;
+  getPaneQuickSettings: (paneId: string) => PaneHeaderQuickSetting[];
   handleFloatingClose: (paneId: string) => void;
   handleFloatingCloseMouseDown: (paneId: string, event: any) => void;
   handleNativeDrag: ShellMouseHandler;
@@ -64,6 +66,7 @@ export function ShellPaneLayers({
   dragFloatingRect,
   focusedPaneId,
   getPaneTitle,
+  getPaneQuickSettings,
   handleFloatingClose,
   handleFloatingCloseMouseDown,
   handleNativeDrag,
@@ -129,6 +132,7 @@ export function ShellPaneLayers({
                     width={rect.width}
                     height={rect.height}
                     showActions={showActions}
+                    quickSettings={getPaneQuickSettings(leaf.instanceId)}
                     windowModeSelected={windowModeSelected}
                     footer={footer}
                     onMouseDownCapture={nativePaneChrome ? (event) => handleNativePaneMouseDown(leaf.instanceId, event) : undefined}
@@ -190,6 +194,7 @@ export function ShellPaneLayers({
                   focused={focused}
                   windowModeSelected={windowModeSelected}
                   showActions={showActions}
+                  quickSettings={getPaneQuickSettings(pane.instance.instanceId)}
                   footer={footer}
                   onMouseDownCapture={nativePaneChrome ? (event) => handleNativePaneMouseDown(pane.instance.instanceId, event) : undefined}
                   onHeaderMouseMove={() => setHoveredPaneIfChanged(pane.instance.instanceId)}

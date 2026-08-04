@@ -19,10 +19,14 @@ export interface UseChartResolutionResult extends ChartResolutionResult {
 
 export interface UseChartResolutionOptions {
   liveRefreshIntervalMs?: number;
+  liveStreaming?: boolean;
+  quotePollingIntervalMs?: number;
   autoViewport?: ChartResolveOptions["autoViewport"];
   requestViewport?: ChartResolveOptions["requestViewport"];
   targetPointCount?: number;
 }
+
+const DEFAULT_QUOTE_POLL_INTERVAL_MS = 60_000;
 
 const EMPTY_RESULT: ChartResolutionResult = {
   series: [],
@@ -150,9 +154,11 @@ export function useChartResolution(
 
   const liveTargetSignature = liveChartQuoteTargetSignature(spec);
   const liveRefreshIntervalMs = options.liveRefreshIntervalMs ?? LIVE_CHART_REFRESH_INTERVAL_MS;
+  const liveStreaming = options.liveStreaming !== false;
   useEffect(() => {
     const subscriptionGeneration = ++liveSubscriptionGenerationRef.current;
     liveQuoteOverridesRef.current = new Map();
+    if (!liveStreaming) return;
     const dispose = subscribeToLiveChartQuotes({
       spec,
       dataProvider: sources.dataProvider,
@@ -202,7 +208,17 @@ export function useChartResolution(
         liveQuoteOverridesRef.current = new Map();
       }
     };
-  }, [liveRefreshIntervalMs, liveTargetSignature, sources.dataProvider]);
+  }, [liveRefreshIntervalMs, liveStreaming, liveTargetSignature, sources.dataProvider]);
+
+  const quotePollingIntervalMs = options.quotePollingIntervalMs ?? DEFAULT_QUOTE_POLL_INTERVAL_MS;
+  useEffect(() => {
+    if (liveStreaming || !liveTargetSignature) return;
+    setRevision((current) => current + 1);
+    const intervalId = setInterval(() => {
+      setRevision((current) => current + 1);
+    }, quotePollingIntervalMs);
+    return () => clearInterval(intervalId);
+  }, [liveStreaming, liveTargetSignature, quotePollingIntervalMs]);
 
   return { ...result, reload };
 }

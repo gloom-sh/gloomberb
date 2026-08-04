@@ -5,7 +5,7 @@ import { useAppSelector } from "../../../../state/app/context";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
-import { useQuoteStreaming } from "../../../../state/hooks/quote-streaming";
+import { useQuoteUpdates } from "../../../../state/hooks/quote-streaming";
 import type { ColumnContext } from "../../portfolio-list/metrics";
 import type { ColumnConfig } from "../../../../types/config";
 import type { ValidatedScreenerResult } from "./contract";
@@ -21,6 +21,7 @@ interface UseAiScreenerMarketRuntimeOptions {
   resultMap: Map<string, ValidatedScreenerResult>;
   setCursorSymbol: (symbol: string | null) => void;
   tickers: Map<string, TickerRecord>;
+  liveStreaming: boolean;
 }
 
 export function useAiScreenerMarketRuntime({
@@ -32,6 +33,7 @@ export function useAiScreenerMarketRuntime({
   resultMap,
   setCursorSymbol,
   tickers,
+  liveStreaming,
 }: UseAiScreenerMarketRuntimeOptions) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
@@ -68,7 +70,7 @@ export function useAiScreenerMarketRuntime({
     })
   ), [sortedTickers]);
 
-  useQuoteStreaming(quoteTargets);
+  useQuoteUpdates(quoteTargets, { liveStreaming });
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();

@@ -42,7 +42,9 @@ import {
 } from "../runtime";
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import {
+  resolveRegistryPaneQuickSettings,
   resolveRegistryPaneSettings,
+  type ResolvedRegistryPaneQuickSetting,
   type ResolvedRegistryPaneSettings,
 } from "./pane-settings";
 import { RegistrySlots } from "./slots";
@@ -361,6 +363,16 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   hasPaneSettings(paneId: string): boolean {
     return this.resolvePaneSettings(paneId) !== null;
+  }
+
+  resolvePaneQuickSettings(paneId: string): ResolvedRegistryPaneQuickSetting[] {
+    return resolveRegistryPaneQuickSettings(this.resolvePaneSettings(paneId));
+  }
+
+  async togglePaneQuickSetting(paneId: string, key: string): Promise<void> {
+    const quickSetting = this.resolvePaneQuickSettings(paneId).find((setting) => setting.key === key);
+    if (!quickSetting) return;
+    await this.applyPaneSettingValueFn(paneId, quickSetting.field, !quickSetting.value);
   }
 
   getCommandPluginId(commandId: string): string | undefined {

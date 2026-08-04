@@ -11,7 +11,7 @@ import {
   usePaneStateValue,
   usePaneTicker,
 } from "../../../state/app/context";
-import { useQuoteStreaming } from "../../../state/hooks/quote-streaming";
+import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getCollectionName, getCollectionTickerCount } from "../../../state/selectors";
 import { getSharedRegistry } from "../../registry";
 import { EmptyState, PaneFooterScope, Tabs } from "../../../components";
@@ -22,6 +22,7 @@ import {
   getTickerResearchPaneSettings,
   resolveLockedTabId,
 } from "./settings";
+import { useLiveStreamingSetting } from "../shared/live-streaming";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 
@@ -61,6 +62,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const config = useAppSelector((state) => state.config);
   const paneInstance = usePaneInstance();
   const { ticker, financials } = usePaneTicker();
+  const liveStreaming = useLiveStreamingSetting();
   const streamingTarget = quoteSubscriptionTargetFromTicker(ticker, ticker?.metadata.ticker, "provider");
   const streamingTargets = useMemo(() => (
     streamingTarget
@@ -80,7 +82,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     streamingTarget?.context?.brokerInstanceId,
     streamingTarget?.context?.instrument,
   ]);
-  useQuoteStreaming(streamingTargets);
+  useQuoteUpdates(streamingTargets, { liveStreaming });
 
   const { collectionId } = usePaneCollection();
   const [committedActiveTabId, setCommittedActiveTabId] = usePaneStateValue<string>("activeTabId", "overview");

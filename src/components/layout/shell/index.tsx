@@ -30,6 +30,7 @@ import {
 } from "../../../state/selectors-ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { getPaneDisplayTitle } from "../pane/title";
+import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import {
   actionMenuWidth,
@@ -423,6 +424,27 @@ export function Shell({
     (pane: ResolvedPane): string => getPaneDisplayTitle(titleState, pane.instance, pane.def),
     [titleState],
   );
+  const handlePaneQuickSetting = useCallback((paneId: string, key: string, event: any) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    focusPane(paneId);
+    void pluginRegistry.togglePaneQuickSetting(paneId, key).catch((error) => {
+      pluginRegistry.notify({
+        body: error instanceof Error ? error.message : "Could not update pane setting.",
+        type: "error",
+      });
+    });
+  }, [focusPane, pluginRegistry]);
+  const getPaneQuickSettings = useCallback((paneId: string): PaneHeaderQuickSetting[] => (
+    (pluginRegistry.resolvePaneQuickSettings?.(paneId) ?? []).map((setting) => ({
+      key: setting.key,
+      icon: setting.icon,
+      label: setting.label,
+      description: setting.description,
+      active: setting.value,
+      onMouseDown: (event) => handlePaneQuickSetting(paneId, setting.key, event),
+    }))
+  ), [config, handlePaneQuickSetting, pluginRegistry]);
 
   const openPaneMenu = useCallback((paneId: string, rect: LayoutBounds, event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     const pane = paneMap.get(paneId);
@@ -561,6 +583,7 @@ export function Shell({
         dragFloatingRect={dragFloatingRect}
         focusedPaneId={focusedPaneId}
         getPaneTitle={getPaneTitle}
+        getPaneQuickSettings={getPaneQuickSettings}
         handleFloatingClose={handleFloatingClose}
         handleFloatingCloseMouseDown={handleFloatingCloseMouseDown}
         handleNativeDrag={handleNativeDrag}
