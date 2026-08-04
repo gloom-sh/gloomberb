@@ -21,6 +21,8 @@ import {
 import { registerTwitterFeedFeature } from "../cloud-tweets/registration";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { registerCloudAuthCommands } from "./auth-commands";
+import { registerCloudUpgradeCommand } from "./upgrade-command";
+import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
 
 interface GloomberbCloudPluginComponents {
   ChatPane: (props: PaneProps) => ReactNode;
@@ -137,7 +139,13 @@ const accountModule: PluginModule = {
     shortcut: { prefix: "ACM" },
     createInstance: () => ({ placement: "floating" }),
   }],
-  setup: registerCloudAuthCommands,
+  slots: {
+    "status:widget": () => <CloudUpgradeStatusWidget />,
+  },
+  setup: (ctx) => {
+    registerCloudAuthCommands(ctx);
+    registerCloudUpgradeCommand(ctx);
+  },
 };
 
 const buildoutModule: PluginModule = {

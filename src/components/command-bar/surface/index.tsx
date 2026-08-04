@@ -1,8 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
+import { usePlanAccess } from "../../../plugins/builtin/shared/plan-access";
+import { buildAssistCommandInventory } from "../assist/inventory";
+import { useCommandBarAssist } from "../assist/runtime";
+import type { AssistRowHandlers } from "../assist/model";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { useCommandBarThemePreview } from "../theme-preview";
@@ -104,6 +108,7 @@ export function CommandBar({
     createPluginCommandItem,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
+    getAvailablePaneTemplates,
     getAvailablePluginCommands,
     ensureRouteFieldFocus,
     focusWorkflowField,
@@ -115,6 +120,7 @@ export function CommandBar({
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
+    openPluginCommandWorkflow,
     openWorkflowFieldPicker,
     paneShortcutItems,
     persistLayoutChange,
@@ -162,6 +168,34 @@ export function CommandBar({
   const getTickerSearchTickers = useCallback(() => stateRef.current.tickers, []);
   const hasPaneSettings = useCallback((paneId: string) => pluginRegistry.hasPaneSettings(paneId), [pluginRegistry]);
 
+  const planAccess = usePlanAccess();
+  const { assistState, askAssist, resetAssist } = useCommandBarAssist({ rootQuery });
+  // Filled in below once the selection runtime exists, so an AI candidate runs
+  // through the very same submit path as text the user typed.
+  const runRootQueryRef = useRef<((query: string) => void) | null>(null);
+  const askAssistWithInventory = useCallback(() => {
+    askAssist(buildAssistCommandInventory({
+      commands: availableCommands,
+      pluginCommands: getAvailablePluginCommands(),
+      paneTemplates: getAvailablePaneTemplates(undefined, { includePromptableTickerTemplates: true }),
+    }));
+  }, [askAssist, availableCommands, getAvailablePaneTemplates, getAvailablePluginCommands]);
+  const startAssistSignUp = useCallback(() => {
+    const signUpCommand = getAvailablePluginCommands().find((command) => command.id === "auth-signup");
+    if (signUpCommand?.wizard?.length) {
+      openPluginCommandWorkflow(signUpCommand);
+      return;
+    }
+    setRootQuery("Sign Up");
+  }, [getAvailablePluginCommands, openPluginCommandWorkflow, setRootQuery]);
+  const assist = useMemo<AssistRowHandlers>(() => ({
+    enabled: planAccess.emailVerified,
+    state: assistState,
+    onAsk: askAssistWithInventory,
+    onSignUp: startAssistSignUp,
+    onRunCandidate: (input: string) => runRootQueryRef.current?.(input),
+  }), [askAssistWithInventory, assistState, planAccess.emailVerified, startAssistSignUp]);
+
   const {
     activeMatch,
     orderedRootResults,
@@ -176,6 +210,7 @@ export function CommandBar({
     activePortfolio,
     activeTickerData,
     activeTickerSymbol,
+    assist,
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
@@ -217,6 +252,7 @@ export function CommandBar({
     acceptRootShortcutTab,
     acceptSelectedShortcutTab,
     activateListSelection,
+    runRootQuery,
     setActiveListQuery,
   } = useCommandBarSelectionRuntime({
     activeTickerSymbol,
@@ -251,6 +287,7 @@ export function CommandBar({
     updateWorkflowValue,
     visibleListStateRef,
   });
+  runRootQueryRef.current = runRootQuery;
 
   const routeListState = useRouteListState({
     activeMatch,
@@ -309,6 +346,7 @@ export function CommandBar({
     persistConfig,
     pluginRegistry,
     popRoute,
+    resetAssist,
     rootModeKind: rootModeInfo.kind,
     rootGhostSuffix,
     rootQueryLength: rootQuery.length,

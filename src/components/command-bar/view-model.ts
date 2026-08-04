@@ -147,5 +147,7 @@ function getCategoryPriority(category: string, sectionOrder: CommandBarSectionOr
   if (normalized === "funds & derivatives") return -10;
   if (normalized.includes("danger")) return 900;
   if (normalized.includes("debug")) return 910;
+  // The AI fallback is always the last resort, below even the danger zone.
+  if (normalized === "ask ai") return 999;
   return 0;
 }

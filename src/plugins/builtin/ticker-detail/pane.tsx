@@ -14,7 +14,7 @@ import {
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getCollectionName, getCollectionTickerCount } from "../../../state/selectors";
 import { getSharedRegistry } from "../../registry";
-import { EmptyState, PaneFooterScope, Tabs } from "../../../components";
+import { EmptyState, PaneFooterScope, Tabs, usePaneFooter } from "../../../components";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
 import {
@@ -23,6 +23,8 @@ import {
   resolveLockedTabId,
 } from "./settings";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { useCloudAccessFooter } from "../shared/cloud-upgrade";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 
@@ -101,6 +103,20 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const hasOptionsChain = !!resolveOptionsTarget(ticker)?.effectiveTicker;
   const collectionTickerCount = useAppSelector((state) => getCollectionTickerCount(state, collectionId));
   const collectionName = useAppSelector((state) => getCollectionName(state, collectionId));
+
+  // Cloud quotes are delayed on the free tier; a broker feed can still be live.
+  const cloudAccess = useCloudAccessFooter({
+    delayLabel: tf("{count}m", { count: CLOUD_QUOTE_DELAY_MINUTES }),
+    degraded: financials?.quote?.dataSource !== "live",
+    focused,
+    segmentId: "ticker-research-access",
+    shortcutScope: "ticker-research:upgrade",
+  });
+  usePaneFooter(
+    "ticker-research-access",
+    () => cloudAccess.segment ? { info: [cloudAccess.segment], order: -1 } : null,
+    [cloudAccess.segment],
+  );
 
   const disabledPlugins = config.disabledPlugins;
   const registry = getSharedRegistry();

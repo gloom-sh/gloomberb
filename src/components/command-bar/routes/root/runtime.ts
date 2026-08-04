@@ -5,6 +5,7 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { CommandDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { TickerSearchCandidate } from "../../../../tickers/search";
+import type { AssistRowHandlers } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import type { ResultItem } from "../../list/model";
 import type { CommandBarRoute } from "../../workflow/types";
@@ -19,6 +20,7 @@ interface UseCommandBarRootRuntimeOptions {
   activePortfolio?: AppState["config"]["portfolios"][number];
   activeTickerData: TickerRecord | null | undefined;
   activeTickerSymbol: string | null;
+  assist: AssistRowHandlers;
   availableCommands: Command[];
   buildLayoutItems(query: string, options?: { confirmDangerousActions?: boolean }): ResultItem[];
   buildPaneSettingItems(paneId: string | null, query: string): ResultItem[];
@@ -80,6 +82,7 @@ export function useCommandBarRootRuntime({
   activePortfolio,
   activeTickerData,
   activeTickerSymbol,
+  assist,
   availableCommands,
   buildLayoutItems,
   buildPaneSettingItems,
@@ -160,6 +163,7 @@ export function useCommandBarRootRuntime({
     activeCollectionId,
     activeTickerData,
     activeTickerSymbol,
+    assist,
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
@@ -187,6 +191,7 @@ export function useCommandBarRootRuntime({
     activeCollectionId,
     activeTickerData,
     activeTickerSymbol,
+    assist,
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,

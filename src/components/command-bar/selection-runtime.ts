@@ -195,6 +195,20 @@ export function useCommandBarSelectionRuntime({
     startThemePicker,
   ]);
 
+  /**
+   * Runs `query` exactly as if it had been typed into the root bar and
+   * submitted, so AI-suggested inputs take the same prefix/arg path as anything
+   * the user types. Text the bar cannot resolve is left in the input instead.
+   */
+  const runRootQuery = useCallback((query: string) => {
+    const item = resolveImmediateRootSelection(query);
+    if (item && !item.disabled) {
+      void item.action();
+      return;
+    }
+    setRootQuery(query);
+  }, [resolveImmediateRootSelection, setRootQuery]);
+
   const setActiveListQuery = useCallback((nextQuery: string) => {
     const route = currentRouteRef.current;
     if (!route) {
@@ -286,6 +300,7 @@ export function useCommandBarSelectionRuntime({
     acceptRootShortcutTab,
     acceptSelectedShortcutTab,
     activateListSelection,
+    runRootQuery,
     setActiveListQuery,
   };
 }

@@ -275,6 +275,7 @@ export function useCommandBarPaneTemplateActions({
     adaptTickerSearchRouteResult,
     createPaneTemplateItem,
     getAvailablePaneShortcutTemplates,
+    getAvailablePaneTemplates,
     nonShortcutPaneTemplateItems,
     openPaneTemplateWorkflow,
     paneShortcutItems,

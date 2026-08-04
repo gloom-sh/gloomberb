@@ -4,6 +4,12 @@ import { isBackNavigationKey, isPlainEscape } from "../../utils/back-navigation"
 import { isPlainKey } from "../../utils/keyboard";
 import type { ListViewItem } from "../ui";
 import { useShortcut } from "../../react/input";
+import {
+  ACCOUNT_CHOICE_IDS,
+  type AccountMode,
+  type AccountSub,
+  type AccountSubmitError,
+} from "./account-step/model";
 import type { PortfolioSub } from "./onboarding-steps";
 import type { BrokerOption, OnboardingStep } from "./wizard-model";
 
@@ -29,6 +35,16 @@ export function useOnboardingKeyboard({
   setEditingField,
   isBrokerSyncing,
   brokerSyncError,
+  accountSub,
+  accountChoiceIdx,
+  setAccountChoiceIdx,
+  accountSubmitting,
+  accountSubmitError,
+  beginAccountMode,
+  returnToAccountChooser,
+  switchToAccountLogin,
+  submitAccountField,
+  submitAccount,
   isFinishing,
   nextStep,
   prevStep,
@@ -58,6 +74,16 @@ export function useOnboardingKeyboard({
   setEditingField: Dispatch<SetStateAction<boolean>>;
   isBrokerSyncing: boolean;
   brokerSyncError: string | null;
+  accountSub: AccountSub;
+  accountChoiceIdx: number;
+  setAccountChoiceIdx: Dispatch<SetStateAction<number>>;
+  accountSubmitting: boolean;
+  accountSubmitError: AccountSubmitError | null;
+  beginAccountMode: (mode: AccountMode) => void;
+  returnToAccountChooser: () => void;
+  switchToAccountLogin: () => void;
+  submitAccountField: () => void;
+  submitAccount: () => void;
   isFinishing: boolean;
   nextStep: () => void;
   prevStep: () => void;
@@ -74,6 +100,10 @@ export function useOnboardingKeyboard({
     if (editingField) {
       if (event.name === "enter" || event.name === "return") {
         setEditingField(false);
+        if (step === "account") {
+          submitAccountField();
+          return;
+        }
         if (portfolioSub === "broker-fields" && selectedBrokerId) {
           const currentField = activeBrokerFields[brokerFieldIdx];
           if (!currentField) {
@@ -102,7 +132,9 @@ export function useOnboardingKeyboard({
         }
       } else if (isPlainEscape(event)) {
         setEditingField(false);
-        if (portfolioSub === "broker-fields") {
+        if (step === "account") {
+          returnToAccountChooser();
+        } else if (portfolioSub === "broker-fields") {
           setPortfolioSub("broker-setup");
         } else {
           setPortfolioSub("choose");
@@ -115,6 +147,30 @@ export function useOnboardingKeyboard({
     if (event.name === "return" || event.name === "enter") {
       if (step === "ready") {
         finish();
+        return;
+      }
+      if (step === "account") {
+        if (accountSubmitting) return;
+        if (accountSub === "choose") {
+          const choice = ACCOUNT_CHOICE_IDS[accountChoiceIdx];
+          if (!choice || choice === "skip") {
+            nextStep();
+            return;
+          }
+          beginAccountMode(choice);
+          return;
+        }
+        if (accountSub === "signup" || accountSub === "login") {
+          if (accountSubmitError?.kind === "switch-to-login") {
+            switchToAccountLogin();
+          } else if (accountSubmitError) {
+            submitAccount();
+          } else {
+            setEditingField(true);
+          }
+          return;
+        }
+        nextStep();
         return;
       }
       if (step === "portfolio") {
@@ -189,6 +245,10 @@ export function useOnboardingKeyboard({
       }
       nextStep();
     } else if (isBackNavigationKey(event) || event.name === "left") {
+      if (step === "account" && (accountSub === "signup" || accountSub === "login")) {
+        returnToAccountChooser();
+        return;
+      }
       if (step === "portfolio" && portfolioSub === "broker-sync") {
         resetBrokerSync();
         setPortfolioSub("broker-fields");
@@ -218,6 +278,12 @@ export function useOnboardingKeyboard({
         setThemeIdx((index) => Math.max(0, index - 1));
       } else if (isPlainKey(event, "down", "j")) {
         setThemeIdx((index) => Math.min(themeIds.length - 1, index + 1));
+      }
+    } else if (step === "account" && accountSub === "choose") {
+      if (isPlainKey(event, "up", "k")) {
+        setAccountChoiceIdx((index) => Math.max(0, index - 1));
+      } else if (isPlainKey(event, "down", "j")) {
+        setAccountChoiceIdx((index) => Math.min(ACCOUNT_CHOICE_IDS.length - 1, index + 1));
       }
     } else if (step === "portfolio" && portfolioSub === "choose") {
       if (isPlainKey(event, "up", "k")) {

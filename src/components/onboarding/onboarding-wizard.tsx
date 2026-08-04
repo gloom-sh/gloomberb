@@ -10,6 +10,7 @@ import type { PluginRegistry } from "../../plugins/registry";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
 import type { ListViewItem } from "../ui";
 import {
+  AccountStep,
   PortfolioStep,
   ReadyStep,
   ShortcutsStep,
@@ -17,6 +18,8 @@ import {
   WelcomeStep,
   type PortfolioSub,
 } from "./onboarding-steps";
+import { ACCOUNT_CHOICE_IDS } from "./account-step/model";
+import { useOnboardingAccount } from "./wizard-account";
 import { finishOnboarding, summarizeOnboardingError, useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { useOnboardingKeyboard } from "./wizard-keyboard";
 import {
@@ -87,12 +90,6 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
   }
 
   useEffect(() => {
-    if (!editingField) return;
-    const focusTimer = setTimeout(() => inputRef.current?.focus?.(), 10);
-    return () => clearTimeout(focusTimer);
-  }, [editingField, portfolioSub, brokerFieldIdx]);
-
-  useEffect(() => {
     if (!selectedBrokerId) return;
     const field = activeBrokerFields[brokerFieldIdx];
     if (!field || field.type !== "select") return;
@@ -121,6 +118,32 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
       setStep(ONBOARDING_STEPS[idx - 1]!);
     }
   }, [step]);
+
+  const account = useOnboardingAccount({ nextStep, setEditingField });
+
+  // Re-focus whenever the active field changes so enter keeps moving through
+  // the broker and account forms without a mouse.
+  useEffect(() => {
+    if (!editingField) return;
+    const focusTimer = setTimeout(() => inputRef.current?.focus?.(), 10);
+    return () => clearTimeout(focusTimer);
+  }, [editingField, portfolioSub, brokerFieldIdx, account.accountSub, account.accountFieldIdx]);
+
+  const { beginAccountMode, syncExistingAccountSession } = account;
+  useEffect(() => {
+    if (step !== "account") return;
+    syncExistingAccountSession();
+  }, [step, syncExistingAccountSession]);
+
+  // Clicking a chooser row has to do exactly what enter does on it.
+  const activateAccountChoice = useCallback((index: number) => {
+    const choice = ACCOUNT_CHOICE_IDS[index];
+    if (!choice || choice === "skip") {
+      nextStep();
+      return;
+    }
+    beginAccountMode(choice);
+  }, [beginAccountMode, nextStep]);
 
   const {
     isBrokerSyncing,
@@ -205,6 +228,16 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
     setEditingField,
     isBrokerSyncing,
     brokerSyncError,
+    accountSub: account.accountSub,
+    accountChoiceIdx: account.accountChoiceIdx,
+    setAccountChoiceIdx: account.setAccountChoiceIdx,
+    accountSubmitting: account.accountSubmitting,
+    accountSubmitError: account.accountSubmitError,
+    beginAccountMode: account.beginAccountMode,
+    returnToAccountChooser: account.returnToAccountChooser,
+    switchToAccountLogin: account.switchToAccountLogin,
+    submitAccountField: account.submitAccountField,
+    submitAccount: account.submitAccount,
     isFinishing,
     nextStep,
     prevStep,
@@ -231,6 +264,15 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
   let hintText = t("enter ->");
   if (step === "ready") {
     hintText = t("enter to launch");
+  }
+  if (step === "account") {
+    if (account.accountSubmitting) {
+      hintText = account.accountSub === "login" ? t("signing in...") : t("creating account...");
+    } else if (account.accountSubmitError?.kind === "switch-to-login") {
+      hintText = t("enter to log in");
+    } else if (account.accountSubmitError) {
+      hintText = t("enter to retry");
+    }
   }
   if (step === "portfolio" && portfolioSub === "broker-sync") {
     hintText = isBrokerSyncing ? "syncing broker..." : "enter to retry";
@@ -286,11 +328,32 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
         {step === "shortcuts" && (
           <ShortcutsStep height={contentHeight} />
         )}
+        {step === "account" && (
+          <AccountStep
+            sub={account.accountSub}
+            choiceIdx={account.accountChoiceIdx}
+            onChoiceSelect={account.setAccountChoiceIdx}
+            onChoiceActivate={activateAccountChoice}
+            email={account.accountEmail}
+            password={account.accountPassword}
+            fieldIdx={account.accountFieldIdx}
+            editing={editingField}
+            inputRef={inputRef}
+            submitting={account.accountSubmitting}
+            submitError={account.accountSubmitError}
+            validationError={account.accountValidationError}
+            outcome={account.accountOutcome}
+            onEmailChange={account.setAccountEmail}
+            onPasswordChange={account.setAccountPassword}
+            height={contentHeight}
+          />
+        )}
         {step === "ready" && (
           <ReadyStep
             brokerName={connectedBrokerName ?? null}
             portfolioName={portfolioName}
             brokerSyncSummary={brokerSyncSummary}
+            accountOutcome={account.accountOutcome}
             isFinishing={isFinishing}
             error={finishError}
           />

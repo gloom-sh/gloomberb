@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { act } from "react";
+import { setCloudApiFetchTransport } from "../../api-client";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { OnboardingWizard } from "./onboarding-wizard";
 import { createDefaultConfig, type AppConfig } from "../../types/config";
@@ -80,6 +81,7 @@ async function waitForFrameToContain(text: string, attempts = 8): Promise<string
 }
 
 afterEach(async () => {
+  setCloudApiFetchTransport(null);
   if (testSetup) {
     await act(async () => {
       testSetup!.renderer.destroy();
@@ -223,12 +225,10 @@ describe("OnboardingWizard", () => {
     frame = testSetup.captureCharFrame();
     expect(frame).toContain("After launch shortcuts");
 
-    for (let index = 0; index < 3 && !frame.includes("Imported 1 position"); index += 1) {
-      await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-      frame = testSetup.captureCharFrame();
-    }
-
-    expect(frame).toContain("Imported 1 position");
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForFrameToContain("Create your free Gloom Cloud account");
+    await emitKeypress(testSetup, { name: "right", sequence: "[C" });
+    frame = await waitForFrameToContain("Imported 1 position");
     expect(completedConfig).toBeNull();
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
@@ -251,5 +251,72 @@ describe("OnboardingWizard", () => {
     expect(finalConfig.layout.instances.find((instance) => instance.paneId === "portfolio-list")?.params?.collectionId)
       .toBe("broker:demo-demo-broker:ACC-1");
     expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker)).toContain("AAPL");
+  });
+
+  test("account step validates locally and stays skippable all the way to launch", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-account-"));
+    const requestedUrls: string[] = [];
+    setCloudApiFetchTransport(async (url) => {
+      requestedUrls.push(url);
+      throw new Error("network is disabled in tests");
+    });
+
+    const pluginRegistry = {
+      allPlugins: new Map(),
+      brokers: new Map(),
+      paneTemplates: new Map(),
+      getPaneTemplatePluginId: () => undefined,
+      tickerRepository: createTickerRepository(),
+      persistence: { resources: undefined },
+    } as unknown as PluginRegistry;
+
+    let completedConfig: AppConfig | null = null;
+    testSetup = await testRender(
+      <OnboardingWizard
+        config={createDefaultConfig(tempDataDir)}
+        pluginRegistry={pluginRegistry}
+        onComplete={(nextConfig) => {
+          completedConfig = nextConfig;
+        }}
+      />,
+      { width: 90, height: 28 },
+    );
+    await testSetup.renderOnce();
+
+    // welcome -> theme -> portfolio -> shortcuts -> account
+    for (let index = 0; index < 4; index += 1) {
+      await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    }
+    let frame = await waitForFrameToContain("Create your free Gloom Cloud account");
+    expect(frame).toContain("Try Pro free for 7 days");
+
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await waitForFrameToContain("Create your free account");
+
+    // Submitting an empty form must be caught locally instead of hitting the API.
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    frame = await waitForFrameToContain("Enter your email address.");
+    expect(requestedUrls).toEqual([]);
+
+    await emitKeypress(testSetup, { name: "escape", sequence: "\u001b" });
+    await waitForFrameToContain("Skip for now");
+
+    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
+    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    frame = await waitForFrameToContain("Create an account anytime");
+    expect(frame).not.toContain("Signed in as");
+
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    for (let index = 0; index < 20 && !completedConfig; index += 1) {
+      await act(async () => {
+        await Promise.resolve();
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await testSetup!.renderOnce();
+      });
+    }
+
+    expect(completedConfig).not.toBeNull();
+    expect(requestedUrls).toEqual([]);
   });
 });

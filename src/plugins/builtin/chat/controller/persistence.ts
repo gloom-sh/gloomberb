@@ -22,6 +22,9 @@ export interface ChatSessionUser {
   username: string;
   emailVerified: boolean;
   plan?: "free" | "pro";
+  /** Cached so a cold start renders the right entitlement before /auth/get-session lands. */
+  trialEndsAt?: string | null;
+  effectivePlan?: "free" | "pro";
 }
 
 export function readChatSessionState(
@@ -42,6 +45,8 @@ export function normalizeSessionUser(user: PersistedAuthUser | null | undefined)
       username: user.username ?? user.name ?? "account",
       emailVerified: user.emailVerified === true,
       plan: user.plan,
+      trialEndsAt: user.trialEndsAt ?? undefined,
+      effectivePlan: user.effectivePlan,
     }
     : null;
 }

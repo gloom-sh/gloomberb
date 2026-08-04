@@ -5,6 +5,7 @@ import type {
   AuthUser,
   BuildoutAccountResponse,
   BuildoutTokenResponse,
+  CloudPricing,
   CloudVerificationResponse,
   PersistedAuthUser,
 } from "./types";
@@ -39,6 +40,8 @@ export class CloudAuthApi {
       emailVerified: user.emailVerified === true,
       image: typeof user.image === "string" ? user.image : null,
       plan: user.plan,
+      trialEndsAt: typeof user.trialEndsAt === "string" ? user.trialEndsAt : null,
+      effectivePlan: user.effectivePlan,
       syncEnabled: user.syncEnabled === false ? false : true,
       weeklyRoundupEnabled: user.weeklyRoundupEnabled === false ? false : true,
       positionAlertsEnabled: user.positionAlertsEnabled === false ? false : true,
@@ -120,6 +123,11 @@ export class CloudAuthApi {
       method: "GET",
     });
     return result.profile;
+  }
+
+  /** Public Cloud Pro pricing, including the founding discount and trial length. */
+  async getCloudPricing(): Promise<CloudPricing> {
+    return this.options.request<CloudPricing>("/pricing", { method: "GET" });
   }
 
   async getBuildoutAccount(): Promise<BuildoutAccountResponse> {

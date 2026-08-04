@@ -2,7 +2,7 @@ import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
 import { getCommandPrefixes, type Command } from "../../commands/registry";
 import { getPaneTemplateDisplayLabel } from "../../pane-templates/items";
 
-type RootShortcutArgKind = "text" | "ticker" | "ticker-list";
+export type RootShortcutArgKind = "text" | "ticker" | "ticker-list";
 type ShortcutIntentKind = "none" | "complete" | "inferred-complete" | "partial" | "ambiguous";
 
 interface ShortcutIntentBase {
@@ -60,12 +60,16 @@ function mapPlaceholderToArgKind(value: string | undefined): RootShortcutArgKind
   return null;
 }
 
-function getPaneShortcutArgKind(template: PaneTemplateDef): RootShortcutArgKind | null {
+export function getPaneShortcutArgKind(template: PaneTemplateDef): RootShortcutArgKind | null {
   return template.shortcut?.argKind ?? mapPlaceholderToArgKind(template.shortcut?.argPlaceholder);
 }
 
-function getCommandShortcutArgKind(command: Command): RootShortcutArgKind | null {
+export function getCommandShortcutArgKind(command: Command): RootShortcutArgKind | null {
   return mapPlaceholderToArgKind(command.argPlaceholder) ?? (command.hasArg ? "text" : null);
+}
+
+export function getPluginCommandShortcutArgKind(command: CommandDef): RootShortcutArgKind | null {
+  return command.shortcutArg?.kind ?? (command.shortcutArg ? "text" : null);
 }
 
 function inferShortcutArg(argKind: RootShortcutArgKind | null, activeTicker: string | null): string | null {
@@ -98,7 +102,7 @@ function buildShortcutCandidates(
         prefix: normalizeShortcutPrefix(command.shortcut!),
         label: command.label,
         description: command.description ?? "",
-        argKind: command.shortcutArg?.kind ?? (command.shortcutArg ? "text" : null),
+        argKind: getPluginCommandShortcutArgKind(command),
         argPlaceholder: command.shortcutArg?.placeholder,
         source: "plugin-command" as const,
         pluginCommand: command,

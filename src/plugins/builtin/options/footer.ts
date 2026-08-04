@@ -1,78 +1,30 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import type { PaneFooterSegment } from "../../../components";
-import { apiClient } from "../../../api-client";
 import { t, tf } from "../../../i18n";
-import { useShortcut } from "../../../react/input";
 import type { OptionsChain } from "../../../types/financials";
-import { useRendererHost } from "../../../ui";
-import { CLOUD_UPGRADE_URL } from "../shared/cloud-upgrade";
+import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { usePaneStatusFooter } from "../shared/pane-footer";
-import type { OptionQuoteCoverage } from "./live-quotes";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
+import type { OptionQuoteCoverage, OptionQuoteCoverageStatus } from "./live-quotes";
 
-export interface OptionsAccessFooterState {
-  canUpgrade: boolean;
+export interface OptionsCoverageState {
   text: string;
   tone: "muted" | "positive" | "warning";
 }
 
-export function resolveOptionsAccessFooterState({
-  chain,
-  clientPlan,
-  quoteCoverage,
-}: {
-  chain: OptionsChain | null | undefined;
-  clientPlan: "free" | "pro" | null;
-  quoteCoverage: Pick<OptionQuoteCoverage, "status">;
-}): OptionsAccessFooterState {
-  if (clientPlan !== "pro") {
-    const delayMinutes = chain?.delayMinutes && chain.delayMinutes > 0 ? chain.delayMinutes : 15;
-    return {
-      canUpgrade: true,
-      text: tf("{count}-minute delayed options, upgrade for real-time", {
-        count: delayMinutes,
-      }),
-      tone: "warning",
-    };
-  }
-
-  if (quoteCoverage.status === "live") {
-    return {
-      canUpgrade: false,
-      text: t("real-time options"),
-      tone: "positive",
-    };
-  }
-  if (quoteCoverage.status === "mixed") {
-    return {
-      canUpgrade: false,
-      text: t("mixed real-time and delayed options"),
-      tone: "warning",
-    };
-  }
-  if (quoteCoverage.status === "connecting") {
-    return {
-      canUpgrade: false,
-      text: t("connecting real-time options"),
-      tone: "muted",
-    };
-  }
-
-  return {
-    canUpgrade: false,
-    text: t("options delayed fallback"),
-    tone: "warning",
-  };
+/** Stream coverage the pane reports once the account is entitled to real-time options. */
+export function resolveOptionsCoverageState(status: OptionQuoteCoverageStatus): OptionsCoverageState {
+  if (status === "live") return { text: t("real-time options"), tone: "positive" };
+  if (status === "mixed") return { text: t("mixed real-time and delayed options"), tone: "warning" };
+  if (status === "connecting") return { text: t("connecting real-time options"), tone: "muted" };
+  return { text: t("options delayed fallback"), tone: "warning" };
 }
 
-export function buildOptionsAccessFooterSegment(
-  state: OptionsAccessFooterState,
-  openUpgrade: () => void,
-): PaneFooterSegment {
-  return {
-    id: "options-access",
-    ...(state.canUpgrade ? { onPress: openUpgrade } : {}),
-    parts: [{ text: state.text, tone: state.tone }],
-  };
+export function resolveOptionsDelayLabel(chain: OptionsChain | null | undefined): string {
+  const delayMinutes = chain?.delayMinutes && chain.delayMinutes > 0
+    ? chain.delayMinutes
+    : CLOUD_QUOTE_DELAY_MINUTES;
+  return tf("{count}m", { count: delayMinutes });
 }
 
 export function useOptionsAccessFooter({
@@ -87,39 +39,29 @@ export function useOptionsAccessFooter({
   focused: boolean;
   loading?: boolean;
   quoteCoverage: Pick<OptionQuoteCoverage, "status">;
-}): OptionsAccessFooterState {
-  const rendererHost = useRendererHost();
-  const user = apiClient.getCurrentUser();
-  const clientPlan = user?.emailVerified === true && user.plan === "pro" ? "pro" : "free";
-  const state = resolveOptionsAccessFooterState({
-    chain,
-    clientPlan,
-    quoteCoverage,
+}): void {
+  const { access, segment } = useCloudAccessFooter({
+    delayLabel: resolveOptionsDelayLabel(chain),
+    focused,
+    segmentId: "options-access",
+    shortcutScope: "options:upgrade",
   });
-  const openUpgrade = useCallback(() => {
-    void rendererHost.openExternal(CLOUD_UPGRADE_URL);
-  }, [rendererHost]);
+  // Trial accounts stream real-time too, but the countdown is the status worth the row.
+  const coverage = access.hasProAccess && !access.isTrialActive
+    ? resolveOptionsCoverageState(quoteCoverage.status)
+    : null;
 
-  useShortcut(
-    (event) => {
-      const key = (event.name ?? event.key ?? "").toLowerCase();
-      if (!focused || !state.canUpgrade || key !== "u") return;
-      event.stopPropagation();
-      event.preventDefault();
-      openUpgrade();
-    },
-    { scope: "options:upgrade" },
-  );
+  const info = useMemo<PaneFooterSegment[]>(() => {
+    if (coverage) {
+      return [{ id: "options-access", parts: [{ text: coverage.text, tone: coverage.tone }] }];
+    }
+    return segment ? [segment] : [];
+  }, [coverage?.text, coverage?.tone, segment]);
 
-  const info = useMemo(
-    () => [buildOptionsAccessFooterSegment(state, openUpgrade)],
-    [openUpgrade, state.canUpgrade, state.text, state.tone],
-  );
   usePaneStatusFooter({
     registrationId: "options",
     loading,
     error,
     info,
   });
-  return state;
 }

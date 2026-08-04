@@ -10,9 +10,10 @@ import {
 import type { DesktopDeepLinkBridge } from "../../types/desktop-deeplink";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { requestAccountManagementTab } from "../../plugins/builtin/account-management/navigation";
+import { chatController } from "../../plugins/builtin/chat/controller";
 
 type CloudDeepLinkRoute = {
-  kind: "cloud-alerts" | "cloud-emails" | "cloud-roundup";
+  kind: "cloud-alerts" | "cloud-emails" | "cloud-roundup" | "cloud-success";
   week: string | null;
 };
 
@@ -157,6 +158,13 @@ function parseCloudDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
       type: "open-account-management",
       route: { kind: "cloud-emails", week: null },
       message: "Opened email settings.",
+    };
+  }
+  if (route === "success") {
+    return {
+      type: "open-account-management",
+      route: { kind: "cloud-success", week: null },
+      message: "Pro is active.",
     };
   }
   return { type: "unsupported", message: "Unsupported Gloomberb cloud link." };
@@ -465,6 +473,11 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
     case "open-account-management":
       if (!requirePane(options.pluginRegistry, "account-management", "Account management is unavailable.")) return;
       if (action.route.kind === "cloud-emails") requestAccountManagementTab("emails");
+      if (action.route.kind === "cloud-success") {
+        requestAccountManagementTab("pro");
+        // Checkout just completed: re-read the session so the new plan shows at once.
+        void chatController.refreshSession().catch(() => {});
+      }
       options.pluginRegistry.showPane("account-management");
       notifySuccess(options.pluginRegistry, action.message);
       return;

@@ -18,6 +18,14 @@ describe("desktop deeplinks", () => {
     });
   });
 
+  test("routes the post-checkout success link to account management", () => {
+    expect(resolveDesktopDeepLinkAction("gloomberb://cloud/success")).toEqual({
+      type: "open-account-management",
+      route: { kind: "cloud-success", week: null },
+      message: "Pro is active.",
+    });
+  });
+
   test("routes ticker links with arbitrary registered tab ids", () => {
     expect(resolveDesktopDeepLinkAction("gloomberb://ticker/NVDA?tab=analyst-research")).toEqual({
       type: "open-ticker",
