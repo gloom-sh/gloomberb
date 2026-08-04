@@ -9,6 +9,8 @@ export interface ResultItem {
   right?: string;
   shortcutQuery?: string;
   searchText?: string;
+  /** Tints the trailing marker and the section heading with the AI accent. */
+  accent?: boolean;
   pluginToggle?: () => void | Promise<void>;
   secondaryAction?: () => void | Promise<void>;
   checked?: boolean;
@@ -37,7 +39,7 @@ export interface ListScreenState {
 
 export type CommandBarListRow =
   | { kind: "spacer"; id: string }
-  | { kind: "heading"; id: string; label: string }
+  | { kind: "heading"; id: string; label: string; accent?: boolean }
   | { kind: "item"; item: ResultItem; globalIdx: number }
   | { kind: "message"; id: string; label: string; dim?: boolean }
   | { kind: "spinner"; id: string; label: string }
@@ -58,7 +60,12 @@ export function buildListRows(listState: ListScreenState): CommandBarListRow[] {
     if (sectionIndex > 0) {
       rows.push({ kind: "spacer", id: `spacer:${sectionIndex}:${section.category}` });
     }
-    rows.push({ kind: "heading", id: `heading:${sectionIndex}:${section.category}`, label: section.category });
+    rows.push({
+      kind: "heading",
+      id: `heading:${sectionIndex}:${section.category}`,
+      label: section.category,
+      accent: section.items.some((item) => item.accent),
+    });
     for (const item of section.items) {
       rows.push({ kind: "item", item, globalIdx });
       globalIdx += 1;

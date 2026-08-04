@@ -72,7 +72,7 @@ export const zhTW: Record<string, string> = {
   "Restart to apply everywhere": "重新啟動後全部生效",
 
   // ── Command bar chrome ───────────────────────────────────────
-  "Search commands": "搜尋命令",
+  "Command or plain English…": "命令或自然語言…",
   "Search tickers": "搜尋股票代號",
   "Type a command or prefix": "輸入命令或字首",
   'Filtering for "{query}"': '正在篩選「{query}」',
@@ -1080,7 +1080,6 @@ export const zhTW: Record<string, string> = {
   "signing in...": "登入中...",
 
   // ── Command bar AI assist ───────────────────────────────────
-  "Ask AI: \"{query}\"": "詢問 AI：\"{query}\"",
   "Ask AI — sign up to enable": "詢問 AI — 註冊後可用",
   "Thinking…": "思考中…",
   "No command found — try HELP": "找不到命令 — 試試 HELP",

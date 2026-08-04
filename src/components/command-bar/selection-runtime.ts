@@ -198,13 +198,24 @@ export function useCommandBarSelectionRuntime({
   /**
    * Runs `query` exactly as if it had been typed into the root bar and
    * submitted, so AI-suggested inputs take the same prefix/arg path as anything
-   * the user types. Text the bar cannot resolve is left in the input instead.
+   * the user types. Argless prefixes reject a trailing argument outright
+   * ("ERN NVDA" resolves to nothing), so the bare prefix gets a second try
+   * before the text is merely dropped into the input.
    */
-  const runRootQuery = useCallback((query: string) => {
+  const runRootQuery = useCallback((query: string, options?: { fallbackPrefix?: string }) => {
     const item = resolveImmediateRootSelection(query);
     if (item && !item.disabled) {
       void item.action();
       return;
+    }
+    const trimmed = query.trim();
+    const fallbackPrefix = (options?.fallbackPrefix ?? trimmed.split(/\s+/)[0] ?? "").trim();
+    if (fallbackPrefix && fallbackPrefix.toUpperCase() !== trimmed.toUpperCase()) {
+      const fallbackItem = resolveImmediateRootSelection(fallbackPrefix);
+      if (fallbackItem && !fallbackItem.disabled) {
+        void fallbackItem.action();
+        return;
+      }
     }
     setRootQuery(query);
   }, [resolveImmediateRootSelection, setRootQuery]);

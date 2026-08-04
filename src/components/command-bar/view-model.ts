@@ -28,6 +28,8 @@ export interface CommandBarItemView {
   right?: string;
   checked?: boolean;
   current?: boolean;
+  accent?: boolean;
+  disabled?: boolean;
 }
 
 export interface CommandBarRowPresentation {
@@ -36,6 +38,7 @@ export interface CommandBarRowPresentation {
   trailing: string;
   selected: boolean;
   primaryMuted: boolean;
+  trailingAccent: boolean;
 }
 
 export function resolveCommandBarMode(query: string, commandList?: Command[]): CommandBarModeInfo {
@@ -110,7 +113,7 @@ export function getEmptyState(mode: CommandBarMode, query: string, searchQuery?:
 
 export function getRowPresentation(item: CommandBarItemView, selected: boolean, showTrailing: boolean): CommandBarRowPresentation {
   const glyph = selected ? "\u203a" : " ";
-  const primaryMuted = item.kind === "plugin" && !item.checked;
+  const primaryMuted = (item.kind === "plugin" && !item.checked) || item.disabled === true;
   let trailing = "";
 
   if (showTrailing) {
@@ -125,6 +128,7 @@ export function getRowPresentation(item: CommandBarItemView, selected: boolean, 
     trailing: t(trailing),
     selected,
     primaryMuted,
+    trailingAccent: item.accent === true && trailing.length > 0,
   };
 }
 

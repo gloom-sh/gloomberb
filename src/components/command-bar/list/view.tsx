@@ -81,7 +81,7 @@ export const CommandBarListHeader = memo(function CommandBarListHeader({
             ref={inputRef}
             value={query}
             onInput={onQueryChange}
-            placeholder={kind === "root" ? t("Search commands") : title === "Security Description" ? t("Search tickers") : t("Filter")}
+            placeholder={kind === "root" ? t("Command or plain English…") : title === "Security Description" ? t("Search tickers") : t("Filter")}
             focused
             data-gloom-remote-scope="command-bar"
             data-gloom-remote-surface="command-bar"
@@ -136,6 +136,7 @@ interface CommandBarListItemRowProps {
   labelWidth: number;
   trailingWidth: number;
   nativePaneChrome: boolean;
+  paletteAccentText: string;
   paletteBg: string;
   paletteHoverBg: string;
   paletteSelectedBg: string;
@@ -160,6 +161,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   labelWidth,
   trailingWidth,
   nativePaneChrome,
+  paletteAccentText,
   paletteBg,
   paletteHoverBg,
   paletteSelectedBg,
@@ -234,7 +236,15 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
         </Text>
       </Box>
       <Box width={trailingWidth}>
-        <Text fg={isSelected ? paletteSelectedText : paletteSubtleText}>{trailing}</Text>
+        <Text
+          fg={isSelected
+            ? paletteSelectedText
+            : presentation.trailingAccent
+              ? paletteAccentText
+              : paletteSubtleText}
+        >
+          {trailing}
+        </Text>
       </Box>
     </Box>
   );
@@ -248,6 +258,7 @@ interface CommandBarListBodyProps {
   labelWidth: number;
   nativePaneChrome: boolean;
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
+  paletteAccentText: string;
   paletteBg: string;
   paletteHeadingText: string;
   paletteHoverBg: string;
@@ -271,6 +282,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
   labelWidth,
   nativePaneChrome,
   nativeListScrollRef,
+  paletteAccentText,
   paletteBg,
   paletteHeadingText,
   paletteHoverBg,
@@ -322,7 +334,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
         if (row.kind === "heading") {
           return (
             <Box key={row.id} height={1} paddingX={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text attributes={TextAttributes.BOLD} fg={paletteHeadingText}>
+              <Text attributes={TextAttributes.BOLD} fg={row.accent ? paletteAccentText : paletteHeadingText}>
                 {truncateText(t(row.label), queryDisplayWidth)}
               </Text>
             </Box>
@@ -346,6 +358,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             labelWidth={labelWidth}
             trailingWidth={trailingWidth}
             nativePaneChrome={nativePaneChrome}
+            paletteAccentText={paletteAccentText}
             paletteBg={paletteBg}
             paletteHoverBg={paletteHoverBg}
             paletteSelectedBg={paletteSelectedBg}

@@ -77,6 +77,7 @@ export function CommandBarPanelBody({
   const themeColors = useThemeColors();
   const {
     inputBg,
+    paletteAccentText,
     paletteBg,
     paletteHeadingText,
     paletteHoverBg,
@@ -179,6 +180,7 @@ export function CommandBarPanelBody({
             labelWidth={labelWidth}
             nativePaneChrome={nativePaneChrome}
             nativeListScrollRef={nativeListScrollRef}
+            paletteAccentText={paletteAccentText}
             paletteBg={paletteBg}
             paletteHeadingText={paletteHeadingText}
             paletteHoverBg={paletteHoverBg}

@@ -1,6 +1,7 @@
 import { afterEach, describe, test } from "bun:test";
 import {
   applyTheme,
+  commandBarAccentText,
   commandBarBg,
   commandBarHeadingText,
   commandBarPanelBg,
@@ -65,6 +66,8 @@ describe("theme contrast", () => {
       assertMinContrast(id, "commandBarText/bg", commandBarText(), commandBarBg(), BODY_TEXT_MIN);
       assertMinContrast(id, "commandBarHeadingText/bg", commandBarHeadingText(), commandBarBg(), SUBTLE_TEXT_MIN);
       assertMinContrast(id, "commandBarSubtleText/panel", commandBarSubtleText(), commandBarPanelBg(), SUBTLE_TEXT_MIN);
+      assertMinContrast(id, "commandBarAccentText/bg", commandBarAccentText(), commandBarBg(), SUBTLE_TEXT_MIN);
+      assertMinContrast(id, "commandBarAccentText/panel", commandBarAccentText(), commandBarPanelBg(), SUBTLE_TEXT_MIN);
       assertMinContrast(id, "commandBarSelectedText/selected", commandBarSelectedText(), commandBarSelectedBg(), BODY_TEXT_MIN);
     }
   });

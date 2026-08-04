@@ -70,7 +70,7 @@ export const ko: Record<string, string> = {
   "Restart to apply everywhere": "전체 적용하려면 다시 시작",
 
   // ── Command bar chrome ───────────────────────────────────────
-  "Search commands": "명령 검색",
+  "Command or plain English…": "명령 또는 일상 언어…",
   "Search tickers": "종목 검색",
   "Type a command or prefix": "명령 또는 접두사 입력",
   "Filtering for \"{query}\"": "\"{query}\" 필터링 중",
@@ -1078,7 +1078,6 @@ export const ko: Record<string, string> = {
   "signing in...": "로그인 중...",
 
   // ── Command bar AI assist ───────────────────────────────────
-  "Ask AI: \"{query}\"": "AI에 질문: \"{query}\"",
   "Ask AI — sign up to enable": "AI에 질문 — 가입하면 사용 가능",
   "Thinking…": "생각 중…",
   "No command found — try HELP": "일치하는 명령 없음 — HELP 입력",

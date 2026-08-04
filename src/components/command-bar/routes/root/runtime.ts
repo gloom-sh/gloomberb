@@ -13,7 +13,7 @@ import { useTickerSearchRouteResults } from "../ticker-search/route";
 import { buildRootResultModel, type RootResultModel } from "./results";
 import { useRootProviderSearch } from "./provider-search";
 import { buildRootShortcutFeedback } from "./shortcut-feedback";
-import { parseRootShortcutIntent } from "./shortcuts";
+import type { ShortcutIntent } from "./shortcuts";
 
 interface UseCommandBarRootRuntimeOptions {
   activeCollectionId: string | null;
@@ -41,7 +41,6 @@ interface UseCommandBarRootRuntimeOptions {
     rawInput?: string,
   ): void | Promise<void>;
   getAvailablePaneShortcutTemplates(query: string): PaneTemplateDef[];
-  getAvailablePluginCommands(): CommandDef[];
   getTickers(): AppState["tickers"];
   hasPaneSettings(paneId: string): boolean;
   localTickerSearchResultItems(query?: string, options?: { category?: string; limit?: number }): ResultItem[];
@@ -62,6 +61,7 @@ interface UseCommandBarRootRuntimeOptions {
   ): TickerSearchCandidate[] | null;
   rootModeKind: string;
   rootQuery: string;
+  rootShortcutIntent: ShortcutIntent;
   runDirectCommand(command: Command, arg: string): void;
   runSecurityDescriptionShortcut(query?: string): void | Promise<void>;
   setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
@@ -95,7 +95,6 @@ export function useCommandBarRootRuntime({
   dataProvider,
   executeCollectionCommand,
   getAvailablePaneShortcutTemplates,
-  getAvailablePluginCommands,
   getTickers,
   hasPaneSettings,
   localTickerSearchResultItems,
@@ -108,6 +107,7 @@ export function useCommandBarRootRuntime({
   readTickerSearchCache,
   rootModeKind,
   rootQuery,
+  rootShortcutIntent,
   runDirectCommand,
   runSecurityDescriptionShortcut,
   setRootHoveredIdx,
@@ -124,20 +124,12 @@ export function useCommandBarRootRuntime({
   rootSearching: boolean;
   rootSectionOrder: ReturnType<typeof useRootProviderSearch>["rootSectionOrder"];
   rootShortcutFeedback: string | null;
-  rootShortcutIntent: ReturnType<typeof parseRootShortcutIntent>;
+  rootShortcutIntent: ShortcutIntent;
   tickerSearchPending: boolean;
   tickerSearchResults: ResultItem[];
 } {
   const previousRootSelectionContextRef = useRef<{ query: string; mode: string } | null>(null);
   const activeMatch = matchPrefix(rootQuery, availableCommands);
-
-  const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
-    query: rootQuery,
-    commands: availableCommands,
-    pluginCommands: getAvailablePluginCommands(),
-    paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
-    activeTicker: activeTickerSymbol,
-  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
 
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
     ? currentRoute.query

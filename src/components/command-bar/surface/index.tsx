@@ -6,9 +6,10 @@ import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { usePlanAccess } from "../../../plugins/builtin/shared/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
-import type { AssistRowHandlers } from "../assist/model";
+import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
+import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useCommandBarThemePreview } from "../theme-preview";
 import { CommandBarPanel } from "../panel";
 import { useCommandBarNavigationState } from "../routing/navigation-state";
@@ -168,18 +169,35 @@ export function CommandBar({
   const getTickerSearchTickers = useCallback(() => stateRef.current.tickers, []);
   const hasPaneSettings = useCallback((paneId: string) => pluginRegistry.hasPaneSettings(paneId), [pluginRegistry]);
 
+  const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
+    query: rootQuery,
+    commands: availableCommands,
+    pluginCommands: getAvailablePluginCommands(),
+    paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
+    activeTicker: activeTickerSymbol,
+  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
+
   const planAccess = usePlanAccess();
-  const { assistState, askAssist, resetAssist } = useCommandBarAssist({ rootQuery });
+  const buildAssistInventory = useCallback(() => buildAssistCommandInventory({
+    commands: availableCommands,
+    pluginCommands: getAvailablePluginCommands(),
+    paneTemplates: getAvailablePaneTemplates(undefined, { includePromptableTickerTemplates: true }),
+  }), [availableCommands, getAvailablePaneTemplates, getAvailablePluginCommands]);
+  // Only the root list asks on its own, and only for text the prefix parser
+  // could not claim — otherwise the user is mid-command, not mid-question.
+  const assistAutoAsk = !currentRoute
+    && planAccess.emailVerified
+    && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
+  const { assistActive, assistState, askAssist, resetAssist } = useCommandBarAssist({
+    autoAsk: assistAutoAsk,
+    getInventory: buildAssistInventory,
+    rootQuery,
+  });
   // Filled in below once the selection runtime exists, so an AI candidate runs
   // through the very same submit path as text the user typed.
-  const runRootQueryRef = useRef<((query: string) => void) | null>(null);
-  const askAssistWithInventory = useCallback(() => {
-    askAssist(buildAssistCommandInventory({
-      commands: availableCommands,
-      pluginCommands: getAvailablePluginCommands(),
-      paneTemplates: getAvailablePaneTemplates(undefined, { includePromptableTickerTemplates: true }),
-    }));
-  }, [askAssist, availableCommands, getAvailablePaneTemplates, getAvailablePluginCommands]);
+  const runRootQueryRef = useRef<
+    ((query: string, options?: { fallbackPrefix?: string }) => void) | null
+  >(null);
   const startAssistSignUp = useCallback(() => {
     const signUpCommand = getAvailablePluginCommands().find((command) => command.id === "auth-signup");
     if (signUpCommand?.wizard?.length) {
@@ -190,11 +208,15 @@ export function CommandBar({
   }, [getAvailablePluginCommands, openPluginCommandWorkflow, setRootQuery]);
   const assist = useMemo<AssistRowHandlers>(() => ({
     enabled: planAccess.emailVerified,
+    auto: assistAutoAsk && assistActive,
     state: assistState,
-    onAsk: askAssistWithInventory,
+    onAsk: askAssist,
     onSignUp: startAssistSignUp,
-    onRunCandidate: (input: string) => runRootQueryRef.current?.(input),
-  }), [askAssistWithInventory, assistState, planAccess.emailVerified, startAssistSignUp]);
+    onRunCandidate: (input: string, prefix?: string) => runRootQueryRef.current?.(
+      input,
+      prefix ? { fallbackPrefix: prefix } : undefined,
+    ),
+  }), [askAssist, assistActive, assistAutoAsk, assistState, planAccess.emailVerified, startAssistSignUp]);
 
   const {
     activeMatch,
@@ -223,7 +245,6 @@ export function CommandBar({
     dataProvider,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
-    getAvailablePluginCommands,
     getTickers: getTickerSearchTickers,
     hasPaneSettings,
     localTickerSearchResultItems,
@@ -236,6 +257,7 @@ export function CommandBar({
     readTickerSearchCache,
     rootModeKind: rootModeInfo.kind,
     rootQuery,
+    rootShortcutIntent,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     setRootHoveredIdx,

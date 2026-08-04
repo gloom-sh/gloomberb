@@ -72,7 +72,7 @@ export const ja: Record<string, string> = {
   "Restart to apply everywhere": "再起動すると全体に反映されます",
 
   // ── Command bar chrome ───────────────────────────────────────
-  "Search commands": "コマンドを検索",
+  "Command or plain English…": "コマンドまたは自然文…",
   "Search tickers": "銘柄を検索",
   "Type a command or prefix": "コマンドまたは接頭辞を入力",
   "Filtering for \"{query}\"": "「{query}」で絞り込み中",
@@ -1080,7 +1080,6 @@ export const ja: Record<string, string> = {
   "signing in...": "サインイン中...",
 
   // ── Command bar AI assist ───────────────────────────────────
-  "Ask AI: \"{query}\"": "AI に質問: \"{query}\"",
   "Ask AI — sign up to enable": "AI に質問 — 登録すると利用可能",
   "Thinking…": "考え中…",
   "No command found — try HELP": "該当するコマンドなし — HELP を試す",

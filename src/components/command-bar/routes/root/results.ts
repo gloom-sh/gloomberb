@@ -75,8 +75,12 @@ export interface RootResultModelOptions {
 
 /** An in-flight or answered request keeps its rows even if the heuristic lapses. */
 function isAssistSectionVisible(assist: AssistRowHandlers, query: string, resultCount: number): boolean {
+  if (!query.trim()) return false;
   if (assist.state.status !== "idle" && assist.state.query === query.trim()) return true;
-  return shouldShowAssistRow({ query, resultCount });
+  // Signed out there is nothing to wait for, so the older heuristic still picks
+  // the queries worth offering a sign-up row for.
+  if (!assist.enabled) return shouldShowAssistRow({ query, resultCount });
+  return assist.auto;
 }
 
 export function buildRootResultModel(options: RootResultModelOptions): RootResultModel {
@@ -221,10 +225,12 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     ];
     const matchedItems = fuzzyFilter(allItems, rootQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`);
     items.push(...matchedItems);
-    // Appended last so a good local match still wins the default selection.
-    if (assist && isAssistSectionVisible(assist, rootQuery, matchedItems.length)) {
-      items.push(...buildAssistResultItems({ ...assist, query: rootQuery }));
-    }
+  }
+
+  // Appended last so a good local match still wins the default selection, and
+  // so an answer arriving mid-typing cannot renumber the rows above it.
+  if (assist && isAssistSectionVisible(assist, rootQuery, items.length)) {
+    items.push(...buildAssistResultItems({ ...assist, query: rootQuery }));
   }
 
   return { items, initialIdx };

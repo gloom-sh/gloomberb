@@ -72,7 +72,7 @@ export const zhCN: Record<string, string> = {
   "Restart to apply everywhere": "重启后全部生效",
 
   // ── Command bar chrome ───────────────────────────────────────
-  "Search commands": "搜索命令",
+  "Command or plain English…": "命令或自然语言…",
   "Search tickers": "搜索股票代码",
   "Type a command or prefix": "输入命令或前缀",
   'Filtering for "{query}"': '正在筛选“{query}”',
@@ -1080,7 +1080,6 @@ export const zhCN: Record<string, string> = {
   "signing in...": "登录中...",
 
   // ── Command bar AI assist ───────────────────────────────────
-  "Ask AI: \"{query}\"": "问 AI：\"{query}\"",
   "Ask AI — sign up to enable": "问 AI — 注册后可用",
   "Thinking…": "思考中…",
   "No command found — try HELP": "未找到命令 — 试试 HELP",
