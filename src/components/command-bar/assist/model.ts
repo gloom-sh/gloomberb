@@ -5,7 +5,7 @@ import type { ResultItem } from "../list/model";
 /** Marker shown on every AI-resolved row, matching the AI plugin's iconography. */
 const ASSIST_GLYPH = "✦";
 
-/** Category heading the assist rows group under; sorted last by the view model. */
+/** Category heading the assist rows group under; sorted first by the view model. */
 const ASSIST_CATEGORY = "Ask AI";
 
 /** Shorter queries are almost always a half-typed prefix, not a question. */
@@ -78,6 +78,7 @@ function assistRow(options: {
   label: string;
   kind: ResultItem["kind"];
   action?: () => void;
+  defaultSelectable?: boolean;
 }): ResultItem {
   return {
     id: options.id,
@@ -89,14 +90,15 @@ function assistRow(options: {
     right: ASSIST_GLYPH,
     accent: true,
     disabled: !options.action,
+    defaultSelectable: options.defaultSelectable,
     action: options.action ?? (() => {}),
   };
 }
 
 /**
  * Rows for the assist section. They always land in their own category, which
- * sorts last, so an answer arriving mid-typing extends the bottom of the list
- * instead of moving whatever the user has selected.
+ * sorts to the top of the list, so the answer to what the user typed leads the
+ * results and plain Enter runs the AI's best guess.
  */
 export function buildAssistResultItems({
   query,
@@ -111,11 +113,14 @@ export function buildAssistResultItems({
   if (!trimmed) return [];
 
   if (!enabled) {
+    // An offer, not an answer: it leads the list without ever taking the Enter
+    // that belongs to the local match the user is looking at.
     return [assistRow({
       id: "assist:sign-up",
       label: t("Ask AI — sign up to enable"),
       kind: "action",
       action: onSignUp,
+      defaultSelectable: false,
     })];
   }
 
@@ -129,7 +134,9 @@ export function buildAssistResultItems({
   }
 
   if (active.status === "loading") {
-    return [assistRow({ id: "assist:loading", label: t("Thinking…"), kind: "info" })];
+    // Selected by default while it leads the list, so Enter has to mean
+    // something: it claims the answer that is already on the wire.
+    return [assistRow({ id: "assist:loading", label: t("Thinking…"), kind: "info", action: onAsk })];
   }
 
   if (active.status === "error") {
@@ -140,6 +147,7 @@ export function buildAssistResultItems({
       label: assistErrorLabel(active.kind),
       kind: "info",
       action: onAsk,
+      defaultSelectable: false,
     })];
   }
 

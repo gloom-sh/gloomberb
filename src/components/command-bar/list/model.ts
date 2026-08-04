@@ -11,6 +11,12 @@ export interface ResultItem {
   searchText?: string;
   /** Tints the trailing marker and the section heading with the AI accent. */
   accent?: boolean;
+  /**
+   * Set false for rows that answer nothing on their own — a placeholder, or an
+   * offer the user never asked for. The list skips them when it picks the
+   * selection for an untouched query, so plain Enter always runs a real match.
+   */
+  defaultSelectable?: boolean;
   pluginToggle?: () => void | Promise<void>;
   secondaryAction?: () => void | Promise<void>;
   checked?: boolean;

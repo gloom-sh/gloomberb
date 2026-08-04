@@ -138,6 +138,8 @@ export function truncateText(text: string, width: number): string {
 
 function getCategoryPriority(category: string, sectionOrder: CommandBarSectionOrder = "default"): number {
   const normalized = category.trim().toLowerCase();
+  // The AI answers the question the user actually typed, so it leads the list.
+  if (normalized === "ask ai") return -100;
   if (normalized === "exact match") return -50;
   if (sectionOrder === "app-first") {
     if (normalized === "saved") return 100;
@@ -151,7 +153,5 @@ function getCategoryPriority(category: string, sectionOrder: CommandBarSectionOr
   if (normalized === "funds & derivatives") return -10;
   if (normalized.includes("danger")) return 900;
   if (normalized.includes("debug")) return 910;
-  // The AI fallback is always the last resort, below even the danger zone.
-  if (normalized === "ask ai") return 999;
   return 0;
 }

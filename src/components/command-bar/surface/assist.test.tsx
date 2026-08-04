@@ -101,7 +101,7 @@ async function waitForFrameWithout(text: string): Promise<string> {
 }
 
 describe("CommandBar AI assist", () => {
-  test("asks on its own, with no Enter, and answers below the local results", async () => {
+  test("asks on its own, with no Enter, and leads the list with the answer", async () => {
     signInVerified();
     let sentCommandCount = 0;
     let releaseResponse = () => {};
@@ -117,7 +117,7 @@ describe("CommandBar AI assist", () => {
 
     testSetup = await testRender(
       <CommandBarHarness
-        query="open the general chat room"
+        query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
       />,
       { width: 100, height: 20 },
@@ -134,16 +134,21 @@ describe("CommandBar AI assist", () => {
     const answered = await waitForFrameToContain("CHAT #general — Open the general channel", ASSIST_WAIT_ATTEMPTS);
     expect(answered).not.toContain("Thinking…");
     expect(requests).toHaveLength(1);
+    // Above the local matches, and holding the selection an untouched query
+    // never moved: plain Enter runs the AI's best guess.
+    expect(answered.indexOf("Ask AI")).toBeLessThan(answered.indexOf("Panes"));
 
-    await emitKeypress(testSetup, { name: "down" });
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
   });
 
-  test("leaves the selection on the local result an answer arrives under", async () => {
+  test("keeps the row the user picked when an answer lands above it", async () => {
     signInVerified();
     mockAssistTransport(() => jsonResponse({
-      candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
+      candidates: [
+        { input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 },
+        { input: "CHAT #random", title: "Open the random channel", prefix: "CHAT", confidence: 0.4 },
+      ],
     }));
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
@@ -156,10 +161,12 @@ describe("CommandBar AI assist", () => {
     );
 
     await testSetup.renderOnce();
-    await waitForFrameToContain("CHAT #general — Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    // Down lands on the local match while a single "Thinking…" row sits above.
+    await emitKeypress(testSetup, { name: "down" });
+    await waitForFrameToContain("CHAT #random — Open the random channel", ASSIST_WAIT_ATTEMPTS);
 
-    // Enter without navigating still runs the local match that was selected
-    // before the AI section grew underneath it.
+    // Two answers replaced that one row, so the chosen row moved down by one —
+    // Enter still runs it rather than whatever now sits at its old index.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });
@@ -184,9 +191,45 @@ describe("CommandBar AI assist", () => {
     await testSetup.renderOnce();
     await waitForFrameToContain("ERN NVDA — Earnings Calendar for NVDA", ASSIST_WAIT_ATTEMPTS);
 
-    await emitKeypress(testSetup, { name: "down" });
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "earnings-calendar-pane", options: undefined }]);
+  });
+
+  test("claims the answer still in flight when Enter lands on the thinking row", async () => {
+    signInVerified();
+    let releaseResponse = () => {};
+    const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const requests = mockAssistTransport(async () => {
+      await held;
+      return jsonResponse({
+        candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
+      });
+    });
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+
+    testSetup = await testRender(
+      <CommandBarHarness
+        query="new chat pane"
+        configurePluginRegistry={configureEarningsRegistry(created)}
+      />,
+      { width: 100, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("Thinking…");
+
+    // Enter on "Thinking…" is a promise, not a dead key: there is nothing to
+    // run yet, so the ask is claimed and its answer runs when it arrives.
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    expect(created).toEqual([]);
+
+    releaseResponse();
+    for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS && created.length === 0; attempt++) {
+      await Bun.sleep(50);
+      await testSetup.renderOnce();
+    }
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
+    expect(requests).toHaveLength(1);
   });
 
   test("drops the section when a background ask fails", async () => {
@@ -208,9 +251,13 @@ describe("CommandBar AI assist", () => {
 
   test("sends signed-out users to sign up instead of the endpoint", async () => {
     const requests = mockAssistTransport(() => jsonResponse({ candidates: [] }));
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
     testSetup = await testRender(
-      <CommandBarHarness query="chart nvidia vs amd" />,
+      <CommandBarHarness
+        query="new chat pane"
+        configurePluginRegistry={configureEarningsRegistry(created)}
+      />,
       { width: 100, height: 20 },
     );
 
@@ -220,5 +267,10 @@ describe("CommandBar AI assist", () => {
     await Bun.sleep(700);
     await testSetup.renderOnce();
     expect(requests).toEqual([]);
+
+    // The offer leads the list but never takes the Enter that belongs to the
+    // local match the user was already looking at.
+    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });
 });

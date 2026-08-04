@@ -50,6 +50,7 @@ interface CommandBarPanelRuntimeOptions {
     value: CommandBarFieldValue | undefined,
   ) => string;
   getWorkflowInputRef: CommandBarPanelProps["getWorkflowInputRef"];
+  markRootSelectionNavigated: () => void;
   moveWorkflowFocus: (delta: number) => void;
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
   nativePaneChrome: boolean;
@@ -102,6 +103,7 @@ export function useCommandBarPanelRuntime({
   focusWorkflowField,
   getWorkflowFieldStringValue,
   getWorkflowInputRef,
+  markRootSelectionNavigated,
   moveWorkflowFocus,
   nativeListScrollRef,
   nativePaneChrome,
@@ -147,6 +149,7 @@ export function useCommandBarPanelRuntime({
   } = useCommandBarListNavigation({
     activateListSelectionRef,
     currentRouteRef,
+    markRootSelectionNavigated,
     setRootHoveredIdx,
     setRootSelectedIdx,
     setRouteStack,

@@ -56,6 +56,8 @@ export function useCommandBarAssist({
   const handledQueryRef = useRef<string | null>(null);
   /** Query the user dismissed with Esc; the section stays gone until it changes. */
   const dismissedQueryRef = useRef<string | null>(null);
+  /** Query the user asked for themselves, so its failures are worth a row. */
+  const explicitQueryRef = useRef<string | null>(null);
   const rateLimitedUntilRef = useRef(0);
   const rootQueryRef = useRef(rootQuery);
   rootQueryRef.current = rootQuery;
@@ -86,16 +88,21 @@ export function useCommandBarAssist({
     if (!trimmed) return;
     cancelPending();
     handledQueryRef.current = trimmed;
+    // A background ask the user has since claimed answers to them, not to the
+    // debounce, so its outcome is reported rather than swallowed.
+    const resolveSource = (): AssistRequestSource => (
+      explicitQueryRef.current === trimmed ? "explicit" : source
+    );
 
     const cached = answersRef.current.get(trimmed);
     if (cached) {
-      setAssistState({ status: "answered", query: trimmed, source, candidates: cached });
+      setAssistState({ status: "answered", query: trimmed, source: resolveSource(), candidates: cached });
       return;
     }
 
     const controller = new AbortController();
     abortRef.current = controller;
-    setAssistState({ status: "loading", query: trimmed, source });
+    setAssistState({ status: "loading", query: trimmed, source: resolveSource() });
 
     void (async () => {
       try {
@@ -105,14 +112,14 @@ export function useCommandBarAssist({
         if (controller.signal.aborted) return;
         const candidates = response?.candidates ?? [];
         answersRef.current.set(trimmed, candidates);
-        setAssistState({ status: "answered", query: trimmed, source, candidates });
+        setAssistState({ status: "answered", query: trimmed, source: resolveSource(), candidates });
       } catch (error) {
         if (controller.signal.aborted) return;
         const kind = classifyAssistError(error);
         if (kind === "rate-limited") {
           rateLimitedUntilRef.current = Date.now() + ASSIST_RATE_LIMIT_BACKOFF_MS;
         }
-        setAssistState({ status: "error", query: trimmed, source, kind });
+        setAssistState({ status: "error", query: trimmed, source: resolveSource(), kind });
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
       }
@@ -120,7 +127,17 @@ export function useCommandBarAssist({
   }, [cancelPending]);
 
   const askAssist = useCallback(() => {
-    runAssist(rootQueryRef.current, "explicit");
+    const trimmed = rootQueryRef.current.trim();
+    if (!trimmed) return;
+    explicitQueryRef.current = trimmed;
+    const active = assistStateRef.current;
+    // The background ask already on the wire asks this exact question; asking
+    // again would only abort it and start the wait over.
+    if (active.status === "loading" && active.query === trimmed) {
+      setAssistState({ ...active, source: "explicit" });
+      return;
+    }
+    runAssist(trimmed, "explicit");
   }, [runAssist]);
 
   useEffect(() => {

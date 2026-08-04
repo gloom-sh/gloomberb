@@ -227,11 +227,12 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...matchedItems);
   }
 
-  // Appended last so a good local match still wins the default selection, and
-  // so an answer arriving mid-typing cannot renumber the rows above it.
-  if (assist && isAssistSectionVisible(assist, rootQuery, items.length)) {
-    items.push(...buildAssistResultItems({ ...assist, query: rootQuery }));
-  }
+  // Built from the local matches, then moved above them: the AI answers the
+  // question the user typed, so it leads the list. Rows landing here renumber
+  // everything below, which the root selection effect absorbs by identity.
+  const assistItems = assist && isAssistSectionVisible(assist, rootQuery, items.length)
+    ? buildAssistResultItems({ ...assist, query: rootQuery })
+    : [];
 
-  return { items, initialIdx };
+  return { items: [...assistItems, ...items], initialIdx };
 }

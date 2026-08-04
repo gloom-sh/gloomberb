@@ -15,6 +15,15 @@ import { useRootProviderSearch } from "./provider-search";
 import { buildRootShortcutFeedback } from "./shortcut-feedback";
 import type { ShortcutIntent } from "./shortcuts";
 
+function clampSelectedIdx(index: number, length: number): number {
+  return Math.max(0, Math.min(index, length - 1));
+}
+
+/** A row plain Enter can run, so the untouched selection may rest on it. */
+function isDefaultSelectable(item: ResultItem): boolean {
+  return item.disabled !== true && item.defaultSelectable !== false;
+}
+
 interface UseCommandBarRootRuntimeOptions {
   activeCollectionId: string | null;
   activePortfolio?: AppState["config"]["portfolios"][number];
@@ -61,6 +70,7 @@ interface UseCommandBarRootRuntimeOptions {
   ): TickerSearchCandidate[] | null;
   rootModeKind: string;
   rootQuery: string;
+  rootSelectionNavigatedRef: RefObject<boolean>;
   rootShortcutIntent: ShortcutIntent;
   runDirectCommand(command: Command, arg: string): void;
   runSecurityDescriptionShortcut(query?: string): void | Promise<void>;
@@ -107,6 +117,7 @@ export function useCommandBarRootRuntime({
   readTickerSearchCache,
   rootModeKind,
   rootQuery,
+  rootSelectionNavigatedRef,
   rootShortcutIntent,
   runDirectCommand,
   runSecurityDescriptionShortcut,
@@ -129,6 +140,7 @@ export function useCommandBarRootRuntime({
   tickerSearchResults: ResultItem[];
 } {
   const previousRootSelectionContextRef = useRef<{ query: string; mode: string } | null>(null);
+  const previousRootResultIdsRef = useRef<string[]>([]);
   const activeMatch = matchPrefix(rootQuery, availableCommands);
 
   const tickerSearchRouteQuery = currentRoute?.kind === "mode" && currentRoute.screen === "ticker-search"
@@ -214,30 +226,6 @@ export function useCommandBarRootRuntime({
     : null;
   const rootTickerSearchArg = rootSecurityDescriptionArg;
 
-  useEffect(() => {
-    if (currentRoute) return;
-
-    setRootHoveredIdx((current) => (current != null && current < rootResultModel.items.length ? current : null));
-    const selectionContextChanged =
-      previousRootSelectionContextRef.current?.query !== rootQuery
-      || previousRootSelectionContextRef.current?.mode !== rootModeKind;
-    if (activeMatch?.command.id === "plugins" || !selectionContextChanged) {
-      setRootSelectedIdx((current) => Math.max(0, Math.min(current, rootResultModel.items.length - 1)));
-    } else {
-      setRootSelectedIdx(Math.max(0, Math.min(rootResultModel.initialIdx, rootResultModel.items.length - 1)));
-    }
-    previousRootSelectionContextRef.current = { query: rootQuery, mode: rootModeKind };
-  }, [
-    activeMatch?.command.id,
-    currentRoute,
-    rootModeKind,
-    rootQuery,
-    rootResultModel.initialIdx,
-    rootResultModel.items.length,
-    setRootHoveredIdx,
-    setRootSelectedIdx,
-  ]);
-
   const {
     activeRootProviderResultsKey,
     orderedRootResults,
@@ -257,6 +245,51 @@ export function useCommandBarRootRuntime({
     tickers: state.tickers,
     writeTickerSearchCache,
   });
+
+  useEffect(() => {
+    if (currentRoute) return;
+
+    const resultIds = orderedRootResults.map((item) => item.id);
+    const previousResultIds = previousRootResultIdsRef.current;
+    previousRootResultIdsRef.current = resultIds;
+
+    setRootHoveredIdx((current) => (current != null && current < resultIds.length ? current : null));
+
+    const selectionContextChanged =
+      previousRootSelectionContextRef.current?.query !== rootQuery
+      || previousRootSelectionContextRef.current?.mode !== rootModeKind;
+    previousRootSelectionContextRef.current = { query: rootQuery, mode: rootModeKind };
+    // Filtering the plugin list is not meant to move the row being toggled.
+    const keepSelectionAcrossQueries = activeMatch?.command.id === "plugins";
+    if (selectionContextChanged && !keepSelectionAcrossQueries) {
+      rootSelectionNavigatedRef.current = false;
+    }
+
+    setRootSelectedIdx((current) => {
+      if (rootSelectionNavigatedRef.current || keepSelectionAcrossQueries) {
+        // The user picked this row: rows arriving above it — an AI answer, a
+        // provider result — may renumber it, never take the highlight from it.
+        const selectedId = previousResultIds[current];
+        const shiftedIdx = selectedId ? resultIds.indexOf(selectedId) : -1;
+        if (shiftedIdx >= 0) return shiftedIdx;
+        return clampSelectedIdx(current, resultIds.length);
+      }
+      // Untouched, the selection follows the best row on offer, which is what
+      // an AI answer becomes the moment it lands at the top of the list.
+      const defaultIdx = orderedRootResults.findIndex(isDefaultSelectable);
+      return clampSelectedIdx(Math.max(rootResultModel.initialIdx, defaultIdx), resultIds.length);
+    });
+  }, [
+    activeMatch?.command.id,
+    currentRoute,
+    orderedRootResults,
+    rootModeKind,
+    rootQuery,
+    rootResultModel.initialIdx,
+    rootSelectionNavigatedRef,
+    setRootHoveredIdx,
+    setRootSelectedIdx,
+  ]);
 
   useEffect(() => {
     if (!activeRootProviderResultsKey) return;
