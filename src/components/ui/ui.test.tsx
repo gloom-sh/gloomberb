@@ -3,7 +3,7 @@ import { act, createRef, useEffect, useRef, useState } from "react";
 import { TestDialogProvider, testRender } from "../../renderers/opentui/test-utils";
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { ChoiceDialog } from "./choice-dialog";
-import { DataTable, type DataTableColumn } from "./data-table";
+import { DataTable, type DataTableColumn, type DataTableVisibleRange } from "./data-table";
 import { TextField } from "./fields";
 import { ListView } from "./list-view";
 import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
@@ -26,6 +26,8 @@ let setListSelection: ((index: number) => void) | null = null;
 let selectedTableRow: string | null = null;
 let activatedTableRow: string | null = null;
 let tableScrollBoxForTest: ScrollBoxRenderable | null = null;
+let tableVisibleRanges: DataTableVisibleRange[] = [];
+let setTableVisibleRangeKey: ((key: string) => void) | null = null;
 let closedTab: string | null = null;
 let addedTab = false;
 let resolvedChoice: string | null = null;
@@ -176,6 +178,7 @@ function DataTableHorizontalScrollHarness({
 function DataTableVirtualizationHarness() {
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const [visibleRangeKey, setVisibleRangeKey] = useState("first");
   const rows = Array.from({ length: 100 }, (_, index) => ({
     id: `row-${index}`,
     name: `Row ${index}`,
@@ -183,6 +186,7 @@ function DataTableVirtualizationHarness() {
 
   useEffect(() => {
     tableScrollBoxForTest = scrollRef.current;
+    setTableVisibleRangeKey = setVisibleRangeKey;
     return () => {
       if (tableScrollBoxForTest === scrollRef.current) {
         tableScrollBoxForTest = null;
@@ -201,6 +205,8 @@ function DataTableVirtualizationHarness() {
       scrollRef={scrollRef}
       syncHeaderScroll={() => {}}
       onBodyScrollActivity={() => {}}
+      visibleRangeKey={visibleRangeKey}
+      onVisibleRangeChange={(range) => tableVisibleRanges.push(range)}
       getItemKey={(row) => row.id}
       isSelected={() => false}
       onSelect={() => {}}
@@ -287,6 +293,8 @@ afterEach(async () => {
   selectedTableRow = null;
   activatedTableRow = null;
   tableScrollBoxForTest = null;
+  tableVisibleRanges = [];
+  setTableVisibleRangeKey = null;
   closedTab = null;
   addedTab = false;
   resolvedChoice = null;
@@ -906,6 +914,16 @@ describe("shared UI kit", () => {
     expect(frame).toContain("Row 0");
     expect(frame).not.toContain("Row 99");
     expect(tableScrollBoxForTest?.scrollTop).toBe(0);
+    expect(tableVisibleRanges.at(-1)).toEqual({ start: 0, end: 5 });
+
+    const initialRangeCount = tableVisibleRanges.length;
+    await act(async () => {
+      setTableVisibleRangeKey!("second");
+      await Promise.resolve();
+      await testSetup!.renderOnce();
+    });
+    expect(tableVisibleRanges.length).toBeGreaterThan(initialRangeCount);
+    expect(tableVisibleRanges.at(-1)).toEqual({ start: 0, end: 5 });
 
     await act(async () => {
       for (let index = 0; index < 12; index++) {
@@ -919,6 +937,10 @@ describe("shared UI kit", () => {
 
     const scrollTop = tableScrollBoxForTest?.scrollTop ?? 0;
     expect(scrollTop).toBeGreaterThan(0);
+    expect(tableVisibleRanges.at(-1)).toEqual({
+      start: scrollTop,
+      end: Math.min(100, scrollTop + 5),
+    });
 
     const scrolledFrame = testSetup.captureCharFrame();
     expect(scrolledFrame).toContain(`Row ${scrollTop}`);

@@ -643,6 +643,8 @@ export const ko: Record<string, string> = {
   "{count}-minute delayed options, upgrade for real-time":
     "옵션 데이터 {count}분 지연, 실시간으로 업그레이드",
   "real-time options": "실시간 옵션",
+  "mixed real-time and delayed options": "실시간 및 지연 옵션 혼합",
+  "connecting real-time options": "실시간 옵션 연결 중",
   "options delayed fallback": "옵션 지연 대체 데이터",
   "News": "뉴스",
   "12h delay": "12시간 지연",

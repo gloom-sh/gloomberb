@@ -1,8 +1,10 @@
+import { useMemo } from "react";
 import { AsciiText, Box, Span, Strong, Text, TextAttributes, useUiHost } from "../../ui";
 import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { themes } from "../../theme/themes";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
+import { ListView, type ListViewItem } from "../ui";
 export { PortfolioStep, type PortfolioSub } from "./portfolio-step";
 
 export interface BrokerSyncSummary {
@@ -30,12 +32,24 @@ export function WelcomeStep() {
   );
 }
 
-export function ThemeStep({ themeIds, selectedIdx, height }: { themeIds: string[]; selectedIdx: number; height: number }) {
-  const maxVisible = Math.min(themeIds.length, Math.max(6, height - 12));
-  const halfWindow = Math.floor(maxVisible / 2);
-  let windowStart = Math.max(0, Math.min(selectedIdx - halfWindow, themeIds.length - maxVisible));
-  if (windowStart < 0) windowStart = 0;
-  const windowEnd = Math.min(themeIds.length, windowStart + maxVisible);
+// Rows the theme step spends on everything that is not the theme list itself.
+const THEME_CHROME_ROWS = 8;
+
+export function ThemeStep({
+  themeIds,
+  selectedIdx,
+  onSelect,
+  height,
+}: {
+  themeIds: string[];
+  selectedIdx: number;
+  onSelect: (index: number) => void;
+  height: number;
+}) {
+  const items = useMemo<ListViewItem[]>(
+    () => themeIds.map((id) => ({ id, label: themes[id]!.name })),
+    [themeIds],
+  );
 
   return (
     <Box flexDirection="column" paddingX={2}>
@@ -48,7 +62,7 @@ export function ThemeStep({ themeIds, selectedIdx, height }: { themeIds: string[
         <Text fg={colors.text} attributes={TextAttributes.BOLD}>{"TH"}</Text>
       </Box>
       <Box height={1} />
-      <Box height={1}>
+      <Box height={1} flexDirection="row">
         <Text fg={colors.positive}>{" \u2588\u2588 "}</Text>
         <Text fg={colors.negative}>{" \u2588\u2588 "}</Text>
         <Text fg={colors.text}>{" \u2588\u2588 "}</Text>
@@ -58,33 +72,13 @@ export function ThemeStep({ themeIds, selectedIdx, height }: { themeIds: string[
       </Box>
       <Box height={1} />
 
-      {windowStart > 0 && (
-        <Box height={1}>
-          <Text fg={colors.textMuted}>{"\u2191 more"}</Text>
-        </Box>
-      )}
-
-      {themeIds.slice(windowStart, windowEnd).map((id, index) => {
-        const theme = themes[id]!;
-        const globalIdx = windowStart + index;
-        const isSelected = globalIdx === selectedIdx;
-        return (
-          <Box key={id} height={1} backgroundColor={isSelected ? colors.selected : colors.bg}>
-            <Text fg={isSelected ? colors.selectedText : colors.textDim}>
-              {isSelected ? "\u25b8 " : "  "}
-            </Text>
-            <Text fg={isSelected ? colors.text : colors.textDim} attributes={isSelected ? TextAttributes.BOLD : 0}>
-              {theme.name}
-            </Text>
-          </Box>
-        );
-      })}
-
-      {windowEnd < themeIds.length && (
-        <Box height={1}>
-          <Text fg={colors.textMuted}>{"\u2193 more"}</Text>
-        </Box>
-      )}
+      <ListView
+        items={items}
+        selectedIndex={selectedIdx}
+        onSelect={onSelect}
+        scrollable
+        height={Math.max(3, height - THEME_CHROME_ROWS)}
+      />
 
       <Box height={1} />
       <Box height={1}>
@@ -94,7 +88,7 @@ export function ThemeStep({ themeIds, selectedIdx, height }: { themeIds: string[
   );
 }
 
-export function ShortcutsStep() {
+export function ShortcutsStep({ height }: { height: number }) {
   const uiHost = useUiHost();
   const shortcutPlatform = detectShortcutPlatform();
   const shortcutDisplayMode = getShortcutDisplayMode(uiHost.kind);
@@ -117,6 +111,11 @@ export function ShortcutsStep() {
 
   const COL = 20;
 
+  // Shed the least useful rows first so the wizard footer stays on screen in an 80x24 terminal.
+  const gap = height < 21 ? 1 : 2;
+  const showTagline = height >= 19;
+  const showPrefixHint = height >= 17;
+
   return (
     <Box flexDirection="column" paddingX={2}>
       <Box height={1}>
@@ -131,15 +130,19 @@ export function ShortcutsStep() {
         </Box>
       ))}
 
-      <Box height={2} />
+      <Box height={gap} />
       <Box height={1}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Basic command prefixes")}</Text>
       </Box>
       <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textDim}>{t("Type these in the command bar (")}<Span fg={colors.text}><Strong>{"Ctrl+P"}</Strong></Span>{"):"}</Text>
-      </Box>
-      <Box height={1} />
+      {showPrefixHint && (
+        <>
+          <Box height={1}>
+            <Text fg={colors.textDim}>{t("Type these in the command bar (")}<Span fg={colors.text}><Strong>{"Ctrl+P"}</Strong></Span>{"):"}</Text>
+          </Box>
+          <Box height={1} />
+        </>
+      )}
 
       {commandPrefixes.map((shortcut) => (
         <Box key={shortcut.key} height={1} flexDirection="row">
@@ -148,10 +151,14 @@ export function ShortcutsStep() {
         </Box>
       ))}
 
-      <Box height={2} />
-      <Box height={1}>
-        <Text fg={colors.textDim}>{t("Everything is searchable, just type what you want.")}</Text>
-      </Box>
+      {showTagline && (
+        <>
+          <Box height={gap} />
+          <Box height={1}>
+            <Text fg={colors.textDim}>{t("Everything is searchable, just type what you want.")}</Text>
+          </Box>
+        </>
+      )}
     </Box>
   );
 }
@@ -179,21 +186,21 @@ export function ReadyStep({
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("You're all set")}</Text>
       </Box>
       <Box height={2} />
-      <Box height={1}>
-        <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713"}</Text>
-        <Text fg={colors.text}>{` ${t("Theme configured")}`}</Text>
+      <Box height={1} flexDirection="row">
+        <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713 "}</Text>
+        <Text fg={colors.text}>{t("Theme configured")}</Text>
       </Box>
-      <Box height={1}>
-        <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713"}</Text>
+      <Box height={1} flexDirection="row">
+        <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713 "}</Text>
         <Text fg={colors.text}>
           {brokerName
-            ? ` ${tf("{broker} connected. Imported {count} {label}", { broker: brokerName, count: positionsImported, label: t(positionLabel) })}`
-            : ` ${tf('Portfolio "{name}" created', { name: portfolioName })}`}
+            ? tf("{broker} connected. Imported {count} {label}", { broker: brokerName, count: positionsImported, label: t(positionLabel) })
+            : tf('Portfolio "{name}" created', { name: portfolioName })}
         </Text>
       </Box>
-      <Box height={1}>
-        <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713"}</Text>
-        <Text fg={colors.text}>{` ${t("Plugins enabled")}`}</Text>
+      <Box height={1} flexDirection="row">
+        <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713 "}</Text>
+        <Text fg={colors.text}>{t("Plugins enabled")}</Text>
       </Box>
       <Box height={2} />
       {brokerName ? (

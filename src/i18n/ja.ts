@@ -645,6 +645,8 @@ export const ja: Record<string, string> = {
   "{count}-minute delayed options, upgrade for real-time":
     "オプションは {count} 分遅延、リアルタイムにはアップグレード",
   "real-time options": "リアルタイムオプション",
+  "mixed real-time and delayed options": "リアルタイムと遅延の混在オプション",
+  "connecting real-time options": "リアルタイムオプションに接続中",
   "options delayed fallback": "オプション遅延フォールバック",
   "News": "ニュース",
   "12h delay": "12 時間遅延",

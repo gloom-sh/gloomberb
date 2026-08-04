@@ -26,6 +26,9 @@ import {
   type OnboardingStep,
 } from "./wizard-model";
 
+// Blank spacer + progress dots + hint line.
+const FOOTER_ROWS = 3;
+
 interface OnboardingWizardProps {
   config: AppConfig;
   pluginRegistry: PluginRegistry;
@@ -213,7 +216,9 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
 
   const contentWidth = Math.min(60, termWidth - 4);
   const contentLeft = Math.floor((termWidth - contentWidth) / 2);
-  const contentTop = Math.max(1, Math.floor((termHeight - 24) / 2));
+  // The footer is pinned to the last FOOTER_ROWS rows, so steps get whatever is left.
+  const contentTop = Math.max(0, Math.min(Math.floor((termHeight - 24) / 2), termHeight - FOOTER_ROWS - 1));
+  const contentHeight = Math.max(1, termHeight - contentTop - FOOTER_ROWS);
   const progressDots = ONBOARDING_STEPS.map((_, index) => {
     if (index < stepIdx) return "\u2501";
     if (index === stepIdx) return "\u25cf";
@@ -248,10 +253,18 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
         top={contentTop}
         left={contentLeft}
         width={contentWidth}
+        height={contentHeight}
         flexDirection="column"
       >
         {step === "welcome" && <WelcomeStep />}
-        {step === "theme" && <ThemeStep themeIds={themeIds} selectedIdx={themeIdx} height={termHeight - contentTop - 4} />}
+        {step === "theme" && (
+          <ThemeStep
+            themeIds={themeIds}
+            selectedIdx={themeIdx}
+            onSelect={setThemeIdx}
+            height={contentHeight}
+          />
+        )}
         {step === "portfolio" && (
           <PortfolioStep
             sub={portfolioSub}
@@ -271,7 +284,7 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
           />
         )}
         {step === "shortcuts" && (
-          <ShortcutsStep />
+          <ShortcutsStep height={contentHeight} />
         )}
         {step === "ready" && (
           <ReadyStep
@@ -282,7 +295,15 @@ export function OnboardingWizard({ config, pluginRegistry, onComplete }: Onboard
             error={finishError}
           />
         )}
+      </Box>
 
+      <Box
+        position="absolute"
+        top={termHeight - FOOTER_ROWS}
+        left={contentLeft}
+        width={contentWidth}
+        flexDirection="column"
+      >
         <Box height={1} />
         <Box height={1} flexDirection="row" width={contentWidth}>
           <Box flexGrow={1}>

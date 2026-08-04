@@ -2,10 +2,14 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../market-data/coordinator";
-import { useQuoteStreaming } from "./quote-streaming";
+import { createTestDataProvider } from "../../test-support/data-provider";
+import { useLiveQuoteEntries, useQuoteStreaming } from "./quote-streaming";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let bumpHarness: (() => void) | null = null;
+let updateLiveTargets: ((symbol: string) => void) | null = null;
+let updateFreshnessScope: ((scope: string) => void) | null = null;
+let observedSubscriptionStartedAt = 0;
 
 function QuoteStreamingHarness() {
   const [tick, setTick] = useState(0);
@@ -19,6 +23,18 @@ function QuoteStreamingHarness() {
   return <text>{String(tick)}</text>;
 }
 
+function LiveQuoteFreshnessHarness() {
+  const [symbol, setSymbol] = useState("AAPL");
+  const [freshnessScopeKey, setFreshnessScopeKey] = useState("expiration-1");
+  updateLiveTargets = setSymbol;
+  updateFreshnessScope = setFreshnessScopeKey;
+  observedSubscriptionStartedAt = useLiveQuoteEntries(
+    [{ symbol, exchange: "OPTIONS" }],
+    { freshnessScopeKey },
+  ).subscriptionStartedAt;
+  return <text>{symbol}</text>;
+}
+
 afterEach(async () => {
   if (testSetup) {
     await act(async () => {
@@ -27,6 +43,9 @@ afterEach(async () => {
     testSetup = undefined;
   }
   bumpHarness = null;
+  updateLiveTargets = null;
+  updateFreshnessScope = null;
+  observedSubscriptionStartedAt = 0;
   setSharedMarketDataCoordinator(null);
 });
 
@@ -66,5 +85,43 @@ describe("useQuoteStreaming", () => {
 
     expect(subscribeCalls).toBe(1);
     expect(unsubscribeCalls).toBe(0);
+  });
+
+  test("keeps quote freshness stable while targets move within one surface", async () => {
+    const originalDateNow = Date.now;
+    let now = 100;
+    Date.now = () => now;
+    setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+      subscribeQuotes: () => () => {},
+    })));
+
+    try {
+      testSetup = await testRender(<LiveQuoteFreshnessHarness />, {
+        width: 20,
+        height: 1,
+      });
+      await act(async () => {
+        await testSetup!.renderOnce();
+      });
+      expect(observedSubscriptionStartedAt).toBe(100);
+
+      now = 200;
+      await act(async () => {
+        updateLiveTargets?.("MSFT");
+        await Promise.resolve();
+        await testSetup!.renderOnce();
+      });
+      expect(observedSubscriptionStartedAt).toBe(100);
+
+      now = 300;
+      await act(async () => {
+        updateFreshnessScope?.("expiration-2");
+        await Promise.resolve();
+        await testSetup!.renderOnce();
+      });
+      expect(observedSubscriptionStartedAt).toBe(300);
+    } finally {
+      Date.now = originalDateNow;
+    }
   });
 });

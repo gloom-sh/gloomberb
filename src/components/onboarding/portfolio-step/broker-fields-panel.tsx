@@ -45,7 +45,7 @@ export function BrokerFieldsPanel({
 
         if (!isActive && value) {
           return (
-            <Box key={field.key} height={1}>
+            <Box key={field.key} height={1} flexDirection="row">
               <Text fg={colors.positive}>{"\u2713 "}</Text>
               <Text fg={colors.text}>{`${field.label}: ${formatBrokerFieldValue(field, value)}`}</Text>
             </Box>
@@ -58,7 +58,7 @@ export function BrokerFieldsPanel({
           return (
             <Box key={field.key} flexDirection="column">
               {index > 0 && <Box height={1} />}
-              <Box height={1}>
+              <Box height={1} flexDirection="row">
                 <Text fg={colors.text} attributes={TextAttributes.BOLD}>
                   {tf("Step {step}: ", { step: index + 1 })}
                 </Text>
@@ -97,7 +97,7 @@ export function BrokerFieldsPanel({
                     const selected = optionIdx === brokerSelectIdx;
                     return (
                       <Box key={option.value} flexDirection="column" backgroundColor={selected ? colors.selected : colors.bg}>
-                        <Box height={1}>
+                        <Box height={1} flexDirection="row">
                           <Text fg={selected ? colors.selectedText : colors.textDim}>{selected ? "\u25b8 " : "  "}</Text>
                           <Text
                             fg={selected ? colors.text : colors.textDim}

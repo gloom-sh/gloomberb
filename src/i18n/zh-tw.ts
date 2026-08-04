@@ -645,6 +645,8 @@ export const zhTW: Record<string, string> = {
   "{count}-minute delayed options, upgrade for real-time":
     "選擇權行情延遲 {count} 分鐘，升級以取得即時資料",
   "real-time options": "即時選擇權",
+  "mixed real-time and delayed options": "即時與延遲選擇權混合",
+  "connecting real-time options": "正在連線即時選擇權",
   "options delayed fallback": "選擇權延遲備援資料",
   "News": "新聞",
   "12h delay": "延遲 12 小時",

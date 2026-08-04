@@ -291,5 +291,6 @@ export function areStreamQuotesEquivalent(current: Quote | null | undefined, nex
     if (current[field] !== next[field]) return false;
   }
   return current.lastUpdated === next.lastUpdated
+    && current.receivedAt === next.receivedAt
     && JSON.stringify(current.provenance ?? null) === JSON.stringify(next.provenance ?? null);
 }
