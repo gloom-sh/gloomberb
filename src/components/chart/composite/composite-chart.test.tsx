@@ -1041,7 +1041,6 @@ describe("CompositeChart", () => {
 
     await act(async () => chartShortcut?.(keyEvent("m", true)));
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("MEASURE");
 
     // No modifier on the drag: the armed tool is what makes it a measurement.
     await act(async () => {
@@ -1055,10 +1054,56 @@ describe("CompositeChart", () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(34, 1));
     });
     await act(async () => testSetup!.renderOnce());
-    const frame = testSetup.captureCharFrame();
-    // One shot: the next plain drag has to pan again.
-    expect(frame).not.toContain("Δ");
-    expect(frame).not.toContain("MEASURE");
+    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+
+    // Sticky: the tool still owns the next drag until it is dismissed.
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("Δ");
+  });
+
+  test("arms and disarms a chart tool from the toolbar", async () => {
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    // Pressing the ruler icon has to arm the tool for an unmodified drag.
+    await act(async () => {
+      await testSetup!.mockMouse.moveTo(1, 0);
+      await testSetup!.mockMouse.click(1, 0);
+    });
+    await act(async () => testSetup!.renderOnce());
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("Δ");
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
+      await testSetup!.mockMouse.click(1, 0);
+    });
+    await act(async () => testSetup!.renderOnce());
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).not.toContain("Δ");
   });
 
   test("disarms a chart tool with escape", async () => {
@@ -1080,12 +1125,16 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     await act(async () => chartShortcut?.(keyEvent("z", true)));
-    await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("ZOOM");
-
     await act(async () => chartShortcut?.(keyEvent("escape")));
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).not.toContain("ZOOM");
+
+    // Disarmed: an unmodified drag pans instead of selecting a range.
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).not.toContain("→");
   });
 
   test("keeps a measurement readable in a narrow pane", async () => {
@@ -1427,7 +1476,8 @@ describe("CompositeChart", () => {
 
     const recoveredFrame = testSetup.captureCharFrame();
     expect(recoveredFrame).toContain("•");
-    expect(recoveredFrame).toContain("Jan 1");
+    expect(recoveredFrame).toContain("2025-01-01");
+    expect(recoveredFrame).toContain("Jan 9");
   });
 
   test("shows useful UTC times for an intraday shared cursor and time axis", async () => {

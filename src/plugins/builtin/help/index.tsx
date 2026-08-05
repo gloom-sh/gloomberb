@@ -160,11 +160,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
               />
               <ShortcutRow
                 badges={["Shift+Z", "Shift+Drag"]}
-                description="Arm the zoom box, then drag a time range to zoom into."
+                description="Pick the zoom tool, then drag a time range to zoom into."
               />
               <ShortcutRow
                 badges={["Shift+M", "Alt+Drag"]}
-                description="Arm the ruler, then drag to measure change, percent, bars, and elapsed time."
+                description="Pick the ruler, then drag to measure change, percent, bars, and elapsed time."
               />
               <ShortcutRow
                 badges={["Ctrl+Scroll"]}
@@ -175,7 +175,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 description="Zoom the focused chart in or out, or reset it."
               />
               <Text fg={colors.textDim} wrapText>
-                {t("Most terminals keep shift-drag and option-drag for their own text selection, so arm the tool with the keyboard there.")}
+                {t("The ruler and zoom icons sit at the left of the chart legend. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.")}
               </Text>
             </HelpSection>
 
