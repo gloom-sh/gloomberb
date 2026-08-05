@@ -65,6 +65,9 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
     };
 
     const scheduleFrameMouseHandler = (event: MouseLikeEvent, type: "move" | "drag") => {
+      // The DOM keeps firing mousemove while a button is held. A move means no
+      // button anywhere else in the app, so drags must not surface as moves.
+      if (type === "move" && draggingRef.current) return;
       if (type === "move" && typeof propsRef.current.onMouseMove !== "function") return;
       if (type === "drag"
         && typeof propsRef.current.onMouse !== "function"

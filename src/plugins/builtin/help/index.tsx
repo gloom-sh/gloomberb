@@ -167,6 +167,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 description="Pick the ruler, then drag to measure change, percent, bars, and elapsed time."
               />
               <ShortcutRow
+                badges={["Shift+D", "Backspace"]}
+                description="Pick the pen to drag trend lines onto the chart, or remove the last one."
+              />
+              <ShortcutRow
                 badges={["Ctrl+Scroll"]}
                 description="Zoom around the pointer."
               />
@@ -175,7 +179,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 description="Zoom the focused chart in or out, or reset it."
               />
               <Text fg={colors.textDim} wrapText>
-                {t("The ruler and zoom icons sit at the left of the chart legend. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.")}
+                {t("The tool icons sit over the top-left corner of the chart. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.")}
               </Text>
             </HelpSection>
 

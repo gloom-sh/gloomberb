@@ -60,9 +60,11 @@ import {
   resolveChartToolKind,
   resolveMeasureAxisDomain,
   resolveMeasureDirection,
+  resolveDrawingFromDrag,
   resolveZoomBoxRange,
   summarizeMeasure,
   summarizeZoomSelection,
+  type ChartDrawing,
   type ChartToolDrag,
   type ChartToolKind,
 } from "./tools";
@@ -297,6 +299,7 @@ function compositeAxisLabelWidth(domain: CompositeAxisDomain | undefined): numbe
 
 
 const RULER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1.4" y="4.6" width="13.2" height="6.8" rx="1.4" fill="none" stroke="#000" stroke-width="1.4"/><path d="M5 4.6v2.6M8 4.6v3.6M11 4.6v2.6" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>`;
+const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0l0 0a1.6 1.6 0 0 1 0 2.3L6.2 12 2.4 13.6Z" fill="none" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 const MARQUEE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.2 6V3.4a1.2 1.2 0 0 1 1.2-1.2H6M10 2.2h2.6a1.2 1.2 0 0 1 1.2 1.2V6M13.8 10v2.6a1.2 1.2 0 0 1-1.2 1.2H10M6 13.8H3.4a1.2 1.2 0 0 1-1.2-1.2V10" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 const CHART_TOOLS: ReadonlyArray<{
@@ -323,10 +326,67 @@ const CHART_TOOLS: ReadonlyArray<{
     glyph: "\u229e",
     icon: MARQUEE_ICON,
   },
+  {
+    kind: "draw",
+    label: "Trend line",
+    shortcut: "Shift+D",
+    hint: "Drag to draw a line, Backspace removes the last one",
+    glyph: "\u2571",
+    icon: PEN_ICON,
+  },
 ];
 
-/** Icon cell, its padding, the gaps between chips, and the gap before the date. */
-const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + CHART_TOOLS.length;
+/** Icon cells plus the gap between chips. */
+const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1);
+
+function ChartToolbar({
+  armedTool,
+  isDesktopWeb,
+  left,
+  top,
+  onArmTool,
+}: {
+  armedTool: ChartToolKind | null;
+  isDesktopWeb: boolean;
+  left: number;
+  top: number;
+  onArmTool: (tool: ChartToolKind) => void;
+}) {
+  return (
+    <Box
+      position="absolute"
+      left={left}
+      top={top}
+      height={1}
+      flexDirection="row"
+      gap={1}
+      zIndex={30}
+      backgroundColor={themeColors.bg}
+      style={isDesktopWeb
+        ? {
+          gap: 2,
+          padding: 2,
+          borderRadius: 6,
+          backgroundColor: `color-mix(in srgb, ${themeColors.bg} 78%, transparent)`,
+          backdropFilter: "blur(6px)",
+          width: "auto",
+          height: "auto",
+        }
+        : undefined}
+      data-gloom-role="composite-chart-toolbar"
+    >
+      {CHART_TOOLS.map((tool) => (
+        <ChartToolChip
+          key={tool.kind}
+          tool={tool}
+          active={armedTool === tool.kind}
+          isDesktopWeb={isDesktopWeb}
+          onPress={() => onArmTool(tool.kind)}
+        />
+      ))}
+    </Box>
+  );
+}
 
 function ChartToolChip({
   tool,
@@ -420,6 +480,8 @@ interface CompositePanelSurfaceProps {
   viewport: CompositeViewportRange;
   minimumViewportSpanMs: number;
   armedTool: ChartToolKind | null;
+  drawings: readonly ChartDrawing[];
+  onDraw: (drawing: ChartDrawing) => void;
   onActivate?: () => void;
   onCursorDateChange: (date: Date | null) => void;
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
@@ -440,6 +502,8 @@ function CompositePanelSurface({
   viewport,
   minimumViewportSpanMs,
   armedTool,
+  drawings,
+  onDraw,
   onActivate,
   onCursorDateChange,
   onPanViewport,
@@ -505,9 +569,13 @@ function CompositePanelSurface({
   useEffect(() => {
     onToolSummaryChange(toolSummary);
   }, [onToolSummaryChange, toolSummary]);
+  const panelDrawings = useMemo(
+    () => drawings.filter((drawing) => drawing.panelId === panel.id),
+    [drawings, panel.id],
+  );
   const bitmapLayers = useMemo(() => {
     if (!bitmap) return null;
-    if (!toolDrag) return [bitmap];
+    if (!toolDrag && panelDrawings.length === 0) return [bitmap];
     return [drawChartToolOverlay(
       bitmap,
       toolDrag,
@@ -515,10 +583,21 @@ function CompositePanelSurface({
         positive: themeColors.positive,
         negative: colors.negative,
         zoom: colors.crosshair,
+        draw: themeColors.warning,
       },
       toolReadout?.direction ?? "up",
+      { scene, panel, items: panelDrawings },
     )];
-  }, [bitmap, colors.crosshair, colors.negative, toolDrag, toolReadout?.direction]);
+  }, [
+    bitmap,
+    colors.crosshair,
+    colors.negative,
+    panel,
+    panelDrawings,
+    scene,
+    toolDrag,
+    toolReadout?.direction,
+  ]);
   const textLines = useMemo(
     () => isDesktopWeb
       ? []
@@ -621,10 +700,15 @@ function CompositePanelSurface({
     if (!drag || drag.kind === "pan") return;
     dragRef.current = null;
     setToolDrag(null);
+    if (drag.kind === "draw") {
+      const drawing = resolveDrawingFromDrag(scene, panel, drag, themeColors.warning);
+      if (drawing) onDraw(drawing);
+      return;
+    }
     if (drag.kind !== "zoom") return;
     const range = resolveZoomBoxRange(scene, drag, minimumViewportSpanMs);
     if (range) onSetViewport(range);
-  }, [minimumViewportSpanMs, onSetViewport, scene]);
+  }, [minimumViewportSpanMs, onDraw, onSetViewport, panel, scene]);
   const resetDrag = useCallback(() => {
     if (dragRef.current?.kind === "pan") {
       dragRef.current = null;
@@ -738,8 +822,6 @@ function CompositeLegend({
   visibleSeriesIds,
   width,
   toolSummary,
-  armedTool,
-  onArmTool,
   accessory,
   accessoryWidth,
   formatValue,
@@ -754,8 +836,6 @@ function CompositeLegend({
   visibleSeriesIds: ReadonlySet<string>;
   width: number;
   toolSummary?: string | null;
-  armedTool?: ChartToolKind | null;
-  onArmTool?: (tool: ChartToolKind) => void;
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
   formatValue: CompositeChartProps["formatValue"];
@@ -810,14 +890,7 @@ function CompositeLegend({
     ? Math.max(1, Math.min(width, Math.floor(accessoryWidth ?? 14)))
     : 0;
   const reservedAccessoryGap = accessory && width > resolvedAccessoryWidth ? 1 : 0;
-  const widthAfterAccessory = Math.max(0, width - resolvedAccessoryWidth - reservedAccessoryGap);
-  // The strip costs the row nothing or it does not appear. Reserving a fixed
-  // date width also keeps it from flickering as the cursor label changes length.
-  const showTools = !!onArmTool && widthAfterAccessory >= (
-    CHART_TOOLBAR_WIDTH + 20 + Math.min(desiredSeriesWidth, 45)
-  );
-  const toolbarWidth = showTools ? CHART_TOOLBAR_WIDTH : 0;
-  const widthBeforeAccessory = Math.max(0, widthAfterAccessory - toolbarWidth);
+  const widthBeforeAccessory = Math.max(0, width - resolvedAccessoryWidth - reservedAccessoryGap);
   const minimumSeriesPreviewWidth = entries.length > 0
     ? Math.min(7, desiredSeriesWidth)
     : 0;
@@ -907,29 +980,6 @@ function CompositeLegend({
       zIndex={20}
       data-gloom-role="composite-chart-legend"
     >
-      {showTools ? (
-        <Box
-          flexDirection="row"
-          height={1}
-          flexShrink={0}
-          gap={1}
-          marginRight={1}
-          style={isDesktopWeb ? { gap: 2, marginRight: 8 } : undefined}
-        >
-          {CHART_TOOLS.map((tool) => (
-            <ChartToolChip
-              key={tool.kind}
-              tool={tool}
-              active={armedTool === tool.kind}
-              isDesktopWeb={isDesktopWeb}
-              onPress={() => {
-                onActivate?.();
-                onArmTool?.(tool.kind);
-              }}
-            />
-          ))}
-        </Box>
-      ) : null}
       {showDate ? (
         <Box width={dateWidth} height={1} flexShrink={0} overflow="hidden">
           <Text fg={toolSummary ? themeColors.text : themeColors.textDim}>{dateLabel}</Text>
@@ -1052,10 +1102,20 @@ export function CompositeChart({
   isSeriesToggleable,
 }: CompositeChartProps) {
   const { cellWidthPx = 8 } = useUiCapabilities();
+  const isDesktopWeb = useUiHost().kind === "desktop-web";
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
   const [toolSummary, setToolSummary] = useState<string | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
+  // ponytail: drawings live with the mounted chart. Persisting them belongs with
+  // pane settings, which is a separate plumbing job.
+  const [drawings, setDrawings] = useState<readonly ChartDrawing[]>([]);
+  const addDrawing = useCallback((drawing: ChartDrawing) => {
+    setDrawings((current) => [...current, drawing]);
+  }, []);
+  const removeLastDrawing = useCallback(() => {
+    setDrawings((current) => current.length === 0 ? current : current.slice(0, -1));
+  }, []);
   const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -1404,7 +1464,8 @@ export function CompositeChart({
     if (!interaction) return;
     if (
       (interaction === "clear-cursor" && !scene?.cursorDate)
-      || ((interaction === "arm-measure" || interaction === "arm-zoom") && !scene)
+      || ((interaction === "arm-measure" || interaction === "arm-zoom" || interaction === "arm-draw") && !scene)
+      || (interaction === "undo-drawing" && drawings.length === 0)
       || ((interaction === "cursor-left" || interaction === "cursor-right") && !scene)
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"
@@ -1418,8 +1479,16 @@ export function CompositeChart({
     switch (interaction) {
       case "arm-measure":
       case "arm-zoom":
+      case "arm-draw":
         onActivate?.();
-        armTool(interaction === "arm-measure" ? "measure" : "zoom");
+        armTool(
+          interaction === "arm-measure"
+            ? "measure"
+            : interaction === "arm-zoom" ? "zoom" : "draw",
+        );
+        return;
+      case "undo-drawing":
+        removeLastDrawing();
         return;
       case "clear-cursor":
         keyboardCursorDateRef.current = null;
@@ -1533,7 +1602,15 @@ export function CompositeChart({
     ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime)
     : null;
   return (
-    <Box flexDirection="column" width={totalWidth} height={totalHeight} overflow="hidden" data-gloom-role="composite-chart">
+    <Box
+      flexDirection="column"
+      width={totalWidth}
+      height={totalHeight}
+      overflow="hidden"
+      // The tool overlay anchors here; without it the desktop pins it to the page.
+      position="relative"
+      data-gloom-role="composite-chart"
+    >
       {showLegend ? (
         <CompositeLegend
           scene={scene}
@@ -1541,8 +1618,6 @@ export function CompositeChart({
           visibleSeriesIds={visibleSeriesIds}
           width={totalWidth}
           toolSummary={toolSummary}
-          armedTool={armedTool}
-          onArmTool={interactive ? armTool : undefined}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
@@ -1551,6 +1626,18 @@ export function CompositeChart({
           onToggleSeries={onToggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           keyboardIndex={legendKeyboardIndex}
+        />
+      ) : null}
+      {interactive && plotWidth > CHART_TOOLBAR_WIDTH + 4 ? (
+        <ChartToolbar
+          armedTool={armedTool}
+          isDesktopWeb={isDesktopWeb}
+          left={leftPadding}
+          top={legendRows}
+          onArmTool={(tool) => {
+            onActivate?.();
+            armTool(tool);
+          }}
         />
       ) : null}
       {scene.panels.map((panel) => (
@@ -1567,6 +1654,8 @@ export function CompositeChart({
           viewport={effectiveViewport!}
           minimumViewportSpanMs={minimumViewportSpanMs}
           armedTool={armedTool}
+          drawings={drawings}
+          onDraw={addDrawing}
           onActivate={onActivate}
           onCursorDateChange={updateCursor}
           onPanViewport={panViewport}

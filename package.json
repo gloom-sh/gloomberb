@@ -49,6 +49,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "0.165.0",
     "electrobun": "^1.18.1",
+    "happy-dom": "^20.11.1",
     "png-to-ico": "^2.1.8",
     "rcedit": "^4.0.1"
   },

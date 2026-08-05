@@ -1082,8 +1082,8 @@ describe("CompositeChart", () => {
 
     // Pressing the ruler icon has to arm the tool for an unmodified drag.
     await act(async () => {
-      await testSetup!.mockMouse.moveTo(1, 0);
-      await testSetup!.mockMouse.click(1, 0);
+      await testSetup!.mockMouse.moveTo(7, 1);
+      await testSetup!.mockMouse.click(7, 1);
     });
     await act(async () => testSetup!.renderOnce());
     await act(async () => {
@@ -1095,7 +1095,7 @@ describe("CompositeChart", () => {
 
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
-      await testSetup!.mockMouse.click(1, 0);
+      await testSetup!.mockMouse.click(7, 1);
     });
     await act(async () => testSetup!.renderOnce());
     await act(async () => {

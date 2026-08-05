@@ -1,12 +1,18 @@
 import { describe, expect, it } from "bun:test";
 import {
   countMeasureBars,
+  drawChartToolOverlay,
   formatMeasureSpan,
   resolveChartToolKind,
+  resolveDrawingFromDrag,
   resolveZoomBoxRange,
   summarizeMeasure,
 } from "./tools";
-import type { CompositeAxisDomain, CompositeChartScene } from "./types";
+import type {
+  CompositeAxisDomain,
+  CompositeChartScene,
+  CompositePanelScene,
+} from "./types";
 
 const domain: CompositeAxisDomain = {
   side: "right",
@@ -160,5 +166,77 @@ describe("resolveZoomBoxRange", () => {
     expect(range).not.toBeNull();
     expect(range!.end.getTime() - range!.start.getTime()).toBe(DAY);
     expect((range!.start.getTime() + range!.end.getTime()) / 2).toBe(START + 5.1 * DAY);
+  });
+});
+
+describe("chart drawings", () => {
+  const panel: CompositePanelScene = {
+    id: "main",
+    height: 10,
+    scale: "linear",
+    axes: { left: { ...domain, side: "left" } },
+    series: [{
+      source: { id: "a", axis: "left" } as never,
+      points: [],
+    }],
+  };
+
+  it("anchors a drawing to the data under the drag, not to the pixels", () => {
+    const scene = calendarScene(10 * DAY);
+    const drawing = resolveDrawingFromDrag(scene, panel, {
+      kind: "draw",
+      startXRatio: 0.2,
+      startYRatio: 0.25,
+      endXRatio: 0.8,
+      endYRatio: 0.75,
+    }, "#ffcc00");
+
+    expect(drawing?.startTime).toBe(START + 2 * DAY);
+    expect(drawing?.endTime).toBe(START + 8 * DAY);
+    // yRatio runs top-down, so 0.25 is three quarters up a 0..200 axis.
+    expect(drawing?.startValue).toBeCloseTo(150, 6);
+    expect(drawing?.endValue).toBeCloseTo(50, 6);
+  });
+
+  it("redraws a stored line through the current viewport", () => {
+    const scene = calendarScene(10 * DAY);
+    const drawing = resolveDrawingFromDrag(scene, panel, {
+      kind: "draw",
+      startXRatio: 0,
+      startYRatio: 0.5,
+      endXRatio: 1,
+      endYRatio: 0.5,
+    }, "#ffcc00")!;
+    const base = {
+      width: 21,
+      height: 11,
+      pixels: new Uint8Array(21 * 11 * 4),
+    };
+    const painted = drawChartToolOverlay(base, null, {
+      positive: "#00ff00",
+      negative: "#ff0000",
+      zoom: "#8888ff",
+      draw: "#ffcc00",
+    }, "up", { scene, panel, items: [drawing] });
+    const alphaAt = (x: number, y: number) => painted.pixels[(y * 21 + x) * 4 + 3]!;
+
+    // A flat line at the middle value paints the middle row and nothing else.
+    expect(alphaAt(10, 5)).toBeGreaterThan(0);
+    expect(alphaAt(10, 0)).toBe(0);
+
+    // Halving the visible span pushes the same anchors off both edges.
+    const zoomed: CompositeChartScene = {
+      ...scene,
+      startTime: START + 2 * DAY,
+      endTime: START + 7 * DAY,
+      timeScale: { kind: "calendar", startTime: START + 2 * DAY, endTime: START + 7 * DAY },
+    };
+    const rezoomed = drawChartToolOverlay(base, null, {
+      positive: "#00ff00",
+      negative: "#ff0000",
+      zoom: "#8888ff",
+      draw: "#ffcc00",
+    }, "up", { scene: zoomed, panel, items: [drawing] });
+    expect(rezoomed.pixels[(5 * 21 + 10) * 4 + 3]!).toBeGreaterThan(0);
   });
 });
