@@ -3,6 +3,13 @@ import { Box, Text, useUiCapabilities } from "../../ui";
 import { colors } from "../../theme/colors";
 import { formatAxisCell } from "./core/renderer";
 
+export interface PriceAxisMarker {
+  row: number;
+  pixelY: number;
+  label: string;
+  color: string;
+}
+
 interface PriceAxisLabelsProps {
   axisLabels: ReadonlyMap<number, string>;
   axisWidth: number;
@@ -15,6 +22,8 @@ interface PriceAxisLabelsProps {
   cursorColor: string;
   cursorBackgroundColor?: string;
   axisColor?: string;
+  /** Anchors that stay put while the cursor moves, such as a measure start. */
+  extraMarkers?: readonly PriceAxisMarker[];
 }
 
 interface CursorPriceAxisOverlay {
@@ -67,6 +76,7 @@ export function PriceAxisLabels({
   cursorColor,
   cursorBackgroundColor = colors.bg,
   axisColor = colors.textDim,
+  extraMarkers,
 }: PriceAxisLabelsProps) {
   const { cellHeightPx = 18, fractionalViewport = false } = useUiCapabilities();
   const overlay = useMemo(() => buildCursorPriceAxisOverlay({
@@ -113,13 +123,43 @@ export function PriceAxisLabels({
     >
       {Array.from({ length: height }, (_, row) => {
         const isCursorRow = !usePixelOverlay && cursorLabel !== null && cursorRow === row;
-        const label = isCursorRow ? cursorLabel : (axisLabels.get(row) ?? null);
+        const marker = usePixelOverlay
+          ? undefined
+          : extraMarkers?.find((entry) => entry.row === row);
+        const label = isCursorRow
+          ? cursorLabel
+          : marker?.label ?? (axisLabels.get(row) ?? null);
         return (
           <Box key={row} height={1}>
-            {renderAxisLabel(label, isCursorRow ? cursorColor : axisColor)}
+            {renderAxisLabel(
+              label,
+              isCursorRow ? cursorColor : marker ? marker.color : axisColor,
+            )}
           </Box>
         );
       })}
+      {usePixelOverlay ? extraMarkers?.map((marker) => (
+        <Box
+          key={`${marker.label}:${marker.pixelY}`}
+          width={axisSectionWidth}
+          bg={cursorBackgroundColor}
+          flexDirection="row"
+          style={{
+            position: "absolute",
+            left: 0,
+            top: `${(marker.pixelY / Math.max(height * cellHeightPx - 1, 1)) * 100}%`,
+            transform: "translateY(-50%)",
+            whiteSpace: "pre",
+            pointerEvents: "none",
+            zIndex: 1,
+          }}
+        >
+          <Box flexDirection="row" width={axisWidth} justifyContent={axisLabelJustify} overflow="hidden">
+            <Text fg={marker.color} selectable={false}>{formatAxisCell(marker.label, axisWidth).trimStart()}</Text>
+          </Box>
+          {axisPaddingWidth > 0 ? <Box width={axisPaddingWidth} /> : null}
+        </Box>
+      )) : null}
       {usePixelOverlay ? (
         <Box
           width={axisSectionWidth}

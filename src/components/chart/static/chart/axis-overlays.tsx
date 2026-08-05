@@ -31,6 +31,12 @@ function alignAxisLabel(label: string, width: number, index: number, count: numb
   return `${" ".repeat(left)}${clipped}${" ".repeat(padding - left)}`;
 }
 
+export interface StaticXAxisMarker {
+  ratio: number;
+  label: string;
+  color: string;
+}
+
 export function StaticXAxisLabels({
   labels,
   positionedLabels,
@@ -41,6 +47,7 @@ export function StaticXAxisLabels({
   cursorLabel,
   cursorColor,
   cursorBackgroundColor,
+  extraMarkers,
 }: {
   labels: string[];
   positionedLabels?: readonly StaticChartXAxisLabel[];
@@ -51,6 +58,8 @@ export function StaticXAxisLabels({
   cursorLabel?: string | null;
   cursorColor?: string;
   cursorBackgroundColor?: string;
+  /** Anchors that stay put while the cursor moves, such as a measure start. */
+  extraMarkers?: readonly StaticXAxisMarker[];
 }) {
   const uiHost = useUiHost();
   const { cellWidthPx = 8, fractionalViewport = false } = useUiCapabilities();
@@ -143,6 +152,39 @@ export function StaticXAxisLabels({
           })}
         </Box>
       )}
+      {extraMarkers?.map((marker) => {
+        const label = marker.label.slice(0, width);
+        const ratio = clampRatio(marker.ratio);
+        if (label.length === 0) return null;
+        return (
+          <Text
+            key={`${marker.label}:${marker.ratio}`}
+            fg={marker.color}
+            bg={cursorBackgroundColor}
+            selectable={false}
+            style={fractionalViewport
+              ? {
+                position: "absolute",
+                left: `${ratio * 100}%`,
+                top: 0,
+                transform: "translateX(-50%)",
+                whiteSpace: "pre",
+                pointerEvents: "none",
+                zIndex: 2,
+              }
+              : {
+                position: "absolute",
+                left: Math.max(0, Math.min(width - label.length, Math.round(ratio * (width - 1)) - Math.floor(label.length / 2))),
+                top: 0,
+                whiteSpace: "pre",
+                pointerEvents: "none",
+                zIndex: 2,
+              }}
+          >
+            {label}
+          </Text>
+        );
+      })}
       {clippedCursorLabel && (cursorLeftPercent !== null || cursorLeft !== null) ? (
         <Text
           fg={cursorColor}

@@ -361,6 +361,12 @@ const CHART_TOOLS: ReadonlyArray<{
   },
 ];
 
+interface ChartToolSpan {
+  startXRatio: number;
+  endXRatio: number;
+  color: string;
+}
+
 const ARMED_TOOL_BY_INTERACTION = {
   "arm-measure": "measure",
   "arm-zoom": "zoom",
@@ -591,7 +597,7 @@ interface CompositePanelSurfaceProps {
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
-  onToolSummaryChange: (summary: string | null) => void;
+  onToolSpanChange: (span: ChartToolSpan | null) => void;
 }
 
 function CompositePanelSurface({
@@ -617,7 +623,7 @@ function CompositePanelSurface({
   onPanViewport,
   onZoomViewport,
   onSetViewport,
-  onToolSummaryChange,
+  onToolSpanChange,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
@@ -659,6 +665,8 @@ function CompositePanelSurface({
       return {
         direction: "up" as const,
         summary: summarizeZoomSelection(scene, toolDrag),
+        startValueLabel: null,
+        endValueLabel: null,
       };
     }
     const startValue = measureDomain
@@ -679,12 +687,28 @@ function CompositePanelSurface({
         bars: countMeasureBars(scene.dates, startTime, endTime),
         domain: measureDomain,
       }),
+      startValueLabel: measureDomain && startValue !== null
+        ? formatCompositeAxisValue(startValue, measureDomain)
+        : null,
+      endValueLabel: measureDomain && endValue !== null
+        ? formatCompositeAxisValue(endValue, measureDomain)
+        : null,
     };
   }, [measureDomain, scene, toolDrag]);
   const toolSummary = toolReadout?.summary ?? null;
+  const toolSpan = useMemo(() => {
+    if (!toolDrag || !toolSummary) return null;
+    return {
+      startXRatio: toolDrag.startXRatio,
+      endXRatio: toolDrag.endXRatio,
+      color: toolDrag.kind === "zoom"
+        ? colors.crosshair
+        : toolReadout?.direction === "down" ? colors.negative : themeColors.positive,
+    };
+  }, [colors.crosshair, colors.negative, toolDrag, toolReadout?.direction, toolSummary]);
   useEffect(() => {
-    onToolSummaryChange(toolSummary);
-  }, [onToolSummaryChange, toolSummary]);
+    onToolSpanChange(toolSpan);
+  }, [onToolSpanChange, toolSpan]);
   const panelDrawings = useMemo(
     () => drawings.filter((drawing) => drawing.panelId === panel.id),
     [drawings, panel.id],
@@ -775,6 +799,56 @@ function CompositePanelSurface({
     : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0);
   const leftCursorLabel = cursorAxisLabel(panel, "left", activeCursorYRatio);
   const rightCursorLabel = cursorAxisLabel(panel, "right", activeCursorYRatio);
+  const measureReadout = useMemo(() => {
+    if (!toolDrag || !toolReadout?.summary) return null;
+    const text = toolReadout.summary;
+    const centreX = (toolDrag.startXRatio + toolDrag.endXRatio) / 2;
+    const centreY = toolDrag.kind === "zoom"
+      ? 0.5
+      : (toolDrag.startYRatio + toolDrag.endYRatio) / 2;
+    const width = Math.min([...text].length, plotWidth);
+    return {
+      text,
+      width,
+      color: toolDrag.kind === "zoom"
+        ? colors.text
+        : toolReadout.direction === "down" ? colors.negative : themeColors.positive,
+      left: leftAxisWidth + (leftAxisWidth ? axisGap : 0)
+        + Math.max(0, Math.min(plotWidth - width, Math.round(centreX * plotWidth - width / 2))),
+      top: Math.max(0, Math.min(panel.height - 1, Math.round(centreY * (panel.height - 1)))),
+    };
+  }, [
+    axisGap,
+    colors.negative,
+    colors.text,
+    leftAxisWidth,
+    panel.height,
+    plotWidth,
+    toolDrag,
+    toolReadout,
+  ]);
+  const axisMarkers = useMemo(() => {
+    // The crosshair already marks the moving end, so the axes only need the
+    // anchor the drag started from.
+    if (!toolDrag || toolDrag.kind === "zoom" || !toolReadout?.startValueLabel) return null;
+    return {
+      yRatio: toolDrag.startYRatio,
+      label: toolReadout.startValueLabel,
+      color: toolReadout.direction === "down" ? colors.negative : themeColors.positive,
+    };
+  }, [colors.negative, toolDrag, toolReadout]);
+  const buildAxisMarkers = (side: "left" | "right") => {
+    if (!axisMarkers || !panel.axes[side]) return undefined;
+    const row = Math.round(axisMarkers.yRatio * Math.max(panel.height - 1, 0));
+    return [{
+      row,
+      pixelY: axisMarkers.yRatio * Math.max(panel.height * cellHeightPx - 1, 0),
+      label: axisMarkers.label,
+      color: axisMarkers.color,
+    }];
+  };
+  const leftAxisMarkers = buildAxisMarkers("left");
+  const rightAxisMarkers = buildAxisMarkers("right");
 
   const pointerRatios = useCallback((event: ChartMouseEvent) => {
     const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
@@ -954,7 +1028,34 @@ function CompositePanelSurface({
   }, [onActivate, onPanViewport, onZoomViewport, plotWidth, renderer, updateCursor]);
 
   return (
-    <Box flexDirection="row" height={panel.height} width={plotWidth + leftAxisWidth + rightAxisWidth + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0))}>
+    <Box
+      flexDirection="row"
+      height={panel.height}
+      width={plotWidth + leftAxisWidth + rightAxisWidth + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0))}
+      position="relative"
+    >
+      {measureReadout ? (
+        <Box
+          position="absolute"
+          left={measureReadout.left}
+          top={measureReadout.top}
+          width={measureReadout.width}
+          height={1}
+          zIndex={25}
+          backgroundColor={colors.background}
+          style={isDesktopWeb
+            ? {
+              width: "auto",
+              paddingInline: 4,
+              borderRadius: 4,
+              backgroundColor: `color-mix(in srgb, ${colors.background} 82%, transparent)`,
+            }
+            : undefined}
+          data-gloom-role="composite-chart-measure"
+        >
+          <Text fg={measureReadout.color}>{measureReadout.text}</Text>
+        </Box>
+      ) : null}
       {leftAxisWidth > 0 ? (
         <>
           <PriceAxisLabels
@@ -969,6 +1070,7 @@ function CompositePanelSurface({
             cursorColor={colors.crosshair}
             cursorBackgroundColor={colors.background}
             axisColor={colors.textDim}
+            extraMarkers={leftAxisMarkers}
           />
           <Box width={axisGap} />
         </>
@@ -1010,6 +1112,7 @@ function CompositePanelSurface({
             cursorColor={colors.crosshair}
             cursorBackgroundColor={colors.background}
             axisColor={colors.textDim}
+            extraMarkers={rightAxisMarkers}
           />
         </>
       ) : null}
@@ -1031,7 +1134,6 @@ function CompositeLegend({
   series,
   visibleSeriesIds,
   width,
-  toolSummary,
   accessory,
   accessoryWidth,
   formatValue,
@@ -1045,7 +1147,6 @@ function CompositeLegend({
   series: ResolvedSeries[];
   visibleSeriesIds: ReadonlySet<string>;
   width: number;
-  toolSummary?: string | null;
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
   formatValue: CompositeChartProps["formatValue"];
@@ -1108,11 +1209,7 @@ function CompositeLegend({
     0,
     widthBeforeAccessory - (minimumSeriesPreviewWidth > 0 ? minimumSeriesPreviewWidth + 1 : 0),
   );
-  // An active gesture is what the user is looking at, so shorten its readout
-  // rather than dropping it the way a cursor date can be dropped.
-  const dateLabel = toolSummary
-    ? truncateWithEllipsis(toolSummary, dateBudget)
-    : cursorLabel;
+  const dateLabel = cursorLabel;
   const showDate = dateLabel.length > 0 && widthBeforeAccessory >= (
     dateLabel.length
     + (minimumSeriesPreviewWidth > 0 ? minimumSeriesPreviewWidth + 1 : 0)
@@ -1192,7 +1289,7 @@ function CompositeLegend({
     >
       {showDate ? (
         <Box width={dateWidth} height={1} flexShrink={0} overflow="hidden">
-          <Text fg={toolSummary ? themeColors.text : themeColors.textDim}>{dateLabel}</Text>
+          <Text fg={themeColors.textDim}>{dateLabel}</Text>
         </Box>
       ) : null}
       {dateSeriesGap > 0 ? <Box width={dateSeriesGap} flexShrink={0} /> : null}
@@ -1315,7 +1412,7 @@ export function CompositeChart({
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
-  const [toolSummary, setToolSummary] = useState<string | null>(null);
+  const [toolSpan, setToolSpan] = useState<ChartToolSpan | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
   // ponytail: drawings live with the mounted chart. Persisting them belongs with
   // pane settings, which is a separate plumbing job.
@@ -1840,6 +1937,18 @@ export function CompositeChart({
   const timeAxisCursorLabel = scene.cursorDate
     ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime)
     : null;
+  // The crosshair labels the moving end, so the axis only adds the anchor.
+  const timeAxisMarkers = toolSpan
+    ? [{
+      ratio: toolSpan.startXRatio,
+      label: formatCompositeTimeAxisDate(
+        new Date(unprojectCompositeTimestamp(scene.timeScale, toolSpan.startXRatio)),
+        scene.startTime,
+        scene.endTime,
+      ),
+      color: toolSpan.color,
+    }]
+    : undefined;
   return (
     <Box
       flexDirection="column"
@@ -1856,7 +1965,6 @@ export function CompositeChart({
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           width={totalWidth}
-          toolSummary={toolSummary}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
@@ -1910,7 +2018,7 @@ export function CompositeChart({
           onPanViewport={panViewport}
           onZoomViewport={zoomViewport}
           onSetViewport={setViewportRange}
-          onToolSummaryChange={setToolSummary}
+          onToolSpanChange={setToolSpan}
         />
       ))}
       {timeAxisLayout ? (
@@ -1926,6 +2034,7 @@ export function CompositeChart({
             cursorLabel={timeAxisCursorLabel}
             cursorColor={resolvedColors.crosshair}
             cursorBackgroundColor={resolvedColors.background}
+            extraMarkers={timeAxisMarkers}
           />
           {rightPadding > 0 ? <Box width={rightPadding} /> : null}
         </Box>

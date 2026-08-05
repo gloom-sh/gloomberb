@@ -1009,8 +1009,10 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     const measuringFrame = testSetup.captureCharFrame();
+    // The readout sits in the middle of the box it measures, not in the legend.
     expect(measuringFrame).toContain("Δ");
     expect(measuringFrame).toContain("bars");
+    expect(measuringFrame.split("\n")[0]).not.toContain("Δ");
     expect(viewportChanges).toHaveLength(0);
 
     await act(async () => {
