@@ -102,7 +102,7 @@ function pointerEvent(
   };
 }
 
-function keyEvent(name: string): KeyEventLike {
+function keyEvent(name: string, shift = false): KeyEventLike {
   let defaultPrevented = false;
   let propagationStopped = false;
   return {
@@ -110,7 +110,7 @@ function keyEvent(name: string): KeyEventLike {
     name,
     sequence: name,
     ctrl: false,
-    shift: false,
+    shift,
     alt: false,
     meta: false,
     get defaultPrevented() {
@@ -1019,6 +1019,73 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
     expect(testSetup.captureCharFrame()).not.toContain("Δ");
     expect(viewportChanges).toHaveLength(0);
+  });
+
+  test("arms a measurement from the keyboard when a modifier drag cannot reach the app", async () => {
+    testSetup = await testRender(
+      <InputHostProvider host={chartInputHost}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            interactive
+            series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+            panels={[{ id: "main" }]}
+          />
+        </CaptureChartSurfaceProvider>
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => chartShortcut?.(keyEvent("m", true)));
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("MEASURE");
+
+    // No modifier on the drag: the armed tool is what makes it a measurement.
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(34, 1));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("Δ");
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseUp(pointerEvent(34, 1));
+    });
+    await act(async () => testSetup!.renderOnce());
+    const frame = testSetup.captureCharFrame();
+    // One shot: the next plain drag has to pan again.
+    expect(frame).not.toContain("Δ");
+    expect(frame).not.toContain("MEASURE");
+  });
+
+  test("disarms a chart tool with escape", async () => {
+    testSetup = await testRender(
+      <InputHostProvider host={chartInputHost}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            interactive
+            series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+            panels={[{ id: "main" }]}
+          />
+        </CaptureChartSurfaceProvider>
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => chartShortcut?.(keyEvent("z", true)));
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("ZOOM");
+
+    await act(async () => chartShortcut?.(keyEvent("escape")));
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).not.toContain("ZOOM");
   });
 
   test("keeps a measurement readable in a narrow pane", async () => {

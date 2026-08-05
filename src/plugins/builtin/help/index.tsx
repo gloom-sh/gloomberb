@@ -159,12 +159,12 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 description="Pan the chart through time."
               />
               <ShortcutRow
-                badges={["Shift+Drag"]}
-                description="Select a time range to zoom into."
+                badges={["Shift+Z", "Shift+Drag"]}
+                description="Arm the zoom box, then drag a time range to zoom into."
               />
               <ShortcutRow
-                badges={["Alt+Drag"]}
-                description="Measure change, percent, bars, and elapsed time between two points."
+                badges={["Shift+M", "Alt+Drag"]}
+                description="Arm the ruler, then drag to measure change, percent, bars, and elapsed time."
               />
               <ShortcutRow
                 badges={["Ctrl+Scroll"]}
@@ -174,6 +174,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["+/-", "0"]}
                 description="Zoom the focused chart in or out, or reset it."
               />
+              <Text fg={colors.textDim} wrapText>
+                {t("Most terminals keep shift-drag and option-drag for their own text selection, so arm the tool with the keyboard there.")}
+              </Text>
             </HelpSection>
 
             <HelpSection title="Global Keys">

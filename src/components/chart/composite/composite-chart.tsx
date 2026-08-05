@@ -63,6 +63,7 @@ import {
   summarizeMeasure,
   summarizeZoomSelection,
   type ChartToolDrag,
+  type ChartToolKind,
 } from "./tools";
 import { unprojectCompositeTimestamp } from "./time-scale";
 import {
@@ -279,6 +280,13 @@ function cursorAxisLabel(
   return value === null ? null : formatCompositeAxisValue(value, domain);
 }
 
+function armedToolHint(tool: ChartToolKind | null): string | null {
+  if (!tool) return null;
+  return tool === "measure"
+    ? "MEASURE: drag the chart · Esc"
+    : "ZOOM: drag a range · Esc";
+}
+
 function resolveSeriesCursorYRatio(
   panel: CompositePanelScene,
   scene: CompositeChartScene,
@@ -306,6 +314,8 @@ interface CompositePanelSurfaceProps {
   interactive: boolean;
   viewport: CompositeViewportRange;
   minimumViewportSpanMs: number;
+  armedTool: ChartToolKind | null;
+  onArmedToolConsumed: () => void;
   onActivate?: () => void;
   onCursorDateChange: (date: Date | null) => void;
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
@@ -325,6 +335,8 @@ function CompositePanelSurface({
   interactive,
   viewport,
   minimumViewportSpanMs,
+  armedTool,
+  onArmedToolConsumed,
   onActivate,
   onCursorDateChange,
   onPanViewport,
@@ -461,7 +473,8 @@ function CompositePanelSurface({
   const startDrag = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
     consumeChartMouseEvent(event);
-    const tool = resolveChartToolKind(event.modifiers);
+    // A keyboard-armed tool covers terminals that never forward modifier drags.
+    const tool = resolveChartToolKind(event.modifiers) ?? armedTool;
     if (tool) {
       const ratios = pointerRatios(event);
       if (!ratios) return;
@@ -474,6 +487,7 @@ function CompositePanelSurface({
       };
       dragRef.current = { ...started };
       setToolDrag(started);
+      if (armedTool) onArmedToolConsumed();
       updateCursor(event);
       return;
     }
@@ -483,7 +497,7 @@ function CompositePanelSurface({
       startGlobalX: getGlobalMouseX(event, renderer),
       startViewport: viewport,
     };
-  }, [onActivate, pointerRatios, renderer, updateCursor, viewport]);
+  }, [armedTool, onActivate, onArmedToolConsumed, pointerRatios, renderer, updateCursor, viewport]);
   const dragViewport = useCallback((event: ChartMouseEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
@@ -905,6 +919,7 @@ export function CompositeChart({
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
   const [toolSummary, setToolSummary] = useState<string | null>(null);
+  const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
   const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -1090,6 +1105,7 @@ export function CompositeChart({
     viewportInteractionRef.current = "reset";
     setInteractionViewport(null);
   }, []);
+  const disarmTool = useCallback(() => setArmedTool(null), []);
   const hasLeftAxis = visibleSeries.some((entry) => entry.axis === "left");
   const hasRightAxis = visibleSeries.some((entry) => entry.axis === "right");
   const resolvedAxisWidth = Math.max(0, Math.floor(axisWidth));
@@ -1220,6 +1236,12 @@ export function CompositeChart({
       onToggleSeries(entry.id);
       return;
     }
+    if (isPlainKey(event, "escape") && armedTool) {
+      event.preventDefault();
+      event.stopPropagation();
+      setArmedTool(null);
+      return;
+    }
     if (isPlainKey(event, "escape") && legendKeyboardIndex !== null && !scene?.cursorDate) {
       event.preventDefault();
       event.stopPropagation();
@@ -1230,6 +1252,7 @@ export function CompositeChart({
     if (!interaction) return;
     if (
       (interaction === "clear-cursor" && !scene?.cursorDate)
+      || ((interaction === "arm-measure" || interaction === "arm-zoom") && !scene)
       || ((interaction === "cursor-left" || interaction === "cursor-right") && !scene)
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"
@@ -1241,6 +1264,13 @@ export function CompositeChart({
     event.preventDefault();
     event.stopPropagation();
     switch (interaction) {
+      case "arm-measure":
+      case "arm-zoom": {
+        const tool = interaction === "arm-measure" ? "measure" : "zoom";
+        onActivate?.();
+        setArmedTool((current) => current === tool ? null : tool);
+        return;
+      }
       case "clear-cursor":
         keyboardCursorDateRef.current = null;
         updateCursor(null);
@@ -1360,7 +1390,7 @@ export function CompositeChart({
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           width={totalWidth}
-          toolSummary={toolSummary}
+          toolSummary={toolSummary ?? armedToolHint(armedTool)}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
@@ -1384,6 +1414,8 @@ export function CompositeChart({
           interactive={interactive}
           viewport={effectiveViewport!}
           minimumViewportSpanMs={minimumViewportSpanMs}
+          armedTool={armedTool}
+          onArmedToolConsumed={disarmTool}
           onActivate={onActivate}
           onCursorDateChange={updateCursor}
           onPanViewport={panViewport}
