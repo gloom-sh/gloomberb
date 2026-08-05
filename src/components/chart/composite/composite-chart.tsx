@@ -61,6 +61,7 @@ import {
   resolveMeasureDirection,
   resolveZoomBoxRange,
   summarizeMeasure,
+  summarizeZoomSelection,
   type ChartToolDrag,
 } from "./tools";
 import { unprojectCompositeTimestamp } from "./time-scale";
@@ -310,7 +311,7 @@ interface CompositePanelSurfaceProps {
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
-  onMeasureChange: (summary: string | null) => void;
+  onToolSummaryChange: (summary: string | null) => void;
 }
 
 function CompositePanelSurface({
@@ -329,7 +330,7 @@ function CompositePanelSurface({
   onPanViewport,
   onZoomViewport,
   onSetViewport,
-  onMeasureChange,
+  onToolSummaryChange,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const { cellHeightPx = 18 } = useUiCapabilities();
@@ -357,8 +358,14 @@ function CompositePanelSurface({
     [activeCursorYRatio, bitmap, colors.crosshair, columnLayout, panel, scene.cursorXRatio],
   );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
-  const measurement = useMemo(() => {
-    if (!toolDrag || toolDrag.kind !== "measure") return null;
+  const toolReadout = useMemo(() => {
+    if (!toolDrag) return null;
+    if (toolDrag.kind === "zoom") {
+      return {
+        direction: "up" as const,
+        summary: summarizeZoomSelection(scene, toolDrag),
+      };
+    }
     const startValue = measureDomain
       ? unprojectCompositeValue(toolDrag.startYRatio, measureDomain)
       : null;
@@ -379,10 +386,10 @@ function CompositePanelSurface({
       }),
     };
   }, [measureDomain, scene, toolDrag]);
-  const measureSummary = measurement?.summary ?? null;
+  const toolSummary = toolReadout?.summary ?? null;
   useEffect(() => {
-    onMeasureChange(measureSummary);
-  }, [measureSummary, onMeasureChange]);
+    onToolSummaryChange(toolSummary);
+  }, [onToolSummaryChange, toolSummary]);
   const bitmapLayers = useMemo(() => {
     if (!bitmap) return null;
     if (!toolDrag) return [bitmap];
@@ -394,9 +401,9 @@ function CompositePanelSurface({
         negative: colors.negative,
         zoom: colors.crosshair,
       },
-      measurement?.direction ?? "up",
+      toolReadout?.direction ?? "up",
     )];
-  }, [bitmap, colors.crosshair, colors.negative, measurement?.direction, toolDrag]);
+  }, [bitmap, colors.crosshair, colors.negative, toolDrag, toolReadout?.direction]);
   const textLines = useMemo(
     () => isDesktopWeb
       ? []
@@ -614,7 +621,7 @@ function CompositeLegend({
   series,
   visibleSeriesIds,
   width,
-  measureSummary,
+  toolSummary,
   accessory,
   accessoryWidth,
   formatValue,
@@ -628,7 +635,7 @@ function CompositeLegend({
   series: ResolvedSeries[];
   visibleSeriesIds: ReadonlySet<string>;
   width: number;
-  measureSummary?: string | null;
+  toolSummary?: string | null;
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
   formatValue: CompositeChartProps["formatValue"];
@@ -640,12 +647,13 @@ function CompositeLegend({
 }) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // A live measurement replaces the cursor date: same row, denser information.
-  const dateLabel = measureSummary ?? (scene
+  // A live measurement or zoom selection replaces the cursor date: same row,
+  // denser information.
+  const cursorLabel = scene
     ? scene.cursorDate
       ? formatCompositeCursorDate(scene.cursorDate, scene.startTime, scene.endTime)
       : "Latest"
-    : "");
+    : "";
   const cursorValueById = new Map(
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
@@ -686,6 +694,15 @@ function CompositeLegend({
   const minimumSeriesPreviewWidth = entries.length > 0
     ? Math.min(7, desiredSeriesWidth)
     : 0;
+  const dateBudget = Math.max(
+    0,
+    widthBeforeAccessory - (minimumSeriesPreviewWidth > 0 ? minimumSeriesPreviewWidth + 1 : 0),
+  );
+  // An active gesture is what the user is looking at, so shorten its readout
+  // rather than dropping it the way a cursor date can be dropped.
+  const dateLabel = toolSummary
+    ? truncateWithEllipsis(toolSummary, dateBudget)
+    : cursorLabel;
   const showDate = dateLabel.length > 0 && widthBeforeAccessory >= (
     dateLabel.length
     + (minimumSeriesPreviewWidth > 0 ? minimumSeriesPreviewWidth + 1 : 0)
@@ -765,7 +782,7 @@ function CompositeLegend({
     >
       {showDate ? (
         <Box width={dateWidth} height={1} flexShrink={0} overflow="hidden">
-          <Text fg={measureSummary ? themeColors.text : themeColors.textDim}>{dateLabel}</Text>
+          <Text fg={toolSummary ? themeColors.text : themeColors.textDim}>{dateLabel}</Text>
         </Box>
       ) : null}
       {dateSeriesGap > 0 ? <Box width={dateSeriesGap} flexShrink={0} /> : null}
@@ -887,7 +904,7 @@ export function CompositeChart({
   const { cellWidthPx = 8 } = useUiCapabilities();
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
-  const [measureSummary, setMeasureSummary] = useState<string | null>(null);
+  const [toolSummary, setToolSummary] = useState<string | null>(null);
   const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -1343,7 +1360,7 @@ export function CompositeChart({
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           width={totalWidth}
-          measureSummary={measureSummary}
+          toolSummary={toolSummary}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
@@ -1372,7 +1389,7 @@ export function CompositeChart({
           onPanViewport={panViewport}
           onZoomViewport={zoomViewport}
           onSetViewport={setViewportRange}
-          onMeasureChange={setMeasureSummary}
+          onToolSummaryChange={setToolSummary}
         />
       ))}
       {timeAxisLayout ? (

@@ -965,8 +965,10 @@ describe("CompositeChart", () => {
       capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 3, { shift: true }));
     });
     await act(async () => testSetup!.renderOnce());
-    // The selection must not pan the way an unmodified drag would.
+    // The selection must not pan the way an unmodified drag would, and the
+    // range has to read as text for renderers that cannot draw the band.
     expect(viewportChanges).toHaveLength(0);
+    expect(testSetup.captureCharFrame()).toContain("→");
 
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 3, { shift: true }));
@@ -1017,6 +1019,31 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
     expect(testSetup.captureCharFrame()).not.toContain("Δ");
     expect(viewportChanges).toHaveLength(0);
+  });
+
+  test("keeps a measurement readable in a narrow pane", async () => {
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={28}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 30, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(2, 6, { alt: true }));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(14, 1, { alt: true }));
+    });
+    await act(async () => testSetup!.renderOnce());
+
+    // Too narrow for the whole summary, but the change still has to be visible.
+    expect(testSetup.captureCharFrame()).toContain("Δ");
   });
 
   test("ends a tool drag whose release landed on another pane", async () => {

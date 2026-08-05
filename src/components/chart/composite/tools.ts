@@ -1,7 +1,7 @@
 import { formatPercentRaw } from "../../../utils/format";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import { drawLine, fillRect, parseHex } from "../native/raster/primitives";
-import { formatCompositeAxisValue } from "./format";
+import { formatCompositeAxisValue, formatCompositeCursorDate } from "./format";
 import { unprojectCompositeTimestamp } from "./time-scale";
 import type {
   CompositeAxisDomain,
@@ -120,6 +120,28 @@ export function summarizeMeasure(input: {
     ? ` (${formatPercentRaw((delta / Math.abs(startValue)) * 100)})`
     : "";
   return `Δ ${signedDeltaText}${percentText}${barsText} · ${spanText}`;
+}
+
+/**
+ * Range preview for a live zoom drag. The band drawn on the raster is invisible
+ * on the braille renderer, so the selection is also reported as text.
+ */
+export function summarizeZoomSelection(
+  scene: CompositeChartScene,
+  drag: ChartToolDrag,
+): string | null {
+  if (!isMeaningfulToolDrag(drag)) return null;
+  const first = unprojectCompositeTimestamp(scene.timeScale, drag.startXRatio);
+  const second = unprojectCompositeTimestamp(scene.timeScale, drag.endXRatio);
+  if (!Number.isFinite(first) || !Number.isFinite(second)) return null;
+  const start = Math.min(first, second);
+  const end = Math.max(first, second);
+  const label = (timestamp: number) => formatCompositeCursorDate(
+    new Date(timestamp),
+    scene.startTime,
+    scene.endTime,
+  );
+  return `${label(start)} → ${label(end)} · ${formatMeasureSpan(end - start)}`;
 }
 
 export function resolveMeasureDirection(

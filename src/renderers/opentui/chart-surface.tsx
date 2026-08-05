@@ -96,6 +96,8 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
   const surfaceId = useRef(`opentui-chart:${nextChartSurfaceId++}`).current;
   const renderableRef = useRef<NativeRenderableNode | null>(null);
   const [target, setTarget] = useState<SurfaceTarget | null>(null);
+  // Only the base layer reaches the terminal: each extra layer would need its own
+  // kitty surface and z-index. Composite overlays into the bitmap you pass here.
   const firstBitmap = Array.isArray(bitmaps) ? bitmaps[0] : null;
   const nativeBitmap = (firstBitmap ?? bitmap ?? null) as NativeChartBitmap | null;
   const nativeCrosshair = (crosshair ?? null) as ChartCrosshairOverlay | null;

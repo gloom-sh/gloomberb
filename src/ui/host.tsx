@@ -210,6 +210,7 @@ interface InputProps extends BoxProps {}
 interface TextareaProps extends BoxProps {}
 export interface ChartSurfaceProps extends BoxProps {
   bitmap?: BitmapSurface | null;
+  /** Desktop stacks every layer; the terminal renders only the first. */
   bitmaps?: readonly BitmapSurface[] | null;
   crosshair?: ChartCrosshairOverlay | null;
   nativeBitmapsEnabled?: boolean;
