@@ -10,7 +10,9 @@ $InstallLog = Join-Path $env:TEMP "gloomberb-arm64-install-$PID.log"
 $UninstallLog = Join-Path $env:TEMP "gloomberb-arm64-uninstall-$PID.log"
 $GuiStdoutLog = Join-Path $env:TEMP "gloomberb-arm64-gui-stdout-$PID.log"
 $GuiStderrLog = Join-Path $env:TEMP "gloomberb-arm64-gui-stderr-$PID.log"
-$DesktopProfileDir = Join-Path $env:LOCALAPPDATA "com.vincelwt.gloomberb"
+$OriginalLocalAppData = $env:LOCALAPPDATA
+$IsolatedLocalAppData = Join-Path $env:TEMP "GloomberbArm64LocalAppData-$PID"
+$DesktopProfileDir = Join-Path $IsolatedLocalAppData "com.vincelwt.gloomberb"
 
 function Assert-CommandSucceeds {
   param(
@@ -79,6 +81,9 @@ try {
   Assert-CommandSucceeds $InstalledCli @("__gloomberb-smoke-opentui-native")
   Assert-CommandSucceeds $InstalledCli @("help")
 
+  Remove-Item -Path $IsolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Path $IsolatedLocalAppData -Force | Out-Null
+  $env:LOCALAPPDATA = $IsolatedLocalAppData
   Remove-Item -Path $DesktopProfileDir -Recurse -Force -ErrorAction SilentlyContinue
 
   $env:ELECTROBUN_CONSOLE = "1"
@@ -115,6 +120,7 @@ try {
   if ($GuiProcess -and -not $GuiProcess.HasExited) {
     Stop-Process -Id $GuiProcess.Id -Force -ErrorAction SilentlyContinue
   }
+  $env:LOCALAPPDATA = $OriginalLocalAppData
 
   $Uninstaller = Get-ChildItem -Path $InstallDir -Filter "unins*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($Uninstaller) {
@@ -130,6 +136,6 @@ try {
   }
 
   Remove-Item -Path $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-Item -Path $DesktopProfileDir -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $IsolatedLocalAppData -Recurse -Force -ErrorAction SilentlyContinue
   Remove-Item -Path $GuiStdoutLog, $GuiStderrLog -Force -ErrorAction SilentlyContinue
 }
