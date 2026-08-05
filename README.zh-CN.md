@@ -267,7 +267,7 @@ gloomberb
 | `VF` | 切换行情数值闪烁 |
 | `TH <theme>` | 更换配色主题 |
 | `CR` | 切换图表渲染器 |
-| `LANG <locale>` | 切换界面语言（`auto`、`en`、`zh-CN`、`zh-TW`、`ja` 或 `ko`） |
+| `LANG <locale>` | 切换界面语言（`auto`、`en`、`es`、`zh-CN`、`zh-TW`、`ja` 或 `ko`） |
 | `PL <plugin>` | 管理插件 |
 
 ## 本地化界面
@@ -275,7 +275,7 @@ gloomberb
 Gloomberb 内置 English、简体中文、繁體中文、日本語和한국어界面支持；英文仍是默认回退语言。
 
 - **自动检测**：终端 `LANG` / `LC_ALL` 与桌面系统语言会自动选择受支持的界面语言。
-- **命令切换**：在命令栏（Ctrl+P）输入 `LANG` 可循环切换，也可直接输入 `LANG auto`、`LANG en`、`LANG zh-CN`、`LANG zh-TW`、`LANG ja` 或 `LANG ko`。选择会保存到 `config.json`。
+- **命令切换**：在命令栏（Ctrl+P）输入 `LANG` 可循环切换，也可直接输入 `LANG auto`、`LANG en`、`LANG es`、`LANG zh-CN`、`LANG zh-TW`、`LANG ja` 或 `LANG ko`。选择会保存到 `config.json`。
 - **单次覆盖**：在可读取进程语言变量的环境中，可用 `GLOOMBERB_LANG=ja gloomberb`（或其他受支持的语言代码）进行最高优先级覆盖。
 
 实现说明：

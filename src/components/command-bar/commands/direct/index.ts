@@ -238,7 +238,7 @@ export function runDirectCommandAction(options: {
       const next = resolveLanguageCommandPreference(current, arg);
       if (!next) {
         notify(
-          `${t("Unsupported language")}: ${arg.trim()}. LANG auto | en | zh-CN | zh-TW | ja | ko`,
+          `${t("Unsupported language")}: ${arg.trim()}. LANG auto | en | es | zh-CN | zh-TW | ja | ko`,
           { type: "error" },
         );
         return;

@@ -1,3 +1,4 @@
+import { es } from "./es";
 import { ja } from "./ja";
 import { ko } from "./ko";
 import { zhCN } from "./zh-cn";
@@ -13,6 +14,7 @@ export {
 } from "./languages";
 
 const DICTIONARIES: Record<Exclude<AppLanguage, "en">, Record<string, string>> = {
+  es,
   "zh-CN": zhCN,
   "zh-TW": zhTW,
   ja,
@@ -28,6 +30,7 @@ function normalizeLanguageTag(tag: string): AppLanguage | null {
   if (!normalized) return null;
   const [language, ...variants] = normalized.split("-");
   if (language === "en") return "en";
+  if (language === "es") return "es";
   if (language === "ja") return "ja";
   if (language === "ko") return "ko";
   if (language === "zh") {

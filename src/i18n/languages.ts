@@ -1,4 +1,4 @@
-export const APP_LANGUAGES = ["en", "zh-CN", "zh-TW", "ja", "ko"] as const;
+export const APP_LANGUAGES = ["en", "es", "zh-CN", "zh-TW", "ja", "ko"] as const;
 
 export type AppLanguage = typeof APP_LANGUAGES[number];
 
@@ -9,6 +9,7 @@ export type LanguagePreference = typeof LANGUAGE_PREFERENCES[number];
 export const LANGUAGE_DISPLAY_NAMES: Record<LanguagePreference, string> = {
   auto: "Auto",
   en: "English",
+  es: "Español",
   "zh-CN": "简体中文",
   "zh-TW": "繁體中文",
   ja: "日本語",
@@ -20,6 +21,16 @@ const LANGUAGE_ALIASES: Record<string, LanguagePreference> = {
   system: "auto",
   en: "en",
   english: "en",
+  es: "es",
+  "es-es": "es",
+  "es-419": "es",
+  "es-ar": "es",
+  "es-mx": "es",
+  "es-cl": "es",
+  "es-co": "es",
+  spanish: "es",
+  "español": "es",
+  "espanol": "es",
   zh: "zh-CN",
   "zh-cn": "zh-CN",
   "zh-sg": "zh-CN",
