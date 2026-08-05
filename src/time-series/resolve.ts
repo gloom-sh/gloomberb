@@ -298,6 +298,27 @@ function filterPoints(points: readonly TimeSeriesPoint[], bounds: DateBounds): T
   });
 }
 
+function followLatestMarketObservation(
+  bounds: DateBounds,
+  series: readonly ResolvedSeries[],
+): DateBounds {
+  if (bounds.end === null) return bounds;
+  let latest = bounds.end;
+  for (const entry of series) {
+    if (entry.timeBasis?.kind !== "market") continue;
+    for (const point of entry.points) {
+      const timestamp = point.date.getTime();
+      if (Number.isFinite(timestamp) && timestamp > latest) latest = timestamp;
+    }
+  }
+  if (latest === bounds.end) return bounds;
+  const shift = latest - bounds.end;
+  return {
+    start: bounds.start === null ? null : bounds.start + shift,
+    end: latest,
+  };
+}
+
 function emptyFinancials(priceHistory: TickerFinancials["priceHistory"] = []): TickerFinancials {
   return { annualStatements: [], quarterlyStatements: [], priceHistory };
 }
@@ -454,10 +475,14 @@ function baseSecuritySeries(
   const marketExchange = spec.source.instrument.exchange
     || financials.quote?.listingExchangeName
     || financials.quote?.exchangeName;
-  const marketTimeZone = isMarketFieldId(spec.source.fieldId)
+  const marketField = isMarketFieldId(spec.source.fieldId);
+  const marketTimeZone = marketField
     && canonicalExchange(marketExchange) !== "CCC"
     ? resolveExchangeTimeZone(marketExchange)
     : null;
+  const latestChangePercent = marketField && field.unit.startsWith("currency")
+    ? financials.quote?.changePercent
+    : undefined;
   return {
     id: spec.id,
     label: spec.label?.trim() || `${symbol} ${field.shortLabel}`,
@@ -482,6 +507,9 @@ function baseSecuritySeries(
             ? CHART_RESOLUTION_STEP_MS[marketResolution]
             : undefined,
         }
+      : undefined,
+    latestChangePercent: typeof latestChangePercent === "number" && Number.isFinite(latestChangePercent)
+      ? latestChangePercent
       : undefined,
     points,
   };
@@ -879,13 +907,19 @@ export async function resolveChartSpecData(
   const marketTimelineSeries = primaryMarketSeries?.visible === false
     ? rawSeries.filter((entry) => entry.id === primaryMarketSeries.id)
     : [];
-  // Preset ranges describe a window ending at the requested reference time,
-  // even when the newest filing or economic observation lags that endpoint.
-  // Re-anchoring to the latest observation both mislabels the range and asks
-  // providers for a different window than the one ultimately rendered.
-  const bounds = initialVisibleBounds;
+  // Preset ranges normally end at the requested reference time. A quote fetched
+  // asynchronously can be timestamped just after that reference, so advance an
+  // untouched market viewport by the same amount instead of clipping its tail.
+  // Explicit and user-created windows stay fixed through hasExplicitWindow.
+  const bounds = hasExplicitWindow
+    ? initialVisibleBounds
+    : followLatestMarketObservation(initialVisibleBounds, rawSeries);
   const resolution = initialResolution;
-  const studyBounds = initialCalculationBounds;
+  const studyBounds = bounds.end !== null
+      && initialCalculationBounds.end !== null
+      && bounds.end > initialCalculationBounds.end
+    ? { ...initialCalculationBounds, end: bounds.end }
+    : initialCalculationBounds;
   const baseSeries = rawSeries
     .filter((entry) => visibleSeriesIds.has(entry.id))
     .map((entry) => prepareBaseSeriesForStudies(entry, bounds, false, requestVisibleBounds));

@@ -650,6 +650,7 @@ function ChartComposerSurface({
           focused={focused}
           interactive={surfaceInteractive}
           allowHistoricalBackfill
+          showLatestChangePercent={!spec.viewport.dateWindow && spec.viewport.range === "1D"}
           onViewportChange={handleChartViewportChange}
           onActivate={activatePane}
           onToggleSeries={toggleSeries}

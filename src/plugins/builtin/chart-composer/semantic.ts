@@ -64,6 +64,7 @@ export function chartComposerSemanticMetadata(
       panelId: series.panelId,
       visible: series.visible !== false,
       pointCount: resolved?.points.length ?? 0,
+      latestChangePercent: resolved?.latestChangePercent ?? null,
       first: pointEvidence(resolved?.points[0]),
       last: pointEvidence(resolved?.points.at(-1)),
     };

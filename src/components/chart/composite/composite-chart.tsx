@@ -13,6 +13,7 @@ import {
 } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
+import { formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -504,6 +505,7 @@ function CompositeLegend({
   accessory,
   accessoryWidth,
   formatValue,
+  showLatestChangePercent,
   onActivate,
   onToggleSeries,
   isSeriesToggleable,
@@ -516,6 +518,7 @@ function CompositeLegend({
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
   formatValue: CompositeChartProps["formatValue"];
+  showLatestChangePercent: CompositeChartProps["showLatestChangePercent"];
   onActivate: CompositeChartProps["onActivate"];
   onToggleSeries: CompositeChartProps["onToggleSeries"];
   isSeriesToggleable: CompositeChartProps["isSeriesToggleable"];
@@ -534,11 +537,17 @@ function CompositeLegend({
   const entries = series.map((entry) => {
     const toggleable = !!onToggleSeries && (isSeriesToggleable?.(entry) ?? true);
     const cursorValue = cursorValueById.get(entry.id);
+    const changeText = showLatestChangePercent
+        && !scene?.cursorDate
+        && typeof entry.latestChangePercent === "number"
+        && Number.isFinite(entry.latestChangePercent)
+      ? ` ${formatPercentRaw(entry.latestChangePercent)}`
+      : "";
     const fullText = `${entry.label} ${legendValue(
       entry,
       cursorValue?.value ?? null,
       formatValue,
-    )}`;
+    )}${changeText}`;
     const details = formatCompositePointDetails(cursorValue?.point);
     const tooltip = details ? `${fullText} · ${details}` : fullText;
     const textWidth = Math.max(1, Math.min(30, [...fullText].length));
@@ -748,6 +757,7 @@ export function CompositeChart({
   allowHistoricalBackfill = false,
   axisWidth = 9,
   showLegend = true,
+  showLatestChangePercent = false,
   legendAccessory,
   legendAccessoryWidth,
   showTimeAxis = true,
@@ -1152,6 +1162,7 @@ export function CompositeChart({
             accessory={legendAccessory}
             accessoryWidth={legendAccessoryWidth}
             formatValue={formatValue}
+            showLatestChangePercent={showLatestChangePercent}
             onActivate={onActivate}
             onToggleSeries={onToggleSeries}
             isSeriesToggleable={isSeriesToggleable}
@@ -1213,6 +1224,7 @@ export function CompositeChart({
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
+          showLatestChangePercent={showLatestChangePercent}
           onActivate={onActivate}
           onToggleSeries={onToggleSeries}
           isSeriesToggleable={isSeriesToggleable}

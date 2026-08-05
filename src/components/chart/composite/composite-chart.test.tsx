@@ -196,6 +196,26 @@ function twoSessionCandles(): ResolvedSeries {
 }
 
 describe("CompositeChart", () => {
+  test("shows the regular-session move beside the latest intraday value", async () => {
+    testSetup = await testRender(
+      <CompositeChart
+        width={60}
+        height={12}
+        series={[{
+          ...series("price", "main", "left", "USD", [100, 110]),
+          latestChangePercent: 10.65,
+        }]}
+        panels={[{ id: "main" }]}
+        showLatestChangePercent
+      />,
+      { width: 62, height: 14 },
+    );
+
+    await act(async () => testSetup!.renderOnce());
+
+    expect(testSetup.captureCharFrame()).toContain("ACME Price $110 +10.65%");
+  });
+
   test("lays out mixed panels with one shared legend and time axis", async () => {
     testSetup = await testRender(
       <CompositeChart

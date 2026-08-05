@@ -1165,6 +1165,74 @@ describe("resolveChartSpecData", () => {
     expect(sma.points.at(-1)?.value).toBeCloseTo(15.5);
   });
 
+  test("keeps a quote received after resolution starts inside the latest viewport", async () => {
+    const now = Date.parse("2026-08-05T14:00:00Z");
+    const quoteTime = now + 60_000;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => ({
+        ...emptyFinancials(),
+        quote: {
+          symbol: "FRESH",
+          price: 130,
+          currency: "USD",
+          change: 30,
+          changePercent: 30,
+          lastUpdated: quoteTime,
+          listingExchangeName: "XNAS",
+          marketState: "POST",
+          postMarketPrice: 129,
+          postMarketChange: -1,
+          postMarketChangePercent: -0.77,
+        },
+      }),
+      getPriceHistoryForResolution: async () => [
+        { date: new Date(now - 2 * 86_400_000), open: 99, high: 102, low: 98, close: 100 },
+        { date: new Date(now - 86_400_000), open: 100, high: 101, low: 99, close: 100 },
+      ],
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "6M", resolution: "1d" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "FRESH", exchange: "XNAS" },
+          fieldId: "market.ohlcv",
+        },
+        style: "candles",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [{
+        id: "sma",
+        kind: "sma",
+        inputSeriesIds: ["price"],
+        parameters: { period: 2 },
+        panelId: "main",
+        axis: "left",
+      }],
+    };
+
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider,
+      now: new Date(now),
+      loadFredSeries: async () => fredLoad(),
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.viewport?.end.getTime()).toBe(quoteTime);
+    const price = result.series.find((entry) => entry.id === "price");
+    const sma = result.series.find((entry) => entry.id === "sma");
+    expect(price?.points.at(-1)?.date.getTime()).toBe(quoteTime);
+    expect(price?.points.at(-1)?.close).toBe(129);
+    expect(price?.latestChangePercent).toBe(30);
+    expect(sma?.points.at(-1)?.date.getTime()).toBe(quoteTime);
+  });
+
   test("reuses raw source loads while live quotes recompute the chart tail", async () => {
     const now = Date.parse("2026-05-15T20:30:00Z");
     const source = {
