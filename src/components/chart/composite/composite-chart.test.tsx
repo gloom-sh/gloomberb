@@ -1106,6 +1106,48 @@ describe("CompositeChart", () => {
     expect(testSetup.captureCharFrame()).not.toContain("Δ");
   });
 
+  test("draws a line, then grabs its end to reshape it", async () => {
+    testSetup = await testRender(
+      <InputHostProvider host={chartInputHost}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            focused
+            interactive
+            series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+            panels={[{ id: "main" }]}
+          />
+        </CaptureChartSurfaceProvider>
+      </InputHostProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    await act(async () => chartShortcut?.(keyEvent("d", true)));
+    await act(async () => testSetup!.renderOnce());
+    const base = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array } | undefined;
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 2));
+      capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
+    });
+    await act(async () => testSetup!.renderOnce());
+    const drawn = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array } | undefined;
+    expect(Buffer.from(drawn!.pixels).equals(Buffer.from(base!.pixels))).toBe(false);
+
+    // Grabbing the endpoint that was just dropped has to reshape, not redraw.
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(14, 8));
+      capturedSurfaceProps!.onMouseUp(pointerEvent(14, 8));
+    });
+    await act(async () => testSetup!.renderOnce());
+    const reshaped = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array } | undefined;
+    expect(reshaped).toBeTruthy();
+    expect(Buffer.from(reshaped!.pixels).equals(Buffer.from(drawn!.pixels))).toBe(false);
+  });
+
   test("disarms a chart tool with escape", async () => {
     testSetup = await testRender(
       <InputHostProvider host={chartInputHost}>

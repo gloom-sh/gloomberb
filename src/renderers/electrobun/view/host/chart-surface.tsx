@@ -66,7 +66,16 @@ const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly
       <svg
         viewBox="0 0 1 1"
         preserveAspectRatio="none"
-        style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}
+        // An SVG is a replaced element: without an explicit size it falls back
+        // to its intrinsic box and squeezes the whole overlay into a corner.
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          pointerEvents: "none",
+          zIndex: 9,
+        }}
       >
         {vectors.map((shape) => {
           const strokeWidth = shape.strokeWidth ?? 1.4;

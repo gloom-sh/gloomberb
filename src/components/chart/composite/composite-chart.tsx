@@ -620,7 +620,7 @@ function CompositePanelSurface({
   onToolSummaryChange,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
-  const { cellHeightPx = 18 } = useUiCapabilities();
+  const { cellHeightPx = 18, cellWidthPx = 8 } = useUiCapabilities();
   const renderer = useNativeRenderer();
   const plotRef = useRef<BoxRenderable | null>(null);
   const [cursorYRatio, setCursorYRatio] = useState<number | null>(null);
@@ -644,6 +644,7 @@ function CompositePanelSurface({
     | null
   >(null);
   const [toolDrag, setToolDrag] = useState<ChartToolDrag | null>(null);
+  const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
@@ -813,7 +814,7 @@ function CompositePanelSurface({
       // With a drawing tool in hand, grabbing an existing shape edits it
       // instead of starting a new one on top of it.
       const hit = isDrawingTool(tool)
-        ? hitTestDrawings(drawings, scene, panel, ratios)
+        ? hitTestDrawings(drawings, scene, panel, ratios, plotAspect)
         : null;
       if (hit) {
         onSelectDrawing(hit.drawing.id);
@@ -853,6 +854,7 @@ function CompositePanelSurface({
     onActivate,
     onSelectDrawing,
     panel,
+    plotAspect,
     pointerRatios,
     renderer,
     scene,
@@ -867,19 +869,17 @@ function CompositePanelSurface({
     if (drag.kind === "edit") {
       const ratios = pointerRatios(event);
       if (!ratios) return;
-      onEditDrawing(
-        drag.drawingId,
-        (drawing) => shiftDrawing(
-          drawing,
-          scene,
-          panel,
-          ratios.xRatio - drag.lastXRatio,
-          ratios.yRatio - drag.lastYRatio,
-          drag.pointIndex,
-        ),
-      );
+      // Read the deltas before advancing the ref: the state updater runs later,
+      // and a mutable capture would hand it a zero move every time.
+      const deltaXRatio = ratios.xRatio - drag.lastXRatio;
+      const deltaYRatio = ratios.yRatio - drag.lastYRatio;
+      const { drawingId, pointIndex } = drag;
       drag.lastXRatio = ratios.xRatio;
       drag.lastYRatio = ratios.yRatio;
+      onEditDrawing(
+        drawingId,
+        (drawing) => shiftDrawing(drawing, scene, panel, deltaXRatio, deltaYRatio, pointIndex),
+      );
       return;
     }
     if (drag.kind !== "pan") {

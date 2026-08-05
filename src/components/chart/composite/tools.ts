@@ -61,8 +61,8 @@ export interface ChartToolColors {
 /** A drag shorter than this is a mis-click, not a range selection. */
 const MINIMUM_TOOL_DRAG_RATIO = 0.004;
 
-/** Pointer slack for grabbing a drawing, as a fraction of the plot box. */
-const DRAWING_GRAB_RATIO = 0.02;
+/** Pointer slack for grabbing a drawing, as a fraction of the plot's height. */
+const DRAWING_GRAB_RATIO = 0.03;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -142,14 +142,17 @@ export function hitTestDrawings(
   scene: CompositeChartScene,
   panel: CompositePanelScene,
   pointer: { xRatio: number; yRatio: number },
+  /** Plot width over height in pixels, so slack is even in both directions. */
+  aspect = 1,
 ): ChartDrawingHit | null {
   let best: { hit: ChartDrawingHit; distance: number; endpoint: boolean } | null = null;
-  const target = { x: pointer.xRatio, y: pointer.yRatio };
+  const scale = Math.max(aspect, Number.EPSILON);
+  const target = { x: pointer.xRatio * scale, y: pointer.yRatio };
   for (const drawing of drawings) {
     if (drawing.panelId !== panel.id) continue;
     const projected = projectDrawing(scene, panel, drawing);
     if (!projected) continue;
-    const shape = projected.map((point) => ({ x: point.xRatio, y: point.yRatio }));
+    const shape = projected.map((point) => ({ x: point.xRatio * scale, y: point.yRatio }));
     if (drawing.points.length === 2) {
       for (const [index, point] of shape.entries()) {
         const distance = Math.hypot(target.x - point.x, target.y - point.y);

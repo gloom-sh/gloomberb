@@ -278,6 +278,18 @@ describe("editing drawings", () => {
     expect(hitTestDrawings([line], scene, panel, { xRatio: 0.5, yRatio: 0.9 })).toBeNull();
   });
 
+  it("measures grab slack in pixels, not in ratios", () => {
+    // On a 4:1 plot the same ratio is four times fewer pixels sideways, so the
+    // sideways slack has to shrink with it or the grab is uneven.
+    const near = { xRatio: 0.2 + 0.005, yRatio: 0.25 };
+    const far = { xRatio: 0.2 + 0.02, yRatio: 0.25 };
+    expect(hitTestDrawings([line], scene, panel, near, 4)).toMatchObject({ pointIndex: 0 });
+    expect(hitTestDrawings([line], scene, panel, far, 4)?.pointIndex ?? "none").not.toBe(0);
+    // Vertical slack is unchanged by the aspect.
+    expect(hitTestDrawings([line], scene, panel, { xRatio: 0.2, yRatio: 0.27 }, 4))
+      .toMatchObject({ pointIndex: 0 });
+  });
+
   it("leaves drawings that belong to another panel alone", () => {
     const other = { ...line, panelId: "volume" };
     expect(hitTestDrawings([other], scene, panel, { xRatio: 0.2, yRatio: 0.25 })).toBeNull();
