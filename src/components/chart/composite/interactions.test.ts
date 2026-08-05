@@ -234,6 +234,10 @@ describe("composite chart interactions", () => {
     expect(resolveCompositeChartInteraction({ name: "M", sequence: "M" })).toBe("arm-measure");
     expect(resolveCompositeChartInteraction({ name: "z", shift: true })).toBe("arm-zoom");
     expect(resolveCompositeChartInteraction({ name: "Z", sequence: "Z" })).toBe("arm-zoom");
+    expect(resolveCompositeChartInteraction({ name: "d", shift: true })).toBe("arm-line");
+    expect(resolveCompositeChartInteraction({ name: "P", sequence: "P" })).toBe("arm-pencil");
+    expect(resolveCompositeChartInteraction({ name: "backspace" })).toBe("delete-drawing");
+    expect(resolveCompositeChartInteraction({ name: "c" })).toBe("cycle-colour");
     // Unshifted m and z stay with the pane that already owns them.
     expect(resolveCompositeChartInteraction({ name: "m" })).toBeNull();
     expect(resolveCompositeChartInteraction({ name: "z" })).toBeNull();

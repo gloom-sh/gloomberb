@@ -11,16 +11,18 @@ export interface CompositeViewportRange {
 }
 
 export type CompositeChartInteraction =
-  | "arm-draw"
+  | "arm-line"
   | "arm-measure"
+  | "arm-pencil"
   | "arm-zoom"
+  | "cycle-colour"
   | "clear-cursor"
   | "cursor-left"
   | "cursor-right"
   | "pan-left"
   | "pan-right"
+  | "delete-drawing"
   | "reset"
-  | "undo-drawing"
   | "zoom-in"
   | "zoom-out";
 
@@ -425,8 +427,10 @@ export function resolveCompositeChartInteraction(event: {
   const shifted = event.shift || name === name.toUpperCase() && name !== key;
   if (shifted && key === "m") return "arm-measure";
   if (shifted && key === "z") return "arm-zoom";
-  if (shifted && key === "d") return "arm-draw";
-  if (key === "backspace") return "undo-drawing";
+  if (shifted && key === "d") return "arm-line";
+  if (shifted && key === "p") return "arm-pencil";
+  if (key === "backspace") return "delete-drawing";
+  if (key === "c" && !event.shift) return "cycle-colour";
   if (event.shift) return null;
   if (key === "a") return "pan-left";
   if (key === "d") return "pan-right";

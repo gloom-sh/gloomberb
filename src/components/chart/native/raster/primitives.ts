@@ -87,6 +87,24 @@ export function drawLine(
   }
 }
 
+/**
+ * Opaque whole-buffer fill. Doubling copyWithin runs at memcpy speed, where the
+ * per-pixel blend path costs most of a chart raster on its own.
+ */
+export function fillOpaque(data: Uint8Array, color: RgbaColor) {
+  if (data.length < 4) return;
+  data[0] = color.r;
+  data[1] = color.g;
+  data[2] = color.b;
+  data[3] = 255;
+  let filled = 4;
+  while (filled < data.length) {
+    const chunk = Math.min(filled, data.length - filled);
+    data.copyWithin(filled, 0, chunk);
+    filled += chunk;
+  }
+}
+
 export function fillRect(
   data: Uint8Array,
   width: number,

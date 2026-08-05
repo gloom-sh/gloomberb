@@ -1,7 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
+  CHART_DRAWING_COLORS,
   countMeasureBars,
   drawChartToolOverlay,
+  hitTestDrawings,
+  nextDrawingColor,
+  shiftDrawing,
   formatMeasureSpan,
   resolveChartToolKind,
   resolveDrawingFromDrag,
@@ -140,6 +144,7 @@ describe("resolveZoomBoxRange", () => {
       startYRatio: 0.5,
       endXRatio: 0.501,
       endYRatio: 0.5,
+      path: [],
     }, DAY)).toBeNull();
   });
 
@@ -150,6 +155,7 @@ describe("resolveZoomBoxRange", () => {
       startYRatio: 0,
       endXRatio: 0.2,
       endYRatio: 1,
+      path: [],
     }, DAY);
     expect(range?.start.getTime()).toBe(START + 2 * DAY);
     expect(range?.end.getTime()).toBe(START + 8 * DAY);
@@ -162,6 +168,7 @@ describe("resolveZoomBoxRange", () => {
       startYRatio: 0,
       endXRatio: 0.52,
       endYRatio: 1,
+      path: [],
     }, DAY);
     expect(range).not.toBeNull();
     expect(range!.end.getTime() - range!.start.getTime()).toBe(DAY);
@@ -184,29 +191,31 @@ describe("chart drawings", () => {
   it("anchors a drawing to the data under the drag, not to the pixels", () => {
     const scene = calendarScene(10 * DAY);
     const drawing = resolveDrawingFromDrag(scene, panel, {
-      kind: "draw",
+      kind: "line",
       startXRatio: 0.2,
       startYRatio: 0.25,
       endXRatio: 0.8,
       endYRatio: 0.75,
-    }, "#ffcc00");
+      path: [],
+    }, "#ffcc00", "d1");
 
-    expect(drawing?.startTime).toBe(START + 2 * DAY);
-    expect(drawing?.endTime).toBe(START + 8 * DAY);
+    expect(drawing?.points[0]?.time).toBe(START + 2 * DAY);
+    expect(drawing?.points[1]?.time).toBe(START + 8 * DAY);
     // yRatio runs top-down, so 0.25 is three quarters up a 0..200 axis.
-    expect(drawing?.startValue).toBeCloseTo(150, 6);
-    expect(drawing?.endValue).toBeCloseTo(50, 6);
+    expect(drawing?.points[0]?.value).toBeCloseTo(150, 6);
+    expect(drawing?.points[1]?.value).toBeCloseTo(50, 6);
   });
 
   it("redraws a stored line through the current viewport", () => {
     const scene = calendarScene(10 * DAY);
     const drawing = resolveDrawingFromDrag(scene, panel, {
-      kind: "draw",
+      kind: "line",
       startXRatio: 0,
       startYRatio: 0.5,
       endXRatio: 1,
       endYRatio: 0.5,
-    }, "#ffcc00")!;
+      path: [],
+    }, "#ffcc00", "d1")!;
     const base = {
       width: 21,
       height: 11,
@@ -238,5 +247,54 @@ describe("chart drawings", () => {
       draw: "#ffcc00",
     }, "up", { scene: zoomed, panel, items: [drawing] });
     expect(rezoomed.pixels[(5 * 21 + 10) * 4 + 3]!).toBeGreaterThan(0);
+  });
+});
+
+describe("editing drawings", () => {
+  const panel: CompositePanelScene = {
+    id: "main",
+    height: 10,
+    scale: "linear",
+    axes: { left: { ...domain, side: "left" } },
+    series: [{ source: { id: "a", axis: "left" } as never, points: [] }],
+  };
+  const scene = calendarScene(10 * DAY);
+  const line = {
+    id: "line-1",
+    panelId: "main",
+    color: CHART_DRAWING_COLORS[0],
+    points: [
+      { time: START + 2 * DAY, value: 150 },
+      { time: START + 8 * DAY, value: 50 },
+    ],
+  };
+
+  it("grabs an endpoint before the body, and misses outside the slack", () => {
+    expect(hitTestDrawings([line], scene, panel, { xRatio: 0.2, yRatio: 0.25 }))
+      .toMatchObject({ pointIndex: 0 });
+    expect(hitTestDrawings([line], scene, panel, { xRatio: 0.5, yRatio: 0.5 }))
+      .toMatchObject({ pointIndex: null });
+    expect(hitTestDrawings([line], scene, panel, { xRatio: 0.5, yRatio: 0.9 })).toBeNull();
+  });
+
+  it("leaves drawings that belong to another panel alone", () => {
+    const other = { ...line, panelId: "volume" };
+    expect(hitTestDrawings([other], scene, panel, { xRatio: 0.2, yRatio: 0.25 })).toBeNull();
+  });
+
+  it("moves a whole shape, or just the grabbed end", () => {
+    const moved = shiftDrawing(line, scene, panel, 0.1, 0, null);
+    expect(moved.points[0]!.time).toBe(START + 3 * DAY);
+    expect(moved.points[1]!.time).toBe(START + 9 * DAY);
+
+    const reshaped = shiftDrawing(line, scene, panel, 0, 0.25, 1);
+    expect(reshaped.points[0]!.value).toBeCloseTo(150, 6);
+    expect(reshaped.points[1]!.value).toBeCloseTo(0, 6);
+  });
+
+  it("cycles colours and wraps", () => {
+    expect(nextDrawingColor(CHART_DRAWING_COLORS[0])).toBe(CHART_DRAWING_COLORS[1]);
+    expect(nextDrawingColor(CHART_DRAWING_COLORS.at(-1)!)).toBe(CHART_DRAWING_COLORS[0]);
+    expect(nextDrawingColor("#000000")).toBe(CHART_DRAWING_COLORS[0]);
   });
 });

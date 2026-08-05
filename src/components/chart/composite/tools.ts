@@ -1,6 +1,6 @@
 import { formatPercentRaw } from "../../../utils/format";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { drawLine, fillRect, parseHex } from "../native/raster/primitives";
+import { clamp, drawCircle, drawLine, fillRect, parseHex } from "../native/raster/primitives";
 import { formatCompositeAxisValue, formatCompositeCursorDate } from "./format";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import { projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
@@ -10,18 +10,35 @@ import type {
   CompositePanelScene,
 } from "./types";
 
-/** Drag tools that borrow the pointer from panning while a modifier is held. */
-export type ChartToolKind = "measure" | "zoom" | "draw";
+/** Pointer tools that take the drag away from panning while one is picked. */
+export type ChartToolKind = "measure" | "zoom" | "line" | "pencil";
 
-/** A trend line anchored to data, so pan and zoom keep it on its own points. */
+export interface ChartDrawingPoint {
+  time: number;
+  value: number;
+}
+
+/** Anchored to data, so pan and zoom keep a drawing on its own points. */
 export interface ChartDrawing {
+  id: string;
   panelId: string;
-  startTime: number;
-  startValue: number;
-  endTime: number;
-  endValue: number;
+  points: ChartDrawingPoint[];
   color: string;
 }
+
+export interface ChartDrawingHit {
+  drawing: ChartDrawing;
+  /** Grabbed endpoint, or null when the whole shape was grabbed. */
+  pointIndex: number | null;
+}
+
+export const CHART_DRAWING_COLORS = [
+  "#f5a524",
+  "#4c9aff",
+  "#33c481",
+  "#ff5c7a",
+  "#c084fc",
+] as const;
 
 export interface ChartToolDrag {
   kind: ChartToolKind;
@@ -29,6 +46,8 @@ export interface ChartToolDrag {
   startYRatio: number;
   endXRatio: number;
   endYRatio: number;
+  /** Sampled pointer trail, used by the freehand tool. */
+  path: Array<{ xRatio: number; yRatio: number }>;
 }
 
 export interface ChartToolColors {
@@ -41,9 +60,24 @@ export interface ChartToolColors {
 /** A drag shorter than this is a mis-click, not a range selection. */
 const MINIMUM_TOOL_DRAG_RATIO = 0.004;
 
+/** Pointer slack for grabbing a drawing, as a fraction of the plot box. */
+const DRAWING_GRAB_RATIO = 0.02;
+
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
+
+function drawingPointFrom(
+  scene: CompositeChartScene,
+  domain: CompositeAxisDomain,
+  xRatio: number,
+  yRatio: number,
+): ChartDrawingPoint | null {
+  const value = unprojectCompositeValue(yRatio, domain);
+  return value === null
+    ? null
+    : { time: unprojectCompositeTimestamp(scene.timeScale, xRatio), value };
+}
 
 /** Data anchors for a finished drag, so a drawing survives pan and zoom. */
 export function resolveDrawingFromDrag(
@@ -51,40 +85,120 @@ export function resolveDrawingFromDrag(
   panel: CompositePanelScene,
   drag: ChartToolDrag,
   color: string,
+  id: string,
 ): ChartDrawing | null {
   const domain = resolveMeasureAxisDomain(panel);
   if (!domain || !isMeaningfulToolDrag(drag)) return null;
-  const startValue = unprojectCompositeValue(drag.startYRatio, domain);
-  const endValue = unprojectCompositeValue(drag.endYRatio, domain);
-  if (startValue === null || endValue === null) return null;
-  return {
-    panelId: panel.id,
-    startTime: unprojectCompositeTimestamp(scene.timeScale, drag.startXRatio),
-    startValue,
-    endTime: unprojectCompositeTimestamp(scene.timeScale, drag.endXRatio),
-    endValue,
-    color,
-  };
+  const source = drag.kind === "pencil" && drag.path.length > 1
+    ? drag.path
+    : [
+      { xRatio: drag.startXRatio, yRatio: drag.startYRatio },
+      { xRatio: drag.endXRatio, yRatio: drag.endYRatio },
+    ];
+  const points = source
+    .map((point) => drawingPointFrom(scene, domain, point.xRatio, point.yRatio))
+    .filter((point): point is ChartDrawingPoint => point !== null);
+  return points.length < 2 ? null : { id, panelId: panel.id, points, color };
 }
 
 function projectDrawing(
   scene: CompositeChartScene,
   panel: CompositePanelScene,
   drawing: ChartDrawing,
-): { x0: number; y0: number; x1: number; y1: number } | null {
+): Array<{ xRatio: number; yRatio: number }> | null {
   const domain = resolveMeasureAxisDomain(panel);
   if (!domain) return null;
-  const startX = projectCompositeTimestamp(scene.timeScale, drawing.startTime)?.ratio;
-  const endX = projectCompositeTimestamp(scene.timeScale, drawing.endTime)?.ratio;
-  const startY = projectCompositeValue(drawing.startValue, domain);
-  const endY = projectCompositeValue(drawing.endValue, domain);
-  if (
-    typeof startX !== "number" || typeof endX !== "number"
-    || startY === null || endY === null
-  ) {
-    return null;
+  const projected: Array<{ xRatio: number; yRatio: number }> = [];
+  for (const point of drawing.points) {
+    const xRatio = projectCompositeTimestamp(scene.timeScale, point.time)?.ratio;
+    const yRatio = projectCompositeValue(point.value, domain);
+    if (typeof xRatio !== "number" || yRatio === null) return null;
+    projected.push({ xRatio, yRatio });
   }
-  return { x0: startX, y0: startY, x1: endX, y1: endY };
+  return projected;
+}
+
+function distanceToSegment(
+  point: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lengthSquared = dx * dx + dy * dy;
+  const t = lengthSquared === 0
+    ? 0
+    : clamp(((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSquared, 0, 1);
+  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t));
+}
+
+/**
+ * Nearest drawing under the pointer. Endpoints win over the body so a line can
+ * be reshaped without first dragging the whole thing out of the way.
+ */
+export function hitTestDrawings(
+  drawings: readonly ChartDrawing[],
+  scene: CompositeChartScene,
+  panel: CompositePanelScene,
+  pointer: { xRatio: number; yRatio: number },
+): ChartDrawingHit | null {
+  let best: { hit: ChartDrawingHit; distance: number; endpoint: boolean } | null = null;
+  const target = { x: pointer.xRatio, y: pointer.yRatio };
+  for (const drawing of drawings) {
+    if (drawing.panelId !== panel.id) continue;
+    const projected = projectDrawing(scene, panel, drawing);
+    if (!projected) continue;
+    const shape = projected.map((point) => ({ x: point.xRatio, y: point.yRatio }));
+    if (drawing.points.length === 2) {
+      for (const [index, point] of shape.entries()) {
+        const distance = Math.hypot(target.x - point.x, target.y - point.y);
+        if (distance > DRAWING_GRAB_RATIO) continue;
+        if (!best?.endpoint || best.distance > distance) {
+          best = { hit: { drawing, pointIndex: index }, distance, endpoint: true };
+        }
+      }
+    }
+    for (let index = 1; index < shape.length; index += 1) {
+      const distance = distanceToSegment(target, shape[index - 1]!, shape[index]!);
+      if (distance > DRAWING_GRAB_RATIO || best?.endpoint) continue;
+      if (!best || best.distance > distance) {
+        best = { hit: { drawing, pointIndex: null }, distance, endpoint: false };
+      }
+    }
+  }
+  return best?.hit ?? null;
+}
+
+/** Re-anchors a drawing after a move, through the projection it is drawn with. */
+export function shiftDrawing(
+  drawing: ChartDrawing,
+  scene: CompositeChartScene,
+  panel: CompositePanelScene,
+  deltaXRatio: number,
+  deltaYRatio: number,
+  pointIndex: number | null,
+): ChartDrawing {
+  const domain = resolveMeasureAxisDomain(panel);
+  const projected = projectDrawing(scene, panel, drawing);
+  if (!domain || !projected) return drawing;
+  return {
+    ...drawing,
+    points: drawing.points.map((point, index) => {
+      if (pointIndex !== null && index !== pointIndex) return point;
+      const source = projected[index]!;
+      return drawingPointFrom(
+        scene,
+        domain,
+        clamp(source.xRatio + deltaXRatio, 0, 1),
+        clamp(source.yRatio + deltaYRatio, 0, 1),
+      ) ?? point;
+    }),
+  };
+}
+
+export function nextDrawingColor(color: string): string {
+  const index = CHART_DRAWING_COLORS.indexOf(color as typeof CHART_DRAWING_COLORS[number]);
+  return CHART_DRAWING_COLORS[(index + 1) % CHART_DRAWING_COLORS.length]!;
 }
 
 export function resolveChartToolKind(modifiers: {
@@ -97,6 +211,10 @@ export function resolveChartToolKind(modifiers: {
   if (modifiers.shift) return "zoom";
   if (modifiers.alt) return "measure";
   return null;
+}
+
+export function isDrawingTool(tool: ChartToolKind | null): boolean {
+  return tool === "line" || tool === "pencil";
 }
 
 function isMeaningfulToolDrag(drag: ChartToolDrag): boolean {
@@ -244,6 +362,7 @@ export function drawChartToolOverlay(
     scene: CompositeChartScene;
     panel: CompositePanelScene;
     items: readonly ChartDrawing[];
+    selectedId?: string | null;
   },
 ): NativeChartBitmap {
   const width = base.width;
@@ -253,19 +372,27 @@ export function drawChartToolOverlay(
   const maxY = Math.max(height - 1, 0);
 
   for (const drawing of drawings?.items ?? []) {
-    const line = projectDrawing(drawings!.scene, drawings!.panel, drawing);
-    if (!line) continue;
-    drawLine(
-      data,
-      width,
-      height,
-      line.x0 * maxX,
-      line.y0 * maxY,
-      line.x1 * maxX,
-      line.y1 * maxY,
-      parseHex(drawing.color),
-      1.4,
-    );
+    const shape = projectDrawing(drawings!.scene, drawings!.panel, drawing);
+    if (!shape) continue;
+    const selected = drawings!.selectedId === drawing.id;
+    const color = parseHex(drawing.color);
+    for (let index = 1; index < shape.length; index += 1) {
+      drawLine(
+        data,
+        width,
+        height,
+        shape[index - 1]!.xRatio * maxX,
+        shape[index - 1]!.yRatio * maxY,
+        shape[index]!.xRatio * maxX,
+        shape[index]!.yRatio * maxY,
+        color,
+        selected ? 2.2 : 1.4,
+      );
+    }
+    if (!selected) continue;
+    for (const handle of shape.length === 2 ? shape : [shape[0]!, shape.at(-1)!]) {
+      drawCircle(data, width, height, handle.xRatio * maxX, handle.yRatio * maxY, 3.2, color);
+    }
   }
   if (!drag) return { width, height, pixels: data };
 
@@ -276,8 +403,24 @@ export function drawChartToolOverlay(
   const left = Math.min(x0, x1);
   const right = Math.max(x0, x1);
 
-  if (drag.kind === "draw") {
-    drawLine(data, width, height, x0, y0, x1, y1, parseHex(colors.draw), 1.4);
+  if (drag.kind === "line" || drag.kind === "pencil") {
+    const color = parseHex(colors.draw);
+    const trail = drag.kind === "pencil" && drag.path.length > 1
+      ? drag.path
+      : [{ xRatio: drag.startXRatio, yRatio: drag.startYRatio }, { xRatio: drag.endXRatio, yRatio: drag.endYRatio }];
+    for (let index = 1; index < trail.length; index += 1) {
+      drawLine(
+        data,
+        width,
+        height,
+        trail[index - 1]!.xRatio * maxX,
+        trail[index - 1]!.yRatio * maxY,
+        trail[index]!.xRatio * maxX,
+        trail[index]!.yRatio * maxY,
+        color,
+        1.4,
+      );
+    }
     return { width, height, pixels: data };
   }
 

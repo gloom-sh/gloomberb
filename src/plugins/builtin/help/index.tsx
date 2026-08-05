@@ -167,8 +167,12 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 description="Pick the ruler, then drag to measure change, percent, bars, and elapsed time."
               />
               <ShortcutRow
-                badges={["Shift+D", "Backspace"]}
-                description="Pick the pen to drag trend lines onto the chart, or remove the last one."
+                badges={["Shift+D", "Shift+P"]}
+                description="Draw a trend line or a freehand shape. Grab a line's end to reshape it, drag its middle to move it."
+              />
+              <ShortcutRow
+                badges={["c", "Backspace"]}
+                description="Cycle the drawing colour, or delete the selected drawing."
               />
               <ShortcutRow
                 badges={["Ctrl+Scroll"]}

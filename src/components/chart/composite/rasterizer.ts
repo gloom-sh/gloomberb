@@ -2,6 +2,7 @@ import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import {
   drawCircle,
   drawLine,
+  fillOpaque,
   fillRect,
   parseHex,
   type RgbaColor,
@@ -297,7 +298,7 @@ export function renderCompositePanelBitmap(
   const background = parseHex(options.colors.background);
   const grid = parseHex(options.colors.grid);
   const negative = parseHex(options.colors.negative);
-  fillRect(data, width, height, 0, 0, width - 1, height - 1, background, 1);
+  fillOpaque(data, background);
 
   for (let index = 1; index <= 3; index += 1) {
     const y = (height - 1) * (index / 4);

@@ -55,13 +55,18 @@ import {
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { renderCompositePanelBitmap } from "./rasterizer";
 import {
+  CHART_DRAWING_COLORS,
   countMeasureBars,
   drawChartToolOverlay,
   resolveChartToolKind,
   resolveMeasureAxisDomain,
   resolveMeasureDirection,
+  hitTestDrawings,
+  isDrawingTool,
+  nextDrawingColor,
   resolveDrawingFromDrag,
   resolveZoomBoxRange,
+  shiftDrawing,
   summarizeMeasure,
   summarizeZoomSelection,
   type ChartDrawing,
@@ -300,6 +305,7 @@ function compositeAxisLabelWidth(domain: CompositeAxisDomain | undefined): numbe
 
 const RULER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1.4" y="4.6" width="13.2" height="6.8" rx="1.4" fill="none" stroke="#000" stroke-width="1.4"/><path d="M5 4.6v2.6M8 4.6v3.6M11 4.6v2.6" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0l0 0a1.6 1.6 0 0 1 0 2.3L6.2 12 2.4 13.6Z" fill="none" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+const LINE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.2 12.8 12.8 3.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="3.2" cy="12.8" r="2" fill="none" stroke="#000" stroke-width="1.4"/><circle cx="12.8" cy="3.2" r="2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
 const MARQUEE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.2 6V3.4a1.2 1.2 0 0 1 1.2-1.2H6M10 2.2h2.6a1.2 1.2 0 0 1 1.2 1.2V6M13.8 10v2.6a1.2 1.2 0 0 1-1.2 1.2H10M6 13.8H3.4a1.2 1.2 0 0 1-1.2-1.2V10" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 const CHART_TOOLS: ReadonlyArray<{
@@ -327,66 +333,38 @@ const CHART_TOOLS: ReadonlyArray<{
     icon: MARQUEE_ICON,
   },
   {
-    kind: "draw",
+    kind: "line",
     label: "Trend line",
     shortcut: "Shift+D",
-    hint: "Drag to draw a line, Backspace removes the last one",
+    hint: "Drag a straight line, grab an end to reshape it, Backspace deletes",
     glyph: "\u2571",
+    icon: LINE_ICON,
+  },
+  {
+    kind: "pencil",
+    label: "Freehand",
+    shortcut: "Shift+P",
+    hint: "Draw freehand, drag a shape to move it, Backspace deletes",
+    glyph: "\u223f",
     icon: PEN_ICON,
   },
 ];
 
+const ARMED_TOOL_BY_INTERACTION = {
+  "arm-measure": "measure",
+  "arm-zoom": "zoom",
+  "arm-line": "line",
+  "arm-pencil": "pencil",
+} as const satisfies Record<string, ChartToolKind>;
+
+let nextDrawingSequence = 1;
+
+function nextDrawingId(): string {
+  return `drawing:${nextDrawingSequence++}`;
+}
+
 /** Icon cells plus the gap between chips. */
 const CHART_TOOLBAR_WIDTH = CHART_TOOLS.length * 3 + (CHART_TOOLS.length - 1);
-
-function ChartToolbar({
-  armedTool,
-  isDesktopWeb,
-  left,
-  top,
-  onArmTool,
-}: {
-  armedTool: ChartToolKind | null;
-  isDesktopWeb: boolean;
-  left: number;
-  top: number;
-  onArmTool: (tool: ChartToolKind) => void;
-}) {
-  return (
-    <Box
-      position="absolute"
-      left={left}
-      top={top}
-      height={1}
-      flexDirection="row"
-      gap={1}
-      zIndex={30}
-      backgroundColor={themeColors.bg}
-      style={isDesktopWeb
-        ? {
-          gap: 2,
-          padding: 2,
-          borderRadius: 6,
-          backgroundColor: `color-mix(in srgb, ${themeColors.bg} 78%, transparent)`,
-          backdropFilter: "blur(6px)",
-          width: "auto",
-          height: "auto",
-        }
-        : undefined}
-      data-gloom-role="composite-chart-toolbar"
-    >
-      {CHART_TOOLS.map((tool) => (
-        <ChartToolChip
-          key={tool.kind}
-          tool={tool}
-          active={armedTool === tool.kind}
-          isDesktopWeb={isDesktopWeb}
-          onPress={() => onArmTool(tool.kind)}
-        />
-      ))}
-    </Box>
-  );
-}
 
 function ChartToolChip({
   tool,
@@ -448,8 +426,119 @@ function ChartToolChip({
   );
 }
 
+
 function svgMaskUrl(svg: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+function ChartColorSwatch({
+  color,
+  active,
+  isDesktopWeb,
+  onPress,
+}: {
+  color: string;
+  active: boolean;
+  isDesktopWeb: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Box
+      flexDirection="row"
+      alignItems="center"
+      justifyContent="center"
+      width={2}
+      height={1}
+      flexShrink={0}
+      backgroundColor={active ? themeColors.selected : undefined}
+      hoverBackgroundColor={hoverBg()}
+      onMouseDown={(event: ChartMouseEvent) => {
+        consumeChartMouseEvent(event);
+        onPress();
+      }}
+      cursor="pointer"
+      data-gloom-interactive="true"
+      data-gloom-role="composite-chart-color"
+      data-gloom-label={`Drawing colour ${color}`}
+      data-active={active ? "true" : "false"}
+      style={isDesktopWeb
+        ? {
+          width: 14,
+          height: 14,
+          borderRadius: 999,
+          backgroundColor: color,
+          border: `1.5px solid ${active ? themeColors.text : "transparent"}`,
+        }
+        : undefined}
+    >
+      {isDesktopWeb ? null : <Text fg={color}>{active ? "\u25c9" : "\u25cf"}</Text>}
+    </Box>
+  );
+}
+
+function ChartToolbar({
+  armedTool,
+  isDesktopWeb,
+  left,
+  top,
+  drawColor,
+  showColors,
+  onArmTool,
+  onPickColor,
+}: {
+  armedTool: ChartToolKind | null;
+  isDesktopWeb: boolean;
+  left: number;
+  top: number;
+  drawColor: string;
+  showColors: boolean;
+  onArmTool: (tool: ChartToolKind) => void;
+  onPickColor: (color: string) => void;
+}) {
+  return (
+    <Box
+      position="absolute"
+      left={left}
+      top={top}
+      height={1}
+      flexDirection="row"
+      gap={1}
+      zIndex={30}
+      backgroundColor={themeColors.bg}
+      style={isDesktopWeb
+        ? {
+          gap: 3,
+          padding: 3,
+          borderRadius: 7,
+          backgroundColor: `color-mix(in srgb, ${themeColors.bg} 78%, transparent)`,
+          backdropFilter: "blur(6px)",
+          width: "auto",
+          height: "auto",
+        }
+        : undefined}
+      data-gloom-role="composite-chart-toolbar"
+    >
+      {CHART_TOOLS.map((tool) => (
+        <ChartToolChip
+          key={tool.kind}
+          tool={tool}
+          active={armedTool === tool.kind}
+          isDesktopWeb={isDesktopWeb}
+          onPress={() => onArmTool(tool.kind)}
+        />
+      ))}
+      {/* Colours only take space while something can use them. */}
+      {showColors ? CHART_DRAWING_COLORS.map((color) => (
+        <ChartColorSwatch
+          key={color}
+          color={color}
+          active={color === drawColor}
+          isDesktopWeb={isDesktopWeb}
+          onPress={() => onPickColor(color)}
+        />
+      )) : null}
+    </Box>
+  );
 }
 
 function resolveSeriesCursorYRatio(
@@ -481,7 +570,11 @@ interface CompositePanelSurfaceProps {
   minimumViewportSpanMs: number;
   armedTool: ChartToolKind | null;
   drawings: readonly ChartDrawing[];
+  selectedDrawingId: string | null;
+  drawColor: string;
   onDraw: (drawing: ChartDrawing) => void;
+  onEditDrawing: (id: string, update: (drawing: ChartDrawing) => ChartDrawing) => void;
+  onSelectDrawing: (id: string | null) => void;
   onActivate?: () => void;
   onCursorDateChange: (date: Date | null) => void;
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
@@ -503,7 +596,11 @@ function CompositePanelSurface({
   minimumViewportSpanMs,
   armedTool,
   drawings,
+  selectedDrawingId,
+  drawColor,
   onDraw,
+  onEditDrawing,
+  onSelectDrawing,
   onActivate,
   onCursorDateChange,
   onPanViewport,
@@ -525,6 +622,13 @@ function CompositePanelSurface({
     : cursorYRatio ?? seriesCursorYRatio;
   const dragRef = useRef<
     | { kind: "pan"; startGlobalX: number; startViewport: CompositeViewportRange }
+    | {
+      kind: "edit";
+      drawingId: string;
+      pointIndex: number | null;
+      lastXRatio: number;
+      lastYRatio: number;
+    }
     | ChartToolDrag
     | null
   >(null);
@@ -583,18 +687,20 @@ function CompositePanelSurface({
         positive: themeColors.positive,
         negative: colors.negative,
         zoom: colors.crosshair,
-        draw: themeColors.warning,
+        draw: drawColor,
       },
       toolReadout?.direction ?? "up",
-      { scene, panel, items: panelDrawings },
+      { scene, panel, items: panelDrawings, selectedId: selectedDrawingId },
     )];
   }, [
     bitmap,
     colors.crosshair,
     colors.negative,
+    drawColor,
     panel,
     panelDrawings,
     scene,
+    selectedDrawingId,
     toolDrag,
     toolReadout?.direction,
   ]);
@@ -660,14 +766,33 @@ function CompositePanelSurface({
     if (tool) {
       const ratios = pointerRatios(event);
       if (!ratios) return;
+      // With a drawing tool in hand, grabbing an existing shape edits it
+      // instead of starting a new one on top of it.
+      const hit = isDrawingTool(tool)
+        ? hitTestDrawings(drawings, scene, panel, ratios)
+        : null;
+      if (hit) {
+        onSelectDrawing(hit.drawing.id);
+        dragRef.current = {
+          kind: "edit",
+          drawingId: hit.drawing.id,
+          pointIndex: hit.pointIndex,
+          lastXRatio: ratios.xRatio,
+          lastYRatio: ratios.yRatio,
+        };
+        updateCursor(event);
+        return;
+      }
       const started: ChartToolDrag = {
         kind: tool,
         startXRatio: ratios.xRatio,
         startYRatio: ratios.yRatio,
         endXRatio: ratios.xRatio,
         endYRatio: ratios.yRatio,
+        path: [{ xRatio: ratios.xRatio, yRatio: ratios.yRatio }],
       };
-      dragRef.current = { ...started };
+      if (isDrawingTool(tool)) onSelectDrawing(null);
+      dragRef.current = { ...started, path: [...started.path] };
       setToolDrag(started);
       updateCursor(event);
       return;
@@ -678,37 +803,77 @@ function CompositePanelSurface({
       startGlobalX: getGlobalMouseX(event, renderer),
       startViewport: viewport,
     };
-  }, [armedTool, onActivate, pointerRatios, renderer, updateCursor, viewport]);
+  }, [
+    armedTool,
+    drawings,
+    onActivate,
+    onSelectDrawing,
+    panel,
+    pointerRatios,
+    renderer,
+    scene,
+    updateCursor,
+    viewport,
+  ]);
   const dragViewport = useCallback((event: ChartMouseEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
     consumeChartMouseEvent(event);
     updateCursor(event);
+    if (drag.kind === "edit") {
+      const ratios = pointerRatios(event);
+      if (!ratios) return;
+      onEditDrawing(
+        drag.drawingId,
+        (drawing) => shiftDrawing(
+          drawing,
+          scene,
+          panel,
+          ratios.xRatio - drag.lastXRatio,
+          ratios.yRatio - drag.lastYRatio,
+          drag.pointIndex,
+        ),
+      );
+      drag.lastXRatio = ratios.xRatio;
+      drag.lastYRatio = ratios.yRatio;
+      return;
+    }
     if (drag.kind !== "pan") {
       const ratios = pointerRatios(event);
       if (!ratios) return;
       drag.endXRatio = ratios.xRatio;
       drag.endYRatio = ratios.yRatio;
-      setToolDrag({ ...drag });
+      if (drag.kind === "pencil") drag.path.push({ xRatio: ratios.xRatio, yRatio: ratios.yRatio });
+      setToolDrag({ ...drag, path: [...drag.path] });
       return;
     }
     const deltaCells = getGlobalMouseX(event, renderer) - drag.startGlobalX;
     onPanViewport(deltaCells / Math.max(plotWidth, 1), drag.startViewport);
-  }, [onPanViewport, plotWidth, pointerRatios, renderer, updateCursor]);
+  }, [
+    onEditDrawing,
+    onPanViewport,
+    panel,
+    plotWidth,
+    pointerRatios,
+    renderer,
+    scene,
+    updateCursor,
+  ]);
   const finishToolDrag = useCallback(() => {
     const drag = dragRef.current;
     if (!drag || drag.kind === "pan") return;
     dragRef.current = null;
+    if (drag.kind === "edit") return;
     setToolDrag(null);
-    if (drag.kind === "draw") {
-      const drawing = resolveDrawingFromDrag(scene, panel, drag, themeColors.warning);
+    if (isDrawingTool(drag.kind)) {
+      const drawing = resolveDrawingFromDrag(scene, panel, drag, drawColor, nextDrawingId());
       if (drawing) onDraw(drawing);
       return;
     }
     if (drag.kind !== "zoom") return;
     const range = resolveZoomBoxRange(scene, drag, minimumViewportSpanMs);
     if (range) onSetViewport(range);
-  }, [minimumViewportSpanMs, onDraw, onSetViewport, panel, scene]);
+  }, [drawColor, minimumViewportSpanMs, onDraw, onSetViewport, panel, scene]);
   const resetDrag = useCallback(() => {
     if (dragRef.current?.kind === "pan") {
       dragRef.current = null;
@@ -1110,12 +1275,35 @@ export function CompositeChart({
   // ponytail: drawings live with the mounted chart. Persisting them belongs with
   // pane settings, which is a separate plumbing job.
   const [drawings, setDrawings] = useState<readonly ChartDrawing[]>([]);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
+  const [drawColor, setDrawColor] = useState<string>(CHART_DRAWING_COLORS[0]);
   const addDrawing = useCallback((drawing: ChartDrawing) => {
     setDrawings((current) => [...current, drawing]);
+    setSelectedDrawingId(drawing.id);
   }, []);
-  const removeLastDrawing = useCallback(() => {
-    setDrawings((current) => current.length === 0 ? current : current.slice(0, -1));
+  const editDrawing = useCallback((
+    id: string,
+    update: (drawing: ChartDrawing) => ChartDrawing,
+  ) => {
+    setDrawings((current) => current.map((drawing) => drawing.id === id ? update(drawing) : drawing));
   }, []);
+  const removeDrawing = useCallback(() => {
+    setDrawings((current) => {
+      if (current.length === 0) return current;
+      const target = selectedDrawingId
+        ? current.filter((drawing) => drawing.id !== selectedDrawingId)
+        : current.slice(0, -1);
+      return target.length === current.length ? current.slice(0, -1) : target;
+    });
+    setSelectedDrawingId(null);
+  }, [selectedDrawingId]);
+  const pickDrawColor = useCallback((color: string) => {
+    setDrawColor(color);
+    if (!selectedDrawingId) return;
+    setDrawings((current) => current.map(
+      (drawing) => drawing.id === selectedDrawingId ? { ...drawing, color } : drawing,
+    ));
+  }, [selectedDrawingId]);
   const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -1448,10 +1636,11 @@ export function CompositeChart({
       onToggleSeries(entry.id);
       return;
     }
-    if (isPlainKey(event, "escape") && armedTool) {
+    if (isPlainKey(event, "escape") && (armedTool || selectedDrawingId)) {
       event.preventDefault();
       event.stopPropagation();
       setArmedTool(null);
+      setSelectedDrawingId(null);
       return;
     }
     if (isPlainKey(event, "escape") && legendKeyboardIndex !== null && !scene?.cursorDate) {
@@ -1464,8 +1653,12 @@ export function CompositeChart({
     if (!interaction) return;
     if (
       (interaction === "clear-cursor" && !scene?.cursorDate)
-      || ((interaction === "arm-measure" || interaction === "arm-zoom" || interaction === "arm-draw") && !scene)
-      || (interaction === "undo-drawing" && drawings.length === 0)
+      || ((interaction === "arm-measure"
+        || interaction === "arm-zoom"
+        || interaction === "arm-line"
+        || interaction === "arm-pencil") && !scene)
+      || (interaction === "delete-drawing" && drawings.length === 0)
+      || (interaction === "cycle-colour" && !isDrawingTool(armedTool) && !selectedDrawingId)
       || ((interaction === "cursor-left" || interaction === "cursor-right") && !scene)
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"
@@ -1479,16 +1672,16 @@ export function CompositeChart({
     switch (interaction) {
       case "arm-measure":
       case "arm-zoom":
-      case "arm-draw":
+      case "arm-line":
+      case "arm-pencil":
         onActivate?.();
-        armTool(
-          interaction === "arm-measure"
-            ? "measure"
-            : interaction === "arm-zoom" ? "zoom" : "draw",
-        );
+        armTool(ARMED_TOOL_BY_INTERACTION[interaction]);
         return;
-      case "undo-drawing":
-        removeLastDrawing();
+      case "delete-drawing":
+        removeDrawing();
+        return;
+      case "cycle-colour":
+        pickDrawColor(nextDrawingColor(drawColor));
         return;
       case "clear-cursor":
         keyboardCursorDateRef.current = null;
@@ -1634,9 +1827,15 @@ export function CompositeChart({
           isDesktopWeb={isDesktopWeb}
           left={leftPadding}
           top={legendRows}
+          drawColor={drawColor}
+          showColors={isDrawingTool(armedTool) || !!selectedDrawingId}
           onArmTool={(tool) => {
             onActivate?.();
             armTool(tool);
+          }}
+          onPickColor={(color) => {
+            onActivate?.();
+            pickDrawColor(color);
           }}
         />
       ) : null}
@@ -1655,7 +1854,11 @@ export function CompositeChart({
           minimumViewportSpanMs={minimumViewportSpanMs}
           armedTool={armedTool}
           drawings={drawings}
+          selectedDrawingId={selectedDrawingId}
+          drawColor={drawColor}
           onDraw={addDrawing}
+          onEditDrawing={editDrawing}
+          onSelectDrawing={setSelectedDrawingId}
           onActivate={onActivate}
           onCursorDateChange={updateCursor}
           onPanViewport={panViewport}
