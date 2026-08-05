@@ -153,6 +153,29 @@ function HelpPane({ focused, width, height }: PaneProps) {
               />
             </HelpSection>
 
+            <HelpSection title="Charts">
+              <ShortcutRow
+                badges={["Drag", "Scroll"]}
+                description="Pan the chart through time."
+              />
+              <ShortcutRow
+                badges={["Shift+Drag"]}
+                description="Select a time range to zoom into."
+              />
+              <ShortcutRow
+                badges={["Alt+Drag"]}
+                description="Measure change, percent, bars, and elapsed time between two points."
+              />
+              <ShortcutRow
+                badges={["Ctrl+Scroll"]}
+                description="Zoom around the pointer."
+              />
+              <ShortcutRow
+                badges={["+/-", "0"]}
+                description="Zoom the focused chart in or out, or reset it."
+              />
+            </HelpSection>
+
             <HelpSection title="Global Keys">
               <ShortcutRow
                 badges={["Tab", "Shift+Tab"]}

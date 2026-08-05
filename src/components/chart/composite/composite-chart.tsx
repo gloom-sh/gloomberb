@@ -54,6 +54,17 @@ import {
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { renderCompositePanelBitmap } from "./rasterizer";
 import {
+  countMeasureBars,
+  drawChartToolOverlay,
+  resolveChartToolKind,
+  resolveMeasureAxisDomain,
+  resolveMeasureDirection,
+  resolveZoomBoxRange,
+  summarizeMeasure,
+  type ChartToolDrag,
+} from "./tools";
+import { unprojectCompositeTimestamp } from "./time-scale";
+import {
   allocateCompositePanelHeights,
   applyCompositeChartCursor,
   buildCompositeChartScene,
@@ -293,10 +304,13 @@ interface CompositePanelSurfaceProps {
   colors: CompositeChartColors;
   interactive: boolean;
   viewport: CompositeViewportRange;
+  minimumViewportSpanMs: number;
   onActivate?: () => void;
   onCursorDateChange: (date: Date | null) => void;
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
+  onSetViewport: (range: CompositeViewportRange) => void;
+  onMeasureChange: (summary: string | null) => void;
 }
 
 function CompositePanelSurface({
@@ -309,10 +323,13 @@ function CompositePanelSurface({
   colors,
   interactive,
   viewport,
+  minimumViewportSpanMs,
   onActivate,
   onCursorDateChange,
   onPanViewport,
   onZoomViewport,
+  onSetViewport,
+  onMeasureChange,
 }: CompositePanelSurfaceProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const { cellHeightPx = 18 } = useUiCapabilities();
@@ -326,10 +343,12 @@ function CompositePanelSurface({
   const activeCursorYRatio = scene.cursorXRatio === null
     ? null
     : cursorYRatio ?? seriesCursorYRatio;
-  const dragRef = useRef<{
-    startGlobalX: number;
-    startViewport: CompositeViewportRange;
-  } | null>(null);
+  const dragRef = useRef<
+    | { kind: "pan"; startGlobalX: number; startViewport: CompositeViewportRange }
+    | ChartToolDrag
+    | null
+  >(null);
+  const [toolDrag, setToolDrag] = useState<ChartToolDrag | null>(null);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
@@ -337,7 +356,47 @@ function CompositePanelSurface({
     () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, activeCursorYRatio, colors.crosshair),
     [activeCursorYRatio, bitmap, colors.crosshair, columnLayout, panel, scene.cursorXRatio],
   );
-  const bitmapLayers = useMemo(() => bitmap ? [bitmap] : null, [bitmap]);
+  const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
+  const measurement = useMemo(() => {
+    if (!toolDrag || toolDrag.kind !== "measure") return null;
+    const startValue = measureDomain
+      ? unprojectCompositeValue(toolDrag.startYRatio, measureDomain)
+      : null;
+    const endValue = measureDomain
+      ? unprojectCompositeValue(toolDrag.endYRatio, measureDomain)
+      : null;
+    const startTime = unprojectCompositeTimestamp(scene.timeScale, toolDrag.startXRatio);
+    const endTime = unprojectCompositeTimestamp(scene.timeScale, toolDrag.endXRatio);
+    return {
+      direction: resolveMeasureDirection(startValue, endValue),
+      summary: summarizeMeasure({
+        startValue,
+        endValue,
+        startTime,
+        endTime,
+        bars: countMeasureBars(scene.dates, startTime, endTime),
+        domain: measureDomain,
+      }),
+    };
+  }, [measureDomain, scene, toolDrag]);
+  const measureSummary = measurement?.summary ?? null;
+  useEffect(() => {
+    onMeasureChange(measureSummary);
+  }, [measureSummary, onMeasureChange]);
+  const bitmapLayers = useMemo(() => {
+    if (!bitmap) return null;
+    if (!toolDrag) return [bitmap];
+    return [drawChartToolOverlay(
+      bitmap,
+      toolDrag,
+      {
+        positive: themeColors.positive,
+        negative: colors.negative,
+        zoom: colors.crosshair,
+      },
+      measurement?.direction ?? "up",
+    )];
+  }, [bitmap, colors.crosshair, colors.negative, measurement?.direction, toolDrag]);
   const textLines = useMemo(
     () => isDesktopWeb
       ? []
@@ -365,6 +424,15 @@ function CompositePanelSurface({
   const leftCursorLabel = cursorAxisLabel(panel, "left", activeCursorYRatio);
   const rightCursorLabel = cursorAxisLabel(panel, "right", activeCursorYRatio);
 
+  const pointerRatios = useCallback((event: ChartMouseEvent) => {
+    const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
+    const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
+    if (!pointer) return null;
+    return {
+      xRatio: plotWidth <= 1 ? 0 : Math.max(0, Math.min(1, pointer.cellX / (plotWidth - 1))),
+      yRatio: panel.height <= 1 ? 0.5 : Math.max(0, Math.min(1, pointer.cellY / (panel.height - 1))),
+    };
+  }, [panel.height, plotWidth, renderer]);
   const updateCursor = useCallback((event: ChartMouseEvent): boolean => {
     const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
     const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
@@ -386,23 +454,67 @@ function CompositePanelSurface({
   const startDrag = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
     consumeChartMouseEvent(event);
+    const tool = resolveChartToolKind(event.modifiers);
+    if (tool) {
+      const ratios = pointerRatios(event);
+      if (!ratios) return;
+      const started: ChartToolDrag = {
+        kind: tool,
+        startXRatio: ratios.xRatio,
+        startYRatio: ratios.yRatio,
+        endXRatio: ratios.xRatio,
+        endYRatio: ratios.yRatio,
+      };
+      dragRef.current = { ...started };
+      setToolDrag(started);
+      updateCursor(event);
+      return;
+    }
     if (!updateCursor(event)) return;
     dragRef.current = {
+      kind: "pan",
       startGlobalX: getGlobalMouseX(event, renderer),
       startViewport: viewport,
     };
-  }, [onActivate, renderer, updateCursor, viewport]);
+  }, [onActivate, pointerRatios, renderer, updateCursor, viewport]);
   const dragViewport = useCallback((event: ChartMouseEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
     consumeChartMouseEvent(event);
     updateCursor(event);
+    if (drag.kind !== "pan") {
+      const ratios = pointerRatios(event);
+      if (!ratios) return;
+      drag.endXRatio = ratios.xRatio;
+      drag.endYRatio = ratios.yRatio;
+      setToolDrag({ ...drag });
+      return;
+    }
     const deltaCells = getGlobalMouseX(event, renderer) - drag.startGlobalX;
     onPanViewport(deltaCells / Math.max(plotWidth, 1), drag.startViewport);
-  }, [onPanViewport, plotWidth, renderer, updateCursor]);
-  const resetDrag = useCallback(() => {
+  }, [onPanViewport, plotWidth, pointerRatios, renderer, updateCursor]);
+  const finishToolDrag = useCallback(() => {
+    const drag = dragRef.current;
+    if (!drag || drag.kind === "pan") return;
     dragRef.current = null;
-  }, []);
+    setToolDrag(null);
+    if (drag.kind !== "zoom") return;
+    const range = resolveZoomBoxRange(scene, drag, minimumViewportSpanMs);
+    if (range) onSetViewport(range);
+  }, [minimumViewportSpanMs, onSetViewport, scene]);
+  const resetDrag = useCallback(() => {
+    if (dragRef.current?.kind === "pan") {
+      dragRef.current = null;
+      return;
+    }
+    finishToolDrag();
+  }, [finishToolDrag]);
+  const handleMouseMove = useCallback((event: ChartMouseEvent) => {
+    // A release over a neighbouring pane never reaches this surface, so treat a
+    // plain move, which only fires with no button held, as the missing release.
+    finishToolDrag();
+    updateCursor(event);
+  }, [finishToolDrag, updateCursor]);
   const panFromWheel = useCallback((event: ChartMouseEvent) => {
     const direction = event.scroll?.direction;
     if (!direction) return;
@@ -452,14 +564,14 @@ function CompositePanelSurface({
         flexDirection="column"
         bitmaps={bitmapLayers}
         crosshair={crosshair}
-        onMouseMove={interactive ? updateCursor : undefined}
+        onMouseMove={interactive ? handleMouseMove : undefined}
         onMouseDown={interactive ? startDrag : undefined}
         onMouseDrag={interactive ? dragViewport : undefined}
         onMouseUp={interactive ? resetDrag : undefined}
         onMouseDragEnd={interactive ? resetDrag : undefined}
         onMouseScroll={interactive ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
-        cursor={interactive ? "grab" : undefined}
+        cursor={interactive ? toolDrag ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
         data-gloom-role="composite-chart-panel"
         data-gloom-label={panel.label ?? panel.id}
@@ -502,6 +614,7 @@ function CompositeLegend({
   series,
   visibleSeriesIds,
   width,
+  measureSummary,
   accessory,
   accessoryWidth,
   formatValue,
@@ -515,6 +628,7 @@ function CompositeLegend({
   series: ResolvedSeries[];
   visibleSeriesIds: ReadonlySet<string>;
   width: number;
+  measureSummary?: string | null;
   accessory: CompositeChartProps["legendAccessory"];
   accessoryWidth: CompositeChartProps["legendAccessoryWidth"];
   formatValue: CompositeChartProps["formatValue"];
@@ -526,11 +640,12 @@ function CompositeLegend({
 }) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const dateLabel = scene
+  // A live measurement replaces the cursor date: same row, denser information.
+  const dateLabel = measureSummary ?? (scene
     ? scene.cursorDate
       ? formatCompositeCursorDate(scene.cursorDate, scene.startTime, scene.endTime)
       : "Latest"
-    : "";
+    : "");
   const cursorValueById = new Map(
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
@@ -650,7 +765,7 @@ function CompositeLegend({
     >
       {showDate ? (
         <Box width={dateWidth} height={1} flexShrink={0} overflow="hidden">
-          <Text fg={themeColors.textDim}>{dateLabel}</Text>
+          <Text fg={measureSummary ? themeColors.text : themeColors.textDim}>{dateLabel}</Text>
         </Box>
       ) : null}
       {dateSeriesGap > 0 ? <Box width={dateSeriesGap} flexShrink={0} /> : null}
@@ -772,6 +887,7 @@ export function CompositeChart({
   const { cellWidthPx = 8 } = useUiCapabilities();
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
+  const [measureSummary, setMeasureSummary] = useState<string | null>(null);
   const resolvedCursorDate = cursorDate === undefined ? internalCursorDate : cursorDate;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
@@ -947,6 +1063,12 @@ export function CompositeChart({
       return sameCompositeViewport(next, initialViewport) ? null : next;
     });
   }, [allowHistoricalBackfill, initialViewport, marketTimelineSeries, navigationBounds]);
+  const setViewportRange = useCallback((range: CompositeViewportRange) => {
+    if (!navigationBounds || !initialViewport) return;
+    viewportInteractionRef.current = "zoom";
+    const next = clampCompositeViewport(range, navigationBounds);
+    setInteractionViewport(sameCompositeViewport(next, initialViewport) ? null : next);
+  }, [initialViewport, navigationBounds]);
   const resetViewport = useCallback(() => {
     viewportInteractionRef.current = "reset";
     setInteractionViewport(null);
@@ -1221,6 +1343,7 @@ export function CompositeChart({
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           width={totalWidth}
+          measureSummary={measureSummary}
           accessory={legendAccessory}
           accessoryWidth={legendAccessoryWidth}
           formatValue={formatValue}
@@ -1243,10 +1366,13 @@ export function CompositeChart({
           colors={resolvedColors}
           interactive={interactive}
           viewport={effectiveViewport!}
+          minimumViewportSpanMs={minimumViewportSpanMs}
           onActivate={onActivate}
           onCursorDateChange={updateCursor}
           onPanViewport={panViewport}
           onZoomViewport={zoomViewport}
+          onSetViewport={setViewportRange}
+          onMeasureChange={setMeasureSummary}
         />
       ))}
       {timeAxisLayout ? (

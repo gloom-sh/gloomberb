@@ -82,6 +82,8 @@ function pointerEvent(
   localY: number,
   options: {
     ctrl?: boolean;
+    shift?: boolean;
+    alt?: boolean;
     scroll?: { direction: "up" | "down" | "left" | "right"; delta: number };
   } = {},
 ) {
@@ -89,7 +91,11 @@ function pointerEvent(
   return {
     x: (node.x as number) + localX,
     y: (node.y as number) + localY,
-    modifiers: { shift: false, alt: false, ctrl: options.ctrl === true },
+    modifiers: {
+      shift: options.shift === true,
+      alt: options.alt === true,
+      ctrl: options.ctrl === true,
+    },
     scroll: options.scroll,
     preventDefault() {},
     stopPropagation() {},
@@ -931,6 +937,117 @@ describe("CompositeChart", () => {
     expect(activations).toBe(1);
     expect(cursorChanges.length).toBeGreaterThan(0);
     expect(testSetup.captureCharFrame()).toContain("Jan 3");
+  });
+
+  test("zooms to a shift-drag selection instead of panning", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+          onViewportChange={(next) => {
+            viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null);
+          }}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(10, 3, { shift: true }));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(30, 3, { shift: true }));
+    });
+    await act(async () => testSetup!.renderOnce());
+    // The selection must not pan the way an unmodified drag would.
+    expect(viewportChanges).toHaveLength(0);
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseUp(pointerEvent(30, 3, { shift: true }));
+    });
+    await act(async () => testSetup!.renderOnce());
+
+    const zoomed = viewportChanges.at(-1);
+    expect(zoomed).toBeTruthy();
+    expect(new Date(zoomed!.start).getTime()).toBeGreaterThan(Date.parse("2025-01-01T00:00:00.000Z"));
+    expect(new Date(zoomed!.end).getTime()).toBeLessThan(Date.parse("2025-01-09T00:00:00.000Z"));
+  });
+
+  test("reports an alt-drag measurement without moving the viewport", async () => {
+    const viewportChanges: Array<{ start: string; end: string } | null> = [];
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+          onViewportChange={(next) => {
+            viewportChanges.push(next
+              ? { start: next.start.toISOString(), end: next.end.toISOString() }
+              : null);
+          }}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6, { alt: true }));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(34, 1, { alt: true }));
+    });
+    await act(async () => testSetup!.renderOnce());
+
+    const measuringFrame = testSetup.captureCharFrame();
+    expect(measuringFrame).toContain("Δ");
+    expect(measuringFrame).toContain("bars");
+    expect(viewportChanges).toHaveLength(0);
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseUp(pointerEvent(34, 1, { alt: true }));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).not.toContain("Δ");
+    expect(viewportChanges).toHaveLength(0);
+  });
+
+  test("ends a tool drag whose release landed on another pane", async () => {
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          interactive
+          series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+          panels={[{ id: "main" }]}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    await act(async () => {
+      capturedSurfaceProps!.onMouseDown(pointerEvent(8, 6, { alt: true }));
+      capturedSurfaceProps!.onMouseDrag(pointerEvent(34, 1, { alt: true }));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("Δ");
+
+    // No mouse-up arrives: the pointer was released over a floating pane. The
+    // next plain move only happens with the button already up.
+    await act(async () => {
+      capturedSurfaceProps!.onMouseMove(pointerEvent(20, 4));
+    });
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).not.toContain("Δ");
   });
 
   test("maps the pointer crosshair level through both axes and labels its date", async () => {
