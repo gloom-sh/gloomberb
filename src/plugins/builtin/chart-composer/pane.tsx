@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiHost } from "../../../ui";
 import {
   ChoiceDialog,
   Tabs,
@@ -107,6 +107,7 @@ function ChartComposerSurface({
 }: ChartComposerSurfaceProps) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
+  const isDesktopWeb = useUiHost().kind === "desktop-web";
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -181,10 +182,6 @@ function ChartComposerSurface({
   const selectedPairStudies = getSelectedPairStudies(spec);
   const inlineStyleTarget = useMemo(() => getChartInlineStyleTarget(spec), [spec]);
   const styles = useMemo(() => getChartInlineStyles(spec), [spec]);
-  const styleTabs = useMemo(
-    () => styles.map((value) => ({ label: value.toUpperCase(), value })),
-    [styles],
-  );
   const inlineStyle = inlineStyleTarget?.style ?? "line";
   const inlineStyleLabel = inlineStyleTarget ? chartSeriesLabel(inlineStyleTarget) : "";
   const viewport = resolution.viewport;
@@ -551,7 +548,15 @@ function ChartComposerSurface({
   return (
     <Box flexDirection="column" width={width} height={height} backgroundColor={colors.panel}>
       <Box flexDirection="row" height={1} paddingX={1} gap={0} overflow="hidden">
-        <Box flexShrink={0} height={1} maxWidth={52} overflow="hidden">
+        <Box
+          flexShrink={0}
+          height={1}
+          maxWidth={52}
+          overflow="hidden"
+          // Desktop tabs are laid out in pixels, so a cell budget clips them
+          // while the row still has room to spare.
+          style={isDesktopWeb ? { maxWidth: "none", width: "auto" } : undefined}
+        >
           <Tabs
             tabs={RANGE_TABS}
             activeValue={spec.viewport.dateWindow ? null : spec.viewport.range}
@@ -571,6 +576,7 @@ function ChartComposerSurface({
           width={resolutionTabsWidth}
           height={1}
           overflow="hidden"
+          style={isDesktopWeb ? { width: "auto", flexShrink: 0 } : undefined}
           data-gloom-role="chart-resolution-control"
         >
           <Tabs
@@ -584,29 +590,6 @@ function ChartComposerSurface({
             keyboardNavigation={false}
           />
         </Box>
-        {width >= 132 && inlineStyleTarget && (
-          <Box
-            flexDirection="row"
-            flexShrink={0}
-            maxWidth={64}
-            height={1}
-            overflow="hidden"
-            data-gloom-role="chart-inline-style"
-            data-gloom-label={`${inlineStyleLabel} style`}
-          >
-            <Text fg={colors.textDim}>{`${inlineStyleLabel}: `}</Text>
-            <Tabs
-              tabs={styleTabs}
-              activeValue={inlineStyle}
-              onSelect={(value) => setInlineStyle(value as SeriesStyle)}
-              compact
-              dense
-              variant="bare"
-              focused={focused}
-              keyboardNavigation={false}
-            />
-          </Box>
-        )}
       </Box>
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}

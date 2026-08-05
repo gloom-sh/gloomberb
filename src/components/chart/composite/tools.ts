@@ -1,4 +1,5 @@
 import { formatPercentRaw } from "../../../utils/format";
+import type { ChartVectorShape } from "../../../ui/host";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import { clamp, drawCircle, drawLine, fillRect, parseHex } from "../native/raster/primitives";
 import { formatCompositeAxisValue, formatCompositeCursorDate } from "./format";
@@ -346,6 +347,65 @@ export function resolveZoomBoxRange(
     start: new Date(center - minimumSpan / 2),
     end: new Date(center + minimumSpan / 2),
   };
+}
+
+/** Overlay geometry in plot ratios, for renderers that composite vectors. */
+export function buildChartToolVectors(input: {
+  scene: CompositeChartScene;
+  panel: CompositePanelScene;
+  drawings: readonly ChartDrawing[];
+  selectedId: string | null;
+  drag: ChartToolDrag | null;
+  colors: ChartToolColors;
+  direction: "up" | "down";
+}): ChartVectorShape[] {
+  const shapes: ChartVectorShape[] = [];
+  for (const drawing of input.drawings) {
+    const projected = projectDrawing(input.scene, input.panel, drawing);
+    if (!projected) continue;
+    const selected = input.selectedId === drawing.id;
+    shapes.push({
+      id: drawing.id,
+      points: projected.map((point) => ({ x: point.xRatio, y: point.yRatio })),
+      color: drawing.color,
+      strokeWidth: selected ? 2.4 : 1.6,
+      handles: selected && drawing.points.length === 2,
+    });
+  }
+
+  const drag = input.drag;
+  if (!drag) return shapes;
+  const start = { x: drag.startXRatio, y: drag.startYRatio };
+  const end = { x: drag.endXRatio, y: drag.endYRatio };
+  if (drag.kind === "zoom") {
+    shapes.push({
+      id: "tool:zoom",
+      points: [{ x: drag.startXRatio, y: 0 }, { x: drag.endXRatio, y: 1 }],
+      color: input.colors.zoom,
+      box: true,
+      fillOpacity: 0.16,
+      strokeWidth: 1.2,
+    });
+    return shapes;
+  }
+  if (drag.kind === "measure") {
+    const color = input.direction === "down" ? input.colors.negative : input.colors.positive;
+    shapes.push({
+      id: "tool:measure",
+      points: [start, end],
+      color,
+      box: true,
+      fillOpacity: 0.18,
+      strokeWidth: 1.2,
+    });
+    shapes.push({ id: "tool:measure-line", points: [start, end], color, strokeWidth: 1.4 });
+    return shapes;
+  }
+  const trail = drag.kind === "pencil" && drag.path.length > 1
+    ? drag.path.map((point) => ({ x: point.xRatio, y: point.yRatio }))
+    : [start, end];
+  shapes.push({ id: "tool:draw", points: trail, color: input.colors.draw, strokeWidth: 1.6 });
+  return shapes;
 }
 
 /**

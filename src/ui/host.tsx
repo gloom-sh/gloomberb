@@ -61,6 +61,21 @@ export interface ChartCrosshairOverlay {
   markers?: readonly { pixelY: number; color: string }[];
 }
 
+/**
+ * Overlay shapes in plot ratios, drawn without touching the plot raster. The
+ * desktop composites them as vectors; the terminal paints them into the bitmap.
+ */
+export interface ChartVectorShape {
+  id: string;
+  points: readonly { x: number; y: number }[];
+  color: string;
+  /** Closes the shape into a filled box, for range and area selections. */
+  box?: boolean;
+  fillOpacity?: number;
+  strokeWidth?: number;
+  handles?: boolean;
+}
+
 interface TextEditBuffer {
   getText(): string;
   setText?(text: string): void;
@@ -213,6 +228,7 @@ export interface ChartSurfaceProps extends BoxProps {
   /** Desktop stacks every layer; the terminal renders only the first. */
   bitmaps?: readonly BitmapSurface[] | null;
   crosshair?: ChartCrosshairOverlay | null;
+  vectors?: readonly ChartVectorShape[] | null;
   nativeBitmapsEnabled?: boolean;
 }
 export interface ImageSurfaceProps extends BoxProps {

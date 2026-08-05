@@ -55,6 +55,7 @@ import {
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { renderCompositePanelBitmap } from "./rasterizer";
 import {
+  buildChartToolVectors,
   CHART_DRAWING_COLORS,
   countMeasureBars,
   drawChartToolOverlay,
@@ -303,19 +304,29 @@ function compositeAxisLabelWidth(domain: CompositeAxisDomain | undefined): numbe
 }
 
 
+const HAND_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M6.4 8V3.5a1.15 1.15 0 0 1 2.3 0V7m0-.6a1.15 1.15 0 0 1 2.3 0V8m0-.5a1.15 1.15 0 0 1 2.3 0v3.1c0 2.1-1.7 3.8-3.8 3.8H8.9c-1.2 0-2.3-.6-3-1.6L3.6 9.4a1.15 1.15 0 0 1 1.8-1.4L6.4 9.2" fill="none" stroke="#000" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const RULER_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1.4" y="4.6" width="13.2" height="6.8" rx="1.4" fill="none" stroke="#000" stroke-width="1.4"/><path d="M5 4.6v2.6M8 4.6v3.6M11 4.6v2.6" stroke="#000" stroke-width="1.3" stroke-linecap="round"/></svg>`;
 const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0l0 0a1.6 1.6 0 0 1 0 2.3L6.2 12 2.4 13.6Z" fill="none" stroke="#000" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
 const LINE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M3.2 12.8 12.8 3.2" stroke="#000" stroke-width="1.6" stroke-linecap="round"/><circle cx="3.2" cy="12.8" r="2" fill="none" stroke="#000" stroke-width="1.4"/><circle cx="12.8" cy="3.2" r="2" fill="none" stroke="#000" stroke-width="1.4"/></svg>`;
 const MARQUEE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.2 6V3.4a1.2 1.2 0 0 1 1.2-1.2H6M10 2.2h2.6a1.2 1.2 0 0 1 1.2 1.2V6M13.8 10v2.6a1.2 1.2 0 0 1-1.2 1.2H10M6 13.8H3.4a1.2 1.2 0 0 1-1.2-1.2V10" fill="none" stroke="#000" stroke-width="1.7" stroke-linecap="round"/></svg>`;
 
 const CHART_TOOLS: ReadonlyArray<{
-  kind: ChartToolKind;
+  /** null is the resting state: the pointer pans and nothing is armed. */
+  kind: ChartToolKind | null;
   label: string;
   shortcut: string;
   hint: string;
   glyph: string;
   icon: string;
 }> = [
+  {
+    kind: null,
+    label: "Pan",
+    shortcut: "Esc",
+    hint: "Drag to move through time, the resting state of the pointer",
+    glyph: "\u2725",
+    icon: HAND_ICON,
+  },
   {
     kind: "measure",
     label: "Ruler",
@@ -492,7 +503,7 @@ function ChartToolbar({
   top: number;
   drawColor: string;
   showColors: boolean;
-  onArmTool: (tool: ChartToolKind) => void;
+  onArmTool: (tool: ChartToolKind | null) => void;
   onPickColor: (color: string) => void;
 }) {
   return (
@@ -520,7 +531,7 @@ function ChartToolbar({
     >
       {CHART_TOOLS.map((tool) => (
         <ChartToolChip
-          key={tool.kind}
+          key={tool.kind ?? "pan"}
           tool={tool}
           active={armedTool === tool.kind}
           isDesktopWeb={isDesktopWeb}
@@ -679,7 +690,10 @@ function CompositePanelSurface({
   );
   const bitmapLayers = useMemo(() => {
     if (!bitmap) return null;
-    if (!toolDrag && panelDrawings.length === 0) return [bitmap];
+    // The desktop composites overlays as vectors, so the plot raster stays put
+    // while a tool drags. Copying and reblending it per frame is what made the
+    // ruler feel heavy.
+    if (isDesktopWeb || (!toolDrag && panelDrawings.length === 0)) return [bitmap];
     return [drawChartToolOverlay(
       bitmap,
       toolDrag,
@@ -697,6 +711,36 @@ function CompositePanelSurface({
     colors.crosshair,
     colors.negative,
     drawColor,
+    isDesktopWeb,
+    panel,
+    panelDrawings,
+    scene,
+    selectedDrawingId,
+    toolDrag,
+    toolReadout?.direction,
+  ]);
+  const vectors = useMemo<ChartSurfaceProps["vectors"]>(() => {
+    if (!isDesktopWeb) return null;
+    const shapes = buildChartToolVectors({
+      scene,
+      panel,
+      drawings: panelDrawings,
+      selectedId: selectedDrawingId,
+      drag: toolDrag,
+      colors: {
+        positive: themeColors.positive,
+        negative: colors.negative,
+        zoom: colors.crosshair,
+        draw: drawColor,
+      },
+      direction: toolReadout?.direction ?? "up",
+    });
+    return shapes.length > 0 ? shapes : null;
+  }, [
+    colors.crosshair,
+    colors.negative,
+    drawColor,
+    isDesktopWeb,
     panel,
     panelDrawings,
     scene,
@@ -936,6 +980,7 @@ function CompositePanelSurface({
         flexDirection="column"
         bitmaps={bitmapLayers}
         crosshair={crosshair}
+        vectors={vectors}
         onMouseMove={interactive ? handleMouseMove : undefined}
         onMouseDown={interactive ? startDrag : undefined}
         onMouseDrag={interactive ? dragViewport : undefined}
@@ -1491,8 +1536,9 @@ export function CompositeChart({
   }, []);
   // Sticky while armed: the toolbar chip shows which tool owns the drag, and a
   // one-shot tool would blink off before the user could see it.
-  const armTool = useCallback((tool: ChartToolKind) => {
+  const armTool = useCallback((tool: ChartToolKind | null) => {
     setArmedTool((current) => current === tool ? null : tool);
+    if (tool === null) setSelectedDrawingId(null);
   }, []);
   const legendRows = showLegend && (visibleSeries.length > 0 || legendAccessory)
     ? 1

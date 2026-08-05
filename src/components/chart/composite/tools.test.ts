@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
+  buildChartToolVectors,
   CHART_DRAWING_COLORS,
   countMeasureBars,
   drawChartToolOverlay,
@@ -296,5 +297,63 @@ describe("editing drawings", () => {
     expect(nextDrawingColor(CHART_DRAWING_COLORS[0])).toBe(CHART_DRAWING_COLORS[1]);
     expect(nextDrawingColor(CHART_DRAWING_COLORS.at(-1)!)).toBe(CHART_DRAWING_COLORS[0]);
     expect(nextDrawingColor("#000000")).toBe(CHART_DRAWING_COLORS[0]);
+  });
+});
+
+describe("vector overlays", () => {
+  const panel: CompositePanelScene = {
+    id: "main",
+    height: 10,
+    scale: "linear",
+    axes: { left: { ...domain, side: "left" } },
+    series: [{ source: { id: "a", axis: "left" } as never, points: [] }],
+  };
+  const scene = calendarScene(10 * DAY);
+  const colors = { positive: "#0f0", negative: "#f00", zoom: "#00f", draw: "#ff0" };
+
+  it("spans the full height for a zoom selection and boxes a measurement", () => {
+    const zoom = buildChartToolVectors({
+      scene,
+      panel,
+      drawings: [],
+      selectedId: null,
+      colors,
+      direction: "up",
+      drag: { kind: "zoom", startXRatio: 0.2, startYRatio: 0.4, endXRatio: 0.6, endYRatio: 0.9, path: [] },
+    });
+    expect(zoom[0]).toMatchObject({ box: true, points: [{ x: 0.2, y: 0 }, { x: 0.6, y: 1 }] });
+
+    const measure = buildChartToolVectors({
+      scene,
+      panel,
+      drawings: [],
+      selectedId: null,
+      colors,
+      direction: "down",
+      drag: { kind: "measure", startXRatio: 0.2, startYRatio: 0.4, endXRatio: 0.6, endYRatio: 0.9, path: [] },
+    });
+    expect(measure[0]).toMatchObject({ box: true, color: "#f00" });
+    expect(measure[1]!.points).toEqual([{ x: 0.2, y: 0.4 }, { x: 0.6, y: 0.9 }]);
+  });
+
+  it("gives handles to the selected line only", () => {
+    const line = {
+      id: "line-1",
+      panelId: "main",
+      color: "#ff0",
+      points: [
+        { time: START + 2 * DAY, value: 150 },
+        { time: START + 8 * DAY, value: 50 },
+      ],
+    };
+    const [unselected] = buildChartToolVectors({
+      scene, panel, drawings: [line], selectedId: null, colors, direction: "up", drag: null,
+    });
+    const [selected] = buildChartToolVectors({
+      scene, panel, drawings: [line], selectedId: "line-1", colors, direction: "up", drag: null,
+    });
+    expect(unselected?.handles).toBe(false);
+    expect(selected?.handles).toBe(true);
+    expect(selected?.points).toEqual([{ x: 0.2, y: 0.25 }, { x: 0.8, y: 0.75 }]);
   });
 });

@@ -8,7 +8,12 @@ import {
   type ReactNode,
   type Ref,
 } from "react";
-import type { BitmapSurface, BoxRenderable, ChartCrosshairOverlay } from "../../../../ui/host";
+import type {
+  BitmapSurface,
+  BoxRenderable,
+  ChartCrosshairOverlay,
+  ChartVectorShape,
+} from "../../../../ui/host";
 import { WebBox } from "./box";
 
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
@@ -51,6 +56,74 @@ const BoxLayer = memo(function BoxLayer({ bitmap, index }: { bitmap: BitmapSurfa
     >
       <CanvasBitmap bitmap={bitmap} />
     </div>
+  );
+});
+
+const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly ChartVectorShape[] }) {
+  if (vectors.length === 0) return null;
+  return (
+    <>
+      <svg
+        viewBox="0 0 1 1"
+        preserveAspectRatio="none"
+        style={{ position: "absolute", inset: 0, pointerEvents: "none", zIndex: 9 }}
+      >
+        {vectors.map((shape) => {
+          const strokeWidth = shape.strokeWidth ?? 1.4;
+          const [first, second] = shape.points;
+          if (shape.box && first && second) {
+            return (
+              <rect
+                key={shape.id}
+                x={Math.min(first.x, second.x)}
+                y={Math.min(first.y, second.y)}
+                width={Math.abs(second.x - first.x)}
+                height={Math.abs(second.y - first.y)}
+                fill={shape.color}
+                fillOpacity={shape.fillOpacity ?? 0.18}
+                stroke={shape.color}
+                strokeWidth={strokeWidth}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          }
+          return (
+            <polyline
+              key={shape.id}
+              points={shape.points.map((point) => `${point.x},${point.y}`).join(" ")}
+              fill="none"
+              stroke={shape.color}
+              strokeWidth={strokeWidth}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              vectorEffect="non-scaling-stroke"
+            />
+          );
+        })}
+      </svg>
+      {/* Ratio space is anisotropic, so handles are placed instead of scaled. */}
+      {vectors.flatMap((shape) => shape.handles
+        ? shape.points.map((point, index) => (
+          <div
+            key={`${shape.id}:${index}`}
+            style={{
+              position: "absolute",
+              left: `${point.x * 100}%`,
+              top: `${point.y * 100}%`,
+              width: 9,
+              height: 9,
+              borderRadius: 999,
+              border: `2px solid ${shape.color}`,
+              backgroundColor: "var(--gloom-bg)",
+              boxSizing: "border-box",
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          />
+        ))
+        : [])}
+    </>
   );
 });
 
@@ -122,6 +195,7 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
     const bitmaps = (props.bitmaps ?? null) as readonly BitmapSurface[] | null;
     const layers = bitmaps ?? (bitmap ? [bitmap] : []);
     const crosshair = (props.crosshair ?? null) as ChartCrosshairOverlay | null;
+    const vectors = (props.vectors ?? null) as readonly ChartVectorShape[] | null;
     const baseLayer = layers[0] ?? null;
     return (
       <WebBox
@@ -135,6 +209,7 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
             <BoxLayer key={`layer:${index}`} index={index} bitmap={layer} />
           ))
           : children as ReactNode}
+        <ChartVectors vectors={vectors ?? []} />
         <ChartCrosshair bitmap={baseLayer} crosshair={crosshair} />
       </WebBox>
     );
