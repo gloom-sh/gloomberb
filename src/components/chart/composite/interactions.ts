@@ -114,9 +114,15 @@ export function resolveCompositeNavigationBounds(
   const overlapsData = requested.end.getTime() >= data.start.getTime()
     && requested.start.getTime() <= data.end.getTime();
   // Loaded series can include a buffer outside the authored viewport. Use the
-  // complete real-data extent when the two ranges overlap, but do not clamp a
-  // newly authored, disjoint request to stale observations.
-  if (!overlapsData) return requested;
+  // complete real-data extent when the two ranges overlap. A disjoint request
+  // keeps its own window, unioned with the data so navigation can always get
+  // back: bounds equal to an observation-free window strand pan and zoom.
+  if (!overlapsData) {
+    return {
+      start: new Date(Math.min(data.start.getTime(), requested.start.getTime())),
+      end: new Date(Math.max(data.end.getTime(), requested.end.getTime())),
+    };
+  }
   const paddingRatio = Math.max(options.historicalPaddingRatio ?? 0, 0);
   if (paddingRatio === 0) return data;
   const requestedSpan = Math.max(requested.end.getTime() - requested.start.getTime(), 1);
@@ -317,12 +323,27 @@ export function panCompositeViewport(
 ): CompositeViewportRange {
   const current = clampCompositeViewport(viewport, bounds);
   if (!Number.isFinite(shiftRatio) || shiftRatio === 0) return current;
-  const span = Math.max(current.end.getTime() - current.start.getTime(), 1);
-  const shift = span * shiftRatio;
-  const candidate = clampCompositeViewport({
-    start: new Date(current.start.getTime() - shift),
-    end: new Date(current.end.getTime() - shift),
-  }, bounds);
+  const marketProjection = marketViewportProjection(current, bounds, series);
+  // Market scales collapse overnight and weekend gaps, so a wall-clock shift
+  // changes how many slots stay visible and the plot accordions instead of
+  // translating. Shift in slot space so the visible span is preserved.
+  const candidate = marketProjection
+    ? (() => {
+        const { scale, startRatio, endRatio } = marketProjection;
+        const marketSpan = endRatio - startRatio;
+        const nextStart = clamp(startRatio - marketSpan * shiftRatio, 0, 1 - marketSpan);
+        return clampCompositeViewport(
+          viewportFromMarketRatios(scale, nextStart, nextStart + marketSpan),
+          bounds,
+        );
+      })()
+    : (() => {
+        const shift = Math.max(current.end.getTime() - current.start.getTime(), 1) * shiftRatio;
+        return clampCompositeViewport({
+          start: new Date(current.start.getTime() - shift),
+          end: new Date(current.end.getTime() - shift),
+        }, bounds);
+      })();
   if (!series || allowEmpty) return candidate;
 
   const timestamps = pointTimestamps(series)

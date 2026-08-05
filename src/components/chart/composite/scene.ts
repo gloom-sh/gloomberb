@@ -431,10 +431,15 @@ export function buildCompositeChartScene(
     startTime,
     endTime,
   );
-  const usableSeries = viewport
+  const scopedSeries = viewport
     ? dataSeries.flatMap((entry) => scopeSeriesToViewport(entry, startTime, endTime, timeScale) ?? [])
     : dataSeries;
-  if (usableSeries.length === 0) return null;
+  // A range without observations still has a chart: keep the panels, axes and
+  // grid and simply draw no points, instead of blanking the whole surface.
+  const emptyRange = scopedSeries.length === 0;
+  const usableSeries = emptyRange
+    ? dataSeries.map((entry) => ({ ...entry, points: [] }))
+    : scopedSeries;
   const visibleTimes = uniqueTimes.filter((time) => time >= startTime && time <= endTime);
   const marketTimes = timeScale.kind === "market"
     ? timeScale.anchors
@@ -463,8 +468,13 @@ export function buildCompositeChartScene(
     const panelSeries = usableSeries.filter((entry) => entry.panelId === panel.id);
     if (panelSeries.length === 0) return [];
     const scale = panel.scale ?? "linear";
-    const left = buildAxisDomain("left", panelSeries, scale);
-    const right = buildAxisDomain("right", panelSeries, scale);
+    // An empty range has no in-view values, so scale its axes to the loaded
+    // history rather than the meaningless 0..1 fallback.
+    const domainSeries = emptyRange
+      ? dataSeries.filter((entry) => entry.panelId === panel.id)
+      : panelSeries;
+    const left = buildAxisDomain("left", domainSeries, scale);
+    const right = buildAxisDomain("right", domainSeries, scale);
     const axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>> = { left, right };
     return [{
       id: panel.id,

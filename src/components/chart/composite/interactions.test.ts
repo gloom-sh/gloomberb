@@ -11,6 +11,7 @@ import {
   zoomCompositeViewport,
   type CompositeViewportRange,
 } from "./interactions";
+import { buildCompositeTimeScale, projectCompositeTimestamp } from "./time-scale";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function point(day: number): TimeSeriesPoint {
@@ -64,6 +65,18 @@ function intradayMarketSeries(): ResolvedSeries {
   };
 }
 
+function marketSlotSpan(
+  data: ResolvedSeries,
+  bounds: CompositeViewportRange,
+  view: CompositeViewportRange,
+): number {
+  const scale = buildCompositeTimeScale([data], bounds.start.getTime(), bounds.end.getTime());
+  const start = projectCompositeTimestamp(scale, view.start.getTime())!.ratio;
+  const end = projectCompositeTimestamp(scale, view.end.getTime())!.ratio;
+  const positions = scale.kind === "market" ? scale.endPosition - scale.startPosition : 1;
+  return (end - start) * positions;
+}
+
 describe("composite chart interactions", () => {
   test("zooms around the right edge and clamps zoom-out to loaded bounds", () => {
     const bounds = viewport(1, 11);
@@ -86,17 +99,21 @@ describe("composite chart interactions", () => {
     expect(clampedNewer).toEqual(viewport(7, 11));
   });
 
-  test("never changes the viewport span while panning across a closed session", () => {
+  test("never changes the visible slot count while panning across a closed session", () => {
     const data = intradayMarketSeries();
     const bounds = resolveCompositeNavigationBounds([data])!;
-    const visible = {
+    let visible: CompositeViewportRange = {
       start: new Date("2025-01-03T13:30:00.000Z"),
       end: new Date("2025-01-03T17:00:00.000Z"),
     };
-    const panned = panCompositeViewport(visible, bounds, 0.5, [data]);
+    const slots = marketSlotSpan(data, bounds, visible);
 
-    expect(panned.end.getTime() - panned.start.getTime())
-      .toBe(visible.end.getTime() - visible.start.getTime());
+    // A wall-clock shift changes how many market slots stay in view, which
+    // renders as the plot squeezing shut instead of scrolling sideways.
+    for (let step = 0; step < 4; step += 1) {
+      visible = panCompositeViewport(visible, bounds, 0.5, [data]);
+      expect(marketSlotSpan(data, bounds, visible)).toBeCloseTo(slots, 6);
+    }
   });
 
   test("uses representative cadence instead of a stray fine gap as the zoom floor", () => {
@@ -142,16 +159,18 @@ describe("composite chart interactions", () => {
     const older = panCompositeViewport(requested, bounds, 1, [data], true);
     expect(older).not.toEqual(requested);
     expect(older.end.getTime()).toBe(requested.start.getTime());
-    expect(older.end.getTime() - older.start.getTime())
-      .toBe(requested.end.getTime() - requested.start.getTime());
+    expect(marketSlotSpan(data, bounds, older))
+      .toBeCloseTo(marketSlotSpan(data, bounds, requested), 6);
     expect(panCompositeViewport(older, bounds, -1, [data], true)).toEqual(requested);
   });
 
-  test("clamps overlapping requested bounds to real data but preserves disjoint requests", () => {
+  test("clamps overlapping requested bounds to real data and keeps disjoint ones reachable", () => {
     const data = series([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 
     expect(resolveCompositeNavigationBounds([data], viewport(5, 12))).toEqual(viewport(1, 9));
-    expect(resolveCompositeNavigationBounds([data], viewport(20, 30))).toEqual(viewport(20, 30));
+    // Bounds equal to an observation-free window would strand pan and zoom
+    // inside it, so a disjoint request stays unioned with the loaded data.
+    expect(resolveCompositeNavigationBounds([data], viewport(20, 30))).toEqual(viewport(1, 30));
   });
 
   test("requires distinct renderable observations inside a viewport", () => {

@@ -1175,8 +1175,14 @@ describe("CompositeChart", () => {
     });
     await act(async () => testSetup!.renderOnce());
 
+    // An observation-free window keeps the chart frame and its axes; only the
+    // plotted points go away.
+    // An observation-free window keeps the chart frame and its axes; only the
+    // plotted points go away.
     const emptyFrame = testSetup.captureCharFrame();
-    expect(emptyFrame).toContain("No chart data");
+    expect(emptyFrame).not.toContain("No chart data");
+    expect(emptyFrame).not.toContain("•");
+    expect(emptyFrame).toContain("$108");
     expect(emptyFrame).toContain("Jan ");
     expect(typeof capturedSurfaceProps!.onMouseScroll).toBe("function");
 
@@ -1189,9 +1195,8 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     const recoveredFrame = testSetup.captureCharFrame();
-    expect(recoveredFrame).not.toContain("No chart data");
-    expect(recoveredFrame).toContain("2025-01-01");
-    expect(recoveredFrame).toContain("Jan 9");
+    expect(recoveredFrame).toContain("•");
+    expect(recoveredFrame).toContain("Jan 1");
   });
 
   test("shows useful UTC times for an intraday shared cursor and time axis", async () => {
