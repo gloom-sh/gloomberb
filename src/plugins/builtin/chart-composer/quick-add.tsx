@@ -204,7 +204,13 @@ export function ChartSeriesQuickAdd({
 
   // One way out, used by every route that closes the input, because the pieces
   // release separately: React state, the pane's capture, and the DOM focus.
+  // Intent, not the DOM, owns the focus: the input re-focuses itself whenever
+  // its controlled prop is true, so a stray focus event must not set that prop.
+  // This tracks intent alone, never mirroring state, which would restore what a
+  // dismissal just cleared on the very next render.
+  const activeRef = useRef(false);
   const dismiss = useCallback(() => {
+    activeRef.current = false;
     setActive(false);
     setInputFocused(false);
     onActiveChange?.(false);
@@ -252,6 +258,7 @@ export function ChartSeriesQuickAdd({
   }, []);
 
   const focusInput = useCallback(() => {
+    activeRef.current = true;
     cancelPendingBlur();
     onActivatePane();
     setActive(true);
@@ -263,6 +270,7 @@ export function ChartSeriesQuickAdd({
 
   const commitSuggestion = useCallback((suggestion: SeriesCatalogSuggestion | undefined) => {
     if (!suggestion || commitLockRef.current) return;
+    activeRef.current = false;
     cancelPendingBlur();
     if (spec.series.length >= MAX_CHART_COMPOSER_SERIES) {
       setError(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
@@ -361,11 +369,17 @@ export function ChartSeriesQuickAdd({
         onChange={(value) => {
           setQuery(value);
           setError(null);
+          // A programmatic clear also lands here; only a live edit means intent.
+          if (!activeRef.current) return;
           if (!active) setActive(true);
           if (!inputFocused) setInputFocused(true);
         }}
         onSubmit={submit}
         onFocus={() => {
+          if (!activeRef.current) {
+            inputRef.current?.blur?.();
+            return;
+          }
           cancelPendingBlur();
           setInputFocused(true);
         }}

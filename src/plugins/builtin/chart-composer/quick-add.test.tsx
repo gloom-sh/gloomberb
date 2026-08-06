@@ -191,6 +191,59 @@ describe("chart series inline quick add", () => {
     expect(renderedWidth).toBe(14);
   });
 
+  test("stays closed when the clear it triggers echoes back as an edit", async () => {
+    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-chart-quick-add-echo"));
+    const startingSpec = buildPriceChartPreset("AAPL");
+    const activeStates: boolean[] = [];
+    let dismiss: (() => void) | null = null;
+
+    function Harness() {
+      const [dismissSignal, setDismissSignal] = useState(0);
+      dismiss = () => setDismissSignal((current) => current + 1);
+      return (
+        <ChartSeriesQuickAdd
+          spec={startingSpec}
+          setSpec={() => {}}
+          focused
+          width={92}
+          height={8}
+          shortcutEnabled
+          shortcutBlocked={false}
+          dismissSignal={dismissSignal}
+          onActivatePane={() => {}}
+          onActiveChange={(active) => activeStates.push(active)}
+        />
+      );
+    }
+
+    testSetup = await testRender(
+      <AppContext.Provider value={{ state: initial, dispatch: () => {} }}>
+        <CaptureInputProvider>
+          <Harness />
+        </CaptureInputProvider>
+      </AppContext.Provider>,
+      { width: 92, height: 8 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    await emitKey("n", "n");
+    expect(activeStates.at(-1)).toBe(true);
+
+    await act(async () => {
+      dismiss?.();
+      await testSetup!.renderOnce();
+    });
+    // Closing clears the text, and the clear arrives as a change and a focus.
+    // Neither is a person typing, so neither may reopen the input.
+    await act(async () => {
+      capturedInputProps?.onChange?.("");
+      capturedInputProps?.onFocus?.();
+      await Bun.sleep(10);
+      await testSetup!.renderOnce();
+    });
+    expect(activeStates.at(-1)).toBe(false);
+    expect(testSetup.captureCharFrame()).toContain("add series");
+  });
+
   test("gives up the DOM focus it left behind when it closes", () => {
     let blurred = 0;
     const element = {
