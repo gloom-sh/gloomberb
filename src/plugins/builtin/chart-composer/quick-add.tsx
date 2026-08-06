@@ -45,6 +45,16 @@ export function isChartQuickAddMouseTarget(target: unknown, quickAddId: string):
   return root?.getAttribute("data-gloom-chart-quick-add") === quickAddId;
 }
 
+/**
+ * The imperative handle can only reach the element it still owns. Clicking away
+ * can leave the DOM focus behind, and a focused input keeps every keystroke.
+ */
+export function blurActiveQuickAddElement(quickAddId: string): void {
+  const active = (globalThis as { document?: { activeElement?: unknown } }).document?.activeElement;
+  if (!active || !isChartQuickAddMouseTarget(active, quickAddId)) return;
+  (active as { blur?: () => void }).blur?.();
+}
+
 function clampSelection(index: number, length: number): number {
   if (length <= 0) return -1;
   return Math.max(0, Math.min(index, length - 1));
@@ -192,35 +202,40 @@ export function ChartSeriesQuickAdd({
     setSelectedIndex(0);
   }, [query, suggestions.length]);
 
-  useEffect(() => {
-    if (focused || !active) return;
+  // One way out, used by every route that closes the input, because the pieces
+  // release separately: React state, the pane's capture, and the DOM focus.
+  const dismiss = useCallback(() => {
     setActive(false);
     setInputFocused(false);
+    onActiveChange?.(false);
     inputRef.current?.blur?.();
-  }, [active, focused]);
+    blurActiveQuickAddElement(quickAddId);
+  }, [onActiveChange, quickAddId]);
+
+  useEffect(() => {
+    if (focused || (!active && !inputFocused)) return;
+    dismiss();
+  }, [active, dismiss, focused, inputFocused]);
 
   const dismissedSignalRef = useRef(dismissSignal);
   useEffect(() => {
     if (dismissSignal === dismissedSignalRef.current) return;
     dismissedSignalRef.current = dismissSignal;
     if (!active && !inputFocused) return;
-    setActive(false);
-    setInputFocused(false);
-    onActiveChange?.(false);
-    inputRef.current?.blur?.();
-  }, [active, dismissSignal, inputFocused, onActiveChange]);
+    dismiss();
+  }, [active, dismiss, dismissSignal, inputFocused]);
 
   useEffect(() => {
     if (ui.kind !== "desktop-web" || !inputFocused) return;
 
     const handleOutsideMouseDown = (event: globalThis.MouseEvent) => {
       if (isChartQuickAddMouseTarget(event.target, quickAddId)) return;
-      inputRef.current?.blur?.();
+      dismiss();
     };
 
     document.addEventListener("mousedown", handleOutsideMouseDown, true);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown, true);
-  }, [inputFocused, quickAddId, ui.kind]);
+  }, [dismiss, inputFocused, quickAddId, ui.kind]);
 
   const cancelPendingBlur = useCallback(() => {
     if (blurTimerRef.current === null) return;
@@ -272,13 +287,10 @@ export function ChartSeriesQuickAdd({
   }, [commitSuggestion, selectedIndex, suggestions]);
   const cancel = useCallback(() => {
     cancelPendingBlur();
-    inputRef.current?.blur?.();
     clearInput();
-    setActive(false);
-    setInputFocused(false);
-    onActiveChange?.(false);
+    dismiss();
     setError(null);
-  }, [cancelPendingBlur, clearInput, onActiveChange]);
+  }, [cancelPendingBlur, clearInput, dismiss]);
 
   useShortcut((event) => {
     if (!focused) return;

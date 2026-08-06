@@ -20,7 +20,11 @@ import { AppContext, createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { ChartSpec } from "../../../time-series/types";
 import { buildPriceChartPreset } from "./presets";
-import { ChartSeriesQuickAdd, isChartQuickAddMouseTarget } from "./quick-add";
+import {
+  blurActiveQuickAddElement,
+  ChartSeriesQuickAdd,
+  isChartQuickAddMouseTarget,
+} from "./quick-add";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let capturedInputProps: Record<string, any> | null = null;
@@ -185,6 +189,29 @@ describe("chart series inline quick add", () => {
     expect(closedFrame).toContain("add series");
     expect(closedFrame).not.toContain("MSFT · Revenue");
     expect(renderedWidth).toBe(14);
+  });
+
+  test("gives up the DOM focus it left behind when it closes", () => {
+    let blurred = 0;
+    const element = {
+      blur: () => { blurred += 1; },
+      closest: (selector: string) => selector === "[data-gloom-chart-quick-add]"
+        ? { getAttribute: () => "chart-a" }
+        : null,
+    };
+    const globals = globalThis as { document?: unknown };
+    const previous = globals.document;
+    globals.document = { activeElement: element };
+    try {
+      // The handle can only reach the element it owns; the focus can outlive it.
+      expect(isChartQuickAddMouseTarget(element, "chart-a")).toBe(true);
+      blurActiveQuickAddElement("chart-a");
+      expect(blurred).toBe(1);
+      blurActiveQuickAddElement("chart-b");
+      expect(blurred).toBe(1);
+    } finally {
+      globals.document = previous;
+    }
   });
 
   test("puts itself away when the pane reports the pointer went elsewhere", async () => {
