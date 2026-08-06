@@ -236,8 +236,9 @@ function ChartComposerSurface({
   // Touching the plot puts quick-add away, on every renderer.
   const activateFromSurface = useCallback(() => {
     activatePane();
+    if (dialogOpen) return;
     setQuickAddDismissals((current) => current + 1);
-  }, [activatePane]);
+  }, [activatePane, dialogOpen]);
   useEffect(() => {
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);

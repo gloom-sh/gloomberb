@@ -232,7 +232,9 @@ export function ChartSeriesQuickAdd({
   }, [active, dismiss, dismissSignal, inputFocused]);
 
   useEffect(() => {
-    if (ui.kind !== "desktop-web" || !inputFocused) return;
+    // A dialog owns the pointer while it is open, and dismissing from under it
+    // re-renders the pane that hosts it, which costs the dialog its own focus.
+    if (ui.kind !== "desktop-web" || !inputFocused || shortcutBlocked) return;
 
     const handleOutsideMouseDown = (event: globalThis.MouseEvent) => {
       if (isChartQuickAddMouseTarget(event.target, quickAddId)) return;
@@ -241,7 +243,7 @@ export function ChartSeriesQuickAdd({
 
     document.addEventListener("mousedown", handleOutsideMouseDown, true);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown, true);
-  }, [dismiss, inputFocused, quickAddId, ui.kind]);
+  }, [dismiss, inputFocused, quickAddId, shortcutBlocked, ui.kind]);
 
   const cancelPendingBlur = useCallback(() => {
     if (blurTimerRef.current === null) return;
