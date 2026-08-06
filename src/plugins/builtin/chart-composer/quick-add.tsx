@@ -342,6 +342,7 @@ export function ChartSeriesQuickAdd({
       zIndex={30}
       data-gloom-role="chart-series-quick-add"
       data-gloom-chart-quick-add={quickAddId}
+      data-gloom-focus-scope="chart-series-quick-add"
     >
       <InlineQuickAddRow
         value={query}

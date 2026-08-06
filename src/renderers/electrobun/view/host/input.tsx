@@ -54,11 +54,25 @@ function callTextHandler(handler: unknown, value: string): void {
   }
 }
 
+/**
+ * A press on a field must focus it, even when the owner's controlled flag never
+ * changed. Panes and charts consume their own mousedown, which suppresses the
+ * default focus move, and a field that lost focus externally would otherwise
+ * stay dead until its flag happened to toggle.
+ */
+function focusOnPress(element: HTMLInputElement | HTMLTextAreaElement | null): void {
+  if (!element || document.activeElement === element) return;
+  element.focus();
+}
+
 function applyDomCursorOffset(
   element: HTMLInputElement | HTMLTextAreaElement | null,
   offset: number,
 ) {
-  if (!element) return;
+  // Placing a caret in a field nobody is typing in means nothing, and WebKit
+  // hands the field the focus back when you try, which silently undoes a
+  // release that happened a frame earlier.
+  if (!element || document.activeElement !== element) return;
   const clampedOffset = Math.max(0, Math.min(offset, element.value.length));
   element.setSelectionRange(clampedOffset, clampedOffset);
 }
@@ -262,6 +276,7 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
       placeholder={getStringProp(props, "placeholder")}
       onInput={(event) => handleValueChange(event.currentTarget.value)}
       onChange={(event) => handleValueChange(event.currentTarget.value)}
+      onMouseDown={() => focusOnPress(elementRef.current)}
       onFocus={() => {
         setDomFocused(true);
         callTextHandler(propsRef.current.onFocus, elementRef.current?.value ?? valueRef.current);
