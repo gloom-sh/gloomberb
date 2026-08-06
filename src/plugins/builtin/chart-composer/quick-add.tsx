@@ -78,6 +78,7 @@ export function ChartSeriesQuickAdd({
   shortcutEnabled,
   shortcutBlocked,
   onActivatePane,
+  dismissSignal,
   onActiveChange,
   onWidthChange,
 }: {
@@ -89,6 +90,8 @@ export function ChartSeriesQuickAdd({
   shortcutEnabled: boolean;
   shortcutBlocked: boolean;
   onActivatePane: () => void;
+  /** Bumped by the pane when something else takes the pointer. */
+  dismissSignal?: number;
   onActiveChange?: (active: boolean) => void;
   onWidthChange?: (width: number) => void;
 }) {
@@ -195,6 +198,17 @@ export function ChartSeriesQuickAdd({
     setInputFocused(false);
     inputRef.current?.blur?.();
   }, [active, focused]);
+
+  const dismissedSignalRef = useRef(dismissSignal);
+  useEffect(() => {
+    if (dismissSignal === dismissedSignalRef.current) return;
+    dismissedSignalRef.current = dismissSignal;
+    if (!active && !inputFocused) return;
+    setActive(false);
+    setInputFocused(false);
+    onActiveChange?.(false);
+    inputRef.current?.blur?.();
+  }, [active, dismissSignal, inputFocused, onActiveChange]);
 
   useEffect(() => {
     if (ui.kind !== "desktop-web" || !inputFocused) return;

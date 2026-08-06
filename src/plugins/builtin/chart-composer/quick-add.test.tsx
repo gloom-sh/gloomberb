@@ -187,6 +187,50 @@ describe("chart series inline quick add", () => {
     expect(renderedWidth).toBe(14);
   });
 
+  test("puts itself away when the pane reports the pointer went elsewhere", async () => {
+    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-chart-quick-add-dismiss"));
+    const startingSpec = buildPriceChartPreset("AAPL");
+    const activeStates: boolean[] = [];
+    let dismiss: (() => void) | null = null;
+
+    function Harness() {
+      const [dismissSignal, setDismissSignal] = useState(0);
+      dismiss = () => setDismissSignal((current) => current + 1);
+      return (
+        <ChartSeriesQuickAdd
+          spec={startingSpec}
+          setSpec={() => {}}
+          focused
+          width={92}
+          height={8}
+          shortcutEnabled
+          shortcutBlocked={false}
+          dismissSignal={dismissSignal}
+          onActivatePane={() => {}}
+          onActiveChange={(active) => activeStates.push(active)}
+        />
+      );
+    }
+
+    testSetup = await testRender(
+      <AppContext.Provider value={{ state: initial, dispatch: () => {} }}>
+        <CaptureInputProvider>
+          <Harness />
+        </CaptureInputProvider>
+      </AppContext.Provider>,
+      { width: 92, height: 8 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    await emitKey("n", "n");
+    expect(activeStates.at(-1)).toBe(true);
+
+    await act(async () => {
+      dismiss?.();
+      await testSetup!.renderOnce();
+    });
+    expect(activeStates.at(-1)).toBe(false);
+  });
+
   test("releases focus capture when the input blurs", async () => {
     const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-chart-quick-add-blur"));
     const startingSpec = buildPriceChartPreset("AAPL");
