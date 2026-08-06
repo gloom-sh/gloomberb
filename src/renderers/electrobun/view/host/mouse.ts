@@ -52,6 +52,7 @@ export function cellMouseEvent(event: MouseLikeEvent, type?: string) {
     pixelX: event.clientX,
     pixelY: event.clientY,
     button: event.button,
+    target: (event as { target?: unknown }).target,
     detail: "detail" in event && typeof event.detail === "number" ? event.detail : 0,
     timeStamp: event.timeStamp,
     modifiers: {

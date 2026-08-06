@@ -374,6 +374,8 @@ const ARMED_TOOL_BY_INTERACTION = {
   "arm-pencil": "pencil",
 } as const satisfies Record<string, ChartToolKind>;
 
+const COMPOSITE_PANEL_ROLE = "composite-chart-panel";
+
 let nextDrawingSequence = 1;
 
 function nextDrawingId(): string {
@@ -445,7 +447,8 @@ function ChartToolChip({
 
 
 /** Blurs a focused text field, the focus change a consumed mousedown prevents. */
-function releaseEditableFocus(): void {
+function releaseEditableFocus(event: ChartMouseEvent): void {
+  if (!event.target?.closest?.(`[data-gloom-role="${COMPOSITE_PANEL_ROLE}"]`)) return;
   const active = (globalThis as {
     document?: { activeElement?: { tagName?: string; blur?: () => void } };
   }).document?.activeElement;
@@ -890,8 +893,9 @@ function CompositePanelSurface({
   const startDrag = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
     // The plot consumes the press, so the browser never moves focus off a text
-    // field for us. Hand it back without touching anyone's state.
-    if (isDesktopWeb) releaseEditableFocus();
+    // field for us. Hand it back, but only for a press that truly landed here:
+    // a dialog over the plot must keep the focus it just took.
+    if (isDesktopWeb) releaseEditableFocus(event);
     consumeChartMouseEvent(event);
     // A keyboard-armed tool covers terminals that never forward modifier drags.
     const tool = resolveChartToolKind(event.modifiers) ?? armedTool;
@@ -1105,7 +1109,7 @@ function CompositePanelSurface({
         onMouseOut={interactive ? clearCursor : undefined}
         cursor={interactive ? toolDrag ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
-        data-gloom-role="composite-chart-panel"
+        data-gloom-role={COMPOSITE_PANEL_ROLE}
         data-gloom-label={panel.label ?? panel.id}
       >
         {textLines.map((line, index) => <Text key={index} fg={colors.text}>{line}</Text>)}

@@ -34,6 +34,19 @@ interface ClosestElementLike {
   } | null;
 }
 
+/**
+ * Blurs the field itself rather than going through the imperative handle, which
+ * only reaches the element it still owns. A no-op unless this widget truly holds
+ * the document focus, so a click inside a dialog leaves that dialog alone.
+ */
+export function releaseQuickAddFocus(quickAddId: string): void {
+  const active = (globalThis as {
+    document?: { activeElement?: { blur?: () => void } | null };
+  }).document?.activeElement;
+  if (!active || !isChartQuickAddMouseTarget(active, quickAddId)) return;
+  active.blur?.();
+}
+
 export function isChartQuickAddMouseTarget(target: unknown, quickAddId: string): boolean {
   if (!target || typeof target !== "object") return false;
   const candidate = target as Partial<ClosestElementLike> & {
@@ -197,16 +210,18 @@ export function ChartSeriesQuickAdd({
   }, [active, focused]);
 
   useEffect(() => {
-    if (ui.kind !== "desktop-web" || !inputFocused) return;
+    if (ui.kind !== "desktop-web") return;
 
+    // Watch regardless of what state believes: the field can hold the document
+    // focus after the state that tracks it has already moved on.
     const handleOutsideMouseDown = (event: globalThis.MouseEvent) => {
       if (isChartQuickAddMouseTarget(event.target, quickAddId)) return;
-      inputRef.current?.blur?.();
+      releaseQuickAddFocus(quickAddId);
     };
 
     document.addEventListener("mousedown", handleOutsideMouseDown, true);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown, true);
-  }, [inputFocused, quickAddId, ui.kind]);
+  }, [quickAddId, ui.kind]);
 
   const cancelPendingBlur = useCallback(() => {
     if (blurTimerRef.current === null) return;
@@ -216,10 +231,17 @@ export function ChartSeriesQuickAdd({
 
   useEffect(() => cancelPendingBlur, [cancelPendingBlur]);
 
+  // Writing the field programmatically comes back through onChange, which is
+  // otherwise indistinguishable from a keystroke and re-arms what just closed.
+  const clearingRef = useRef(false);
   const clearInput = useCallback(() => {
+    clearingRef.current = true;
     setQuery("");
     inputRef.current?.editBuffer.setText?.("");
     inputRef.current?.setCursorOffset?.(0);
+    queueMicrotask(() => {
+      clearingRef.current = false;
+    });
   }, []);
 
   const focusInput = useCallback(() => {
@@ -335,6 +357,7 @@ export function ChartSeriesQuickAdd({
         onChange={(value) => {
           setQuery(value);
           setError(null);
+          if (clearingRef.current) return;
           if (!active) setActive(true);
           if (!inputFocused) setInputFocused(true);
         }}

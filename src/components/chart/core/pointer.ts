@@ -18,6 +18,8 @@ interface PlotRenderableLike extends RenderableSizeLike {
 export interface ChartMouseEvent {
   x: number;
   y: number;
+  /** DOM target on the desktop host; absent in the terminal. */
+  target?: { closest?: (selector: string) => unknown } | null;
   preciseX?: number;
   preciseY?: number;
   pixelX?: number;
