@@ -444,6 +444,16 @@ function ChartToolChip({
 }
 
 
+/** Blurs a focused text field, the focus change a consumed mousedown prevents. */
+function releaseEditableFocus(): void {
+  const active = (globalThis as {
+    document?: { activeElement?: { tagName?: string; blur?: () => void } };
+  }).document?.activeElement;
+  const tag = active?.tagName?.toUpperCase();
+  if (tag !== "INPUT" && tag !== "TEXTAREA") return;
+  active?.blur?.();
+}
+
 function svgMaskUrl(svg: string): string {
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
 }
@@ -879,6 +889,9 @@ function CompositePanelSurface({
   }, [onCursorDateChange]);
   const startDrag = useCallback((event: ChartMouseEvent) => {
     onActivate?.();
+    // The plot consumes the press, so the browser never moves focus off a text
+    // field for us. Hand it back without touching anyone's state.
+    if (isDesktopWeb) releaseEditableFocus();
     consumeChartMouseEvent(event);
     // A keyboard-armed tool covers terminals that never forward modifier drags.
     const tool = resolveChartToolKind(event.modifiers) ?? armedTool;

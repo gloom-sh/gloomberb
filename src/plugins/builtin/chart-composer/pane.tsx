@@ -200,7 +200,6 @@ function ChartComposerSurface({
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
   const [quickAddWidth, setQuickAddWidth] = useState(14);
-  const [quickAddDismissals, setQuickAddDismissals] = useState(0);
   const interactionCaptureRef = useRef(false);
   const interactionCaptureSourcesRef = useRef(new Set<string>());
   const indicatorsDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
@@ -233,12 +232,6 @@ function ChartComposerSurface({
   const activatePane = useCallback(() => {
     if (!focused) dispatch({ type: "FOCUS_PANE", paneId });
   }, [dispatch, focused, paneId]);
-  // Touching the plot puts quick-add away, on every renderer.
-  const activateFromSurface = useCallback(() => {
-    activatePane();
-    if (dialogOpen) return;
-    setQuickAddDismissals((current) => current + 1);
-  }, [activatePane, dialogOpen]);
   useEffect(() => {
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);
@@ -649,7 +642,7 @@ function ChartComposerSurface({
           allowHistoricalBackfill
           showLatestChangePercent={!spec.viewport.dateWindow && spec.viewport.range === "1D"}
           onViewportChange={handleChartViewportChange}
-          onActivate={activateFromSurface}
+          onActivate={activatePane}
           onToggleSeries={toggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           emptyMessage={emptyMessage}
@@ -663,7 +656,6 @@ function ChartComposerSurface({
               shortcutEnabled={surfaceInteractive}
               shortcutBlocked={dialogOpen}
               onActivatePane={activatePane}
-              dismissSignal={quickAddDismissals}
               onActiveChange={handleQuickAddActiveChange}
               onWidthChange={setQuickAddWidth}
             />

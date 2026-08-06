@@ -45,16 +45,6 @@ export function isChartQuickAddMouseTarget(target: unknown, quickAddId: string):
   return root?.getAttribute("data-gloom-chart-quick-add") === quickAddId;
 }
 
-/**
- * The imperative handle can only reach the element it still owns. Clicking away
- * can leave the DOM focus behind, and a focused input keeps every keystroke.
- */
-export function blurActiveQuickAddElement(quickAddId: string): void {
-  const active = (globalThis as { document?: { activeElement?: unknown } }).document?.activeElement;
-  if (!active || !isChartQuickAddMouseTarget(active, quickAddId)) return;
-  (active as { blur?: () => void }).blur?.();
-}
-
 function clampSelection(index: number, length: number): number {
   if (length <= 0) return -1;
   return Math.max(0, Math.min(index, length - 1));
@@ -88,7 +78,6 @@ export function ChartSeriesQuickAdd({
   shortcutEnabled,
   shortcutBlocked,
   onActivatePane,
-  dismissSignal,
   onActiveChange,
   onWidthChange,
 }: {
@@ -100,8 +89,6 @@ export function ChartSeriesQuickAdd({
   shortcutEnabled: boolean;
   shortcutBlocked: boolean;
   onActivatePane: () => void;
-  /** Bumped by the pane when something else takes the pointer. */
-  dismissSignal?: number;
   onActiveChange?: (active: boolean) => void;
   onWidthChange?: (width: number) => void;
 }) {
@@ -202,48 +189,24 @@ export function ChartSeriesQuickAdd({
     setSelectedIndex(0);
   }, [query, suggestions.length]);
 
-  // One way out, used by every route that closes the input, because the pieces
-  // release separately: React state, the pane's capture, and the DOM focus.
-  // Intent, not the DOM, owns the focus: the input re-focuses itself whenever
-  // its controlled prop is true, so a stray focus event must not set that prop.
-  // This tracks intent alone, never mirroring state, which would restore what a
-  // dismissal just cleared on the very next render.
-  const activeRef = useRef(false);
-  const dismiss = useCallback(() => {
-    activeRef.current = false;
+  useEffect(() => {
+    if (focused || !active) return;
     setActive(false);
     setInputFocused(false);
-    onActiveChange?.(false);
     inputRef.current?.blur?.();
-    blurActiveQuickAddElement(quickAddId);
-  }, [onActiveChange, quickAddId]);
+  }, [active, focused]);
 
   useEffect(() => {
-    if (focused || (!active && !inputFocused)) return;
-    dismiss();
-  }, [active, dismiss, focused, inputFocused]);
-
-  const dismissedSignalRef = useRef(dismissSignal);
-  useEffect(() => {
-    if (dismissSignal === dismissedSignalRef.current) return;
-    dismissedSignalRef.current = dismissSignal;
-    if (!active && !inputFocused) return;
-    dismiss();
-  }, [active, dismiss, dismissSignal, inputFocused]);
-
-  useEffect(() => {
-    // A dialog owns the pointer while it is open, and dismissing from under it
-    // re-renders the pane that hosts it, which costs the dialog its own focus.
-    if (ui.kind !== "desktop-web" || !inputFocused || shortcutBlocked) return;
+    if (ui.kind !== "desktop-web" || !inputFocused) return;
 
     const handleOutsideMouseDown = (event: globalThis.MouseEvent) => {
       if (isChartQuickAddMouseTarget(event.target, quickAddId)) return;
-      dismiss();
+      inputRef.current?.blur?.();
     };
 
     document.addEventListener("mousedown", handleOutsideMouseDown, true);
     return () => document.removeEventListener("mousedown", handleOutsideMouseDown, true);
-  }, [dismiss, inputFocused, quickAddId, shortcutBlocked, ui.kind]);
+  }, [inputFocused, quickAddId, ui.kind]);
 
   const cancelPendingBlur = useCallback(() => {
     if (blurTimerRef.current === null) return;
@@ -260,7 +223,6 @@ export function ChartSeriesQuickAdd({
   }, []);
 
   const focusInput = useCallback(() => {
-    activeRef.current = true;
     cancelPendingBlur();
     onActivatePane();
     setActive(true);
@@ -272,7 +234,6 @@ export function ChartSeriesQuickAdd({
 
   const commitSuggestion = useCallback((suggestion: SeriesCatalogSuggestion | undefined) => {
     if (!suggestion || commitLockRef.current) return;
-    activeRef.current = false;
     cancelPendingBlur();
     if (spec.series.length >= MAX_CHART_COMPOSER_SERIES) {
       setError(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
@@ -297,10 +258,13 @@ export function ChartSeriesQuickAdd({
   }, [commitSuggestion, selectedIndex, suggestions]);
   const cancel = useCallback(() => {
     cancelPendingBlur();
+    inputRef.current?.blur?.();
     clearInput();
-    dismiss();
+    setActive(false);
+    setInputFocused(false);
+    onActiveChange?.(false);
     setError(null);
-  }, [cancelPendingBlur, clearInput, dismiss]);
+  }, [cancelPendingBlur, clearInput, onActiveChange]);
 
   useShortcut((event) => {
     if (!focused) return;
@@ -371,17 +335,11 @@ export function ChartSeriesQuickAdd({
         onChange={(value) => {
           setQuery(value);
           setError(null);
-          // A programmatic clear also lands here; only a live edit means intent.
-          if (!activeRef.current) return;
           if (!active) setActive(true);
           if (!inputFocused) setInputFocused(true);
         }}
         onSubmit={submit}
         onFocus={() => {
-          if (!activeRef.current) {
-            inputRef.current?.blur?.();
-            return;
-          }
           cancelPendingBlur();
           setInputFocused(true);
         }}
