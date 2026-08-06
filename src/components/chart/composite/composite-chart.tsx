@@ -1642,8 +1642,16 @@ export function CompositeChart({
     viewport: effectiveViewport ?? undefined,
     timelineSeries: marketTimelineSeries,
   }), [effectiveViewport, marketTimelineSeries, panelCount, panels, visibleSeries]);
-  const hasLeftAxis = visibleSeries.some((entry) => entry.axis === "left");
-  const hasRightAxis = visibleSeries.some((entry) => entry.axis === "right");
+  // Gutters follow the axes the scene actually built. Reading the series list
+  // instead drops a gutter the moment its series has no observation in view,
+  // which is exactly what a zoom does, taking the axis labels with it.
+  const scenePanels = projectedScene?.panels;
+  const hasLeftAxis = scenePanels
+    ? scenePanels.some((panel) => !!panel.axes.left)
+    : visibleSeries.some((entry) => entry.axis === "left");
+  const hasRightAxis = scenePanels
+    ? scenePanels.some((panel) => !!panel.axes.right)
+    : visibleSeries.some((entry) => entry.axis === "right");
   const maximumAxisWidth = Math.max(0, Math.floor(axisWidth));
   // Gutters follow their labels. A fixed budget left dead space beside short
   // prices, which costs plot width on every chart that does not need it.
