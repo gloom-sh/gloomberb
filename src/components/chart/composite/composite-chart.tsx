@@ -1158,13 +1158,6 @@ function CompositeLegend({
 }) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // A live measurement or zoom selection replaces the cursor date: same row,
-  // denser information.
-  const cursorLabel = scene
-    ? scene.cursorDate
-      ? formatCompositeCursorDate(scene.cursorDate, scene.startTime, scene.endTime)
-      : "Latest"
-    : "";
   const cursorValueById = new Map(
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
@@ -1201,30 +1194,11 @@ function CompositeLegend({
     ? Math.max(1, Math.min(width, Math.floor(accessoryWidth ?? 14)))
     : 0;
   const reservedAccessoryGap = accessory && width > resolvedAccessoryWidth ? 1 : 0;
+  // The cursor date lives on the time axis, where the crosshair points at it.
   const widthBeforeAccessory = Math.max(0, width - resolvedAccessoryWidth - reservedAccessoryGap);
-  const minimumSeriesPreviewWidth = entries.length > 0
-    ? Math.min(7, desiredSeriesWidth)
-    : 0;
-  const dateBudget = Math.max(
-    0,
-    widthBeforeAccessory - (minimumSeriesPreviewWidth > 0 ? minimumSeriesPreviewWidth + 1 : 0),
-  );
-  const dateLabel = cursorLabel;
-  const showDate = dateLabel.length > 0 && widthBeforeAccessory >= (
-    dateLabel.length
-    + (minimumSeriesPreviewWidth > 0 ? minimumSeriesPreviewWidth + 1 : 0)
-  );
-  const dateWidth = showDate ? dateLabel.length : 0;
-  const dateSeriesGap = showDate && entries.length > 0 ? 1 : 0;
-  const seriesWidth = Math.min(
-    desiredSeriesWidth,
-    Math.max(0, widthBeforeAccessory - dateWidth - dateSeriesGap),
-  );
+  const seriesWidth = Math.min(desiredSeriesWidth, widthBeforeAccessory);
   const accessorySpacerWidth = accessory
-    ? Math.max(
-      reservedAccessoryGap,
-      width - dateWidth - dateSeriesGap - seriesWidth - resolvedAccessoryWidth,
-    )
+    ? Math.max(reservedAccessoryGap, width - seriesWidth - resolvedAccessoryWidth)
     : 0;
   const keyboardEntryStart = keyboardIndex === null || keyboardIndex === undefined
     ? null
@@ -1287,12 +1261,6 @@ function CompositeLegend({
       zIndex={20}
       data-gloom-role="composite-chart-legend"
     >
-      {showDate ? (
-        <Box width={dateWidth} height={1} flexShrink={0} overflow="hidden">
-          <Text fg={themeColors.textDim}>{dateLabel}</Text>
-        </Box>
-      ) : null}
-      {dateSeriesGap > 0 ? <Box width={dateSeriesGap} flexShrink={0} /> : null}
       {seriesWidth > 0 ? (
         <ScrollBox
           ref={scrollRef}

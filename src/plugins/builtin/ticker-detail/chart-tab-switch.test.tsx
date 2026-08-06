@@ -236,7 +236,7 @@ describe("Ticker detail chart tab switching", () => {
 
     await flushFrames();
     const chartTabFrame = testSetup.captureCharFrame();
-    expect(chartTabFrame).toContain("Latest");
+    expect(chartTabFrame).toContain("AAPL:XNAS Price");
     expect(chartTabFrame).toContain("5Y");
     expect(chartTabFrame).toContain("AUTO");
     expect(chartTabFrame).not.toContain("AAPL -");

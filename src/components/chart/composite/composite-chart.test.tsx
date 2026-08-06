@@ -516,7 +516,8 @@ describe("CompositeChart", () => {
 
     await act(async () => chartShortcut?.(keyEvent("escape")));
     await act(async () => testSetup!.renderOnce());
-    expect(testSetup.captureCharFrame()).toContain("Latest");
+    // Escape drops the cursor, so its date leaves the time axis with it.
+    expect(testSetup.captureCharFrame()).not.toContain("2025-01-02");
   });
 
   test("does not emit the same snapped cursor timestamp twice", async () => {
@@ -1550,7 +1551,7 @@ describe("CompositeChart", () => {
     });
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("2025-01-02 12:05 UTC");
+    expect(frame).toContain("12:05 UTC");
     expect(frame).toContain("09:30 UTC");
     expect(frame).toContain("16:00 UTC");
   });
