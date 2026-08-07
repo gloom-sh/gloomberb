@@ -18,6 +18,7 @@ import type {
 
 export interface CommandBarPanelPalette {
   inputBg: string;
+  paletteAccentText: string;
   paletteBg: string;
   paletteHeadingText: string;
   paletteHoverBg: string;

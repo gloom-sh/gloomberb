@@ -1,4 +1,4 @@
-import { blendForContrast, blendHex, higherContrast } from "./color-utils";
+import { blendForContrast, blendForContrastOnSurfaces, blendHex, higherContrast } from "./color-utils";
 import { getTheme, DEFAULT_THEME, type Theme } from "./themes";
 
 export type ThemeColors = Readonly<Omit<Theme, "name" | "description">>;
@@ -7,6 +7,9 @@ export function getThemeColors(id: string): ThemeColors {
   const { name: _name, description: _description, ...palette } = getTheme(id);
   return Object.freeze(palette);
 }
+
+/** Soft violet the AI section is tinted with, before per-theme contrast fixup. */
+const ASSIST_ACCENT = "#a877ff";
 
 let currentColors = getThemeColors(DEFAULT_THEME);
 
@@ -172,6 +175,22 @@ export function commandBarSubtleText(palette: ThemeColors = colors): string {
   const base = commandBarBg(palette);
   const fallback = higherContrast(commandBarText(palette), "#d8d8d8", base);
   return blendForContrast(palette.textDim, base, fallback, 4.1);
+}
+
+/**
+ * Accent for the command bar's AI section. No theme ships a violet token, so the
+ * hue is fixed — that is the point, it has to read as "not one of your results"
+ * on monochrome palettes too — and only darkened or lightened until it clears
+ * the subtle-text contrast floor on both command bar surfaces.
+ */
+export function commandBarAccentText(palette: ThemeColors = colors): string {
+  const surfaces = [commandBarBg(palette), commandBarPanelBg(palette)] as const;
+  return blendForContrastOnSurfaces(
+    ASSIST_ACCENT,
+    surfaces,
+    higherContrast("#000000", "#ffffff", surfaces[0]),
+    3.6,
+  );
 }
 
 export function commandBarSelectedText(palette: ThemeColors = colors): string {

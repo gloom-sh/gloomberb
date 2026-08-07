@@ -1,5 +1,5 @@
 import type { ChoiceDialogChoice } from "../../../components";
-import type { AccountProfile, PublicPortfolioAnalytics } from "../../../api-client";
+import type { AccountProfile, CloudPricing, PublicPortfolioAnalytics } from "../../../api-client";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatNumber } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
@@ -84,6 +84,58 @@ export function emptyToNull(value: string): string | null {
 
 export function formatPlan(plan: AccountProfile["plan"] | null | undefined): string {
   return plan === "pro" ? t("Pro") : t("Free");
+}
+
+const DEFAULT_TRIAL_DAYS = 7;
+
+export interface PlanPriceDisplay {
+  /** Charged price, already suffixed with the billing period. */
+  price: string;
+  /** List price to strike through, or null when the list price is the price. */
+  anchor: string | null;
+  note: string | null;
+}
+
+function formatUsdCents(cents: number): string {
+  const dollars = cents / 100;
+  return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+}
+
+/**
+ * Monthly Pro price for the plan comparison. Falls back to the list price when
+ * `/pricing` is unreachable so the table never renders a blank cell.
+ */
+export function formatCloudMonthlyPrice(pricing: CloudPricing | null | undefined): PlanPriceDisplay {
+  if (!pricing) return { price: t("$49/mo"), anchor: null, note: null };
+  const monthly = pricing.monthly;
+  // Without the founding discount the list price is the price, shown plainly.
+  if (!pricing.founding || monthly.anchorAmount <= monthly.amount) {
+    return {
+      price: tf("{amount}/mo", { amount: formatUsdCents(monthly.anchorAmount) }),
+      anchor: null,
+      note: null,
+    };
+  }
+  return {
+    price: tf("{amount}/mo", { amount: formatUsdCents(monthly.amount) }),
+    anchor: tf("{amount}/mo", { amount: formatUsdCents(monthly.anchorAmount) }),
+    note: t("Founding price"),
+  };
+}
+
+/** Short calendar date for the trial countdown, e.g. "Aug 11". */
+export function formatTrialEnd(endsAt: Date | null | undefined): string | null {
+  if (!endsAt || Number.isNaN(endsAt.getTime())) return null;
+  return endsAt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/**
+ * Pro-column note for the plan comparison, e.g. "7-day free trial". The trial
+ * is part of the Pro subscription (card required, cancel before it converts),
+ * so it is never advertised as something the free plan includes.
+ */
+export function formatTrialOffer(pricing: CloudPricing | null | undefined): string {
+  return tf("{days}-day free trial", { days: pricing?.trialDays ?? DEFAULT_TRIAL_DAYS });
 }
 
 export function countPortfolioHoldings(tickers: ReadonlyMap<string, TickerRecord>): Record<string, number> {

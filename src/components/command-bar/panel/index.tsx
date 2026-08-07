@@ -1,6 +1,7 @@
 import { useLayoutEffect } from "react";
 import { Box } from "../../../ui";
 import {
+  commandBarAccentText,
   commandBarBg,
   commandBarHeadingText,
   commandBarHoverBg,
@@ -70,6 +71,7 @@ export function CommandBarPanel({
   workflowScrollRef,
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
+  const paletteAccentText = commandBarAccentText(colors);
   const paletteBg = commandBarBg(colors);
   const paletteHeadingText = commandBarHeadingText(colors);
   const paletteHoverBg = commandBarHoverBg(colors);
@@ -172,6 +174,7 @@ export function CommandBarPanel({
           onWorkflowSubmit={onWorkflowSubmit}
           palette={{
             inputBg,
+            paletteAccentText,
             paletteBg,
             paletteHeadingText,
             paletteHoverBg,

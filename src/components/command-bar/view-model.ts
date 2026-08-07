@@ -28,6 +28,8 @@ export interface CommandBarItemView {
   right?: string;
   checked?: boolean;
   current?: boolean;
+  accent?: boolean;
+  disabled?: boolean;
 }
 
 export interface CommandBarRowPresentation {
@@ -36,6 +38,7 @@ export interface CommandBarRowPresentation {
   trailing: string;
   selected: boolean;
   primaryMuted: boolean;
+  trailingAccent: boolean;
 }
 
 export function resolveCommandBarMode(query: string, commandList?: Command[]): CommandBarModeInfo {
@@ -110,7 +113,7 @@ export function getEmptyState(mode: CommandBarMode, query: string, searchQuery?:
 
 export function getRowPresentation(item: CommandBarItemView, selected: boolean, showTrailing: boolean): CommandBarRowPresentation {
   const glyph = selected ? "\u203a" : " ";
-  const primaryMuted = item.kind === "plugin" && !item.checked;
+  const primaryMuted = (item.kind === "plugin" && !item.checked) || item.disabled === true;
   let trailing = "";
 
   if (showTrailing) {
@@ -125,6 +128,7 @@ export function getRowPresentation(item: CommandBarItemView, selected: boolean, 
     trailing: t(trailing),
     selected,
     primaryMuted,
+    trailingAccent: item.accent === true && trailing.length > 0,
   };
 }
 
@@ -134,6 +138,8 @@ export function truncateText(text: string, width: number): string {
 
 function getCategoryPriority(category: string, sectionOrder: CommandBarSectionOrder = "default"): number {
   const normalized = category.trim().toLowerCase();
+  // The AI answers the question the user actually typed, so it leads the list.
+  if (normalized === "ask ai") return -100;
   if (normalized === "exact match") return -50;
   if (sectionOrder === "app-first") {
     if (normalized === "saved") return 100;

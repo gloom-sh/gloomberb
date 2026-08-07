@@ -75,6 +75,10 @@ export interface AuthUser {
   emailVerified: boolean;
   image: string | null;
   plan?: "free" | "pro";
+  /** ISO timestamp when the free Pro trial ends; null once it has lapsed or was never started. */
+  trialEndsAt?: string | null;
+  /** Plan the server actually entitles right now, i.e. `plan` upgraded to "pro" while a trial is running. */
+  effectivePlan?: "free" | "pro";
   company?: string | null;
   title?: string | null;
   bio?: string | null;
@@ -101,6 +105,10 @@ export interface AccountProfile {
   email: string;
   emailVerified: boolean;
   plan: "free" | "pro";
+  /** ISO timestamp when the free Pro trial ends; null once it has lapsed or was never started. */
+  trialEndsAt?: string | null;
+  /** Plan the server actually entitles right now, i.e. `plan` upgraded to "pro" while a trial is running. */
+  effectivePlan?: "free" | "pro";
   username: string | null;
   name: string;
   company: string | null;
@@ -157,6 +165,47 @@ export interface BuildoutAccountResponse {
 export interface BuildoutTokenResponse {
   token: string;
   expiresAt: string;
+}
+
+export interface CloudPricingTier {
+  /** Charged amount, in integer cents. */
+  amount: number;
+  /** List price the charged amount is discounted from, in integer cents. */
+  anchorAmount: number;
+}
+
+/** Public `/pricing` payload; no session required. */
+export interface CloudPricing {
+  currency: "usd";
+  trialDays: number;
+  /** When false the anchor amount is the price, so it is shown without a strikethrough. */
+  founding: boolean;
+  monthly: CloudPricingTier;
+  yearly: CloudPricingTier;
+}
+
+/** One command-bar prefix described for `/assist/command`. */
+export interface AssistCommandDescriptor {
+  prefix: string;
+  name: string;
+  description?: string;
+  arg?: {
+    placeholder?: string;
+    kind: "text" | "ticker" | "ticker-list";
+  };
+}
+
+/** A command-bar line the assistant believes answers the query. */
+export interface AssistCommandCandidate {
+  /** Exact command-bar text to run, e.g. "G NVDA AMD". */
+  input: string;
+  title: string;
+  prefix: string;
+  confidence: number;
+}
+
+export interface AssistCommandResponse {
+  candidates: AssistCommandCandidate[];
 }
 
 export type AccountProfileUpdate = Partial<{

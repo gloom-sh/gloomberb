@@ -13,7 +13,10 @@ import type {
   CloudTickerTweetsParams,
   CloudTweetSearchParams,
 } from "./paths";
+import { withDeadline } from "../utils/async-deadline";
 import type {
+  AssistCommandDescriptor,
+  AssistCommandResponse,
   ChatMessage,
   ChatChannel,
   ChatChannelState,
@@ -24,6 +27,7 @@ import type {
   AccountProfile,
   BuildoutAccountResponse,
   BuildoutTokenResponse,
+  CloudPricing,
   AccountProfileUpdate,
   CloudQuotePayload,
   CloudOptionsChainPayload,
@@ -54,8 +58,14 @@ import type { SyncSettings, SyncSnapshot } from "../sync/types";
 export type * from "./types";
 export { setCloudApiFetchTransport } from "./request";
 
+/** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
+const ASSIST_QUERY_MAX_LENGTH = 200;
+const ASSIST_COMMAND_LIMIT = 150;
+const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
+
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
+  private readonly currentUserListeners = new Set<() => void>();
   private readonly transport = new CloudApiRequestTransport();
   private readonly auth: CloudAuthApi;
   private readonly socket: CloudApiSocket;
@@ -110,6 +120,7 @@ class GloomApiClient {
     this.transport.setSessionToken(token);
     if (!token) {
       this.currentUser = null;
+      this.emitCurrentUserChange();
     }
     this.socket.syncAuthState({ reconnect: changed });
   }
@@ -124,6 +135,14 @@ class GloomApiClient {
     return this.currentUser;
   }
 
+  /** Notifies when the signed-in user changes, including plan and trial entitlement. */
+  subscribeCurrentUser(listener: () => void): () => void {
+    this.currentUserListeners.add(listener);
+    return () => {
+      this.currentUserListeners.delete(listener);
+    };
+  }
+
   restoreCachedUser(user: PersistedAuthUser | null): void {
     this.auth.restoreCachedUser(user);
   }
@@ -136,6 +155,11 @@ class GloomApiClient {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.currentUser = user;
     this.socket.syncAuthState({ reconnect: changed });
+    this.emitCurrentUserChange();
+  }
+
+  private emitCurrentUserChange(): void {
+    for (const listener of this.currentUserListeners) listener();
   }
 
   private updateCurrentUser(updater: (user: AuthUser) => AuthUser): void {
@@ -149,6 +173,8 @@ class GloomApiClient {
       user.id,
       user.emailVerified === true ? "verified" : "unverified",
       user.plan,
+      // A trial starting or lapsing changes the stream entitlement without touching `plan`.
+      user.effectivePlan,
     ].join(":");
   }
 
@@ -193,6 +219,10 @@ class GloomApiClient {
 
   async getAccountProfile(): Promise<AccountProfile> {
     return this.auth.getAccountProfile();
+  }
+
+  async getCloudPricing(): Promise<CloudPricing> {
+    return this.auth.getCloudPricing();
   }
 
   async getBuildoutAccount(): Promise<BuildoutAccountResponse> {
@@ -253,6 +283,46 @@ class GloomApiClient {
 
   async deleteAccount(): Promise<void> {
     return this.auth.deleteAccount();
+  }
+
+  /**
+   * Resolves a natural-language command-bar query into runnable command-bar
+   * inputs. Requires a verified session; free accounts are included. The
+   * request is bounded client-side so a stalled upstream cannot hold the
+   * command bar in its loading state.
+   */
+  async assistCommand(
+    query: string,
+    commands: AssistCommandDescriptor[],
+    options?: { signal?: AbortSignal },
+  ): Promise<AssistCommandResponse> {
+    const controller = new AbortController();
+    const callerSignal = options?.signal;
+    const abortFromCaller = () => controller.abort(callerSignal?.reason);
+    if (callerSignal?.aborted) {
+      abortFromCaller();
+    } else {
+      callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+    }
+
+    try {
+      const request = this.request<AssistCommandResponse>("/assist/command", {
+        method: "POST",
+        body: JSON.stringify({
+          query: query.trim().slice(0, ASSIST_QUERY_MAX_LENGTH),
+          commands: commands.slice(0, ASSIST_COMMAND_LIMIT),
+        }),
+        signal: controller.signal,
+      });
+      return await withDeadline(
+        request,
+        ASSIST_REQUEST_TIMEOUT_MS,
+        `Assist request timed out after ${ASSIST_REQUEST_TIMEOUT_MS}ms`,
+        (error) => controller.abort(error),
+      );
+    } finally {
+      callerSignal?.removeEventListener("abort", abortFromCaller);
+    }
   }
 
   async getChannels(): Promise<ChatChannel[]> {

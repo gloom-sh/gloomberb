@@ -362,6 +362,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 description="Open security details for a specific ticker."
               />
               <ShortcutRow
+                badges={["UPGRADE"]}
+                description="Go Pro for real-time data at gloom.sh/cloud, free for 7 days."
+              />
+              <ShortcutRow
                 badges={["Up/Down", "Ctrl+P/N"]}
                 description="Move through command bar results."
               />

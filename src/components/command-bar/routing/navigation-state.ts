@@ -24,6 +24,8 @@ interface UseCommandBarNavigationStateResult {
   currentRouteRef: RefObject<CommandBarRoute | null>;
   dismissCommandBar: () => void;
   lastMainBrowseRef: RefObject<CommandBarMainSnapshot>;
+  /** Records that the user moved the root selection themselves. */
+  markRootSelectionNavigated: () => void;
   popRoute: () => void;
   pushRoute: (route: CommandBarRoute) => void;
   rootHoveredIdx: number | null;
@@ -31,6 +33,8 @@ interface UseCommandBarNavigationStateResult {
   rootModeKindRef: RefObject<ReturnType<typeof resolveCommandBarMode>["kind"]>;
   rootQuery: string;
   rootQueryRef: RefObject<string>;
+  /** True once the user picked a row; cleared when the query context changes. */
+  rootSelectionNavigatedRef: RefObject<boolean>;
   rootSelectedIdx: number;
   routeStack: CommandBarRoute[];
   setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
@@ -56,6 +60,15 @@ export function useCommandBarNavigationState({
 
   const [rootSelectedIdx, setRootSelectedIdx] = useState(0);
   const [rootHoveredIdx, setRootHoveredIdx] = useState<number | null>(null);
+  /**
+   * Whether the highlighted row is the user's own choice. Rows that arrive
+   * later — an AI answer, provider results — may only shift a chosen row, never
+   * replace it, while an untouched selection keeps following the top match.
+   */
+  const rootSelectionNavigatedRef = useRef(false);
+  const markRootSelectionNavigated = useCallback(() => {
+    rootSelectionNavigatedRef.current = true;
+  }, []);
   const [routeStack, setRouteStack] = useState<CommandBarRoute[]>([]);
   const lastMainBrowseRef = useRef<CommandBarMainSnapshot>({ query: "", selectedIdx: 0 });
 
@@ -70,6 +83,7 @@ export function useCommandBarNavigationState({
     setRootQueryValue(initialQuery);
     setRootSelectedIdx(0);
     setRootHoveredIdx(null);
+    rootSelectionNavigatedRef.current = false;
   }, [initialQuery]);
 
   const closeAll = useCallback((options?: CloseCommandBarOptions) => {
@@ -80,6 +94,7 @@ export function useCommandBarNavigationState({
     setRouteStack([]);
     setRootSelectedIdx(0);
     setRootHoveredIdx(null);
+    rootSelectionNavigatedRef.current = false;
   }, [dispatch, restoreThemePreview]);
 
   const setRootQuery = useCallback((query: string) => {
@@ -138,6 +153,7 @@ export function useCommandBarNavigationState({
     currentRouteRef,
     dismissCommandBar,
     lastMainBrowseRef,
+    markRootSelectionNavigated,
     popRoute,
     pushRoute,
     rootHoveredIdx,
@@ -145,6 +161,7 @@ export function useCommandBarNavigationState({
     rootModeKindRef,
     rootQuery,
     rootQueryRef,
+    rootSelectionNavigatedRef,
     rootSelectedIdx,
     routeStack,
     setRootHoveredIdx,

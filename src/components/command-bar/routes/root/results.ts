@@ -6,6 +6,11 @@ import type {
 } from "../../../../types/plugin";
 import type { TickerRecord } from "../../../../types/ticker";
 import { fuzzyFilter } from "../../../../utils/fuzzy-search";
+import {
+  buildAssistResultItems,
+  shouldShowAssistRow,
+  type AssistRowHandlers,
+} from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import { isCollectionCommand } from "../../helpers";
 import type { ResultItem } from "../../list/model";
@@ -38,6 +43,8 @@ export interface RootResultModelOptions {
   activeCollectionId: string | null;
   activeTickerData: TickerRecord | null | undefined;
   activeTickerSymbol: string | null;
+  /** Natural-language fallback rows; omit to build the list without an AI section. */
+  assist?: AssistRowHandlers | null;
   availableCommands: Command[];
   buildLayoutItems: (query: string, options?: { confirmDangerousActions?: boolean }) => ResultItem[];
   buildPaneSettingItems: (paneId: string | null, query: string) => ResultItem[];
@@ -66,11 +73,22 @@ export interface RootResultModelOptions {
   tickerActionItems: () => ResultItem[];
 }
 
+/** An in-flight or answered request keeps its rows even if the heuristic lapses. */
+function isAssistSectionVisible(assist: AssistRowHandlers, query: string, resultCount: number): boolean {
+  if (!query.trim()) return false;
+  if (assist.state.status !== "idle" && assist.state.query === query.trim()) return true;
+  // Signed out there is nothing to wait for, so the older heuristic still picks
+  // the queries worth offering a sign-up row for.
+  if (!assist.enabled) return shouldShowAssistRow({ query, resultCount });
+  return assist.auto;
+}
+
 export function buildRootResultModel(options: RootResultModelOptions): RootResultModel {
   const {
     activeCollectionId,
     activeTickerData,
     activeTickerSymbol,
+    assist,
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
@@ -205,8 +223,16 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       ...tickerActionItems(),
       ...pluginCommandItems(),
     ];
-    items.push(...fuzzyFilter(allItems, rootQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`));
+    const matchedItems = fuzzyFilter(allItems, rootQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`);
+    items.push(...matchedItems);
   }
 
-  return { items, initialIdx };
+  // Built from the local matches, then moved above them: the AI answers the
+  // question the user typed, so it leads the list. Rows landing here renumber
+  // everything below, which the root selection effect absorbs by identity.
+  const assistItems = assist && isAssistSectionVisible(assist, rootQuery, items.length)
+    ? buildAssistResultItems({ ...assist, query: rootQuery })
+    : [];
+
+  return { items: [...assistItems, ...items], initialIdx };
 }

@@ -6,6 +6,7 @@ import type { CommandBarListScrollEvent } from "./view";
 interface CommandBarListNavigationOptions {
   activateListSelectionRef: RefObject<(options?: { secondary?: boolean; item?: ResultItem }) => void>;
   currentRouteRef: RefObject<CommandBarRoute | null>;
+  markRootSelectionNavigated: () => void;
   setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
   setRootSelectedIdx: Dispatch<SetStateAction<number>>;
   setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
@@ -19,6 +20,7 @@ function clampListIndex(index: number, length: number): number {
 export function useCommandBarListNavigation({
   activateListSelectionRef,
   currentRouteRef,
+  markRootSelectionNavigated,
   setRootHoveredIdx,
   setRootSelectedIdx,
   setRouteStack,
@@ -35,6 +37,7 @@ export function useCommandBarListNavigation({
     visibleListStateRef.current = nextListState;
 
     if (!currentRouteRef.current) {
+      markRootSelectionNavigated();
       setRootSelectedIdx((current) => (current === nextIndex ? current : nextIndex));
       setRootHoveredIdx((current) => (current === null ? current : null));
       return;
@@ -52,6 +55,7 @@ export function useCommandBarListNavigation({
     });
   }, [
     currentRouteRef,
+    markRootSelectionNavigated,
     setRootHoveredIdx,
     setRootSelectedIdx,
     setRouteStack,
@@ -94,6 +98,7 @@ export function useCommandBarListNavigation({
     event.stopPropagation?.();
     event.preventDefault?.();
     if (!currentRouteRef.current) {
+      markRootSelectionNavigated();
       setRootSelectedIdx((current) => (current === globalIdx ? current : globalIdx));
     } else {
       setRouteStack((current) => {
@@ -112,6 +117,7 @@ export function useCommandBarListNavigation({
   }, [
     activateListSelectionRef,
     currentRouteRef,
+    markRootSelectionNavigated,
     setRootSelectedIdx,
     setRouteStack,
   ]);

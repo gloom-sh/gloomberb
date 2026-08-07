@@ -1,10 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import type { PaneFooterSegment } from "../../../../../components";
-import { useShortcut } from "../../../../../react/input";
-import { useRendererHost } from "../../../../../ui";
-import { apiClient } from "../../../../../api-client";
+import { t, tf } from "../../../../../i18n";
+import { useAppLanguage } from "../../../../../i18n/react";
+import { useCloudAccessFooter } from "../../../shared/cloud-upgrade";
+import { CLOUD_NEWS_DELAY_HOURS } from "../../../shared/plan-access";
 import { usePaneStatusLinkFooter } from "../../../shared/pane-footer";
-import { CLOUD_UPGRADE_URL } from "../../../shared/cloud-upgrade";
 
 interface NewsFooterArticle {
   source?: string | null;
@@ -20,11 +20,6 @@ interface UseNewsArticleFooterOptions {
   error?: string | null;
 }
 
-function hasRealtimeNewsAccess(): boolean {
-  const user = apiClient.getCurrentUser();
-  return user?.emailVerified === true && user.plan === "pro";
-}
-
 export function useNewsArticleFooter({
   registrationId,
   focused,
@@ -33,35 +28,20 @@ export function useNewsArticleFooter({
   loading = false,
   error,
 }: UseNewsArticleFooterOptions) {
-  const rendererHost = useRendererHost();
-  const hasRealtimeAccess = hasRealtimeNewsAccess();
-  const showAccessFooter = !article;
-  const openUpgrade = useCallback(() => {
-    void rendererHost.openExternal(CLOUD_UPGRADE_URL);
-  }, [rendererHost]);
+  const language = useAppLanguage();
+  const { access, segment } = useCloudAccessFooter({
+    delayLabel: tf("{count}h", { count: CLOUD_NEWS_DELAY_HOURS }),
+    focused,
+    segmentId: "news-access",
+    shortcutScope: `${registrationId}:news-upgrade`,
+  });
 
-  useShortcut((event) => {
-    const key = (event.name ?? event.key ?? "").toLowerCase();
-    if (!focused || !showAccessFooter || hasRealtimeAccess || key !== "u") return;
-    event.stopPropagation();
-    event.preventDefault();
-    openUpgrade();
-  }, { scope: `${registrationId}:news-upgrade` });
-
-  const accessInfo = useMemo<PaneFooterSegment[]>(() => (
-    !showAccessFooter
-      ? []
-      : hasRealtimeAccess
-      ? [{
-        id: "news-access",
-        parts: [{ text: "realtime news", tone: "positive" }],
-      }]
-      : [{
-        id: "news-access",
-        onPress: openUpgrade,
-        parts: [{ text: "delayed 12h, upgrade for realtime", tone: "warning" }],
-      }]
-  ), [hasRealtimeAccess, openUpgrade, showAccessFooter]);
+  const accessInfo = useMemo<PaneFooterSegment[]>(() => {
+    if (access.isPayingPro) {
+      return [{ id: "news-access", parts: [{ text: t("real-time news"), tone: "positive" }] }];
+    }
+    return segment ? [segment] : [];
+  }, [access.isPayingPro, language, segment]);
   const footerInfo = useMemo(() => [...accessInfo, ...(info ?? [])], [accessInfo, info]);
 
   usePaneStatusLinkFooter({

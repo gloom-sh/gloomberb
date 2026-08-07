@@ -285,15 +285,15 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `VF` | Toggle quote value flashing |
 | `TH <theme>` | Change color theme |
 | `CR` | Cycle chart renderer |
-| `LANG <locale>` | Change interface language (`auto`, `en`, `zh-CN`, `zh-TW`, `ja`, or `ko`) |
+| `LANG <locale>` | Change interface language (`auto`, `en`, `es`, `zh-CN`, `zh-TW`, `ja`, or `ko`) |
 | `PL <plugin>` | Manage plugins |
 
 ## Localized interface
 
-Gloomberb includes English, Simplified Chinese, Traditional Chinese, Japanese, and Korean UI support. English remains the default fallback language.
+Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Japanese, and Korean UI support. English remains the default fallback language.
 
 - **Automatic detection:** supported `LANG` / `LC_ALL` and desktop system locales select the matching interface automatically.
-- **Command switching:** enter `LANG` in the command bar (Ctrl+P) to cycle languages, or use `LANG auto`, `LANG en`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, or `LANG ko`. The choice is persisted in `config.json`.
+- **Command switching:** enter `LANG` in the command bar (Ctrl+P) to cycle languages, or use `LANG auto`, `LANG en`, `LANG es`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, or `LANG ko`. The choice is persisted in `config.json`.
 - **One-run override:** `GLOOMBERB_LANG=ja gloomberb` (or another supported locale) takes highest priority in environments that expose process locale variables.
 
 Implementation notes:

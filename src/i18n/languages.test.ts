@@ -15,6 +15,9 @@ describe("language preferences", () => {
   });
 
   test("parses locale names and native language aliases", () => {
+    expect(parseLanguagePreference("Spanish")).toBe("es");
+    expect(parseLanguagePreference("español")).toBe("es");
+    expect(parseLanguagePreference("es-AR")).toBe("es");
     expect(parseLanguagePreference("traditional chinese")).toBe("zh-TW");
     expect(parseLanguagePreference("繁體中文")).toBe("zh-TW");
     expect(parseLanguagePreference("日本語")).toBe("ja");
@@ -24,7 +27,7 @@ describe("language preferences", () => {
 
   test("cycles only for a bare language command", () => {
     expect(resolveLanguageCommandPreference("auto", "")).toBe("en");
-    expect(resolveLanguageCommandPreference("en", "   ")).toBe("zh-CN");
+    expect(resolveLanguageCommandPreference("en", "   ")).toBe("es");
     expect(resolveLanguageCommandPreference("en", "ja")).toBe("ja");
     expect(resolveLanguageCommandPreference("en", "fr")).toBeNull();
   });

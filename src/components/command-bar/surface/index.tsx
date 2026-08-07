@@ -1,10 +1,15 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
+import { usePlanAccess } from "../../../plugins/builtin/shared/plan-access";
+import { buildAssistCommandInventory } from "../assist/inventory";
+import { useCommandBarAssist } from "../assist/runtime";
+import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
+import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useCommandBarThemePreview } from "../theme-preview";
 import { CommandBarPanel } from "../panel";
 import { useCommandBarNavigationState } from "../routing/navigation-state";
@@ -71,6 +76,7 @@ export function CommandBar({
     currentRouteRef,
     dismissCommandBar,
     lastMainBrowseRef,
+    markRootSelectionNavigated,
     popRoute,
     pushRoute,
     rootHoveredIdx,
@@ -78,6 +84,7 @@ export function CommandBar({
     rootModeKindRef,
     rootQuery,
     rootQueryRef,
+    rootSelectionNavigatedRef,
     rootSelectedIdx,
     setRootHoveredIdx,
     setRootQuery,
@@ -104,6 +111,7 @@ export function CommandBar({
     createPluginCommandItem,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
+    getAvailablePaneTemplates,
     getAvailablePluginCommands,
     ensureRouteFieldFocus,
     focusWorkflowField,
@@ -115,6 +123,7 @@ export function CommandBar({
     openInlineConfirm,
     openModeRoute,
     openPaneTemplateWorkflow,
+    openPluginCommandWorkflow,
     openWorkflowFieldPicker,
     paneShortcutItems,
     persistLayoutChange,
@@ -162,6 +171,82 @@ export function CommandBar({
   const getTickerSearchTickers = useCallback(() => stateRef.current.tickers, []);
   const hasPaneSettings = useCallback((paneId: string) => pluginRegistry.hasPaneSettings(paneId), [pluginRegistry]);
 
+  const rootShortcutIntent = useMemo(() => parseRootShortcutIntent({
+    query: rootQuery,
+    commands: availableCommands,
+    pluginCommands: getAvailablePluginCommands(),
+    paneTemplates: getAvailablePaneShortcutTemplates(rootQuery),
+    activeTicker: activeTickerSymbol,
+  }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
+
+  const planAccess = usePlanAccess();
+  const buildAssistInventory = useCallback(() => buildAssistCommandInventory({
+    commands: availableCommands,
+    pluginCommands: getAvailablePluginCommands(),
+    paneTemplates: getAvailablePaneTemplates(undefined, { includePromptableTickerTemplates: true }),
+  }), [availableCommands, getAvailablePaneTemplates, getAvailablePluginCommands]);
+  // Only the root list asks on its own, and only for text the prefix parser
+  // could not claim — otherwise the user is mid-command, not mid-question.
+  const assistAutoAsk = !currentRoute
+    && planAccess.emailVerified
+    && shouldAutoAskAssist({ query: rootQuery, hasShortcutIntent: rootShortcutIntent.kind !== "none" });
+  const { assistActive, assistState, askAssist, resetAssist } = useCommandBarAssist({
+    autoAsk: assistAutoAsk,
+    getInventory: buildAssistInventory,
+    rootQuery,
+  });
+  // Filled in below once the selection runtime exists, so an AI candidate runs
+  // through the very same submit path as text the user typed.
+  const runRootQueryRef = useRef<
+    ((query: string, options?: { fallbackPrefix?: string }) => void) | null
+  >(null);
+  /**
+   * Query whose answer the user is already waiting on, set by activating the
+   * "Thinking…" row. The row leads the list and holds the default selection, so
+   * Enter has to mean something even before the answer is back: it claims the
+   * answer, and the best candidate runs the moment it lands.
+   */
+  const assistPendingRunRef = useRef<string | null>(null);
+  const askAssistNow = useCallback(() => {
+    assistPendingRunRef.current = rootQueryRef.current.trim();
+    askAssist();
+  }, [askAssist, rootQueryRef]);
+  useEffect(() => {
+    const pendingQuery = assistPendingRunRef.current;
+    if (!pendingQuery) return;
+    // Still the very ask that was claimed; nothing to do until it answers.
+    if (assistState.status === "loading" && assistState.query === pendingQuery) return;
+    assistPendingRunRef.current = null;
+    if (assistState.status !== "answered" || assistState.query !== pendingQuery) return;
+    // Typing moved on, so the answer is no longer what the user is looking at.
+    if (rootQueryRef.current.trim() !== pendingQuery) return;
+    const candidate = assistState.candidates[0];
+    if (!candidate) return;
+    runRootQueryRef.current?.(
+      candidate.input,
+      candidate.prefix ? { fallbackPrefix: candidate.prefix } : undefined,
+    );
+  }, [assistState, rootQueryRef]);
+  const startAssistSignUp = useCallback(() => {
+    const signUpCommand = getAvailablePluginCommands().find((command) => command.id === "auth-signup");
+    if (signUpCommand?.wizard?.length) {
+      openPluginCommandWorkflow(signUpCommand);
+      return;
+    }
+    setRootQuery("Sign Up");
+  }, [getAvailablePluginCommands, openPluginCommandWorkflow, setRootQuery]);
+  const assist = useMemo<AssistRowHandlers>(() => ({
+    enabled: planAccess.emailVerified,
+    auto: assistAutoAsk && assistActive,
+    state: assistState,
+    onAsk: askAssistNow,
+    onSignUp: startAssistSignUp,
+    onRunCandidate: (input: string, prefix?: string) => runRootQueryRef.current?.(
+      input,
+      prefix ? { fallbackPrefix: prefix } : undefined,
+    ),
+  }), [askAssistNow, assistActive, assistAutoAsk, assistState, planAccess.emailVerified, startAssistSignUp]);
+
   const {
     activeMatch,
     orderedRootResults,
@@ -176,6 +261,7 @@ export function CommandBar({
     activePortfolio,
     activeTickerData,
     activeTickerSymbol,
+    assist,
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
@@ -188,7 +274,6 @@ export function CommandBar({
     dataProvider,
     executeCollectionCommand,
     getAvailablePaneShortcutTemplates,
-    getAvailablePluginCommands,
     getTickers: getTickerSearchTickers,
     hasPaneSettings,
     localTickerSearchResultItems,
@@ -201,6 +286,8 @@ export function CommandBar({
     readTickerSearchCache,
     rootModeKind: rootModeInfo.kind,
     rootQuery,
+    rootSelectionNavigatedRef,
+    rootShortcutIntent,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     setRootHoveredIdx,
@@ -217,6 +304,7 @@ export function CommandBar({
     acceptRootShortcutTab,
     acceptSelectedShortcutTab,
     activateListSelection,
+    runRootQuery,
     setActiveListQuery,
   } = useCommandBarSelectionRuntime({
     activeTickerSymbol,
@@ -251,6 +339,7 @@ export function CommandBar({
     updateWorkflowValue,
     visibleListStateRef,
   });
+  runRootQueryRef.current = runRootQuery;
 
   const routeListState = useRouteListState({
     activeMatch,
@@ -301,6 +390,7 @@ export function CommandBar({
     focusWorkflowField,
     getWorkflowInputRef,
     getWorkflowFieldStringValue,
+    markRootSelectionNavigated,
     moveWorkflowFocus,
     nativeListScrollRef,
     nativePaneChrome,
@@ -309,6 +399,7 @@ export function CommandBar({
     persistConfig,
     pluginRegistry,
     popRoute,
+    resetAssist,
     rootModeKind: rootModeInfo.kind,
     rootGhostSuffix,
     rootQueryLength: rootQuery.length,

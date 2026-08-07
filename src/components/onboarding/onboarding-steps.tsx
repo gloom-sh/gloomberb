@@ -5,7 +5,9 @@ import { t, tf } from "../../i18n";
 import { themes } from "../../theme/themes";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { ListView, type ListViewItem } from "../ui";
+import type { AccountOutcome } from "./account-step/model";
 export { PortfolioStep, type PortfolioSub } from "./portfolio-step";
+export { AccountStep } from "./account-step";
 
 export interface BrokerSyncSummary {
   portfolioId: string | null;
@@ -167,17 +169,20 @@ export function ReadyStep({
   brokerName,
   portfolioName,
   brokerSyncSummary,
+  accountOutcome,
   isFinishing,
   error,
 }: {
   brokerName: string | null;
   portfolioName: string;
   brokerSyncSummary: BrokerSyncSummary | null;
+  accountOutcome: AccountOutcome | null;
   isFinishing: boolean;
   error: string | null;
 }) {
   const positionsImported = brokerSyncSummary?.positionsImported ?? 0;
   const positionLabel = positionsImported === 1 ? "position" : "positions";
+  const accountEmail = accountOutcome?.email ?? "";
 
   return (
     <Box flexDirection="column" paddingX={2}>
@@ -202,7 +207,31 @@ export function ReadyStep({
         <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713 "}</Text>
         <Text fg={colors.text}>{t("Plugins enabled")}</Text>
       </Box>
-      <Box height={2} />
+      {accountOutcome && (
+        <Box height={1} flexDirection="row">
+          <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"\u2713 "}</Text>
+          <Text fg={colors.text}>
+            {!accountEmail
+              ? t("Signed in to Gloom Cloud")
+              : accountOutcome.mode === "signup"
+                ? tf("Account created for {email}", { email: accountEmail })
+                : tf("Signed in as {email}", { email: accountEmail })}
+          </Text>
+        </Box>
+      )}
+      <Box height={1} />
+      {accountOutcome?.mode === "signup" ? (
+        <Box height={2}>
+          <Text fg={colors.text}>
+            {t("Check your inbox to verify your email. Then start your free 7-day Pro trial anytime \u2014 type UPGRADE.")}
+          </Text>
+        </Box>
+      ) : accountOutcome ? null : (
+        <Box height={1}>
+          <Text fg={colors.textMuted}>{t("Create an account anytime: Ctrl+P \u2192 Sign Up.")}</Text>
+        </Box>
+      )}
+      <Box height={1} />
       {brokerName ? (
         <Box height={1}>
           <Text fg={isFinishing ? colors.text : colors.textDim}>

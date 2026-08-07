@@ -12,6 +12,7 @@
  */
 import { readdir } from "fs/promises";
 import { join } from "path";
+import { es } from "../src/i18n/es";
 import { ja } from "../src/i18n/ja";
 import { ko } from "../src/i18n/ko";
 import { zhCN } from "../src/i18n/zh-cn";
@@ -19,6 +20,7 @@ import { zhTW } from "../src/i18n/zh-tw";
 
 const SOURCE_ROOT = join(process.cwd(), "src");
 const DICTIONARIES = {
+  es,
   "zh-CN": zhCN,
   "zh-TW": zhTW,
   ja,

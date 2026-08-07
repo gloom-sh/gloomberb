@@ -8,7 +8,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, Textarea, TextAttributes, type TextareaRenderable, useRendererHost, useUiHost } from "../../../ui";
 import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
 import { openNativeSelect, type NativeSelectElement } from "../../../components/ui/native-select";
-import { apiClient, type AccountProfile } from "../../../api-client";
+import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { CloudAuthNotice } from "../cloud/auth-actions";
 import {
@@ -26,13 +26,17 @@ import {
   computeCumulativeReturn,
   countPortfolioHoldings,
   emptyToNull,
+  formatCloudMonthlyPrice,
   formatPlan,
+  formatTrialEnd,
+  formatTrialOffer,
   getPortfolioPositionTickers,
   portfolioOptionIds,
   profileToDraft,
   selectedPortfolioLabel,
   type AccountDraft,
   type AccountFieldKey,
+  type PlanPriceDisplay,
 } from "./model";
 import { PasswordChangeDialog } from "./password-dialog";
 import { useAccountManagementFooter } from "./footer";
@@ -47,7 +51,7 @@ import { computeDatedBeta } from "../analytics/metrics";
 import { useCloudSyncStatus } from "../../../sync/react";
 import { cloudSyncController } from "../../../sync/controller";
 import { setSyncedProfileAnalytics } from "../../../sync/profile-analytics";
-import { t } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import {
   consumeRequestedAccountManagementTab,
@@ -55,6 +59,7 @@ import {
   type AccountManagementTab,
 } from "./navigation";
 import { CLOUD_UPGRADE_URL } from "../shared/cloud-upgrade";
+import { resolvePlanAccess } from "../shared/plan-access";
 
 type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | null;
 const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = [
@@ -91,6 +96,7 @@ const PLAN_COMPARISON_ROWS = [
   { capability: "US equities", free: "15m delay", pro: "Real-time", proTone: "positive" },
   { capability: "Options data", free: "15m delay", pro: "Real-time", proTone: "positive" },
   { capability: "News", free: "12h delay", pro: "Real-time wire", proTone: "positive" },
+  { capability: "AI command bar", free: "Included", pro: "Included", proTone: "neutral" },
   { capability: "Cloud sync", free: "Included", pro: "Included", proTone: "neutral" },
   { capability: "X data", free: "No", pro: "Included", proTone: "positive" },
   { capability: "AI Screener", free: "No", pro: "Soon", proTone: "muted" },
@@ -99,10 +105,15 @@ const PLAN_COMPARISON_ROWS = [
 function PlanComparison({
   width,
   activePlan,
+  proNote,
+  price,
   upgradeButton,
 }: {
   width: number;
   activePlan: "free" | "pro";
+  /** Pro-column detail such as the free-trial offer; null once entitled. */
+  proNote: string | null;
+  price: PlanPriceDisplay;
   upgradeButton: ReactNode;
 }) {
   const isDesktop = useUiHost().kind === "desktop-web";
@@ -162,17 +173,34 @@ function PlanComparison({
           >
             {t("Free")}
           </Text>
-          <Box flexDirection="row" alignItems="baseline" gap={1}>
-            <Text
-              fg={colors.borderFocused}
-              attributes={TextAttributes.BOLD}
-              style={{ ...desktopText, fontWeight: 750 }}
-            >
-              {t("Pro")}
-            </Text>
-            <Text fg={colors.textBright} style={desktopText}>
-              {t("$49/mo")}
-            </Text>
+          <Box flexDirection="column">
+            <Box flexDirection="row" alignItems="baseline" gap={1}>
+              <Text
+                fg={colors.borderFocused}
+                attributes={TextAttributes.BOLD}
+                style={{ ...desktopText, fontWeight: 750 }}
+              >
+                {t("Pro")}
+              </Text>
+              {price.anchor ? (
+                <Text
+                  fg={colors.textMuted}
+                  attributes={TextAttributes.STRIKETHROUGH}
+                  style={desktopText}
+                >
+                  {price.anchor}
+                </Text>
+              ) : null}
+              <Text fg={colors.textBright} style={desktopText}>
+                {price.price}
+              </Text>
+              {price.note ? (
+                <Text fg={colors.positive} style={desktopText}>{price.note}</Text>
+              ) : null}
+            </Box>
+            {proNote ? (
+              <Text fg={colors.textMuted} style={desktopText}>{proNote}</Text>
+            ) : null}
           </Box>
         </Box>
         {PLAN_COMPARISON_ROWS.map((row, index) => {
@@ -260,7 +288,7 @@ function PlanComparison({
         </Text>
         <Box width={valueWidth} backgroundColor={proCellBg} paddingX={1}>
           <Text fg={proHeadingFg} attributes={TextAttributes.BOLD}>
-            {`${t("Pro")} ${t("$49/mo")}`}
+            {`${t("Pro")} ${price.price}`}
           </Text>
         </Box>
       </Box>
@@ -275,6 +303,21 @@ function PlanComparison({
           </Box>
         </Box>
       ))}
+      {price.anchor ? (
+        <Box height={1} flexDirection="row" gap={1}>
+          <Text fg={colors.textMuted} attributes={TextAttributes.STRIKETHROUGH}>{price.anchor}</Text>
+          {price.note ? <Text fg={colors.positive}>{price.note}</Text> : null}
+        </Box>
+      ) : null}
+      {proNote ? (
+        <Box height={1} flexDirection="row" gap={1}>
+          <Box width={capabilityWidth} />
+          <Box width={valueWidth} />
+          <Box width={valueWidth} paddingX={1}>
+            <Text fg={colors.textMuted}>{proNote}</Text>
+          </Box>
+        </Box>
+      ) : null}
       <Box height={1} flexDirection="row" gap={1}>
         <Box width={capabilityWidth} />
         <Box width={valueWidth} />
@@ -284,6 +327,22 @@ function PlanComparison({
       </Box>
     </Box>
   );
+}
+
+/**
+ * Reloads the profile whenever the account identity *or* its entitlement changes,
+ * so a completed checkout shows the new plan as soon as the session refreshes.
+ */
+function buildAccountSessionMarker(): string {
+  const snapshot = chatController.getSnapshot();
+  const user = apiClient.getCurrentUser();
+  return [
+    apiClient.getSessionToken() ?? "",
+    snapshot.user?.id ?? "",
+    snapshot.user?.username ?? "",
+    user?.effectivePlan ?? user?.plan ?? "",
+    user?.trialEndsAt ?? "",
+  ].join(":");
 }
 
 export function AccountManagementPane({ focused, width, height }: PaneProps) {
@@ -297,12 +356,10 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const tickers = useAppSelector((state) => state.tickers);
   const cachedFinancials = useAppSelector((state) => state.financials);
   const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
-  const [sessionMarker, setSessionMarker] = useState(() => {
-    const snapshot = chatController.getSnapshot();
-    return `${apiClient.getSessionToken() ?? ""}:${snapshot.user?.id ?? ""}:${snapshot.user?.username ?? ""}`;
-  });
+  const [sessionMarker, setSessionMarker] = useState(() => buildAccountSessionMarker());
   const [hasSession, setHasSession] = useState(() => !!apiClient.getSessionToken());
   const [profile, setProfile] = useState<AccountProfile | null>(null);
+  const [pricing, setPricing] = useState<CloudPricing | null>(null);
   const [draft, setDraft] = useState<AccountDraft>(() => profileToDraft(null));
   const [initialTab] = useState<AccountManagementTab>(
     () => consumeRequestedAccountManagementTab() ?? "profile",
@@ -333,6 +390,14 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const bodyHeight = Math.max(5, height);
   const fieldOrder = ACCOUNT_TAB_FIELD_ORDER[activeTab];
   const accountTabs = ACCOUNT_TAB_DEFS.map((tab) => ({ ...tab, label: t(tab.label) }));
+
+  const planAccess = useMemo(() => resolvePlanAccess(profile), [profile]);
+  const planPrice = useMemo(() => formatCloudMonthlyPrice(pricing), [language, pricing]);
+  const trialOffer = useMemo(() => formatTrialOffer(pricing), [language, pricing]);
+  const planStatusLabel = useMemo(() => {
+    const trialEnd = planAccess.isTrialActive ? formatTrialEnd(planAccess.trialEndsAt) : null;
+    return trialEnd ? tf("Pro trial — ends {date}", { date: trialEnd }) : formatPlan(profile?.plan);
+  }, [language, planAccess.isTrialActive, planAccess.trialEndsAt, profile?.plan]);
 
   const portfolioHoldingCounts = useMemo(() => countPortfolioHoldings(tickers), [tickers]);
   const portfolioChoices = useMemo(
@@ -481,7 +546,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     const unsubscribe = chatController.subscribe((snapshot) => {
       setHasSession(!!apiClient.getSessionToken() || snapshot.hasSavedSession);
-      setSessionMarker(`${apiClient.getSessionToken() ?? ""}:${snapshot.user?.id ?? ""}:${snapshot.user?.username ?? ""}`);
+      setSessionMarker(buildAccountSessionMarker());
     });
     void chatController.refreshSession().catch(() => {});
     return unsubscribe;
@@ -511,6 +576,19 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     void loadProfile();
   }, [loadProfile, sessionMarker]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void apiClient.getCloudPricing()
+      .then((nextPricing) => {
+        if (!cancelled) setPricing(nextPricing);
+      })
+      // Pricing is decoration: the comparison table falls back to list prices.
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!hasSession || !apiClient.getSessionToken()) return;
@@ -1002,18 +1080,23 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
             <>
               <Box flexDirection="row" gap={1}>
                 <Text fg={colors.textDim}>{t("Status")}</Text>
-                <Text fg={profile?.plan === "pro" ? colors.positive : colors.textBright} attributes={TextAttributes.BOLD}>
-                  {formatPlan(profile?.plan)}
+                <Text
+                  fg={planAccess.hasProAccess ? colors.positive : colors.textBright}
+                  attributes={TextAttributes.BOLD}
+                >
+                  {planStatusLabel}
                 </Text>
                 {profile?.email ? <Text fg={colors.textMuted}>{profile.email}</Text> : null}
               </Box>
               <PlanComparison
                 width={contentWidth}
-                activePlan={profile?.plan === "pro" ? "pro" : "free"}
+                activePlan={planAccess.hasProAccess ? "pro" : "free"}
+                proNote={planAccess.hasProAccess ? null : trialOffer}
+                price={planPrice}
                 upgradeButton={(
                   <Button
-                    label={profile?.plan === "pro" ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
-                    variant={profile?.plan === "pro" ? "secondary" : "primary"}
+                    label={planAccess.isPayingPro ? t("Manage Pro") : busy === "billing" ? t("Opening...") : t("Upgrade to Pro")}
+                    variant={planAccess.isPayingPro ? "secondary" : "primary"}
                     width={isDesktop ? 28 : undefined}
                     height={isDesktop ? "28px" : undefined}
                     active={activeField === "upgradeAction"}
