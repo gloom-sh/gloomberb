@@ -5,7 +5,7 @@
 Requires [Bun](https://bun.sh).
 
 ```bash
-git clone https://github.com/vincelwt/gloomberb.git
+git clone https://github.com/gloom-sh/gloomberb.git
 cd gloomberb
 bun install
 bun dev

@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-REPO="vincelwt/gloomberb"
+REPO="gloom-sh/gloomberb"
 INSTALL_DIR="${GLOOMBERB_INSTALL_DIR:-$HOME/.local/bin}"
 APP_DIR="${GLOOMBERB_APP_DIR:-/Applications}"
 

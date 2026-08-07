@@ -9,7 +9,7 @@ describe("normalizeChangelogRelease", () => {
       name: "v0.7.5 - Crash recovery and ticker opens",
       published_at: "2026-05-14T23:27:47Z",
       body: "## Highlights\n\n- Fixed startup recovery.",
-      html_url: "https://github.com/vincelwt/gloomberb/releases/tag/v0.7.5",
+      html_url: "https://github.com/gloom-sh/gloomberb/releases/tag/v0.7.5",
     });
 
     expect(release).toEqual({
@@ -19,7 +19,7 @@ describe("normalizeChangelogRelease", () => {
       title: "Crash recovery and ticker opens",
       publishedAt: "2026-05-14T23:27:47Z",
       body: "## Highlights\n\n- Fixed startup recovery.",
-      url: "https://github.com/vincelwt/gloomberb/releases/tag/v0.7.5",
+      url: "https://github.com/gloom-sh/gloomberb/releases/tag/v0.7.5",
     });
   });
 
@@ -32,7 +32,7 @@ describe("normalizeChangelogRelease", () => {
     expect(release?.id).toBe("v1.0.0");
     expect(release?.title).toBe("v1.0.0");
     expect(release?.body).toBe("No changelog details were published for this release.");
-    expect(release?.url).toBe("https://github.com/vincelwt/gloomberb/releases/tag/v1.0.0");
+    expect(release?.url).toBe("https://github.com/gloom-sh/gloomberb/releases/tag/v1.0.0");
   });
 
   test("drops malformed releases without a tag", () => {

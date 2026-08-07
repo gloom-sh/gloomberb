@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="vincelwt/gloomberb"
+REPO="gloom-sh/gloomberb"
 
 usage() {
   cat <<'EOF'

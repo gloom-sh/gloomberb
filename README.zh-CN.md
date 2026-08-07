@@ -66,7 +66,7 @@ curl -fsSL gloomberb.com/install | bash
 
 安装桌面应用：
 
-- [下载 GloomberbSetup.exe（Windows x64）](https://github.com/vincelwt/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
+- [下载 GloomberbSetup.exe（Windows x64）](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
 
 安装程序会添加应用本体和 `gloomberb` 终端命令。如果只需要终端版本，安装 Bun 后使用该包即可：
 

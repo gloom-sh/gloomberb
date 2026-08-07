@@ -31,7 +31,7 @@ const HELP_TABS = [
 ] as const;
 
 type HelpTabId = typeof HELP_TABS[number]["value"];
-const GLOOMBERB_ISSUES_URL = "https://github.com/vincelwt/gloomberb/issues";
+const GLOOMBERB_ISSUES_URL = "https://github.com/gloom-sh/gloomberb/issues";
 
 function HelpPane({ focused, width, height }: PaneProps) {
   const registry = getSharedRegistry();

@@ -53,8 +53,8 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
   version "${version}"
   sha256 "${sha256}"
 
-  url "https://github.com/vincelwt/gloomberb/releases/download/v#{version}/stable-macos-arm64-Gloomberb.app.zip",
-      verified: "github.com/vincelwt/gloomberb/"
+  url "https://github.com/gloom-sh/gloomberb/releases/download/v#{version}/stable-macos-arm64-Gloomberb.app.zip",
+      verified: "github.com/gloom-sh/gloomberb/"
   name "Gloomberb"
   desc "Open-source finance terminal"
   homepage "https://gloomberb.com"

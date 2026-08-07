@@ -2,7 +2,7 @@ import type { ApplicationMenuItemConfig } from "electrobun/bun";
 import type { DesktopApplicationMenuCommand } from "../../../../types/desktop-menu";
 
 export const ELECTROBUN_APPLICATION_MENU_ACTION = "gloom.application-menu.select";
-const GITHUB_ISSUE_URL = "https://github.com/vincelwt/gloomberb/issues/new/choose";
+const GITHUB_ISSUE_URL = "https://github.com/gloom-sh/gloomberb/issues/new/choose";
 
 export type ElectrobunApplicationMenuCommand =
   | DesktopApplicationMenuCommand

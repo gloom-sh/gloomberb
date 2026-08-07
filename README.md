@@ -64,7 +64,7 @@ This installs `gloomberb` to `~/.local/bin` by default. A Linux desktop package 
 
 Install the desktop app:
 
-- [Download GloomberbSetup.exe for Windows](https://github.com/vincelwt/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
+- [Download GloomberbSetup.exe for Windows](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
 
 The installer supports Windows 11 on x64 and ARM64. On ARM64, the desktop app and its bundled `gloomberb` terminal command use Windows' built-in x64 emulation.
 
