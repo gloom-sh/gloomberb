@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   attachFredSeriesPersistence,
@@ -31,6 +31,13 @@ function makeSeries(value: number): FredSeriesData {
     },
   };
 }
+
+// Plugin activation in other test files attaches a live persistence to this
+// module and never detaches it, so the cache these tests exercise depends on
+// which file ran first. Establish the state instead of inheriting it.
+beforeEach(() => {
+  resetFredSeriesPersistence();
+});
 
 afterEach(() => {
   resetFredSeriesPersistence();
