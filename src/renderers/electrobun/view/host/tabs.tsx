@@ -27,7 +27,10 @@ export function WebTabs({
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
   const showUnderline = variant === "underline" && !compact;
-  const listHeight = showUnderline ? 28 : compact ? WEB_CELL_HEIGHT : "100%";
+  // A tab bar occupies exactly the one row every caller reserves for it. Any
+  // extra pixels here are pixels the pane's children are told they own and the
+  // pane then clips, which is how a chart's time axis ends up behind a footer.
+  const listHeight = showUnderline || compact ? WEB_CELL_HEIGHT : "100%";
   const tabFontSize = compact || showUnderline ? 12 : 13;
   const tabPaddingInline = dense ? 5 : showUnderline ? 10 : 8;
   const tabPaddingBlock = variant === "bare" || variant === "pill" ? 2 : 0;
@@ -83,7 +86,6 @@ export function WebTabs({
         overflowY: "hidden",
         paddingInline: variant === "underline" || dense ? 0 : 4,
         paddingBlock: tabPaddingBlock,
-        marginBottom: showUnderline ? 4 : 0,
         boxSizing: "border-box",
       }}
     >

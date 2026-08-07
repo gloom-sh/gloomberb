@@ -134,6 +134,8 @@ export interface ResolvedSeries {
   latestChangePercent?: number;
   points: TimeSeriesPoint[];
   warning?: string;
+  /** Listed in the legend so it can be restored, but not drawn. */
+  hidden?: boolean;
 }
 
 export interface TimeSeriesFieldDefinition {

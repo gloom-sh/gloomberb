@@ -13,7 +13,7 @@ import {
 import { CompositeChart } from "../../../components/chart/composite";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
-import type { ChartSpec, SeriesStyle } from "../../../time-series/types";
+import type { ChartSpec, ResolvedSeries, SeriesStyle } from "../../../time-series/types";
 import { getSupportedChartResolutionsForViewport } from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { useShortcut } from "../../../react/input";
@@ -188,6 +188,35 @@ function ChartComposerSurface({
   const inlineStyleLabel = inlineStyleTarget ? chartSeriesLabel(inlineStyleTarget) : "";
   const viewport = resolution.viewport;
   const baseSeriesIds = useMemo(() => new Set(spec.series.map((series) => series.id)), [spec.series]);
+  // Hidden series are never loaded, so the resolver has nothing to report for
+  // them. Without a placeholder they vanish from the legend entirely and the
+  // only way back is the series dialog.
+  const legendSeries = useMemo(() => {
+    const resolved = resolution.legendSeries ?? [];
+    const resolvedIds = new Set(resolved.map((entry) => entry.id));
+    const missing = spec.series.filter((entry) => !resolvedIds.has(entry.id));
+    if (missing.length === 0) return resolution.legendSeries;
+    const bySpecOrder = new Map(spec.series.map((entry, index) => [entry.id, index] as const));
+    return [
+      ...resolved,
+      ...missing.map((entry): ResolvedSeries => ({
+        id: entry.id,
+        label: chartSeriesLabel(entry),
+        color: entry.color ?? colors.textDim,
+        unit: "",
+        unitGroup: "unknown",
+        nativeFrequency: "daily",
+        dataShape: "scalar",
+        style: entry.style,
+        transform: entry.transform,
+        axis: entry.axis === "right" ? "right" : "left",
+        panelId: entry.panelId,
+        interpolation: entry.interpolation,
+        hidden: true,
+        points: [],
+      })),
+    ].sort((a, b) => (bySpecOrder.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (bySpecOrder.get(b.id) ?? Number.MAX_SAFE_INTEGER));
+  }, [resolution.legendSeries, spec.series]);
   const plottedSeries = useMemo(
     () => projectVisibleChartSeries(
       spec,
@@ -630,7 +659,7 @@ function ChartComposerSurface({
       <Box flexGrow={1} minHeight={4}>
         <CompositeChart
           series={plottedSeries}
-          legendSeries={resolution.legendSeries}
+          legendSeries={legendSeries}
           timelineSeries={resolution.timelineSeries}
           panels={spec.panels}
           viewport={viewport}

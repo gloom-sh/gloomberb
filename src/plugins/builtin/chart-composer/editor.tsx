@@ -144,7 +144,6 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                 : undefined}
               scrollable={items.length > (isDesktop ? 5 : 7)}
               rowGap={isDesktop ? 0 : undefined}
-              selectOnHover={isDesktop}
               onSelect={setSelectedIndex}
               onActivate={(_, index) => setSelectedIndex(index)}
             />

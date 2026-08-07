@@ -128,6 +128,32 @@ function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "secur
   return publicTickerKey(spec.instrument.symbol, spec.instrument.exchange);
 }
 
+// A series that fails to load keeps its place with no observations. Dropping it
+// made a series the user had added disappear from the legend while it still sat
+// in the series editor, with nothing on screen to explain the difference.
+function unloadableSeries(spec: ChartSeriesSpec, index: number, warning: string): ResolvedSeries {
+  const field = spec.source.kind === "security" ? getTimeSeriesField(spec.source.fieldId) : undefined;
+  const label = spec.source.kind === "economic"
+    ? `FRED ${spec.source.seriesId}`
+    : `${instrumentLabel(spec.source)} ${field?.shortLabel ?? spec.source.fieldId.split(".").at(-1) ?? "Series"}`;
+  return {
+    id: spec.id,
+    label: spec.label?.trim() || label,
+    color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
+    unit: field?.unit ?? "",
+    unitGroup: field?.unitGroup ?? "unknown",
+    nativeFrequency: field?.nativeFrequency ?? "daily",
+    dataShape: field?.dataShape ?? "scalar",
+    style: spec.style,
+    transform: spec.transform,
+    axis: spec.axis === "right" ? "right" : "left",
+    panelId: spec.panelId,
+    interpolation: spec.interpolation,
+    warning,
+    points: [],
+  };
+}
+
 function withQuoteExchange(
   source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
   ...quotes: Array<Quote | undefined>
@@ -898,8 +924,9 @@ export async function resolveChartSpecData(
       }
       return result;
     } catch (error) {
-      errors.push(`${seriesSpec.label ?? seriesSpec.id}: ${error instanceof Error ? error.message : String(error)}`);
-      return null;
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${seriesSpec.label ?? seriesSpec.id}: ${message}`);
+      return unloadableSeries(seriesSpec, index, message);
     }
   }));
 

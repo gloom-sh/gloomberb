@@ -105,7 +105,9 @@ describe("resolveChartSpecData", () => {
     });
 
     expect(genericHistoryCalls).toBe(0);
-    expect(result.series).toEqual([]);
+    // The series keeps its legend slot with no observations so the chart and the
+    // series editor agree on what the user added.
+    expect(result.series.map((entry) => [entry.id, entry.points.length])).toEqual([["price", 0]]);
     expect(result.errors).toEqual([
       "price: Requested 5m price history is unavailable for TEST. Choose Auto or a supported interval.",
     ]);

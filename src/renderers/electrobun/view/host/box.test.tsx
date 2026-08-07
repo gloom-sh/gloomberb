@@ -70,3 +70,28 @@ test("reports a drag as a drag, never as a move, and keeps its modifiers", async
   expect(seen).toEqual(["move", "down", "drag", "up"]);
   expect(modifiers.every((entry) => entry.shift)).toBe(true);
 });
+
+test("a tab bar occupies exactly the one row panes reserve for it", async () => {
+  const { WebTabs } = await import("./tabs");
+  const { WEB_CELL_HEIGHT } = await import("../input-host");
+  const container = testWindow.document.createElement("div");
+  testWindow.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  await act(async () => {
+    root.render(
+      <WebTabs
+        tabs={[{ label: "Overview", value: "overview" }, { label: "Chart", value: "chart" }]}
+        activeValue="chart"
+        onSelect={() => {}}
+        palette={{} as never}
+      />,
+    );
+  });
+  await settle();
+  const list = container.querySelector('[data-gloom-role="tab-list"]') as unknown as HTMLElement;
+  // Panes size their content as `height - 1` for the tab bar. Any extra pixel
+  // here is a pixel the content is told it owns and the pane then clips.
+  expect(list.style.height).toBe(`${WEB_CELL_HEIGHT}px`);
+  expect(list.style.marginBottom === "" || list.style.marginBottom === "0px").toBe(true);
+  await act(async () => root.unmount());
+});

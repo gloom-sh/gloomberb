@@ -1187,18 +1187,20 @@ function CompositeLegend({
         && Number.isFinite(entry.latestChangePercent)
       ? ` ${formatPercentRaw(entry.latestChangePercent)}`
       : "";
-    const fullText = `${entry.label} ${legendValue(
-      entry,
-      cursorValue?.value ?? null,
-      formatValue,
-    )}${changeText}`;
+    const fullText = entry.points.length === 0
+      ? `${entry.label}${entry.hidden ? "" : " no data"}`
+      : `${entry.label} ${legendValue(
+        entry,
+        cursorValue?.value ?? null,
+        formatValue,
+      )}${changeText}`;
     const details = formatCompositePointDetails(cursorValue?.point);
     const tooltip = details ? `${fullText} · ${details}` : fullText;
     const textWidth = Math.max(1, Math.min(30, [...fullText].length));
     return {
       entry,
       text: truncateWithEllipsis(fullText, textWidth),
-      width: textWidth + 2 + (toggleable ? 5 : 0),
+      width: textWidth + 2,
       toggleable,
       tooltip,
     };
@@ -1334,12 +1336,9 @@ function CompositeLegend({
                 ) : (
                   <Text fg={entryVisible ? entry.color : themeColors.textMuted}>● </Text>
                 )}
+                {/* The filled/hollow marker already says whether a series is
+                    shown; the word only repeated it in every legend slot. */}
                 <Text fg={entryVisible ? themeColors.text : themeColors.textDim}>{text}</Text>
-                {toggleable ? (
-                  <Text fg={themeColors.textMuted}>
-                    {entryVisible ? " Hide" : " Show"}
-                  </Text>
-                ) : null}
               </Box>
               );
             })}
@@ -1441,8 +1440,11 @@ export function CompositeChart({
       ? supplied
       : visibleSeries;
   }, [timelineSeries, visibleSeries]);
+  // A series with no observation in this window stays listed. Dropping it made
+  // the legend disagree with the series editor and looked like the chart had
+  // silently thrown the series away.
   const visibleLegendSeries = useMemo(
-    () => (legendSeries ?? visibleSeries).filter((entry) => entry.points.length > 0),
+    () => legendSeries ?? visibleSeries,
     [legendSeries, visibleSeries],
   );
   const visibleSeriesIds = useMemo(

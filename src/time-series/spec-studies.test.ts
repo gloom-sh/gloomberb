@@ -168,6 +168,10 @@ describe("chart spec normalization and validation", () => {
     expect(result.valid).toBe(false);
     expect(result.errors.map(({ code }) => code)).toContain("qoq-annual");
     expect(result.errors.map(({ code }) => code)).toContain("multiple-ohlc");
+    // The blocking series is usually hidden or drawn as a line for lack of OHLC
+    // data, so the message has to name it or it reads as a phantom conflict.
+    expect(result.errors.find(({ code }) => code === "multiple-ohlc")?.message)
+      .toBe("A already uses a candle or OHLC style on main. Give it another style first.");
     expect(result.errors.map(({ code }) => code)).toContain("missing-input");
   });
 

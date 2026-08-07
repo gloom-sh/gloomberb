@@ -347,7 +347,7 @@ describe("CompositeChart", () => {
     expect(largestGap).toBeLessThan(10);
   });
 
-  test("shows an explicit legend toggle action on hover", async () => {
+  test("toggles a series from its legend entry", async () => {
     const toggled: string[] = [];
     testSetup = await testRender(
       <CompositeChart
@@ -366,16 +366,8 @@ describe("CompositeChart", () => {
     await act(async () => {
       await testSetup!.renderOnce();
     });
-    const firstLegendLine = testSetup.captureCharFrame().split("\n")[0]!;
-    const priceColumn = firstLegendLine.indexOf("ACME Price");
+    const priceColumn = testSetup.captureCharFrame().split("\n")[0]!.indexOf("ACME Price");
     expect(priceColumn).toBeGreaterThan(0);
-
-    await act(async () => {
-      await testSetup!.mockMouse.moveTo(2, 5);
-      await testSetup!.mockMouse.moveTo(priceColumn, 0);
-      await testSetup!.renderOnce();
-    });
-    expect(testSetup.captureCharFrame().split("\n")[0]).toContain("Hide");
 
     await act(async () => {
       await testSetup!.mockMouse.click(priceColumn, 0);
