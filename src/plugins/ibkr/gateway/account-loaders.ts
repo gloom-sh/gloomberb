@@ -135,7 +135,7 @@ export async function loadIbkrPositions({
         ticker: position.contract.localSymbol || position.contract.symbol,
         exchange: position.contract.primaryExch || position.contract.exchange || "",
         shares: Math.abs(position.pos),
-        avgCost: normalizeIbkrPriceValue(portfolioSnapshot?.avgCost ?? position.avgCost, priceDivisor),
+        avgCost: portfolioSnapshot?.avgCost ?? position.avgCost,
         currency: position.contract.currency || "USD",
         accountId,
         name: position.contract.description || position.contract.localSymbol || position.contract.symbol,
