@@ -37,3 +37,6 @@ jobs:
 
       - name: Build core binary
         run: bun run build
+
+      - name: Test global upgrade from 0.5.0
+        run: bun run test:global-upgrade

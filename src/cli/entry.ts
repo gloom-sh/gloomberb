@@ -2,7 +2,12 @@ import { dispatchCli } from "./index";
 import { fail, inferCliErrorOptions, printCliError } from "./errors";
 import { loadExternalPlugins } from "../plugins/loader";
 import type { CliLaunchRequest } from "../types/plugin";
-import { OPEN_TUI_NATIVE_SMOKE_COMMAND, smokeOpenTuiNative } from "./native-smoke";
+import {
+  OPEN_TUI_NATIVE_SMOKE_COMMAND,
+  OPEN_TUI_RUNTIME_SMOKE_COMMAND,
+  smokeOpenTuiNative,
+  smokeOpenTuiRuntime,
+} from "./native-smoke";
 
 async function launchOpenTuiApp(options: {
   externalPlugins: Awaited<ReturnType<typeof loadExternalPlugins>>;
@@ -23,6 +28,11 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
 
   if (command === OPEN_TUI_NATIVE_SMOKE_COMMAND) {
     await smokeOpenTuiNative();
+    process.exit(0);
+  }
+
+  if (command === OPEN_TUI_RUNTIME_SMOKE_COMMAND) {
+    await smokeOpenTuiRuntime();
     process.exit(0);
   }
 

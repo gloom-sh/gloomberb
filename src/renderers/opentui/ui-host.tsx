@@ -1,6 +1,5 @@
 import { RGBA, StyledText as OpenTuiStyledText, SyntaxStyle, TextAttributes as OpenTuiTextAttributes } from "@opentui/core";
-import { createElement, forwardRef, type ReactNode } from "react";
-import "opentui-spinner/react";
+import { createElement, forwardRef, useEffect, useState, type ReactNode } from "react";
 import { TextAttributes, type UiHost, type TextProps } from "../../ui/host";
 import { renderAsciiText } from "../../ui/ascii-font";
 import { OpenTuiImageSurface } from "./image/surface";
@@ -60,8 +59,25 @@ const OpenTuiBox = createOpenTuiPrimitive("box");
 const OpenTuiScrollBox = createOpenTuiPrimitive("scrollbox");
 const OpenTuiInput = createOpenTuiPrimitive("input");
 const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
-const OpenTuiSpinnerMark = createOpenTuiPrimitive("spinner");
 const OpenTuiMediaSurface = createOpenTuiPrimitive("box");
+
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+const OpenTuiSpinnerMark = forwardRef<unknown, OpenTuiPrimitiveProps & { name?: string; color?: string }>(
+  function OpenTuiSpinnerMark({ name: _name, color, ...props }, ref) {
+    const [frame, setFrame] = useState(0);
+    useEffect(() => {
+      const timer = setInterval(() => setFrame((current) => (current + 1) % SPINNER_FRAMES.length), 80);
+      return () => clearInterval(timer);
+    }, []);
+    return createElement("text" as any, {
+      ...props,
+      ref,
+      fg: color,
+      content: SPINNER_FRAMES[frame],
+    });
+  },
+);
 
 const OpenTuiText = forwardRef<unknown, TextProps>(function OpenTuiText({ children, ...props }, ref) {
   const textProps = stripTextProps(props);

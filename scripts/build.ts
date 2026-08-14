@@ -2,7 +2,10 @@ import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, 
 import { tmpdir } from "os";
 import { join } from "path";
 import { gzipSync } from "zlib";
-import { OPEN_TUI_NATIVE_SMOKE_COMMAND } from "../src/cli/native-smoke";
+import {
+  OPEN_TUI_NATIVE_SMOKE_COMMAND,
+  OPEN_TUI_RUNTIME_SMOKE_COMMAND,
+} from "../src/cli/native-smoke";
 
 const rootDir = join(import.meta.dir, "..");
 
@@ -95,6 +98,10 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
     {
       args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
       failureMessage: `Packaged binary failed to load OpenTUI native package: ${outfile}`,
+    },
+    {
+      args: [OPEN_TUI_RUNTIME_SMOKE_COMMAND],
+      failureMessage: `Packaged binary failed to load the OpenTUI runtime graph: ${outfile}`,
     },
     {
       args: ["help"],

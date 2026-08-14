@@ -1,5 +1,4 @@
 import { useMemo, type ReactNode } from "react";
-import { DialogProvider } from "@opentui-ui/dialog/react";
 import { testRender as openTuiTestRender } from "@opentui/react/test-utils";
 import { createRoot as openTuiCreateRoot, useRenderer } from "@opentui/react";
 import { UiHostProvider, type NativeRendererHost, type RendererHost } from "../../ui";
@@ -12,7 +11,7 @@ import { openTuiToastHost } from "./toast-host";
 
 export function TestDialogProvider({ children }: { children: ReactNode }) {
   return (
-    <DialogProvider
+    <OpenTuiDialogHostProvider
       dialogOptions={{
         style: {
           backgroundColor: colors.bg,
@@ -22,7 +21,7 @@ export function TestDialogProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-    </DialogProvider>
+    </OpenTuiDialogHostProvider>
   );
 }
 
@@ -55,9 +54,13 @@ function OpenTuiTestProviders({ children }: { children: ReactNode }) {
       <OpenTuiInputHostProvider>
         <ToastHostProvider host={openTuiToastHost}>
           <OpenTuiDialogHostProvider
-            backgroundColor={colors.bg}
-            containerBorderColor={colors.border}
-            focusedBorderColor={colors.borderFocused}
+            dialogOptions={{
+              style: {
+                backgroundColor: colors.bg,
+                borderColor: colors.borderFocused,
+                borderStyle: "single",
+              },
+            }}
           >
             {children}
           </OpenTuiDialogHostProvider>
