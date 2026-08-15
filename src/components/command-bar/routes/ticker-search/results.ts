@@ -1,7 +1,6 @@
 import type { TickerRecord } from "../../../../types/ticker";
 import {
   createLocalTickerSearchCandidates,
-  rankTickerSearchItems,
   type TickerSearchCandidate,
 } from "../../../../tickers/search";
 import type { ResultItem } from "../../list/model";
@@ -33,7 +32,7 @@ function isExactTickerResultMatch(item: ResultItem, query: string): boolean {
 
 export function mergeTickerSearchResultItems(
   query: string,
-  preferredItems: ResultItem[],
+  rankedItems: ResultItem[],
   fallbackItems: ResultItem[],
 ): ResultItem[] {
   const merged: ResultItem[] = [];
@@ -45,12 +44,11 @@ export function mergeTickerSearchResultItems(
     seen.add(key);
     merged.push(item);
   };
-  preferredItems.forEach(addItem);
+  rankedItems.forEach(addItem);
   fallbackItems.forEach(addItem);
-  if (merged.length === 0) return fallbackItems;
+  if (merged.length === 0) return rankedItems.length > 0 ? rankedItems : fallbackItems;
 
-  return rankTickerSearchItems(merged, query)
-    .map((item) => isExactTickerResultMatch(item, query) && item.category !== "Saved"
+  return merged.map((item) => isExactTickerResultMatch(item, query) && item.category !== "Saved"
       ? { ...item, category: "Exact Match" }
       : item);
 }

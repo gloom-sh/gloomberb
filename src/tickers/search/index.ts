@@ -1,6 +1,7 @@
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
+import { canonicalExchange } from "../../utils/exchanges";
 import { parseOptionSymbol } from "../../utils/options";
 import {
   buildSymbolAliases,
@@ -36,6 +37,7 @@ const SHARE_CLASS_SUFFIXES = new Set(["A", "B", "C", "D", "K"]);
 
 interface TickerSearchCandidateOptions {
   includeOptionContracts?: boolean;
+  providerRanks?: ReadonlyMap<string, number>;
 }
 
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
@@ -53,14 +55,21 @@ export function createLocalTickerSearchCandidates(
     if (options.includeOptionContracts === false && isOptionTickerRecord(ticker)) return [];
     const symbol = normalizeTickerSymbol(ticker.metadata.ticker);
     const hint = providerHints.get(symbol);
+    const exchangeLabel = ticker.metadata.exchange || hint?.exchange || hint?.primaryExchange;
+    const savedExchange = canonicalExchange(ticker.metadata.exchange);
+    const hintPrimaryExchange = canonicalExchange(hint?.primaryExchange);
+    const primaryExchangeLabel = !savedExchange || !hintPrimaryExchange || savedExchange === hintPrimaryExchange
+      ? hint?.primaryExchange
+      : undefined;
     return [{
       id: `goto:${ticker.metadata.ticker}`,
       label: ticker.metadata.ticker,
       symbol,
       detail: resolveLocalSearchName(ticker, hint),
-      right: hint?.exchange || ticker.metadata.exchange,
-      exchangeLabel: hint?.exchange || ticker.metadata.exchange,
-      primaryExchangeLabel: hint?.primaryExchange,
+      right: exchangeLabel,
+      exchangeLabel,
+      primaryExchangeLabel,
+      providerRank: options.providerRanks?.get(symbol),
       category: "Saved",
       kind: "ticker",
       saved: true,
@@ -77,7 +86,7 @@ function createProviderTickerSearchCandidates(
   localTickers: ReadonlyMap<string, TickerRecord>,
   options: TickerSearchCandidateOptions = {},
 ): TickerSearchCandidate[] {
-  return searchResults.flatMap((result) => {
+  return searchResults.flatMap((result, providerRank) => {
     if (options.includeOptionContracts === false && isOptionSearchResult(result)) return [];
     const symbol = getSearchResultSymbol(result);
     const saved = localTickers.has(symbol);
@@ -89,6 +98,7 @@ function createProviderTickerSearchCandidates(
       right: result.exchange || result.primaryExchange || result.type || undefined,
       exchangeLabel: result.exchange,
       primaryExchangeLabel: result.primaryExchange,
+      providerRank,
       category: saved ? "Saved" : "Other Listings",
       kind: "search",
       saved,
@@ -141,13 +151,16 @@ export function buildTickerSearchCandidates({
   totalLimit?: number;
   includeOptionContracts?: boolean;
 }): TickerSearchCandidate[] {
-  const candidateOptions = { includeOptionContracts };
   const filteredProviderResults = includeOptionContracts
     ? providerResults
     : providerResults.filter((result) => !isOptionSearchResult(result));
-  const providerHints = buildProviderHintMap(filteredProviderResults);
+  const providerHints = buildProviderHints(filteredProviderResults, tickers);
+  const candidateOptions = {
+    includeOptionContracts,
+    providerRanks: providerHints.ranks,
+  };
   const localItems = rankTickerSearchItems(
-    createLocalTickerSearchCandidates(tickers.values(), providerHints, candidateOptions),
+    createLocalTickerSearchCandidates(tickers.values(), providerHints.results, candidateOptions),
     query,
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
@@ -192,16 +205,28 @@ export async function resolveTickerSearch({
   };
 }
 
-function buildProviderHintMap(searchResults: InstrumentSearchResult[]): Map<string, InstrumentSearchResult> {
-  const hints = new Map<string, InstrumentSearchResult>();
-  for (const result of searchResults) {
+function buildProviderHints(
+  searchResults: InstrumentSearchResult[],
+  localTickers: ReadonlyMap<string, TickerRecord>,
+): {
+  results: Map<string, InstrumentSearchResult>;
+  ranks: Map<string, number>;
+} {
+  const results = new Map<string, InstrumentSearchResult>();
+  const ranks = new Map<string, number>();
+  for (const [rank, result] of searchResults.entries()) {
     const symbol = getSearchResultSymbol(result);
-    const existing = hints.get(symbol);
-    if (!existing || getProviderHintRichness(result) > getProviderHintRichness(existing)) {
-      hints.set(symbol, result);
+    if (!ranks.has(symbol)) ranks.set(symbol, rank);
+    const existing = results.get(symbol);
+    const preferredExchange = localTickers.get(symbol)?.metadata.exchange;
+    if (
+      !existing
+      || getProviderHintScore(result, preferredExchange) > getProviderHintScore(existing, preferredExchange)
+    ) {
+      results.set(symbol, result);
     }
   }
-  return hints;
+  return { results, ranks };
 }
 
 async function searchProviderResults(
@@ -284,14 +309,26 @@ function getProviderHintRichness(result: InstrumentSearchResult): number {
   return score;
 }
 
+function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?: string): number {
+  const canonicalPreferredExchange = canonicalExchange(preferredExchange);
+  const matchesPreferredExchange = canonicalPreferredExchange
+    && [
+      result.exchange,
+      result.primaryExchange,
+      result.brokerContract?.exchange,
+      result.brokerContract?.primaryExchange,
+    ].some((exchange) => canonicalExchange(exchange) === canonicalPreferredExchange);
+  return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
+}
+
 function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[]): T[] {
-  const hasSavedListing = items.some((item) =>
-    item.saved && item.instrumentClass !== "fund" && item.instrumentClass !== "derivative"
-  );
-  let assignedPrimaryListing = hasSavedListing;
+  let assignedPrimaryListing = false;
 
   return items.map((item) => {
     if (item.saved || item.kind === "ticker") {
+      if (item.instrumentClass !== "fund" && item.instrumentClass !== "derivative") {
+        assignedPrimaryListing = true;
+      }
       return { ...item, category: "Saved" };
     }
     if (item.instrumentClass === "fund" || item.instrumentClass === "derivative") {

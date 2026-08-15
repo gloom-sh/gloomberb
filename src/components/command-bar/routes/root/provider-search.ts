@@ -98,7 +98,7 @@ export function useRootProviderSearch(options: {
     );
     const localItems = localTickerSearchResultItems(searchQuery, { limit: 6 });
     setRootProviderResults(cachedCandidates
-      ? mergeTickerSearchResultItems(searchQuery, localItems, buildTickerSearchResultItems(cachedCandidates, searchQuery))
+      ? mergeTickerSearchResultItems(searchQuery, buildTickerSearchResultItems(cachedCandidates, searchQuery), localItems)
       : null);
     setRootProviderResultsQuery(cachedCandidates ? searchQuery : null);
 
@@ -125,8 +125,8 @@ export function useRootProviderSearch(options: {
         );
         setRootProviderResults(mergeTickerSearchResultItems(
           searchQuery,
-          localTickerSearchResultItems(searchQuery, { limit: 6 }),
           buildTickerSearchResultItems(combined, searchQuery),
+          localTickerSearchResultItems(searchQuery, { limit: 6 }),
         ));
         setRootProviderResultsQuery(searchQuery);
       } catch {
@@ -178,7 +178,11 @@ export function useRootProviderSearch(options: {
     rootResultItems,
     rootTickerSearchArg,
   ]);
-  const rootSectionOrder: CommandBarSectionOrder = rootPlainTickerSearchArg ? "app-first" : "default";
+  const rootSectionOrder: CommandBarSectionOrder = rootPlainTickerSearchArg
+    ? "app-first"
+    : rootTickerSearchArg
+      ? "ranked"
+      : "default";
   const orderedRootResults = useMemo(
     () => orderListResults(rootResults, { sectionOrder: rootSectionOrder }),
     [rootResults, rootSectionOrder],

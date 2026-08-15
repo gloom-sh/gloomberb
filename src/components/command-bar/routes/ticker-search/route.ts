@@ -80,7 +80,7 @@ export function useTickerSearchRouteResults(options: {
       brokerInstanceId,
     );
     setTickerSearchResults(cachedCandidates
-      ? mergeTickerSearchResultItems(searchQuery, localItems, buildTickerSearchResultItems(cachedCandidates, searchQuery))
+      ? mergeTickerSearchResultItems(searchQuery, buildTickerSearchResultItems(cachedCandidates, searchQuery), localItems)
       : localItems);
     const requestId = ++searchRequestIdRef.current;
     const searchDelay = skipTickerSearchDebounceRef.current ? 0 : 200;
@@ -109,8 +109,8 @@ export function useTickerSearchRouteResults(options: {
         );
         setTickerSearchResults(mergeTickerSearchResultItems(
           searchQuery,
-          localTickerSearchResultItems(searchQuery, { limit: 6 }),
           buildTickerSearchResultItems(combined, searchQuery),
+          localTickerSearchResultItems(searchQuery, { limit: 6 }),
         ));
       } catch {
         if (requestId !== searchRequestIdRef.current) return;

@@ -135,12 +135,13 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
           query: currentRoute.query,
           selectedIdx: currentRoute.selectedIdx,
           hoveredIdx: currentRoute.hoveredIdx,
-          results: orderListResults(results),
+          results: orderListResults(results, { sectionOrder: "ranked" }),
           searching: tickerSearchPending,
           emptyLabel: emptyState.label,
           emptyDetail: emptyState.detail,
           footerLeft: getScreenFooterLeft(currentRoute),
           footerRight: getScreenFooterRight(currentRoute),
+          sectionOrder: "ranked",
         };
       }
       default:

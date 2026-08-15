@@ -926,6 +926,71 @@ describe("CommandBar", () => {
     expect(aaplRow).toBeLessThan(appRow);
   });
 
+  test("keeps the provider-ranked canonical listing ahead of provisional saved order", async () => {
+    testSetup = await testRender(
+      <CommandBarHarness
+        query=""
+        extraTickers={[makeTicker("APC", "Apple Inc.", {
+          exchange: "XETRA",
+          currency: "EUR",
+          assetCategory: "STK",
+        })]}
+        configureState={(state) => ({
+          ...state,
+          commandBarLaunchRequest: {
+            kind: "ticker-search",
+            query: "Apple",
+            sequence: 1,
+          },
+          tickers: new Map([
+            ["APC", state.tickers.get("APC")!],
+            ["AAPL", state.tickers.get("AAPL")!],
+            ["MSFT", state.tickers.get("MSFT")!],
+          ]),
+        })}
+        dataProvider={makeDataProvider(async () => [
+          {
+            providerId: "yahoo",
+            symbol: "AAPL",
+            name: "Apple Inc.",
+            exchange: "NASDAQ",
+            primaryExchange: "NASDAQ",
+            type: "EQUITY",
+            currency: "USD",
+          },
+          {
+            providerId: "broker",
+            symbol: "APC",
+            name: "Apple Inc.",
+            exchange: "XETRA",
+            primaryExchange: "XETRA",
+            type: "EQUITY",
+            currency: "EUR",
+          },
+          {
+            providerId: "yahoo",
+            symbol: "APLY",
+            name: "Apple Yield Shares ETF",
+            exchange: "NYSE Arca",
+            type: "ETF",
+            currency: "USD",
+          },
+        ])}
+      />,
+      { width: 100, height: 24 },
+    );
+
+    await testSetup.renderOnce();
+    const frame = await waitForFrameToContain("APLY");
+    const rows = frame.split("\n");
+    const aaplRow = rows.findIndex((line) => line.trimStart().startsWith("AAPL"));
+    const apcRow = rows.findIndex((line) => line.trimStart().startsWith("APC"));
+
+    expect(aaplRow).toBeGreaterThanOrEqual(0);
+    expect(apcRow).toBeGreaterThanOrEqual(0);
+    expect(aaplRow).toBeLessThan(apcRow);
+  });
+
   test("renders form-layout wizard fields together on one screen", async () => {
     testSetup = await testRender(
       <CommandBarHarness

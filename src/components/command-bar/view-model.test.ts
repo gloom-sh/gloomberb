@@ -67,6 +67,30 @@ describe("command bar view model helpers", () => {
     ]);
   });
 
+  test("orders ticker sections by their best-ranked candidate", () => {
+    const sections = buildSections([
+      { id: "primary", category: "Primary Listing" },
+      { id: "saved-alternate", category: "Saved" },
+      { id: "other", category: "Other Listings" },
+      { id: "saved-fallback", category: "Saved" },
+      { id: "fund", category: "Funds & Derivatives" },
+    ], { sectionOrder: "ranked" });
+
+    expect(sections.map((section) => section.category)).toEqual([
+      "Primary Listing",
+      "Saved",
+      "Other Listings",
+      "Funds & Derivatives",
+    ]);
+    expect(sections.flatMap((section) => section.items.map((item) => item.id))).toEqual([
+      "primary",
+      "saved-alternate",
+      "saved-fallback",
+      "other",
+      "fund",
+    ]);
+  });
+
   test("derives row presentation for toggles and current rows", () => {
     expect(getRowPresentation({
       id: "plugin:news",

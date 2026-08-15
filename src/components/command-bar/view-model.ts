@@ -17,7 +17,7 @@ export interface CommandBarSection<T> {
   items: T[];
 }
 
-export type CommandBarSectionOrder = "default" | "app-first";
+export type CommandBarSectionOrder = "default" | "app-first" | "ranked";
 
 export interface CommandBarItemView {
   id: string;
@@ -138,6 +138,7 @@ export function truncateText(text: string, width: number): string {
 
 function getCategoryPriority(category: string, sectionOrder: CommandBarSectionOrder = "default"): number {
   const normalized = category.trim().toLowerCase();
+  if (sectionOrder === "ranked") return 0;
   // The AI answers the question the user actually typed, so it leads the list.
   if (normalized === "ask ai") return -100;
   if (normalized === "exact match") return -50;

@@ -6,6 +6,23 @@ import type {
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
 const EQUITY_TYPES = new Set(["STK", "STOCK", "EQUITY", "COMMONSTOCK", "COMMON STOCK", "ADR", "ORDINARYSHARES", "ORDINARY SHARES"]);
+const COMPANY_NAME_SUFFIXES = new Set([
+  "AG",
+  "CO",
+  "COMPANY",
+  "CORP",
+  "CORPORATION",
+  "INC",
+  "INCORPORATED",
+  "LTD",
+  "LIMITED",
+  "NV",
+  "PLC",
+  "R",
+  "REGISTERED",
+  "SA",
+  "SE",
+]);
 
 const EXCHANGE_HINT_ALIASES: Record<string, string[]> = {
   NASDAQ: ["NASDAQ", "NMS"],
@@ -46,10 +63,13 @@ const ASSET_HINT_MAP: Record<string, TickerSearchInstrumentClass> = {
   FUTURES: "derivative",
 };
 
+const SAVED_MATCH_BONUS = 900;
+
 interface SearchQueryIntent {
   normalizedQuery: string;
   compactQuery: string;
   companyQuery: string;
+  companyQueryKey: string;
   exchangeHints: string[];
   assetPreference: TickerSearchInstrumentClass | null;
 }
@@ -82,6 +102,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       const normalizedLabel = normalizeSearchText(item.label);
       const normalizedDetail = normalizeSearchText(item.detail);
       const normalizedRight = normalizeSearchText(item.right || "");
+      const companyNameKey = getCompanyNameKey(item.detail);
       const textQueries = [intent.normalizedQuery, intent.companyQuery].filter(Boolean);
       const labelScore = maxScoreForQueries(textQueries, normalizedLabel, {
         exact: 24_000,
@@ -107,16 +128,23 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
         .reduce((best, alias) => Math.max(best, scoreSearchAlias(intent, alias)), 0);
       const textScore = labelScore + detailScore + aliasScore;
       const saved = isSavedSearchItem(item);
-      const priorityScore = scoreAssetPreference(intent, item.instrumentClass)
-        + scoreExchangePreference(intent, item)
-        + scoreListingPriority(item);
+      const explicitIntentScore = scoreAssetPreference(intent, item.instrumentClass)
+        + scoreExchangePreference(intent, item);
+      const priorityScore = explicitIntentScore + scoreListingPriority(item);
+      const companyMatchRank = scoreCompanyNameMatch(intent, companyNameKey);
       return {
         item,
         index,
+        companyMatchRank,
+        companyNameKey,
+        issuerGroupKey: companyMatchRank > 0 && item.instrumentClass === "equity"
+          ? companyNameKey
+          : null,
+        explicitIntentScore,
         normalizedSymbol: normalizeSearchText(item.symbol || item.label),
         symbolMatchRank: scoreSymbolMatchRank(intent, item),
         textScore,
-        score: textScore + priorityScore + (textScore > 0 && saved ? 900 : 0),
+        score: textScore + priorityScore + (textScore > 0 && saved ? SAVED_MATCH_BONUS : 0),
       };
     });
 
@@ -126,21 +154,83 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       .map(({ normalizedSymbol }) => normalizedSymbol),
   );
 
-  const filtered = ranked
-    .filter(({ item, normalizedSymbol, textScore }) => {
-      if (textScore <= 0) return false;
-      if (item.kind !== "search") return true;
-      return !matchedLocalSymbols.has(normalizedSymbol);
-    })
-    .sort((a, b) => {
-      if (b.symbolMatchRank !== a.symbolMatchRank) return b.symbolMatchRank - a.symbolMatchRank;
-      if (b.score !== a.score) return b.score - a.score;
-      const aSaved = isSavedSearchItem(a.item);
-      const bSaved = isSavedSearchItem(b.item);
-      if (aSaved !== bSaved) return aSaved ? -1 : 1;
-      if (a.item.label.length !== b.item.label.length) return a.item.label.length - b.item.label.length;
-      return a.index - b.index;
+  const filtered = ranked.filter(({ item, normalizedSymbol, textScore }) => {
+    if (textScore <= 0) return false;
+    if (item.kind !== "search") return true;
+    return !matchedLocalSymbols.has(normalizedSymbol);
+  });
+
+  type RankedEntry = (typeof ranked)[number];
+  const compareFallbackEntries = (a: RankedEntry, b: RankedEntry): number => {
+    if (b.symbolMatchRank !== a.symbolMatchRank) return b.symbolMatchRank - a.symbolMatchRank;
+    if (b.score !== a.score) return b.score - a.score;
+    const aSaved = isSavedSearchItem(a.item);
+    const bSaved = isSavedSearchItem(b.item);
+    if (aSaved !== bSaved) return aSaved ? -1 : 1;
+    if (a.item.label.length !== b.item.label.length) return a.item.label.length - b.item.label.length;
+    return a.index - b.index;
+  };
+
+  const hasExplicitHint = intent.exchangeHints.length > 0 || intent.assetPreference != null;
+  const bucketGroups = new Map<string, Map<string, RankedEntry[]>>();
+  for (const entry of filtered) {
+    const exactSymbolRank = entry.symbolMatchRank >= 2 ? entry.symbolMatchRank : 0;
+    const bucketKey = [
+      exactSymbolRank,
+      hasExplicitHint ? entry.explicitIntentScore : 0,
+      entry.companyMatchRank,
+    ].join(":");
+    const groupKey = entry.issuerGroupKey
+      ? `issuer:${entry.issuerGroupKey}`
+      : `item:${entry.index}`;
+    const groups = bucketGroups.get(bucketKey) ?? new Map<string, RankedEntry[]>();
+    const group = groups.get(groupKey) ?? [];
+    group.push(entry);
+    groups.set(groupKey, group);
+    bucketGroups.set(bucketKey, groups);
+  }
+
+  const groupOrderByIndex = new Map<number, number>();
+  for (const groups of bucketGroups.values()) {
+    const orderedGroups = [...groups.values()]
+      .map((entries) => ({
+        entries,
+        representative: entries.reduce((best, entry) =>
+          compareFallbackEntries(entry, best) < 0 ? entry : best
+        ),
+      }))
+      .sort((a, b) => compareFallbackEntries(a.representative, b.representative));
+    orderedGroups.forEach(({ entries }, order) => {
+      entries.forEach((entry) => groupOrderByIndex.set(entry.index, order));
     });
+  }
+
+  filtered.sort((a, b) => {
+    // Precedence is exact symbol, explicit query hints, whole-word company
+    // relevance, issuer relevance, provider order within that issuer, partial
+    // symbol, saved relevance, then stable source order.
+    const aExactSymbolRank = a.symbolMatchRank >= 2 ? a.symbolMatchRank : 0;
+    const bExactSymbolRank = b.symbolMatchRank >= 2 ? b.symbolMatchRank : 0;
+    if (bExactSymbolRank !== aExactSymbolRank) return bExactSymbolRank - aExactSymbolRank;
+    if (hasExplicitHint && b.explicitIntentScore !== a.explicitIntentScore) {
+      return b.explicitIntentScore - a.explicitIntentScore;
+    }
+    if (b.companyMatchRank !== a.companyMatchRank) {
+      return b.companyMatchRank - a.companyMatchRank;
+    }
+    const aGroupOrder = groupOrderByIndex.get(a.index) ?? a.index;
+    const bGroupOrder = groupOrderByIndex.get(b.index) ?? b.index;
+    if (aGroupOrder !== bGroupOrder) return aGroupOrder - bGroupOrder;
+    if (
+      a.issuerGroupKey
+      && a.issuerGroupKey === b.issuerGroupKey
+    ) {
+      const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
+      const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
+      if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
+    }
+    return compareFallbackEntries(a, b);
+  });
 
   const deduped: T[] = [];
   const seen = new Set<string>();
@@ -216,6 +306,7 @@ function analyzeSearchQuery(query: string): SearchQueryIntent {
     normalizedQuery,
     compactQuery,
     companyQuery,
+    companyQueryKey: normalizeCompanyName(companyQuery),
     exchangeHints,
     assetPreference,
   };
@@ -354,6 +445,40 @@ function scoreListingPriority(item: Pick<TickerSearchRankableItem, "label"> & Pa
   if (item.label.includes(".")) score -= 140;
   if (item.label.length <= 5) score += 120;
   return score;
+}
+
+function getCompanyNameKey(detail: string): string {
+  return normalizeCompanyName(detail.split("|")[0] || "");
+}
+
+function normalizeCompanyName(name: string): string {
+  const tokens = normalizeSearchText(name).split(" ").filter(Boolean);
+  while (tokens.length > 1) {
+    if (COMPANY_NAME_SUFFIXES.has(tokens.at(-1)!)) {
+      tokens.pop();
+      continue;
+    }
+
+    const punctuatedSuffix = [...COMPANY_NAME_SUFFIXES].find((suffix) =>
+      suffix.length > 1
+      && tokens.length > suffix.length
+      && tokens.slice(-suffix.length).every((token, index) =>
+        token.length === 1 && token === suffix[index]
+      )
+    );
+    if (!punctuatedSuffix) break;
+    tokens.splice(-punctuatedSuffix.length);
+  }
+  return tokens.join(" ");
+}
+
+function scoreCompanyNameMatch(intent: SearchQueryIntent, companyName: string): number {
+  const query = intent.companyQueryKey;
+  if (!query || !companyName) return 0;
+  if (companyName === query) return 3;
+  if (companyName.startsWith(`${query} `)) return 2;
+  if (companyName.includes(` ${query} `) || companyName.endsWith(` ${query}`)) return 1;
+  return 0;
 }
 
 function isSavedSearchItem(item: Pick<TickerSearchRankableItem, "kind" | "category"> & Partial<TickerSearchRankableItem>): boolean {
