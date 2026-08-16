@@ -10,6 +10,7 @@ import type { BrokerInstanceConfig, LayoutConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
 import type {
+  AppNotificationDelivery,
   AppNotificationRequest,
   BrokerInstanceUpdateOptions,
   CommandDef,
@@ -170,7 +171,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     listener: (state: import("../../types/news-source").NewsQueryState) => void,
   ) => () => void) = () => () => {};
 
-  notifyFn: ((notification: AppNotificationRequest) => void) = () => {};
+  notifyFn: ((notification: AppNotificationRequest) => AppNotificationDelivery | void) = () => {};
   getPaneRuntimeStateFn: ((paneId: string) => PaneRuntimeState | null) = () => null;
   updatePaneRuntimeStateFn: ((paneId: string, patch: Partial<PaneRuntimeState>) => void) = () => {};
   applyPaneSettingValueFn: ((paneId: string, field: import("../../types/plugin").PaneSettingField, value: unknown) => Promise<void>) = async () => {};
@@ -278,8 +279,8 @@ export class PluginRegistry implements PluginRuntimeAccess {
     return this.contributions.pluginItems.get(pluginId)?.paneTemplates ?? [];
   }
 
-  notify(notification: AppNotificationRequest): void {
-    this.notifyFn(notification);
+  notify(notification: AppNotificationRequest): AppNotificationDelivery | void {
+    return this.notifyFn(notification);
   }
 
   renderSlot<K extends keyof GloomSlots>(name: K, props: GloomSlots[K]): ReactNode {

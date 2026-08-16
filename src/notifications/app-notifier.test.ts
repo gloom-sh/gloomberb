@@ -93,7 +93,7 @@ describe("app notifier", () => {
       },
     });
 
-    notifier.notify({
+    const inactiveDelivery = notifier.notify({
       title: "Chat mention",
       body: "@bob mentioned you",
       type: "info",
@@ -103,9 +103,10 @@ describe("app notifier", () => {
 
     expect(toasts).toEqual([{ message: "@bob mentioned you", type: "info", duration: 5000 }]);
     expect(desktops).toEqual(["@bob mentioned you"]);
+    expect(inactiveDelivery).toEqual({ toastVisible: false, desktopRequested: true });
 
     active = true;
-    notifier.notify({
+    const activeDelivery = notifier.notify({
       body: "Visible toast only",
       type: "success",
       desktop: "when-inactive",
@@ -116,6 +117,7 @@ describe("app notifier", () => {
       { message: "Visible toast only", type: "success", duration: undefined },
     ]);
     expect(desktops).toEqual(["@bob mentioned you"]);
+    expect(activeDelivery).toEqual({ toastVisible: true, desktopRequested: false });
   });
 
   test("toast-disabled notifications skip toast delivery", () => {
@@ -133,10 +135,27 @@ describe("app notifier", () => {
       },
     });
 
-    notifier.notify({ body: "Saved", type: "success", toast: false, desktop: "when-inactive" });
+    const delivery = notifier.notify({ body: "Saved", type: "success", toast: false, desktop: "when-inactive" });
 
     expect(toasts).toEqual([]);
     expect(desktops).toEqual(["Saved"]);
+    expect(delivery).toEqual({ toastVisible: false, desktopRequested: true });
+  });
+
+  test("does not report an inactive toast as visible delivery without a desktop sink", () => {
+    const toasts: string[] = [];
+    const notifier = createAppNotifier({
+      isAppActive: () => false,
+      renderToast: (notification) => {
+        toasts.push(notification.body);
+      },
+      desktop: null,
+    });
+
+    const delivery = notifier.notify({ body: "Pending reply", desktop: "when-inactive" });
+
+    expect(toasts).toEqual(["Pending reply"]);
+    expect(delivery).toEqual({ toastVisible: false, desktopRequested: false });
   });
 });
 
@@ -153,10 +172,12 @@ describe("desktop notifier", () => {
       },
     });
 
-    notifier.notify({ body: "first" });
-    notifier.notify({ body: "second" });
+    const firstDelivery = notifier.notify({ body: "first" });
+    const secondDelivery = notifier.notify({ body: "second" });
 
     expect(calls).toEqual(["notify-send"]);
+    expect(firstDelivery).toBe(false);
+    expect(secondDelivery).toBe(false);
   });
 
   test("plays requested sounds alongside desktop notifications", () => {
@@ -170,8 +191,9 @@ describe("desktop notifier", () => {
       },
     });
 
-    notifier.notify({ body: "AAPL triggered", sound: "Glass" });
+    const delivery = notifier.notify({ body: "AAPL triggered", sound: "Glass" });
 
     expect(calls).toEqual(["notify-send", "paplay"]);
+    expect(delivery).toBe(true);
   });
 });

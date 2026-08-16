@@ -14,6 +14,7 @@ interface ChatSnapshotStateArgs {
   applyingExternalDraftRef: MutableRef<boolean>;
   channelId: string;
   controller: ChatContentController;
+  focused: boolean;
   initialSnapshot: ChatSnapshot;
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
@@ -63,6 +64,7 @@ export function useChatSnapshotState({
   applyingExternalDraftRef,
   channelId,
   controller,
+  focused,
   initialSnapshot,
   inputRef,
   inputValueRef,
@@ -86,8 +88,10 @@ export function useChatSnapshotState({
   const [replyTo, setReplyTo] = useState<ChatMessage | null>(() => resolveReplyTo(initialSnapshot));
 
   useEffect(() => {
-    return useDefaultControllerChannel ? controller.attachView() : controller.attachChannelView(channelId);
-  }, [channelId, controller, useDefaultControllerChannel]);
+    return useDefaultControllerChannel
+      ? controller.attachView(focused)
+      : controller.attachChannelView(channelId, focused);
+  }, [channelId, controller, focused, useDefaultControllerChannel]);
 
   useEffect(() => {
     void controller.refreshChannels().catch(() => {});

@@ -68,20 +68,30 @@ export function attachChatChannelView({
   channelId,
   emit,
   flushDraftSync,
+  focused,
+  appActive,
   markViewedThroughLatestMessage,
 }: {
   channel: ChannelRuntimeState;
   channelId: string;
   emit: (channelId: string) => void;
   flushDraftSync: (channelId: string) => void;
+  focused: boolean;
+  appActive: boolean;
   markViewedThroughLatestMessage: (channelId: string) => boolean;
 }): () => void {
   channel.openViewCount += 1;
-  if (markViewedThroughLatestMessage(channelId)) {
+  if (focused) {
+    channel.focusedViewCount += 1;
+  }
+  if (focused && appActive && markViewedThroughLatestMessage(channelId)) {
     emit(channelId);
   }
   return () => {
     channel.openViewCount = Math.max(0, channel.openViewCount - 1);
+    if (focused) {
+      channel.focusedViewCount = Math.max(0, channel.focusedViewCount - 1);
+    }
     flushDraftSync(channelId);
   };
 }

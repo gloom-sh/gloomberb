@@ -1,4 +1,9 @@
-import type { AppNotificationRequest, PluginPersistence, PluginResumeState } from "../../../../types/plugin";
+import type {
+  AppNotificationDelivery,
+  AppNotificationRequest,
+  PluginPersistence,
+  PluginResumeState,
+} from "../../../../types/plugin";
 import {
   apiClient,
   type ChatChannel,
@@ -65,7 +70,7 @@ export class ChatController {
   private appActive = true;
   private readonly session = createChatControllerSessionState();
   private pendingMessageSeq = 0;
-  private notifyFn: (notification: AppNotificationRequest) => void = () => {};
+  private notifyFn: (notification: AppNotificationRequest) => AppNotificationDelivery | void = () => {};
   private notifiedMessageIds = new Set<string>();
 
   private readonly storage = new ChatControllerStorage({
@@ -119,7 +124,7 @@ export class ChatController {
     this.hydrate();
   }
 
-  setNotifier(notify: (notification: AppNotificationRequest) => void): void {
+  setNotifier(notify: (notification: AppNotificationRequest) => AppNotificationDelivery | void): void {
     this.notifyFn = notify;
   }
 
@@ -258,11 +263,11 @@ export class ChatController {
     });
   }
 
-  attachView(): () => void {
-    return this.attachChannelView(DEFAULT_CHAT_CHANNEL_ID);
+  attachView(focused = true): () => void {
+    return this.attachChannelView(DEFAULT_CHAT_CHANNEL_ID, focused);
   }
 
-  attachChannelView(channelId: string): () => void {
+  attachChannelView(channelId: string, focused = true): () => void {
     const normalizedChannelId = normalizeChannelId(channelId);
     const channel = this.ensureChannelState(normalizedChannelId);
     return attachChatChannelView({
@@ -270,6 +275,8 @@ export class ChatController {
       channelId: normalizedChannelId,
       emit: (nextChannelId) => this.emit(nextChannelId),
       flushDraftSync: (nextChannelId) => this.storage.flushDraftSync(nextChannelId),
+      focused,
+      appActive: this.appActive,
       markViewedThroughLatestMessage: (nextChannelId) => this.markViewedThroughLatestMessage(nextChannelId),
     });
   }
@@ -295,8 +302,11 @@ export class ChatController {
       this.realtime.stopVerificationPolling();
       return;
     }
+    this.markFocusedViewsViewed();
     this.realtime.syncVerificationPolling();
-    void this.refreshChatState().catch(() => {});
+    void this.refreshChatState()
+      .then(() => this.markFocusedViewsViewed())
+      .catch(() => {});
   }
 
   reset(clearSession = false): void {
@@ -466,6 +476,7 @@ export class ChatController {
       currentUserId: this.session.user?.id,
       messages,
       options,
+      viewActive: this.appActive && channel.focusedViewCount > 0,
       markViewed: (persist) => this.markViewedThroughLatestMessage(channelId, persist),
     });
     this.storage.persistTranscript(channelId);
@@ -479,6 +490,7 @@ export class ChatController {
     handleChatNotificationEvent({
       notification,
       options,
+      appActive: this.appActive,
       ensureChannelState: (channelId) => this.ensureChannelState(channelId),
       mergeMessages: (channelId, messages, mergeOptions) => this.mergeMessages(channelId, messages, mergeOptions),
       getChannel: (channelId) => this.channelCatalog.getChannels().find((channel) => channel.id === channelId),
@@ -490,6 +502,15 @@ export class ChatController {
   private getUnreadMentionCount(channelId: string): number {
     const channel = this.ensureChannelState(channelId);
     return getUnreadMentionMessages(channel, this.session.user).length;
+  }
+
+  private markFocusedViewsViewed(): void {
+    for (const [channelId, channel] of this.storage.channelStates) {
+      if (channel.focusedViewCount === 0) continue;
+      if (this.markViewedThroughLatestMessage(channelId)) {
+        this.emit(channelId);
+      }
+    }
   }
 
   private markViewedThroughLatestMessage(channelId: string, persist = true): boolean {
