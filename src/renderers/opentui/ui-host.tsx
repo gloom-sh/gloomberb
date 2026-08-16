@@ -4,6 +4,7 @@ import { TextAttributes, type UiHost, type TextProps } from "../../ui/host";
 import { renderAsciiText } from "../../ui/ascii-font";
 import { OpenTuiImageSurface } from "./image/surface";
 import { OpenTuiChartSurface } from "./chart-surface";
+import { OpenTuiMediaSurface } from "./media-surface";
 
 interface OpenTuiPrimitiveProps {
   children?: ReactNode;
@@ -59,7 +60,6 @@ const OpenTuiBox = createOpenTuiPrimitive("box");
 const OpenTuiScrollBox = createOpenTuiPrimitive("scrollbox");
 const OpenTuiInput = createOpenTuiPrimitive("input");
 const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
-const OpenTuiMediaSurface = createOpenTuiPrimitive("box");
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -120,7 +120,7 @@ export const openTuiUiHost: UiHost = {
   Textarea: OpenTuiTextarea as UiHost["Textarea"],
   ChartSurface: OpenTuiChartSurface,
   ImageSurface: OpenTuiImageSurface,
-  MediaSurface: OpenTuiMediaSurface as UiHost["MediaSurface"],
+  MediaSurface: OpenTuiMediaSurface,
   SpinnerMark: OpenTuiSpinnerMark as UiHost["SpinnerMark"],
   AsciiText: ({ text, font = "tiny", color, fg, bg, backgroundColor, selectable = false, ...props }) => {
     const resolvedColor = color ?? fg;

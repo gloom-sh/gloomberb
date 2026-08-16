@@ -55,6 +55,11 @@ export function toKeyEventLike(event: {
   };
 }
 
+function clearKittyGraphics(): void {
+  if (!process.stdout.isTTY) return;
+  process.stdout.write("\x1b_Ga=d,d=A\x1b\\");
+}
+
 function samePixelResolution(left: PixelResolution | null, right: PixelResolution | null): boolean {
   if (left === right) return true;
   if (!left || !right) return false;
@@ -81,6 +86,7 @@ function installResolutionEventBridge(renderer: CliRenderer): void {
 
 export async function createOpenTuiHost(): Promise<OpenTuiHost> {
   resetTerminalInputState();
+  clearKittyGraphics();
 
   // Mouse motion is reported per pixel; our @opentui/core patch coalesces moves
   // to one per fastest frame (~16ms) so pointer-tracked UI like the chart
@@ -130,45 +136,6 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     },
     notify() {
       // The app-level notifier still owns toast/desktop notification behavior.
-    },
-    async playTerminalMedia(url, title, options) {
-      const mpv = Bun.which("mpv");
-      if (!mpv) {
-        throw new Error("mpv is required for terminal TV playback. Install mpv and try again.");
-      }
-
-      renderer.suspend();
-      try {
-        const proc = Bun.spawn([
-          mpv,
-          "--no-config",
-          "--profile=sw-fast",
-          "--vo=kitty",
-          "--vo-kitty-auto-multiplexer-passthrough=yes",
-          "--demuxer-lavf-probe-info=yes",
-          "--demuxer-lavf-analyzeduration=10",
-          "--demuxer-lavf-probesize=25000000",
-          "--ytdl=no",
-          `--mute=${options?.muted === false ? "no" : "yes"}`,
-          ...(title ? [`--title=${title}`] : []),
-          "--",
-          url,
-        ], {
-          stdin: "inherit",
-          stdout: "inherit",
-          stderr: "pipe",
-        });
-        const stderrPromise = new Response(proc.stderr).text();
-        const exitCode = await proc.exited;
-        const stderr = await stderrPromise;
-        if (exitCode !== 0) {
-          const detail = stderr.trim().split("\n").slice(-3).join(" ");
-          throw new Error(detail || `mpv exited with status ${exitCode}`);
-        }
-      } finally {
-        renderer.resume();
-        renderer.requestRender();
-      }
     },
   };
 

@@ -11,7 +11,7 @@ import {
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ImageSurface, MediaSurface, Text, useRendererHost, useUiHost, type MediaSurfaceHandle } from "../../../ui";
+import { Box, MediaSurface, Text, useRendererHost, type MediaSurfaceHandle } from "../../../ui";
 import { getTvChannel, TV_CHANNELS, type TvChannelId } from "./channels";
 import type { ResolvedLiveStream } from "../../../types/media";
 import { resolveTvStream } from "./youtube-stream";
@@ -19,7 +19,6 @@ import { resolveTvStream } from "./youtube-stream";
 type PlaybackState = "idle" | "loading" | "playing" | "paused" | "error";
 
 export function TvPane({ paneId, focused, width, height }: PaneProps) {
-  const isDesktop = useUiHost().kind === "desktop-web";
   const renderer = useRendererHost();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
@@ -35,7 +34,6 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
   const [playbackState, setPlaybackState] = useState<PlaybackState>("idle");
   const [muted, setMuted] = useState(true);
   const mediaRef = useRef<MediaSurfaceHandle | null>(null);
-  const terminalAutoPlayedRef = useRef<string | null>(null);
   const generationRef = useRef(0);
   const channel = getTvChannel(channelId);
 
@@ -105,49 +103,20 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
     }
   }, []);
 
-  const playInTerminal = useCallback(async () => {
-    if (!stream || !renderer.playTerminalMedia) return;
-    setPlaybackError(null);
-    setPlaybackState("playing");
-    try {
-      await renderer.playTerminalMedia(stream.manifestUrl, stream.title, { muted });
-      setPlaybackState("paused");
-    } catch (cause) {
-      setPlaybackState("error");
-      setPlaybackError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, [muted, renderer, stream]);
-
-  useEffect(() => {
-    if (isDesktop || loading || !stream || stream.sourceId !== channel.id) return;
-    const streamKey = `${stream.sourceId}:${stream.videoId}`;
-    if (terminalAutoPlayedRef.current === streamKey) return;
-    terminalAutoPlayedRef.current = streamKey;
-    void playInTerminal();
-  }, [channel.id, isDesktop, loading, playInTerminal, stream]);
-
   const togglePlayback = useCallback(async () => {
     setPlaybackError(null);
     try {
-      if (isDesktop) {
-        await mediaRef.current?.toggle();
-      } else {
-        await playInTerminal();
-      }
+      await mediaRef.current?.toggle();
     } catch (cause) {
       setPlaybackState("error");
       setPlaybackError(cause instanceof Error ? cause.message : String(cause));
     }
-  }, [isDesktop, playInTerminal]);
+  }, []);
 
   const toggleMute = useCallback(() => {
-    if (isDesktop) {
-      const nextMuted = mediaRef.current?.toggleMuted();
-      if (typeof nextMuted === "boolean") setMuted(nextMuted);
-      return;
-    }
-    setMuted((current) => !current);
-  }, [isDesktop]);
+    const nextMuted = mediaRef.current?.toggleMuted();
+    if (typeof nextMuted === "boolean") setMuted(nextMuted);
+  }, []);
 
   useShortcut((event) => {
     if (!focused) return;
@@ -175,15 +144,17 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
 
   const status = loading
     ? `resolving ${channel.name}`
-    : error || playbackError
+    : error
       ? "stream error"
-      : playbackState === "playing"
-        ? "playing live"
-        : playbackState === "loading"
-          ? "buffering live"
-          : stream
-            ? "live"
-            : "offline";
+      : playbackError
+        ? /required|install|not found/i.test(playbackError) ? "player missing" : "playback error"
+        : playbackState === "playing"
+          ? "playing live"
+          : playbackState === "loading"
+            ? "buffering live"
+            : stream
+              ? "live"
+              : "offline";
 
   usePaneFooter(paneId, () => ({
     info: [{
@@ -240,7 +211,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
           <Text fg={colors.warning}>{error ?? `${channel.name} is offline.`}</Text>
           <Button label="Try again" variant="primary" onPress={refresh} />
         </Box>
-      ) : isDesktop ? (
+      ) : (
         <MediaSurface
           src={stream.manifestUrl}
           title={stream.title}
@@ -255,31 +226,9 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
           onError={setPlaybackError}
         >
           <Box flexGrow={1} justifyContent="center" alignItems="center">
-            <Text fg={colors.warning}>{playbackError ?? "Live video unavailable."}</Text>
+            <Text fg={colors.warning}>{playbackError ?? stream.title}</Text>
           </Box>
         </MediaSurface>
-      ) : (
-        <Box flexGrow={1} flexDirection="column" alignItems="center" justifyContent="center" gap={1}>
-          <ImageSurface
-            src={stream.posterUrl}
-            alt={stream.title}
-            objectFit="contain"
-            width="100%"
-            height={Math.max(5, mediaHeight - 2)}
-          >
-            <Box flexGrow={1} justifyContent="center" alignItems="center">
-              <Text fg={colors.text}>{stream.title}</Text>
-            </Box>
-          </ImageSurface>
-          <Button
-            label="Play in Kitty"
-            shortcut="p"
-            variant="primary"
-            disabled={!renderer.playTerminalMedia}
-            onPress={() => void togglePlayback()}
-          />
-          {playbackError ? <Text fg={colors.warning}>{playbackError}</Text> : null}
-        </Box>
       )}
     </Box>
   );

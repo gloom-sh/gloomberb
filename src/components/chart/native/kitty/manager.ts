@@ -127,6 +127,10 @@ export class KittyImageManager {
       this.renderer,
       `${encodeKittyDeleteImage(this.imageIds[0])}${encodeKittyDeleteImage(this.imageIds[1])}`,
     );
+    this.forgetPlacedImages();
+  }
+
+  forgetPlacedImages() {
     this.activeSlot = null;
     this.lastBitmapKey = null;
     this.lastPlacementKeys = [];
