@@ -21,11 +21,14 @@ export function WebTabs({
   closeMode = "always",
   addLabel = "+",
   onAdd,
+  onReorder,
   focused = false,
   palette,
 }: HostTabsProps) {
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
+  const [dragTargetValue, setDragTargetValue] = useState<string | null>(null);
+  const dragSourceValueRef = useRef<string | null>(null);
   const showUnderline = variant === "underline" && !compact;
   // A tab bar occupies exactly the one row every caller reserves for it. Any
   // extra pixels here are pixels the pane's children are told they own and the
@@ -94,6 +97,8 @@ export function WebTabs({
         const disabled = tab.disabled === true;
         const hovered = hoveredValue === tab.value && !disabled;
         const closeVisible = !!tab.onClose && (closeMode === "always" || active);
+        const reorderable = !!onReorder && !disabled && tab.reorderable !== false;
+        const dragTarget = dragTargetValue === tab.value && dragSourceValueRef.current !== tab.value;
         const tabStyle = {
           "--tab-fg": resolveTabColor(disabled, active, hovered),
           "--tab-hover-fg": palette.hoverFg,
@@ -117,7 +122,7 @@ export function WebTabs({
           margin: 0,
           border: "1px solid transparent",
           borderRadius: variant === "underline" ? 5 : 6,
-          background: resolveTabBackground(active, hovered),
+          background: resolveTabBackground(active, hovered || dragTarget),
           boxSizing: "border-box",
           font: "inherit",
           fontSize: tabFontSize,
@@ -129,7 +134,7 @@ export function WebTabs({
             ? `color-mix(in srgb, ${palette.activeUnderline} 35%, transparent)`
             : "transparent",
           transition: "background-color 110ms ease, border-color 110ms ease, color 110ms ease",
-          cursor: disabled ? "default" : "pointer",
+          cursor: disabled ? "default" : reorderable ? "grab" : "pointer",
         } satisfies CssVars;
 
         return (
@@ -143,6 +148,8 @@ export function WebTabs({
             aria-selected={active}
             aria-disabled={disabled || undefined}
             disabled={disabled}
+            draggable={reorderable}
+            aria-grabbed={reorderable && dragSourceValueRef.current === tab.value ? true : undefined}
             style={tabStyle}
             onMouseEnter={() => setHoveredValue(tab.value)}
             onMouseLeave={() => setHoveredValue((current) => (current === tab.value ? null : current))}
@@ -156,6 +163,32 @@ export function WebTabs({
               event.preventDefault();
               event.stopPropagation();
               tab.onContextMenu?.(tab.value, event);
+            } : undefined}
+            onDragStart={reorderable ? (event) => {
+              dragSourceValueRef.current = tab.value;
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", tab.value);
+            } : undefined}
+            onDragOver={reorderable ? (event) => {
+              const sourceValue = dragSourceValueRef.current;
+              if (!sourceValue || sourceValue === tab.value) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              setDragTargetValue(tab.value);
+            } : undefined}
+            onDragLeave={reorderable ? () => {
+              setDragTargetValue((current) => (current === tab.value ? null : current));
+            } : undefined}
+            onDrop={reorderable ? (event) => {
+              event.preventDefault();
+              const sourceValue = dragSourceValueRef.current ?? event.dataTransfer.getData("text/plain");
+              dragSourceValueRef.current = null;
+              setDragTargetValue(null);
+              if (sourceValue && sourceValue !== tab.value) onReorder(sourceValue, tab.value);
+            } : undefined}
+            onDragEnd={reorderable ? () => {
+              dragSourceValueRef.current = null;
+              setDragTargetValue(null);
             } : undefined}
           >
             <span

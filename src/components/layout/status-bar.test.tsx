@@ -5,7 +5,7 @@ import { cloneLayout, createDefaultConfig, TICKER_RESEARCH_PANE_ID, type LayoutC
 import type { AppNotificationRequest } from "../../types/plugin";
 import { StatusBar } from "./status-bar";
 import { setSharedRegistryForTests } from "../../plugins/registry";
-import { useEffect, useState } from "react";
+import { act, useEffect, useState } from "react";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -148,6 +148,41 @@ describe("StatusBar", () => {
     await testSetup.renderOnce();
 
     expect(exitCount).toBe(1);
+  });
+
+  test("reorders saved layout tabs by dragging them left and right", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-layout-tab-reorder-test");
+    config.layouts = [
+      { name: "Home", layout: cloneLayout(config.layout) },
+      { name: "Research", layout: cloneLayout(config.layout) },
+      { name: "News", layout: cloneLayout(config.layout) },
+    ];
+    const state = {
+      ...createInitialState(config),
+      statusBarVisible: true,
+    };
+    const actions: Array<{ type: string; fromIndex?: number; toIndex?: number }> = [];
+
+    testSetup = await testRender(
+      <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string; fromIndex?: number; toIndex?: number }) }}>
+        <StatusBar />
+      </AppContext>,
+      { width: 120, height: 3 },
+    );
+
+    await testSetup.renderOnce();
+    const frame = testSetup.captureCharFrame();
+    const homeX = frame.split("\n")[0]?.indexOf("^1 Home") ?? -1;
+    const newsX = frame.split("\n")[0]?.indexOf("^3 News") ?? -1;
+    expect(homeX).toBeGreaterThanOrEqual(0);
+    expect(newsX).toBeGreaterThan(homeX);
+
+    await act(async () => {
+      await testSetup!.mockMouse.drag(homeX + 1, 0, newsX + 1, 0);
+      await testSetup!.renderOnce();
+    });
+
+    expect(actions).toContainEqual({ type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
   });
 
   test("shows a gridlock tip after a corner snap and runs gridlock on click", async () => {

@@ -94,6 +94,107 @@ describe("appReducer command bar state", () => {
     expect(secondUndone.config.layout).toEqual(createBlankLayout());
   });
 
+  test("reorders saved layouts without changing the active workspace", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-layout-reorder-test");
+    const baseLayout = cloneLayout(config.layout);
+    config.layouts = [
+      { name: "Home", layout: cloneLayout(baseLayout) },
+      { name: "Research", layout: cloneLayout(baseLayout) },
+      { name: "News", layout: cloneLayout(baseLayout) },
+    ];
+    config.activeLayoutIndex = 1;
+    config.layout = cloneLayout(config.layouts[1]!.layout);
+
+    const historyLayout = (ratio: number) => {
+      const layout = cloneLayout(baseLayout);
+      if (!layout.dockRoot || layout.dockRoot.kind !== "split") {
+        throw new Error("expected split dock root");
+      }
+      layout.dockRoot.ratio = ratio;
+      return layout;
+    };
+
+    const state = {
+      ...createInitialState(config),
+      paneState: {
+        "ticker-detail:main": { activeTabId: "financials" },
+      },
+      focusedPaneId: "ticker-detail:main",
+      layoutHistory: {
+        0: { past: [historyLayout(0.41)], future: [] },
+        1: { past: [historyLayout(0.52)], future: [] },
+        2: { past: [historyLayout(0.63)], future: [] },
+      },
+    };
+
+    const next = appReducer(state, { type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
+
+    expect(next.config.layouts.map((layout) => layout.name)).toEqual(["Research", "News", "Home"]);
+    expect(next.config.activeLayoutIndex).toBe(0);
+    expect(next.config.layout).toEqual(state.config.layout);
+    expect(next.paneState).toEqual(state.paneState);
+    expect(next.config.layouts[0]?.paneState?.["ticker-detail:main"]?.activeTabId).toBe("financials");
+    expect(next.layoutHistory[0]?.past[0]?.dockRoot).toMatchObject({ kind: "split", ratio: 0.52 });
+    expect(next.layoutHistory[1]?.past[0]?.dockRoot).toMatchObject({ kind: "split", ratio: 0.63 });
+    expect(next.layoutHistory[2]?.past[0]?.dockRoot).toMatchObject({ kind: "split", ratio: 0.41 });
+  });
+
+  test("keeps saved layout operations coherent after a reorder", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-layout-operations-test");
+    const baseLayout = cloneLayout(config.layout);
+    config.layouts = [
+      { name: "Home", layout: cloneLayout(baseLayout) },
+      { name: "Research", layout: cloneLayout(baseLayout) },
+      { name: "News", layout: cloneLayout(baseLayout) },
+    ];
+    config.activeLayoutIndex = 1;
+    config.layout = cloneLayout(config.layouts[1]!.layout);
+
+    let state = createInitialState(config);
+    state = appReducer(state, { type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
+    expect(state.config.layouts.map((layout) => layout.name)).toEqual(["Research", "News", "Home"]);
+    expect(state.config.activeLayoutIndex).toBe(0);
+
+    state = appReducer(state, { type: "RENAME_LAYOUT", index: 0, name: "Overview" });
+    expect(state.config.layouts.map((layout) => layout.name)).toEqual(["Overview", "News", "Home"]);
+
+    state = appReducer(state, { type: "DUPLICATE_LAYOUT", index: 0 });
+    expect(state.config.layouts.map((layout) => layout.name)).toEqual([
+      "Overview",
+      "News",
+      "Home",
+      "Overview Copy",
+    ]);
+    expect(state.config.activeLayoutIndex).toBe(3);
+
+    state = appReducer(state, { type: "SWITCH_LAYOUT", index: 1 });
+    expect(state.config.activeLayoutIndex).toBe(1);
+    expect(state.config.layouts[state.config.activeLayoutIndex]?.name).toBe("News");
+
+    state = appReducer(state, { type: "NEW_LAYOUT", name: "Scratch" });
+    expect(state.config.layouts.at(-1)?.name).toBe("Scratch");
+    expect(state.config.activeLayoutIndex).toBe(4);
+    expect(state.config.layout).toEqual(createBlankLayout());
+
+    state = appReducer(state, { type: "DELETE_LAYOUT", index: 4 });
+    expect(state.config.layouts.map((layout) => layout.name)).toEqual([
+      "Overview",
+      "News",
+      "Home",
+      "Overview Copy",
+    ]);
+    expect(state.config.activeLayoutIndex).toBe(3);
+
+    state = appReducer(state, { type: "DELETE_LAYOUT", index: 1 });
+    expect(state.config.layouts.map((layout) => layout.name)).toEqual([
+      "Overview",
+      "Home",
+      "Overview Copy",
+    ]);
+    expect(state.config.activeLayoutIndex).toBe(2);
+    expect(state.config.layouts[state.config.activeLayoutIndex]?.name).toBe("Overview Copy");
+  });
+
   test("restores an explicit focus target after a layout removes the focused pane", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test-focus-restore");
     const nextLayout = removePane(config.layout, "ticker-detail:main");

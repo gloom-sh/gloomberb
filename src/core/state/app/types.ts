@@ -107,6 +107,7 @@ export type AppAction =
   | { type: "REDO_LAYOUT" }
   | { type: "UPDATE_LAYOUT"; layout: LayoutConfig; focusedPaneId?: string | null }
   | { type: "SWITCH_LAYOUT"; index: number }
+  | { type: "REORDER_LAYOUT"; fromIndex: number; toIndex: number }
   | { type: "NEW_LAYOUT"; name: string }
   | { type: "DELETE_LAYOUT"; index: number }
   | { type: "RENAME_LAYOUT"; index: number; name: string }
