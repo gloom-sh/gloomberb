@@ -7,9 +7,10 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { priceColor } from "../../../theme/colors";
 import { formatPercentRaw } from "../../../utils/format";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
+import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import {
   attachMarketMoversPersistence,
-  fetchScreener,
+  fetchPreferredMarketMovers,
   fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
   resetMarketMoversPersistence,
@@ -32,10 +33,21 @@ import {
   type TabId,
 } from "./model";
 import { buildMarketMoverColumns, renderMarketMoverCell } from "./table";
+import {
+  LIVE_STREAMING_QUICK_SETTING,
+  useLiveStreamingSetting,
+  withLiveStreamingSetting,
+} from "../shared/live-streaming";
+import {
+  buildScreenerQuoteTargets,
+  overlayScreenerQuoteEntries,
+  resolveScreenerQuoteFeedStatus,
+} from "../shared/screener-live-quotes";
 
 function MarketMoversPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
+  const liveStreaming = useLiveStreamingSetting();
   const [activeTab, setActiveTab] = useState<TabId>("gainers");
   const [quotes, setQuotes] = useState<ScreenerQuote[]>([]);
   const [loading, setLoading] = useState(false);
@@ -43,11 +55,35 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<MarketMoverSortPreference>(DEFAULT_SORT_PREFERENCE);
   const [summaryQuotes, setSummaryQuotes] = useState<MarketSummaryQuote[]>([]);
+  const [moversStale, setMoversStale] = useState(false);
 
   const fetchGenRef = useRef(0);
 
+  const quoteTargets = useMemo(
+    () => buildScreenerQuoteTargets(quotes, selectedSymbol),
+    [quotes, selectedSymbol],
+  );
+  const {
+    entries: liveQuoteEntries,
+    freshnessNow,
+    subscriptionStartedAt,
+  } = useLiveQuoteEntries(quoteTargets, {
+    freshnessScopeKey: `market-movers:${activeTab}`,
+    liveStreaming,
+  });
+  const resolvedQuotes = useMemo(
+    () => overlayScreenerQuoteEntries(quotes, liveQuoteEntries),
+    [liveQuoteEntries, quotes],
+  );
+  const feedStatus = useMemo(
+    () => resolveScreenerQuoteFeedStatus(quoteTargets, liveQuoteEntries, {
+      now: freshnessNow,
+      subscriptionStartedAt,
+    }),
+    [freshnessNow, liveQuoteEntries, quoteTargets, subscriptionStartedAt],
+  );
   const columns = useMemo(() => buildMarketMoverColumns(width), [width]);
-  const rankedRows = useMemo(() => createRows(quotes), [quotes]);
+  const rankedRows = useMemo(() => createRows(resolvedQuotes), [resolvedQuotes]);
   const rows = useMemo(() => sortRows(rankedRows, sortPreference), [rankedRows, sortPreference]);
   const selectedIdx = selectedSymbol
     ? rows.findIndex((row) => row.symbol === selectedSymbol)
@@ -101,11 +137,16 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     return () => clearInterval(interval);
   }, [dataProvider]);
 
-  const loadTab = useCallback(async (tab: TabId, options?: { forceRefresh?: boolean }) => {
+  const loadTab = useCallback(async (
+    tab: TabId,
+    options?: { forceRefresh?: boolean; background?: boolean },
+  ) => {
     fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
-    setLoading(true);
-    setLoadError(null);
+    if (!options?.background) {
+      setLoading(true);
+      setLoadError(null);
+    }
 
     try {
       let data: ScreenerQuote[];
@@ -145,27 +186,36 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         data = trending
           .map((t) => resolved.find((r) => r.symbol === t.symbol))
           .filter((r): r is ScreenerQuote => r !== undefined);
+        setMoversStale(false);
       } else {
-        data = await fetchScreener(CATEGORY_MAP[tab], 25, undefined, {
+        const result = await fetchPreferredMarketMovers(CATEGORY_MAP[tab], 25, {
           forceRefresh: options?.forceRefresh,
         });
         if (fetchGenRef.current !== gen) return;
+        data = result.quotes;
+        setMoversStale(result.stale);
       }
 
       setQuotes(data);
-      setSelectedSymbol(null);
+      if (!options?.background) setSelectedSymbol(null);
       setLoadError(null);
-    } catch (error) {
-      if (fetchGenRef.current === gen) {
-        setLoadError(error instanceof Error ? error.message : "Market movers unavailable");
+    } catch {
+      if (fetchGenRef.current === gen && !options?.background) {
+        setLoadError("Market movers temporarily unavailable");
       }
     }
     finally {
-      if (fetchGenRef.current === gen) setLoading(false);
+      if (fetchGenRef.current === gen && !options?.background) setLoading(false);
     }
   }, [dataProvider]);
 
-  useEffect(() => { loadTab(activeTab); }, [activeTab, loadTab]);
+  useEffect(() => {
+    void loadTab(activeTab);
+    const interval = setInterval(() => {
+      void loadTab(activeTab, { background: true });
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, [activeTab, loadTab]);
 
   const openSymbol = useCallback((symbol: string) => {
     pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
@@ -204,9 +254,17 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         };
       }),
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(feedStatus ? [{
+        id: "feed",
+        parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
+      }] : []),
+      ...(moversStale ? [{
+        id: "stale",
+        parts: [{ text: "stale", tone: "muted" as const }],
+      }] : []),
     ],
     hints: [{ id: "refresh", key: "r", label: "efresh", onPress: refreshActiveTab }],
-  }), [loading, refreshActiveTab, summaryQuotes]);
+  }), [feedStatus, loading, moversStale, refreshActiveTab, summaryQuotes]);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -243,7 +301,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         onActivate={(row) => openSymbol(row.symbol)}
         renderCell={renderMarketMoverCell}
         emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No data"}
-        emptyStateHint={loadError ? "Yahoo Finance did not return market movers." : undefined}
+        emptyStateHint={loadError ? "Try again in a moment." : undefined}
       />
     </Box>
   );
@@ -267,6 +325,8 @@ export const marketMoversModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 36 },
+      quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      settings: (context) => withLiveStreamingSetting({ fields: [] }, context.settings),
     },
   ],
 

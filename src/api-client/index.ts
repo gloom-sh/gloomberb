@@ -47,6 +47,8 @@ import type {
   CloudMarketResponse,
   CloudMarketBatchTarget,
   CloudMarketBatchPayload,
+  CloudMarketScreenerCategory,
+  CloudMarketScreenerPayload,
   CloudVerificationResponse,
   CloudRoundupPreviewResponse,
   CloudSyncPushResponse,
@@ -411,6 +413,14 @@ class GloomApiClient {
     mode: "cache-first" | "refresh" = "cache-first",
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
     return this.data.getCloudQuotesBatch(targets, mode);
+  }
+
+  async getCloudMarketScreener(
+    category: CloudMarketScreenerCategory,
+    count = 25,
+    mode: "cache-first" | "refresh" = "cache-first",
+  ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>> {
+    return this.data.getCloudMarketScreener(category, count, mode);
   }
 
   async getCloudOptionsChain(

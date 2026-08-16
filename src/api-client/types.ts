@@ -570,6 +570,35 @@ export interface CloudMarketBatchPayload<T> {
   items: Array<CloudMarketBatchItem<T>>;
 }
 
+export type CloudMarketScreenerCategory = "gainers" | "losers" | "most-active";
+
+export interface CloudMarketScreenerItem {
+  rank: number;
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  volume: number;
+  tradeCount?: number;
+  currency: string;
+  high52w?: number;
+  low52w?: number;
+  dayHigh?: number;
+  dayLow?: number;
+  exchange: string;
+  lastUpdated: number;
+  dataSource: "live";
+}
+
+export interface CloudMarketScreenerPayload {
+  providerId: "gloomberb-cloud";
+  category: CloudMarketScreenerCategory;
+  asOf: string;
+  stale?: boolean;
+  items: CloudMarketScreenerItem[];
+}
+
 export interface CloudVerificationResponse {
   sent: boolean;
   email?: string;

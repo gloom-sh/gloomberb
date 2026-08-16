@@ -125,7 +125,7 @@ export function summaryQuoteFromQuote(
   };
 }
 
-export function screenerQuoteFromQuote(symbol: string, quote: { name?: string; price?: number; change?: number; changePercent?: number; volume?: number; currency?: string }): ScreenerQuote {
+export function screenerQuoteFromQuote(symbol: string, quote: { name?: string; price?: number; change?: number; changePercent?: number; volume?: number; currency?: string; exchangeName?: string; listingExchangeName?: string; lastUpdated?: number }): ScreenerQuote {
   return {
     symbol,
     name: quote.name ?? symbol,
@@ -141,6 +141,7 @@ export function screenerQuoteFromQuote(symbol: string, quote: { name?: string; p
     fiftyTwoWeekLow: undefined,
     dayHigh: undefined,
     dayLow: undefined,
-    exchange: "",
+    exchange: quote.listingExchangeName ?? quote.exchangeName ?? "",
+    lastUpdated: quote.lastUpdated,
   };
 }
