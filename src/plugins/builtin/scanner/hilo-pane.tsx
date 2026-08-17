@@ -84,7 +84,7 @@ function HiloPane({ focused, width, height }: PaneProps) {
     [feed.payload?.highs, minPrice, sort],
   );
 
-  useScannerStatusFooter("hilo", feed);
+  useScannerStatusFooter("hilo", feed, focused);
 
   // One cell of gutter keeps the two cursors from reading as a single wide row.
   const tableWidth = Math.max(20, Math.floor((width - 1) / 2));

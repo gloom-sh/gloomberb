@@ -115,7 +115,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
     [feed.payload?.events, filters, watchlist],
   );
 
-  useScannerStatusFooter("flow", feed);
+  useScannerStatusFooter("flow", feed, focused);
 
   const columns = useMemo(() => buildColumns(width), [width]);
 

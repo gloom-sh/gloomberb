@@ -646,7 +646,14 @@ export interface ScannerHiloExtreme {
   at: number;
 }
 
-export interface ScannerHiloPayload {
+/** Which entitlement tier produced the payload: free accounts get a delayed instance. */
+export interface ScannerAccessInfo {
+  access: "realtime" | "delayed";
+  /** 0 on the realtime instance, 15 on the delayed one. */
+  delayMinutes: number;
+}
+
+export interface ScannerHiloPayload extends ScannerAccessInfo {
   status: ScannerStatus;
   asOf: number;
   windows: {
@@ -677,7 +684,7 @@ export interface ScannerFlowEvent {
   iv?: number | null;
 }
 
-export interface ScannerFlowPayload {
+export interface ScannerFlowPayload extends ScannerAccessInfo {
   status: ScannerStatus;
   asOf: number;
   events: ScannerFlowEvent[];

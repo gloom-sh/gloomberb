@@ -6,14 +6,25 @@
  *   bun run scripts/mock-scanner-server.ts &
  *   GLOOMBERB_API_URL=http://localhost:8791 bun run dev
  *
- * Pass --deny to exercise the non-pro `scanner.denied` path, or --freeze to send
- * one snapshot and stop, which keeps rows stable while checking interactions.
+ * Pass --freeze to send one snapshot and stop, which keeps rows stable while
+ * checking interactions, --delayed for the free-tier 15m HILO instance (FLOW is
+ * then denied), or --anon for the signed-out `auth_required` refusal.
  */
 import type { ServerWebSocket } from "bun";
 
 const PORT = Number(process.env.MOCK_SCANNER_PORT ?? 8791);
-const DENY = process.argv.includes("--deny");
 const FREEZE = process.argv.includes("--freeze");
+const ANON = process.argv.includes("--anon");
+const DELAYED = process.argv.includes("--delayed");
+// Free accounts get the delayed HILO instance and no options entitlement at all.
+const ACCESS = DELAYED
+  ? { access: "delayed" as const, delayMinutes: 15 }
+  : { access: "realtime" as const, delayMinutes: 0 };
+
+function denialFor(scanner: Scanner): string | null {
+  if (ANON) return "auth_required";
+  return DELAYED && scanner === "flow" ? "pro_required" : null;
+}
 
 type Scanner = "hilo" | "flow";
 type SocketData = { scanners: Set<Scanner> };
@@ -51,6 +62,7 @@ function hiloPayload() {
   return {
     type: "scanner.hilo",
     status: "live",
+    ...ACCESS,
     asOf: Date.now(),
     windows: {
       s30: { highs: Math.round(42 * scale), lows: Math.round(11 * scale) },
@@ -96,7 +108,7 @@ function flowEvent() {
 
 function flowPayload(newEvents: number) {
   flowEvents = [...Array.from({ length: newEvents }, flowEvent), ...flowEvents].slice(0, 200);
-  return { type: "scanner.flow", status: "live", asOf: Date.now(), events: flowEvents };
+  return { type: "scanner.flow", status: "live", ...ACCESS, asOf: Date.now(), events: flowEvents };
 }
 
 const clients = new Set<ServerWebSocket<SocketData>>();
@@ -116,12 +128,13 @@ const server = Bun.serve<SocketData, never>({
       if (bunServer.upgrade(request, { data: { scanners: new Set<Scanner>() } })) return undefined;
       return new Response("upgrade failed", { status: 400 });
     }
-    if (url.pathname === "/market/scanner/hilo") {
-      const { type: _type, ...rest } = hiloPayload();
-      return Response.json(rest);
-    }
-    if (url.pathname === "/market/scanner/flow") {
-      const { type: _type, ...rest } = flowPayload(5);
+    for (const scanner of ["hilo", "flow"] as const) {
+      if (url.pathname !== `/market/scanner/${scanner}`) continue;
+      const reason = denialFor(scanner);
+      if (reason) {
+        return Response.json({ status: "denied", reason }, { status: reason === "auth_required" ? 401 : 402 });
+      }
+      const { type: _type, ...rest } = scanner === "hilo" ? hiloPayload() : flowPayload(5);
       return Response.json(rest);
     }
     return new Response("not found", { status: 404 });
@@ -129,7 +142,18 @@ const server = Bun.serve<SocketData, never>({
   websocket: {
     open(ws) {
       clients.add(ws);
-      ws.send(JSON.stringify({ type: "ready", user: { id: "mock", emailVerified: true, plan: "pro" } }));
+      ws.send(JSON.stringify(ANON
+        ? { type: "ready", user: null }
+        : {
+          type: "ready",
+          user: {
+            id: "mock",
+            username: "mock",
+            emailVerified: true,
+            plan: DELAYED ? "free" : "pro",
+            effectivePlan: DELAYED ? "free" : "pro",
+          },
+        }));
     },
     close(ws) {
       clients.delete(ws);
@@ -146,8 +170,9 @@ const server = Bun.serve<SocketData, never>({
         : undefined;
       if (!scanner) return;
       if (parsed.type === "scanner.subscribe") {
-        if (DENY) {
-          ws.send(JSON.stringify({ type: "scanner.denied", scanner, reason: "pro_required" }));
+        const reason = denialFor(scanner);
+        if (reason) {
+          ws.send(JSON.stringify({ type: "scanner.denied", scanner, reason }));
           return;
         }
         ws.data.scanners.add(scanner);
@@ -168,4 +193,4 @@ if (!FREEZE) {
   }, 1000);
 }
 
-console.log(`[mock] scanner feed on http://localhost:${server.port} (deny=${DENY} freeze=${FREEZE})`);
+console.log(`[mock] scanner feed on http://localhost:${server.port} (anon=${ANON} delayed=${DELAYED} freeze=${FREEZE})`);
