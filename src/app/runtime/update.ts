@@ -90,7 +90,7 @@ export function useAppUpdateRuntime({
     const isUpgrade = !!config.lastLaunchedVersion;
     const nextConfig = { ...config, lastLaunchedVersion: VERSION };
     dispatch({ type: "SET_CONFIG", config: nextConfig });
-    void saveConfigImmediately(nextConfig);
+    void saveConfigImmediately(nextConfig).catch(() => {});
     if (!isUpgrade) return;
     void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
       values: { version: VERSION },
