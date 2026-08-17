@@ -20,6 +20,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
     const notesFocusedRef = useRef(notesFocused);
     notesFocusedRef.current = notesFocused;
     const loadedSymbolRef = useRef<string | null>(null);
+    const lastSavedTextRef = useRef<Map<string, string>>(new Map());
 
     const setNotesFocusedAndCapture = useCallback((value: boolean) => {
       setNotesFocused(value);
@@ -52,6 +53,10 @@ export function createNotesTab(notesFiles: NotesFiles) {
 
     const saveNotesFor = useCallback((symbol: string | null, text: string) => {
       if (!symbol) return;
+      // Blur and symbol switches both save; without this every ticker switch
+      // rewrites an unchanged file and can clobber another pane on the same symbol.
+      if (lastSavedTextRef.current.get(symbol) === text) return;
+      lastSavedTextRef.current.set(symbol, text);
       notesFiles.save(symbol, text).catch(() => {});
     }, [notesFiles]);
 
@@ -87,6 +92,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
       const applyLoaded = (text: string) => {
         if (cancelled || loadedSymbolRef.current === tickerSymbol) return;
         loadedSymbolRef.current = tickerSymbol;
+        lastSavedTextRef.current.set(tickerSymbol, text);
         applyNoteText(text);
       };
       notesFiles.load(tickerSymbol).then(applyLoaded, () => applyLoaded(""));

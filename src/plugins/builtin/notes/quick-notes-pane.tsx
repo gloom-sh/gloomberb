@@ -97,19 +97,17 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
       setNoteText("");
       textareaRef.current?.setText("");
       let cancelled = false;
-      notesFiles.load(notesFiles.quickNoteKey(activeTabId)).then((text) => {
-        if (cancelled) return;
+      // The user can start typing before a slow load resolves; handleNoteChange
+      // marks the buffer as owning this tab, and applying the loaded text then
+      // would silently wipe what was typed.
+      const applyLoaded = (text: string) => {
+        if (cancelled || loadedTabIdRef.current === activeTabId) return;
         loadedTabIdRef.current = activeTabId;
         lastSavedTextRef.current.set(activeTabId, text);
         setNoteText(text);
         textareaRef.current?.setText(text);
-      }).catch(() => {
-        if (cancelled) return;
-        loadedTabIdRef.current = activeTabId;
-        lastSavedTextRef.current.set(activeTabId, "");
-        setNoteText("");
-        textareaRef.current?.setText("");
-      });
+      };
+      notesFiles.load(notesFiles.quickNoteKey(activeTabId)).then(applyLoaded, () => applyLoaded(""));
       return () => {
         cancelled = true;
       };
