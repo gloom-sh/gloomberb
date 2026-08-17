@@ -14,6 +14,7 @@ import { marketMoversModule } from "./market-movers";
 import { tvModule } from "./tv";
 import { composeBuiltinPlugin } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
+import { scannerModule } from "./scanner";
 import { sectorsModule } from "./sectors";
 import { worldIndicesModule } from "./world-indices";
 import { yieldCurveModule } from "./yield-curve";
@@ -48,13 +49,14 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
   id: "market-overview",
   name: "Market Overview",
   version: "1.0.0",
-  description: "Global indices, movers, sectors, FX, sentiment, and correlations.",
+  description: "Global indices, movers, scanners, sectors, FX, sentiment, and correlations.",
   toggleable: true,
   modules: [
     correlationModule,
     worldIndicesModule,
     marketHeatmapModule,
     marketMoversModule,
+    scannerModule,
     fearGreedModule,
     sectorsModule,
     fxMatrixModule,

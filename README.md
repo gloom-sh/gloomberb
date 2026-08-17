@@ -106,6 +106,7 @@ Open command mode with `Ctrl+P`, then type a command. Press `` ` `` to open tick
 | `TOP` | Ranked market stories |
 | `HM` | Market heatmap |
 | `MOST` | Market movers |
+| `HILO` | New highs and new lows |
 | `PF` | Portfolios and watchlists |
 | `KELLY AAPL` | Position sizing |
 | `HELP` | Full in-app shortcut list |
@@ -113,7 +114,7 @@ Open command mode with `Ctrl+P`, then type a command. Press `` ` `` to open tick
 ## What It Does
 
 - Research companies with quotes, charts, financials, filings, holders, insiders, options, analyst ratings, events, and relative valuation.
-- Follow markets with top stories, breaking news, sector feeds, Substack subscriptions, global indices, FX, macro events, yield curves, market movers, and fear/greed.
+- Follow markets with top stories, breaking news, sector feeds, Substack subscriptions, global indices, FX, macro events, yield curves, market movers, new-high/new-low and options-flow scanners, and fear/greed.
 - Track portfolios and watchlists, connect brokers, set alerts, keep notes, run AI screens, browse prediction markets, and use Gloom Cloud chat.
 
 ## CLI
@@ -239,6 +240,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `TOP` | Ranked market stories |
 | `HM` | Market heatmap for large US stocks and ETFs |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
+| `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
+| `FLOW` | Unusual options activity: sweeps, blocks, and large premium |
 | `PM <query>` | Polymarket and Kalshi prediction data |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |

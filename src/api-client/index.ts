@@ -57,6 +57,8 @@ import type {
   CloudSyncPushResponse,
   CloudSyncSnapshotResponse,
   QuoteStreamTarget,
+  ScannerFeedEvent,
+  ScannerKind,
 } from "./types";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
 
@@ -409,6 +411,11 @@ class GloomApiClient {
     onQuote: (target: QuoteStreamTarget, quote: CloudQuotePayload) => void,
   ): () => void {
     return this.socket.subscribeQuotes(targets, onQuote);
+  }
+
+  /** Subscribes to a shared scanner feed; all panes of one kind share one upstream subscription. */
+  subscribeScanner(scanner: ScannerKind, listener: (event: ScannerFeedEvent) => void): () => void {
+    return this.socket.subscribeScanner(scanner, listener);
   }
 
   dispose(): void {

@@ -605,6 +605,65 @@ describe("apiClient quote socket", () => {
   });
 });
 
+describe("apiClient scanner subscriptions", () => {
+  test("subscribes once for many panes, fans out, replays the snapshot, and unsubscribes last", () => {
+    const sockets = installTestWebSocket();
+    const first: unknown[] = [];
+    const second: unknown[] = [];
+
+    const unsubscribeFirst = apiClient.subscribeScanner("hilo", (event) => first.push(event));
+    const socket = sockets[0]!;
+    socket.open();
+    expect(socket.sent).toContainEqual({ type: "scanner.subscribe", scanner: "hilo" });
+
+    const payload = {
+      status: "live",
+      asOf: 1,
+      windows: { s30: { highs: 1, lows: 0 }, m1: { highs: 2, lows: 1 }, m5: { highs: 3, lows: 2 } },
+      highs: [],
+      lows: [],
+    };
+    socket.receive({ type: "scanner.hilo", ...payload });
+
+    // A second pane must not open a second upstream subscription, and must not
+    // wait a tick for its first frame.
+    const subscribeCount = () => socket.sent.filter((message: any) => message.type === "scanner.subscribe").length;
+    const before = subscribeCount();
+    const unsubscribeSecond = apiClient.subscribeScanner("hilo", (event) => second.push(event));
+    expect(subscribeCount()).toBe(before);
+    expect(second).toEqual([{ type: "data", payload }]);
+
+    socket.receive({ type: "scanner.hilo", ...payload, asOf: 2 });
+    expect(first).toHaveLength(2);
+    expect(second).toHaveLength(2);
+
+    unsubscribeFirst();
+    expect(socket.sent).not.toContainEqual({ type: "scanner.unsubscribe", scanner: "hilo" });
+    unsubscribeSecond();
+    expect(socket.sent).toContainEqual({ type: "scanner.unsubscribe", scanner: "hilo" });
+  });
+
+  test("replays scanner subscriptions after a reconnect and surfaces denials", () => {
+    const sockets = installTestWebSocket();
+    const seen: unknown[] = [];
+    const unsubscribe = apiClient.subscribeScanner("flow", (event) => seen.push(event));
+
+    const socket = sockets[0]!;
+    socket.open();
+    socket.receive({ type: "scanner.denied", scanner: "flow", reason: "pro_required" });
+    expect(seen).toEqual([{ type: "denied", reason: "pro_required" }]);
+
+    jest.useFakeTimers();
+    socket.closeWith({ code: 1006, reason: "network" });
+    jest.runAllTimers();
+    const reconnected = sockets[1]!;
+    reconnected.open();
+    expect(reconnected.sent).toContainEqual({ type: "scanner.subscribe", scanner: "flow" });
+
+    unsubscribe();
+  });
+});
+
 describe("apiClient chat timestamps", () => {
   test("sends the before cursor when loading older chat messages", async () => {
     let requestedUrl = "";
