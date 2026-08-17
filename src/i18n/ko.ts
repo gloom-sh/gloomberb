@@ -1066,7 +1066,7 @@ export const ko: Record<string, string> = {
   "Skip for now": "지금은 건너뛰기",
   "Scan QR with the mobile app": "모바일 앱으로 QR 스캔",
   "Recommended: approve from your phone, no typing": "추천: 입력 없이 휴대폰에서 승인",
-  "Scan with the Gloomberb mobile app to sign in": "Gloomberb 모바일 앱으로 스캔하여 로그인",
+  "Scan with the Gloom app to sign in": "Gloom 앱으로 스캔하여 로그인",
   "Waiting for approval...": "승인을 기다리는 중...",
   "Approved as {email}": "{email}(으)로 승인됨",
   "Denied. Press enter to request a new code.": "거부되었습니다. enter를 누르면 새 코드를 요청합니다.",

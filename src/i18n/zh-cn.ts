@@ -1068,7 +1068,7 @@ export const zhCN: Record<string, string> = {
   "Skip for now": "暂时跳过",
   "Scan QR with the mobile app": "用手机应用扫描二维码",
   "Recommended: approve from your phone, no typing": "推荐：在手机上确认，无需输入",
-  "Scan with the Gloomberb mobile app to sign in": "用 Gloomberb 手机应用扫码登录",
+  "Scan with the Gloom app to sign in": "用 Gloom 应用扫码登录",
   "Waiting for approval...": "等待确认...",
   "Approved as {email}": "已以 {email} 登录",
   "Denied. Press enter to request a new code.": "已拒绝。按 enter 获取新码。",

@@ -1,6 +1,6 @@
 /**
  * QR / device sign-in flow: start a device authorization, show the code, and
- * poll until the Gloomberb mobile app approves it. On approval the session is
+ * poll until the Gloom companion app approves it. On approval the session is
  * adopted through the same persistence and API-client path boot restoration
  * uses, so the rest of the app sees a normal signed-in session.
  */

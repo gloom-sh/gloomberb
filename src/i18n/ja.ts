@@ -1068,7 +1068,7 @@ export const ja: Record<string, string> = {
   "Skip for now": "今はスキップ",
   "Scan QR with the mobile app": "モバイルアプリで QR をスキャン",
   "Recommended: approve from your phone, no typing": "おすすめ: スマホから承認、入力不要",
-  "Scan with the Gloomberb mobile app to sign in": "Gloomberb モバイルアプリでスキャンしてログイン",
+  "Scan with the Gloom app to sign in": "Gloom アプリでスキャンしてログイン",
   "Waiting for approval...": "承認を待っています...",
   "Approved as {email}": "{email} として承認されました",
   "Denied. Press enter to request a new code.": "拒否されました。enter で新しいコードを取得できます。",

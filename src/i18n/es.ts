@@ -1081,7 +1081,7 @@ export const es: Record<string, string> = {
   "Skip for now": "Omitir por ahora",
   "Scan QR with the mobile app": "Escanear QR con la app móvil",
   "Recommended: approve from your phone, no typing": "Recomendado: aprueba desde tu teléfono, sin escribir",
-  "Scan with the Gloomberb mobile app to sign in": "Escanea con la app móvil de Gloomberb para iniciar sesión",
+  "Scan with the Gloom app to sign in": "Escanea con la app Gloom para iniciar sesión",
   "Waiting for approval...": "Esperando aprobación...",
   "Approved as {email}": "Aprobado como {email}",
   "Denied. Press enter to request a new code.": "Denegado. Pulsa intro para pedir un código nuevo.",

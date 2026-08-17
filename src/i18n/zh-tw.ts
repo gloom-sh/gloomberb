@@ -1068,7 +1068,7 @@ export const zhTW: Record<string, string> = {
   "Skip for now": "暫時略過",
   "Scan QR with the mobile app": "用手機應用程式掃描 QR 碼",
   "Recommended: approve from your phone, no typing": "推薦：在手機上確認，無需輸入",
-  "Scan with the Gloomberb mobile app to sign in": "用 Gloomberb 手機應用程式掃碼登入",
+  "Scan with the Gloom app to sign in": "用 Gloom 應用程式掃碼登入",
   "Waiting for approval...": "等待確認...",
   "Approved as {email}": "已以 {email} 登入",
   "Denied. Press enter to request a new code.": "已拒絕。按 enter 取得新碼。",

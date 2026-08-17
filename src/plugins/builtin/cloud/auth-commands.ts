@@ -7,7 +7,7 @@ export function registerCloudAuthCommands(ctx: GloomPluginContext): void {
   ctx.registerCommand({
     id: "auth-login-qr",
     label: "Log In with QR Code",
-    description: "Sign in by scanning a QR code with the Gloomberb mobile app",
+    description: "Sign in by scanning a QR code with the Gloom app",
     keywords: ["login", "sign in", "qr", "scan", "device", "mobile", "phone", "app", "code"],
     category: "config",
     hidden: () => !!apiClient.getSessionToken(),

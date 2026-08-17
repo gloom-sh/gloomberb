@@ -58,7 +58,7 @@ export function AccountQrPanel({
     <Box flexDirection="column" paddingX={2}>
       <Box height={1}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {t("Scan with the Gloomberb mobile app to sign in")}
+          {t("Scan with the Gloom app to sign in")}
         </Text>
       </Box>
       <Box height={1} />
