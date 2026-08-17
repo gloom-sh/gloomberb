@@ -1,24 +1,21 @@
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import type { AccountOutcome } from "./model";
 
 export function AccountSignedInPanel({ outcome }: { outcome: AccountOutcome | null }) {
   const email = outcome?.email ?? "";
+  const desktop = useUiHost().kind === "desktop-web";
 
   return (
-    <Box flexDirection="column" paddingX={2}>
-      <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Gloom Cloud account")}</Text>
-      </Box>
-      <Box height={1} />
+    <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>
       <Box height={1} flexDirection="row">
         <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{"✓ "}</Text>
         <Text fg={colors.text}>
           {email ? tf("Signed in as {email}", { email }) : t("Signed in to Gloom Cloud")}
         </Text>
       </Box>
-      <Box height={1} />
+      <Box height={desktop ? undefined : 1} style={desktop ? { marginTop: 8 } : undefined} />
       <Box height={1}>
         <Text fg={colors.textDim}>
           {outcome?.mode === "signup"

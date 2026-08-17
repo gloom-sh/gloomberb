@@ -27,6 +27,7 @@ function resetChannelRuntimeState(channel: ChannelRuntimeState): void {
   channel.notificationsEnabled = false;
   channel.reachedOldestMessage = false;
   channel.openViewCount = 0;
+  channel.focusedViewCount = 0;
 }
 
 function disposeChannelRuntimeState(channel: ChannelRuntimeState): void {
@@ -35,6 +36,7 @@ function disposeChannelRuntimeState(channel: ChannelRuntimeState): void {
   channel.refreshMessagesPromise = null;
   channel.loadOlderMessagesPromise = null;
   channel.openViewCount = 0;
+  channel.focusedViewCount = 0;
 }
 
 interface ClearChatControllerSessionOptions {

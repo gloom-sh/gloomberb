@@ -107,19 +107,17 @@ function updateExistingTicker(
   };
 }
 
-export async function upsertBrokerPositionTicker({
-  tickerRepository,
+export function upsertBrokerPositionTicker({
   tickers,
   instance,
   portfolioId,
   position,
 }: {
-  tickerRepository: AppTickerRepositoryPort;
   tickers: Map<string, TickerRecord>;
   instance: BrokerInstanceConfig;
   portfolioId: string;
   position: BrokerPosition;
-}): Promise<{ ticker: TickerRecord; created: boolean }> {
+}): { ticker: TickerRecord; created: boolean } {
   const brokerContract = position.brokerContract
     ? {
       ...position.brokerContract,
@@ -132,14 +130,11 @@ export async function upsertBrokerPositionTicker({
 
   if (!existingTicker) {
     return {
-      ticker: await tickerRepository.createTicker(
-        createTickerMetadata(position, portfolioId, positionEntry, brokerContract),
-      ),
+      ticker: { metadata: createTickerMetadata(position, portfolioId, positionEntry, brokerContract) },
       created: true,
     };
   }
 
   const ticker = updateExistingTicker(existingTicker, instance, portfolioId, position, positionEntry, brokerContract);
-  await tickerRepository.saveTicker(ticker);
   return { ticker, created: false };
 }

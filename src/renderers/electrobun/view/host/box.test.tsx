@@ -95,3 +95,51 @@ test("a tab bar occupies exactly the one row panes reserve for it", async () => 
   expect(list.style.marginBottom === "" || list.style.marginBottom === "0px").toBe(true);
   await act(async () => root.unmount());
 });
+
+test("desktop tabs reorder through native drag and drop", async () => {
+  const { WebTabs } = await import("./tabs");
+  const reordered: Array<[string, string]> = [];
+  const container = testWindow.document.createElement("div");
+  testWindow.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  await act(async () => {
+    root.render(
+      <WebTabs
+        tabs={[
+          { label: "Home", value: "home" },
+          { label: "Research", value: "research" },
+          { label: "News", value: "news" },
+        ]}
+        activeValue="home"
+        onSelect={() => {}}
+        onReorder={(fromValue, toValue) => reordered.push([fromValue, toValue])}
+        palette={{} as never}
+      />,
+    );
+  });
+
+  const buttons = [...container.querySelectorAll('[data-gloom-role="tab-button"]')] as unknown as HTMLElement[];
+  const values = new Map<string, string>();
+  const dataTransfer = {
+    effectAllowed: "none",
+    dropEffect: "none",
+    setData(type: string, value: string) { values.set(type, value); },
+    getData(type: string) { return values.get(type) ?? ""; },
+  };
+  const drag = (type: string, target: HTMLElement) => {
+    const event = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
+    target.dispatchEvent(event);
+  };
+
+  expect(buttons).toHaveLength(3);
+  expect(buttons[0]?.getAttribute("draggable")).toBe("true");
+  await act(async () => {
+    drag("dragstart", buttons[0]!);
+    drag("dragover", buttons[2]!);
+    drag("drop", buttons[2]!);
+  });
+
+  expect(reordered).toEqual([["home", "news"]]);
+  await act(async () => root.unmount());
+});

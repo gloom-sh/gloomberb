@@ -1,4 +1,8 @@
-import type { AppNotificationRequest, AppNotificationType } from "../types/plugin";
+import type {
+  AppNotificationDelivery,
+  AppNotificationRequest,
+  AppNotificationType,
+} from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
 
 const DEFAULT_NOTIFICATION_TITLE = "Gloomberb";
@@ -22,11 +26,11 @@ export interface DesktopNotificationRunner {
 }
 
 export interface DesktopNotificationSink {
-  notify(notification: AppNotificationRequest): void;
+  notify(notification: AppNotificationRequest): boolean | void;
 }
 
 export interface AppNotifier {
-  notify(notification: AppNotificationRequest): void;
+  notify(notification: AppNotificationRequest): AppNotificationDelivery;
 }
 
 interface CreateAppNotifierOptions {
@@ -194,9 +198,12 @@ export function createDesktopNotifier(
   return {
     notify(notification) {
       const desktopCommand = buildDesktopNotificationCommand(notification, platform);
+      let desktopRequested = false;
       if (desktopCommand && disabledCommand !== desktopCommand.command) {
+        let requestFailed = false;
         runner.run(desktopCommand.command, desktopCommand.args, {
           onError: (error) => {
+            requestFailed = true;
             if (error.code === "ENOENT") {
               disabledCommand = desktopCommand.command;
             }
@@ -207,6 +214,7 @@ export function createDesktopNotifier(
             });
           },
         });
+        desktopRequested = !requestFailed;
       }
 
       if (notification.sound) {
@@ -223,6 +231,8 @@ export function createDesktopNotifier(
           });
         }
       }
+
+      return desktopRequested;
     },
   };
 }
@@ -234,19 +244,28 @@ export function createAppNotifier({
 }: CreateAppNotifierOptions): AppNotifier {
   return {
     notify(notification) {
+      const appActive = isAppActive();
       const toastEnabled = notification.toast !== false;
       const desktopMode = notification.desktop ?? "never";
+      let toastRendered = false;
+      let desktopRequested = false;
 
       if (toastEnabled) {
         renderToast(notification);
+        toastRendered = true;
       }
 
       if (
         desktopMode === "always" ||
-        (desktopMode === "when-inactive" && !isAppActive())
+        (desktopMode === "when-inactive" && !appActive)
       ) {
-        desktop?.notify(notification);
+        desktopRequested = desktop ? desktop.notify(notification) !== false : false;
       }
+
+      return {
+        toastVisible: appActive && toastRendered,
+        desktopRequested,
+      };
     },
   };
 }

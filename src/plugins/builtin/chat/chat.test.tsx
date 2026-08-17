@@ -1255,6 +1255,28 @@ describe("ChatContent", () => {
     expect(frame).not.toContain("Type a message...");
   });
 
+  test("keeps logged-out actions readable in a narrow pane", async () => {
+    const controller = createController({
+      sessionToken: null,
+      user: null,
+      messages: [makeMessage(1)],
+    });
+
+    await act(async () => {
+      testSetup = await testRender(createHarness(controller), {
+        width: 27,
+        height: 12,
+      });
+    });
+
+    await flushFrame();
+
+    const frame = setup().captureCharFrame();
+    expect(frame).toContain("Read-only chat.");
+    expect(frame).toContain("Log In");
+    expect(frame).toContain("Sign Up");
+  });
+
   test("shows a logged-in icon in the cloud status widget for cached sessions", async () => {
     const controller = createController({
       sessionToken: "token-123",

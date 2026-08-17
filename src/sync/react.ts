@@ -1,7 +1,9 @@
 import { useEffect, useSyncExternalStore, type Dispatch } from "react";
 import type { AppAction, AppState } from "../core/state/app/state";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
+import { apiClient } from "../api-client";
 import type { PluginRegistry } from "../plugins/registry";
+import { subscribeToCloudVerification } from "./auth-transition";
 import { cloudSyncController } from "./controller";
 
 interface CloudSyncRuntimeOptions {
@@ -35,6 +37,13 @@ export function useCloudSyncRuntime({
     if (!initialized) return;
     void cloudSyncController.requestSync({ reason: "startup" });
   }, [initialized, pluginRegistry]);
+
+  useEffect(() => subscribeToCloudVerification(apiClient, () => {
+    if (!initialized) return;
+    // Email verification makes the Cloud transport available. Force the first
+    // sync so a workspace completed before verification is uploaded promptly.
+    void cloudSyncController.requestSync({ reason: "session-verified", force: true });
+  }), [initialized]);
 
   useEffect(() => {
     if (!initialized) return;

@@ -43,7 +43,7 @@ export function useCommandBarTickerSearchActions({
       focusTicker(ticker.metadata.ticker, options);
       closeAll({ revertThemePreview: false });
     })();
-  }, [tickerRepository, dispatch, pluginRegistry.events, focusTicker, closeAll]);
+  }, [closeAll, dispatch, focusTicker, pluginRegistry.events, tickerRepository]);
 
   const mapTickerSearchCandidateToResultItem = useCallback((candidate: TickerSearchCandidate): ResultItem => {
     const detail = formatTickerSearchDetail(candidate);

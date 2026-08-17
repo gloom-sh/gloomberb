@@ -7,11 +7,24 @@ import { createAppRemoteController } from "./controller";
 import type { RemoteControlSchema, RemoteUiNodeSnapshot } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 
-function createRegistryHarness() {
-  let state = createInitialState({
+function createRegistryHarness(options: { withFloatingPane?: boolean } = {}) {
+  const config = {
     ...createDefaultConfig("/tmp/gloom-remote-controller"),
     onboardingComplete: true,
-  });
+  };
+  if (options.withFloatingPane) {
+    const instance = {
+      instanceId: "help:test",
+      paneId: "help",
+      binding: { kind: "none" as const },
+    };
+    config.layout = {
+      ...config.layout,
+      instances: [...config.layout.instances, instance],
+      floating: [{ instanceId: instance.instanceId, x: 8, y: 4, width: 60, height: 24 }],
+    };
+  }
+  let state = createInitialState(config);
   const actions: AppAction[] = [];
   const dispatch: Dispatch<AppAction> = (action) => {
     actions.push(action);
@@ -440,7 +453,7 @@ describe("createAppRemoteController", () => {
   });
 
   test("closes floating panes and grids visible panes through layout helpers", async () => {
-    const { controller, getState } = createRegistryHarness();
+    const { controller, getState } = createRegistryHarness({ withFloatingPane: true });
     expect(getState().config.layout.floating.length).toBeGreaterThan(0);
 
     const closeResponse = await controller.handle({

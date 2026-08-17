@@ -2,6 +2,7 @@ import { Box, Text, TextAttributes, type TextareaRenderable } from "../../../../
 import { getMessageComposerBlockHeight, MessageComposer } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
+import { truncateToDisplayWidth } from "../../../../utils/format";
 import type { ChatMessage } from "../../../../api-client";
 import { InlineAuthActions } from "../../cloud/auth-actions";
 import { ChatActionChip } from "../message/action-chip";
@@ -130,22 +131,23 @@ export function ChatComposerArea({
   user,
 }: ChatComposerAreaProps) {
   if (!canSend) {
+    const fitLine = (value: string) => truncateToDisplayWidth(t(value), contentWidth);
     return (
       <Box width={contentWidth} height={2} flexDirection="column">
         {!user && !hasSavedSession ? (
           <>
-            <Text fg={colors.textDim}>{t("Read-only chat. Log in or sign up to send.")}</Text>
+            <Text fg={colors.textDim}>{fitLine("Read-only chat. Log in or sign up to send.")}</Text>
             <InlineAuthActions />
           </>
         ) : !user ? (
           <>
-            <Text fg={colors.positive}>{t("Saved login found. Log in again to send.")}</Text>
+            <Text fg={colors.positive}>{fitLine("Saved login found. Log in again to send.")}</Text>
             <InlineAuthActions showSignup={false} />
           </>
         ) : (
           <>
-            <Text fg={colors.positive}>{t("Verify your email to send messages.")}</Text>
-            <Text fg={colors.textDim}>{t("Ctrl+P, then Resend Verification Email")}</Text>
+            <Text fg={colors.positive}>{fitLine("Verify your email to send messages.")}</Text>
+            <Text fg={colors.textDim}>{fitLine("Ctrl+P, then Resend Verification Email")}</Text>
           </>
         )}
       </Box>

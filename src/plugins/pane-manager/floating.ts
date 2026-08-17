@@ -20,8 +20,14 @@ interface LayoutBoundsLike {
 }
 
 export function clampFloatingRect(rect: FloatingRect, termWidth?: number, termHeight?: number): FloatingRect {
-  const width = Math.max(MIN_FLOAT_WIDTH, Math.round(rect.width));
-  const height = Math.max(MIN_FLOAT_HEIGHT, Math.round(rect.height));
+  const preferredWidth = Math.max(MIN_FLOAT_WIDTH, Math.round(rect.width));
+  const preferredHeight = Math.max(MIN_FLOAT_HEIGHT, Math.round(rect.height));
+  const width = typeof termWidth === "number"
+    ? Math.min(preferredWidth, Math.max(1, Math.round(termWidth)))
+    : preferredWidth;
+  const height = typeof termHeight === "number"
+    ? Math.min(preferredHeight, Math.max(1, Math.round(termHeight)))
+    : preferredHeight;
   const maxX = typeof termWidth === "number" ? Math.max(0, termWidth - width) : Number.POSITIVE_INFINITY;
   const maxY = typeof termHeight === "number" ? Math.max(0, termHeight - height) : Number.POSITIVE_INFINITY;
   return {

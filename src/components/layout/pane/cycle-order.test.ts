@@ -24,7 +24,6 @@ describe("getVisiblePaneCycleOrder", () => {
     expect(getVisiblePaneCycleOrder(config.layout, registry, ["chat"])).toEqual([
       "portfolio-list:main",
       "ticker-detail:main",
-      "ticker-detail:nvda",
     ]);
   });
 });

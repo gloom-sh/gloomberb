@@ -26,6 +26,8 @@ export interface SyncBrokerInstanceArgs {
   existingTickers?: Map<string, TickerRecord>;
   resources?: AppResourceStorePort;
   persistResolvedBrokerConfig?: boolean;
+  signal?: AbortSignal;
+  deferPersistence?: boolean;
 }
 
 export interface SyncBrokerInstanceResult {
@@ -36,6 +38,7 @@ export interface SyncBrokerInstanceResult {
   portfolioIds: string[];
   addedTickers: TickerRecord[];
   updatedTickers: TickerRecord[];
+  commit(): Promise<void>;
 }
 
 export interface SyncBrokerInstancesArgs {
@@ -66,6 +69,12 @@ function markBrokerInstanceSynced(
       entry.id === instanceId ? { ...entry, lastSyncedAt: syncedAt } : entry
     ),
   };
+}
+
+function throwIfBrokerImportCancelled(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw new Error("Broker import was cancelled.");
+  }
 }
 
 async function maybePersistResolvedBrokerConfig(
@@ -108,6 +117,8 @@ export async function syncBrokerInstance({
   existingTickers,
   resources,
   persistResolvedBrokerConfig = false,
+  signal,
+  deferPersistence = false,
 }: SyncBrokerInstanceArgs): Promise<SyncBrokerInstanceResult> {
   const instance = getBrokerInstance(config.brokerInstances, instanceId);
   if (!instance) {
@@ -123,37 +134,32 @@ export async function syncBrokerInstance({
   }
 
   const valid = await broker.validate(instance).catch(() => false);
+  throwIfBrokerImportCancelled(signal);
   if (!valid) {
     throw new Error(`${broker.name} setup is incomplete.`);
   }
 
   const tickers = await loadTickerMap(tickerRepository, existingTickers);
+  throwIfBrokerImportCancelled(signal);
 
   let brokerAccounts: BrokerAccount[] = [];
   let positions: BrokerPosition[];
   if (broker.importPortfolioSnapshot) {
     const snapshot = await broker.importPortfolioSnapshot(instance);
+    throwIfBrokerImportCancelled(signal);
     brokerAccounts = snapshot.accounts;
     positions = snapshot.positions;
-    if (resources) {
-      try {
-        persistBrokerAccounts(resources, instance, broker, brokerAccounts);
-      } catch {}
-    }
   } else {
     if (broker.listAccounts) {
       try {
         brokerAccounts = await broker.listAccounts(instance);
-        if (resources) {
-          try {
-            persistBrokerAccounts(resources, instance, broker, brokerAccounts);
-          } catch {}
-        }
+        throwIfBrokerImportCancelled(signal);
       } catch (error) {
         throw error;
       }
     }
     positions = await broker.importPositions(instance);
+    throwIfBrokerImportCancelled(signal);
   }
 
   const accountMetadata = new Map(
@@ -231,15 +237,16 @@ export async function syncBrokerInstance({
   }
 
   nextConfig = await maybePersistResolvedBrokerConfig(nextConfig, instance, broker, persistResolvedBrokerConfig);
+  throwIfBrokerImportCancelled(signal);
   nextConfig = markBrokerInstanceSynced(nextConfig, instance.id, syncedAt);
 
   const addedTickers = new Map<string, TickerRecord>();
   const updatedTickers = new Map<string, TickerRecord>();
 
   for (const position of positions) {
+    throwIfBrokerImportCancelled(signal);
     const portfolioId = findReusableBrokerPortfolioId(nextConfig, instance, position.accountId);
-    const { ticker, created } = await upsertBrokerPositionTicker({
-      tickerRepository,
+    const { ticker, created } = upsertBrokerPositionTicker({
       tickers,
       instance,
       portfolioId,
@@ -263,10 +270,28 @@ export async function syncBrokerInstance({
   }
 
   for (const ticker of cleanedTickers.values()) {
-    await tickerRepository.saveTicker(ticker);
     if (!addedTickers.has(ticker.metadata.ticker) && !updatedTickers.has(ticker.metadata.ticker)) {
       updatedTickers.set(ticker.metadata.ticker, ticker);
     }
+  }
+
+  let committed = false;
+  const commit = async () => {
+    if (committed) return;
+    throwIfBrokerImportCancelled(signal);
+    if (resources) {
+      try {
+        persistBrokerAccounts(resources, instance, broker, brokerAccounts);
+      } catch {}
+    }
+    await Promise.all([...addedTickers.values(), ...updatedTickers.values()].map((ticker) => (
+      tickerRepository.saveTicker(ticker)
+    )));
+    committed = true;
+  };
+
+  if (!deferPersistence) {
+    await commit();
   }
 
   return {
@@ -277,6 +302,7 @@ export async function syncBrokerInstance({
     portfolioIds,
     addedTickers: [...addedTickers.values()],
     updatedTickers: [...updatedTickers.values()],
+    commit,
   };
 }
 

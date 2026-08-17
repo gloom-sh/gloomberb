@@ -32,6 +32,8 @@ import type {
   CloudMarketBatchPayload,
   CloudMarketBatchTarget,
   CloudMarketResponse,
+  CloudMarketScreenerCategory,
+  CloudMarketScreenerPayload,
   CloudNewsListResponse,
   CloudNewsPayload,
   CloudOptionsChainPayload,
@@ -75,6 +77,22 @@ export class CloudDataApi {
     mode: "cache-first" | "refresh" = "cache-first",
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
     return this.postMarketBatch("/market/quotes/batch", targets, mode);
+  }
+
+  async getCloudMarketScreener(
+    category: CloudMarketScreenerCategory,
+    count = 25,
+    mode: "cache-first" | "refresh" = "cache-first",
+  ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>> {
+    const requestedCount = Number.isFinite(count) ? Math.round(count) : 25;
+    const params = new URLSearchParams({
+      category,
+      count: String(Math.max(1, Math.min(50, requestedCount))),
+      mode,
+    });
+    return this.request<CloudMarketResponse<CloudMarketScreenerPayload>>(
+      `/market/screener?${params.toString()}`,
+    );
   }
 
   async getCloudOptionsChain(

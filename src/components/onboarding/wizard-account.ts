@@ -30,6 +30,7 @@ export interface OnboardingAccountState {
   setAccountChoiceIdx: Dispatch<SetStateAction<number>>;
   setAccountEmail: (value: string) => void;
   setAccountPassword: (value: string) => void;
+  focusAccountField: (index: 0 | 1) => void;
   beginAccountMode: (mode: AccountMode) => void;
   returnToAccountChooser: () => void;
   switchToAccountLogin: () => void;
@@ -95,6 +96,12 @@ export function useOnboardingAccount({
     setAccountSubmitting(false);
     setAccountFieldIdx(0);
     setAccountSub(mode);
+    setEditingField(true);
+  }, [clearErrors, setEditingField]);
+
+  const focusAccountField = useCallback((index: 0 | 1) => {
+    clearErrors();
+    setAccountFieldIdx(index);
     setEditingField(true);
   }, [clearErrors, setEditingField]);
 
@@ -206,11 +213,14 @@ export function useOnboardingAccount({
   }, [accountEmail, accountFieldIdx, accountPassword, accountSub, setEditingField, submitAccount]);
 
   const syncExistingAccountSession = useCallback(() => {
-    if (accountOutcome || accountSub !== "choose" || !apiClient.getSessionToken()) return;
+    if (accountSub !== "choose" || !apiClient.getSessionToken()) return;
     const user = apiClient.getCurrentUser();
-    setAccountOutcome({ mode: "login", email: user?.email?.trim() || user?.username?.trim() || "" });
+    setAccountOutcome((current) => current ?? {
+      mode: "login",
+      email: user?.email?.trim() || user?.username?.trim() || "",
+    });
     setAccountSub("signed-in");
-  }, [accountOutcome, accountSub]);
+  }, [accountSub]);
 
   return {
     accountSub,
@@ -225,6 +235,7 @@ export function useOnboardingAccount({
     setAccountChoiceIdx,
     setAccountEmail,
     setAccountPassword,
+    focusAccountField,
     beginAccountMode,
     returnToAccountChooser,
     switchToAccountLogin,

@@ -467,6 +467,11 @@ export interface PluginPaneSettingsState {
 export type AppNotificationType = "info" | "success" | "error";
 type AppDesktopNotificationMode = "never" | "when-inactive" | "always";
 
+export interface AppNotificationDelivery {
+  toastVisible: boolean;
+  desktopRequested: boolean;
+}
+
 export interface AppNotificationRequest {
   title?: string;
   body: string;
@@ -548,7 +553,7 @@ export interface GloomPluginContext {
   on<K extends keyof PluginEvents>(event: K, handler: (payload: PluginEvents[K]) => void): () => void;
   emit<K extends keyof PluginEvents>(event: K, payload: PluginEvents[K]): void;
 
-  notify(notification: AppNotificationRequest): void;
+  notify(notification: AppNotificationRequest): AppNotificationDelivery | void;
 }
 
 export interface GloomPlugin {

@@ -36,6 +36,27 @@ function recentChatTimestamp(offsetMs = 60_000) {
   return new Date(Date.now() - offsetMs).toISOString();
 }
 
+function mentionNotification(overrides: Partial<ChatNotification> = {}): ChatNotification {
+  const channelId = overrides.channelId ?? "everyone";
+  const messageId = overrides.messageId ?? "m1";
+  const createdAt = overrides.createdAt ?? "2026-03-28T00:00:00.000Z";
+  return {
+    id: overrides.id ?? "n1",
+    type: overrides.type ?? "mention",
+    channelId,
+    messageId,
+    createdAt,
+    message: overrides.message ?? {
+      id: messageId,
+      channelId,
+      content: "hey @vince",
+      replyToId: null,
+      createdAt,
+      user: { id: "u2", username: "bob", displayName: "Bob" },
+    },
+  };
+}
+
 class TrackingPersistence extends MemoryPersistence {
   stateWrites = 0;
 
@@ -974,18 +995,11 @@ describe("ChatController", () => {
     });
   });
 
-  test("displays server-issued mention notifications while the app is backgrounded", () => {
+  test("delivers background notifications while the focused chat stays unread", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const message: ChatMessage = {
-      id: "m1",
-      channelId: "everyone",
-      content: "hey @vince",
-      replyToId: null,
-      createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    const deliveredIds: string[][] = [];
 
     persistence.setState("session", {
       sessionToken: "token-123",
@@ -994,18 +1008,17 @@ describe("ChatController", () => {
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
+      return { toastVisible: false, desktopRequested: true };
     });
+    apiClient.markChatNotificationsDelivered = async (ids) => {
+      deliveredIds.push(ids);
+      return { delivered: ids.length };
+    };
     controller.attachPersistence(persistence);
+    const detachView = controller.attachView(true);
     controller.setAppActive(false);
 
-    (controller as any).handleChatNotification({
-      id: "n1",
-      type: "mention",
-      channelId: "everyone",
-      messageId: "m1",
-      createdAt: "2026-03-28T00:00:00.000Z",
-      message,
-    } satisfies ChatNotification);
+    (controller as any).handleChatNotification(mentionNotification());
 
     expect(notifications).toEqual([{
       title: "Gloomberb chat",
@@ -1014,6 +1027,49 @@ describe("ChatController", () => {
       type: "info",
       desktop: "when-inactive",
     }]);
+    expect(controller.getSnapshot().unreadMentionCount).toBe(1);
+    expect(deliveredIds).toEqual([["n1"]]);
+
+    controller.setAppActive(true);
+    await flushMicrotasks();
+    await flushMicrotasks();
+    expect(controller.getSnapshot().unreadMentionCount).toBe(0);
+    detachView();
+  });
+
+  test("keeps undeliverable background notifications pending for email fallback", () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+    const deliveredIds: string[][] = [];
+    let desktopAvailable = false;
+    let presentationCount = 0;
+
+    persistence.setState("session", {
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+    controller.setNotifier(() => {
+      presentationCount += 1;
+      return { toastVisible: false, desktopRequested: desktopAvailable };
+    });
+    apiClient.markChatNotificationsDelivered = async (ids) => {
+      deliveredIds.push(ids);
+      return { delivered: ids.length };
+    };
+    controller.attachPersistence(persistence);
+    controller.setAppActive(false);
+
+    const notification = mentionNotification({ type: "reply" });
+    (controller as any).handleChatNotification(notification);
+
+    expect(presentationCount).toBe(1);
+    expect(deliveredIds).toEqual([]);
+
+    desktopAvailable = true;
+    (controller as any).handleChatNotification({ ...notification, id: "n2" });
+
+    expect(presentationCount).toBe(2);
+    expect(deliveredIds).toEqual([["n2"]]);
   });
 
   test("marks mentions viewed when a chat view opens", () => {
@@ -1053,18 +1109,11 @@ describe("ChatController", () => {
     detachView();
   });
 
-  test("does not keep mentions unread while a chat view is already open", () => {
+  test("keeps focused foreground notifications read without presenting an alert", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const message: ChatMessage = {
-      id: "m1",
-      channelId: "everyone",
-      content: "hey @vince",
-      replyToId: null,
-      createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    const deliveredIds: string[][] = [];
 
     persistence.setState("session", {
       sessionToken: "token-123",
@@ -1074,18 +1123,56 @@ describe("ChatController", () => {
     controller.setNotifier((notification) => {
       notifications.push(notification);
     });
+    apiClient.markChatNotificationsDelivered = async (ids) => {
+      deliveredIds.push(ids);
+      return { delivered: ids.length };
+    };
     controller.attachPersistence(persistence);
-    const detachView = controller.attachView();
+    const detachView = controller.attachView(true);
 
-    (controller as any).mergeMessages([message]);
+    (controller as any).handleChatNotification(mentionNotification());
 
     expect(controller.getSnapshot().unreadMentionCount).toBe(0);
     expect(notifications).toEqual([]);
+    expect(deliveredIds).toEqual([["n1"]]);
     expect(persistence.getState<{ lastViewedMessageId: string | null }>("channel:everyone", { schemaVersion: 1 })).toMatchObject({
       lastViewedMessageId: "m1",
     });
 
     detachView();
+  });
+
+  test("keeps an unfocused foreground chat unread while presenting an in-app alert", () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+    const notifications: AppNotificationRequest[] = [];
+    const deliveredIds: string[][] = [];
+
+    persistence.setState("session", {
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+    controller.setNotifier((notification) => {
+      notifications.push(notification);
+      return { toastVisible: true, desktopRequested: false };
+    });
+    apiClient.markChatNotificationsDelivered = async (ids) => {
+      deliveredIds.push(ids);
+      return { delivered: ids.length };
+    };
+    controller.attachPersistence(persistence);
+    const detachUnfocusedView = controller.attachView(false);
+
+    (controller as any).handleChatNotification(mentionNotification());
+
+    expect(notifications).toHaveLength(1);
+    expect(controller.getSnapshot().unreadMentionCount).toBe(1);
+    expect(deliveredIds).toEqual([["n1"]]);
+
+    detachUnfocusedView();
+    const detachFocusedView = controller.attachView(true);
+    expect(controller.getSnapshot().unreadMentionCount).toBe(0);
+    detachFocusedView();
   });
 
   test("loads server chat state, pending reply notifications, and acks delivery", async () => {
@@ -1147,6 +1234,7 @@ describe("ChatController", () => {
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
+      return { toastVisible: true, desktopRequested: false };
     });
     controller.attachPersistence(persistence);
 
@@ -1229,6 +1317,7 @@ describe("ChatController", () => {
     }, { schemaVersion: 1 });
     controller.setNotifier((entry) => {
       notifications.push(entry);
+      return { toastVisible: true, desktopRequested: false };
     });
     controller.attachPersistence(persistence);
 

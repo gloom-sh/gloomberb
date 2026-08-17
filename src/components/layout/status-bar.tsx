@@ -1,4 +1,5 @@
 import { Box, Span, Text, TextAttributes, contextMenuDivider, useContextMenu, useUiCapabilities } from "../../ui";
+import { useDialog, type PromptContext } from "../../ui/dialog";
 import { useCallback, useEffect, useState } from "react";
 import { blendHex, hoverBg } from "../../theme/colors";
 import { t, tf } from "../../i18n";
@@ -17,6 +18,7 @@ import { notifyGridlockComplete } from "../../plugins/gridlock-notification";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { Tabs } from "../ui/tabs";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 import { useTransientLayout } from "./transient-layout";
 
 const GRIDLOCK_TIP_DURATION_MS = 60_000;
@@ -28,6 +30,7 @@ type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) 
 type LayoutTabItem = {
   label: string;
   value: string;
+  reorderable?: boolean;
   onContextMenu: (value: string, event: any) => void;
 };
 
@@ -36,6 +39,7 @@ type StatusBarViewProps = {
   activeLayoutValue: string;
   dismissGridlockTip: (event?: StatusBarEvent) => void;
   handleGridlockTip: (event?: StatusBarEvent) => void;
+  handleLayoutReorder: (fromValue: string, toValue: string) => void;
   handleLayoutSelect: (value: string) => void;
   hasMultipleLayouts: boolean;
   hoveredControl: HoveredControl;
@@ -57,6 +61,7 @@ function truncate(text: string, width: number): string {
 export function StatusBar() {
   const { nativePaneChrome, nativeContextMenu } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
+  const dialog = useDialog();
   const registry = getSharedRegistry();
   const dispatch = useAppDispatch();
   const layouts = useAppSelector(selectSavedLayouts);
@@ -72,6 +77,7 @@ export function StatusBar() {
   const savedLayoutTabs = layouts.map((layout, index) => ({
     label: `^${index + 1} ${truncate(layout.name, 14)}`,
     value: String(index),
+    reorderable: true,
   }));
   const layoutTabs = transientLayout
     ? [
@@ -79,6 +85,7 @@ export function StatusBar() {
       {
         label: transientLayout.label,
         value: transientLayout.id,
+        reorderable: false,
       },
     ]
     : savedLayoutTabs;
@@ -99,6 +106,20 @@ export function StatusBar() {
       transientLayout.onDeactivate?.();
     }
     dispatch({ type: "SWITCH_LAYOUT", index });
+  };
+  const handleLayoutReorder = (fromValue: string, toValue: string) => {
+    const fromIndex = Number(fromValue);
+    const toIndex = Number(toValue);
+    if (
+      !Number.isInteger(fromIndex)
+      || !Number.isInteger(toIndex)
+      || fromIndex < 0
+      || toIndex < 0
+      || fromIndex >= layouts.length
+      || toIndex >= layouts.length
+      || fromIndex === toIndex
+    ) return;
+    dispatch({ type: "REORDER_LAYOUT", fromIndex, toIndex });
   };
 
   useEffect(() => {
@@ -136,6 +157,27 @@ export function StatusBar() {
     event?.stopPropagation?.();
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
   };
+
+  const requestDeleteLayout = useCallback(async (index: number) => {
+    const layout = layouts[index];
+    if (!layout || layouts.length <= 1) return;
+    const confirmed = await dialog.prompt<boolean>({
+      closeOnClickOutside: true,
+      content: (context: PromptContext<boolean>) => (
+        <ConfirmDialog
+          {...context}
+          title={t("Delete Layout")}
+          body={[`Delete layout "${layout.name}"? This cannot be undone.`]}
+          confirmLabel={t("Delete Layout")}
+          cancelLabel={t("Cancel")}
+          width={48}
+        />
+      ),
+    }).catch(() => false);
+    if (confirmed !== true) return;
+    dispatch({ type: "DELETE_LAYOUT", index });
+    registry?.notify({ body: `Layout "${layout.name}" deleted`, type: "success" });
+  }, [dialog, dispatch, layouts, registry]);
 
   const layoutContextMenuItems = useCallback((index: number): ContextMenuItem[] => {
     const layout = layouts[index];
@@ -181,7 +223,7 @@ export function StatusBar() {
         id: "layout:delete",
         label: "Delete Layout...",
         enabled: layouts.length > 1,
-        onSelect: () => openWorkflowForLayout("delete-layout"),
+        onSelect: () => requestDeleteLayout(index),
       },
       contextMenuDivider("layout:actions-divider"),
       {
@@ -192,7 +234,7 @@ export function StatusBar() {
     );
 
     return items;
-  }, [activeLayoutIdx, dispatch, layouts, registry]);
+  }, [activeLayoutIdx, dispatch, layouts, registry, requestDeleteLayout]);
 
   const openLayoutContextMenu = useCallback((
     index: number,
@@ -230,6 +272,7 @@ export function StatusBar() {
     activeLayoutValue,
     dismissGridlockTip,
     handleGridlockTip,
+    handleLayoutReorder,
     handleLayoutSelect,
     hasMultipleLayouts,
     hoveredControl,
@@ -306,6 +349,7 @@ function TerminalStatusBar({
 function StatusBarLayoutControl({
   activeLayoutValue,
   handleLayoutSelect,
+  handleLayoutReorder,
   hasMultipleLayouts,
   hoveredControl,
   layoutTabItems,
@@ -317,6 +361,7 @@ function StatusBarLayoutControl({
   StatusBarViewProps,
   | "activeLayoutValue"
   | "handleLayoutSelect"
+  | "handleLayoutReorder"
   | "hasMultipleLayouts"
   | "hoveredControl"
   | "layoutTabItems"
@@ -337,6 +382,7 @@ function StatusBarLayoutControl({
             tabs={layoutTabItems}
             activeValue={activeLayoutValue}
             onSelect={handleLayoutSelect}
+            onReorder={handleLayoutReorder}
             compact
             variant="pill"
           />

@@ -1,12 +1,11 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { buildBrokerProfileConfig, validateBrokerProfileValues } from "../../brokers/profile-form";
-import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
-import { saveConfig } from "../../data/config/store";
-import type { PluginRegistry } from "../../plugins/registry";
+import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import type { AppConfig } from "../../types/config";
 import { createBrokerInstanceId } from "../../utils/broker-instances";
 import { debugLog } from "../../utils/debug-log";
-import type { BrokerSyncSummary, PortfolioSub } from "./onboarding-steps";
+import type { PortfolioSub } from "./onboarding-steps";
 import type { BrokerOption } from "./wizard-model";
 
 const onboardingLog = debugLog.createLogger("onboarding");
@@ -15,7 +14,7 @@ export function summarizeOnboardingError(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message.trim();
   }
-  return "Unable to finish onboarding.";
+  return "Unable to connect the broker.";
 }
 
 function focusPortfolioListCollection(config: AppConfig, collectionId: string): AppConfig {
@@ -50,46 +49,13 @@ function focusPortfolioListCollection(config: AppConfig, collectionId: string): 
   };
 }
 
-export async function finishOnboarding({
-  config,
-  baseConfig,
-  isBroker,
-  selectedTheme,
-  portfolioName,
-  onComplete,
-}: {
-  config: AppConfig;
-  baseConfig: AppConfig | null;
-  isBroker: boolean;
-  selectedTheme: string;
-  portfolioName: string;
-  onComplete: (config: AppConfig) => void | Promise<void>;
-}) {
-  if (isBroker && !baseConfig) {
-    throw new Error("Connect and sync the broker before finishing onboarding.");
-  }
-
-  const updatedConfig: AppConfig = {
-    ...(baseConfig ?? config),
-    theme: selectedTheme,
-    portfolios: isBroker
-      ? (baseConfig ?? config).portfolios
-      : [{ id: "main", name: portfolioName || "Main Portfolio", currency: "USD" }],
-    disabledPlugins: [],
-    onboardingComplete: true,
-  };
-
-  await saveConfig(updatedConfig);
-  await Promise.resolve(onComplete(updatedConfig));
-}
-
 export function useOnboardingBrokerSync({
   config,
   brokerOptions,
   brokerValues,
   selectedBrokerId,
-  pluginRegistry,
-  nextStep,
+  importBrokerPositions,
+  onSynced,
   setEditingField,
   setPortfolioSub,
 }: {
@@ -97,23 +63,27 @@ export function useOnboardingBrokerSync({
   brokerOptions: BrokerOption[];
   brokerValues: Record<string, Record<string, string>>;
   selectedBrokerId: string | null;
-  pluginRegistry: PluginRegistry;
-  nextStep: () => void;
+  importBrokerPositions: AppBrokerImportRuntime["importBrokerPositions"];
+  onSynced: (result: SyncBrokerInstanceResult, config: AppConfig) => void | Promise<void>;
   setEditingField: (editing: boolean) => void;
   setPortfolioSub: Dispatch<SetStateAction<PortfolioSub>>;
 }) {
   const brokerSyncAttemptRef = useRef(0);
+  const brokerSyncAbortRef = useRef<AbortController | null>(null);
+  const brokerSyncCommitRef = useRef(false);
   const [isBrokerSyncing, setIsBrokerSyncing] = useState(false);
+  const [isBrokerCommitting, setIsBrokerCommitting] = useState(false);
   const [brokerSyncError, setBrokerSyncError] = useState<string | null>(null);
-  const [brokerSyncedConfig, setBrokerSyncedConfig] = useState<AppConfig | null>(null);
-  const [brokerSyncSummary, setBrokerSyncSummary] = useState<BrokerSyncSummary | null>(null);
 
   const resetBrokerSync = useCallback(() => {
+    if (brokerSyncCommitRef.current) return false;
     brokerSyncAttemptRef.current += 1;
+    brokerSyncAbortRef.current?.abort();
+    brokerSyncAbortRef.current = null;
     setIsBrokerSyncing(false);
+    setIsBrokerCommitting(false);
     setBrokerSyncError(null);
-    setBrokerSyncedConfig(null);
-    setBrokerSyncSummary(null);
+    return true;
   }, []);
 
   const buildDraftBrokerConfig = useCallback((brokerValueOverrides?: Record<string, string>) => {
@@ -158,62 +128,71 @@ export function useOnboardingBrokerSync({
   const syncSelectedBroker = useCallback(async (brokerValueOverrides?: Record<string, string>) => {
     const attemptId = brokerSyncAttemptRef.current + 1;
     brokerSyncAttemptRef.current = attemptId;
+    brokerSyncAbortRef.current?.abort();
+    const abortController = new AbortController();
+    brokerSyncAbortRef.current = abortController;
+    brokerSyncCommitRef.current = false;
     setEditingField(false);
     setPortfolioSub("broker-sync");
     setIsBrokerSyncing(true);
+    setIsBrokerCommitting(false);
     setBrokerSyncError(null);
-    setBrokerSyncedConfig(null);
-    setBrokerSyncSummary(null);
 
     try {
       const { config: draftConfig, instanceId } = buildDraftBrokerConfig(brokerValueOverrides);
       onboardingLog.info("Syncing broker during onboarding", { instanceId, brokerId: selectedBrokerId });
-      const result = await syncBrokerInstance({
+      const result = await importBrokerPositions(instanceId, undefined, {
         config: draftConfig,
-        instanceId,
-        brokers: pluginRegistry.brokers,
-        tickerRepository: pluginRegistry.tickerRepository,
-        resources: pluginRegistry.persistence.resources,
         persistResolvedBrokerConfig: true,
+        signal: abortController.signal,
+        onCommitStart: () => {
+          if (brokerSyncAttemptRef.current !== attemptId) return;
+          brokerSyncCommitRef.current = true;
+          setIsBrokerCommitting(true);
+        },
+        onCommitEnd: () => {
+          if (brokerSyncAttemptRef.current !== attemptId) return;
+          // Keep navigation locked until the onboarding-specific config and
+          // progress have also been persisted by onSynced below.
+        },
       });
       if (brokerSyncAttemptRef.current !== attemptId) {
         return;
       }
+      brokerSyncCommitRef.current = true;
+      setIsBrokerCommitting(true);
 
       const portfolioId = result.portfolioIds[0] ?? null;
       const nextConfig = portfolioId
         ? focusPortfolioListCollection(result.config, portfolioId)
         : result.config;
-      setBrokerSyncedConfig(nextConfig);
-      setBrokerSyncSummary({
-        portfolioId,
-        positionsImported: result.positions.length,
-      });
       setBrokerSyncError(null);
-      setIsBrokerSyncing(false);
-      setPortfolioSub("broker-fields");
       onboardingLog.info("Broker onboarding sync completed", {
         instanceId,
         portfolioId,
         positionsImported: result.positions.length,
       });
-      nextStep();
+      await onSynced(result, nextConfig);
+      brokerSyncCommitRef.current = false;
+      setIsBrokerSyncing(false);
+      setIsBrokerCommitting(false);
+      setPortfolioSub("broker-fields");
     } catch (error) {
       if (brokerSyncAttemptRef.current !== attemptId) {
         return;
       }
 
       onboardingLog.error("Broker onboarding sync failed", { error: summarizeOnboardingError(error), brokerId: selectedBrokerId });
+      brokerSyncCommitRef.current = false;
       setBrokerSyncError(summarizeOnboardingError(error));
       setIsBrokerSyncing(false);
+      setIsBrokerCommitting(false);
       setPortfolioSub("broker-sync");
     }
   }, [
     buildDraftBrokerConfig,
-    nextStep,
-    pluginRegistry.brokers,
-    pluginRegistry.persistence.resources,
-    pluginRegistry.tickerRepository,
+    importBrokerPositions,
+    onSynced,
     selectedBrokerId,
     setEditingField,
     setPortfolioSub,
@@ -221,9 +200,8 @@ export function useOnboardingBrokerSync({
 
   return {
     isBrokerSyncing,
+    isBrokerCommitting,
     brokerSyncError,
-    brokerSyncedConfig,
-    brokerSyncSummary,
     resetBrokerSync,
     syncSelectedBroker,
   };

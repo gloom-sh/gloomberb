@@ -82,7 +82,7 @@ const PROVIDER_DEFINITIONS: readonly AiProviderDefinition[] = [
     id: "xai",
     name: "xAI / Grok",
     outputModes: ALL_OUTPUT_MODES,
-    preferredModelIds: ["grok-4.5", "grok-4.3"],
+    preferredModelIds: ["grok-4.6", "grok-4.3"],
   },
   {
     id: "openrouter",

@@ -139,6 +139,7 @@ interface MergeChatMessagesOptions {
   currentUserId?: string | null;
   messages: ChatMessage[];
   options?: MergeMessagesOptions;
+  viewActive: boolean;
   markViewed: (persist?: boolean) => void;
 }
 
@@ -147,12 +148,13 @@ export function mergeChatMessages({
   currentUserId,
   messages,
   options,
+  viewActive,
   markViewed,
 }: MergeChatMessagesOptions): void {
   reconcilePendingMessages(channel, messages);
   const freshIncoming = mergeStoredMessages(channel, messages)
     .filter((message) => message.user.id !== currentUserId);
-  if (channel.openViewCount > 0) {
+  if (viewActive) {
     markViewed(false);
   } else if (freshIncoming.length > 0 && options?.countUnread !== false) {
     channel.unreadCount += freshIncoming.length;

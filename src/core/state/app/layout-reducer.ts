@@ -3,6 +3,8 @@ import {
   clonePaneStateMap,
   cloneSavedLayout,
   historyForIndex,
+  moveHistoryIndex,
+  movedIndex,
   removeHistoryIndex,
   setHistoryForIndex,
   syncConfigActiveLayoutState,
@@ -90,6 +92,38 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         focusedPaneId: target.focusedPaneId ?? null,
         activePanel: target.activePanel ?? state.activePanel,
       });
+    }
+
+    case "REORDER_LAYOUT": {
+      const { fromIndex, toIndex } = action;
+      if (
+        fromIndex === toIndex
+        || fromIndex < 0
+        || toIndex < 0
+        || fromIndex >= state.config.layouts.length
+        || toIndex >= state.config.layouts.length
+      ) return state;
+
+      const currentConfig = syncConfigActiveLayoutState(
+        state.config,
+        state.paneState,
+        state.focusedPaneId,
+        state.activePanel,
+      );
+      const layouts = [...currentConfig.layouts];
+      const [movedLayout] = layouts.splice(fromIndex, 1);
+      if (!movedLayout) return state;
+      layouts.splice(toIndex, 0, movedLayout);
+
+      return {
+        ...state,
+        config: {
+          ...currentConfig,
+          layouts,
+          activeLayoutIndex: movedIndex(currentConfig.activeLayoutIndex, fromIndex, toIndex),
+        },
+        layoutHistory: moveHistoryIndex(state.layoutHistory, fromIndex, toIndex),
+      };
     }
 
     case "NEW_LAYOUT": {

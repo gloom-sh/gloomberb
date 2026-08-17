@@ -3,6 +3,7 @@ import type {
   BrokerInstanceConfig,
   ChartPreferences,
   LayoutConfig,
+  OnboardingProgress,
   SavedLayout,
 } from "../../../types/config";
 import {
@@ -32,6 +33,12 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
   ));
 
   const disabledPlugins = sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins);
+  const onboardingProgress = sanitizeOnboardingProgress(candidate.onboardingProgress);
+  const onboardingComplete = onboardingProgress
+    ? false
+    : typeof candidate.onboardingComplete === "boolean"
+      ? candidate.onboardingComplete
+      : defaults.onboardingComplete;
 
   const config: AppConfig = {
     dataDir,
@@ -52,7 +59,8 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     valueFlashingEnabled: typeof candidate.valueFlashingEnabled === "boolean" ? candidate.valueFlashingEnabled : defaults.valueFlashingEnabled,
     recentTickers: sanitizeStringArray(candidate.recentTickers, defaults.recentTickers),
     language: isLanguagePreference(candidate.language) ? candidate.language : undefined,
-    onboardingComplete: typeof candidate.onboardingComplete === "boolean" ? candidate.onboardingComplete : defaults.onboardingComplete,
+    onboardingComplete,
+    onboardingProgress,
     lastLaunchedVersion: typeof candidate.lastLaunchedVersion === "string" ? candidate.lastLaunchedVersion : undefined,
   };
 
@@ -67,6 +75,9 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     || !isPluginConfigMap(candidate.pluginConfig)
     || !isChartPreferences(candidate.chartPreferences)
     || (candidate.language !== undefined && !isLanguagePreference(candidate.language))
+    || (candidate.onboardingProgress !== undefined && !sanitizeOnboardingProgress(candidate.onboardingProgress))
+    || (isPlainRecord(candidate.onboardingProgress) && candidate.onboardingProgress.stage === "open-security")
+    || (!!onboardingProgress && candidate.onboardingComplete !== false)
     || typeof candidate.valueFlashingEnabled !== "boolean"
     || typeof candidate.activeLayoutIndex !== "number";
 
@@ -85,6 +96,7 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
       : entry
   ));
 
+  const onboardingProgress = sanitizeOnboardingProgress(config.onboardingProgress);
   const persisted: AppConfig = {
     ...config,
     configVersion: CURRENT_CONFIG_VERSION,
@@ -100,9 +112,46 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     chartPreferences: sanitizeChartPreferences(config.chartPreferences, defaults.chartPreferences),
     valueFlashingEnabled: config.valueFlashingEnabled !== false,
     recentTickers: sanitizeStringArray(config.recentTickers, []),
+    onboardingComplete: onboardingProgress ? false : config.onboardingComplete,
+    onboardingProgress,
   };
 
   return persisted;
+}
+
+const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([
+  "welcome",
+  "portfolio",
+  "add-ticker",
+  "account",
+  "upgrade",
+  "ready",
+]);
+
+function sanitizeOnboardingProgress(value: unknown): OnboardingProgress | undefined {
+  if (!isPlainRecord(value) || value.version !== 1) {
+    return undefined;
+  }
+  const stage = value.stage === "open-security" ? "account" : value.stage;
+  if (!ONBOARDING_STAGES.has(stage as OnboardingProgress["stage"])) return undefined;
+
+  const path = value.path === "manual" || value.path === "broker" ? value.path : undefined;
+  const accountStatus = value.accountStatus === "signed-in" || value.accountStatus === "skipped"
+    ? value.accountStatus
+    : undefined;
+  return {
+    version: 1,
+    stage: stage as OnboardingProgress["stage"],
+    path,
+    portfolioId: typeof value.portfolioId === "string" ? value.portfolioId : undefined,
+    tickerSymbol: typeof value.tickerSymbol === "string" ? value.tickerSymbol : undefined,
+    brokerName: typeof value.brokerName === "string" ? value.brokerName : undefined,
+    positionsImported: typeof value.positionsImported === "number" && Number.isFinite(value.positionsImported)
+      ? Math.max(0, Math.floor(value.positionsImported))
+      : undefined,
+    accountStatus,
+    checkoutOpenedAt: typeof value.checkoutOpenedAt === "string" ? value.checkoutOpenedAt : undefined,
+  };
 }
 
 function sanitizeStringArray(value: unknown, fallback: string[]): string[] {

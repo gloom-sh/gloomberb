@@ -289,6 +289,8 @@ export function QuickAddTickerInput({
       return;
     }
 
+    if (event.targetEditable) return;
+
     if ((event.name === "a" || event.name === "n") && !event.ctrl && !event.meta && !event.super) {
       event.preventDefault?.();
       event.stopPropagation?.();

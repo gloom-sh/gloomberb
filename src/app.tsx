@@ -21,7 +21,7 @@ import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
 import type { LoadedExternalPlugin } from "./plugins/loader";
 import type { AppServicesFactory, AppTickerRepositoryPort } from "./core/app-service-ports";
-import { ThemeProvider, useThemeColors } from "./theme/theme-context";
+import { useThemeColors } from "./theme/theme-context";
 import type { AppConfig } from "./types/config";
 import type { DesktopDeepLinkBridge } from "./types/desktop-deeplink";
 import type { CliLaunchRequest } from "./types/plugin";
@@ -68,6 +68,8 @@ interface AppInnerProps {
   desktopApplicationMenuBridge?: DesktopApplicationMenuBridge;
   desktopDeepLinkBridge?: DesktopDeepLinkBridge;
   remoteControlAdapter?: RemoteControlAdapter;
+  onboardingActive?: boolean;
+  onOnboardingComplete?: (config: AppConfig) => void | Promise<void>;
 }
 
 function ThemedAppRoot({ children }: { children: ReactNode }) {
@@ -98,6 +100,8 @@ function AppInner({
   desktopApplicationMenuBridge,
   desktopDeepLinkBridge,
   remoteControlAdapter,
+  onboardingActive = false,
+  onOnboardingComplete,
 }: AppInnerProps) {
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
@@ -279,7 +283,11 @@ function AppInner({
     dispatch,
     tickerRepository,
     pluginRegistry,
-    initialized: state.initialized && desktopWindowBridge?.kind !== "detached",
+    // Keep a first-run workspace stable while the local guide is active. Once
+    // onboarding finishes, the normal pull-before-push sync starts immediately.
+    initialized: state.initialized
+      && desktopWindowBridge?.kind !== "detached"
+      && !onboardingActive,
   });
 
   useAppPaneRuntime({
@@ -361,7 +369,7 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header />
+          <Header onOpenHelp={() => pluginRegistry.showPane("help")} />
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
@@ -371,6 +379,13 @@ function AppInner({
             />
             <StatusBar />
           </TransientLayoutProvider>
+          {onboardingActive && onOnboardingComplete ? (
+            <OnboardingWizard
+              pluginRegistry={pluginRegistry}
+              importBrokerPositions={importBrokerPositions}
+              onComplete={onOnboardingComplete}
+            />
+          ) : null}
           {state.commandBarOpen && (
             <CommandBar
               dataProvider={dataProvider}
@@ -436,7 +451,10 @@ export function App({
   const [config, setConfig] = useState(() => {
     return initialCliLaunch.config;
   });
-  const [showOnboarding, setShowOnboarding] = useState(!effectiveInitialConfig.onboardingComplete);
+  const [showOnboarding, setShowOnboarding] = useState(() => (
+    desktopWindowBridge?.kind !== "detached"
+    && (!effectiveInitialConfig.onboardingComplete || !!effectiveInitialConfig.onboardingProgress)
+  ));
 
   useEffect(() => bindAppActivity(renderer), [renderer]);
 
@@ -468,21 +486,6 @@ export function App({
     });
   }, [cliLaunchRequest, config, desktopSnapshot, desktopWindowBridge?.kind, services.persistence.sessions]);
 
-  if (showOnboarding) {
-    return (
-      <ThemeProvider themeId={config.theme}>
-        <OnboardingWizard
-          config={config}
-          pluginRegistry={services.pluginRegistry}
-          onComplete={(updatedConfig) => {
-            setConfig(updatedConfig);
-            setShowOnboarding(false);
-          }}
-        />
-      </ThemeProvider>
-    );
-  }
-
   return (
     <RemoteUiRegistryProvider>
       <AppProvider
@@ -504,6 +507,11 @@ export function App({
           desktopApplicationMenuBridge={desktopApplicationMenuBridge}
           desktopDeepLinkBridge={desktopDeepLinkBridge}
           remoteControlAdapter={remoteControlAdapter}
+          onboardingActive={showOnboarding}
+          onOnboardingComplete={(updatedConfig) => {
+            setConfig(updatedConfig);
+            setShowOnboarding(false);
+          }}
         />
       </AppProvider>
     </RemoteUiRegistryProvider>

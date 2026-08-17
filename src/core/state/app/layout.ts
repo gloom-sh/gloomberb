@@ -317,6 +317,27 @@ export function removeHistoryIndex(layoutHistory: Record<number, LayoutHistoryEn
   return next;
 }
 
+export function movedIndex(index: number, fromIndex: number, toIndex: number): number {
+  if (index === fromIndex) return toIndex;
+  if (fromIndex < toIndex && index > fromIndex && index <= toIndex) return index - 1;
+  if (fromIndex > toIndex && index >= toIndex && index < fromIndex) return index + 1;
+  return index;
+}
+
+export function moveHistoryIndex(
+  layoutHistory: Record<number, LayoutHistoryEntry>,
+  fromIndex: number,
+  toIndex: number,
+): Record<number, LayoutHistoryEntry> {
+  const next: Record<number, LayoutHistoryEntry> = {};
+  for (const [rawIndex, entry] of Object.entries(layoutHistory)) {
+    const index = Number.parseInt(rawIndex, 10);
+    if (Number.isNaN(index)) continue;
+    next[movedIndex(index, fromIndex, toIndex)] = cloneHistoryEntry(entry);
+  }
+  return next;
+}
+
 /** If paneId is a floating pane, bump its zIndex to the top. */
 export function bringFloatingToFront(layout: LayoutConfig, paneId: string): LayoutConfig {
   const entryIndex = layout.floating.findIndex((e) => e.instanceId === paneId);

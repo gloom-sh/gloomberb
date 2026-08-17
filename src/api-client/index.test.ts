@@ -185,6 +185,28 @@ describe("apiClient auth cookies", () => {
     ]);
   });
 
+  test("creates a browser handoff with the captured session instead of exposing it in the URL", async () => {
+    let requestedUrl = "";
+    let requestedCookie: string | null = null;
+    apiClient.setSessionToken("desktop-session-token");
+    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
+      requestedUrl = String(input);
+      requestedCookie = new Headers(init?.headers).get("Cookie");
+      return createResponse({
+        url: "https://api.gloom.sh/cloud/auth/browser-handoff?token=opaque-one-time-token",
+      });
+    });
+
+    const handoff = await apiClient.createBrowserHandoff();
+
+    expect(new URL(requestedUrl).pathname).toBe("/cloud/auth/browser-handoff");
+    expect(requestedCookie).toBe(
+      "__Secure-gloomberb.session_token=desktop-session-token; gloomberb.session_token=desktop-session-token",
+    );
+    expect(handoff.url).toContain("token=opaque-one-time-token");
+    expect(handoff.url).not.toContain("desktop-session-token");
+  });
+
   test("keeps cached identity when session refresh is rejected without a hard account-missing response", async () => {
     apiClient.setSessionToken("persisted-token.value");
     apiClient.restoreCachedUser(verifiedUser);

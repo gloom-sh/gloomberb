@@ -214,6 +214,10 @@ export function createCommandBarCollectionWorkflowActions(options: {
       });
       await tickerRepository.saveTicker(result.ticker);
       dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
+      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+        symbol: result.ticker.metadata.ticker,
+        portfolioId: portfolio.id,
+      });
       notify(`Set position for ${result.ticker.metadata.ticker} in "${portfolio.name}".`, { type: "success" });
     },
 
@@ -236,11 +240,18 @@ export function createCommandBarCollectionWorkflowActions(options: {
       if (result.changed) {
         await tickerRepository.saveTicker(result.ticker);
         dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
-        notify(`Added ${result.ticker.metadata.ticker} to "${portfolio.name}".`, { type: "success" });
-        return;
       }
 
-      notify(`${result.ticker.metadata.ticker} is already in "${portfolio.name}".`, { type: "info" });
+      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+        symbol: result.ticker.metadata.ticker,
+        portfolioId: portfolio.id,
+      });
+      notify(
+        result.changed
+          ? `Added ${result.ticker.metadata.ticker} to "${portfolio.name}".`
+          : `${result.ticker.metadata.ticker} is already in "${portfolio.name}".`,
+        { type: result.changed ? "success" : "info" },
+      );
     },
 
     async disconnectBrokerInstance(instanceId) {

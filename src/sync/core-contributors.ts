@@ -180,7 +180,9 @@ function collectCoreConfigPayload(config: AppConfig) {
     chartPreferences: config.chartPreferences,
     valueFlashingEnabled: config.valueFlashingEnabled,
     recentTickers: config.recentTickers,
-    onboardingComplete: config.onboardingComplete,
+    // Completion is monotonic in synced state. A device only advertises the
+    // completed state, while resumable progress and incomplete state stay local.
+    onboardingComplete: config.onboardingComplete === true ? true : undefined,
   });
 }
 
@@ -369,7 +371,16 @@ function mergeConfigPayload(
   assign("chartPreferences");
   assign("valueFlashingEnabled");
   assign("recentTickers");
-  assign("onboardingComplete");
+  // Sync can complete onboarding on another device, but never reopen it.
+  // Resumable progress remains local until this installation completes it.
+  if (
+    !config.onboardingProgress
+    && config.onboardingComplete !== true
+    && payload.onboardingComplete === true
+    && canApply("onboardingComplete")
+  ) {
+    next.onboardingComplete = true;
+  }
 
   if (
     canApply("disabledPlugins")

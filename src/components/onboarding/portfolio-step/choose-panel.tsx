@@ -1,43 +1,39 @@
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, useUiHost } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
-import { ListView, type ListViewItem } from "../../ui";
+import type { ListViewItem } from "../../ui";
+import { OnboardingChoiceList } from "../onboarding-frame";
 
 export function PortfolioChoicePanel({
   choices,
   optionIdx,
   onOptionSelect,
+  onOptionActivate,
 }: {
   choices: ListViewItem[];
   optionIdx: number;
   onOptionSelect: (idx: number) => void;
+  onOptionActivate: (idx: number) => void;
 }) {
-  return (
-    <Box flexDirection="column" paddingX={2}>
-      <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("Set up a portfolio")}</Text>
-      </Box>
-      <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textDim}>{t("How would you like to get started?")}</Text>
-      </Box>
-      <Box height={2} />
+  const desktop = useUiHost().kind === "desktop-web";
 
-      <ListView
+  return (
+    <Box flexDirection="column" paddingX={desktop ? 0 : 2} style={desktop ? { marginTop: 14 } : undefined}>
+      <OnboardingChoiceList
         items={choices}
         selectedIndex={optionIdx}
         onSelect={onOptionSelect}
-        showSelectedDescription
+        onActivate={onOptionActivate}
       />
 
-      <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textDim}>{t("Edits later from the command bar.")}</Text>
-      </Box>
-      <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textMuted}>{t("Use \u2191\u2193 to choose")}</Text>
-      </Box>
+      {!desktop ? (
+        <>
+          <Box height={1} />
+          <Box height={1}>
+            <Text fg={colors.textMuted}>{t("Use \u2191\u2193 to choose")}</Text>
+          </Box>
+        </>
+      ) : null}
     </Box>
   );
 }

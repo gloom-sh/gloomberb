@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo } from "react";
+import { apiClient } from "../../../api-client";
 import type { PaneFooterSegment } from "../../../components";
 import { tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useShortcut } from "../../../react/input";
 import { useRendererHost } from "../../../ui";
+import type { RendererHost } from "../../../ui";
 import { getSharedRegistry } from "../../registry";
 import { requestAccountManagementTab } from "../account-management/navigation";
 import { usePlanAccess, type PlanAccess } from "./plan-access";
@@ -14,12 +16,28 @@ export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
  * The renderer host only exists inside React, so UI that uses it publishes an
  * opener here for the command bar, which runs outside the tree.
  */
-let cloudUpgradeOpener: ((url: string) => void) | null = null;
+let cloudUpgradeOpener: (() => void) | null = null;
+
+/**
+ * Resolves a safe handoff URL for a captured native session. Signed-out users
+ * still use the public Cloud page, while signed-in users never expose their
+ * session cookie to the external browser.
+ */
+export async function resolveCloudUpgradeUrl(): Promise<string> {
+  if (!apiClient.getSessionToken()) return CLOUD_UPGRADE_URL;
+  const handoff = await apiClient.createBrowserHandoff();
+  return handoff.url;
+}
+
+/** Opens Cloud Pro, transferring a native session with the server's one-time handoff. */
+export async function openCloudUpgrade(rendererHost: Pick<RendererHost, "openExternal">): Promise<void> {
+  await rendererHost.openExternal(await resolveCloudUpgradeUrl());
+}
 
 /** Opens the checkout page when any cloud UI has published an opener. */
 export function openCloudUpgradeUrl(): boolean {
   if (!cloudUpgradeOpener) return false;
-  cloudUpgradeOpener(CLOUD_UPGRADE_URL);
+  cloudUpgradeOpener();
   return true;
 }
 
@@ -27,11 +45,17 @@ export function openCloudUpgradeUrl(): boolean {
 export function useCloudUpgradeAction(): () => void {
   const rendererHost = useRendererHost();
   const openUpgrade = useCallback(() => {
-    void rendererHost.openExternal(CLOUD_UPGRADE_URL);
+    void openCloudUpgrade(rendererHost).catch(() => {
+      // Keep the public pricing page reachable if the short-lived handoff cannot be created.
+      void rendererHost.openExternal(CLOUD_UPGRADE_URL);
+    });
   }, [rendererHost]);
   useEffect(() => {
-    cloudUpgradeOpener = (url) => { void rendererHost.openExternal(url); };
-  }, [rendererHost]);
+    cloudUpgradeOpener = openUpgrade;
+    return () => {
+      if (cloudUpgradeOpener === openUpgrade) cloudUpgradeOpener = null;
+    };
+  }, [openUpgrade]);
   return openUpgrade;
 }
 

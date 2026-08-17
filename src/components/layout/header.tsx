@@ -133,7 +133,7 @@ function UpdateStatus() {
   return null;
 }
 
-export function Header() {
+export function Header({ onOpenHelp }: { onOpenHelp?: () => void }) {
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const baseCurrency = useAppSelector(selectBaseCurrency);
@@ -172,6 +172,12 @@ export function Header() {
   const mktLabel = mktState ? t(marketStateLabel(mktState)) : "";
   const mktColor = mktState ? marketStateColor(mktState, colors) : colors.headerText;
 
+  const openHelp = useCallback((event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    onOpenHelp?.();
+  }, [onOpenHelp]);
+
   if (titleBarOverlay) {
     return (
       <Box
@@ -203,6 +209,35 @@ export function Header() {
         <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
           <UpdateStatus />
         </Box>
+        {onOpenHelp ? (
+          <Box
+            height={1}
+            flexDirection="row"
+            alignItems="center"
+            data-gloom-role="header-help-action"
+            data-gloom-interactive="true"
+            role="button"
+            tabIndex={0}
+            aria-label="Open Help"
+            aria-keyshortcuts="?"
+            onMouseDown={openHelp}
+            onKeyDown={(event: { key?: string; preventDefault?: () => void; stopPropagation?: () => void }) => {
+              if (event.key === "Enter" || event.key === " ") openHelp(event);
+            }}
+            hoverBackgroundColor={blendHex(colors.header, colors.headerText, 0.15)}
+            style={{
+              border: `1px solid ${blendHex(colors.border, colors.headerText, 0.28)}`,
+              borderRadius: 5,
+              paddingInline: 7,
+              marginRight: 8,
+              backgroundColor: blendHex(colors.header, colors.headerText, 0.08),
+              cursor: "pointer",
+            }}
+          >
+            <Text fg={colors.headerText} style={{ fontSize: 11, fontWeight: 700 }}>Help</Text>
+            <Text fg={blendHex(colors.headerText, colors.header, 0.38)} style={{ marginLeft: 6, fontSize: 10 }}>?</Text>
+          </Box>
+        ) : null}
         {mktLabel ? (
           <Box paddingRight={1}>
             <DesktopHeaderPill

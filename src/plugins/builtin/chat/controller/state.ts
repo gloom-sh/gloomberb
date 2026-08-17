@@ -92,6 +92,7 @@ export interface ChannelRuntimeState {
   wsConnected: boolean;
   draftSyncTimer: ReturnType<typeof setTimeout> | null;
   openViewCount: number;
+  focusedViewCount: number;
 }
 
 export function channelStateKey(channelId: string): string {
@@ -125,6 +126,7 @@ export function createEmptyChannelState(): ChannelRuntimeState {
     wsConnected: false,
     draftSyncTimer: null,
     openViewCount: 0,
+    focusedViewCount: 0,
   };
 }
 

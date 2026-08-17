@@ -21,7 +21,8 @@ export interface AccountStepProps {
   outcome: AccountOutcome | null;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
-  height: number;
+  onFieldFocus: (index: 0 | 1) => void;
+  onSubmitField?: () => void;
 }
 
 export function AccountStep(props: AccountStepProps) {
@@ -43,6 +44,8 @@ export function AccountStep(props: AccountStepProps) {
         validationError={props.validationError}
         onEmailChange={props.onEmailChange}
         onPasswordChange={props.onPasswordChange}
+        onFieldFocus={props.onFieldFocus}
+        onSubmitField={props.onSubmitField}
       />
     );
   }
@@ -52,7 +55,6 @@ export function AccountStep(props: AccountStepProps) {
       choiceIdx={props.choiceIdx}
       onChoiceSelect={props.onChoiceSelect}
       onChoiceActivate={props.onChoiceActivate}
-      height={props.height}
     />
   );
 }

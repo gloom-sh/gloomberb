@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut } from "../../react/input";
-import { Box, ScrollBox, Text, useUiHost } from "../../ui";
-import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
+import { Box, ScrollBox, Text, useNativeRenderer, useUiHost } from "../../ui";
+import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../ui";
 import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { displayWidth } from "../../utils/format";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
+import { capturePointerDrag } from "../../ui/pointer-drag";
 
 type TabPointerEvent = {
   button?: number;
@@ -19,6 +20,7 @@ interface TabItem {
   label: string;
   value: string;
   disabled?: boolean;
+  reorderable?: boolean;
   onClose?: (value: string) => void;
   onDoubleClick?: (value: string) => void;
   onContextMenu?: (value: string, event: TabPointerEvent) => void;
@@ -34,6 +36,7 @@ export interface TabsProps {
   closeMode?: "active" | "always";
   addLabel?: string;
   onAdd?: () => void;
+  onReorder?: (fromValue: string, toValue: string) => void;
   focused?: boolean;
   keyboardNavigation?: boolean;
   scrollable?: boolean;
@@ -52,6 +55,7 @@ export function Tabs({
   closeMode = "always",
   addLabel = "+",
   onAdd,
+  onReorder,
   focused = false,
   keyboardNavigation = true,
   scrollable = true,
@@ -163,6 +167,7 @@ export function Tabs({
         closeMode={closeMode}
         addLabel={addLabel}
         onAdd={onAdd}
+        onReorder={onReorder}
         focused={focused}
         palette={palette}
       />
@@ -180,6 +185,7 @@ export function Tabs({
       closeMode={closeMode}
       addLabel={addLabel}
       onAdd={onAdd}
+      onReorder={onReorder}
       focused={focused}
       scrollable={scrollable}
       scrollId={scrollId}
@@ -222,6 +228,7 @@ function OpenTuiTabs({
   closeMode = "always",
   addLabel = "+",
   onAdd,
+  onReorder,
   focused = false,
   scrollable = true,
   scrollId,
@@ -243,13 +250,72 @@ function OpenTuiTabs({
   };
 }) {
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
+  const [dragTargetValue, setDragTargetValue] = useState<string | null>(null);
+  const nativeRenderer = useNativeRenderer();
   const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const tabRowRef = useRef<BoxRenderable>(null);
+  const tabRefs = useRef(new Map<string, BoxRenderable>());
+  const dragSourceValueRef = useRef<string | null>(null);
   const tabWidths = useMemo(
     () => tabs.map((tab) => tabWidth(tab, tab.value === activeValue, closeMode, dense)),
     [activeValue, closeMode, dense, tabs],
   );
   const addWidth = onAdd ? addLabel.length + (dense ? 1 : 2) : 0;
   const totalWidth = tabWidths.reduce((sum, width) => sum + width, 0) + addWidth;
+
+  const resolveDragTarget = useCallback((event?: { x?: number; preciseX?: number }) => {
+    const pointerX = event?.preciseX ?? event?.x;
+    if (typeof pointerX !== "number") return null;
+
+    let closestValue: string | null = null;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (const tab of tabs) {
+      if (tab.disabled || tab.reorderable === false) continue;
+      const renderable = tabRefs.current.get(tab.value);
+      const bounds = renderable?.absoluteBounds;
+      const left = bounds?.x ?? renderable?.absoluteX ?? renderable?.x;
+      const width = bounds?.width ?? renderable?.width;
+      if (typeof left !== "number" || typeof width !== "number") continue;
+      const right = left + width;
+      const distance = pointerX < left ? left - pointerX : pointerX > right ? pointerX - right : 0;
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestValue = tab.value;
+      }
+    }
+    return closestValue;
+  }, [tabs]);
+
+  const handleTabDrag = useCallback((event?: {
+    x?: number;
+    preciseX?: number;
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+  }) => {
+    if (!dragSourceValueRef.current) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const targetValue = resolveDragTarget(event);
+    setDragTargetValue((current) => (current === targetValue ? current : targetValue));
+  }, [resolveDragTarget]);
+
+  const finishTabDrag = useCallback((event?: {
+    x?: number;
+    preciseX?: number;
+    preventDefault?: () => void;
+    stopPropagation?: () => void;
+  }) => {
+    const sourceValue = dragSourceValueRef.current;
+    if (!sourceValue) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const targetValue = resolveDragTarget(event) ?? dragTargetValue;
+    dragSourceValueRef.current = null;
+    setDragTargetValue(null);
+    if (targetValue && targetValue !== sourceValue) {
+      onReorder?.(sourceValue, targetValue);
+    }
+  }, [dragTargetValue, onReorder, resolveDragTarget]);
 
   useEffect(() => {
     const scrollBox = scrollRef.current;
@@ -301,10 +367,17 @@ function OpenTuiTabs({
   };
 
   const tabRow = (
-    <Box flexDirection="row" width={totalWidth} height={1}>
+    <Box
+      ref={tabRowRef}
+      flexDirection="row"
+      width={totalWidth}
+      height={1}
+      onMouseDrag={onReorder ? handleTabDrag : undefined}
+      onMouseDragEnd={onReorder ? finishTabDrag : undefined}
+    >
       {tabs.map((tab, index) => {
         const active = tab.value === activeValue;
-        const hovered = hoveredValue === tab.value && !tab.disabled;
+        const hovered = (hoveredValue === tab.value || dragTargetValue === tab.value) && !tab.disabled;
         const focusedActive = focused && active;
         const tabWidth = tabWidths[index] ?? displayWidth(tab.label) + 2;
         const showClose = !!tab.onClose && (closeMode === "always" || active);
@@ -336,12 +409,20 @@ function OpenTuiTabs({
               }
               event.preventDefault();
               event.stopPropagation?.();
+              if (onReorder && tab.reorderable !== false) {
+                dragSourceValueRef.current = tab.value;
+                capturePointerDrag(nativeRenderer, tabRowRef.current);
+              }
               onSelect(tab.value);
             };
 
         return (
           <Box
             key={tab.value}
+            ref={(renderable: BoxRenderable | null) => {
+              if (renderable) tabRefs.current.set(tab.value, renderable);
+              else tabRefs.current.delete(tab.value);
+            }}
             width={tabWidth}
             height={1}
             flexDirection="row"
@@ -355,6 +436,7 @@ function OpenTuiTabs({
               fg={tab.disabled ? palette.disabledFg : active && variant === "pill" ? palette.activePillFg : active ? palette.activeFg : hovered ? palette.hoverFg : palette.inactiveFg}
               attributes={attributes}
               onMouseDown={selectTab}
+              selectable={onReorder ? false : undefined}
             >
               {dense ? `${tab.label} ` : ` ${tab.label} `}
             </Text>

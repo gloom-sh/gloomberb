@@ -26,7 +26,10 @@ afterEach(async () => {
   }
 });
 
-function createRegistry(shortcutExecute?: () => void): PluginRegistry {
+function createRegistry(
+  shortcutExecute?: () => void,
+  onShowPane?: (paneId: string) => void,
+): PluginRegistry {
   return {
     shortcuts: new Map(shortcutExecute
       ? [["test-shortcut", { id: "test-shortcut", key: "x", execute: shortcutExecute }]]
@@ -39,6 +42,7 @@ function createRegistry(shortcutExecute?: () => void): PluginRegistry {
     ]),
     getPluginPaneIds: () => [],
     getShortcutPluginId: () => null,
+    showPane: onShowPane ?? (() => {}),
   } as unknown as PluginRegistry;
 }
 
@@ -202,6 +206,54 @@ describe("useAppGlobalShortcuts", () => {
     expect(event.propagationStopped).toBe(false);
   });
 
+  test("opens Help with question mark after the command bar is closed", async () => {
+    const openedPanes: string[] = [];
+    const actions: AppAction[] = [];
+    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-help"));
+    await renderHarness(state, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), (action) => actions.push(action));
+
+    const event = await emitKeypress({ name: "?", shift: true });
+
+    expect(openedPanes).toEqual(["help"]);
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(true);
+    expect(event.propagationStopped).toBe(true);
+  });
+
+  test("does not open Help with question mark while using the command bar", async () => {
+    const openedPanes: string[] = [];
+    const actions: AppAction[] = [];
+    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-help-guard");
+    const commandBarState = {
+      ...createInitialState(config),
+      commandBarOpen: true,
+    };
+    await renderHarness(commandBarState, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), (action) => actions.push(action));
+
+    let event = await emitKeypress({ name: "?", shift: true });
+    expect(openedPanes).toEqual([]);
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+    expect(event.propagationStopped).toBe(false);
+  });
+
+  test("does not open Help with question mark while typing", async () => {
+    const openedPanes: string[] = [];
+    const actions: AppAction[] = [];
+    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-help-input");
+    const inputCapturedState = {
+      ...createInitialState(config),
+      inputCaptured: true,
+    };
+    await renderHarness(inputCapturedState, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), (action) => actions.push(action));
+
+    const event = await emitKeypress({ name: "?", shift: true });
+    expect(openedPanes).toEqual([]);
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+    expect(event.propagationStopped).toBe(false);
+  });
+
   test("cycles panes with Tab while input is captured", async () => {
     const actions: AppAction[] = [];
     const state = {
@@ -218,8 +270,6 @@ describe("useAppGlobalShortcuts", () => {
         "portfolio-list:main",
         "chat:main",
         "ticker-detail:main",
-        "ticker-detail:nvda",
-        "help:main",
       ],
     }]);
     expect(event.defaultPrevented).toBe(true);

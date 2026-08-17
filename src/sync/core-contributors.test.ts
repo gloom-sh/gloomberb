@@ -129,6 +129,50 @@ describe("core sync contributors", () => {
     }
   });
 
+  test("keeps resumable onboarding local until the guide is complete", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-test");
+    config.onboardingComplete = false;
+    config.onboardingProgress = {
+      version: 1,
+      stage: "account",
+      path: "manual",
+      portfolioId: "main",
+      tickerSymbol: "AAPL",
+    };
+
+    const payload = await coreConfigSyncContributor.collect({
+      state: createInitialState(config),
+    }) as Record<string, unknown>;
+    expect(payload).not.toHaveProperty("onboardingComplete");
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
+      onboardingComplete: true,
+    });
+    expect(merged?.onboardingComplete).toBe(false);
+    expect(merged?.onboardingProgress).toEqual(config.onboardingProgress);
+  });
+
+  test("treats synced onboarding completion as a one-way signal", async () => {
+    const completedConfig = createDefaultConfig("/tmp/gloomberb-sync-test");
+    completedConfig.onboardingComplete = true;
+    const completedPayload = await coreConfigSyncContributor.collect({
+      state: createInitialState(completedConfig),
+    }) as Record<string, unknown>;
+    expect(completedPayload.onboardingComplete).toBe(true);
+
+    const staleMerge = __syncContributorInternalsForTests.mergeConfigPayload(completedConfig, {
+      onboardingComplete: false,
+    });
+    expect(staleMerge?.onboardingComplete).toBe(true);
+
+    const incompleteConfig = createDefaultConfig("/tmp/gloomberb-sync-test");
+    incompleteConfig.onboardingComplete = false;
+    const incompletePayload = await coreConfigSyncContributor.collect({
+      state: createInitialState(incompleteConfig),
+    }) as Record<string, unknown>;
+    expect(incompletePayload).not.toHaveProperty("onboardingComplete");
+  });
+
   test("ignores malformed synced layout collections", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {

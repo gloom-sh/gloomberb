@@ -271,6 +271,7 @@ interface HostTabItem {
   label: string;
   value: string;
   disabled?: boolean;
+  reorderable?: boolean;
   onClose?: (value: string) => void;
   onDoubleClick?: (value: string) => void;
   onContextMenu?: (value: string, event: any) => void;
@@ -301,6 +302,7 @@ export interface HostTabsProps {
   closeMode?: "active" | "always";
   addLabel?: string;
   onAdd?: () => void;
+  onReorder?: (fromValue: string, toValue: string) => void;
   focused?: boolean;
   palette: HostTabsPalette;
 }

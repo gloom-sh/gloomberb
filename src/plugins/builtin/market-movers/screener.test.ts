@@ -3,11 +3,13 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import {
   attachMarketMoversPersistence,
   createYahooScreenerApi,
+  fetchPreferredMarketMovers,
   fetchScreener,
   parseScreenerResponse,
   parseTrendingResponse,
   resetMarketMoversPersistence,
   type YahooScreenerApi,
+  type PreferredMarketMoverSources,
 } from "./screener";
 
 const SAMPLE_SCREENER_RESPONSE = {
@@ -138,6 +140,86 @@ describe("parseTrendingResponse", () => {
 });
 
 describe("fetchScreener", () => {
+  test("uses Cloud rankings and prices while retaining Yahoo metadata", async () => {
+    const calls: unknown[] = [];
+    const yahooQuotes = parseScreenerResponse(SAMPLE_SCREENER_RESPONSE);
+    const sources: PreferredMarketMoverSources = {
+      isCloudEligible: () => true,
+      fetchCloud: async (category, count, mode) => {
+        calls.push({ category, count, mode });
+        return {
+          status: "success",
+          data: {
+            providerId: "gloomberb-cloud",
+            category,
+            asOf: "2026-08-14T23:59:00.000Z",
+            items: [
+              {
+                rank: 1,
+                symbol: "AAPL",
+                name: "AAPL",
+                price: 190,
+                change: 7.75,
+                changePercent: 4.25,
+                volume: 60_000_000,
+                currency: "USD",
+                exchange: "NASDAQ",
+                lastUpdated: 1_700_000_000_000,
+                dataSource: "live",
+              },
+            ],
+          },
+        };
+      },
+      fetchYahoo: async () => yahooQuotes,
+    };
+
+    const result = await fetchPreferredMarketMovers(
+      "day_gainers",
+      25,
+      { forceRefresh: true },
+      sources,
+    );
+
+    expect(calls).toEqual([
+      { category: "gainers", count: 25, mode: "refresh" },
+    ]);
+    expect(result).toMatchObject({ source: "cloud", stale: false });
+    expect(result.quotes[0]).toMatchObject({
+      symbol: "AAPL",
+      name: "Apple Inc.",
+      price: 190,
+      changePercent: 4.25,
+      volume: 60_000_000,
+      avgVolume: 20_000_000,
+      marketCap: 2_900_000_000_000,
+      lastUpdated: 1_700_000_000_000,
+    });
+  });
+
+  test("keeps free accounts on Yahoo without calling the Pro screener", async () => {
+    let cloudCalls = 0;
+    const sources: PreferredMarketMoverSources = {
+      isCloudEligible: () => false,
+      fetchCloud: async () => {
+        cloudCalls += 1;
+        throw new Error("not expected");
+      },
+      fetchYahoo: async () => parseScreenerResponse(SAMPLE_SCREENER_RESPONSE),
+    };
+
+    const result = await fetchPreferredMarketMovers(
+      "most_actives",
+      25,
+      undefined,
+      sources,
+    );
+
+    expect(cloudCalls).toBe(0);
+    expect(result.source).toBe("yahoo");
+    expect(result.quotes.map((quote) => quote.symbol)).toEqual(["AAPL", "MSFT"]);
+  });
+
   test("falls back to the secondary Yahoo host when the primary host fails", async () => {
     const requestedHosts: string[] = [];
     const userAgents: string[] = [];

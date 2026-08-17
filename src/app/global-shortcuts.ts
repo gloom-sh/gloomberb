@@ -81,6 +81,8 @@ export function useAppGlobalShortcuts({
       return;
     }
 
+    const hasShortcutModifier = event.ctrl || event.meta || event.super || event.alt;
+
     if (state.commandBarOpen) return;
 
     if (event.name === "tab") {
@@ -103,7 +105,17 @@ export function useAppGlobalShortcuts({
 
     if (state.inputCaptured) return;
 
-    const hasShortcutModifier = event.ctrl || event.meta || event.super || event.alt;
+    const isQuestionMark = event.name === "?"
+      || event.key === "?"
+      || event.sequence === "?"
+      || (event.name === "/" && event.shift);
+    if (!isDetachedWindow && !hasShortcutModifier && isQuestionMark) {
+      event.preventDefault();
+      event.stopPropagation();
+      pluginRegistry.showPane("help");
+      return;
+    }
+
     if (!hasShortcutModifier && !isDetachedWindow && event.name === "q") {
       rendererHost.requestExit();
     } else if (!hasShortcutModifier && event.name === "r") {

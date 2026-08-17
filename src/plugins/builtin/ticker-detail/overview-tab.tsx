@@ -11,7 +11,6 @@ import {
   exchangeShortName,
   marketStateColor,
   marketStateLabel,
-  quoteSourceLabel,
 } from "../../../market-data/market/status";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { EmptyState } from "../../../components";
@@ -74,15 +73,7 @@ export function OverviewTab({
     quote?.listingExchangeFullName ?? quote?.fullExchangeName,
   );
   const routingVenue = exchangeShortName(quote?.routingExchangeName, quote?.routingExchangeFullName);
-  const priceSource = quote?.provenance?.price ? quoteSourceLabel(quote.provenance.price, "price") : "";
-  const sessionSource = quote?.provenance?.session ? quoteSourceLabel(quote.provenance.session, "session") : "";
-  const sourceSummary = priceSource && sessionSource && priceSource !== sessionSource
-    ? `src ${priceSource}/${sessionSource}`
-    : priceSource || sessionSource
-      ? `src ${priceSource || sessionSource}`
-      : "";
   const metadataParts = [
-    sourceSummary,
     routingVenue && routingVenue !== listingVenue ? `route ${routingVenue}` : "",
   ].filter((part) => part.length > 0);
 
@@ -102,7 +93,6 @@ export function OverviewTab({
     style: "area",
     axis: "right",
     panelId: "price",
-    providerId: quote?.provenance?.price?.providerId ?? quote?.providerId,
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
   const hasBidAsk = quote?.bid != null || quote?.ask != null;

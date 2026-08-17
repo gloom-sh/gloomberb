@@ -52,6 +52,16 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         },
       );
 
+    case "SET_ONBOARDING_STATE":
+      return {
+        ...state,
+        config: {
+          ...state.config,
+          onboardingComplete: action.complete,
+          onboardingProgress: action.progress,
+        },
+      };
+
     case "SET_TICKERS":
       return { ...state, tickers: action.tickers };
 
