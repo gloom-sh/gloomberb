@@ -51,6 +51,8 @@ import type {
   CloudMarketScreenerCategory,
   CloudMarketScreenerPayload,
   CloudVerificationResponse,
+  DeviceAuthStartResponse,
+  DeviceAuthTokenResponse,
   CloudRoundupPreviewResponse,
   CloudSyncPushResponse,
   CloudSyncSnapshotResponse,
@@ -206,6 +208,14 @@ class GloomApiClient {
 
   async signIn(email: string, password: string): Promise<AuthUser> {
     return this.auth.signIn(email, password);
+  }
+
+  async startDeviceSignIn(body: { clientName?: string; clientPlatform?: string }): Promise<DeviceAuthStartResponse> {
+    return this.auth.startDeviceSignIn(body);
+  }
+
+  async pollDeviceSignIn(deviceCode: string): Promise<DeviceAuthTokenResponse> {
+    return this.auth.pollDeviceSignIn(deviceCode);
   }
 
   async signOut(): Promise<void> {

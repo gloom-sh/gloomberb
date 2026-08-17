@@ -18,6 +18,11 @@ export function AccountChooserPanel({
   const desktop = useUiHost().kind === "desktop-web";
   const choices = useMemo<ListViewItem[]>(() => [
     {
+      id: "qr",
+      label: t("Scan QR with the mobile app"),
+      description: t("Approve from your phone, no typing"),
+    },
+    {
       id: "signup",
       label: t("Sign up free"),
       description: t("Create an account, then verify your email"),

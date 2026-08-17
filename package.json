@@ -66,6 +66,7 @@
     "@tanstack/react-virtual": "^3.14.2",
     "hls.js": "1.6.13",
     "jimp": "1.6.1",
+    "qrcode-generator": "^2.0.4",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "rxjs": "^7.8.2",

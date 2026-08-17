@@ -58,6 +58,7 @@ import {
   useShellResolvedPanes,
   useShellVisibleLayout,
 } from "./layout-state";
+import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { useShellPaneActions } from "./pane/actions";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
@@ -559,6 +560,8 @@ export function Shell({
         }
         : {})}
     >
+      {/* Renders nothing; gives the QR sign-in command an always-mounted component with dialog access. */}
+      <DeviceSignInDialogHost />
       <Box
         position="absolute"
         left={0}
