@@ -38,7 +38,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
     }, [notesFiles]);
 
     const readActiveNoteText = useCallback(() => (
-      textareaRef.current ? textareaRef.current.editBuffer.getText() : noteTextRef.current
+      textareaRef.current?.editBuffer.getText() ?? noteTextRef.current
     ), [noteTextRef]);
 
     const handleNoteChange = useCallback((value: string) => {

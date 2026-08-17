@@ -90,12 +90,11 @@ describe("createQuickNotesPane", () => {
     );
     await testSetup.renderOnce();
 
-    let frame = testSetup.captureCharFrame();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       await testSetup!.renderOnce();
     });
-    frame = testSetup.captureCharFrame();
+    let frame = testSetup.captureCharFrame();
     expect(frame).toContain("Alpha");
 
     const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));

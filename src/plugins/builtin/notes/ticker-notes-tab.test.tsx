@@ -241,4 +241,120 @@ describe("createNotesTab", () => {
 
     expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "aapl-note" }]);
   });
+
+  test("does not overwrite notes when switching away before initial load completes", async () => {
+    const notesFiles = createMockNotesFiles({
+      loadDelayMs: 100,
+      notes: { AAPL: "existing-aapl-note", MSFT: "" },
+    });
+    const NotesTab = createNotesTab(notesFiles);
+
+    testSetup = await testRender(
+      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
+      { width: 80, height: 24 },
+    );
+    await testSetup.renderOnce();
+
+    let frame = testSetup.captureCharFrame();
+    const switchRow = frame.split("\n").findIndex((line) => line.includes("switch-msft"));
+    const switchCol = frame.split("\n")[switchRow]?.indexOf("switch-msft") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(switchCol + 1, switchRow);
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await testSetup!.renderOnce();
+    });
+
+    expect(notesFiles.saves).toEqual([]);
+  });
+
+  test("loads new ticker notes after switching away from edit mode", async () => {
+    const notesFiles = createMockNotesFiles({
+      loadDelayMs: 100,
+      notes: { MSFT: "msft-note" },
+    });
+    const NotesTab = createNotesTab(notesFiles);
+
+    testSetup = await testRender(
+      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
+      { width: 80, height: 24 },
+    );
+    await testSetup.renderOnce();
+
+    let frame = testSetup.captureCharFrame();
+    const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
+    const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      await testSetup!.mockInput.typeText("aapl-note");
+      await testSetup!.renderOnce();
+    });
+
+    frame = testSetup.captureCharFrame();
+    const switchRow = frame.split("\n").findIndex((line) => line.includes("switch-msft"));
+    const switchCol = frame.split("\n")[switchRow]?.indexOf("switch-msft") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(switchCol + 1, switchRow);
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await testSetup!.renderOnce();
+    });
+
+    frame = testSetup.captureCharFrame();
+    const previewRow = frame.split("\n").findIndex((line) => line.includes("Write notes") || line.includes("msft-note"));
+    const previewCol = frame.split("\n")[previewRow]?.search(/Write notes|msft-note/) ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(previewCol + 1, previewRow);
+      await testSetup!.renderOnce();
+    });
+
+    frame = testSetup.captureCharFrame();
+    expect(frame).toContain("msft-note");
+    expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "aapl-note" }]);
+  });
+
+  test("applies loaded notes if edit mode starts before load finishes", async () => {
+    const notesFiles = createMockNotesFiles({
+      loadDelayMs: 100,
+      notes: { AAPL: "existing-note" },
+    });
+    const NotesTab = createNotesTab(notesFiles);
+
+    testSetup = await testRender(
+      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
+      { width: 80, height: 24 },
+    );
+    await testSetup.renderOnce();
+
+    let frame = testSetup.captureCharFrame();
+    const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
+    const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await testSetup!.renderOnce();
+    });
+
+    frame = testSetup.captureCharFrame();
+    expect(frame).toContain("existing-note");
+  });
 });

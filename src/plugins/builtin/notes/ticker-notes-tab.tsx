@@ -17,25 +17,38 @@ export function createNotesTab(notesFiles: NotesFiles) {
     const [notesFocused, setNotesFocused] = useState(false);
     const { text: noteText, textRef: noteTextRef, setText: setNoteText } = useSyncedText("");
     const wasNotesFocusedRef = useRef(false);
+    const notesFocusedRef = useRef(notesFocused);
+    notesFocusedRef.current = notesFocused;
     const loadedSymbolRef = useRef<string | null>(null);
 
     const setNotesFocusedAndCapture = useCallback((value: boolean) => {
       setNotesFocused(value);
       onCapture(value);
     }, [onCapture]);
+    const setNotesFocusedAndCaptureRef = useRef(setNotesFocusedAndCapture);
+    setNotesFocusedAndCaptureRef.current = setNotesFocusedAndCapture;
 
-    const getCurrentNoteText = useCallback(() => (
-      textareaRef.current ? textareaRef.current.editBuffer.getText() : noteTextRef.current
-    ), [noteTextRef]);
+    const applyNoteText = useCallback((text: string) => {
+      setNoteText(text);
+      textareaRef.current?.setText(text);
+    }, [setNoteText]);
+
+    const getCurrentNoteText = useCallback(() => {
+      try {
+        return textareaRef.current?.editBuffer.getText() ?? noteTextRef.current;
+      } catch {
+        return noteTextRef.current;
+      }
+    }, [noteTextRef]);
 
     const tickerSymbol = ticker?.metadata.ticker ?? null;
 
     const handleNoteChange = useCallback((value: string) => {
-      if (tickerSymbol) {
+      if (tickerSymbol && value !== noteTextRef.current) {
         loadedSymbolRef.current = tickerSymbol;
       }
       setNoteText(value);
-    }, [setNoteText, tickerSymbol]);
+    }, [noteTextRef, setNoteText, tickerSymbol]);
 
     const saveNotesFor = useCallback((symbol: string | null, text: string) => {
       if (!symbol) return;
@@ -60,42 +73,31 @@ export function createNotesTab(notesFiles: NotesFiles) {
       }
     }, [focused, notesFocused, setNotesFocusedAndCapture]);
 
-    const prevSymbolRef = useRef<string | null>(null);
     useEffect(() => {
-      if (tickerSymbol !== prevSymbolRef.current) {
-        if (prevSymbolRef.current) {
-          saveNotesFor(prevSymbolRef.current, getCurrentNoteText());
-        }
-        prevSymbolRef.current = tickerSymbol;
-        loadedSymbolRef.current = null;
-        setNoteText("");
-        textareaRef.current?.setText("");
+      loadedSymbolRef.current = null;
+      applyNoteText("");
 
-        if (notesFocused) {
-          setNotesFocusedAndCapture(false);
-        }
-
-        if (!tickerSymbol) {
-          return;
-        }
-
-        let cancelled = false;
-        notesFiles.load(tickerSymbol).then((nextNotes) => {
-          if (cancelled || prevSymbolRef.current !== tickerSymbol) return;
-          loadedSymbolRef.current = tickerSymbol;
-          setNoteText(nextNotes);
-          textareaRef.current?.setText(nextNotes);
-        }).catch(() => {
-          if (cancelled || prevSymbolRef.current !== tickerSymbol) return;
-          loadedSymbolRef.current = tickerSymbol;
-          setNoteText("");
-          textareaRef.current?.setText("");
-        });
-        return () => {
-          cancelled = true;
-        };
+      if (notesFocusedRef.current) {
+        setNotesFocusedAndCaptureRef.current(false);
       }
-    }, [tickerSymbol, getCurrentNoteText, notesFocused, saveNotesFor, notesFiles, setNoteText, setNotesFocusedAndCapture]);
+
+      if (!tickerSymbol) return;
+
+      let cancelled = false;
+      const applyLoaded = (text: string) => {
+        if (cancelled || loadedSymbolRef.current === tickerSymbol) return;
+        loadedSymbolRef.current = tickerSymbol;
+        applyNoteText(text);
+      };
+      notesFiles.load(tickerSymbol).then(applyLoaded, () => applyLoaded(""));
+
+      return () => {
+        cancelled = true;
+        if (loadedSymbolRef.current === tickerSymbol) {
+          saveNotesFor(tickerSymbol, getCurrentNoteText());
+        }
+      };
+    }, [tickerSymbol, applyNoteText, getCurrentNoteText, saveNotesFor, notesFiles]);
 
     useShortcut((event) => {
       if (!focused) return;
