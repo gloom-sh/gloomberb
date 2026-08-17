@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderQrLines } from "./qr";
+import { renderQrLines, renderQrSvgDataUri } from "./qr";
 
 // "test" fits a version 1 QR (21 modules); plus the 4-module quiet zone on
 // each side that is 29 columns and ceil(29 / 2) = 15 half-block lines.
@@ -34,6 +34,23 @@ describe("renderQrLines", () => {
     // bottom-half or full block, or the code gains a phantom module row.
     const lastDataLine = renderQrLines(SMALL_INPUT)[12]!;
     expect(lastDataLine).toMatch(/^[ \u2580]+$/);
+  });
+
+  test("merges dark runs into rects that cover exactly the dark modules", () => {
+    const svg = decodeURIComponent(
+      renderQrSvgDataUri(SMALL_INPUT).slice('url("data:image/svg+xml,'.length, -2),
+    );
+    expect(svg).toContain(`viewBox="0 0 ${SMALL_SIZE} ${SMALL_SIZE}"`);
+
+    // The half-block lines carry the same grid, so counting dark halves there is
+    // an independent check that run merging did not drop or widen a module.
+    const darkModules = renderQrLines(SMALL_INPUT)
+      .join("")
+      .split("")
+      .reduce((total, char) => total + (char === "\u2588" ? 2 : char === " " ? 0 : 1), 0);
+    const darkArea = [...svg.matchAll(/<rect x="\d+" y="\d+" width="(\d+)" height="1"\/>/g)]
+      .reduce((total, match) => total + Number(match[1]), 0);
+    expect(darkArea).toBe(darkModules);
   });
 
   test("renders a verification URI to known stable output", () => {

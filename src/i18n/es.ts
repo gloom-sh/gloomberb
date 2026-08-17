@@ -1080,7 +1080,9 @@ export const es: Record<string, string> = {
   "Continue without an account": "Continuar sin cuenta",
   "Skip for now": "Omitir por ahora",
   "Scan QR with the mobile app": "Escanear QR con la app móvil",
-  "Recommended: approve from your phone, no typing": "Recomendado: aprueba desde tu teléfono, sin escribir",
+  "Approve from your phone, no typing": "Aprueba desde tu teléfono, sin escribir",
+  "Scan with the Gloom app": "Escanea con la app Gloom",
+  "Open the Gloom app on your phone and approve this workspace.": "Abre la app Gloom en tu teléfono y aprueba este espacio de trabajo.",
   "Scan with the Gloom app to sign in": "Escanea con la app Gloom para iniciar sesión",
   "Waiting for approval...": "Esperando aprobación...",
   "Approved as {email}": "Aprobado como {email}",
@@ -1091,7 +1093,6 @@ export const es: Record<string, string> = {
   "No app? {url}": "¿Sin app? {url}",
   "Terminal is too short to draw the QR code.": "La terminal es demasiado baja para dibujar el código QR.",
   "r to refresh the code · esc to cancel": "r para renovar el código · esc para cancelar",
-  "esc to go back": "esc para volver",
   "Create an account anytime: Ctrl+P → Sign Up.":
     "Crea una cuenta cuando quieras: Ctrl+P → Sign Up.",
   "Sync portfolios, watchlists & layouts": "Sincroniza carteras, listas y diseños",

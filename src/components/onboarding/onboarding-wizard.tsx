@@ -15,7 +15,7 @@ import {
   type OnboardingProgress,
 } from "../../types/config";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
-import { useShortcut } from "../../react/input";
+import { useShortcut, useViewport } from "../../react/input";
 import {
   useAppDispatch,
   useAppSelector,
@@ -62,6 +62,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const language = useAppLanguage();
   const colors = useThemeColors();
   const desktop = useUiHost().kind === "desktop-web";
+  const { height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const config = useAppSelector((state) => state.config);
@@ -789,6 +790,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         : account.accountSub === "signed-in"
           ? 12
           : 16 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows + accountSwitchRows;
+    // OnboardingModal clamps the card to the viewport, so the panel has to size
+    // off the clamped height or the QR overflows a short terminal.
+    const accountPanelHeight = Math.max(4, Math.min(accountModalHeight, viewportHeight - 2) - 9);
     return (
       <OnboardingModal
         width={68}
@@ -826,7 +830,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             onFieldFocus={account.focusAccountField}
             onSubmitField={submitAccountField}
             onQrApproved={account.completeQrSignIn}
-            height={accountModalHeight - 9}
+            height={accountPanelHeight}
           />
         </Box>
         {persistenceError ? (
