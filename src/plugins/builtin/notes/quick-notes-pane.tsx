@@ -103,6 +103,10 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
       if (!editing) saveTab(activeTabId);
     }, [activeTabId, editing, saveTab]);
 
+    useEffect(() => {
+      if (!focused && editing) setEditing(false);
+    }, [editing, focused]);
+
     const addTab = useCallback(() => {
       saveTab(activeTabId);
       const id = generateNoteId();
@@ -313,7 +317,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
           {editing && !renaming ? (
             <MarkdownEditor
               textareaKey={activeTabId ?? "none"}
-              focused
+              focused={focused}
               initialValue={noteText}
               placeholder="Write notes..."
               onRef={(ref) => { textareaRef.current = ref; }}

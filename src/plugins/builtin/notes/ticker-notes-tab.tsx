@@ -39,6 +39,12 @@ export function createNotesTab(notesFiles: NotesFiles) {
       wasNotesFocusedRef.current = notesFocused;
     }, [getCurrentNoteText, notesFocused, ticker, saveNotesFor]);
 
+    useEffect(() => {
+      if (!focused && notesFocused) {
+        setNotesFocusedAndCapture(false);
+      }
+    }, [focused, notesFocused, setNotesFocusedAndCapture]);
+
     const tickerSymbol = ticker?.metadata.ticker ?? null;
     const prevSymbolRef = useRef<string | null>(null);
     useEffect(() => {
@@ -91,7 +97,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
           {notesFocused ? (
             <MarkdownEditor
               textareaKey={tickerSymbol ?? "none"}
-              focused={notesFocused}
+              focused={focused}
               initialValue={noteText}
               placeholder="Write notes about this ticker..."
               onRef={(ref) => { textareaRef.current = ref; }}
