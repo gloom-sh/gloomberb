@@ -5,6 +5,7 @@ import type {
   AuthUser,
   BuildoutAccountResponse,
   BuildoutTokenResponse,
+  CloudBrowserHandoffResponse,
   CloudPricing,
   CloudVerificationResponse,
   PersistedAuthUser,
@@ -113,6 +114,17 @@ export class CloudAuthApi {
 
   async sendVerification(): Promise<CloudVerificationResponse> {
     return this.options.request<CloudVerificationResponse>("/cloud/auth/send-verification", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+  }
+
+  /**
+   * Creates a short-lived browser handoff for the captured native session.
+   * The server deliberately returns an opaque one-time URL, never the session cookie.
+   */
+  async createBrowserHandoff(): Promise<CloudBrowserHandoffResponse> {
+    return this.options.request<CloudBrowserHandoffResponse>("/cloud/auth/browser-handoff", {
       method: "POST",
       body: JSON.stringify({}),
     });

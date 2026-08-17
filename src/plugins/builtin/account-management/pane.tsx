@@ -58,7 +58,7 @@ import {
   subscribeRequestedAccountManagementTab,
   type AccountManagementTab,
 } from "./navigation";
-import { CLOUD_UPGRADE_URL } from "../shared/cloud-upgrade";
+import { openCloudUpgrade } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../shared/plan-access";
 
 type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | null;
@@ -768,7 +768,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     setActiveField("upgradeAction");
     setBusy("billing");
     setMessage({ tone: "info", text: t("Opening Pro upgrade...") });
-    void renderer.openExternal(CLOUD_UPGRADE_URL)
+    void openCloudUpgrade(renderer)
       .then(() => setMessage(null))
       .catch((error) => {
         setMessage({

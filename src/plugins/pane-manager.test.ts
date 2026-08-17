@@ -18,6 +18,19 @@ import {
 const BOUNDS = { x: 0, y: 0, width: 120, height: 40 };
 
 describe("pane-manager split-tree drops", () => {
+  test("clamps a pane's preferred floating size to a small terminal", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const next = addPaneFloating(
+      cloneLayout(config.layout),
+      createPaneInstance("help"),
+      80,
+      24,
+      { id: "help", name: "Help", component: () => null, defaultFloatingSize: { width: 88, height: 32 } },
+    );
+
+    expect(next.floating.at(-1)).toMatchObject({ x: 0, y: 0, width: 80, height: 24 });
+  });
+
   test("docks the first floating pane into an empty dock root", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const layout = {

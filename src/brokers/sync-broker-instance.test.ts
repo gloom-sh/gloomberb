@@ -228,6 +228,41 @@ describe("syncBrokerInstance", () => {
     }
   });
 
+  test("stages broker cache and ticker writes until a cancellation-safe commit", async () => {
+    const instance = createBrokerInstance();
+    const config = {
+      ...createDefaultConfig("/tmp/gloomberb-sync-broker-cancel"),
+      portfolios: [],
+      brokerInstances: [instance],
+    };
+    const tickerRepository = createTickerRepository();
+    const persistence = new AppPersistence(":memory:");
+    const abortController = new AbortController();
+
+    try {
+      const result = await syncBrokerInstance({
+        config,
+        instanceId: instance.id,
+        brokers: new Map([["demo", createDemoBroker()]]),
+        tickerRepository: tickerRepository as any,
+        resources: persistence.resources,
+        signal: abortController.signal,
+        deferPersistence: true,
+      });
+
+      expect(await tickerRepository.loadAllTickers()).toEqual([]);
+      expect(loadPersistedBrokerAccounts(persistence.resources, instance, createDemoBroker())).toBeNull();
+
+      abortController.abort();
+      await expect(result.commit()).rejects.toThrow("Broker import was cancelled.");
+
+      expect(await tickerRepository.loadAllTickers()).toEqual([]);
+      expect(loadPersistedBrokerAccounts(persistence.resources, instance, createDemoBroker())).toBeNull();
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("preserves the last account snapshot when a broker portfolio snapshot fails", async () => {
     const instance = createBrokerInstance();
     const config = {

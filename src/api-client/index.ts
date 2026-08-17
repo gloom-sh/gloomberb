@@ -35,6 +35,7 @@ import type {
   CloudFundamentals,
   CloudHoldersPayload,
   CloudAnalystResearchPayload,
+  CloudBrowserHandoffResponse,
   CloudCorporateActionsPayload,
   CloudPricePointPayload,
   CloudEconEventPayload,
@@ -217,6 +218,10 @@ class GloomApiClient {
 
   async sendVerification(): Promise<CloudVerificationResponse> {
     return this.auth.sendVerification();
+  }
+
+  async createBrowserHandoff(): Promise<CloudBrowserHandoffResponse> {
+    return this.auth.createBrowserHandoff();
   }
 
   async getAccountProfile(): Promise<AccountProfile> {

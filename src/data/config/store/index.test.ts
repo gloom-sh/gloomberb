@@ -49,6 +49,31 @@ async function writeConfigJson(dataDir: string, config: Record<string, unknown>)
 }
 
 describe("sanitizeLayout", () => {
+  test("ships a focused Home layout with portfolio, chat, and following research", () => {
+    expect(DEFAULT_LAYOUT.instances.map((instance) => instance.instanceId)).toEqual([
+      "portfolio-list:main",
+      "ticker-detail:main",
+      "chat:main",
+    ]);
+    expect(getDockedPaneIds(DEFAULT_LAYOUT)).toEqual([
+      "portfolio-list:main",
+      "chat:main",
+      "ticker-detail:main",
+    ]);
+    expect(DEFAULT_LAYOUT.dockRoot).toMatchObject({
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.34,
+      first: {
+        kind: "split",
+        axis: "vertical",
+        ratio: 0.6,
+      },
+      second: { kind: "pane", instanceId: "ticker-detail:main" },
+    });
+    expect(DEFAULT_LAYOUT.floating).toEqual([]);
+  });
+
   test("keeps the default research layout free of retired chart settings", () => {
     const researchPanes = DEFAULT_LAYOUT.instances.filter((instance) => instance.paneId === "ticker-research");
     expect(researchPanes.length).toBeGreaterThan(0);
@@ -458,6 +483,42 @@ describe("loadConfig", () => {
     expect(config.configVersion).toBe(CURRENT_CONFIG_VERSION);
     expect(config.layout.detached).toEqual([]);
     expect(config.layouts[0]?.layout.detached).toEqual([]);
+  });
+
+  test("migrates the retired security step and drops malformed onboarding progress", async () => {
+    const validDir = await createTempConfigDir();
+    await writeConfigJson(validDir, createSavedConfig({
+      onboardingComplete: true,
+      onboardingProgress: {
+        version: 1,
+        stage: "open-security",
+        path: "manual",
+        portfolioId: "main",
+        tickerSymbol: "AAPL",
+      },
+    }));
+
+    const validConfig = await loadConfig(validDir);
+    expect(validConfig.onboardingComplete).toBe(false);
+    expect(validConfig.onboardingProgress).toEqual({
+      version: 1,
+      stage: "account",
+      path: "manual",
+      portfolioId: "main",
+      tickerSymbol: "AAPL",
+      brokerName: undefined,
+      positionsImported: undefined,
+      accountStatus: undefined,
+      checkoutOpenedAt: undefined,
+    });
+
+    const invalidDir = await createTempConfigDir();
+    await writeConfigJson(invalidDir, createSavedConfig({
+      onboardingProgress: { version: 1, stage: "unknown" },
+    }));
+
+    const invalidConfig = await loadConfig(invalidDir);
+    expect(invalidConfig.onboardingProgress).toBeUndefined();
   });
 
   test("fills in missing chart preferences for older configs", async () => {

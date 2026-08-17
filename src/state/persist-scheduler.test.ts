@@ -48,6 +48,37 @@ describe("createPersistScheduler", () => {
     expect(saved).toEqual([]);
   });
 
+  test("serializes an immediate save after an in-flight scheduled save", async () => {
+    let persisted: string | undefined;
+    let releaseStaleSave: (() => void) | undefined;
+    let markStaleSaveStarted: (() => void) | undefined;
+    const staleSaveStarted = new Promise<void>((resolve) => {
+      markStaleSaveStarted = resolve;
+    });
+    const staleSaveReleased = new Promise<void>((resolve) => {
+      releaseStaleSave = resolve;
+    });
+    const scheduler = createPersistScheduler<string>({
+      delayMs: 1000,
+      save: async (value) => {
+        if (value === "stale") {
+          markStaleSaveStarted?.();
+          await staleSaveReleased;
+        }
+        persisted = value;
+      },
+    });
+
+    scheduler.schedule("stale");
+    const scheduledSave = scheduler.flush();
+    await staleSaveStarted;
+    const completionSave = scheduler.saveImmediately("complete");
+    releaseStaleSave?.();
+    await Promise.all([scheduledSave, completionSave]);
+
+    expect(persisted).toBe("complete");
+  });
+
   test("save errors are reported without escaping timer", async () => {
     const errors: unknown[] = [];
     const scheduler = createPersistScheduler<string>({

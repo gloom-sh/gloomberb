@@ -3,57 +3,161 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { act } from "react";
-import { setCloudApiFetchTransport } from "../../api-client";
+import { apiClient } from "../../api-client";
+import { type AppBrokerImportRuntime, useBrokerImportRuntime } from "../../app/runtime/broker-import";
+import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
 import { testRender } from "../../renderers/opentui/test-utils";
-import { OnboardingWizard } from "./onboarding-wizard";
-import { createDefaultConfig, type AppConfig } from "../../types/config";
-import type { BrokerAdapter } from "../../types/broker";
+import {
+  AppProvider,
+  useAppDispatch,
+  useAppSelector,
+  useAppStateRef,
+} from "../../state/app/context";
+import {
+  createDefaultConfig,
+  type AppConfig,
+} from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
+import { EventBus } from "../../plugins/event-bus";
 import type { PluginRegistry } from "../../plugins/registry";
+import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
+import { OnboardingWizard } from "./onboarding-wizard";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let tempDataDir: string | null = null;
+let capturedConfig: AppConfig | null = null;
+let capturedBrokerAccounts: Record<string, unknown> | null = null;
 
-function createDeferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((nextResolve, nextReject) => {
-    resolve = nextResolve;
-    reject = nextReject;
-  });
-  return { promise, resolve, reject };
-}
-
-function createTickerRepository(initial: TickerRecord[] = []) {
+function createTickerRepository(
+  initial: TickerRecord[] = [],
+  onSave?: (ticker: TickerRecord, persist: () => void) => void | Promise<void>,
+) {
   const tickers = new Map(initial.map((ticker) => [ticker.metadata.ticker, ticker] as const));
-
   return {
-    async loadAllTickers() {
-      return [...tickers.values()];
-    },
-    async loadTicker(symbol: string) {
-      return tickers.get(symbol) ?? null;
-    },
+    async loadAllTickers() { return [...tickers.values()]; },
+    async loadTicker(symbol: string) { return tickers.get(symbol) ?? null; },
     async saveTicker(ticker: TickerRecord) {
-      tickers.set(ticker.metadata.ticker, ticker);
+      const persist = () => { tickers.set(ticker.metadata.ticker, ticker); };
+      await onSave?.(ticker, persist);
+      if (!onSave) persist();
     },
     async createTicker(metadata: TickerRecord["metadata"]) {
       const ticker = { metadata };
       tickers.set(metadata.ticker, ticker);
       return ticker;
     },
-    async deleteTicker(symbol: string) {
-      tickers.delete(symbol);
-    },
+    async deleteTicker(symbol: string) { tickers.delete(symbol); },
   };
 }
 
-async function emitKeypress(
-  renderer: Awaited<ReturnType<typeof testRender>>,
-  event: { name?: string; sequence?: string },
-) {
+function createPluginRegistry(options: {
+  brokers?: Map<string, BrokerAdapter>;
+  tickerRepository?: ReturnType<typeof createTickerRepository>;
+} = {}): PluginRegistry {
+  return {
+    allPlugins: new Map(),
+    brokers: options.brokers ?? new Map(),
+    paneTemplates: new Map(),
+    events: new EventBus(),
+    tickerRepository: options.tickerRepository ?? createTickerRepository(),
+    persistence: { resources: undefined },
+    openCommandBar: () => {},
+  } as unknown as PluginRegistry;
+}
+
+function StateCapture() {
+  capturedConfig = useAppSelector((state) => state.config);
+  capturedBrokerAccounts = useAppSelector((state) => state.brokerAccounts);
+  return null;
+}
+
+function WizardHarness({
+  config,
+  pluginRegistry,
+  importBrokerPositions,
+  onComplete = () => {},
+}: {
+  config: AppConfig;
+  pluginRegistry: PluginRegistry;
+  importBrokerPositions?: AppBrokerImportRuntime["importBrokerPositions"];
+  onComplete?: (config: AppConfig) => void;
+}) {
+  const importer = importBrokerPositions ?? ((instanceId, tickerMap, options) => syncBrokerInstance({
+    config: options?.config ?? config,
+    instanceId,
+    brokers: pluginRegistry.brokers,
+    tickerRepository: pluginRegistry.tickerRepository,
+    existingTickers: tickerMap,
+    resources: pluginRegistry.persistence.resources,
+    persistResolvedBrokerConfig: options?.persistResolvedBrokerConfig,
+    signal: options?.signal,
+  }));
+  return (
+    <AppProvider config={config}>
+      <StateCapture />
+      <OnboardingWizard
+        pluginRegistry={pluginRegistry}
+        importBrokerPositions={importer}
+        onComplete={onComplete}
+      />
+    </AppProvider>
+  );
+}
+
+function RuntimeOnboardingWizard({
+  pluginRegistry,
+  tickerRepository,
+  onComplete = () => {},
+}: {
+  pluginRegistry: PluginRegistry;
+  tickerRepository: ReturnType<typeof createTickerRepository>;
+  onComplete?: (config: AppConfig) => void;
+}) {
+  const dispatch = useAppDispatch();
+  const stateRef = useAppStateRef();
+  const { importBrokerPositions } = useBrokerImportRuntime({
+    dispatch,
+    pluginRegistry,
+    refreshQuote: () => {},
+    stateRef,
+    tickerRepository,
+  });
+
+  return (
+    <OnboardingWizard
+      pluginRegistry={pluginRegistry}
+      importBrokerPositions={importBrokerPositions}
+      onComplete={onComplete}
+    />
+  );
+}
+
+function RuntimeWizardHarness({
+  config,
+  pluginRegistry,
+  tickerRepository,
+  onComplete,
+}: {
+  config: AppConfig;
+  pluginRegistry: PluginRegistry;
+  tickerRepository: ReturnType<typeof createTickerRepository>;
+  onComplete?: (config: AppConfig) => void;
+}) {
+  return (
+    <AppProvider config={config}>
+      <StateCapture />
+      <RuntimeOnboardingWizard
+        pluginRegistry={pluginRegistry}
+        tickerRepository={tickerRepository}
+        onComplete={onComplete}
+      />
+    </AppProvider>
+  );
+}
+
+async function emitKeypress(event: { name?: string; sequence?: string }) {
   await act(async () => {
-    renderer.renderer.keyInput.emit("keypress", {
+    testSetup!.renderer.keyInput.emit("keypress", {
       ctrl: false,
       meta: false,
       option: false,
@@ -62,18 +166,16 @@ async function emitKeypress(
       repeated: false,
       ...event,
     } as any);
-    await renderer.renderOnce();
+    await testSetup!.renderOnce();
   });
 }
 
-async function waitForFrameToContain(text: string, attempts = 8): Promise<string> {
+async function waitForFrame(text: string, attempts = 20): Promise<string> {
   for (let index = 0; index < attempts; index += 1) {
     const frame = testSetup!.captureCharFrame();
-    if (frame.includes(text)) {
-      return frame;
-    }
+    if (frame.includes(text)) return frame;
     await act(async () => {
-      await Promise.resolve();
+      await Bun.sleep(0);
       await testSetup!.renderOnce();
     });
   }
@@ -81,13 +183,14 @@ async function waitForFrameToContain(text: string, attempts = 8): Promise<string
 }
 
 afterEach(async () => {
-  setCloudApiFetchTransport(null);
   if (testSetup) {
-    await act(async () => {
-      testSetup!.renderer.destroy();
-    });
+    await act(async () => testSetup!.renderer.destroy());
     testSetup = undefined;
   }
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  capturedConfig = null;
+  capturedBrokerAccounts = null;
   if (tempDataDir) {
     await rm(tempDataDir, { recursive: true, force: true });
     tempDataDir = null;
@@ -95,61 +198,110 @@ afterEach(async () => {
 });
 
 describe("OnboardingWizard", () => {
-  test("skips manual portfolio naming and shows compact starter shortcuts", async () => {
-    const pluginRegistry = {
-      allPlugins: new Map(),
-      brokers: new Map(),
-      paneTemplates: new Map([[
-        "ai",
-        { label: "AI Screener", shortcut: { prefix: "AI", argPlaceholder: "prompt" } },
-      ]]),
-      getPaneTemplatePluginId: () => undefined,
-      tickerRepository: createTickerRepository(),
-      persistence: { resources: undefined },
-    } as unknown as PluginRegistry;
-
+  test("enters the real workspace task immediately after manual setup", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
+    const pluginRegistry = createPluginRegistry();
     testSetup = await testRender(
-      <OnboardingWizard
-        config={createDefaultConfig("/tmp/gloomberb-onboarding-backspace")}
+      <WizardHarness
+        config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
-        onComplete={() => {}}
       />,
-      { width: 90, height: 28 },
+      { width: 100, height: 30 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    let frame = await waitForFrameToContain("Theme");
-    expect(frame).toContain("Theme");
+    expect(testSetup.captureCharFrame()).toContain("Make Gloomberb yours");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrame("How do you want to start?");
+    await emitKeypress({ name: "return", sequence: "\r" });
 
-    await act(async () => {
-      testSetup!.mockInput.pressBackspace();
-      await testSetup!.renderOnce();
-      await testSetup!.renderOnce();
+    const frame = await waitForFrame("Add one company you follow");
+    expect(frame).toContain("Add one company you follow");
+    expect(frame).toContain("AP");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({
+      stage: "add-ticker",
+      path: "manual",
+      portfolioId: "main",
     });
-    frame = await waitForFrameToContain("Let's set things up (~30s).");
-    expect(frame).toContain("Let's set things up (~30s).");
-
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    frame = await waitForFrameToContain("Theme");
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    frame = await waitForFrameToContain("Create Manual Portfolio");
-    expect(frame).toContain("Create Manual Portfolio");
-
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    frame = await waitForFrameToContain("After launch shortcuts");
-    expect(frame).toContain("Basic command prefixes");
-    expect(frame).toContain("DES AAPL");
-    expect(frame).toContain("HELP");
-    expect(frame).not.toContain("Name your portfolio");
-    expect(frame).not.toContain("Command-bar prefixes");
-    expect(frame).not.toContain("AI <prompt>");
-    expect(frame).not.toContain("AI Screener");
   });
 
-  test("waits for broker positions to import before completing onboarding", async () => {
-    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
-    const importDeferred = createDeferred<any[]>();
+  test("requires portfolio setup before onboarding can be skipped", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
+    const pluginRegistry = createPluginRegistry();
+    let completionCount = 0;
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
+    };
+    testSetup = await testRender(
+      <WizardHarness
+        config={config}
+        pluginRegistry={pluginRegistry}
+        onComplete={() => { completionCount += 1; }}
+      />,
+      { width: 80, height: 24 },
+    );
+    await testSetup.renderOnce();
+
+    expect(testSetup.captureCharFrame()).not.toContain("Skip setup");
+    await emitKeypress({ name: "f10" });
+    expect(completionCount).toBe(0);
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("portfolio");
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    expect(testSetup.captureCharFrame()).not.toContain("Back");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("portfolio");
+
+    await emitKeypress({ name: "return", sequence: "\r" });
+    const frame = await waitForFrame("Add one company you follow");
+    expect(frame).not.toContain("Skip setup");
+    await emitKeypress({ name: "f10" });
+    expect(completionCount).toBe(0);
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("add-ticker");
+  });
+
+  test("advances directly to Cloud after the expected AP save", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-actions-"));
+    const pluginRegistry = createPluginRegistry();
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: {
+        version: 1 as const,
+        stage: "add-ticker" as const,
+        path: "manual" as const,
+        portfolioId: "main",
+      },
+    };
+    testSetup = await testRender(
+      <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
+
+    await act(async () => {
+      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+        symbol: "MSFT",
+        portfolioId: "other",
+      });
+      await testSetup!.renderOnce();
+    });
+    expect(testSetup.captureCharFrame()).toContain("Add one company you follow");
+
+    await act(async () => {
+      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
+        symbol: "AAPL",
+        portfolioId: "main",
+      });
+      await Bun.sleep(0);
+      await testSetup!.renderOnce();
+    });
+    const frame = await waitForFrame("Sign up free");
+    expect(frame).toContain("Sign up free");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  test("imports a broker portfolio before moving to Cloud", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-"));
     const tickerRepository = createTickerRepository();
     const broker: BrokerAdapter = {
       id: "demo",
@@ -157,166 +309,433 @@ describe("OnboardingWizard", () => {
       configSchema: [{ key: "host", label: "Host", type: "text", required: true, defaultValue: "paper" }],
       validate: async () => true,
       listAccounts: async () => [{ accountId: "ACC-1", name: "Primary", currency: "USD" }],
-      importPositions: async () => importDeferred.promise,
+      importPositions: async () => [{
+        ticker: "AAPL",
+        exchange: "NASDAQ",
+        shares: 7,
+        avgCost: 180,
+        currency: "USD",
+        accountId: "ACC-1",
+        name: "Apple Inc.",
+        assetCategory: "STK",
+      }],
     };
-    const pluginRegistry = {
-      allPlugins: new Map(),
+    const pluginRegistry = createPluginRegistry({
       brokers: new Map([["demo", broker]]),
-      paneTemplates: new Map(),
-      getPaneTemplatePluginId: () => undefined,
       tickerRepository,
-      persistence: { resources: undefined },
-    } as unknown as PluginRegistry;
-
-    let completedConfig: AppConfig | null = null;
+    });
     const config = {
       ...createDefaultConfig(tempDataDir),
-      disabledPlugins: ["demo-plugin"],
+      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
     };
-
     testSetup = await testRender(
-      <OnboardingWizard
+      <RuntimeWizardHarness
         config={config}
         pluginRegistry={pluginRegistry}
-        onComplete={(nextConfig) => {
-          completedConfig = nextConfig;
-        }}
+        tickerRepository={tickerRepository}
       />,
-      { width: 90, height: 28 },
+      { width: 100, height: 30 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrame("Connect Demo Broker");
+    await emitKeypress({ name: "return", sequence: "\r" });
 
-    let frame = testSetup.captureCharFrame();
-    for (let index = 0; index < 10 && !frame.includes("Connecting to Demo Broker and importing"); index += 1) {
-      await act(async () => {
-        await Promise.resolve();
-        await testSetup!.renderOnce();
-      });
-      frame = testSetup.captureCharFrame();
-    }
-    expect(frame).toContain("Connecting to Demo Broker and importing");
-    expect(completedConfig).toBeNull();
-
-    importDeferred.resolve([{
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      shares: 7,
-      avgCost: 180,
-      currency: "USD",
-      accountId: "ACC-1",
-      name: "Apple Inc.",
-      assetCategory: "STK",
-    }]);
-
-    for (let index = 0; index < 20 && !completedConfig; index += 1) {
-      await act(async () => {
-        await Promise.resolve();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        await testSetup!.renderOnce();
-      });
-    }
-
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("After launch shortcuts");
-
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await waitForFrameToContain("Create your free Gloom Cloud account");
-    await emitKeypress(testSetup, { name: "right", sequence: "[C" });
-    frame = await waitForFrameToContain("Imported 1 position");
-    expect(completedConfig).toBeNull();
-
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-
-    for (let index = 0; index < 20 && !completedConfig; index += 1) {
-      await act(async () => {
-        await Promise.resolve();
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        await testSetup!.renderOnce();
-      });
-    }
-
-    expect(completedConfig).not.toBeNull();
-    if (!completedConfig) {
-      throw new Error("Onboarding did not complete.");
-    }
-    const finalConfig: AppConfig = completedConfig;
-    expect(finalConfig.disabledPlugins).toEqual([]);
-    expect(finalConfig.portfolios.some((portfolio) => portfolio.id === "broker:demo-demo-broker:ACC-1")).toBe(true);
-    expect(finalConfig.layout.instances.find((instance) => instance.paneId === "portfolio-list")?.params?.collectionId)
-      .toBe("broker:demo-demo-broker:ACC-1");
+    const frame = await waitForFrame("Sign up free");
+    expect(frame).toContain("Sign up free");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({
+      stage: "account",
+      path: "broker",
+      tickerSymbol: "AAPL",
+      brokerName: "Demo Broker",
+      positionsImported: 1,
+    });
     expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker)).toContain("AAPL");
   });
 
-  test("account step validates locally and stays skippable all the way to launch", async () => {
-    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-account-"));
-    const requestedUrls: string[] = [];
-    setCloudApiFetchTransport(async (url) => {
-      requestedUrls.push(url);
-      throw new Error("network is disabled in tests");
+  test("Back prevents a delayed broker import from committing config, accounts, or positions", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-cancel-"));
+    const tickerRepository = createTickerRepository();
+    let resolvePositions: (positions: BrokerPosition[]) => void = () => {};
+    const positions = new Promise<BrokerPosition[]>((resolve) => {
+      resolvePositions = resolve;
     });
+    const broker: BrokerAdapter = {
+      id: "delayed",
+      name: "Delayed Broker",
+      configSchema: [{ key: "apiKey", label: "API key", type: "text", required: true, defaultValue: "test-key" }],
+      validate: async () => true,
+      listAccounts: async () => [{ accountId: "ACC-1", name: "Primary", currency: "USD" }],
+      importPositions: async () => positions,
+    };
+    const pluginRegistry = createPluginRegistry({
+      brokers: new Map([["delayed", broker]]),
+      tickerRepository,
+    });
+    let resourceWrites = 0;
+    pluginRegistry.persistence.resources = {
+      get: () => undefined,
+      list: () => [],
+      set: () => { resourceWrites += 1; },
+      delete: () => {},
+    } as any;
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
+    };
 
-    const pluginRegistry = {
-      allPlugins: new Map(),
-      brokers: new Map(),
-      paneTemplates: new Map(),
-      getPaneTemplatePluginId: () => undefined,
-      tickerRepository: createTickerRepository(),
-      persistence: { resources: undefined },
-    } as unknown as PluginRegistry;
-
-    let completedConfig: AppConfig | null = null;
     testSetup = await testRender(
-      <OnboardingWizard
-        config={createDefaultConfig(tempDataDir)}
+      <RuntimeWizardHarness
+        config={config}
         pluginRegistry={pluginRegistry}
-        onComplete={(nextConfig) => {
-          completedConfig = nextConfig;
-        }}
+        tickerRepository={tickerRepository}
       />,
-      { width: 90, height: 28 },
+      { width: 100, height: 30 },
     );
     await testSetup.renderOnce();
 
-    // welcome -> theme -> portfolio -> shortcuts -> account
-    for (let index = 0; index < 4; index += 1) {
-      await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    }
-    let frame = await waitForFrameToContain("Create your free Gloom Cloud account");
-    expect(frame).toContain("Try Pro free for 7 days");
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrame("Connect Delayed Broker");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrame("Importing");
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    await waitForFrameToContain("Create your free account");
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await waitForFrame("How do you want to start?");
 
-    // Submitting an empty form must be caught locally instead of hitting the API.
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    frame = await waitForFrameToContain("Enter your email address.");
-    expect(requestedUrls).toEqual([]);
+    await act(async () => {
+      resolvePositions([{
+        ticker: "AAPL",
+        exchange: "NASDAQ",
+        shares: 7,
+        avgCost: 180,
+        currency: "USD",
+        accountId: "ACC-1",
+        name: "Apple Inc.",
+        assetCategory: "STK",
+      }]);
+      await Bun.sleep(0);
+      await testSetup!.renderOnce();
+    });
 
-    await emitKeypress(testSetup, { name: "escape", sequence: "\u001b" });
-    await waitForFrameToContain("Skip for now");
+    expect(capturedConfig?.brokerInstances).toEqual([]);
+    expect(capturedBrokerAccounts).toEqual({});
+    expect(await tickerRepository.loadAllTickers()).toEqual([]);
+    expect(resourceWrites).toBe(0);
+  });
 
-    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
-    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    frame = await waitForFrameToContain("Create an account anytime");
-    expect(frame).not.toContain("Signed in as");
+  test("defers Back after broker persistence begins until the commit completes", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-commit-"));
+    let resolveFirstWrite: () => void = () => {};
+    const firstWriteStarted = new Promise<void>((resolve) => { resolveFirstWrite = resolve; });
+    let releaseSecondWrite: () => void = () => {};
+    const secondWrite = new Promise<void>((resolve) => { releaseSecondWrite = resolve; });
+    const tickerRepository = createTickerRepository([], async (ticker, persist) => {
+      if (ticker.metadata.ticker === "AAPL") {
+        persist();
+        resolveFirstWrite();
+        return;
+      }
+      await secondWrite;
+      persist();
+    });
+    const broker: BrokerAdapter = {
+      id: "committing",
+      name: "Commit Broker",
+      configSchema: [{ key: "apiKey", label: "API key", type: "text", required: true, defaultValue: "test-key" }],
+      validate: async () => true,
+      listAccounts: async () => [{ accountId: "ACC-1", name: "Primary", currency: "USD" }],
+      importPositions: async () => [
+        {
+          ticker: "AAPL",
+          exchange: "NASDAQ",
+          shares: 7,
+          avgCost: 180,
+          currency: "USD",
+          accountId: "ACC-1",
+          name: "Apple Inc.",
+          assetCategory: "STK",
+        },
+        {
+          ticker: "MSFT",
+          exchange: "NASDAQ",
+          shares: 4,
+          avgCost: 400,
+          currency: "USD",
+          accountId: "ACC-1",
+          name: "Microsoft Corp.",
+          assetCategory: "STK",
+        },
+      ],
+    };
+    const pluginRegistry = createPluginRegistry({
+      brokers: new Map([["committing", broker]]),
+      tickerRepository,
+    });
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
+    };
+    testSetup = await testRender(
+      <RuntimeWizardHarness
+        config={config}
+        pluginRegistry={pluginRegistry}
+        tickerRepository={tickerRepository}
+      />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
 
-    await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    for (let index = 0; index < 20 && !completedConfig; index += 1) {
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrame("Connect Commit Broker");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await firstWriteStarted;
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    expect(testSetup.captureCharFrame()).toContain("Importing");
+    await emitKeypress({ name: "f10" });
+    expect(testSetup.captureCharFrame()).toContain("Importing");
+    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker)).toEqual(["AAPL"]);
+
+    await act(async () => {
+      releaseSecondWrite();
+      await Bun.sleep(0);
+      await testSetup!.renderOnce();
+    });
+
+    await waitForFrame("Sign up free");
+    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT"]);
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  test("keeps Skip locked until broker onboarding finalization completes", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-finalize-"));
+    let signalCommitEnded: () => void = () => {};
+    const commitEnded = new Promise<void>((resolve) => { signalCommitEnded = resolve; });
+    let releaseResult: () => void = () => {};
+    const resultGate = new Promise<void>((resolve) => { releaseResult = resolve; });
+    let completionCount = 0;
+    const broker: BrokerAdapter = {
+      id: "finalizing",
+      name: "Finalizing Broker",
+      configSchema: [{ key: "apiKey", label: "API key", type: "text", required: true, defaultValue: "test-key" }],
+      validate: async () => true,
+      importPositions: async () => [],
+    };
+    const pluginRegistry = createPluginRegistry({ brokers: new Map([["finalizing", broker]]) });
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
+    };
+    const importBrokerPositions: AppBrokerImportRuntime["importBrokerPositions"] = async (_instanceId, _tickerMap, options) => {
+      options?.onCommitStart?.();
+      options?.onCommitEnd?.();
+      signalCommitEnded();
+      await resultGate;
+      const syncedConfig = options?.config ?? config;
+      return {
+        config: syncedConfig,
+        tickers: new Map(),
+        brokerAccounts: [],
+        positions: [{
+          ticker: "AAPL",
+          exchange: "NASDAQ",
+          shares: 7,
+          avgCost: 180,
+          currency: "USD",
+          accountId: "ACC-1",
+          name: "Apple Inc.",
+          assetCategory: "STK",
+        }],
+        portfolioIds: ["main"],
+        addedTickers: [],
+        updatedTickers: [],
+        commit: async () => {},
+      };
+    };
+
+    testSetup = await testRender(
+      <WizardHarness
+        config={config}
+        pluginRegistry={pluginRegistry}
+        importBrokerPositions={importBrokerPositions}
+        onComplete={() => { completionCount += 1; }}
+      />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
+
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await waitForFrame("Connect Finalizing Broker");
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await commitEnded;
+    await waitForFrame("Importing");
+
+    await emitKeypress({ name: "f10" });
+    expect(testSetup.captureCharFrame()).toContain("Importing");
+    expect(completionCount).toBe(0);
+
+    await act(async () => {
+      releaseResult();
+      await Bun.sleep(0);
+      await testSetup!.renderOnce();
+    });
+
+    await waitForFrame("Sign up free");
+    expect(completionCount).toBe(0);
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  test("Not now skips Pro and moves directly to ready", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-cloud-skip-"));
+    const pluginRegistry = createPluginRegistry();
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: {
+        version: 1 as const,
+        stage: "account" as const,
+        path: "manual" as const,
+        portfolioId: "main",
+        tickerSymbol: "MSFT",
+      },
+    };
+    testSetup = await testRender(
+      <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
+
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+
+    const frame = await waitForFrame("Your workspace is ready");
+    expect(frame).not.toContain("GLOOM CLOUD PRO");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({
+      stage: "ready",
+      accountStatus: "skipped",
+    });
+  });
+
+  test("returning from Pro shows the connected account instead of signup choices", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-pro-back-"));
+    apiClient.setSessionToken("onboarding-test-session");
+    apiClient.restoreCachedUser({
+      id: "user-1",
+      email: "investor@example.com",
+      emailVerified: true,
+      plan: "free",
+    });
+    const pluginRegistry = createPluginRegistry();
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: {
+        version: 1 as const,
+        stage: "upgrade" as const,
+        accountStatus: "signed-in" as const,
+      },
+    };
+    testSetup = await testRender(
+      <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+
+    const frame = await waitForFrame("Connected");
+    expect(frame).not.toContain("Sign up free");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  test("persists completion only from the ready step", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-complete-"));
+    const pluginRegistry = createPluginRegistry();
+    const config = {
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: {
+        version: 1 as const,
+        stage: "ready" as const,
+        path: "manual" as const,
+        portfolioId: "main",
+        tickerSymbol: "AAPL",
+      },
+    };
+    let completed: AppConfig | null = null;
+    testSetup = await testRender(
+      <WizardHarness
+        config={config}
+        pluginRegistry={pluginRegistry}
+        onComplete={(nextConfig) => { completed = nextConfig; }}
+      />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("Your workspace is ready");
+
+    await emitKeypress({ name: "return", sequence: "\r" });
+    for (let index = 0; index < 20 && !completed; index += 1) {
       await act(async () => {
-        await Promise.resolve();
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await Bun.sleep(0);
         await testSetup!.renderOnce();
       });
     }
 
-    expect(completedConfig).not.toBeNull();
-    expect(requestedUrls).toEqual([]);
+    expect(completed).not.toBeNull();
+    expect(completed?.onboardingComplete).toBe(true);
+    expect(completed?.onboardingProgress).toBeUndefined();
+  });
+
+  test("global dismissal wins over an onboarding progress save", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-dismiss-"));
+    const pluginRegistry = createPluginRegistry();
+    let completed: AppConfig | null = null;
+    testSetup = await testRender(
+      <WizardHarness
+        config={createDefaultConfig(tempDataDir)}
+        pluginRegistry={pluginRegistry}
+        onComplete={(nextConfig) => { completed = nextConfig; }}
+      />,
+      { width: 100, height: 30 },
+    );
+    await testSetup.renderOnce();
+
+    await act(async () => {
+      testSetup!.renderer.keyInput.emit("keypress", {
+        name: "return",
+        sequence: "\r",
+        ctrl: false,
+        meta: false,
+        option: false,
+        shift: false,
+        eventType: "press",
+        repeated: false,
+      } as any);
+      testSetup!.renderer.keyInput.emit("keypress", {
+        name: "escape",
+        sequence: "\u001b",
+        ctrl: false,
+        meta: false,
+        option: false,
+        shift: false,
+        eventType: "press",
+        repeated: false,
+      } as any);
+      await testSetup!.renderOnce();
+    });
+
+    for (let index = 0; index < 30 && !completed; index += 1) {
+      await act(async () => {
+        await Bun.sleep(0);
+        await testSetup!.renderOnce();
+      });
+    }
+
+    expect(completed?.onboardingComplete).toBe(true);
+    expect(completed?.onboardingProgress).toBeUndefined();
   });
 });

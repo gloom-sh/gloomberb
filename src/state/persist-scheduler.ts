@@ -12,6 +12,7 @@ export interface PersistScheduler<T> {
   schedule(value: T): void;
   flush(): Promise<void>;
   cancel(): void;
+  saveImmediately(value: T): Promise<void>;
 }
 
 export function createPersistScheduler<T>({
@@ -30,12 +31,19 @@ export function createPersistScheduler<T>({
     timer = null;
   };
 
-  const runSave = async (value: T) => {
-    try {
-      await save(value);
-    } catch (error) {
-      onError?.(error);
-    }
+  const enqueueSave = (value: T, reportError: boolean): Promise<void> => {
+    const saveTask = inFlight.then(async () => {
+      try {
+        await save(value);
+      } catch (error) {
+        if (reportError) onError?.(error);
+        throw error;
+      }
+    });
+    // Keep the serialization chain usable after a failed immediate save while
+    // still returning that failure to its caller.
+    inFlight = saveTask.catch(() => {});
+    return saveTask;
   };
 
   const drain = async () => {
@@ -44,8 +52,7 @@ export function createPersistScheduler<T>({
     const value = pendingValue as T;
     pendingValue = undefined;
     hasPendingValue = false;
-    inFlight = inFlight.then(() => runSave(value));
-    return inFlight;
+    return enqueueSave(value, true).catch(() => {});
   };
 
   return {
@@ -64,6 +71,12 @@ export function createPersistScheduler<T>({
       clearTimer();
       pendingValue = undefined;
       hasPendingValue = false;
+    },
+    saveImmediately(value: T): Promise<void> {
+      clearTimer();
+      pendingValue = undefined;
+      hasPendingValue = false;
+      return enqueueSave(value, false);
     },
   };
 }

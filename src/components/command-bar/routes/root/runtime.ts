@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { ScrollBoxRenderable } from "../../../../ui";
 import type { AppState } from "../../../../state/app/context";
 import type { DataProvider } from "../../../../types/data-provider";
@@ -246,7 +246,7 @@ export function useCommandBarRootRuntime({
     writeTickerSearchCache,
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (currentRoute) return;
 
     const resultIds = orderedRootResults.map((item) => item.id);

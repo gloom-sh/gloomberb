@@ -144,12 +144,17 @@ describe("CommandBar AI assist", () => {
 
   test("keeps the row the user picked when an answer lands above it", async () => {
     signInVerified();
-    mockAssistTransport(() => jsonResponse({
-      candidates: [
-        { input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 },
-        { input: "CHAT #random", title: "Open the random channel", prefix: "CHAT", confidence: 0.4 },
-      ],
-    }));
+    let releaseResponse = () => {};
+    const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const requests = mockAssistTransport(async () => {
+      await held;
+      return jsonResponse({
+        candidates: [
+          { input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 },
+          { input: "CHAT #random", title: "Open the random channel", prefix: "CHAT", confidence: 0.4 },
+        ],
+      });
+    });
     const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
 
     testSetup = await testRender(
@@ -161,8 +166,10 @@ describe("CommandBar AI assist", () => {
     );
 
     await testSetup.renderOnce();
+    await waitForRequest(requests);
     // Down lands on the local match while a single "Thinking…" row sits above.
     await emitKeypress(testSetup, { name: "down" });
+    releaseResponse();
     await waitForFrameToContain("CHAT #random — Open the random channel", ASSIST_WAIT_ATTEMPTS);
 
     // Two answers replaced that one row, so the chosen row moved down by one —

@@ -21,11 +21,6 @@ export function scheduleConfigSave(config: AppConfig): void {
   configSaveScheduler.schedule(config);
 }
 
-function cancelScheduledConfigSave(): void {
-  configSaveScheduler.cancel();
-}
-
 export async function saveConfigImmediately(config: AppConfig): Promise<void> {
-  cancelScheduledConfigSave();
-  await measurePerfAsync("persist.config.save", () => saveConfig(config));
+  await configSaveScheduler.saveImmediately(config);
 }

@@ -1,5 +1,5 @@
 import type { BrokerAccount } from "../../../types/trading";
-import type { AppConfig, LayoutConfig } from "../../../types/config";
+import type { AppConfig, LayoutConfig, OnboardingProgress } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -70,6 +70,11 @@ export interface AppState {
 
 export type AppAction =
   | { type: "SET_CONFIG"; config: AppConfig }
+  | {
+      type: "SET_ONBOARDING_STATE";
+      complete: boolean;
+      progress: OnboardingProgress | undefined;
+    }
   | { type: "SET_TICKERS"; tickers: Map<string, TickerRecord> }
   | { type: "UPDATE_TICKER"; ticker: TickerRecord }
   | { type: "REMOVE_TICKER"; symbol: string }

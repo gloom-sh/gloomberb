@@ -11,6 +11,7 @@ export interface PluginEvents {
   "ticker:refreshed": { symbol: string; financials: TickerFinancials };
   "ticker:added": { symbol: string; ticker: TickerRecord };
   "ticker:removed": { symbol: string };
+  "command-bar:portfolio-membership-persisted": { symbol: string; portfolioId: string };
   "config:changed": { config: AppConfig };
   "plugin:registered": { pluginId: string };
   "plugin:unregistered": { pluginId: string };

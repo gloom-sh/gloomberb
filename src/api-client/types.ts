@@ -605,6 +605,11 @@ export interface CloudVerificationResponse {
   alreadyVerified?: boolean;
 }
 
+/** A short-lived, single-use browser URL that establishes the existing desktop session. */
+export interface CloudBrowserHandoffResponse {
+  url: string;
+}
+
 export interface QuoteStreamTarget {
   symbol: string;
   exchange?: string;

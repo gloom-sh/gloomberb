@@ -116,6 +116,26 @@ export interface SavedLayout {
   activePanel?: "left" | "right";
 }
 
+export type OnboardingStage =
+  | "welcome"
+  | "portfolio"
+  | "add-ticker"
+  | "account"
+  | "upgrade"
+  | "ready";
+
+export interface OnboardingProgress {
+  version: 1;
+  stage: OnboardingStage;
+  path?: "manual" | "broker";
+  portfolioId?: string;
+  tickerSymbol?: string;
+  brokerName?: string;
+  positionsImported?: number;
+  accountStatus?: "signed-in" | "skipped";
+  checkoutOpenedAt?: string;
+}
+
 export interface AppConfig {
   dataDir: string;
   configVersion: number;
@@ -136,6 +156,8 @@ export interface AppConfig {
   recentTickers: string[];
   language?: LanguagePreference;
   onboardingComplete?: boolean;
+  /** Local, resumable progress. This is intentionally not cloud-synced. */
+  onboardingProgress?: OnboardingProgress;
 }
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";
@@ -198,17 +220,11 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
     first: {
       kind: "split",
       axis: "vertical",
-      ratio: 0.5,
+      ratio: 0.6,
       first: { kind: "pane", instanceId: "portfolio-list:main" },
       second: { kind: "pane", instanceId: "chat:main" },
     },
-    second: {
-      kind: "split",
-      axis: "vertical",
-      ratio: 0.46,
-      first: { kind: "pane", instanceId: "ticker-detail:main" },
-      second: { kind: "pane", instanceId: "ticker-detail:nvda" },
-    },
+    second: { kind: "pane", instanceId: "ticker-detail:main" },
   },
   instances: [
     {
@@ -233,16 +249,6 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
       binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" },
     },
     {
-      instanceId: "ticker-detail:nvda",
-      paneId: TICKER_RESEARCH_PANE_ID,
-      title: "NVDA",
-      settings: {
-        hideTabs: false,
-        lockedTabId: "overview",
-      },
-      binding: { kind: "fixed", symbol: "NVDA" },
-    },
-    {
       instanceId: "chat:main",
       paneId: "chat",
       settings: {
@@ -250,15 +256,8 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
       },
       binding: { kind: "none" },
     },
-    {
-      instanceId: "help:main",
-      paneId: "help",
-      binding: { kind: "none" },
-    },
   ],
-  floating: [
-    { instanceId: "help:main", x: 12, y: 4, width: 88, height: 32, zIndex: 90 },
-  ],
+  floating: [],
   detached: [],
 };
 

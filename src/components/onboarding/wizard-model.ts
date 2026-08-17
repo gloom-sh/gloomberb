@@ -1,8 +1,24 @@
 import type { BrokerAdapter } from "../../types/broker";
+import type { AppConfig, OnboardingProgress } from "../../types/config";
 
-export type OnboardingStep = "welcome" | "theme" | "portfolio" | "shortcuts" | "account" | "ready";
+export function getOnboardingProgress(config: AppConfig): OnboardingProgress {
+  return config.onboardingProgress ?? { version: 1, stage: "welcome" };
+}
 
-export const ONBOARDING_STEPS: OnboardingStep[] = ["welcome", "theme", "portfolio", "shortcuts", "account", "ready"];
+export function withOnboardingProgress(
+  config: AppConfig,
+  patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
+): AppConfig {
+  return {
+    ...config,
+    onboardingComplete: false,
+    onboardingProgress: {
+      ...getOnboardingProgress(config),
+      ...patch,
+      version: 1,
+    },
+  };
+}
 
 export interface BrokerOption {
   id: string;

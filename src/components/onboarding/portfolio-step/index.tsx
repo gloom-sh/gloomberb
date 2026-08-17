@@ -13,6 +13,7 @@ export function PortfolioStep(props: PortfolioStepProps) {
         choices={props.choices}
         optionIdx={props.optionIdx}
         onOptionSelect={props.onOptionSelect}
+        onOptionActivate={props.onOptionActivate}
       />
     );
   }
@@ -49,8 +50,10 @@ export function PortfolioStep(props: PortfolioStepProps) {
       brokerFields={props.brokerFields}
       brokerFieldIdx={props.brokerFieldIdx}
       brokerSelectIdx={props.brokerSelectIdx}
+      onBrokerSelect={props.onBrokerSelect}
       brokerValues={props.brokerValues}
       onBrokerFieldChange={props.onBrokerFieldChange}
+      onSubmitBrokerField={props.onSubmitBrokerField}
       editing={props.editing}
       inputRef={props.inputRef}
     />
