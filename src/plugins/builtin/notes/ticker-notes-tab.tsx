@@ -17,6 +17,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
     const [notesFocused, setNotesFocused] = useState(false);
     const { text: noteText, textRef: noteTextRef, setText: setNoteText } = useSyncedText("");
     const wasNotesFocusedRef = useRef(false);
+    const loadedSymbolRef = useRef<string | null>(null);
 
     const setNotesFocusedAndCapture = useCallback((value: boolean) => {
       setNotesFocused(value);
@@ -24,8 +25,17 @@ export function createNotesTab(notesFiles: NotesFiles) {
     }, [onCapture]);
 
     const getCurrentNoteText = useCallback(() => (
-      textareaRef.current?.editBuffer.getText() ?? noteTextRef.current
+      textareaRef.current ? textareaRef.current.editBuffer.getText() : noteTextRef.current
     ), [noteTextRef]);
+
+    const tickerSymbol = ticker?.metadata.ticker ?? null;
+
+    const handleNoteChange = useCallback((value: string) => {
+      if (tickerSymbol) {
+        loadedSymbolRef.current = tickerSymbol;
+      }
+      setNoteText(value);
+    }, [setNoteText, tickerSymbol]);
 
     const saveNotesFor = useCallback((symbol: string | null, text: string) => {
       if (!symbol) return;
@@ -33,11 +43,16 @@ export function createNotesTab(notesFiles: NotesFiles) {
     }, [notesFiles]);
 
     useEffect(() => {
-      if (wasNotesFocusedRef.current && !notesFocused && ticker?.metadata.ticker) {
-        saveNotesFor(ticker.metadata.ticker, getCurrentNoteText());
+      if (
+        wasNotesFocusedRef.current
+        && !notesFocused
+        && tickerSymbol
+        && loadedSymbolRef.current === tickerSymbol
+      ) {
+        saveNotesFor(tickerSymbol, getCurrentNoteText());
       }
       wasNotesFocusedRef.current = notesFocused;
-    }, [getCurrentNoteText, notesFocused, ticker, saveNotesFor]);
+    }, [getCurrentNoteText, notesFocused, tickerSymbol, saveNotesFor]);
 
     useEffect(() => {
       if (!focused && notesFocused) {
@@ -45,30 +60,42 @@ export function createNotesTab(notesFiles: NotesFiles) {
       }
     }, [focused, notesFocused, setNotesFocusedAndCapture]);
 
-    const tickerSymbol = ticker?.metadata.ticker ?? null;
     const prevSymbolRef = useRef<string | null>(null);
     useEffect(() => {
       if (tickerSymbol !== prevSymbolRef.current) {
-        if (textareaRef.current && prevSymbolRef.current) {
-          saveNotesFor(prevSymbolRef.current, textareaRef.current.editBuffer.getText());
+        if (prevSymbolRef.current) {
+          saveNotesFor(prevSymbolRef.current, getCurrentNoteText());
         }
         prevSymbolRef.current = tickerSymbol;
+        loadedSymbolRef.current = null;
+        setNoteText("");
+        textareaRef.current?.setText("");
+
+        if (notesFocused) {
+          setNotesFocusedAndCapture(false);
+        }
 
         if (!tickerSymbol) {
-          setNoteText("");
-          textareaRef.current?.setText("");
           return;
         }
 
+        let cancelled = false;
         notesFiles.load(tickerSymbol).then((nextNotes) => {
+          if (cancelled || prevSymbolRef.current !== tickerSymbol) return;
+          loadedSymbolRef.current = tickerSymbol;
           setNoteText(nextNotes);
           textareaRef.current?.setText(nextNotes);
         }).catch(() => {
+          if (cancelled || prevSymbolRef.current !== tickerSymbol) return;
+          loadedSymbolRef.current = tickerSymbol;
           setNoteText("");
           textareaRef.current?.setText("");
         });
+        return () => {
+          cancelled = true;
+        };
       }
-    }, [tickerSymbol, saveNotesFor, notesFiles, setNoteText]);
+    }, [tickerSymbol, getCurrentNoteText, notesFocused, saveNotesFor, notesFiles, setNoteText, setNotesFocusedAndCapture]);
 
     useShortcut((event) => {
       if (!focused) return;
@@ -96,12 +123,12 @@ export function createNotesTab(notesFiles: NotesFiles) {
         <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!notesFocused) setNotesFocusedAndCapture(true); }}>
           {notesFocused ? (
             <MarkdownEditor
-              textareaKey={tickerSymbol ?? "none"}
+              textareaKey="editing"
               focused={focused}
               initialValue={noteText}
               placeholder="Write notes about this ticker..."
               onRef={(ref) => { textareaRef.current = ref; }}
-              onChange={setNoteText}
+              onChange={handleNoteChange}
             />
           ) : (
             <MarkdownNotePreview

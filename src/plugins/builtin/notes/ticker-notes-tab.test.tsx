@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useReducer, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
+  appReducer,
   createInitialState,
 } from "../../../state/app/context";
 import { cloneLayout, createDefaultConfig } from "../../../types/config";
@@ -33,6 +34,35 @@ function makeTicker(symbol: string): TickerRecord {
   };
 }
 
+function createMockNotesFiles(options?: {
+  loadDelayMs?: number;
+  notes?: Record<string, string>;
+}) {
+  const saves: Array<{ symbol: string; text: string }> = [];
+  const notes = new Map(Object.entries(options?.notes ?? {}));
+  const loadDelayMs = options?.loadDelayMs ?? 0;
+  return {
+    saves,
+    async load(symbol: string) {
+      if (loadDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, loadDelayMs));
+      }
+      return notes.get(symbol) ?? "";
+    },
+    async save(symbol: string, text: string) {
+      saves.push({ symbol, text });
+    },
+    async delete() {},
+    quickNoteKey(id: string) {
+      return `__quick__/${id}`;
+    },
+    async loadQuickNotesIndex() {
+      return [];
+    },
+    async saveQuickNotesIndex() {},
+  } as unknown as NotesFiles & { saves: Array<{ symbol: string; text: string }> };
+}
+
 function createNotesHarnessConfig(symbol: string) {
   const config = createDefaultConfig("/tmp/gloomberb-notes-tab");
   const layout = {
@@ -53,44 +83,42 @@ function createNotesHarnessConfig(symbol: string) {
   };
 }
 
-function createMockNotesFiles() {
-  const saves: Array<{ symbol: string; text: string }> = [];
-  return {
-    saves,
-    async load() {
-      return "";
-    },
-    async save(symbol: string, text: string) {
-      saves.push({ symbol, text });
-    },
-    async delete() {},
-    quickNoteKey(id: string) {
-      return `__quick__/${id}`;
-    },
-    async loadQuickNotesIndex() {
-      return [];
-    },
-    async saveQuickNotesIndex() {},
-  } as unknown as NotesFiles & { saves: Array<{ symbol: string; text: string }> };
-}
-
 function NotesTabHarness({
   NotesTab,
-  symbol,
+  initialSymbol,
 }: {
   NotesTab: ReturnType<typeof createNotesTab>;
-  symbol: string;
+  initialSymbol: string;
 }) {
   const [focused, setFocused] = useState(true);
-  const config = createNotesHarnessConfig(symbol);
-  const state = createInitialState(config);
-  state.focusedPaneId = TEST_PANE_ID;
-  state.tickers = new Map([[symbol, makeTicker(symbol)]]);
+  const [state, dispatch] = useReducer(appReducer, undefined, () => {
+    const initial = createInitialState(createNotesHarnessConfig(initialSymbol));
+    initial.focusedPaneId = TEST_PANE_ID;
+    initial.tickers = new Map([
+      ["AAPL", makeTicker("AAPL")],
+      ["MSFT", makeTicker("MSFT")],
+    ]);
+    return initial;
+  });
+
+  const switchSymbol = (nextSymbol: string) => {
+    dispatch({
+      type: "UPDATE_LAYOUT",
+      layout: {
+        ...state.config.layout,
+        instances: state.config.layout.instances.map((instance) => (
+          instance.instanceId === TEST_PANE_ID
+            ? { ...instance, binding: { kind: "fixed" as const, symbol: nextSymbol } }
+            : instance
+        )),
+      },
+    });
+  };
 
   return (
     <TestDialogProvider>
       <Box flexDirection="column" width={80} height={24}>
-        <AppContext value={{ state, dispatch: () => {} }}>
+        <AppContext value={{ state, dispatch }}>
           <PaneInstanceProvider paneId={TEST_PANE_ID}>
             <PaneFooterProvider>
               {() => (
@@ -102,6 +130,7 @@ function NotesTabHarness({
                     onCapture={() => {}}
                   />
                   <Text onMouseDown={() => setFocused(false)}>blur-tab</Text>
+                  <Text onMouseDown={() => switchSymbol("MSFT")}>switch-msft</Text>
                 </>
               )}
             </PaneFooterProvider>
@@ -127,7 +156,7 @@ describe("createNotesTab", () => {
     const NotesTab = createNotesTab(notesFiles);
 
     testSetup = await testRender(
-      <NotesTabHarness NotesTab={NotesTab} symbol="AAPL" />,
+      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
       { width: 80, height: 24 },
     );
     await testSetup.renderOnce();
@@ -161,5 +190,55 @@ describe("createNotesTab", () => {
     });
 
     expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "ab" }]);
+  });
+
+  test("does not save stale buffer text to a new ticker before its notes load", async () => {
+    const notesFiles = createMockNotesFiles({
+      loadDelayMs: 50,
+      notes: { MSFT: "msft-note" },
+    });
+    const NotesTab = createNotesTab(notesFiles);
+
+    testSetup = await testRender(
+      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
+      { width: 80, height: 24 },
+    );
+    await testSetup.renderOnce();
+
+    let frame = testSetup.captureCharFrame();
+    const placeholderRow = frame.split("\n").findIndex((line) => line.includes("Write notes"));
+    const placeholderCol = frame.split("\n")[placeholderRow]?.indexOf("Write notes") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(placeholderCol + 1, placeholderRow);
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      await testSetup!.mockInput.typeText("aapl-note");
+      await testSetup!.renderOnce();
+    });
+
+    frame = testSetup.captureCharFrame();
+    expect(frame).toContain("aapl-note");
+
+    const switchRow = frame.split("\n").findIndex((line) => line.includes("switch-msft"));
+    const switchCol = frame.split("\n")[switchRow]?.indexOf("switch-msft") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(switchCol + 1, switchRow);
+      await testSetup!.renderOnce();
+    });
+
+    frame = testSetup.captureCharFrame();
+    const blurRow = frame.split("\n").findIndex((line) => line.includes("blur-tab"));
+    const blurCol = frame.split("\n")[blurRow]?.indexOf("blur-tab") ?? -1;
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(blurCol + 1, blurRow);
+      await testSetup!.renderOnce();
+    });
+
+    expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "aapl-note" }]);
   });
 });
