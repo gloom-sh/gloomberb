@@ -5,6 +5,9 @@ import { substackPlugin } from "./builtin/substack";
 import { aiPlugin } from "./builtin/ai";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
 import { ibkrPlugin } from "./ibkr";
+import { publicPlugin } from "./broker-sync/public";
+import { robinhoodPlugin } from "./broker-sync/robinhood";
+import { simpleFinPlugin } from "./broker-sync/simplefin";
 import { predictionMarketsPlugin } from "./prediction-markets";
 import { alertsPlugin } from "./builtin/alerts";
 import {
@@ -22,6 +25,9 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   tickerResearchPlugin,
   brokerPlugin,
   ibkrPlugin,
+  publicPlugin,
+  robinhoodPlugin,
+  simpleFinPlugin,
   applicationPlugin,
   newsPlugin,
   substackPlugin,
