@@ -53,6 +53,7 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     recentTickers: sanitizeStringArray(candidate.recentTickers, defaults.recentTickers),
     language: isLanguagePreference(candidate.language) ? candidate.language : undefined,
     onboardingComplete: typeof candidate.onboardingComplete === "boolean" ? candidate.onboardingComplete : defaults.onboardingComplete,
+    lastLaunchedVersion: typeof candidate.lastLaunchedVersion === "string" ? candidate.lastLaunchedVersion : undefined,
   };
 
   const needsSave =

@@ -136,6 +136,8 @@ export interface AppConfig {
   recentTickers: string[];
   language?: LanguagePreference;
   onboardingComplete?: boolean;
+  /** App version at the last launch, used to show release notes after an update. */
+  lastLaunchedVersion?: string;
 }
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";

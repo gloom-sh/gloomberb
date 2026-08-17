@@ -1,5 +1,7 @@
 import { useCallback, useEffect, type Dispatch } from "react";
-import type { AppAction } from "../../state/app/context";
+import type { PluginRegistry } from "../../plugins/registry";
+import { saveConfigImmediately } from "../../state/config-save-scheduler";
+import type { AppAction, AppState } from "../../state/app/context";
 import {
   canSelfUpdate,
   checkForUpdateDetailed,
@@ -8,15 +10,21 @@ import {
 } from "../../updater";
 import { VERSION } from "../../version";
 
+const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
+
 export function useAppUpdateRuntime({
   dispatch,
   isDetachedWindow,
+  pluginRegistry,
+  stateRef,
   updateAvailable,
   updateCheckInProgress,
   updateProgress,
 }: {
   dispatch: Dispatch<AppAction>;
   isDetachedWindow: boolean;
+  pluginRegistry: PluginRegistry;
+  stateRef: { current: AppState };
   updateAvailable: ReleaseInfo | null;
   updateCheckInProgress: boolean;
   updateProgress: unknown;
@@ -70,7 +78,24 @@ export function useAppUpdateRuntime({
   useEffect(() => {
     if (isDetachedWindow) return;
     void runUpdateCheck(false);
+    const interval = setInterval(() => { void runUpdateCheck(false); }, UPDATE_CHECK_INTERVAL_MS);
+    return () => { clearInterval(interval); };
   }, [isDetachedWindow, runUpdateCheck]);
+
+  // First launch on a new version: show that release's notes, then remember the version.
+  useEffect(() => {
+    if (isDetachedWindow) return;
+    const config = stateRef.current.config;
+    if (config.lastLaunchedVersion === VERSION) return;
+    const isUpgrade = !!config.lastLaunchedVersion;
+    const nextConfig = { ...config, lastLaunchedVersion: VERSION };
+    dispatch({ type: "SET_CONFIG", config: nextConfig });
+    void saveConfigImmediately(nextConfig);
+    if (!isUpgrade) return;
+    void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+      values: { version: VERSION },
+    }).catch(() => {});
+  }, [dispatch, isDetachedWindow, pluginRegistry, stateRef]);
 
   useEffect(() => {
     if (isDetachedWindow) return;
