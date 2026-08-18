@@ -9,7 +9,7 @@ export const VOLATILITY_SERIES = [
 ] as const;
 
 export type VolatilitySeriesId = typeof VOLATILITY_SERIES[number]["seriesId"];
-export type TermState = "contango" | "backwardation" | "flat" | "partial";
+export type TermState = "normal" | "inverted" | "flat" | "partial";
 
 export interface VolatilitySeriesInput {
   observations: CloudFredObservationPayload[];
@@ -73,8 +73,8 @@ export function classifyTermState(
   threeMonth: number | null,
 ): TermState {
   if (spot == null || threeMonth == null || spot === 0) return "partial";
-  if (threeMonth > spot) return "contango";
-  if (threeMonth < spot) return "backwardation";
+  if (threeMonth > spot) return "normal";
+  if (threeMonth < spot) return "inverted";
   return "flat";
 }
 

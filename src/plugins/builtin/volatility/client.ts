@@ -19,16 +19,17 @@ export interface VolatilityLoadResult {
   errors: string[];
 }
 
-function startDate(): string {
-  return new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
-}
+const HISTORY_LIMIT = 120;
 
 function requestFor(seriesId: VolatilitySeriesId): FredSeriesRequest {
-  return { seriesId, startDate: startDate(), sortOrder: "asc" };
+  return { seriesId, limit: HISTORY_LIMIT, sortOrder: "desc" };
 }
 
 function toInput(result: Pick<FredSeriesLoadResult, "data">): VolatilitySeriesInput {
-  return result.data;
+  return {
+    ...result.data,
+    observations: result.data.observations.slice(0, HISTORY_LIMIT),
+  };
 }
 
 export function getCachedVolatilityData(): VolatilityLoadResult | null {
@@ -51,10 +52,10 @@ async function loadSeries(
   const request = requestFor(seriesId);
   return loadCachedFredSeries(
     request,
-    () => apiClient.getCloudFredSeries(seriesId, {
-      startDate: request.startDate,
-      sortOrder: "asc",
-    }),
+    async () => toInput({ data: await apiClient.getCloudFredSeries(seriesId, {
+      limit: request.limit,
+      sortOrder: request.sortOrder,
+    }) }),
     { force },
   );
 }

@@ -4,7 +4,6 @@ import type {
   PaneTemplateDef,
 } from "../../../types/plugin";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
-import { attachFredSeriesPersistence } from "../../../data/fred-series";
 import { parseTickerListInput } from "../../../tickers/list";
 import { publicTickerKey } from "../../../utils/exchanges";
 import type { ChartSpec } from "../../../time-series/types";
@@ -214,7 +213,6 @@ export const chartComposerModule: PluginModule = {
   }],
   paneTemplates: chartComposerTemplates,
   setup(ctx) {
-    attachFredSeriesPersistence(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "chart",
       name: "Chart",

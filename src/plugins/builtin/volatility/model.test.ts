@@ -32,7 +32,7 @@ describe("buildVolatilityData", () => {
     expect(data.termPoints.map((point) => point.value)).toEqual([10, 15]);
     expect(data.ratio).toBe(1.5);
     expect(data.slope).toBe(5);
-    expect(data.termState).toBe("contango");
+    expect(data.termState).toBe("normal");
   });
 
   test("reports partial state instead of combining unmatched dates", () => {
@@ -53,13 +53,13 @@ describe("buildVolatilityData", () => {
     expect(data.termState).toBe("partial");
   });
 
-  test("classifies an aligned inverted curve as backwardation", () => {
+  test("classifies a lower three-month implied-volatility close as inverted", () => {
     const data = buildVolatilityData({
       VIXCLS: { info, observations: [{ date: "2026-08-17", value: 24 }] },
       VXVCLS: { info: { ...info, id: "VXVCLS" }, observations: [{ date: "2026-08-17", value: 20 }] },
     });
 
-    expect(data.termState).toBe("backwardation");
+    expect(data.termState).toBe("inverted");
     expect(data.ratio).toBeCloseTo(20 / 24);
     expect(data.slope).toBe(-4);
   });

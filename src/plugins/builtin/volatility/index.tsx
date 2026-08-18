@@ -20,9 +20,16 @@ function formatValue(value: number | null, suffix = ""): string {
 }
 
 function termColor(state: TermState): string {
-  if (state === "contango") return colors.positive;
-  if (state === "backwardation") return colors.warning;
+  if (state === "normal") return colors.positive;
+  if (state === "inverted") return colors.warning;
   return colors.textMuted;
+}
+
+function slopeLabel(slope: number | null): string {
+  if (slope == null || !Number.isFinite(slope)) return "3M spread --";
+  if (slope > 0) return `3M premium +${slope.toFixed(2)} pts`;
+  if (slope < 0) return `3M discount ${slope.toFixed(2)} pts`;
+  return "3M spread 0.00 pts";
 }
 
 function TermChart({ data, width, height }: { data: VolatilityData; width: number; height: number }) {
@@ -35,7 +42,7 @@ function TermChart({ data, width, height }: { data: VolatilityData; width: numbe
     volume: 0,
   }]);
   if (points.length < 2) {
-    return <Box paddingX={1}><Text fg={colors.warning}>Term structure partial: aligned closes unavailable.</Text></Box>;
+    return <Box paddingX={1}><Text fg={colors.warning}>VIX curve partial: aligned closes unavailable.</Text></Box>;
   }
   const colWidth = Math.max(10, Math.floor((width - 2) / data.termPoints.length));
   return (
@@ -46,7 +53,7 @@ function TermChart({ data, width, height }: { data: VolatilityData; width: numbe
         height={Math.max(5, Math.min(10, height))}
         mode="line"
         colors={resolveChartPalette(colors, "positive")}
-        yAxisLabel="Index"
+        yAxisLabel="Vol"
         yAxisColor={colors.textDim}
         formatYAxisValue={(value) => value.toFixed(1)}
       />
@@ -85,11 +92,13 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
 
   useEffect(() => { void load(false); }, [load]);
 
-  const refresh = useCallback(() => { void load(true); }, [load]);
+  const reload = useCallback(() => { void load(true); }, [load]);
   useShortcut((event) => {
     if (!focused) return;
-    if (event.name === "r") refresh();
-    else if (["left", "up", "k"].includes(event.name ?? "")) setSelected((value) => Math.max(0, value - 1));
+    if (event.name === "r") {
+      if (loading) return;
+      reload();
+    } else if (["left", "up", "k"].includes(event.name ?? "")) setSelected((value) => Math.max(0, value - 1));
     else if (["right", "down", "j"].includes(event.name ?? "")) setSelected((value) => Math.min(1, value + 1));
     else return;
     event.preventDefault();
@@ -99,7 +108,7 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
     ...(data?.termState && data.termState !== "partial" ? [{
       id: "term-state",
-      parts: [{ text: data.termState.toUpperCase(), tone: data.termState === "backwardation" ? "warning" as const : "value" as const, bold: true }],
+      parts: [{ text: data.termState.toUpperCase(), tone: data.termState === "inverted" ? "warning" as const : "value" as const, bold: true }],
     }] : []),
     ...(data?.termState === "partial" ? [{ id: "partial", parts: [{ text: "PARTIAL", tone: "warning" as const, bold: true }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
@@ -108,8 +117,8 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
   ], [data?.termState, error, loading, stale]);
   usePaneFooter(paneId, () => ({
     info: footerInfo,
-    hints: [{ id: "refresh", key: "r", label: "efresh", onPress: refresh, disabled: loading }],
-  }), [footerInfo, loading, paneId, refresh]);
+    hints: [{ id: "reload", key: "r", label: "eload", onPress: reload, disabled: loading }],
+  }), [footerInfo, loading, paneId, reload]);
 
   if (!data && loading) {
     return <Box width={width} height={height} justifyContent="center" alignItems="center"><Text fg={colors.textMuted}>Loading volatility data...</Text></Box>;
@@ -123,9 +132,9 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
     <Box flexDirection="column" width={width} height={height} paddingBottom={1}>
           <Box paddingX={1}><Text fg={colors.textMuted}>FRED · daily close · delayed</Text></Box>
           <Box flexDirection="row" paddingX={1} marginTop={1}>
-            <Text fg={colors.textDim}>VXV/VIX </Text>
+            <Text fg={colors.textDim}>3M/30D </Text>
             <Text fg={termColor(data.termState)} attributes={TextAttributes.BOLD}>{formatValue(data.ratio)}</Text>
-            <Text fg={colors.textDim}>{`  slope ${formatValue(data.slope, " pts")}  as of ${data.termDate ?? "--"}`}</Text>
+            <Text fg={colors.textDim}>{`  ${slopeLabel(data.slope)}  as of ${data.termDate ?? "--"}`}</Text>
           </Box>
           <Box marginTop={1} height={2}>
             <ListView
@@ -159,7 +168,7 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
 export const volatilityModule: PluginModule = {
   panes: [{
     id: "volatility-term-structure",
-    name: "VIX Term Structure",
+    name: "VIX 30D/3M Curve",
     icon: "V",
     component: VolatilityPane,
     defaultPosition: "right",
@@ -169,9 +178,9 @@ export const volatilityModule: PluginModule = {
   paneTemplates: [{
     id: "volatility-term-structure-pane",
     paneId: "volatility-term-structure",
-    label: "VIX Term Structure",
-    description: "Aligned daily VIX and three-month volatility closes from FRED.",
-    keywords: ["vix", "volatility", "term structure", "contango", "backwardation", "macro"],
+    label: "VIX 30D/3M Curve",
+    description: "Aligned daily 30-day and three-month VIX implied-volatility closes from FRED.",
+    keywords: ["vix", "volatility", "implied volatility", "curve", "slope", "normal", "inverted", "macro"],
     shortcut: { prefix: "VIX" },
   }],
 };

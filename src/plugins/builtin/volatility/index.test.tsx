@@ -69,6 +69,9 @@ describe("VolatilityPane", () => {
 
     let frame = setup.captureCharFrame();
     expect(frame).toMatch(/▸\s+VIX\s+16\.00/);
+    expect(frame).toContain("3M/30D");
+    expect(frame).toContain("3M premium +3.00 pts");
+    expect(frame).not.toContain("contango");
 
     await act(async () => {
       setup!.mockInput.pressArrow("right");

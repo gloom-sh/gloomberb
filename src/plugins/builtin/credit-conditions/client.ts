@@ -1,4 +1,4 @@
-import { apiClient } from "../../../api-client";
+import { apiClient, type CloudFredSeriesPayload } from "../../../api-client";
 import {
   getCachedFredSeries,
   loadCachedFredSeries,
@@ -17,12 +17,19 @@ export interface CreditConditionsLoadResult {
   errors: string[];
 }
 
-function startDate(): string {
-  return new Date(Date.now() - 45 * 86_400_000).toISOString().slice(0, 10);
-}
+const HISTORY_LIMIT = 45;
+
+type CreditSeriesLoader = (
+  seriesId: CreditSeriesId,
+  options: { limit: number; sortOrder: "desc" },
+) => Promise<CloudFredSeriesPayload>;
 
 function requestFor(seriesId: CreditSeriesId): FredSeriesRequest {
-  return { seriesId, startDate: startDate(), sortOrder: "asc" };
+  return { seriesId, limit: HISTORY_LIMIT, sortOrder: "desc" };
+}
+
+function trimHistory(data: CloudFredSeriesPayload): CloudFredSeriesPayload {
+  return { ...data, observations: data.observations.slice(0, HISTORY_LIMIT) };
 }
 
 export function getCachedCreditConditions(): CreditConditionsLoadResult | null {
@@ -44,14 +51,18 @@ export function getCachedCreditConditions(): CreditConditionsLoadResult | null {
   };
 }
 
-async function loadSeries(definition: typeof CREDIT_SERIES[number], force: boolean) {
+async function loadSeries(
+  definition: typeof CREDIT_SERIES[number],
+  force: boolean,
+  loader: CreditSeriesLoader,
+) {
   const request = requestFor(definition.seriesId);
   const result = await loadCachedFredSeries(
     request,
-    () => apiClient.getCloudFredSeries(definition.seriesId, {
-      startDate: request.startDate,
-      sortOrder: "asc",
-    }),
+    async () => trimHistory(await loader(definition.seriesId, {
+      limit: HISTORY_LIMIT,
+      sortOrder: "desc",
+    })),
     { force },
   );
   return {
@@ -60,9 +71,12 @@ async function loadSeries(definition: typeof CREDIT_SERIES[number], force: boole
   };
 }
 
-export async function loadCreditConditions(force = false): Promise<CreditConditionsLoadResult> {
+export async function loadCreditConditions(
+  force = false,
+  loader: CreditSeriesLoader = (seriesId, options) => apiClient.getCloudFredSeries(seriesId, options),
+): Promise<CreditConditionsLoadResult> {
   const settled = await Promise.allSettled(
-    CREDIT_SERIES.map((definition) => loadSeries(definition, force)),
+    CREDIT_SERIES.map((definition) => loadSeries(definition, force, loader)),
   );
   const rows: CreditConditionRow[] = [];
   const errors: string[] = [];

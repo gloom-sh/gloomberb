@@ -29,7 +29,6 @@ import {
   type EconCalendarColumn,
   type ImpactFilter,
 } from "./calendar-model";
-import { attachFredSeriesPersistence } from "../../../data/fred-series";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 
 function EconCalendarPane({ focused, width, height }: PaneProps) {
@@ -366,7 +365,6 @@ export const economicCalendarModule: PluginModule = {
   }],
   setup(ctx) {
     attachEconCalendarPersistence(ctx.persistence);
-    attachFredSeriesPersistence(ctx.persistence);
   },
   dispose() {
     resetEconCalendarPersistence();

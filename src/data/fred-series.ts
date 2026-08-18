@@ -19,7 +19,8 @@ export interface FredSeriesData {
 
 export interface FredSeriesRequest {
   seriesId: string;
-  startDate: string;
+  startDate?: string;
+  limit?: number;
   sortOrder: "asc" | "desc";
 }
 
@@ -59,7 +60,12 @@ export function resetFredSeriesPersistence(): void {
 }
 
 function cacheKey(request: FredSeriesRequest): string {
-  return `${request.seriesId.trim().toUpperCase()}:start=${request.startDate}:sort=${request.sortOrder}`;
+  const range = [
+    request.startDate ? `start=${request.startDate}` : "",
+    request.limit ? `limit=${request.limit}` : "",
+    `sort=${request.sortOrder}`,
+  ].filter(Boolean).join(":");
+  return `${request.seriesId.trim().toUpperCase()}:${range}`;
 }
 
 export function getCachedFredSeries(

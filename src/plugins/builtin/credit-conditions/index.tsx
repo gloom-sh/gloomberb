@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, TextAttributes } from "../../../ui";
+import { useShortcut } from "../../../react/input";
 import {
   DataTableView,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
@@ -43,6 +43,16 @@ function sortRows(rows: CreditConditionRow[], id: SortId, descending: boolean): 
     else comparison = left.date.localeCompare(right.date);
     return descending ? -comparison : comparison;
   });
+}
+
+export function moveCreditSelection(
+  rows: CreditConditionRow[],
+  selectedId: CreditSeriesId | null,
+  offset: -1 | 1,
+): CreditSeriesId | null {
+  if (rows.length === 0) return null;
+  const current = Math.max(0, rows.findIndex((row) => row.seriesId === selectedId));
+  return rows[Math.max(0, Math.min(current + offset, rows.length - 1))]!.seriesId;
 }
 
 function renderCell(
@@ -96,7 +106,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     }
   }, []);
   useEffect(() => { void load(false); }, [load]);
-  const refresh = useCallback(() => { void load(true); }, [load]);
+  const reload = useCallback(() => { void load(true); }, [load]);
 
   const sorted = useMemo(() => sortRows(rows, sort.id, sort.descending), [rows, sort]);
   const selectedRow = rows.find((row) => row.seriesId === selectedId) ?? rows[0] ?? null;
@@ -104,6 +114,29 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     const labelWidth = Math.max(12, width - 35);
     return COLUMNS.map((column) => column.id === "label" ? { ...column, width: labelWidth } : { ...column });
   }, [width]);
+  const renderRowCell = useCallback((
+    row: CreditConditionRow,
+    column: Column,
+    index: number,
+    state: { selected: boolean },
+  ): DataTableCell => ({
+    ...renderCell(row, column, index, state),
+    onMouseDown: () => setSelectedId(row.seriesId),
+  }), []);
+  useShortcut((event) => {
+    if (!focused) return;
+    if (event.name === "r") {
+      if (loading) return;
+      reload();
+    } else if (["up", "k", "down", "j"].includes(event.name ?? "")) {
+      const offset = event.name === "up" || event.name === "k" ? -1 : 1;
+      setSelectedId(moveCreditSelection(sorted, selectedId, offset));
+    } else {
+      return;
+    }
+    event.preventDefault?.();
+    event.stopPropagation?.();
+  });
   const partial = rows.length > 0 && rows.length < CREDIT_SERIES.length;
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
     ...(partial ? [{ id: "partial", parts: [{ text: "PARTIAL", tone: "warning" as const, bold: true }] }] : []),
@@ -113,16 +146,8 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   ], [error, loading, partial, stale]);
   usePaneFooter(paneId, () => ({
     info: footerInfo,
-    hints: [{ id: "refresh", key: "r", label: "efresh", onPress: refresh, disabled: loading }],
-  }), [footerInfo, loading, paneId, refresh]);
-
-  const handleKey = useCallback((event: DataTableKeyEvent) => {
-    if (event.name !== "r") return false;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    refresh();
-    return true;
-  }, [refresh]);
+    hints: [{ id: "reload", key: "r", label: "eload", onPress: reload, disabled: loading }],
+  }), [footerInfo, loading, paneId, reload]);
 
   if (rows.length === 0 && loading) {
     return <Box width={width} height={height} justifyContent="center" alignItems="center"><Text fg={colors.textMuted}>Loading credit spreads...</Text></Box>;
@@ -150,7 +175,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
         getId: (row) => row.seriesId,
         onChange: (id) => setSelectedId(id as CreditSeriesId),
       }}
-      onRootKeyDown={handleKey}
+      onCursorChange={(row) => setSelectedId(row.seriesId)}
       columns={columns}
       items={sorted}
       sortColumnId={sort.id}
@@ -160,9 +185,9 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
         descending: current.id === id ? !current.descending : id !== "label",
       }))}
       getItemKey={(row) => row.seriesId}
-      renderCell={renderCell}
+      renderCell={renderRowCell}
       emptyStateTitle="No credit spread data."
-      emptyStateHint="Press r to retry."
+      emptyStateHint="Press r to reload."
     />
   );
 }
