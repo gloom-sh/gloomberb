@@ -2,16 +2,29 @@ import type { PluginModule } from "../plugin-module";
 import {
   attachTreasuryAuctionsPersistence,
   resetTreasuryAuctionsPersistence,
+  TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
 import { TREASURY_AUCTIONS_PANE_ID } from "./types";
 
+let disposeConnection: (() => void) | null = null;
+
 export const treasuryAuctionsModule: PluginModule = {
   setup(ctx) {
-    attachTreasuryAuctionsPersistence(ctx.persistence);
+    attachTreasuryAuctionsPersistence(ctx.persistence, ctx.connectionHealth);
+    disposeConnection = ctx.connectionHealth.registerSource({
+      id: TREASURY_FISCAL_DATA_CONNECTION_ID,
+      name: "Treasury Fiscal Data",
+      kind: "api",
+      ownerId: "macro",
+      priority: 300,
+      detail: "fiscaldata.treasury.gov",
+    });
   },
 
   dispose() {
+    disposeConnection?.();
+    disposeConnection = null;
     resetTreasuryAuctionsPersistence();
   },
 

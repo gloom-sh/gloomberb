@@ -1,3 +1,4 @@
+import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
 import { fetchTreasuryAuctions } from "./client";
 import type { TreasuryAuction } from "./types";
@@ -6,6 +7,7 @@ const CACHE_KIND = "treasury-auctions";
 const CACHE_KEY = "recent";
 const CACHE_SOURCE = "treasury-fiscal-data";
 const CACHE_SCHEMA_VERSION = 1;
+export const TREASURY_FISCAL_DATA_CONNECTION_ID = "treasury-fiscal-data";
 /**
  * Auctions settle a few times a week and results never change once published,
  * so an hour of freshness is plenty; the week-long expiry is what keeps an
@@ -24,14 +26,20 @@ export interface TreasuryAuctionsResult {
 }
 
 let persistence: PluginPersistence | null = null;
+let connectionHealth: ConnectionHealthRegistry | null = null;
 let activeFetch: Promise<TreasuryAuctionsResult> | null = null;
 
-export function attachTreasuryAuctionsPersistence(next: PluginPersistence): void {
+export function attachTreasuryAuctionsPersistence(
+  next: PluginPersistence,
+  health?: ConnectionHealthRegistry,
+): void {
   persistence = next;
+  connectionHealth = health ?? null;
 }
 
 export function resetTreasuryAuctionsPersistence(): void {
   persistence = null;
+  connectionHealth = null;
   activeFetch = null;
 }
 
@@ -59,7 +67,10 @@ export async function loadTreasuryAuctions(
   if (activeFetch) return activeFetch;
 
   const fallback = cached ?? readCache({ allowExpired: true });
-  activeFetch = loader()
+  const request = () => loader();
+  activeFetch = (connectionHealth?.hasSource(TREASURY_FISCAL_DATA_CONNECTION_ID)
+    ? connectionHealth.track(TREASURY_FISCAL_DATA_CONNECTION_ID, "fetchAuctions", request)
+    : request())
     .then((auctions) => {
       // Treasury auctions several times a week, so an empty window is a bad
       // response, never the truth. It is never cached: persisting [] would

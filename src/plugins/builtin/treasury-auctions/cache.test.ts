@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
   attachTreasuryAuctionsPersistence,
   loadTreasuryAuctions,
   resetTreasuryAuctionsPersistence,
+  TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
 import type { TreasuryAuction } from "./types";
 
@@ -143,6 +145,25 @@ describe("loadTreasuryAuctions", () => {
     expect(calls).toBe(1);
     expect(first.auctions[0]!.id).toBe("network");
     expect(second.auctions[0]!.id).toBe("network");
+  });
+
+  test("reports real Fiscal Data requests through Connections", async () => {
+    const { persistence } = fakePersistence();
+    const health = new ConnectionHealthRegistry();
+    health.registerSource({
+      id: TREASURY_FISCAL_DATA_CONNECTION_ID,
+      name: "Treasury Fiscal Data",
+      kind: "api",
+    });
+    attachTreasuryAuctionsPersistence(persistence, health);
+
+    await loadTreasuryAuctions(true, async () => [auctionFixture("network")]);
+
+    expect(health.getSnapshot().sources[0]).toMatchObject({
+      id: TREASURY_FISCAL_DATA_CONNECTION_ID,
+      status: "connected",
+      lastOperation: "fetchAuctions",
+    });
   });
 
   test("works with no persistence attached at all", async () => {
