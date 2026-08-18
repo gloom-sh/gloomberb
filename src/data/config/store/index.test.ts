@@ -337,7 +337,7 @@ describe("loadConfig", () => {
       detached: [],
     };
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       layout: legacyLayout,
       layouts: [{
         name: "Graphs",
@@ -436,7 +436,7 @@ describe("loadConfig", () => {
       detached: [],
     };
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       layout: legacyLayout,
       layouts: [{ name: "Price", layout: legacyLayout }],
       activeLayoutIndex: 0,
@@ -473,7 +473,7 @@ describe("loadConfig", () => {
       detached: undefined,
     };
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       layout: layoutWithoutDetached,
       layouts: [{ name: "Default", layout: layoutWithoutDetached }],
     }));
@@ -519,6 +519,19 @@ describe("loadConfig", () => {
 
     const invalidConfig = await loadConfig(invalidDir);
     expect(invalidConfig.onboardingProgress).toBeUndefined();
+  });
+
+  test("marks pre-onboarding configs complete so existing users skip the wizard", async () => {
+    const dataDir = await createTempConfigDir();
+    await writeConfigJson(dataDir, createSavedConfig({
+      configVersion: 20,
+      onboardingProgress: { version: 1, stage: "ready" },
+    }));
+
+    const config = await loadConfig(dataDir);
+
+    expect(config.onboardingComplete).toBe(true);
+    expect(config.onboardingProgress).toBeUndefined();
   });
 
   test("fills in missing chart preferences for older configs", async () => {
@@ -608,7 +621,7 @@ describe("loadConfig", () => {
   test("migrates disabled built-in modules to their owning plugin ids", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       disabledPlugins: [
         "options",
         "sec",
@@ -647,7 +660,7 @@ describe("loadConfig", () => {
   test("migrates grouped built-in plugin config keys", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       pluginConfig: {
         options: {
           selectedExpiration: "2026-06-19",
@@ -688,7 +701,7 @@ describe("loadConfig", () => {
   test("does not repeat the legacy Cloud-to-Macro disable migration", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       disabledPlugins: ["gloomberb-cloud"],
     }));
 
@@ -762,7 +775,7 @@ describe("loadConfig", () => {
   test("migrates legacy saved pane tab IDs and preserves focus metadata", async () => {
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({
-      configVersion: CURRENT_CONFIG_VERSION - 1,
+      configVersion: 19,
       layouts: [{
         name: "Chart",
         layout: DEFAULT_LAYOUT,
