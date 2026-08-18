@@ -136,8 +136,9 @@ export async function fetchAuctionPages(
 export async function fetchTreasuryAuctions(
   sinceDays: number = AUCTION_HISTORY_DAYS,
 ): Promise<TreasuryAuction[]> {
+  const requestedAt = Date.now();
   return fetchAuctionPages(async (page) => {
-    const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(sinceDays, Date.now(), page));
+    const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(sinceDays, requestedAt, page));
     if (!response.ok) {
       throw new Error(`Treasury Fiscal Data request failed (${response.status})`);
     }

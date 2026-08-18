@@ -147,7 +147,7 @@ export function quoteBoardStatus(quotes: BoardQuoteMap): QuoteBoardStatus {
   for (const state of quotes.values()) {
     if (state.loading) loading += 1;
     if (state.stale) stale += 1;
-    else if (!state.quote && state.error) unavailable += 1;
+    else if (!state.quote && !state.loading) unavailable += 1;
     latestTs = Math.max(latestTs, state.quote?.lastUpdated ?? 0);
   }
   return { loading, stale, unavailable, latestTs };

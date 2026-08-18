@@ -196,11 +196,10 @@ describe("useQuoteBoard failure handling", () => {
     expect(quoteBoardStatus(quotes).stale).toBe(2);
   });
 
-  test("a symbol that never resolved reports unavailable, not stale", async () => {
+  test("a symbol that never resolved reports unavailable without requiring an error", async () => {
     const { provider } = batchProvider(() => SYMBOLS.map((symbol) => ({
       target: { symbol, exchange: "" },
       quote: symbol === "^GSPC" ? quote(symbol, 100) : null,
-      error: symbol === "^GSPC" ? undefined : new Error("unknown symbol"),
     })));
     await mount(provider);
 
