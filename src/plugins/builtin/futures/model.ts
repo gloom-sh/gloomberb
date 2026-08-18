@@ -75,6 +75,21 @@ export interface BuildFuturesRowsOptions {
   collapsed?: ReadonlySet<FuturesSector>;
 }
 
+const NO_COLLAPSED_SECTORS: ReadonlySet<FuturesSector> = new Set();
+
+/**
+ * A search that hides its own matches is useless, so a live query outranks
+ * collapsed sectors. The pane draws its carets from this too, otherwise a
+ * sector would show ▶ above the rows it is supposedly hiding.
+ */
+export function effectiveCollapsedSectors(
+  collapsed: ReadonlySet<FuturesSector> | undefined,
+  query: string | undefined,
+): ReadonlySet<FuturesSector> {
+  if (query?.trim()) return NO_COLLAPSED_SECTORS;
+  return collapsed ?? NO_COLLAPSED_SECTORS;
+}
+
 export function buildFuturesRows(
   contractsBySector: Map<FuturesSector, FuturesContract[]>,
   sortPreference: FuturesSortPreference,
@@ -83,12 +98,13 @@ export function buildFuturesRows(
 ): FuturesTableRow[] {
   const rows: FuturesTableRow[] = [];
   const query = options?.query ?? "";
+  const collapsed = effectiveCollapsedSectors(options?.collapsed, query);
   for (const sector of FUTURES_SECTOR_ORDER) {
     const contracts = sortContracts(contractsBySector.get(sector) ?? [], sortPreference, quotes)
       .filter((contract) => matchesFuturesSearch(contract, query));
     if (contracts.length === 0) continue;
     rows.push({ type: "header", sector });
-    if (options?.collapsed?.has(sector)) continue;
+    if (collapsed.has(sector)) continue;
     for (const contract of contracts) rows.push({ type: "row", contract });
   }
   return rows;

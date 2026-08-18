@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { getContractsBySector } from "./contracts";
+import { getContractsBySector, type FuturesSector } from "./contracts";
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
+  effectiveCollapsedSectors,
   nextFuturesSort,
   type FuturesColumnId,
   type FuturesTableRow,
@@ -22,7 +23,7 @@ function quoteMap(entries: Record<string, Partial<Quote>>): BoardQuoteMap {
   return new Map(
     Object.entries(entries).map(([symbol, quote]) => [
       symbol,
-      { quote: quote as Quote, loading: false, error: null },
+      { quote: quote as Quote, loading: false, error: null, stale: false },
     ]),
   );
 }
@@ -57,12 +58,20 @@ describe("buildFuturesRows collapse", () => {
     expect(rows.some((row) => row.type === "row" && row.contract.sector === "metals")).toBe(true);
   });
 
-  test("collapsing hides rows a search would otherwise have surfaced", () => {
+  test("a live search overrides collapsed sectors instead of hiding its own matches", () => {
     const rows = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, {
       query: "gold",
       collapsed: new Set(["metals"]),
     });
-    expect(rowIds(rows)).toEqual(["header:metals"]);
+    expect(rowIds(rows)).toEqual(["header:metals", "GC=F"]);
+  });
+
+  test("clearing the search restores the collapsed state, whitespace included", () => {
+    const collapsed = new Set<FuturesSector>(["metals"]);
+    expect(effectiveCollapsedSectors(collapsed, "gold").has("metals")).toBe(false);
+    expect(effectiveCollapsedSectors(collapsed, "   ").has("metals")).toBe(true);
+    expect(effectiveCollapsedSectors(collapsed, "").has("metals")).toBe(true);
+    expect(effectiveCollapsedSectors(collapsed, undefined).has("metals")).toBe(true);
   });
 });
 

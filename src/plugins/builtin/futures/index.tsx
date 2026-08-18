@@ -17,8 +17,8 @@ import { cycleSortPreference } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import {
-  countLoadingQuotes,
-  latestQuoteTimestamp,
+  quoteBoardFooterInfo,
+  quoteBoardStatus,
   useQuoteBoard,
 } from "../shared/use-quote-board";
 import {
@@ -30,6 +30,7 @@ import {
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
+  effectiveCollapsedSectors,
   futuresRowId,
   nextFuturesSort,
   type FuturesColumnId,
@@ -62,6 +63,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   const searchInputRef = useRef<InputRenderable | null>(null);
 
   const contractsBySector = useMemo(() => getContractsBySector(), []);
+  const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
     () => buildFuturesRows(contractsBySector, sortPreference, quotes, {
       query: searchQuery,
@@ -151,24 +153,9 @@ function FuturesPane({ focused, width, height }: PaneProps) {
     return handlePaneKey(event);
   }, [focusSearch, handlePaneKey]);
 
-  const loadingCount = countLoadingQuotes(quotes);
-  const latestTs = latestQuoteTimestamp(quotes);
-  const errorCount = Array.from(quotes.values()).filter((state) => state.error).length;
+  const status = quoteBoardStatus(quotes);
   usePaneFooter(FUTURES_PANE_ID, () => {
-    const info: PaneFooterSegment[] = [];
-    if (loadingCount > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (errorCount > 0) {
-      info.push({ id: "error", parts: [{ text: `${errorCount} unavailable`, tone: "warning" }] });
-    }
-    if (latestTs > 0) {
-      info.push({
-        id: "fresh",
-        parts: [{
-          text: new Date(latestTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          tone: "muted",
-        }],
-      });
-    }
+    const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);
     if (searchQuery.trim()) {
       info.push({ id: "search", parts: [{ text: `search: ${searchQuery.trim()}`, tone: "value" }] });
     }
@@ -179,7 +166,15 @@ function FuturesPane({ focused, width, height }: PaneProps) {
         { id: "refresh", key: "r", label: "efresh", onPress: refresh },
       ],
     };
-  }, [errorCount, focusSearch, latestTs, loadingCount, refresh, searchQuery]);
+  }, [
+    focusSearch,
+    refresh,
+    searchQuery,
+    status.latestTs,
+    status.loading,
+    status.stale,
+    status.unavailable,
+  ]);
 
   return (
     <DataTableView<FuturesTableRow, FuturesColumn>
@@ -208,7 +203,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       getItemKey={(row) => futuresRowId(row)}
       renderSectionHeader={(row) => row.type === "header"
         ? {
-          text: `${collapsedSectors.has(row.sector) ? "▶" : "▼"} ${FUTURES_SECTOR_LABELS[row.sector]}`,
+          text: `${visibleCollapsed.has(row.sector) ? "▶" : "▼"} ${FUTURES_SECTOR_LABELS[row.sector]}`,
           onMouseDown: () => toggleSector(row.sector),
         }
         : null}

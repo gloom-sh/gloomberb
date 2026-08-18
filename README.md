@@ -114,7 +114,7 @@ Open command mode with `Ctrl+P`, then type a command. Press `` ` `` to open tick
 ## What It Does
 
 - Research companies with quotes, charts, financials, filings, holders, insiders, options, analyst ratings, events, and relative valuation.
-- Follow markets with top stories, breaking news, sector feeds, Substack subscriptions, global indices, FX, macro events, yield curves, market movers, new-high/new-low and options-flow scanners, and fear/greed.
+- Follow markets with top stories, breaking news, sector feeds, Substack subscriptions, global indices, futures, FX, macro events, yield curves, Treasury auctions, market movers, new-high/new-low and options-flow scanners, and fear/greed.
 - Track portfolios and watchlists, connect brokers, set alerts, keep notes, run AI screens, browse prediction markets, and use Gloom Cloud chat.
 
 ### Broker position sync
@@ -262,8 +262,10 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `TBO` | TheBuildout infrastructure intelligence |
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
+| `FUT` | Front-month futures across index, rates, energy, metals, grains, and FX |
 | `ECON` | Economic events and releases |
 | `GC` | Yield curve |
+| `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `ERN` | Earnings calendar |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television |
 | `BI` / `SP` | S&P 500 sector performance |

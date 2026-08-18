@@ -4,7 +4,7 @@ import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { marketStatusDot, type BoardQuoteMap } from "../shared/use-quote-board";
-import type { FuturesContract } from "./contracts";
+import { tickDecimals, type FuturesContract } from "./contracts";
 import type { FuturesColumnId, FuturesTableRow } from "./model";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
@@ -75,10 +75,15 @@ export function resolveFuturesColumnIds(visibleIds?: readonly string[]): Futures
  * trade in fractions of a 32nd. Scale precision to the contract instead of
  * rendering everything as a currency amount.
  *
+ * The contract's own tick wins when the catalog knows it, so silver keeps its
+ * $0.005 increments instead of being rounded into two decimals with gold. The
+ * magnitude fallback only covers contracts without a declared tick.
+ *
  * ponytail: rates render as decimals, not the 32nds tick notation traders
  * quote (108'17). Add a tick formatter if rates users ask for it.
  */
 function priceDecimals(price: number, contract: FuturesContract): number {
+  if (contract.tick) return tickDecimals(contract.tick);
   if (contract.sector === "rates") return 4;
   const magnitude = Math.abs(price);
   if (magnitude >= 10) return 2;
@@ -103,7 +108,9 @@ function formatContractPrice(quote: Quote, contract: FuturesContract): string {
  */
 function formatContractChange(quote: Quote, contract: FuturesContract): string {
   if (!Number.isFinite(quote.change)) return "—";
-  const decimals = Number.isFinite(quote.price) ? priceDecimals(quote.price, contract) : 2;
+  const decimals = contract.tick || Number.isFinite(quote.price)
+    ? priceDecimals(quote.price, contract)
+    : 2;
   const text = formatNumber(Math.abs(quote.change), decimals);
   return `${quote.change >= 0 ? "+" : "-"}${text}`;
 }
@@ -137,8 +144,12 @@ export function renderFuturesCell(
       return { text: contract.name, color: selectedColor };
     case "price":
       if (state?.loading && !quote) return { text: "…", color: dimmed };
-      if (state?.error || !quote) return { text: "—", color: dimmed };
-      return { text: formatContractPrice(quote, contract), color: selectedColor };
+      if (!quote) return { text: "—", color: dimmed };
+      // A retained quote still beats a dash; dim it so stale is visible.
+      return {
+        text: formatContractPrice(quote, contract),
+        color: state?.stale ? dimmed : selectedColor,
+      };
     case "change":
       if (!quote || !Number.isFinite(quote.change)) return { text: "—", color: dimmed };
       return {

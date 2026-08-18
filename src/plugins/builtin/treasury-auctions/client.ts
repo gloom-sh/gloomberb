@@ -25,6 +25,8 @@ const FIELDS = [
 
 const AUCTION_HISTORY_DAYS = 120;
 const PAGE_SIZE = 300;
+/** 120 days is ~150 auctions, one page; the bound only exists so bad metadata cannot loop. */
+const MAX_PAGES = 5;
 
 const TREASURY_FETCH = createThrottledFetch({
   requestsPerMinute: 20,
@@ -39,14 +41,22 @@ function isoDateDaysAgo(days: number, now = Date.now()): string {
 }
 
 /** `page[size]` brackets are percent-encoded; the API rejects some proxies otherwise. */
-export function buildAuctionsUrl(sinceDays: number, now = Date.now()): string {
+export function buildAuctionsUrl(sinceDays: number, now = Date.now(), page = 1): string {
   const params = [
     `fields=${FIELDS}`,
     `filter=auction_date:gte:${isoDateDaysAgo(sinceDays, now)}`,
     "sort=-auction_date",
     `page%5Bsize%5D=${PAGE_SIZE}`,
+    `page%5Bnumber%5D=${page}`,
   ];
   return `${BASE_URL}?${params.join("&")}`;
+}
+
+/** Fiscal Data reports the page count as `meta["total-pages"]`. */
+export function totalPages(body: unknown): number {
+  const meta = (body as { meta?: Record<string, unknown> } | null)?.meta;
+  const pages = Number(meta?.["total-pages"]);
+  return Number.isFinite(pages) && pages > 1 ? Math.floor(pages) : 1;
 }
 
 /** Fiscal Data sends missing metrics as the literal string "null". */
@@ -99,12 +109,38 @@ export function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {
   return auctions;
 }
 
+/**
+ * Walks pages until the count reported by the first response is exhausted.
+ * Pages overlap whenever an auction is announced mid-walk, so ids are deduped
+ * across the whole run and not just within a payload.
+ */
+export async function fetchAuctionPages(
+  loadPage: (page: number) => Promise<unknown>,
+): Promise<TreasuryAuction[]> {
+  const auctions: TreasuryAuction[] = [];
+  const seen = new Set<string>();
+  let pages = 1;
+
+  for (let page = 1; page <= Math.min(pages, MAX_PAGES); page += 1) {
+    const body = await loadPage(page);
+    if (page === 1) pages = totalPages(body);
+    for (const auction of parseTreasuryAuctionsPayload(body)) {
+      if (seen.has(auction.id)) continue;
+      seen.add(auction.id);
+      auctions.push(auction);
+    }
+  }
+  return auctions;
+}
+
 export async function fetchTreasuryAuctions(
   sinceDays: number = AUCTION_HISTORY_DAYS,
 ): Promise<TreasuryAuction[]> {
-  const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(sinceDays));
-  if (!response.ok) {
-    throw new Error(`Treasury Fiscal Data request failed (${response.status})`);
-  }
-  return parseTreasuryAuctionsPayload(await response.json());
+  return fetchAuctionPages(async (page) => {
+    const response = await TREASURY_FETCH.fetch(buildAuctionsUrl(sinceDays, Date.now(), page));
+    if (!response.ok) {
+      throw new Error(`Treasury Fiscal Data request failed (${response.status})`);
+    }
+    return response.json();
+  });
 }

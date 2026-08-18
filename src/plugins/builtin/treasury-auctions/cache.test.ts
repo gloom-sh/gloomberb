@@ -110,6 +110,20 @@ describe("loadTreasuryAuctions", () => {
     expect(writes).toHaveLength(0);
   });
 
+  test("never caches an empty payload, so the next load can still recover", async () => {
+    const { persistence, writes } = fakePersistence();
+    attachTreasuryAuctionsPersistence(persistence);
+
+    // Nothing to fall back on: an empty window is a failure, not "no auctions".
+    await expect(loadTreasuryAuctions(true, async () => [])).rejects.toThrow(/no auctions/);
+    expect(writes).toHaveLength(0);
+
+    const recovered = await loadTreasuryAuctions(false, async () => [auctionFixture("network")]);
+    expect(recovered.auctions[0]!.id).toBe("network");
+    expect(recovered.stale).toBe(false);
+    expect(writes).toHaveLength(1);
+  });
+
   test("shares one in-flight fetch across concurrent callers", async () => {
     const { persistence } = fakePersistence();
     attachTreasuryAuctionsPersistence(persistence);

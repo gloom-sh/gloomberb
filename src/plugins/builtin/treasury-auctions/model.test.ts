@@ -52,6 +52,22 @@ describe("auction metrics", () => {
     expect(rateValue(auction({ secType: "Bond", securityTerm: "20-Year" }))).toBeNull();
   });
 
+  test("keeps a zero indirect allocation as 0%, not unknown", () => {
+    // A no-indirect auction is a real result and a notable one; "—" hides it.
+    const zeroIndirect = auction({
+      secType: "Bill",
+      securityTerm: "4-Week",
+      indirectAccepted: 0,
+      totalAccepted: 50_000_000_000,
+    });
+    expect(indirectPct(zeroIndirect)).toBe(0);
+    expect(visibleAuctions([zeroIndirect], {
+      filter: "all",
+      query: "",
+      sort: { columnId: "indirect", direction: "desc" },
+    })).toHaveLength(1);
+  });
+
   test("indirect share needs both legs and survives a zero total", () => {
     const filled = auction({
       secType: "Note",

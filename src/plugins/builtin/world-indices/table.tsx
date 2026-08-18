@@ -40,6 +40,7 @@ export function renderWorldIndexCell(
   const state = quotes.get(entry.symbol);
   const quote = state?.quote;
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
+  const dimmed = rowState.selected ? colors.selectedText : colors.textDim;
 
   switch (column.id) {
     case "status": {
@@ -58,20 +59,15 @@ export function renderWorldIndexCell(
         color: selectedColor,
       };
     case "price":
-      if (state?.loading && !quote) {
-        return { text: "…", color: rowState.selected ? colors.selectedText : colors.textDim };
-      }
-      if (state?.error || quote?.price === undefined) {
-        return { text: "—", color: rowState.selected ? colors.selectedText : colors.textDim };
-      }
+      if (state?.loading && !quote) return { text: "…", color: dimmed };
+      if (quote?.price === undefined) return { text: "—", color: dimmed };
+      // A retained quote still beats a dash; dim it so stale is visible.
       return {
         text: formatCurrency(quote.price, quote.currency ?? "USD"),
-        color: selectedColor,
+        color: state?.stale ? dimmed : selectedColor,
       };
     case "changePercent":
-      if (!quote || quote.changePercent === undefined) {
-        return { text: "—", color: rowState.selected ? colors.selectedText : colors.textDim };
-      }
+      if (!quote || quote.changePercent === undefined) return { text: "—", color: dimmed };
       return {
         text: formatPercentRaw(quote.changePercent),
         color: selectedColor ?? priceColor(quote.changePercent),

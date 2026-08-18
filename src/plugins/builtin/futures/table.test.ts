@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { FUTURES_CONTRACTS, type FuturesContract, type FuturesSector } from "./contracts";
+import {
+  FUTURES_CONTRACTS,
+  tickDecimals,
+  type FuturesContract,
+  type FuturesSector,
+} from "./contracts";
 import type { FuturesColumnId, FuturesTableRow } from "./model";
 import {
   createFuturesColumns,
@@ -18,12 +23,13 @@ function cellText(
   id: FuturesColumnId,
   quote: Partial<Quote>,
   sector: FuturesSector = "energy",
+  tick?: number,
 ): string {
-  const contract = contractFor(sector);
+  const contract = { ...contractFor(sector), tick };
   const row: FuturesTableRow = { type: "row", contract };
   const column = createFuturesColumns(100).find((candidate) => candidate.id === id) as FuturesColumn;
   const quotes: BoardQuoteMap = new Map([
-    ["X=F", { quote: quote as Quote, loading: false, error: null }],
+    ["X=F", { quote: quote as Quote, loading: false, error: null, stale: false }],
   ]);
   return renderFuturesCell(row, column, { selected: false }, quotes).text;
 }
@@ -89,6 +95,39 @@ describe("futures columns", () => {
       expect(total).toBeLessThanOrEqual(80);
       expect(columns.find((column) => column.id === "name")?.width ?? 0).toBeGreaterThanOrEqual(10);
     }
+  });
+});
+
+describe("contract tick precision", () => {
+  test("renders a contract to its own tick, not to its price magnitude", () => {
+    // Regression: silver ticks at $0.005, so two decimals collapsed every tick
+    // and printed the same price for 51.235 and 51.240.
+    expect(cellText("price", { price: 51.235 }, "metals", 0.005)).toBe("51.235");
+    expect(cellText("change", { price: 51.235, change: -0.045 }, "metals", 0.005)).toBe("-0.045");
+    // The magnitude fallback would have used two decimals for both.
+    expect(cellText("price", { price: 51.235 }, "metals")).toBe("51.24");
+  });
+
+  test("a declared tick also fixes precision when the price is unusable", () => {
+    expect(cellText("change", { price: Number.NaN, change: 0.01 }, "metals", 0.005)).toBe("+0.010");
+  });
+
+  test("the live catalog carries silver's tick and leaves 32nd-quoted rates alone", () => {
+    const bySymbol = new Map(FUTURES_CONTRACTS.map((contract) => [contract.symbol, contract]));
+    expect(bySymbol.get("SI=F")?.tick).toBe(0.005);
+    expect(bySymbol.get("GC=F")?.tick).toBe(0.1);
+    for (const contract of FUTURES_CONTRACTS) {
+      if (contract.sector === "rates") expect(contract.tick).toBeUndefined();
+      else expect(contract.tick).toBeGreaterThan(0);
+    }
+  });
+
+  test("tick decimals survive the ticks JS prints in exponential form", () => {
+    expect(tickDecimals(1)).toBe(0);
+    expect(tickDecimals(0.25)).toBe(2);
+    expect(tickDecimals(0.005)).toBe(3);
+    // String(0.0000005) is "5e-7", which a naive decimal count reads as 0.
+    expect(tickDecimals(0.0000005)).toBe(7);
   });
 });
 

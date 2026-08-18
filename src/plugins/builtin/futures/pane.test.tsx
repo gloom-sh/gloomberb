@@ -148,6 +148,63 @@ describe("FuturesPane", () => {
     expect(testSetup.captureCharFrame()).toContain("E-Mini S&P 500");
   });
 
+  test("clicking a sector header collapses it, and clicking again expands it", async () => {
+    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await renderSettled();
+
+    const headerRow = () => testSetup!.captureCharFrame()
+      .split("\n")
+      .findIndex((line) => line.includes("Equity Index"));
+    const row = headerRow();
+    expect(row).toBeGreaterThanOrEqual(0);
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(4, row);
+      await testSetup!.renderOnce();
+    });
+    await renderSettled();
+
+    const collapsed = testSetup.captureCharFrame();
+    expect(collapsed).toContain("▶ Equity Index");
+    expect(collapsed).not.toContain("E-Mini S&P 500");
+    // A header click must not also open the pinned-ticker pane.
+    expect(pinned).toEqual([]);
+
+    await act(async () => {
+      await testSetup!.mockMouse.click(4, headerRow());
+      await testSetup!.renderOnce();
+    });
+    await renderSettled();
+
+    expect(testSetup.captureCharFrame()).toContain("E-Mini S&P 500");
+    expect(pinned).toEqual([]);
+  });
+
+  test("a search shows matches inside a collapsed sector", async () => {
+    testSetup = await testRender(<Harness />, { width: 80, height: 24 });
+    await renderSettled();
+
+    // Collapse Equity Index from its header, then search for one of its rows.
+    await emitKeypress({ name: "up", sequence: "\u001B[A" });
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderSettled();
+    expect(testSetup.captureCharFrame()).not.toContain("E-Mini Dow");
+
+    await emitKeypress({ name: "s", sequence: "s" });
+    for (const character of "dow") {
+      await emitKeypress({ name: character, sequence: character });
+    }
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      await testSetup!.renderOnce();
+    });
+    await renderSettled();
+
+    const searching = testSetup.captureCharFrame();
+    expect(searching).toContain("E-Mini Dow");
+    expect(searching).toContain("▼ Equity Index");
+  });
+
   test("opens the selected contract in ticker research", async () => {
     testSetup = await testRender(<Harness />, { width: 80, height: 24 });
     await renderSettled();

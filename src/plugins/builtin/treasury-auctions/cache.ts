@@ -61,8 +61,13 @@ export async function loadTreasuryAuctions(
   const fallback = cached ?? readCache({ allowExpired: true });
   activeFetch = loader()
     .then((auctions) => {
-      // An empty payload is a bad response, not a market with no auctions.
-      if (auctions.length === 0 && fallback) return { ...fallback, stale: true };
+      // Treasury auctions several times a week, so an empty window is a bad
+      // response, never the truth. It is never cached: persisting [] would
+      // serve the bad response back for an hour.
+      if (auctions.length === 0) {
+        if (fallback) return { ...fallback, stale: true };
+        throw new Error("Treasury Fiscal Data returned no auctions");
+      }
       persistence?.setResource(CACHE_KIND, CACHE_KEY, auctions, {
         sourceKey: CACHE_SOURCE,
         schemaVersion: CACHE_SCHEMA_VERSION,

@@ -86,8 +86,12 @@ export function termLengthDays(term: string): number {
   }
 }
 
+/**
+ * Zero indirect bidding is a real, and notable, auction outcome, so only a
+ * missing leg or an unusable total is unknown.
+ */
 export function indirectPct(auction: TreasuryAuction): number | null {
-  if (!auction.indirectAccepted || !auction.totalAccepted) return null;
+  if (auction.indirectAccepted == null || !auction.totalAccepted) return null;
   return (auction.indirectAccepted / auction.totalAccepted) * 100;
 }
 
