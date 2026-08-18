@@ -10,7 +10,7 @@ describe("desktop backend plugin catalog", () => {
       getLoadablePlugins().map((plugin) => plugin.id),
     );
 
-    for (const pluginId of ["ticker-research", "prediction-markets"]) {
+    for (const pluginId of ["ticker-research", "prediction-markets", "polls"]) {
       const plugin = backendPlugins.find((candidate) => candidate.id === pluginId);
       expect(plugin).toBeDefined();
       expect(plugin?.panes).toBeUndefined();
