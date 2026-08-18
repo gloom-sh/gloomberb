@@ -3,8 +3,6 @@ import { isPlainKey } from "../../../utils/keyboard";
 
 export type ChartComposerShortcut =
   | "series"
-  | "dates"
-  | "mode"
   | "resolution"
   | "reload"
   | { type: "range"; index: number };
@@ -23,8 +21,6 @@ export function resolveChartComposerShortcut(
     && !event.alt;
   if (exactShiftReload) return "reload";
   if (isPlainKey(event, "s")) return "series";
-  if (isPlainKey(event, "w")) return "dates";
-  if (isPlainKey(event, "m")) return "mode";
   if (isPlainKey(event, "r")) return "resolution";
   if (!isPlainKey(event, event.name ?? "")) return null;
 
