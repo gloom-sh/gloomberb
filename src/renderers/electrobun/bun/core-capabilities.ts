@@ -225,8 +225,8 @@ async function writeTextEnsuringParent(path: string, value: string): Promise<voi
 async function deleteFileIfPresent(path: string): Promise<void> {
   try {
     await unlink(path);
-  } catch {
-    // ignore missing files
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
 

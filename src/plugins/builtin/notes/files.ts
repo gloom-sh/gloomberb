@@ -71,8 +71,8 @@ export class NotesFiles {
   async delete(symbol: string): Promise<void> {
     try {
       await deleteTextFile(this.pathFor(symbol));
-    } catch {
-      // ignore missing files
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
   }
 

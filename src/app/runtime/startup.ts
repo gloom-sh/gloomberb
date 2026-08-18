@@ -75,6 +75,10 @@ export function useAppStartupRuntime({
           );
         } catch (error) {
           console.error("[startup] Failed to load persisted broker accounts:", error);
+          pluginRegistry.notify({
+            body: "Failed to load saved broker account data. Check local storage permissions.",
+            type: "error",
+          });
         }
         await measurePerfAsync("startup.app.initialize-state", () => initializeAppState({
           config: state.config,

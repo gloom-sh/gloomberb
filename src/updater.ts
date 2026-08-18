@@ -272,6 +272,12 @@ export async function checkForUpdateDetailed(
         error: `No compatible release asset found for ${getAssetBaseName()}`,
       };
     }
+    if (!asset.checksum) {
+      return {
+        kind: "error",
+        error: `Release asset ${asset.name} is missing a valid SHA-256 digest`,
+      };
+    }
 
     return {
       kind: "available",
@@ -341,6 +347,12 @@ export async function performUpdate(
     return;
   }
 
+  const checksum = /^[a-f\d]{64}$/i.exec(release.checksum ?? "")?.[0].toLowerCase();
+  if (!checksum) {
+    onProgress({ phase: "error", error: "Self-update requires a valid SHA-256 checksum." });
+    return;
+  }
+
   const updatePath = execPath + ".update";
   const oldPath = execPath + ".old";
   let unlinkUpdatePath: ((path: string) => void) | null = null;
@@ -389,11 +401,9 @@ export async function performUpdate(
       downloaded.set(chunk, offset);
       offset += chunk.byteLength;
     }
-    if (release.checksum) {
-      const actual = createHash("sha256").update(downloaded).digest("hex");
-      if (actual !== release.checksum) {
-        throw new Error(`Checksum mismatch: expected ${release.checksum}, got ${actual}`);
-      }
+    const actual = createHash("sha256").update(downloaded).digest("hex");
+    if (actual !== checksum) {
+      throw new Error(`Checksum mismatch: expected ${checksum}, got ${actual}`);
     }
     const nextBinary = release.compressed
       ? new Uint8Array(gunzipSync(downloaded))
