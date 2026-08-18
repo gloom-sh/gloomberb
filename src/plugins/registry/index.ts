@@ -312,7 +312,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     if (ownedCapability.kind === "asset-data" || ownedCapability.kind === "news") {
       items.capabilityDisposers.push(this.connectionHealth.registerSource({
         id: ownedCapability.id,
-        name: ownedCapability.name,
+        name: `${ownedCapability.name} ${ownedCapability.kind === "news" ? "News" : "Market Data"}`,
         kind: ownedCapability.kind,
         ownerId: pluginId,
         priority: ownedCapability.priority,
