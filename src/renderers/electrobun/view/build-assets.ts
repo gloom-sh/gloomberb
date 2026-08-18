@@ -24,6 +24,8 @@ const COMMON_ALIAS_RULES: AliasRule[] = [
   ["native/surface/manager", "native-stubs/chart/surface-manager.ts"],
   ["native/surface/sync", "native-stubs/chart/surface-sync.ts"],
   ["./native-loader", "plugins/ibkr/gateway/service/index.ts", "native-stubs/ibkr-native-loader.ts"],
+  ["./native-loader", "plugins/broker-sync/robinhood.ts", "native-stubs/broker-sync-native-loader.ts"],
+  ["./native-loader", "plugins/broker-sync/simplefin.ts", "native-stubs/broker-sync-native-loader.ts"],
 ];
 
 export function electrobunViewPath(...parts: string[]): string {

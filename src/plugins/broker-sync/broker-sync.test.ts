@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { buildBrokerProfileConfig, validateBrokerProfileValues } from "../../brokers/profile-form";
 import { normalizeRobinhoodSnapshot, normalizeSimpleFinSnapshot } from "./normalize";
 import { loadPublicPortfolio } from "./public";
-import { requireRobinhoodPositionTools } from "./robinhood";
-import { decodeSimpleFinSetupToken, simpleFinBroker } from "./simplefin";
+import { requireRobinhoodPositionTools } from "./robinhood-native";
+import { decodeSimpleFinSetupToken } from "./simplefin-native";
+import { simpleFinBroker } from "./simplefin";
 
 describe("broker position normalization", () => {
   test("normalizes nested Robinhood accounts and positions without duplicate records", () => {
