@@ -56,8 +56,7 @@ export function useAppGlobalShortcuts({
     // webview hands Cmd-digit to the browser's own tab switcher.
     if (!isDetachedWindow
       && /^[1-9]$/.test(event.name ?? "")
-      && (event.ctrl || event.meta || event.super)
-      && (state.config.layouts ?? []).length > 1) {
+      && (event.ctrl || event.meta || event.super)) {
       const layouts = state.config.layouts ?? [];
       const idx = parseInt(event.name!, 10) - 1;
       const uiOwnsKeyboard = dialogOpen || state.commandBarOpen || event.targetEditable === true;

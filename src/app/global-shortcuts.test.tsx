@@ -247,6 +247,19 @@ describe("useAppGlobalShortcuts", () => {
     expect(event.propagationStopped).toBe(true);
   });
 
+  test("consumes primary-modifier numbers with only one layout", async () => {
+    const actions: AppAction[] = [];
+    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-one-layout");
+    const state = { ...createInitialState(config), commandBarOpen: true };
+    await renderHarness(state, createRegistry(), (action) => actions.push(action));
+
+    const event = await emitKeypress({ name: "1", super: true });
+
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(true);
+    expect(event.propagationStopped).toBe(true);
+  });
+
   test("consumes layout numbers while an editable field owns the keyboard", async () => {
     const actions: AppAction[] = [];
     await renderHarness(layoutState("layouts-editable"), createRegistry(), (action) => actions.push(action));
