@@ -91,26 +91,45 @@ function stableKey(value: unknown): string {
 
 /**
  * Find the pane a template would otherwise duplicate. A template that owns a
- * stable instance id (Chat keys one pane per channel) claims that instance
- * even after its settings drifted at runtime; everything else has to match the
- * whole create spec, so a different ticker, collection or setting still opens
- * its own pane.
+ * stable instance id (Chat keys one pane per channel) claims that instance even
+ * after its settings drifted at runtime, as long as the id still belongs to the
+ * same kind of pane; everything else has to match the whole create spec, so a
+ * different ticker, collection or setting still opens its own pane.
  */
 function findReusablePaneInstance(
   instances: PaneInstanceConfig[],
   paneId: string,
   spec: PaneTemplateInstanceConfig,
-): string | null {
+): PaneInstanceConfig | null {
   if (spec.instanceId) {
-    return instances.some((instance) => instance.instanceId === spec.instanceId)
-      ? spec.instanceId
-      : null;
+    const owner = instances.find((instance) => instance.instanceId === spec.instanceId);
+    return owner?.paneId === paneId ? owner : null;
   }
   const specKey = stableKey([spec.binding ?? { kind: "none" }, spec.params ?? {}, spec.settings ?? {}]);
   return instances.find((instance) => (
     instance.paneId === paneId
     && stableKey([instance.binding ?? { kind: "none" }, instance.params ?? {}, instance.settings ?? {}]) === specKey
-  ))?.instanceId ?? null;
+  )) ?? null;
+}
+
+/**
+ * A stable-id pane outlives the spec that opened it (Chat rewrites its own
+ * channelId as the user switches channels inside the pane), so reuse has to put
+ * the pane back on the requested spec before focusing it, or the command lands
+ * on a pane showing something else. Returns null when nothing has to change.
+ */
+function retargetPaneInstance(
+  instance: PaneInstanceConfig,
+  spec: PaneTemplateInstanceConfig,
+): PaneInstanceConfig | null {
+  const next: PaneInstanceConfig = {
+    ...instance,
+    title: spec.title ?? instance.title,
+    binding: spec.binding ?? instance.binding,
+    params: spec.params ? { ...(instance.params ?? {}), ...spec.params } : instance.params,
+    settings: spec.settings ? { ...(instance.settings ?? {}), ...spec.settings } : instance.settings,
+  };
+  return stableKey(next) === stableKey(instance) ? null : next;
 }
 
 async function resolvePaneTemplateOptions(
@@ -198,18 +217,24 @@ export async function createPaneTemplateOrThrow(
     throw new Error(`Unknown pane "${template.paneId}".`);
   }
 
-  const existingInstanceId = findReusablePaneInstance(
-    deps.getState().config.layout.instances,
-    template.paneId,
-    spec,
-  );
-  if (existingInstanceId) {
-    deps.pluginRegistry.focusPaneFn(existingInstanceId);
+  const instances = deps.getState().config.layout.instances;
+  const existing = findReusablePaneInstance(instances, template.paneId, spec);
+  if (existing) {
+    const retargeted = retargetPaneInstance(existing, spec);
+    if (retargeted) {
+      deps.pluginRegistry.updateLayoutFn(updatePaneInstance(
+        deps.getState().config.layout,
+        existing.instanceId,
+        () => retargeted,
+      ));
+    }
+    deps.pluginRegistry.focusPaneFn(existing.instanceId);
     return;
   }
 
   const instance = deps.buildPaneInstance(template.paneId, {
-    instanceId: spec.instanceId,
+    // A stable id another pane type already holds would collide, so the new pane picks its own.
+    instanceId: instances.some((entry) => entry.instanceId === spec.instanceId) ? undefined : spec.instanceId,
     title: spec.title,
     binding: spec.binding,
     params: spec.params,

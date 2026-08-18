@@ -100,6 +100,14 @@ async function renderHarness(
   });
 }
 
+/** The OpenTUI input host derives `targetEditable` from the focused editor. */
+function focusEditor() {
+  Object.defineProperty(testSetup!.renderer, "currentFocusedEditor", {
+    configurable: true,
+    get: () => ({}),
+  });
+}
+
 async function emitKeypress(event: {
   name?: string;
   ctrl?: boolean;
@@ -222,7 +230,9 @@ describe("useAppGlobalShortcuts", () => {
     expect(event.defaultPrevented).toBe(false);
   });
 
-  test("ignores layout numbers while the command bar is open", async () => {
+  // Leaving the digit unclaimed lets the desktop webview treat Cmd-digit as its
+  // own browser tab shortcut, which navigates the app away.
+  test("consumes layout numbers while the command bar is open without switching", async () => {
     const actions: AppAction[] = [];
     await renderHarness(
       layoutState("layouts-command-bar", { commandBarOpen: true }),
@@ -233,7 +243,20 @@ describe("useAppGlobalShortcuts", () => {
     const event = await emitKeypress({ name: "2", ctrl: true });
 
     expect(actions).toEqual([]);
-    expect(event.defaultPrevented).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(event.propagationStopped).toBe(true);
+  });
+
+  test("consumes layout numbers while an editable field owns the keyboard", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(layoutState("layouts-editable"), createRegistry(), (action) => actions.push(action));
+    focusEditor();
+
+    const event = await emitKeypress({ name: "2", super: true });
+
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(true);
+    expect(event.propagationStopped).toBe(true);
   });
 
   test("does not run plain plugin shortcuts while input is captured", async () => {

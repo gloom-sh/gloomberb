@@ -39,7 +39,7 @@ function Probe({ onKey }: { onKey: (event: KeyEventLike) => void }) {
   return null;
 }
 
-async function mountProbe(): Promise<KeyEventLike[]> {
+async function mountProbe(onKey?: (event: KeyEventLike) => void): Promise<KeyEventLike[]> {
   const seen: KeyEventLike[] = [];
   const container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
@@ -47,7 +47,10 @@ async function mountProbe(): Promise<KeyEventLike[]> {
   await act(async () => {
     root.render(
       <WebInputHostProvider>
-        <Probe onKey={(event) => seen.push(event)} />
+        <Probe onKey={(event) => {
+          seen.push(event);
+          onKey?.(event);
+        }} />
       </WebInputHostProvider>,
     );
   });
@@ -117,4 +120,21 @@ test("reports Cmd-digit as a meta shortcut so layout switching can claim it", as
       { name: "2", ctrl: false, meta: true, super: true },
       { name: "3", ctrl: true, meta: false, super: false },
     ]);
+});
+
+// Cmd-digit is a browser tab shortcut, so the app only keeps it if its handler
+// still sees the key while a field is focused and can cancel the default there.
+test("delivers Cmd-digit from an editable field and lets a handler cancel the browser default", async () => {
+  const seen = await mountProbe((event) => {
+    if (event.name === "1" && event.meta) event.preventDefault();
+  });
+  const input = testWindow.document.createElement("input");
+  testWindow.document.body.appendChild(input);
+
+  const result = await pressKey("1", { target: input, metaKey: true });
+
+  expect(seen.map((event) => ({ name: event.name, meta: event.meta, editable: event.targetEditable })))
+    .toEqual([{ name: "1", meta: true, editable: true }]);
+  expect(result.defaultPrevented).toBe(true);
+  input.remove();
 });

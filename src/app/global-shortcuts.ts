@@ -48,6 +48,27 @@ export function useAppGlobalShortcuts({
       return;
     }
 
+    // Terminals send Ctrl; the browser and the desktop webview send Cmd on
+    // macOS, which the OpenTUI host also reports as `super` under the kitty
+    // protocol. Alt stays out so Alt-digit keeps its terminal meaning. While a
+    // dialog, the command bar or an editable field owns the keyboard the digit
+    // must not move layouts, but it still has to be swallowed there or the
+    // webview hands Cmd-digit to the browser's own tab switcher.
+    if (!isDetachedWindow
+      && /^[1-9]$/.test(event.name ?? "")
+      && (event.ctrl || event.meta || event.super)
+      && (state.config.layouts ?? []).length > 1) {
+      const layouts = state.config.layouts ?? [];
+      const idx = parseInt(event.name!, 10) - 1;
+      const uiOwnsKeyboard = dialogOpen || state.commandBarOpen || event.targetEditable === true;
+      if (!uiOwnsKeyboard && idx < layouts.length && idx !== state.config.activeLayoutIndex) {
+        dispatch({ type: "SWITCH_LAYOUT", index: idx });
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+
     if (dialogOpen) return;
 
     if (!isDetachedWindow && (
@@ -74,23 +95,6 @@ export function useAppGlobalShortcuts({
     const hasShortcutModifier = event.ctrl || event.meta || event.super || event.alt;
 
     if (state.commandBarOpen) return;
-
-    // Terminals send Ctrl; the browser and the desktop webview send Cmd on
-    // macOS, which the OpenTUI host also reports as `super` under the kitty
-    // protocol. Alt stays out so Alt-digit keeps its terminal meaning.
-    if (!isDetachedWindow
-      && /^[1-9]$/.test(event.name ?? "")
-      && (event.ctrl || event.meta || event.super)
-      && (state.config.layouts ?? []).length > 1) {
-      const idx = parseInt(event.name!, 10) - 1;
-      const layouts = state.config.layouts ?? [];
-      if (idx < layouts.length && idx !== state.config.activeLayoutIndex) {
-        dispatch({ type: "SWITCH_LAYOUT", index: idx });
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      return;
-    }
 
     if (event.name === "tab") {
       const paneOrder = getVisiblePaneCycleOrder(

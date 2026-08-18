@@ -126,13 +126,20 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
   async function runTemplate(
     spec: Record<string, unknown>,
     existing: Array<Record<string, unknown>>,
-  ): Promise<{ focused: string[]; created: number }> {
+  ): Promise<{
+    focused: string[];
+    created: number;
+    createdWith: Record<string, unknown> | null;
+    layouts: LayoutConfig[];
+  }> {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-reuse");
     const layout = cloneLayout(config.layout);
     layout.instances = existing as never;
     const state = createInitialState({ ...config, layout });
     const focused: string[] = [];
+    const layouts: LayoutConfig[] = [];
     let created = 0;
+    let createdWith: Record<string, unknown> | null = null;
 
     await createPaneTemplateOrThrow("template", undefined, {
       dataProvider: makeDataProvider() as any,
@@ -152,26 +159,69 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
         panes: new Map([["chat", { id: "chat", name: "Chat", component: () => null }]]),
         getPaneTemplatePluginId: () => undefined,
         focusPaneFn: (paneId: string) => focused.push(paneId),
+        updateLayoutFn: (next: LayoutConfig) => {
+          layouts.push(next);
+          state.config.layout = next;
+        },
         events: { emit: () => {} },
       } as any,
-      buildPaneInstance: () => {
+      buildPaneInstance: (_paneType: string, options?: Record<string, unknown>) => {
         created += 1;
+        createdWith = options ?? null;
         return { instanceId: "chat:new", paneId: "chat" } as any;
       },
       placePaneInstance: () => {},
     });
 
-    return { focused, created };
+    return { focused, created, createdWith, layouts };
   }
 
-  test("focuses the instance a stable id owns even after its settings drifted", async () => {
+  // The pane rewrites its own channelId as the user switches channels inside it,
+  // so reuse has to move it back onto the requested channel before focusing.
+  test("retargets the instance a stable id owns when its persisted channel drifted", async () => {
     const result = await runTemplate(
-      { instanceId: "chat:general", settings: { channelId: "general" } },
-      [{ instanceId: "chat:general", paneId: "chat", settings: { channelId: "random" } }],
+      { instanceId: "chat:general", title: "#general", settings: { channelId: "general" } },
+      [{
+        instanceId: "chat:general",
+        paneId: "chat",
+        title: "#random",
+        settings: { channelId: "random", fontScale: 2 },
+      }],
     );
 
     expect(result.focused).toEqual(["chat:general"]);
     expect(result.created).toBe(0);
+    expect(findPaneInstance(result.layouts[0]!, "chat:general")).toMatchObject({
+      title: "#general",
+      settings: { channelId: "general", fontScale: 2 },
+    });
+  });
+
+  test("focuses a matching stable-id pane without rewriting the layout", async () => {
+    const result = await runTemplate(
+      { instanceId: "chat:general", title: "#general", settings: { channelId: "general" } },
+      [{
+        instanceId: "chat:general",
+        paneId: "chat",
+        title: "#general",
+        settings: { channelId: "general" },
+      }],
+    );
+
+    expect(result.focused).toEqual(["chat:general"]);
+    expect(result.layouts).toEqual([]);
+  });
+
+  test("never focuses another pane type holding the same stable id", async () => {
+    const result = await runTemplate(
+      { instanceId: "chat:general", settings: { channelId: "general" } },
+      [{ instanceId: "chat:general", paneId: "notes", settings: { channelId: "general" } }],
+    );
+
+    expect(result.focused).toEqual([]);
+    expect(result.created).toBe(1);
+    // Reusing the taken id would put two panes on one instance id.
+    expect(result.createdWith).toMatchObject({ instanceId: undefined });
   });
 
   test("keeps a different stable id on its own pane", async () => {
