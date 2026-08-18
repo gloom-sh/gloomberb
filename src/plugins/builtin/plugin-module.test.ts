@@ -55,8 +55,10 @@ describe("composeBuiltinPlugin", () => {
     plugin.dispose?.();
   });
 
-  test("disposes initialized and partially initialized modules in reverse order", async () => {
+  test("isolates setup failures and disposes every started module in reverse order", async () => {
     const lifecycle: string[] = [];
+    const errors: unknown[][] = [];
+    const originalError = console.error;
     const plugin = composeBuiltinPlugin({
       id: "parent",
       name: "Parent",
@@ -73,15 +75,27 @@ describe("composeBuiltinPlugin", () => {
           },
           dispose: () => { lifecycle.push("dispose:second"); },
         },
+        {
+          setup: () => { lifecycle.push("setup:third"); },
+          dispose: () => { lifecycle.push("dispose:third"); },
+        },
       ],
     });
 
-    await expect(plugin.setup?.(context())).rejects.toThrow("setup failed");
+    console.error = (...args: unknown[]) => { errors.push(args); };
+    try {
+      await plugin.setup?.(context());
+    } finally {
+      console.error = originalError;
+    }
     plugin.dispose?.();
 
+    expect(errors[0]?.[0]).toBe('[plugins] Module setup failed in plugin "parent":');
     expect(lifecycle).toEqual([
       "setup:first",
       "setup:second",
+      "setup:third",
+      "dispose:third",
       "dispose:second",
       "dispose:first",
     ]);

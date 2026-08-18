@@ -96,7 +96,11 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
       }
       for (const module of modules) {
         startedModules.push(module);
-        await module.setup?.(ctx);
+        try {
+          await module.setup?.(ctx);
+        } catch (error) {
+          console.error(`[plugins] Module setup failed in plugin "${metadata.id}":`, error);
+        }
       }
     },
 
