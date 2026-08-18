@@ -11,6 +11,8 @@ export interface ReleaseInfo {
   publishedAt: string;
   updateAction: UpdateAction;
   compressed?: boolean;
+  /** SHA-256 of the downloaded GitHub release asset. */
+  checksum?: string;
 }
 
 export interface UpdateProgress {
@@ -70,18 +72,24 @@ function getAssetBaseName(): string {
   return getAssetBaseNameForRuntime();
 }
 
+function parseAssetDigest(digest: string | undefined): string | undefined {
+  return /^sha256:([a-f\d]{64})$/i.exec(digest ?? "")?.[1]?.toLowerCase();
+}
+
 function resolveReleaseAsset(
-  assets: { name: string; browser_download_url: string }[],
-): { name: string; browser_download_url: string; compressed: boolean } | null {
+  assets: { name: string; browser_download_url: string; digest?: string }[],
+): { name: string; browser_download_url: string; compressed: boolean; checksum?: string } | null {
   const assetBaseName = getAssetBaseName();
   const gzAsset = assets.find((asset) => asset.name === `${assetBaseName}.gz`);
   if (gzAsset) {
-    return { ...gzAsset, compressed: true };
+    const { name, browser_download_url, digest } = gzAsset;
+    return { name, browser_download_url, compressed: true, checksum: parseAssetDigest(digest) };
   }
 
   const rawAsset = assets.find((asset) => asset.name === assetBaseName);
   if (rawAsset) {
-    return { ...rawAsset, compressed: false };
+    const { name, browser_download_url, digest } = rawAsset;
+    return { name, browser_download_url, compressed: false, checksum: parseAssetDigest(digest) };
   }
 
   return null;
@@ -249,7 +257,7 @@ export async function checkForUpdateDetailed(
     const data = (await res.json()) as {
       tag_name: string;
       published_at: string;
-      assets: { name: string; browser_download_url: string }[];
+      assets: { name: string; browser_download_url: string; digest?: string }[];
     };
 
     const version = data.tag_name.replace(/^v/, "");
@@ -274,6 +282,7 @@ export async function checkForUpdateDetailed(
         publishedAt: data.published_at,
         updateAction,
         compressed: asset.compressed,
+        ...(asset.checksum ? { checksum: asset.checksum } : {}),
       },
     };
   } catch (error: unknown) {
@@ -339,6 +348,7 @@ export async function performUpdate(
   try {
     const fsModulePath = "fs";
     const zlibModulePath = "zlib";
+    const cryptoModulePath = "crypto";
     const {
       renameSync,
       unlinkSync,
@@ -346,6 +356,7 @@ export async function performUpdate(
     } = await import(fsModulePath) as typeof import("fs");
     unlinkUpdatePath = unlinkSync;
     const { gunzipSync } = await import(zlibModulePath) as typeof import("zlib");
+    const { createHash } = await import(cryptoModulePath) as typeof import("crypto");
 
     onProgress({ phase: "downloading", percent: 0 });
 
@@ -377,6 +388,12 @@ export async function performUpdate(
     for (const chunk of chunks) {
       downloaded.set(chunk, offset);
       offset += chunk.byteLength;
+    }
+    if (release.checksum) {
+      const actual = createHash("sha256").update(downloaded).digest("hex");
+      if (actual !== release.checksum) {
+        throw new Error(`Checksum mismatch: expected ${release.checksum}, got ${actual}`);
+      }
     }
     const nextBinary = release.compressed
       ? new Uint8Array(gunzipSync(downloaded))
