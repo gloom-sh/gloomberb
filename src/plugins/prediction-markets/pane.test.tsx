@@ -278,7 +278,7 @@ describe("prediction markets pane interactions", () => {
       url.includes("/trade-api/v2/series/FED/markets/KAL-1/candlesticks"),
     );
 
-    expect(eventFetches).toHaveLength(2);
+    expect(eventFetches).toHaveLength(1);
     expect(orderbookFetches).toHaveLength(1);
     expect(tradeFetches).toHaveLength(1);
     expect(historyFetches).toHaveLength(1);

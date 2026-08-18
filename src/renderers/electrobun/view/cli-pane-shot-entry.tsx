@@ -327,7 +327,15 @@ function createRuntime(payload: CliPaneShotPayload): PluginRuntimeAccess {
     return (payload.config.pluginConfig[pluginId]?.[key] as T | undefined) ?? null;
   }
   const capabilitySeries = new Map(payload.capabilitySeries ?? []);
-  const capabilityIds = [...new Set([...capabilitySeries.keys()].map((key) => key.split("|", 1)[0]!).filter(Boolean))];
+  const capabilityIds = [...new Set(payload.config.layout.instances.flatMap((instance) => {
+    const chartSpec = instance.settings?.chartSpec;
+    if (!chartSpec || typeof chartSpec !== "object" || !Array.isArray((chartSpec as any).series)) return [];
+    return (chartSpec as any).series.flatMap((series: any) => (
+      series?.source?.kind === "capability" && typeof series.source.capabilityId === "string"
+        ? [series.source.capabilityId]
+        : []
+    ));
+  }))];
   return {
     getMarketData: () => shotDataProvider,
     getConnectionHealth: () => connectionHealth,
@@ -342,12 +350,11 @@ function createRuntime(payload: CliPaneShotPayload): PluginRuntimeAccess {
       if (operationId !== "resolve" || !input || typeof input !== "object") {
         throw new Error(`Screenshot capability operation ${capabilityId}.${operationId} is unavailable.`);
       }
-      const request = input as { seriesId?: string; parameters?: Record<string, any> };
+      const request = input as { seriesId?: string };
       const value = capabilitySeries.get(chartSeriesSourceKey({
         kind: "capability",
         capabilityId,
         seriesId: request.seriesId ?? "",
-        parameters: request.parameters,
       }));
       if (!value) throw new Error(`No screenshot chart series data is available for ${request.seriesId ?? capabilityId}.`);
       return value as T;

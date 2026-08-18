@@ -2,7 +2,7 @@ import type { ChartResolution, TimeRange } from "./range";
 import type { ChartResolutionSupport } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
 
-export const CHART_SPEC_VERSION = 1 as const;
+export const CHART_SPEC_VERSION = 2 as const;
 
 export type SeriesPeriod = "auto" | "daily" | "weekly" | "monthly" | "quarterly" | "annual" | "ttm";
 export type SeriesStyle = "line" | "area" | "step" | "columns" | "points" | "candles" | "ohlc" | "hlc";
@@ -26,20 +26,11 @@ export interface EconomicSeriesSource {
   seriesId: string;
 }
 
-export type ChartSeriesParameterValue =
-  | string
-  | number
-  | boolean
-  | null
-  | ChartSeriesParameterValue[]
-  | { [key: string]: ChartSeriesParameterValue };
-
-/** Persisted provider-owned source. Capability availability is resolved at runtime. */
+/** Persisted provider-owned source. The opaque series ID includes provider lookup identity. */
 export interface CapabilitySeriesSource {
   kind: "capability";
   capabilityId: string;
   seriesId: string;
-  parameters?: Record<string, ChartSeriesParameterValue>;
 }
 
 export type ChartSeriesSource = SecuritySeriesSource | EconomicSeriesSource | CapabilitySeriesSource;

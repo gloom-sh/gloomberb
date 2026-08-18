@@ -41,6 +41,7 @@ import { isOhlcSeriesStyle } from "./spec";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { chartSeriesSourceKey } from "../capabilities/chart-series";
 import { resolutionForExplicitMarketPeriods } from "./market-resolution";
 import {
   canonicalExchange,
@@ -976,10 +977,21 @@ export async function resolveChartSpecData(
         if (!sources.resolveCapabilitySeries) {
           throw new Error(`Chart series capability "${seriesSpec.source.capabilityId}" is unavailable. Enable its plugin or provider.`);
         }
-        const key = `${seriesSpec.source.capabilityId}|${seriesSpec.source.seriesId}|${JSON.stringify(seriesSpec.source.parameters ?? {})}|${JSON.stringify(spec.viewport)}`;
+        const capabilityViewport: ChartSpec["viewport"] = {
+          ...spec.viewport,
+          ...(requestVisibleBounds.start !== null && requestVisibleBounds.end !== null
+            ? {
+                dateWindow: {
+                  start: new Date(requestVisibleBounds.start).toISOString(),
+                  end: new Date(requestVisibleBounds.end).toISOString(),
+                },
+              }
+            : {}),
+        };
+        const key = chartSeriesSourceKey(seriesSpec.source, capabilityViewport);
         let pending = cache.capabilitySeriesByRequest.get(key);
         if (!pending) {
-          pending = sources.resolveCapabilitySeries(seriesSpec.source, spec.viewport, seriesSpec);
+          pending = sources.resolveCapabilitySeries(seriesSpec.source, capabilityViewport, seriesSpec);
           cache.capabilitySeriesByRequest.set(key, pending);
         }
         return baseCapabilitySeries(seriesSpec, await pending, index);

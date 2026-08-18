@@ -66,6 +66,7 @@ export function normalizeKalshiMarket(
     title?: string;
     category?: string;
     series_ticker?: string;
+    event_ticker?: string;
     sub_title?: string;
   },
 ): PredictionMarketSummary | null {
@@ -103,7 +104,7 @@ export function normalizeKalshiMarket(
     title: record.title,
     marketLabel,
     eventLabel: eventLabel || eventMeta?.title || record.title,
-    eventTicker: record.event_ticker,
+    eventTicker: record.event_ticker ?? eventMeta?.event_ticker,
     seriesTicker: eventMeta?.series_ticker,
     category,
     tags: category ? [category] : [],
@@ -161,6 +162,7 @@ function flattenKalshiEvents(
         title: event.title,
         category: event.category,
         series_ticker: event.series_ticker,
+        event_ticker: event.event_ticker,
         sub_title: event.sub_title,
       });
       if (!normalized) continue;

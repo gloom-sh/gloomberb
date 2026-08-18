@@ -51,9 +51,10 @@ export function useSeriesCatalogSuggestions({
       return;
     }
     let cancelled = false;
+    const controller = new AbortController();
     setProviderSearch({ query: normalizedQuery, suggestions: [], loading: true });
     const timer = setTimeout(() => {
-      void searchChartSeriesCapabilities(registry, normalizedQuery).then((items) => {
+      void searchChartSeriesCapabilities(registry, normalizedQuery, 8, controller.signal).then((items) => {
         if (!cancelled) setProviderSearch({
           query: normalizedQuery,
           suggestions: buildCapabilitySeriesSuggestions(items),
@@ -62,9 +63,10 @@ export function useSeriesCatalogSuggestions({
       }).catch(() => {
         if (!cancelled) setProviderSearch({ query: normalizedQuery, suggestions: [], loading: false });
       });
-    }, 80);
+    }, 250);
     return () => {
       cancelled = true;
+      controller.abort();
       clearTimeout(timer);
     };
   }, [enabled, query]);

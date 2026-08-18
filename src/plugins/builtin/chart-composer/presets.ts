@@ -1,6 +1,5 @@
 import {
   CHART_SPEC_VERSION,
-  type CapabilitySeriesSource,
   type ChartPanelSpec,
   type ChartSeriesSpec,
   type ChartSpec,
@@ -30,6 +29,10 @@ import {
   publicTickerKey,
 } from "../../../utils/exchanges";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
+import {
+  isValidChartCapabilityId,
+  isValidChartSeriesId,
+} from "../../../capabilities/chart-series";
 
 const CHART_FIELD_IDS = {
   price: "market.ohlcv",
@@ -53,7 +56,6 @@ export type ParsedSeriesExpression =
       kind: "capability";
       capabilityId: string;
       seriesId: string;
-      parameters?: CapabilitySeriesSource["parameters"];
       label?: string;
       style?: SeriesStyle;
       transform?: SeriesTransform;
@@ -102,23 +104,13 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
   if (!trimmed) return null;
   const parts = trimmed.split(":");
   if (parts[0]?.trim().toUpperCase() === "CAP") {
-    const separator = trimmed.indexOf(":", trimmed.indexOf(":") + 1);
+    const separator = trimmed.indexOf(":", 4);
     if (separator < 0) return null;
-    try {
-      const capabilityId = decodeURIComponent(trimmed.slice(4, separator)).trim();
-      const [encodedSeriesId, query = ""] = trimmed.slice(separator + 1).split("?", 2);
-      const seriesId = decodeURIComponent(encodedSeriesId ?? "").trim();
-      const encodedParameters = new URLSearchParams(query).get("params");
-      const parsedParameters = encodedParameters ? JSON.parse(encodedParameters) : undefined;
-      const parameters = parsedParameters && typeof parsedParameters === "object" && !Array.isArray(parsedParameters)
-        ? parsedParameters as CapabilitySeriesSource["parameters"]
-        : undefined;
-      return capabilityId && seriesId
-        ? { kind: "capability", capabilityId, seriesId, ...(parameters ? { parameters } : {}) }
-        : null;
-    } catch {
-      return null;
-    }
+    const capabilityId = trimmed.slice(4, separator);
+    const seriesId = trimmed.slice(separator + 1);
+    return isValidChartCapabilityId(capabilityId) && isValidChartSeriesId(seriesId)
+      ? { kind: "capability", capabilityId, seriesId }
+      : null;
   }
   if (parts[0]?.trim().toUpperCase() === "FRED") {
     const seriesId = parts.length === 2 ? parts[1]?.trim().toUpperCase() ?? "" : "";
@@ -173,10 +165,7 @@ export function parseChartExpression(value: string): ParsedSeriesExpression[] {
 export function formatSeriesExpression(series: ChartSeriesSpec): string {
   if (series.source.kind === "economic") return `FRED:${series.source.seriesId}`;
   if (series.source.kind === "capability") {
-    const parameters = series.source.parameters
-      ? `?params=${encodeURIComponent(JSON.stringify(series.source.parameters))}`
-      : "";
-    return `CAP:${encodeURIComponent(series.source.capabilityId)}:${encodeURIComponent(series.source.seriesId)}${parameters}`;
+    return `CAP:${series.source.capabilityId}:${series.source.seriesId}`;
   }
   return `${publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange)}:${series.source.fieldId}`;
 }
@@ -265,7 +254,6 @@ export function buildSeriesSpec(
         kind: "capability",
         capabilityId: expression.capabilityId,
         seriesId: expression.seriesId,
-        ...(expression.parameters ? { parameters: expression.parameters } : {}),
       },
       ...(expression.label ? { label: expression.label } : {}),
       transform: expression.transform ?? "raw",

@@ -14,7 +14,6 @@ describe("chart composer series catalog", () => {
       capabilityName: "Custom Provider",
       seriesId: "series-1",
       label: "Custom history",
-      parameters: { contract: "one" },
       style: "step",
     }])[0]).toMatchObject({
       label: "Custom history",
@@ -23,7 +22,6 @@ describe("chart composer series catalog", () => {
         kind: "capability",
         capabilityId: "custom.series",
         seriesId: "series-1",
-        parameters: { contract: "one" },
         style: "step",
       },
     });

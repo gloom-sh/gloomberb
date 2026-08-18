@@ -12,7 +12,6 @@ import {
 import {
   CHART_SPEC_VERSION,
   type ChartPanelSpec,
-  type ChartSeriesParameterValue,
   type ChartSeriesSource,
   type ChartSeriesSpec,
   type ChartSpec,
@@ -27,6 +26,10 @@ import {
   type SeriesTransform,
   type SecuritySeriesSource,
 } from "./types";
+import {
+  isValidChartCapabilityId,
+  isValidChartSeriesId,
+} from "../capabilities/chart-series";
 
 const TIME_RANGES = new Set<TimeRange>(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"]);
 const RESOLUTIONS = new Set<ChartResolution>(["auto", "1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk", "1mo"]);
@@ -118,9 +121,7 @@ function cloneSpec(spec: ChartSpec): ChartSpec {
       ...entry,
       source: entry.source.kind === "security"
         ? { ...entry.source, instrument: { ...entry.source.instrument } }
-        : entry.source.kind === "capability"
-          ? { ...entry.source, parameters: entry.source.parameters ? structuredClone(entry.source.parameters) : undefined }
-          : { ...entry.source },
+        : { ...entry.source },
     })),
     studies: spec.studies.map((study) => ({
       ...study,
@@ -128,26 +129,6 @@ function cloneSpec(spec: ChartSpec): ChartSpec {
       parameters: { ...study.parameters },
     })),
   };
-}
-
-function normalizeParameterValue(value: unknown): ChartSeriesParameterValue | undefined {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
-  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
-  if (Array.isArray(value)) {
-    const values = value.map(normalizeParameterValue);
-    return values.some((entry) => entry === undefined)
-      ? undefined
-      : values as ChartSeriesParameterValue[];
-  }
-  const input = record(value);
-  if (!input) return undefined;
-  const output: Record<string, ChartSeriesParameterValue> = {};
-  for (const [key, entry] of Object.entries(input)) {
-    const normalized = normalizeParameterValue(entry);
-    if (normalized === undefined) return undefined;
-    output[key] = normalized;
-  }
-  return output;
 }
 
 function normalizeSource(value: unknown): ChartSeriesSource | null {
@@ -161,17 +142,10 @@ function normalizeSource(value: unknown): ChartSeriesSource | null {
   if (source.kind === "capability") {
     const capabilityId = nonEmptyString(source.capabilityId);
     const seriesId = nonEmptyString(source.seriesId);
-    const parameters = source.parameters === undefined ? undefined : normalizeParameterValue(source.parameters);
-    if (!capabilityId || !seriesId) return null;
-    if (source.parameters !== undefined && (
-      !parameters || typeof parameters !== "object" || Array.isArray(parameters)
-    )) return null;
-    return {
-      kind: "capability",
-      capabilityId,
-      seriesId,
-      ...(parameters ? { parameters: parameters as Record<string, ChartSeriesParameterValue> } : {}),
-    };
+    if (!capabilityId || !seriesId
+      || !isValidChartCapabilityId(capabilityId)
+      || !isValidChartSeriesId(seriesId)) return null;
+    return { kind: "capability", capabilityId, seriesId };
   }
   if (source.kind !== "security") return null;
   const instrument = record(source.instrument);
@@ -471,11 +445,11 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
         errors.push(issue(`${path}.style`, "unsupported-style", `${entry.style} is not valid for an economic scalar series.`));
       }
     } else {
-      if (!entry.source.capabilityId.trim()) {
-        errors.push(issue(`${path}.source.capabilityId`, "missing-capability", "Chart series capability ID is required."));
+      if (!isValidChartCapabilityId(entry.source.capabilityId)) {
+        errors.push(issue(`${path}.source.capabilityId`, "invalid-capability", "Chart series capability ID is invalid."));
       }
-      if (!entry.source.seriesId.trim()) {
-        errors.push(issue(`${path}.source.seriesId`, "missing-series", "Provider series ID is required."));
+      if (!isValidChartSeriesId(entry.source.seriesId)) {
+        errors.push(issue(`${path}.source.seriesId`, "invalid-series", "Provider series ID is invalid."));
       }
     }
     if (isOhlcSeriesStyle(entry.style)) {

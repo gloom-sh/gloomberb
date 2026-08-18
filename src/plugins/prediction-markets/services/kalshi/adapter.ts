@@ -39,9 +39,9 @@ const KALSHI_EVENT_PAGE_LIMIT = 200;
 const DEFAULT_KALSHI_EVENT_MAX_PAGES = 3;
 const SEARCH_KALSHI_EVENT_MAX_PAGES = 3;
 
-function buildKalshiCatalogUrl(cursor?: string, category?: string): string {
+function buildKalshiCatalogUrl(cursor?: string, category?: string, limit = KALSHI_EVENT_PAGE_LIMIT): string {
   const url = new URL("https://api.elections.kalshi.com/trade-api/v2/events");
-  url.searchParams.set("limit", String(KALSHI_EVENT_PAGE_LIMIT));
+  url.searchParams.set("limit", String(limit));
   url.searchParams.set("status", "open");
   url.searchParams.set("with_nested_markets", "true");
   if (category) url.searchParams.set("category", category);
@@ -51,13 +51,16 @@ function buildKalshiCatalogUrl(cursor?: string, category?: string): string {
 
 async function fetchKalshiCatalogEvents(
   maxPages = DEFAULT_KALSHI_EVENT_MAX_PAGES,
+  limit = KALSHI_EVENT_PAGE_LIMIT,
+  signal?: AbortSignal,
 ): Promise<KalshiEventRecord[]> {
   const events: KalshiEventRecord[] = [];
   let cursor: string | undefined;
 
   for (let page = 0; page < maxPages; page += 1) {
     const response = await fetchJson<KalshiEventsResponse>(
-      buildKalshiCatalogUrl(cursor),
+      buildKalshiCatalogUrl(cursor, undefined, limit),
+      signal,
     );
     events.push(...(response.events ?? []));
     cursor = response.cursor?.trim() || undefined;
@@ -70,16 +73,19 @@ async function fetchKalshiCatalogEvents(
 async function fetchKalshiCatalogEventsForCategory(
   categoryId: PredictionCategoryId,
   maxPages = DEFAULT_KALSHI_EVENT_MAX_PAGES,
+  limit = KALSHI_EVENT_PAGE_LIMIT,
+  signal?: AbortSignal,
 ): Promise<KalshiEventRecord[]> {
   const categories = getKalshiCategoryNames(categoryId);
-  if (categories.length === 0) return await fetchKalshiCatalogEvents(maxPages);
+  if (categories.length === 0) return await fetchKalshiCatalogEvents(maxPages, limit, signal);
 
   const deduped = new Map<string, KalshiEventRecord>();
   for (const category of categories) {
     let cursor: string | undefined;
     for (let page = 0; page < maxPages; page += 1) {
       const response = await fetchJson<KalshiEventsResponse>(
-        buildKalshiCatalogUrl(cursor, category),
+        buildKalshiCatalogUrl(cursor, category, limit),
+        signal,
       );
       for (const event of response.events ?? []) {
         const key = event.event_ticker ?? event.title;
@@ -96,20 +102,20 @@ async function fetchKalshiCatalogEventsForCategory(
 export async function loadKalshiCatalog(
   searchQuery = "",
   categoryId: PredictionCategoryId = "all",
+  options: { limit?: number; signal?: AbortSignal } = {},
 ): Promise<PredictionMarketSummary[]> {
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const requestedLimit = Math.max(1, Math.min(KALSHI_EVENT_PAGE_LIMIT, options.limit ?? KALSHI_EVENT_PAGE_LIMIT));
+  const pageLimit = Math.max(20, requestedLimit);
+  const maxPages = options.limit ? 1 : normalizedQuery ? SEARCH_KALSHI_EVENT_MAX_PAGES : DEFAULT_KALSHI_EVENT_MAX_PAGES;
   return await loadCachedPredictionResource(
     "catalog",
-    buildPredictionCatalogResourceKey("kalshi", categoryId, normalizedQuery),
+    `${buildPredictionCatalogResourceKey("kalshi", categoryId, normalizedQuery)}:${requestedLimit}`,
     async () => {
-      const maxPages = normalizedQuery
-        ? SEARCH_KALSHI_EVENT_MAX_PAGES
-        : DEFAULT_KALSHI_EVENT_MAX_PAGES;
-      const events =
-        categoryId === "all"
-          ? await fetchKalshiCatalogEvents(maxPages)
-          : await fetchKalshiCatalogEventsForCategory(categoryId, maxPages);
-      return normalizeKalshiCatalog(events, normalizedQuery, categoryId);
+      const events = categoryId === "all"
+        ? await fetchKalshiCatalogEvents(maxPages, pageLimit, options.signal)
+        : await fetchKalshiCatalogEventsForCategory(categoryId, maxPages, pageLimit, options.signal);
+      return normalizeKalshiCatalog(events, normalizedQuery, categoryId).slice(0, requestedLimit);
     },
     PREDICTION_CACHE_POLICIES.catalog,
   );
@@ -132,6 +138,23 @@ async function loadKalshiEvent(
   } catch {
     return null;
   }
+}
+
+export async function resolveKalshiChartSummary(
+  eventTicker: string,
+  marketTicker: string,
+  signal?: AbortSignal,
+): Promise<PredictionMarketSummary> {
+  const response = await fetchJson<KalshiEventResponse>(
+    `https://api.elections.kalshi.com/trade-api/v2/events/${eventTicker}`,
+    signal,
+  );
+  const market = response.markets?.find((candidate) => candidate.ticker === marketTicker);
+  const summary = market ? normalizeKalshiMarket(market, response.event) : null;
+  if (!summary) {
+    throw new Error(`Kalshi market ${marketTicker} in event ${eventTicker} is no longer resolvable. Remove or replace this chart series.`);
+  }
+  return summary;
 }
 
 async function loadKalshiTrades(
@@ -194,11 +217,15 @@ async function loadKalshiBook(
 export async function loadKalshiHistory(
   summary: PredictionMarketSummary,
   range: "1D" | "1W" | "1M" | "ALL",
+  options: { start?: Date; end?: Date; signal?: AbortSignal; strict?: boolean } = {},
 ): Promise<PredictionHistoryPoint[]> {
-  const event = await loadKalshiEvent(summary.eventTicker);
-  if (!event?.event?.series_ticker) return [];
+  const seriesTicker = summary.seriesTicker ?? (await loadKalshiEvent(summary.eventTicker))?.event?.series_ticker;
+  if (!seriesTicker) {
+    if (options.strict) throw new Error(`Kalshi event ${summary.eventTicker ?? "unknown"} no longer exposes chart history.`);
+    return [];
+  }
 
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor((options.end?.getTime() ?? Date.now()) / 1000);
   const rangeSeconds =
     range === "1D"
       ? 24 * 60 * 60
@@ -208,15 +235,16 @@ export async function loadKalshiHistory(
           ? 30 * 24 * 60 * 60
           : 365 * 24 * 60 * 60;
   const periodInterval = range === "1D" ? 60 : range === "1W" ? 60 : 1440;
-  const start = now - rangeSeconds;
+  const start = Math.floor((options.start?.getTime() ?? (now * 1000 - rangeSeconds * 1000)) / 1000);
 
   try {
     return await loadCachedPredictionResource(
       "history",
-      `${summary.key}:${range}`,
+      `${summary.key}:${range}:${start}:${now}`,
       async () => {
         const response = await fetchJson<KalshiCandlestickResponse>(
-          `https://api.elections.kalshi.com/trade-api/v2/series/${event.event.series_ticker}/markets/${summary.marketId}/candlesticks?start_ts=${start}&end_ts=${now}&period_interval=${periodInterval}`,
+          `https://api.elections.kalshi.com/trade-api/v2/series/${seriesTicker}/markets/${summary.marketId}/candlesticks?start_ts=${start}&end_ts=${now}&period_interval=${periodInterval}`,
+          options.signal,
         );
         return (response.candlesticks ?? [])
           .map((candle) => ({
@@ -234,7 +262,8 @@ export async function loadKalshiHistory(
       },
       PREDICTION_CACHE_POLICIES.history,
     );
-  } catch {
+  } catch (error) {
+    if (options.strict) throw error;
     return [];
   }
 }

@@ -25,6 +25,7 @@ import {
   paneIdFromDetachedRpcKey,
 } from "../window/focus";
 import type { DesktopBackendRequestPayload, ElectrobunBackendInit } from "../../shared/protocol";
+import type { CapabilityRegistry } from "../../../../capabilities";
 
 interface DesktopWindowTarget {
   kind: "main" | "detached";
@@ -81,6 +82,10 @@ function normalizeInitWindowTarget<TRpc>(
   };
 }
 
+export function desktopRendererCapabilityManifests(registry: CapabilityRegistry) {
+  return registry.manifests({ rendererOnly: true, includeDisabled: true });
+}
+
 function buildInitializationPayload(
   config: AppConfig,
   services: AppServices,
@@ -93,7 +98,7 @@ function buildInitializationPayload(
     desktopSnapshot: options.getDesktopSnapshot(),
     desktopThemePreview: options.desktopThemePreview,
     pluginState: loadDesktopPluginState(services.pluginRegistry),
-    capabilityManifests: services.pluginRegistry.capabilities.manifests({ rendererOnly: true }),
+    capabilityManifests: desktopRendererCapabilityManifests(services.pluginRegistry.capabilities),
     desktopPlatform: process.platform,
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,

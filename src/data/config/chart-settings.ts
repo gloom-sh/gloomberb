@@ -155,8 +155,17 @@ function parsedChartSpec(value: unknown): ChartSpec | null {
       return null;
     }
   }
-  if (!record(decoded)) return null;
-  const spec = normalizeChartSpec(decoded);
+  const input = record(decoded);
+  if (!input) return null;
+  const version = input.version;
+  const legacySeries = Array.isArray(input.series) ? input.series : [];
+  const legacyIsCapabilityFree = legacySeries.every((entry) => {
+    const source = record(entry) ? record(entry.source) : null;
+    return source?.kind === "security" || source?.kind === "economic";
+  });
+  if (version !== CHART_SPEC_VERSION
+    && !((version === 1 || version === undefined) && legacyIsCapabilityFree)) return null;
+  const spec = normalizeChartSpec(input);
   return validateChartSpec(spec).valid ? spec : null;
 }
 

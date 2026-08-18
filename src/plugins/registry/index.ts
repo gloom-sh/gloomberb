@@ -70,7 +70,12 @@ interface PluginRegistryOptions {
   wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
   connectionHealth?: ConnectionHealthRegistry;
   remoteCapabilityManifests?: () => CapabilityManifest[];
-  remoteCapabilityInvoke?: <T>(capabilityId: string, operationId: string, payload: unknown) => Promise<T>;
+  remoteCapabilityInvoke?: <T>(
+    capabilityId: string,
+    operationId: string,
+    payload: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<T>;
 }
 
 export type WindowEditMode = "move" | "resize";
@@ -96,7 +101,12 @@ export class PluginRegistry implements PluginRuntimeAccess {
   private readonly enableCapabilityHandlers: boolean;
   private readonly wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
   private readonly remoteCapabilityManifests?: () => CapabilityManifest[];
-  private readonly remoteCapabilityInvoke?: <T>(capabilityId: string, operationId: string, payload: unknown) => Promise<T>;
+  private readonly remoteCapabilityInvoke?: <T>(
+    capabilityId: string,
+    operationId: string,
+    payload: unknown,
+    options?: { signal?: AbortSignal },
+  ) => Promise<T>;
 
   getTickerFn: ((symbol: string) => TickerRecord | null) = () => null;
   getDataFn: ((symbol: string) => TickerFinancials | null) = () => null;
@@ -128,10 +138,15 @@ export class PluginRegistry implements PluginRuntimeAccess {
   getCapability = (capabilityId: string) => this.capabilities.get(capabilityId)?.capability ?? null;
   capabilityManifests = (kind?: string) => (this.remoteCapabilityManifests?.() ?? this.capabilities.manifests({ rendererOnly: true }))
     .filter((manifest) => !kind || manifest.kind === kind);
-  invokeCapability = <T = unknown>(capabilityId: string, operationId: string, payload: unknown): Promise<T> => (
+  invokeCapability = <T = unknown>(
+    capabilityId: string,
+    operationId: string,
+    payload: unknown,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<T> => (
     this.remoteCapabilityInvoke
-      ? this.remoteCapabilityInvoke<T>(capabilityId, operationId, payload)
-      : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true })
+      ? this.remoteCapabilityInvoke<T>(capabilityId, operationId, payload, options)
+      : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal })
   );
   getBrokerAdapter = (brokerType: string) => this.contributions.brokersMap.get(brokerType) ?? null;
   connectBrokerInstance = (instanceId: string) => this.connectBrokerInstanceFn(instanceId);

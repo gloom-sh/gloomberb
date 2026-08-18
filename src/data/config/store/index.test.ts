@@ -217,7 +217,7 @@ describe("sanitizeLayout", () => {
     expect(pane?.paneId).toBe("chart-composer");
     expect(pane?.settings).toEqual({
       chartSpec: expect.objectContaining({
-        version: 1,
+        version: 2,
         viewport: { range: "1Y", resolution: "1d" },
         series: [
           expect.objectContaining({
@@ -259,7 +259,7 @@ describe("sanitizeLayout", () => {
       hideTabs: true,
       lockedTabId: "chart",
       chartSpec: expect.objectContaining({
-        version: 1,
+        version: 2,
         viewport: { range: "1Y", resolution: "1wk" },
         series: [expect.objectContaining({
           transform: "percent",

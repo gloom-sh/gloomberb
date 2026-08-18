@@ -5,6 +5,7 @@ import type { TickerFinancials } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import { ChartResolveCache, mergePriceHistoryWindows, resolveChartSpecData } from "./resolve";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { chartSeriesSourceKey } from "../capabilities";
 
 const emptyFinancials = (): TickerFinancials => ({
   annualStatements: [],
@@ -67,6 +68,63 @@ describe("resolveChartSpecData", () => {
     expect(resolved.errors).toEqual([]);
     expect(resolved.series[0]).toMatchObject({ id: "plugin-series", style: "area", panelId: "main" });
     expect(resolved.series[0]?.points[0]?.value).toBe(42);
+  });
+
+  test("resolves capability coverage for each effective panned viewport and caches by structured bounds", async () => {
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1M", resolution: "auto" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "plugin-series",
+        source: { kind: "capability", capabilityId: "charts.test", seriesId: "provider/series" },
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+    const requested: ChartSpec["viewport"][] = [];
+    const cache = new ChartResolveCache();
+    const sources = {
+      dataProvider: null,
+      loadFredSeries: async () => fredLoad(),
+      now: new Date("2026-03-01T00:00:00.000Z"),
+      resolveCapabilitySeries: async (_source: any, viewport: ChartSpec["viewport"]) => {
+        requested.push(viewport);
+        const date = new Date(viewport.dateWindow!.start);
+        return {
+          id: "provider",
+          label: "Provider",
+          color: "#ffffff",
+          unit: "value",
+          unitGroup: "value",
+          nativeFrequency: "daily" as const,
+          dataShape: "scalar" as const,
+          style: "line" as const,
+          transform: "raw" as const,
+          axis: "left" as const,
+          panelId: "main",
+          interpolation: "none" as const,
+          points: [{ date, observedAt: date, value: 1 }],
+        };
+      },
+    };
+    const firstViewport = { start: new Date("2026-01-01T00:00:00.000Z"), end: new Date("2026-01-08T00:00:00.000Z") };
+    const secondViewport = { start: new Date("2026-02-01T00:00:00.000Z"), end: new Date("2026-02-08T00:00:00.000Z") };
+
+    await resolveChartSpecData(spec, sources, cache, { requestViewport: firstViewport });
+    await resolveChartSpecData(spec, sources, cache, { requestViewport: secondViewport });
+    await resolveChartSpecData(spec, sources, cache, { requestViewport: firstViewport });
+
+    expect(requested.map((viewport) => viewport.dateWindow)).toEqual([
+      { start: firstViewport.start.toISOString(), end: firstViewport.end.toISOString() },
+      { start: secondViewport.start.toISOString(), end: secondViewport.end.toISOString() },
+    ]);
+    expect(chartSeriesSourceKey({ kind: "capability", capabilityId: "a", seriesId: "b:c" }))
+      .not.toBe(chartSeriesSourceKey({ kind: "capability", capabilityId: "a-b", seriesId: "c" }));
   });
 
   test("derives Auto fetch resolution from the finest explicit market period", async () => {

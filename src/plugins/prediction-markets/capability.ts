@@ -1,42 +1,63 @@
 import { chartSeriesProvider, type ChartSeriesCatalogItem, type ChartSeriesResolveRequest } from "../../capabilities";
-import type { ChartSeriesParameterValue, ResolvedSeries, TimeSeriesPoint } from "../../time-series/types";
-import { loadKalshiCatalog, loadKalshiHistory } from "./services/kalshi/adapter";
+import { debugLog } from "../../utils/debug-log";
+import type { ResolvedSeries, TimeSeriesPoint } from "../../time-series/types";
+import {
+  loadKalshiCatalog,
+  loadKalshiHistory,
+  resolveKalshiChartSummary,
+} from "./services/kalshi/adapter";
 import { loadPolymarketCatalog } from "./services/polymarket/adapter";
-import { loadPolymarketHistory } from "./services/polymarket/detail";
-import type { PredictionHistoryPoint, PredictionHistoryRange, PredictionMarketSummary } from "./types";
+import {
+  loadPolymarketHistory,
+  resolvePolymarketChartSummary,
+} from "./services/polymarket/detail";
+import type { PredictionHistoryPoint, PredictionHistoryRange, PredictionMarketSummary, PredictionVenue } from "./types";
 
 export const PREDICTION_CHART_SERIES_CAPABILITY_ID = "prediction-markets.series";
+const predictionSeriesLog = debugLog.createLogger("prediction-markets.series");
+
+interface PredictionSeriesIdentity {
+  venue: PredictionVenue;
+  eventId: string;
+  marketId: string;
+}
+
+export function predictionSeriesId(summary: PredictionMarketSummary): string | null {
+  const eventId = summary.venue === "kalshi" ? summary.eventTicker : summary.eventId;
+  if (!eventId?.trim() || !summary.marketId.trim()) return null;
+  const id = `${summary.venue}/${encodeURIComponent(eventId)}/${encodeURIComponent(summary.marketId)}`;
+  return id.length <= 240 ? id : null;
+}
+
+function parsePredictionSeriesId(seriesId: string): PredictionSeriesIdentity {
+  const parts = seriesId.split("/");
+  if (parts.length !== 3 || (parts[0] !== "kalshi" && parts[0] !== "polymarket")) {
+    throw new Error(`Prediction series ID ${seriesId} is invalid. Remove and add the series again.`);
+  }
+  try {
+    const eventId = decodeURIComponent(parts[1] ?? "");
+    const marketId = decodeURIComponent(parts[2] ?? "");
+    if (!eventId || !marketId) throw new Error("missing identity");
+    return { venue: parts[0], eventId, marketId };
+  } catch {
+    throw new Error(`Prediction series ID ${seriesId} is invalid. Remove and add the series again.`);
+  }
+}
 
 function historyRange(request: ChartSeriesResolveRequest): PredictionHistoryRange {
+  if (request.viewport.dateWindow) {
+    const span = Date.parse(request.viewport.dateWindow.end) - Date.parse(request.viewport.dateWindow.start);
+    if (span <= 24 * 60 * 60_000) return "1D";
+    if (span <= 7 * 24 * 60 * 60_000) return "1W";
+    if (span <= 31 * 24 * 60 * 60_000) return "1M";
+    return "ALL";
+  }
   switch (request.viewport.range) {
     case "1D": return "1D";
     case "1W": return "1W";
     case "1M": return "1M";
     default: return "ALL";
   }
-}
-
-function summaryParameters(summary: PredictionMarketSummary) {
-  return { summary: JSON.parse(JSON.stringify({
-    venue: summary.venue,
-    key: summary.key,
-    marketId: summary.marketId,
-    title: summary.title,
-    eventTicker: summary.eventTicker,
-    yesTokenId: summary.yesTokenId,
-  })) as ChartSeriesParameterValue };
-}
-
-function summaryFrom(request: ChartSeriesResolveRequest): PredictionMarketSummary {
-  const value = request.parameters?.summary;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`Prediction market metadata is missing for ${request.seriesId}. Add the series again from search.`);
-  }
-  const summary = value as unknown as PredictionMarketSummary;
-  if ((summary.venue !== "kalshi" && summary.venue !== "polymarket") || !summary.marketId || !summary.key || !summary.title) {
-    throw new Error(`Prediction market metadata is invalid for ${request.seriesId}.`);
-  }
-  return summary;
 }
 
 export function predictionHistoryPoints(points: PredictionHistoryPoint[], venue: string): TimeSeriesPoint[] {
@@ -57,43 +78,80 @@ export function predictionHistoryPoints(points: PredictionHistoryPoint[], venue:
   }).sort((left, right) => left.date.getTime() - right.date.getTime());
 }
 
-function catalogItem(summary: PredictionMarketSummary): ChartSeriesCatalogItem {
+function catalogItem(summary: PredictionMarketSummary): ChartSeriesCatalogItem | null {
+  const seriesId = predictionSeriesId(summary);
+  if (!seriesId) return null;
   return {
-    seriesId: summary.key,
-    label: summary.title,
+    seriesId,
+    label: summary.title.slice(0, 160),
     description: `${summary.venue === "kalshi" ? "Kalshi" : "Polymarket"} · YES probability`,
     detail: summary.venue === "kalshi" ? "Kalshi" : "Polymarket",
-    parameters: summaryParameters(summary),
     style: "area",
   };
 }
 
-async function catalog(query = "", limit = 8): Promise<ChartSeriesCatalogItem[]> {
-  const [polymarket, kalshi] = await Promise.all([
-    loadPolymarketCatalog(query).catch(() => []),
-    loadKalshiCatalog(query).catch(() => []),
-  ]);
-  return [...polymarket, ...kalshi]
+async function catalog(
+  query = "",
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<ChartSeriesCatalogItem[]> {
+  const providers = [
+    { id: "polymarket", load: () => loadPolymarketCatalog(query, "all", { limit, signal }) },
+    { id: "kalshi", load: () => loadKalshiCatalog(query, "all", { limit, signal }) },
+  ] as const;
+  const results = await Promise.allSettled(providers.map((provider) => provider.load()));
+  if (signal?.aborted) throw signal.reason ?? new DOMException("Aborted", "AbortError");
+  const failures = results.flatMap((result, index) => {
+    if (result.status === "fulfilled") return [];
+    const error = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    predictionSeriesLog.warn("Prediction chart catalog provider failed", {
+      provider: providers[index]?.id,
+      error,
+    });
+    return [`${providers[index]?.id}: ${error}`];
+  });
+  if (failures.length === providers.length) {
+    throw new Error(`Prediction chart catalog failed (${failures.join("; ")}).`);
+  }
+  return results
+    .flatMap((result) => result.status === "fulfilled" ? result.value : [])
     .sort((left, right) => (right.volume24h ?? 0) - (left.volume24h ?? 0))
-    .slice(0, limit)
-    .map(catalogItem);
+    .flatMap((summary) => {
+      const item = catalogItem(summary);
+      return item ? [item] : [];
+    })
+    .slice(0, limit);
+}
+
+async function resolveCurrentSummary(identity: PredictionSeriesIdentity, signal?: AbortSignal) {
+  return identity.venue === "kalshi"
+    ? resolveKalshiChartSummary(identity.eventId, identity.marketId, signal)
+    : resolvePolymarketChartSummary(identity.eventId, identity.marketId, signal);
 }
 
 export const predictionChartSeriesCapability = chartSeriesProvider({
   id: PREDICTION_CHART_SERIES_CAPABILITY_ID,
   name: "Prediction Markets",
   provider: {
-    catalog: (request) => catalog(request.query, request.limit),
-    search: (request) => catalog(request.query, request.limit),
+    catalog: (request) => catalog(request.query, request.limit, request.signal),
+    search: (request) => catalog(request.query, request.limit, request.signal),
     async resolve(request): Promise<ResolvedSeries> {
-      const summary = summaryFrom(request);
+      const identity = parsePredictionSeriesId(request.seriesId);
+      const summary = await resolveCurrentSummary(identity);
       const range = historyRange(request);
+      const dateWindow = request.viewport.dateWindow;
       const history = summary.venue === "kalshi"
-        ? await loadKalshiHistory(summary, range)
-        : await loadPolymarketHistory(summary, range);
+        ? await loadKalshiHistory(summary, range, {
+            ...(dateWindow ? {
+              start: new Date(dateWindow.start),
+              end: new Date(dateWindow.end),
+            } : {}),
+            strict: true,
+          })
+        : await loadPolymarketHistory(summary, range, { strict: true });
       return {
         id: request.seriesId,
-        label: summary.title,
+        label: summary.title.slice(0, 160),
         color: "#4dabf7",
         unit: "probability",
         unitGroup: "probability",

@@ -2,7 +2,10 @@ import {
   getTimeSeriesField,
   listTimeSeriesFields,
 } from "../../../time-series/field-catalog";
-import type { ChartSeriesCatalogItem } from "../../../capabilities";
+import {
+  chartSeriesSourceKey,
+  type ChartSeriesCatalogItem,
+} from "../../../capabilities";
 import type { TimeSeriesFieldDefinition } from "../../../time-series/types";
 import {
   canonicalExchange,
@@ -235,7 +238,11 @@ function exactExpressionSuggestion(query: string): SeriesCatalogSuggestion | nul
   }
   if (expression.kind === "capability") {
     return {
-      id: `${expression.capabilityId}:${expression.seriesId}`,
+      id: chartSeriesSourceKey({
+        kind: "capability",
+        capabilityId: expression.capabilityId,
+        seriesId: expression.seriesId,
+      }),
       label: expression.label ?? expression.seriesId,
       description: `Plugin series from ${expression.capabilityId}`,
       detail: "Plugin",
@@ -259,7 +266,11 @@ export function buildCapabilitySeriesSuggestions(
   items: ReadonlyArray<ChartSeriesCatalogItem & { capabilityId: string; capabilityName: string }>,
 ): SeriesCatalogSuggestion[] {
   return items.map((item) => ({
-    id: `${item.capabilityId}:${item.seriesId}`,
+    id: chartSeriesSourceKey({
+      kind: "capability",
+      capabilityId: item.capabilityId,
+      seriesId: item.seriesId,
+    }),
     label: item.label,
     description: item.description ?? item.capabilityName,
     detail: item.detail ?? item.capabilityName,
@@ -267,7 +278,6 @@ export function buildCapabilitySeriesSuggestions(
       kind: "capability",
       capabilityId: item.capabilityId,
       seriesId: item.seriesId,
-      parameters: item.parameters,
       label: item.label,
       style: item.style,
       transform: item.transform,

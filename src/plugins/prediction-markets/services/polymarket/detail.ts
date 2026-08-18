@@ -81,6 +81,25 @@ function findCanonicalPolymarketMarket(
   );
 }
 
+export async function resolvePolymarketChartSummary(
+  eventId: string,
+  marketId: string,
+  signal?: AbortSignal,
+): Promise<PredictionMarketSummary> {
+  const event = await fetchJson<PolymarketEventRecord>(
+    `https://gamma-api.polymarket.com/events/${eventId}`,
+    signal,
+  );
+  const market = event.markets?.find((candidate) => candidate.id === marketId);
+  const summary = market
+    ? normalizePolymarketMarket(hydratePolymarketMarket(market, event))
+    : null;
+  if (!summary) {
+    throw new Error(`Polymarket market ${marketId} in event ${eventId} is no longer resolvable. Remove or replace this chart series.`);
+  }
+  return summary;
+}
+
 async function resolvePolymarketSummary(
   summary: PredictionMarketSummary,
 ): Promise<{
@@ -124,9 +143,13 @@ async function resolvePolymarketSummary(
 export async function loadPolymarketHistory(
   summary: PredictionMarketSummary,
   range: "1D" | "1W" | "1M" | "ALL",
+  options: { signal?: AbortSignal; strict?: boolean } = {},
 ): Promise<PredictionHistoryPoint[]> {
   const tokenId = summary.yesTokenId;
-  if (!tokenId) return [];
+  if (!tokenId) {
+    if (options.strict) throw new Error(`Polymarket market ${summary.marketId} no longer exposes a YES token for chart history.`);
+    return [];
+  }
   const interval =
     range === "1D"
       ? "1d"
@@ -144,6 +167,7 @@ export async function loadPolymarketHistory(
     async () => {
       const response = await fetchJson<PolymarketHistoryResponse>(
         `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=${interval}&fidelity=${fidelity}`,
+        options.signal,
       );
       return (response.history ?? [])
         .map((point) => ({

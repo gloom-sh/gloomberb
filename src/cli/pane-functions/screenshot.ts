@@ -31,6 +31,7 @@ import type {
 } from "../../time-series/reporting";
 import type { TimeRange } from "../../time-series/range";
 import { appendLiveQuotePoint } from "../../time-series/chart-data";
+import { applyResolvedSeriesTransform } from "../../time-series/transforms";
 import { subtractTimeRange } from "../../time-series/date-window";
 import {
   buildPresetDateWindow,
@@ -132,6 +133,8 @@ export interface PaneScreenshotExpectedChartEvidence {
     economicSeriesId?: string;
     capabilityId?: string;
     providerSeriesId?: string;
+    first?: { date: string; value: number | null } | null;
+    last?: { date: string; value: number | null } | null;
     style: string;
     transform: string;
     panelId: string;
@@ -638,6 +641,13 @@ function shotExpectedChart(
   if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
     const spec = parseChartSpec(resolved.instance.settings?.chartSpec);
     if (!spec) return null;
+    const capabilitySeries = new Map(payload.capabilitySeries);
+    const capabilityPoint = (point: ResolvedSeries["points"][number] | undefined) => point
+      ? {
+          date: point.date.toISOString(),
+          value: typeof (point.value ?? point.close) === "number" ? point.value ?? point.close ?? null : null,
+        }
+      : null;
     return {
       kind: "chart-composer",
       symbols: [...new Set(spec.series.flatMap((series) => (
@@ -657,10 +667,16 @@ function shotExpectedChart(
           }
           : series.source.kind === "economic"
             ? { economicSeriesId: series.source.seriesId }
-            : {
-              capabilityId: series.source.capabilityId,
-              providerSeriesId: series.source.seriesId,
-            }),
+            : (() => {
+                const loaded = capabilitySeries.get(chartSeriesSourceKey(series.source));
+                const resolvedSeries = loaded ? applyResolvedSeriesTransform(loaded, series.transform) : undefined;
+                return {
+                  capabilityId: series.source.capabilityId,
+                  providerSeriesId: series.source.seriesId,
+                  first: capabilityPoint(resolvedSeries?.points[0]),
+                  last: capabilityPoint(resolvedSeries?.points.at(-1)),
+                };
+              })()),
         style: series.style,
         transform: series.transform,
         panelId: series.panelId,
@@ -813,6 +829,10 @@ export function chartEvidenceMismatchesFor(
           || actual.economicSeriesId !== series.economicSeriesId
           || actual.capabilityId !== series.capabilityId
           || actual.providerSeriesId !== series.providerSeriesId
+          || (series.sourceKind === "capability" && (
+            JSON.stringify(actual.first) !== JSON.stringify(series.first)
+            || JSON.stringify(actual.last) !== JSON.stringify(series.last)
+          ))
           || actual.style !== series.style
           || actual.transform !== series.transform
           || actual.panelId !== series.panelId

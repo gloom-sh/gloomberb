@@ -69,7 +69,7 @@ describe("chart spec normalization and validation", () => {
     expect(validateChartSpec(normalized).valid).toBe(true);
   });
 
-  test("persists and clones unknown capability sources without requiring the provider", () => {
+  test("persists and clones bounded opaque capability sources without requiring the provider", () => {
     const normalized = normalizeChartSpec({
       viewport: { range: "1M", resolution: "auto" },
       panels: [{ id: "main" }],
@@ -78,8 +78,7 @@ describe("chart spec normalization and validation", () => {
         source: {
           kind: "capability",
           capabilityId: "missing.provider",
-          seriesId: "market-1",
-          parameters: { outcome: "yes", nested: { venue: "test" } },
+          seriesId: "polymarket/event-1/market-1",
         },
         style: "area",
         transform: "raw",
@@ -90,10 +89,6 @@ describe("chart spec normalization and validation", () => {
     const cloned = normalizeChartSpec(normalized);
     expect(cloned.series[0]?.source).toEqual(normalized.series[0]?.source);
     expect(cloned.series[0]?.source).not.toBe(normalized.series[0]?.source);
-    if (cloned.series[0]?.source.kind !== "capability" || normalized.series[0]?.source.kind !== "capability") {
-      throw new Error("expected capability source");
-    }
-    expect(cloned.series[0].source.parameters).not.toBe(normalized.series[0].source.parameters);
     expect(validateChartSpec(cloned).valid).toBe(true);
   });
 

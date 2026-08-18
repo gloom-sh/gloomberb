@@ -1,5 +1,12 @@
 import type { AssetDataProvider } from "../types/data-provider";
 import type { NewsDataProvider } from "../types/capability-route-source";
+import {
+  chartSeriesCatalogOutputSchema,
+  chartSeriesCatalogRequestSchema,
+  chartSeriesResolveOutputSchema,
+  chartSeriesResolveRequestSchema,
+  isValidChartCapabilityId,
+} from "./chart-series";
 import type {
   AssetDataCapability,
   CapabilityOperation,
@@ -92,6 +99,9 @@ export function chartSeriesProvider(options: {
   priority?: number;
   provider: ChartSeriesProvider;
 }): ChartSeriesCapability {
+  if (!isValidChartCapabilityId(options.id)) {
+    throw new Error(`Invalid chart series capability ID "${options.id}".`);
+  }
   return {
     id: options.id,
     kind: "chart-series",
@@ -99,9 +109,23 @@ export function chartSeriesProvider(options: {
     priority: options.priority,
     provider: options.provider,
     operations: {
-      catalog: op((input: any) => options.provider.catalog?.(input) ?? [], "query"),
-      search: op((input: any) => options.provider.search?.(input) ?? options.provider.catalog?.(input) ?? [], "query"),
-      resolve: op((input: any) => options.provider.resolve(input), "query"),
+      catalog: {
+        ...op((input: any, ctx) => options.provider.catalog?.({ ...input, signal: ctx.signal }) ?? [], "query"),
+        input: chartSeriesCatalogRequestSchema,
+        output: chartSeriesCatalogOutputSchema,
+      },
+      search: {
+        ...op((input: any, ctx) => options.provider.search?.({ ...input, signal: ctx.signal })
+          ?? options.provider.catalog?.({ ...input, signal: ctx.signal })
+          ?? [], "query"),
+        input: chartSeriesCatalogRequestSchema,
+        output: chartSeriesCatalogOutputSchema,
+      },
+      resolve: {
+        ...op((input: any) => options.provider.resolve(input), "query"),
+        input: chartSeriesResolveRequestSchema,
+        output: chartSeriesResolveOutputSchema,
+      },
     },
   };
 }

@@ -29,12 +29,11 @@ import {
 import { applyChartComposerCapabilityOptions } from "./cli-options";
 
 describe("chart composer expressions", () => {
-  test("round-trips provider-neutral capability expressions and parameters", () => {
+  test("round-trips bounded provider-neutral capability expressions", () => {
     const expression = {
       kind: "capability" as const,
       capabilityId: "prediction-markets.series",
-      seriesId: "polymarket:one",
-      parameters: { outcome: "yes", nested: { token: "123" } },
+      seriesId: "polymarket/event-1/market-1",
       label: "Will it happen?",
     };
     const series = buildSeriesSpec(expression, 0);
@@ -42,8 +41,10 @@ describe("chart composer expressions", () => {
       kind: "capability",
       capabilityId: expression.capabilityId,
       seriesId: expression.seriesId,
-      parameters: expression.parameters,
     });
+    expect(parseSeriesExpression("CAP:provider:series?params=%7B%7D")).toBeNull();
+    expect(parseSeriesExpression(`CAP:${"x".repeat(81)}:series`)).toBeNull();
+    expect(parseSeriesExpression(`CAP:provider:${"x".repeat(241)}`)).toBeNull();
   });
 
   test("appends catalog series with required panels and collision-safe IDs", () => {
@@ -532,6 +533,17 @@ describe("chart composer spec persistence", () => {
       { style: "line", timestampMode: "period-end" },
       { style: "columns", timestampMode: "available-at" },
     ]);
+  });
+
+  test("migrates v1 security and economic specs but never treats v1 as capability-aware", () => {
+    const legacy = buildCustomChartPreset("AAPL:price, FRED:CPIAUCSL");
+    const migrated = parseChartSpec({ ...legacy, version: 1 });
+    expect(migrated?.version).toBe(2);
+    expect(migrated?.series.map((series) => series.source.kind)).toEqual(["security", "economic"]);
+
+    const capability = buildCustomChartPreset("CAP:prediction-markets.series:polymarket/event-1/market-1");
+    expect(parseChartSpec({ ...capability, version: 1 })).toBeNull();
+    expect(parseChartSpec(serializeChartSpec(capability))).toEqual(parseChartSpec(capability));
   });
 
   test("rejects chart specs authored by a newer unsupported version", () => {

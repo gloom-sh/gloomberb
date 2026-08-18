@@ -3,7 +3,6 @@ import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { AssetDataProvider } from "../types/data-provider";
 import type { NewsDataProvider } from "../types/capability-route-source";
 import type {
-  CapabilitySeriesSource,
   ChartViewportSpec,
   ResolvedSeries,
   SeriesStyle,
@@ -26,6 +25,7 @@ export interface CapabilitySchema<T = unknown> {
 interface CapabilityHandlerContext {
   capability: PluginCapability;
   operationId: string;
+  signal?: AbortSignal;
 }
 
 type CapabilityStreamEmit<T = unknown> = (event: T) => void;
@@ -79,7 +79,6 @@ export interface ChartSeriesCatalogItem {
   label: string;
   description?: string;
   detail?: string;
-  parameters?: CapabilitySeriesSource["parameters"];
   style?: SeriesStyle;
   transform?: SeriesTransform;
 }
@@ -87,11 +86,11 @@ export interface ChartSeriesCatalogItem {
 export interface ChartSeriesCatalogRequest {
   query?: string;
   limit?: number;
+  signal?: AbortSignal;
 }
 
 export interface ChartSeriesResolveRequest {
   seriesId: string;
-  parameters?: CapabilitySeriesSource["parameters"];
   viewport: ChartViewportSpec;
 }
 
@@ -138,7 +137,12 @@ export interface CapabilityRegistryOptions {
 
 export interface CapabilityInvoker {
   capabilityManifests(kind?: string): CapabilityManifest[];
-  invokeCapability<T = unknown>(capabilityId: string, operationId: string, payload: unknown): Promise<T>;
+  invokeCapability<T = unknown>(
+    capabilityId: string,
+    operationId: string,
+    payload: unknown,
+    options?: { signal?: AbortSignal },
+  ): Promise<T>;
 }
 
 export interface RegisteredCapability {

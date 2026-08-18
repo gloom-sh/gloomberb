@@ -40,8 +40,8 @@ export function resetPredictionMarketsPersistence(): void {
   predictionMarketsPersistence = null;
 }
 
-export async function fetchJson<T>(url: string): Promise<T> {
-  const response = await PREDICTION_FETCH.fetch(url);
+export async function fetchJson<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const response = await PREDICTION_FETCH.fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`Request failed (${response.status}) for ${url}`);
   }
@@ -98,6 +98,7 @@ export async function loadCachedPredictionResource<T>(
     setCachedPredictionResource(kind, key, nextValue, cachePolicy);
     return nextValue;
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw error;
     if (cached) return cached.value;
     throw error;
   }

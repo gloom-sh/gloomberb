@@ -230,6 +230,50 @@ describe("CapabilityRegistry", () => {
     await expect(registry.invoke("charts.test", "search", {})).rejects.toThrow("not available");
   });
 
+  test("rejects unsafe chart-series requests and provider output before rendering", async () => {
+    const registry = new CapabilityRegistry();
+    registry.register("charts", chartSeriesProvider({
+      id: "charts.unsafe",
+      name: "Unsafe Charts",
+      provider: {
+        catalog: () => [{ seriesId: "ok", label: "x".repeat(161) }],
+        resolve: ({ seriesId }) => ({
+          id: seriesId,
+          label: "Unsafe",
+          color: "#ffffff",
+          unit: "value",
+          unitGroup: "value",
+          nativeFrequency: "daily",
+          dataShape: "scalar",
+          style: "line",
+          transform: "raw",
+          axis: "left",
+          panelId: "main",
+          interpolation: "none",
+          points: [{ date: new Date("invalid"), observedAt: new Date(), value: 1 }],
+        }),
+      },
+    }));
+
+    await expect(registry.invoke("charts.unsafe", "catalog", { query: "x".repeat(201), limit: 8 }, { renderer: true }))
+      .rejects.toThrow("catalog query");
+    await expect(registry.invoke("charts.unsafe", "catalog", { query: "x", limit: 8 }, { renderer: true }))
+      .rejects.toThrow("catalog item 0 label");
+    await expect(registry.invoke("charts.unsafe", "resolve", {
+      seriesId: "bad?query",
+      viewport: { range: "1M", resolution: "auto" },
+    }, { renderer: true })).rejects.toThrow("series ID");
+    await expect(registry.invoke("charts.unsafe", "resolve", {
+      seriesId: "safe-id",
+      parameters: {},
+      viewport: { range: "1M", resolution: "auto" },
+    }, { renderer: true })).rejects.toThrow('unsupported field "parameters"');
+    await expect(registry.invoke("charts.unsafe", "resolve", {
+      seriesId: "safe-id",
+      viewport: { range: "1M", resolution: "auto" },
+    }, { renderer: true })).rejects.toThrow("point 0 date");
+  });
+
   test("disposes subscriptions that finish after their capability is removed", async () => {
     const registry = new CapabilityRegistry();
     let finishSubscribe!: (dispose: () => void) => void;

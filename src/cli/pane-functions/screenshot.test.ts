@@ -130,6 +130,18 @@ describe("pane screenshot chart-data verification", () => {
           panelId: "macro",
           visible: true,
         },
+        {
+          id: "prediction",
+          sourceKind: "capability",
+          capabilityId: "prediction-markets.series",
+          providerSeriesId: "polymarket/event-1/market-1",
+          first: { date: "2026-01-01T00:00:00.000Z", value: 0.4 },
+          last: { date: "2026-01-02T00:00:00.000Z", value: 0.6 },
+          style: "area",
+          transform: "raw",
+          panelId: "prediction",
+          visible: true,
+        },
       ],
     };
     const metadata = {
@@ -137,12 +149,18 @@ describe("pane screenshot chart-data verification", () => {
       projectedPointCount: 42,
       baseSeries: expectedComposer.baseSeries?.map((series) => ({ ...series, pointCount: 12 })),
     };
-    expect(chartEvidenceMismatchesFor([{
+    const semanticUi = [{
       id: "chart-composer-data",
-      role: "chart-data",
+      role: "chart-data" as const,
       actions: [],
       metadata,
-    }], expectedComposer)).toEqual([]);
+    }];
+    expect(chartEvidenceMismatchesFor(semanticUi, expectedComposer)).toEqual([]);
+
+    const wrong = structuredClone(semanticUi);
+    (wrong[0]!.metadata.baseSeries![3]!.last as { value: number }).value = 0.7;
+    expect(chartEvidenceMismatchesFor(wrong, expectedComposer))
+      .toContain("rendered chart series prediction does not match");
   });
 });
 
