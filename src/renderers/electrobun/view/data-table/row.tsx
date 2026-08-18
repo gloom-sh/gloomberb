@@ -208,10 +208,12 @@ function WebDataTableRowInner<
         style={{
           ...baseRowStyle,
           backgroundColor: sectionHeader.backgroundColor ?? CSS_BG,
+          cursor: sectionHeader.onMouseDown ? "pointer" : undefined,
         }}
         onMouseDown={(event) => {
           focusPane();
           onTableMouseDown?.(event);
+          sectionHeader.onMouseDown?.(event);
           event.preventDefault();
         }}
       >

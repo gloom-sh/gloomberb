@@ -1,14 +1,7 @@
-import type { MarketState, Quote } from "../../../types/financials";
+import type { MarketState } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { REGION_ORDER, type IndexEntry } from "./indices";
-
-export interface IndexQuoteState {
-  quote: Quote | null;
-  loading: boolean;
-  error: string | null;
-}
-
-export type QuoteMap = Map<string, IndexQuoteState>;
 
 export type WorldIndexTableRow =
   | { type: "header"; region: IndexEntry["region"] }
@@ -38,7 +31,7 @@ const MARKET_STATE_SORT_ORDER: Partial<Record<MarketState, number>> = {
 function getSortValue(
   columnId: WorldIndexColumnId,
   entry: IndexEntry,
-  quotes: QuoteMap,
+  quotes: BoardQuoteMap,
 ): string | number | null {
   const quote = quotes.get(entry.symbol)?.quote;
 
@@ -59,7 +52,7 @@ function getSortValue(
 function sortEntries(
   entries: IndexEntry[],
   sortPreference: WorldIndexSortPreference,
-  quotes: QuoteMap,
+  quotes: BoardQuoteMap,
 ): IndexEntry[] {
   const sortColumnId = sortPreference.columnId;
   if (!sortColumnId) return entries;
@@ -73,7 +66,7 @@ function sortEntries(
 export function buildFlatRows(
   indicesByRegion: Map<IndexEntry["region"], IndexEntry[]>,
   sortPreference: WorldIndexSortPreference,
-  quotes: QuoteMap,
+  quotes: BoardQuoteMap,
 ): WorldIndexTableRow[] {
   const rows: WorldIndexTableRow[] = [];
   for (const region of REGION_ORDER) {
@@ -99,15 +92,4 @@ export function nextSortPreference(
     return { columnId: typedColumnId, direction: "desc" };
   }
   return DEFAULT_SORT_PREFERENCE;
-}
-
-export function countLoadingQuotes(quotes: QuoteMap): number {
-  return Array.from(quotes.values()).filter((state) => state.loading).length;
-}
-
-export function latestQuoteTimestamp(quotes: QuoteMap): number {
-  return Math.max(
-    0,
-    ...Array.from(quotes.values()).map((state) => state.quote?.lastUpdated ?? 0),
-  );
 }

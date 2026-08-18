@@ -395,6 +395,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                       onMouseDown={(event: any) => {
                         focusPane();
                         onTableMouseDown?.(event);
+                        sectionHeader.onMouseDown?.(event);
                         event.preventDefault();
                       }}
                     >

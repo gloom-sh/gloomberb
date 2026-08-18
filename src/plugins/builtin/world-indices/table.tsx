@@ -1,10 +1,9 @@
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { colors, priceColor } from "../../../theme/colors";
-import type { MarketState } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { marketStatusDot, type BoardQuoteMap } from "../shared/use-quote-board";
 import type {
-  QuoteMap,
   WorldIndexColumnId,
   WorldIndexTableRow,
 } from "./model";
@@ -29,26 +28,11 @@ export function createWorldIndexColumns(width: number): WorldIndexColumn[] {
   ];
 }
 
-function marketStatusDot(state: MarketState | undefined): { char: string; color: string } {
-  switch (state) {
-    case "REGULAR":
-      return { char: "●", color: colors.positive };
-    case "PRE":
-    case "POST":
-    case "PREPRE":
-    case "POSTPOST":
-      return { char: "●", color: colors.warning };
-    case "CLOSED":
-    default:
-      return { char: "●", color: colors.negative };
-  }
-}
-
 export function renderWorldIndexCell(
   row: WorldIndexTableRow,
   column: WorldIndexColumn,
   rowState: { selected: boolean },
-  quotes: QuoteMap,
+  quotes: BoardQuoteMap,
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
 

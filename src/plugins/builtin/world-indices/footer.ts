@@ -2,10 +2,10 @@ import { usePaneFooter, type PaneFooterSegment } from "../../../components";
 import {
   countLoadingQuotes,
   latestQuoteTimestamp,
-  type QuoteMap,
-} from "./model";
+  type BoardQuoteMap,
+} from "../shared/use-quote-board";
 
-export function useWorldIndicesFooter(quotes: QuoteMap) {
+export function useWorldIndicesFooter(quotes: BoardQuoteMap) {
   const loadingCount = countLoadingQuotes(quotes);
   const latestQuoteTs = latestQuoteTimestamp(quotes);
 
