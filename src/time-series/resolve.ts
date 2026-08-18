@@ -12,6 +12,7 @@ import {
   getPresetResolution,
   getSupportMaxRange,
   intersectChartResolutionSupport,
+  isIntradayResolution,
   TIME_RANGE_ORDER,
   type ChartResolutionSupport,
   type ManualChartResolution,
@@ -352,6 +353,7 @@ function emptyFinancials(priceHistory: TickerFinancials["priceHistory"] = []): T
 function mergePriceHistoryWindows(
   current: TickerFinancials["priceHistory"],
   incoming: TickerFinancials["priceHistory"],
+  resolution: ManualChartResolution,
 ): TickerFinancials["priceHistory"] {
   const byTimestamp = new Map<number, TickerFinancials["priceHistory"][number]>();
   for (const point of [...current, ...incoming]) {
@@ -363,9 +365,30 @@ function mergePriceHistoryWindows(
       );
     }
   }
-  return [...byTimestamp.values()].sort(
+  const sorted = [...byTimestamp.values()].sort(
     (left, right) => getPricePointTimestamp(left) - getPricePointTimestamp(right),
   );
+  if (isIntradayResolution(resolution)) return sorted;
+  // Windows can be served by different sources, and they stamp the same session
+  // differently: local midnight, UTC midnight, or the opening bell. Keying on the
+  // exact timestamp keeps both copies, so the chart draws every bar twice and
+  // carries twice the points through every pan. Daily and slower bars are never
+  // closer than one step apart, so anything closer is the same session; keep the
+  // copy already plotted to leave existing bars where they are.
+  const minimumGapMs = CHART_RESOLUTION_STEP_MS[resolution] * 0.8;
+  const plotted = new Set(current.map(getPricePointTimestamp));
+  const merged: TickerFinancials["priceHistory"] = [];
+  for (const point of sorted) {
+    const previous = merged.at(-1);
+    if (!previous || getPricePointTimestamp(point) - getPricePointTimestamp(previous) >= minimumGapMs) {
+      merged.push(point);
+      continue;
+    }
+    if (!plotted.has(getPricePointTimestamp(previous)) && plotted.has(getPricePointTimestamp(point))) {
+      merged[merged.length - 1] = point;
+    }
+  }
+  return merged;
 }
 
 function historyIntersectsBounds(
@@ -850,6 +873,7 @@ export async function resolveChartSpecData(
     const accumulated = mergePriceHistoryWindows(
       previousHistory,
       history,
+      request.resolution,
     );
     cache.accumulatedPriceHistory.set(accumulationKey, accumulated);
     return accumulated;

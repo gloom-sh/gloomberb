@@ -539,6 +539,70 @@ describe("resolveChartSpecData", () => {
     expect(revisitedCurrent.bufferedSeries?.[0]?.points.at(-1)?.value).toBe(120);
   });
 
+  test("keeps one daily bar per session when windows come from sources that stamp bars differently", async () => {
+    // The trailing window is stamped at the opening bell, the panned window at
+    // local midnight, so the same sessions arrive with timestamps hours apart.
+    const currentHistory = [
+      { date: new Date("2026-07-28T13:30:00.000Z"), close: 110 },
+      { date: new Date("2026-07-29T13:30:00.000Z"), close: 115 },
+      { date: new Date("2026-07-30T13:30:00.000Z"), close: 120 },
+    ];
+    const historicalHistory = [
+      { date: new Date("2026-07-23T22:00:00.000Z"), close: 100 },
+      { date: new Date("2026-07-27T22:00:00.000Z"), close: 111 },
+      { date: new Date("2026-07-28T22:00:00.000Z"), close: 116 },
+      { date: new Date("2026-07-29T22:00:00.000Z"), close: 121 },
+    ];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "ALL" }],
+      getPriceHistoryForResolution: async () => currentHistory,
+      getDetailedPriceHistory: async () => historicalHistory,
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1Y", resolution: "1d" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "TEST", exchange: "NASDAQ" },
+          fieldId: "market.close",
+        },
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+    const sources = {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00.000Z"),
+      loadFredSeries: async () => fredLoad(),
+    };
+    const cache = new ChartResolveCache();
+
+    await resolveChartSpecData(spec, sources, cache);
+    const panned = await resolveChartSpecData(spec, sources, cache, {
+      requestViewport: {
+        start: new Date("2026-07-20T00:00:00.000Z"),
+        end: new Date("2026-07-30T16:00:00.000Z"),
+      },
+    });
+
+    const points = panned.bufferedSeries?.[0]?.points ?? [];
+    expect(points.map((point) => point.date.toISOString())).toEqual([
+      "2026-07-23T22:00:00.000Z",
+      "2026-07-28T13:30:00.000Z",
+      "2026-07-29T13:30:00.000Z",
+      "2026-07-30T13:30:00.000Z",
+    ]);
+    expect(points.map((point) => point.value)).toEqual([100, 110, 115, 120]);
+  });
+
   test("keeps percent transforms and studies defined in a panned history window", async () => {
     const provider = createTestDataProvider({
       getTickerFinancials: async () => emptyFinancials(),
