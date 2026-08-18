@@ -1,8 +1,26 @@
 import type { GloomPluginContext } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
 import { chatController } from "../chat/controller";
+import { requestDeviceSignInDialog } from "./device-signin-dialog";
 
 export function registerCloudAuthCommands(ctx: GloomPluginContext): void {
+  ctx.registerCommand({
+    id: "auth-login-qr",
+    label: "Log In with QR Code",
+    description: "Sign in by scanning a QR code with the Gloom app",
+    keywords: ["login", "sign in", "qr", "scan", "device", "mobile", "phone", "app", "code"],
+    category: "config",
+    hidden: () => !!apiClient.getSessionToken(),
+    execute: () => {
+      const opened = requestDeviceSignInDialog({
+        onSignedIn: () => ctx.showPane("chat"),
+      });
+      if (!opened) {
+        ctx.notify({ body: "QR sign-in is not available right now.", type: "error" });
+      }
+    },
+  });
+
   ctx.registerCommand({
     id: "auth-login",
     label: "Log In",

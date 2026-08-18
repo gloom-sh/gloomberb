@@ -29,6 +29,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
     const renameInputRef = useRef<InputRenderable>(null);
     const prevTabRef = useRef<string | null>(null);
     const lastSavedTextRef = useRef<Map<string, string>>(new Map());
+    const loadedTabIdRef = useRef<string | null>(null);
     const loadedRef = useRef(false);
     const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
@@ -40,10 +41,19 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
       textareaRef.current?.editBuffer.getText() ?? noteTextRef.current
     ), [noteTextRef]);
 
+    const handleNoteChange = useCallback((value: string) => {
+      if (activeTabId) {
+        loadedTabIdRef.current = activeTabId;
+      }
+      setNoteText(value);
+    }, [activeTabId, setNoteText]);
+
     const saveTab = useCallback((tabId: string | null) => {
       if (!tabId) return;
-      if (!lastSavedTextRef.current.has(tabId)) return;
-      const text = tabId === activeTabId ? readActiveNoteText() : noteTextRef.current;
+      const isActive = tabId === activeTabId;
+      if (isActive && loadedTabIdRef.current !== activeTabId) return;
+      if (!isActive && !lastSavedTextRef.current.has(tabId)) return;
+      const text = isActive ? readActiveNoteText() : noteTextRef.current;
       if (lastSavedTextRef.current.get(tabId) === text) return;
 
       lastSavedTextRef.current.set(tabId, text);
@@ -78,22 +88,26 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
 
     useEffect(() => {
       if (!activeTabId) {
+        loadedTabIdRef.current = null;
         setNoteText("");
         return;
       }
       prevTabRef.current = activeTabId;
+      loadedTabIdRef.current = null;
+      setNoteText("");
+      textareaRef.current?.setText("");
       let cancelled = false;
-      notesFiles.load(notesFiles.quickNoteKey(activeTabId)).then((text) => {
-        if (cancelled) return;
+      // The user can start typing before a slow load resolves; handleNoteChange
+      // marks the buffer as owning this tab, and applying the loaded text then
+      // would silently wipe what was typed.
+      const applyLoaded = (text: string) => {
+        if (cancelled || loadedTabIdRef.current === activeTabId) return;
+        loadedTabIdRef.current = activeTabId;
         lastSavedTextRef.current.set(activeTabId, text);
         setNoteText(text);
         textareaRef.current?.setText(text);
-      }).catch(() => {
-        if (cancelled) return;
-        lastSavedTextRef.current.set(activeTabId, "");
-        setNoteText("");
-        textareaRef.current?.setText("");
-      });
+      };
+      notesFiles.load(notesFiles.quickNoteKey(activeTabId)).then(applyLoaded, () => applyLoaded(""));
       return () => {
         cancelled = true;
       };
@@ -102,6 +116,10 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
     useEffect(() => {
       if (!editing) saveTab(activeTabId);
     }, [activeTabId, editing, saveTab]);
+
+    useEffect(() => {
+      if (!focused && editing) setEditing(false);
+    }, [editing, focused]);
 
     const addTab = useCallback(() => {
       saveTab(activeTabId);
@@ -312,12 +330,12 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
         <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!editing && !renaming) setEditing(true); }}>
           {editing && !renaming ? (
             <MarkdownEditor
-              textareaKey={activeTabId ?? "none"}
-              focused
+              textareaKey="editing"
+              focused={focused}
               initialValue={noteText}
               placeholder="Write notes..."
               onRef={(ref) => { textareaRef.current = ref; }}
-              onChange={setNoteText}
+              onChange={handleNoteChange}
             />
           ) : (
             <MarkdownNotePreview

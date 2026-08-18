@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
   Spinner,
@@ -106,6 +107,8 @@ function ChangelogDetail({
 }
 
 function ChangelogPane({ focused, width, height }: PaneProps) {
+  const paneInstance = usePaneInstance();
+  const requestedVersion = paneInstance?.params?.version ?? null;
   const [releases, setReleases] = useState<ChangelogRelease[]>([]);
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +117,7 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
   const [openReleaseId, setOpenReleaseId] = useState<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const requestedVersionOpenedRef = useRef(false);
 
   const loadReleases = useCallback(async () => {
     abortRef.current?.abort();
@@ -176,6 +180,16 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
       setOpenReleaseId(null);
     }
   }, [openRelease, openReleaseId]);
+
+  // Opened via "what's new after update": jump straight to that release's notes.
+  useEffect(() => {
+    if (!requestedVersion || requestedVersionOpenedRef.current) return;
+    const match = releases.find((release) => release.version.replace(/^v/, "") === requestedVersion.replace(/^v/, ""));
+    if (!match) return;
+    requestedVersionOpenedRef.current = true;
+    setSelectedReleaseId(match.id);
+    setOpenReleaseId(match.id);
+  }, [releases, requestedVersion]);
 
   useEffect(() => {
     if (!openReleaseId) return;
@@ -373,6 +387,10 @@ export const changelogModule: PluginModule = {
       description: "Browse version history and release notes.",
       keywords: ["changelog", "release", "releases", "version", "updates"],
       shortcut: { prefix: "CHG" },
+      createInstance: (_context, options) => {
+        const version = options?.values?.version;
+        return version ? { params: { version } } : {};
+      },
     },
   ],
 };

@@ -9,7 +9,9 @@ import {
   type ChatChannel,
   type ChatChannelState,
   type ChatMessage,
+  type PersistedAuthUser,
 } from "../../../../api-client";
+import { normalizeSessionUser } from "./persistence";
 import { debugLog } from "../../../../utils/debug-log";
 import {
   getUnreadMentionMessages,
@@ -279,6 +281,25 @@ export class ChatController {
       appActive: this.appActive,
       markViewedThroughLatestMessage: (nextChannelId) => this.markViewedThroughLatestMessage(nextChannelId),
     });
+  }
+
+  /**
+   * Installs a session obtained outside the cookie-capturing transport (device
+   * sign-in hands over a raw token in the response body) the same way boot
+   * restoration does, then persists it through the normal session persistence
+   * so a restart stays signed in even if a follow-up refresh cannot reach the
+   * server. Callers should still refreshSession() afterwards to validate and
+   * pick up the full profile.
+   */
+  adoptSession(sessionToken: string, user: PersistedAuthUser): void {
+    apiClient.setSessionToken(sessionToken);
+    apiClient.setWebSocketToken(null);
+    apiClient.restoreCachedUser(user);
+    this.session.sessionToken = sessionToken;
+    this.session.user = normalizeSessionUser(user);
+    this.session.sessionChecked = true;
+    this.storage.persistSession(this.session.sessionToken, this.session.user);
+    this.emit();
   }
 
   clearSession(): void {

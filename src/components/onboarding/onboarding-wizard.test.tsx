@@ -21,6 +21,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { EventBus } from "../../plugins/event-bus";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
+import { ACCOUNT_CHOICE_IDS } from "./account-step/model";
 import { OnboardingWizard } from "./onboarding-wizard";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -609,8 +610,10 @@ describe("OnboardingWizard", () => {
     );
     await testSetup.renderOnce();
 
-    await emitKeypress({ name: "down", sequence: "\u001b[B" });
-    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    // qr, signup, login, then "Not now".
+    for (let index = 0; index < ACCOUNT_CHOICE_IDS.indexOf("skip"); index += 1) {
+      await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    }
     await emitKeypress({ name: "return", sequence: "\r" });
 
     const frame = await waitForFrame("Your workspace is ready");

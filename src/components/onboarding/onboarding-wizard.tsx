@@ -15,7 +15,7 @@ import {
   type OnboardingProgress,
 } from "../../types/config";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
-import { useShortcut } from "../../react/input";
+import { useShortcut, useViewport } from "../../react/input";
 import {
   useAppDispatch,
   useAppSelector,
@@ -62,6 +62,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const language = useAppLanguage();
   const colors = useThemeColors();
   const desktop = useUiHost().kind === "desktop-web";
+  const { height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const config = useAppSelector((state) => state.config);
@@ -411,8 +412,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       saveProgressInBackground({ stage: "ready", accountStatus: "skipped" });
       return;
     }
+    if (choice === "qr") {
+      account.beginQrSignIn();
+      return;
+    }
     account.beginAccountMode(choice);
-  }, [account.beginAccountMode, saveProgressInBackground]);
+  }, [account.beginAccountMode, account.beginQrSignIn, saveProgressInBackground]);
 
   const submitAccountField = useCallback(() => {
     setEditingField(false);
@@ -424,6 +429,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       activateAccountChoice(account.accountChoiceIdx);
       return;
     }
+    // The QR panel owns enter (retry after a denial); approval advances itself.
+    if (account.accountSub === "qr") return;
     if (account.accountSub === "signed-in") {
       saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
       return;
@@ -756,12 +763,16 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       ? t("Create your free account")
       : account.accountSub === "login"
         ? t("Log in")
-        : account.accountSub === "signed-in"
-          ? t("Connected")
-          : t("Sync across apps");
+        : account.accountSub === "qr"
+          ? t("Scan with the Gloom app")
+          : account.accountSub === "signed-in"
+            ? t("Connected")
+            : t("Sync across apps");
     const accountDescription = account.accountSub === "choose"
       ? t("Adds quotes, financials, options, research, news, chat and AI commands.")
-      : account.accountSub === "signup"
+      : account.accountSub === "qr"
+        ? t("Open the Gloom app on your phone and approve this workspace.")
+        : account.accountSub === "signup"
         ? t("Create the free account now. Cloud features unlock after you verify your email.")
         : account.accountSub === "login"
           ? t("Use the account that should own this workspace and its synced data.")
@@ -770,11 +781,18 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       ? 1
       : 0;
     const accountSwitchRows = account.accountSubmitError?.kind === "switch-to-login" ? 1 : 0;
+    // The QR grid is the tallest thing this wizard ever shows; DeviceSignInPanel
+    // degrades to the code plus URL when the terminal cannot give it these rows.
     const accountModalHeight = account.accountSub === "choose"
       ? 17
-      : account.accountSub === "signed-in"
-        ? 12
-        : 16 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows + accountSwitchRows;
+      : account.accountSub === "qr"
+        ? 32
+        : account.accountSub === "signed-in"
+          ? 12
+          : 16 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows + accountSwitchRows;
+    // OnboardingModal clamps the card to the viewport, so the panel has to size
+    // off the clamped height or the QR overflows a short terminal.
+    const accountPanelHeight = Math.max(4, Math.min(accountModalHeight, viewportHeight - 2) - 9);
     return (
       <OnboardingModal
         width={68}
@@ -811,6 +829,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             onPasswordChange={account.setAccountPassword}
             onFieldFocus={account.focusAccountField}
             onSubmitField={submitAccountField}
+            onQrApproved={account.completeQrSignIn}
+            height={accountPanelHeight}
           />
         </Box>
         {persistenceError ? (
@@ -824,7 +844,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             variant="ghost"
             onPress={account.accountSub === "choose" ? () => goToSection("portfolio") : account.returnToAccountChooser}
           />
-          {!desktop || account.accountSub !== "choose" ? (
+          {account.accountSub !== "qr" && (!desktop || account.accountSub !== "choose") ? (
             <OnboardingButton
               label={accountActionLabel}
               variant="primary"

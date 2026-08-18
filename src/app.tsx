@@ -223,6 +223,8 @@ function AppInner({
   const { runUpdateCheck, startUpdate } = useAppUpdateRuntime({
     dispatch,
     isDetachedWindow,
+    pluginRegistry,
+    stateRef,
     updateAvailable: state.updateAvailable,
     updateCheckInProgress: state.updateCheckInProgress,
     updateProgress: state.updateProgress,

@@ -61,6 +61,7 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     language: isLanguagePreference(candidate.language) ? candidate.language : undefined,
     onboardingComplete,
     onboardingProgress,
+    lastLaunchedVersion: typeof candidate.lastLaunchedVersion === "string" ? candidate.lastLaunchedVersion : undefined,
   };
 
   const needsSave =
