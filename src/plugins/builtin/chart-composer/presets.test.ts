@@ -47,6 +47,23 @@ describe("chart composer expressions", () => {
     expect(parseSeriesExpression(`CAP:provider:${"x".repeat(241)}`)).toBeNull();
   });
 
+  test("maps futures and Treasury aliases onto existing core source kinds", () => {
+    expect(parseSeriesExpression("fut:es")).toEqual({
+      kind: "security",
+      symbol: "ES=F",
+      fieldId: "market.ohlcv",
+      label: "E-Mini S&P 500",
+    });
+    expect(parseSeriesExpression("ust:10y")).toEqual({
+      kind: "economic",
+      provider: "fred",
+      seriesId: "DGS10",
+      label: "10Y Treasury Yield",
+    });
+    expect(parseSeriesExpression("FUT:UNKNOWN")).toBeNull();
+    expect(parseSeriesExpression("UST:4Y")).toBeNull();
+  });
+
   test("appends catalog series with required panels and collision-safe IDs", () => {
     const initial = buildCustomChartPreset("AAPL:price, MSFT:price");
     const withVolume = appendChartSeries(initial, {

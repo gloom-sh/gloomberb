@@ -6,6 +6,7 @@ import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import { ChartResolveCache, mergePriceHistoryWindows, resolveChartSpecData } from "./resolve";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities";
+import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
 
 const emptyFinancials = (): TickerFinancials => ({
   annualStatements: [],
@@ -25,6 +26,39 @@ const fredLoad = (
 });
 
 describe("resolveChartSpecData", () => {
+  test("routes futures and Treasury aliases through the existing market and FRED pipelines", async () => {
+    const marketRequests: string[] = [];
+    const fredRequests: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getPriceHistoryForResolution: async (symbol) => {
+        marketRequests.push(symbol);
+        return [{ date: new Date("2026-02-01T00:00:00Z"), close: 6_100 }];
+      },
+    });
+
+    const result = await resolveChartSpecData(
+      buildCustomChartPreset("FUT:ES, UST:10Y"),
+      {
+        dataProvider: provider,
+        now: new Date("2026-03-01T00:00:00Z"),
+        loadFredSeries: async ({ seriesId }) => {
+          fredRequests.push(seriesId);
+          return fredLoad({
+            observations: [{ date: "2026-02-01", value: 4.25 }],
+            info: null,
+          });
+        },
+      },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(marketRequests).toEqual(["ES=F"]);
+    expect(fredRequests).toEqual(["DGS10"]);
+    expect(result.series.map((series) => series.points[0]?.value ?? series.points[0]?.close))
+      .toEqual([6_100, 4.25]);
+  });
+
   test("keeps missing capability series visible with a useful error and resolves them through the injected boundary", async () => {
     const spec: ChartSpec = {
       version: CHART_SPEC_VERSION,

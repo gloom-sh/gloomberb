@@ -33,6 +33,8 @@ import {
   isValidChartCapabilityId,
   isValidChartSeriesId,
 } from "../../../capabilities/chart-series";
+import { FUTURES_CONTRACTS } from "../futures/contracts";
+import { TREASURY_MATURITIES } from "../yield-curve/treasury-data";
 
 const CHART_FIELD_IDS = {
   price: "market.ohlcv",
@@ -118,6 +120,25 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
       ? { kind: "economic", provider: "fred", seriesId }
       : null;
   }
+  if (parts.length === 2 && parts[0]?.trim().toUpperCase() === "FUT") {
+    const code = parts[1]?.trim().toUpperCase();
+    const contract = FUTURES_CONTRACTS.find((entry) => entry.code === code);
+    return contract
+      ? { kind: "security", symbol: contract.symbol, fieldId: CHART_FIELD_IDS.price, label: contract.name }
+      : null;
+  }
+  if (parts.length === 2 && parts[0]?.trim().toUpperCase() === "UST") {
+    const maturity = parts[1]?.trim().toUpperCase();
+    const treasury = TREASURY_MATURITIES.find((entry) => entry.maturity === maturity);
+    return treasury
+      ? {
+          kind: "economic",
+          provider: "fred",
+          seriesId: treasury.seriesId,
+          label: `${treasury.maturity} Treasury Yield`,
+        }
+      : null;
+  }
 
   let instrument: { symbol: string; exchange?: string } | null = null;
   let fieldId: string = CHART_FIELD_IDS.price;
@@ -157,7 +178,7 @@ export function parseChartExpression(value: string): ParsedSeriesExpression[] {
     if (parsed) return parsed;
     const display = leg.trim() || "empty series";
     throw new Error(
-      `Invalid chart series "${display}". Use SYMBOL, SYMBOL:field, FRED:series, or CAP:capability-id:series-id.`,
+      `Invalid chart series "${display}". Use SYMBOL, SYMBOL:field, FUT:code, UST:maturity, FRED:series, or CAP:capability-id:series-id.`,
     );
   });
 }

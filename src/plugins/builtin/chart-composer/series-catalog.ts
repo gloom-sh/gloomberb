@@ -8,6 +8,11 @@ import {
 } from "../../../capabilities";
 import type { TimeSeriesFieldDefinition } from "../../../time-series/types";
 import {
+  FUTURES_CONTRACTS,
+  FUTURES_SECTOR_LABELS,
+} from "../futures/contracts";
+import { TREASURY_MATURITIES } from "../yield-curve/treasury-data";
+import {
   canonicalExchange,
   parsePublicTickerKey,
   publicTickerKey,
@@ -230,7 +235,7 @@ function exactExpressionSuggestion(query: string): SeriesCatalogSuggestion | nul
   if (expression.kind === "economic") {
     return {
       id: `fred:${expression.seriesId}`,
-      label: `FRED · ${expression.seriesId}`,
+      label: expression.label ?? `FRED · ${expression.seriesId}`,
       description: "Economic series from FRED",
       detail: "FRED",
       expression,
@@ -253,13 +258,65 @@ function exactExpressionSuggestion(query: string): SeriesCatalogSuggestion | nul
   const instrument = publicTickerKey(expression.symbol, expression.exchange);
   return {
     id: `${instrument}:${expression.fieldId}`,
-    label: `${instrument} · ${field?.label ?? expression.fieldId}`,
+    label: expression.label ?? `${instrument} · ${field?.label ?? expression.fieldId}`,
     description: field
       ? `${fieldCategory(field)} · ${fieldFrequency(field)}`
       : "Security series",
     detail: field ? fieldFrequency(field) : "Security",
     expression,
   };
+}
+
+function matchesAliasQuery(query: string, ...values: string[]): boolean {
+  const tokens = words(query).map(compact);
+  const searchable = compact(values.join(" "));
+  return tokens.length > 0 && tokens.every((token) => searchable.includes(token));
+}
+
+function coreAliasSuggestions(query: string): SeriesCatalogSuggestion[] {
+  const futures = FUTURES_CONTRACTS
+    .filter((contract) => matchesAliasQuery(
+      query,
+      `FUT:${contract.code}`,
+      contract.code,
+      contract.name,
+      `${contract.name} futures`,
+      contract.sector,
+      FUTURES_SECTOR_LABELS[contract.sector],
+    ))
+    .map((contract): SeriesCatalogSuggestion => ({
+      id: `${contract.symbol}:market.ohlcv`,
+      label: `FUT:${contract.code} · ${contract.name}`,
+      description: `${FUTURES_SECTOR_LABELS[contract.sector]} futures`,
+      detail: "Futures",
+      expression: {
+        kind: "security",
+        symbol: contract.symbol,
+        fieldId: "market.ohlcv",
+        label: contract.name,
+      },
+    }));
+  const treasuries = TREASURY_MATURITIES
+    .filter((treasury) => matchesAliasQuery(
+      query,
+      `UST:${treasury.maturity}`,
+      treasury.maturity,
+      treasury.seriesId,
+      `${treasury.maturity.replace("M", " month").replace("Y", " year")} US Treasury yield`,
+    ))
+    .map((treasury): SeriesCatalogSuggestion => ({
+      id: `fred:${treasury.seriesId}`,
+      label: `UST:${treasury.maturity} · Treasury Yield`,
+      description: `U.S. Treasury ${treasury.maturity} yield · FRED ${treasury.seriesId}`,
+      detail: "Treasury",
+      expression: {
+        kind: "economic",
+        provider: "fred",
+        seriesId: treasury.seriesId,
+        label: `${treasury.maturity} Treasury Yield`,
+      },
+    }));
+  return [...futures, ...treasuries];
 }
 
 export function buildCapabilitySeriesSuggestions(
@@ -307,6 +364,9 @@ export function buildSeriesCatalogSuggestions(
     .sort((left, right) => right.score - left.score || left.field.label.localeCompare(right.field.label));
 
   const suggestions: SeriesCatalogSuggestion[] = exact ? [exact] : [];
+  for (const suggestion of coreAliasSuggestions(query)) {
+    if (!suggestions.some((entry) => entry.id === suggestion.id)) suggestions.push(suggestion);
+  }
   const fieldLimit = instruments.length > 1 && !analysis.metricQuery ? 1 : rankedFields.length;
   for (const instrument of instruments) {
     const instrumentLabel = publicTickerKey(instrument.symbol, instrument.exchange);

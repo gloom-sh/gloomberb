@@ -72,6 +72,25 @@ describe("chart composer series catalog", () => {
     });
   });
 
+  test("suggests futures contracts and Treasury maturities from the board catalogs", () => {
+    expect(buildSeriesCatalogSuggestions("e-mini s&p", AAPL)[0]).toMatchObject({
+      label: "FUT:ES · E-Mini S&P 500",
+      expression: {
+        kind: "security",
+        symbol: "ES=F",
+        fieldId: "market.ohlcv",
+      },
+    });
+    expect(buildSeriesCatalogSuggestions("UST:10Y", AAPL)[0]).toMatchObject({
+      label: "10Y Treasury Yield",
+      expression: {
+        kind: "economic",
+        provider: "fred",
+        seriesId: "DGS10",
+      },
+    });
+  });
+
   test("keeps direct FRED IDs available for advanced sources", () => {
     expect(buildSeriesCatalogSuggestions("FRED:CPIAUCSL", AAPL)[0]).toMatchObject({
       label: "FRED · CPIAUCSL",
