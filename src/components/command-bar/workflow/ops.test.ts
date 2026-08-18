@@ -122,6 +122,92 @@ describe("createPaneTemplateOrThrow", () => {
   });
 });
 
+describe("createPaneTemplateOrThrow pane reuse", () => {
+  async function runTemplate(
+    spec: Record<string, unknown>,
+    existing: Array<Record<string, unknown>>,
+  ): Promise<{ focused: string[]; created: number }> {
+    const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-reuse");
+    const layout = cloneLayout(config.layout);
+    layout.instances = existing as never;
+    const state = createInitialState({ ...config, layout });
+    const focused: string[] = [];
+    let created = 0;
+
+    await createPaneTemplateOrThrow("template", undefined, {
+      dataProvider: makeDataProvider() as any,
+      tickerRepository: makeTickerRepository() as any,
+      dispatch: () => {},
+      getState: () => state,
+      pluginRegistry: {
+        paneTemplates: new Map([
+          ["template", {
+            id: "template",
+            paneId: "chat",
+            label: "Chat",
+            description: "Chat",
+            createInstance: () => spec,
+          }],
+        ]),
+        panes: new Map([["chat", { id: "chat", name: "Chat", component: () => null }]]),
+        getPaneTemplatePluginId: () => undefined,
+        focusPaneFn: (paneId: string) => focused.push(paneId),
+        events: { emit: () => {} },
+      } as any,
+      buildPaneInstance: () => {
+        created += 1;
+        return { instanceId: "chat:new", paneId: "chat" } as any;
+      },
+      placePaneInstance: () => {},
+    });
+
+    return { focused, created };
+  }
+
+  test("focuses the instance a stable id owns even after its settings drifted", async () => {
+    const result = await runTemplate(
+      { instanceId: "chat:general", settings: { channelId: "general" } },
+      [{ instanceId: "chat:general", paneId: "chat", settings: { channelId: "random" } }],
+    );
+
+    expect(result.focused).toEqual(["chat:general"]);
+    expect(result.created).toBe(0);
+  });
+
+  test("keeps a different stable id on its own pane", async () => {
+    const result = await runTemplate(
+      { instanceId: "chat:trading", settings: { channelId: "trading" } },
+      [{ instanceId: "chat:general", paneId: "chat", settings: { channelId: "general" } }],
+    );
+
+    expect(result.focused).toEqual([]);
+    expect(result.created).toBe(1);
+  });
+
+  test("reuses an unkeyed template only on an equivalent spec, ignoring settings key order", async () => {
+    const existing = [{
+      instanceId: "chat:stored",
+      paneId: "chat",
+      binding: { kind: "fixed", symbol: "AAPL" },
+      settings: { limit: 10, channelId: "general" },
+    }];
+
+    const same = await runTemplate(
+      { binding: { kind: "fixed", symbol: "AAPL" }, settings: { channelId: "general", limit: 10 } },
+      existing,
+    );
+    expect(same.focused).toEqual(["chat:stored"]);
+    expect(same.created).toBe(0);
+
+    const different = await runTemplate(
+      { binding: { kind: "fixed", symbol: "MSFT" }, settings: { channelId: "general", limit: 10 } },
+      existing,
+    );
+    expect(different.focused).toEqual([]);
+    expect(different.created).toBe(1);
+  });
+});
+
 describe("applyPaneSettingFieldValue", () => {
   test("lets a pane map derived setting fields back to its canonical settings object", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");

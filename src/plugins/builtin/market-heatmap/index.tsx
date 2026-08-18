@@ -25,6 +25,7 @@ import {
   type MarketHeatmapAsset,
   type MarketHeatmapUniverseId,
 } from "./data";
+import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import {
   LIVE_STREAMING_QUICK_SETTING,
   useLiveStreamingSetting,
@@ -45,14 +46,6 @@ function formatMoneyCompact(value: number | null | undefined, currency: string):
 function sizeLabel(asset: MarketHeatmapAsset): string {
   const label = asset.sizeKind === "net-assets" ? "Assets" : "Mkt";
   return `${label} ${formatMoneyCompact(asset.size, asset.currency)}`;
-}
-
-function updatedLabel(timestamp: number | null): string | null {
-  if (!timestamp) return null;
-  return new Date(timestamp).toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 function buildItems(assets: MarketHeatmapAsset[]): Array<MetricTreemapItem<MarketHeatmapAsset>> {
@@ -261,34 +254,31 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     }
   });
 
-  usePaneFooter("market-heatmap", () => {
-    const updated = updatedLabel(lastUpdated);
-    return {
-      info: [
-        ...(selectedAsset ? [{
-          id: "selected",
-          parts: [
-            { text: selectedAsset.symbol, tone: "label" as const },
-            { text: formatCurrency(selectedAsset.price, selectedAsset.currency), tone: "value" as const },
-            { text: formatPercentRaw(selectedAsset.changePercent), tone: "value" as const, color: priceColor(selectedAsset.changePercent), bold: true },
-          ],
-        }] : []),
-        ...(updated ? [{
-          id: "updated",
-          parts: [
-            { text: "updated", tone: "label" as const },
-            { text: updated, tone: "value" as const },
-          ],
-        }] : []),
-        ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-        ...(loadError ? [{ id: "error", parts: [{ text: "error", tone: "muted" as const }] }] : []),
-        ...(feedStatus ? [{
-          id: "feed",
-          parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
-        }] : []),
-      ],
-    };
-  }, [feedStatus, lastUpdated, loadError, loading, selectedAsset]);
+  const updated = useUpdatedAgo(lastUpdated);
+  useAutoRefresh(lastUpdated, refresh);
+
+  usePaneFooter("market-heatmap", () => ({
+    info: [
+      ...(selectedAsset ? [{
+        id: "selected",
+        parts: [
+          { text: selectedAsset.symbol, tone: "label" as const },
+          { text: formatCurrency(selectedAsset.price, selectedAsset.currency), tone: "value" as const },
+          { text: formatPercentRaw(selectedAsset.changePercent), tone: "value" as const, color: priceColor(selectedAsset.changePercent), bold: true },
+        ],
+      }] : []),
+      ...(updated ? [{
+        id: "updated",
+        parts: [{ text: `updated ${updated}`, tone: "muted" as const }],
+      }] : []),
+      ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(loadError ? [{ id: "error", parts: [{ text: "error", tone: "muted" as const }] }] : []),
+      ...(feedStatus ? [{
+        id: "feed",
+        parts: [{ text: feedStatus, tone: feedStatus === "live" ? "value" as const : "muted" as const }],
+      }] : []),
+    ],
+  }), [feedStatus, loadError, loading, selectedAsset, updated]);
 
   const emptyStateTitle = loading
     ? "Loading market heatmap..."

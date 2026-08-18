@@ -7,24 +7,18 @@ import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
 import { useAssetData } from "../../runtime";
+import { useUpdatedAgo } from "../shared/auto-refresh";
 import { MAJOR_CURRENCIES, formatRate, type MajorCurrency } from "./pairs";
 
+// Cross rates are a live board, so this pane keeps its own fast cadence rather
+// than following the global refresh interval.
 const REFRESH_INTERVAL_MS = 60_000;
-
-function formatAge(ms: number): string {
-  const secs = Math.floor(ms / 1000);
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  return `${Math.floor(mins / 60)}h ago`;
-}
 
 function FxMatrixPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const [rates, setRates] = useState<Map<MajorCurrency, number>>(new Map());
   const [loading, setLoading] = useState(true);
   const [lastRefreshed, setLastRefreshed] = useState<number | null>(null);
-  const [now, setNow] = useState(Date.now());
   const fetchGenRef = useRef(0);
 
   const fetchRates = useCallback(async () => {
@@ -64,11 +58,6 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     return () => clearInterval(interval);
   }, [fetchRates]);
 
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 5_000);
-    return () => clearInterval(interval);
-  }, []);
-
   useShortcut((event) => {
     if (!focused) return;
     if (event.name === "r") {
@@ -86,7 +75,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     return rowUsd / colUsd;
   }
 
-  const ageText = lastRefreshed ? `updated ${formatAge(now - lastRefreshed)}` : loading ? "loading…" : "";
+  const updatedAgo = useUpdatedAgo(lastRefreshed);
+  const ageText = updatedAgo ? `updated ${updatedAgo}` : loading ? "loading…" : "";
 
   usePaneFooter("fx-matrix", () => ({
     info: ageText ? [{ id: "updated", parts: [{ text: ageText, tone: loading ? "muted" : "value" }] }] : [],

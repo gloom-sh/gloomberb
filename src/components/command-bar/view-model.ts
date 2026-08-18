@@ -4,6 +4,23 @@ import { truncateToDisplayWidth } from "../../utils/format";
 
 export { rankTickerSearchItems } from "../../tickers/search";
 
+/**
+ * Drop repeats of an id, keeping the first. The root list is assembled from
+ * overlapping sources (pane shortcuts, commands, plugin commands, ticker
+ * actions, layout items) in priority order, so the first hit is the one whose
+ * category and detail fit best.
+ */
+export function dedupeById<T extends { id: string }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    result.push(item);
+  }
+  return result;
+}
+
 export type CommandBarMode = "default" | "search" | "themes" | "plugins" | "layout" | "direct-command";
 
 export interface CommandBarModeInfo {

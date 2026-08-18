@@ -85,12 +85,3 @@ export function formatUpdatedAt(date: Date | null): string {
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((entry) => entry.type === type)?.value ?? "";
   return `Last updated ${part("month")} ${part("day")} at ${part("hour")}:${part("minute")} ${part("dayPeriod")} ET`;
 }
-
-export function formatAge(ms: number): string {
-  const secs = Math.max(0, Math.floor(ms / 1000));
-  if (secs < 60) return `${secs}s ago`;
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  return `${hours}h ago`;
-}

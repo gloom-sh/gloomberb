@@ -13,6 +13,7 @@ import {
 } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import { isCollectionCommand } from "../../helpers";
+import { dedupeById } from "../../view-model";
 import type { ResultItem } from "../../list/model";
 import type { parseRootShortcutIntent } from "./shortcuts";
 import type { CommandBarRoute } from "../../workflow/types";
@@ -157,12 +158,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
         includePromptableTickerTemplates: true,
       })
       : [];
-    const seenItemIds = new Set<string>();
-    for (const item of [...templateItems, ...relatedTemplateItems]) {
-      if (seenItemIds.has(item.id)) continue;
-      seenItemIds.add(item.id);
-      items.push(item);
-    }
+    items.push(...templateItems, ...relatedTemplateItems);
   } else if (
     rootShortcutIntent.kind !== "none"
     && rootShortcutIntent.source === "plugin-command"
@@ -234,5 +230,5 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];
 
-  return { items: [...assistItems, ...items], initialIdx };
+  return { items: dedupeById([...assistItems, ...items]), initialIdx };
 }

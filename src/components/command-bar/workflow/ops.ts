@@ -78,6 +78,41 @@ function updateTickerListPane(
   }));
 }
 
+/** Key order in stored settings is not guaranteed, so compare on sorted keys. */
+function stableKey(value: unknown): string {
+  return JSON.stringify(value, (_key, entry) => (
+    entry && typeof entry === "object" && !Array.isArray(entry)
+      ? Object.fromEntries(Object.entries(entry as Record<string, unknown>).sort(
+        ([left], [right]) => left.localeCompare(right),
+      ))
+      : entry
+  ));
+}
+
+/**
+ * Find the pane a template would otherwise duplicate. A template that owns a
+ * stable instance id (Chat keys one pane per channel) claims that instance
+ * even after its settings drifted at runtime; everything else has to match the
+ * whole create spec, so a different ticker, collection or setting still opens
+ * its own pane.
+ */
+function findReusablePaneInstance(
+  instances: PaneInstanceConfig[],
+  paneId: string,
+  spec: PaneTemplateInstanceConfig,
+): string | null {
+  if (spec.instanceId) {
+    return instances.some((instance) => instance.instanceId === spec.instanceId)
+      ? spec.instanceId
+      : null;
+  }
+  const specKey = stableKey([spec.binding ?? { kind: "none" }, spec.params ?? {}, spec.settings ?? {}]);
+  return instances.find((instance) => (
+    instance.paneId === paneId
+    && stableKey([instance.binding ?? { kind: "none" }, instance.params ?? {}, instance.settings ?? {}]) === specKey
+  ))?.instanceId ?? null;
+}
+
 async function resolvePaneTemplateOptions(
   template: PaneTemplateDef,
   options: PaneTemplateCreateOptions | undefined,
@@ -161,6 +196,16 @@ export async function createPaneTemplateOrThrow(
   const paneDef = deps.pluginRegistry.panes.get(template.paneId);
   if (!paneDef) {
     throw new Error(`Unknown pane "${template.paneId}".`);
+  }
+
+  const existingInstanceId = findReusablePaneInstance(
+    deps.getState().config.layout.instances,
+    template.paneId,
+    spec,
+  );
+  if (existingInstanceId) {
+    deps.pluginRegistry.focusPaneFn(existingInstanceId);
+    return;
   }
 
   const instance = deps.buildPaneInstance(template.paneId, {

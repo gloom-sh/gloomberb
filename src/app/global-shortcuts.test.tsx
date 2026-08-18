@@ -100,12 +100,20 @@ async function renderHarness(
   });
 }
 
-async function emitKeypress(event: { name?: string; ctrl?: boolean; meta?: boolean; super?: boolean; shift?: boolean }) {
+async function emitKeypress(event: {
+  name?: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  super?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+}) {
   const keyEvent = {
     ctrl: false,
     meta: false,
     super: false,
     option: false,
+    alt: false,
     shift: false,
     eventType: "press",
     repeated: false,
@@ -168,23 +176,64 @@ describe("useAppGlobalShortcuts", () => {
     expect(event.propagationStopped).toBe(true);
   });
 
-  test("switches saved layouts with Ctrl-number and consumes the shortcut", async () => {
-    const actions: AppAction[] = [];
-    const config = createDefaultConfig("/tmp/gloomberb-global-shortcuts-layouts");
+  function layoutState(suffix: string, options: { commandBarOpen?: boolean } = {}) {
+    const config = createDefaultConfig(`/tmp/gloomberb-global-shortcuts-${suffix}`);
     config.layouts = [
       { name: "One", layout: cloneLayout(config.layout) },
       { name: "Two", layout: cloneLayout(config.layout) },
       { name: "Three", layout: cloneLayout(config.layout) },
     ];
     config.activeLayoutIndex = 0;
-    const state = createInitialState(config);
-    await renderHarness(state, createRegistry(), (action) => actions.push(action));
+    return { ...createInitialState(config), ...options };
+  }
+
+  test("switches saved layouts with Ctrl-number and consumes the shortcut", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(layoutState("layouts"), createRegistry(), (action) => actions.push(action));
 
     const event = await emitKeypress({ name: "2", ctrl: true });
 
     expect(actions).toEqual([{ type: "SWITCH_LAYOUT", index: 1 }]);
     expect(event.defaultPrevented).toBe(true);
     expect(event.propagationStopped).toBe(true);
+  });
+
+  // Browsers and the desktop webview report Cmd as meta; the OpenTUI host maps
+  // the kitty `super` modifier onto the same field.
+  test("switches saved layouts with the Cmd-number reported by web and kitty hosts", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(layoutState("layouts-meta"), createRegistry(), (action) => actions.push(action));
+
+    const event = await emitKeypress({ name: "3", super: true });
+
+    expect(actions).toEqual([{ type: "SWITCH_LAYOUT", index: 2 }]);
+    expect(event.defaultPrevented).toBe(true);
+    expect(event.propagationStopped).toBe(true);
+  });
+
+  // Alt-digit keeps its terminal meaning; only the primary modifier switches.
+  test("ignores Alt-number", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(layoutState("layouts-alt"), createRegistry(), (action) => actions.push(action));
+
+    const event = await emitKeypress({ name: "2", alt: true });
+
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  test("ignores layout numbers while the command bar is open", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(
+      layoutState("layouts-command-bar", { commandBarOpen: true }),
+      createRegistry(),
+      (action) => actions.push(action),
+    );
+
+    const event = await emitKeypress({ name: "2", ctrl: true });
+
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
   });
 
   test("does not run plain plugin shortcuts while input is captured", async () => {

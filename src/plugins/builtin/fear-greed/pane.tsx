@@ -5,11 +5,11 @@ import { SpeedometerGauge, usePaneFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import type { FearGreedData } from "./data";
+import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { getCachedFearGreedData, loadFearGreed } from "./cache";
 import { IndicatorChart, IndexHistoryChart, PreviousScoreGrid } from "./charts";
 import {
   FEAR_GREED_GAUGE_SEGMENTS,
-  formatAge,
   formatScore,
   ratingColor,
   ratingLabel,
@@ -24,7 +24,6 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   const [loading, setLoading] = useState(!initialCache || initialCache.stale);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<number | null>(initialCache?.fetchedAt ?? null);
-  const [now, setNow] = useState(Date.now());
   const fetchGenRef = useRef(0);
 
   const load = useCallback(async (force = false) => {
@@ -51,14 +50,12 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
     }
   }, [initialCache, load]);
 
-  useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 10_000);
-    return () => clearInterval(interval);
-  }, []);
-
   const refresh = useCallback(() => {
     void load(true);
   }, [load]);
+
+  const updatedAgo = useUpdatedAgo(lastRefreshed);
+  useAutoRefresh(lastRefreshed, refresh);
 
   const stackDesktopSummary = isDesktopWeb && width < DESKTOP_SUMMARY_STACK_WIDTH;
   const desktopSummaryRailWidth = stackDesktopSummary ? Math.max(18, Math.min(width - 2, 42)) : 26;
@@ -74,7 +71,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
     }
   });
 
-  const footerAge = lastRefreshed ? `refreshed ${formatAge(now - lastRefreshed)}` : loading ? "loading" : "";
+  const footerAge = updatedAgo ? `refreshed ${updatedAgo}` : loading ? "loading" : "";
   usePaneFooter(paneId, () => ({
     info: [
       ...(data ? [{

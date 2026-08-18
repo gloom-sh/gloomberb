@@ -70,7 +70,18 @@ export function useAppGlobalShortcuts({
       });
       return;
     }
-    if (!isDetachedWindow && /^[1-9]$/.test(event.name ?? "") && event.ctrl && (state.config.layouts ?? []).length > 1) {
+
+    const hasShortcutModifier = event.ctrl || event.meta || event.super || event.alt;
+
+    if (state.commandBarOpen) return;
+
+    // Terminals send Ctrl; the browser and the desktop webview send Cmd on
+    // macOS, which the OpenTUI host also reports as `super` under the kitty
+    // protocol. Alt stays out so Alt-digit keeps its terminal meaning.
+    if (!isDetachedWindow
+      && /^[1-9]$/.test(event.name ?? "")
+      && (event.ctrl || event.meta || event.super)
+      && (state.config.layouts ?? []).length > 1) {
       const idx = parseInt(event.name!, 10) - 1;
       const layouts = state.config.layouts ?? [];
       if (idx < layouts.length && idx !== state.config.activeLayoutIndex) {
@@ -80,10 +91,6 @@ export function useAppGlobalShortcuts({
       event.stopPropagation();
       return;
     }
-
-    const hasShortcutModifier = event.ctrl || event.meta || event.super || event.alt;
-
-    if (state.commandBarOpen) return;
 
     if (event.name === "tab") {
       const paneOrder = getVisiblePaneCycleOrder(

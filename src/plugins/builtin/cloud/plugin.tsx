@@ -64,7 +64,7 @@ function createChatModule(
       id: "new-chat-pane",
       paneId: "chat",
       label: "New Chat Pane",
-      description: "Open another floating chat window",
+      description: "Open the floating chat window for a channel",
       keywords: ["new", "chat", "pane", "message"],
       shortcut: { prefix: "CHAT", argPlaceholder: "channel", argKind: "text" },
       createInstance: async (context, options) => {
@@ -77,6 +77,12 @@ function createChatModule(
         const targetMessageId = options?.values?.messageId?.trim() || null;
         return {
           placement: "floating",
+          // One pane per channel: re-opening the same channel focuses the pane
+          // that already holds it, even though its channelId setting drifts as
+          // the user switches channels inside the pane. A jump to a specific
+          // message stays unkeyed so it never lands on a pane that already
+          // scrolled past the target.
+          ...(targetMessageId ? {} : { instanceId: `chat:${channelId}` }),
           title: formatChatPaneTitle(channel, channelId),
           settings: {
             channelId,
