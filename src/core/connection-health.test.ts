@@ -37,6 +37,7 @@ describe("ConnectionHealthRegistry", () => {
     expect(second.getSnapshot().sources.map((entry) => entry.id)).toEqual([
       "gloom-cloud-http",
       "gloom-cloud-socket",
+      "gloom-cloud-fred",
     ]);
   });
 

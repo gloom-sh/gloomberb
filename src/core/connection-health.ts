@@ -54,6 +54,7 @@ interface ConnectionHealthOptions {
 
 export const GLOOM_CLOUD_HTTP_CONNECTION_ID = "gloom-cloud-http";
 export const GLOOM_CLOUD_SOCKET_CONNECTION_ID = "gloom-cloud-socket";
+export const GLOOM_CLOUD_FRED_CONNECTION_ID = "gloom-cloud-fred";
 
 const MAX_RECENT_REQUESTS = 20;
 const DEFAULT_REQUEST_STATUS_TTL_MS = 60_000;
@@ -276,6 +277,14 @@ export function registerGloomCloudConnectionSources(health: ConnectionHealthRegi
       ownerId: "gloomberb-cloud",
       priority: 1,
       detail: "api.gloom.sh/cloud/ws",
+    }),
+    health.registerSource({
+      id: GLOOM_CLOUD_FRED_CONNECTION_ID,
+      name: "Gloom / FRED",
+      kind: "api",
+      ownerId: "macro",
+      priority: 2,
+      detail: "api.gloom.sh/cloud/econ/series",
     }),
   ];
   return () => {

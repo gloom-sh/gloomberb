@@ -3,7 +3,9 @@ import { withDeadline } from "../utils/async-deadline";
 import { ApiRequestError, parseApiErrorMessage } from "./errors";
 import {
   connectionHealth,
+  GLOOM_CLOUD_FRED_CONNECTION_ID,
   GLOOM_CLOUD_HTTP_CONNECTION_ID,
+  type ConnectionHealthRegistry,
 } from "../core/connection-health";
 
 const DEFAULT_API_URL = "https://api.gloom.sh";
@@ -43,15 +45,18 @@ export class CloudApiRequestTransport {
   private websocketToken: string | null = null;
   private readonly fetchTransport: CloudApiFetchTransport | null;
   private readonly marketRequestTimeoutMs: number;
+  private readonly connectionHealth: ConnectionHealthRegistry;
 
   readonly baseUrl = getCloudApiBaseUrl();
 
   constructor(options: {
     fetchTransport?: CloudApiFetchTransport;
     marketRequestTimeoutMs?: number;
+    connectionHealth?: ConnectionHealthRegistry;
   } = {}) {
     this.fetchTransport = options.fetchTransport ?? null;
     this.marketRequestTimeoutMs = options.marketRequestTimeoutMs ?? DEFAULT_MARKET_REQUEST_TIMEOUT_MS;
+    this.connectionHealth = options.connectionHealth ?? connectionHealth;
   }
 
   getSessionToken(): string | null {
@@ -125,32 +130,36 @@ export class CloudApiRequestTransport {
     this.setSessionCookieHeader(headers);
     headers.set("Origin", this.baseUrl);
 
-    return connectionHealth.track(
+    const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
+    const request = async () => {
+      const res = await (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${path}`, {
+        ...options,
+        headers,
+        credentials: "include",
+      });
+      throwIfRequestAborted(options?.signal);
+      this.extractSessionCookie(res);
+      const text = await res.text();
+      throwIfRequestAborted(options?.signal);
+
+      if (!res.ok) {
+        const msg = parseApiErrorMessage(text);
+        throw new ApiRequestError(msg, res.status);
+      }
+
+      if (!text) return undefined as T;
+      const parsed = JSON.parse(text) as T & { token?: string };
+      if (typeof parsed?.token === "string" && parsed.token.length > 0) {
+        this.websocketToken = parsed.token;
+      }
+      return parsed as T;
+    };
+    return this.connectionHealth.track(
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
-      `${options?.method ?? "GET"} ${path.split("?")[0]}`,
-      async () => {
-        const res = await (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${path}`, {
-          ...options,
-          headers,
-          credentials: "include",
-        });
-        throwIfRequestAborted(options?.signal);
-        this.extractSessionCookie(res);
-        const text = await res.text();
-        throwIfRequestAborted(options?.signal);
-
-        if (!res.ok) {
-          const msg = parseApiErrorMessage(text);
-          throw new ApiRequestError(msg, res.status);
-        }
-
-        if (!text) return undefined as T;
-        const parsed = JSON.parse(text) as T & { token?: string };
-        if (typeof parsed?.token === "string" && parsed.token.length > 0) {
-          this.websocketToken = parsed.token;
-        }
-        return parsed as T;
-      },
+      operation,
+      () => path.startsWith("/cloud/econ/series/")
+        ? this.connectionHealth.track(GLOOM_CLOUD_FRED_CONNECTION_ID, operation, request)
+        : request(),
     );
   }
 

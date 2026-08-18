@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import {
+  ConnectionHealthRegistry,
+  registerGloomCloudConnectionSources,
+} from "../core/connection-health";
 import { CloudApiRequestTransport } from "./request";
 
 function responseWithBody(body: () => Promise<string>): Response {
@@ -9,6 +13,32 @@ function responseWithBody(body: () => Promise<string>): Response {
     text: body,
   } as Response;
 }
+
+describe("CloudApiRequestTransport connection reporting", () => {
+  test("reports real FRED requests to both Gloom and FRED sources", async () => {
+    const health = new ConnectionHealthRegistry();
+    const dispose = registerGloomCloudConnectionSources(health);
+    const transport = new CloudApiRequestTransport({
+      connectionHealth: health,
+      fetchTransport: async () => responseWithBody(async () => JSON.stringify({ observations: [], info: null })),
+    });
+
+    await transport.request("/cloud/econ/series/VIXCLS?limit=120&sortOrder=desc");
+
+    expect(health.getSnapshot().sources.map((source) => ({
+      id: source.id,
+      status: source.status,
+      operation: source.lastOperation,
+    }))).toEqual([
+      { id: "gloom-cloud-http", status: "connected", operation: "GET /cloud/econ/series/VIXCLS" },
+      { id: "gloom-cloud-socket", status: "idle", operation: null },
+      { id: "gloom-cloud-fred", status: "connected", operation: "GET /cloud/econ/series/VIXCLS" },
+    ]);
+
+    dispose();
+    expect(health.getSnapshot().sources).toEqual([]);
+  });
+});
 
 describe("CloudApiRequestTransport market deadlines", () => {
   test("aborts when response headers never arrive", async () => {

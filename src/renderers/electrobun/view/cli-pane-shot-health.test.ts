@@ -8,6 +8,7 @@ describe("CLI pane shot connection health", () => {
     expect(sources.map((source) => source.id)).toEqual([
       "gloom-cloud-http",
       "gloom-cloud-socket",
+      "gloom-cloud-fred",
       "asset-data.yahoo",
     ]);
     expect(sources.map((source) => ({
@@ -17,6 +18,7 @@ describe("CLI pane shot connection health", () => {
     }))).toEqual([
       { status: "connected", operation: "GET /market/quotes", latency: 84 },
       { status: "connected", operation: null, latency: null },
+      { status: "idle", operation: null, latency: null },
       { status: "error", operation: "getPriceHistory", latency: 240 },
     ]);
   });
