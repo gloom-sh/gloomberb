@@ -266,6 +266,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `ECON` | Economic events and releases |
 | `GC` | Yield curve |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
+| `VIX` | VIX term structure |
+| `CRD` | Credit spreads |
 | `ERN` | Earnings calendar |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television |
 | `BI` / `SP` | S&P 500 sector performance |

@@ -3,6 +3,7 @@ import { brokerManagerModule } from "./broker-manager";
 import { changelogModule } from "./changelog";
 import { connectionsModule } from "./connections";
 import { correlationModule } from "./correlation";
+import { creditConditionsModule } from "./credit-conditions";
 import { economicCalendarModule } from "./econ";
 import { earningsModule } from "./earnings";
 import { fearGreedModule } from "./fear-greed";
@@ -14,6 +15,7 @@ import { layoutManagerModule } from "./layout-manager";
 import { marketHeatmapModule } from "./market-heatmap";
 import { marketMoversModule } from "./market-movers";
 import { tvModule } from "./tv";
+import { volatilityModule } from "./volatility";
 import { composeBuiltinPlugin } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
 import { scannerModule } from "./scanner";
@@ -71,11 +73,13 @@ export const macroPlugin = composeBuiltinPlugin({
   id: "macro",
   name: "Macro",
   version: "1.0.0",
-  description: "Economic calendar, yield curve, Treasury auctions, earnings calendar, and live financial TV.",
+  description: "Economic calendar, rates, volatility, credit spreads, Treasury auctions, earnings, and live financial TV.",
   toggleable: true,
   modules: [
     economicCalendarModule,
     yieldCurveModule,
+    volatilityModule,
+    creditConditionsModule,
     treasuryAuctionsModule,
     earningsModule,
     tvModule,
