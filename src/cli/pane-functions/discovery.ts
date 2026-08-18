@@ -1,3 +1,4 @@
+import { ConnectionHealthRegistry } from "../../core/connection-health";
 import type {
   GloomPlugin,
   GloomPluginContext,
@@ -36,6 +37,7 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     getConfig: () => context.config,
     getPaneDef: (paneId: string) => panes.get(paneId),
     marketData: context.dataProvider,
+    connectionHealth: new ConnectionHealthRegistry(),
     tickerRepository: context.store,
     persistence: fakePersistence,
     log: {

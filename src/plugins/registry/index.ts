@@ -1,5 +1,9 @@
 import type { ReactNode } from "react";
 import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
+import {
+  connectionHealth as sharedConnectionHealth,
+  type ConnectionHealthRegistry,
+} from "../../core/connection-health";
 import type { BrokerAdapter } from "../../types/broker";
 import {
   CapabilityRegistry,
@@ -63,6 +67,7 @@ import { isReservedBuiltinPluginId } from "../ownership";
 interface PluginRegistryOptions {
   enableCapabilityHandlers?: boolean;
   wrapBrokerAdapter?: (broker: BrokerAdapter, pluginId: string) => BrokerAdapter;
+  connectionHealth?: ConnectionHealthRegistry;
 }
 
 export type WindowEditMode = "move" | "resize";
@@ -81,6 +86,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   readonly events: EventBus;
   readonly capabilities: CapabilityRegistry;
+  readonly connectionHealth: ConnectionHealthRegistry;
   readonly marketData: DataProvider;
   readonly tickerRepository: AppTickerRepositoryPort;
   readonly persistence: AppPersistencePort;
@@ -113,6 +119,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   pinTickerFn: ((symbol: string, options?: PinTickerOptions) => void) = () => {};
   navigateTickerFn: ((symbol: string, options?: { sourcePaneId?: string | null }) => void) = () => {};
   getMarketData = () => this.marketData;
+  getConnectionHealth = () => this.connectionHealth;
   getCapability = (capabilityId: string) => this.capabilities.get(capabilityId)?.capability ?? null;
   getBrokerAdapter = (brokerType: string) => this.contributions.brokersMap.get(brokerType) ?? null;
   connectBrokerInstance = (instanceId: string) => this.connectBrokerInstanceFn(instanceId);
@@ -191,6 +198,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
     options: PluginRegistryOptions = {},
   ) {
     this.marketData = marketData;
+    this.connectionHealth = options.connectionHealth ?? sharedConnectionHealth;
     this.tickerRepository = tickerRepository;
     this.persistence = persistence;
     this.enableCapabilityHandlers = options.enableCapabilityHandlers ?? true;
@@ -209,6 +217,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
         const disabledSources = this.getConfigFn().disabledSources ?? [];
         return !disabledSources.includes(capability.sourceId ?? capability.id) && !this.getConfigFn().disabledPlugins.includes(pluginId);
       },
+      connectionHealth: this.connectionHealth,
     });
     this.Slot = ({ name, ...props }: { name: keyof GloomSlots } & Record<string, unknown>) => (
       this.renderSlot(name, props as any)
@@ -300,6 +309,16 @@ export class PluginRegistry implements PluginRuntimeAccess {
     const disposeCapability = this.capabilities.register(pluginId, ownedCapability);
     this.contributions.registerCapability(pluginId, capability.id, items);
     items.capabilityDisposers.push(disposeCapability);
+    if (ownedCapability.kind === "asset-data" || ownedCapability.kind === "news") {
+      items.capabilityDisposers.push(this.connectionHealth.registerSource({
+        id: ownedCapability.id,
+        name: ownedCapability.name,
+        kind: ownedCapability.kind,
+        ownerId: pluginId,
+        priority: ownedCapability.priority,
+        detail: ownedCapability.sourceId,
+      }));
+    }
 
     if (ownedCapability.kind === "news") {
       const dispose = this.registerNewsCapabilityFn(ownedCapability as NewsCapability);
@@ -413,6 +432,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       contributions: this.contributions,
       enableCapabilityHandlers: this.enableCapabilityHandlers,
       marketData: this.marketData,
+      connectionHealth: this.connectionHealth,
       tickerRepository: this.tickerRepository,
       persistence: this.persistence,
       getLayout: () => this.getLayoutFn(),

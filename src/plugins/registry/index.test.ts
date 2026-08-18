@@ -145,6 +145,7 @@ describe("built-in composite plugin ownership", () => {
     expect(registry.getPluginPaneIds("application")).toEqual(expect.arrayContaining([
       "help",
       "changelog",
+      "connections",
     ]));
     expect(registry.getPluginPaneIds("macro")).toEqual(expect.arrayContaining([
       "econ-calendar",
@@ -155,6 +156,7 @@ describe("built-in composite plugin ownership", () => {
     expect(registry.getPaneTemplatePluginId("macro-tv-pane")).toBe("macro");
     expect(registry.getPanePluginId("analytics")).toBe("portfolio");
     expect(registry.getPanePluginId("help")).toBe("application");
+    expect(registry.getPanePluginId("connections")).toBe("application");
     expect(registry.getPanePluginId("macro-tv")).toBe("macro");
     expect(registry.getCommandPluginId("earnings-monitor-shortcut")).toBe("macro");
     expect(registry.getCommandPluginId("gridlock-all")).toBe("application");

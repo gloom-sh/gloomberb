@@ -1,4 +1,5 @@
 import type { CachePolicyMap } from "../types/persistence";
+import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { AssetDataProvider } from "../types/data-provider";
 import type { NewsDataProvider } from "../types/capability-route-source";
 
@@ -92,6 +93,7 @@ export interface CapabilityManifest {
 export interface CapabilityRegistryOptions {
   isPluginEnabled?(pluginId: string): boolean;
   isCapabilityEnabled?(capability: PluginCapability, pluginId: string): boolean;
+  connectionHealth?: ConnectionHealthRegistry;
 }
 
 export interface RegisteredCapability {

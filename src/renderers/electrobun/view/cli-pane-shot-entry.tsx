@@ -2,6 +2,7 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, type ComponentType, type ReactNode } from "react";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
+import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { UiHostProvider, type RendererHost } from "../../../ui/host";
@@ -315,6 +316,7 @@ function installShotMarketData(payload: CliPaneShotPayload): void {
 
 function createRuntime(payload: CliPaneShotPayload): PluginRuntimeAccess {
   const resumeState = new Map<string, unknown>();
+  const connectionHealth = new ConnectionHealthRegistry();
   function getResumeState<T = unknown>(_pluginId: string, key: string): T | null {
     return (resumeState.get(key) as T | undefined) ?? null;
   }
@@ -323,6 +325,7 @@ function createRuntime(payload: CliPaneShotPayload): PluginRuntimeAccess {
   }
   return {
     getMarketData: () => shotDataProvider,
+    getConnectionHealth: () => connectionHealth,
     getCapability: () => null,
     getBrokerAdapter: () => null,
     connectBrokerInstance: async () => {},

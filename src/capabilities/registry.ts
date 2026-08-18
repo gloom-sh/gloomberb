@@ -12,6 +12,8 @@ interface SubscriptionEntry {
   dispose: () => void;
 }
 
+const LOCAL_READ_OPERATIONS = new Set(["getCachedFinancialsForTargets", "getCachedNews"]);
+
 export class CapabilityRegistry {
   private readonly capabilities = new Map<string, RegisteredCapability>();
   private readonly subscriptions = new Map<string, SubscriptionEntry>();
@@ -87,7 +89,11 @@ export class CapabilityRegistry {
     const { capability, operation } = this.resolveOperation(capabilityId, operationId, options);
     if (!operation.handler) throw new Error(`Capability operation "${capabilityId}.${operationId}" is not invokable.`);
     const input = (operation.input ?? recordSchema).parse(payload);
-    const result = await operation.handler(input, { capability, operationId });
+    const invoke = () => Promise.resolve(operation.handler!(input, { capability, operationId }));
+    const health = this.options.connectionHealth;
+    const result = health?.hasSource(capabilityId) && !LOCAL_READ_OPERATIONS.has(operationId)
+      ? await health.track(capabilityId, operationId, invoke)
+      : await invoke();
     return (operation.output ? operation.output.parse(result) : result) as T;
   }
 

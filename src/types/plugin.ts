@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppTickerRepositoryPort } from "../core/app-service-ports";
+import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { PluginEvents } from "../plugins/event-bus";
 import type { PluginLogger } from "../utils/debug-log";
 import type { BrokerAdapter } from "./broker";
@@ -526,6 +527,7 @@ export interface GloomPluginContext {
   getPaneDef(paneId: string): PaneDef | undefined;
 
   readonly marketData: DataProvider;
+  readonly connectionHealth: ConnectionHealthRegistry;
   readonly tickerRepository: AppTickerRepositoryPort;
   readonly persistence: PluginPersistence;
   readonly log: PluginLogger;

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { CapabilityRegistry } from "./registry";
+import { ConnectionHealthRegistry } from "../core/connection-health";
 import type { CapabilitySchema, PluginCapability } from "./types";
 
 interface IncrementInput {
@@ -80,6 +81,33 @@ describe("CapabilityRegistry", () => {
 
     await expect(registry.invoke("plugin-service.test", "increment", { value: 1 }, { renderer: true }))
       .resolves.toBe(2);
+  });
+
+  test("reports invokable provider operations through the connection boundary", async () => {
+    let clock = 10;
+    const health = new ConnectionHealthRegistry({ clock: () => clock });
+    health.registerSource({ id: "asset-data.test", name: "Test", kind: "asset-data" });
+    const registry = new CapabilityRegistry({ connectionHealth: health });
+    registry.register("plugin-a", testCapability({
+      id: "asset-data.test",
+      kind: "asset-data",
+      operations: {
+        read: {
+          kind: "read",
+          handler: async () => {
+            clock = 16;
+            return "ok";
+          },
+        },
+      },
+    }));
+
+    await expect(registry.invoke("asset-data.test", "read", {})).resolves.toBe("ok");
+    expect(health.getSnapshot().sources[0]).toMatchObject({
+      status: "connected",
+      lastOperation: "read",
+      lastLatencyMs: 6,
+    });
   });
 
   test("emits renderer-safe manifests only when requested", () => {

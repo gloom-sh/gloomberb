@@ -1,4 +1,5 @@
 import type { NewsCapability } from "../capabilities";
+import type { ConnectionHealthRegistry } from "../core/connection-health";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
 import {
   DEFAULT_GLOBAL_QUERY,
@@ -20,6 +21,7 @@ export interface NewsServiceOptions {
   inactiveQueryTtlMs?: number;
   maxInactiveQueries?: number;
   now?: () => number;
+  connectionHealth?: ConnectionHealthRegistry;
 }
 
 export type NewsQueryListener = (state: NewsQueryState) => void;
@@ -60,12 +62,14 @@ export class NewsService {
   private readonly inactiveQueryTtlMs: number;
   private readonly maxInactiveQueries: number;
   private readonly now: () => number;
+  private readonly connectionHealth?: ConnectionHealthRegistry;
 
   constructor(options: NewsServiceOptions = {}) {
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.inactiveQueryTtlMs = Math.max(1, options.inactiveQueryTtlMs ?? DEFAULT_INACTIVE_QUERY_TTL_MS);
     this.maxInactiveQueries = Math.max(1, Math.floor(options.maxInactiveQueries ?? DEFAULT_MAX_INACTIVE_QUERIES));
     this.now = options.now ?? Date.now;
+    this.connectionHealth = options.connectionHealth;
   }
 
   register(source: NewsCapability): () => void {
@@ -152,7 +156,11 @@ export class NewsService {
 
     for (const source of sources) {
       try {
-        const article = await source.provider.fetchNewsStory?.(storyId);
+        const article = await this.trackSourceRequest(
+          source,
+          "fetchNewsStory",
+          () => source.provider.fetchNewsStory?.(storyId) ?? Promise.resolve(null),
+        );
         if (!article) continue;
         this.mergeStoryDetail(article);
         return article;
@@ -289,8 +297,11 @@ export class NewsService {
     let firstEmpty: SourceFetchResult | null = null;
     for (const source of sources) {
       try {
-        const articles = (await source.provider.fetchNews(query))
-          .map((article) => markDetailCapableArticle(source, article));
+        const articles = (await this.trackSourceRequest(
+          source,
+          "fetchNews",
+          () => source.provider.fetchNews(query),
+        )).map((article) => markDetailCapableArticle(source, article));
         const result = { articles, sourceIds: [newsCapabilitySourceId(source)] };
         if (articles.length > 0) return result;
         firstEmpty ??= result;
@@ -305,8 +316,11 @@ export class NewsService {
     const settled = await Promise.allSettled(
       sources.map(async (source) => ({
         source,
-        articles: (await source.provider.fetchNews(query))
-          .map((article) => markDetailCapableArticle(source, article)),
+        articles: (await this.trackSourceRequest(
+          source,
+          "fetchNews",
+          () => source.provider.fetchNews(query),
+        )).map((article) => markDetailCapableArticle(source, article)),
       })),
     );
     const articles: NewsArticle[] = [];
@@ -317,6 +331,16 @@ export class NewsService {
       sourceIds.push(newsCapabilitySourceId(result.value.source));
     }
     return { articles, sourceIds };
+  }
+
+  private trackSourceRequest<T>(
+    source: NewsCapability,
+    operation: string,
+    request: () => Promise<T>,
+  ): Promise<T> {
+    return this.connectionHealth?.hasSource(source.id)
+      ? this.connectionHealth.track(source.id, operation, request)
+      : request();
   }
 
   private seedCachedSource(source: NewsCapability): void {

@@ -1,4 +1,5 @@
 import type { PluginRuntimeAccess } from "../plugins/runtime";
+import { ConnectionHealthRegistry } from "../core/connection-health";
 import type { AppConfig } from "../types/config";
 
 interface TestConfigAccess {
@@ -9,8 +10,10 @@ interface TestConfigAccess {
 export function createTestPluginRuntime(
   overrides: Partial<PluginRuntimeAccess> = {},
 ): PluginRuntimeAccess {
+  const connectionHealth = new ConnectionHealthRegistry();
   return {
     getMarketData: () => null,
+    getConnectionHealth: () => connectionHealth,
     getCapability: () => null,
     getBrokerAdapter: () => null,
     connectBrokerInstance: async () => {},

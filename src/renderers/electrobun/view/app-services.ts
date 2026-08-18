@@ -11,6 +11,7 @@ import { getRendererBuiltinPlugins } from "../../../plugins/catalog-ui";
 import { createRemoteAssetDataClient } from "./remote/asset-data-client";
 import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
+import { connectRemoteConnectionHealth } from "./remote/connection-health";
 
 const servicesLog = debugLog.createLogger("services");
 
@@ -26,7 +27,7 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     enableCapabilityHandlers: false,
     wrapBrokerAdapter: (broker) => createRemoteBrokerAdapter(broker),
   });
-  const newsService = new NewsService();
+  const newsService = new NewsService({ connectionHealth: pluginRegistry.connectionHealth });
 
   pluginRegistry.getConfigFn = () => config;
   pluginRegistry.getLayoutFn = () => config.layout;
@@ -55,6 +56,10 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
   measurePerf("startup.services.news-start", () => {
     newsService.start();
   });
+  let disposeRemoteConnectionHealth = () => {};
+  const ready = Promise.all(pluginReadyPromises).then(() => {
+    disposeRemoteConnectionHealth = connectRemoteConnectionHealth(pluginRegistry.connectionHealth);
+  });
   servicesLog.info("create desktop web services complete", { pluginCount: plugins.length });
 
   return {
@@ -63,8 +68,9 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     dataProvider,
     marketData,
     pluginRegistry,
-    ready: Promise.all(pluginReadyPromises).then(() => {}),
+    ready,
     destroy() {
+      disposeRemoteConnectionHealth();
       setSharedMarketDataCoordinator(null);
       setSharedNewsService(null);
       newsService.stop();

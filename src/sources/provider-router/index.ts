@@ -1,4 +1,5 @@
 import type { ResourceStore } from "../../data/resource-store";
+import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { BrokerAdapter } from "../../types/broker";
 import type { AppConfig } from "../../types/config";
@@ -39,6 +40,7 @@ import {
 import { ProviderRouterSearchRoutes } from "./search";
 import { collectCapabilityRouteSources, normalizeRouteSource } from "./sources";
 import type { ProviderRouterCoreDeps } from "./route-types";
+import { withProviderConnectionHealth } from "./connection-health";
 import {
   contextFromCachedTarget,
   getBrokerCandidates,
@@ -69,11 +71,13 @@ export class AssetDataRouter implements DataProvider {
   private readonly supplementalRoutes: ProviderRouterSupplementalRoutes;
   private readonly financialRoutes: ProviderRouterFinancialRoutes;
   private readonly documentRoutes: ProviderRouterDocumentRoutes;
+  private readonly healthyProviders = new WeakMap<DataProvider, DataProvider>();
 
   constructor(
     fallbackSource: CapabilityRouteSource | DataProvider | null = null,
     extraSources: Array<CapabilityRouteSource | DataProvider> = [],
     private readonly resources?: ResourceStore,
+    private readonly connectionHealth?: ConnectionHealthRegistry,
   ) {
     this.fallbackSource = fallbackSource ? normalizeRouteSource(fallbackSource) : null;
     this.extraSources = extraSources.map(normalizeRouteSource);
@@ -377,7 +381,14 @@ export class AssetDataRouter implements DataProvider {
     if (fallbackProvider && !providers.some((provider) => provider.id === fallbackProvider.id)) {
       providers.push(fallbackProvider);
     }
-    return providers;
+    if (!this.connectionHealth) return providers;
+    return providers.map((provider) => {
+      const existing = this.healthyProviders.get(provider);
+      if (existing) return existing;
+      const wrapped = withProviderConnectionHealth(provider, this.connectionHealth!);
+      this.healthyProviders.set(provider, wrapped);
+      return wrapped;
+    });
   }
 
   private newsSourcesInPriorityOrder(): CapabilityRouteSource[] {

@@ -5,6 +5,7 @@ import {
   type ReactNode,
 } from "react";
 import type { BrokerAdapter } from "../../types/broker";
+import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { PluginCapability } from "../../capabilities";
 import type { DataProvider } from "../../types/data-provider";
 import type {
@@ -18,6 +19,7 @@ import type {
 
 export interface PluginRuntimeAccess {
   getMarketData(): DataProvider | null;
+  getConnectionHealth(): ConnectionHealthRegistry;
   getCapability(capabilityId: string): PluginCapability | null;
   getBrokerAdapter(brokerType: string): BrokerAdapter | null;
   connectBrokerInstance(instanceId: string): Promise<void>;

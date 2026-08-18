@@ -1,6 +1,10 @@
 import { httpFetch } from "../utils/http-transport";
 import { withDeadline } from "../utils/async-deadline";
 import { ApiRequestError, parseApiErrorMessage } from "./errors";
+import {
+  connectionHealth,
+  GLOOM_CLOUD_HTTP_CONNECTION_ID,
+} from "../core/connection-health";
 
 const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
@@ -121,27 +125,33 @@ export class CloudApiRequestTransport {
     this.setSessionCookieHeader(headers);
     headers.set("Origin", this.baseUrl);
 
-    const res = await (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${path}`, {
-      ...options,
-      headers,
-      credentials: "include",
-    });
-    throwIfRequestAborted(options?.signal);
-    this.extractSessionCookie(res);
-    const text = await res.text();
-    throwIfRequestAborted(options?.signal);
+    return connectionHealth.track(
+      GLOOM_CLOUD_HTTP_CONNECTION_ID,
+      `${options?.method ?? "GET"} ${path.split("?")[0]}`,
+      async () => {
+        const res = await (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${path}`, {
+          ...options,
+          headers,
+          credentials: "include",
+        });
+        throwIfRequestAborted(options?.signal);
+        this.extractSessionCookie(res);
+        const text = await res.text();
+        throwIfRequestAborted(options?.signal);
 
-    if (!res.ok) {
-      const msg = parseApiErrorMessage(text);
-      throw new ApiRequestError(msg, res.status);
-    }
+        if (!res.ok) {
+          const msg = parseApiErrorMessage(text);
+          throw new ApiRequestError(msg, res.status);
+        }
 
-    if (!text) return undefined as T;
-    const parsed = JSON.parse(text) as T & { token?: string };
-    if (typeof parsed?.token === "string" && parsed.token.length > 0) {
-      this.websocketToken = parsed.token;
-    }
-    return parsed as T;
+        if (!text) return undefined as T;
+        const parsed = JSON.parse(text) as T & { token?: string };
+        if (typeof parsed?.token === "string" && parsed.token.length > 0) {
+          this.websocketToken = parsed.token;
+        }
+        return parsed as T;
+      },
+    );
   }
 
   private extractSessionCookie(res: CloudApiResponse): void {

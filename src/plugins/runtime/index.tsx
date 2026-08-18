@@ -103,6 +103,11 @@ export function useAssetData(): ReturnType<PluginRuntimeAccess["getMarketData"]>
   return useMarketData();
 }
 
+export function useConnectionHealth(): ReturnType<PluginRuntimeAccess["getConnectionHealth"]> {
+  const { runtime } = usePluginRenderContext();
+  return runtime.getConnectionHealth();
+}
+
 export function usePluginBrokerActions() {
   const { runtime } = usePluginRenderContext();
   return {

@@ -1,4 +1,5 @@
 import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
+import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { BrokerInstanceConfig, LayoutConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
@@ -30,6 +31,7 @@ export interface RegistryPluginContextOptions {
   contributions: RegistryContributions;
   enableCapabilityHandlers: boolean;
   marketData: DataProvider;
+  connectionHealth: ConnectionHealthRegistry;
   tickerRepository: AppTickerRepositoryPort;
   persistence: AppPersistencePort;
   getLayout: () => LayoutConfig;
@@ -79,6 +81,7 @@ export function createRegistryPluginContext({
   contributions,
   enableCapabilityHandlers,
   marketData,
+  connectionHealth,
   tickerRepository,
   persistence,
   getLayout,
@@ -170,6 +173,7 @@ export function createRegistryPluginContext({
     getPaneDef: (paneId) => contributions.panesMap.get(paneId),
 
     marketData,
+    connectionHealth,
     tickerRepository,
     persistence: pluginPersistence,
     log,
