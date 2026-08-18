@@ -178,6 +178,31 @@ describe("pane screenshot chart-composer inputs", () => {
     expect(shotUnavailableSymbols(composer, payload([]), semanticUi)).toEqual([]);
   });
 
+  test("accepts capability-backed composer evidence and reports an empty provider series", () => {
+    const composer = resolved("chart-composer", {});
+    const populated: RemoteUiNodeSnapshot[] = [{
+      id: "chart-composer-data",
+      role: "chart-data",
+      actions: [],
+      metadata: {
+        kind: "chart-composer",
+        baseSeries: [{
+          sourceKind: "capability",
+          capabilityId: "prediction-markets.series",
+          providerSeriesId: "polymarket:one",
+          pointCount: 5,
+        }],
+      },
+    }];
+    expect(shotSemanticRowCount(composer, payload([]), populated)).toBe(5);
+    expect(shotUnavailableSymbols(composer, payload([]), populated)).toEqual([]);
+
+    const empty = structuredClone(populated);
+    (empty[0]!.metadata as any).baseSeries[0].pointCount = 0;
+    expect(shotUnavailableSymbols(composer, payload([]), empty))
+      .toEqual(["CAP:prediction-markets.series:polymarket:one"]);
+  });
+
   test("reports an empty FRED composer source as unavailable", () => {
     const semanticUi: RemoteUiNodeSnapshot[] = [{
       id: "chart-composer-data",

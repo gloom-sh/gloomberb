@@ -26,6 +26,7 @@ import { PredictionMarketOverviewView } from "./overview";
 import { PredictionMarketRulesView } from "./rules";
 import { truncatePredictionText } from "./shared";
 import { PredictionMarketTradesView } from "./trades";
+import { PredictionMarketChart } from "../chart";
 
 type RelatedMarketPointerEvent = { preventDefault(): void };
 
@@ -262,10 +263,6 @@ export function PredictionMarketDetailPane({
             <PredictionMarketOverviewView
               detail={detail}
               detailWidth={detailWidth}
-              height={height}
-              historyRange={historyRange}
-              loading={detailLoading}
-              onHistoryRangeChange={onHistoryRangeChange}
               onSelectMarket={onSelectMarket}
               selectedRow={selectedRow}
               summary={summaryMetrics}
@@ -280,6 +277,17 @@ export function PredictionMarketDetailPane({
           )}
         </ScrollBox>
       ) : null}
+
+      {detailTab === "chart" && (
+        <PredictionMarketChart
+          history={detail?.history ?? []}
+          width={detailWidth}
+          height={Math.max(height - 8, 8)}
+          loading={detailLoading}
+          range={historyRange}
+          onRangeSelect={onHistoryRangeChange}
+        />
+      )}
 
       {detailTab === "book" && (
         detail ? (

@@ -69,6 +69,34 @@ describe("chart spec normalization and validation", () => {
     expect(validateChartSpec(normalized).valid).toBe(true);
   });
 
+  test("persists and clones unknown capability sources without requiring the provider", () => {
+    const normalized = normalizeChartSpec({
+      viewport: { range: "1M", resolution: "auto" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "plugin-series",
+        source: {
+          kind: "capability",
+          capabilityId: "missing.provider",
+          seriesId: "market-1",
+          parameters: { outcome: "yes", nested: { venue: "test" } },
+        },
+        style: "area",
+        transform: "raw",
+        panelId: "main",
+      }],
+      studies: [],
+    });
+    const cloned = normalizeChartSpec(normalized);
+    expect(cloned.series[0]?.source).toEqual(normalized.series[0]?.source);
+    expect(cloned.series[0]?.source).not.toBe(normalized.series[0]?.source);
+    if (cloned.series[0]?.source.kind !== "capability" || normalized.series[0]?.source.kind !== "capability") {
+      throw new Error("expected capability source");
+    }
+    expect(cloned.series[0].source.parameters).not.toBe(normalized.series[0].source.parameters);
+    expect(validateChartSpec(cloned).valid).toBe(true);
+  });
+
   test("coerces OHLC modes away from scalar economic series", () => {
     const normalized = normalizeChartSpec({
       viewport: { range: "1Y", resolution: "auto" },

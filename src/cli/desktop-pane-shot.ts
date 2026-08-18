@@ -3,6 +3,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { pathToFileURL } from "url";
 import type { AppConfig } from "../types/config";
+import type { ResolvedSeries } from "../time-series/types";
 import type { OptionsChain, TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import type { PaneRuntimeState } from "../core/state/app/state";
@@ -24,6 +25,7 @@ export interface DesktopPaneShotPayload {
   financials: Array<[string, TickerFinancials]>;
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
+  capabilitySeries: Array<[string, ResolvedSeries]>;
   paneState: Record<string, PaneRuntimeState>;
 }
 

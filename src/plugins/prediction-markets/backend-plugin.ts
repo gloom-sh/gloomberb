@@ -3,6 +3,7 @@ import {
   attachPredictionMarketsPersistence,
   resetPredictionMarketsPersistence,
 } from "./services/fetch";
+import { predictionChartSeriesCapability } from "./capability";
 
 export const predictionMarketsBackendPlugin: GloomPlugin = {
   id: "prediction-markets",
@@ -10,6 +11,7 @@ export const predictionMarketsBackendPlugin: GloomPlugin = {
   version: "1.0.0",
   description: "Browse prediction markets (Polymarket and Kalshi).",
   toggleable: true,
+  capabilities: [predictionChartSeriesCapability],
   setup(ctx) {
     attachPredictionMarketsPersistence(ctx.persistence);
   },

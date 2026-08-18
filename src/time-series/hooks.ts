@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { apiClient } from "../api-client";
 import { loadCachedFredSeries } from "../data/fred-series";
 import { instrumentFromTicker } from "../market-data/request-types";
-import { useAssetData } from "../plugins/runtime";
+import { useAssetData, useCapabilityInvoker } from "../plugins/runtime";
+import { createChartSeriesResolver } from "../capabilities";
 import { useAppSelector } from "../state/app/context";
 import type { FredSeriesRequest } from "../data/fred-series";
 import type { TickerRecord } from "../types/ticker";
@@ -56,11 +57,16 @@ export function useResolvedChartSpec(
   options: UseChartResolutionOptions = {},
 ): UseChartResolutionResult {
   const dataProvider = useAssetData();
+  const capabilityInvoker = useCapabilityInvoker();
   const tickers = useAppSelector((state) => state.tickers);
   const hydratedSpec = useMemo(
     () => hydrateChartSpecInstruments(spec, tickers),
     [spec, tickers],
   );
-  const sources = useMemo(() => ({ dataProvider, loadFredSeries: loadFred }), [dataProvider]);
+  const sources = useMemo(() => ({
+    dataProvider,
+    loadFredSeries: loadFred,
+    resolveCapabilitySeries: createChartSeriesResolver(capabilityInvoker),
+  }), [capabilityInvoker, dataProvider]);
   return useChartResolution(hydratedSpec, sources, options);
 }

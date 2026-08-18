@@ -26,7 +26,23 @@ export interface EconomicSeriesSource {
   seriesId: string;
 }
 
-export type ChartSeriesSource = SecuritySeriesSource | EconomicSeriesSource;
+export type ChartSeriesParameterValue =
+  | string
+  | number
+  | boolean
+  | null
+  | ChartSeriesParameterValue[]
+  | { [key: string]: ChartSeriesParameterValue };
+
+/** Persisted provider-owned source. Capability availability is resolved at runtime. */
+export interface CapabilitySeriesSource {
+  kind: "capability";
+  capabilityId: string;
+  seriesId: string;
+  parameters?: Record<string, ChartSeriesParameterValue>;
+}
+
+export type ChartSeriesSource = SecuritySeriesSource | EconomicSeriesSource | CapabilitySeriesSource;
 
 export interface ChartSeriesSpec {
   id: string;

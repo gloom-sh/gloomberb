@@ -25,20 +25,24 @@ function viewportEvidence(viewport: UseChartResolutionResult["viewport"]) {
 }
 
 function sourceEvidence(series: ChartSeriesSpec) {
-  return series.source.kind === "security"
-    ? {
-      sourceKind: "security",
-      symbol: publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange),
-      exchange: series.source.instrument.exchange ?? null,
-      fieldId: series.source.fieldId,
-      period: series.source.period ?? "auto",
-      timestampMode: series.source.timestampMode ?? null,
-    }
-    : {
-      sourceKind: "economic",
-      provider: series.source.provider,
-      economicSeriesId: series.source.seriesId,
-    };
+  if (series.source.kind === "security") return {
+    sourceKind: "security",
+    symbol: publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange),
+    exchange: series.source.instrument.exchange ?? null,
+    fieldId: series.source.fieldId,
+    period: series.source.period ?? "auto",
+    timestampMode: series.source.timestampMode ?? null,
+  };
+  if (series.source.kind === "economic") return {
+    sourceKind: "economic",
+    provider: series.source.provider,
+    economicSeriesId: series.source.seriesId,
+  };
+  return {
+    sourceKind: "capability",
+    capabilityId: series.source.capabilityId,
+    providerSeriesId: series.source.seriesId,
+  };
 }
 
 /** Stable semantic evidence used by desktop automation and bot-safe screenshots. */

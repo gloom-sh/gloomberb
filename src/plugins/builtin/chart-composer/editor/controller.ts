@@ -223,7 +223,7 @@ export function useSeriesEditorController({
     if (!selected) return false;
     const parsed = parseSeriesExpression(expression);
     if (!parsed) {
-      setError("Use SYMBOL, SYMBOL:field, SYMBOL:EXCHANGE:field, or FRED:series.");
+      setError("Use SYMBOL, SYMBOL:field, FRED:series, or CAP:capability-id:series-id.");
       return false;
     }
     expressionCommitLockRef.current = true;

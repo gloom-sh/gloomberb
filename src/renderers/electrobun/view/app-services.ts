@@ -12,6 +12,7 @@ import { createRemoteAssetDataClient } from "./remote/asset-data-client";
 import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
 import { connectBackendConnectionHealth } from "./remote/connection-health-backend";
+import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
 
 const servicesLog = debugLog.createLogger("services");
 
@@ -26,6 +27,12 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
   const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence, {
     enableCapabilityHandlers: false,
     wrapBrokerAdapter: (broker) => createRemoteBrokerAdapter(broker),
+    remoteCapabilityManifests: () => getElectrobunBackendInitSnapshot()?.capabilityManifests ?? [],
+    remoteCapabilityInvoke: (capabilityId, operationId, payload) => backendRequest("capability.invoke", {
+      capabilityId,
+      operationId,
+      payload,
+    }),
   });
   const newsService = new NewsService({ connectionHealth: pluginRegistry.connectionHealth });
 

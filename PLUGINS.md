@@ -243,6 +243,7 @@ Plugins contribute data and services through capabilities. A capability declares
 
 - `asset-data` for quotes, financials, search, FX, price history, options, filings, holders, analyst research, corporate actions, earnings calendars, article summaries, and quote streams.
 - `news` for ticker and global news feeds.
+- `chart-series` for searchable provider-owned time series that resolve into normal chart data.
 - `plugin-service` for narrow renderer-safe service escape hatches.
 
 Capability operations can also include CLI manifest metadata. This is what makes the operation understandable to automation without plugin-specific documentation:

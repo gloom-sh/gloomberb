@@ -121,7 +121,7 @@ async function resolvePolymarketSummary(
   };
 }
 
-async function loadPolymarketHistory(
+export async function loadPolymarketHistory(
   summary: PredictionMarketSummary,
   range: "1D" | "1W" | "1M" | "ALL",
 ): Promise<PredictionHistoryPoint[]> {

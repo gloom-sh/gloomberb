@@ -108,6 +108,10 @@ export function useConnectionHealth(): ReturnType<PluginRuntimeAccess["getConnec
   return runtime.getConnectionHealth();
 }
 
+export function useCapabilityInvoker(): PluginRuntimeAccess {
+  return usePluginRenderContext().runtime;
+}
+
 export function usePluginBrokerActions() {
   const { runtime } = usePluginRenderContext();
   return {

@@ -29,6 +29,8 @@ import { publicTickerKey } from "../../utils/exchanges";
 import { apiClient } from "../../api-client";
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { resolveChartSpecData } from "../../time-series/resolve";
+import { createChartSeriesResolver } from "../../capabilities";
+import { getSharedRegistry } from "../../plugins/registry";
 import { formatTimestamp } from "../helpers";
 import { buildTickerReport } from "../commands/ticker";
 import { createBaseConverter } from "../base-converter";
@@ -226,8 +228,10 @@ async function buildChartComposerReport(
         : series;
     })),
   };
+  const capabilityInvoker = getSharedRegistry();
   const result = await resolveChartSpecData(spec, {
     dataProvider: context.dataProvider,
+    ...(capabilityInvoker ? { resolveCapabilitySeries: createChartSeriesResolver(capabilityInvoker) } : {}),
     loadFredSeries: async (request) => ({
       data: await apiClient.getCloudFredSeries(request.seriesId, {
         startDate: request.startDate,
@@ -261,7 +265,9 @@ async function buildChartComposerReport(
     if (output?.points.length) return [];
     return [entry.source.kind === "security"
       ? publicTickerKey(entry.source.instrument.symbol, entry.source.instrument.exchange)
-      : `FRED:${entry.source.seriesId}`];
+      : entry.source.kind === "economic"
+        ? `FRED:${entry.source.seriesId}`
+        : `CAP:${entry.source.capabilityId}:${entry.source.seriesId}`];
   });
   const rowCount = series.reduce((count, entry) => count + entry.observations.length, 0);
   const tableRows = series.map((entry) => {

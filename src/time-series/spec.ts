@@ -12,6 +12,7 @@ import {
 import {
   CHART_SPEC_VERSION,
   type ChartPanelSpec,
+  type ChartSeriesParameterValue,
   type ChartSeriesSource,
   type ChartSeriesSpec,
   type ChartSpec,
@@ -117,7 +118,9 @@ function cloneSpec(spec: ChartSpec): ChartSpec {
       ...entry,
       source: entry.source.kind === "security"
         ? { ...entry.source, instrument: { ...entry.source.instrument } }
-        : { ...entry.source },
+        : entry.source.kind === "capability"
+          ? { ...entry.source, parameters: entry.source.parameters ? structuredClone(entry.source.parameters) : undefined }
+          : { ...entry.source },
     })),
     studies: spec.studies.map((study) => ({
       ...study,
@@ -127,6 +130,26 @@ function cloneSpec(spec: ChartSpec): ChartSpec {
   };
 }
 
+function normalizeParameterValue(value: unknown): ChartSeriesParameterValue | undefined {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined;
+  if (Array.isArray(value)) {
+    const values = value.map(normalizeParameterValue);
+    return values.some((entry) => entry === undefined)
+      ? undefined
+      : values as ChartSeriesParameterValue[];
+  }
+  const input = record(value);
+  if (!input) return undefined;
+  const output: Record<string, ChartSeriesParameterValue> = {};
+  for (const [key, entry] of Object.entries(input)) {
+    const normalized = normalizeParameterValue(entry);
+    if (normalized === undefined) return undefined;
+    output[key] = normalized;
+  }
+  return output;
+}
+
 function normalizeSource(value: unknown): ChartSeriesSource | null {
   const source = record(value);
   if (!source) return null;
@@ -134,6 +157,21 @@ function normalizeSource(value: unknown): ChartSeriesSource | null {
     const seriesId = nonEmptyString(source.seriesId);
     if (!seriesId || source.provider !== "fred") return null;
     return { kind: "economic", provider: "fred", seriesId };
+  }
+  if (source.kind === "capability") {
+    const capabilityId = nonEmptyString(source.capabilityId);
+    const seriesId = nonEmptyString(source.seriesId);
+    const parameters = source.parameters === undefined ? undefined : normalizeParameterValue(source.parameters);
+    if (!capabilityId || !seriesId) return null;
+    if (source.parameters !== undefined && (
+      !parameters || typeof parameters !== "object" || Array.isArray(parameters)
+    )) return null;
+    return {
+      kind: "capability",
+      capabilityId,
+      seriesId,
+      ...(parameters ? { parameters: parameters as Record<string, ChartSeriesParameterValue> } : {}),
+    };
   }
   if (source.kind !== "security") return null;
   const instrument = record(source.instrument);
@@ -425,12 +463,19 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
             : definition.unitGroup);
         unitGroupsByPanel.set(entry.panelId, groups);
       }
-    } else {
+    } else if (entry.source.kind === "economic") {
       if (!entry.source.seriesId.trim()) {
         errors.push(issue(`${path}.source.seriesId`, "missing-series", "Economic series ID is required."));
       }
       if (!ECONOMIC_STYLES.has(entry.style)) {
         errors.push(issue(`${path}.style`, "unsupported-style", `${entry.style} is not valid for an economic scalar series.`));
+      }
+    } else {
+      if (!entry.source.capabilityId.trim()) {
+        errors.push(issue(`${path}.source.capabilityId`, "missing-capability", "Chart series capability ID is required."));
+      }
+      if (!entry.source.seriesId.trim()) {
+        errors.push(issue(`${path}.source.seriesId`, "missing-series", "Provider series ID is required."));
       }
     }
     if (isOhlcSeriesStyle(entry.style)) {
@@ -440,7 +485,7 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
         firstCandleByPanel.set(
           entry.panelId,
           entry.label?.trim()
-            || (entry.source.kind === "economic" ? entry.source.seriesId : entry.source.instrument.symbol),
+            || (entry.source.kind === "security" ? entry.source.instrument.symbol : entry.source.seriesId),
         );
       }
       if (entry.transform !== "raw") {

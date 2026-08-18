@@ -59,7 +59,7 @@ describe("prediction markets detail views", () => {
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Outcomes");
     expect(frame).toContain("Above 4.25%");
-    expect(frame).toContain("Loading chart...");
+    expect(frame).toContain("Chart");
     expect(frame).not.toContain("No chart history.");
     expect(frame).not.toContain("Loading market detail...");
   });

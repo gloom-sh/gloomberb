@@ -6,7 +6,7 @@ import {
 } from "react";
 import type { BrokerAdapter } from "../../types/broker";
 import type { ConnectionHealthRegistry } from "../../core/connection-health";
-import type { PluginCapability } from "../../capabilities";
+import type { CapabilityInvoker, PluginCapability } from "../../capabilities";
 import type { DataProvider } from "../../types/data-provider";
 import type {
   AppNotificationRequest,
@@ -17,7 +17,7 @@ import type {
   TickerResearchTabDef,
 } from "../../types/plugin";
 
-export interface PluginRuntimeAccess {
+export interface PluginRuntimeAccess extends CapabilityInvoker {
   getMarketData(): DataProvider | null;
   getConnectionHealth(): ConnectionHealthRegistry;
   getCapability(capabilityId: string): PluginCapability | null;

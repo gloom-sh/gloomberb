@@ -28,6 +28,7 @@ export const DETAIL_TABS: ReadonlyArray<{
   value: PredictionDetailTab;
 }> = [
   { label: "Overview", value: "overview" },
+  { label: "Chart", value: "chart" },
   { label: "Book", value: "book" },
   { label: "Trades", value: "trades" },
   { label: "Rules", value: "rules" },

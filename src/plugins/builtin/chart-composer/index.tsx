@@ -63,7 +63,9 @@ function chartTitle(spec: ChartSpec, prefix = "G"): string {
   const labels = spec.series.slice(0, 3).map((series) => (
     series.source.kind === "security"
       ? publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange)
-      : `FRED:${series.source.seriesId}`
+      : series.source.kind === "economic"
+        ? `FRED:${series.source.seriesId}`
+        : series.label?.trim() || series.source.seriesId
   ));
   if (labels.length === 0) return "Custom Chart";
   const remaining = spec.series.length - labels.length;

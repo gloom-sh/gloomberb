@@ -75,6 +75,12 @@ export interface ChartResolveSources {
   now?: Date;
   /** Latest streamed quote per security identity, layered over snapshot data. */
   quoteOverrides?: ReadonlyMap<string, Quote>;
+  /** Provider-neutral boundary for plugin-owned chart series. */
+  resolveCapabilitySeries?: (
+    source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,
+    viewport: ChartSpec["viewport"],
+    spec: ChartSeriesSpec,
+  ) => Promise<ResolvedSeries>;
 }
 
 export interface ChartResolveOptions {
@@ -93,6 +99,7 @@ export class ChartResolveCache {
   readonly accumulatedPriceHistory = new Map<string, TickerFinancials["priceHistory"]>();
   readonly resolutionSupportByInstrument = new Map<string, Promise<ChartResolutionSupport[]>>();
   readonly fredSeriesByRequest = new Map<string, Promise<FredSeriesLoadResult>>();
+  readonly capabilitySeriesByRequest = new Map<string, Promise<ResolvedSeries>>();
 }
 
 interface DateBounds {
@@ -134,9 +141,11 @@ function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "secur
 // in the series editor, with nothing on screen to explain the difference.
 function unloadableSeries(spec: ChartSeriesSpec, index: number, warning: string): ResolvedSeries {
   const field = spec.source.kind === "security" ? getTimeSeriesField(spec.source.fieldId) : undefined;
-  const label = spec.source.kind === "economic"
-    ? `FRED ${spec.source.seriesId}`
-    : `${instrumentLabel(spec.source)} ${field?.shortLabel ?? spec.source.fieldId.split(".").at(-1) ?? "Series"}`;
+  const label = spec.source.kind === "security"
+    ? `${instrumentLabel(spec.source)} ${field?.shortLabel ?? spec.source.fieldId.split(".").at(-1) ?? "Series"}`
+    : spec.source.kind === "economic"
+      ? `FRED ${spec.source.seriesId}`
+      : spec.source.seriesId;
   return {
     id: spec.id,
     label: spec.label?.trim() || label,
@@ -638,6 +647,31 @@ function baseEconomicSeries(
   };
 }
 
+function baseCapabilitySeries(
+  spec: ChartSeriesSpec,
+  loaded: ResolvedSeries,
+  index: number,
+): ResolvedSeries {
+  const points = loaded.points.flatMap((point) => {
+    const date = finiteDate(point.date as unknown as string | Date | undefined);
+    const observedAt = finiteDate(point.observedAt as unknown as string | Date | undefined) ?? date;
+    const availableAt = finiteDate(point.availableAt as unknown as string | Date | undefined) ?? undefined;
+    return date && observedAt ? [{ ...point, date, observedAt, ...(availableAt ? { availableAt } : {}) }] : [];
+  });
+  return {
+    ...loaded,
+    id: spec.id,
+    label: spec.label?.trim() || loaded.label || (spec.source.kind === "capability" ? spec.source.seriesId : spec.id),
+    color: spec.color ?? loaded.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
+    style: spec.style,
+    transform: spec.transform,
+    axis: spec.axis === "right" ? "right" : spec.axis === "left" ? "left" : loaded.axis,
+    panelId: spec.panelId,
+    interpolation: spec.interpolation,
+    points,
+  };
+}
+
 function staleFredWarning(loaded: FredSeriesLoadResult): string | null {
   if (!loaded.stale) return null;
   return `FRED refresh failed${loaded.refreshError ? ` (${loaded.refreshError})` : ""}; showing cached data fetched ${new Date(loaded.fetchedAt).toISOString().slice(0, 10)}.`;
@@ -938,6 +972,18 @@ export async function resolveChartSpecData(
   const loaded = await Promise.all(spec.series.map(async (seriesSpec, index) => {
     if (!calculationSeriesIds.has(seriesSpec.id)) return null;
     try {
+      if (seriesSpec.source.kind === "capability") {
+        if (!sources.resolveCapabilitySeries) {
+          throw new Error(`Chart series capability "${seriesSpec.source.capabilityId}" is unavailable. Enable its plugin or provider.`);
+        }
+        const key = `${seriesSpec.source.capabilityId}|${seriesSpec.source.seriesId}|${JSON.stringify(seriesSpec.source.parameters ?? {})}|${JSON.stringify(spec.viewport)}`;
+        let pending = cache.capabilitySeriesByRequest.get(key);
+        if (!pending) {
+          pending = sources.resolveCapabilitySeries(seriesSpec.source, spec.viewport, seriesSpec);
+          cache.capabilitySeriesByRequest.set(key, pending);
+        }
+        return baseCapabilitySeries(seriesSpec, await pending, index);
+      }
       if (seriesSpec.source.kind === "economic") {
         const request: FredSeriesRequest = {
           seriesId: seriesSpec.source.seriesId,

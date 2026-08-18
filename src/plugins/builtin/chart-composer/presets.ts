@@ -1,5 +1,6 @@
 import {
   CHART_SPEC_VERSION,
+  type CapabilitySeriesSource,
   type ChartPanelSpec,
   type ChartSeriesSpec,
   type ChartSpec,
@@ -47,7 +48,16 @@ const CHART_FIELD_IDS = {
 
 export type ParsedSeriesExpression =
   | { kind: "security"; symbol: string; exchange?: string; fieldId: string; label?: string }
-  | { kind: "economic"; provider: "fred"; seriesId: string; label?: string };
+  | { kind: "economic"; provider: "fred"; seriesId: string; label?: string }
+  | {
+      kind: "capability";
+      capabilityId: string;
+      seriesId: string;
+      parameters?: CapabilitySeriesSource["parameters"];
+      label?: string;
+      style?: SeriesStyle;
+      transform?: SeriesTransform;
+    };
 
 function normalizeBaseSymbol(value: string): string | null {
   const symbol = value.trim().toUpperCase();
@@ -91,6 +101,25 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
   const trimmed = value.trim();
   if (!trimmed) return null;
   const parts = trimmed.split(":");
+  if (parts[0]?.trim().toUpperCase() === "CAP") {
+    const separator = trimmed.indexOf(":", trimmed.indexOf(":") + 1);
+    if (separator < 0) return null;
+    try {
+      const capabilityId = decodeURIComponent(trimmed.slice(4, separator)).trim();
+      const [encodedSeriesId, query = ""] = trimmed.slice(separator + 1).split("?", 2);
+      const seriesId = decodeURIComponent(encodedSeriesId ?? "").trim();
+      const encodedParameters = new URLSearchParams(query).get("params");
+      const parsedParameters = encodedParameters ? JSON.parse(encodedParameters) : undefined;
+      const parameters = parsedParameters && typeof parsedParameters === "object" && !Array.isArray(parsedParameters)
+        ? parsedParameters as CapabilitySeriesSource["parameters"]
+        : undefined;
+      return capabilityId && seriesId
+        ? { kind: "capability", capabilityId, seriesId, ...(parameters ? { parameters } : {}) }
+        : null;
+    } catch {
+      return null;
+    }
+  }
   if (parts[0]?.trim().toUpperCase() === "FRED") {
     const seriesId = parts.length === 2 ? parts[1]?.trim().toUpperCase() ?? "" : "";
     return /^[A-Z0-9._-]{1,80}$/.test(seriesId)
@@ -136,19 +165,26 @@ export function parseChartExpression(value: string): ParsedSeriesExpression[] {
     if (parsed) return parsed;
     const display = leg.trim() || "empty series";
     throw new Error(
-      `Invalid chart series "${display}". Use SYMBOL, SYMBOL:field, or FRED:series, for example AAPL:price or FRED:CPIAUCSL.`,
+      `Invalid chart series "${display}". Use SYMBOL, SYMBOL:field, FRED:series, or CAP:capability-id:series-id.`,
     );
   });
 }
 
 export function formatSeriesExpression(series: ChartSeriesSpec): string {
   if (series.source.kind === "economic") return `FRED:${series.source.seriesId}`;
+  if (series.source.kind === "capability") {
+    const parameters = series.source.parameters
+      ? `?params=${encodeURIComponent(JSON.stringify(series.source.parameters))}`
+      : "";
+    return `CAP:${encodeURIComponent(series.source.capabilityId)}:${encodeURIComponent(series.source.seriesId)}${parameters}`;
+  }
   return `${publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange)}:${series.source.fieldId}`;
 }
 
 export function chartSeriesLabel(series: ChartSeriesSpec): string {
   if (series.label?.trim()) return series.label.trim();
   if (series.source.kind === "economic") return `FRED ${series.source.seriesId}`;
+  if (series.source.kind === "capability") return series.source.seriesId;
   const instrument = publicTickerKey(
     series.source.instrument.symbol,
     series.source.instrument.exchange,
@@ -221,6 +257,25 @@ export function buildSeriesSpec(
   index: number,
   overrides: Partial<Omit<ChartSeriesSpec, "id" | "source">> = {},
 ): ChartSeriesSpec {
+  if (expression.kind === "capability") {
+    const style = overrides.style ?? expression.style ?? "line";
+    return {
+      id: `${slug(expression.capabilityId)}-${slug(expression.seriesId)}-${index + 1}`,
+      source: {
+        kind: "capability",
+        capabilityId: expression.capabilityId,
+        seriesId: expression.seriesId,
+        ...(expression.parameters ? { parameters: expression.parameters } : {}),
+      },
+      ...(expression.label ? { label: expression.label } : {}),
+      transform: expression.transform ?? "raw",
+      axis: "auto",
+      panelId: "main",
+      ...overrides,
+      style,
+      interpolation: coerceSeriesInterpolationForStyle(style),
+    };
+  }
   if (expression.kind === "economic") {
     const style = overrides.style ?? "step";
     return {
@@ -295,7 +350,9 @@ function effectiveSeriesUnitGroup(series: ChartSeriesSpec): string {
   if (series.transform === "index100") return "index";
   return series.source.kind === "economic"
     ? `economic:${series.source.seriesId}`
-    : getTimeSeriesField(series.source.fieldId)?.unitGroup ?? series.source.fieldId;
+    : series.source.kind === "capability"
+      ? `capability:${series.source.capabilityId}`
+      : getTimeSeriesField(series.source.fieldId)?.unitGroup ?? series.source.fieldId;
 }
 
 function nextGeneratedPanelId(

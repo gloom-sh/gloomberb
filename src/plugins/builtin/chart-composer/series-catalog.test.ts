@@ -1,12 +1,34 @@
 import { describe, expect, test } from "bun:test";
 import {
   analyzeSeriesSearchQuery,
+  buildCapabilitySeriesSuggestions,
   buildSeriesCatalogSuggestions,
 } from "./series-catalog";
 
 const AAPL = { symbol: "AAPL", exchange: "NASDAQ", name: "Apple Inc." };
 
 describe("chart composer series catalog", () => {
+  test("maps provider catalog metadata without provider-specific core branches", () => {
+    expect(buildCapabilitySeriesSuggestions([{
+      capabilityId: "custom.series",
+      capabilityName: "Custom Provider",
+      seriesId: "series-1",
+      label: "Custom history",
+      parameters: { contract: "one" },
+      style: "step",
+    }])[0]).toMatchObject({
+      label: "Custom history",
+      detail: "Custom Provider",
+      expression: {
+        kind: "capability",
+        capabilityId: "custom.series",
+        seriesId: "series-1",
+        parameters: { contract: "one" },
+        style: "step",
+      },
+    });
+  });
+
   test("maps a metric-only query onto the current security", () => {
     const suggestions = buildSeriesCatalogSuggestions("revenue", AAPL);
 

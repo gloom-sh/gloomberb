@@ -24,6 +24,51 @@ const fredLoad = (
 });
 
 describe("resolveChartSpecData", () => {
+  test("keeps missing capability series visible with a useful error and resolves them through the injected boundary", async () => {
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1M", resolution: "auto" },
+      panels: [{ id: "main" }],
+      series: [{
+        id: "plugin-series",
+        source: { kind: "capability", capabilityId: "charts.test", seriesId: "one" },
+        style: "area",
+        transform: "raw",
+        axis: "auto",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [],
+    };
+    const sources = { dataProvider: null, loadFredSeries: async () => fredLoad(), now: new Date("2026-02-01") };
+    const missing = await resolveChartSpecData(spec, sources);
+    expect(missing.series).toHaveLength(1);
+    expect(missing.series[0]?.points).toEqual([]);
+    expect(missing.errors[0]).toContain('Chart series capability "charts.test" is unavailable');
+
+    const resolved = await resolveChartSpecData(spec, {
+      ...sources,
+      resolveCapabilitySeries: async () => ({
+        id: "provider-id",
+        label: "Provider Label",
+        color: "#fff",
+        unit: "value",
+        unitGroup: "value",
+        nativeFrequency: "daily",
+        dataShape: "scalar",
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "provider",
+        interpolation: "none",
+        points: [{ date: new Date("2026-01-15"), observedAt: new Date("2026-01-15"), value: 42 }],
+      }),
+    });
+    expect(resolved.errors).toEqual([]);
+    expect(resolved.series[0]).toMatchObject({ id: "plugin-series", style: "area", panelId: "main" });
+    expect(resolved.series[0]?.points[0]?.value).toBe(42);
+  });
+
   test("derives Auto fetch resolution from the finest explicit market period", async () => {
     const cases = [
       { range: "ALL" as const, periods: ["daily", "monthly"] as const, expected: "1d" },

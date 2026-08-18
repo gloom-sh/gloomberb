@@ -38,6 +38,8 @@ import type { PaneDef } from "../../../types/plugin";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { hydrateFredSeries, type FredSeriesCacheEntry } from "../../../data/fred-series";
 import { clipPriceHistoryToRange } from "../../../time-series/history-window";
+import type { ResolvedSeries } from "../../../time-series/types";
+import { chartSeriesSourceKey } from "../../../capabilities";
 
 interface CliPaneShotPayload {
   config: AppConfig;
@@ -48,6 +50,7 @@ interface CliPaneShotPayload {
   financials: Array<[string, TickerFinancials]>;
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
+  capabilitySeries: Array<[string, ResolvedSeries]>;
   paneState: Record<string, PaneRuntimeState>;
 }
 
@@ -323,10 +326,32 @@ function createRuntime(payload: CliPaneShotPayload): PluginRuntimeAccess {
   function getConfigState<T = unknown>(pluginId: string, key: string): T | null {
     return (payload.config.pluginConfig[pluginId]?.[key] as T | undefined) ?? null;
   }
+  const capabilitySeries = new Map(payload.capabilitySeries ?? []);
+  const capabilityIds = [...new Set([...capabilitySeries.keys()].map((key) => key.split("|", 1)[0]!).filter(Boolean))];
   return {
     getMarketData: () => shotDataProvider,
     getConnectionHealth: () => connectionHealth,
     getCapability: () => null,
+    capabilityManifests: (kind) => kind && kind !== "chart-series" ? [] : capabilityIds.map((id) => ({
+      id,
+      kind: "chart-series",
+      name: id,
+      operations: [{ id: "resolve", kind: "query", rendererSafe: true }],
+    })),
+    invokeCapability: async <T,>(capabilityId: string, operationId: string, input: unknown) => {
+      if (operationId !== "resolve" || !input || typeof input !== "object") {
+        throw new Error(`Screenshot capability operation ${capabilityId}.${operationId} is unavailable.`);
+      }
+      const request = input as { seriesId?: string; parameters?: Record<string, any> };
+      const value = capabilitySeries.get(chartSeriesSourceKey({
+        kind: "capability",
+        capabilityId,
+        seriesId: request.seriesId ?? "",
+        parameters: request.parameters,
+      }));
+      if (!value) throw new Error(`No screenshot chart series data is available for ${request.seriesId ?? capabilityId}.`);
+      return value as T;
+    },
     getBrokerAdapter: () => null,
     connectBrokerInstance: async () => {},
     updateBrokerInstance: async () => {},

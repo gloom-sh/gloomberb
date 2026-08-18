@@ -18,7 +18,9 @@ import {
   applySeriesTimestampMode,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
+  formatSeriesExpression,
   parseChartExpression,
+  parseSeriesExpression,
   rebindChartSecuritySymbol,
   resolveChartFieldAlias,
   setBuiltinStudies,
@@ -27,6 +29,23 @@ import {
 import { applyChartComposerCapabilityOptions } from "./cli-options";
 
 describe("chart composer expressions", () => {
+  test("round-trips provider-neutral capability expressions and parameters", () => {
+    const expression = {
+      kind: "capability" as const,
+      capabilityId: "prediction-markets.series",
+      seriesId: "polymarket:one",
+      parameters: { outcome: "yes", nested: { token: "123" } },
+      label: "Will it happen?",
+    };
+    const series = buildSeriesSpec(expression, 0);
+    expect(parseSeriesExpression(formatSeriesExpression(series))).toEqual({
+      kind: "capability",
+      capabilityId: expression.capabilityId,
+      seriesId: expression.seriesId,
+      parameters: expression.parameters,
+    });
+  });
+
   test("appends catalog series with required panels and collision-safe IDs", () => {
     const initial = buildCustomChartPreset("AAPL:price, MSFT:price");
     const withVolume = appendChartSeries(initial, {

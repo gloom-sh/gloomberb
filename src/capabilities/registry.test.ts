@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chartSeriesProvider } from "./factories";
 import { CapabilityRegistry } from "./registry";
 import { ConnectionHealthRegistry } from "../core/connection-health";
 import type { CapabilitySchema, PluginCapability } from "./types";
@@ -186,6 +187,47 @@ describe("CapabilityRegistry", () => {
     expect(events).toEqual(["first", "second"]);
     expect(disposed).toBe(2);
     expect(registry.list()).toEqual([]);
+  });
+
+  test("registers, searches, resolves, disables, and disposes chart-series providers", async () => {
+    let enabled = true;
+    const registry = new CapabilityRegistry({ isPluginEnabled: () => enabled });
+    const dispose = registry.register("charts", chartSeriesProvider({
+      id: "charts.test",
+      name: "Test Charts",
+      provider: {
+        search: ({ query }) => [{ seriesId: "one", label: `Result ${query}` }],
+        resolve: ({ seriesId }) => ({
+          id: seriesId,
+          label: "Resolved",
+          color: "#fff",
+          unit: "value",
+          unitGroup: "value",
+          nativeFrequency: "daily",
+          dataShape: "scalar",
+          style: "line",
+          transform: "raw",
+          axis: "left",
+          panelId: "main",
+          interpolation: "none",
+          points: [{ date: new Date("2026-01-01"), observedAt: new Date("2026-01-01"), value: 1 }],
+        }),
+      },
+    }));
+
+    await expect(registry.invoke<any[]>("charts.test", "search", { query: "x" }))
+      .resolves.toEqual([{ seriesId: "one", label: "Result x" }]);
+    await expect(registry.invoke<any>("charts.test", "resolve", {
+      seriesId: "one",
+      viewport: { range: "1M", resolution: "auto" },
+    })).resolves.toMatchObject({ id: "one", points: [{ value: 1 }] });
+
+    enabled = false;
+    expect(registry.list("chart-series")).toEqual([]);
+    await expect(registry.invoke("charts.test", "search", {})).rejects.toThrow("not available");
+    enabled = true;
+    dispose();
+    await expect(registry.invoke("charts.test", "search", {})).rejects.toThrow("not available");
   });
 
   test("disposes subscriptions that finish after their capability is removed", async () => {

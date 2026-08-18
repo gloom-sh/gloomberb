@@ -2,6 +2,7 @@ import {
   getTimeSeriesField,
   listTimeSeriesFields,
 } from "../../../time-series/field-catalog";
+import type { ChartSeriesCatalogItem } from "../../../capabilities";
 import type { TimeSeriesFieldDefinition } from "../../../time-series/types";
 import {
   canonicalExchange,
@@ -232,6 +233,15 @@ function exactExpressionSuggestion(query: string): SeriesCatalogSuggestion | nul
       expression,
     };
   }
+  if (expression.kind === "capability") {
+    return {
+      id: `${expression.capabilityId}:${expression.seriesId}`,
+      label: expression.label ?? expression.seriesId,
+      description: `Plugin series from ${expression.capabilityId}`,
+      detail: "Plugin",
+      expression,
+    };
+  }
   const field = getTimeSeriesField(expression.fieldId);
   const instrument = publicTickerKey(expression.symbol, expression.exchange);
   return {
@@ -243,6 +253,26 @@ function exactExpressionSuggestion(query: string): SeriesCatalogSuggestion | nul
     detail: field ? fieldFrequency(field) : "Security",
     expression,
   };
+}
+
+export function buildCapabilitySeriesSuggestions(
+  items: ReadonlyArray<ChartSeriesCatalogItem & { capabilityId: string; capabilityName: string }>,
+): SeriesCatalogSuggestion[] {
+  return items.map((item) => ({
+    id: `${item.capabilityId}:${item.seriesId}`,
+    label: item.label,
+    description: item.description ?? item.capabilityName,
+    detail: item.detail ?? item.capabilityName,
+    expression: {
+      kind: "capability",
+      capabilityId: item.capabilityId,
+      seriesId: item.seriesId,
+      parameters: item.parameters,
+      label: item.label,
+      style: item.style,
+      transform: item.transform,
+    },
+  }));
 }
 
 export function buildSeriesCatalogSuggestions(

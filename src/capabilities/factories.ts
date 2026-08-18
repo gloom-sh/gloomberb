@@ -3,6 +3,8 @@ import type { NewsDataProvider } from "../types/capability-route-source";
 import type {
   AssetDataCapability,
   CapabilityOperation,
+  ChartSeriesCapability,
+  ChartSeriesProvider,
   NewsCapability,
 } from "./types";
 
@@ -80,6 +82,26 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
         if (!provider.subscribeQuotes) throw new Error(`${provider.name} does not provide quote streaming.`);
         return provider.subscribeQuotes(input.targets ?? [], (target, quote) => emit({ target, quote }));
       }),
+    },
+  };
+}
+
+export function chartSeriesProvider(options: {
+  id: string;
+  name: string;
+  priority?: number;
+  provider: ChartSeriesProvider;
+}): ChartSeriesCapability {
+  return {
+    id: options.id,
+    kind: "chart-series",
+    name: options.name,
+    priority: options.priority,
+    provider: options.provider,
+    operations: {
+      catalog: op((input: any) => options.provider.catalog?.(input) ?? [], "query"),
+      search: op((input: any) => options.provider.search?.(input) ?? options.provider.catalog?.(input) ?? [], "query"),
+      resolve: op((input: any) => options.provider.resolve(input), "query"),
     },
   };
 }

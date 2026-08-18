@@ -4,7 +4,7 @@ import type { PredictionCategoryId } from "./categories";
 export type PredictionVenue = "polymarket" | "kalshi";
 export type PredictionVenueScope = "all" | PredictionVenue;
 export type PredictionBrowseTab = "top" | "ending" | "new" | "watchlist";
-export type PredictionDetailTab = "overview" | "book" | "trades" | "rules";
+export type PredictionDetailTab = "overview" | "chart" | "book" | "trades" | "rules";
 export type PredictionHistoryRange = "1D" | "1W" | "1M" | "ALL";
 export type PredictionVolumeUnit = "usd" | "contracts";
 type PredictionSortDirection = "asc" | "desc";
