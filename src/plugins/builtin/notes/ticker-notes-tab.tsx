@@ -6,6 +6,7 @@ import { usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { usePaneFooter } from "../../../components";
+import { usePluginAppActions } from "../../runtime";
 import type { NotesFiles } from "./files";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import { useSyncedText } from "./text-state";
@@ -13,6 +14,7 @@ import { useSyncedText } from "./text-state";
 export function createNotesTab(notesFiles: NotesFiles) {
   return function NotesTab({ focused, width, onCapture }: TickerResearchTabProps) {
     const { ticker } = usePaneTicker();
+    const { notify } = usePluginAppActions();
     const textareaRef = useRef<TextareaRenderable | null>(null);
     const [notesFocused, setNotesFocused] = useState(false);
     const { text: noteText, textRef: noteTextRef, setText: setNoteText } = useSyncedText("");
@@ -57,8 +59,11 @@ export function createNotesTab(notesFiles: NotesFiles) {
       // rewrites an unchanged file and can clobber another pane on the same symbol.
       if (lastSavedTextRef.current.get(symbol) === text) return;
       lastSavedTextRef.current.set(symbol, text);
-      notesFiles.save(symbol, text).catch(() => {});
-    }, [notesFiles]);
+      notesFiles.save(symbol, text).catch((error) => {
+        console.error("[notes] Failed to save ticker note:", error);
+        notify({ body: "Failed to save note. Check disk space and permissions.", type: "error" });
+      });
+    }, [notesFiles, notify]);
 
     useEffect(() => {
       if (

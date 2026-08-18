@@ -6,6 +6,7 @@ import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { ConfirmDialog, Tabs, usePaneFooter } from "../../../components";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
+import { usePluginAppActions } from "../../runtime";
 import type { NotesFiles } from "./files";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
@@ -19,6 +20,7 @@ import { useSyncedText } from "./text-state";
 export function createQuickNotesPane(notesFiles: NotesFiles) {
   return function QuickNotesPane({ focused, width }: PaneProps) {
     const dialog = useDialog();
+    const { notify } = usePluginAppActions();
     const textareaRef = useRef<TextareaRenderable | null>(null);
     const [editing, setEditing] = useState(false);
     const [tabs, setTabs] = useState<QuickNoteEntry[]>([]);
@@ -34,8 +36,11 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
     const activeTab = tabs.find((tab) => tab.id === activeTabId);
 
     const saveQuickNotesIndex = useCallback((entries: QuickNoteEntry[]) => {
-      notesFiles.saveQuickNotesIndex(entries).catch(() => {});
-    }, [notesFiles]);
+      notesFiles.saveQuickNotesIndex(entries).catch((error) => {
+        console.error("[notes] Failed to save notes index:", error);
+        notify({ body: "Failed to save notes index. Check disk space and permissions.", type: "error" });
+      });
+    }, [notesFiles, notify]);
 
     const readActiveNoteText = useCallback(() => (
       textareaRef.current?.editBuffer.getText() ?? noteTextRef.current
@@ -57,7 +62,10 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
       if (lastSavedTextRef.current.get(tabId) === text) return;
 
       lastSavedTextRef.current.set(tabId, text);
-      notesFiles.save(notesFiles.quickNoteKey(tabId), text).catch(() => {});
+      notesFiles.save(notesFiles.quickNoteKey(tabId), text).catch((error) => {
+        console.error("[notes] Failed to save note:", error);
+        notify({ body: "Failed to save note. Check disk space and permissions.", type: "error" });
+      });
 
       const updatedAt = Date.now();
       setTabs((prev) => {
@@ -66,7 +74,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
         saveQuickNotesIndex(next);
         return next;
       });
-    }, [activeTabId, noteTextRef, notesFiles, readActiveNoteText, saveQuickNotesIndex]);
+    }, [activeTabId, noteTextRef, notesFiles, notify, readActiveNoteText, saveQuickNotesIndex]);
 
     useEffect(() => {
       if (loadedRef.current) return;
@@ -161,10 +169,13 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
         }
         return next;
       });
-      notesFiles.delete(notesFiles.quickNoteKey(id)).catch(() => {});
+      notesFiles.delete(notesFiles.quickNoteKey(id)).catch((error) => {
+        console.error("[notes] Failed to delete note:", error);
+        notify({ body: "Failed to delete note. Check disk space and permissions.", type: "error" });
+      });
       setEditing(false);
       setRenaming(false);
-    }, [activeTabId, notesFiles, saveQuickNotesIndex, setNoteText]);
+    }, [activeTabId, notesFiles, notify, saveQuickNotesIndex, setNoteText]);
 
     const requestRemoveTab = useCallback(async (id: string) => {
       const tab = tabs.find((entry) => entry.id === id);
@@ -222,11 +233,11 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
       }
       setTabs((prev) => {
         const next = prev.map((t) => (t.id === activeTabId ? { ...t, title: value } : t));
-        notesFiles.saveQuickNotesIndex(next).catch(() => {});
+        saveQuickNotesIndex(next);
         return next;
       });
       setRenaming(false);
-    }, [activeTabId, notesFiles, renameValue]);
+    }, [activeTabId, renameValue, saveQuickNotesIndex]);
 
     useShortcut((event) => {
       if (!focused) return;

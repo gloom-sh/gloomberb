@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box, Text } from "../../../ui";
+import { PluginRenderProvider } from "../../runtime";
 import { createQuickNotesPane } from "./quick-notes-pane";
 import type { NotesFiles } from "./files";
 import type { QuickNoteEntry } from "./model";
@@ -56,16 +58,18 @@ function QuickNotesHarness({
 
   return (
     <TestDialogProvider>
-      <Box flexDirection="column" width={80} height={24}>
-        <PaneFooterProvider>
-          {() => (
-            <>
-              <QuickNotesPane focused={focused} width={78} height={20} />
-              <Text onMouseDown={() => setFocused(false)}>blur-pane</Text>
-            </>
-          )}
-        </PaneFooterProvider>
-      </Box>
+      <PluginRenderProvider pluginId="notes" runtime={createTestPluginRuntime()}>
+        <Box flexDirection="column" width={80} height={24}>
+          <PaneFooterProvider>
+            {() => (
+              <>
+                <QuickNotesPane focused={focused} width={78} height={20} />
+                <Text onMouseDown={() => setFocused(false)}>blur-pane</Text>
+              </>
+            )}
+          </PaneFooterProvider>
+        </Box>
+      </PluginRenderProvider>
     </TestDialogProvider>
   );
 }

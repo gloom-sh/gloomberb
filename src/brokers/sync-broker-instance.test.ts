@@ -166,6 +166,42 @@ describe("syncBrokerInstance", () => {
     ]);
   });
 
+  test("logs account cache failures without aborting the broker sync", async () => {
+    const config = {
+      ...createDefaultConfig("/tmp/gloomberb-sync-broker-persistence-error"),
+      portfolios: [],
+      brokerInstances: [createBrokerInstance()],
+    };
+    const tickerRepository = createTickerRepository();
+    const persistenceError = new Error("disk full");
+    const errors: unknown[][] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => { errors.push(args); };
+
+    try {
+      await syncBrokerInstance({
+        config,
+        instanceId: "demo-broker",
+        brokers: new Map([["demo", createDemoBroker()]]),
+        tickerRepository: tickerRepository as any,
+        resources: {
+          get: () => null,
+          list: () => [],
+          set: () => { throw persistenceError; },
+          delete: () => {},
+        } as any,
+      });
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(errors).toEqual([[
+      "[broker-sync] Failed to persist broker accounts:",
+      persistenceError,
+    ]]);
+    expect(await tickerRepository.loadTicker("AAPL")).not.toBeNull();
+  });
+
   test("imports account and position data from one broker portfolio snapshot", async () => {
     const instance = createBrokerInstance();
     const config = {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -11,6 +12,7 @@ import {
 import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, Text } from "../../../ui";
+import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { createNotesTab } from "./ticker-notes-tab";
 import type { NotesFiles } from "./files";
 
@@ -37,6 +39,7 @@ function makeTicker(symbol: string): TickerRecord {
 function createMockNotesFiles(options?: {
   loadDelayMs?: number;
   notes?: Record<string, string>;
+  saveError?: Error;
 }) {
   const saves: Array<{ symbol: string; text: string }> = [];
   const notes = new Map(Object.entries(options?.notes ?? {}));
@@ -51,6 +54,7 @@ function createMockNotesFiles(options?: {
     },
     async save(symbol: string, text: string) {
       saves.push({ symbol, text });
+      if (options?.saveError) throw options.saveError;
     },
     async delete() {},
     quickNoteKey(id: string) {
@@ -86,9 +90,11 @@ function createNotesHarnessConfig(symbol: string) {
 function NotesTabHarness({
   NotesTab,
   initialSymbol,
+  runtime = createTestPluginRuntime(),
 }: {
   NotesTab: ReturnType<typeof createNotesTab>;
   initialSymbol: string;
+  runtime?: PluginRuntimeAccess;
 }) {
   const [focused, setFocused] = useState(true);
   const [state, dispatch] = useReducer(appReducer, undefined, () => {
@@ -120,20 +126,22 @@ function NotesTabHarness({
       <Box flexDirection="column" width={80} height={24}>
         <AppContext value={{ state, dispatch }}>
           <PaneInstanceProvider paneId={TEST_PANE_ID}>
-            <PaneFooterProvider>
-              {() => (
-                <>
-                  <NotesTab
-                    width={78}
-                    height={20}
-                    focused={focused}
-                    onCapture={() => {}}
-                  />
-                  <Text onMouseDown={() => setFocused(false)}>blur-tab</Text>
-                  <Text onMouseDown={() => switchSymbol("MSFT")}>switch-msft</Text>
-                </>
-              )}
-            </PaneFooterProvider>
+            <PluginRenderProvider pluginId="notes" runtime={runtime}>
+              <PaneFooterProvider>
+                {() => (
+                  <>
+                    <NotesTab
+                      width={78}
+                      height={20}
+                      focused={focused}
+                      onCapture={() => {}}
+                    />
+                    <Text onMouseDown={() => setFocused(false)}>blur-tab</Text>
+                    <Text onMouseDown={() => switchSymbol("MSFT")}>switch-msft</Text>
+                  </>
+                )}
+              </PaneFooterProvider>
+            </PluginRenderProvider>
           </PaneInstanceProvider>
         </AppContext>
       </Box>
@@ -151,12 +159,16 @@ afterEach(async () => {
 });
 
 describe("createNotesTab", () => {
-  test("exits edit mode and saves when the tab loses focus", async () => {
-    const notesFiles = createMockNotesFiles();
+  test("surfaces a save failure when the tab loses focus", async () => {
+    const notifications: string[] = [];
+    const notesFiles = createMockNotesFiles({ saveError: new Error("disk full") });
     const NotesTab = createNotesTab(notesFiles);
+    const runtime = createTestPluginRuntime({
+      notify: ({ body }) => { notifications.push(body); },
+    });
 
     testSetup = await testRender(
-      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" />,
+      <NotesTabHarness NotesTab={NotesTab} initialSymbol="AAPL" runtime={runtime} />,
       { width: 80, height: 24 },
     );
     await testSetup.renderOnce();
@@ -184,12 +196,20 @@ describe("createNotesTab", () => {
     const blurCol = frame.split("\n")[blurRow]?.indexOf("blur-tab") ?? -1;
     expect(blurRow).toBeGreaterThanOrEqual(0);
 
-    await act(async () => {
-      await testSetup!.mockMouse.click(blurCol + 1, blurRow);
-      await testSetup!.renderOnce();
-    });
+    const originalError = console.error;
+    console.error = () => {};
+    try {
+      await act(async () => {
+        await testSetup!.mockMouse.click(blurCol + 1, blurRow);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await testSetup!.renderOnce();
+      });
+    } finally {
+      console.error = originalError;
+    }
 
     expect(notesFiles.saves).toEqual([{ symbol: "AAPL", text: "ab" }]);
+    expect(notifications).toEqual(["Failed to save note. Check disk space and permissions."]);
   });
 
   test("does not save stale buffer text to a new ticker before its notes load", async () => {

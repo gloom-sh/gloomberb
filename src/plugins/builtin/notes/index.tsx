@@ -16,7 +16,10 @@ export const notesPlugin: GloomPlugin = {
     const QuickNotesPane = createQuickNotesPane(notesFiles);
 
     ctx.on("ticker:removed", ({ symbol }) => {
-      notesFiles.delete(symbol).catch(() => {});
+      notesFiles.delete(symbol).catch((error) => {
+        console.error("[notes] Failed to delete ticker note:", error);
+        ctx.notify({ body: "Failed to delete note. Check disk space and permissions.", type: "error" });
+      });
     });
 
     ctx.registerTickerResearchTab({

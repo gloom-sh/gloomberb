@@ -282,7 +282,9 @@ export async function syncBrokerInstance({
     if (resources) {
       try {
         persistBrokerAccounts(resources, instance, broker, brokerAccounts);
-      } catch {}
+      } catch (error) {
+        console.error("[broker-sync] Failed to persist broker accounts:", error);
+      }
     }
     await Promise.all([...addedTickers.values(), ...updatedTickers.values()].map((ticker) => (
       tickerRepository.saveTicker(ticker)
