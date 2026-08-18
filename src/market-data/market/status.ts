@@ -2,6 +2,17 @@ import type { MarketState, Quote } from "../../types/financials";
 import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colors";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
+const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+const REGULAR_OPEN_SECONDS = (9 * 60 + 30) * 60;
+// ponytail: Standard SPY close; use provider session bounds if early-close countdowns matter.
+const REGULAR_CLOSE_SECONDS = 16 * 60 * 60;
+const CLOSING_COUNTDOWN_WINDOW_SECONDS = 60 * 60;
 
 export interface ActiveQuoteDisplay {
   price: number;
@@ -18,6 +29,28 @@ export function marketStateLabel(state: MarketState): string {
     case "POSTPOST":
     case "CLOSED": return "CLOSED";
   }
+}
+
+export function marketStateCountdown(state: MarketState, now = Date.now()): string | null {
+  if (state !== "PRE" && state !== "REGULAR") return null;
+
+  const parts = US_SESSION_TIME.formatToParts(new Date(now));
+  const value = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const currentSeconds = (value("hour") * 60 + value("minute")) * 60 + value("second");
+  const remainingSeconds = (state === "PRE" ? REGULAR_OPEN_SECONDS : REGULAR_CLOSE_SECONDS) - currentSeconds;
+  if (remainingSeconds <= 0 || (state === "REGULAR" && remainingSeconds > CLOSING_COUNTDOWN_WINDOW_SECONDS)) return null;
+
+  if (remainingSeconds >= 60 * 60) {
+    const roundedMinutes = Math.ceil(remainingSeconds / 60);
+    const hours = Math.floor(roundedMinutes / 60);
+    const minutes = roundedMinutes % 60;
+    return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  if (remainingSeconds >= 10 * 60) return `${Math.ceil(remainingSeconds / 60)}m`;
+
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  return minutes ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
 export function marketStateColor(state: MarketState, palette: ThemeColors = colors): string {

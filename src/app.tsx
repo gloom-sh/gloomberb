@@ -369,7 +369,14 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header onOpenHelp={() => pluginRegistry.showPane("help")} />
+          <Header
+            onOpenHelp={() => pluginRegistry.showPane("help")}
+            onOpenChangelog={(version) => {
+              void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+                values: { version },
+              }).catch(() => {});
+            }}
+          />
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}

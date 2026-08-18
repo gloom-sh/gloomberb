@@ -1,5 +1,5 @@
 import { Box, SpinnerMark, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../ui";
-import { useCallback, useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { blendHex, priceColor } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppActive } from "../../state/app/activity";
@@ -16,7 +16,7 @@ import { t, tf } from "../../i18n";
 import { useQuoteEntry, useResolvedEntryValue } from "../../market-data/hooks";
 import { formatPercentRaw } from "../../utils/format";
 import { formatMarketPrice } from "../../market-data/market/format";
-import { marketStateLabel, marketStateColor, getActiveQuoteDisplay } from "../../market-data/market/status";
+import { getActiveQuoteDisplay, marketStateColor, marketStateCountdown, marketStateLabel } from "../../market-data/market/status";
 import { VERSION } from "../../version";
 import { getTitlebarLeadingInset } from "./titlebar-overlay";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
@@ -24,14 +24,24 @@ import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-control
 const SPY_REFRESH_MS = 5 * 60_000; // 5 min
 const UPDATE_NOTICE_DURATION_MS = 5_000;
 
+type HeaderActionEvent = {
+  key?: string;
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
+};
+
 function DesktopHeaderPill({
   children,
   backgroundColor,
   borderColor,
+  onPress,
+  ariaLabel,
 }: {
   children: ReactNode;
   backgroundColor?: string;
   borderColor?: string;
+  onPress?: (event?: HeaderActionEvent) => void;
+  ariaLabel?: string;
 }) {
   const colors = useThemeColors();
   const resolvedBackgroundColor = backgroundColor ?? blendHex(colors.header, colors.bg, 0.28);
@@ -42,10 +52,20 @@ function DesktopHeaderPill({
       flexDirection="row"
       alignItems="center"
       backgroundColor={resolvedBackgroundColor}
+      data-gloom-interactive={onPress ? "true" : undefined}
+      role={onPress ? "button" : undefined}
+      tabIndex={onPress ? 0 : undefined}
+      aria-label={ariaLabel}
+      onMouseDown={onPress}
+      onKeyDown={(event: HeaderActionEvent) => {
+        if (event.key === "Enter" || event.key === " ") onPress?.(event);
+      }}
+      hoverBackgroundColor={onPress ? blendHex(resolvedBackgroundColor, colors.headerText, 0.12) : undefined}
       style={{
         border: `1px solid ${resolvedBorderColor}`,
         borderRadius: 5,
         paddingInline: 6,
+        cursor: onPress ? "pointer" : undefined,
       }}
     >
       {children}
@@ -133,7 +153,13 @@ function UpdateStatus() {
   return null;
 }
 
-export function Header({ onOpenHelp }: { onOpenHelp?: () => void }) {
+export function Header({
+  onOpenHelp,
+  onOpenChangelog,
+}: {
+  onOpenHelp?: () => void;
+  onOpenChangelog?: (version: string) => void;
+}) {
   const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const baseCurrency = useAppSelector(selectBaseCurrency);
@@ -143,6 +169,15 @@ export function Header({ onOpenHelp }: { onOpenHelp?: () => void }) {
   const titlebarLeadingInset = titleBarOverlay ? getTitlebarLeadingInset() : 0;
   const spyQuoteEntry = useQuoteEntry("SPY", null);
   const spyQuote = useResolvedEntryValue(spyQuoteEntry);
+  const mktState = spyQuote?.marketState;
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    if (!appActive || (mktState !== "PRE" && mktState !== "REGULAR")) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(id);
+  }, [appActive, mktState]);
 
   useEffect(() => {
     if (!appActive) return;
@@ -168,11 +203,19 @@ export function Header({ onOpenHelp }: { onOpenHelp?: () => void }) {
   }, [rendererHost, titleBarOverlay]);
 
   // Market status
-  const mktState = spyQuote?.marketState;
-  const mktLabel = mktState ? t(marketStateLabel(mktState)) : "";
+  const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;
+  const mktLabel = mktState
+    ? `${t(marketStateLabel(mktState))}${mktCountdown ? ` · ${mktCountdown}` : ""}`
+    : "";
   const mktColor = mktState ? marketStateColor(mktState, colors) : colors.headerText;
 
-  const openHelp = useCallback((event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+  const openChangelog = useCallback((event?: HeaderActionEvent) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    onOpenChangelog?.(VERSION);
+  }, [onOpenChangelog]);
+
+  const openHelp = useCallback((event?: HeaderActionEvent) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     onOpenHelp?.();
@@ -202,6 +245,8 @@ export function Header({ onOpenHelp }: { onOpenHelp?: () => void }) {
           <DesktopHeaderPill
             backgroundColor={blendHex(colors.header, colors.headerText, 0.1)}
             borderColor={blendHex(colors.border, colors.headerText, 0.28)}
+            onPress={onOpenChangelog ? openChangelog : undefined}
+            ariaLabel={onOpenChangelog ? `Open changelog for v${VERSION}` : undefined}
           >
             <Text fg={colors.headerText} style={{ fontSize: 11 }}>v{VERSION}</Text>
           </DesktopHeaderPill>
@@ -269,10 +314,22 @@ export function Header({ onOpenHelp }: { onOpenHelp?: () => void }) {
       data-titlebar-overlay={titleBarOverlay ? "true" : undefined}
       onMouseDown={startWindowDrag}
     >
-      <Box paddingLeft={titleBarOverlay ? titlebarLeadingInset : 1}>
-        <Text attributes={TextAttributes.BOLD} fg={colors.headerText}>
-          Gloomberb v{VERSION}
-        </Text>
+      <Box paddingLeft={titleBarOverlay ? titlebarLeadingInset : 1} flexDirection="row">
+        <Text attributes={TextAttributes.BOLD} fg={colors.headerText}>Gloomberb </Text>
+        <Box
+          data-gloom-interactive={onOpenChangelog ? "true" : undefined}
+          role={onOpenChangelog ? "button" : undefined}
+          tabIndex={onOpenChangelog ? 0 : undefined}
+          aria-label={onOpenChangelog ? `Open changelog for v${VERSION}` : undefined}
+          onMouseDown={onOpenChangelog ? openChangelog : undefined}
+          onKeyDown={(event: HeaderActionEvent) => {
+            if (event.key === "Enter" || event.key === " ") openChangelog(event);
+          }}
+          hoverBackgroundColor={onOpenChangelog ? blendHex(colors.header, colors.headerText, 0.15) : undefined}
+          style={{ cursor: onOpenChangelog ? "pointer" : undefined }}
+        >
+          <Text attributes={TextAttributes.BOLD} fg={colors.headerText}>v{VERSION}</Text>
+        </Box>
       </Box>
       <Box flexGrow={1} paddingLeft={2}>
         <UpdateStatus />
