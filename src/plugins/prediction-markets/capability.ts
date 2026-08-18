@@ -137,18 +137,20 @@ export const predictionChartSeriesCapability = chartSeriesProvider({
     search: (request) => catalog(request.query, request.limit, request.signal),
     async resolve(request): Promise<ResolvedSeries> {
       const identity = parsePredictionSeriesId(request.seriesId);
-      const summary = await resolveCurrentSummary(identity);
+      const summary = await resolveCurrentSummary(identity, request.signal);
       const range = historyRange(request);
       const dateWindow = request.viewport.dateWindow;
+      const historyOptions = {
+        ...(dateWindow ? {
+          start: new Date(dateWindow.start),
+          end: new Date(dateWindow.end),
+        } : {}),
+        signal: request.signal,
+        strict: true,
+      };
       const history = summary.venue === "kalshi"
-        ? await loadKalshiHistory(summary, range, {
-            ...(dateWindow ? {
-              start: new Date(dateWindow.start),
-              end: new Date(dateWindow.end),
-            } : {}),
-            strict: true,
-          })
-        : await loadPolymarketHistory(summary, range, { strict: true });
+        ? await loadKalshiHistory(summary, range, historyOptions)
+        : await loadPolymarketHistory(summary, range, historyOptions);
       return {
         id: request.seriesId,
         label: summary.title.slice(0, 160),

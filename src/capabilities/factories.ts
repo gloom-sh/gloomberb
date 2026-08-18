@@ -122,7 +122,7 @@ export function chartSeriesProvider(options: {
         output: chartSeriesCatalogOutputSchema,
       },
       resolve: {
-        ...op((input: any) => options.provider.resolve(input), "query"),
+        ...op((input: any, ctx) => options.provider.resolve({ ...input, signal: ctx.signal }), "query"),
         input: chartSeriesResolveRequestSchema,
         output: chartSeriesResolveOutputSchema,
       },

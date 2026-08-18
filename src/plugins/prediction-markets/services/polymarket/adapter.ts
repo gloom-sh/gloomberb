@@ -99,7 +99,7 @@ export async function loadPolymarketCatalog(
         const hydratedEvents = (
           await Promise.all(
             [...new Set(searchEvents.map((event) => event.id).filter(Boolean))]
-              .map((eventId) => loadPolymarketEvent(eventId)),
+              .map((eventId) => loadPolymarketEvent(eventId, options.signal)),
           )
         ).filter((event): event is PolymarketEventRecord => event != null);
         const resolvedEvents = reconcilePolymarketSearchEvents(

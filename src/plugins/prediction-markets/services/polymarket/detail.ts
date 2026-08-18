@@ -36,8 +36,10 @@ import type {
 
 export async function loadPolymarketEvent(
   eventId: string | undefined,
+  signal?: AbortSignal,
 ): Promise<PolymarketEventRecord | null> {
   if (!eventId) return null;
+  signal?.throwIfAborted();
   try {
     return await loadCachedPredictionResource(
       "rules",
@@ -45,10 +47,12 @@ export async function loadPolymarketEvent(
       async () =>
         await fetchJson<PolymarketEventRecord>(
           `https://gamma-api.polymarket.com/events/${eventId}`,
+          signal,
         ),
       PREDICTION_CACHE_POLICIES.rules,
     );
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw signal.reason ?? error;
     return null;
   }
 }
@@ -143,7 +147,7 @@ async function resolvePolymarketSummary(
 export async function loadPolymarketHistory(
   summary: PredictionMarketSummary,
   range: "1D" | "1W" | "1M" | "ALL",
-  options: { signal?: AbortSignal; strict?: boolean } = {},
+  options: { start?: Date; end?: Date; signal?: AbortSignal; strict?: boolean } = {},
 ): Promise<PredictionHistoryPoint[]> {
   const tokenId = summary.yesTokenId;
   if (!tokenId) {
@@ -160,15 +164,24 @@ export async function loadPolymarketHistory(
           : "max";
   const fidelity =
     range === "1D" ? 15 : range === "1W" ? 60 : range === "1M" ? 240 : 1440;
+  const start = options.start ? Math.floor(options.start.getTime() / 1000) : null;
+  const end = options.end ? Math.floor(options.end.getTime() / 1000) : null;
+  const bounded = start !== null && end !== null && Number.isFinite(start) && Number.isFinite(end) && start <= end;
 
   return await loadCachedPredictionResource(
     "history",
-    `${summary.key}:${range}`,
+    `${summary.key}:${range}${bounded ? `:${start}:${end}` : ""}`,
     async () => {
-      const response = await fetchJson<PolymarketHistoryResponse>(
-        `https://clob.polymarket.com/prices-history?market=${tokenId}&interval=${interval}&fidelity=${fidelity}`,
-        options.signal,
-      );
+      const url = new URL("https://clob.polymarket.com/prices-history");
+      url.searchParams.set("market", tokenId);
+      url.searchParams.set("fidelity", String(fidelity));
+      if (bounded) {
+        url.searchParams.set("startTs", String(start));
+        url.searchParams.set("endTs", String(end));
+      } else {
+        url.searchParams.set("interval", interval);
+      }
+      const response = await fetchJson<PolymarketHistoryResponse>(url.toString(), options.signal);
       return (response.history ?? [])
         .map((point) => ({
           date: new Date(point.t * 1000),

@@ -150,9 +150,11 @@ describe("resolveChartSpecData", () => {
     const secondViewport = { start: new Date("2026-02-01T00:00:00.000Z"), end: new Date("2026-02-08T00:00:00.000Z") };
 
     await resolveChartSpecData(spec, sources, cache, { requestViewport: firstViewport });
-    await resolveChartSpecData(spec, sources, cache, { requestViewport: secondViewport });
+    const panned = await resolveChartSpecData(spec, sources, cache, { requestViewport: secondViewport });
     await resolveChartSpecData(spec, sources, cache, { requestViewport: firstViewport });
 
+    expect(panned.series[0]?.points[0]?.date.toISOString()).toBe(secondViewport.start.toISOString());
+    expect(panned.viewport).toEqual(secondViewport);
     expect(requested.map((viewport) => viewport.dateWindow)).toEqual([
       { start: firstViewport.start.toISOString(), end: firstViewport.end.toISOString() },
       { start: secondViewport.start.toISOString(), end: secondViewport.end.toISOString() },
@@ -586,8 +588,8 @@ describe("resolveChartSpecData", () => {
     expect(detailedRequests).toHaveLength(1);
     expect(detailedRequests[0]?.resolution).toBe("15m");
     expect(detailedRequests[0]?.end).toBe("2025-01-17T00:00:00.001Z");
-    expect(result.viewport?.start.toISOString()).toBe("2025-01-01T00:00:00.000Z");
-    expect(result.viewport?.end.toISOString()).toBe("2025-04-01T00:00:00.000Z");
+    expect(result.viewport?.start.toISOString()).toBe("2025-01-10T00:00:00.000Z");
+    expect(result.viewport?.end.toISOString()).toBe("2025-01-17T00:00:00.000Z");
     expect(result.series[0]?.timeBasis).toMatchObject({
       kind: "market",
       timeZone: "America/New_York",

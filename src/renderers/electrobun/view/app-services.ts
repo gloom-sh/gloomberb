@@ -13,6 +13,7 @@ import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
 import { connectBackendConnectionHealth } from "./remote/connection-health-backend";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
+import { createCapabilityInvoker } from "./remote/capability-invoker";
 
 const servicesLog = debugLog.createLogger("services");
 
@@ -24,15 +25,18 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
   const tickerRepository = measurePerf("startup.services.ticker-repository", () => new RemoteTickerRepository());
   const dataProvider = measurePerf("startup.services.data-provider", () => createRemoteAssetDataClient());
   const marketData = new MarketDataCoordinator(dataProvider);
+  const invokeCapability = createCapabilityInvoker({
+    request: backendRequest,
+    shouldApplyDeadline: () => false,
+    timeoutMs: 0,
+  });
   const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence, {
     enableCapabilityHandlers: false,
     wrapBrokerAdapter: (broker) => createRemoteBrokerAdapter(broker),
     remoteCapabilityManifests: () => getElectrobunBackendInitSnapshot()?.capabilityManifests ?? [],
-    remoteCapabilityInvoke: (capabilityId, operationId, payload) => backendRequest("capability.invoke", {
-      capabilityId,
-      operationId,
-      payload,
-    }),
+    remoteCapabilityInvoke: (capabilityId, operationId, payload, options) => (
+      invokeCapability(capabilityId, operationId, payload, options)
+    ),
   });
   const newsService = new NewsService({ connectionHealth: pluginRegistry.connectionHealth });
 

@@ -17,6 +17,7 @@ interface DesktopCapabilityBridgeOptions<Rpc extends DesktopCapabilityRpc> {
 
 export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
   private readonly subscriptions = new Map<string, () => void>();
+  private readonly invocations = new Map<string, AbortController>();
 
   constructor(private readonly options: DesktopCapabilityBridgeOptions<Rpc>) {}
 
@@ -29,6 +30,8 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
       }
     }
     this.subscriptions.clear();
+    for (const controller of this.invocations.values()) controller.abort();
+    this.invocations.clear();
   }
 
   disposeWindow(windowKey: string): void {
@@ -42,6 +45,11 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
       }
       this.subscriptions.delete(id);
     }
+    for (const [id, controller] of this.invocations) {
+      if (!id.startsWith(scopedPrefix)) continue;
+      controller.abort();
+      this.invocations.delete(id);
+    }
   }
 
   async handle(
@@ -50,13 +58,39 @@ export class DesktopCapabilityBridge<Rpc extends DesktopCapabilityRpc> {
   ): Promise<unknown> {
     const registry = this.options.getRegistry();
     switch (request.method) {
-      case "capability.invoke":
-        return registry.invoke(
-          request.payload.capabilityId,
-          request.payload.operationId,
-          request.payload.payload,
-          { renderer: true },
-        );
+      case "capability.invoke": {
+        const clientInvocationId = request.payload.invocationId;
+        if (!clientInvocationId) {
+          return registry.invoke(
+            request.payload.capabilityId,
+            request.payload.operationId,
+            request.payload.payload,
+            { renderer: true },
+          );
+        }
+        const scopedInvocationId = this.scopeClientId(rpc, clientInvocationId);
+        if (this.invocations.has(scopedInvocationId)) {
+          throw new Error(`Capability invocation "${clientInvocationId}" is already active.`);
+        }
+        const controller = new AbortController();
+        this.invocations.set(scopedInvocationId, controller);
+        try {
+          return await registry.invoke(
+            request.payload.capabilityId,
+            request.payload.operationId,
+            request.payload.payload,
+            { renderer: true, signal: controller.signal },
+          );
+        } finally {
+          if (this.invocations.get(scopedInvocationId) === controller) {
+            this.invocations.delete(scopedInvocationId);
+          }
+        }
+      }
+      case "capability.cancel": {
+        this.invocations.get(this.scopeClientId(rpc, request.payload.invocationId))?.abort();
+        return null;
+      }
       case "capability.subscribe": {
         const clientSubscriptionId = request.payload.subscriptionId;
         const scopedSubscriptionId = this.scopeClientId(rpc, clientSubscriptionId);

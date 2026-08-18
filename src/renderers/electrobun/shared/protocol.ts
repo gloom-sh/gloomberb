@@ -76,6 +76,7 @@ export interface DesktopCapabilityInvokeRequest {
   capabilityId: string;
   operationId: string;
   payload?: unknown;
+  invocationId?: string;
 }
 
 export interface DesktopCapabilitySubscribeRequest extends DesktopCapabilityInvokeRequest {
@@ -91,6 +92,7 @@ export interface DesktopBackendRequestMap {
   "media.resolveLiveStream": { request: LiveStreamResolveRequest; response: ResolvedLiveStream };
   "remote.forward": { request: { request: RemoteControlRequest }; response: RemoteControlResponse };
   "capability.invoke": { request: DesktopCapabilityInvokeRequest; response: unknown };
+  "capability.cancel": { request: { invocationId: string }; response: null };
   "capability.subscribe": { request: DesktopCapabilitySubscribeRequest; response: null };
   "capability.unsubscribe": { request: { subscriptionId: string }; response: null };
   "desktop.syncMainState": { request: { snapshot: DesktopSharedStateSnapshot }; response: null };

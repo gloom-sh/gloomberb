@@ -1067,7 +1067,7 @@ export async function resolveChartSpecData(
   // untouched market viewport by the same amount instead of clipping its tail.
   // Explicit and user-created windows stay fixed through hasExplicitWindow.
   const bounds = hasExplicitWindow
-    ? initialVisibleBounds
+    ? requestVisibleBounds
     : followLatestMarketObservation(initialVisibleBounds, rawSeries);
   const resolution = initialResolution;
   const studyBounds = bounds.end !== null

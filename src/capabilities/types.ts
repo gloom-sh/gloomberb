@@ -92,6 +92,7 @@ export interface ChartSeriesCatalogRequest {
 export interface ChartSeriesResolveRequest {
   seriesId: string;
   viewport: ChartViewportSpec;
+  signal?: AbortSignal;
 }
 
 export interface ChartSeriesProvider {

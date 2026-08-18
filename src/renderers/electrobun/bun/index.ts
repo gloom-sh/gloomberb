@@ -441,6 +441,7 @@ async function handleBackendRequest(
     case "remote.forward":
       return forwardRemoteControlRequest(request.payload.request);
     case "capability.invoke":
+    case "capability.cancel":
     case "capability.subscribe":
     case "capability.unsubscribe":
       return capabilityBridge.handle(rpc, request);

@@ -5,7 +5,11 @@ import {
   predictionHistoryPoints,
   predictionSeriesId,
 } from "./capability";
-import { resetPredictionMarketsPersistence } from "./services/fetch";
+import {
+  attachPredictionMarketsPersistence,
+  resetPredictionMarketsPersistence,
+} from "./services/fetch";
+import { MemoryPersistence } from "./test-helpers";
 import type { PredictionMarketSummary } from "./types";
 
 function json(value: unknown) {
@@ -115,6 +119,119 @@ test("polymarket resolution reloads the event and follows a rotated YES token", 
   expect(resolved.label).toBe("Current market title");
   expect(resolved.points[0]?.value).toBe(0.7);
   expect(requested.some((url) => url.includes("market=rotated-yes"))).toBe(true);
+});
+
+test("polymarket pans request and cache their bounded history windows", async () => {
+  attachPredictionMarketsPersistence(new MemoryPersistence());
+  const historyRequests: string[] = [];
+  setHttpFetchTransport(async (url) => {
+    if (url.endsWith("/events/event-1")) {
+      return json({
+        id: "event-1",
+        title: "Current event",
+        markets: [{
+          id: "market-1",
+          question: "Current market title",
+          active: true,
+          closed: false,
+          outcomes: ["Yes", "No"],
+          outcomePrices: ["0.7", "0.3"],
+          clobTokenIds: ["yes-token", "no-token"],
+        }],
+      });
+    }
+    if (url.includes("prices-history")) {
+      historyRequests.push(url);
+      const start = Number(new URL(url).searchParams.get("startTs"));
+      return json({ history: [{ t: start + 1, p: 0.7 }] });
+    }
+    throw new Error(`Unexpected URL ${url}`);
+  });
+  const viewport = (start: string, end: string) => ({
+    range: "1W" as const,
+    resolution: "auto" as const,
+    dateWindow: { start, end },
+  });
+  const january = viewport("2026-01-01T00:00:00.000Z", "2026-01-08T00:00:00.000Z");
+  const february = viewport("2026-02-01T00:00:00.000Z", "2026-02-08T00:00:00.000Z");
+
+  await predictionChartSeriesCapability.provider.resolve({
+    seriesId: "polymarket/event-1/market-1",
+    viewport: january,
+  });
+  const panned = await predictionChartSeriesCapability.provider.resolve({
+    seriesId: "polymarket/event-1/market-1",
+    viewport: february,
+  });
+  await predictionChartSeriesCapability.provider.resolve({
+    seriesId: "polymarket/event-1/market-1",
+    viewport: january,
+  });
+
+  expect(historyRequests).toHaveLength(2);
+  expect(historyRequests.map((url) => {
+    const params = new URL(url).searchParams;
+    return [params.get("startTs"), params.get("endTs"), params.get("interval")];
+  })).toEqual([
+    [String(Date.parse(january.dateWindow.start) / 1000), String(Date.parse(january.dateWindow.end) / 1000), null],
+    [String(Date.parse(february.dateWindow.start) / 1000), String(Date.parse(february.dateWindow.end) / 1000), null],
+  ]);
+  expect(panned.points[0]?.date.toISOString()).toBe("2026-02-01T00:00:01.000Z");
+});
+
+test("aborting catalog search stops Polymarket event hydration without caching it", async () => {
+  attachPredictionMarketsPersistence(new MemoryPersistence());
+  let searchRequests = 0;
+  let eventRequests = 0;
+  let markHydrationStarted: (() => void) | undefined;
+  const hydrationStarted = new Promise<void>((resolve) => {
+    markHydrationStarted = resolve;
+  });
+  setHttpFetchTransport(async (url, init) => {
+    if (url.includes("public-search")) {
+      searchRequests += 1;
+      return json({ events: [{ id: "event-1" }] });
+    }
+    if (url.endsWith("/events/event-1")) {
+      eventRequests += 1;
+      if (eventRequests === 1) {
+        markHydrationStarted?.();
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+        });
+      }
+      return json({
+        id: "event-1",
+        title: "Rates",
+        markets: [{
+          id: "market-1",
+          question: "Rates",
+          active: true,
+          closed: false,
+          outcomes: ["Yes", "No"],
+          outcomePrices: ["0.5", "0.5"],
+          clobTokenIds: ["yes", "no"],
+        }],
+      });
+    }
+    if (url.includes("api.elections.kalshi.com")) return json({ events: [] });
+    throw new Error(`Unexpected URL ${url}`);
+  });
+
+  const controller = new AbortController();
+  const pending = predictionChartSeriesCapability.provider.search!({
+    query: "rates",
+    limit: 1,
+    signal: controller.signal,
+  });
+  await hydrationStarted;
+  controller.abort();
+  await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+
+  const retried = await predictionChartSeriesCapability.provider.search!({ query: "rates", limit: 1 });
+  expect(retried).toHaveLength(1);
+  expect(searchRequests).toBe(2);
+  expect(eventRequests).toBe(2);
 });
 
 test("kalshi resolution reloads the event before requesting current market history", async () => {
