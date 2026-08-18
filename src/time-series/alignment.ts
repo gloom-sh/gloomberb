@@ -80,11 +80,23 @@ export function alignTimeSeries(
   const exactMaps = series.map((entry) => (
     new Map(entry.points.map((point) => [effectiveTimeSeriesPointTime(point), point]))
   ));
+  const carryPoints = series.map((entry) => [...entry.points].sort((left, right) => (
+    effectiveTimeSeriesPointTime(left) - effectiveTimeSeriesPointTime(right)
+  )));
   const sortedTimes = [...timeline].sort((left, right) => left - right);
+  const carryPointers = new Array<number>(series.length).fill(-1);
   const rows: AlignedTimeSeriesRow[] = [];
   for (const time of sortedTimes) {
     const values: Record<string, AlignedSeriesValue | null> = {};
     series.forEach((entry, seriesIndex) => {
+      const points = carryPoints[seriesIndex]!;
+      let pointer = carryPointers[seriesIndex]!;
+      while (
+        pointer + 1 < points.length
+        && effectiveTimeSeriesPointTime(points[pointer + 1]!) <= time
+      ) pointer += 1;
+      carryPointers[seriesIndex] = pointer;
+
       const exact = exactMaps[seriesIndex]!.get(time);
       if (exact) {
         values[entry.id] = { point: exact, value: scalarPointValue(exact), carried: false };
@@ -96,20 +108,12 @@ export function alignTimeSeries(
         return;
       }
 
-      let previous: TimeSeriesPoint | null = null;
-      let previousEligibleAt = Number.NEGATIVE_INFINITY;
-      for (const point of entry.points) {
-        const eligibleAt = effectiveTimeSeriesPointTime(point);
-        if (eligibleAt <= time && eligibleAt >= previousEligibleAt) {
-          previous = point;
-          previousEligibleAt = eligibleAt;
-        }
-      }
-      if (!previous) {
+      if (pointer < 0) {
         values[entry.id] = null;
         return;
       }
-      const age = time - previousEligibleAt;
+      const previous = points[pointer]!;
+      const age = time - effectiveTimeSeriesPointTime(previous);
       if (options.maxCarryMilliseconds !== undefined && age > options.maxCarryMilliseconds) {
         values[entry.id] = null;
         return;

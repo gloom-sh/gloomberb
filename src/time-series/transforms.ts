@@ -54,23 +54,51 @@ function referencePoint(
   currentIndex: number,
   months: number,
   toleranceDays: number,
+  observationsSorted: boolean,
 ): TimeSeriesPoint | null {
   const current = points[currentIndex];
   if (!current) return null;
   const currentTime = current.observedAt.getTime();
   const target = shiftUtcMonths(current.observedAt, months).getTime();
-  let best: { point: TimeSeriesPoint; distance: number; date: number } | null = null;
-  for (let index = 0; index < currentIndex; index += 1) {
+  const maxDistance = toleranceDays * DAY_MS;
+  let best: { point: TimeSeriesPoint; distance: number; date: number; index: number } | null = null;
+  const consider = (index: number) => {
     const candidate = points[index]!;
     const candidateTime = candidate.observedAt.getTime();
-    if (!Number.isFinite(candidateTime) || candidateTime >= currentTime) continue;
+    if (candidateTime >= currentTime) return;
     const distance = Math.abs(candidateTime - target);
-    if (distance > toleranceDays * DAY_MS) continue;
-    if (!best || distance < best.distance || (distance === best.distance && candidateTime > best.date)) {
-      best = { point: candidate, distance, date: candidateTime };
+    if (distance > maxDistance) return;
+    if (
+      !best
+      || distance < best.distance
+      || (distance === best.distance && candidateTime > best.date)
+      || (distance === best.distance && candidateTime === best.date && index < best.index)
+    ) {
+      best = { point: candidate, distance, date: candidateTime, index };
     }
+  };
+
+  if (!observationsSorted) {
+    for (let index = 0; index < currentIndex; index += 1) consider(index);
+    return (best as { point: TimeSeriesPoint } | null)?.point ?? null;
   }
-  return best?.point ?? null;
+
+  let low = 0;
+  let high = currentIndex;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (points[middle]!.observedAt.getTime() < target) low = middle + 1;
+    else high = middle;
+  }
+  for (let index = low - 1; index >= 0; index -= 1) {
+    if (target - points[index]!.observedAt.getTime() > maxDistance) break;
+    consider(index);
+  }
+  for (let index = low; index < currentIndex; index += 1) {
+    if (points[index]!.observedAt.getTime() - target > maxDistance) break;
+    consider(index);
+  }
+  return (best as { point: TimeSeriesPoint } | null)?.point ?? null;
 }
 
 function mapNumericFields(
@@ -124,8 +152,11 @@ export function applySeriesTransform(
 
   const months = transform === "yoy" ? 12 : 3;
   const toleranceDays = transform === "yoy" ? 62 : 46;
+  const observationsSorted = points.every((point, index) => (
+    index === 0 || points[index - 1]!.observedAt.getTime() <= point.observedAt.getTime()
+  ));
   return points.map((point, index) => {
-    const reference = referencePoint(points, index, months, toleranceDays);
+    const reference = referencePoint(points, index, months, toleranceDays, observationsSorted);
     if (!reference) return mapNumericFields(point, () => null);
     return mapNumericFields(point, (value, field) => growthValue(value, reference[field]));
   });

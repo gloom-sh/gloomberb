@@ -350,24 +350,70 @@ function emptyFinancials(priceHistory: TickerFinancials["priceHistory"] = []): T
   return { annualStatements: [], quarterlyStatements: [], priceHistory };
 }
 
-function mergePriceHistoryWindows(
+function isSortedPriceHistory(points: TickerFinancials["priceHistory"]): boolean {
+  let previous = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    const timestamp = getPricePointTimestamp(point);
+    if (!Number.isFinite(timestamp)) continue;
+    if (timestamp < previous) return false;
+    previous = timestamp;
+  }
+  return true;
+}
+
+export function mergePriceHistoryWindows(
   current: TickerFinancials["priceHistory"],
   incoming: TickerFinancials["priceHistory"],
   resolution: ManualChartResolution,
 ): TickerFinancials["priceHistory"] {
-  const byTimestamp = new Map<number, TickerFinancials["priceHistory"][number]>();
-  for (const point of [...current, ...incoming]) {
-    const timestamp = getPricePointTimestamp(point);
-    if (Number.isFinite(timestamp)) {
-      byTimestamp.set(
-        timestamp,
-        point.date instanceof Date ? point : { ...point, date: new Date(timestamp) },
-      );
+  let sorted: TickerFinancials["priceHistory"];
+  if (!isSortedPriceHistory(current) || !isSortedPriceHistory(incoming)) {
+    const byTimestamp = new Map<number, TickerFinancials["priceHistory"][number]>();
+    for (const point of [...current, ...incoming]) {
+      const timestamp = getPricePointTimestamp(point);
+      if (Number.isFinite(timestamp)) {
+        byTimestamp.set(
+          timestamp,
+          point.date instanceof Date ? point : { ...point, date: new Date(timestamp) },
+        );
+      }
+    }
+    sorted = [...byTimestamp.values()].sort(
+      (left, right) => getPricePointTimestamp(left) - getPricePointTimestamp(right),
+    );
+  } else {
+    sorted = [];
+    let currentIndex = 0;
+    let incomingIndex = 0;
+    const append = (
+      point: TickerFinancials["priceHistory"][number],
+      timestamp: number,
+    ) => {
+      const normalized = point.date instanceof Date ? point : { ...point, date: new Date(timestamp) };
+      const previous = sorted.at(-1);
+      if (previous && getPricePointTimestamp(previous) === timestamp) sorted[sorted.length - 1] = normalized;
+      else sorted.push(normalized);
+    };
+
+    while (currentIndex < current.length || incomingIndex < incoming.length) {
+      const currentPoint = current[currentIndex];
+      const incomingPoint = incoming[incomingIndex];
+      const currentTimestamp = currentPoint ? getPricePointTimestamp(currentPoint) : Number.POSITIVE_INFINITY;
+      const incomingTimestamp = incomingPoint ? getPricePointTimestamp(incomingPoint) : Number.POSITIVE_INFINITY;
+      if (currentPoint && !Number.isFinite(currentTimestamp)) {
+        currentIndex += 1;
+      } else if (incomingPoint && !Number.isFinite(incomingTimestamp)) {
+        incomingIndex += 1;
+      } else if (currentPoint && currentTimestamp <= incomingTimestamp) {
+        append(currentPoint, currentTimestamp);
+        currentIndex += 1;
+      } else if (incomingPoint) {
+        append(incomingPoint, incomingTimestamp);
+        incomingIndex += 1;
+      }
     }
   }
-  const sorted = [...byTimestamp.values()].sort(
-    (left, right) => getPricePointTimestamp(left) - getPricePointTimestamp(right),
-  );
+
   if (isIntradayResolution(resolution)) return sorted;
   // Windows can be served by different sources, and they stamp the same session
   // differently: local midnight, UTC midnight, or the opening bell. Keying on the

@@ -3,7 +3,7 @@ import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
-import { ChartResolveCache, resolveChartSpecData } from "./resolve";
+import { ChartResolveCache, mergePriceHistoryWindows, resolveChartSpecData } from "./resolve";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 
 const emptyFinancials = (): TickerFinancials => ({
@@ -1749,5 +1749,55 @@ describe("resolveChartSpecData", () => {
     });
     expect(result.series.find((series) => series.id === "sma")?.points.map((point) => point.value))
       .toEqual([10]);
+  });
+});
+
+describe("mergePriceHistoryWindows", () => {
+  const legacyMerge = (
+    current: TickerFinancials["priceHistory"],
+    incoming: TickerFinancials["priceHistory"],
+    resolution: "1h" | "1d",
+  ) => {
+    const byTimestamp = new Map<number, TickerFinancials["priceHistory"][number]>();
+    for (const point of [...current, ...incoming]) {
+      const timestamp = point.date.getTime();
+      if (Number.isFinite(timestamp)) byTimestamp.set(timestamp, point);
+    }
+    const sorted = [...byTimestamp.values()].sort((left, right) => left.date.getTime() - right.date.getTime());
+    if (resolution === "1h") return sorted;
+    const plotted = new Set(current.map((point) => point.date.getTime()));
+    const merged: TickerFinancials["priceHistory"] = [];
+    for (const point of sorted) {
+      const previous = merged.at(-1);
+      if (!previous || point.date.getTime() - previous.date.getTime() >= 86_400_000 * 0.8) {
+        merged.push(point);
+      } else if (!plotted.has(previous.date.getTime()) && plotted.has(point.date.getTime())) {
+        merged[merged.length - 1] = point;
+      }
+    }
+    return merged;
+  };
+
+  test("linear merge matches the prior merge for overlaps, duplicates, and unsorted fallback", () => {
+    const point = (date: string, close: number) => ({ date: new Date(date), close });
+    const sortedCurrent = [
+      point("2026-07-28T13:30:00Z", 110),
+      point("2026-07-29T13:30:00Z", 115),
+      point("2026-07-29T13:30:00Z", 116),
+      point("2026-07-30T13:30:00Z", 120),
+    ];
+    const incoming = [
+      point("2026-07-27T22:00:00Z", 111),
+      point("2026-07-29T13:30:00Z", 999),
+      point("2026-07-29T22:00:00Z", 121),
+    ];
+
+    for (const current of [sortedCurrent, [...sortedCurrent].reverse()]) {
+      for (const resolution of ["1h", "1d"] as const) {
+        expect(mergePriceHistoryWindows(current, incoming, resolution)).toEqual(
+          legacyMerge(current, incoming, resolution),
+        );
+      }
+    }
   });
 });

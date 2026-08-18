@@ -240,11 +240,10 @@ function mergeStatementsByPeriod(
   const groups: InternalStatement[][] = [];
   const sorted = [...statements].sort((left, right) => left.date.localeCompare(right.date));
   for (const statement of sorted) {
-    const group = groups.find((candidate) => (
-      areNearbyFinancialPeriodEnds(candidate[0]!.date, statement.date)
-    ));
-    if (group) group.push(statement as InternalStatement);
-    else groups.push([statement as InternalStatement]);
+    const lastGroup = groups.at(-1);
+    if (lastGroup && areNearbyFinancialPeriodEnds(lastGroup[0]!.date, statement.date)) {
+      lastGroup.push(statement as InternalStatement);
+    } else groups.push([statement as InternalStatement]);
   }
   return groups
     .map(mergeStatementPeriodGroup)
@@ -767,11 +766,10 @@ function dedupeFundamentalPeriods(points: readonly TimeSeriesPoint[]): TimeSerie
     left.observedAt.getTime() - right.observedAt.getTime()
   ));
   for (const point of sorted) {
-    const group = groups.find((candidate) => (
-      areNearbyFinancialPeriodEnds(candidate[0]!.observedAt, point.observedAt)
-    ));
-    if (group) group.push(point);
-    else groups.push([point]);
+    const lastGroup = groups.at(-1);
+    if (lastGroup && areNearbyFinancialPeriodEnds(lastGroup[0]!.observedAt, point.observedAt)) {
+      lastGroup.push(point);
+    } else groups.push([point]);
   }
   return groups
     .map((group) => group.slice(1).reduce(preferredPeriodPoint, group[0]!))
