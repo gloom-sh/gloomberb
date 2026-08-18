@@ -110,6 +110,27 @@ describe("CapabilityRegistry", () => {
     });
   });
 
+  test("does not treat cached and static capability operations as network health", async () => {
+    const health = new ConnectionHealthRegistry();
+    health.registerSource({ id: "asset-data.test", name: "Test", kind: "asset-data" });
+    const registry = new CapabilityRegistry({ connectionHealth: health });
+    registry.register("plugin-a", testCapability({
+      id: "asset-data.test",
+      kind: "asset-data",
+      operations: Object.fromEntries([
+        "canProvide",
+        "getCachedFinancialsForTargets",
+        "getChartResolutionSupport",
+      ].map((id) => [id, { kind: "read", handler: () => true }])),
+    }));
+
+    await registry.invoke("asset-data.test", "canProvide", {});
+    await registry.invoke("asset-data.test", "getCachedFinancialsForTargets", {});
+    await registry.invoke("asset-data.test", "getChartResolutionSupport", {});
+
+    expect(health.getSnapshot().sources[0]).toMatchObject({ status: "idle", lastRequestAt: null });
+  });
+
   test("emits renderer-safe manifests only when requested", () => {
     const registry = new CapabilityRegistry();
     registry.register("plugin-a", testCapability());

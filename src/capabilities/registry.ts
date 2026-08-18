@@ -12,7 +12,14 @@ interface SubscriptionEntry {
   dispose: () => void;
 }
 
-const LOCAL_READ_OPERATIONS = new Set(["getCachedFinancialsForTargets", "getCachedNews"]);
+const LOCAL_READ_OPERATIONS = new Set([
+  "canProvide",
+  "supports",
+  "getCachedFinancialsForTargets",
+  "getCachedNews",
+  "getChartResolutionSupport",
+  "getChartResolutionCapabilities",
+]);
 
 export class CapabilityRegistry {
   private readonly capabilities = new Map<string, RegisteredCapability>();

@@ -1,5 +1,8 @@
 import { join } from "path";
-import { connectionHealth } from "./connection-health";
+import {
+  connectionHealth,
+  registerGloomCloudConnectionSources,
+} from "./connection-health";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
@@ -40,6 +43,7 @@ export function createAppServices({
   const persistence = measurePerf("startup.services.persistence", () => new AppPersistence(dbPath));
   setIbkrPortfolioPerformanceResourceStore(persistence.resources);
   const tickerRepository = measurePerf("startup.services.ticker-repository", () => new TickerRepository(persistence.tickers));
+  const disposeCloudConnectionSources = registerGloomCloudConnectionSources(connectionHealth);
   const providerRouter = measurePerf("startup.services.asset-data-router", () => (
     new AssetDataRouter(null, [], persistence.resources, connectionHealth)
   ));
@@ -97,6 +101,7 @@ export function createAppServices({
       setSharedNewsService(null);
       newsService.stop();
       pluginRegistry.destroy();
+      disposeCloudConnectionSources();
       setIbkrPortfolioPerformanceResourceStore(null);
       persistence.close();
     },

@@ -49,17 +49,14 @@ export interface ConnectionRequestReport {
 interface ConnectionHealthOptions {
   now?: () => number;
   clock?: () => number;
+  requestStatusTtlMs?: number;
 }
-
-type PendingEvent =
-  | { type: "request"; sourceId: string; report: ConnectionRequestReport }
-  | { type: "socket"; sourceId: string; state: ConnectionSocketState; detail?: string };
 
 export const GLOOM_CLOUD_HTTP_CONNECTION_ID = "gloom-cloud-http";
 export const GLOOM_CLOUD_SOCKET_CONNECTION_ID = "gloom-cloud-socket";
 
 const MAX_RECENT_REQUESTS = 20;
-const MAX_PENDING_EVENTS = 200;
+const DEFAULT_REQUEST_STATUS_TTL_MS = 60_000;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -86,15 +83,16 @@ export class ConnectionHealthRegistry {
   private readonly sources = new Map<string, ConnectionHealthState>();
   private readonly registrations = new Map<string, symbol>();
   private readonly listeners = new Set<() => void>();
-  private readonly pending: PendingEvent[] = [];
   private readonly external = new Map<string, ConnectionHealthState[]>();
   private readonly now: () => number;
   private readonly clock: () => number;
+  private readonly requestStatusTtlMs: number;
   private version = 0;
 
   constructor(options: ConnectionHealthOptions = {}) {
     this.now = options.now ?? Date.now;
     this.clock = options.clock ?? (() => performance.now());
+    this.requestStatusTtlMs = options.requestStatusTtlMs ?? DEFAULT_REQUEST_STATUS_TTL_MS;
   }
 
   registerSource(source: ConnectionHealthSource): () => void {
@@ -115,14 +113,6 @@ export class ConnectionHealthRegistry {
       currentDetail: source.detail ?? null,
     });
 
-    const queued = this.pending.filter((event) => event.sourceId === source.id);
-    for (let index = this.pending.length - 1; index >= 0; index--) {
-      if (this.pending[index]?.sourceId === source.id) this.pending.splice(index, 1);
-    }
-    for (const event of queued) {
-      if (event.type === "request") this.applyRequest(source.id, event.report);
-      else this.applySocketState(source.id, event.state, event.detail);
-    }
     this.emit();
 
     return () => {
@@ -134,26 +124,24 @@ export class ConnectionHealthRegistry {
   }
 
   reportRequest(sourceId: string, report: ConnectionRequestReport): void {
-    if (!this.sources.has(sourceId)) {
-      this.queue({ type: "request", sourceId, report: { ...report } });
-      return;
-    }
+    if (!this.sources.has(sourceId)) return;
     this.applyRequest(sourceId, report);
     this.emit();
   }
 
   async track<T>(sourceId: string, operation: string, request: () => Promise<T>): Promise<T> {
+    const registration = this.registrations.get(sourceId);
     const startedAt = this.clock();
     try {
       const result = await request();
-      this.reportRequest(sourceId, {
+      this.reportTrackedRequest(sourceId, registration, {
         operation,
         success: true,
         latencyMs: this.clock() - startedAt,
       });
       return result;
     } catch (error) {
-      this.reportRequest(sourceId, {
+      this.reportTrackedRequest(sourceId, registration, {
         operation,
         success: false,
         latencyMs: this.clock() - startedAt,
@@ -164,10 +152,7 @@ export class ConnectionHealthRegistry {
   }
 
   reportSocketState(sourceId: string, state: ConnectionSocketState, detail?: string): void {
-    if (!this.sources.has(sourceId)) {
-      this.queue({ type: "socket", sourceId, state, detail });
-      return;
-    }
+    if (!this.sources.has(sourceId)) return;
     this.applySocketState(sourceId, state, detail);
     this.emit();
   }
@@ -182,11 +167,15 @@ export class ConnectionHealthRegistry {
   }
 
   getSnapshot(): ConnectionHealthSnapshot {
-    const local = [...this.sources.values()].map(cloneState);
-    const external = [...this.external.values()].flatMap((states) => states.map(cloneState));
+    const sources = new Map(
+      [...this.sources.values()].map((source) => [source.id, this.snapshotState(source)]),
+    );
+    for (const external of this.external.values()) {
+      for (const source of external) sources.set(source.id, this.snapshotState(source));
+    }
     return {
       version: this.version,
-      sources: [...local, ...external].sort((left, right) => (
+      sources: [...sources.values()].sort((left, right) => (
         (left.priority ?? 1000) - (right.priority ?? 1000)
         || left.name.localeCompare(right.name)
       )),
@@ -194,11 +183,7 @@ export class ConnectionHealthRegistry {
   }
 
   replaceExternalSnapshot(namespace: string, snapshot: ConnectionHealthSnapshot): void {
-    this.external.set(namespace, snapshot.sources.map((source) => ({
-      ...cloneState(source),
-      id: `${namespace}:${source.id}`,
-      currentDetail: source.currentDetail ?? `Reported by ${namespace}`,
-    })));
+    this.external.set(namespace, snapshot.sources.map(cloneState));
     this.emit();
   }
 
@@ -207,11 +192,26 @@ export class ConnectionHealthRegistry {
     this.emit();
   }
 
-  private queue(event: PendingEvent): void {
-    this.pending.push(event);
-    if (this.pending.length > MAX_PENDING_EVENTS) {
-      this.pending.splice(0, this.pending.length - MAX_PENDING_EVENTS);
+  private reportTrackedRequest(
+    sourceId: string,
+    registration: symbol | undefined,
+    report: ConnectionRequestReport,
+  ): void {
+    if (!registration || this.registrations.get(sourceId) !== registration) return;
+    this.applyRequest(sourceId, report);
+    this.emit();
+  }
+
+  private snapshotState(source: ConnectionHealthState): ConnectionHealthState {
+    const snapshot = cloneState(source);
+    if (
+      snapshot.socketState === null
+      && snapshot.lastRequestAt !== null
+      && this.now() - snapshot.lastRequestAt >= this.requestStatusTtlMs
+    ) {
+      snapshot.status = "idle";
     }
+    return snapshot;
   }
 
   private applyRequest(sourceId: string, report: ConnectionRequestReport): void {
@@ -257,6 +257,30 @@ export class ConnectionHealthRegistry {
     this.version++;
     for (const listener of this.listeners) listener();
   }
+}
+
+export function registerGloomCloudConnectionSources(health: ConnectionHealthRegistry): () => void {
+  const disposers = [
+    health.registerSource({
+      id: GLOOM_CLOUD_HTTP_CONNECTION_ID,
+      name: "Gloom Cloud HTTP",
+      kind: "api",
+      ownerId: "gloomberb-cloud",
+      priority: 0,
+      detail: "api.gloom.sh",
+    }),
+    health.registerSource({
+      id: GLOOM_CLOUD_SOCKET_CONNECTION_ID,
+      name: "Gloom Cloud Stream",
+      kind: "websocket",
+      ownerId: "gloomberb-cloud",
+      priority: 1,
+      detail: "api.gloom.sh/cloud/ws",
+    }),
+  ];
+  return () => {
+    for (const dispose of disposers.reverse()) dispose();
+  };
 }
 
 export const connectionHealth = new ConnectionHealthRegistry();

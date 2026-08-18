@@ -2,10 +2,12 @@ import type {
   ConnectionHealthRegistry,
   ConnectionHealthSnapshot,
 } from "../../../../core/connection-health";
-import { CONNECTION_HEALTH_CAPABILITY_ID } from "../../../../plugins/builtin/connections";
-import { backendRequest, onCapabilityEvent } from "../backend-rpc";
 
-const SUBSCRIPTION_ID = "connection-health";
+export interface RemoteConnectionHealthBridge {
+  subscribe(): Promise<unknown>;
+  unsubscribe(): Promise<unknown>;
+  onEvent(listener: (event: unknown) => void): () => void;
+}
 
 function isSnapshot(value: unknown): value is ConnectionHealthSnapshot {
   return !!value
@@ -14,27 +16,34 @@ function isSnapshot(value: unknown): value is ConnectionHealthSnapshot {
     && typeof (value as ConnectionHealthSnapshot).version === "number";
 }
 
-export function connectRemoteConnectionHealth(health: ConnectionHealthRegistry): () => void {
+export function connectRemoteConnectionHealth(
+  health: ConnectionHealthRegistry,
+  bridge: RemoteConnectionHealthBridge,
+): () => void {
   let disposed = false;
-  const disposeEvents = onCapabilityEvent(SUBSCRIPTION_ID, (message) => {
-    if (!disposed && isSnapshot(message.event)) {
-      health.replaceExternalSnapshot("backend", message.event);
-    }
+  let subscribed = false;
+  let unsubscribeStarted = false;
+  const unsubscribe = () => {
+    if (unsubscribeStarted) return;
+    unsubscribeStarted = true;
+    void bridge.unsubscribe().catch(() => {});
+  };
+  const disposeEvents = bridge.onEvent((event) => {
+    if (!disposed && isSnapshot(event)) health.replaceExternalSnapshot("backend", event);
   });
 
-  void backendRequest("capability.subscribe", {
-    subscriptionId: SUBSCRIPTION_ID,
-    capabilityId: CONNECTION_HEALTH_CAPABILITY_ID,
-    operationId: "subscribe",
-    payload: {},
+  void bridge.subscribe().then(() => {
+    subscribed = true;
+    if (disposed) unsubscribe();
   }).catch(() => {
     if (!disposed) health.clearExternalSnapshot("backend");
   });
 
   return () => {
+    if (disposed) return;
     disposed = true;
     disposeEvents();
     health.clearExternalSnapshot("backend");
-    void backendRequest("capability.unsubscribe", { subscriptionId: SUBSCRIPTION_ID }).catch(() => {});
+    if (subscribed) unsubscribe();
   };
 }

@@ -139,9 +139,12 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => health.subscribe(() => setSnapshot(health.getSnapshot())), [health]);
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 5000);
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      setSnapshot(health.getSnapshot());
+    }, 5000);
     return () => clearInterval(timer);
-  }, []);
+  }, [health]);
 
   const sources = useMemo(() => [...snapshot.sources].sort((left, right) => {
     let comparison = 0;
@@ -186,8 +189,8 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
       ...(issues > 0 ? [{ id: "issues", parts: [{ text: `${issues} issue${issues === 1 ? "" : "s"}`, tone: "warning" as const }] }] : []),
       ...(connecting > 0 ? [{ id: "connecting", parts: [{ text: `${connecting} connecting`, tone: "muted" as const }] }] : []),
     ],
-    hints: [{ id: "sort", key: "s", label: "ort", onPress: cycleSort }],
-  }), [connecting, cycleSort, issues]);
+    hints: detailOpen ? [] : [{ id: "sort", key: "s", label: "ort", onPress: cycleSort }],
+  }), [connecting, cycleSort, detailOpen, issues]);
 
   const renderCell = useCallback((source: ConnectionHealthState, column: ConnectionColumn): DataTableCell => {
     if (column.id === "service") return { text: truncateToDisplayWidth(source.name, column.width), color: colors.text };

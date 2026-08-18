@@ -2,7 +2,6 @@ import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { DataProvider } from "../../types/data-provider";
 
 const REQUEST_METHODS = new Set([
-  "canProvide",
   "getQuotesBatch",
   "getTickerFinancialsBatch",
   "getTickerFinancials",
@@ -20,8 +19,6 @@ const REQUEST_METHODS = new Set([
   "getArticleSummary",
   "getPriceHistory",
   "getPriceHistoryForResolution",
-  "getChartResolutionSupport",
-  "getChartResolutionCapabilities",
   "getDetailedPriceHistory",
   "getOptionsChain",
 ]);

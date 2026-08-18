@@ -1,9 +1,5 @@
 import type { PluginCapability } from "../../../capabilities";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
-import {
-  GLOOM_CLOUD_HTTP_CONNECTION_ID,
-  GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-} from "../../../core/connection-health";
 import type { PluginModule } from "../plugin-module";
 import { ConnectionsPane } from "./pane";
 
@@ -33,8 +29,6 @@ function connectionHealthCapability(health: ConnectionHealthRegistry): PluginCap
   };
 }
 
-let disposers: Array<() => void> = [];
-
 export const connectionsModule: PluginModule = {
   panes: [{
     id: "connections",
@@ -54,27 +48,6 @@ export const connectionsModule: PluginModule = {
     shortcut: { prefix: "CONN" },
   }],
   setup(ctx) {
-    disposers = [
-      ctx.connectionHealth.registerSource({
-        id: GLOOM_CLOUD_HTTP_CONNECTION_ID,
-        name: "Gloom Cloud HTTP",
-        kind: "api",
-        ownerId: "gloomberb-cloud",
-        priority: 0,
-        detail: "api.gloom.sh",
-      }),
-      ctx.connectionHealth.registerSource({
-        id: GLOOM_CLOUD_SOCKET_CONNECTION_ID,
-        name: "Gloom Cloud Stream",
-        kind: "websocket",
-        ownerId: "gloomberb-cloud",
-        priority: 1,
-        detail: "api.gloom.sh/cloud/ws",
-      }),
-    ];
     ctx.registerCapability(connectionHealthCapability(ctx.connectionHealth));
-  },
-  dispose() {
-    for (const dispose of disposers.splice(0).reverse()) dispose();
   },
 };
