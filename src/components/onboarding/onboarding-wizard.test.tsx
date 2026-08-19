@@ -171,12 +171,16 @@ async function emitKeypress(event: { name?: string; sequence?: string }) {
   });
 }
 
-async function waitForFrame(text: string, attempts = 20): Promise<string> {
+async function waitForFrame(text: string, attempts = 40): Promise<string> {
   for (let index = 0; index < attempts; index += 1) {
     const frame = testSetup!.captureCharFrame();
     if (frame.includes(text)) return frame;
     await act(async () => {
-      await Bun.sleep(0);
+      // Sleeping zero only drains the task queue. These steps wait on real
+      // filesystem writes, so once the fast path has not settled the retries
+      // need actual elapsed time; otherwise a loaded machine runs out of
+      // attempts while the write is still in flight.
+      await Bun.sleep(index < 5 ? 0 : 5);
       await testSetup!.renderOnce();
     });
   }
