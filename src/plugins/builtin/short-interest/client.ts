@@ -1,3 +1,5 @@
+import { apiClient } from "../../../api-client";
+import type { CloudShortInterestPayload } from "../../../api-client/types";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import { financeRawNumber, yahooRawDate } from "../../../sources/yahoo-finance/mappers";
@@ -78,9 +80,45 @@ async function requestShortInterest(symbol: string): Promise<ShortInterestRecord
   return normalizeRecords(result);
 }
 
-export async function fetchShortInterest(symbol: string): Promise<ShortInterestRecord[]> {
+function fetchYahooShortInterest(symbol: string): Promise<ShortInterestRecord[]> {
   const request = () => requestShortInterest(symbol);
   return connectionHealth?.hasSource(YAHOO_SHORT_INTEREST_CONNECTION_ID)
     ? connectionHealth.track(YAHOO_SHORT_INTEREST_CONNECTION_ID, "fetch", request)
     : request();
+}
+
+function normalizeCloudRecords(payload: CloudShortInterestPayload): ShortInterestRecord[] {
+  const records: ShortInterestRecord[] = [];
+  for (const point of payload.points) {
+    const settlementDate = new Date(`${point.settlementDate}T00:00:00.000Z`);
+    if (Number.isNaN(settlementDate.getTime())) continue;
+    records.push({
+      settlementDate,
+      sharesShort: point.sharesShort,
+      shortRatio: point.daysToCover,
+      averageDailyVolume: point.averageDailyVolume,
+      // FINRA publishes no float, so percent of float stays unknown rather than
+      // being invented from a float measured on a different date.
+      shortPercentFloat: null,
+    });
+  }
+  return records;
+}
+
+/**
+ * FINRA publishes every bi-monthly settlement, so it is the only real history.
+ * Yahoo carries the current and prior settlement plus percent of float, so it
+ * stays as the fallback when the cloud route is unavailable.
+ */
+export async function fetchShortInterest(symbol: string): Promise<ShortInterestRecord[]> {
+  try {
+    const response = await apiClient.getCloudShortInterest(symbol);
+    const records = response.status === "success" && response.data
+      ? normalizeCloudRecords(response.data)
+      : [];
+    if (records.length > 0) return records;
+  } catch {
+    // Fall through to Yahoo rather than failing the pane.
+  }
+  return fetchYahooShortInterest(symbol);
 }

@@ -4,6 +4,7 @@ export interface YieldPoint {
   maturity: string;      // "1M", "3M", "6M", "1Y", "2Y", "5Y", "7Y", "10Y", "20Y", "30Y"
   maturityYears: number; // 0.083, 0.25, 0.5, 1, 2, 5, 7, 10, 20, 30
   yield: number | null;  // percent, e.g., 4.29
+  asOf?: string | null;  // FRED observation date, absent on older servers
 }
 
 export const TREASURY_MATURITIES: Array<{ maturity: string; years: number; seriesId: string }> = [
@@ -27,6 +28,21 @@ export function parseYieldPoints(points: YieldPoint[]): YieldPoint[] {
   return points
     .filter((p) => p.yield !== null)
     .sort((a, b) => a.maturityYears - b.maturityYears);
+}
+
+/**
+ * The newest observation date across the curve. Treasury series publish
+ * together, but a single stale series must not date the whole curve forward,
+ * so this reports the latest date actually present.
+ */
+export function curveAsOf(points: readonly YieldPoint[]): string | null {
+  let latest: string | null = null;
+  for (const point of points) {
+    const asOf = point.asOf;
+    if (!asOf) continue;
+    if (!latest || asOf > latest) latest = asOf;
+  }
+  return latest;
 }
 
 export function isInverted(points: YieldPoint[]): boolean {

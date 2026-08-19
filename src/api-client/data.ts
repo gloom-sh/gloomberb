@@ -22,6 +22,7 @@ import {
 } from "./paths";
 import type {
   CloudAnalystResearchPayload,
+  CloudShortInterestPayload,
   CloudCompanyProfile,
   CloudCongressHousePayload,
   CloudCorporateActionsPayload,
@@ -128,6 +129,12 @@ export class CloudDataApi {
 
   async getCloudAnalystResearch(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
     return this.requestMarketSymbol("/market/analyst", symbol, exchange);
+  }
+
+  async getCloudShortInterest(symbol: string, years?: number): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
+    const params = new URLSearchParams({ symbol: symbol.toUpperCase() });
+    if (years != null) params.set("years", String(years));
+    return this.request<CloudMarketResponse<CloudShortInterestPayload>>(`/market/short-interest?${params}`);
   }
 
   async getCloudCorporateActions(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudCorporateActionsPayload>> {

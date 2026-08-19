@@ -8,6 +8,7 @@ import { colors } from "../../../theme/colors";
 import { resolveChartPalette } from "../../../components/chart/core/renderer";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import {
+  curveAsOf,
   loadYieldCurve,
   parseYieldPoints,
   isInverted,
@@ -75,12 +76,16 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   const inverted = isInverted(points);
   const bp = spreadBp(points);
+  // Treasury series are daily closes, so which session the curve represents is
+  // status the user needs; "updated Xm ago" only says when we last fetched it.
+  const asOf = curveAsOf(points);
 
   const yieldStatus = useMemo<PaneFooterSegment[]>(() => [
       ...(inverted ? [{ id: "inverted", parts: [{ text: "INVERTED", tone: "warning" as const, bold: true }] }] : []),
       ...(bp != null ? [{ id: "spread", parts: [{ text: `2Y-10Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
+      ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" as const }] }] : []),
-  ], [bp, inverted, updatedAgo]);
+  ], [asOf, bp, inverted, updatedAgo]);
   usePaneStatusFooter({
     registrationId: "yield-curve",
     loading,

@@ -54,7 +54,7 @@ export const shortInterestModule: PluginModule = {
       paneId: "short-interest",
       label: "Short Interest",
       // Yahoo's key-statistics module only carries the current and prior settlement dates.
-      description: "Latest and prior-month short interest, days to cover, and short % of float.",
+      description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume.",
       keywords: ["short", "interest", "si", "shorts", "borrow", "days", "cover"],
       shortcut: "SI",
     }),

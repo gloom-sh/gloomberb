@@ -322,10 +322,28 @@ export interface CloudFredSeriesPayload {
   info: CloudFredSeriesInfoPayload | null;
 }
 
+export interface CloudShortInterestPointPayload {
+  settlementDate: string;
+  sharesShort: number;
+  previousSharesShort: number | null;
+  averageDailyVolume: number | null;
+  daysToCover: number | null;
+  changePercent: number | null;
+  revised: boolean;
+}
+
+export interface CloudShortInterestPayload {
+  symbol: string;
+  issueName: string | null;
+  points: CloudShortInterestPointPayload[];
+}
+
 export interface CloudYieldPointPayload {
   maturity: string;
   maturityYears: number;
   yield: number | null;
+  /** FRED observation date. Absent on servers older than the field. */
+  asOf?: string | null;
 }
 
 type CloudCongressTradeSide = "BUY" | "SELL" | "EXCHANGE" | "OTHER";
