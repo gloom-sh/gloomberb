@@ -334,7 +334,11 @@ describe("core sync contributors", () => {
         name: "U123",
         currency: "USD",
         source: "flex",
-        grossPositionValue: 1234,
+        netLiquidation: 1_900_000,
+        grossPositionValue: 2_320_000,
+        dailyPnl: 12_345,
+        unrealizedPnl: 456_789,
+        updatedAt: 123,
       }],
     };
 
@@ -346,6 +350,15 @@ describe("core sync contributors", () => {
     expect(payload.analyticsByPortfolio.main.spyBeta).toBeCloseTo(1.5, 5);
     expect(payload.analyticsByPortfolio["broker:ibkr:U123"].oneYearReturn).toBe(0.2);
     expect(payload.analyticsByPortfolio["broker:ibkr:U123"].spyBeta).toBeCloseTo(3, 5);
+    expect(payload.accountsByPortfolio).toEqual({
+      "broker:ibkr:U123": {
+        currency: "USD",
+        netLiquidation: 1_900_000,
+        dailyPnl: 12_345,
+        unrealizedPnl: 456_789,
+        updatedAt: 123,
+      },
+    });
     expect(payload.analyticsByPortfolio.main).not.toHaveProperty("marketValue");
     expect(payload.analyticsByPortfolio.main).not.toHaveProperty("holdingsCount");
     expect(payload.analyticsByPortfolio.main).not.toHaveProperty("currency");

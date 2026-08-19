@@ -3,6 +3,7 @@ import { stableStringify } from "../remote/revision";
 import type { AppConfig, BrokerInstanceConfig } from "../types/config";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { Portfolio, TickerMetadata, TickerPosition, TickerRecord, Watchlist } from "../types/ticker";
+import type { BrokerAccount } from "../types/trading";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 import type { SyncContributor } from "./types";
 import { convertCurrency } from "../utils/format";
@@ -284,11 +285,34 @@ function collectAnalyticsByPortfolio(
   return output;
 }
 
+function collectAccountsByPortfolio(
+  config: AppConfig,
+  brokerAccounts: Record<string, BrokerAccount[]>,
+) {
+  const output: Record<string, Record<string, string | number>> = {};
+  for (const portfolio of config.portfolios) {
+    if (!portfolio.brokerInstanceId || !portfolio.brokerAccountId) continue;
+    const account = brokerAccounts[portfolio.brokerInstanceId]?.find(
+      (entry) => entry.accountId === portfolio.brokerAccountId,
+    );
+    if (!account || !Number.isFinite(account.netLiquidation)) continue;
+    output[portfolio.id] = {
+      currency: account.currency ?? portfolio.currency ?? config.baseCurrency,
+      netLiquidation: account.netLiquidation!,
+      ...(Number.isFinite(account.dailyPnl) ? { dailyPnl: account.dailyPnl! } : {}),
+      ...(Number.isFinite(account.unrealizedPnl) ? { unrealizedPnl: account.unrealizedPnl! } : {}),
+      ...(Number.isFinite(account.updatedAt) ? { updatedAt: account.updatedAt! } : {}),
+    };
+  }
+  return output;
+}
+
 function collectCoreCollectionsPayload(
   config: AppConfig,
   tickers: Map<string, TickerRecord>,
   financials: Map<string, TickerFinancials>,
   exchangeRates: Map<string, number>,
+  brokerAccounts: Record<string, BrokerAccount[]>,
 ) {
   const records = [...tickers.values()]
     .map((ticker) => sanitizeTickerMetadata(ticker.metadata, financials.get(ticker.metadata.ticker)))
@@ -312,6 +336,7 @@ function collectCoreCollectionsPayload(
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
     analyticsByPortfolio: collectAnalyticsByPortfolio(config, tickers, financials, exchangeRates),
+    accountsByPortfolio: collectAccountsByPortfolio(config, brokerAccounts),
     tickers: records,
   };
 }
@@ -445,6 +470,7 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     state.tickers,
     state.financials,
     state.exchangeRates,
+    state.brokerAccounts,
   ),
   apply: async (payload, { getState, isCurrent, dispatch, tickerRepository }) => {
     if (!isPlainObject(payload)) return;
