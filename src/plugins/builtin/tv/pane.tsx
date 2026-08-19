@@ -167,6 +167,10 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
     void playInTerminal();
   }, [channel.id, isDesktop, loading, playInTerminal, stream]);
 
+  // Closing the pane must take the player with it; the media process is not
+  // tied to the React tree that started it.
+  useEffect(() => () => renderer.stopTerminalMedia?.(), [renderer]);
+
   const togglePlayback = useCallback(async () => {
     setPlaybackError(null);
     try {

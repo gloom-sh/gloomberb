@@ -386,6 +386,8 @@ export interface RendererHost {
   notify(notification: AppNotificationRequest): void;
   showContextMenu?(items: ContextMenuItem[]): Promise<boolean>;
   playTerminalMedia?(url: string, title?: string, options?: { muted?: boolean }): Promise<void>;
+  /** Stop terminal playback started by `playTerminalMedia`. */
+  stopTerminalMedia?(): void;
   resolveLiveStream?(request: LiveStreamResolveRequest): Promise<ResolvedLiveStream>;
 }
 
