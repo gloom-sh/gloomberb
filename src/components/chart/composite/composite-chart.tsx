@@ -12,6 +12,7 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -1364,6 +1365,52 @@ function CompositeLegend({
   );
 }
 
+const CHART_DRAWINGS_SETTING_KEY = "chartDrawings";
+const NO_DRAWINGS: readonly ChartDrawing[] = [];
+/** Coalesces a drag into one write instead of one per pointer move. */
+const DRAWING_PERSIST_DELAY_MS = 400;
+
+/**
+ * Drawings are anchored to data, so they outlive the mounted chart: they ride
+ * along with the pane settings that already carry the chart spec. Only mounted
+ * inside a pane, so a standalone chart still renders without app state.
+ */
+function ChartDrawingStore({
+  paneInstanceId,
+  drawings,
+  onRestore,
+}: {
+  paneInstanceId: string;
+  drawings: readonly ChartDrawing[];
+  onRestore: (drawings: readonly ChartDrawing[]) => void;
+}) {
+  const [stored, setStored] = usePaneSettingValue<readonly ChartDrawing[]>(
+    CHART_DRAWINGS_SETTING_KEY,
+    NO_DRAWINGS,
+    paneInstanceId,
+  );
+  const restoredRef = useRef<readonly ChartDrawing[] | null>(null);
+  if (restoredRef.current === null) {
+    restoredRef.current = Array.isArray(stored) ? stored : NO_DRAWINGS;
+  }
+
+  useEffect(() => {
+    const restored = restoredRef.current;
+    if (restored && restored.length > 0) onRestore(restored);
+    // Restoring once on mount: later writes must not scroll back in time.
+  }, []);
+
+  useEffect(() => {
+    const restored = restoredRef.current ?? NO_DRAWINGS;
+    if (drawings === restored) return;
+    if (drawings.length === 0 && restored.length === 0) return;
+    const timer = setTimeout(() => setStored(drawings), DRAWING_PERSIST_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [drawings, setStored]);
+
+  return null;
+}
+
 export function CompositeChart({
   series,
   legendSeries,
@@ -1398,9 +1445,8 @@ export function CompositeChart({
   const [legendKeyboardIndex, setLegendKeyboardIndex] = useState<number | null>(null);
   const [toolSpan, setToolSpan] = useState<ChartToolSpan | null>(null);
   const [armedTool, setArmedTool] = useState<ChartToolKind | null>(null);
-  // ponytail: drawings live with the mounted chart. Persisting them belongs with
-  // pane settings, which is a separate plumbing job.
-  const [drawings, setDrawings] = useState<readonly ChartDrawing[]>([]);
+  const paneInstanceId = useOptionalPaneInstanceId();
+  const [drawings, setDrawings] = useState<readonly ChartDrawing[]>(NO_DRAWINGS);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [drawColor, setDrawColor] = useState<string>(CHART_DRAWING_COLORS[0]);
   const addDrawing = useCallback((drawing: ChartDrawing) => {
@@ -1986,6 +2032,13 @@ export function CompositeChart({
             onActivate?.();
             pickDrawColor(color);
           }}
+        />
+      ) : null}
+      {paneInstanceId ? (
+        <ChartDrawingStore
+          paneInstanceId={paneInstanceId}
+          drawings={drawings}
+          onRestore={setDrawings}
         />
       ) : null}
       {scene.panels.map((panel) => (

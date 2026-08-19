@@ -1,3 +1,4 @@
+import { NOTES_FILES_CAPABILITY_ID } from "../../../../capabilities";
 import type {
   ApplicationMenuSelectMessage,
   CapabilityEventMessage,
@@ -28,8 +29,25 @@ export function backendRequest<K extends Exclude<DesktopBackendRequestMethod, "c
   method: K,
   ...args: DesktopBackendRequestArgs<K>
 ): Promise<DesktopBackendRequestResponse<K>>;
-export async function backendRequest(): Promise<unknown> {
+export async function backendRequest(method: string, payload?: unknown): Promise<unknown> {
+  const neutral = neutralReadResult(method, payload);
+  if (neutral !== undefined) return neutral;
   throw new Error("Electrobun backend requests are unavailable in the CLI screenshot renderer.");
+}
+
+/**
+ * There is no backend behind a screenshot, so a read that only feeds the view
+ * degrades to an empty result and the pane renders its real empty state instead
+ * of the whole render dying on one rejected request. Writes keep throwing: a
+ * pane must never believe it saved something that went nowhere.
+ */
+function neutralReadResult(method: string, payload: unknown): unknown {
+  if (method !== "capability.invoke") return undefined;
+  const request = payload as { capabilityId?: string; operationId?: string } | undefined;
+  if (request?.capabilityId !== NOTES_FILES_CAPABILITY_ID) return undefined;
+  if (request.operationId === "load") return "";
+  if (request.operationId === "loadQuickNotesIndex") return [];
+  return undefined;
 }
 
 export async function initElectrobunBackend(): Promise<ElectrobunBackendInit> {

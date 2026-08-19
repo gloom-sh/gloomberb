@@ -5,6 +5,7 @@ import {
   chartEvidenceMismatchesFor,
   missingActiveTabSelections,
   shotDataEvidenceFor,
+  shotExpectedText,
   shotPriceHistoryRange,
   shotSemanticRowCount,
   shotUnavailableSymbols,
@@ -219,6 +220,15 @@ describe("pane screenshot chart-composer inputs", () => {
     (empty[0]!.metadata as any).baseSeries[0].pointCount = 0;
     expect(shotUnavailableSymbols(composer, payload([]), empty))
       .toEqual(["CAP:prediction-markets.series:polymarket:one"]);
+  });
+
+  test("expects the composer legend short label, not the catalog metric label", () => {
+    const valuation = {
+      ...resolved("valuation-series", { metric: "priceSales", period: "annual" }),
+      pane: { id: CHART_COMPOSER_PANE_ID },
+    } as unknown as ResolvedPaneFunction;
+
+    expect(shotExpectedText(valuation, ["AAPL"], payload([]))).toEqual(["AAPL", "P/S"]);
   });
 
   test("reports an empty FRED composer source as unavailable", () => {

@@ -1,13 +1,8 @@
 import { useMemo } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
-import type { TickerFinancials } from "../../../../types/financials";
+import type { PricePoint, Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import {
-  DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS,
-  useChartQuery,
-  useTickerFinancials,
-} from "../../../../market-data/hooks";
-import { instrumentFromTicker } from "../../../../market-data/request-types";
+import type { QueryEntry } from "../../../../market-data/result-types";
 import { resolveEntryData } from "../../../../market-data/selectors";
 import { useDoubleClickActivation } from "../../../../components/use-double-click-activation";
 import { colors, priceColor } from "../../../../theme/colors";
@@ -28,10 +23,31 @@ function quoteTrend(value: number | null | undefined): PriceSparklineTrend {
   return value > 0 ? "positive" : "negative";
 }
 
+/** A mistyped ticker and a broken provider are not the same problem. */
+const UNKNOWN_SYMBOL_REASONS = new Set(["NOT_FOUND", "BAD_MAPPING"]);
+
+interface QuoteStatus {
+  failed: boolean;
+  text: string;
+}
+
+function resolveQuoteStatus(entry: QueryEntry<Quote> | null, symbol: string): QuoteStatus {
+  const error = entry?.error;
+  if (error) {
+    return UNKNOWN_SYMBOL_REASONS.has(error.reasonCode)
+      ? { failed: true, text: `${symbol} not recognized` }
+      : { failed: true, text: error.message || "Quote unavailable" };
+  }
+  if (entry?.phase === "ready") return { failed: false, text: "No quote data" };
+  return { failed: false, text: "Loading quote..." };
+}
+
 export function QuoteMonitorCard({
   symbol,
   ticker,
   cachedFinancials,
+  quoteEntry,
+  chartEntry,
   width,
   height,
   showRightDivider,
@@ -43,6 +59,8 @@ export function QuoteMonitorCard({
   symbol: string;
   ticker: TickerRecord | null;
   cachedFinancials: TickerFinancials | null;
+  quoteEntry: QueryEntry<Quote> | null;
+  chartEntry: QueryEntry<PricePoint[]> | null;
   width: number;
   height: number;
   showRightDivider: boolean;
@@ -52,28 +70,18 @@ export function QuoteMonitorCard({
   onOpen: (symbol: string) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
-  const marketFinancials = useTickerFinancials(symbol, ticker);
-  const financials = marketFinancials ?? cachedFinancials;
-  const chartRequest = useMemo(() => {
-    const instrument = instrumentFromTicker(ticker, symbol);
-    return instrument
-      ? {
-        instrument,
-        bufferRange: chartPeriod,
-        granularity: "range" as const,
-      }
-      : null;
-  }, [chartPeriod, symbol, ticker]);
-  const chartEntry = useChartQuery(chartRequest, {
-    refreshIntervalMs: DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS,
-  });
+  const quote = resolveEntryData(quoteEntry) ?? cachedFinancials?.quote;
   const queriedPriceHistory = resolveEntryData(chartEntry);
   const priceHistory = queriedPriceHistory && queriedPriceHistory.length >= 2
     ? queriedPriceHistory
-    : financials?.priceHistory;
-  const flashDirection = useQuoteFlashDirection(financials, valueFlashingEnabled);
-  const quote = financials?.quote;
+    : cachedFinancials?.priceHistory;
+  const flashFinancials = useMemo<TickerFinancials | null>(
+    () => quote ? { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] } : null,
+    [quote],
+  );
+  const flashDirection = useQuoteFlashDirection(flashFinancials, valueFlashingEnabled);
   const display = getActiveQuoteDisplay(quote);
+  const quoteStatus = resolveQuoteStatus(quoteEntry, symbol);
   const changeColor = priceColor(display?.change ?? 0);
   const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
   const changeAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.NONE;
@@ -155,7 +163,7 @@ export function QuoteMonitorCard({
           <Text attributes={TextAttributes.BOLD} fg={colors.textBright} style={desktopSymbolStyle}>
             {symbol}
           </Text>
-          <Text fg={colors.textDim}>Waiting for quote...</Text>
+          <Text fg={quoteStatus.failed ? colors.negative : colors.textDim}>{quoteStatus.text}</Text>
         </Box>
       ) : nativePaneChrome ? (
         <Box

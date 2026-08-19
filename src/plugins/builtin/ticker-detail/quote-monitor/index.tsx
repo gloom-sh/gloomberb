@@ -1,11 +1,16 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Box, useUiCapabilities } from "../../../../ui";
 import type { PaneProps } from "../../../../types/plugin";
 import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
 import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
-import { quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
+import type { TickerRecord } from "../../../../types/ticker";
+import type { ChartRequest, InstrumentRef } from "../../../../market-data/request-types";
+import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
+import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
+import { buildChartKey, buildQuoteKey } from "../../../../market-data/selectors";
+import { DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS, useChartQueries } from "../../../../market-data/hooks";
 import { useAppSelector, usePaneInstance, usePaneTicker } from "../../../../state/app/context";
-import { useQuoteUpdates } from "../../../../state/hooks/quote-streaming";
+import { useLiveQuoteEntries } from "../../../../state/hooks/quote-streaming";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { colors } from "../../../../theme/colors";
 import { EmptyState } from "../../../../components";
@@ -14,10 +19,18 @@ import { useShortcut } from "../../../../react/input";
 import { QuoteMonitorCard } from "./card";
 import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
-function chunkSymbols(symbols: string[], columns: number): string[][] {
-  const rows: string[][] = [];
-  for (let index = 0; index < symbols.length; index += columns) {
-    rows.push(symbols.slice(index, index + columns));
+interface BoardEntry {
+  symbol: string;
+  ticker: TickerRecord | null;
+  instrument: InstrumentRef | null;
+  chartRequest: ChartRequest | null;
+  quoteKey: string | null;
+}
+
+function chunkEntries(entries: BoardEntry[], columns: number): BoardEntry[][] {
+  const rows: BoardEntry[][] = [];
+  for (let index = 0; index < entries.length; index += columns) {
+    rows.push(entries.slice(index, index + columns));
   }
   return rows;
 }
@@ -68,18 +81,54 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   const financialsBySymbol = useAppSelector((state) => state.financials);
   const tickersBySymbol = useAppSelector((state) => state.tickers);
   const valueFlashingEnabled = useAppSelector((state) => state.config.valueFlashingEnabled);
+  // One board-wide subscription and one board-wide history batch. Each card used
+  // to load its own snapshot and its own chart, so a twelve symbol board issued
+  // twenty four extra requests on top of the subscription it already had.
+  const boardEntries = useMemo<BoardEntry[]>(() => symbols.map((symbol) => {
+    const ticker = tickersBySymbol.get(symbol) ?? (fallbackTicker?.metadata.ticker === symbol ? fallbackTicker : null);
+    const instrument = instrumentFromTicker(ticker, symbol);
+    const chartRequest: ChartRequest | null = instrument
+      ? { instrument, bufferRange: settings.chartPeriod, granularity: "range" }
+      : null;
+    return {
+      symbol,
+      ticker,
+      instrument,
+      chartRequest,
+      quoteKey: instrument ? buildQuoteKey(instrument) : null,
+    };
+  }), [fallbackTicker, settings.chartPeriod, symbols, tickersBySymbol]);
   const streamingTargets = useMemo<QuoteSubscriptionTarget[]>(() => {
     const targets: QuoteSubscriptionTarget[] = [];
-    for (const symbol of symbols) {
-        const ticker = tickersBySymbol.get(symbol) ?? (fallbackTicker?.metadata.ticker === symbol ? fallbackTicker : null);
+    for (const { symbol, ticker } of boardEntries) {
         const target = quoteSubscriptionTargetFromTicker(ticker, symbol, "provider");
         if (target) {
           targets.push({ ...target, surface: "monitor", visible: true, selected: symbol === fallbackSymbol, weight: symbol === fallbackSymbol ? 100 : 90 });
         }
     }
     return targets;
-  }, [fallbackSymbol, fallbackTicker, symbols, tickersBySymbol]);
-  useQuoteUpdates(streamingTargets, { liveStreaming });
+  }, [boardEntries, fallbackSymbol]);
+  const { entries: quoteEntries } = useLiveQuoteEntries(streamingTargets, { liveStreaming });
+  const chartRequests = useMemo(
+    () => boardEntries.flatMap((entry) => entry.chartRequest ? [entry.chartRequest] : []),
+    [boardEntries],
+  );
+  const chartEntries = useChartQueries(chartRequests, {
+    refreshIntervalMs: DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS,
+  });
+  // Providers without a quote stream never fill the subscription, so warm the
+  // board with a single batched request instead of one snapshot per card. The
+  // polling path already batches when streaming is off.
+  const boardInstruments = useMemo(
+    () => boardEntries.flatMap((entry) => entry.instrument ? [entry.instrument] : []),
+    [boardEntries],
+  );
+  const boardInstrumentKey = boardEntries.map((entry) => entry.quoteKey ?? "").join("\u001f");
+  useEffect(() => {
+    const coordinator = getSharedMarketDataCoordinator();
+    if (!coordinator || !liveStreaming || boardInstruments.length === 0) return;
+    void coordinator.loadQuotesBatch(boardInstruments).catch(() => {});
+  }, [boardInstrumentKey, liveStreaming]);
   const { pinTicker } = usePluginTickerActions();
   const { openPaneSettings } = usePluginAppActions();
   const { nativePaneChrome } = useUiCapabilities();
@@ -102,7 +151,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   }
 
   const columns = resolveGridColumnCount(symbols.length, width, height, nativePaneChrome === true);
-  const rows = chunkSymbols(symbols, columns);
+  const rows = chunkEntries(boardEntries, columns);
   const contentWidth = Math.max(1, width - (nativePaneChrome ? 0 : 2));
   const contentHeight = Math.max(3, height);
   const cardHeight = Math.max(nativePaneChrome ? 4 : 3, Math.floor(contentHeight / rows.length));
@@ -124,24 +173,23 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
           height: "100%",
         }}
       >
-        {symbols.map((symbol) => {
-          const ticker = tickersBySymbol.get(symbol) ?? (fallbackTicker?.metadata.ticker === symbol ? fallbackTicker : null);
-          return (
-            <QuoteMonitorCard
-              key={symbol}
-              symbol={symbol}
-              ticker={ticker}
-              cachedFinancials={financialsBySymbol.get(symbol) ?? null}
-              width={width}
-              height={height}
-              showRightDivider={false}
-              showBottomDivider
-              chartPeriod={settings.chartPeriod}
-              valueFlashingEnabled={valueFlashingEnabled}
-              onOpen={openTicker}
-            />
-          );
-        })}
+        {boardEntries.map((entry) => (
+          <QuoteMonitorCard
+            key={entry.symbol}
+            symbol={entry.symbol}
+            ticker={entry.ticker}
+            cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
+            quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
+            chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
+            width={width}
+            height={height}
+            showRightDivider={false}
+            showBottomDivider
+            chartPeriod={settings.chartPeriod}
+            valueFlashingEnabled={valueFlashingEnabled}
+            onOpen={openTicker}
+          />
+        ))}
       </Box>
     );
   }
@@ -156,25 +204,24 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
       overflow="hidden"
     >
       {rows.map((row, rowIndex) => (
-        <Box key={`${rowIndex}:${row.join(",")}`} flexDirection="row" height={cardHeight}>
-          {row.map((symbol, columnIndex) => {
-            const ticker = tickersBySymbol.get(symbol) ?? (fallbackTicker?.metadata.ticker === symbol ? fallbackTicker : null);
-            return (
-              <QuoteMonitorCard
-                key={symbol}
-                symbol={symbol}
-                ticker={ticker}
-                cachedFinancials={financialsBySymbol.get(symbol) ?? null}
-                width={cardWidth}
-                height={cardHeight}
-                showRightDivider={columnIndex < row.length - 1}
-                showBottomDivider={rowIndex < rows.length - 1}
-                chartPeriod={settings.chartPeriod}
-                valueFlashingEnabled={valueFlashingEnabled}
-                onOpen={openTicker}
-              />
-            );
-          })}
+        <Box key={`${rowIndex}:${row.map((entry) => entry.symbol).join(",")}`} flexDirection="row" height={cardHeight}>
+          {row.map((entry, columnIndex) => (
+            <QuoteMonitorCard
+              key={entry.symbol}
+              symbol={entry.symbol}
+              ticker={entry.ticker}
+              cachedFinancials={financialsBySymbol.get(entry.symbol) ?? null}
+              quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
+              chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
+              width={cardWidth}
+              height={cardHeight}
+              showRightDivider={columnIndex < row.length - 1}
+              showBottomDivider={rowIndex < rows.length - 1}
+              chartPeriod={settings.chartPeriod}
+              valueFlashingEnabled={valueFlashingEnabled}
+              onOpen={openTicker}
+            />
+          ))}
         </Box>
       ))}
     </Box>

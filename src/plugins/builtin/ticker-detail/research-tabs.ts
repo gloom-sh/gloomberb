@@ -9,9 +9,10 @@ function hasStatementFinancials(financials: TickerFinancials | null | undefined)
 
 /**
  * Tabs this module owns. They are registered through `setup()` like any other
- * contribution, but the pane also falls back to them when it renders in a host
- * without a plugin registry (the desktop screenshot renderer), where an
- * unresolved registry would otherwise leave the body completely empty.
+ * contribution, and the pane also falls back to them in a host that has no
+ * plugin registry bound, where an unresolved registry would otherwise leave the
+ * body completely empty. Every shipping host binds one, so the fallback is a
+ * backstop rather than a code path anything relies on.
  */
 export const TICKER_RESEARCH_BUILTIN_TABS: TickerResearchTabDef[] = [
   {

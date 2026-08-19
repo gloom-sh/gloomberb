@@ -89,6 +89,17 @@ export async function loadCreditConditions(
     rows.push(result.value.row);
     if (result.value.refreshError) errors.push(`${result.value.row.seriesId}: ${result.value.refreshError}`);
   });
-  if (rows.length === 0) throw new Error(errors.join("; ") || "Credit spread data unavailable");
+  if (rows.length === 0) throw new Error(summarizeSeriesErrors(errors));
   return { rows, stale: rows.some((row) => row.stale), errors };
+}
+
+/**
+ * Every series failing is one outage, not six. Joining all of them produced a
+ * message several times wider than the pane, which then got cut mid-word.
+ */
+function summarizeSeriesErrors(errors: readonly string[]): string {
+  if (errors.length === 0) return "Credit spread data unavailable";
+  const reasons = new Set(errors.map((entry) => entry.replace(/^[A-Z0-9]+:\s*/, "")));
+  const reason = reasons.size === 1 ? [...reasons][0]! : `${errors.length} series failed`;
+  return errors.length > 1 ? `${reason} (${errors.length} series)` : reason;
 }

@@ -20,6 +20,7 @@ import {
   limitGraphRowsBySymbol,
   metricDef,
 } from "../../time-series/reporting";
+import { getTimeSeriesField } from "../../time-series/field-catalog";
 import {
   buildFinancialTableModel,
   formatFinancialHeader,
@@ -1022,7 +1023,7 @@ export function shotSemanticRowCount(
   return payload.financials.filter(([, financials]) => !!financials.quote).length;
 }
 
-function shotExpectedText(
+export function shotExpectedText(
   resolved: ResolvedPaneFunction,
   symbols: string[],
   payload: DesktopPaneShotPayload,
@@ -1034,8 +1035,14 @@ function shotExpectedText(
     const definition = metricDef(graphKind, metric);
     const period = resolved.options.period as FundamentalPeriod;
     const periodCount = resolved.options.periods == null ? null : Number(resolved.options.periods);
+    if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
+      // Chart series are labelled with the field short label ("P/S"), not the
+      // catalog label ("Price / Sales").
+      const field = getTimeSeriesField(`${graphKind}.${metric}`);
+      expected.push(field?.shortLabel ?? definition.label);
+      return expected.filter(Boolean);
+    }
     expected.push(definition.label);
-    if (resolved.pane.id === CHART_COMPOSER_PANE_ID) return expected.filter(Boolean);
     for (const [symbol, financials] of payload.financials) {
       const latestRow = limitGraphRowsBySymbol(
         graphRowsForFinancials(financials, graphKind, metric, period, symbol),

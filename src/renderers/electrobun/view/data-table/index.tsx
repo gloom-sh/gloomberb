@@ -199,16 +199,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     scheduleVisibleRangeMeasure();
   }, [items.length, scheduleVisibleRangeMeasure, visibleRangeKey]);
 
+  // Rows sit on a whole-cell grid, so the offset is computed in rows and only
+  // then converted to pixels. Letting the virtualizer scroll by pixels landed
+  // mid-row and clipped the first and last visible rows into slivers.
   useEffect(() => {
     if (scrollToIndex == null || items.length === 0) return;
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
-    if (virtualize) {
-      rowVirtualizer.scrollToIndex(targetIndex, {
-        align: scrollToIndexAlign === "center" ? "center" : "auto",
-      });
-      scheduleVisibleRangeMeasure();
-      return;
-    }
     const element = bodyElementRef.current;
     if (!element) return;
     const viewportRows = Math.max(1, Math.floor(element.clientHeight / WEB_CELL_HEIGHT) - 1);
@@ -227,12 +223,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     scheduleVisibleRangeMeasure();
   }, [
     items.length,
-    rowVirtualizer,
     scrollToIndex,
     scrollToIndexAlign,
     scrollToIndexVersion,
     scheduleVisibleRangeMeasure,
-    virtualize,
   ]);
 
   useScrollBoxHandle(
@@ -276,6 +270,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     overflowX: horizontalScrollEnabled ? "auto" : "hidden",
     overflowY: "auto",
     backgroundColor: CSS_BG,
+    // Trim the viewport to whole rows so the bottom row is never a sliver.
+    // Browsers without CSS round() drop this and keep the previous behavior.
+    maxHeight: "round(down, 100%, var(--cell-h))",
   };
 
   return (

@@ -10,18 +10,21 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({ title, message, hint }: EmptyStateProps) {
+  // A fixed one-cell height clipped long text at the pane edge with no marker,
+  // so provider messages lost their tail. These rows own the pane body, so let
+  // them wrap instead.
   return (
     <Box flexDirection="column">
-      <Box height={1}>
+      <Box>
         <Text fg={colors.textDim}>{t(title)}</Text>
       </Box>
       {message && (
-        <Box height={1}>
+        <Box>
           <Text fg={colors.textMuted}>{t(message)}</Text>
         </Box>
       )}
       {hint && (
-        <Box height={1}>
+        <Box>
           <Text fg={colors.textMuted}>{t(hint)}</Text>
         </Box>
       )}

@@ -25,6 +25,8 @@ import {
   type KeyEventLike,
 } from "../../../react/input";
 import { CompositeChart } from "./composite-chart";
+import { createDefaultConfig } from "../../../types/config";
+import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
 import {
   resolveCompositeMinimumSpanMs,
   zoomCompositeViewport,
@@ -1515,6 +1517,58 @@ describe("CompositeChart", () => {
     expect(recoveredFrame).toContain("•");
     expect(recoveredFrame).toContain("2025-01-01");
     expect(recoveredFrame).toContain("Jan 9");
+  });
+
+  test("restores persisted drawings from pane settings on mount", async () => {
+    const renderWithSettings = async (settings: Record<string, unknown>) => {
+      const config = createDefaultConfig("/tmp/gloomberb-composite-drawings");
+      config.layout.instances.push({
+        instanceId: "chart:test",
+        paneId: "chart-composer",
+        title: "Chart",
+        binding: { kind: "fixed", symbol: "ACME" },
+        settings,
+      });
+      testSetup = await testRender(
+        <AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
+          <PaneInstanceProvider paneId="chart:test">
+            <CaptureChartSurfaceProvider>
+              <CompositeChart
+                width={60}
+                height={12}
+                series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+                panels={[{ id: "main" }]}
+              />
+            </CaptureChartSurfaceProvider>
+          </PaneInstanceProvider>
+        </AppContext>,
+        { width: 62, height: 14 },
+      );
+      await act(async () => {
+        await testSetup!.renderOnce();
+        await testSetup!.renderOnce();
+      });
+      const bitmap = capturedSurfaceProps!.bitmaps?.[0] as { pixels: Uint8Array };
+      const pixels = Buffer.from(bitmap.pixels);
+      await act(async () => testSetup!.renderer.destroy());
+      testSetup = undefined;
+      return pixels;
+    };
+
+    const blank = await renderWithSettings({});
+    const restored = await renderWithSettings({
+      chartDrawings: [{
+        id: "drawing-1",
+        panelId: "main",
+        color: "#f5a524",
+        points: [
+          { time: Date.UTC(2025, 0, 2), value: 101 },
+          { time: Date.UTC(2025, 0, 8), value: 107 },
+        ],
+      }],
+    });
+
+    expect(restored.equals(blank)).toBe(false);
   });
 
   test("shows useful UTC times for an intraday shared cursor and time axis", async () => {
