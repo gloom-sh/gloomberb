@@ -1,7 +1,7 @@
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
-import { Tabs } from "../../../components";
+import { EmptyState, Tabs } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
@@ -44,7 +44,7 @@ import {
   type SectorSortPreference,
   type SectorTableRow,
 } from "./sector-model";
-import { resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
+import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
 import {
   AnalyticsMetricsPanel,
   PortfolioHistorySection,
@@ -81,8 +81,11 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [activePortfolioId, portfolios],
   );
   const portfolioTabs = useMemo(
-    () => portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
-    [portfolios],
+    () => portfolios.map((portfolio) => ({
+      label: describePortfolioTab(portfolio, config.brokerInstances),
+      value: portfolio.id,
+    })),
+    [config.brokerInstances, portfolios],
   );
 
   const handlePortfolioSelect = useCallback((portfolioId: string) => {
@@ -132,7 +135,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [brokerPerformance.performance],
   );
   const accountStateInput = useMemo(() => ({ brokerAccounts, config }), [brokerAccounts, config]);
-  const accountState = usePortfolioAccountState(activePortfolio, accountStateInput);
+  const { accountState, accountsError } = usePortfolioAccountState(activePortfolio, accountStateInput);
   const trackedCurrencies = useMemo(
     () => buildTrackedCurrencies(portfolioTickers, financials, baseCurrency),
     [baseCurrency, financials, portfolioTickers],
@@ -158,7 +161,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [activePortfolioId, baseCurrency, effectiveExchangeRates, financials, portfolioTickers],
   );
 
-  const portfolioReturnSeries = useMemo(
+  const returnSeriesResult = useMemo(
     () => buildPortfolioReturnSeries({
       chartTargets,
       chartEntries,
@@ -167,6 +170,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     }),
     [chartEntries, chartTargets, columnContext, financials],
   );
+  const portfolioReturnSeries = returnSeriesResult.returns;
 
   const portfolioReturns = useMemo(
     () => portfolioReturnSeries?.map((point) => point.value) ?? null,
@@ -213,8 +217,13 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   );
 
   const riskRows = useMemo(
-    () => buildAnalyticsRiskRows({ sharpe, beta }),
-    [beta, sharpe],
+    () => buildAnalyticsRiskRows({
+      sharpe,
+      beta,
+      coverage: returnSeriesResult.coverage,
+      missingCount: returnSeriesResult.missingCount,
+    }),
+    [beta, returnSeriesResult.coverage, returnSeriesResult.missingCount, sharpe],
   );
   const metricsHeight = summaryRows.length + riskRows.length + 5;
   const availableHistoryChartHeight = height - metricsHeight - 7;
@@ -267,9 +276,13 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
 
           {!hasPositions ? (
             <Box paddingX={1} paddingY={1}>
-              <Text fg={colors.textMuted}>
-                No positions found for {activePortfolio?.name ?? "this portfolio"}
-              </Text>
+              <EmptyState
+                title="No positions in this portfolio."
+                message={accountsError ?? undefined}
+                hint={accountsError
+                  ? "Reconnect the broker in the Brokers pane (BR), then refresh."
+                  : "Add holdings from the Portfolio pane (PF), or connect a broker in BR to sync them."}
+              />
             </Box>
           ) : (
             <>

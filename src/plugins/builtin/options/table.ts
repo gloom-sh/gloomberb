@@ -62,7 +62,9 @@ export function formatStrikeLabel(strike: number): string {
 }
 
 export function formatIv(value: number | undefined): string {
-  if (value == null || !Number.isFinite(value)) return "—";
+  // Providers send 0 for contracts with no implied volatility; "0.0%" would read
+  // as a real quote of zero vol.
+  if (value == null || !Number.isFinite(value) || value <= 0) return "\u2014";
   return `${(value * 100).toFixed(1)}%`;
 }
 

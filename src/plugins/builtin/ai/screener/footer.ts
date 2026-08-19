@@ -12,6 +12,7 @@ interface UseAiScreenerFooterOptions {
   onCancelRun: () => void;
   onCloseEditor: () => void;
   onEdit: () => void;
+  onRefresh: () => void;
   onSaveEditor: () => void;
 }
 
@@ -24,6 +25,7 @@ export function useAiScreenerFooter({
   onCancelRun,
   onCloseEditor,
   onEdit,
+  onRefresh,
   onSaveEditor,
 }: UseAiScreenerFooterOptions) {
   const language = useAppLanguage();
@@ -95,6 +97,7 @@ export function useAiScreenerFooter({
     onCancelRun,
     onCloseEditor,
     onEdit,
+    onRefresh,
     onSaveEditor,
     runState,
   ]);

@@ -4,7 +4,7 @@ import { useShortcut } from "../../../react/input";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
-import { ConfirmDialog, Tabs, usePaneFooter } from "../../../components";
+import { ConfirmDialog, EmptyState, Tabs, usePaneFooter } from "../../../components";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { usePluginAppActions } from "../../runtime";
 import type { NotesFiles } from "./files";
@@ -27,6 +27,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
     const [activeTabId, setActiveTabId] = useState<string | null>(null);
     const [renaming, setRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState("");
+    const [loadError, setLoadError] = useState<string | null>(null);
     const { text: noteText, textRef: noteTextRef, setText: setNoteText } = useSyncedText("");
     const renameInputRef = useRef<InputRenderable>(null);
     const prevTabRef = useRef<string | null>(null);
@@ -103,6 +104,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
       prevTabRef.current = activeTabId;
       loadedTabIdRef.current = null;
       setNoteText("");
+      setLoadError(null);
       textareaRef.current?.setText("");
       let cancelled = false;
       // The user can start typing before a slow load resolves; handleNoteChange
@@ -115,7 +117,10 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
         setNoteText(text);
         textareaRef.current?.setText(text);
       };
-      notesFiles.load(notesFiles.quickNoteKey(activeTabId)).then(applyLoaded, () => applyLoaded(""));
+      notesFiles.load(notesFiles.quickNoteKey(activeTabId)).then(applyLoaded, (error: unknown) => {
+        // Leave the tab unloaded so nothing can save over content we failed to read.
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
+      });
       return () => {
         cancelled = true;
       };
@@ -264,7 +269,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
         return;
       }
       if (!editing) {
-        if (event.name === "n" || event.name === "t") {
+        if (event.name === "n") {
           addTab();
           return;
         }
@@ -272,7 +277,8 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
           if (activeTabId) void requestRemoveTab(activeTabId);
           return;
         }
-        if (event.name === "r") {
+        // Not `r`: that is the app-wide refresh key.
+        if (event.name === "t") {
           startRename();
           return;
         }
@@ -289,16 +295,18 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
     }, { allowEditable: true });
 
     usePaneFooter("quick-notes", () => ({
-      info: [
-        { id: "edited", parts: [{ text: editing || renaming ? "editing" : formatLastEdited(activeTab?.updatedAt), tone: "muted" }] },
-      ],
+      info: loadError
+        ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }]
+        : [
+            { id: "edited", parts: [{ text: editing || renaming ? "editing" : formatLastEdited(activeTab?.updatedAt), tone: "muted" as const }] },
+          ],
       hints: editing || renaming
         ? []
         : [
             { id: "new", key: "n", label: "ew", onPress: addTab },
-            { id: "rename", key: "r", label: "ename", onPress: startRename, disabled: !activeTabId },
+            { id: "title", key: "t", label: "itle", onPress: startRename, disabled: !activeTabId },
           ],
-    }), [activeTab, activeTabId, addTab, editing, renaming, startRename]);
+    }), [activeTab, activeTabId, addTab, editing, loadError, renaming, startRename]);
 
     return (
       <Box flexDirection="column" flexGrow={1}>
@@ -338,8 +346,14 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
             />
           </Box>
         )}
-        <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!editing && !renaming) setEditing(true); }}>
-          {editing && !renaming ? (
+        <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!editing && !renaming && !loadError) setEditing(true); }}>
+          {loadError ? (
+            <EmptyState
+              title="This note could not be read."
+              message={loadError}
+              hint="Editing is disabled so the saved note is not overwritten. Fix the file, then reopen the pane."
+            />
+          ) : editing && !renaming ? (
             <MarkdownEditor
               textareaKey="editing"
               focused={focused}
@@ -353,7 +367,7 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
               text={noteText}
               width={width}
               placeholder="Write notes..."
-              onActivate={() => { if (!renaming) setEditing(true); }}
+              onActivate={() => { if (!renaming && !loadError) setEditing(true); }}
             />
           )}
         </Box>

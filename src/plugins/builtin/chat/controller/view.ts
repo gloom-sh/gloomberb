@@ -66,6 +66,7 @@ export class ChatControllerView {
       channelStates: this.options.getChannelStateSnapshots(),
       channelsLoading: this.options.isChannelsLoading(),
       loading: !this.options.isSessionChecked() || channel.messagesLoading,
+      messagesError: channel.messagesError,
       loadingOlderMessages: channel.olderMessagesLoading,
       hasOlderMessages: channel.messages.length > 0 && !channel.reachedOldestMessage,
       hasSavedSession: this.options.hasSessionToken(),

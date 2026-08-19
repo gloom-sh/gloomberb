@@ -116,6 +116,9 @@ export function ChatContent({
     const nextRows = estimateComposerHeight(draft, composerTextWidthRef.current);
     setComposerRows((current) => (current === nextRows ? current : nextRows));
   }, []);
+  const retryMessages = useCallback(() => {
+    void controller.refreshChannelMessages(channelId).catch(() => {});
+  }, [channelId, controller]);
   const {
     channels,
     channelsLoading,
@@ -125,6 +128,7 @@ export function ChatContent({
     loading,
     loadingOlderMessages,
     messages,
+    messagesError,
     onlineCount,
     replyTo,
     setReplyTo,
@@ -573,6 +577,8 @@ export function ChatContent({
         jumpToMessage={jumpToMessage}
         loading={loading}
         loadingOlderMessages={loadingOlderMessages}
+        messagesError={messagesError}
+        onRetryMessages={retryMessages}
         messageAreaHeight={messageAreaHeight}
         messageBodyWidth={messageBodyWidth}
         messages={messages}

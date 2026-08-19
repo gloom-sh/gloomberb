@@ -1,46 +1,37 @@
 import { usePaneFooter } from "../../../../components";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { TradeTicketState } from "../../trading/state";
-import type { TradeTone } from "../utils";
 import type { TradeTabActions } from "./actions";
 
+/**
+ * Ticket status (next step, capture state, last message) lives in the tab header,
+ * which shows it untruncated and interactively, so the footer only carries actions.
+ */
 export function useTradeTabFooter({
   actions,
-  interactive,
-  nextStep,
+  canEnterOrder,
   showLimit,
   showStop,
-  statusText,
-  statusTone,
   symbol,
   ticketState,
   ticker,
-  workflowTone,
 }: {
   actions: TradeTabActions;
-  interactive: boolean;
-  nextStep: string;
+  /** False until a broker profile and account are picked, so order fields cannot be edited yet. */
+  canEnterOrder: boolean;
   showLimit: boolean;
   showStop: boolean;
-  statusText: string;
-  statusTone: TradeTone;
   symbol: string | null;
   ticketState: TradeTicketState;
   ticker: TickerRecord | null;
-  workflowTone: TradeTone;
 }) {
   usePaneFooter("ibkr-trade", () => ({
-    info: [
-      { id: "next", parts: [{ text: nextStep, tone: workflowTone === "positive" ? "positive" : workflowTone === "accent" ? "value" : "muted", bold: workflowTone !== "neutral" }] },
-      { id: "ticket", parts: [{ text: interactive ? "captured" : "standby", tone: interactive ? "positive" : "muted" }] },
-      ...(statusText ? [{ id: "status", parts: [{ text: statusText, tone: statusTone === "negative" ? "negative" as const : statusTone === "positive" ? "positive" as const : "muted" as const }] }] : []),
-    ],
     hints: [
       ...(!ticketState.busy ? [
         { id: "profile", key: "i", label: "profile", onPress: () => actions.chooseBrokerInstance().catch(() => {}) },
         { id: "account", key: "a", label: "ccount", onPress: () => actions.chooseAccount().catch(() => {}) },
       ] : []),
-      ...(!ticketState.busy && symbol && ticker ? [
+      ...(!ticketState.busy && canEnterOrder && symbol && ticker ? [
         { id: "side", key: "b/v", label: "side", onPress: actions.toggleSide },
         { id: "quantity", key: "q", label: "ty", onPress: () => actions.editQuantity().catch(() => {}) },
         { id: "type", key: "t", label: "ype", onPress: () => actions.editOrderType().catch(() => {}) },
@@ -51,16 +42,12 @@ export function useTradeTabFooter({
     ],
   }), [
     actions,
-    interactive,
-    nextStep,
+    canEnterOrder,
     showLimit,
     showStop,
-    statusText,
-    statusTone,
     symbol,
     ticketState.busy,
     ticketState.draft,
     ticker,
-    workflowTone,
   ]);
 }

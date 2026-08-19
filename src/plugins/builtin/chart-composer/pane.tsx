@@ -429,14 +429,17 @@ function ChartComposerSurface({
     openSeriesEditor,
     openResolutionPicker,
     openRangePicker,
+    reload: resolution.reload,
   });
   currentActionsRef.current = {
     openSeriesEditor,
     openResolutionPicker,
     openRangePicker,
+    reload: resolution.reload,
   };
   const footerSeries = useCallback(() => { void currentActionsRef.current.openSeriesEditor(); }, []);
   const footerResolution = useCallback(() => { void currentActionsRef.current.openResolutionPicker(); }, []);
+  const footerReload = useCallback(() => { currentActionsRef.current.reload(); }, []);
   const footerRange = useCallback(() => { void currentActionsRef.current.openRangePicker(); }, []);
 
   useShortcut((event) => {
@@ -474,11 +477,12 @@ function ChartComposerSurface({
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
-      { id: "resolution", key: "r", label: "es", onPress: footerResolution },
+      { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       { id: "range", key: "1-8", label: "range", onPress: footerRange },
     ],
   }), [
     footerRange,
+    footerReload,
     footerResolution,
     footerSeries,
     formulasDisabled,

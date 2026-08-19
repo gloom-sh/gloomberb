@@ -45,9 +45,12 @@ async function buildPaneInstance(
   context: MarketContext,
   target: string,
 ): Promise<PaneInstanceConfig> {
+  // A text argument is a phrase, not a symbol: uppercasing it and binding it as
+  // a ticker makes the pane look for a provider for "HIGH GROWTH SOFTWARE".
+  const argKind = resolved.template?.shortcut?.argKind;
   const primarySymbol = resolved.createOptions?.symbol
     ?? resolved.createOptions?.symbols?.[0]
-    ?? normalizeTickerInput(null, cleanTickerInput(target));
+    ?? (argKind === "text" ? null : normalizeTickerInput(null, cleanTickerInput(target)));
   const templateContext = buildTemplateContext(context, primarySymbol ?? null);
   const spec = await resolved.template?.createInstance?.(templateContext, resolved.createOptions) ?? {};
   const instanceId = `${resolved.pane.id}:cli-${slugifyName(target || resolved.pane.id, "pane")}`;

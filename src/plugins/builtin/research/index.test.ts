@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import {
-  buildAnalystFooterInfo,
+  buildAnalystSummaryLines,
   buildRatingColumns,
   formatRatingTarget,
   nextRatingSortPreference,
@@ -145,9 +145,9 @@ describe("analyst rating columns", () => {
   });
 });
 
-describe("analyst footer summary", () => {
-  test("moves target range and recommendation mix into footer segments", () => {
-    const footerInfo = buildAnalystFooterInfo({
+describe("analyst summary", () => {
+  test("keeps target range and recommendation mix in the body summary", () => {
+    const lines = buildAnalystSummaryLines({
       providerId: "test",
       symbol: "AMD",
       currency: "USD",
@@ -173,27 +173,8 @@ describe("analyst footer summary", () => {
       revenueEstimates: [],
     } satisfies AnalystResearchData);
 
-    expect(footerInfo.map((segment) => segment.id)).toEqual([
-      "target-range",
-      "rating",
-      "recommendations",
-    ]);
-    expect(footerInfo[0]?.parts.map((part) => part.text)).toEqual([
-      "low",
-      "$225.00",
-      "med",
-      "$482.50",
-      "high",
-      "$625.00",
-    ]);
-    expect(footerInfo[2]?.parts.map((part) => part.text)).toEqual([
-      "month",
-      "SB 12",
-      "B 18",
-      "H 4",
-      "S 1",
-      "n=35",
-    ]);
+    expect(lines[0]).toBe("low $225.00   med $482.50   high $625.00");
+    expect(lines[1]).toBe("rating 8.8/10   SB 12  B 18  H 4  S 1   35 analysts (month)");
   });
 });
 

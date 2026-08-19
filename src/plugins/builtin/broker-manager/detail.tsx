@@ -25,6 +25,7 @@ function BrokerConfigFieldEditor({
   previous,
   adapter,
   focused,
+  width,
   onFocus,
   onChange,
   onSubmit,
@@ -34,6 +35,7 @@ function BrokerConfigFieldEditor({
   previous: BrokerInstanceConfig;
   adapter: BrokerAdapter;
   focused: boolean;
+  width: number;
   onFocus: () => void;
   onChange: (key: string, value: string) => void;
   onSubmit: () => void;
@@ -65,7 +67,7 @@ function BrokerConfigFieldEditor({
         label={brokerFieldLabel(field, focused)}
         value={value}
         focused={focused}
-        width={34}
+        width={width}
         type={field.type === "password" ? "password" : "text"}
         placeholder={field.type === "password" && previousPassword ? t(PRESERVED_PASSWORD_HINT) : field.placeholder ? t(field.placeholder) : undefined}
         hint={field.placeholder ? t(field.placeholder) : undefined}
@@ -130,6 +132,8 @@ export function BrokerDetailContent({
 }) {
   if (!row) return <Box flexGrow={1} />;
 
+  // Never wider than the detail pane, so a narrow floating pane shrinks instead of clipping.
+  const fieldWidth = Math.max(12, Math.min(34, width - 2));
   const detailStatusMessage = isBrokerErrorMessage(message) ? message : row.message || t("No status message.");
   const editAdapter = row.adapter;
 
@@ -161,7 +165,7 @@ export function BrokerDetailContent({
                 label={activeEditKey === "label" ? `> ${t("Profile Label")}` : `  ${t("Profile Label")}`}
                 value={editDraft.label}
                 focused={activeEditKey === "label"}
-                width={34}
+                width={fieldWidth}
                 onChange={onDraftLabelChange}
                 onSubmit={onSaveEdit}
               />
@@ -187,6 +191,7 @@ export function BrokerDetailContent({
                 previous={row.instance}
                 adapter={editAdapter}
                 focused={activeEditKey === field.key}
+                width={fieldWidth}
                 onFocus={() => onActiveEditKeyChange(field.key)}
                 onChange={onDraftValueChange}
                 onSubmit={onSaveEdit}

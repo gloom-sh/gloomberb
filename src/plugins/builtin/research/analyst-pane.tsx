@@ -6,7 +6,6 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
 } from "../../../components";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import { blendHex, colors, priceColor } from "../../../theme/colors";
@@ -90,22 +89,45 @@ function ratingTargetBackground(delta: number | null): string | undefined {
   return blendHex(colors.bg, delta > 0 ? colors.positive : colors.negative, 0.42);
 }
 
+/**
+ * Price targets and the recommendation mix are pane content, not status, so the
+ * summary block owns them and the footer stays empty unless something changed.
+ */
+export function buildAnalystSummaryLines(data: AnalystResearchData | null): string[] {
+  if (!data) return [];
+
+  const target = data.priceTarget;
+  const currency = target?.currency ?? data.currency ?? "USD";
+  const price = (value: number | undefined) => value != null ? formatCurrency(value, currency) : "-";
+  const rec = latestRecommendation(data);
+  const total = recommendationTotal(data);
+  const lines: string[] = [];
+
+  if (target) {
+    lines.push(`low ${price(target.low)}   med ${price(target.median)}   high ${price(target.high)}`);
+  }
+  if (data.recommendationRating != null || rec || total > 0) {
+    lines.push([
+      data.recommendationRating != null ? `rating ${formatRatingLabel(data.recommendationRating)}` : null,
+      rec ? `SB ${rec.strongBuy ?? 0}  B ${rec.buy ?? 0}  H ${rec.hold ?? 0}  S ${(rec.sell ?? 0) + (rec.strongSell ?? 0)}` : null,
+      total > 0 ? `${total} analysts${rec?.period ? ` (${compactPeriod(rec.period)})` : ""}` : null,
+    ].filter(Boolean).join("   "));
+  }
+
+  return lines;
+}
+
 function AnalystSummary({ data }: { data: AnalystResearchData | null }) {
   const target = data?.priceTarget;
   const upside = targetUpside(target);
   const currency = target?.currency ?? data?.currency ?? "USD";
+  const lines = buildAnalystSummaryLines(data);
 
-  if (!data) {
-    return (
-      <Box flexDirection="column" paddingX={1} height={2}>
-        <Text fg={colors.textDim}>Analyst data</Text>
-        <Text fg={colors.textDim}>Waiting for asset data.</Text>
-      </Box>
-    );
-  }
+  // The table body already reports loading, error, and empty states.
+  if (!data) return null;
 
   return (
-    <Box flexDirection="column" paddingX={1} height={1}>
+    <Box flexDirection="column" paddingX={1} height={1 + lines.length}>
       <Box height={1} flexDirection="row">
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
           {target?.average != null ? formatCurrency(target.average, currency) : "-"}
@@ -116,58 +138,13 @@ function AnalystSummary({ data }: { data: AnalystResearchData | null }) {
         </Text>
         <Text fg={colors.textDim}> upside</Text>
       </Box>
+      {lines.map((line) => (
+        <Box key={line} height={1}>
+          <Text fg={colors.textDim}>{line}</Text>
+        </Box>
+      ))}
     </Box>
   );
-}
-
-export function buildAnalystFooterInfo(data: AnalystResearchData | null): PaneFooterSegment[] {
-  if (!data) return [];
-
-  const target = data.priceTarget;
-  const currency = target?.currency ?? data.currency ?? "USD";
-  const rec = latestRecommendation(data);
-  const total = recommendationTotal(data);
-  const info: PaneFooterSegment[] = [];
-
-  if (target) {
-    info.push({
-      id: "target-range",
-      parts: [
-        { text: "low", tone: "label" },
-        { text: target.low != null ? formatCurrency(target.low, currency) : "-", tone: "muted" },
-        { text: "med", tone: "label" },
-        { text: target.median != null ? formatCurrency(target.median, currency) : "-", tone: "muted" },
-        { text: "high", tone: "label" },
-        { text: target.high != null ? formatCurrency(target.high, currency) : "-", tone: "value" },
-      ],
-    });
-  }
-
-  if (data.recommendationRating != null) {
-    info.push({
-      id: "rating",
-      parts: [
-        { text: "rating", tone: "label" },
-        { text: formatRatingLabel(data.recommendationRating), tone: "value", bold: true },
-      ],
-    });
-  }
-
-  if (rec || total > 0) {
-    info.push({
-      id: "recommendations",
-      parts: [
-        { text: compactPeriod(rec?.period ?? ""), tone: "muted" },
-        { text: `SB ${rec?.strongBuy ?? 0}`, tone: "positive" },
-        { text: `B ${rec?.buy ?? 0}`, tone: "value" },
-        { text: `H ${rec?.hold ?? 0}`, tone: "muted" },
-        { text: `S ${(rec?.sell ?? 0) + (rec?.strongSell ?? 0)}`, tone: "negative" },
-        { text: `n=${total}`, tone: "muted" },
-      ],
-    });
-  }
-
-  return info;
 }
 
 type RatingColumnId = "date" | "firm" | "action" | "current" | "target" | "prior";
@@ -354,11 +331,8 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   }, []);
 
   usePaneFooter("analyst-research", () => ({
-    info: [
-      ...buildAnalystFooterInfo(data),
-      ...loadingErrorFooterInfo(loading, error),
-    ],
-  }), [data, error, loading]);
+    info: loadingErrorFooterInfo(loading, error),
+  }), [error, loading]);
 
   return (
     <DataTableView<AnalystResearchData["ratings"][number], RatingColumn>

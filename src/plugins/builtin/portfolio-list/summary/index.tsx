@@ -346,7 +346,8 @@ export function buildPortfolioFooterSegments({
     ];
   }
 
-  if (!totals.hasPositions && !accountState) return [];
+  // An account error must still reach the footer, otherwise a failed load looks like an empty portfolio.
+  if (!totals.hasPositions && !accountState && !accountStatusText) return [];
   return buildPortfolioSummarySegments({
     totals,
     accountState,

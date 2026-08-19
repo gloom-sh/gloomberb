@@ -3,7 +3,7 @@ import { useAppSelector } from "../../../state/app/context";
 import { formatRelativeAge } from "../../../utils/relative-time";
 
 /** The label only changes once a minute, so a coarse tick is enough. */
-const AGE_TICK_MS = 30_000;
+export const AGE_TICK_MS = 30_000;
 
 /**
  * How old a pane's data is, as a footer-ready label that keeps ageing on its

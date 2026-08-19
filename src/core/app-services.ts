@@ -50,7 +50,10 @@ export function createAppServices({
   const dataProvider: DataProvider = providerRouter;
   const marketData = new MarketDataCoordinator(dataProvider);
   const pluginRegistry = new PluginRegistry(dataProvider, tickerRepository, persistence, { connectionHealth });
-  const newsService = new NewsService({ connectionHealth });
+  const newsService = new NewsService({
+    connectionHealth,
+    pollIntervalMs: () => Math.max(1, config.refreshIntervalMinutes) * 60 * 1000,
+  });
   pluginRegistry.capabilities.register("core", assetDataProvider(providerRouter));
   pluginRegistry.capabilities.register("core", {
     ...newsProvider({

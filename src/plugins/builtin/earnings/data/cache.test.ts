@@ -63,9 +63,9 @@ describe("loadEarningsCalendar", () => {
     const msft = await loadEarningsCalendar(provider, ["MSFT"]);
     const aaplAgain = await loadEarningsCalendar(provider, ["aapl"]);
 
-    expect(aapl.map((event) => event.symbol)).toEqual(["AAPL"]);
-    expect(msft.map((event) => event.symbol)).toEqual(["MSFT"]);
-    expect(aaplAgain.map((event) => event.symbol)).toEqual(["AAPL"]);
+    expect(aapl.events.map((event) => event.symbol)).toEqual(["AAPL"]);
+    expect(msft.events.map((event) => event.symbol)).toEqual(["MSFT"]);
+    expect(aaplAgain.events.map((event) => event.symbol)).toEqual(["AAPL"]);
     expect(calls).toEqual([["AAPL"], ["MSFT"]]);
   });
 
@@ -85,10 +85,13 @@ describe("loadEarningsCalendar", () => {
       throw new Error("offline");
     });
 
-    const events = await loadEarningsCalendar(provider, ["AAPL"], { force: true });
+    const result = await loadEarningsCalendar(provider, ["AAPL"], { force: true });
 
-    expect(events).toHaveLength(1);
-    expect(events[0]!.symbol).toBe("AAPL");
-    expect(events[0]!.earningsDate).toBeInstanceOf(Date);
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]!.symbol).toBe("AAPL");
+    expect(result.events[0]!.earningsDate).toBeInstanceOf(Date);
+    // Cached events after a provider failure are stale, not a fresh load.
+    expect(result.stale).toBe(true);
+    expect(result.refreshError).toContain("offline");
   });
 });

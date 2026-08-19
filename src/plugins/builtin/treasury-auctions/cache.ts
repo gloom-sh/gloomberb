@@ -1,12 +1,12 @@
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
-import { fetchTreasuryAuctions } from "./client";
+import { AUCTION_HISTORY_DAYS, fetchTreasuryAuctions } from "./client";
 import type { TreasuryAuction } from "./types";
 
 const CACHE_KIND = "treasury-auctions";
-const CACHE_KEY = "recent";
 const CACHE_SOURCE = "treasury-fiscal-data";
-const CACHE_SCHEMA_VERSION = 1;
+/** 2: rows carry a CUSIP, so reopenings no longer share an id with the original. */
+const CACHE_SCHEMA_VERSION = 2;
 export const TREASURY_FISCAL_DATA_CONNECTION_ID = "treasury-fiscal-data";
 /**
  * Auctions settle a few times a week and results never change once published,
@@ -27,7 +27,11 @@ export interface TreasuryAuctionsResult {
 
 let persistence: PluginPersistence | null = null;
 let connectionHealth: ConnectionHealthRegistry | null = null;
-let activeFetch: Promise<TreasuryAuctionsResult> | null = null;
+const activeFetches = new Map<number, Promise<TreasuryAuctionsResult>>();
+
+function cacheKey(sinceDays: number): string {
+  return `recent:${sinceDays}`;
+}
 
 export function attachTreasuryAuctionsPersistence(
   next: PluginPersistence,
@@ -40,11 +44,11 @@ export function attachTreasuryAuctionsPersistence(
 export function resetTreasuryAuctionsPersistence(): void {
   persistence = null;
   connectionHealth = null;
-  activeFetch = null;
+  activeFetches.clear();
 }
 
-function readCache(options?: { allowExpired?: boolean }): TreasuryAuctionsResult | null {
-  const record = persistence?.getResource<TreasuryAuction[]>(CACHE_KIND, CACHE_KEY, {
+function readCache(sinceDays: number, options?: { allowExpired?: boolean }): TreasuryAuctionsResult | null {
+  const record = persistence?.getResource<TreasuryAuction[]>(CACHE_KIND, cacheKey(sinceDays), {
     sourceKey: CACHE_SOURCE,
     schemaVersion: CACHE_SCHEMA_VERSION,
     allowExpired: options?.allowExpired,
@@ -60,15 +64,17 @@ function readCache(options?: { allowExpired?: boolean }): TreasuryAuctionsResult
  */
 export async function loadTreasuryAuctions(
   force = false,
-  loader: () => Promise<TreasuryAuction[]> = fetchTreasuryAuctions,
+  loader: (sinceDays: number) => Promise<TreasuryAuction[]> = fetchTreasuryAuctions,
+  sinceDays: number = AUCTION_HISTORY_DAYS,
 ): Promise<TreasuryAuctionsResult> {
-  const cached = readCache();
+  const cached = readCache(sinceDays);
   if (!force && cached && !cached.stale) return cached;
-  if (activeFetch) return activeFetch;
+  const inFlight = activeFetches.get(sinceDays);
+  if (inFlight) return inFlight;
 
-  const fallback = cached ?? readCache({ allowExpired: true });
-  const request = () => loader();
-  activeFetch = (connectionHealth?.hasSource(TREASURY_FISCAL_DATA_CONNECTION_ID)
+  const fallback = cached ?? readCache(sinceDays, { allowExpired: true });
+  const request = () => loader(sinceDays);
+  const fetchPromise = (connectionHealth?.hasSource(TREASURY_FISCAL_DATA_CONNECTION_ID)
     ? connectionHealth.track(TREASURY_FISCAL_DATA_CONNECTION_ID, "fetchAuctions", request)
     : request())
     .then((auctions) => {
@@ -79,7 +85,7 @@ export async function loadTreasuryAuctions(
         if (fallback) return { ...fallback, stale: true };
         throw new Error("Treasury Fiscal Data returned no auctions");
       }
-      persistence?.setResource(CACHE_KIND, CACHE_KEY, auctions, {
+      persistence?.setResource(CACHE_KIND, cacheKey(sinceDays), auctions, {
         sourceKey: CACHE_SOURCE,
         schemaVersion: CACHE_SCHEMA_VERSION,
         cachePolicy: CACHE_POLICY,
@@ -91,7 +97,8 @@ export async function loadTreasuryAuctions(
       throw error;
     })
     .finally(() => {
-      activeFetch = null;
+      if (activeFetches.get(sinceDays) === fetchPromise) activeFetches.delete(sinceDays);
     });
-  return activeFetch;
+  activeFetches.set(sinceDays, fetchPromise);
+  return fetchPromise;
 }

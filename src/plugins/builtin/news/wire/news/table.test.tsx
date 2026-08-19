@@ -108,6 +108,60 @@ describe("NewsArticleStackView", () => {
     expect(boldText).not.toContain("Read story");
   });
 
+  test("keeps the last column and human labels inside the pane width", async () => {
+    const state = createInitialState(
+      createDefaultConfig("/tmp/gloomberb-news-table-layout-test"),
+    );
+
+    testSetup = await testRender(
+      <AppContext value={{ state, dispatch: () => {} }}>
+        <PaneInstanceProvider paneId="news-top:main">
+          <NewsArticleStackView
+            articles={[
+              makeArticle({
+                id: "macro",
+                title: "Fed officials signal caution on further rate cuts as inflation stays sticky",
+                source: "globenewswire-releases",
+                categories: ["macro_politics"],
+                importance: 87,
+              }),
+            ]}
+            focused
+            width={90}
+            rootHeight={10}
+            selectedArticleId="macro"
+            setSelectedArticleId={() => {}}
+            sortPreference={{ columnId: "importance", direction: "desc" }}
+            setSortPreference={() => {}}
+            onOpenArticle={() => {}}
+            detailOpen={false}
+            onBack={() => {}}
+            detailContent={<Box />}
+            columns={["time", "source", "title", "tickers", "categories", "importance"]}
+            emptyStateTitle="No stories"
+          />
+        </PaneInstanceProvider>
+      </AppContext>,
+      { width: 90, height: 10 },
+    );
+
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    const lines = testSetup.captureCharFrame().split("\n");
+    // The sorted column and its indicator must survive the layout arithmetic.
+    expect(lines[0]).toContain("SCORE");
+    expect(lines[0]).toContain("\u25bc");
+    expect(lines[0]!.length).toBeLessThanOrEqual(90);
+    expect(lines[1]).toContain("87");
+    // Snake_case ids and mid-word clipping never reach the user.
+    expect(lines[1]).toContain("Politics");
+    expect(lines[1]).not.toContain("macro_politics");
+    expect(lines[1]).toContain("globenews...");
+  });
+
   test("dedupes exchange-qualified ticker aliases in table cells", async () => {
     const state = createInitialState(
       createDefaultConfig("/tmp/gloomberb-news-table-ticker-dedupe-test"),

@@ -16,6 +16,12 @@ export interface MarketHeatmapAsset {
   price: number;
   change: number;
   changePercent: number;
+  /**
+   * Whether the source actually carried a session change. `changePercent` keeps
+   * a numeric 0 for the shared screener row shape, so tiles must read this
+   * before showing a flat session that was really missing data.
+   */
+  hasChange: boolean;
   size: number | null;
   sizeKind: MarketHeatmapSizeKind;
   volume: number | null;
@@ -140,14 +146,15 @@ export function parseYahooMarketHeatmapResponse(data: unknown, universe: MarketH
       : getNumber(quote, "marketCap") ?? getNumber(quote, "intradayMarketCap");
     const price = getNumber(quote, "regularMarketPrice") ?? 0;
     const change = getNumber(quote, "regularMarketChange") ?? 0;
-    const changePercent = getNumber(quote, "regularMarketChangePercent") ?? 0;
+    const changePercentValue = getNumber(quote, "regularMarketChangePercent");
 
     assets.push({
       symbol,
       name: getString(quote, "shortName") ?? getString(quote, "longName") ?? getString(quote, "displayName") ?? symbol,
       price,
       change,
-      changePercent,
+      changePercent: changePercentValue ?? 0,
+      hasChange: changePercentValue != null,
       size,
       sizeKind,
       volume: getNumber(quote, "regularMarketVolume"),
@@ -176,13 +183,15 @@ export function parseNasdaqMarketHeatmapResponse(data: unknown): MarketHeatmapAs
     const size = parseLooseNumber(row.marketCap);
     if (size == null || size <= 0) continue;
     const price = parseLooseNumber(row.lastsale) ?? 0;
+    const changePercentValue = parseLooseNumber(row.pctchange);
 
     assets.push({
       symbol,
       name: getString(row, "name") ?? symbol,
       price,
       change: parseLooseNumber(row.netchange) ?? 0,
-      changePercent: parseLooseNumber(row.pctchange) ?? 0,
+      changePercent: changePercentValue ?? 0,
+      hasChange: changePercentValue != null,
       size,
       sizeKind: "market-cap",
       volume: parseLooseNumber(row.volume),

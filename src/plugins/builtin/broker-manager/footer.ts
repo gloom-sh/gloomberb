@@ -17,25 +17,20 @@ export function useBrokerManagerFooter({
   canRemoveSelected,
   canUseSelectedBroker,
   editing,
-  onCancelEdit,
 }: {
   actions: BrokerManagerFooterActions;
   canOpenSelectedAction: boolean;
   canRemoveSelected: boolean;
   canUseSelectedBroker: boolean;
   editing: boolean;
-  onCancelEdit: () => void;
 }) {
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
 
   const footerHints = useMemo<PaneHint[]>(() => {
-    if (editing) {
-      return [
-        { id: "save", key: "enter", label: "save", onPress: () => actionsRef.current.saveEdit().catch(() => {}) },
-        { id: "cancel", key: "esc", label: "cancel", onPress: onCancelEdit },
-      ];
-    }
+    // Enter to save and Esc to cancel are app-wide form conventions, and the edit
+    // form already renders its own Save and Cancel buttons, so the footer stays empty.
+    if (editing) return [];
 
     const hints: PaneHint[] = [
       { id: "add", key: "a", label: "dd", onPress: () => actionsRef.current.openAddBroker() },
@@ -54,7 +49,7 @@ export function useBrokerManagerFooter({
       hints.push({ id: "disconnect", key: "d", label: "isconnect", onPress: () => actionsRef.current.removeSelected().catch(() => {}) });
     }
     return hints;
-  }, [canOpenSelectedAction, canRemoveSelected, canUseSelectedBroker, editing, onCancelEdit]);
+  }, [canOpenSelectedAction, canRemoveSelected, canUseSelectedBroker, editing]);
 
   usePaneFooter("broker-manager", () => ({
     hints: footerHints,

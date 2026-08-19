@@ -55,6 +55,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
   const [muted, setMuted] = useState(true);
   const mediaRef = useRef<MediaSurfaceHandle | null>(null);
   const terminalAutoPlayedRef = useRef<string | null>(null);
+  const recoveredStreamRef = useRef<string | null>(null);
   const generationRef = useRef(0);
   const channel = getTvChannel(channelId);
 
@@ -112,6 +113,27 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
       generationRef.current += 1;
     };
   }, [load]);
+
+  // Resolved YouTube manifests expire within minutes, so an open pane re-resolves
+  // shortly before the current one dies instead of playing into an error.
+  useEffect(() => {
+    if (!stream) return;
+    const delay = Math.max(5_000, stream.expiresAt - 60_000 - Date.now());
+    const timer = setTimeout(() => {
+      void load(true);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [load, stream]);
+
+  // A dead manifest surfaces as a media error; re-resolve once per stream so a
+  // silent expiry recovers without the user pressing anything.
+  const handlePlaybackError = useCallback((message: string) => {
+    setPlaybackError(message);
+    const streamKey = stream ? `${stream.sourceId}:${stream.videoId}` : null;
+    if (!streamKey || recoveredStreamRef.current === streamKey) return;
+    recoveredStreamRef.current = streamKey;
+    void load(true);
+  }, [load, stream]);
 
   useEffect(() => {
     persistChannelSelection(channelId);
@@ -241,7 +263,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
         onPress: () => { void renderer.openExternal(channel.channelUrl); },
       },
     ],
-  }), [channel.channelUrl, error, loading, muted, paneId, playbackError, playbackState, renderer, status, stream, toggleMute, togglePlayback]);
+  }), [channel.channelUrl, error, loading, muted, paneId, playbackError, playbackState, refresh, renderer, status, stream, toggleMute, togglePlayback]);
 
   const channelTabs = useMemo(() => TV_CHANNELS.map((item, index) => ({
     label: `${index + 1} ${item.name}`,
@@ -283,7 +305,7 @@ export function TvPane({ paneId, focused, width, height }: PaneProps) {
           flexGrow={1}
           onPlaybackStateChange={setPlaybackState}
           onMutedChange={setMuted}
-          onError={setPlaybackError}
+          onError={handlePlaybackError}
         >
           <Box flexGrow={1} justifyContent="center" alignItems="center">
             <Text fg={colors.warning}>{playbackError ?? "Live video unavailable."}</Text>

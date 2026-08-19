@@ -8,7 +8,7 @@ import {
 } from "./format";
 import type { HolderRow } from "./types";
 
-export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onActivate, currency, marketCap }: {
+export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onActivate, currency, marketCap, emptyStateTitle }: {
   rows: HolderRow[];
   width: number;
   height: number;
@@ -17,6 +17,8 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
   onActivate?: (row: HolderRow) => void;
   currency: string;
   marketCap?: number;
+  /** Loading, error, and no-ticker states the pane resolves for both views. */
+  emptyStateTitle?: string;
 }) {
   const items = useMemo<Array<MetricTreemapItem<HolderRow>>>(() => rows.map((row) => {
     const ownership = formatHolderOwnershipLine(row, marketCap);
@@ -43,7 +45,7 @@ export function HoldersTreemap({ rows, width, height, selectedId, onSelect, onAc
       selectedId={selectedId}
       onSelect={(item) => onSelect(item.data)}
       onActivate={onActivate ? (item) => onActivate(item.data) : undefined}
-      emptyStateTitle="No chartable holder values"
+      emptyStateTitle={emptyStateTitle ?? "No chartable holder values"}
     />
   );
 }

@@ -44,20 +44,20 @@ const TopPane = createNewsPresetPane({
   paneKey: "top",
   title: "Top News",
   query: NEWS_QUERY_PRESETS.top,
-  columns: ["time", "title", "tickers", "importance"],
+  columns: ["time", "source", "title", "tickers", "categories", "importance"],
   defaultSort: { columnId: "importance", direction: "desc" },
   emptyStateTitle: "No top stories yet",
-  emptyStateHint: "Try refreshing later as new headlines are ranked.",
+  emptyStateHint: "Run the Add News Feed command to wire up another source.",
 });
 
 const FeedPane = createNewsPresetPane({
   paneKey: "feed",
   title: "News Feed",
   query: NEWS_QUERY_PRESETS.feed,
-  columns: ["time", "source", "title", "tickers", "categories"],
+  columns: ["time", "source", "title", "tickers", "categories", "sentiment"],
   defaultSort: { columnId: "time", direction: "desc" },
   emptyStateTitle: "No feed stories yet",
-  emptyStateHint: "Try refreshing later as wire stories arrive.",
+  emptyStateHint: "Run the Add News Feed command to wire up another source.",
 });
 
 let disposeBreakingNewsNotifications: (() => void) | null = null;

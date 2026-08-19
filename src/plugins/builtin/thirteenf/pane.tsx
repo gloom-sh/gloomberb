@@ -277,7 +277,9 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
     loading: status === "loading",
     error,
     info: browserStatusInfo,
-    hints: [{ id: "search", key: "/", label: "search", onPress: focusSearch }],
+    hints: [
+      { id: "search", key: "/", label: "search", onPress: focusSearch },
+    ],
   });
 
   const rootBefore = (
@@ -289,7 +291,7 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
         width={width}
         focusToken={searchFocusToken}
         inputRef={searchInputRef}
-        placeholder="fund, ticker, or CIK"
+        placeholder="fund, ticker, CIK, or latest"
         debounceMs={SEARCH_DEBOUNCE_MS}
         normalizeValue={trimSearchValue}
         onFocus={focusSearch}

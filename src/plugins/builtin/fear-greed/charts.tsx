@@ -237,12 +237,19 @@ function ChartStats({
   secondaryValue?: number | null;
   valueFormat: FearGreedValueFormat;
 }) {
+  // The index history charts the score itself, so its "latest" repeats the score.
+  const latestText = formatIndicatorValue(latest, valueFormat);
+  const showLatest = latestText !== formatScore(score);
   return (
     <>
       <Text fg={colors.textDim}>score </Text>
       <Text fg={color} attributes={TextAttributes.BOLD}>{formatScore(score)}</Text>
-      <Text fg={colors.textDim}>  latest </Text>
-      <Text fg={colors.text}>{formatIndicatorValue(latest, valueFormat)}</Text>
+      {showLatest ? (
+        <>
+          <Text fg={colors.textDim}>  latest </Text>
+          <Text fg={colors.text}>{latestText}</Text>
+        </>
+      ) : null}
       {secondaryLabel && secondaryValue != null ? (
         <>
           <Text fg={colors.textDim}>  avg </Text>

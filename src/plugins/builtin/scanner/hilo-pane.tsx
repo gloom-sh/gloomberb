@@ -16,6 +16,7 @@ import { usePluginPaneActions, usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useHiloFeed, useScannerStatusFooter } from "./feed";
 import { HiloBars } from "./hilo-bars";
+import { ScannerWaitingState } from "./waiting";
 import { filterHiloRows, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type Side = "lows" | "highs";
@@ -25,6 +26,10 @@ function rowKey(row: ScannerHiloExtreme, index: number): string {
 }
 
 const BARS_HEIGHT = 4;
+/** Below this the two tables cannot both stay legible, so only the focused side is shown. */
+const SPLIT_MIN_WIDTH = 42;
+/** The bars are the lowest-priority panel: they go first when rows run out. */
+const BARS_MIN_HEIGHT = BARS_HEIGHT + 4;
 
 function buildColumns(width: number): DataTableColumn[] {
   const symbolWidth = 8;
@@ -86,8 +91,11 @@ function HiloPane({ focused, width, height }: PaneProps) {
 
   useScannerStatusFooter("hilo", feed, focused);
 
+  const split = width >= SPLIT_MIN_WIDTH;
+  const showBars = height >= BARS_MIN_HEIGHT;
   // One cell of gutter keeps the two cursors from reading as a single wide row.
-  const tableWidth = Math.max(20, Math.floor((width - 1) / 2));
+  const tableWidth = split ? Math.max(12, Math.floor((width - 1) / 2)) : Math.max(12, width);
+  const tableHeight = Math.max(2, height - (showBars ? BARS_HEIGHT : 0));
   const columns = useMemo(() => buildColumns(tableWidth), [tableWidth]);
 
   const handleSelect = useCallback((side: Side, row: ScannerHiloExtreme, index: number) => {
@@ -121,7 +129,7 @@ function HiloPane({ focused, width, height }: PaneProps) {
       }}
       onRootKeyDown={handleSideSwitchKey}
       rootWidth={tableWidth}
-      rootHeight={Math.max(3, height - BARS_HEIGHT)}
+      rootHeight={tableHeight}
       columns={columns}
       items={rows}
       sortColumnId={null}
@@ -130,17 +138,25 @@ function HiloPane({ focused, width, height }: PaneProps) {
       getItemKey={rowKey}
       onActivate={(row) => pinTicker(row.symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
       renderCell={(row, column, _index, rowState) => renderCell(side, row, column, rowState)}
-      emptyStateTitle={feed.payload ? "Nothing above the price filter yet." : "Waiting for the scanner..."}
+      emptyContent={feed.payload ? undefined : <ScannerWaitingState />}
+      emptyStateTitle="Nothing above the price filter yet."
     />
   );
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <HiloBars windows={feed.payload?.windows} width={width} />
-      <Box flexDirection="row" flexGrow={1}>
-        {renderTable("lows", lows)}
-        <Box width={1} flexShrink={0} />
-        {renderTable("highs", highs)}
+      {showBars && <HiloBars windows={feed.payload?.windows} width={width} />}
+      <Box flexDirection="row" flexGrow={1} overflow="hidden">
+        {split ? (
+          <>
+            {renderTable("lows", lows)}
+            <Box width={1} flexShrink={0} />
+            {renderTable("highs", highs)}
+          </>
+        ) : (
+          // Too narrow for both: show the focused side and keep left/right switching it.
+          renderTable(activeSide, activeSide === "lows" ? lows : highs)
+        )}
       </Box>
     </Box>
   );

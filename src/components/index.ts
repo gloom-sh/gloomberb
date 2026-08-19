@@ -42,7 +42,7 @@ export { ConfirmDialog } from "./ui/confirm-dialog";
 export { ChoiceDialog } from "./ui/choice-dialog";
 export type { ChoiceDialogChoice } from "./ui/choice-dialog";
 export type { DataTableCell, DataTableColumn, DataTableVisibleRange } from "./ui/data-table";
-export { EmptyState } from "./ui/status";
+export { EmptyState, PaneStatusBody, loadingText, unavailableText } from "./ui/status";
 export { getMessageComposerBlockHeight, MessageComposer } from "./ui/message-composer";
 export { NumberField, TextField } from "./ui/fields";
 export { SegmentedControl } from "./ui/toggle";

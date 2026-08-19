@@ -122,7 +122,7 @@ async function emitKeypress(event: { name?: string; sequence?: string }) {
 }
 
 describe("TreasuryAuctionsPane", () => {
-  test("renders auction metrics and marks announced auctions as pending", async () => {
+  test("renders auction metrics and keeps one placeholder for unpublished results", async () => {
     seedCache();
     testSetup = await testRender(<Harness />, { width: 92, height: 20 });
     await renderSettled();
@@ -133,8 +133,10 @@ describe("TreasuryAuctionsPane", () => {
     expect(frame).toContain("2.86");
     // Indirect share is derived, not reported.
     expect(frame).toContain("48.6%");
-    // The 20-Year is announced but has no published results yet.
-    expect(frame).toContain("pending");
+    // The 20-Year is announced but unpublished: every metric cell reads the
+    // same placeholder the reported-but-missing cells use.
+    expect(frame).toContain("20-Year");
+    expect(frame).not.toContain("pending");
   });
 
   test("opens a detail view for the selected auction", async () => {

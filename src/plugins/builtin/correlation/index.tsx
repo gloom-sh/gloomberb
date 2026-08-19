@@ -1,21 +1,23 @@
-import { Box, ScrollBox, Text } from "../../../ui";
-import { useCallback, useMemo, useState } from "react";
-import { usePaneFooter } from "../../../components";
+import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { InputSearchBar, SegmentedControl, usePaneFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { colors } from "../../../theme/colors";
 import { usePluginTickerActions } from "../../runtime";
-import { useAppSelector, usePaneInstance } from "../../../state/app/context";
+import { useAppSelector, usePaneInstance, usePaneSettingValue } from "../../../state/app/context";
 import { useChartQueries } from "../../../market-data/hooks";
 import { buildChartKey } from "../../../market-data/selectors";
 import { formatTickerListInput } from "../../../tickers/list";
 import { formatCorrelation } from "./compute";
 import {
+  CORRELATION_RANGE_OPTIONS,
   DEFAULT_CORRELATION_SYMBOLS,
   MAX_CORRELATION_TICKERS,
   buildCorrelationSettingsDef,
   getCorrelationPaneSettings,
+  type CorrelationRangePreset,
 } from "./settings";
 import { resolveCorrelationHeatmapCellColors } from "./colors";
 import {
@@ -39,12 +41,17 @@ import {
 } from "./matrix/model";
 import { SymbolLabelCell } from "./matrix/symbol-cell";
 
-function CorrelationMatrixPane({ width, height }: PaneProps) {
+function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
   const { navigateTicker, pinTicker } = usePluginTickerActions();
   const tickers = useAppSelector((state) => state.tickers);
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const settings = useMemo(() => getCorrelationPaneSettings(pane?.settings), [pane?.settings]);
+  const [rangePreset, setRangePreset] = usePaneSettingValue<CorrelationRangePreset>("rangePreset", settings.rangePreset);
+  const [symbolsText, setSymbolsText] = usePaneSettingValue<string>("symbolsText", settings.symbolsText);
+  const [symbolsEditing, setSymbolsEditing] = useState(false);
+  const [symbolsFocusToken, setSymbolsFocusToken] = useState(0);
+  const symbolsInputRef = useRef<InputRenderable | null>(null);
 
   const instruments = useMemo(() => {
     if (settings.symbolsError) return [];
@@ -94,19 +101,19 @@ function CorrelationMatrixPane({ width, height }: PaneProps) {
   }, [symbolsKey, seriesBySymbol]);
 
   const statusSummary = useMemo(
-    () => buildStatusSummary(symbols, seriesBySymbol, matrix.sampleMin, matrix.sampleMax),
-    [symbolsKey, seriesBySymbol, matrix.sampleMin, matrix.sampleMax],
+    () => buildStatusSummary(symbols, seriesBySymbol, matrix.sampleMin, matrix.sampleMax, matrix.hasThinPair),
+    [symbolsKey, seriesBySymbol, matrix.sampleMin, matrix.sampleMax, matrix.hasThinPair],
   );
 
+  // The ticker set and range are visible in-pane, so the footer only carries
+  // load state and errors.
   usePaneFooter("correlation", () => ({
-    info: [
-      { id: "tickers", parts: [{ text: `${symbols.length} tickers`, tone: symbols.length >= 2 ? "value" : "warning", bold: symbols.length >= 2 }] },
-      { id: "range", parts: [{ text: settings.rangePreset, tone: "muted" }] },
-      ...(settings.symbolsError
-        ? [{ id: "error", parts: [{ text: settings.symbolsError, tone: "warning" as const }] }]
-        : [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]),
-    ],
-  }), [settings.rangePreset, settings.symbolsError, statusSummary, symbols.length]);
+    info: settings.symbolsError
+      ? [{ id: "error", parts: [{ text: settings.symbolsError, tone: "warning" as const }] }]
+      : statusSummary
+        ? [{ id: "status", parts: [{ text: statusSummary, tone: "muted" as const }] }]
+        : [],
+  }), [settings.symbolsError, statusSummary]);
 
   const openSymbol = useCallback((symbol: string) => {
     if (tickers.has(symbol)) {
@@ -144,11 +151,43 @@ function CorrelationMatrixPane({ width, height }: PaneProps) {
   );
   const availableCellWidth = Math.floor((Math.max(width - rowHeaderWidth - 4, symbols.length * MIN_MATRIX_CELL_WIDTH)) / symbols.length);
   const cellWidth = Math.max(MIN_MATRIX_CELL_WIDTH, Math.min(MATRIX_CELL_WIDTH, availableCellWidth));
+  // Rows are exactly as wide as the matrix, so the zebra and hover bands stop at
+  // the last column instead of running to the pane edge.
+  const matrixRowWidth = rowHeaderWidth + symbols.length * cellWidth + 2;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
+      <Box height={1} flexDirection="row" overflow="hidden">
+        <Box flexShrink={1} overflow="hidden">
+          <InputSearchBar
+            value={symbolsText}
+            focused={focused}
+            active={symbolsEditing}
+            width={Math.max(12, Math.min(40, width - 24))}
+            focusToken={symbolsFocusToken}
+            inputRef={symbolsInputRef}
+            placeholder="tickers"
+            debounceMs={500}
+            onFocus={() => {
+              setSymbolsEditing(true);
+              setSymbolsFocusToken((token) => token + 1);
+            }}
+            onBlur={() => setSymbolsEditing(false)}
+            onQueryChange={(query) => setSymbolsText(query)}
+          />
+        </Box>
+        <Box flexGrow={1} />
+        <SegmentedControl
+          options={CORRELATION_RANGE_OPTIONS.map((range) => ({ label: range, value: range }))}
+          value={rangePreset}
+          onChange={(value) => setRangePreset(value as CorrelationRangePreset)}
+          focused={focused && !symbolsEditing}
+          shortcutScope="correlation:range"
+        />
+      </Box>
+
       {/* Column header row */}
-      <Box flexDirection="row" paddingX={1} height={1} backgroundColor={headerBg}>
+      <Box flexDirection="row" paddingX={1} height={1} width={matrixRowWidth} backgroundColor={headerBg}>
         <Box width={rowHeaderWidth} flexShrink={0} />
         {symbols.map((sym) => (
           <SymbolLabelCell
@@ -166,10 +205,10 @@ function CorrelationMatrixPane({ width, height }: PaneProps) {
       </Box>
 
       {/* Matrix rows */}
-      <ScrollBox flexGrow={1} scrollY focusable={false}>
+      <ScrollBox flexGrow={1} scrollY scrollX focusable={false}>
         <Box flexDirection="column">
           {symbols.map((rowSym, rowIndex) => (
-            <Box key={rowSym} flexDirection="row" paddingX={1} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
+            <Box key={rowSym} flexDirection="row" paddingX={1} width={matrixRowWidth} backgroundColor={rowIndex % 2 === 0 ? colors.bg : undefined}>
               {/* Row header */}
               <Box
                 width={rowHeaderWidth}
@@ -267,7 +306,7 @@ export const correlationModule: PluginModule = {
           ? options.symbols
           : DEFAULT_CORRELATION_SYMBOLS;
         return {
-          title: buildCorrelationPaneTitle(symbols, "1Y"),
+          title: buildCorrelationPaneTitle(),
           placement: "floating",
           settings: {
             rangePreset: "1Y",

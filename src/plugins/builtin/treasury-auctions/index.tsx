@@ -1,3 +1,4 @@
+import type { PaneSettingsDef } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import {
   attachTreasuryAuctionsPersistence,
@@ -8,6 +9,26 @@ import { TreasuryAuctionsPane } from "./pane";
 import { TREASURY_AUCTIONS_PANE_ID } from "./types";
 
 let disposeConnection: (() => void) | null = null;
+
+function treasuryAuctionsSettings(): PaneSettingsDef {
+  return {
+    title: "Treasury Auctions Settings",
+    fields: [
+      {
+        key: "historyDays",
+        label: "History window",
+        description: "How far back auction results are requested.",
+        type: "select",
+        options: [
+          { value: "30", label: "30 days" },
+          { value: "90", label: "90 days" },
+          { value: "120", label: "120 days" },
+          { value: "365", label: "1 year" },
+        ],
+      },
+    ],
+  };
+}
 
 export const treasuryAuctionsModule: PluginModule = {
   setup(ctx) {
@@ -37,6 +58,7 @@ export const treasuryAuctionsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 28 },
+      settings: treasuryAuctionsSettings(),
     },
   ],
 

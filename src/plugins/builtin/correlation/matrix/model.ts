@@ -93,9 +93,11 @@ export function buildCorrelationMatrix(
   results: Map<string, CorrelationResult>;
   sampleMin: number | null;
   sampleMax: number | null;
+  hasThinPair: boolean;
 } {
   const results = new Map<string, CorrelationResult>();
   const sampleSizes: number[] = [];
+  let hasThinPair = false;
 
   for (let rowIndex = 0; rowIndex < symbols.length; rowIndex++) {
     for (let colIndex = 0; colIndex < symbols.length; colIndex++) {
@@ -108,8 +110,11 @@ export function buildCorrelationMatrix(
         ? correlateDatedReturns(rowSeries.returns, colSeries.returns, MIN_CORRELATION_OBSERVATIONS)
         : { correlation: null, sampleSize: 0 };
       results.set(pairKey(rowSym, colSym), result);
-      if (rowIndex < colIndex && result.sampleSize > 0) {
-        sampleSizes.push(result.sampleSize);
+      if (rowIndex < colIndex) {
+        if (result.sampleSize > 0) sampleSizes.push(result.sampleSize);
+        if (result.correlation == null && result.sampleSize < MIN_CORRELATION_OBSERVATIONS) {
+          hasThinPair = true;
+        }
       }
     }
   }
@@ -118,6 +123,7 @@ export function buildCorrelationMatrix(
     results,
     sampleMin: sampleSizes.length > 0 ? Math.min(...sampleSizes) : null,
     sampleMax: sampleSizes.length > 0 ? Math.max(...sampleSizes) : null,
+    hasThinPair,
   };
 }
 
@@ -126,6 +132,7 @@ export function buildStatusSummary(
   seriesBySymbol: Map<string, CorrelationSeries>,
   sampleMin: number | null,
   sampleMax: number | null,
+  hasThinPair = false,
 ): string {
   const parts: string[] = [];
   const byStatus = (status: SeriesStatus) => symbols.filter((symbol) => seriesBySymbol.get(symbol)?.status === status);
@@ -144,12 +151,16 @@ export function buildStatusSummary(
     parts.push("No paired dates yet");
   }
 
-  parts.push(`— <${MIN_CORRELATION_OBSERVATIONS} shared`);
+  // Only legend the blank cells when at least one pair actually has too few
+  // shared dates to correlate.
+  if (hasThinPair) parts.push(`- <${MIN_CORRELATION_OBSERVATIONS} shared`);
   return parts.join(" · ");
 }
 
-export function buildCorrelationPaneTitle(symbols: string[], rangePreset: CorrelationRangePreset): string {
-  if (symbols.length === 0) return `Correlation ${rangePreset}`;
-  if (symbols.length <= 3) return `${symbols.join(" · ")} ${rangePreset}`;
-  return `${symbols.slice(0, 2).join(" · ")} +${symbols.length - 2} ${rangePreset}`;
+/**
+ * The matrix already labels every symbol on both axes and the pane now carries
+ * its own range control, so the title stays generic instead of repeating them.
+ */
+export function buildCorrelationPaneTitle(): string {
+  return "Correlation";
 }

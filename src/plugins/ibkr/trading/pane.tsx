@@ -257,7 +257,7 @@ export function TradingPane({ focused, width, height }: PaneProps) {
     hints: [
       { id: "profile", key: "i", label: "profile", onPress: () => footerActionsRef.current.chooseBrokerInstance().catch(() => {}) },
       { id: "account", key: "a", label: "ccount", onPress: () => footerActionsRef.current.chooseAccount().catch(() => {}) },
-      { id: "open", key: "m", label: "open", onPress: () => footerActionsRef.current.openSelectedOrder() },
+      { id: "modify", key: "m", label: "odify", onPress: () => footerActionsRef.current.openSelectedOrder() },
       { id: "cancel", key: "c", label: "ancel", onPress: () => footerActionsRef.current.cancelSelectedOrder().catch(() => {}) },
     ],
   }), []);
@@ -326,6 +326,7 @@ export function TradingPane({ focused, width, height }: PaneProps) {
       selectedInstance={selectedInstance}
       tradeState={tradeState}
       width={width}
+      focused={focused}
     />
   );
 }

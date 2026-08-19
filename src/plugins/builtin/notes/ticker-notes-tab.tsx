@@ -5,7 +5,7 @@ import type { TickerResearchTabProps } from "../../../types/plugin";
 import { usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
-import { usePaneFooter } from "../../../components";
+import { EmptyState, usePaneFooter } from "../../../components";
 import { usePluginAppActions } from "../../runtime";
 import type { NotesFiles } from "./files";
 import { MarkdownNotePreview } from "./markdown-note-preview";
@@ -17,6 +17,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
     const { notify } = usePluginAppActions();
     const textareaRef = useRef<TextareaRenderable | null>(null);
     const [notesFocused, setNotesFocused] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
     const { text: noteText, textRef: noteTextRef, setText: setNoteText } = useSyncedText("");
     const wasNotesFocusedRef = useRef(false);
     const notesFocusedRef = useRef(notesFocused);
@@ -86,6 +87,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
     useEffect(() => {
       loadedSymbolRef.current = null;
       applyNoteText("");
+      setLoadError(null);
 
       if (notesFocusedRef.current) {
         setNotesFocusedAndCaptureRef.current(false);
@@ -100,7 +102,10 @@ export function createNotesTab(notesFiles: NotesFiles) {
         lastSavedTextRef.current.set(tickerSymbol, text);
         applyNoteText(text);
       };
-      notesFiles.load(tickerSymbol).then(applyLoaded, () => applyLoaded(""));
+      notesFiles.load(tickerSymbol).then(applyLoaded, (error: unknown) => {
+        // Leave the symbol unloaded so the unmount save below cannot overwrite it.
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
+      });
 
       return () => {
         cancelled = true;
@@ -111,7 +116,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
     }, [tickerSymbol, applyNoteText, getCurrentNoteText, saveNotesFor, notesFiles]);
 
     useShortcut((event) => {
-      if (!focused) return;
+      if (!focused || loadError) return;
       const isEnter = event.name === "enter" || event.name === "return";
       if (isEnter && !notesFocused) {
         setNotesFocusedAndCapture(true);
@@ -124,17 +129,23 @@ export function createNotesTab(notesFiles: NotesFiles) {
     }, { allowEditable: true });
 
     usePaneFooter("ticker-notes", () => ({
-      info: [
-        { id: "mode", parts: [{ text: notesFocused ? "editing" : "viewing", tone: "muted" }] },
-      ],
-    }), [notesFocused]);
+      info: loadError
+        ? [{ id: "load-error", parts: [{ text: loadError, tone: "warning" as const }] }]
+        : [{ id: "mode", parts: [{ text: notesFocused ? "editing" : "viewing", tone: "muted" as const }] }],
+    }), [loadError, notesFocused]);
 
     if (!ticker) return <Text fg={colors.textDim}>Select a ticker to view notes.</Text>;
 
     return (
       <Box flexDirection="column" flexGrow={1}>
-        <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!notesFocused) setNotesFocusedAndCapture(true); }}>
-          {notesFocused ? (
+        <Box flexGrow={1} minHeight={0} paddingX={1} onMouseDown={() => { if (!notesFocused && !loadError) setNotesFocusedAndCapture(true); }}>
+          {loadError ? (
+            <EmptyState
+              title="These notes could not be read."
+              message={loadError}
+              hint="Editing is disabled so the saved note is not overwritten."
+            />
+          ) : notesFocused ? (
             <MarkdownEditor
               textareaKey="editing"
               focused={focused}
@@ -148,7 +159,7 @@ export function createNotesTab(notesFiles: NotesFiles) {
               text={noteText}
               width={width}
               placeholder="Write notes about this ticker..."
-              onActivate={() => setNotesFocusedAndCapture(true)}
+              onActivate={() => { if (!loadError) setNotesFocusedAndCapture(true); }}
             />
           )}
         </Box>

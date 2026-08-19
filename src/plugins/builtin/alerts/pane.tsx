@@ -9,12 +9,13 @@ import {
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
 import type { PaneProps } from "../../../types/plugin";
-import { useMarketData, usePluginAppActions, usePluginConfigState } from "../../runtime";
+import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
   deserializeAlerts,
+  readAlertsStoreError,
   serializeAlerts,
 } from "./alert-engine";
-import { ALERTS_KEY, PANE_QUOTE_REFRESH_MS } from "./constants";
+import { ALERTS_KEY } from "./constants";
 import {
   conditionLabel,
   formatAlertDistance,
@@ -23,12 +24,6 @@ import {
   formatQuoteChecked,
   relativeTime,
 } from "./format";
-import {
-  createQuoteErrorMessage,
-  quoteAlertFields,
-  quoteErrorAlertFields,
-  resolveAlertQuote,
-} from "./quotes";
 import type { AlertRule } from "./types";
 
 type AlertColumnId =
@@ -63,13 +58,12 @@ const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
 
 export function AlertsPane({ focused, width, height, close }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<string>(ALERTS_KEY, "[]");
-  const marketData = useMarketData();
   const { openPluginCommandWorkflow } = usePluginAppActions();
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const marketDataId = marketData?.id ?? null;
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
+  const storeError = useMemo(() => readAlertsStoreError(alertsJson), [alertsJson]);
 
-  const { alerts, rows, activeCount, triggeredCount } = useMemo(() => {
+  const { alerts, rows, quoteError } = useMemo(() => {
     const parsed = deserializeAlerts(alertsJson);
     const activeAlerts = parsed.filter((a) => a.status === "active");
     const triggeredAlerts = parsed
@@ -79,8 +73,7 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     return {
       alerts: parsed,
       rows: [...activeAlerts, ...triggeredAlerts],
-      activeCount: activeAlerts.length,
-      triggeredCount: triggeredAlerts.length,
+      quoteError: parsed.find((alert) => alert.lastCheckError)?.lastCheckError ?? null,
     };
   }, [alertsJson]);
 
@@ -119,56 +112,15 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     if (selected) deleteAlert(selected.id);
   }, [deleteAlert, rows, selectedIdx]);
 
-  useEffect(() => {
-    if (!marketData || rows.length === 0) return;
-    const now = Date.now();
-    const dueAlerts = rows.filter((alert) => (
-      !alert.lastCheckedAt || now - alert.lastCheckedAt > PANE_QUOTE_REFRESH_MS
-    ));
-    if (dueAlerts.length === 0) return;
-
-    let cancelled = false;
-    void Promise.all(dueAlerts.map(async (alert) => {
-      try {
-        const quote = await resolveAlertQuote(marketData, alert.symbol);
-        return { id: alert.id, patch: quoteAlertFields(quote) };
-      } catch (error) {
-        return {
-          id: alert.id,
-          patch: quoteErrorAlertFields(createQuoteErrorMessage(alert.symbol, error)),
-        };
-      }
-    })).then((updates) => {
-      if (cancelled || updates.length === 0) return;
-      const patches = new Map(updates.map((update) => [update.id, update.patch]));
-      savePaneAlerts((current) => current.map((alert) => {
-        const patch = patches.get(alert.id);
-        return patch ? { ...alert, ...patch } : alert;
-      }));
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [marketDataId, rows, savePaneAlerts]);
+  // Quotes come from the plugin's single background poll, which writes into the
+  // same persisted store, so the pane never fetches on its own.
 
   usePaneFooter("alerts", () => ({
-    info: [
-      {
-        id: "active",
-        parts: [
-          { text: String(activeCount), tone: "value", bold: true },
-          { text: "active", tone: "label" },
-        ],
-      },
-      ...(triggeredCount > 0 ? [{
-        id: "triggered",
-        parts: [
-          { text: String(triggeredCount), tone: "warning" as const, bold: true },
-          { text: "triggered", tone: "label" as const },
-        ],
-      }] : []),
-    ],
+    info: storeError
+      ? [{ id: "store-error", parts: [{ text: storeError, tone: "warning" as const }] }]
+      : quoteError
+        ? [{ id: "quote-error", parts: [{ text: quoteError, tone: "warning" as const }] }]
+        : [],
     hints: [
       { id: "add", key: "a", label: "dd alert", onPress: startAddAlert },
       {
@@ -180,11 +132,11 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
       },
     ],
   }), [
-    activeCount,
     deleteSelectedAlert,
+    quoteError,
     rows.length,
     startAddAlert,
-    triggeredCount,
+    storeError,
   ]);
 
   useEffect(() => {
@@ -298,8 +250,8 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
         if (alert.status === "triggered") rearmAlert(alert.id);
       }}
       renderCell={renderCell}
-      emptyStateTitle="No alerts"
-      emptyStateHint="Use the action bar to create one."
+      emptyStateTitle={storeError ? "Saved alerts could not be read." : "No alerts"}
+      emptyStateHint={storeError ?? "Press a to add a price alert."}
       showHorizontalScrollbar={showHorizontalScrollbar}
     />
   );

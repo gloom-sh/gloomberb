@@ -8,7 +8,6 @@ import {
   type SectorDef,
 } from "./sector-data";
 
-export const REFRESH_INTERVAL_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ONE_MONTH_DAYS = 30;
 export const ONE_YEAR_DAYS = 365;
@@ -38,15 +37,12 @@ export const DEFAULT_SORT_PREFERENCE: SectorSortPreference = {
   direction: "desc",
 };
 
-export function buildBar(changePercent: number, barWidth: number): string {
-  if (barWidth <= 0) return "";
-  const filled = Math.round(Math.abs(changePercent) / 5 * barWidth);
-  const clamped = Math.min(filled, barWidth);
-  return "━".repeat(clamped);
-}
+/** Full length at a 5% session move, which covers all but crash days. */
+const MOVE_BAR_FULL_SCALE_PERCENT = 5;
 
-export function formatTime(date: Date): string {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+/** 0..1 length for a session move, monotonic in the size of the move. */
+export function moveBarRatio(changePercent: number): number {
+  return Math.min(1, Math.abs(changePercent) / MOVE_BAR_FULL_SCALE_PERCENT);
 }
 
 function createLoadingRows(sectors: readonly SectorDef[]): SectorRow[] {
@@ -74,10 +70,10 @@ export const INITIAL_REFRESH_BY_COLLECTION: SectorRefreshByCollection = {};
 export function normalizeRowsForCollection(
   rowsByCollection: SectorRowsByCollection,
   collectionId: SectorCollectionId,
+  items: readonly SectorDef[] = getSectorCollection(collectionId).items,
 ): SectorRow[] {
-  const collection = getSectorCollection(collectionId);
   const rows = rowsByCollection[collectionId] ?? [];
-  return collection.items.map((sector) => {
+  return items.map((sector) => {
     const existing = rows.find((row) => row.etf === sector.etf);
     return {
       ...sector,
@@ -94,11 +90,12 @@ export function normalizeRowsForCollection(
 export function updateRowsForCollection(
   rowsByCollection: SectorRowsByCollection,
   collectionId: SectorCollectionId,
+  items: readonly SectorDef[],
   updater: (rows: SectorRow[]) => SectorRow[],
 ): SectorRowsByCollection {
   return {
     ...rowsByCollection,
-    [collectionId]: updater(normalizeRowsForCollection(rowsByCollection, collectionId)),
+    [collectionId]: updater(normalizeRowsForCollection(rowsByCollection, collectionId, items)),
   };
 }
 
@@ -152,10 +149,10 @@ export function buildSectorColumns(width: number): SectorColumn[] {
     : 0;
   const columnCount = showBar ? 7 : 6;
   const fixedWidth = etfWidth + priceWidth + changeWidth + returnWidth * 2 + barWidth;
-  const nameWidth = Math.max(12, Math.min(22, width - 2 - columnCount - fixedWidth));
+  const nameWidth = Math.max(10, Math.min(22, width - 2 - columnCount - fixedWidth));
 
   const columns: SectorColumn[] = [
-    { id: "name", label: "SECTOR", width: nameWidth, align: "left" },
+    { id: "name", label: "SECTOR", width: nameWidth, align: "left", flexGrow: 1 },
     { id: "etf", label: "ETF", width: etfWidth, align: "left" },
     { id: "price", label: "LAST", width: priceWidth, align: "right" },
     { id: "changePercent", label: "1D", width: changeWidth, align: "right" },
@@ -163,7 +160,8 @@ export function buildSectorColumns(width: number): SectorColumn[] {
     { id: "return1Y", label: "1Y", width: returnWidth, align: "right" },
   ];
   if (showBar) {
-    columns.push({ id: "bar", label: "MOVE", width: barWidth, align: "left" });
+    // Labelled with the window it encodes: it sits after 1Y but tracks 1D.
+    columns.push({ id: "bar", label: "1D MOVE", width: barWidth, align: "left" });
   }
   return columns;
 }

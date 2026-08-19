@@ -32,6 +32,7 @@ export class ChatControllerMessageLoading {
     const channel = this.options.ensureChannelState(channelId);
     if (channel.refreshMessagesPromise) return channel.refreshMessagesPromise;
 
+    channel.messagesError = null;
     if (options.showLoading) {
       channel.messagesLoading = true;
       this.options.emit(channelId);
@@ -45,7 +46,10 @@ export class ChatControllerMessageLoading {
         this.options.persistChannelState(nextChannelId);
       },
     })
-      .catch(() => {
+      .catch((error: unknown) => {
+        channel.messagesError = error instanceof Error && error.message.trim()
+          ? error.message
+          : "Could not load messages.";
         this.options.persistChannelState(channelId);
       })
       .finally(() => {

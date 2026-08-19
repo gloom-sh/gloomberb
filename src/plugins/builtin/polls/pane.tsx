@@ -6,7 +6,7 @@ import {
   DataTableStackView,
   EmptyState,
   InputSearchBar,
-  Spinner,
+  PaneStatusBody,
   Tabs,
   usePaneFooter,
   type DataTableCell,
@@ -23,7 +23,8 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { openUrl } from "../../../components/ui/external-link";
 import type { PricePoint } from "../../../types/financials";
 import type { PaneProps } from "../../../types/plugin";
-import { useUpdatedAgo, nextStackSortPreference } from "./hooks";
+import { nextStackSortPreference } from "./hooks";
+import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { fetchVoteHubPolls } from "./client";
 import {
   computeMovingAverage,
@@ -40,7 +41,7 @@ import {
 } from "./normalize";
 import type { PollDetailTab, PollRow, PollTabId } from "./types";
 
-type LoadStatus = "idle" | "loading" | "loaded" | "error";
+type LoadStatus = "loading" | "loaded" | "error";
 
 interface PollColumn extends DataTableColumn {
   id: "date" | "subject" | "pollster" | "pop" | "result";
@@ -79,15 +80,17 @@ function answerChoiceColor(choice: string): string | undefined {
 
 function createColumns(width: number): PollColumn[] {
   const dateWidth = 8;
-  const popWidth = 4;
-  const resultWidth = 22;
+  const popWidth = 7;
+  // Both answers and both percentages of a two-way result must fit; a clipped
+  // number is worse than a narrower subject column.
+  const resultWidth = 32;
   const pollsterWidth = 14;
   const subjectWidth = Math.max(12, width - dateWidth - popWidth - resultWidth - pollsterWidth - 8);
   return [
     { id: "date", label: "DATE", width: dateWidth, align: "left" },
     { id: "subject", label: "SUBJECT", width: subjectWidth, align: "left" },
     { id: "pollster", label: "POLLSTER", width: pollsterWidth, align: "left" },
-    { id: "pop", label: "POP", width: popWidth, align: "left" },
+    { id: "pop", label: "SAMPLE", width: popWidth, align: "left" },
     { id: "result", label: "RESULT", width: resultWidth, align: "left" },
   ];
 }
@@ -447,7 +450,9 @@ function PollDetail({
 export function PollsPane({ focused, width, height }: PaneProps) {
   const [tab, setTab] = useState<PollTabId>("approval");
   const [rowsByTab, setRowsByTab] = useState<Partial<Record<PollTabId, PollRow[]>>>({});
-  const [status, setStatus] = useState<LoadStatus>("idle");
+  // The mount effect loads immediately, so the first paint is a spinner rather
+  // than a premature "No polls in this category".
+  const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -498,6 +503,11 @@ export function PollsPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     load(tab);
   }, [load, tab]);
+
+  const refreshActiveTab = useCallback(() => {
+    load(tab);
+  }, [load, tab]);
+  useAutoRefresh(status === "loaded" ? lastUpdated : null, refreshActiveTab);
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -602,7 +612,6 @@ export function PollsPane({ focused, width, height }: PaneProps) {
     info: [
       ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: "error", tone: "warning" as const }] }] : []),
-      ...(searchQuery.trim() ? [{ id: "search", parts: [{ text: `search: ${searchQuery.trim()}`, tone: "value" as const }] }] : []),
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" as const }] }] : []),
     ],
     hints: detailOpen
@@ -611,7 +620,7 @@ export function PollsPane({ focused, width, height }: PaneProps) {
           { id: "search", key: "/", label: "search", onPress: focusSearch },
           { id: "open", key: "o", label: "pen", onPress: openSelected, disabled: !selected?.url },
         ],
-  }), [error, detailOpen, focusSearch, openSelected, selected?.url, status, searchQuery, updatedAgo]);
+  }), [error, detailOpen, focusSearch, openSelected, selected?.url, status, updatedAgo]);
 
   const tabs = (
     <Box height={1} flexShrink={0} overflow="hidden">
@@ -647,24 +656,11 @@ export function PollsPane({ focused, width, height }: PaneProps) {
     />
   );
 
-  if (status === "loading" && allRows.length === 0) {
+  if (allRows.length === 0 && (status === "loading" || error)) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading polls..." />
-        </Box>
-      </Box>
-    );
-  }
-
-  if (error && allRows.length === 0) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        {tabs}
-        <Box padding={1}>
-          <EmptyState title="Polls unavailable." message={error} />
-        </Box>
+        <PaneStatusBody loading={status === "loading"} error={error} subject="Polls" />
       </Box>
     );
   }

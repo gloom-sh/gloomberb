@@ -6,6 +6,7 @@ const BASE_URL =
 
 /** The endpoint returns 114 columns per row; ask only for what the pane renders. */
 const FIELDS = [
+  "cusip",
   "security_type",
   "security_term",
   "auction_date",
@@ -23,7 +24,7 @@ const FIELDS = [
   "offering_amt",
 ].join(",");
 
-const AUCTION_HISTORY_DAYS = 120;
+export const AUCTION_HISTORY_DAYS = 120;
 const PAGE_SIZE = 300;
 /** 120 days is ~150 auctions, one page; the bound only exists so bad metadata cannot loop. */
 const MAX_PAGES = 5;
@@ -72,10 +73,14 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
   const secType = (record.security_type ?? "").trim();
   const auctionDate = (record.auction_date ?? "").trim();
   const securityTerm = (record.security_term ?? "").trim();
+  const cusip = (record.cusip ?? "").trim();
   if (!secType || !auctionDate) return null;
 
   return {
-    id: `${secType}|${auctionDate}|${securityTerm}`,
+    // A reopening reuses its original CUSIP but is auctioned on its own date,
+    // so CUSIP plus date is what keeps reopenings from collapsing into one row.
+    id: cusip ? `${cusip}|${auctionDate}` : `${secType}|${auctionDate}|${securityTerm}`,
+    cusip: cusip || null,
     secType,
     securityTerm: securityTerm || "—",
     auctionDate,
@@ -101,7 +106,6 @@ export function parseTreasuryAuctionsPayload(body: unknown): TreasuryAuction[] {
   const auctions: TreasuryAuction[] = [];
   for (const raw of data) {
     const auction = normalizeAuction(raw);
-    // Reopenings can repeat a (type, date, term) triple; the first wins.
     if (!auction || seen.has(auction.id)) continue;
     seen.add(auction.id);
     auctions.push(auction);

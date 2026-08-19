@@ -20,10 +20,11 @@ const POLL_TYPE_LABELS: Record<string, string> = {
   "proposition-50": "Prop",
 };
 
+/** Readable sample populations; "A"/"RV"/"LV" meant nothing without a legend. */
 const POPULATION_LABELS: Record<string, string> = {
-  a: "A",
-  rv: "RV",
-  lv: "LV",
+  a: "Adults",
+  rv: "Reg",
+  lv: "Likely",
 };
 
 export function pollTypeLabel(pollType: string): string {
@@ -79,7 +80,7 @@ export function summarizeAnswers(answers: VoteHubPollAnswer[] | undefined): {
   if (!first) return { result: "—", lead: null, leadChoice: null };
   if (!second) {
     return {
-      result: `${first.choice} ${formatPct(first.pct)}`,
+      result: `${shortChoice(first.choice)} ${formatPct(first.pct)}`,
       lead: first.pct,
       leadChoice: first.choice,
     };

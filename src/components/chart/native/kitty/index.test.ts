@@ -11,7 +11,11 @@ import {
 } from "../chart-rasterizer";
 import { KittyImageManager } from "./manager";
 import { chunkBase64Payload, encodeKittyTransmitRgba } from "./protocol";
-import { ensureKittySupport, getCachedKittySupport } from "./support";
+import {
+  ensureKittySupport,
+  getCachedKittySupport,
+  resolveKittySupport,
+} from "./support";
 import { resolveChartRendererState } from "../renderer-selection";
 import { computeSurfaceVisibleFragments, NativeSurfaceManager } from "../surface/manager";
 import { syncCachedNativeSurface } from "../surface/sync";
@@ -42,9 +46,27 @@ describe("resolveChartRendererState", () => {
   });
 });
 
+describe("resolveKittySupport", () => {
+  const noMultiplexer = { TERM: "xterm-kitty" } as Record<string, string | undefined>;
+
+  test("never claims support behind a multiplexer, whatever it advertises", () => {
+    expect(resolveKittySupport({ kitty_graphics: true, multiplexer: "tmux" }, noMultiplexer)).toBe(false);
+    expect(resolveKittySupport({ kitty_graphics: true }, { TERM: "tmux-256color" })).toBe(false);
+    expect(resolveKittySupport({ kitty_graphics: true }, { TERM_PROGRAM: "tmux" })).toBe(false);
+    expect(resolveKittySupport({ kitty_graphics: true }, { TMUX: "/tmp/tmux-501/default,1,0" })).toBe(false);
+  });
+
+  test("keeps confirmed support and leaves an unanswered query undecided", () => {
+    expect(resolveKittySupport({ kitty_graphics: true, multiplexer: "none" }, noMultiplexer)).toBe(true);
+    expect(resolveKittySupport({ kitty_graphics: false }, noMultiplexer)).toBe(false);
+    expect(resolveKittySupport({}, noMultiplexer)).toBe(null);
+    expect(resolveKittySupport(null, noMultiplexer)).toBe(null);
+  });
+});
+
 describe("getCachedKittySupport", () => {
   test("prefers later renderer capabilities over a failed query cache", async () => {
-    let capabilities: { kitty_graphics?: boolean } | null = null;
+    let capabilities: { kitty_graphics?: boolean; multiplexer?: string } | null = null;
     const renderer = {
       isDestroyed: false,
       get capabilities() {
@@ -60,7 +82,7 @@ describe("getCachedKittySupport", () => {
     expect(await ensureKittySupport(renderer)).toBe(false);
     expect(getCachedKittySupport(renderer)).toBe(false);
 
-    capabilities = { kitty_graphics: true };
+    capabilities = { kitty_graphics: true, multiplexer: "none" };
     expect(getCachedKittySupport(renderer)).toBe(true);
   });
 });

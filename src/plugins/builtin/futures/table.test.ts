@@ -10,6 +10,7 @@ import {
 import type { FuturesColumnId, FuturesTableRow } from "./model";
 import {
   createFuturesColumns,
+  FUTURES_COLUMN_DEFS,
   renderFuturesCell,
   resolveFuturesColumnIds,
   type FuturesColumn,
@@ -82,10 +83,11 @@ describe("futures price formatting", () => {
 
 describe("futures columns", () => {
   test("honors a saved column selection and falls back when it is unusable", () => {
+    const fullSet = FUTURES_COLUMN_DEFS.length;
     expect(resolveFuturesColumnIds(["code", "price"])).toEqual(["code", "price"]);
-    expect(resolveFuturesColumnIds([])).toHaveLength(6);
-    expect(resolveFuturesColumnIds(["bogus"])).toHaveLength(6);
-    expect(resolveFuturesColumnIds(undefined)).toHaveLength(6);
+    expect(resolveFuturesColumnIds([])).toHaveLength(fullSet);
+    expect(resolveFuturesColumnIds(["bogus"])).toHaveLength(fullSet);
+    expect(resolveFuturesColumnIds(undefined)).toHaveLength(fullSet);
   });
 
   test("gives the name column the leftover width whichever columns are visible", () => {
@@ -95,6 +97,17 @@ describe("futures columns", () => {
       expect(total).toBeLessThanOrEqual(80);
       expect(columns.find((column) => column.id === "name")?.width ?? 0).toBeGreaterThanOrEqual(10);
     }
+  });
+
+  test("drops the extra columns a narrow board cannot fit instead of clipping them", () => {
+    const narrow = createFuturesColumns(80).map((column) => column.id);
+    expect(narrow).not.toContain("volume");
+    expect(narrow).not.toContain("time");
+
+    const wide = createFuturesColumns(130).map((column) => column.id);
+    expect(wide).toContain("volume");
+    expect(wide).toContain("prevClose");
+    expect(wide).toContain("time");
   });
 });
 

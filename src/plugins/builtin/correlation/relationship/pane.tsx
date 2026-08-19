@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Text } from "../../../../ui";
-import { usePaneFooter } from "../../../../components";
+import { Button, usePaneFooter } from "../../../../components";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { StaticMultiLineChartSurface } from "../../../../components/chart/static/multi-line-chart-surface";
 import { StaticScatterChartSurface } from "../../../../components/chart/static/scatter-chart-surface";
@@ -45,6 +45,10 @@ export {
 
 type RelationshipGraphShortcut = "range" | "window" | "correlation" | "regression";
 
+/**
+ * Keys are the first letter of their hint label: [t]ime range, [p]eriod, [c]orr,
+ * [f]it line. `r` stays reserved for the app-wide refresh.
+ */
 export function resolveRelationshipGraphShortcut(
   event: Pick<KeyEventLike, "name" | "key" | "ctrl" | "shift" | "alt" | "meta" | "super">,
 ): RelationshipGraphShortcut | null {
@@ -57,7 +61,7 @@ export function resolveRelationshipGraphShortcut(
       return "window";
     case "c":
       return "correlation";
-    case "g":
+    case "f":
       return "regression";
     default:
       return null;
@@ -93,19 +97,28 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     : "negative";
   const ratioPalette = useMemo(() => resolveChartPalette(colors, ratioTrend), [ratioTrend]);
   const chartWidth = Math.max(20, width - 2);
-  const headerRows = 1;
-  const availableChartRows = Math.max(8, height - headerRows);
-  const showScatter = showRegression && availableChartRows >= 17;
-  const priceHeight = Math.max(5, Math.floor(availableChartRows * (showScatter ? 0.26 : 0.34)));
-  const ratioHeight = Math.max(4, Math.floor(availableChartRows * (showScatter ? 0.22 : 0.33)));
-  const correlationHeight = showCorrelation
-    ? Math.max(4, Math.floor(availableChartRows * (showScatter ? 0.22 : 0.33)))
+  // Panels are allocated in priority order out of the rows that actually exist, so
+  // a short pane drops the lowest-priority chart instead of clipping every axis.
+  const headerRows = 2;
+  const availableChartRows = Math.max(0, height - headerRows);
+  const railWidth = chartWidth >= 68 ? Math.min(34, Math.floor(chartWidth * 0.3)) : 0;
+  const statsBelowRows = railWidth === 0 ? 1 : 0;
+  let remainingRows = availableChartRows;
+  const priceHeight = Math.min(remainingRows, Math.max(5, Math.floor(availableChartRows * 0.28)));
+  remainingRows -= priceHeight;
+  const ratioHeight = remainingRows >= 4
+    ? Math.min(remainingRows, Math.max(4, Math.floor(availableChartRows * 0.24)))
     : 0;
-  const statsRailWidth = showScatter && chartWidth >= 68 ? Math.min(34, Math.floor(chartWidth * 0.3)) : 0;
-  const statsBelowRows = showScatter && statsRailWidth === 0 ? 1 : 0;
-  const scatterHeight = showScatter
-    ? Math.max(5, availableChartRows - priceHeight - ratioHeight - correlationHeight - statsBelowRows)
+  remainingRows -= ratioHeight;
+  const showCorrelationChart = showCorrelation && remainingRows >= 4;
+  const correlationHeight = showCorrelationChart
+    ? Math.min(remainingRows, Math.max(4, Math.floor(availableChartRows * 0.24)))
     : 0;
+  remainingRows -= correlationHeight;
+  // Scatter needs its own two label rows on top of a usable plot.
+  const showScatter = showRegression && remainingRows >= 7 + statsBelowRows;
+  const scatterHeight = showScatter ? remainingRows - statsBelowRows : 0;
+  const statsRailWidth = showScatter ? railWidth : 0;
   const scatterWidth = statsRailWidth > 0 ? Math.max(20, chartWidth - statsRailWidth - 1) : chartWidth;
   const stats = analysis?.stats ?? null;
   const alignedDates = useMemo(() => analysis?.aligned.map((entry) => entry.date) ?? [], [analysis]);
@@ -213,10 +226,10 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
-      { id: "range", key: "t", label: "range", onPress: cycleRange },
+      { id: "range", key: "t", label: "ime range", onPress: cycleRange },
       { id: "window", key: "p", label: "eriod", onPress: cycleWindow },
       { id: "correlation", key: "c", label: "orr", onPress: toggleCorrelation },
-      { id: "regression", key: "g", label: "reg", onPress: toggleRegression },
+      { id: "regression", key: "f", label: "it line", onPress: toggleRegression },
     ],
   }), [
     cycleRange,
@@ -256,8 +269,17 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     >
       <Box height={1} flexDirection="row" gap={2}>
         <RelationshipToggle checked={showCorrelation} label="Correlation" onPress={toggleCorrelation} />
-        <RelationshipToggle checked={showRegression} label="Regression" onPress={toggleRegression} />
-        <Text fg={colors.textDim}>Range {range}  Window {correlationWindow}d</Text>
+        <RelationshipToggle checked={showRegression} label="Fit line" onPress={toggleRegression} />
+        <Button label={`Range ${range}`} variant="ghost" onPress={cycleRange} />
+        <Button label={`Window ${correlationWindow}d`} variant="ghost" onPress={cycleWindow} />
+      </Box>
+      <Box height={1} flexDirection="row" gap={2}>
+        {priceSeries.map((series) => (
+          <Box key={series.id} flexDirection="row" gap={1}>
+            <Box width={2} height={1} backgroundColor={series.color} />
+            <Text fg={colors.textDim}>{series.label}</Text>
+          </Box>
+        ))}
       </Box>
       <StaticMultiLineChartSurface
         series={priceSeries}
@@ -272,6 +294,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
         formatYAxisValue={(value) => formatNumber(value, 0)}
         onCursorDateChange={selectCursorDate}
       />
+      {ratioHeight > 0 ? (
       <StaticMultiLineChartSurface
         series={ratioSeries}
         width={chartWidth}
@@ -285,7 +308,8 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
         formatYAxisValue={(value) => formatNumber(value, Math.abs(value) >= 10 ? 1 : 3)}
         onCursorDateChange={selectCursorDate}
       />
-      {showCorrelation ? (
+      ) : null}
+      {showCorrelationChart ? (
         <StaticMultiLineChartSurface
           series={correlationSeries}
           width={chartWidth}
@@ -320,7 +344,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
           ) : null}
         </Box>
       ) : null}
-      {showRegression && (!showScatter || statsRailWidth === 0) ? (
+      {showScatter && statsRailWidth === 0 ? (
         <Text fg={colors.textDim}>
           {metricsRows.map((row) => `${row.label} ${row.value}`).join("  ")}
         </Text>

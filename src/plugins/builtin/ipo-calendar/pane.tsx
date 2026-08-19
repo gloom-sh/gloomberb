@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Button,
   DataTableView,
+  EmptyState,
   InputSearchBar,
   Spinner,
   useExternalLinkFooter,
@@ -16,7 +18,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginTickerActions } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadingErrorFooterInfo } from "../shared/table-pane";
-import { fetchIpoCalendar } from "./client";
+import { getCachedIpoCalendar, loadIpoCalendar } from "./cache";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildColumns,
@@ -39,30 +41,35 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 export function IPOCalendarPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
-  const [records, setRecords] = useState<IPORecord[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("idle");
+  const [initialCache] = useState(getCachedIpoCalendar);
+  const [records, setRecords] = useState<IPORecord[]>(initialCache?.records ?? []);
+  // "idle" would render the empty state for one frame before the first load.
+  const [status, setStatus] = useState<LoadStatus>(initialCache ? "loaded" : "loading");
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(initialCache?.stale ?? false);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<IPOSortPreference>(DEFAULT_SORT_PREFERENCE);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(initialCache?.fetchedAt ?? null);
   const searchInputRef = useRef<InputRenderable | null>(null);
   const fetchGenRef = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
     setStatus((current) => (current === "loaded" ? current : "loading"));
     setError(null);
 
     try {
-      const data = await fetchIpoCalendar();
+      const result = await loadIpoCalendar(force);
       if (fetchGenRef.current !== gen) return;
-      setRecords(data);
+      setRecords(result.records);
+      setStale(result.stale);
+      setError(result.errors[0] ?? null);
       setStatus("loaded");
-      setLastUpdated(Date.now());
+      setLastUpdated(result.fetchedAt);
     } catch (err) {
       if (fetchGenRef.current !== gen) return;
       setError(err instanceof Error ? err.message : String(err));
@@ -74,7 +81,8 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
     void load();
   }, [load]);
 
-  useAutoRefresh(status === "loaded" ? lastUpdated : null, () => {
+  // The cache decides whether a tick becomes a scrape; only [r] forces it.
+  useAutoRefresh(status === "loaded" && !stale ? lastUpdated : null, () => {
     void load();
   });
 
@@ -117,7 +125,7 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const refresh = useCallback(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
@@ -164,12 +172,18 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
   );
 
   const footerInfo = useMemo(() => [
-    ...loadingErrorFooterInfo(status === "loading", status === "error" ? error : null),
+    ...loadingErrorFooterInfo(status === "loading", records.length === 0 ? error : null),
+    // One endpoint failed while the other returned rows: say so without
+    // spilling a scrape URL into the footer.
+    ...(error && records.length > 0
+      ? [{ id: "partial", parts: [{ text: "PARTIAL", tone: "warning" as const, bold: true }] }]
+      : []),
+    ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(searchQuery ? [{
       id: "search",
       parts: [{ text: `filter: ${searchQuery}`, tone: "value" as const }],
     }] : []),
-  ], [error, searchQuery, status]);
+  ], [error, records.length, searchQuery, stale, status]);
 
   const footerHints = useMemo(
     () => [{ id: "search", key: "/", label: "search", onPress: focusSearch }],
@@ -195,6 +209,11 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
             text: row.ticker,
             color: selectedColor ?? colors.textBright,
             attributes: TextAttributes.BOLD,
+          };
+        case "company":
+          return {
+            text: row.companyName,
+            color: selectedColor ?? colors.text,
           };
         case "date":
           return {
@@ -269,8 +288,8 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {rootBefore}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Text fg={colors.negative}>Error: {error}</Text>
+        <Box padding={1} flexDirection="column" gap={1}>
+          <EmptyState title="IPO calendar unavailable." message={error ?? undefined} />
         </Box>
       </Box>
     );

@@ -1,6 +1,7 @@
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../../ui";
 import type { Dispatch, SetStateAction } from "react";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
+import { Button } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import type { ChatMessage, ChatUserSummary } from "../../../../api-client";
@@ -25,6 +26,8 @@ interface ChatTranscriptProps {
   jumpToMessage: (messageId: string) => void;
   loading: boolean;
   loadingOlderMessages: boolean;
+  messagesError: string | null;
+  onRetryMessages: () => void;
   messageAreaHeight: number;
   messageBodyWidth: number;
   messages: ChatMessage[];
@@ -57,6 +60,8 @@ export function ChatTranscript({
   jumpToMessage,
   loading,
   loadingOlderMessages,
+  messagesError,
+  onRetryMessages,
   messageAreaHeight,
   messageBodyWidth,
   messages,
@@ -96,6 +101,11 @@ export function ChatTranscript({
         {loading && messages.length === 0 ? (
           <Box alignItems="center" justifyContent="center" flexGrow={1}>
             <Text fg={colors.textDim}>{t("Loading...")}</Text>
+          </Box>
+        ) : messagesError && messages.length === 0 ? (
+          // A failed load must not read as an empty channel.
+          <Box alignItems="center" justifyContent="center" flexGrow={1} flexDirection="column" gap={1}>
+            <Text fg={colors.warning}>{messagesError}</Text>
           </Box>
         ) : messages.length === 0 && (
           <Box alignItems="center" justifyContent="center" flexGrow={1}>

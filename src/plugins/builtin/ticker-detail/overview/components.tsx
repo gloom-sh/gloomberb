@@ -1,4 +1,4 @@
-import { Box, Text, TextAttributes } from "../../../../ui";
+import { Box, Text, TextAttributes, useUiHost } from "../../../../ui";
 import { colors, priceColor } from "../../../../theme/colors";
 import { displayWidth, formatNumber, padTo } from "../../../../utils/format";
 import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
@@ -18,6 +18,59 @@ interface PositionColumn {
   width: number;
   align?: "left" | "right";
   color?: (row: PositionTableRow) => string;
+  /** Lowest pane width that still has room for this column. */
+  minPaneWidth?: number;
+}
+
+function RangeTrack({
+  barWidth,
+  markerIndex,
+  position,
+  markerColor,
+}: {
+  barWidth: number;
+  markerIndex: number;
+  position: number;
+  markerColor: string;
+}) {
+  // The desktop webview must not draw rules out of box-drawing glyphs.
+  if (useUiHost().kind === "desktop-web") {
+    return (
+      <Box
+        marginLeft={1}
+        marginRight={1}
+        width={barWidth}
+        height={1}
+        style={{ position: "relative", justifyContent: "center" }}
+      >
+        <Box style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          height: "2px",
+          borderRadius: "1px",
+          backgroundColor: colors.border,
+        }} />
+        <Box style={{
+          position: "absolute",
+          left: `${position * 100}%`,
+          width: "8px",
+          height: "8px",
+          marginLeft: "-4px",
+          borderRadius: "50%",
+          backgroundColor: markerColor,
+        }} />
+      </Box>
+    );
+  }
+
+  return (
+    <Box marginLeft={1} marginRight={1} width={barWidth} flexDirection="row">
+      <Text fg={colors.border}>{"\u2500".repeat(markerIndex)}</Text>
+      <Text fg={markerColor}>{"\u25cf"}</Text>
+      <Text fg={colors.border}>{"\u2500".repeat(Math.max(0, barWidth - markerIndex - 1))}</Text>
+    </Box>
+  );
 }
 
 export function CompactRangeBar({
@@ -65,11 +118,12 @@ export function CompactRangeBar({
         <Box width={endpointWidth} overflow="hidden">
           <Text fg={colors.textDim}>{lowText}</Text>
         </Box>
-        <Box marginLeft={1} marginRight={1} width={barWidth} flexDirection="row">
-          <Text fg={colors.border}>{"─".repeat(markerIndex)}</Text>
-          <Text fg={markerColor}>{"●"}</Text>
-          <Text fg={colors.border}>{"─".repeat(Math.max(0, barWidth - markerIndex - 1))}</Text>
-        </Box>
+        <RangeTrack
+          barWidth={barWidth}
+          markerIndex={markerIndex}
+          position={position}
+          markerColor={markerColor}
+        />
         <Box flexDirection="row" width={endpointWidth} justifyContent="flex-end" overflow="hidden">
           <Text fg={colors.textDim}>{highText}</Text>
         </Box>
@@ -178,33 +232,19 @@ export function SectionHeader({ title }: { title: string }) {
   );
 }
 
+const POSITION_COLUMNS: readonly PositionColumn[] = [
+  { key: "account", label: "Account", width: 0 },
+  { key: "qty", label: "Qty", width: 8, align: "right" },
+  { key: "avg", label: "Avg", width: 9, align: "right", minPaneWidth: 70 },
+  { key: "mark", label: "Mark", width: 9, align: "right", minPaneWidth: 70 },
+  { key: "cost", label: "Cost", width: 11, align: "right", minPaneWidth: 84 },
+  { key: "value", label: "Value", width: 11, align: "right" },
+  { key: "pnl", label: "P&L", width: 12, align: "right", color: (row) => priceColor(row.pnlValue ?? 0) },
+  { key: "ret", label: "Ret", width: 7, align: "right", color: (row) => priceColor(row.pnlValue ?? 0), minPaneWidth: 84 },
+];
+
 function createPositionColumns(width: number): PositionColumn[] {
-  const columns: PositionColumn[] = width >= 84
-    ? [
-        { key: "account", label: "Account", width: 0 },
-        { key: "qty", label: "Qty", width: 8, align: "right" },
-        { key: "avg", label: "Avg", width: 9, align: "right" },
-        { key: "mark", label: "Mark", width: 9, align: "right" },
-        { key: "cost", label: "Cost", width: 11, align: "right" },
-        { key: "value", label: "Value", width: 11, align: "right" },
-        { key: "pnl", label: "P&L", width: 12, align: "right", color: (row) => priceColor(row.pnlValue ?? 0) },
-        { key: "ret", label: "Ret", width: 7, align: "right", color: (row) => priceColor(row.pnlValue ?? 0) },
-      ]
-    : width >= 70
-      ? [
-          { key: "account", label: "Account", width: 0 },
-          { key: "qty", label: "Qty", width: 8, align: "right" },
-          { key: "avg", label: "Avg", width: 9, align: "right" },
-          { key: "mark", label: "Mark", width: 9, align: "right" },
-          { key: "value", label: "Value", width: 11, align: "right" },
-          { key: "pnl", label: "P&L", width: 12, align: "right", color: (row) => priceColor(row.pnlValue ?? 0) },
-        ]
-      : [
-          { key: "account", label: "Account", width: 0 },
-          { key: "qty", label: "Qty", width: 8, align: "right" },
-          { key: "value", label: "Value", width: 11, align: "right" },
-          { key: "pnl", label: "P&L", width: 12, align: "right", color: (row) => priceColor(row.pnlValue ?? 0) },
-        ];
+  const columns = POSITION_COLUMNS.filter((column) => width >= (column.minPaneWidth ?? 0)).map((column) => ({ ...column }));
   const fixedWidth = columns.reduce((sum, column) => sum + column.width, 0) + POSITION_COLUMN_GAP * (columns.length - 1);
   const accountColumn = columns[0]!;
   accountColumn.width = Math.max(8, width - fixedWidth);

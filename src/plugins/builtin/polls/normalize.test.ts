@@ -69,13 +69,13 @@ describe("VoteHub normalize", () => {
       ],
     }));
     expect(row.pollTypeLabel).toBe("Generic");
-    expect(row.population).toBe("LV");
+    expect(row.population).toBe("Likely");
     expect(row.sampleSize).toBe(1500);
     expect(row.leadChoice).toBe("Rep");
     expect(row.lead).toBeCloseTo(4);
     expect(row.marginOfError).not.toBeNull();
     expect(parseSampleSize("800")).toBe(800);
-    expect(populationLabel("rv")).toBe("RV");
+    expect(populationLabel("rv")).toBe("Reg");
   });
 
   test("sorts poll rows by date, pollster, or lead", () => {

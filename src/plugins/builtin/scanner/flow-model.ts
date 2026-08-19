@@ -25,6 +25,44 @@ export const DEFAULT_FLOW_FILTERS: FlowFilters = {
   universe: "active",
 };
 
+/**
+ * One source for the in-pane filter chips and the settings dialog. `label` is the
+ * dialog wording, `short` the chip wording.
+ */
+export const FLOW_FILTER_OPTIONS = {
+  minPremium: [
+    { value: "50000", label: "$50K", short: "50K" },
+    { value: "250000", label: "$250K", short: "250K" },
+    { value: "1000000", label: "$1M", short: "1M" },
+  ],
+  side: [
+    { value: "both", label: "Calls and puts", short: "C+P" },
+    { value: "calls", label: "Calls only", short: "C" },
+    { value: "puts", label: "Puts only", short: "P" },
+  ],
+  kind: [
+    { value: "all", label: "All prints", short: "all" },
+    { value: "sweeps", label: "Sweeps only", short: "swp" },
+    { value: "blocks", label: "Blocks only", short: "blk" },
+  ],
+  volOi: [
+    { value: "off", label: "No floor", short: "any" },
+    { value: "1", label: "1x and up", short: "1x" },
+    { value: "5", label: "5x and up", short: "5x" },
+  ],
+  expiry: [
+    { value: "all", label: "Any expiry", short: "any" },
+    { value: "7", label: "7 days or less", short: "7d" },
+    { value: "30", label: "30 days or less", short: "30d" },
+  ],
+  universe: [
+    { value: "active", label: "Active names", short: "active" },
+    { value: "watchlist", label: "My tickers only", short: "mine" },
+  ],
+} as const satisfies {
+  [K in keyof FlowFilters]: readonly { value: FlowFilters[K]; label: string; short: string }[]
+};
+
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 function expiryDaysFromNow(expiry: string, now: number): number | null {

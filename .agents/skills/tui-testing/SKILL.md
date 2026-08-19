@@ -15,13 +15,32 @@ Three testing approaches. **Start with the simplest level that covers your chang
 
 This skill is for terminal TUI and OpenTUI test workflows. For Electrobun/desktop-web-only fixes, use focused desktop builds/tests instead unless the task explicitly asks for tmux or terminal rendering coverage.
 
-## Critical Rule
+## Critical Rules
 
 Cleanup is part of testing. If you start `tmux`, a dev server, a watcher, or any other background process while testing, stop it before you finish the task, even if the test fails.
 
 - Prefer named `tmux` sessions and end them with `tmux kill-session -t <name>`.
 - If you start a background process without `tmux`, capture its PID and terminate it explicitly with `kill <pid>` or the matching shutdown command.
 - Do not leave test helpers running across iterations unless the workflow explicitly requires it and you clean them up before handoff.
+
+**Never open the TV pane in a live app.** `macro-tv` (shortcut `TV`) spawns an external media player such as `mpv`, plus `yt-dlp`/`ffmpeg`. Those processes outlive the `tmux` session that started them, keep playing audio, and burn CPU on the developer's machine until they are killed by hand. Verify TV changes by reading the code and with unit tests. The same rule applies to any pane or feature that shells out to a media player.
+
+**Never run an unbounded or streaming log scan.** A `tail -c 4000000 <log> | strings | grep ... | head -20` health scan once pinned a core at 100% for over five hours. Scan a bounded slice of a file that is no longer being written, and never involve `strings`:
+
+```bash
+head -c 200000 /tmp/gloomberb-test.log | grep -aE "<pattern>" | head -20
+```
+
+**Finish with a leak sweep.** Before you report a test as done, confirm nothing you started is still alive:
+
+```bash
+ps -Ao pid,%cpu,etime,command \
+  | grep -iE "mpv|yt-dlp|ffmpeg|ffplay|tail -c|strings|bun run dev" \
+  | grep -v grep
+tmux ls 2>&1
+```
+
+Kill anything of yours that shows up and re-run until the sweep is clean.
 
 ```
 What are you testing?

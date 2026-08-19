@@ -31,7 +31,7 @@ class MemoryConfigState implements PluginConfigState {
 }
 
 describe("news feed config", () => {
-  test("normalizes legacy JSON feed storage and ignores removed default feed names", () => {
+  test("normalizes legacy JSON feed storage and migrates disabled default feed names to ids", () => {
     const config = new MemoryConfigState();
     config.values.set("feeds", JSON.stringify([
       { url: "https://example.com/rss.xml", name: "Example", authority: 120 },
@@ -44,7 +44,7 @@ describe("news feed config", () => {
     expect(settings.userFeeds).toHaveLength(1);
     expect(settings.userFeeds[0]!.id).toMatch(/^user-/);
     expect(settings.userFeeds[0]!.authority).toBe(100);
-    expect(settings.disabledDefaultFeedIds).toEqual([]);
+    expect(settings.disabledDefaultFeedIds).toEqual(["default-cnbc-top"]);
   });
 
   test("adds, updates, and removes user feeds through typed helpers", async () => {
@@ -69,17 +69,22 @@ describe("news feed config", () => {
     expect(loadNewsFeedSettings(config).userFeeds).toHaveLength(0);
   });
 
-  test("returns only user feeds when the default feed catalog is empty", async () => {
+  test("serves bundled default feeds alongside user feeds and honours disabled defaults", async () => {
     const config = new MemoryConfigState();
 
-    expect(getEnabledNewsFeeds(loadNewsFeedSettings(config))).toEqual([]);
+    const bundledIds = getEnabledNewsFeeds(loadNewsFeedSettings(config)).map((feed) => feed.id);
+    expect(bundledIds).toContain("default-cnbc-top");
 
     const added = await addUserNewsFeed(config, {
       url: "https://example.com/feed",
       name: "Example",
     });
+    expect(getEnabledNewsFeeds(loadNewsFeedSettings(config)).map((feed) => feed.id))
+      .toEqual([...bundledIds, added.id]);
 
-    expect(getEnabledNewsFeeds(loadNewsFeedSettings(config)).map((feed) => feed.id)).toEqual([added.id]);
+    expect(await setDefaultNewsFeedEnabled(config, "default-cnbc-top", false)).toBe(true);
+    expect(getEnabledNewsFeeds(loadNewsFeedSettings(config)).map((feed) => feed.id))
+      .not.toContain("default-cnbc-top");
     expect(await setDefaultNewsFeedEnabled(config, "missing-default-feed", false)).toBe(false);
   });
 

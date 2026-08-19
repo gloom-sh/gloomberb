@@ -3,9 +3,10 @@ import { DataTableView } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import { usePluginTickerActions } from "../../runtime";
+import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
+import { useAssetData, usePluginTickerActions } from "../../runtime";
 import { useQuoteBoard } from "../shared/use-quote-board";
-import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion } from "./indices";
+import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
 import {
   buildFlatRows,
@@ -17,19 +18,29 @@ import {
 import {
   createWorldIndexColumns,
   renderWorldIndexCell,
+  usesSessionText,
   type WorldIndexColumn,
 } from "./table";
 
-const REFRESH_INTERVAL_MS = 60_000;
-const WORLD_INDEX_SYMBOLS = WORLD_INDICES.map((entry) => entry.symbol);
+/** Stable identity: a fresh literal here would remount the board every render. */
+const NO_SAVED_SYMBOLS: string[] = [];
 
 function WorldIndicesPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
-  const { quotes, refresh } = useQuoteBoard(WORLD_INDEX_SYMBOLS, REFRESH_INTERVAL_MS);
+  const dataProvider = useAssetData();
+  const [savedSymbols] = usePaneSettingValue<string[]>("symbols", NO_SAVED_SYMBOLS);
+  const entries = useMemo(() => resolveIndexEntries(savedSymbols), [savedSymbols]);
+  const symbols = useMemo(() => entries.map((entry) => entry.symbol), [entries]);
+  // One cadence, the one the user configured, instead of a private 60s timer.
+  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
+  const { quotes, refresh } = useQuoteBoard(
+    symbols,
+    Math.max(1, refreshIntervalMinutes || 1) * 60_000,
+  );
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<WorldIndexSortPreference>(DEFAULT_SORT_PREFERENCE);
 
-  const indicesByRegion = useMemo(() => getIndicesByRegion(), []);
+  const indicesByRegion = useMemo(() => getIndicesByRegion(entries), [entries]);
   const flatRows = useMemo(
     () => buildFlatRows(indicesByRegion, sortPreference, quotes),
     [indicesByRegion, quotes, sortPreference],
@@ -65,14 +76,15 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
 
   const columns = useMemo<WorldIndexColumn[]>(() => createWorldIndexColumns(width), [width]);
 
+  const sessionText = usesSessionText(width);
   const renderCell = useCallback((
     row: WorldIndexTableRow,
     column: WorldIndexColumn,
     _index: number,
     rowState: { selected: boolean },
   ) => {
-    return renderWorldIndexCell(row, column, rowState, quotes);
-  }, [quotes]);
+    return renderWorldIndexCell(row, column, rowState, quotes, { sessionText });
+  }, [quotes, sessionText]);
 
   useWorldIndicesFooter(quotes, refresh, focused);
 
@@ -92,7 +104,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       columns={columns}
-      items={flatRows}
+      items={dataProvider ? flatRows : []}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
       onHeaderClick={handleHeaderClick}
@@ -101,7 +113,7 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
         ? { text: REGION_LABELS[row.region] }
         : null}
       renderCell={renderCell}
-      emptyStateTitle="No indices configured."
+      emptyStateTitle="No market data provider connected."
     />
   );
 }
@@ -115,7 +127,26 @@ export const worldIndicesModule: PluginModule = {
       component: WorldIndicesPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      defaultFloatingSize: { width: 72, height: 32 },
+      defaultFloatingSize: { width: 96, height: 32 },
+      // Resolved per open so the dialog shows the full board until the user
+      // saves a narrower selection.
+      settings: (context) => ({
+        title: "World Indices Settings",
+        values: {
+          symbols: resolveIndexEntries(context.settings.symbols as string[] | undefined)
+            .map((entry) => entry.symbol),
+        },
+        fields: [{
+          key: "symbols",
+          label: "Indices",
+          type: "ordered-multi-select",
+          options: WORLD_INDICES.map((entry) => ({
+            value: entry.symbol,
+            label: entry.shortName,
+            description: entry.name,
+          })),
+        }],
+      }),
     },
   ],
 

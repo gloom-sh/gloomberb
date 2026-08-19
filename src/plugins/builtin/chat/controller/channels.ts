@@ -25,6 +25,7 @@ export class ChatControllerChannels {
   private onlineCount = 0;
   private channelsLoading = false;
   private channelsPromise: Promise<void> | null = null;
+  private presencePromise: Promise<void> | null = null;
 
   constructor(private readonly options: ChatControllerChannelsOptions) {}
 
@@ -82,10 +83,19 @@ export class ChatControllerChannels {
     return request;
   }
 
+  /** Single-flight: every open chat pane calls this on mount. */
   async refreshPresence(): Promise<void> {
-    const presence = await apiClient.getChatPresence();
-    this.onlineCount = presence.onlineCount;
-    this.options.emit();
+    if (this.presencePromise) return this.presencePromise;
+    const request = apiClient.getChatPresence()
+      .then((presence) => {
+        this.onlineCount = presence.onlineCount;
+        this.options.emit();
+      })
+      .finally(() => {
+        this.presencePromise = null;
+      });
+    this.presencePromise = request;
+    return request;
   }
 
   async refreshChatState(): Promise<void> {

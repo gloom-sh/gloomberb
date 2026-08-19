@@ -5,6 +5,7 @@ import {
   createYahooScreenerApi,
   fetchPreferredMarketMovers,
   fetchScreener,
+  fetchScreenerResult,
   parseScreenerResponse,
   parseTrendingResponse,
   resetMarketMoversPersistence,
@@ -171,7 +172,7 @@ describe("fetchScreener", () => {
           },
         };
       },
-      fetchYahoo: async () => yahooQuotes,
+      fetchYahoo: async () => ({ data: yahooQuotes, stale: false }),
     };
 
     const result = await fetchPreferredMarketMovers(
@@ -205,7 +206,7 @@ describe("fetchScreener", () => {
         cloudCalls += 1;
         throw new Error("not expected");
       },
-      fetchYahoo: async () => parseScreenerResponse(SAMPLE_SCREENER_RESPONSE),
+      fetchYahoo: async () => ({ data: parseScreenerResponse(SAMPLE_SCREENER_RESPONSE), stale: false }),
     };
 
     const result = await fetchPreferredMarketMovers(
@@ -218,6 +219,31 @@ describe("fetchScreener", () => {
     expect(cloudCalls).toBe(0);
     expect(result.source).toBe("yahoo");
     expect(result.quotes.map((quote) => quote.symbol)).toEqual(["AAPL", "MSFT"]);
+  });
+
+  test("reports a cached Yahoo fallback as stale", async () => {
+    // Regression: an expired cache served after a failed fetch reported
+    // stale: false, so the pane's stale marker never appeared.
+    const persistence = new MemoryPluginPersistence();
+    attachMarketMoversPersistence(persistence);
+    let calls = 0;
+    const api: YahooScreenerApi = {
+      async fetchJson<T = unknown>() {
+        calls += 1;
+        if (calls === 1) return SAMPLE_SCREENER_RESPONSE as T;
+        throw new Error("upstream down");
+      },
+    };
+
+    const fresh = await fetchScreenerResult("day_gainers", 2, api, { cache: true });
+    expect(fresh.stale).toBe(false);
+
+    const fallback = await fetchScreenerResult("day_gainers", 2, api, {
+      cache: true,
+      forceRefresh: true,
+    });
+    expect(fallback.stale).toBe(true);
+    expect(fallback.data.map((quote) => quote.symbol)).toEqual(["AAPL", "MSFT"]);
   });
 
   test("falls back to the secondary Yahoo host when the primary host fails", async () => {

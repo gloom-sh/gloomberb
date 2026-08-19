@@ -27,10 +27,16 @@ export function shouldToggleCashMarginDrawer(key: string | undefined, showCashDr
   return key === "c" && showCashDrawer;
 }
 
+export interface PortfolioAccountStateResult {
+  accountState: ResolvedPortfolioAccountState | null;
+  /** Set when the broker refused to list accounts, so "no cash" is not mistaken for a clean empty. */
+  accountsError: string | null;
+}
+
 export function usePortfolioAccountState(
   portfolio: Portfolio | null,
   state: Pick<AppState, "config" | "brokerAccounts">,
-): ResolvedPortfolioAccountState | null {
+): PortfolioAccountStateResult {
   const instanceId = portfolio?.brokerInstanceId;
   const brokerInstance = useMemo(
     () => instanceId ? getBrokerInstance(state.config.brokerInstances, instanceId) : null,
@@ -48,16 +54,20 @@ export function usePortfolioAccountState(
     });
   }, [broker, brokerInstance]);
   const [liveAccounts, setLiveAccounts] = useState<BrokerAccount[]>([]);
+  const [accountsError, setAccountsError] = useState<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setLiveAccounts([]);
+    setAccountsError(null);
     if (!brokerInstance || !broker?.listAccounts || liveStatus?.state !== "connected") return;
     broker.listAccounts(brokerInstance)
       .then((accounts) => {
         if (!cancelled) setLiveAccounts(accounts);
       })
-      .catch(() => {
-        if (!cancelled) setLiveAccounts([]);
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setLiveAccounts([]);
+        setAccountsError(error instanceof Error ? error.message : String(error));
       });
     return () => {
       cancelled = true;
@@ -67,10 +77,11 @@ export function usePortfolioAccountState(
     () => ({ status: liveStatus, accounts: liveAccounts }),
     [liveAccounts, liveStatus],
   );
-  return useMemo(
+  const accountState = useMemo(
     () => resolvePortfolioAccountState(portfolio, state, snapshot),
     [portfolio, snapshot, state.brokerAccounts, state.config],
   );
+  return useMemo(() => ({ accountState, accountsError }), [accountState, accountsError]);
 }
 
 export function PortfolioCashMarginDrawer({

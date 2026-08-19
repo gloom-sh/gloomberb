@@ -2,12 +2,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import {
+  Button,
   DataTableView,
+  EmptyState,
+  Spinner,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment,
 } from "../../../components";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import type { PluginModule } from "../plugin-module";
@@ -18,14 +22,13 @@ import {
   type CreditSeriesId,
 } from "./model";
 
-type SortId = "label" | "oas" | "change" | "date";
+type SortId = "label" | "oas" | "change";
 interface Column extends DataTableColumn { id: SortId }
 
 const COLUMNS: readonly Column[] = [
   { id: "label", label: "INDEX", width: 12, align: "left" },
   { id: "oas", label: "OAS", width: 10, align: "right" },
   { id: "change", label: "1D", width: 9, align: "right" },
-  { id: "date", label: "AS OF", width: 12, align: "right" },
 ];
 
 function formatBp(value: number | null, signed = false): string {
@@ -39,8 +42,7 @@ function sortRows(rows: CreditConditionRow[], id: SortId, descending: boolean): 
     let comparison = 0;
     if (id === "label") comparison = left.label.localeCompare(right.label);
     else if (id === "oas") comparison = left.oasBp - right.oasBp;
-    else if (id === "change") comparison = (left.dailyChangeBp ?? -Infinity) - (right.dailyChangeBp ?? -Infinity);
-    else comparison = left.date.localeCompare(right.date);
+    else comparison = (left.dailyChangeBp ?? -Infinity) - (right.dailyChangeBp ?? -Infinity);
     return descending ? -comparison : comparison;
   });
 }
@@ -64,7 +66,6 @@ function renderCell(
   const selected = state.selected ? colors.selectedText : undefined;
   if (column.id === "label") return { text: row.label, color: selected ?? colors.text, attributes: TextAttributes.BOLD };
   if (column.id === "oas") return { text: formatBp(row.oasBp), color: selected ?? colors.textBright };
-  if (column.id === "date") return { text: row.date, color: selected ?? colors.textDim };
   return {
     text: formatBp(row.dailyChangeBp, true),
     color: selected ?? (row.dailyChangeBp == null
@@ -85,6 +86,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   const [loading, setLoading] = useState(!initial);
   const [stale, setStale] = useState(initial?.stale ?? false);
   const [error, setError] = useState<string | null>(initial?.errors[0] ?? null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const generation = useRef(0);
 
   const load = useCallback(async (force = false) => {
@@ -97,6 +99,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
       setRows(result.rows);
       setSelectedId((id) => id && result.rows.some((row) => row.seriesId === id) ? id : result.rows[0]?.seriesId ?? null);
       setStale(result.stale);
+      if (!result.stale) setLastUpdated(Date.now());
       setError(result.errors[0] ?? null);
     } catch (loadError) {
       if (generation.current !== current) return;
@@ -107,11 +110,15 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   }, []);
   useEffect(() => { void load(false); }, [load]);
   const reload = useCallback(() => { void load(true); }, [load]);
+  const refresh = useCallback(() => { void load(false); }, [load]);
+  // The shared FRED cache decides whether a tick actually hits the network, so
+  // the pane can follow the global cadence without refetching daily data.
+  useAutoRefresh(lastUpdated, refresh);
 
   const sorted = useMemo(() => sortRows(rows, sort.id, sort.descending), [rows, sort]);
   const selectedRow = rows.find((row) => row.seriesId === selectedId) ?? rows[0] ?? null;
   const columns = useMemo<Column[]>(() => {
-    const labelWidth = Math.max(12, width - 35);
+    const labelWidth = Math.max(12, width - 23);
     return COLUMNS.map((column) => column.id === "label" ? { ...column, width: labelWidth } : { ...column });
   }, [width]);
   const renderRowCell = useCallback((
@@ -138,24 +145,35 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     event.stopPropagation?.();
   });
   const partial = rows.length > 0 && rows.length < CREDIT_SERIES.length;
+  const asOf = rows.reduce<string | null>((latest, row) => !latest || row.date > latest ? row.date : latest, null);
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
-    ...(partial ? [{ id: "partial", parts: [{ text: "PARTIAL", tone: "warning" as const, bold: true }] }] : []),
+    ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
+    ...(rows.length > 0 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
+    ...(partial ? [{ id: "partial", parts: [{ text: `PARTIAL ${rows.length}/${CREDIT_SERIES.length}`, tone: "warning" as const, bold: true }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-  ], [error, loading, partial, stale]);
+  ], [asOf, error, loading, partial, rows.length, stale]);
   usePaneFooter(paneId, () => ({ info: footerInfo }), [footerInfo, paneId]);
 
   if (rows.length === 0 && loading) {
-    return <Box width={width} height={height} justifyContent="center" alignItems="center"><Text fg={colors.textMuted}>Loading credit spreads...</Text></Box>;
+    return (
+      <Box width={width} height={height} justifyContent="center" alignItems="center">
+        <Spinner label="Loading credit spreads..." />
+      </Box>
+    );
   }
   if (rows.length === 0) {
-    return <Box width={width} height={height} padding={1}><Text fg={colors.negative}>{error ?? "Credit spread data unavailable"}</Text></Box>;
+    return (
+      <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
+        <EmptyState title="Credit spreads unavailable." message={error ?? undefined} />
+      </Box>
+    );
   }
 
   const metadata = (
     <Box height={2} flexDirection="column" paddingX={1}>
-      <Text fg={colors.textMuted}>FRED · option-adjusted spread · daily close · delayed</Text>
+      <Text fg={colors.textMuted}>FRED · option-adjusted spread · daily close</Text>
       <Text fg={colors.textDim}>{selectedRow?.title ?? ""}</Text>
     </Box>
   );
@@ -183,7 +201,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
       }))}
       getItemKey={(row) => row.seriesId}
       renderCell={renderRowCell}
-      emptyStateTitle="No credit spread data."
+      emptyStateTitle={loading ? "Loading credit spreads..." : error ?? "No credit spread data."}
     />
   );
 }

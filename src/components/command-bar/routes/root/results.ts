@@ -83,9 +83,17 @@ export interface RootResultModelOptions {
 }
 
 /** An in-flight or answered request keeps its rows even if the heuristic lapses. */
-function isAssistSectionVisible(assist: AssistRowHandlers, query: string, resultCount: number): boolean {
+function isAssistSectionVisible(
+  assist: AssistRowHandlers,
+  query: string,
+  resultCount: number,
+  hasShortcutIntent: boolean,
+): boolean {
   if (!query.trim()) return false;
   if (assist.state.status !== "idle" && assist.state.query === query.trim()) return true;
+  // A resolved shortcut is the user speaking the command language, so nothing is
+  // asked of the AI, and a sign-up offer must not outrank that exact match.
+  if (hasShortcutIntent) return false;
   // Signed out there is nothing to wait for, so the older heuristic still picks
   // the queries worth offering a sign-up row for.
   if (!assist.enabled) return shouldShowAssistRow({ query, resultCount });
@@ -243,7 +251,13 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
   // Built from the local matches, then moved above them: the AI answers the
   // question the user typed, so it leads the list. Rows landing here renumber
   // everything below, which the root selection effect absorbs by identity.
-  const assistItems = assist && isAssistSectionVisible(assist, rootQuery, items.length)
+  const assistItems = assist
+    && isAssistSectionVisible(
+      assist,
+      rootQuery,
+      items.length,
+      rootShortcutIntent.kind !== "none" && !isArticleLookupShortcut(rootShortcutIntent),
+    )
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];
 

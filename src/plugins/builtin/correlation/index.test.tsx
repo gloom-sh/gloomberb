@@ -121,7 +121,8 @@ describe("correlationModule", () => {
     });
 
     const lines = testSetup!.captureCharFrame().split("\n");
-    const headerY = lines.findIndex((line) => line.includes("AAPL") && line.includes("MSFT"));
+    // The first AAPL+MSFT line is the in-pane ticker input, so skip comma-separated rows.
+    const headerY = lines.findIndex((line) => line.includes("AAPL") && line.includes("MSFT") && !line.includes(","));
     const headerCol = lines[headerY]?.indexOf("AAPL") ?? -1;
     expect(headerY).toBeGreaterThanOrEqual(0);
     expect(headerCol).toBeGreaterThanOrEqual(0);

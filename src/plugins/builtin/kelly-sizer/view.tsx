@@ -58,7 +58,9 @@ export function InlineFieldView({
 }) {
   const labelWidth = Math.min(12, Math.max(7, Math.floor(width * 0.38)));
   const suffixWidth = field.suffix ? field.suffix.length + 1 : field.percent ? 2 : 0;
-  const valueWidth = Math.max(5, width - labelWidth - suffixWidth - 2);
+  // Capped so the unit sits next to the number instead of being pushed to the far
+  // edge of a wide pane.
+  const valueWidth = Math.max(5, Math.min(12, width - labelWidth - suffixWidth - 2));
   const inputNodeRef = useRef<InputRenderable | null>(null);
   const displayValue = field.valueText ?? formatInputNumber(field.value ?? 0, field.percent);
   const fieldRef = useRef(field);
@@ -246,10 +248,15 @@ export function InlineFieldView({
           onBlur={handleBlur}
         />
       ) : (
-        <Box width={valueWidth} height={1} onMouseDown={() => {
-          onFocus();
-          focusInput();
-        }}>
+        <Box
+          width={valueWidth}
+          height={1}
+          backgroundColor={colors.bg}
+          onMouseDown={() => {
+            onFocus();
+            focusInput();
+          }}
+        >
           <Text fg={fg}>{truncateText(displayValue, valueWidth)}</Text>
         </Box>
       )}

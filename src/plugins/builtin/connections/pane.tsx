@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import {
   DataTableStackView,
+  Spinner,
   type DataTableCell,
   type DataTableColumn,
   usePaneFooter,
@@ -56,7 +57,8 @@ function columnsForWidth(width: number): ConnectionColumn[] {
   const latencyWidth = 8;
   const lastWidth = 9;
   const requestWidth = width >= 72 ? 18 : 0;
-  const serviceWidth = Math.max(16, width - statusWidth - latencyWidth - lastWidth - requestWidth - 4);
+  // Floor low enough that a narrow pane scrolls horizontally instead of clipping.
+  const serviceWidth = Math.max(10, width - statusWidth - latencyWidth - lastWidth - requestWidth - 4);
   return [
     { id: "service", label: "SERVICE", width: serviceWidth, align: "left" },
     { id: "status", label: "STATUS", width: statusWidth, align: "left" },
@@ -136,8 +138,20 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
     direction: "asc",
   });
   const [now, setNow] = useState(Date.now());
+  // Sources register asynchronously at boot, so an empty first snapshot is a load,
+  // not an answer.
+  const [settled, setSettled] = useState(() => health.getSnapshot().sources.length > 0);
 
-  useEffect(() => health.subscribe(() => setSnapshot(health.getSnapshot())), [health]);
+  useEffect(() => {
+    if (settled) return;
+    const timer = setTimeout(() => setSettled(true), 2000);
+    return () => clearTimeout(timer);
+  }, [settled]);
+
+  useEffect(() => health.subscribe(() => {
+    setSnapshot(health.getSnapshot());
+    setSettled(true);
+  }), [health]);
   useEffect(() => {
     const timer = setInterval(() => {
       setNow(Date.now());
@@ -231,9 +245,13 @@ export function ConnectionsPane({ focused, width, height }: PaneProps) {
         }}
         getItemKey={(source) => source.id}
         renderCell={renderCell}
+        emptyContent={settled ? undefined : (
+          <Box paddingX={1} paddingY={1}>
+            <Spinner label="Waiting for services to register..." />
+          </Box>
+        )}
         emptyStateTitle="No connection activity yet."
         emptyStateHint="Sources appear when providers and services register."
-        showHorizontalScrollbar={false}
       />
     </Box>
   );

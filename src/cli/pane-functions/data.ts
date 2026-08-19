@@ -93,9 +93,14 @@ export function collectShotSymbols(resolved: ResolvedPaneFunction, rawArg: strin
       )).filter(Boolean))];
     }
   }
+  // A text argument is a phrase, not a symbol, so it must never be looked up as one.
+  const argIsTicker = resolved.template?.shortcut?.argKind !== "text";
   let symbols = resolved.createOptions?.symbols?.length
     ? resolved.createOptions.symbols
-    : [resolved.createOptions?.symbol ?? normalizeTickerInput(null, cleanTickerInput(rawArg))].filter((symbol): symbol is string => !!symbol);
+    : [
+      resolved.createOptions?.symbol
+        ?? (argIsTicker ? normalizeTickerInput(null, cleanTickerInput(rawArg)) : null),
+    ].filter((symbol): symbol is string => !!symbol);
   if (resolved.capability.id === "security-relationship" && symbols.length === 1) {
     symbols = [...symbols, "SPY"];
   }

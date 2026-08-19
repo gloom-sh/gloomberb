@@ -6,8 +6,10 @@ export const TREASURY_AUCTIONS_PANE_ID = "treasury-auctions";
  * report, so numbers are parsed once here.
  */
 export interface TreasuryAuction {
-  /** security_type | auction_date | security_term */
+  /** cusip | auction_date, or security_type | auction_date | security_term when the feed omits a CUSIP. */
   id: string;
+  /** Security identifier; a reopening repeats the original issue's CUSIP. */
+  cusip: string | null;
   /** "Bill", "Note", "Bond", "CMB", "FRN", "TIPS". */
   secType: string;
   /** "4-Week", "2-Year", "29-Year 6-Month". */
@@ -36,6 +38,7 @@ export interface TreasuryAuction {
 
 /** Raw shape returned by the Fiscal Data auctions_query endpoint. */
 export interface TreasuryAuctionRaw {
+  cusip?: string;
   security_type?: string;
   security_term?: string;
   auction_date?: string;

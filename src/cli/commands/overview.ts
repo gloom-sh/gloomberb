@@ -95,7 +95,7 @@ async function runFearGreed(_args: string[], ctx: Parameters<CliCommandDef["exec
       "fear-greed",
     ));
     try {
-      const data = await loadFearGreed(ctx.cliOptions.refresh);
+      const { data } = await loadFearGreed(ctx.cliOptions.refresh);
       ctx.printResult({
         data: [{
           score: data.overall.score,
@@ -119,7 +119,7 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const country = (takeOption(rawArgs, "--country") ?? "all") as CountryFilter;
   const impact = (takeOption(rawArgs, "--impact") ?? "all") as ImpactFilter;
   await withCliServices(ctx, async (services) => {
-    const events = await loadCalendar(ctx.cliOptions.refresh);
+    const { data: events } = await loadCalendar(ctx.cliOptions.refresh);
     const rows = events
       .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())

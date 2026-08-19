@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TextAttributes } from "../../../../ui";
+import { TextAttributes, type InputRenderable } from "../../../../ui";
 import {
   DataTableView,
+  InputSearchBar,
+  loadingText,
+  unavailableText,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../../components";
+import { useShortcut } from "../../../../react/input";
+import { isPlainKey } from "../../../../utils/keyboard";
 import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
 import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
 import type { InstrumentSearchResult } from "../../../../types/instrument";
@@ -15,6 +20,8 @@ import { colors } from "../../../../theme/colors";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../../shared/table-pane";
 import type { LoadState } from "../../shared/ticker-request";
+
+const SEARCH_DEBOUNCE_MS = 250;
 
 function resultSymbol(result: InstrumentSearchResult): string {
   return result.symbol.trim().toUpperCase();
@@ -41,9 +48,13 @@ function buildSearchColumns(width: number): Array<DataTableColumn & { id: "symbo
 
 export function ProviderSearchPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
-  const query = useSearchQuerySetting();
+  const initialQuery = useSearchQuerySetting();
   const { pinTicker } = usePluginTickerActions();
+  const [query, setQuery] = usePluginPaneState<string>("query", initialQuery);
   const [selectedIdx, setSelectedIdx] = usePluginPaneState<number>("selectedIdx", 0);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const searchInputRef = useRef<InputRenderable | null>(null);
   const [state, setState] = useState<LoadState<InstrumentSearchResult[]>>({
     data: null,
     loading: false,
@@ -87,9 +98,33 @@ export function ProviderSearchPane({ focused, width, height }: PaneProps) {
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
+  const focusSearch = useCallback(() => {
+    setSearchFocused(true);
+    setSearchFocusToken((token) => token + 1);
+  }, []);
+  const blurSearch = useCallback(() => setSearchFocused(false), []);
+  const updateQuery = useCallback((nextQuery: string) => {
+    setQuery(nextQuery.trim());
+    setSelectedIdx(0);
+  }, [setQuery, setSelectedIdx]);
+
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (isPlainKey(event, "/")) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      focusSearch();
+      return true;
+    }
     return handleRefreshKey(event, () => load(true));
-  }, [load]);
+  }, [focusSearch, load]);
+
+  useShortcut((event) => {
+    if (!focused || searchFocused || event.targetEditable) return;
+    if (!isPlainKey(event, "/")) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    focusSearch();
+  }, { allowEditable: true, enabled: focused });
 
   const renderCell = useCallback((
     row: InstrumentSearchResult,
@@ -111,15 +146,32 @@ export function ProviderSearchPane({ focused, width, height }: PaneProps) {
   }, []);
 
   usePaneFooter("provider-search", () => ({
-    info: [
-      ...(query ? [{ id: "query", parts: [{ text: query, tone: "muted" as const }] }] : []),
-      ...loadingErrorFooterInfo(state.loading, state.error),
+    info: loadingErrorFooterInfo(state.loading, state.error),
+    hints: [
+      { id: "search", key: "/", label: "search", onPress: focusSearch },
     ],
-  }), [query, state.error, state.loading]);
+  }), [focusSearch, state.error, state.loading]);
 
   return (
     <DataTableView<InstrumentSearchResult, DataTableColumn & { id: "symbol" | "name" | "exchange" | "type" }>
-      focused={focused}
+      focused={focused && !searchFocused}
+      rootBefore={(
+        <InputSearchBar
+          value={query}
+          focused={focused}
+          active={searchFocused}
+          width={width}
+          focusToken={searchFocusToken}
+          inputRef={searchInputRef}
+          placeholder="symbol or company name"
+          debounceMs={SEARCH_DEBOUNCE_MS}
+          normalizeValue={(value) => value.trim()}
+          onFocus={focusSearch}
+          onBlur={blurSearch}
+          onNavigateDown={blurSearch}
+          onQueryChange={updateQuery}
+        />
+      )}
       selection={{
         kind: "index",
         selectedIndex: boundedSelectedIdx,
@@ -136,7 +188,12 @@ export function ProviderSearchPane({ focused, width, height }: PaneProps) {
       onHeaderClick={() => {}}
       getItemKey={(row, index) => `${row.providerId}:${row.symbol}:${row.exchange}:${row.type}:${index}`}
       renderCell={renderCell}
-      emptyStateTitle={state.loading ? "Searching..." : query ? "No search results" : "No search query"}
+      emptyStateTitle={state.error
+        ? unavailableText("Provider search")
+        : state.loading
+          ? loadingText("search results")
+          : query ? "No search results" : "No search query"}
+      emptyStateHint={state.error ?? (query ? undefined : "Press / to search.")}
     />
   );
 }

@@ -32,8 +32,13 @@ export type FearGreedCacheEntry = {
   stale: boolean;
 };
 
+export interface FearGreedLoadResult extends FearGreedCacheEntry {
+  /** Set when the network failed and cached data was served instead. */
+  refreshError?: string;
+}
+
 let fearGreedPersistence: PluginPersistence | null = null;
-let activeFetch: Promise<FearGreedData> | null = null;
+let activeFetch: Promise<FearGreedLoadResult> | null = null;
 
 export function attachFearGreedPersistence(persistence: PluginPersistence): void {
   fearGreedPersistence = persistence;
@@ -118,10 +123,10 @@ export function getCachedFearGreedData(options?: { allowExpired?: boolean }): Fe
 export async function loadFearGreed(
   force = false,
   loader: () => Promise<FearGreedData> = fetchFearGreedData,
-): Promise<FearGreedData> {
+): Promise<FearGreedLoadResult> {
   const cached = getCachedFearGreedData();
   if (!force && cached && !cached.stale) {
-    return cached.data;
+    return cached;
   }
   if (activeFetch) return activeFetch;
 
@@ -129,10 +134,17 @@ export async function loadFearGreed(
   activeFetch = loader()
     .then((data) => {
       writeCache(data);
-      return data;
+      return { data, fetchedAt: Date.now(), stale: false };
     })
-    .catch((error) => {
-      if (fallback) return fallback.data;
+    .catch((error: unknown) => {
+      // A failed refresh must not be reported as a fresh load.
+      if (fallback) {
+        return {
+          ...fallback,
+          stale: true,
+          refreshError: error instanceof Error ? error.message : String(error),
+        };
+      }
       throw error;
     })
     .finally(() => {

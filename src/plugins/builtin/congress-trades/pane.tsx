@@ -2,11 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, useRendererHost } from "../../../ui";
 import {
   DataTableStackView,
-  EmptyState,
-  Spinner,
+  PaneStatusBody,
   Tabs,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
   apiClient,
@@ -49,6 +49,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
   const [payload, setPayload] = useState<CloudCongressHousePayload | null>(null);
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const [activeTab, setActiveTab] = usePluginPaneState<CongressTab>("activeTab", "trades");
   const [selectedTradeId, setSelectedTradeId] = useDebouncedPluginPaneState<string | null>("selectedTradeId", null);
   const [selectedMemberId, setSelectedMemberId] = useDebouncedPluginPaneState<string | null>("selectedMemberId", null);
@@ -77,6 +78,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
         if (fetchGenRef.current !== gen) return;
         setPayload(nextPayload);
         setStatus("loaded");
+        setLastLoadedAt(Date.now());
       })
       .catch((loadError) => {
         if (fetchGenRef.current !== gen) return;
@@ -88,6 +90,12 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     load(false);
   }, [load]);
+
+  // Filings would otherwise age indefinitely in an open pane.
+  const refresh = useCallback(() => {
+    load(true);
+  }, [load]);
+  useAutoRefresh(lastLoadedAt, refresh);
 
   const trades = payload?.trades ?? [];
   const members = payload?.members ?? [];
@@ -223,24 +231,11 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     </Box>
   );
 
-  if (status === "loading" && !payload) {
+  if (!payload && (status === "loading" || error)) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading House PTRs..." />
-        </Box>
-      </Box>
-    );
-  }
-
-  if (error && !payload) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        {tabs}
-        <Box padding={1}>
-          <EmptyState title="Congress trades unavailable." message={error} />
-        </Box>
+        <PaneStatusBody loading={status === "loading"} error={error} subject="House PTR filings" />
       </Box>
     );
   }

@@ -41,6 +41,8 @@ export type {
 } from "./types";
 
 const MAX_NUMERIC_KELLY_FRACTION = 10;
+/** Widest Kelly curve window worth drawing: 200% of bankroll. */
+const KELLY_CURVE_DISPLAY_CAP = 2;
 const SOLVER_ITERATIONS = 80;
 
 function finite(value: number): boolean {
@@ -552,7 +554,12 @@ export function getKellyCurveMaxFraction(
   const domainLimit = worstReturn < 0 ? (-1 / worstReturn) * 0.95 : MAX_NUMERIC_KELLY_FRACTION;
   const focusMax = Math.max(0, ...focusFractions.filter((value) => finite(value) && value >= 0));
   const maxFraction = clamp(
-    Math.max(result.fullKellyFraction * 1.4, result.clippedFraction * 2, focusMax * 1.15, 0.2),
+    // Capped for readability: a shallow downside pushes the mathematical domain
+    // past 600% of bankroll, which squeezes every decision point into one column.
+    Math.min(
+      Math.max(result.fullKellyFraction * 1.4, result.clippedFraction * 2, focusMax * 1.15, 0.2),
+      KELLY_CURVE_DISPLAY_CAP,
+    ),
     0.05,
     Math.min(MAX_NUMERIC_KELLY_FRACTION, domainLimit),
   );

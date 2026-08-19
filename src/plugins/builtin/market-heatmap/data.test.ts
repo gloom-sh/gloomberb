@@ -39,6 +39,7 @@ describe("market heatmap data", () => {
       price: 143,
       change: 2.5,
       changePercent: 1.78,
+      hasChange: true,
       size: 3_500_000_000_000,
       sizeKind: "market-cap",
       volume: 45_000_000,

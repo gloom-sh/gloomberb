@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import {
   DataTableStackView,
+  PaneStatusBody,
   TickerBadgeList,
   type DataTableCell,
   type DataTableKeyEvent,
@@ -37,6 +38,29 @@ import { usePaneStatusLinkFooter } from "../shared/pane-footer";
 
 function isAuthError(error: string | null): boolean {
   return !!error && /unauthorized|verification/i.test(error);
+}
+
+// Result rows only lived in table state, so switching feed tabs refetched an
+// identical search. Cached per request key for the life of the process; `r`
+// still forces a fresh search.
+// ponytail: in-memory only, move to plugin state if results must survive restarts
+const TWEET_RESULT_CACHE = new Map<string, { data: CloudTweetSearchResponse; fetchedAt: number }>();
+const TWEET_CACHE_TTL_MS = 5 * 60 * 1000;
+// Every edited query is its own key, so the map is capped instead of growing
+// with each keystroke-sized search.
+const TWEET_CACHE_MAX_ENTRIES = 20;
+
+function cacheTweetResult(requestKey: string, data: CloudTweetSearchResponse): void {
+  TWEET_RESULT_CACHE.set(requestKey, { data, fetchedAt: Date.now() });
+  while (TWEET_RESULT_CACHE.size > TWEET_CACHE_MAX_ENTRIES) {
+    const oldest = TWEET_RESULT_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    TWEET_RESULT_CACHE.delete(oldest);
+  }
+}
+
+function cachedTweetResult(requestKey: string): { data: CloudTweetSearchResponse; fetchedAt: number } | undefined {
+  return TWEET_RESULT_CACHE.get(requestKey);
 }
 
 function TweetDetail({
@@ -97,10 +121,15 @@ function useTweetSearchData(
   onError?: (message: string) => void,
   enabled = true,
 ) {
-  const [state, setState] = useState<TweetLoadState>({
-    data: null,
-    loading: false,
-    error: null,
+  // Starts loading when a request is about to run so the first paint is not a
+  // premature "No tweets".
+  const [state, setState] = useState<TweetLoadState>(() => {
+    const cached = cachedTweetResult(requestKey);
+    return {
+      data: cached?.data ?? null,
+      loading: enabled && !cached,
+      error: null,
+    };
   });
   const fetchGenRef = useRef(0);
   const onResultRef = useRef(onResult);
@@ -108,7 +137,7 @@ function useTweetSearchData(
   onResultRef.current = onResult;
   onErrorRef.current = onError;
 
-  const reload = useCallback(() => {
+  const reload = useCallback((force = false) => {
     if (!enabled) {
       fetchGenRef.current += 1;
       setState((current) => (
@@ -121,9 +150,16 @@ function useTweetSearchData(
 
     fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
-    setState((current) => ({ ...current, loading: true, error: null }));
+    const cached = force ? undefined : cachedTweetResult(requestKey);
+    const fresh = cached && Date.now() - cached.fetchedAt < TWEET_CACHE_TTL_MS;
+    if (cached) setState({ data: cached.data, loading: !fresh, error: null });
+    if (fresh) return;
+    // A forced reload keeps the rows on screen; a new request key must not show
+    // the previous feed's tweets while its own search runs.
+    if (!cached) setState((current) => ({ data: force ? current.data : null, loading: true, error: null }));
     load()
       .then((data) => {
+        cacheTweetResult(requestKey, data);
         if (fetchGenRef.current !== gen) return;
         setState({ data, loading: false, error: null });
         onResultRef.current?.(data);
@@ -134,7 +170,7 @@ function useTweetSearchData(
         setState({ data: null, loading: false, error: message });
         onErrorRef.current?.(message);
       });
-  }, [enabled, load]);
+  }, [enabled, load, requestKey]);
 
   useEffect(() => {
     reload();
@@ -241,7 +277,7 @@ export function TweetSearchTable({
     if (event.name !== "r") return false;
     event.preventDefault?.();
     event.stopPropagation?.();
-    reload();
+    reload(true);
     return true;
   }, [onFocusSearch, reload]);
 
@@ -293,9 +329,20 @@ export function TweetSearchTable({
     }
   }, []);
 
+  // Owns the whole empty body so loading, failure, and "nothing found" each get
+  // their own rows instead of the table's single run-on empty line.
   const emptyContent = error && isAuthError(error)
     ? <CloudAuthNotice message={error} showSignup />
-    : undefined;
+    : (
+      <PaneStatusBody
+        loading={loading}
+        error={error}
+        empty
+        subject="Tweets"
+        emptyTitle={emptyStateTitle ?? "No tweets"}
+        emptyMessage={emptyStateHint ?? data?.query}
+      />
+    );
 
   return (
     <DataTableStackView<CloudTweetPayload, TweetColumn>
@@ -327,7 +374,7 @@ export function TweetSearchTable({
       getItemKey={(tweet) => tweet.id}
       renderCell={renderCell}
       emptyContent={emptyContent}
-      emptyStateTitle={loading ? "Loading tweets..." : error ?? emptyStateTitle ?? "No tweets"}
+      emptyStateTitle={emptyStateTitle ?? "No tweets"}
       emptyStateHint={emptyStateHint ?? data?.query}
     />
   );

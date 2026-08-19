@@ -39,6 +39,7 @@ export function BuildoutPaneHeader({
       {showCompanyListCrumb ? (
         <Box height={1} flexDirection="row" paddingX={1}>
           <Box
+            style={{ cursor: "pointer" }}
             onMouseDown={(event: any) => {
               event.preventDefault();
               onCloseCompanyList();

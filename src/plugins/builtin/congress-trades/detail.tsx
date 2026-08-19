@@ -72,9 +72,9 @@ export function TradeDetail({
   return (
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
-        <DetailLine label="member" value={`${trade.memberName} ${trade.stateDistrict}`} tone="value" bold />
+        {/* The detail title already carries the member and ticker. */}
+        <DetailLine label="district" value={trade.stateDistrict || "--"} tone="muted" />
         <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : "warning"} />
-        <DetailLine label="ticker" value={trade.ticker ?? "--"} tone={trade.ticker ? "positive" : "muted"} bold={!!trade.ticker} />
         <DetailLine label="asset" value={truncate(trade.assetName, Math.max(10, lineWidth - 16))} />
         <DetailLine label="amount" value={trade.amount} tone="value" />
         <DetailLine label="owner" value={trade.owner} />

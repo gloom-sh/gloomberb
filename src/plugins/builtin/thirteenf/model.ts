@@ -58,6 +58,8 @@ const CIK_RE = /^\d{6,10}$/;
 export function inferBrowserTabFromQuery(query: string): ThirteenFBrowserTab {
   const trimmed = query.trim();
   if (!trimmed) return "performance";
+  // The recent-filings feed has no tab of its own; this keyword is how it is reached.
+  if (/^(latest|recent)$/i.test(trimmed)) return "latest";
   if (!/[a-z]/.test(trimmed) && TICKER_LIKE_RE.test(trimmed.replace(/^\$/, "").toUpperCase())) return "byTicker";
   return "funds";
 }

@@ -22,6 +22,7 @@ import {
   getTickerResearchPaneSettings,
   resolveLockedTabId,
 } from "./settings";
+import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
@@ -121,13 +122,15 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const disabledPlugins = config.disabledPlugins;
   const registry = getSharedRegistry();
   const tickerResearchTabsSnapshot = useRegistryTickerResearchTabsSnapshot(registry);
+  // Hosts that render a pane without booting the plugin registry (the desktop
+  // screenshot renderer) would otherwise leave the body with no tabs at all.
   const tickerResearchTabs = useMemo<TickerResearchTabDef[]>(() => (
     registry
       ? [...registry.tickerResearchTabs.values()].filter((tab) => {
         const ownerId = registry.getTickerResearchTabPluginId?.(tab.id);
         return !ownerId || !disabledPlugins.includes(ownerId);
       })
-      : []
+      : TICKER_RESEARCH_BUILTIN_TABS
   ), [disabledPlugins, registry, tickerResearchTabsSnapshot]);
   const allTabs = buildVisibleTickerResearchTabs(tickerResearchTabs, ticker, financials, {
     config,

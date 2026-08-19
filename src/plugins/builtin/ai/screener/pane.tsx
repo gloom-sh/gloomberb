@@ -52,6 +52,7 @@ import {
   AI_DEFAULT_PROVIDER_SETTING_KEY,
   resolveAiPaneSelection,
 } from "../pane-settings";
+import { AGE_TICK_MS } from "../../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
 export function AiScreenerPane({ focused, width, height }: PaneProps) {
@@ -90,8 +91,9 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
   const initializedRef = useRef(false);
   const pendingInitialRunRef = useRef<string | null>(null);
 
+  // Same cadence as every other relative-age label in the app.
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60_000);
+    const timer = setInterval(() => setNow(Date.now()), AGE_TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
@@ -341,6 +343,7 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
     onCancelRun: cancelRun,
     onCloseEditor: closeEditor,
     onEdit: editActiveTab,
+    onRefresh: refreshActiveTab,
     onSaveEditor: saveEditor,
   });
 

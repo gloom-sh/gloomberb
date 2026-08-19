@@ -1,10 +1,6 @@
 import { usePaneFooter } from "../../../components";
 import type { SubstackAuthState } from "./api/types";
 import {
-  formatReadTime,
-  formatWordCount,
-} from "./table";
-import {
   SUBSTACK_PANE_ID,
   type SubstackArticleSummary,
 } from "./types";
@@ -26,18 +22,10 @@ export function useSubstackPaneFooter({
   openSelectedArticle: () => void;
 }) {
   const statusLabel = cacheStatusLabel(activeFeedState.fetchedAt, activeFeedState.stale);
-  const articleMetaLabel = detailOpen && selectedArticle
-    ? [
-      selectedArticle.publicationName,
-      formatReadTime(activeDetail.data?.readMinutes ?? selectedArticle.readMinutes),
-      formatWordCount(activeDetail.data?.wordCount ?? selectedArticle.wordCount),
-    ].filter(Boolean).join("  |  ")
-    : null;
 
   usePaneFooter(SUBSTACK_PANE_ID, () => ({
     info: [
       ...(!auth ? [{ id: "auth", parts: [{ text: "login required", tone: "warning" as const }] }] : []),
-      ...(articleMetaLabel ? [{ id: "article-meta", parts: [{ text: articleMetaLabel, tone: "muted" as const }] }] : []),
       ...(activeFeedState.loading || activeFeedState.loadingMore ? [{ id: "loading", parts: [{ text: activeFeedState.loadingMore ? "loading more" : "loading", tone: "muted" as const }] }] : []),
       ...(activeDetail.loading && detailOpen ? [{ id: "detail-loading", parts: [{ text: "loading article", tone: "muted" as const }] }] : []),
       ...(statusLabel && auth ? [{ id: "cache", parts: [{ text: statusLabel, tone: activeFeedState.stale ? "warning" as const : "muted" as const }] }] : []),
@@ -50,14 +38,11 @@ export function useSubstackPaneFooter({
   }), [
     activeDetail.error,
     activeDetail.loading,
-    activeDetail.data?.readMinutes,
-    activeDetail.data?.wordCount,
     activeFeedState.error,
     activeFeedState.fetchedAt,
     activeFeedState.loading,
     activeFeedState.loadingMore,
     activeFeedState.stale,
-    articleMetaLabel,
     auth,
     detailOpen,
     openSelectedArticle,

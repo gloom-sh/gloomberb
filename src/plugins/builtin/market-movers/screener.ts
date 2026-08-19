@@ -110,27 +110,34 @@ function writeCache<T>(key: string, data: T): void {
   });
 }
 
+/** A cached value plus whether it is a fallback rather than a fresh load. */
+export interface CachedResult<T> {
+  data: T;
+  stale: boolean;
+}
+
 async function loadCached<T>(
   key: string,
   fetcher: () => Promise<T>,
   options?: FetchCacheOptions,
-): Promise<T> {
-  if (options?.cache === false) return fetcher();
+): Promise<CachedResult<T>> {
+  if (options?.cache === false) return { data: await fetcher(), stale: false };
 
   const cached = readCache<T>(key);
-  if (!options?.forceRefresh && cached && !cached.stale) return cached.data;
+  if (!options?.forceRefresh && cached && !cached.stale) return { data: cached.data, stale: false };
 
-  const activeFetch = activeFetches.get(key) as Promise<T> | undefined;
+  const activeFetch = activeFetches.get(key) as Promise<CachedResult<T>> | undefined;
   if (activeFetch) return activeFetch;
 
   const fallback = cached ?? readCache<T>(key, { allowExpired: true });
   const fetchPromise = fetcher()
     .then((data) => {
       writeCache(key, data);
-      return data;
+      return { data, stale: false };
     })
     .catch((error) => {
-      if (fallback) return fallback.data;
+      // Serving the expired copy is right; hiding that it is expired is not.
+      if (fallback) return { data: fallback.data, stale: true };
       throw error;
     })
     .finally(() => {
@@ -183,7 +190,7 @@ export interface PreferredMarketMoverSources {
     category: ScreenerCategory,
     count: number,
     options?: FetchCacheOptions,
-  ): Promise<ScreenerQuote[]>;
+  ): Promise<CachedResult<ScreenerQuote[]>>;
 }
 
 export interface TrendingSymbol {
@@ -231,12 +238,12 @@ export function parseScreenerResponse(data: any): ScreenerQuote[] {
   }
 }
 
-export async function fetchScreener(
+export async function fetchScreenerResult(
   category: ScreenerCategory,
   count = 25,
   api: YahooScreenerApi = screenerApi,
   options?: FetchCacheOptions,
-): Promise<ScreenerQuote[]> {
+): Promise<CachedResult<ScreenerQuote[]>> {
   const load = async () => {
     const data = await api.fetchJson("/v1/finance/screener/predefined/saved", {
       formatted: "false",
@@ -247,8 +254,17 @@ export async function fetchScreener(
     });
     return parseScreenerResponse(data);
   };
-  if (!shouldUseCache(api, options)) return load();
+  if (!shouldUseCache(api, options)) return { data: await load(), stale: false };
   return loadCached(`screener:${category}:count=${count}`, load, options);
+}
+
+export async function fetchScreener(
+  category: ScreenerCategory,
+  count = 25,
+  api: YahooScreenerApi = screenerApi,
+  options?: FetchCacheOptions,
+): Promise<ScreenerQuote[]> {
+  return (await fetchScreenerResult(category, count, api, options)).data;
 }
 
 function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerCategory {
@@ -265,7 +281,7 @@ function isCloudScreenerEligible(): boolean {
 const defaultPreferredMarketMoverSources: PreferredMarketMoverSources = {
   isCloudEligible: isCloudScreenerEligible,
   fetchCloud: (category, count, mode) => apiClient.getCloudMarketScreener(category, count, mode),
-  fetchYahoo: (category, count, options) => fetchScreener(category, count, undefined, options),
+  fetchYahoo: (category, count, options) => fetchScreenerResult(category, count, undefined, options),
 };
 
 function mergeCloudScreenerItem(
@@ -297,12 +313,12 @@ function mergeCloudScreenerItem(
 }
 
 async function bestEffortYahooMetadata(
-  request: Promise<ScreenerQuote[]>,
+  request: Promise<CachedResult<ScreenerQuote[]>>,
 ): Promise<ScreenerQuote[]> {
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      request.catch(() => []),
+      request.then((result) => result.data).catch(() => []),
       new Promise<ScreenerQuote[]>((resolve) => {
         timeout = setTimeout(() => resolve([]), YAHOO_METADATA_WAIT_MS);
       }),
@@ -319,11 +335,8 @@ export async function fetchPreferredMarketMovers(
   sources: PreferredMarketMoverSources = defaultPreferredMarketMoverSources,
 ): Promise<MarketMoversResult> {
   if (!sources.isCloudEligible()) {
-    return {
-      quotes: await sources.fetchYahoo(category, count, options),
-      source: "yahoo",
-      stale: false,
-    };
+    const result = await sources.fetchYahoo(category, count, options);
+    return { quotes: result.data, source: "yahoo", stale: result.stale };
   }
 
   const yahooMetadata = sources.fetchYahoo(
@@ -356,10 +369,11 @@ export async function fetchPreferredMarketMovers(
     // Yahoo remains the resilient fallback when Cloud is unavailable.
   }
 
+  const fallback = await yahooMetadata;
   return {
-    quotes: await yahooMetadata,
+    quotes: fallback.data,
     source: "yahoo",
-    stale: false,
+    stale: fallback.stale,
   };
 }
 
@@ -390,7 +404,7 @@ export async function fetchTrending(
     return parseTrendingResponse(data);
   };
   if (!shouldUseCache(api, options)) return load();
-  return loadCached(`trending:US:count=${count}`, load, options);
+  return (await loadCached(`trending:US:count=${count}`, load, options)).data;
 }
 
 export const MARKET_SUMMARY_SYMBOLS = ["^GSPC", "^DJI", "^IXIC", "^RUT"] as const;

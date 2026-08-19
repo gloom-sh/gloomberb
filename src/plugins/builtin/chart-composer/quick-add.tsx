@@ -119,7 +119,7 @@ export function ChartSeriesQuickAdd({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const defaultInstrument = useMemo(() => defaultCatalogInstrument(spec), [spec]);
-  const { suggestions, loading } = useSeriesCatalogSuggestions({
+  const { suggestions, loading, error: searchError } = useSeriesCatalogSuggestions({
     query,
     defaultInstrument,
     enabled: active,
@@ -129,10 +129,13 @@ export function ChartSeriesQuickAdd({
     : Math.max(8, Math.min(IDLE_QUICK_ADD_WIDTH, width));
   const drawerStatus = error
     ?? (loading && suggestions.length === 0
-      ? "Searching instruments…"
-      : active && query.trim().length > 0 && suggestions.length === 0
-        ? "No matching security or metric."
-        : null);
+      ? "Searching instruments..."
+      // A failed lookup is not zero matches, so it keeps its own message.
+      : searchError && suggestions.length === 0
+        ? searchError
+        : active && query.trim().length > 0 && suggestions.length === 0
+          ? "No matching security or metric."
+          : null);
   const maximumDrawerHeight = Math.max(
     0,
     Math.min(

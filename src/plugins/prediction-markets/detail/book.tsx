@@ -6,7 +6,6 @@ import { formatPredictionProbability } from "../metrics";
 import type {
   PredictionBookLevel,
   PredictionMarketDetail,
-  PredictionOrderPreviewIntent,
 } from "../types";
 
 type BookColumnId = "outcome" | "side" | "price" | "size";
@@ -17,7 +16,6 @@ interface BookRow {
   outcome: "yes" | "no";
   side: "buy" | "sell";
   level: PredictionBookLevel;
-  intent: PredictionOrderPreviewIntent;
 }
 
 const BOOK_COLUMNS: BookColumn[] = [
@@ -29,12 +27,10 @@ const BOOK_COLUMNS: BookColumn[] = [
 
 function bookRowsForLevels({
   levels,
-  marketKey,
   outcome,
   side,
 }: {
   levels: PredictionBookLevel[];
-  marketKey: string;
   outcome: "yes" | "no";
   side: "buy" | "sell";
 }): BookRow[] {
@@ -43,40 +39,28 @@ function bookRowsForLevels({
     outcome,
     side,
     level,
-    intent: {
-      marketKey,
-      outcome,
-      side,
-      price: level.price,
-      size: level.size,
-    },
   }));
 }
 
 function buildBookRows(detail: PredictionMarketDetail): BookRow[] {
-  const marketKey = detail.summary.key;
   return [
     ...bookRowsForLevels({
       levels: detail.book.yesBids,
-      marketKey,
       outcome: "yes",
       side: "buy",
     }),
     ...bookRowsForLevels({
       levels: detail.book.yesAsks,
-      marketKey,
       outcome: "yes",
       side: "sell",
     }),
     ...bookRowsForLevels({
       levels: detail.book.noBids,
-      marketKey,
       outcome: "no",
       side: "buy",
     }),
     ...bookRowsForLevels({
       levels: detail.book.noAsks,
-      marketKey,
       outcome: "no",
       side: "sell",
     }),
@@ -86,12 +70,10 @@ function buildBookRows(detail: PredictionMarketDetail): BookRow[] {
 export function PredictionMarketBookView({
   detail,
   focused,
-  onPreviewOrder,
   width,
 }: {
   detail: PredictionMarketDetail;
   focused: boolean;
-  onPreviewOrder: (intent: PredictionOrderPreviewIntent) => void;
   width: number;
 }) {
   const rows = useMemo(() => buildBookRows(detail), [detail]);
@@ -124,11 +106,9 @@ export function PredictionMarketBookView({
       sortDirection="asc"
       onHeaderClick={() => {}}
       getItemKey={(row) => row.id}
-      onActivate={(row) => onPreviewOrder(row.intent)}
-      onRowMouseDown={(row, index, event) => {
+      onRowMouseDown={(_row, index, event) => {
         event.preventDefault();
         setSelectedIndex(index);
-        onPreviewOrder(row.intent);
         return true;
       }}
       renderCell={(row, column, _index, rowState) => {
@@ -157,8 +137,8 @@ export function PredictionMarketBookView({
             };
         }
       }}
-      emptyStateTitle="No book levels."
-      emptyStateHint="This venue did not return current order book depth."
+      emptyStateTitle={detail.book.error ? "Order book unavailable." : "No book levels."}
+      emptyStateHint={detail.book.error ?? "This venue did not return current order book depth."}
     />
   );
 }

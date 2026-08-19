@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Box, Text, TextAttributes } from "../../../../ui";
 import { Button, TickerBadgeList } from "../../../../components";
+import { ExternalLinkText } from "../../../../components/ui/external-link";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { colors } from "../../../../theme/colors";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
@@ -160,6 +161,7 @@ export function SourceDetailLines({
       const flatTitle = source.title ?? source.snippet ?? source.reasoning;
       const flat = flatUrl || flatTitle
         ? [{
+          url: flatUrl ?? null,
           domain: source.domain ?? domainFromUrl(flatUrl) ?? null,
           title: flatTitle,
           note: source.reasoning ?? source.snippet,
@@ -167,6 +169,7 @@ export function SourceDetailLines({
         }]
         : [];
       const citations = (source.citations ?? []).map((citation) => ({
+        url: citation.url ?? null,
         domain: domainFromUrl(citation.url) ?? null,
         title: citation.title ?? citation.excerpts?.[0] ?? null,
         note: citation.excerpts?.[0] ?? null,
@@ -181,12 +184,20 @@ export function SourceDetailLines({
   return (
     <Box marginTop={1} flexDirection="column" width={width}>
       {entries.map((entry, index) => {
-        const prefix = entry.domain ? `${entry.domain}${entry.tier ? ` T${entry.tier}` : ""}: ` : "";
+        const prefix = entry.domain ? `${entry.domain}${entry.tier ? ` T${entry.tier}` : ""}` : "";
         const body = entry.title ?? entry.note ?? "";
+        const bodyText = truncate(prefix ? `: ${body}` : body, Math.max(0, width - prefix.length));
         return (
-          <Text key={`${entry.domain ?? "source"}:${index}`} fg={colors.textMuted}>
-            {truncate(`${prefix}${body}`, width)}
-          </Text>
+          <Box key={`${entry.domain ?? "source"}:${index}`} flexDirection="row" height={1} width={width} overflow="hidden">
+            {prefix ? (
+              entry.url ? (
+                <ExternalLinkText url={entry.url} label={prefix} color={colors.textMuted} />
+              ) : (
+                <Text fg={colors.textMuted}>{prefix}</Text>
+              )
+            ) : null}
+            <Text fg={colors.textMuted}>{bodyText}</Text>
+          </Box>
         );
       })}
     </Box>

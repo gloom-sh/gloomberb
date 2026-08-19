@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
-import { TextAttributes } from "../../../ui";
+import { Box, TextAttributes } from "../../../ui";
 import {
+  Button,
   DataTableView,
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
+import { ScannerWaitingState } from "./waiting";
 import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { formatCompact, formatNumber } from "../../../utils/format";
@@ -16,6 +18,7 @@ import { ScannerDeniedState } from "./denied";
 import { useFlowFeed, useScannerStatusFooter } from "./feed";
 import {
   DEFAULT_FLOW_FILTERS,
+  FLOW_FILTER_OPTIONS,
   filterFlowEvents,
   formatFlowExpiry,
   formatFlowPremium,
@@ -32,8 +35,35 @@ import {
   type FlowVolOi,
 } from "./flow-model";
 
+/** Cycles a select-style pane setting, so every filter is reachable without the settings dialog. */
+function FilterChip<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string; short: string }[];
+  onChange: (value: T) => void;
+}) {
+  const current = options.find((option) => option.value === value) ?? options[0]!;
+  return (
+    <Button
+      label={`${label} ${current.short}`}
+      variant="ghost"
+      onPress={() => {
+        const index = options.findIndex((option) => option.value === value);
+        onChange(options[(index + 1 + options.length) % options.length]!.value);
+      }}
+    />
+  );
+}
+
 function buildColumns(width: number): DataTableColumn[] {
-  const fixed = { time: 8, ticker: 7, type: 8, strike: 8, exp: 6, side: 5, size: 7, prem: 7, volOi: 6 };
+  // EXP is right aligned and SIDE is left aligned, so EXP needs an extra cell or
+  // the two header labels read as one "EXP SIDE" word.
+  const fixed = { time: 8, ticker: 7, type: 8, strike: 8, exp: 7, side: 5, size: 7, prem: 7, volOi: 6 };
   const total = Object.values(fixed).reduce((sum, value) => sum + value, 0);
   // Table chrome is one gap per column, two cells of padding, and the scrollbar.
   const slack = Math.max(0, width - total - 9 - 2 - 1);
@@ -93,12 +123,12 @@ function FlowPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  const [minPremium] = usePaneSettingValue<FlowMinPremium>("minPremium", DEFAULT_FLOW_FILTERS.minPremium);
-  const [side] = usePaneSettingValue<FlowSide>("side", DEFAULT_FLOW_FILTERS.side);
-  const [kind] = usePaneSettingValue<FlowKind>("kind", DEFAULT_FLOW_FILTERS.kind);
-  const [volOi] = usePaneSettingValue<FlowVolOi>("volOi", DEFAULT_FLOW_FILTERS.volOi);
-  const [expiry] = usePaneSettingValue<FlowExpiry>("expiry", DEFAULT_FLOW_FILTERS.expiry);
-  const [universe] = usePaneSettingValue<FlowUniverse>("universe", DEFAULT_FLOW_FILTERS.universe);
+  const [minPremium, setMinPremium] = usePaneSettingValue<FlowMinPremium>("minPremium", DEFAULT_FLOW_FILTERS.minPremium);
+  const [side, setSide] = usePaneSettingValue<FlowSide>("side", DEFAULT_FLOW_FILTERS.side);
+  const [kind, setKind] = usePaneSettingValue<FlowKind>("kind", DEFAULT_FLOW_FILTERS.kind);
+  const [volOi, setVolOi] = usePaneSettingValue<FlowVolOi>("volOi", DEFAULT_FLOW_FILTERS.volOi);
+  const [expiry, setExpiry] = usePaneSettingValue<FlowExpiry>("expiry", DEFAULT_FLOW_FILTERS.expiry);
+  const [universe, setUniverse] = usePaneSettingValue<FlowUniverse>("universe", DEFAULT_FLOW_FILTERS.universe);
 
   const trackedSymbols = useAppSelector((state) => state.tickers);
   const watchlist = useMemo(
@@ -129,27 +159,38 @@ function FlowPane({ focused, width, height }: PaneProps) {
   }
 
   return (
-    <DataTableView<ScannerFlowEvent>
-      focused={focused}
-      selection={{
-        kind: "id",
-        selectedId,
-        getId: (event) => event.id,
-        onChange: (_id, event) => handleSelect(event),
-      }}
-      rootWidth={width}
-      rootHeight={height}
-      columns={columns}
-      items={events}
-      sortColumnId={null}
-      sortDirection="desc"
-      onHeaderClick={() => {}}
-      getItemKey={(event) => event.id}
-      onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
-      renderCell={(event, column, _index, rowState) => renderCell(event, column, rowState)}
-      emptyStateTitle={feed.payload ? "No prints match these filters." : "Waiting for the scanner..."}
-      emptyStateHint={feed.payload ? "Loosen the premium, expiry, or universe filter." : undefined}
-    />
+    <Box flexDirection="column" width={width} height={height}>
+      <Box height={1} flexDirection="row" overflow="hidden">
+        <FilterChip label="Prem" value={minPremium} options={FLOW_FILTER_OPTIONS.minPremium} onChange={setMinPremium} />
+        <FilterChip label="Side" value={side} options={FLOW_FILTER_OPTIONS.side} onChange={setSide} />
+        <FilterChip label="Kind" value={kind} options={FLOW_FILTER_OPTIONS.kind} onChange={setKind} />
+        <FilterChip label="V/OI" value={volOi} options={FLOW_FILTER_OPTIONS.volOi} onChange={setVolOi} />
+        <FilterChip label="Exp" value={expiry} options={FLOW_FILTER_OPTIONS.expiry} onChange={setExpiry} />
+        <FilterChip label="Univ" value={universe} options={FLOW_FILTER_OPTIONS.universe} onChange={setUniverse} />
+      </Box>
+      <DataTableView<ScannerFlowEvent>
+        focused={focused}
+        selection={{
+          kind: "id",
+          selectedId,
+          getId: (event) => event.id,
+          onChange: (_id, event) => handleSelect(event),
+        }}
+        rootWidth={width}
+        rootHeight={Math.max(2, height - 1)}
+        columns={columns}
+        items={events}
+        sortColumnId={null}
+        sortDirection="desc"
+        onHeaderClick={() => {}}
+        getItemKey={(event) => event.id}
+        onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
+        renderCell={(event, column, _index, rowState) => renderCell(event, column, rowState)}
+        emptyContent={feed.payload ? undefined : <ScannerWaitingState />}
+        emptyStateTitle="No prints match these filters."
+        emptyStateHint="Loosen the premium, expiry, or universe filter."
+      />
+    </Box>
   );
 }
 

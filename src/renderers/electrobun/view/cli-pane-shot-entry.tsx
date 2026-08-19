@@ -12,6 +12,7 @@ import { webNativeRenderer } from "./native-renderer";
 import { WebToastHostProvider } from "./toast-host";
 import { webUiHost } from "./ui-host";
 import { getLoadablePlugins } from "../../../plugins/catalog";
+import { createPaneDiscoveryContext } from "../../../cli/pane-functions/discovery";
 import { setSharedMarketDataForTests } from "../../../plugins/registry";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../plugins/runtime";
 import {
@@ -68,7 +69,11 @@ declare global {
 // frames can capture the shell before those requests register, leaving a
 // loading chart or stale performance table in an otherwise valid PNG.
 const SHOT_READY_STABLE_FRAMES = 10;
-const SHOT_LOADING_TEXT_PATTERN = /\b(Loading|Rendering pane)\b/i;
+// Loading is detected from an explicit marker rendered by Spinner and
+// PaneStatusBody. Matching on body text instead made any pane whose real
+// content contains the word "loading" (a changelog release note, a news
+// headline) wait forever and time out.
+const SHOT_LOADING_SELECTOR = "[data-gloom-status=\"loading\"]";
 const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
   "arrayBuffer",
   "blob",
@@ -137,7 +142,23 @@ function resolveShotWork<T>(value: T): Promise<T> {
 }
 
 function isShotLoadingTextVisible(): boolean {
-  return SHOT_LOADING_TEXT_PATTERN.test(document.body.textContent ?? "");
+  return document.querySelector(SHOT_LOADING_SELECTOR) !== null;
+}
+
+/**
+ * The payload crosses into the webview as JSON, so every `Date` arrives as a
+ * string while the types still claim `Date`. Anything calling `date.getTime()`
+ * then throws, which is what made the valuation graph preset fail while the
+ * price presets passed.
+ */
+function revivePayloadDates(payload: CliPaneShotPayload): void {
+  for (const [, data] of payload.financials) {
+    const history = data.priceHistory;
+    if (!Array.isArray(history)) continue;
+    for (const point of history) {
+      if (!(point.date instanceof Date)) point.date = new Date(point.date as unknown as string);
+    }
+  }
 }
 
 function hasUnresolvedChartData(): boolean {
@@ -252,8 +273,17 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
           ?? financials.get(normalizeSymbol(target.symbol)))?.quote ?? null,
       })));
     },
-    getExchangeRate() {
-      return resolveShotWork(1);
+    getExchangeRate(fromCurrency: string) {
+      // Returning 1 for every currency used to render the FX matrix as a grid
+      // of 1.0000, which reads as real data. Only the identity conversion is
+      // known offline; anything else has to fail so the pane reports it as
+      // unavailable instead of inventing a parity rate.
+      if (normalizeSymbol(fromCurrency) === normalizeSymbol(payload.config.baseCurrency)) {
+        return resolveShotWork(1);
+      }
+      return trackShotWork(Promise.reject(
+        new Error(`No screenshot exchange rate available for ${fromCurrency}.`),
+      ));
     },
     getOptionsChain(ticker, exchange) {
       return trackShotWork(Promise.resolve().then(() => {
@@ -393,11 +423,29 @@ function createRuntime(payload: CliPaneShotPayload): PluginRuntimeAccess {
   };
 }
 
-function findPaneDef(paneId: string): { pluginId: string; pane: PaneDef } | null {
-  for (const plugin of getLoadablePlugins()) {
+function findPaneDef(paneId: string, config: AppConfig): { pluginId: string; pane: PaneDef } | null {
+  const plugins = getLoadablePlugins();
+  for (const plugin of plugins) {
     for (const pane of plugin.panes ?? []) {
       if (pane.id === paneId) return { pluginId: plugin.id, pane };
     }
+  }
+
+  // Panes contributed from setup() never reach plugin.panes, so replay setup
+  // with a collect-only context until the requested pane shows up.
+  for (const plugin of plugins) {
+    if (!plugin.setup) continue;
+    const discovery = createPaneDiscoveryContext({
+      getConfig: () => config,
+      marketData: shotDataProvider ?? undefined,
+    });
+    try {
+      void plugin.setup(discovery);
+    } catch {
+      // A plugin that fails partway can still have registered its pane.
+    }
+    const pane = discovery.panes.get(paneId);
+    if (pane) return { pluginId: plugin.id, pane };
   }
   return null;
 }
@@ -445,7 +493,7 @@ function ShotPane({ payload }: { payload: CliPaneShotPayload }) {
   const instance = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId);
   if (!instance) throw new Error(`Pane instance ${payload.paneId} is missing from the screenshot layout.`);
 
-  const found = findPaneDef(instance.paneId);
+  const found = findPaneDef(instance.paneId, payload.config);
   if (!found) throw new Error(`Pane ${instance.paneId} is not registered in the desktop renderer.`);
 
   const runtime = createRuntime(payload);
@@ -500,6 +548,7 @@ function ShotPane({ payload }: { payload: CliPaneShotPayload }) {
 function render() {
   const payload = window.__GLOOM_CLI_SHOT_PAYLOAD__;
   if (!payload) throw new Error("Missing CLI pane screenshot payload.");
+  revivePayloadDates(payload);
   installShotFetchTracker();
   hydrateFredSeries(payload.fredSeries ?? []);
   installShotMarketData(payload);

@@ -1,4 +1,5 @@
 import type { GloomPlugin } from "../../../types/plugin";
+import type { Quote } from "../../../types/financials";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import {
   createAlert,
@@ -9,7 +10,7 @@ import {
   parseAlertCommandValues,
   parseAlertShortcutValues,
 } from "./command";
-import { POLL_INTERVAL_MS } from "./constants";
+import { POLL_INTERVAL_MS, POLL_SECONDS_KEY } from "./constants";
 import { AlertsPane } from "./pane";
 import {
   createQuoteErrorMessage,
@@ -22,7 +23,7 @@ import {
   saveAlerts,
 } from "./storage";
 
-let pollInterval: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const alertsPlugin: GloomPlugin = {
   id: "alerts",
@@ -99,40 +100,44 @@ export const alertsPlugin: GloomPlugin = {
 
       ctx.log.info("poll", { total: alerts.length, active: activeAlerts.length });
 
+      // One batched pass over the distinct symbols: the alerts pane reads the same
+      // persisted store, so this is the only place that talks to the provider.
+      const symbols = [...new Set(activeAlerts.map((alert) => alert.symbol))];
+      const results = await Promise.all(symbols.map(async (symbol): Promise<[string, Quote | string]> => {
+        try {
+          return [symbol, await resolveAlertQuote(ctx.marketData, symbol)];
+        } catch (err) {
+          ctx.log.warn("poll: no quote", { symbol, error: String(err) });
+          return [symbol, createQuoteErrorMessage(symbol, err)];
+        }
+      }));
+      const quotes = new Map<string, Quote | string>(results);
+
       let changed = false;
       for (const alert of alerts) {
         if (alert.status !== "active") continue;
-        try {
-          const quote = await ctx.marketData.getQuote(alert.symbol, "");
-          if (!quote || typeof quote.price !== "number") {
-            ctx.log.warn("poll: no quote", { symbol: alert.symbol });
-            Object.assign(alert, quoteErrorAlertFields(`No quote found for "${alert.symbol}".`));
-            changed = true;
-            continue;
-          }
-
-          const triggered = evaluateAlert(alert, quote.price);
-
-          if (triggered) {
-            alert.status = "triggered";
-            alert.triggeredAt = Date.now();
-            ctx.log.info("poll: TRIGGERED", { symbol: alert.symbol, price: quote.price });
-            ctx.notify({
-              body: `${formatAlertDescription(alert)} triggered at ${quote.price}`,
-              type: "success",
-              desktop: "always",
-              persistent: true,
-              sound: "Glass",
-            });
-            changed = true;
-          }
-          Object.assign(alert, quoteAlertFields(quote));
+        const quote = quotes.get(alert.symbol);
+        if (quote === undefined) continue;
+        if (typeof quote === "string") {
+          Object.assign(alert, quoteErrorAlertFields(quote));
           changed = true;
-        } catch (err) {
-          ctx.log.error("poll: error", { symbol: alert.symbol, error: String(err) });
-          Object.assign(alert, quoteErrorAlertFields(createQuoteErrorMessage(alert.symbol, err)));
-          changed = true;
+          continue;
         }
+
+        if (evaluateAlert(alert, quote.price)) {
+          alert.status = "triggered";
+          alert.triggeredAt = Date.now();
+          ctx.log.info("poll: TRIGGERED", { symbol: alert.symbol, price: quote.price });
+          ctx.notify({
+            body: `${formatAlertDescription(alert)} triggered at ${quote.price}`,
+            type: "success",
+            desktop: "always",
+            persistent: true,
+            sound: "Glass",
+          });
+        }
+        Object.assign(alert, quoteAlertFields(quote));
+        changed = true;
       }
 
       if (changed) {
@@ -140,8 +145,17 @@ export const alertsPlugin: GloomPlugin = {
       }
     };
 
-    poll();
-    pollInterval = setInterval(poll, POLL_INTERVAL_MS);
+    // Re-armed each cycle so a change to the pane's Check interval setting takes
+    // effect on the next tick without a restart.
+    const scheduleNextPoll = () => {
+      const seconds = Number(ctx.paneSettings?.get<string>("alerts", POLL_SECONDS_KEY));
+      const delay = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : POLL_INTERVAL_MS;
+      pollTimer = setTimeout(() => {
+        void poll().finally(scheduleNextPoll);
+      }, delay);
+    };
+
+    void poll().finally(scheduleNextPoll);
 
     ctx.registerPane({
       id: "alerts",
@@ -151,6 +165,23 @@ export const alertsPlugin: GloomPlugin = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 82, height: 20 },
+      settings: {
+        title: "Alerts Settings",
+        fields: [
+          {
+            key: POLL_SECONDS_KEY,
+            label: "Check interval",
+            description: "How often active alerts are re-quoted.",
+            type: "select",
+            options: [
+              { value: "15", label: "15 seconds" },
+              { value: "30", label: "30 seconds" },
+              { value: "60", label: "1 minute" },
+              { value: "300", label: "5 minutes" },
+            ],
+          },
+        ],
+      },
     });
 
     ctx.registerPaneTemplate({
@@ -164,9 +195,9 @@ export const alertsPlugin: GloomPlugin = {
   },
 
   dispose() {
-    if (pollInterval) {
-      clearInterval(pollInterval);
-      pollInterval = null;
+    if (pollTimer) {
+      clearTimeout(pollTimer);
+      pollTimer = null;
     }
   },
 };

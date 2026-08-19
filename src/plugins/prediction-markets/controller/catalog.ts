@@ -11,6 +11,7 @@ import {
   formatPredictionLoadError,
   getPredictionCatalogStatus,
 } from "./status";
+import { useAutoRefresh } from "../../builtin/shared/auto-refresh";
 import { getCachedPredictionResource } from "../services/fetch";
 import { loadKalshiCatalog } from "../services/kalshi/adapter";
 import { loadPolymarketCatalog } from "../services/polymarket/adapter";
@@ -43,6 +44,8 @@ export function usePredictionCatalogData({
     Record<string, string | null>
   >({});
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
+  const [polymarketLoadedAt, setPolymarketLoadedAt] = useState<number | null>(null);
+  const [kalshiLoadedAt, setKalshiLoadedAt] = useState<number | null>(null);
   const activeCatalogRef = useRef<PredictionCatalogCache>({});
 
   const normalizedCatalogQuery = debouncedSearchQuery.trim().toLowerCase();
@@ -198,6 +201,7 @@ export function usePredictionCatalogData({
           ),
         );
       } finally {
+        setPolymarketLoadedAt(Date.now());
         if (showPending) {
           setCatalogPending((current) =>
             updatePredictionPendingCounts(current, cacheKey, -1),
@@ -248,6 +252,7 @@ export function usePredictionCatalogData({
           ),
         );
       } finally {
+        setKalshiLoadedAt(Date.now());
         if (showPending) {
           setCatalogPending((current) =>
             updatePredictionPendingCounts(current, cacheKey, -1),
@@ -269,6 +274,8 @@ export function usePredictionCatalogData({
     return () => clearTimeout(timeoutId);
   }, [searchQuery]);
 
+  // Reloads follow the one refresh cadence the user configured, instead of two
+  // hardcoded intervals nobody can change.
   useEffect(() => {
     if (!includePolymarket) return;
     void loadPolymarket(
@@ -276,14 +283,6 @@ export function usePredictionCatalogData({
       debouncedSearchQuery,
       categoryId,
     );
-    const intervalId = setInterval(() => {
-      void loadPolymarket(
-        polymarketCatalogKey,
-        debouncedSearchQuery,
-        categoryId,
-      );
-    }, 30_000);
-    return () => clearInterval(intervalId);
   }, [
     categoryId,
     debouncedSearchQuery,
@@ -292,13 +291,13 @@ export function usePredictionCatalogData({
     polymarketCatalogKey,
   ]);
 
+  useAutoRefresh(includePolymarket ? polymarketLoadedAt : null, useCallback(() => {
+    void loadPolymarket(polymarketCatalogKey, debouncedSearchQuery, categoryId);
+  }, [categoryId, debouncedSearchQuery, loadPolymarket, polymarketCatalogKey]));
+
   useEffect(() => {
     if (!includeKalshi) return;
     void loadKalshi(kalshiCatalogKey, debouncedSearchQuery, categoryId);
-    const intervalId = setInterval(() => {
-      void loadKalshi(kalshiCatalogKey, debouncedSearchQuery, categoryId);
-    }, 20_000);
-    return () => clearInterval(intervalId);
   }, [
     categoryId,
     debouncedSearchQuery,
@@ -306,6 +305,10 @@ export function usePredictionCatalogData({
     kalshiCatalogKey,
     loadKalshi,
   ]);
+
+  useAutoRefresh(includeKalshi ? kalshiLoadedAt : null, useCallback(() => {
+    void loadKalshi(kalshiCatalogKey, debouncedSearchQuery, categoryId);
+  }, [categoryId, debouncedSearchQuery, kalshiCatalogKey, loadKalshi]));
 
   return {
     allMarkets,

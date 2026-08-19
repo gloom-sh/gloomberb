@@ -44,10 +44,19 @@ export const REGION_LABELS: Record<IndexEntry["region"], string> = {
 
 export const REGION_ORDER: IndexEntry["region"][] = ["americas", "europe", "asia-pacific", "other"];
 
-export function getIndicesByRegion(): Map<IndexEntry["region"], IndexEntry[]> {
+export function getIndicesByRegion(entries: readonly IndexEntry[] = WORLD_INDICES): Map<IndexEntry["region"], IndexEntry[]> {
   const map = new Map<IndexEntry["region"], IndexEntry[]>();
   for (const region of REGION_ORDER) {
-    map.set(region, WORLD_INDICES.filter((entry) => entry.region === region));
+    map.set(region, entries.filter((entry) => entry.region === region));
   }
   return map;
+}
+
+/** The saved index selection, falling back to the full board when it is unusable. */
+export function resolveIndexEntries(saved?: readonly string[]): IndexEntry[] {
+  const bySymbol = new Map(WORLD_INDICES.map((entry) => [entry.symbol, entry]));
+  const resolved = (saved ?? [])
+    .map((symbol) => bySymbol.get(symbol))
+    .filter((entry): entry is IndexEntry => !!entry);
+  return resolved.length > 0 ? resolved : [...WORLD_INDICES];
 }

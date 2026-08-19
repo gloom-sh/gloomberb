@@ -333,11 +333,13 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                   lineHeight: "var(--cell-h)",
                 }}
               >
-                <div style={cellTextStyle(CSS_TEXT_BRIGHT, TextAttributes.BOLD)}>
+                {/* cellTextStyle is inline-block for real cells, so the title and
+                    hint would share one line and read as a single run-on string. */}
+                <div style={{ ...cellTextStyle(CSS_TEXT_BRIGHT, TextAttributes.BOLD), display: "block" }}>
                   {emptyStateTitle}
                 </div>
                 {emptyStateHint ? (
-                  <div style={cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE)}>
+                  <div style={{ ...cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE), display: "block" }}>
                     {emptyStateHint}
                   </div>
                 ) : null}

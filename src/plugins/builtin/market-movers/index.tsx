@@ -1,13 +1,16 @@
 import { Box } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, Tabs, usePaneFooter, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, EmptyState, Tabs, usePaneFooter, type DataTableKeyEvent } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { priceColor } from "../../../theme/colors";
 import { formatPercentRaw } from "../../../utils/format";
+import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { useAutoRefresh } from "../shared/auto-refresh";
+import { useQuoteBoard } from "../shared/use-quote-board";
 import {
   attachMarketMoversPersistence,
   fetchPreferredMarketMovers,
@@ -24,6 +27,8 @@ import {
   TABS,
   createRows,
   nextSortPreference,
+  resolveSummarySymbols,
+  resolveTabs,
   screenerQuoteFromQuote,
   sortRows,
   summaryQuoteFromQuote,
@@ -44,18 +49,29 @@ import {
   resolveScreenerQuoteFeedStatus,
 } from "../shared/screener-live-quotes";
 
+/** Stable identity: a fresh literal here would reload the board every render. */
+const NO_SAVED_SELECTION: string[] = [];
+
 function MarketMoversPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
   const liveStreaming = useLiveStreamingSetting();
-  const [activeTab, setActiveTab] = useState<TabId>("gainers");
+  const [savedTabs] = usePaneSettingValue<string[]>("tabs", NO_SAVED_SELECTION);
+  const [savedSummarySymbols] = usePaneSettingValue<string[]>("summarySymbols", NO_SAVED_SELECTION);
+  const tabs = useMemo(() => resolveTabs(savedTabs), [savedTabs]);
+  const summarySymbols = useMemo(() => resolveSummarySymbols(savedSummarySymbols), [savedSummarySymbols]);
+  // One cadence, the one the user configured, instead of a private 60s timer.
+  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
+  const refreshIntervalMs = Math.max(1, refreshIntervalMinutes || 1) * 60_000;
+  const [activeTab, setActiveTab] = useState<TabId>(tabs[0]!.id);
   const [quotes, setQuotes] = useState<ScreenerQuote[]>([]);
-  const [loading, setLoading] = useState(false);
+  // The first load starts before the effect runs; an empty board is not "no data".
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<MarketMoverSortPreference>(DEFAULT_SORT_PREFERENCE);
-  const [summaryQuotes, setSummaryQuotes] = useState<MarketSummaryQuote[]>([]);
   const [moversStale, setMoversStale] = useState(false);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
 
   const fetchGenRef = useRef(0);
 
@@ -98,44 +114,17 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     }
   }, [rows, selectedIdx, selectedSymbol]);
 
-  // Fetch market summary via the asset-data client.
-  useEffect(() => {
-    if (!dataProvider) return;
-    const loadSummary = async () => {
-      if (dataProvider.getQuotesBatch) {
-        const batchResults = await dataProvider.getQuotesBatch(
-          MARKET_SUMMARY_SYMBOLS.map((symbol) => ({ symbol, exchange: "" })),
-        ).catch(() => []);
-        const bySymbol = new Map(batchResults.map((result) => [result.target.symbol, result]));
-        setSummaryQuotes(
-          MARKET_SUMMARY_SYMBOLS
-            .map((symbol) => {
-              const result = bySymbol.get(symbol);
-              return result?.quote ? summaryQuoteFromQuote(symbol, result.quote) : null;
-            })
-            .filter((quote): quote is MarketSummaryQuote => !!quote),
-        );
-        return;
-      }
-
-      const results = await Promise.all(MARKET_SUMMARY_SYMBOLS.map(async (symbol) => {
-        try {
-          const quote = await dataProvider.getQuote(symbol, "");
-          return quote ? summaryQuoteFromQuote(symbol, quote) : null;
-        } catch {
-          return null;
-        }
-      }));
-      setSummaryQuotes(
-        MARKET_SUMMARY_SYMBOLS
-          .map((s) => results.find((r) => r?.symbol === s))
-          .filter((r): r is MarketSummaryQuote => !!r),
-      );
-    };
-    loadSummary();
-    const interval = setInterval(loadSummary, 60_000);
-    return () => clearInterval(interval);
-  }, [dataProvider]);
+  // The index summary is a quote board like any other, so it runs on the shared
+  // one instead of a third parallel pipeline against the same upstream.
+  const { quotes: summaryBoard } = useQuoteBoard(summarySymbols, refreshIntervalMs);
+  const summaryQuotes = useMemo<MarketSummaryQuote[]>(() => (
+    summarySymbols
+      .map((symbol) => {
+        const quote = summaryBoard.get(symbol)?.quote;
+        return quote ? summaryQuoteFromQuote(symbol, quote) : null;
+      })
+      .filter((quote): quote is MarketSummaryQuote => !!quote)
+  ), [summaryBoard, summarySymbols]);
 
   const loadTab = useCallback(async (
     tab: TabId,
@@ -199,10 +188,15 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
       setQuotes(data);
       if (!options?.background) setSelectedSymbol(null);
       setLoadError(null);
+      setLastLoadedAt(Date.now());
     } catch {
-      if (fetchGenRef.current === gen && !options?.background) {
-        setLoadError("Market movers temporarily unavailable");
+      if (fetchGenRef.current !== gen) return;
+      if (options?.background) {
+        // Rows stay, but they are no longer what the pane just fetched.
+        setMoversStale(true);
+        return;
       }
+      setLoadError("Market movers temporarily unavailable");
     }
     finally {
       if (fetchGenRef.current === gen && !options?.background) setLoading(false);
@@ -210,12 +204,18 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   }, [dataProvider]);
 
   useEffect(() => {
+    if (tabs.some((tab) => tab.id === activeTab)) return;
+    setActiveTab(tabs[0]!.id);
+  }, [activeTab, tabs]);
+
+  useEffect(() => {
     void loadTab(activeTab);
-    const interval = setInterval(() => {
-      void loadTab(activeTab, { background: true });
-    }, 60_000);
-    return () => clearInterval(interval);
   }, [activeTab, loadTab]);
+
+  const backgroundRefresh = useCallback(() => {
+    void loadTab(activeTab, { background: true });
+  }, [activeTab, loadTab]);
+  useAutoRefresh(lastLoadedAt, backgroundRefresh);
 
   const openSymbol = useCallback((symbol: string) => {
     pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
@@ -235,10 +235,6 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
       return true;
     }
     return false;
-  }, [activeTab, loadTab]);
-
-  const refreshActiveTab = useCallback(() => {
-    void loadTab(activeTab, { forceRefresh: true });
   }, [activeTab, loadTab]);
 
   usePaneFooter("market-movers", () => ({
@@ -269,7 +265,7 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     <Box flexDirection="column" width={width} height={height}>
       <Box height={1} paddingX={1}>
         <Tabs
-          tabs={TABS.map((tab) => ({ label: tab.label, value: tab.id }))}
+          tabs={tabs.map((tab) => ({ label: tab.label, value: tab.id }))}
           activeValue={activeTab}
           onSelect={(value) => {
             setActiveTab(value as TabId);
@@ -299,8 +295,12 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
         getItemKey={(row) => `${row.symbol}-${row.rank}`}
         onActivate={(row) => openSymbol(row.symbol)}
         renderCell={renderMarketMoverCell}
-        emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No data"}
-        emptyStateHint={loadError ? "Try again in a moment." : undefined}
+        emptyStateTitle={loading ? "Loading movers..." : loadError ?? "No movers returned."}
+        emptyContent={loadError ? (
+          <Box paddingX={1} paddingY={1}>
+            <EmptyState title={loadError} message="Try again in a moment." />
+          </Box>
+        ) : undefined}
       />
     </Box>
   );
@@ -325,7 +325,30 @@ export const marketMoversModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 36 },
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
-      settings: (context) => withLiveStreamingSetting({ fields: [] }, context.settings),
+      settings: (context) => withLiveStreamingSetting({
+        title: "Market Movers Settings",
+        values: {
+          tabs: resolveTabs(context.settings.tabs as string[] | undefined).map((tab) => tab.id),
+          summarySymbols: resolveSummarySymbols(context.settings.summarySymbols as string[] | undefined),
+        },
+        fields: [
+          {
+            key: "tabs",
+            label: "Lists",
+            type: "ordered-multi-select",
+            options: TABS.map((tab) => ({ value: tab.id, label: tab.label })),
+          },
+          {
+            key: "summarySymbols",
+            label: "Index summary",
+            type: "ordered-multi-select",
+            options: MARKET_SUMMARY_SYMBOLS.map((symbol) => ({
+              value: symbol,
+              label: INDEX_SHORT[symbol] ?? symbol,
+            })),
+          },
+        ],
+      }, context.settings),
     },
   ],
 

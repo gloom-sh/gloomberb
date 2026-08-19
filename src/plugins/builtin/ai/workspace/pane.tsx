@@ -695,6 +695,15 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
   const showSidebar = shouldShowPaneSidebar(workspace.threads.length, width, height, 1);
   const sidebarWidth = showSidebar ? getPaneSidebarWidth(width, !!nativePaneChrome) : 0;
   const contentWidth = Math.max(20, width - sidebarWidth - (nativePaneChrome ? 0 : 2));
+  // Separators, prev/next arrows, and "+ New" take about 30 cells on top of the
+  // provider/model label.
+  const narrowHeaderTitleWidth = Math.max(
+    6,
+    contentWidth - 30 - formatAiRunnerSelection(
+      providerLabel(activeThreadProviderSupported ? activeSelection.providerId : activeThread.providerId),
+      activeThreadProviderSupported ? activeSelection.modelId : activeThread.modelId,
+    ).length,
+  );
   const composerHeight = nativePaneChrome ? 3 : 2;
 
   return (
@@ -759,7 +768,7 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
       )}
 
       <Box flexDirection="column" flexGrow={1} minWidth={0} overflow="hidden">
-        <Box height={1} paddingX={1} flexDirection="row">
+        <Box height={1} paddingX={1} flexDirection="row" overflow="hidden">
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>
             {formatAiRunnerSelection(
               providerLabel(activeThreadProviderSupported ? activeSelection.providerId : activeThread.providerId),
@@ -771,7 +780,9 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
             <>
               <Text fg={colors.textDim}> · </Text>
               <Text fg={colors.textBright} onMouseDown={() => cycleThread(-1)} style={{ cursor: "pointer" }}>‹ </Text>
-              <Text fg={colors.text}>{activeThread.title}</Text>
+              {/* Truncated so a long title cannot push the prev, next, and New
+                  controls off the single header row. */}
+              <Text fg={colors.text}>{truncateWithEllipsis(activeThread.title, narrowHeaderTitleWidth)}</Text>
               <Text fg={colors.textBright} onMouseDown={() => cycleThread(1)} style={{ cursor: "pointer" }}> ›</Text>
               <Text fg={colors.textBright} onMouseDown={() => { if (!busyRef.current) beginCreateThread(); }} style={{ cursor: "pointer" }}>  + New</Text>
             </>

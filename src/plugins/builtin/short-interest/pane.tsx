@@ -5,6 +5,7 @@ import {
   EmptyState,
   Spinner,
   StaticChartSurface,
+  unavailableText,
   usePaneFooter,
   usePaneTicker,
   type DataTableCell,
@@ -172,7 +173,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   }), [error, status]);
 
   if (!ticker || !symbol) {
-    return <EmptyState title="No ticker selected" message="Select a ticker to view short interest." />;
+    return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;
   }
 
   if ((status === "idle" || status === "loading") && records.length === 0) {
@@ -180,7 +181,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   }
 
   if (status === "error" && records.length === 0) {
-    return <EmptyState title="Failed to load short interest" message={error ?? undefined} />;
+    return <EmptyState title={unavailableText("Short interest")} message={error ?? undefined} />;
   }
 
   if (status === "loaded" && records.length === 0) {

@@ -231,7 +231,7 @@ function useEarningsSupplemental(
     inFlightRef.current = true;
     let cancelled = false;
     loadEarningsCalendar(provider, missingSymbols)
-      .then((events) => {
+      .then(({ events }) => {
         if (cancelled) return;
         setState((current) => setEarningsValues(current, missingSymbols, events));
       })

@@ -21,9 +21,17 @@ type PersistedEarningsEvent = Omit<EarningsEvent, "earningsDate" | "earningsCall
   earningsCallDate?: string | null;
 };
 
+export interface EarningsCalendarResult {
+  events: EarningsEvent[];
+  fetchedAt: number;
+  /** True when the provider failed and cached events were served instead. */
+  stale: boolean;
+  refreshError?: string;
+}
+
 let earningsPersistence: PluginPersistence | null = null;
 const memoryCache = new Map<string, MemoryCacheEntry>();
-const activeFetches = new Map<string, Promise<EarningsEvent[]>>();
+const activeFetches = new Map<string, Promise<EarningsCalendarResult>>();
 
 export function attachEarningsCalendarPersistence(persistence: PluginPersistence): void {
   earningsPersistence = persistence;
@@ -98,22 +106,24 @@ export async function loadEarningsCalendar(
   provider: DataProvider | null | undefined,
   symbols: string[],
   options?: { force?: boolean },
-): Promise<EarningsEvent[]> {
+): Promise<EarningsCalendarResult> {
   const normalizedSymbols = normalizeEarningsSymbols(symbols);
-  if (normalizedSymbols.length === 0 || !provider?.getEarningsCalendar) return [];
+  if (normalizedSymbols.length === 0 || !provider?.getEarningsCalendar) {
+    return { events: [], fetchedAt: Date.now(), stale: false };
+  }
 
   const key = buildEarningsCacheKey(normalizedSymbols);
   const force = options?.force ?? false;
   const memoryEntry = memoryCache.get(key);
   if (!force && memoryEntry && Date.now() - memoryEntry.fetchedAt < EARNINGS_CALENDAR_CACHE_POLICY.staleMs) {
-    return memoryEntry.data;
+    return { events: memoryEntry.data, fetchedAt: memoryEntry.fetchedAt, stale: false };
   }
 
   const freshPersisted = readPersistedCache(key);
   if (!force && freshPersisted && !freshPersisted.stale) {
     const data = deserializeEvents(freshPersisted.value);
     memoryCache.set(key, { data, fetchedAt: freshPersisted.fetchedAt });
-    return data;
+    return { events: data, fetchedAt: freshPersisted.fetchedAt, stale: false };
   }
 
   const activeFetch = activeFetches.get(key);
@@ -122,16 +132,20 @@ export async function loadEarningsCalendar(
   const fetchPromise = provider.getEarningsCalendar(normalizedSymbols)
     .then((data) => {
       writeCache(key, data);
-      return data;
+      return { events: data, fetchedAt: Date.now(), stale: false };
     })
-    .catch((error) => {
+    .catch((error: unknown) => {
+      // Cached events survive a provider outage, but never as a fresh load.
+      const refreshError = error instanceof Error ? error.message : String(error);
       const stalePersisted = freshPersisted ?? readPersistedCache(key, { allowExpired: true });
       if (stalePersisted) {
         const data = deserializeEvents(stalePersisted.value);
         memoryCache.set(key, { data, fetchedAt: stalePersisted.fetchedAt });
-        return data;
+        return { events: data, fetchedAt: stalePersisted.fetchedAt, stale: true, refreshError };
       }
-      if (memoryEntry) return memoryEntry.data;
+      if (memoryEntry) {
+        return { events: memoryEntry.data, fetchedAt: memoryEntry.fetchedAt, stale: true, refreshError };
+      }
       throw error;
     })
     .finally(() => {

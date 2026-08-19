@@ -9,6 +9,7 @@ import {
 
 // Shape captured from the live auctions_query endpoint on 2026-08-18.
 const LIVE_NOTE_ROW = {
+  cusip: "91282CNH3",
   security_type: "Note",
   security_term: "10-Year",
   auction_date: "2026-08-12",
@@ -30,7 +31,8 @@ describe("normalizeAuction", () => {
   test("parses a live note row into numbers", () => {
     const auction = normalizeAuction(LIVE_NOTE_ROW);
     expect(auction).toMatchObject({
-      id: "Note|2026-08-12|10-Year",
+      id: "91282CNH3|2026-08-12",
+      cusip: "91282CNH3",
       secType: "Note",
       securityTerm: "10-Year",
       highYield: 4.683,
@@ -77,9 +79,20 @@ describe("parseTreasuryAuctionsPayload", () => {
     expect(auctions.map((auction) => auction.secType)).toEqual(["Note", "Bill"]);
   });
 
-  test("collapses repeated (type, date, term) rows", () => {
+  test("collapses a row the payload repeats verbatim", () => {
     const auctions = parseTreasuryAuctionsPayload({ data: [LIVE_NOTE_ROW, { ...LIVE_NOTE_ROW }] });
     expect(auctions).toHaveLength(1);
+  });
+
+  test("keeps two same-day auctions of the same type and term", () => {
+    // A reopening and a new issue share (type, date, term) but never a CUSIP.
+    const auctions = parseTreasuryAuctionsPayload({
+      data: [
+        { ...LIVE_NOTE_ROW, cusip: "91282CAB1" },
+        { ...LIVE_NOTE_ROW, cusip: "91282CZZ9" },
+      ],
+    });
+    expect(auctions.map((entry) => entry.cusip)).toEqual(["91282CAB1", "91282CZZ9"]);
   });
 
   test("returns nothing for a body that is not a data array", () => {

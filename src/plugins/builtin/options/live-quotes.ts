@@ -6,6 +6,14 @@ import type { OptionTableRow } from "./types";
 
 export const OPTIONS_QUOTE_EXCHANGE = "OPTIONS";
 export const OPTIONS_CHAIN_REFRESH_INTERVAL_MS = 10 * 60_000;
+
+/** Minutes come from the pane setting; anything unparseable keeps the default. */
+export function resolveChainRefreshIntervalMs(minutes: string | number | undefined): number {
+  const parsed = Number(minutes);
+  return Number.isFinite(parsed) && parsed > 0
+    ? parsed * 60_000
+    : OPTIONS_CHAIN_REFRESH_INTERVAL_MS;
+}
 export const OPTIONS_STREAM_FRESHNESS_MS = 2 * 60_000;
 export const OPTIONS_STREAM_CONNECTING_GRACE_MS = 15_000;
 

@@ -48,6 +48,8 @@ export interface ChatControllerSnapshot {
   channelStates: ChatChannelState[];
   channelsLoading: boolean;
   loading: boolean;
+  /** Last message-load failure for this channel, or null. */
+  messagesError: string | null;
   loadingOlderMessages: boolean;
   hasOlderMessages: boolean;
   hasSavedSession: boolean;
@@ -69,6 +71,8 @@ export type MergeMessagesOptions = { countUnread?: boolean };
 export interface ChannelRuntimeState {
   hydrated: boolean;
   messagesLoading: boolean;
+  /** Last message-load failure, so an empty transcript is never mistaken for "no messages". */
+  messagesError: string | null;
   olderMessagesLoading: boolean;
   refreshMessagesPromise: Promise<void> | null;
   loadOlderMessagesPromise: Promise<void> | null;
@@ -108,6 +112,7 @@ export function createEmptyChannelState(): ChannelRuntimeState {
   return {
     hydrated: false,
     messagesLoading: false,
+    messagesError: null,
     olderMessagesLoading: false,
     refreshMessagesPromise: null,
     loadOlderMessagesPromise: null,

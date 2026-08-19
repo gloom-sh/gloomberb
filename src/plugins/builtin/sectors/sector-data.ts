@@ -55,3 +55,21 @@ export const SECTOR_COLLECTIONS: SectorCollection[] = [
 export function getSectorCollection(id: SectorCollectionId): SectorCollection {
   return SECTOR_COLLECTIONS.find((collection) => collection.id === id) ?? SECTOR_COLLECTIONS[0]!;
 }
+
+/** Settings key holding the saved ETF selection for a collection. */
+export function collectionSettingKey(id: SectorCollectionId): string {
+  return id === "industries" ? "industryEtfs" : "sectorEtfs";
+}
+
+/** The saved ETF selection, falling back to the full list when it is unusable. */
+export function resolveCollectionItems(
+  id: SectorCollectionId,
+  saved?: readonly string[],
+): SectorDef[] {
+  const all = getSectorCollection(id).items;
+  const byEtf = new Map(all.map((item) => [item.etf, item]));
+  const resolved = (saved ?? [])
+    .map((etf) => byEtf.get(etf))
+    .filter((item): item is SectorDef => !!item);
+  return resolved.length > 0 ? resolved : [...all];
+}

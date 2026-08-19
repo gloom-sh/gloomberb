@@ -32,6 +32,7 @@ function resetChannelRuntimeState(channel: ChannelRuntimeState): void {
 
 function disposeChannelRuntimeState(channel: ChannelRuntimeState): void {
   channel.messagesLoading = false;
+  channel.messagesError = null;
   channel.olderMessagesLoading = false;
   channel.refreshMessagesPromise = null;
   channel.loadOlderMessagesPromise = null;

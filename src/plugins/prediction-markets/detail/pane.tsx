@@ -19,7 +19,6 @@ import type {
   PredictionListRow,
   PredictionMarketDetail,
   PredictionMarketSummary,
-  PredictionOrderPreviewIntent,
 } from "../types";
 import { PredictionMarketBookView } from "./book";
 import { PredictionMarketOverviewView } from "./overview";
@@ -35,6 +34,22 @@ interface MetricCell {
   value: string;
   width: number;
   color?: string;
+}
+
+/**
+ * Drops trailing metrics that do not fit rather than letting the strip overflow
+ * the detail pane. YES and NO always survive.
+ */
+function fitMetrics(metrics: MetricCell[], width: number): MetricCell[] {
+  const fitted: MetricCell[] = [];
+  let used = 0;
+  for (const metric of metrics) {
+    const next = used + metric.width + (fitted.length > 0 ? 1 : 0);
+    if (fitted.length >= 2 && next > width) break;
+    fitted.push(metric);
+    used = next;
+  }
+  return fitted;
 }
 
 function MetricLabelRow({ metrics }: { metrics: MetricCell[] }) {
@@ -83,7 +98,6 @@ export function PredictionMarketDetailPane({
   historyRange,
   onDetailTabChange,
   onHistoryRangeChange,
-  onPreviewOrder,
   onSelectMarket,
   selectedRow,
   selectedSummary,
@@ -99,7 +113,6 @@ export function PredictionMarketDetailPane({
   historyRange: PredictionHistoryRange;
   onDetailTabChange: (tab: PredictionDetailTab) => void;
   onHistoryRangeChange: (range: PredictionHistoryRange) => void;
-  onPreviewOrder: (intent: PredictionOrderPreviewIntent) => void;
   onSelectMarket: (marketKey: string) => void;
   selectedRow: PredictionListRow | null;
   selectedSummary: PredictionMarketSummary | null;
@@ -182,6 +195,7 @@ export function PredictionMarketDetailPane({
       width: 7,
     },
   ];
+  const visibleMetrics = fitMetrics(metrics, Math.max(12, detailWidth));
   const relatedSiblings =
     selectedRow?.kind === "group"
       ? []
@@ -208,8 +222,8 @@ export function PredictionMarketDetailPane({
       )}
 
       <Box flexDirection="column" height={3} paddingBottom={1}>
-        <MetricLabelRow metrics={metrics} />
-        <MetricValueRow metrics={metrics} />
+        <MetricLabelRow metrics={visibleMetrics} />
+        <MetricValueRow metrics={visibleMetrics} />
       </Box>
 
       {relatedSiblings.length > 0 && (
@@ -244,7 +258,9 @@ export function PredictionMarketDetailPane({
         />
       </Box>
 
-      {detailError && !detail && (
+      {/* Shown even when cached detail is on screen, so a failed refresh is never
+          presented as current data. */}
+      {detailError && (
         <Box paddingBottom={1}>
           <Text
             fg={colors.negative}
@@ -252,7 +268,7 @@ export function PredictionMarketDetailPane({
             wrapMode="word"
             wrapText
           >
-            {detailError}
+            {detail ? `Showing cached data: ${detailError}` : detailError}
           </Text>
         </Box>
       )}
@@ -284,6 +300,7 @@ export function PredictionMarketDetailPane({
           width={detailWidth}
           height={Math.max(height - 8, 8)}
           loading={detailLoading}
+          focused={focused}
           range={historyRange}
           onRangeSelect={onHistoryRangeChange}
         />
@@ -294,7 +311,6 @@ export function PredictionMarketDetailPane({
           <PredictionMarketBookView
             detail={detail}
             focused={focused}
-            onPreviewOrder={onPreviewOrder}
             width={detailWidth}
           />
         ) : (

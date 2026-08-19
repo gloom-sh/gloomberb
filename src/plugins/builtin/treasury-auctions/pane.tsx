@@ -19,9 +19,12 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference } from "../../../utils/sort-values";
+import { usePaneInstance } from "../../../state/app/context";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
 import {
   AUCTION_FILTERS,
+  auctionHistoryDays,
   AUCTION_SORT_COLUMN_IDS,
   DEFAULT_AUCTION_SORT,
   buildAuctionColumns,
@@ -42,10 +45,6 @@ import {
   type LoadStatus,
   type TreasuryAuction,
 } from "./types";
-
-// The poll is cheap because the cache decides whether it becomes a request;
-// only [r] forces the endpoint.
-const AUTO_REFRESH_MS = 15 * 60_000;
 
 function formatAuctionDate(value: string, withYear = false): string {
   const timestamp = Date.parse(`${value}T00:00:00Z`);
@@ -101,7 +100,12 @@ function renderAuctionCell(
 
   switch (column.id) {
     case "date":
-      return { text: formatAuctionDate(auction.auctionDate), color: dimmed };
+      // Announced auctions have no results yet; every metric cell reads "—",
+      // so the date carries the distinction instead of a second placeholder.
+      return {
+        text: formatAuctionDate(auction.auctionDate),
+        color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.warning : colors.textDim,
+      };
     case "type":
       return {
         text: auction.secType,
@@ -111,7 +115,6 @@ function renderAuctionCell(
     case "term":
       return { text: auction.securityTerm, color: selected ?? colors.text };
     case "rate":
-      if (isPendingAuction(auction)) return { text: "pending", color: dimmed };
       return { text: formatRate(rateValue(auction)), color: selected ?? colors.textBright };
     case "btc":
       return { text: formatRatio(auction.bidToCoverRatio), color: selected ?? colors.text };
@@ -170,6 +173,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
 }
 
 export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
+  const historyDays = auctionHistoryDays(usePaneInstance()?.settings);
   const [auctions, setAuctions] = useState<TreasuryAuction[]>([]);
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -196,7 +200,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     const generation = fetchGenRef.current;
     setStatus((current) => (current === "loaded" ? "loaded" : "loading"));
     setError(null);
-    loadTreasuryAuctions(force)
+    loadTreasuryAuctions(force, undefined, historyDays)
       .then((result) => {
         if (fetchGenRef.current !== generation) return;
         setAuctions(result.auctions);
@@ -209,13 +213,12 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         setError(loadError instanceof Error ? loadError.message : String(loadError));
         setStatus("error");
       });
-  }, []);
+  }, [historyDays]);
 
-  useEffect(() => {
-    load(false);
-    const interval = setInterval(() => load(false), AUTO_REFRESH_MS);
-    return () => clearInterval(interval);
-  }, [load]);
+  useEffect(() => { load(false); }, [load]);
+  // The cache decides whether a tick becomes a request; only [r] forces it.
+  const refresh = useCallback(() => load(false), [load]);
+  useAutoRefresh(stale ? null : fetchedAt, refresh);
 
   const rows = useMemo(
     () => visibleAuctions(auctions, { filter, query: searchQuery, sort: sortPreference }),
@@ -302,7 +305,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     }
     return {
       info,
-      hints: detailOpen
+      hints: detailOpen || auctions.length === 0
         ? []
         : [
           { id: "search", key: "/", label: "search", onPress: focusSearch },
@@ -311,6 +314,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     };
   }, [
     activeFilterLabel,
+    auctions.length,
     cycleFilter,
     detailOpen,
     error,

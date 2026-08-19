@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Box, Text, TextAttributes } from "../../../ui";
-import { colors, hoverBg } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 
 export interface HelpShortcutEntry {
@@ -44,35 +44,6 @@ export function HelpSection({ title, children }: { title: string; children: Reac
     <Box flexDirection="column" marginTop={1}>
       <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t(title)}</Text>
       {children}
-    </Box>
-  );
-}
-
-export function ActionButton({
-  id,
-  label,
-  hovered,
-  onHover,
-  onPress,
-}: {
-  id: string;
-  label: string;
-  hovered: boolean;
-  onHover: (id: string | null) => void;
-  onPress: () => void;
-}) {
-  return (
-    <Box
-      backgroundColor={hovered ? hoverBg() : colors.panel}
-      onMouseOver={() => onHover(id)}
-      onMouseOut={() => onHover(null)}
-      onMouseDown={(event: any) => {
-        event.stopPropagation?.();
-        event.preventDefault?.();
-        onPress();
-      }}
-    >
-      <Text fg={hovered ? colors.textBright : colors.text}>{` ${t(label)} `}</Text>
     </Box>
   );
 }

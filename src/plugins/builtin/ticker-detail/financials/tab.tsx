@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction 
 import { usePaneStateValue, usePaneTicker } from "../../../../state/app/context";
 import {
   DataTableView,
+  PaneStatusBody,
   Tabs,
   usePaneFooter,
   type DataTableCell,
@@ -94,7 +95,6 @@ export function ResolvedFinancialsTab({
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const bodyScrollRef = useRef<ScrollBoxRenderable>(null);
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
-  const resolvedPeriodForFooter = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const { nativePaneChrome } = useUiCapabilities();
   const subTab = FINANCIAL_SUB_TABS[subTabIdx]!;
   const currentGroupIds = useMemo(() => collectGroupIds(subTab.rows), [subTab]);
@@ -147,11 +147,10 @@ export function ResolvedFinancialsTab({
     });
   }, [currentGroupIds]);
 
+  // The active section and period are already the visible tab selections, so the
+  // footer only carries what the controls cannot show.
   usePaneFooter("financials", () => ({
-    info: financials ? [
-      { id: "section", parts: [{ text: FINANCIAL_SUB_TABS[subTabIdx]?.name ?? "Financials", tone: "value", bold: true }] },
-      { id: "period", parts: [{ text: resolvedPeriodForFooter === "annual" ? "Annual" : "Quarterly", tone: "muted" }] },
-    ] : [],
+    info: [],
     hints: [
       {
         id: "section",
@@ -190,8 +189,7 @@ export function ResolvedFinancialsTab({
     hasCollapsedCurrentGroup,
     hasExpandedCurrentGroup,
     hasQuarterlyStatements,
-    resolvedPeriodForFooter,
-    subTabIdx,
+    setSubTabIdx,
     togglePeriod,
   ]);
 
@@ -283,8 +281,17 @@ export function ResolvedFinancialsTab({
     setSelectedRowId(rows[0]!.id);
   }, [rows, selectedRowId]);
 
+  // A null snapshot is still in flight; only a loaded one can say "no coverage".
   if (!financials || (!hasAnnualStatements && !hasQuarterlyStatements)) {
-    return <Text fg={colors.textDim}>No financial data available.</Text>;
+    return (
+      <PaneStatusBody
+        loading={!financials}
+        empty={!!financials}
+        subject="financials"
+        emptyTitle="No financial statements."
+        emptyMessage="This ticker has no annual or quarterly statement coverage."
+      />
+    );
   }
 
   const renderCell = (

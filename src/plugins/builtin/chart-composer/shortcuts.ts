@@ -13,15 +13,11 @@ export function resolveChartComposerShortcut(
 ): ChartComposerShortcut | null {
   if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return null;
 
-  const exactShiftReload = event.name === "r"
-    && event.shift
-    && !event.ctrl
-    && !event.meta
-    && !event.super
-    && !event.alt;
-  if (exactShiftReload) return "reload";
+  // `r` is the app-wide refresh key, so it reloads here too and the resolution
+  // picker moved to its own mnemonic, [t]imeframe.
   if (isPlainKey(event, "s")) return "series";
-  if (isPlainKey(event, "r")) return "resolution";
+  if (isPlainKey(event, "r")) return "reload";
+  if (isPlainKey(event, "t")) return "resolution";
   if (!isPlainKey(event, event.name ?? "")) return null;
 
   const rangeIndex = Number(event.name) - 1;

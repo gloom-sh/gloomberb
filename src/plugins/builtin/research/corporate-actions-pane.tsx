@@ -21,6 +21,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
+import { usePaneTicker } from "../../../state/app/context";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { useAssetData } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
@@ -474,19 +475,26 @@ function buildEventDetailBody({
   return lines.join("\n");
 }
 
+/** Statuses the Earnings Estimates surface keeps; the rest are corporate actions. */
+const EARNINGS_STATUSES = new Set<EventStatus>(["Q Est", "FY Est", "Earnings", "TTM"]);
+
 export function CorporateActionsView({
   focused,
   width,
   height,
   footerPaneId = "corporate-actions",
+  variant = "corporate-actions",
 }: {
   focused: boolean;
   width: number;
   height: number;
   footerPaneId?: string;
+  variant?: "corporate-actions" | "earnings-estimates";
 }) {
   const dataProvider = useAssetData();
   const { symbol, ticker, exchange, currency } = useSymbolBinding();
+  // The shared ticker snapshot already subscribes to financials for this pane.
+  const { financials: financialsData } = usePaneTicker();
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
     return dataProvider.getCorporateActions(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
@@ -494,10 +502,6 @@ export function CorporateActionsView({
   const analystLoader = useCallback(async (nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getAnalystResearch) return null;
     return dataProvider.getAnalystResearch(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  }, [dataProvider]);
-  const financialsLoader = useCallback(async (nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
-    if (!dataProvider) return null;
-    return dataProvider.getTickerFinancials(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
   }, [dataProvider]);
   const {
     data: actionsData,
@@ -511,29 +515,30 @@ export function CorporateActionsView({
     error: analystError,
     reload: reloadAnalyst,
   } = useTickerRequest<AnalystResearchData | null>(analystLoader, symbol, exchange);
-  const {
-    data: financialsData,
-    loading: financialsLoading,
-    error: financialsError,
-    reload: reloadFinancials,
-  } = useTickerRequest<TickerFinancials | null>(financialsLoader, symbol, exchange);
   const displayCurrency = actionsData?.currency ?? analystData?.currency ?? currency;
-  const rows = useMemo(() => (
+  const allRows = useMemo(() => (
     buildEventRows(actionsData, analystData, financialsData, displayCurrency)
   ), [actionsData, analystData, displayCurrency, financialsData]);
+  const rows = useMemo(() => (
+    variant === "earnings-estimates"
+      ? allRows.filter((row) => EARNINGS_STATUSES.has(row.status))
+      : allRows
+  ), [allRows, variant]);
   const columns = useMemo(() => buildEventColumns(), []);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const todayKey = todayDateKey();
   const futureRowBackground = blendHex(colors.bg, colors.positive, 0.16);
-  const loading = actionsLoading || analystLoading || financialsLoading;
-  const error = [actionsError, analystError, financialsError].filter(Boolean).join(" | ") || null;
+  const loading = actionsLoading || analystLoading;
+  // Parallel requests fail with the same message ("No ticker selected"), so the
+  // footer must report each distinct reason once.
+  const error = [...new Set([actionsError, analystError].filter((value): value is string => !!value))]
+    .join(" | ") || null;
   const reload = useCallback(() => {
     reloadActions();
     reloadAnalyst();
-    reloadFinancials();
-  }, [reloadActions, reloadAnalyst, reloadFinancials]);
+  }, [reloadActions, reloadAnalyst]);
   const openRow = openRowId
     ? rows.find((row) => row.id === openRowId) ?? null
     : null;
@@ -729,7 +734,9 @@ export function CorporateActionsView({
       getRowBackgroundColor={(row) => (
         row.date > todayKey ? futureRowBackground : undefined
       )}
-      emptyStateTitle={loading ? "Loading events..." : error ?? "No events"}
+      emptyStateTitle={loading
+        ? (variant === "earnings-estimates" ? "Loading earnings estimates..." : "Loading events...")
+        : error ?? (variant === "earnings-estimates" ? "No earnings estimates" : "No events")}
     />
   );
 }

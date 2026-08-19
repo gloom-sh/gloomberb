@@ -11,7 +11,10 @@ import { httpFetch } from "../../../utils/http-transport";
 
 const FORMS_13F_BASE_URL = "https://forms13f.com/api/v1";
 const FORM_PAGE_LIMIT = 100;
-const MAX_FORM_ROWS = 2_000;
+// ponytail: large funds file well past 2,000 positions, and a silently clipped
+// list makes every weight, total, and buy/sell action wrong. Paging further is
+// slower but truthful; page in parallel if the wait becomes the problem.
+const MAX_FORM_ROWS = 20_000;
 const CACHE_KIND = "forms13f-api";
 const CACHE_SOURCE = "forms13f";
 const CACHE_SCHEMA_VERSION = 1;

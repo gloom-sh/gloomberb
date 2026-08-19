@@ -1,15 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, Tabs, usePaneFooter, type DataTableCell, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, Tabs, usePaneFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import type { Quote } from "../../../types/financials";
+import type { PricePoint, Quote } from "../../../types/financials";
+import { usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { useAssetData, useDebouncedPluginPaneState, usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
+import { SectorMoveBar } from "./move-bar";
 import {
   SECTOR_COLLECTIONS,
+  collectionSettingKey,
   getSectorCollection,
+  resolveCollectionItems,
   type SectorCollectionId,
 } from "./sector-data";
 import {
@@ -19,11 +24,8 @@ import {
   INITIAL_ROWS_BY_COLLECTION,
   ONE_MONTH_DAYS,
   ONE_YEAR_DAYS,
-  REFRESH_INTERVAL_MS,
-  buildBar,
   buildSectorColumns,
   computeTrailingReturn,
-  formatTime,
   latestHistoryClose,
   nextSortPreference,
   normalizeRowsForCollection,
@@ -36,6 +38,9 @@ import {
   type SectorSortPreference,
 } from "./sector-model";
 
+/** Stable identity: a fresh literal here would refetch the board every render. */
+const NO_SAVED_ETFS: string[] = [];
+
 function SectorPerformancePane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const { navigateTicker } = usePluginTickerActions();
@@ -44,6 +49,15 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     DEFAULT_COLLECTION_ID,
   );
   const activeCollection = getSectorCollection(activeCollectionId);
+  const [savedSectorEtfs] = usePaneSettingValue<string[]>("sectorEtfs", NO_SAVED_ETFS);
+  const [savedIndustryEtfs] = usePaneSettingValue<string[]>("industryEtfs", NO_SAVED_ETFS);
+  const activeItems = useMemo(
+    () => resolveCollectionItems(
+      activeCollection.id,
+      activeCollection.id === "industries" ? savedIndustryEtfs : savedSectorEtfs,
+    ),
+    [activeCollection.id, savedIndustryEtfs, savedSectorEtfs],
+  );
   const [rowsByCollection, setRowsByCollection] = useDebouncedPluginPaneState<SectorRowsByCollection>(
     "rowsByCollection:v1",
     INITIAL_ROWS_BY_COLLECTION,
@@ -59,15 +73,16 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   );
 
   const fetchGenRef = useRef(0);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const columns = useMemo(() => buildSectorColumns(width), [width]);
   const rows = useMemo(
-    () => normalizeRowsForCollection(rowsByCollection, activeCollection.id),
-    [activeCollection.id, rowsByCollection],
+    () => normalizeRowsForCollection(rowsByCollection, activeCollection.id, activeItems),
+    [activeCollection.id, activeItems, rowsByCollection],
   );
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const lastRefreshMs = lastRefreshByCollection[activeCollection.id];
-  const lastRefreshText = lastRefreshMs ? formatTime(new Date(lastRefreshMs)) : "loading";
+  const lastRefreshMs = lastRefreshByCollection[activeCollection.id] ?? null;
+  const loading = rows.some((row) => row.loading);
   const tabs = useMemo(() => SECTOR_COLLECTIONS.map((collection) => ({
     label: collection.label,
     value: collection.id,
@@ -75,23 +90,26 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   const fetchAll = useCallback(() => {
     fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
+    const collectionId = activeCollection.id;
+    const sectorDefs = activeItems;
+
     if (!dataProvider) {
-      setRowsByCollection((prev) => updateRowsForCollection(prev, activeCollection.id, (rows) => (
+      setLoadError("No market data provider connected.");
+      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
         rows.map((row) => ({ ...row, loading: false }))
       )));
       return;
     }
 
-    const sectorDefs = activeCollection.items;
-    const collectionId = activeCollection.id;
-
-    setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, (rows) => (
+    setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
       rows.map((row) => ({ ...row, loading: true }))
     )));
 
     const loadQuotes = async (): Promise<Map<string, Quote | null>> => {
       const quotes = new Map<string, Quote | null>();
       if (dataProvider.getQuotesBatch) {
+        // A failed batch leaves every quote missing, which the row outcome below
+        // reports as unavailable instead of stamping the pane as fresh.
         const results = await dataProvider.getQuotesBatch(
           sectorDefs.map((sector) => ({ symbol: sector.etf, exchange: "" })),
         ).catch(() => []);
@@ -111,58 +129,53 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       return quotes;
     };
 
-    const fetches = loadQuotes().then((quotesByEtf) => Promise.allSettled(sectorDefs.map(async (sector) => {
-      try {
-        const historyResult = await dataProvider.getPriceHistory(sector.etf, "", "1Y")
-          .then((value) => ({ status: "fulfilled" as const, value }))
-          .catch(() => ({ status: "rejected" as const }));
-        if (fetchGenRef.current !== gen) return;
+    const loadRows = async (): Promise<Array<{ etf: string; row: Partial<SectorRow> | null }>> => {
+      const quotesByEtf = await loadQuotes();
+      return Promise.all(sectorDefs.map(async (sector) => {
+        const history: PricePoint[] = await dataProvider.getPriceHistory(sector.etf, "", "1Y")
+          .catch(() => []);
         const quote = quotesByEtf.get(sector.etf) ?? null;
-        const history = historyResult.status === "fulfilled" ? historyResult.value : [];
-        const historyClose = latestHistoryClose(history);
-        const price = quote?.price ?? historyClose;
-        const return1M = computeTrailingReturn(history, ONE_MONTH_DAYS, price);
-        const return1Y = computeTrailingReturn(history, ONE_YEAR_DAYS, price);
-        setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, (rows) => (
-          rows.map((row) =>
-            row.etf === sector.etf
-              ? {
-                  ...row,
-                  price,
-                  changePercent: quote?.changePercent ?? null,
-                  return1M,
-                  return1Y,
-                  currency: quote?.currency ?? "USD",
-                  loading: false,
-                }
-              : row,
-          )
-        )));
-      } catch {
-        if (fetchGenRef.current !== gen) return;
-        setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, (rows) => (
-          rows.map((row) =>
-            row.etf === sector.etf ? { ...row, loading: false } : row,
-          )
-        )));
-      }
-    })));
+        if (!quote && history.length === 0) return { etf: sector.etf, row: null };
+        const price = quote?.price ?? latestHistoryClose(history);
+        return {
+          etf: sector.etf,
+          row: {
+            price,
+            changePercent: quote?.changePercent ?? null,
+            return1M: computeTrailingReturn(history, ONE_MONTH_DAYS, price),
+            return1Y: computeTrailingReturn(history, ONE_YEAR_DAYS, price),
+            currency: quote?.currency ?? "USD",
+          },
+        };
+      }));
+    };
 
-    fetches.then(() => {
-      if (fetchGenRef.current === gen) {
-        setLastRefreshByCollection((prev) => ({
-          ...prev,
-          [collectionId]: Date.now(),
-        }));
-      }
+    loadRows().then((outcomes) => {
+      if (fetchGenRef.current !== gen) return;
+      const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
+      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
+        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? {}), loading: false }))
+      )));
+
+      const loadedCount = outcomes.filter((outcome) => outcome.row).length;
+      setLoadError(loadedCount === 0 ? "Sector data unavailable" : null);
+      // A refresh that returned nothing must not claim the board is current.
+      if (loadedCount === 0) return;
+      setLastRefreshByCollection((prev) => ({ ...prev, [collectionId]: Date.now() }));
+    }).catch(() => {
+      if (fetchGenRef.current !== gen) return;
+      setLoadError("Sector data unavailable");
+      setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
+        rows.map((row) => ({ ...row, loading: false }))
+      )));
     });
-  }, [activeCollection, dataProvider, setLastRefreshByCollection, setRowsByCollection]);
+  }, [activeCollection.id, activeItems, dataProvider, setLastRefreshByCollection, setRowsByCollection]);
 
   useEffect(() => {
     fetchAll();
-    const interval = setInterval(fetchAll, REFRESH_INTERVAL_MS);
-    return () => clearInterval(interval);
   }, [fetchAll]);
+
+  useAutoRefresh(lastRefreshMs, fetchAll);
 
   useEffect(() => {
     if (activeCollectionId === activeCollection.id) return;
@@ -229,29 +242,23 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
           text: row.loading && row.return1Y === null ? "…" : row.return1Y !== null ? formatPercentRaw(row.return1Y) : "—",
           color: selectedColor ?? (row.return1Y !== null ? priceColor(row.return1Y) : colors.textDim),
         };
-      case "bar": {
-        const bar = row.changePercent !== null ? buildBar(row.changePercent, column.width) : "";
-        const barColor = row.changePercent !== null && row.changePercent >= 0 ? colors.positive : colors.negative;
+      case "bar":
         return {
-          text: bar,
-          color: selectedColor ?? (bar ? barColor : colors.textDim),
+          text: "",
+          content: <SectorMoveBar changePercent={row.changePercent} width={column.width} />,
         };
-      }
     }
   }, []);
 
-  usePaneFooter("sectors", () => ({
-    info: [
-      {
-        id: "collection",
-        parts: [{ text: activeCollection.label, tone: "label" }],
-      },
-      {
-        id: "updated",
-        parts: [{ text: lastRefreshText, tone: lastRefreshMs ? "value" : "muted" }],
-      },
-    ],
-  }), [activeCollection.label, lastRefreshMs, lastRefreshText]);
+  const updatedAgo = useUpdatedAgo(lastRefreshMs);
+
+  usePaneFooter("sectors", () => {
+    const info: PaneFooterSegment[] = [];
+    if (loading) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
+    if (loadError) info.push({ id: "error", parts: [{ text: loadError, tone: "warning" }] });
+    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" }] });
+    return { info };
+  }, [loadError, loading, updatedAgo]);
 
   const rootBefore = (
     <Box height={1} paddingX={1}>
@@ -298,8 +305,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       onHeaderClick={handleHeaderClick}
       getItemKey={(row) => row.etf}
       renderCell={renderCell}
-      emptyStateTitle="No sector data available"
-      showHorizontalScrollbar={false}
+      emptyStateTitle={loadError ?? "No sectors selected."}
     />
   );
 }
@@ -314,6 +320,25 @@ export const sectorsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 82, height: 18 },
+      settings: (context) => ({
+        title: "Sector Performance Settings",
+        values: {
+          sectorEtfs: resolveCollectionItems("sectors", context.settings.sectorEtfs as string[] | undefined)
+            .map((item) => item.etf),
+          industryEtfs: resolveCollectionItems("industries", context.settings.industryEtfs as string[] | undefined)
+            .map((item) => item.etf),
+        },
+        fields: SECTOR_COLLECTIONS.map((collection) => ({
+          key: collectionSettingKey(collection.id),
+          label: collection.label,
+          type: "ordered-multi-select" as const,
+          options: collection.items.map((item) => ({
+            value: item.etf,
+            label: item.name,
+            description: item.etf,
+          })),
+        })),
+      }),
     },
   ],
 

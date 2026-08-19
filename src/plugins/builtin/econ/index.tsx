@@ -1,7 +1,14 @@
-import { Box } from "../../../ui";
+import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { DataTableStackView, type DataTableCell, type PaneFooterSegment } from "../../../components";
+import {
+  DataTableStackView,
+  SegmentedControl,
+  type DataTableCell,
+  type PaneFooterSegment,
+} from "../../../components";
+import { usePluginPaneState } from "../../runtime";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
@@ -12,13 +19,11 @@ import {
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
-  countryFlag,
   dateKey,
   dayLabel,
   formatCountdown,
   formatStaleness,
   getCalendarCache,
-  getFreshCalendarCache,
   impactIndicator,
   loadCalendar,
   matchesCountry,
@@ -31,14 +36,24 @@ import {
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 
+const IMPACT_LABELS: Record<ImpactFilter, string> = {
+  all: "All",
+  high: "High",
+  medium: "Med",
+  low: "Low",
+};
+
 function EconCalendarPane({ focused, width, height }: PaneProps) {
   const [initialCache] = useState(() => getCalendarCache());
   const [events, setEvents] = useState<EconEvent[]>(initialCache?.data ?? []);
-  const [loading, setLoading] = useState(!initialCache || initialCache.stale);
+  const [loading, setLoading] = useState(true);
+  const [settled, setSettled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stale, setStale] = useState(initialCache?.stale ?? false);
+  const [fetchedAt, setFetchedAt] = useState<number | null>(initialCache?.fetchedAt ?? null);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [impactFilter, setImpactFilter] = useState<ImpactFilter>("all");
-  const [countryFilter, setCountryFilter] = useState<CountryFilter>("all");
+  const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", "all");
+  const [countryFilter, setCountryFilter] = usePluginPaneState<CountryFilter>("countryFilter", "all");
   const [now, setNow] = useState(Date.now());
   const [detailEvent, setDetailEvent] = useState<EconEvent | null>(null);
 
@@ -53,26 +68,29 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setError(null);
 
     try {
-      const data = await loadCalendar(force);
+      const result = await loadCalendar(force);
       if (fetchGenRef.current !== gen) return;
-      setEvents(data);
+      setEvents(result.data);
+      setFetchedAt(result.fetchedAt);
+      setStale(result.stale);
+      setError(result.refreshError ?? null);
       if (force) setSelectedIdx(0);
     } catch (err) {
       if (fetchGenRef.current !== gen) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
+      if (fetchGenRef.current === gen) {
+        setLoading(false);
+        setSettled(true);
+      }
     }
   }, []);
 
-  useEffect(() => {
-    const cached = getFreshCalendarCache();
-    if (cached) {
-      setEvents(cached.data);
-      return;
-    }
-    load();
-  }, [load]);
+  // loadCalendar serves a fresh cache without a request, so the pane can always
+  // ask and still follow the global cadence once the cache goes stale.
+  useEffect(() => { void load(); }, [load]);
+  const refresh = useCallback(() => { void load(false); }, [load]);
+  useAutoRefresh(stale ? null : fetchedAt, refresh);
 
   // Tick every 30s to update staleness + countdown
   useEffect(() => {
@@ -150,20 +168,22 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // Next upcoming event for countdown
   const nextEvent = nextUpcomingEventIdx >= 0 ? filtered[nextUpcomingEventIdx] : undefined;
   const nextCountdown = nextEvent ? formatCountdown(nextEvent.date.getTime() - now) : null;
+  const selectImpactFilter = useCallback((value: ImpactFilter) => {
+    setImpactFilter(value);
+    setSelectedIdx(0);
+  }, [setImpactFilter]);
+  const selectCountryFilter = useCallback((value: CountryFilter) => {
+    setCountryFilter(value);
+    setSelectedIdx(0);
+  }, [setCountryFilter]);
   const cycleImpactFilter = useCallback(() => {
-    setImpactFilter((prev) => {
-      const idx = FILTER_CYCLE.indexOf(prev);
-      return FILTER_CYCLE[(idx + 1) % FILTER_CYCLE.length]!;
-    });
+    setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + 1) % FILTER_CYCLE.length]!);
     setSelectedIdx(0);
-  }, []);
+  }, [setImpactFilter]);
   const cycleCountryFilter = useCallback(() => {
-    setCountryFilter((prev) => {
-      const idx = COUNTRY_CYCLE.indexOf(prev);
-      return COUNTRY_CYCLE[(idx + 1) % COUNTRY_CYCLE.length]!;
-    });
+    setCountryFilter((prev) => COUNTRY_CYCLE[(COUNTRY_CYCLE.indexOf(prev) + 1) % COUNTRY_CYCLE.length]!);
     setSelectedIdx(0);
-  }, []);
+  }, [setCountryFilter]);
 
   const handleRootKeyDown = useCallback((event: {
     name?: string;
@@ -192,19 +212,21 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const columns = useMemo<EconCalendarColumn[]>(() => {
     const timeWidth = 6;
     const impactWidth = 4;
-    const flagWidth = 2;
+    const flagWidth = 3;
     const actualWidth = 9;
     const forecastWidth = 10;
     const priorWidth = 9;
     const minEventWidth = 12;
     const fixedWidth = timeWidth + impactWidth + flagWidth + actualWidth + forecastWidth + priorWidth;
+    // Padding, one gap per column boundary, and the vertical scrollbar lane;
+    // one column short of that clipped the PRIOR values at the right edge.
     const columnCount = 7;
-    const eventWidth = Math.max(minEventWidth, width - 2 - columnCount - fixedWidth);
+    const eventWidth = Math.max(minEventWidth, width - 3 - columnCount - fixedWidth);
 
     return [
       { id: "time", label: "TIME", width: timeWidth, align: "left" },
       { id: "impact", label: "IMP", width: impactWidth, align: "left" },
-      { id: "country", label: "🌐", width: flagWidth, align: "left" },
+      { id: "country", label: "CTY", width: flagWidth, align: "left" },
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
       { id: "actual", label: "ACTUAL", width: actualWidth, align: "right" },
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
@@ -212,9 +234,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     ];
   }, [width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
-  const calendarCache = getCalendarCache();
-  const staleness = calendarCache ? formatStaleness(calendarCache.fetchedAt, now) : "";
-  const emptyStateHint = !loading && !error
+  const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
+  const emptyStateHint = settled && !loading && !error
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
         countryFilter !== "all" ? `country: ${countryFilter}` : null,
@@ -222,14 +243,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     : undefined;
 
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
-    ...(impactFilter !== "all" ? [{ id: "impact", parts: [{ text: `impact: ${impactFilter}`, tone: "value" as const }] }] : []),
-    ...(countryFilter !== "all" ? [{ id: "country", parts: [{ text: `country: ${countryFilter}`, tone: "value" as const }] }] : []),
-    ...(nextEvent && nextCountdown ? [{
-      id: "next",
-      parts: [{ text: `Next: ${nextEvent.event.length > 18 ? nextEvent.event.slice(0, 18).trimEnd() : nextEvent.event} ${nextCountdown}`, tone: "muted" as const }],
-    }] : []),
-    ...(staleness ? [{ id: "stale", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [countryFilter, impactFilter, nextCountdown, nextEvent?.event, staleness]);
+    ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
+    ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
+  ], [stale, staleness]);
   usePaneStatusFooter({
     registrationId: "econ-calendar",
     loading,
@@ -252,16 +268,17 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       };
     }
     if (row.kind === "now") {
-      const label = " ▸ NOW ";
-      const line = "─".repeat(Math.max(0, width - label.length - 2));
+      // A filled band instead of repeated rule characters, so the desktop
+      // webview paints a real background rather than terminal glyphs.
       return {
-        text: `${label}${line}`,
+        text: " NOW ",
         color: colors.warning,
-        attributes: 0,
+        backgroundColor: blendHex(colors.bg, colors.warning, 0.22),
+        attributes: TextAttributes.BOLD,
       };
     }
     return null;
-  }, [separatorBg, width]);
+  }, [separatorBg]);
   const renderCell = useCallback((
     row: DisplayRow,
     column: EconCalendarColumn,
@@ -284,7 +301,9 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         };
       }
       case "country":
-        return { text: countryFlag(ev.country), color: selectedColor };
+        // The ISO code, not a flag emoji: emoji widths do not match a fixed
+        // column and pushed the right-hand columns off the pane.
+        return { text: ev.country, color: selectedColor ?? colors.textMuted };
       case "event":
         return { text: ev.event, color: selectedColor ?? colors.text };
       case "actual":
@@ -298,6 +317,31 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         return { text: ev.prior ?? "—", color: selectedColor ?? colors.textDim };
     }
   }, []);
+
+  const selectedEvent = filtered[selectedIdx];
+  const filterControls = (
+    <Box height={1} flexDirection="row" paddingX={1} gap={2} overflow="hidden">
+      <SegmentedControl
+        options={FILTER_CYCLE.map((value) => ({ value, label: IMPACT_LABELS[value] }))}
+        value={impactFilter}
+        onChange={(value) => selectImpactFilter(value as ImpactFilter)}
+      />
+      <SegmentedControl
+        options={COUNTRY_CYCLE.map((value) => ({ value, label: value === "all" ? "All" : value }))}
+        value={countryFilter}
+        onChange={(value) => selectCountryFilter(value as CountryFilter)}
+      />
+      <Box flexGrow={1} />
+      {nextEvent && nextCountdown && width >= 88 && (
+        <Text fg={colors.textMuted}>
+          {`next ${nextEvent.event.slice(0, 16).trimEnd()} ${nextCountdown}`}
+        </Text>
+      )}
+      {selectedEvent && (
+        <Text fg={colors.textDim}>{dayLabel(selectedEvent.date, today)}</Text>
+      )}
+    </Box>
+  );
 
   const detailContent = detailEvent ? (
     <EconDetailView
@@ -317,7 +361,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onBack={() => setDetailEvent(null)}
       detailContent={detailContent}
       rootWidth={width}
-      rootHeight={height}
+      rootHeight={Math.max(1, height - 1)}
+      rootBefore={filterControls}
       onRootKeyDown={handleRootKeyDown}
       selection={{
         kind: "index",
@@ -338,7 +383,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
-      emptyStateTitle={loading ? "Loading economic events..." : "No events"}
+      emptyStateTitle={loading || !settled ? "Loading economic events..." : "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />

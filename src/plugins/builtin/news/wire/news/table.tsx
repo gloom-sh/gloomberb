@@ -2,18 +2,79 @@ import { useCallback, useEffect, useMemo, type ReactNode } from "react";
 import { TextAttributes } from "../../../../../ui";
 import {
   DataTableStackView,
+  PaneStatusBody,
   TickerBadgeList,
   sortStackItems,
   type DataTableCell,
   type DataTableColumn,
   type StackSortPreference,
 } from "../../../../../components";
+import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../../../components/ui/table-layout";
 import type { MarketNewsItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { formatRelativeTime } from "../../../../../utils/datetime-format";
+import { truncateWithEllipsis } from "../../../../../utils/text-wrap";
+import { formatNewsCategory } from "../categories";
 
-export type NewsColumnId = "rank" | "time" | "source" | "title" | "tickers" | "categories" | "importance";
+export type NewsColumnId =
+  | "rank"
+  | "time"
+  | "source"
+  | "title"
+  | "tickers"
+  | "categories"
+  | "sentiment"
+  | "importance";
+
+const SENTIMENT_ORDER: Record<string, number> = { negative: -1, neutral: 0, positive: 1 };
+
+/**
+ * Ticker badges are laid out by content, so a column that cannot fit them all
+ * bleeds stray characters into the next column. Keep only the badges that fit.
+ */
+function fitTickerSymbols(symbols: string[], width: number): string[] {
+  const fitted: string[] = [];
+  let used = 0;
+  for (const symbol of symbols) {
+    const badgeWidth = symbol.length + 3;
+    if (used + badgeWidth > width) break;
+    used += badgeWidth;
+    fitted.push(symbol);
+  }
+  return fitted;
+}
+
+/**
+ * Body for a table with no rows yet: loading while the query is in flight, the
+ * failure when the sources errored, and the empty state otherwise. Always own
+ * the body rather than falling back to the table's built-in empty state, whose
+ * desktop markup runs the title and the hint together on one line.
+ */
+export function newsTableStatusContent({
+  loading,
+  error,
+  subject,
+  emptyTitle,
+  emptyMessage,
+}: {
+  loading: boolean;
+  error?: string | null;
+  subject: string;
+  emptyTitle: string;
+  emptyMessage?: string;
+}): ReactNode {
+  return (
+    <PaneStatusBody
+      loading={loading}
+      error={error}
+      empty
+      subject={subject}
+      emptyTitle={emptyTitle}
+      emptyMessage={emptyMessage}
+    />
+  );
+}
 
 export type NewsSortPreference = StackSortPreference<NewsColumnId>;
 
@@ -59,6 +120,8 @@ function compareArticle(a: MarketNewsItem, b: MarketNewsItem, columnId: NewsColu
       );
     case "categories":
       return compareText(a.categories.join(" "), b.categories.join(" "));
+    case "sentiment":
+      return (SENTIMENT_ORDER[a.sentiment ?? ""] ?? 0) - (SENTIMENT_ORDER[b.sentiment ?? ""] ?? 0);
   }
 }
 
@@ -83,7 +146,9 @@ function nextSortPreference(current: NewsSortPreference, columnId: NewsColumnId)
   }
   return {
     columnId,
-    direction: columnId === "title" || columnId === "source" || columnId === "categories" ? "asc" : "desc",
+    direction: columnId === "title" || columnId === "source" || columnId === "categories"
+      ? "asc"
+      : "desc",
   };
 }
 
@@ -91,26 +156,35 @@ function buildColumns(width: number, columnIds: NewsColumnId[]): NewsTableColumn
   const fixedWidths: Record<Exclude<NewsColumnId, "title">, number> = {
     rank: 4,
     time: 4,
-    source: 10,
-    tickers: 24,
+    source: 12,
+    tickers: 18,
     categories: 10,
-    importance: 5,
+    sentiment: 4,
+    // Wide enough to keep the sort indicator next to the label.
+    importance: 7,
   };
   const labels: Record<NewsColumnId, string> = {
     rank: "#",
-    time: "Time",
-    source: "Source",
-    title: "Headline",
-    tickers: "Tickers",
-    categories: "Category",
-    importance: "Score",
+    time: "TIME",
+    source: "SOURCE",
+    title: "HEADLINE",
+    tickers: "TICKERS",
+    categories: "CATEGORY",
+    sentiment: "SENT",
+    importance: "SCORE",
   };
 
+  // A column occupies its header-floored width plus the gap, and the table adds
+  // one cell of padding on each side. Anything the fixed columns do not take is
+  // the headline's, so the last column never falls off the right edge.
   const fixedTotal = columnIds
     .filter((id) => id !== "title")
-    .reduce((sum, id) => sum + fixedWidths[id as Exclude<NewsColumnId, "title">] + 1, 0);
+    .reduce((sum, id) => sum + tableColumnWidth({
+      width: fixedWidths[id as Exclude<NewsColumnId, "title">],
+      label: labels[id],
+    }) + TABLE_COLUMN_GAP, 0);
   const tablePadding = 2;
-  const titleWidth = Math.max(16, width - fixedTotal - tablePadding - 1);
+  const titleWidth = Math.max(16, width - fixedTotal - tablePadding - TABLE_COLUMN_GAP);
 
   return columnIds.map((id) => ({
     id,
@@ -194,17 +268,20 @@ export function NewsArticleStackView({
       case "time":
         return { text: formatRelativeTime(item.publishedAt), color: selectedColor ?? colors.textDim };
       case "source":
-        return { text: item.source, color: selectedColor ?? colors.textMuted };
+        return {
+          text: truncateWithEllipsis(item.source, column.width),
+          color: selectedColor ?? colors.textMuted,
+        };
       case "title":
         return {
-          text: titleForArticle?.(item) ?? item.title,
+          text: truncateWithEllipsis(titleForArticle?.(item) ?? item.title, column.width),
           color: selectedColor ?? colors.text,
           attributes: readArticleIds?.has(item.id)
             ? TextAttributes.NONE
             : TextAttributes.BOLD,
         };
       case "tickers": {
-        const tickers = collectNewsDisplayTickers(item.tickers);
+        const tickers = fitTickerSymbols(collectNewsDisplayTickers(item.tickers), column.width);
         return {
           text: tickers.join(" "),
           content: (
@@ -212,13 +289,30 @@ export function NewsArticleStackView({
               symbols={tickers}
               width={column.width}
               fallbackColor={selectedColor ?? colors.textBright}
+              liveQuote={false}
             />
           ),
           color: selectedColor ?? colors.textBright,
         };
       }
       case "categories":
-        return { text: item.categories[0] ?? "—", color: selectedColor ?? colors.textDim };
+        return {
+          text: truncateWithEllipsis(formatNewsCategory(item.categories[0]) || "-", column.width),
+          color: selectedColor ?? colors.textDim,
+        };
+      case "sentiment": {
+        const sentiment = item.sentiment;
+        return {
+          text: sentiment ? sentiment.slice(0, 3) : "-",
+          color: selectedColor ?? (
+            sentiment === "positive"
+              ? colors.positive
+              : sentiment === "negative"
+                ? colors.negative
+                : colors.textDim
+          ),
+        };
+      }
       case "importance":
         return {
           text: String(item.importance),

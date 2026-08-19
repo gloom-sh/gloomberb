@@ -42,6 +42,19 @@ export function serializeAlerts(alerts: AlertRule[]): string {
   return JSON.stringify(alerts);
 }
 
+/**
+ * Non-null when the stored blob is not valid alert JSON. Without this a corrupt
+ * store deserializes to `[]` and the pane claims the user has no alerts.
+ */
+export function readAlertsStoreError(json: string): string | null {
+  if (!json.trim()) return null;
+  try {
+    return Array.isArray(JSON.parse(json)) ? null : "Saved alerts are not a list.";
+  } catch (error) {
+    return error instanceof Error ? error.message : "Saved alerts could not be read.";
+  }
+}
+
 export function deserializeAlerts(json: string): AlertRule[] {
   try {
     const parsed = JSON.parse(json);

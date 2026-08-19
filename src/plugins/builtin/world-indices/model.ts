@@ -7,7 +7,14 @@ export type WorldIndexTableRow =
   | { type: "header"; region: IndexEntry["region"] }
   | { type: "row"; entry: IndexEntry };
 
-export type WorldIndexColumnId = "status" | "symbol" | "name" | "price" | "changePercent";
+export type WorldIndexColumnId =
+  | "status"
+  | "symbol"
+  | "name"
+  | "price"
+  | "change"
+  | "changePercent"
+  | "time";
 
 export interface WorldIndexSortPreference {
   columnId: WorldIndexColumnId | null;
@@ -44,8 +51,12 @@ function getSortValue(
       return entry.name;
     case "price":
       return quote?.price ?? null;
+    case "change":
+      return quote?.change ?? null;
     case "changePercent":
       return quote?.changePercent ?? null;
+    case "time":
+      return quote?.lastUpdated ?? null;
   }
 }
 

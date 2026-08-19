@@ -127,12 +127,19 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     }
 
     setTickerSearchStatus("checking...");
-    const target = await resolveTickerOpenTarget({
-      query: normalizedQuery,
-      tickers: tickersBySymbol,
-      dataProvider: registry.marketData,
-      tickerRepository: registry.tickerRepository,
-    });
+    let target: Awaited<ReturnType<typeof resolveTickerOpenTarget>>;
+    try {
+      target = await resolveTickerOpenTarget({
+        query: normalizedQuery,
+        tickers: tickersBySymbol,
+        dataProvider: registry.marketData,
+        tickerRepository: registry.tickerRepository,
+      });
+    } catch (error) {
+      // Without this the status is stuck on "checking..." and the rejection is unhandled.
+      setTickerSearchStatus(error instanceof Error ? error.message : "lookup failed");
+      return;
+    }
 
     if (!target) {
       setTickerSearchStatus("not found");
@@ -179,7 +186,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     if (requestedSymbol && financials) merged.set(requestedSymbol, financials);
     return merged;
   }, [cachedPortfolioFinancials, financials, livePortfolioFinancials, requestedSymbol]);
-  const accountState = usePortfolioAccountState(activePortfolio, { brokerAccounts, config });
+  const { accountState } = usePortfolioAccountState(activePortfolio, { brokerAccounts, config });
   const trackedCurrencies = useMemo(
     () => buildTrackedCurrencies(portfolioTickers, portfolioFinancials, accountState, config.baseCurrency),
     [accountState, config.baseCurrency, portfolioFinancials, portfolioTickers],
@@ -313,7 +320,8 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         lineChar: "│",
       },
     ];
-    return markers.filter((marker) => Number.isFinite(marker.xRatio) && marker.xRatio >= 0);
+    // Anything past the window edge would be drawn on top of the axis, so drop it.
+    return markers.filter((marker) => Number.isFinite(marker.xRatio) && marker.xRatio >= 0 && marker.xRatio <= 1);
   }, [
     curveMaxFraction,
     result.clipReasons,
@@ -373,15 +381,17 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const commonColumns = width >= 78 ? 3 : 2;
   const commonRows = Math.max(1, Math.ceil(commonFields.length / commonColumns));
   const fieldsRows = Math.max(1, Math.ceil(fields.length / fieldColumns));
-  const commonFieldWidth = Math.max(22, Math.floor((width - 2) / commonColumns));
-  const fieldWidth = Math.max(22, Math.floor((width - 2) / fieldColumns));
-  const contextFieldWidth = Math.max(28, Math.floor((width - 2) / 2));
+  // Floors low enough that a narrow pane shrinks instead of clipping, ceilings so a
+  // wide pane keeps the label, value, and unit together.
+  const commonFieldWidth = Math.max(14, Math.min(30, Math.floor((width - 2) / commonColumns)));
+  const fieldWidth = Math.max(14, Math.min(30, Math.floor((width - 2) / fieldColumns)));
+  const contextFieldWidth = Math.max(16, Math.min(32, Math.floor((width - 2) / 2)));
   const metricsRows = 6;
   const curveDecisionRows = 1;
   const chartHeight = showSensitivity ? 0 : Math.max(7, Math.min(10, height - commonRows - fieldsRows - metricsRows - curveDecisionRows - 8));
   const showChart = !showSensitivity && chartHeight >= 6 && curvePoints.length > 0;
-  const leftMetricsWidth = Math.max(36, Math.floor((width - 2) * 0.52));
-  const rightMetricsWidth = Math.max(28, width - 2 - leftMetricsWidth);
+  const leftMetricsWidth = Math.max(18, Math.floor((width - 2) * 0.52));
+  const rightMetricsWidth = Math.max(16, width - 2 - leftMetricsWidth);
 
   if (!requestedSymbol || !ticker) {
     return (
@@ -526,6 +536,14 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
           </Box>
         ))}
       </Box>
+
+      {bankroll > 0 ? null : (
+        <Box height={1} paddingX={1} overflow="hidden">
+          <Text fg={colors.warning}>
+            No bankroll yet, so every size below reads 0%. Click Bankroll above to set one.
+          </Text>
+        </Box>
+      )}
 
       <KellyResultMetrics
         result={result}

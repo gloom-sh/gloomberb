@@ -99,10 +99,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     setSelectedId(sortedRows[0]?.id ?? null);
   }, [selectedId, sortedRows]);
 
+  // Keyed on the holder set itself: re-sorting or a ticking market cap must not
+  // restart 25 two-request 13F lookups.
   useEffect(() => {
     fundMatchAbortRef.current?.abort();
     setFundMatches(new Map());
-    if (sortedRows.length === 0) {
+    if (rows.length === 0) {
       setFundMatching(false);
       return;
     }
@@ -110,7 +112,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     const controller = new AbortController();
     fundMatchAbortRef.current = controller;
     setFundMatching(true);
-    void loadHolder13FMatches(sortedRows, controller.signal)
+    void loadHolder13FMatches(rows, controller.signal)
       .then((matches) => {
         if (fundMatchAbortRef.current !== controller) return;
         setFundMatches(matches);
@@ -125,7 +127,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         fundMatchAbortRef.current = null;
       }
     };
-  }, [sortedRows]);
+  }, [rows]);
 
   const selectedRow = activeIdx >= 0 ? sortedRows[activeIdx] ?? null : null;
   const selectedFundMatch = selectedRow ? fundMatches.get(selectedRow.id) ?? null : null;
@@ -169,7 +171,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       toggleView();
       return true;
     }
-    if ((event.name === "f" || event.name === "enter" || event.name === "return") && selectedFundMatch) {
+    if ((event.name === "o" || event.name === "enter" || event.name === "return") && selectedFundMatch) {
       event.preventDefault?.();
       event.stopPropagation?.();
       openFundDetail(selectedRow);
@@ -208,7 +210,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       toggleView();
       return;
     }
-    if (isPlainKey(event, "f", "enter", "return") && selectedFundMatch) {
+    if (isPlainKey(event, "o", "enter", "return") && selectedFundMatch) {
       event.preventDefault?.();
       event.stopPropagation?.();
       openFundDetail(selectedRow);
@@ -262,16 +264,19 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       ],
       hints: [
         { id: "view", key: "s", label: "witch", onPress: toggleView },
-        ...(selectedFundMatch ? [{ id: "fund", key: "f", label: "und", onPress: () => openFundDetail(selectedRow) }] : []),
+        // `f` is the filter key in sibling panes, so opening a fund uses `o`.
+        ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
   }, [data?.asOf, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow, toggleView]);
 
-  const emptyTitle = !symbol
-    ? "No ticker selected"
+  // Both views share one status; the treemap must not claim "no chartable
+  // values" while the request is still in flight or the pane has no ticker.
+  const statusTitle = !symbol
+    ? "No ticker selected."
     : loading
       ? "Loading holders..."
-      : error ?? "No holders available";
+      : error ?? (sortedRows.length === 0 ? "No holders available" : null);
   const chartHeight = Math.max(1, height - 1 - (nativePaneChrome ? 1 : 0));
 
   return (
@@ -307,11 +312,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           onHeaderClick={handleHeaderClick}
           getItemKey={(row) => row.id}
           renderCell={renderCell}
-          emptyStateTitle={emptyTitle}
+          emptyStateTitle={statusTitle ?? "No holders available"}
         />
       ) : (
         <HoldersTreemap
           rows={sortedRows}
+          emptyStateTitle={statusTitle ?? undefined}
           width={width}
           height={chartHeight}
           selectedId={selectedId}

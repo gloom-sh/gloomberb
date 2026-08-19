@@ -8,6 +8,9 @@ import {
 
 const EMPTY_STATUS_INFO: PaneFooterSegment[] = [];
 
+// `r` refreshes every pane, so it is global product knowledge and deliberately
+// has no per-pane footer hint. Do not reintroduce one. See PR #589.
+
 function buildPaneStatusInfo({
   loading = false,
   error,

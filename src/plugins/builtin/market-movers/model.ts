@@ -1,6 +1,6 @@
 import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import type { MarketSummaryQuote, ScreenerCategory, ScreenerQuote } from "./screener";
+import { MARKET_SUMMARY_SYMBOLS, type MarketSummaryQuote, type ScreenerCategory, type ScreenerQuote } from "./screener";
 
 export type TabId = "gainers" | "losers" | "actives" | "trending";
 
@@ -39,6 +39,21 @@ export const DEFAULT_SORT_PREFERENCE: MarketMoverSortPreference = {
   columnId: null,
   direction: "asc",
 };
+
+/** The saved list selection, falling back to every list when it is unusable. */
+export function resolveTabs(saved?: readonly string[]): Array<{ id: TabId; label: string }> {
+  const byId = new Map(TABS.map((tab) => [tab.id as string, tab]));
+  const resolved = (saved ?? [])
+    .map((id) => byId.get(id))
+    .filter((tab): tab is { id: TabId; label: string } => !!tab);
+  return resolved.length > 0 ? resolved : [...TABS];
+}
+
+/** The saved index-summary selection, falling back to every index. */
+export function resolveSummarySymbols(saved?: readonly string[]): string[] {
+  const resolved = (saved ?? []).filter((symbol) => MARKET_SUMMARY_SYMBOLS.includes(symbol as never));
+  return resolved.length > 0 ? resolved : [...MARKET_SUMMARY_SYMBOLS];
+}
 
 export const INDEX_SHORT: Record<string, string> = {
   "^GSPC": "SPX",

@@ -1,6 +1,6 @@
 import type { PaneSettingsDef } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import { DEFAULT_FLOW_FILTERS } from "./flow-model";
+import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS } from "./flow-model";
 import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
 
@@ -35,69 +35,28 @@ function hiloSettings(): PaneSettingsDef {
   };
 }
 
+function toSettingOptions(
+  options: readonly { value: string; label: string }[],
+): { value: string; label: string }[] {
+  return options.map(({ value, label }) => ({ value, label }));
+}
+
 function flowSettings(): PaneSettingsDef {
   return {
     title: "Options Flow Settings",
+    // Options come from the pane's own filter chips so the two never drift.
     fields: [
-      {
-        key: "minPremium",
-        label: "Minimum premium",
-        type: "select",
-        options: [
-          { value: "50000", label: "$50K" },
-          { value: "250000", label: "$250K" },
-          { value: "1000000", label: "$1M" },
-        ],
-      },
-      {
-        key: "side",
-        label: "Contract side",
-        type: "select",
-        options: [
-          { value: "both", label: "Calls and puts" },
-          { value: "calls", label: "Calls only" },
-          { value: "puts", label: "Puts only" },
-        ],
-      },
-      {
-        key: "kind",
-        label: "Print kind",
-        type: "select",
-        options: [
-          { value: "all", label: "All prints" },
-          { value: "sweeps", label: "Sweeps only" },
-          { value: "blocks", label: "Blocks only" },
-        ],
-      },
-      {
-        key: "volOi",
-        label: "Volume / open interest floor",
-        type: "select",
-        options: [
-          { value: "off", label: "No floor" },
-          { value: "1", label: "1x and up" },
-          { value: "5", label: "5x and up" },
-        ],
-      },
-      {
-        key: "expiry",
-        label: "Expiry window",
-        type: "select",
-        options: [
-          { value: "all", label: "Any expiry" },
-          { value: "7", label: "7 days or less" },
-          { value: "30", label: "30 days or less" },
-        ],
-      },
+      { key: "minPremium", label: "Minimum premium", type: "select", options: toSettingOptions(FLOW_FILTER_OPTIONS.minPremium) },
+      { key: "side", label: "Contract side", type: "select", options: toSettingOptions(FLOW_FILTER_OPTIONS.side) },
+      { key: "kind", label: "Print kind", type: "select", options: toSettingOptions(FLOW_FILTER_OPTIONS.kind) },
+      { key: "volOi", label: "Volume / open interest floor", type: "select", options: toSettingOptions(FLOW_FILTER_OPTIONS.volOi) },
+      { key: "expiry", label: "Expiry window", type: "select", options: toSettingOptions(FLOW_FILTER_OPTIONS.expiry) },
       {
         key: "universe",
         label: "Universe",
         description: "Watchlist mode filters the same shared feed locally.",
         type: "select",
-        options: [
-          { value: "active", label: "Active names" },
-          { value: "watchlist", label: "My tickers only" },
-        ],
+        options: toSettingOptions(FLOW_FILTER_OPTIONS.universe),
       },
     ],
   };

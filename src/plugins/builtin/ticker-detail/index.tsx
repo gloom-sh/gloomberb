@@ -1,16 +1,15 @@
 import type { PluginModule } from "../plugin-module";
-import type { TickerFinancials } from "../../../types/financials";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { normalizeTickerInput } from "../../../tickers/search";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
-import { FinancialAnalysisPane, FinancialsResearchTab } from "./financials/pane";
+import { FinancialAnalysisPane } from "./financials/pane";
 import { HistoricalPricesPane } from "./data-panes/historical-prices";
 import {
   createProviderSearchPaneTemplate,
   ProviderSearchPane,
 } from "./data-panes/provider-search";
 import { TickerResearchPane } from "./pane";
-import { OverviewResearchTab } from "./overview/pane";
+import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
 import {
   buildQuoteMonitorSettingsDef,
@@ -24,26 +23,11 @@ import {
   withLiveStreamingSetting,
 } from "../shared/live-streaming";
 
-function hasStatementFinancials(financials: TickerFinancials | null | undefined): boolean {
-  return (financials?.annualStatements.length ?? 0) > 0 || (financials?.quarterlyStatements.length ?? 0) > 0;
-}
-
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {
-    ctx.registerTickerResearchTab({
-      id: "overview",
-      name: "Overview",
-      order: 10,
-      component: OverviewResearchTab,
-      isVisible: ({ ticker }) => !!ticker,
-    });
-    ctx.registerTickerResearchTab({
-      id: "financials",
-      name: "Financials",
-      order: 20,
-      component: FinancialsResearchTab,
-      isVisible: ({ financials }) => hasStatementFinancials(financials),
-    });
+    for (const tab of TICKER_RESEARCH_BUILTIN_TABS) {
+      ctx.registerTickerResearchTab(tab);
+    }
   },
 
   panes: [

@@ -1,4 +1,6 @@
 import { ConnectionHealthRegistry } from "../../core/connection-health";
+import type { AppConfig } from "../../types/config";
+import type { DataProvider } from "../../types/data-provider";
 import type {
   GloomPlugin,
   GloomPluginContext,
@@ -7,17 +9,69 @@ import type {
   PluginPersistence,
 } from "../../types/plugin";
 import type { PersistedResourceValue } from "../../types/persistence";
+import type { TickerRepository } from "../../data/ticker-repository";
 import type { MarketContext } from "../types";
 import type { PaneFunctionCatalog } from "./catalog";
 
-export async function createPaneCatalog(context: MarketContext, plugins: GloomPlugin[]): Promise<PaneFunctionCatalog> {
-  const panes = new Map<string, PaneDef>();
-  const paneTemplates = new Map<string, PaneTemplateDef>();
-  const setupPlugins: GloomPlugin[] = [];
+export interface PaneDiscoveryOptions {
+  getConfig: () => AppConfig;
+  marketData?: DataProvider;
+  tickerRepository?: TickerRepository;
+  panes?: Map<string, PaneDef>;
+  paneTemplates?: Map<string, PaneTemplateDef>;
+}
+
+/** Throws only if a plugin actually reaches for a dependency discovery has no answer for. */
+function unavailable<T>(name: string): T {
+  return new Proxy({}, {
+    get() {
+      throw new Error(`${name} is unavailable during pane discovery.`);
+    },
+  }) as T;
+}
+
+/**
+ * Context that collects `setup()`-registered panes and templates without
+ * booting the real plugin runtime or its polling engines. Keep this object
+ * exhaustively typed so additions to GloomPluginContext fail at compile time
+ * instead of crashing `gloomberb catalog` at runtime.
+ */
+export function createPaneDiscoveryContext(options: PaneDiscoveryOptions): GloomPluginContext & {
+  panes: Map<string, PaneDef>;
+  paneTemplates: Map<string, PaneTemplateDef>;
+} {
+  const panes = options.panes ?? new Map<string, PaneDef>();
+  const paneTemplates = options.paneTemplates ?? new Map<string, PaneTemplateDef>();
+  return {
+    ...buildDiscoveryContext({
+      panes,
+      paneTemplates,
+      getConfig: options.getConfig,
+      marketData: options.marketData ?? unavailable<DataProvider>("Market data"),
+      tickerRepository: options.tickerRepository ?? unavailable<TickerRepository>("The ticker repository"),
+      connectionHealth: new ConnectionHealthRegistry(),
+    }),
+    panes,
+    paneTemplates,
+  };
+}
+
+function buildDiscoveryContext({
+  panes,
+  paneTemplates,
+  getConfig,
+  marketData,
+  tickerRepository,
+  connectionHealth,
+}: {
+  panes: Map<string, PaneDef>;
+  paneTemplates: Map<string, PaneTemplateDef>;
+  getConfig: () => AppConfig;
+  marketData: DataProvider;
+  tickerRepository: TickerRepository;
+  connectionHealth: ConnectionHealthRegistry;
+}): GloomPluginContext {
   const fakePersistence = createDiscoveryPluginPersistence();
-  // Collect setup-registered panes without booting the real plugin runtime or polling engines.
-  // Keep this object exhaustively typed so additions to GloomPluginContext fail at
-  // compile time instead of crashing `gloomberb catalog` at runtime.
   const discoveryContext: GloomPluginContext = {
     registerPane: (pane: PaneDef) => panes.set(pane.id, pane),
     registerPaneTemplate: (template: PaneTemplateDef) => paneTemplates.set(template.id, template),
@@ -34,11 +88,11 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     watchNewsQuery: () => () => {},
     getData: () => null,
     getTicker: () => null,
-    getConfig: () => context.config,
+    getConfig,
     getPaneDef: (paneId: string) => panes.get(paneId),
-    marketData: context.dataProvider,
-    connectionHealth: new ConnectionHealthRegistry(),
-    tickerRepository: context.store,
+    marketData,
+    connectionHealth,
+    tickerRepository,
     persistence: fakePersistence,
     log: {
       debug: () => {},
@@ -86,6 +140,16 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     emit: () => {},
     notify: () => {},
   };
+  return discoveryContext;
+}
+
+export async function createPaneCatalog(context: MarketContext, plugins: GloomPlugin[]): Promise<PaneFunctionCatalog> {
+  const setupPlugins: GloomPlugin[] = [];
+  const { panes, paneTemplates, ...discoveryContext } = createPaneDiscoveryContext({
+    getConfig: () => context.config,
+    marketData: context.dataProvider,
+    tickerRepository: context.store,
+  });
 
   for (const plugin of plugins) {
     for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);

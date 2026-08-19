@@ -269,22 +269,28 @@ function dedupeAndSort(records: IPORecord[]): IPORecord[] {
   return [...byTicker.values()].sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
-export async function fetchIpoCalendar(): Promise<IPORecord[]> {
+export interface IpoCalendarFetchResult {
+  records: IPORecord[];
+  /** One entry per endpoint that failed, so a half board is never shown as whole. */
+  errors: string[];
+}
+
+export async function fetchIpoCalendar(): Promise<IpoCalendarFetchResult> {
   const [recentResult, upcomingResult] = await Promise.allSettled([
     fetchRecentIpos(),
     fetchUpcomingIpos(),
   ]);
 
   const records: IPORecord[] = [];
+  const errors: string[] = [];
   if (recentResult.status === "fulfilled") records.push(...recentResult.value);
+  else errors.push(`recent: ${recentResult.reason}`);
   if (upcomingResult.status === "fulfilled") records.push(...upcomingResult.value);
+  else errors.push(`upcoming: ${upcomingResult.reason}`);
 
-  if (records.length === 0) {
-    const errors: string[] = [];
-    if (recentResult.status === "rejected") errors.push(`recent: ${recentResult.reason}`);
-    if (upcomingResult.status === "rejected") errors.push(`upcoming: ${upcomingResult.reason}`);
-    if (errors.length > 0) throw new Error(`IPO data unavailable (${errors.join("; ")})`);
+  if (records.length === 0 && errors.length > 0) {
+    throw new Error(`IPO data unavailable (${errors.join("; ")})`);
   }
 
-  return dedupeAndSort(records);
+  return { records: dedupeAndSort(records), errors };
 }

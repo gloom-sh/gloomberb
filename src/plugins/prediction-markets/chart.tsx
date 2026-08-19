@@ -1,11 +1,10 @@
 import { Box, Text } from "../../ui";
 import { useMemo } from "react";
-import { TextAttributes } from "../../ui";
+import { Tabs } from "../../components";
 import {
   CompositeChart,
   pricePointsToResolvedSeries,
 } from "../../components/chart/composite";
-import type { ChartMouseEvent } from "../../components/chart/core/pointer";
 import { EmptyState } from "../../components/ui/status";
 import { colors } from "../../theme/colors";
 import { formatNumber, formatPercentRaw } from "../../utils/format";
@@ -40,38 +39,27 @@ function toPricePoints(points: PredictionHistoryPoint[]): PricePoint[] {
   });
 }
 
+const RANGE_TABS = RANGES.map((entry) => ({ label: entry, value: entry }));
+
+/** Shared Tabs so the range picker keeps keyboard navigation, not just clicks. */
 function PredictionRangeTabs({
   activeRange,
+  focused,
   onRangeSelect,
 }: {
   activeRange: PredictionHistoryRange;
+  focused: boolean;
   onRangeSelect: (range: PredictionHistoryRange) => void;
 }) {
   return (
-    <Box flexDirection="row" gap={1}>
-      {RANGES.map((entry) => {
-        const active = entry === activeRange;
-        return (
-          <Box
-            key={entry}
-            onMouseDown={(event: ChartMouseEvent) => {
-              event.preventDefault?.();
-              onRangeSelect(entry);
-            }}
-            cursor="pointer"
-            data-gloom-interactive="true"
-            data-gloom-label={`${entry} prediction history`}
-          >
-            <Text
-              fg={active ? colors.textBright : colors.textDim}
-              attributes={active ? TextAttributes.BOLD : 0}
-            >
-              {entry}
-            </Text>
-          </Box>
-        );
-      })}
-    </Box>
+    <Tabs
+      tabs={RANGE_TABS}
+      activeValue={activeRange}
+      onSelect={(value) => onRangeSelect(value as PredictionHistoryRange)}
+      compact
+      variant="bare"
+      focused={focused}
+    />
   );
 }
 
@@ -80,6 +68,7 @@ export function PredictionMarketChart({
   width,
   height,
   loading = false,
+  focused = false,
   range,
   onRangeSelect,
 }: {
@@ -87,6 +76,7 @@ export function PredictionMarketChart({
   width: number;
   height: number;
   loading?: boolean;
+  focused?: boolean;
   range: PredictionHistoryRange;
   onRangeSelect: (range: PredictionHistoryRange) => void;
 }) {
@@ -98,6 +88,7 @@ export function PredictionMarketChart({
         <Box flexDirection="row" height={1}>
           <PredictionRangeTabs
             activeRange={range}
+            focused={focused}
             onRangeSelect={onRangeSelect}
           />
         </Box>
@@ -135,6 +126,7 @@ export function PredictionMarketChart({
       <Box flexDirection="row" height={1}>
         <PredictionRangeTabs
           activeRange={range}
+          focused={focused}
           onRangeSelect={onRangeSelect}
         />
         <Box flexGrow={1} />

@@ -136,7 +136,7 @@ function DebugPane({ focused, width, height }: PaneProps) {
     }
 
     // Clear
-    if (event.name === "x") {
+    if (event.name === "c") {
       clearLogs();
       return;
     }
@@ -225,14 +225,17 @@ function DebugPane({ focused, width, height }: PaneProps) {
       ...(autoScroll ? [{ id: "auto", parts: [{ text: "AUTO", tone: "muted" as const }] }] : []),
     ],
     hints: [
+      // Every label is the mnemonic suffix of its key, so the footer reads
+      // "[l]evel [s]ource [e]xport [x] clear ..." consistently.
       { id: "level", key: "l", label: "evel", onPress: cycleLevelFilter },
       { id: "source", key: "s", label: "ource", onPress: cycleSourceFilter },
       { id: "export", key: "e", label: "xport", onPress: exportLogs },
-      { id: "clear", key: "x", label: "clear", onPress: clearLogs },
+      { id: "clear", key: "c", label: "lear", onPress: clearLogs },
       { id: "auto", key: "a", label: "uto", onPress: () => setAutoScroll((prev) => !prev) },
-      { id: "jump", key: "g/G", label: "jump", onPress: jumpBottom },
+      { id: "jump-top", key: "g", label: "o to top", onPress: jumpTop },
+      { id: "jump-end", key: "G", label: "o to end", onPress: jumpBottom },
     ],
-  }), [autoScroll, clearLogs, cycleLevelFilter, cycleSourceFilter, exportLogs, filterLevel, filterSource, jumpBottom]);
+  }), [autoScroll, clearLogs, cycleLevelFilter, cycleSourceFilter, exportLogs, filterLevel, filterSource, jumpBottom, jumpTop]);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -265,9 +268,11 @@ function DebugPane({ focused, width, height }: PaneProps) {
           const ts = formatTimestamp(entry.timestamp);
           const lvl = LEVEL_LABELS[entry.level];
           const sourceTag = entry.source;
-          const maxMsg = Math.max(0, contentWidth - ts.length - lvl.length - sourceTag.length - 8);
+          // Floor of 1: at maxMsg 0 the old slice(0, -1) kept almost the whole
+          // message and only appended an ellipsis.
+          const maxMsg = Math.max(1, contentWidth - ts.length - lvl.length - sourceTag.length - 8);
           const msg = entry.message.length > maxMsg
-            ? entry.message.slice(0, maxMsg - 1) + "…"
+            ? `${entry.message.slice(0, Math.max(0, maxMsg - 1))}…`
             : entry.message;
 
           return (

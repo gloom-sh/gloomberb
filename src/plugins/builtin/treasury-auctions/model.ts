@@ -1,6 +1,16 @@
 import type { DataTableColumn } from "../../../components";
 import type { SortDirection } from "../../../utils/sort-values";
+import { AUCTION_HISTORY_DAYS } from "./client";
 import type { TreasuryAuction } from "./types";
+
+/** Windows the Fiscal Data query supports without paging past MAX_PAGES. */
+export const AUCTION_HISTORY_WINDOWS = [30, 90, 120, 365] as const;
+
+/** Pane settings arrive as unvalidated strings, so anything unknown falls back. */
+export function auctionHistoryDays(settings: Record<string, unknown> | undefined): number {
+  const value = Number(settings?.historyDays);
+  return (AUCTION_HISTORY_WINDOWS as readonly number[]).includes(value) ? value : AUCTION_HISTORY_DAYS;
+}
 
 export type AuctionColumnId = "date" | "type" | "term" | "rate" | "btc" | "indirect" | "size";
 

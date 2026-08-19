@@ -78,6 +78,14 @@ export function AiScreenerResultsView({
         </Box>
       )}
 
+      {activeTab && promptDirty && !isRunningActiveTab && activeTab.results.length > 0 && (
+        <Box flexDirection="column" paddingX={1} paddingTop={1} height={1}>
+          <Text fg={warningColor}>
+            {t("Prompt or provider changed. These matches are from the previous run.")}
+          </Text>
+        </Box>
+      )}
+
       {activeTab && summaryLines.length > 0 && !activeTab.lastError && (
         <Box flexDirection="column" paddingX={1}>
           {summaryLines.map((line, index) => (

@@ -47,6 +47,25 @@ describe("command bar view model helpers", () => {
     expect(sections.map((section) => section.category)).toEqual(["Tickers", "Config", "Danger", "Debug"]);
   });
 
+  test("drops an offer-only section below real matches even when its category leads", () => {
+    const sections = buildSections([
+      { id: "assist:sign-up", category: "Ask AI", disabled: true, defaultSelectable: false },
+      { id: "holders", category: "Panes" },
+    ]);
+
+    expect(sections.map((section) => section.category)).toEqual(["Panes", "Ask AI"]);
+    expect(sections[0]?.items[0]?.id).toBe("holders");
+  });
+
+  test("keeps an answered AI section leading the list", () => {
+    const sections = buildSections([
+      { id: "assist:candidate:0", category: "Ask AI" },
+      { id: "holders", category: "Panes" },
+    ]);
+
+    expect(sections.map((section) => section.category)).toEqual(["Ask AI", "Panes"]);
+  });
+
   test("keeps non-exact ticker suggestions behind app sections in app-first order", () => {
     const sections = buildSections([
       { id: "pane", category: "Panes" },

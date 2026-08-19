@@ -11,6 +11,7 @@ import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { isPlainKey } from "../../../../../utils/keyboard";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
 import { formatDetailDate } from "../../../../../utils/datetime-format";
+import { formatNewsCategory } from "../categories";
 
 function hasStoryItems(article: MarketNewsItem | null): boolean {
   return (article?.items?.length ?? 0) > 0;
@@ -193,6 +194,10 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
   const { catalog, openTicker } = useInlineTickers(tickerTexts);
   const [hoveredTicker, setHoveredTicker] = useState<string | null>(null);
   const timelineItems = useMemo(() => sortStoryItems(item.items), [item.items]);
+  const categoryLabels = useMemo(
+    () => item.categories.map(formatNewsCategory).filter(Boolean).join(" · "),
+    [item.categories],
+  );
   const lastUpdatedAt = timelineItems[0]?.publishedAt ?? item.publishedAt;
   const lastUpdatedStr = formatDetailDate(storyItemDate(lastUpdatedAt));
 
@@ -239,7 +244,9 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
             </Box>
           )}
           <Box height={1} flexDirection="row">
-            <Text fg={colors.textDim}>Last updated at {lastUpdatedStr}</Text>
+            <Text fg={colors.textDim}>
+              {`${item.source} · last updated at ${lastUpdatedStr} · score ${item.importance}/100`}
+            </Text>
           </Box>
           <TextLines text={item.summary} width={innerW} color={colors.text} nativePaneChrome={nativePaneChrome === true} />
           {tickers.length > 0 && (
@@ -275,12 +282,10 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
           )}
           {item.categories.length > 0 && (
             nativePaneChrome ? (
-              <TextLines text={item.categories.join(" · ")} width={innerW} color={colors.textMuted} nativePaneChrome />
+              <TextLines text={categoryLabels} width={innerW} color={colors.textMuted} nativePaneChrome />
             ) : (
               <Box height={1} flexDirection="row">
-                <Text fg={colors.textMuted}>
-                  {item.categories.join(" · ")}
-                </Text>
+                <Text fg={colors.textMuted}>{categoryLabels}</Text>
               </Box>
             )
           )}

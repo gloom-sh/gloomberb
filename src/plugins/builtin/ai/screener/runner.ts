@@ -98,8 +98,9 @@ export function useAiScreenerRunner({
     }));
 
     let rawOutput = "";
+    let run: AiRunController | null = null;
     try {
-      const run = runAiPrompt({
+      run = runAiPrompt({
         providerId: provider.id,
         prompt,
         modelId: selection.modelId ?? undefined,
@@ -141,10 +142,13 @@ export function useAiScreenerRunner({
         debugOutput: rawOutput.trim() || current.debugOutput,
       }));
     } finally {
-      if (runRef.current) {
+      // Only tear down if this run is still the active one: a newer run may have
+      // replaced it while this one was finishing, and clearing the ref then would
+      // leave the new run uncancellable.
+      if (runRef.current === run) {
         runRef.current = null;
+        setRunState((current) => (current?.tabId === tab.id ? null : current));
       }
-      setRunState((current) => (current?.tabId === tab.id ? null : current));
     }
   }, [dataProvider, dispatch, providers, resolveSelection, tabs, tickers, upsertTab]);
 

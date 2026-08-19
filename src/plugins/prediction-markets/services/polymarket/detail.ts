@@ -241,19 +241,31 @@ async function loadPolymarketBook(
     "book",
     summary.key,
     async () => {
-      const [yesBook, noBook] = await Promise.all([
-        yesTokenId
-          ? fetchJson<PolymarketBookResponse>(
-              `https://clob.polymarket.com/book?token_id=${yesTokenId}`,
-            ).catch(() => null)
-          : Promise.resolve(null),
-        noTokenId
-          ? fetchJson<PolymarketBookResponse>(
-              `https://clob.polymarket.com/book?token_id=${noTokenId}`,
-            ).catch(() => null)
-          : Promise.resolve(null),
+      const loadSide = async (tokenId: string | null | undefined) => {
+        if (!tokenId) return { book: null, error: null as string | null };
+        try {
+          return {
+            book: await fetchJson<PolymarketBookResponse>(
+              `https://clob.polymarket.com/book?token_id=${tokenId}`,
+            ),
+            error: null as string | null,
+          };
+        } catch (error) {
+          // Keep the failure: an empty book and a failed book look identical downstream.
+          return {
+            book: null,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      };
+      const [yesResult, noResult] = await Promise.all([
+        loadSide(yesTokenId),
+        loadSide(noTokenId),
       ]);
+      const yesBook = yesResult.book;
+      const noBook = noResult.book;
       return {
+        error: yesResult.error ?? noResult.error,
         yesBids: (yesBook?.bids ?? [])
           .map(normalizePolymarketBookLevel)
           .filter((level): level is PredictionBookLevel => level != null),

@@ -19,12 +19,8 @@ export type CountryFilter = "all" | "US" | "G7" | "EU";
 export const FILTER_CYCLE: ImpactFilter[] = ["all", "high", "medium", "low"];
 export const COUNTRY_CYCLE: CountryFilter[] = ["all", "US", "G7", "EU"];
 
-const G7_COUNTRIES = new Set(["US", "GB", "EU", "JP", "CA", "DE"]);
-
-const FLAG_MAP: Record<string, string> = {
-  US: "🇺🇸", GB: "🇬🇧", EU: "🇪🇺", JP: "🇯🇵", CA: "🇨🇦",
-  AU: "🇦🇺", CH: "🇨🇭", CN: "🇨🇳", NZ: "🇳🇿", SE: "🇸🇪", "--": "🌐",
-};
+/** The seven members plus the EU, which attends every summit. */
+const G7_COUNTRIES = new Set(["US", "GB", "FR", "DE", "IT", "JP", "CA", "EU"]);
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
@@ -48,7 +44,7 @@ type PersistedEconEvent = Omit<EconEvent, "date"> & { date: string };
 export type EconCalendarCacheEntry = { data: EconEvent[]; fetchedAt: number; stale: boolean };
 
 let econCalendarPersistence: PluginPersistence | null = null;
-let activeFetch: Promise<EconEvent[]> | null = null;
+let activeFetch: Promise<EconCalendarLoadResult> | null = null;
 
 export function attachEconCalendarPersistence(persistence: PluginPersistence): void {
   econCalendarPersistence = persistence;
@@ -59,18 +55,15 @@ export function resetEconCalendarPersistence(): void {
   activeFetch = null;
 }
 
-export function countryFlag(code: string): string {
-  return FLAG_MAP[code] ?? code;
-}
-
+/** Words rather than dots: a three-wide column has no room for a legend. */
 export function impactIndicator(impact: EconImpact): { text: string; color: string } {
   switch (impact) {
     case "high":
-      return { text: "●●●", color: colors.negative };
+      return { text: "HIGH", color: colors.negative };
     case "medium":
-      return { text: "●● ", color: colors.warning };
+      return { text: "MED", color: colors.warning };
     case "low":
-      return { text: "●  ", color: colors.textDim };
+      return { text: "LOW", color: colors.textDim };
   }
 }
 
@@ -91,17 +84,18 @@ export function dayLabel(d: Date, today: Date): string {
   const dateNum = d.getDate();
   const suffix = `${dayName} ${monthName} ${dateNum}`;
 
-  if (dk === todayKey) return `TODAY — ${suffix}`;
-  if (dk === dateKey(tomorrow)) return `TOMORROW — ${suffix}`;
-  if (dk === dateKey(yesterday)) return `YESTERDAY — ${suffix}`;
+  if (dk === todayKey) return `TODAY · ${suffix}`;
+  if (dk === dateKey(tomorrow)) return `TOMORROW · ${suffix}`;
+  if (dk === dateKey(yesterday)) return `YESTERDAY · ${suffix}`;
   return suffix;
 }
 
+/**
+ * Each level selects exactly its own events. "At least this impact" made the
+ * lowest level identical to "all", which read as a broken filter.
+ */
 export function matchesImpact(event: EconEvent, filter: ImpactFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "high") return event.impact === "high";
-  if (filter === "medium") return event.impact === "medium" || event.impact === "high";
-  return true;
+  return filter === "all" || event.impact === filter;
 }
 
 export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean {
@@ -179,22 +173,34 @@ export function getFreshCalendarCache(): EconCalendarCacheEntry | null {
   return cached && !cached.stale ? cached : null;
 }
 
+export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
+  /** Set when the network failed and cached events were served instead. */
+  refreshError?: string;
+}
+
 export async function loadCalendar(
   force = false,
   loader: () => Promise<EconEvent[]> = fetchEconCalendar,
-): Promise<EconEvent[]> {
+): Promise<EconCalendarLoadResult> {
   const cached = getCalendarCache();
-  if (!force && cached && !cached.stale) return cached.data;
+  if (!force && cached && !cached.stale) return cached;
   if (activeFetch) return activeFetch;
 
   const fallback = cached ?? getCalendarCache({ allowExpired: true });
   activeFetch = loader().then((data) => {
     writeCache(data);
     activeFetch = null;
-    return data;
-  }).catch((err) => {
+    return { data, fetchedAt: Date.now(), stale: false };
+  }).catch((err: unknown) => {
     activeFetch = null;
-    if (fallback) return fallback.data;
+    // A failed refresh must not pass old events off as a fresh load.
+    if (fallback) {
+      return {
+        ...fallback,
+        stale: true,
+        refreshError: err instanceof Error ? err.message : String(err),
+      };
+    }
     throw err;
   });
   return activeFetch;

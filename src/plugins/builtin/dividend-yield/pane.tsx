@@ -120,6 +120,8 @@ function renderMetricCell(row: MetricRow, width: number) {
   );
 }
 
+const MIN_METRIC_COLUMN_WIDTH = 18;
+
 function DividendSummary({
   metrics,
   currency,
@@ -132,16 +134,19 @@ function DividendSummary({
   chartPoints: ProjectedChartPoint[];
 }) {
   const metricRows = buildMetricRows(metrics, currency);
-  const colWidth = Math.max(18, Math.floor((width - 2) / 2));
+  // Two 18-cell blocks overflow anything narrower than 38 cells, so collapse.
+  const columnCount = width - 2 >= MIN_METRIC_COLUMN_WIDTH * 2 ? 2 : 1;
+  const colWidth = Math.max(MIN_METRIC_COLUMN_WIDTH, Math.floor((width - 2) / columnCount));
+  const rowCount = Math.ceil(metricRows.length / columnCount);
   const chartHeight = chartPoints.length >= 2 ? 6 : 0;
   const palette = resolveChartPalette(colors, "positive");
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="column" paddingX={1} height={Math.ceil(metricRows.length / 2)}>
-        {Array.from({ length: Math.ceil(metricRows.length / 2) }, (_, i) => {
-          const left = metricRows[i * 2]!;
-          const right = metricRows[i * 2 + 1];
+      <Box flexDirection="column" paddingX={1} height={rowCount}>
+        {Array.from({ length: rowCount }, (_, i) => {
+          const left = metricRows[i * columnCount]!;
+          const right = columnCount > 1 ? metricRows[i * columnCount + 1] : undefined;
           return (
             <Box key={left.label} height={1} flexDirection="row">
               <Box width={colWidth}>{renderMetricCell(left, colWidth)}</Box>
@@ -220,6 +225,11 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
     }
   }, []);
 
+  // Ten years of history must not be refetched on every live price tick, so the
+  // quote is read through a ref instead of being an effect dependency.
+  const quotePriceRef = useRef(quotePrice);
+  quotePriceRef.current = quotePrice;
+
   useEffect(() => {
     if (!symbol) {
       setData(null);
@@ -227,12 +237,12 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
       setLoading(false);
       return;
     }
-    void load(symbol, quotePrice);
-  }, [load, quotePrice, symbol]);
+    void load(symbol, quotePriceRef.current);
+  }, [load, symbol]);
 
   const refresh = useCallback(() => {
-    if (symbol) void load(symbol, quotePrice);
-  }, [load, quotePrice, symbol]);
+    if (symbol) void load(symbol, quotePriceRef.current);
+  }, [load, symbol]);
 
   usePaneFooter("dividend-yield", () => ({
     info: loadingErrorFooterInfo(loading, error),
@@ -257,7 +267,7 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
   }, [refresh]);
 
   const emptyTitle = !symbol
-    ? "No ticker selected"
+    ? "No ticker selected."
     : loading
       ? "Loading dividends..."
       : error ?? "No dividend history";

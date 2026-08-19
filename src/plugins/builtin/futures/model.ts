@@ -6,7 +6,16 @@ export type FuturesTableRow =
   | { type: "header"; sector: FuturesSector }
   | { type: "row"; contract: FuturesContract };
 
-export type FuturesColumnId = "status" | "code" | "name" | "price" | "change" | "changePercent";
+export type FuturesColumnId =
+  | "status"
+  | "code"
+  | "name"
+  | "price"
+  | "change"
+  | "changePercent"
+  | "volume"
+  | "prevClose"
+  | "time";
 
 export interface FuturesSortPreference {
   columnId: FuturesColumnId | null;
@@ -51,6 +60,12 @@ function getSortValue(
       return quote?.change ?? null;
     case "changePercent":
       return quote?.changePercent ?? null;
+    case "volume":
+      return quote?.volume ?? null;
+    case "prevClose":
+      return quote?.previousClose ?? null;
+    case "time":
+      return quote?.lastUpdated ?? null;
   }
 }
 

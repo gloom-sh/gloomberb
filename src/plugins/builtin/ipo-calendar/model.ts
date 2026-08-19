@@ -5,6 +5,7 @@ import type { IPORecord, IPOStatus } from "./types";
 
 type IPOColumnId =
   | "ticker"
+  | "company"
   | "date"
   | "status"
   | "exchange"
@@ -62,7 +63,7 @@ export function formatShares(value: number | null): string {
 
 export function formatPrice(record: IPORecord): string {
   if (record.pricedPrice != null) return `$${record.pricedPrice.toFixed(2)}`;
-  if (record.priceRange != null) return `$${record.priceRange[0].toFixed(2)}–$${record.priceRange[1].toFixed(2)}`;
+  if (record.priceRange != null) return `$${record.priceRange[0].toFixed(2)}-$${record.priceRange[1].toFixed(2)}`;
   return "—";
 }
 
@@ -76,14 +77,20 @@ export function stockAnalysisUrl(ticker: string): string {
   return `https://stockanalysis.com/stocks/${ticker.toLowerCase()}/`;
 }
 
-export function buildColumns(_width: number): IPOColumn[] {
+/** "$100.00-$120.00" is the widest price a row can hold; anything narrower clips a real number. */
+const PRICE_WIDTH = 15;
+
+export function buildColumns(width: number): IPOColumn[] {
+  const fixed = 7 + 11 + 9 + 8 + 8 + PRICE_WIDTH + 7 + 8;
+  const companyWidth = Math.max(10, width - fixed - 11);
   return [
     { id: "ticker", label: "TICKER", width: 7, align: "left" },
+    { id: "company", label: "COMPANY", width: companyWidth, align: "left" },
     { id: "date", label: "DATE", width: 11, align: "left" },
     { id: "status", label: "STATUS", width: 9, align: "left" },
     { id: "exchange", label: "EXCH", width: 8, align: "left" },
     { id: "offer", label: "OFFER", width: 8, align: "right" },
-    { id: "price", label: "PRICE", width: 12, align: "right" },
+    { id: "price", label: "PRICE", width: PRICE_WIDTH, align: "right" },
     { id: "shares", label: "SHARES", width: 7, align: "right" },
     { id: "return", label: "RETURN", width: 8, align: "right" },
   ];
@@ -93,6 +100,8 @@ function getSortValue(columnId: IPOColumnId, row: IPORecord): string | number | 
   switch (columnId) {
     case "ticker":
       return row.ticker;
+    case "company":
+      return row.companyName;
     case "date":
       return row.date.getTime();
     case "status":

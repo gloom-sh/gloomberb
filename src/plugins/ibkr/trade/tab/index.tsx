@@ -195,16 +195,12 @@ export function TradeTab({ focused, width, onCapture }: TickerResearchTabProps) 
 
   useTradeTabFooter({
     actions,
-    interactive,
-    nextStep,
+    canEnterOrder: hasProfile && hasAccount,
     showLimit,
     showStop,
-    statusText,
-    statusTone,
     symbol,
     ticketState,
     ticker,
-    workflowTone,
   });
 
   if (!ticker || !symbol) {

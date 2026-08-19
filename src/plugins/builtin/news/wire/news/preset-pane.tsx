@@ -3,10 +3,10 @@ import type { NewsQuery } from "../../../../../news/types";
 import { useLoadNewsStory, useNewsArticles } from "../../../../../news/hooks";
 import type { PaneProps } from "../../../../../types/plugin";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../../runtime";
-import { Spinner } from "../../../../../components";
 import { NewsDetailView, useNewsArticleDetail } from "./detail-view";
 import {
   NewsArticleStackView,
+  newsTableStatusContent,
   type NewsColumnId,
   type NewsSortPreference,
 } from "./table";
@@ -36,7 +36,11 @@ export function NewsPresetPane({
 }) {
   const newsState = useNewsArticles(query);
   const articles = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles);
-  const loading = newsState.phase === "loading" || (newsState.phase === "refreshing" && articles.length === 0);
+  // The aggregator opens a query in "loading", so the first paint is a loading
+  // body rather than a definitive empty wire.
+  const loading = newsState.phase === "loading"
+    || (newsState.phase === "refreshing" && articles.length === 0);
+  const error = newsState.error;
   const [selectedArticleId, setSelectedArticleId] = useDebouncedPluginPaneState<string | null>(
     `${paneKey}:selectedArticleId`,
     null,
@@ -56,6 +60,8 @@ export function NewsPresetPane({
     registrationId: `news-wire:${paneKey}`,
     focused,
     article: detailArticle,
+    loading: loading && articles.length > 0,
+    error,
   });
 
   const detailContent = detailArticle ? (
@@ -68,10 +74,6 @@ export function NewsPresetPane({
   ) : (
     <Box flexGrow={1} />
   );
-
-  if (loading && articles.length === 0) {
-    return <Spinner label={`Loading ${title.toLowerCase()}...`} />;
-  }
 
   return (
     <NewsArticleStackView
@@ -91,6 +93,13 @@ export function NewsPresetPane({
       detailContent={detailContent}
       detailTitle={detailArticle?.title}
       columns={columns}
+      emptyContent={newsTableStatusContent({
+        loading,
+        error,
+        subject: title,
+        emptyTitle: emptyStateTitle,
+        emptyMessage: emptyStateHint,
+      })}
       emptyStateTitle={emptyStateTitle}
       emptyStateHint={emptyStateHint}
     />

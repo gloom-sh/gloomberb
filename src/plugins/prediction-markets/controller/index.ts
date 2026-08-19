@@ -22,7 +22,6 @@ import type {
   PredictionDetailTab,
   PredictionHistoryRange,
   PredictionListRow,
-  PredictionOrderPreviewIntent,
   PredictionSortPreference,
   PredictionVenueScope,
 } from "../types";
@@ -92,12 +91,6 @@ export function usePredictionMarketsController({
       "sortPreference",
       defaultSortPreference,
     );
-  const [, setOrderPreviewIntent] =
-    usePluginPaneState<PredictionOrderPreviewIntent | null>(
-      "orderPreviewIntent",
-      null,
-    );
-
   const [detailOpen, setDetailOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [initialParamsApplied, setInitialParamsApplied] = useState(false);
@@ -294,13 +287,6 @@ export function usePredictionMarketsController({
     [setSortPreference],
   );
 
-  const previewOrder = useCallback(
-    (intent: PredictionOrderPreviewIntent) => {
-      setOrderPreviewIntent(intent);
-    },
-    [setOrderPreviewIntent],
-  );
-
   usePredictionControllerKeyboard({
     categoryId,
     detailOpen,
@@ -361,7 +347,6 @@ export function usePredictionMarketsController({
       focusSearch,
       handleSortHeaderClick,
       openSelectedRow,
-      previewOrder,
       selectBrowseTab,
       selectCategory,
       selectMarket,

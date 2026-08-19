@@ -55,8 +55,12 @@ function registerResolverToken(
 
 export function buildPaneFunctionLookup(registry: PaneFunctionCatalog): Map<string, PaneTemplateDef | PaneDef> {
   const lookup = new Map<string, PaneTemplateDef | PaneDef>();
+  // Shortcut prefixes first: "AI" must open the pane that owns the shortcut, not
+  // one that happens to list "ai" as a keyword.
   for (const template of registry.paneTemplates.values()) {
     registerResolverToken(lookup, template.shortcut?.prefix, template);
+  }
+  for (const template of registry.paneTemplates.values()) {
     registerResolverToken(lookup, template.id, template);
     registerResolverToken(lookup, template.label, template);
     for (const keyword of template.keywords ?? []) registerResolverToken(lookup, keyword, template);

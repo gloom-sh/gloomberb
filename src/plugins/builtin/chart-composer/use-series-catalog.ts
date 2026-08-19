@@ -18,6 +18,12 @@ export interface SeriesCatalogSearchResult {
   suggestions: SeriesCatalogSuggestion[];
   instruments: SeriesCatalogInstrument[];
   loading: boolean;
+  /** Set when a lookup failed, so an outage is never reported as zero matches. */
+  error: string | null;
+}
+
+function searchFailureMessage(error: unknown): string {
+  return error instanceof Error && error.message.trim() ? error.message : "Series search failed.";
 }
 
 /** Shared smart-series search used by both inline quick-add and the full editor. */
@@ -36,32 +42,41 @@ export function useSeriesCatalogSuggestions({
     query: string;
     suggestions: SeriesCatalogSuggestion[];
     loading: boolean;
-  }>({ query: "", suggestions: [], loading: false });
+    error: string | null;
+  }>({ query: "", suggestions: [], loading: false, error: null });
   const [search, setSearch] = useState<{
     query: string;
     instruments: SeriesCatalogInstrument[];
     loading: boolean;
-  }>({ query: "", instruments: [], loading: false });
+    error: string | null;
+  }>({ query: "", instruments: [], loading: false, error: null });
 
   useEffect(() => {
     const normalizedQuery = query.trim();
     const registry = getSharedRegistry();
     if (!enabled || !normalizedQuery || !registry) {
-      setProviderSearch({ query: "", suggestions: [], loading: false });
+      setProviderSearch({ query: "", suggestions: [], loading: false, error: null });
       return;
     }
     let cancelled = false;
     const controller = new AbortController();
-    setProviderSearch({ query: normalizedQuery, suggestions: [], loading: true });
+    setProviderSearch({ query: normalizedQuery, suggestions: [], loading: true, error: null });
     const timer = setTimeout(() => {
       void searchChartSeriesCapabilities(registry, normalizedQuery, 8, controller.signal).then((items) => {
         if (!cancelled) setProviderSearch({
           query: normalizedQuery,
           suggestions: buildCapabilitySeriesSuggestions(items),
           loading: false,
+          error: null,
         });
-      }).catch(() => {
-        if (!cancelled) setProviderSearch({ query: normalizedQuery, suggestions: [], loading: false });
+      }).catch((error: unknown) => {
+        if (controller.signal.aborted || cancelled) return;
+        setProviderSearch({
+          query: normalizedQuery,
+          suggestions: [],
+          loading: false,
+          error: searchFailureMessage(error),
+        });
       });
     }, 250);
     return () => {
@@ -74,18 +89,18 @@ export function useSeriesCatalogSuggestions({
   useEffect(() => {
     const instrumentQuery = analysis.instrumentQuery.trim();
     if (!enabled || !instrumentQuery || analysis.directInstrument) {
-      setSearch({ query: "", instruments: [], loading: false });
+      setSearch({ query: "", instruments: [], loading: false, error: null });
       return;
     }
 
     const registry = getSharedRegistry();
     if (!registry) {
-      setSearch({ query: instrumentQuery, instruments: [], loading: false });
+      setSearch({ query: instrumentQuery, instruments: [], loading: false, error: null });
       return;
     }
 
     let cancelled = false;
-    setSearch({ query: instrumentQuery, instruments: [], loading: true });
+    setSearch({ query: instrumentQuery, instruments: [], loading: true, error: null });
     const timer = setTimeout(() => {
       void searchTickerCandidates({
         query: instrumentQuery,
@@ -110,9 +125,17 @@ export function useSeriesCatalogSuggestions({
               : {}),
           })),
           loading: false,
+          error: null,
         });
-      }).catch(() => {
-        if (!cancelled) setSearch({ query: instrumentQuery, instruments: [], loading: false });
+      }).catch((error: unknown) => {
+        if (!cancelled) {
+          setSearch({
+            query: instrumentQuery,
+            instruments: [],
+            loading: false,
+            error: searchFailureMessage(error),
+          });
+        }
       });
     }, 80);
 
@@ -136,5 +159,7 @@ export function useSeriesCatalogSuggestions({
     instruments,
     loading: (search.loading && search.query === analysis.instrumentQuery)
       || (providerSearch.loading && providerSearch.query === query.trim()),
+    error: (search.query === analysis.instrumentQuery ? search.error : null)
+      ?? (providerSearch.query === query.trim() ? providerSearch.error : null),
   };
 }

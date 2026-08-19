@@ -68,8 +68,23 @@ describe("fear-greed cache", () => {
     });
 
     expect(calls).toBe(0);
-    expect(cached.overall.score).toBe(64);
-    expect(cached.overall.updatedAt).toBeInstanceOf(Date);
-    expect(cached.overall.history[0]!.date).toBeInstanceOf(Date);
+    expect(cached.stale).toBe(false);
+    expect(cached.data.overall.score).toBe(64);
+    expect(cached.data.overall.updatedAt).toBeInstanceOf(Date);
+    expect(cached.data.overall.history[0]!.date).toBeInstanceOf(Date);
+  });
+
+  test("reports a failed refresh as stale instead of a fresh load", async () => {
+    const persistence = new MemoryPluginPersistence();
+    attachFearGreedPersistence(persistence);
+    await loadFearGreed(false, async () => makeFearGreedData(64));
+
+    const result = await loadFearGreed(true, async () => {
+      throw new Error("CNN unreachable");
+    });
+
+    expect(result.data.overall.score).toBe(64);
+    expect(result.stale).toBe(true);
+    expect(result.refreshError).toContain("CNN unreachable");
   });
 });

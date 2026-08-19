@@ -190,7 +190,19 @@ export class ChatController {
     return this.storage.ensureChannelState(channelId);
   }
 
+  /** Single-flight: every open chat pane calls this on mount. */
   async refreshSession(): Promise<void> {
+    if (this.sessionRefreshPromise) return this.sessionRefreshPromise;
+    const request = this.runSessionRefresh().finally(() => {
+      this.sessionRefreshPromise = null;
+    });
+    this.sessionRefreshPromise = request;
+    return request;
+  }
+
+  private sessionRefreshPromise: Promise<void> | null = null;
+
+  private async runSessionRefresh(): Promise<void> {
     return refreshChatControllerSession({
       applySignedOut: () => this.applySignedOutSession(),
       channelStates: this.storage.channelStates,

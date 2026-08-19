@@ -51,6 +51,18 @@ function makeCachedSource(id: string, cachedItems: MarketNewsItem[], fetchItems:
   });
 }
 
+function makeFailingSource(id: string): NewsCapability {
+  return newsProvider({
+    id,
+    name: id,
+    provider: {
+      fetchNews: mock(async () => {
+        throw new Error("boom");
+      }),
+    },
+  });
+}
+
 function makeStorySource(id: string, items: MarketNewsItem[], story: MarketNewsItem): NewsCapability {
   return newsProvider({
     id,
@@ -71,6 +83,33 @@ describe("NewsService", () => {
 
   afterEach(() => {
     agg.stop();
+  });
+
+  it("reports an error instead of an empty feed when every source fails", async () => {
+    agg.register(makeFailingSource("broken"));
+    const state = await agg.load({ feed: "latest" });
+
+    expect(state.phase).toBe("error");
+    expect(state.articles).toHaveLength(0);
+  });
+
+  it("stays ready but reports the gap when only some sources fail", async () => {
+    agg.register(makeSource("ok", [makeItem({ url: "https://partial.example.com/1" })]));
+    agg.register(makeFailingSource("broken"));
+    const state = await agg.load({ feed: "latest" });
+
+    expect(state.phase).toBe("ready");
+    expect(state.articles).toHaveLength(1);
+    expect(state.error).toContain("unavailable");
+  });
+
+  it("watchQuery shows loading while the initial fetch is in flight", () => {
+    agg.register(makeSource("watch-loading", [makeItem({ url: "https://loading.example.com/1" })]));
+    const phases: string[] = [];
+    const dispose = agg.watchQuery({ feed: "latest" }, (state) => phases.push(state.phase));
+
+    expect(phases[0]).toBe("loading");
+    dispose();
   });
 
   it("deduplicates by URL, keeping higher importance", async () => {

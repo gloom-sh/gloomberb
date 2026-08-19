@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text } from "../../../ui";
-import { usePaneTicker } from "../../../state/app/context";
+import { usePaneSettingValue, usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
 import { useOptionsQuery, useResolvedEntryValue } from "../../../market-data/hooks";
 import {
   DataTableView,
+  EmptyState,
   Spinner,
   Tabs,
   type DataTableKeyEvent,
@@ -25,9 +26,9 @@ import {
 import type { OptionColumn, OptionTableRow, OptionsViewProps } from "./types";
 import {
   buildOptionQuoteTargets,
-  OPTIONS_CHAIN_REFRESH_INTERVAL_MS,
   overlayOptionRowQuotes,
   resolveOptionQuoteCoverage,
+  resolveChainRefreshIntervalMs,
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
@@ -63,6 +64,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       },
     }
     : null;
+  const [chainRefreshMinutes] = usePaneSettingValue<string>("chainRefreshMinutes", "");
   const initialChainEntry = useOptionsQuery(baseRequest);
   const initialChain = useResolvedEntryValue(initialChainEntry);
   const selectedExpiration = initialChain?.expirationDates[expIdx];
@@ -71,10 +73,17 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     baseRequest && selectedExpiration != null
       ? { ...baseRequest, expirationDate: selectedExpiration }
       : null,
-    { refreshIntervalMs: OPTIONS_CHAIN_REFRESH_INTERVAL_MS },
+    { refreshIntervalMs: resolveChainRefreshIntervalMs(chainRefreshMinutes) },
   );
   const expirationChain = useResolvedEntryValue(expirationChainEntry);
+  // The expiration strip is expiry-independent, but strikes must never come from
+  // a different expiration than the selected one: the initial chain only covers
+  // whichever expiry the provider defaulted to.
   const chain = expirationChain ?? initialChain;
+  const initialChainExpiration = initialChain?.calls[0]?.expiration ?? initialChain?.puts[0]?.expiration ?? null;
+  const strikeChain = expirationChain
+    ?? (selectedExpiration == null || initialChainExpiration === selectedExpiration ? initialChain : null);
+  const strikesLoading = strikeChain === null;
   const expirationCount = chain?.expirationDates.length ?? 0;
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
     || (expirationChainEntry?.phase === "loading" || expirationChainEntry?.phase === "refreshing");
@@ -129,14 +138,14 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     userSelectedStrikeRef.current = false;
   }, [expIdx]);
 
-  const strikes = useMemo(() => chain ? buildStrikeList(chain) : [], [chain]);
+  const strikes = useMemo(() => strikeChain ? buildStrikeList(strikeChain) : [], [strikeChain]);
   const callsByStrike = useMemo(
-    () => new Map(chain?.calls.map((c) => [c.strike, c]) ?? []),
-    [chain],
+    () => new Map(strikeChain?.calls.map((c) => [c.strike, c]) ?? []),
+    [strikeChain],
   );
   const putsByStrike = useMemo(
-    () => new Map(chain?.puts.map((p) => [p.strike, p]) ?? []),
-    [chain],
+    () => new Map(strikeChain?.puts.map((p) => [p.strike, p]) ?? []),
+    [strikeChain],
   );
   const snapshotRows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => ({
     strike,
@@ -301,15 +310,23 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     return false;
   }, [enterInteractive, exitInteractive, interactive, selectAdjacentExpiration, strikes.length]);
 
-  if (!ticker) return <Text fg={colors.textDim}>Select a ticker to view options.</Text>;
+  if (!ticker) {
+    return <EmptyState title="No ticker selected." message="Select a ticker to view options." />;
+  }
   if (loading && !chain) return <Spinner label="Loading options chain..." />;
-  if (error) return <Text fg={colors.textDim}>{error}</Text>;
-  if (!chain || chain.expirationDates.length === 0) return <Text fg={colors.textDim}>No options available for {effectiveTicker}.</Text>;
+  if (error) return <EmptyState title="Options chain unavailable." message={error} />;
+  if (!chain || chain.expirationDates.length === 0) {
+    return <EmptyState title={`No options available for ${effectiveTicker}.`} />;
+  }
 
   const posShares = isOpt && parsed
     ? ticker.metadata.positions.reduce((sum, p) => sum + p.shares, 0)
     : 0;
-  const expirationTabsWidth = Math.max(width - 7 - (loading ? 2 : 0), 8);
+  const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
+  const tableHeight = Math.max(1, height - 1 - (isOpt && parsed ? 1 : 0));
+  // The strip scrolls; without a marker a clipped last date reads as the last expiry.
+  const expirationStripOverflows = chain.expirationDates
+    .reduce((total, ts) => total + formatExpDate(ts).length + 2, 0) > expirationTabsWidth;
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
@@ -333,6 +350,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
             scrollId="options-expiration-tabs-scroll"
           />
         </Box>
+        {expirationStripOverflows && <Text fg={colors.textDim}>{"\u203a"}</Text>}
         {loading && <Spinner />}
       </Box>
 
@@ -375,10 +393,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         onVisibleRangeChange={handleVisibleStrikeRangeChange}
         getItemKey={(row) => String(row.strike)}
         renderCell={renderOptionCell}
-        emptyStateTitle="No strikes available."
+        emptyStateTitle={strikesLoading ? "Loading strikes..." : "No strikes available."}
+        rootWidth={Math.max(1, width - 2)}
+        rootHeight={tableHeight}
         columnGap={0}
         horizontalPadding={0}
-        fillAvailableWidth={false}
         scrollToIndex={strikeIdx}
         scrollToIndexAlign={scrollToIndexAlign}
         scrollToIndexVersion={autoScrollVersion}

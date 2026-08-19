@@ -4,13 +4,14 @@ import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
-import { padTo } from "../../../../utils/format";
 import { measurePerf } from "../../../../utils/perf-marks";
 import { useDoubleClickActivation } from "../../../use-double-click-activation";
 import { useScrollBoxScrollActivity } from "../../../table-view-shared";
 import { EmptyState } from "../../status";
 import {
   expandTableColumns,
+  fitTableCellText,
+  fitTableHeaderText,
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
   tableContentWidthProps,
@@ -30,6 +31,21 @@ import {
 interface DataTableRowPointerTarget<T> {
   item: T;
   index: number;
+}
+
+type ManagedScrollBar = {
+  visible: boolean;
+  resetVisibilityControl?: () => void;
+};
+
+function setScrollBarVisible(scrollBar: unknown, visible: boolean): void {
+  const bar = scrollBar as ManagedScrollBar | undefined;
+  if (!bar) return;
+  if (visible && bar.resetVisibilityControl) {
+    bar.resetVisibilityControl();
+    return;
+  }
+  bar.visible = visible;
 }
 
 export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>({
@@ -243,11 +259,13 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     }
     const body = scrollRef.current;
     if (body) {
-      if (body.horizontalScrollBar) {
-        body.horizontalScrollBar.visible = horizontalScrollbarVisible;
-      }
-      if (body.verticalScrollBar && body.viewport) {
-        body.verticalScrollBar.visible = items.length > body.viewport.height;
+      // Forcing a bar visible latches manual visibility, and the scroll box then
+      // paints a full-length solid thumb whenever there is nothing to scroll.
+      // Only the hidden side is forced; otherwise the scroll box decides from
+      // its own content size.
+      setScrollBarVisible(body.horizontalScrollBar, horizontalScrollbarVisible);
+      if (body.viewport) {
+        setScrollBarVisible(body.verticalScrollBar, items.length > body.viewport.height);
       }
       if (!horizontalScrollbarVisible) {
         body.scrollLeft = 0;
@@ -316,17 +334,18 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           paddingX={horizontalPadding}
           backgroundColor={colors.panel}
         >
-          {displayColumns.map((column) => {
+          {displayColumns.map((column, columnIndex) => {
             const isSorted = sortColumnId === column.id;
             const indicator = isSorted
               ? sortDirection === "asc"
                 ? " ▲"
                 : " ▼"
               : "";
-            const labelText = padTo(
+            const labelText = fitTableHeaderText(
               column.label + indicator,
               column.width,
               column.align,
+              columnIndex < displayColumns.length - 1,
             );
             return (
               <Box
@@ -484,7 +503,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                                 (selected ? colors.selectedText : colors.text)
                               }
                             >
-                              {padTo(cell.text, column.width, column.align)}
+                              {fitTableCellText(cell.text, column.width, column.align)}
                             </Text>
                           )}
                         </Box>

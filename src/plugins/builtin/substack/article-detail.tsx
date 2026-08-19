@@ -5,6 +5,7 @@ import { RemoteImage } from "../../../components/ui";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
 import { useInlineTickers } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
+import { formatReadTime, formatWordCount } from "./table";
 import type {
   SubstackArticleDetail,
   SubstackArticleSummary,
@@ -253,7 +254,10 @@ function ArticleBlockView({
         </Box>
       );
     case "divider":
-      return <Text fg={colors.border}>{"-".repeat(Math.max(1, Math.min(lineWidth, 96)))}</Text>;
+      // A real filled rule in both renderers instead of a row of hyphens.
+      return (
+        <Box height={1} width={Math.max(1, Math.min(lineWidth, 96))} backgroundColor={colors.border} />
+      );
     case "paragraph":
     default:
       return (
@@ -361,6 +365,16 @@ export const ArticleDetail = memo(function ArticleDetail({
   return (
     <ScrollBox ref={scrollRef} scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth} gap={1}>
+        {/* The stack title already names the article, so the body opens on its metadata. */}
+        <Box height={1}>
+          <Text fg={colors.textDim}>
+            {[
+              article.publicationName,
+              formatReadTime(resolved?.readMinutes ?? article.readMinutes),
+              formatWordCount(resolved?.wordCount ?? article.wordCount),
+            ].filter(Boolean).join("  ·  ")}
+          </Text>
+        </Box>
         {loading && !resolved ? <Spinner label="Loading article..." /> : null}
         {error ? <Text fg={colors.negative}>{error}</Text> : null}
         <ArticleRichContent

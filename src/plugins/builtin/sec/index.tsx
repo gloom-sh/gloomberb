@@ -1,4 +1,3 @@
-import { Text } from "../../../ui";
 import { useEffect, useMemo, useState } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
@@ -6,8 +5,7 @@ import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState } from "../../runtime";
 import { usePaneTicker } from "../../../state/app/context";
-import { colors } from "../../../theme/colors";
-import { FeedDataTableStackView, Spinner, type FeedDataTableItem } from "../../../components";
+import { EmptyState, FeedDataTableStackView, Spinner, type FeedDataTableItem } from "../../../components";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { formatCompact, formatCurrency } from "../../../utils/format";
@@ -270,11 +268,14 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     || documentsEntry?.phase === "refreshing"
   );
 
+  // Only the filing in view needs its content; queueing every ownership form in
+  // the list fires dozens of SEC requests the user never looks at.
+  const selectedFiling = filings[selectedIdx];
   const contentTargets = useMemo(() => [
     ...(openFiling ? [openFiling] : []),
     ...buildInlineFilingContentTargets(openFiling, openDocuments),
-    ...filings.filter((filing) => OWNERSHIP_FORMS.has(filing.form.trim())),
-  ], [filings, openDocuments, openFiling]);
+    ...(selectedFiling && OWNERSHIP_FORMS.has(selectedFiling.form.trim()) ? [selectedFiling] : []),
+  ], [openDocuments, openFiling, selectedFiling]);
   const { contentCache } = useSecFilingContentCache({
     scopeKey: `${ticker?.metadata.ticker ?? "none"}:${ticker?.metadata.exchange ?? ""}:${eligibleTicker}`,
     targets: contentTargets,
@@ -298,10 +299,12 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     showOpenHint: !error && !!openFiling?.filingUrl,
   });
 
-  if (!ticker) return <Text fg={colors.textDim}>Select a ticker to view SEC filings.</Text>;
+  if (!ticker) {
+    return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
+  }
   if (!eligibleTicker) return renderFilingNotice("SEC filings are only shown for US equities.", width);
   if (loading && filings.length === 0) return <Spinner label="Loading SEC filings..." />;
-  if (error) return renderFilingNotice(`Error: ${error}`, width);
+  if (error) return <EmptyState title="SEC filings unavailable." message={error} />;
   if (filings.length === 0) return renderFilingNotice(`No recent SEC filings for ${ticker.metadata.ticker}.`, width);
 
   return (

@@ -4,7 +4,7 @@ import { formatTickerListInput, MAX_TICKER_LIST_SIZE, parseTickerListInput } fro
 
 export const MAX_CORRELATION_TICKERS = MAX_TICKER_LIST_SIZE;
 const DEFAULT_CORRELATION_RANGE: CorrelationRangePreset = "1Y";
-const CORRELATION_RANGE_OPTIONS = ["1M", "3M", "6M", "1Y", "5Y"] as const;
+export const CORRELATION_RANGE_OPTIONS = ["1M", "3M", "6M", "1Y", "5Y"] as const;
 export const DEFAULT_CORRELATION_SYMBOLS = ["AAPL", "MSFT", "NVDA", "AMD"];
 
 export type CorrelationRangePreset = Extract<TimeRange, typeof CORRELATION_RANGE_OPTIONS[number]>;

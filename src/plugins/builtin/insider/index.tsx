@@ -1,4 +1,3 @@
-import { Text } from "../../../ui";
 import { useCallback, useMemo, useState } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingItem } from "../../../types/data-provider";
@@ -8,8 +7,7 @@ import {
 } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
-import { colors } from "../../../theme/colors";
-import { FeedDataTableStackView, Spinner, useExternalLinkFooter, type FeedDataTableItem } from "../../../components";
+import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, type FeedDataTableItem } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { formatCompact, formatCurrency } from "../../../utils/format";
@@ -26,6 +24,10 @@ import {
 import { useSecFilingContentCache } from "../sec/filing-content";
 
 const FORM4_LIMIT = 20;
+// SEC returns one recent-submissions payload per company, so scanning deep for
+// Form 4s costs no extra request; filtering the newest 20 filings of any form
+// hides insider activity behind a burst of 8-Ks.
+const SEC_FILING_SCAN_LIMIT = 300;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
 interface ParsedFiling {
@@ -34,7 +36,9 @@ interface ParsedFiling {
   isLoading: boolean;
 }
 
-function buildSummary(parsed: ParsedFiling[]): string {
+/** Null while filings are still parsing, so the pane never claims "no activity" early. */
+function buildSummary(parsed: ParsedFiling[]): string | null {
+  if (parsed.some(({ isLoading }) => isLoading)) return null;
   const cutoff = new Date(Date.now() - NINETY_DAYS_MS);
   let buyShares = 0;
   let sellShares = 0;
@@ -109,11 +113,11 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
 
   const filingsEntry = useSecFilingsQuery(
-    instrument && eligibleTicker ? { instrument, count: FORM4_LIMIT } : null,
+    instrument && eligibleTicker ? { instrument, count: SEC_FILING_SCAN_LIMIT } : null,
   );
   const allFilings = useResolvedEntryValue(filingsEntry) ?? [];
   const form4Filings = useMemo(
-    () => allFilings.filter((f) => f.form.trim() === "4"),
+    () => allFilings.filter((f) => f.form.trim() === "4").slice(0, FORM4_LIMIT),
     [allFilings],
   );
 
@@ -178,7 +182,7 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   const selectedFilterName = selectedTransaction?.reportedName ?? null;
   const pendingLabel = pendingCount > 0 ? `loading ${pendingCount}...` : "";
   const footerInfo = useMemo(() => [
-    { id: "summary", parts: [{ text: truncateText(summary, Math.max(24, width - 20)), tone: "muted" as const }] },
+    ...(summary ? [{ id: "summary", parts: [{ text: truncateText(summary, Math.max(24, width - 20)), tone: "muted" as const }] }] : []),
     ...(nameFilter ? [{ id: "filter", parts: [{ text: `filter: ${truncateText(nameFilter, 24)}`, tone: "warning" as const }] }] : []),
     ...(pendingLabel ? [{ id: "pending", parts: [{ text: pendingLabel, tone: "muted" as const }] }] : []),
   ], [nameFilter, pendingLabel, summary, width]);
@@ -205,10 +209,12 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     label: "filing",
   });
 
-  if (!ticker) return <Text fg={colors.textDim}>Select a ticker to view insider activity.</Text>;
+  if (!ticker) {
+    return <EmptyState title="No ticker selected." message="Select a ticker to view insider activity." />;
+  }
   if (!eligibleTicker) return renderFilingNotice("Insider transactions are only shown for US equities.", width);
   if (loading && allFilings.length === 0) return <Spinner label="Loading insider filings..." />;
-  if (error) return renderFilingNotice(`Error: ${error}`, width);
+  if (error) return <EmptyState title="Insider filings unavailable." message={error} />;
   if (!loading && form4Filings.length === 0) {
     return renderFilingNotice(`No Form 4 filings found for ${ticker.metadata.ticker}.`, width);
   }
@@ -225,7 +231,11 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       onRootKeyDown={handleRootKeyDown}
       sourceLabel="Insider"
       titleLabel="Transaction"
-      emptyStateTitle={nameFilter ? "No insider transactions for this filter." : "No insider transactions."}
+      emptyStateTitle={nameFilter
+        ? "No insider transactions for this filter."
+        : pendingCount > 0
+          ? "Loading Form 4 transactions..."
+          : "No insider transactions."}
     />
   );
 }

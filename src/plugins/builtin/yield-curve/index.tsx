@@ -1,7 +1,7 @@
 import { Box, ScrollBox, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut } from "../../../react/input";
-import { StaticChartSurface, type PaneFooterSegment } from "../../../components";
+import { Button, EmptyState, Spinner, StaticChartSurface, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
@@ -15,6 +15,7 @@ import {
   type YieldPoint,
 } from "./treasury-data";
 import { usePaneStatusFooter } from "../shared/pane-footer";
+import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 
 function formatYield(y: number | null): string {
   if (y == null) return "—";
@@ -36,6 +37,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   const [points, setPoints] = useState<YieldPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
 
   const fetchGenRef = useRef(0);
 
@@ -49,6 +51,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
       const data = await loadYieldCurve();
       if (fetchGenRef.current !== gen) return;
       setPoints(data);
+      setLastUpdated(Date.now());
     } catch (err) {
       if (fetchGenRef.current !== gen) return;
       setError(err instanceof Error ? err.message : String(err));
@@ -60,6 +63,8 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     load();
   }, [load]);
+  useAutoRefresh(lastUpdated, load);
+  const updatedAgo = useUpdatedAgo(lastUpdated);
 
   useShortcut((ev) => {
     if (!focused) return;
@@ -74,7 +79,8 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   const yieldStatus = useMemo<PaneFooterSegment[]>(() => [
       ...(inverted ? [{ id: "inverted", parts: [{ text: "INVERTED", tone: "warning" as const, bold: true }] }] : []),
       ...(bp != null ? [{ id: "spread", parts: [{ text: `2Y-10Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
-  ], [bp, inverted]);
+      ...(updatedAgo ? [{ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" as const }] }] : []),
+  ], [bp, inverted, updatedAgo]);
   usePaneStatusFooter({
     registrationId: "yield-curve",
     loading,
@@ -86,7 +92,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Text fg={colors.textMuted}>Loading...</Text>
+          <Spinner label="Loading yield curve..." />
         </Box>
       </Box>
     );
@@ -94,10 +100,8 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   if (error && points.length === 0) {
     return (
-      <Box flexDirection="column" width={width} height={height}>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Text fg={colors.negative}>{error}</Text>
-        </Box>
+      <Box flexDirection="column" width={width} height={height} padding={1} gap={1}>
+        <EmptyState title="Yield curve unavailable." message={error} />
       </Box>
     );
   }

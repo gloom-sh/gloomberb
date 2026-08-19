@@ -11,6 +11,41 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   geopolitical: ["war", "sanctions", "nato", "military", "conflict", "diplomacy"],
 };
 
+/**
+ * Feed and cloud sources emit snake_case category ids. Panes show people
+ * words, so every id passes through here before it reaches a cell.
+ */
+const CATEGORY_LABELS: Record<string, string> = {
+  mna: "M&A",
+  ma: "M&A",
+  ipo: "IPO",
+  macro_politics: "Politics",
+  macro_policy: "Policy",
+  central_bank: "Central bank",
+  fx: "FX",
+  esg: "ESG",
+  ai: "AI",
+  it: "IT",
+  us: "US",
+};
+
+export function formatNewsCategory(value: string | null | undefined): string {
+  const raw = value?.trim();
+  if (!raw) return "";
+  const key = raw.toLowerCase().replace(/[\s-]+/g, "_");
+  const mapped = CATEGORY_LABELS[key];
+  if (mapped) return mapped;
+  const words = key.split("_").filter(Boolean);
+  if (words.length === 0) return "";
+  return words
+    .map((word, index) => (
+      CATEGORY_LABELS[word] ?? (index === 0
+        ? word.charAt(0).toUpperCase() + word.slice(1)
+        : word)
+    ))
+    .join(" ");
+}
+
 const KNOWN_TICKERS = new Set([
   "AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA", "JPM", "JNJ", "UNH",
   "PG", "XOM", "CVX", "HD", "BAC", "V", "MA", "PFE", "KO", "PEP", "ABBV", "MRK",

@@ -34,7 +34,21 @@ export const NEWS_QUERY_PRESETS = {
   },
 } as const;
 
+/** Short enough that the whole sector strip fits a normal pane width. */
+const SECTOR_LABELS: Record<string, string> = {
+  information_technology: "Tech",
+  energy: "Energy",
+  financials: "Financials",
+  health_care: "Health",
+  industrials: "Industry",
+  consumer_discretionary: "Cons disc",
+  consumer_staples: "Cons stap",
+  communication_services: "Comms",
+  materials: "Materials",
+  utilities: "Utilities",
+};
+
 export function sectorNewsLabel(value: SectorNewsSelection): string {
-  if (value === "all") return "all";
-  return value.replace(/_/g, " ");
+  if (value === "all") return "All";
+  return SECTOR_LABELS[value] ?? value.replace(/_/g, " ");
 }

@@ -408,9 +408,13 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     () => portfolios.find((portfolio) => portfolio.id === draft.sharedPortfolioId) ?? null,
     [draft.sharedPortfolioId, portfolios],
   );
+  // Only the Profile tab renders the shared-portfolio preview, so the quote,
+  // FX, and chart requests below stay off on every other tab.
   const portfolioTickers = useMemo(
-    () => draft.sharedPortfolioId ? getPortfolioPositionTickers(tickers, draft.sharedPortfolioId) : [],
-    [draft.sharedPortfolioId, tickers],
+    () => activeTab === "profile" && draft.sharedPortfolioId
+      ? getPortfolioPositionTickers(tickers, draft.sharedPortfolioId)
+      : [],
+    [activeTab, draft.sharedPortfolioId, tickers],
   );
   const marketFinancials = useTickerFinancialsMap(portfolioTickers);
   const financials = useMemo(() => {
@@ -460,7 +464,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       chartEntries,
       financials,
       columnContext,
-    }),
+    }).returns,
     [chartEntries, chartTargets, columnContext, financials],
   );
   const spyReturnSeries = useMemo(
@@ -494,10 +498,13 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   );
   useEffect(() => {
     const portfolioId = selectedAnalyticsPortfolio?.id;
-    if (!portfolioId) return;
+    // Off the Profile tab the preview is computed from no holdings, so publishing
+    // it would overwrite real analytics with blanks.
+    if (!portfolioId || activeTab !== "profile") return;
     const changed = setSyncedProfileAnalytics(portfolioId, localAnalyticsPreview.publicAnalytics);
     if (changed) cloudSyncController.schedulePush("profile-analytics");
   }, [
+    activeTab,
     localAnalyticsPreview.publicAnalytics?.oneYearReturn,
     localAnalyticsPreview.publicAnalytics?.spyBeta,
     selectedAnalyticsPortfolio?.id,
@@ -820,10 +827,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   useAccountManagementFooter({
     busy,
-    draft,
     hasSession,
     message,
-    profile,
     saveProfile,
   });
 

@@ -1,12 +1,95 @@
-import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
+import { useMemo } from "react";
+import { Box, Text, TextAttributes } from "../../../ui";
+import { DataTableView, type DataTableCell, type DataTableColumn } from "../../../components";
 import { colors, priceColor } from "../../../theme/colors";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { Quote } from "../../../types/financials";
 import type { BrokerAccount } from "../../../types/trading";
-import { formatCurrency, padTo } from "../../../utils/format";
+import { formatCurrency } from "../../../utils/format";
 import { formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import type { IbkrSnapshot } from "../gateway/types";
 import type { TradingPaneState } from "./state";
+
+type OpenOrder = IbkrSnapshot["openOrders"][number];
+type Execution = IbkrSnapshot["executions"][number];
+
+/** Below this the two panels cannot both hold a readable table, so they stack. */
+const STACK_BELOW_WIDTH = 72;
+
+const OPEN_ORDER_COLUMNS: DataTableColumn[] = [
+  { id: "orderId", label: "ID", width: 7, align: "left" },
+  { id: "action", label: "SIDE", width: 5, align: "left" },
+  { id: "symbol", label: "SYMBOL", width: 14, align: "left" },
+  { id: "status", label: "STATUS", width: 10, align: "left" },
+  { id: "remaining", label: "QTY", width: 6, align: "right" },
+  { id: "price", label: "PRICE", width: 9, align: "right" },
+  { id: "bid", label: "BID", width: 8, align: "right" },
+  { id: "ask", label: "ASK", width: 8, align: "right" },
+];
+
+const EXECUTION_COLUMNS: DataTableColumn[] = [
+  { id: "side", label: "SIDE", width: 5, align: "left" },
+  { id: "symbol", label: "SYMBOL", width: 16, align: "left" },
+  { id: "shares", label: "QTY", width: 7, align: "right" },
+  { id: "price", label: "PRICE", width: 10, align: "right" },
+];
+
+function renderOpenOrderCell(
+  order: OpenOrder,
+  column: DataTableColumn,
+  getOrderQuote: (symbol: string) => Quote | null,
+): DataTableCell {
+  const secType = order.contract.secType;
+  switch (column.id) {
+    case "orderId":
+      return { text: String(order.orderId), color: colors.text };
+    case "action":
+      return { text: order.action, color: priceColor(order.action.toUpperCase() === "BUY" ? 1 : -1) };
+    case "symbol":
+      return { text: order.contract.localSymbol || order.contract.symbol, color: colors.text, attributes: TextAttributes.BOLD };
+    case "status":
+      return { text: order.status, color: colors.textDim };
+    case "remaining":
+      return { text: formatMarketQuantity(order.remaining, { contractSecType: secType, maxWidth: 6 }), color: colors.text };
+    case "price":
+      return {
+        text: order.limitPrice != null
+          ? formatMarketPrice(order.limitPrice, { contractSecType: secType, maxWidth: 9 })
+          : order.stopPrice != null
+            ? formatMarketPrice(order.stopPrice, { contractSecType: secType, maxWidth: 9 })
+            : "MKT",
+        color: colors.text,
+      };
+    case "bid": {
+      const bid = getOrderQuote(order.contract.symbol)?.bid;
+      return {
+        text: bid != null ? formatMarketPrice(bid, { contractSecType: secType, maxWidth: 8 }) : "---",
+        color: colors.textDim,
+      };
+    }
+    default: {
+      const ask = getOrderQuote(order.contract.symbol)?.ask;
+      return {
+        text: ask != null ? formatMarketPrice(ask, { contractSecType: secType, maxWidth: 8 }) : "---",
+        color: colors.textDim,
+      };
+    }
+  }
+}
+
+function renderExecutionCell(execution: Execution, column: DataTableColumn): DataTableCell {
+  const secType = execution.contract.secType;
+  switch (column.id) {
+    case "side":
+      return { text: execution.side, color: priceColor(execution.side.toUpperCase() === "BOT" ? 1 : -1) };
+    case "symbol":
+      return { text: execution.contract.localSymbol || execution.contract.symbol, color: colors.text };
+    case "shares":
+      return { text: formatMarketQuantity(execution.shares, { contractSecType: secType, maxWidth: 7 }), color: colors.text };
+    default:
+      return { text: formatMarketPrice(execution.price, { contractSecType: secType }), color: colors.text };
+  }
+}
 
 export function TradingPaneView({
   activeAccount,
@@ -23,6 +106,7 @@ export function TradingPaneView({
   selectedInstance,
   tradeState,
   width,
+  focused = false,
 }: {
   activeAccount: BrokerAccount | undefined;
   displayStatusState: IbkrSnapshot["status"]["state"];
@@ -38,15 +122,24 @@ export function TradingPaneView({
   selectedInstance: BrokerInstanceConfig | undefined;
   tradeState: TradingPaneState;
   width: number;
+  focused?: boolean;
 }) {
-  const orderPanelWidth = Math.max(36, Math.floor(width * 0.6));
-  const listPanelWidth = Math.max(24, width - orderPanelWidth - 1);
-  const listHeight = Math.max(4, height - 4);
+  const stacked = width < STACK_BELOW_WIDTH;
+  const bodyHeight = Math.max(4, height - 4);
+  const orderPanelWidth = stacked ? Math.max(8, width - 2) : Math.max(24, Math.floor(width * 0.6));
+  const listPanelWidth = stacked ? Math.max(8, width - 2) : Math.max(16, width - orderPanelWidth - 1);
+  const orderPanelHeight = stacked ? Math.max(2, Math.ceil(bodyHeight / 2)) : bodyHeight;
+  const executionPanelHeight = stacked ? Math.max(2, bodyHeight - orderPanelHeight) : bodyHeight;
+
+  const executions = useMemo(
+    () => gatewaySnapshot.executions.slice(0, 20),
+    [gatewaySnapshot.executions],
+  );
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1}>
       <Box flexDirection="row" height={1}>
-        <Box flexGrow={1}>
+        <Box flexGrow={1} overflow="hidden">
           <Text fg={
             displayStatusState === "connected"
               ? colors.positive
@@ -59,10 +152,10 @@ export function TradingPaneView({
               : "IBKR · no profile selected"}
           </Text>
         </Box>
-        {tradeState.busy && <Text fg={colors.textDim}>Working…</Text>}
+        {tradeState.busy && <Text fg={colors.textDim}>Working...</Text>}
       </Box>
 
-      <Box height={1}>
+      <Box height={1} overflow="hidden">
         <Text fg={colors.textDim}>
           {activeAccount
             ? `${selectedInstance?.label || "IBKR"} → ${activeAccount.accountId} · ${formatCurrency(activeAccount.netLiquidation || 0, activeAccount.currency || "USD")} net liq`
@@ -76,7 +169,7 @@ export function TradingPaneView({
         </Text>
       </Box>
 
-      <Box height={1}>
+      <Box height={1} overflow="hidden">
         <Text fg={tradeState.lastError ? colors.negative : colors.textDim}>
           {tradeState.lastError
             || gatewaySnapshot.status.message
@@ -86,88 +179,57 @@ export function TradingPaneView({
         </Text>
       </Box>
 
-      <Box height={1}>
-        <Text fg={colors.border}>{"─".repeat(Math.max(1, width - 2))}</Text>
-      </Box>
+      <Box height={1} width={Math.max(1, width - 2)} backgroundColor={colors.border} />
 
-      <Box flexDirection="row" height={listHeight}>
-        <Box width={orderPanelWidth} flexDirection="column">
-          <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>Open Orders</Text>
-          <ScrollBox flexGrow={1} scrollY>
-            {gatewaySnapshot.openOrders.length === 0 ? (
-              <Text fg={colors.textDim}>No open IBKR orders.</Text>
-            ) : (
-              gatewaySnapshot.openOrders.map((order, index) => {
-                const selected = index === tradeState.selectedOpenOrderIndex;
-                const orderSymbol = order.contract.symbol;
-                const orderQuote = getOrderQuote(orderSymbol);
-                const bidStr = orderQuote?.bid != null ? formatMarketPrice(orderQuote.bid, { contractSecType: order.contract.secType, maxWidth: 6 }) : "---";
-                const askStr = orderQuote?.ask != null ? formatMarketPrice(orderQuote.ask, { contractSecType: order.contract.secType, maxWidth: 6 }) : "---";
-                const orderPrice = order.limitPrice != null
-                  ? formatMarketPrice(order.limitPrice, { contractSecType: order.contract.secType, maxWidth: 9 })
-                  : order.stopPrice != null
-                    ? formatMarketPrice(order.stopPrice, { contractSecType: order.contract.secType, maxWidth: 9 })
-                    : "MKT";
-                return (
-                  <Box
-                    key={order.orderId}
-                    backgroundColor={selected ? colors.selected : colors.bg}
-                    onMouseDown={() => {
-                      if (selected) {
-                        onOpenSelectedOrder();
-                      } else {
-                        onSelectOpenOrderIndex(index);
-                      }
-                    }}
-                  >
-                    <Text fg={selected ? colors.text : colors.textDim}>
-                      {selected ? "▸ " : "  "}
-                      {padTo(String(order.orderId), 6)}
-                      {padTo(order.action, 5)}
-                      {padTo(order.contract.localSymbol || order.contract.symbol, 14)}
-                      {padTo(order.status, 10)}
-                      {padTo(formatMarketQuantity(order.remaining, { contractSecType: order.contract.secType, maxWidth: 5 }), 5, "right")}
-                      {" "}
-                      {padTo(orderPrice, 9)}
-                      {padTo(`B:${bidStr}`, 10)}
-                      {`A:${askStr}`}
-                    </Text>
-                  </Box>
-                );
-              })
-            )}
-          </ScrollBox>
+      <Box flexDirection={stacked ? "column" : "row"} height={bodyHeight}>
+        <Box width={orderPanelWidth} height={orderPanelHeight} flexDirection="column">
+          <Box height={1}>
+            <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>Open Orders</Text>
+          </Box>
+          <DataTableView<OpenOrder>
+            focused={focused}
+            columns={OPEN_ORDER_COLUMNS}
+            items={gatewaySnapshot.openOrders}
+            sortColumnId={null}
+            sortDirection="asc"
+            onHeaderClick={() => {}}
+            getItemKey={(order) => String(order.orderId)}
+            renderCell={(order, column) => renderOpenOrderCell(order, column, getOrderQuote)}
+            selection={{
+              kind: "index",
+              selectedIndex: tradeState.selectedOpenOrderIndex,
+              onChange: (index) => onSelectOpenOrderIndex(index),
+            }}
+            onActivate={onOpenSelectedOrder}
+            emptyStateTitle="No open IBKR orders."
+          />
         </Box>
 
-        <Box width={1}>
-          <Text fg={colors.border}>│</Text>
-        </Box>
+        {!stacked && <Box width={1} height={bodyHeight} backgroundColor={colors.border} />}
 
-        <Box width={listPanelWidth} flexDirection="column">
-          <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>Executions</Text>
-          <ScrollBox flexGrow={1} scrollY>
-            {gatewaySnapshot.executions.length === 0 ? (
-              <Text fg={colors.textDim}>No recent executions.</Text>
-            ) : (
-              gatewaySnapshot.executions.slice(0, 20).map((execution) => (
-                <Box
-                  key={execution.execId}
-                  onMouseDown={() => {
-                    const symbol = execution.contract.symbol;
-                    if (symbol) onSelectExecutionSymbol(symbol);
-                  }}
-                >
-                  <Text fg={priceColor(execution.side.toUpperCase() === "BOT" ? 1 : -1)}>
-                    {padTo(execution.side, 5)}
-                    {padTo(execution.contract.localSymbol || execution.contract.symbol, 18)}
-                    {padTo(formatMarketQuantity(execution.shares, { contractSecType: execution.contract.secType, maxWidth: 6 }), 6, "right")}
-                    {" "}
-                    {formatMarketPrice(execution.price, { contractSecType: execution.contract.secType })}
-                  </Text>
-                </Box>
-              ))
-            )}
-          </ScrollBox>
+        <Box width={listPanelWidth} height={executionPanelHeight} flexDirection="column">
+          <Box height={1}>
+            <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>Executions</Text>
+          </Box>
+          <DataTableView<Execution>
+            columns={EXECUTION_COLUMNS}
+            items={executions}
+            sortColumnId={null}
+            sortDirection="asc"
+            onHeaderClick={() => {}}
+            getItemKey={(execution) => execution.execId}
+            renderCell={renderExecutionCell}
+            selection={{ kind: "none" }}
+            onActivate={(execution) => {
+              const symbol = execution.contract.symbol;
+              if (symbol) onSelectExecutionSymbol(symbol);
+            }}
+            onRowMouseDown={(execution) => {
+              const symbol = execution.contract.symbol;
+              if (symbol) onSelectExecutionSymbol(symbol);
+            }}
+            emptyStateTitle="No recent executions."
+          />
         </Box>
       </Box>
     </Box>

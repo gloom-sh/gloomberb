@@ -7,20 +7,21 @@ import {
   type DataTableRootKeyContext,
   type PaneFooterSegment,
 } from "../../../components";
-import { usePaneInstance } from "../../../state/app/context";
+import { useAppSelector, usePaneInstance } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference } from "../../../utils/sort-values";
-import { usePluginTickerActions } from "../../runtime";
+import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import {
   quoteBoardFooterInfo,
   quoteBoardStatus,
   useQuoteBoard,
 } from "../shared/use-quote-board";
+import { boardErrorMessage } from "../world-indices/footer";
 import {
   FUTURES_CONTRACTS,
   FUTURES_SECTOR_LABELS,
@@ -42,18 +43,24 @@ import {
   FUTURES_COLUMN_DEFS,
   renderFuturesCell,
   resolveFuturesColumnIds,
+  usesSessionText,
   type FuturesColumn,
 } from "./table";
 
 export const FUTURES_PANE_ID = "futures";
 
-const REFRESH_INTERVAL_MS = 60_000;
 const FUTURES_SYMBOLS = FUTURES_CONTRACTS.map((contract) => contract.symbol);
 
 function FuturesPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
+  const dataProvider = useAssetData();
   const paneInstance = usePaneInstance();
-  const { quotes, refresh } = useQuoteBoard(FUTURES_SYMBOLS, REFRESH_INTERVAL_MS);
+  // One cadence, the one the user configured, instead of a private 60s timer.
+  const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
+  const { quotes, refresh } = useQuoteBoard(
+    FUTURES_SYMBOLS,
+    Math.max(1, refreshIntervalMinutes || 1) * 60_000,
+  );
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<FuturesSortPreference>(DEFAULT_FUTURES_SORT);
   const [searchQuery, setSearchQuery] = useState("");
@@ -81,12 +88,13 @@ function FuturesPane({ focused, width, height }: PaneProps) {
     [visibleColumnIds, width],
   );
 
+  const sessionText = usesSessionText(width);
   const renderCell = useCallback((
     row: FuturesTableRow,
     column: FuturesColumn,
     _index: number,
     rowState: { selected: boolean },
-  ) => renderFuturesCell(row, column, rowState, quotes), [quotes]);
+  ) => renderFuturesCell(row, column, rowState, quotes, { sessionText }), [quotes, sessionText]);
 
   const focusSearch = useCallback(() => {
     setSearchFocused(true);
@@ -154,8 +162,10 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   }, [focusSearch, handlePaneKey]);
 
   const status = quoteBoardStatus(quotes);
+  const errorMessage = boardErrorMessage(quotes);
   usePaneFooter(FUTURES_PANE_ID, () => {
     const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);
+    if (errorMessage) info.push({ id: "reason", parts: [{ text: errorMessage, tone: "warning" }] });
     if (searchQuery.trim()) {
       info.push({ id: "search", parts: [{ text: `search: ${searchQuery.trim()}`, tone: "value" }] });
     }
@@ -164,6 +174,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       hints: [{ id: "search", key: "/", label: "search", onPress: focusSearch }],
     };
   }, [
+    errorMessage,
     focusSearch,
     searchQuery,
     status.latestTs,
@@ -192,7 +203,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={height}
       columns={columns}
-      items={rows}
+      items={dataProvider ? rows : []}
       sortColumnId={sortPreference.columnId}
       sortDirection={sortPreference.direction}
       onHeaderClick={(columnId) => setSortPreference((current) => nextFuturesSort(current, columnId))}
@@ -204,8 +215,10 @@ function FuturesPane({ focused, width, height }: PaneProps) {
         }
         : null}
       renderCell={renderCell}
-      emptyStateTitle={searchQuery.trim() ? "No matching contracts." : "No contracts configured."}
-      emptyStateHint={searchQuery.trim() ? "Clear search." : "Press / to search."}
+      emptyStateTitle={searchQuery.trim()
+        ? "No matching contracts."
+        : "No market data provider connected."}
+      emptyStateHint={searchQuery.trim() ? "Clear search." : undefined}
       rootBefore={(
         <InputSearchBar
           value={searchQuery}

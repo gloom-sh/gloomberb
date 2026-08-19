@@ -271,7 +271,6 @@ export function PredictionMarketsPane({ focused, width, height }: PaneProps) {
           historyRange={controller.historyRange}
           onDetailTabChange={controller.actions.setDetailTab}
           onHistoryRangeChange={controller.actions.setHistoryRange}
-          onPreviewOrder={controller.actions.previewOrder}
           onSelectMarket={controller.actions.selectMarket}
           scrollRef={controller.detailScrollRef}
           selectedRow={controller.selectedRow}

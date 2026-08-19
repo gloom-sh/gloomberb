@@ -5,8 +5,14 @@ import { AnalystResearchView } from "./analyst-pane";
 import { CorporateActionsView } from "./corporate-actions-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
 
-function EarningsEstimatesAliasPane(props: { focused: boolean; width: number; height: number }) {
-  return <CorporateActionsView {...props} footerPaneId="earnings-estimates" />;
+function EarningsEstimatesPane(props: { focused: boolean; width: number; height: number }) {
+  return (
+    <CorporateActionsView
+      {...props}
+      footerPaneId="earnings-estimates"
+      variant="earnings-estimates"
+    />
+  );
 }
 
 export const researchModule: PluginModule = {
@@ -59,7 +65,7 @@ export const researchModule: PluginModule = {
       id: "earnings-estimates",
       name: "Earnings Estimates",
       icon: "E",
-      component: EarningsEstimatesAliasPane,
+      component: EarningsEstimatesPane,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 22 },
@@ -85,9 +91,9 @@ export const researchModule: PluginModule = {
     }),
     createTickerSurfacePaneTemplate({
       id: "earnings-estimates-pane",
-      paneId: "corporate-actions",
+      paneId: "earnings-estimates",
       label: "Earnings Estimates",
-      description: "Open the Events view with EPS and revenue estimates.",
+      description: "EPS and revenue estimates with reported earnings.",
       keywords: ["earnings", "estimates", "ee", "analyst", "eps", "revenue", "events"],
       shortcut: "EE",
     }),

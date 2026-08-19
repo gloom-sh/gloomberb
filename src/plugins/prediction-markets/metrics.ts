@@ -81,27 +81,38 @@ export function formatPredictionMetric(
   return formatCompactSigned(value ?? null, unit);
 }
 
+/**
+ * One shape per row: a signed countdown inside a week, an absolute date beyond
+ * it. A market whose stated close has passed while the venue still reports it
+ * open is labelled as such rather than as an age, because "22h ago" next to
+ * status OPEN reads as a bug.
+ */
 export function formatPredictionEndsAt(
   value: string | null | undefined,
+  status?: string,
+  now = Date.now(),
 ): string {
   if (!value) return "—";
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return "—";
-  const delta = date.getTime() - Date.now();
-  if (Math.abs(delta) < 24 * 60 * 60_000) {
-    const absMinutes = Math.round(Math.abs(delta) / 60_000);
-    if (absMinutes < 60)
-      return delta >= 0 ? `${absMinutes}m left` : `${absMinutes}m ago`;
-    const hours = Math.floor(absMinutes / 60);
-    const minutes = absMinutes % 60;
-    return delta >= 0 ? `${hours}h ${minutes}m` : `${hours}h ago`;
+  const delta = date.getTime() - now;
+  const absMinutes = Math.round(Math.abs(delta) / 60_000);
+
+  if (delta < 0 && status === "open") return "past due";
+
+  if (absMinutes < 7 * 24 * 60) {
+    const magnitude = absMinutes < 60
+      ? `${absMinutes}m`
+      : absMinutes < 24 * 60
+        ? `${Math.floor(absMinutes / 60)}h`
+        : `${Math.floor(absMinutes / (24 * 60))}d`;
+    return delta >= 0 ? `${magnitude} left` : `${magnitude} ago`;
   }
-  return date.toLocaleString("en-US", {
-    month: "numeric",
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
+    year: date.getFullYear() === new Date(now).getFullYear() ? undefined : "numeric",
   });
 }
 
@@ -256,11 +267,10 @@ export function getPredictionColumnValue(
     case "venue":
       return { text: market.venue === "polymarket" ? "Polymkt" : "Kalshi" };
     case "yes":
+      // Always percentage then outcome label, so the cell never changes shape
+      // between grouped and single rows.
       return {
-        text:
-          market.kind === "group"
-            ? `${formatPredictionPercent(market.focusYesPrice)} ${market.focusMarketLabel}`
-            : formatPredictionPercent(market.focusYesPrice),
+        text: `${formatPredictionPercent(market.focusYesPrice)} ${market.focusMarketLabel}`.trim(),
         color: getPredictionProbabilityColor(market.focusYesPrice),
       };
     case "spread":
@@ -282,7 +292,7 @@ export function getPredictionColumnValue(
         ),
       };
     case "ends":
-      return { text: formatPredictionEndsAt(market.endsAt) };
+      return { text: formatPredictionEndsAt(market.endsAt, market.status) };
     case "status":
       return {
         text: market.status.toUpperCase(),
