@@ -57,6 +57,7 @@ export function WebTabs({
     if (event.button !== 0) return;
     dragCleanupRef.current?.();
     const sourceElement = event.currentTarget;
+    const sourceBounds = sourceElement.getBoundingClientRect();
     const startX = event.clientX;
     const targets = [...tabListRef.current?.querySelectorAll<HTMLButtonElement>("[data-reorderable='true']") ?? []]
       .map((button) => ({ value: button.dataset.tabValue ?? "", bounds: button.getBoundingClientRect() }));
@@ -89,10 +90,10 @@ export function WebTabs({
       dragOffsetXRef.current = offsetX;
       sourceElement.style.transform = `translateX(${offsetX}px) scale(1.03)`;
       document.body.classList.add("gloom-dragging");
-      setDragTargetValue(resolveTarget(moveEvent.clientX));
+      setDragTargetValue(resolveTarget(sourceBounds.left + offsetX + sourceBounds.width / 2));
     };
     const handleUp = (upEvent: MouseEvent) => {
-      const targetValue = resolveTarget(upEvent.clientX);
+      const targetValue = resolveTarget(sourceBounds.left + upEvent.clientX - startX + sourceBounds.width / 2);
       suppressClickRef.current = dragged;
       cleanup();
       if (dragged && targetValue && targetValue !== sourceValue) {
@@ -100,7 +101,7 @@ export function WebTabs({
       }
     };
 
-    dragSourceWidthRef.current = sourceElement.getBoundingClientRect().width;
+    dragSourceWidthRef.current = sourceBounds.width;
     setDragSourceValue(sourceValue);
     document.addEventListener("mousemove", handleMove);
     document.addEventListener("mouseup", handleUp);
