@@ -73,9 +73,6 @@ export function WebTabs({
       document.removeEventListener("mousemove", handleMove);
       document.removeEventListener("mouseup", handleUp);
       document.body.classList.remove("gloom-dragging");
-      for (const button of tabListRef.current?.querySelectorAll<HTMLButtonElement>("[data-reorderable='true']") ?? []) {
-        button.style.transform = "translateX(0px)";
-      }
       dragCleanupRef.current = null;
       dragOffsetXRef.current = 0;
       dragSourceWidthRef.current = 0;
@@ -212,7 +209,7 @@ export function WebTabs({
           transform: `translateX(${dragTranslateX}px)${sourceDragging ? " scale(1.03)" : ""}`,
           zIndex: dragSourceValue === tab.value ? 2 : undefined,
           willChange: dragSourceValue ? "transform" : undefined,
-          transition: `background-color 110ms ease, border-color 110ms ease, color 110ms ease, transform ${dragSourceValue === tab.value ? "0ms" : "var(--tab-reorder-duration, 160ms)"} cubic-bezier(0.77, 0, 0.175, 1)`,
+          transition: `background-color 110ms ease, border-color 110ms ease, color 110ms ease, transform ${dragSourceValue && dragSourceValue !== tab.value ? "var(--tab-reorder-duration, 160ms)" : "0ms"} cubic-bezier(0.77, 0, 0.175, 1)`,
           cursor: disabled ? "default" : dragSourceValue ? "grabbing" : reorderable ? "grab" : "pointer",
         } satisfies CssVars;
 

@@ -136,6 +136,7 @@ test("desktop tabs reorder through mouse dragging", async () => {
 
   expect(buttons[0]?.style.transform).toBe("translateX(200px) scale(1.03)");
   expect(buttons[1]?.style.transform).toBe("translateX(-84px)");
+  expect(buttons[1]?.style.transition).toContain("transform var(--tab-reorder-duration, 160ms)");
   expect(buttons[2]?.style.transform).toBe("translateX(-84px)");
 
   await act(async () => {
@@ -150,6 +151,7 @@ test("desktop tabs reorder through mouse dragging", async () => {
     "translateX(0px)",
     "translateX(0px)",
   ]);
+  expect(buttons[1]?.style.transition).toContain("transform 0ms");
 
   await act(async () => {
     mouse("mousedown", buttons[1]!, 101);
