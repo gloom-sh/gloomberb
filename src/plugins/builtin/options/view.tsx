@@ -4,7 +4,7 @@ import { usePaneSettingValue, usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
-import { useOptionsQuery, useResolvedEntryValue } from "../../../market-data/hooks";
+import { useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import {
   DataTableView,
   EmptyState,
@@ -15,6 +15,12 @@ import {
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { usePluginAppActions } from "../../runtime";
+import {
+  OPTIONS_CALCULATOR_TEMPLATE_ID,
+  type OptionSide,
+} from "../options-calculator/model";
+import { buildChainCalcParams, resolveCalcSide } from "./calc-seed";
 import {
   OPTION_COLUMNS,
   buildStrikeList,
@@ -35,8 +41,10 @@ import { useLiveStreamingSetting } from "../shared/live-streaming";
 
 export function OptionsView({ width, height, focused, onCapture = () => {} }: OptionsViewProps) {
   const { ticker, financials } = usePaneTicker();
+  const { createPaneFromTemplate } = usePluginAppActions();
   const liveStreaming = useLiveStreamingSetting();
   const [expIdx, setExpIdx] = useState(0);
+  const [calcSide, setCalcSide] = useState<OptionSide | null>(null);
   const [strikeIdx, setStrikeIdx] = useState(0);
   const [autoScrollVersion, setAutoScrollVersion] = useState(0);
   const [scrollToIndexAlign, setScrollToIndexAlign] = useState<"nearest" | "center">("nearest");
@@ -52,6 +60,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const parsed = target?.parsedOption ?? null;
   const effectiveTicker = target?.effectiveTicker ?? "";
   const effectiveExchange = target?.effectiveExchange ?? "";
+  const underlyingFinancials = useTickerFinancials(isOpt ? effectiveTicker : null, null);
   const instrument = target?.instrument ?? null;
   const baseRequest = target
     ? {
@@ -123,6 +132,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     onCaptureRef.current(false);
     setExpIdx(0);
     setStrikeIdx(0);
+    setCalcSide(null);
   }, [effectiveTicker]);
 
   useEffect(() => {
@@ -205,10 +215,55 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     headerColor: optionColumnColor(column.id, colors.panel),
   }));
 
+  const selectedRow = rows[strikeIdx] ?? null;
+  const calcParams = useMemo(() => buildChainCalcParams({
+    symbol: effectiveTicker,
+    row: selectedRow,
+    side: resolveCalcSide(calcSide, parsed?.side, selectedRow),
+    // On an option ticker the pane quote is the contract's own price, so load
+    // the underlying snapshot rather than silently using the option mark as spot.
+    spot: (isOpt ? underlyingFinancials : financials)?.quote?.price,
+    dividendYield: (isOpt ? underlyingFinancials : financials)?.fundamentals?.dividendYield,
+  }), [calcSide, effectiveTicker, financials, isOpt, parsed?.side, selectedRow, underlyingFinancials]);
+
+  const openCalculator = useCallback(() => {
+    if (!calcParams) return;
+    createPaneFromTemplate(OPTIONS_CALCULATOR_TEMPLATE_ID, { values: calcParams });
+  }, [calcParams, createPaneFromTemplate]);
+
+  const footerHints = useMemo(
+    () => (calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : undefined),
+    [calcParams, openCalculator],
+  );
+
+  const renderCell = useCallback((
+    row: OptionTableRow,
+    column: OptionColumn,
+    index: number,
+    rowState: { selected: boolean },
+  ) => {
+    const cell = renderOptionCell(row, column, index, rowState);
+    if (column.id === "strike") return cell;
+    // Clicking a call or put cell is the mouse way to choose which contract
+    // [c]alc opens, so it has to select the row itself as well.
+    const side: OptionSide = column.id.startsWith("call") ? "call" : "put";
+    return {
+      ...cell,
+      onMouseDown: () => {
+        enterInteractive();
+        userSelectedStrikeRef.current = true;
+        setScrollToIndexAlign("nearest");
+        setStrikeIdx(index);
+        setCalcSide(side);
+      },
+    };
+  }, [enterInteractive]);
+
   useOptionsAccessFooter({
     chain,
     error,
     focused,
+    hints: footerHints,
     loading,
     quoteCoverage: optionQuoteCoverage,
   });
@@ -257,6 +312,12 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       event.preventDefault();
       event.stopPropagation();
       selectAdjacentExpiration(1);
+      return;
+    }
+    if (isPlainKey(event, "c") && calcParams) {
+      event.preventDefault();
+      event.stopPropagation();
+      openCalculator();
     }
   }, { enabled: focused, phase: "before" });
 
@@ -288,6 +349,13 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       return true;
     }
 
+    if (isPlainKey(event, "c") && calcParams) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      openCalculator();
+      return true;
+    }
+
     if (isPlainKey(event, "j", "down")) {
       if (strikes.length === 0) return true;
       event.preventDefault?.();
@@ -308,7 +376,15 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     }
 
     return false;
-  }, [enterInteractive, exitInteractive, interactive, selectAdjacentExpiration, strikes.length]);
+  }, [
+    calcParams,
+    enterInteractive,
+    exitInteractive,
+    interactive,
+    openCalculator,
+    selectAdjacentExpiration,
+    strikes.length,
+  ]);
 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view options." />;
@@ -392,7 +468,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         visibleRangeKey={viewportKey}
         onVisibleRangeChange={handleVisibleStrikeRangeChange}
         getItemKey={(row) => String(row.strike)}
-        renderCell={renderOptionCell}
+        renderCell={renderCell}
         emptyStateTitle={strikesLoading ? "Loading strikes..." : "No strikes available."}
         rootWidth={Math.max(1, width - 2)}
         rootHeight={tableHeight}

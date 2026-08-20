@@ -226,6 +226,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `ANR <ticker>` | Analyst targets and ratings |
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options monitor |
+| `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
@@ -273,6 +274,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `CRD` | Credit spreads |
 | `ERN` | Earnings calendar |
 | `IPO` | Upcoming and recent IPOs |
+| `HALT` | US trading halts with reason and resumption times |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television |
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |

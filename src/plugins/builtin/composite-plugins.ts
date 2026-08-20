@@ -17,6 +17,7 @@ import { fxMatrixModule } from "./fx-matrix";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
 import { layoutManagerModule } from "./layout-manager";
+import { marketHaltsModule } from "./market-halts";
 import { marketHeatmapModule } from "./market-heatmap";
 import { marketMoversModule } from "./market-movers";
 import { tvModule } from "./tv";
@@ -75,6 +76,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     worldIndicesModule,
     marketHeatmapModule,
     marketMoversModule,
+    marketHaltsModule,
     scannerModule,
     fearGreedModule,
     sectorsModule,

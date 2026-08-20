@@ -10,6 +10,8 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatExpDate } from "../../../utils/options";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import { PluginRenderProvider } from "../../runtime";
 import { OptionsView } from "./view";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
@@ -115,7 +117,9 @@ function OptionsHarness({
   return (
     <AppContext value={{ state, dispatch: () => {} }}>
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <OptionsView width={width} height={14} focused onCapture={onCapture} />
+        <PluginRenderProvider pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+          <OptionsView width={width} height={14} focused onCapture={onCapture} />
+        </PluginRenderProvider>
       </PaneInstanceProvider>
     </AppContext>
   );
