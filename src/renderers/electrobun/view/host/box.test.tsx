@@ -121,7 +121,7 @@ test("desktop tabs reorder through mouse dragging", async () => {
 
   const buttons = [...container.querySelectorAll('[data-gloom-role="tab-button"]')] as unknown as HTMLElement[];
   buttons.forEach((button, index) => {
-    button.getBoundingClientRect = () => ({ left: index * 100, right: index * 100 + 80 }) as DOMRect;
+    button.getBoundingClientRect = () => ({ left: index * 100, right: index * 100 + 80, width: 80 }) as DOMRect;
   });
   const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, clientX: number) => {
     target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX }));
@@ -132,11 +132,23 @@ test("desktop tabs reorder through mouse dragging", async () => {
   await act(async () => {
     mouse("mousedown", buttons[0]!, 20);
     mouse("mousemove", testWindow.document as never, 220);
+  });
+
+  expect(buttons[0]?.style.transform).toBe("translateX(200px) scale(1.03)");
+  expect(buttons[1]?.style.transform).toBe("translateX(-84px)");
+  expect(buttons[2]?.style.transform).toBe("translateX(-84px)");
+
+  await act(async () => {
     mouse("mouseup", testWindow.document as never, 220);
     mouse("click", buttons[0]!, 220);
   });
 
   expect(reordered).toEqual([["home", "news"]]);
   expect(selected).toEqual([]);
+  expect(buttons.map((button) => button.style.transform)).toEqual([
+    "translateX(0px)",
+    "translateX(0px)",
+    "translateX(0px)",
+  ]);
   await act(async () => root.unmount());
 });

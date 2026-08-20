@@ -265,6 +265,11 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   all: unset;
   box-sizing: border-box;
 }
+@media (prefers-reduced-motion: reduce) {
+  [data-gloom-role="tab-button"] {
+    --tab-reorder-duration: 0ms;
+  }
+}
 [data-gloom-role="tab-button"]:focus-visible {
   outline: 1px solid var(--tab-hover-underline);
   outline-offset: -1px;
