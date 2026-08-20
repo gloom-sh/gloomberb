@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { useReducer } from "react";
 import { act } from "react";
+import { useShortcut } from "../../../react/input";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
@@ -17,6 +18,15 @@ import { OptionsCalculatorPane } from "./pane";
 const TEST_PANE_ID = "options-calculator:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+
+function GlobalTabHandler() {
+  useShortcut((event) => {
+    if (event.name !== "tab") return;
+    event.preventDefault();
+    event.stopPropagation();
+  }, { phase: "before" });
+  return null;
+}
 
 function Harness({ params }: { params?: Record<string, string> }) {
   const config = createDefaultConfig("/tmp/gloomberb-options-calculator-test");
@@ -39,6 +49,7 @@ function Harness({ params }: { params?: Record<string, string> }) {
 
   return (
     <AppContext value={{ state, dispatch }}>
+      <GlobalTabHandler />
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
         <PluginRenderProvider pluginId="ticker-research" runtime={createTestPluginRuntime()}>
           <OptionsCalculatorPane

@@ -107,7 +107,12 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       event.stopPropagation();
       setActiveFieldId(fields[selectedIndex]?.id ?? null);
     }
-  }, { allowEditable: true, enabled: focused });
+  }, {
+    allowEditable: true,
+    enabled: focused,
+    phase: "before",
+    scope: "options-calculator:fields",
+  });
 
   usePaneFooter(OPTIONS_CALCULATOR_PANE_ID, () => ({
     info: problem
