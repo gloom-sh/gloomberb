@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
 import type { HostTabsProps } from "../../../../ui/host";
@@ -26,9 +27,12 @@ export function WebTabs({
   palette,
 }: HostTabsProps) {
   const activeTabRef = useRef<HTMLButtonElement | null>(null);
+  const tabListRef = useRef<HTMLDivElement | null>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  const suppressClickRef = useRef(false);
   const [hoveredValue, setHoveredValue] = useState<string | null>(null);
+  const [dragSourceValue, setDragSourceValue] = useState<string | null>(null);
   const [dragTargetValue, setDragTargetValue] = useState<string | null>(null);
-  const dragSourceValueRef = useRef<string | null>(null);
   const showUnderline = variant === "underline" && !compact;
   // A tab bar occupies exactly the one row every caller reserves for it. Any
   // extra pixels here are pixels the pane's children are told they own and the
@@ -44,6 +48,58 @@ export function WebTabs({
       inline: "nearest",
     });
   }, [activeValue, tabs]);
+
+  useEffect(() => () => dragCleanupRef.current?.(), []);
+
+  const resolveDragTarget = (clientX: number) => {
+    let targetValue: string | null = null;
+    let targetDistance = Number.POSITIVE_INFINITY;
+    for (const button of tabListRef.current?.querySelectorAll<HTMLButtonElement>("[data-reorderable='true']") ?? []) {
+      const bounds = button.getBoundingClientRect();
+      const distance = clientX < bounds.left ? bounds.left - clientX : clientX > bounds.right ? clientX - bounds.right : 0;
+      if (distance < targetDistance) {
+        targetDistance = distance;
+        targetValue = button.dataset.tabValue ?? null;
+      }
+    }
+    return targetValue;
+  };
+
+  const startReorder = (sourceValue: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+    if (event.button !== 0) return;
+    dragCleanupRef.current?.();
+    const startX = event.clientX;
+    let dragged = false;
+
+    const cleanup = () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      document.body.classList.remove("gloom-dragging");
+      dragCleanupRef.current = null;
+      setDragSourceValue(null);
+      setDragTargetValue(null);
+    };
+    const handleMove = (moveEvent: MouseEvent) => {
+      if (!dragged && Math.abs(moveEvent.clientX - startX) < 4) return;
+      dragged = true;
+      moveEvent.preventDefault();
+      document.body.classList.add("gloom-dragging");
+      setDragTargetValue(resolveDragTarget(moveEvent.clientX));
+    };
+    const handleUp = (upEvent: MouseEvent) => {
+      const targetValue = resolveDragTarget(upEvent.clientX);
+      suppressClickRef.current = dragged;
+      cleanup();
+      if (dragged && targetValue && targetValue !== sourceValue) {
+        onReorder?.(sourceValue, targetValue);
+      }
+    };
+
+    setDragSourceValue(sourceValue);
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+    dragCleanupRef.current = cleanup;
+  };
 
   const handleWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
     const element = event.currentTarget;
@@ -73,6 +129,7 @@ export function WebTabs({
 
   return (
     <div
+      ref={tabListRef}
       data-gloom-role="tab-list"
       role="tablist"
       onWheel={handleWheel}
@@ -98,7 +155,7 @@ export function WebTabs({
         const hovered = hoveredValue === tab.value && !disabled;
         const closeVisible = !!tab.onClose && (closeMode === "always" || active);
         const reorderable = !!onReorder && !disabled && tab.reorderable !== false;
-        const dragTarget = dragTargetValue === tab.value && dragSourceValueRef.current !== tab.value;
+        const dragTarget = dragTargetValue === tab.value && dragSourceValue !== tab.value;
         const tabStyle = {
           "--tab-fg": resolveTabColor(disabled, active, hovered),
           "--tab-hover-fg": palette.hoverFg,
@@ -134,7 +191,7 @@ export function WebTabs({
             ? `color-mix(in srgb, ${palette.activeUnderline} 35%, transparent)`
             : "transparent",
           transition: "background-color 110ms ease, border-color 110ms ease, color 110ms ease",
-          cursor: disabled ? "default" : reorderable ? "grab" : "pointer",
+          cursor: disabled ? "default" : dragSourceValue ? "grabbing" : reorderable ? "grab" : "pointer",
         } satisfies CssVars;
 
         return (
@@ -143,17 +200,26 @@ export function WebTabs({
             ref={active ? activeTabRef : undefined}
             data-gloom-role="tab-button"
             data-active={active ? "true" : undefined}
+            data-reorderable={reorderable ? "true" : undefined}
+            data-tab-value={tab.value}
             type="button"
             role="tab"
             aria-selected={active}
             aria-disabled={disabled || undefined}
             disabled={disabled}
-            draggable={reorderable}
-            aria-grabbed={reorderable && dragSourceValueRef.current === tab.value ? true : undefined}
+            draggable={false}
+            aria-grabbed={reorderable && dragSourceValue === tab.value ? true : undefined}
             style={tabStyle}
             onMouseEnter={() => setHoveredValue(tab.value)}
             onMouseLeave={() => setHoveredValue((current) => (current === tab.value ? null : current))}
-            onClick={() => {
+            onMouseDown={reorderable ? (event) => startReorder(tab.value, event) : undefined}
+            onClick={(event) => {
+              if (suppressClickRef.current) {
+                suppressClickRef.current = false;
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+              }
               if (!disabled) onSelect(tab.value);
             }}
             onDoubleClick={() => {
@@ -163,32 +229,6 @@ export function WebTabs({
               event.preventDefault();
               event.stopPropagation();
               tab.onContextMenu?.(tab.value, event);
-            } : undefined}
-            onDragStart={reorderable ? (event) => {
-              dragSourceValueRef.current = tab.value;
-              event.dataTransfer.effectAllowed = "move";
-              event.dataTransfer.setData("text/plain", tab.value);
-            } : undefined}
-            onDragOver={reorderable ? (event) => {
-              const sourceValue = dragSourceValueRef.current;
-              if (!sourceValue || sourceValue === tab.value) return;
-              event.preventDefault();
-              event.dataTransfer.dropEffect = "move";
-              setDragTargetValue(tab.value);
-            } : undefined}
-            onDragLeave={reorderable ? () => {
-              setDragTargetValue((current) => (current === tab.value ? null : current));
-            } : undefined}
-            onDrop={reorderable ? (event) => {
-              event.preventDefault();
-              const sourceValue = dragSourceValueRef.current ?? event.dataTransfer.getData("text/plain");
-              dragSourceValueRef.current = null;
-              setDragTargetValue(null);
-              if (sourceValue && sourceValue !== tab.value) onReorder(sourceValue, tab.value);
-            } : undefined}
-            onDragEnd={reorderable ? () => {
-              dragSourceValueRef.current = null;
-              setDragTargetValue(null);
             } : undefined}
           >
             <span

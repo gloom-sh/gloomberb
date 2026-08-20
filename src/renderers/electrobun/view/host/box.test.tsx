@@ -96,9 +96,10 @@ test("a tab bar occupies exactly the one row panes reserve for it", async () => 
   await act(async () => root.unmount());
 });
 
-test("desktop tabs reorder through native drag and drop", async () => {
+test("desktop tabs reorder through mouse dragging", async () => {
   const { WebTabs } = await import("./tabs");
   const reordered: Array<[string, string]> = [];
+  const selected: string[] = [];
   const container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   const root = createRoot(container as unknown as HTMLElement);
@@ -111,7 +112,7 @@ test("desktop tabs reorder through native drag and drop", async () => {
           { label: "News", value: "news" },
         ]}
         activeValue="home"
-        onSelect={() => {}}
+        onSelect={(value) => selected.push(value)}
         onReorder={(fromValue, toValue) => reordered.push([fromValue, toValue])}
         palette={{} as never}
       />,
@@ -119,27 +120,23 @@ test("desktop tabs reorder through native drag and drop", async () => {
   });
 
   const buttons = [...container.querySelectorAll('[data-gloom-role="tab-button"]')] as unknown as HTMLElement[];
-  const values = new Map<string, string>();
-  const dataTransfer = {
-    effectAllowed: "none",
-    dropEffect: "none",
-    setData(type: string, value: string) { values.set(type, value); },
-    getData(type: string) { return values.get(type) ?? ""; },
-  };
-  const drag = (type: string, target: HTMLElement) => {
-    const event = new Event(type, { bubbles: true, cancelable: true });
-    Object.defineProperty(event, "dataTransfer", { value: dataTransfer });
-    target.dispatchEvent(event);
+  buttons.forEach((button, index) => {
+    button.getBoundingClientRect = () => ({ left: index * 100, right: index * 100 + 80 }) as DOMRect;
+  });
+  const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, clientX: number) => {
+    target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX }));
   };
 
   expect(buttons).toHaveLength(3);
-  expect(buttons[0]?.getAttribute("draggable")).toBe("true");
+  expect(buttons[0]?.getAttribute("draggable")).toBe("false");
   await act(async () => {
-    drag("dragstart", buttons[0]!);
-    drag("dragover", buttons[2]!);
-    drag("drop", buttons[2]!);
+    mouse("mousedown", buttons[0]!, 20);
+    mouse("mousemove", testWindow.document as never, 220);
+    mouse("mouseup", testWindow.document as never, 220);
+    mouse("click", buttons[0]!, 220);
   });
 
   expect(reordered).toEqual([["home", "news"]]);
+  expect(selected).toEqual([]);
   await act(async () => root.unmount());
 });
