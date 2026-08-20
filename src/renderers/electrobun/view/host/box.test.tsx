@@ -153,6 +153,12 @@ test("desktop tabs reorder through mouse dragging", async () => {
 
   await act(async () => {
     mouse("mousedown", buttons[1]!, 101);
+  });
+
+  expect(buttons[0]?.style.transform).toBe("translateX(0px)");
+  expect(buttons[1]?.style.transform).toBe("translateX(0px)");
+
+  await act(async () => {
     mouse("mousemove", testWindow.document as never, 96);
   });
 

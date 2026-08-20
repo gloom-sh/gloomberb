@@ -170,9 +170,9 @@ export function WebTabs({
         const sourceDragging = dragSourceValue === tab.value && dragTargetValue !== null;
         const dragTranslateX = dragSourceValue === tab.value
           ? dragOffsetXRef.current
-          : dragSourceIndex < dragTargetIndex && index > dragSourceIndex && index <= dragTargetIndex
+          : dragTargetIndex >= 0 && dragSourceIndex < dragTargetIndex && index > dragSourceIndex && index <= dragTargetIndex
             ? -dragSlotWidth
-            : dragSourceIndex > dragTargetIndex && index >= dragTargetIndex && index < dragSourceIndex
+            : dragTargetIndex >= 0 && dragSourceIndex > dragTargetIndex && index >= dragTargetIndex && index < dragSourceIndex
               ? dragSlotWidth
               : 0;
         const tabStyle = {
