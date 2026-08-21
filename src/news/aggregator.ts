@@ -269,7 +269,14 @@ export class NewsService {
         if (result.sourceIds.length === 0 && result.failedSourceIds.length > 0) {
           throw new Error("News sources unavailable.");
         }
-        const articles = filterNewsArticlesForQuery(dedupeNewsArticles(result.articles), query);
+        if (entry.loadMoreInFlight) return entry.state;
+        const incoming = filterNewsArticlesForQuery(dedupeNewsArticles(result.articles), query);
+        const existing = entry.state.articles;
+        const incomingIds = new Set(incoming.map((article) => article.id));
+        const hasOlderPages = existing.some((article) => !incomingIds.has(article.id));
+        const articles = existing.length > 0
+          ? filterNewsArticlesForQuery(dedupeNewsArticles([...incoming, ...existing]), query)
+          : incoming;
         const state: NewsQueryState = {
           phase: "ready",
           articles,
@@ -280,8 +287,8 @@ export class NewsService {
             : null,
           updatedAt: this.now(),
           sourceIds: result.sourceIds,
-          nextCursor: result.nextCursor,
-          loadingMore: false,
+          nextCursor: hasOlderPages ? entry.state.nextCursor : result.nextCursor,
+          loadingMore: entry.state.loadingMore,
         };
         entry.state = state;
         entry.lastAccessedAt = this.now();

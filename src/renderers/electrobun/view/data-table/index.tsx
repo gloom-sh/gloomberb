@@ -140,6 +140,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   }, [emitVisibleRange, onBodyScrollActivity]);
   const scheduleBodyScrollActivity = useRafCallback(handleBodyScrollActivity);
   const scheduleVisibleRangeMeasure = useRafCallback(emitVisibleRange);
+  const lastAppliedScrollRequestRef = useRef<string | null>(null);
 
   const rowVirtualizer = useVirtualizer({
     count: items.length,
@@ -203,7 +204,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   // then converted to pixels. Letting the virtualizer scroll by pixels landed
   // mid-row and clipped the first and last visible rows into slivers.
   useEffect(() => {
-    if (scrollToIndex == null || items.length === 0) return;
+    if (scrollToIndex == null || items.length === 0) {
+      lastAppliedScrollRequestRef.current = null;
+      return;
+    }
+    const scrollRequestKey = `${scrollToIndex}:${scrollToIndexVersion}:${scrollToIndexAlign}`;
+    if (lastAppliedScrollRequestRef.current === scrollRequestKey) return;
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
     const element = bodyElementRef.current;
     if (!element) return;
@@ -219,8 +225,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     }
     if (nextTop !== currentTop) {
       element.scrollTop = nextTop * WEB_CELL_HEIGHT;
+      scheduleBodyScrollActivity();
     }
-    scheduleBodyScrollActivity();
+    lastAppliedScrollRequestRef.current = scrollRequestKey;
     scheduleVisibleRangeMeasure();
   }, [
     items.length,

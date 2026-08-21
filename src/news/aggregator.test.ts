@@ -518,4 +518,63 @@ describe("NewsService", () => {
     ]);
     expect(state.nextCursor).toBeNull();
   });
+
+  it("keeps paged news past the query page size", async () => {
+    const first = makeItem({ url: "https://example.com/a", title: "First" });
+    const second = makeItem({ url: "https://example.com/b", title: "Second" });
+    const fetchNewsPage = mock(async (query: { cursor?: string }) => (
+      query.cursor === "page-2"
+        ? { articles: [second], nextCursor: "page-3" }
+        : { articles: [first], nextCursor: "page-2" }
+    ));
+    agg.register(newsProvider({
+      id: "cloud",
+      name: "cloud",
+      provider: {
+        fetchNews: async (query) => (await fetchNewsPage(query)).articles,
+        fetchNewsPage,
+      },
+    }));
+
+    await agg.load({ feed: "latest", limit: 1 });
+    await agg.loadMore({ feed: "latest", limit: 1 });
+    const state = agg.getQueryState({ feed: "latest", limit: 1 });
+    expect(state.articles.map((article) => article.url)).toEqual([
+      "https://example.com/a",
+      "https://example.com/b",
+    ]);
+    expect(state.nextCursor).toBe("page-3");
+  });
+
+  it("refresh keeps already paged news", async () => {
+    const first = makeItem({ url: "https://example.com/a", title: "First", publishedAt: new Date("2026-01-02") });
+    const second = makeItem({ url: "https://example.com/b", title: "Second", publishedAt: new Date("2026-01-01") });
+    const newer = makeItem({ url: "https://example.com/c", title: "Newer", publishedAt: new Date("2026-01-03") });
+    let head: "initial" | "refresh" = "initial";
+    const fetchNewsPage = mock(async (query: { cursor?: string }) => {
+      if (query.cursor === "page-2") return { articles: [second], nextCursor: "page-3" };
+      if (head === "refresh") return { articles: [newer, first], nextCursor: "page-2" };
+      head = "refresh";
+      return { articles: [first], nextCursor: "page-2" };
+    });
+    agg.register(newsProvider({
+      id: "cloud",
+      name: "cloud",
+      provider: {
+        fetchNews: async (query) => (await fetchNewsPage(query)).articles,
+        fetchNewsPage,
+      },
+    }));
+
+    await agg.load({ feed: "latest", limit: 1 });
+    await agg.loadMore({ feed: "latest", limit: 1 });
+    await agg.poll({ feed: "latest", limit: 1 });
+    const state = agg.getQueryState({ feed: "latest", limit: 1 });
+    expect(state.articles.map((article) => article.url)).toEqual([
+      "https://example.com/c",
+      "https://example.com/a",
+      "https://example.com/b",
+    ]);
+    expect(state.nextCursor).toBe("page-3");
+  });
 });
