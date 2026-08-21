@@ -6,7 +6,7 @@ import type {
   DataTableProps,
 } from "./types";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { resolveRemoteItemIndex } from "../../../remote/semantic-helpers";
+import { remoteNumberValue, resolveRemoteItemIndex } from "../../../remote/semantic-helpers";
 
 export type {
   DataTableCell,
@@ -45,6 +45,24 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
         if (columnId && props.columns.some((column) => column.id === columnId)) {
           props.onHeaderClick(columnId);
         }
+      },
+      scrollTo: (input) => {
+        const box = props.scrollRef.current;
+        if (!box) return;
+        box.scrollTo(Math.max(0, Math.round(remoteNumberValue(input, ["top", "index"]))));
+        props.onBodyScrollActivity();
+      },
+      scrollBy: (input) => {
+        const box = props.scrollRef.current;
+        if (!box) return;
+        const direction = input && typeof input === "object"
+          ? (input as { direction?: unknown }).direction
+          : undefined;
+        const delta = direction === "up"
+          ? remoteNumberValue(input, ["delta"], -1)
+          : remoteNumberValue(input, ["delta"], 1);
+        box.scrollTo(Math.max(0, Math.round((box.scrollTop ?? 0) + delta)));
+        props.onBodyScrollActivity();
       },
     },
     metadata: {

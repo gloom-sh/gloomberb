@@ -220,12 +220,14 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     if (nextTop !== currentTop) {
       element.scrollTop = nextTop * WEB_CELL_HEIGHT;
     }
+    scheduleBodyScrollActivity();
     scheduleVisibleRangeMeasure();
   }, [
     items.length,
     scrollToIndex,
     scrollToIndexAlign,
     scrollToIndexVersion,
+    scheduleBodyScrollActivity,
     scheduleVisibleRangeMeasure,
   ]);
 
