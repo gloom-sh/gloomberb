@@ -27,13 +27,17 @@ function cachedDataFromResource<T>(entry: PersistedResourceValue<T> | null): Sub
 
 export function getCachedSubstackHome(): SubstackHomeData | null {
   const subscriptionsEntry = readResource<SubstackPublication[]>("subscriptions", "me", false);
-  const feedEntry = readResource<SubstackArticleSummary[]>("feed", "subscribed", false);
+  const feedEntry = readResource<SubstackArticleSummary[] | { items: SubstackArticleSummary[]; nextCursor?: string | null }>("feed", "subscribed", false);
   if (!subscriptionsEntry || !feedEntry) return null;
+  const feed = Array.isArray(feedEntry.value) ? feedEntry.value : feedEntry.value.items;
+  const nextCursor = Array.isArray(feedEntry.value) ? null : feedEntry.value.nextCursor ?? null;
   return {
-    subscriptions: sortSubscriptionsByLatest(subscriptionsEntry.value, feedEntry.value),
-    feed: feedEntry.value,
+    subscriptions: sortSubscriptionsByLatest(subscriptionsEntry.value, feed),
+    feed,
     fetchedAt: Math.max(subscriptionsEntry.fetchedAt, feedEntry.fetchedAt),
     stale: Boolean(subscriptionsEntry.stale) || Boolean(feedEntry.stale),
+    hasMore: !!nextCursor,
+    nextCursor,
   };
 }
 

@@ -86,6 +86,8 @@ export function createIdleNewsQueryState(): NewsQueryState {
     error: null,
     updatedAt: null,
     sourceIds: [],
+    nextCursor: null,
+    loadingMore: false,
   };
 }
 

@@ -421,6 +421,16 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
           const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
           return feed === "ticker" ? !!query.ticker : true;
         },
+        async fetchNewsPage(query: NewsQuery) {
+          const response = await withCloudFallback(
+            () => apiClient.getCloudNews(cloudNewsParams(query)),
+            "Cloud news is unavailable",
+          );
+          return {
+            articles: response.items.map((item) => mapCloudNewsArticle(item, query.ticker)),
+            nextCursor: response.nextCursor ?? null,
+          };
+        },
         async fetchNews(query: NewsQuery): Promise<NewsArticle[]> {
           const response = await withCloudFallback(
             () => apiClient.getCloudNews(cloudNewsParams(query)),

@@ -36,12 +36,14 @@ interface SourceFetchResult {
   articles: NewsArticle[];
   sourceIds: string[];
   failedSourceIds: string[];
+  nextCursor: string | null;
 }
 
 interface NewsQueryEntry {
   query: NewsQuery;
   state: NewsQueryState;
   inFlight: Promise<NewsQueryState> | null;
+  loadMoreInFlight: Promise<void> | null;
   refs: number;
   lastAccessedAt: number;
 }
@@ -169,6 +171,46 @@ export class NewsService {
     return this.refreshQuery(normalizeNewsQuery(query), true);
   }
 
+  async loadMore(query: NewsQuery): Promise<void> {
+    const normalized = normalizeNewsQuery(query);
+    const entry = this.queries.get(buildNewsQueryKey(normalized));
+    if (!entry || entry.loadMoreInFlight || !entry.state.nextCursor || entry.state.loadingMore) return;
+    if (entry.state.articles.length >= 500) {
+      entry.state = { ...entry.state, nextCursor: null };
+      this.notify();
+      return;
+    }
+
+    const request = (async () => {
+      entry.state = { ...entry.state, loadingMore: true };
+      this.notify();
+      try {
+        const result = await this.fetchFromSources({
+          ...normalized,
+          cursor: entry.state.nextCursor ?? undefined,
+        });
+        entry.state = {
+          ...entry.state,
+          loadingMore: false,
+          articles: filterNewsArticlesForQuery(
+            dedupeNewsArticles([...entry.state.articles, ...result.articles]),
+            normalized,
+          ),
+          nextCursor: result.nextCursor,
+        };
+        this.rebuildArticlePool();
+        this.notify();
+      } catch {
+        entry.state = { ...entry.state, loadingMore: false };
+        this.notify();
+      } finally {
+        entry.loadMoreInFlight = null;
+      }
+    })();
+    entry.loadMoreInFlight = request;
+    await request;
+  }
+
   async loadStory(storyId: string): Promise<NewsArticle | null> {
     const sources = this.enabledSources({ feed: "latest" })
       .filter((source) => !!source.provider.fetchNewsStory);
@@ -238,6 +280,8 @@ export class NewsService {
             : null,
           updatedAt: this.now(),
           sourceIds: result.sourceIds,
+          nextCursor: result.nextCursor,
+          loadingMore: false,
         };
         entry.state = state;
         entry.lastAccessedAt = this.now();
@@ -277,6 +321,7 @@ export class NewsService {
       query,
       state: createIdleNewsQueryState(),
       inFlight: null,
+      loadMoreInFlight: null,
       refs: 0,
       lastAccessedAt: now,
     };
@@ -313,10 +358,36 @@ export class NewsService {
 
   private async fetchFromSources(query: NewsQuery): Promise<SourceFetchResult> {
     const sources = this.enabledSources(query);
+    const pageSources = query.cursor
+      ? sources.filter((source) => !!source.provider.fetchNewsPage)
+      : sources;
     if (normalizeNewsFeed(query) === "ticker") {
-      return this.fetchTickerNews(query, sources);
+      return this.fetchTickerNews(query, pageSources);
     }
-    return this.fetchMergedNews(query, sources);
+    return this.fetchMergedNews(query, pageSources);
+  }
+
+  private async readSourcePage(
+    source: NewsCapability,
+    query: NewsQuery,
+  ): Promise<{ articles: NewsArticle[]; nextCursor: string | null }> {
+    if (source.provider.fetchNewsPage) {
+      const page = await this.trackSourceRequest(
+        source,
+        "fetchNewsPage",
+        () => source.provider.fetchNewsPage!(query),
+      );
+      return {
+        articles: page.articles.map((article) => markDetailCapableArticle(source, article)),
+        nextCursor: page.nextCursor ?? null,
+      };
+    }
+    const articles = (await this.trackSourceRequest(
+      source,
+      "fetchNews",
+      () => source.provider.fetchNews(query),
+    )).map((article) => markDetailCapableArticle(source, article));
+    return { articles, nextCursor: null };
   }
 
   private async fetchTickerNews(query: NewsQuery, sources: NewsCapability[]): Promise<SourceFetchResult> {
@@ -324,45 +395,44 @@ export class NewsService {
     const failedSourceIds: string[] = [];
     for (const source of sources) {
       try {
-        const articles = (await this.trackSourceRequest(
-          source,
-          "fetchNews",
-          () => source.provider.fetchNews(query),
-        )).map((article) => markDetailCapableArticle(source, article));
-        const result = { articles, sourceIds: [newsCapabilitySourceId(source)], failedSourceIds };
-        if (articles.length > 0) return result;
+        const page = await this.readSourcePage(source, query);
+        const result = {
+          articles: page.articles,
+          sourceIds: [newsCapabilitySourceId(source)],
+          failedSourceIds,
+          nextCursor: page.nextCursor,
+        };
+        if (page.articles.length > 0) return result;
         firstEmpty ??= result;
       } catch {
         failedSourceIds.push(newsCapabilitySourceId(source));
       }
     }
-    return firstEmpty ?? { articles: [], sourceIds: [], failedSourceIds };
+    return firstEmpty ?? { articles: [], sourceIds: [], failedSourceIds, nextCursor: null };
   }
 
   private async fetchMergedNews(query: NewsQuery, sources: NewsCapability[]): Promise<SourceFetchResult> {
     const settled = await Promise.allSettled(
       sources.map(async (source) => ({
         source,
-        articles: (await this.trackSourceRequest(
-          source,
-          "fetchNews",
-          () => source.provider.fetchNews(query),
-        )).map((article) => markDetailCapableArticle(source, article)),
+        page: await this.readSourcePage(source, query),
       })),
     );
     const articles: NewsArticle[] = [];
     const sourceIds: string[] = [];
     const failedSourceIds: string[] = [];
+    let nextCursor: string | null = null;
     settled.forEach((result, index) => {
       if (result.status !== "fulfilled") {
         const source = sources[index];
         if (source) failedSourceIds.push(newsCapabilitySourceId(source));
         return;
       }
-      articles.push(...result.value.articles);
+      articles.push(...result.value.page.articles);
       sourceIds.push(newsCapabilitySourceId(result.value.source));
+      nextCursor ??= result.value.page.nextCursor;
     });
-    return { articles, sourceIds, failedSourceIds };
+    return { articles, sourceIds, failedSourceIds, nextCursor };
   }
 
   private trackSourceRequest<T>(
@@ -393,6 +463,8 @@ export class NewsService {
         error: null,
         updatedAt: this.now(),
         sourceIds: [...new Set([...entry.state.sourceIds, newsCapabilitySourceId(source)])],
+        nextCursor: entry.state.nextCursor,
+        loadingMore: false,
       };
       changed = true;
     }

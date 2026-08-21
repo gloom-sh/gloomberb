@@ -52,6 +52,8 @@ function createReadyNewsService(articles: NewsArticle[]): { service: NewsService
     error: null,
     updatedAt: Date.now(),
     sourceIds: ["test"],
+    nextCursor: null,
+    loadingMore: false,
   };
   const listeners = new Set<(state: NewsQueryState) => void>();
   let queryStateCalls = 0;

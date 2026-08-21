@@ -4,6 +4,7 @@ import {
   DataTableStackView,
   EmptyState,
   Spinner,
+  useTableLoadMore,
   usePaneFooter,
   type DataTableKeyEvent,
   type PaneHint,
@@ -245,24 +246,22 @@ export function BuildoutPane({ focused, width, height }: PaneProps) {
     return true;
   }, [canFavorite, toggleFavorite]);
 
-  const loadMoreActiveRows = useCallback(() => {
-    if (state.status !== "ready") return;
-    const scrollBox = tableScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const page = activeBuildoutPage(state, activeTab, selectedList);
-    if (!page || page.loadingMore || !page.hasMore || page.error) return;
-    const visibleBottom = scrollBox.scrollTop + scrollBox.viewport.height;
-    const remaining = page.items.length - visibleBottom;
-    if (remaining > LOAD_MORE_THRESHOLD) return;
-
-    if (activeTab === "companies" && selectedList) {
-      void loadCompanies(selectedList, page.offset, true);
-    } else if (activeTab === "sites") {
-      void loadSites(page.offset, true);
-    } else if (activeTab === "intel") {
-      void loadIntel(page.offset, true);
-    }
-  }, [activeTab, loadCompanies, loadIntel, loadSites, selectedList, state]);
+  const activePage = state.status === "ready" ? activeBuildoutPage(state, activeTab, selectedList) : null;
+  const loadMoreActiveRows = useTableLoadMore(
+    tableScrollRef,
+    !!activePage && !activePage.loadingMore && !!activePage.hasMore && !activePage.error,
+    () => {
+      if (!activePage) return;
+      if (activeTab === "companies" && selectedList) {
+        void loadCompanies(selectedList, activePage.offset, true);
+      } else if (activeTab === "sites") {
+        void loadSites(activePage.offset, true);
+      } else if (activeTab === "intel") {
+        void loadIntel(activePage.offset, true);
+      }
+    },
+    LOAD_MORE_THRESHOLD,
+  );
 
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
     if (event.name === "u" && state.status === "ready" && state.access !== "pro") {

@@ -14,6 +14,7 @@ export { TickerListTableView } from "./ticker/list-table-view";
 export type { TickerListVisibleRange } from "./ticker/list-table-view";
 export { TickerBadgeList } from "./ticker/badge/list";
 export { InputSearchBar } from "./input-search-bar";
+export { isTableScrollNearEnd, useTableLoadMore } from "./table-view-shared";
 export { DataTableView } from "./data-table/view";
 export type { DataTableKeyEvent, DataTableRootKeyContext } from "./data-table/view";
 export { DataTableStackView } from "./data-table/stack-view";

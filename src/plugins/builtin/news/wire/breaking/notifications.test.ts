@@ -38,6 +38,8 @@ function ready(articles: MarketNewsItem[]): NewsQueryState {
     error: null,
     updatedAt: Date.now(),
     sourceIds: ["test"],
+    nextCursor: null,
+    loadingMore: false,
   };
 }
 

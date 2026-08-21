@@ -1,6 +1,8 @@
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import { buildNewsQueryKey, type NewsService } from "./aggregator";
 import type { NewsArticle, NewsQuery, NewsQueryState } from "./types";
+import { useTableLoadMore } from "../components/table-view-shared";
+import type { ScrollBoxRenderable } from "../ui";
 
 let sharedService: NewsService | null = null;
 
@@ -18,6 +20,8 @@ const IDLE_NEWS_QUERY_STATE: NewsQueryState = {
   error: null,
   updatedAt: null,
   sourceIds: [],
+  nextCursor: null,
+  loadingMore: false,
 };
 
 export function useNewsArticles(query: NewsQuery | null | undefined): NewsQueryState {
@@ -37,4 +41,26 @@ export function useNewsArticles(query: NewsQuery | null | undefined): NewsQueryS
 
 export function useLoadNewsStory(): (storyId: string) => Promise<NewsArticle | null> {
   return useCallback(async (storyId: string) => sharedService?.loadStory(storyId) ?? null, []);
+}
+
+export function useNewsLoadMore(query: NewsQuery | null | undefined): () => void {
+  const key = query ? buildNewsQueryKey(query) : null;
+  return useCallback(() => {
+    if (!query) return;
+    void sharedService?.loadMore(query);
+  }, [key]);
+}
+
+export function useNewsTableLoadMore(
+  query: NewsQuery | null | undefined,
+  state: Pick<NewsQueryState, "nextCursor" | "loadingMore">,
+) {
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const loadMore = useNewsLoadMore(query);
+  const onBodyScrollActivity = useTableLoadMore(
+    scrollRef,
+    !!state.nextCursor && !state.loadingMore,
+    loadMore,
+  );
+  return { scrollRef, onBodyScrollActivity };
 }

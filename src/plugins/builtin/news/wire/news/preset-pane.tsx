@@ -1,6 +1,6 @@
 import { Box } from "../../../../../ui";
 import type { NewsQuery } from "../../../../../news/types";
-import { useLoadNewsStory, useNewsArticles } from "../../../../../news/hooks";
+import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../../news/hooks";
 import type { PaneProps } from "../../../../../types/plugin";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../../runtime";
 import { NewsDetailView, useNewsArticleDetail } from "./detail-view";
@@ -36,6 +36,7 @@ export function NewsPresetPane({
 }) {
   const newsState = useNewsArticles(query);
   const articles = usePersistedNewsArticles(`${paneKey}:articles`, newsState.articles);
+  const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(query, newsState);
   // The aggregator opens a query in "loading", so the first paint is a loading
   // body rather than a definitive empty wire.
   const loading = newsState.phase === "loading"
@@ -102,6 +103,8 @@ export function NewsPresetPane({
       })}
       emptyStateTitle={emptyStateTitle}
       emptyStateHint={emptyStateHint}
+      scrollRef={scrollRef}
+      onBodyScrollActivity={onBodyScrollActivity}
     />
   );
 }

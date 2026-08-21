@@ -10,6 +10,7 @@ import {
   DataTableStackView,
   DataTableView,
   EmptyState,
+  useTableLoadMore,
   InputSearchBar,
   Spinner,
   Tabs,
@@ -238,13 +239,7 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
     setSelectedId(sortedRows[0]?.id ?? null);
   }, [selectedId, setSelectedId, sortedRows]);
 
-  const loadMoreFromScroll = useCallback(() => {
-    const scrollBox = tableScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const viewportHeight = Math.max(1, scrollBox.viewport.height);
-    if (scrollBox.scrollTop + viewportHeight < scrollBox.scrollHeight - LOAD_MORE_THRESHOLD) return;
-    loadMore();
-  }, [loadMore]);
+  const loadMoreFromScroll = useTableLoadMore(tableScrollRef, hasMore && !loadingMore && status === "loaded", loadMore, LOAD_MORE_THRESHOLD);
 
   const refresh = useCallback(() => load(true), [load]);
   const focusSearch = useCallback(() => {
@@ -672,19 +667,29 @@ function FilingDetailView({
   const [holdings, setHoldings] = useState<ThirteenFHoldingRecord[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [nextOffset, setNextOffset] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const moreAbortRef = useRef<AbortController | null>(null);
+  const positionScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const load = useCallback((refresh = false) => {
     abortRef.current?.abort();
+    moreAbortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setStatus("loading");
     setError(null);
     setHoldings([]);
-    void loadFilingPositions(filing.cik, filing.accessionNumber, controller.signal, { forceRefresh: refresh })
-      .then((nextHoldings) => {
+    setHasMore(false);
+    setNextOffset(0);
+    void loadFilingPositions(filing.cik, filing.accessionNumber, controller.signal, { forceRefresh: refresh, offset: 0 })
+      .then((result) => {
         if (abortRef.current !== controller) return;
-        setHoldings(nextHoldings);
+        setHoldings(result.rows);
+        setHasMore(result.hasMore);
+        setNextOffset(result.rows.length);
         setStatus("loaded");
       })
       .catch((loadError) => {
@@ -695,11 +700,39 @@ function FilingDetailView({
       });
   }, [filing.accessionNumber, filing.cik]);
 
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore || status !== "loaded") return;
+    moreAbortRef.current?.abort();
+    const controller = new AbortController();
+    moreAbortRef.current = controller;
+    setLoadingMore(true);
+    void loadFilingPositions(filing.cik, filing.accessionNumber, controller.signal, { offset: nextOffset })
+      .then((result) => {
+        if (moreAbortRef.current !== controller) return;
+        setHoldings((current) => [...current, ...result.rows]);
+        setHasMore(result.hasMore);
+        setNextOffset(nextOffset + result.rows.length);
+      })
+      .catch((loadError) => {
+        if (moreAbortRef.current !== controller) return;
+        if (loadError instanceof Error && loadError.name === "AbortError") return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => {
+        if (moreAbortRef.current !== controller) return;
+        setLoadingMore(false);
+      });
+  }, [filing.accessionNumber, filing.cik, hasMore, loadingMore, nextOffset, status]);
+
+  const onBodyScrollActivity = useTableLoadMore(positionScrollRef, hasMore && !loadingMore && status === "loaded", loadMore);
+
   useEffect(() => {
     load(false);
     return () => {
       abortRef.current?.abort();
       abortRef.current = null;
+      moreAbortRef.current?.abort();
+      moreAbortRef.current = null;
     };
   }, [load]);
 
@@ -769,6 +802,8 @@ function FilingDetailView({
         onRootKeyDown={handlePositionKeyDown}
         rootWidth={width}
         rootBefore={summary}
+        scrollRef={positionScrollRef}
+        onBodyScrollActivity={onBodyScrollActivity}
         resetScrollKey={filing.accessionNumber}
         columns={columns}
         items={positionRows}

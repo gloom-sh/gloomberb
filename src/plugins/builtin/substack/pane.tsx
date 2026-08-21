@@ -3,6 +3,7 @@ import { Box, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   EmptyState,
   Spinner,
+  useTableLoadMore,
   type DataTableKeyEvent,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
@@ -15,6 +16,7 @@ import {
 import {
   loadSubstackArticleDetail,
   loadSubstackHome,
+  loadSubstackHomeMore,
   loadSubstackPublicationFeed,
 } from "./api/loaders";
 import {
@@ -126,6 +128,33 @@ export function SubstackPane({ focused, width, height }: PaneProps) {
       });
   }, [auth, handleAuthFailure]);
 
+  const loadHomeMore = useCallback((cursor: string) => {
+    if (!auth) return;
+    const gen = homeFetchGenRef.current;
+    loadSubstackHomeMore(cursor)
+      .then((page) => {
+        if (homeFetchGenRef.current !== gen) return;
+        setHome((current) => {
+          if (!current.data) return current;
+          const itemsById = new Map(current.data.feed.map((article) => [article.id, article]));
+          for (const article of page.items) itemsById.set(article.id, article);
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              feed: [...itemsById.values()],
+              hasMore: !!page.nextCursor,
+              nextCursor: page.nextCursor,
+            },
+          };
+        });
+      })
+      .catch((loadError) => {
+        if (homeFetchGenRef.current !== gen) return;
+        handleAuthFailure(loadError);
+      });
+  }, [auth, handleAuthFailure]);
+
   useEffect(() => {
     if (!auth) return;
     loadHome(false);
@@ -215,18 +244,32 @@ export function SubstackPane({ focused, width, height }: PaneProps) {
     home,
   }), [activePublication, activePublicationTabId, home, publicationFeeds]);
 
-  const loadMoreActivePublicationRows = useCallback(() => {
-    if (!activePublication || !activePublicationTabId || detailOpen) return;
-    const entry = publicationFeeds[activePublicationTabId];
-    const page = entry?.data;
-    if (!page || entry.loading || entry.loadingMore || entry.error || !page.hasMore || page.nextOffset == null) return;
-    const scrollBox = tableScrollRef.current;
-    if (!scrollBox?.viewport) return;
-    const visibleBottom = scrollBox.scrollTop + scrollBox.viewport.height;
-    const remainingRows = page.items.length - visibleBottom;
-    if (remainingRows > PUBLICATION_LOAD_MORE_THRESHOLD_ROWS) return;
-    loadPublication(activePublication, false, page.nextOffset);
-  }, [activePublication, activePublicationTabId, detailOpen, loadPublication, publicationFeeds]);
+  const loadMoreHome = useCallback(() => {
+    if (!auth || home.loading || detailOpen || !home.data?.hasMore || !home.data.nextCursor) return;
+    loadHomeMore(home.data.nextCursor);
+  }, [auth, detailOpen, home.data?.hasMore, home.data?.nextCursor, home.loading, loadHomeMore]);
+
+  const loadMoreActivePublicationRows = useTableLoadMore(
+    tableScrollRef,
+    !detailOpen && (
+      activePublication
+        ? !!(publicationFeeds[activePublicationTabId ?? ""]?.data?.hasMore
+          && publicationFeeds[activePublicationTabId ?? ""]?.data?.nextOffset != null
+          && !publicationFeeds[activePublicationTabId ?? ""]?.loading
+          && !publicationFeeds[activePublicationTabId ?? ""]?.loadingMore
+          && !publicationFeeds[activePublicationTabId ?? ""]?.error)
+        : !!(home.data?.hasMore && home.data.nextCursor && !home.loading)
+    ),
+    () => {
+      if (activePublication) {
+        const page = publicationFeeds[activePublicationTabId ?? ""]?.data;
+        if (page?.nextOffset != null) loadPublication(activePublication, false, page.nextOffset);
+        return;
+      }
+      loadMoreHome();
+    },
+    PUBLICATION_LOAD_MORE_THRESHOLD_ROWS,
+  );
 
   const sortedRows = useMemo(() => (
     sortedSubstackArticles(activeFeedState.data ?? [], sort)

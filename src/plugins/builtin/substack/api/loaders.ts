@@ -33,11 +33,17 @@ export async function loadSubstackHome(force = false): Promise<SubstackHomeData>
     }),
   ]);
   return {
-    subscriptions: sortSubscriptionsByLatest(subscriptionsEntry.data, feedEntry.data),
-    feed: feedEntry.data,
+    subscriptions: sortSubscriptionsByLatest(subscriptionsEntry.data, feedEntry.data.items),
+    feed: feedEntry.data.items,
     fetchedAt: Math.max(subscriptionsEntry.fetchedAt, feedEntry.fetchedAt),
     stale: subscriptionsEntry.stale || feedEntry.stale,
+    hasMore: !!feedEntry.data.nextCursor,
+    nextCursor: feedEntry.data.nextCursor,
   };
+}
+
+export async function loadSubstackHomeMore(cursor: string): Promise<{ items: SubstackArticleSummary[]; nextCursor: string | null }> {
+  return fetchReaderFeedPage(requireAuth(), "subscribed", cursor);
 }
 
 function payloadCursor(payload: unknown): string | null {
@@ -48,23 +54,41 @@ function payloadCursor(payload: unknown): string | null {
   return typeof cursor === "string" && cursor.trim() ? cursor : null;
 }
 
-async function fetchReaderFeedItems(auth: ReturnType<typeof requireAuth>, tab: string): Promise<SubstackArticleSummary[]> {
+async function fetchReaderFeedPage(
+  auth: ReturnType<typeof requireAuth>,
+  tab: string,
+  cursor: string | null = null,
+): Promise<{ items: SubstackArticleSummary[]; nextCursor: string | null }> {
+  const url = new URL(`${SUBSTACK_ORIGIN}/api/v1/reader/feed`);
+  url.searchParams.set("tab", tab);
+  if (cursor) url.searchParams.set("cursor", cursor);
+  const payload = await fetchJsonAuthenticated<unknown>(url.toString(), auth);
+  const nextCursor = payloadCursor(payload);
+  return {
+    items: normalizeFeedItems(payload),
+    nextCursor: nextCursor && nextCursor !== cursor ? nextCursor : null,
+  };
+}
+
+async function fetchReaderFeedItems(
+  auth: ReturnType<typeof requireAuth>,
+  tab: string,
+): Promise<{ items: SubstackArticleSummary[]; nextCursor: string | null }> {
   const collected = new Map<string, SubstackArticleSummary>();
   let cursor: string | null = null;
   for (let page = 0; page < READER_FEED_MAX_PAGES && collected.size < READER_FEED_TARGET_ITEMS; page += 1) {
-    const url = new URL(`${SUBSTACK_ORIGIN}/api/v1/reader/feed`);
-    url.searchParams.set("tab", tab);
-    if (cursor) url.searchParams.set("cursor", cursor);
-    const payload = await fetchJsonAuthenticated<unknown>(url.toString(), auth);
-    for (const article of normalizeFeedItems(payload)) {
+    const result = await fetchReaderFeedPage(auth, tab, cursor);
+    for (const article of result.items) {
       collected.set(article.id, article);
       if (collected.size >= READER_FEED_TARGET_ITEMS) break;
     }
-    const nextCursor = payloadCursor(payload);
-    if (!nextCursor || nextCursor === cursor) break;
-    cursor = nextCursor;
+    if (!result.nextCursor) {
+      cursor = null;
+      break;
+    }
+    cursor = result.nextCursor;
   }
-  return [...collected.values()];
+  return { items: [...collected.values()], nextCursor: cursor };
 }
 
 export async function loadSubstackPublicationFeed(

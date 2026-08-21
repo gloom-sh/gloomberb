@@ -2,7 +2,7 @@ import { Box } from "../../../../ui";
 import { useEffect, useMemo } from "react";
 import type { PaneProps } from "../../../../types/plugin";
 import type { MarketNewsItem } from "../../../../types/news-source";
-import { useLoadNewsStory, useNewsArticles } from "../../../../news/hooks";
+import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../runtime";
 import { Tabs } from "../../../../components";
 import { NewsDetailView, useNewsArticleDetail } from "./news/detail-view";
@@ -34,6 +34,7 @@ function useIndustryArticles(sector: SectorNewsSelection): {
   allArticles: MarketNewsItem[];
   loading: boolean;
   error: string | null;
+  newsState: ReturnType<typeof useNewsArticles>;
 } {
   const allState = useNewsArticles(NEWS_QUERY_PRESETS.sectorAll);
   const allArticles = usePersistedNewsArticles("industry:sector:all:articles", allState.articles);
@@ -50,6 +51,7 @@ function useIndustryArticles(sector: SectorNewsSelection): {
     loading: allState.phase === "loading"
       || (allState.phase === "refreshing" && allArticles.length === 0),
     error: allState.error,
+    newsState: allState,
   };
 }
 
@@ -57,7 +59,8 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
   const [category, setCategory] = usePluginPaneState<SectorNewsSelection>("industry:category", "all");
   const [selectedArticleId, setSelectedArticleId] = useDebouncedPluginPaneState<string | null>("industry:selectedArticleId", null);
   const [sortPreference, setSortPreference] = usePluginPaneState<NewsSortPreference>("industry:sort", DEFAULT_SORT);
-  const { articles, allArticles, loading, error } = useIndustryArticles(category);
+  const { articles, allArticles, loading, error, newsState } = useIndustryArticles(category);
+  const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(NEWS_QUERY_PRESETS.sectorAll, newsState);
   const loadNewsStory = useLoadNewsStory();
   const { detailArticle, openArticle, closeDetail } = useNewsArticleDetail(articles, loadNewsStory);
   const { readArticleIds, markArticleRead } = useNewsReadState();
@@ -140,6 +143,8 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
       })}
       emptyStateTitle="No news in this category"
       emptyStateHint="Try another category or wait for the next feed refresh."
+      scrollRef={scrollRef}
+      onBodyScrollActivity={onBodyScrollActivity}
     />
   );
 }

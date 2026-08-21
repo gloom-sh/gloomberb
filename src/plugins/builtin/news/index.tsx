@@ -5,7 +5,7 @@ import { useArticleSummary, useResolvedEntryValue } from "../../../market-data/h
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { EmptyState } from "../../../components";
-import { useLoadNewsStory, useNewsArticles } from "../../../news/hooks";
+import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../news/hooks";
 import { newsWireModule } from "./wire";
 import { NewsDetailView, useNewsArticleDetail } from "./wire/news/detail-view";
 import {
@@ -33,18 +33,20 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
     DEFAULT_SORT,
   );
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
-  const newsState = useNewsArticles(instrument ? {
-    feed: "ticker",
+  const newsQuery = instrument ? {
+    feed: "ticker" as const,
     ticker: instrument.symbol,
     exchange: instrument.exchange,
-    tickerTier: "primary",
+    tickerTier: "primary" as const,
     limit: NEWS_ITEM_LIMIT,
-  } : null);
+  } : null;
+  const newsState = useNewsArticles(newsQuery);
   const news = usePersistedNewsArticles(
     `articles:${instrument?.symbol ?? "none"}:${instrument?.exchange ?? ""}`,
     newsState.articles,
   );
   const { readArticleIds, markArticleRead } = useNewsReadState();
+  const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(newsQuery, newsState);
   const loadNewsStory = useLoadNewsStory();
   const { detailArticle, openArticle, closeDetail } = useNewsArticleDetail(news, loadNewsStory);
   const loading = newsState.phase === "loading"
@@ -118,6 +120,8 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
       })}
       emptyStateTitle={`No news for ${ticker.metadata.ticker}`}
       emptyStateHint="Stories appear as sources publish them."
+      scrollRef={scrollRef}
+      onBodyScrollActivity={onBodyScrollActivity}
     />
   );
 }

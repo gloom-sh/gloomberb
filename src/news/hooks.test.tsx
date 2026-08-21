@@ -33,6 +33,8 @@ test("useNewsArticles watches once and unwatches on unmount", async () => {
     error: null,
     updatedAt: 1,
     sourceIds: [],
+    nextCursor: null,
+    loadingMore: false,
   };
   const service = {
     getQueryState: () => readyState,

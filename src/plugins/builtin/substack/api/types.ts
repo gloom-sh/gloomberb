@@ -16,6 +16,8 @@ export interface SubstackHomeData {
   feed: SubstackArticleSummary[];
   fetchedAt: number;
   stale: boolean;
+  hasMore?: boolean;
+  nextCursor?: string | null;
 }
 
 export interface SubstackPublicationFeedPage {

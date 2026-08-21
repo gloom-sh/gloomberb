@@ -140,6 +140,32 @@ export function useTableViewState({
   };
 }
 
+export function isTableScrollNearEnd(
+  scrollBox: {
+    scrollTop: number;
+    scrollHeight: number;
+    viewport?: { height: number } | null;
+  } | null,
+  threshold = 8,
+): boolean {
+  if (!scrollBox?.viewport) return false;
+  const viewportHeight = Math.max(1, scrollBox.viewport.height);
+  return scrollBox.scrollTop + viewportHeight >= scrollBox.scrollHeight - threshold;
+}
+
+export function useTableLoadMore(
+  scrollRef: RefObject<ScrollBoxRenderable | null>,
+  canLoadMore: boolean,
+  loadMore: () => void,
+  threshold = 8,
+) {
+  return useCallback(() => {
+    if (!canLoadMore) return;
+    if (!isTableScrollNearEnd(scrollRef.current, threshold)) return;
+    loadMore();
+  }, [canLoadMore, loadMore, scrollRef, threshold]);
+}
+
 export function useTableBodyScrollActivity({
   onBodyScrollActivity,
   syncHeaderScroll,

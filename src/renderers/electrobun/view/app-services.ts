@@ -14,6 +14,8 @@ import { RemoteTickerRepository } from "./remote/ticker-repository";
 import { connectBackendConnectionHealth } from "./remote/connection-health-backend";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
 import { createCapabilityInvoker } from "./remote/capability-invoker";
+import { apiClient } from "../../../api-client";
+import { cloudNewsParams, mapCloudNewsArticle } from "../../../sources/gloomberb-cloud/news";
 
 const servicesLog = debugLog.createLogger("services");
 
@@ -54,6 +56,17 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     priority: 0,
     provider: {
       fetchNews: (query) => dataProvider.getNews(query),
+      fetchNewsPage: async (query) => {
+        try {
+          const response = await apiClient.getCloudNews(cloudNewsParams(query));
+          return {
+            articles: response.items.map((item) => mapCloudNewsArticle(item, query.ticker)),
+            nextCursor: response.nextCursor ?? null,
+          };
+        } catch {
+          return { articles: await dataProvider.getNews(query), nextCursor: null };
+        }
+      },
     },
   }));
 

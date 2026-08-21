@@ -68,10 +68,17 @@ export interface NewsQuery {
 
 export type NewsQueryPhase = "idle" | "loading" | "ready" | "refreshing" | "error";
 
+export interface NewsPage {
+  articles: NewsArticle[];
+  nextCursor?: string | null;
+}
+
 export interface NewsQueryState {
   phase: NewsQueryPhase;
   articles: NewsArticle[];
   error: string | null;
   updatedAt: number | null;
   sourceIds: string[];
+  nextCursor: string | null;
+  loadingMore: boolean;
 }

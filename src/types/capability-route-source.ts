@@ -1,11 +1,12 @@
 import type { AssetDataProvider } from "./data-provider";
-import type { NewsArticle, NewsQuery } from "../news/types";
+import type { NewsArticle, NewsPage, NewsQuery } from "../news/types";
 import type { CachePolicyMap } from "./persistence";
 
 export interface NewsDataProvider {
   supports?(query: NewsQuery): boolean;
   getCachedNews?(query: NewsQuery): NewsArticle[];
   fetchNews(query: NewsQuery): Promise<NewsArticle[]>;
+  fetchNewsPage?(query: NewsQuery): Promise<NewsPage>;
   fetchNewsStory?(storyId: string): Promise<NewsArticle | null>;
 }
 

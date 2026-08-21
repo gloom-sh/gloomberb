@@ -147,6 +147,10 @@ export function newsProvider(options: {
       supports: op((input: any) => options.provider.supports?.(input.query) ?? true, "query"),
       getCachedNews: op((input: any) => options.provider.getCachedNews?.(input.query) ?? [], "query"),
       fetchNews: op((input: any) => options.provider.fetchNews(input.query), "query"),
+      fetchNewsPage: op((input: any) => (
+        options.provider.fetchNewsPage?.(input.query)
+        ?? options.provider.fetchNews(input.query).then((articles) => ({ articles, nextCursor: null }))
+      ), "query"),
       fetchNewsStory: op((input: any) => options.provider.fetchNewsStory?.(input.storyId) ?? null, "query"),
     },
   };

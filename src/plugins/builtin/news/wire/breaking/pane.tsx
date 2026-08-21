@@ -1,6 +1,6 @@
 import { Box } from "../../../../../ui";
 import type { PaneProps } from "../../../../../types/plugin";
-import { useLoadNewsStory, useNewsArticles } from "../../../../../news/hooks";
+import { useLoadNewsStory, useNewsArticles, useNewsTableLoadMore } from "../../../../../news/hooks";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../../../runtime";
 import { NewsDetailView, useNewsArticleDetail } from "../news/detail-view";
 import {
@@ -18,6 +18,7 @@ const DEFAULT_SORT: NewsSortPreference = { columnId: "importance", direction: "d
 export function BreakingPane({ focused, width, height }: PaneProps) {
   const breakingState = useNewsArticles(NEWS_QUERY_PRESETS.breaking);
   const articles = usePersistedNewsArticles("breaking:articles", breakingState.articles);
+  const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(NEWS_QUERY_PRESETS.breaking, breakingState);
   const loading = breakingState.phase === "loading"
     || (breakingState.phase === "refreshing" && articles.length === 0);
   const error = breakingState.error;
@@ -73,6 +74,8 @@ export function BreakingPane({ focused, width, height }: PaneProps) {
       })}
       emptyStateTitle="No breaking news"
       emptyStateHint="Breaking stories appear when high-priority headlines arrive."
+      scrollRef={scrollRef}
+      onBodyScrollActivity={onBodyScrollActivity}
     />
   );
 }

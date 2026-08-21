@@ -137,7 +137,7 @@ export function activeFeedStateFromSources({
       fetchedAt: home.fetchedAt,
       stale: home.stale,
       loadingMore: false,
-      hasMore: false,
+      hasMore: home.data?.hasMore === true,
       nextOffset: null,
     };
   }

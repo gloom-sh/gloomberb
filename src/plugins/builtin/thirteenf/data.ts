@@ -1,5 +1,6 @@
 import {
   listThirteenFFormHoldings,
+  listThirteenFFormHoldingsPage,
   listThirteenFForms,
   listThirteenFFilings,
   listTopThirteenFFunds,
@@ -186,11 +187,9 @@ export async function loadFilingPositions(
   cik: string,
   accessionNumber: string,
   signal?: AbortSignal,
-  options: { forceRefresh?: boolean } = {},
-): Promise<ThirteenFHoldingRecord[]> {
-  return listThirteenFFormHoldings(cik, accessionNumber, signal, {
-    forceRefresh: options.forceRefresh,
-  });
+  options: { forceRefresh?: boolean; offset?: number; limit?: number } = {},
+): Promise<{ rows: ThirteenFHoldingRecord[]; hasMore: boolean }> {
+  return listThirteenFFormHoldingsPage(cik, accessionNumber, signal, options);
 }
 
 function quarterToPeriod(quarter: string): string {
