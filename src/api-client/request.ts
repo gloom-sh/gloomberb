@@ -43,6 +43,7 @@ export class CloudApiRequestTransport {
   private sessionToken: string | null = null;
   private sessionCookieName: SessionCookieName | null = null;
   private websocketToken: string | null = null;
+  private cookieSessionMode = false;
   private readonly fetchTransport: CloudApiFetchTransport | null;
   private readonly marketRequestTimeoutMs: number;
   private readonly connectionHealth: ConnectionHealthRegistry;
@@ -65,6 +66,14 @@ export class CloudApiRequestTransport {
 
   getWebSocketToken(): string | null {
     return this.websocketToken;
+  }
+
+  hasSessionCredential(): boolean {
+    return this.cookieSessionMode || !!this.sessionToken;
+  }
+
+  setCookieSessionMode(enabled: boolean): void {
+    this.cookieSessionMode = enabled;
   }
 
   setSessionToken(token: string | null): void {

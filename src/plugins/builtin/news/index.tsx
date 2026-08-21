@@ -122,7 +122,7 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
   );
 }
 
-const tickerNewsModule: PluginModule = {
+export const tickerNewsModule: PluginModule = {
   panes: [
     {
       id: "ticker-news",

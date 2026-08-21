@@ -19,15 +19,21 @@
     "build": "bun run scripts/build.ts",
     "build:all": "bun run scripts/build.ts --all",
     "desktop:view:build": "bun run scripts/build-electrobun-view.ts",
+    "web:build": "bun run scripts/build-web.ts",
+    "web:audit": "bun run web:build && bun run scripts/audit-web-bundle.ts",
+    "cloudflare:typecheck": "tsc --project tsconfig.cloudflare.json",
+    "cloudflare:dry-run": "bun run web:build && wrangler deploy --dry-run",
     "desktop:dev": "bun run scripts/electrobun-dev.ts",
     "desktop:build": "electrobun build",
     "desktop:release": "electrobun build --env=stable",
     "desktop:release:windows": "electrobun build --env=stable --targets=win-x64",
     "i18n:audit": "bun run scripts/i18n-audit.ts",
-    "typecheck": "bun run typecheck:opentui && bun run typecheck:electrobun-bun && bun run typecheck:electrobun-view && bun run typecheck:scripts",
+    "typecheck": "bun run typecheck:opentui && bun run typecheck:electrobun-bun && bun run typecheck:electrobun-view && bun run typecheck:browser && bun run typecheck:cloudflare && bun run typecheck:scripts",
     "typecheck:opentui": "tsc --project tsconfig.opentui.json",
     "typecheck:electrobun-bun": "tsc --project tsconfig.electrobun-bun.json",
     "typecheck:electrobun-view": "tsc --project tsconfig.electrobun-view.json",
+    "typecheck:browser": "tsc --project tsconfig.browser.json",
+    "typecheck:cloudflare": "tsc --project tsconfig.cloudflare.json",
     "typecheck:scripts": "tsc --project tsconfig.scripts.json",
     "test": "bun test",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
@@ -52,7 +58,8 @@
     "electrobun": "^1.18.1",
     "happy-dom": "^20.11.1",
     "png-to-ico": "^2.1.8",
-    "rcedit": "^4.0.1"
+    "rcedit": "^4.0.1",
+    "wrangler": "^4.0.0"
   },
   "peerDependencies": {
     "typescript": "^5.9.2"

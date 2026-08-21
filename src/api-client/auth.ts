@@ -18,6 +18,7 @@ type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
 interface CloudAuthApiOptions {
   getCurrentUser(): AuthUser | null;
   getSessionToken(): string | null;
+  hasSessionCredential(): boolean;
   request: CloudApiRequest;
   requireCapturedSession(message: string): void;
   setCurrentUser(user: AuthUser | null): void;
@@ -29,7 +30,7 @@ export class CloudAuthApi {
   constructor(private readonly options: CloudAuthApiOptions) {}
 
   restoreCachedUser(user: PersistedAuthUser | null): void {
-    if (!this.options.getSessionToken() || !user?.id) {
+    if (!this.options.hasSessionCredential() || !user?.id) {
       this.options.setCurrentUser(null);
       return;
     }
@@ -57,7 +58,7 @@ export class CloudAuthApi {
   }
 
   async ensureVerifiedSession(): Promise<AuthUser | null> {
-    if (!this.options.getSessionToken()) return null;
+    if (!this.options.hasSessionCredential()) return null;
     if (!this.options.getCurrentUser()) {
       await this.getSession();
     }

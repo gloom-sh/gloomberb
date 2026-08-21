@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "gloomberb-web",
+  "main": "src/renderers/cloudflare/worker.ts",
+  "compatibility_date": "2026-08-21",
+  "assets": {
+    "directory": "./dist/web",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  }
+}

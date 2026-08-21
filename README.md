@@ -29,8 +29,24 @@ Gloomberb has two ways in:
 |---------|----------|-------------|
 | Desktop app | A polished app window, pop-out panes, OS shortcuts, and built-in updates | Published for macOS and Windows. It also installs a `gloomberb` terminal command for the TUI. |
 | Terminal UI | Fast keyboard workflows inside your terminal, SSH/dev boxes, Linux machines, and script-friendly setups | Runs with `gloomberb` on macOS, Linux, and Windows. |
+| Browser app | The shared DOM interface without an install | Open [term.gloom.sh](https://term.gloom.sh). |
 
-Both share the same command language, plugin system, market data surfaces, portfolios, watchlists, alerts, notes, and AI tools.
+The desktop app and TUI share the full command language and plugin system. The browser app uses the same official DOM renderer and layout with a reviewed browser plugin catalog.
+
+## Browser App
+
+[term.gloom.sh](https://term.gloom.sh) works anonymously with configuration, tickers, layouts, session state, and plugin state stored in the browser. Gloom Cloud login is optional and enables cloud-backed market data, chat, and sync. Cloud REST and WebSocket traffic goes directly to `https://api.gloom.sh`; the static host never receives Gloom credentials.
+
+The browser build intentionally omits brokers and native integrations, filesystem notes, local AI, external plugins, updater/debug tools, application menus, native window controls, pop-out native windows, and native context menus. Modules that still depend on desktop-only or CORS-blocked feeds are also absent for now: RSS/Substack, prediction markets and polls, market halts/heatmap/movers, dividend/ownership/SEC panes, earnings/IPO, and TV. Public shares open under `/s/:id` in a separate slim bundle. Share creation and owner deletion use the signed-in Gloom Cloud session directly on the API; public reads require no account.
+
+Local browser development:
+
+```bash
+bun run web:build
+bunx wrangler dev
+```
+
+Validate the public artifacts with `bun run web:audit` and `bun run cloudflare:dry-run`. `wrangler.jsonc` is intentionally generic and contains no account, route, domain, namespace, or secret. Production routing and the private Gloom Cloud API deployment are configured separately.
 
 ## Install
 

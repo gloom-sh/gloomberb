@@ -6,6 +6,7 @@ import { getDataDir, initDataDir, setConfigStoreHost } from "../../data/config/s
 import { applyLanguageFromConfig } from "../../i18n";
 import * as nodeConfigStoreHost from "../../data/config/store/node";
 import { loadExternalPlugins } from "../../plugins/loader";
+import { getLoadablePlugins } from "../../plugins/catalog";
 import { OpenTuiInputHostProvider } from "./input-host";
 import { debugLog } from "../../utils/debug-log";
 import { UiHostProvider } from "../../ui/host";
@@ -143,6 +144,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
                 config={config}
                 servicesFactory={createAppServices}
                 externalPlugins={externalPlugins}
+                plugins={getLoadablePlugins(externalPlugins)}
                 cliLaunchRequest={cliLaunchRequest}
                 remoteControlAdapter={remoteControlAdapter}
               />

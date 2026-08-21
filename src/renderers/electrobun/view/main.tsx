@@ -30,6 +30,7 @@ import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
+import { getRendererBuiltinPlugins } from "../../../plugins/catalog-ui";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -112,6 +113,7 @@ async function boot() {
                 <App
                   config={config}
                   servicesFactory={createElectrobunAppServices}
+                  plugins={getRendererBuiltinPlugins()}
                   desktopWindowBridge={desktopWindowBridge}
                   desktopApplicationMenuBridge={desktopApplicationMenuBridge}
                   desktopDeepLinkBridge={desktopDeepLinkBridge}

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
@@ -49,7 +49,12 @@ function seedCalendar(): void {
   attachEconCalendarPersistence(persistence);
 }
 
+beforeEach(() => {
+  setSystemTime(new Date("2026-08-21T12:00:00.000Z"));
+});
+
 afterEach(async () => {
+  setSystemTime();
   if (setup) {
     await act(async () => setup?.renderer.destroy());
     setup = undefined;

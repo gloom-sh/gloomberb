@@ -24,7 +24,7 @@ import type { AppServicesFactory, AppTickerRepositoryPort } from "./core/app-ser
 import { useThemeColors } from "./theme/theme-context";
 import type { AppConfig } from "./types/config";
 import type { DesktopDeepLinkBridge } from "./types/desktop-deeplink";
-import type { CliLaunchRequest } from "./types/plugin";
+import type { CliLaunchRequest, GloomPlugin } from "./types/plugin";
 import type { DataProvider } from "./types/data-provider";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "./types/desktop-window";
 import type { DesktopApplicationMenuBridge } from "./types/desktop-menu";
@@ -32,7 +32,6 @@ import type { LayoutBounds } from "./plugins/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
-import { getLoadablePlugins } from "./plugins/catalog";
 import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
 import { useDesktopApplicationMenuRuntime } from "./app/runtime/desktop-menu";
@@ -68,6 +67,7 @@ interface AppInnerProps {
   desktopApplicationMenuBridge?: DesktopApplicationMenuBridge;
   desktopDeepLinkBridge?: DesktopDeepLinkBridge;
   remoteControlAdapter?: RemoteControlAdapter;
+  updatesEnabled?: boolean;
   onboardingActive?: boolean;
   onOnboardingComplete?: (config: AppConfig) => void | Promise<void>;
 }
@@ -100,6 +100,7 @@ function AppInner({
   desktopApplicationMenuBridge,
   desktopDeepLinkBridge,
   remoteControlAdapter,
+  updatesEnabled = true,
   onboardingActive = false,
   onOnboardingComplete,
 }: AppInnerProps) {
@@ -221,6 +222,7 @@ function AppInner({
   });
 
   const { runUpdateCheck, startUpdate } = useAppUpdateRuntime({
+    enabled: updatesEnabled,
     dispatch,
     isDetachedWindow,
     pluginRegistry,
@@ -399,7 +401,7 @@ function AppInner({
               tickerRepository={tickerRepository}
               pluginRegistry={pluginRegistry}
               quitApp={() => rendererHost.requestExit()}
-              onCheckForUpdates={() => runUpdateCheck(true)}
+              onCheckForUpdates={updatesEnabled ? () => runUpdateCheck(true) : undefined}
               onNativeOccluderChange={setCommandBarNativeOccluder}
             />
           )}
@@ -414,6 +416,7 @@ interface AppProps {
   config: AppConfig;
   servicesFactory: AppServicesFactory;
   externalPlugins?: LoadedExternalPlugin[];
+  plugins: readonly GloomPlugin[];
   cliLaunchRequest?: CliLaunchRequest | null;
   desktopWindowBridge?: DesktopWindowBridge;
   desktopApplicationMenuBridge?: DesktopApplicationMenuBridge;
@@ -421,12 +424,14 @@ interface AppProps {
   desktopSnapshot?: DesktopSharedStateSnapshot | null;
   desktopThemePreview?: DesktopThemePreviewState | null;
   remoteControlAdapter?: RemoteControlAdapter;
+  updatesEnabled?: boolean;
 }
 
 export function App({
   config: initialConfig,
   servicesFactory,
   externalPlugins: providedExternalPlugins,
+  plugins,
   cliLaunchRequest = null,
   desktopWindowBridge,
   desktopApplicationMenuBridge,
@@ -434,6 +439,7 @@ export function App({
   desktopSnapshot = null,
   desktopThemePreview = null,
   remoteControlAdapter,
+  updatesEnabled = true,
 }: AppProps) {
   useAppLanguage();
   const externalPlugins = providedExternalPlugins ?? EMPTY_EXTERNAL_PLUGINS;
@@ -469,14 +475,14 @@ export function App({
     return measurePerf("startup.app.create-services", () => (
       servicesFactory({
         config,
-        plugins: getLoadablePlugins(externalPlugins),
+        plugins,
       })
     ), {
       externalPluginCount: externalPlugins.length,
       disabledPluginCount: config.disabledPlugins.length,
       brokerInstanceCount: config.brokerInstances.length,
     });
-  }, [config.dataDir, externalPlugins, servicesFactory]);
+  }, [config.dataDir, externalPlugins, plugins, servicesFactory]);
 
   useEffect(() => {
     return () => services.destroy();
@@ -514,6 +520,7 @@ export function App({
           desktopApplicationMenuBridge={desktopApplicationMenuBridge}
           desktopDeepLinkBridge={desktopDeepLinkBridge}
           remoteControlAdapter={remoteControlAdapter}
+          updatesEnabled={updatesEnabled}
           onboardingActive={showOnboarding}
           onOnboardingComplete={(updatedConfig) => {
             setConfig(updatedConfig);

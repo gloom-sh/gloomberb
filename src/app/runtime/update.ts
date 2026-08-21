@@ -13,6 +13,7 @@ import { VERSION } from "../../version";
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
 
 export function useAppUpdateRuntime({
+  enabled = true,
   dispatch,
   isDetachedWindow,
   pluginRegistry,
@@ -21,6 +22,7 @@ export function useAppUpdateRuntime({
   updateCheckInProgress,
   updateProgress,
 }: {
+  enabled?: boolean;
   dispatch: Dispatch<AppAction>;
   isDetachedWindow: boolean;
   pluginRegistry: PluginRegistry;
@@ -76,15 +78,15 @@ export function useAppUpdateRuntime({
   }, [dispatch]);
 
   useEffect(() => {
-    if (isDetachedWindow) return;
+    if (!enabled || isDetachedWindow) return;
     void runUpdateCheck(false);
     const interval = setInterval(() => { void runUpdateCheck(false); }, UPDATE_CHECK_INTERVAL_MS);
     return () => { clearInterval(interval); };
-  }, [isDetachedWindow, runUpdateCheck]);
+  }, [enabled, isDetachedWindow, runUpdateCheck]);
 
   // First launch on a new version: show that release's notes, then remember the version.
   useEffect(() => {
-    if (isDetachedWindow) return;
+    if (!enabled || isDetachedWindow) return;
     const config = stateRef.current.config;
     if (config.lastLaunchedVersion === VERSION) return;
     const isUpgrade = !!config.lastLaunchedVersion;
@@ -95,14 +97,14 @@ export function useAppUpdateRuntime({
     void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
       values: { version: VERSION },
     }).catch(() => {});
-  }, [dispatch, isDetachedWindow, pluginRegistry, stateRef]);
+  }, [dispatch, enabled, isDetachedWindow, pluginRegistry, stateRef]);
 
   useEffect(() => {
-    if (isDetachedWindow) return;
+    if (!enabled || isDetachedWindow) return;
     if (!updateAvailable || updateProgress || updateCheckInProgress) return;
     if (!canSelfUpdate(updateAvailable)) return;
     startUpdate(updateAvailable);
-  }, [isDetachedWindow, startUpdate, updateAvailable, updateCheckInProgress, updateProgress]);
+  }, [enabled, isDetachedWindow, startUpdate, updateAvailable, updateCheckInProgress, updateProgress]);
 
   return {
     runUpdateCheck,

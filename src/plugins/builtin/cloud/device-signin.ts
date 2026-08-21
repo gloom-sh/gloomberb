@@ -4,7 +4,6 @@
  * adopted through the same persistence and API-client path boot restoration
  * uses, so the rest of the app sees a normal signed-in session.
  */
-import { hostname } from "os";
 import {
   apiClient,
   type AuthUser,
@@ -53,13 +52,8 @@ const START_RETRY_MAX_MS = 30_000;
 const POLL_BACKOFF_FACTOR = 2;
 
 function defaultClientName(): string {
-  try {
-    const name = hostname().trim();
-    if (name && name !== "localhost") return name;
-  } catch {
-    // Browser-bundled builds have no hostname; fall through to the generic name.
-  }
-  return "Gloomberb TUI";
+  const name = typeof process !== "undefined" ? process.env.HOSTNAME?.trim() : "";
+  return name && name !== "localhost" ? name : "Gloomberb";
 }
 
 function defaultClientPlatform(): string | undefined {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, useUiHost } from "../../../ui";
+import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import {
   ChoiceDialog,
   Tabs,
@@ -59,6 +59,9 @@ import {
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { usePublicShare } from "../shared/public-share";
+import { buildChartShareData } from "../../../shares/chart-snapshot";
+import { isPlainKey } from "../../../utils/keyboard";
 
 const RANGE_TABS = RANGES.map((range, index) => ({ label: `${index + 1}:${range}`, value: range }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
@@ -107,6 +110,7 @@ function ChartComposerSurface({
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
+  const { publicSharing } = useUiCapabilities();
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -220,6 +224,11 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
+  const shareData = useMemo(() => buildChartShareData(plottedSeries), [plottedSeries]);
+  const createPublicShare = usePublicShare();
+  const shareChart = useCallback(() => {
+    if (shareData) void createPublicShare({ kind: "chart", data: shareData });
+  }, [createPublicShare, shareData]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -444,6 +453,12 @@ function ChartComposerSurface({
 
   useShortcut((event) => {
     if (interactionCaptureRef.current || dialogOpen) return;
+    if (publicSharing && shareData && isPlainKey(event, "y")) {
+      event.preventDefault();
+      event.stopPropagation();
+      shareChart();
+      return;
+    }
     const shortcut = resolveChartComposerShortcut(event, RANGES.length);
     if (!shortcut) return;
     event.preventDefault();
@@ -479,6 +494,9 @@ function ChartComposerSurface({
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       { id: "range", key: "1-8", label: "range", onPress: footerRange },
+      ...(publicSharing
+        ? [{ id: "share", key: "y", label: " share", onPress: shareChart, disabled: !shareData }]
+        : []),
     ],
   }), [
     footerRange,
@@ -489,6 +507,9 @@ function ChartComposerSurface({
     indicatorsDisabled,
     openFormulas,
     openIndicators,
+    publicSharing,
+    shareChart,
+    shareData,
     resolution.errors,
     resolution.loading,
     resolution.warnings,

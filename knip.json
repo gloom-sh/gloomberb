@@ -4,6 +4,8 @@
     "bin/gloomberb",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
+    "scripts/build-web.ts",
+    "scripts/audit-web-bundle.ts",
     "src/cli/entry.ts",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
@@ -11,7 +13,10 @@
     "src/renderers/electrobun/view/app-services.ts",
     "src/renderers/electrobun/view/cli-pane-shot-entry.tsx",
     "src/renderers/electrobun/view/notes-files.ts",
-    "src/renderers/electrobun/view/native-stubs/**/*.ts"
+    "src/renderers/electrobun/view/native-stubs/**/*.ts",
+    "src/renderers/browser/main.tsx",
+    "src/renderers/share/main.tsx",
+    "src/renderers/cloudflare/worker.ts"
   ],
   "project": [
     "scripts/**/*.ts",

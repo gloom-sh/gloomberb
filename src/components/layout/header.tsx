@@ -164,9 +164,9 @@ export function Header({
   const rendererHost = useRendererHost();
   const baseCurrency = useAppSelector(selectBaseCurrency);
   const appActive = useAppActive();
-  const { titleBarOverlay, windowControls } = useUiCapabilities();
-  const showWindowControls = windowControls === "windows";
-  const titlebarLeadingInset = titleBarOverlay ? getTitlebarLeadingInset() : 0;
+  const { titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
+  const showWindowControls = nativeWindowChrome && windowControls === "windows";
+  const titlebarLeadingInset = titleBarOverlay && nativeWindowChrome ? getTitlebarLeadingInset() : 0;
   const spyQuoteEntry = useQuoteEntry("SPY", null);
   const spyQuote = useResolvedEntryValue(spyQuoteEntry);
   const mktState = spyQuote?.marketState;
@@ -198,9 +198,9 @@ export function Header({
     : "SPY —";
 
   const startWindowDrag = useCallback(() => {
-    if (!titleBarOverlay) return;
+    if (!titleBarOverlay || !nativeWindowChrome) return;
     void rendererHost.startWindowDrag?.();
-  }, [rendererHost, titleBarOverlay]);
+  }, [nativeWindowChrome, rendererHost, titleBarOverlay]);
 
   // Market status
   const mktCountdown = mktState ? marketStateCountdown(mktState, now) : null;

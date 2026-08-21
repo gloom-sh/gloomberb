@@ -7,7 +7,6 @@ import type { AppRuntimeServices, AppServicesFactoryOptions } from "../../../cor
 import { newsProvider } from "../../../capabilities";
 import { debugLog } from "../../../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../../../utils/perf-marks";
-import { getRendererBuiltinPlugins } from "../../../plugins/catalog-ui";
 import { createRemoteAssetDataClient } from "./remote/asset-data-client";
 import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
@@ -17,7 +16,7 @@ import { createCapabilityInvoker } from "./remote/capability-invoker";
 
 const servicesLog = debugLog.createLogger("services");
 
-export function createElectrobunAppServices({ config }: AppServicesFactoryOptions): AppRuntimeServices {
+export function createElectrobunAppServices({ config, plugins }: AppServicesFactoryOptions): AppRuntimeServices {
   servicesLog.info("create desktop web services start", {
     brokerInstanceCount: config.brokerInstances.length,
   });
@@ -57,7 +56,6 @@ export function createElectrobunAppServices({ config }: AppServicesFactoryOption
     },
   }));
 
-  const plugins = getRendererBuiltinPlugins();
   const pluginReadyPromises: Promise<void>[] = [];
   for (const plugin of plugins) {
     pluginReadyPromises.push(measurePerfAsync("startup.services.register-plugin", () => (

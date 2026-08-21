@@ -49,6 +49,7 @@ function mergeQuoteStreamSubscriptions(
 type CloudApiSocketDelegate = {
   getBaseUrl: () => string;
   getSocketAuthToken: () => string | null;
+  hasSessionCredential: () => boolean;
   hasVerifiedUser: () => boolean;
   isUsingWebSocketToken: () => boolean;
   clearWebSocketTokenForFallback: () => boolean;
@@ -427,7 +428,7 @@ export class CloudApiSocket {
 
   private shouldKeepSocketOpen(): boolean {
     if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0) return true;
-    return !!this.delegate.getSocketAuthToken()
+    return this.delegate.hasSessionCredential()
       && this.delegate.hasVerifiedUser()
       && this.channelListeners.size > 0;
   }

@@ -2,7 +2,7 @@ import { readFile, writeFile } from "fs/promises";
 import { join, relative } from "path";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../../../components/layout/titlebar-overlay";
 
-type AliasRule = readonly [string, string] | readonly [string, string, string];
+export type AliasRule = readonly [string, string] | readonly [string, string, string];
 type PageOptions = {
   entrypoint: string;
   outdir: string;
@@ -61,15 +61,7 @@ async function buildElectrobunViewBundle({
       // already reads from the environment is baked in at build time.
       __GLOOMBERB_API_URL__: JSON.stringify(process.env.GLOOMBERB_API_URL ?? ""),
     },
-    plugins: [
-      {
-        name: pluginName,
-        setup(build) {
-          const aliasRules = [...extraAliasRules, ...COMMON_ALIAS_RULES];
-          build.onResolve({ filter: /.*/ }, (args) => resolveAlias(args, aliasRules));
-        },
-      },
-    ],
+    plugins: [electrobunViewAliasPlugin(pluginName, extraAliasRules)],
   });
 
   if (!result.success) {
@@ -111,6 +103,16 @@ ${bootstrapScript}
   </body>
 </html>
 `;
+}
+
+export function electrobunViewAliasPlugin(name: string, extraAliasRules: AliasRule[] = []) {
+  return {
+    name,
+    setup(build: { onResolve(options: { filter: RegExp }, callback: (args: { path: string; importer?: string }) => unknown): void }) {
+      const aliasRules = [...extraAliasRules, ...COMMON_ALIAS_RULES];
+      build.onResolve({ filter: /.*/ }, (args) => resolveAlias(args, aliasRules));
+    },
+  };
 }
 
 function resolveAlias(args: { path: string; importer?: string }, aliasRules: AliasRule[]) {

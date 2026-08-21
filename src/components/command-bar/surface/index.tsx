@@ -50,7 +50,7 @@ export function CommandBar({
     activePortfolio,
     activeTickerData,
     activeTickerSymbol,
-    availableCommands,
+    availableCommands: allAvailableCommands,
     cellHeightPx,
     cellWidthPx,
     dispatch,
@@ -67,6 +67,9 @@ export function CommandBar({
     titleBarOverlay,
     visibleListStateRef,
   } = useCommandBarEnvironment();
+  const availableCommands = useMemo(() => onCheckForUpdates
+    ? allAvailableCommands
+    : allAvailableCommands.filter((command) => command.id !== "check-for-updates"), [allAvailableCommands, onCheckForUpdates]);
   const {
     applyThemePreview,
     clearThemePreview,

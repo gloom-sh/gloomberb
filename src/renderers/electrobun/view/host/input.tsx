@@ -10,9 +10,9 @@ import {
   type KeyboardEvent,
   type RefObject,
 } from "react";
-import type { InputRenderable, TextareaRenderable } from "../../../../ui/host";
+import { editableTextContextMenuItems } from "../../../../ui/context-menu";
+import { useRendererHost, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../../../ui/host";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
-import { NATIVE_CONTEXT_MENU_SUPPORTED, showEditableTextContextMenu } from "./native";
 import { cellHeight, cellWidth, cleanDomProps, commonStyle } from "./style";
 
 function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSSProperties {
@@ -205,6 +205,8 @@ function textareaMetrics(
 }
 
 export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(function WebInput(props, ref) {
+  const renderer = useRendererHost();
+  const { nativeContextMenu } = useUiCapabilities();
   const elementRef = useRef<HTMLInputElement | null>(null);
   const propsRef = useLatestRef(props);
   const { value, valueRef, setValue } = useEditableValue(props);
@@ -287,11 +289,11 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
       }}
       onKeyDown={handleKeyDown}
       onContextMenu={(event) => {
-        if (!NATIVE_CONTEXT_MENU_SUPPORTED) return;
+        if (!nativeContextMenu || !renderer.showContextMenu) return;
         elementRef.current?.focus();
         event.preventDefault();
         event.stopPropagation();
-        void showEditableTextContextMenu();
+        void renderer.showContextMenu(editableTextContextMenuItems());
       }}
       onSelect={() => {
         setCursorOffset(elementRef.current?.selectionStart ?? valueRef.current.length);
@@ -303,6 +305,8 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
 });
 
 export const WebTextarea = forwardRef<TextareaRenderable, Record<string, unknown>>(function WebTextarea(props, ref) {
+  const renderer = useRendererHost();
+  const { nativeContextMenu } = useUiCapabilities();
   const elementRef = useRef<HTMLTextAreaElement | null>(null);
   const propsRef = useLatestRef(props);
   const { value, valueRef, setValue } = useEditableValue(props);
@@ -400,11 +404,11 @@ export const WebTextarea = forwardRef<TextareaRenderable, Record<string, unknown
       }}
       onKeyDown={handleKeyDown}
       onContextMenu={(event) => {
-        if (!NATIVE_CONTEXT_MENU_SUPPORTED) return;
+        if (!nativeContextMenu || !renderer.showContextMenu) return;
         elementRef.current?.focus();
         event.preventDefault();
         event.stopPropagation();
-        void showEditableTextContextMenu();
+        void renderer.showContextMenu(editableTextContextMenuItems());
       }}
       onSelect={() => {
         setCursorOffset(elementRef.current?.selectionStart ?? valueRef.current.length);

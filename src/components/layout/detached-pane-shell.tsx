@@ -43,9 +43,15 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     typeof document === "undefined" ? true : document.hasFocus()
   ));
   const { width, height } = useViewport();
-  const { cellHeightPx = 18, nativePaneChrome, titleBarOverlay, windowControls } = useUiCapabilities();
-  const showWindowControls = windowControls === "windows";
-  const titlebarLeadingInset = titleBarOverlay ? getTitlebarLeadingInset() : 0;
+  const {
+    cellHeightPx = 18,
+    nativePaneChrome,
+    titleBarOverlay,
+    nativeWindowChrome = titleBarOverlay,
+    windowControls,
+  } = useUiCapabilities();
+  const showWindowControls = nativeWindowChrome && windowControls === "windows";
+  const titlebarLeadingInset = titleBarOverlay && nativeWindowChrome ? getTitlebarLeadingInset() : 0;
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, desktopWindowBridge.paneId) ?? null);
   const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) ?? null : null;
   const hasPaneSettings = !!instance && pluginRegistry.hasPaneSettings(instance.instanceId);
@@ -112,8 +118,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
 
   const startWindowDrag = useCallback(() => {
     focusPane();
-    void rendererHost.startWindowDrag?.();
-  }, [focusPane, rendererHost]);
+    if (nativeWindowChrome) void rendererHost.startWindowDrag?.();
+  }, [focusPane, nativeWindowChrome, rendererHost]);
 
   const openSettings = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);

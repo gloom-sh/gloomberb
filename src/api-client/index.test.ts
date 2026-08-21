@@ -104,10 +104,20 @@ afterEach(() => {
   setCloudApiFetchTransport(null);
   apiClient.setSessionToken(null);
   apiClient.setWebSocketToken(null);
+  apiClient.setCookieSessionMode(false);
   jest.useRealTimers();
 });
 
 describe("apiClient auth cookies", () => {
+  test("accepts a browser-managed api.gloom.sh cookie without exposing its value", async () => {
+    apiClient.setCookieSessionMode(true);
+    setCloudApiFetchTransport(mockFetch(() => createResponse({ user: verifiedUser })));
+
+    await expect(apiClient.signIn("test@example.com", "password")).resolves.toEqual(verifiedUser);
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(apiClient.isVerified()).toBe(true);
+  });
+
   test("captures secure session cookies after login and reuses them on session refresh", async () => {
     const seenCookies: Array<string | null> = [];
 

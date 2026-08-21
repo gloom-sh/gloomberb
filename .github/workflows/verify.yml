@@ -35,6 +35,12 @@ jobs:
       - name: Build Electrobun view
         run: bun run desktop:view:build
 
+      - name: Build and audit browser app
+        run: bun run web:audit
+
+      - name: Dry-run Cloudflare Worker
+        run: bun run cloudflare:dry-run
+
       - name: Build core binary
         run: bun run build
 

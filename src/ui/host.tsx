@@ -336,6 +336,10 @@ export interface UiHost {
   capabilities?: {
     nativePaneChrome?: boolean;
     titleBarOverlay?: boolean;
+    /** Native drag regions and traffic-light/window-control spacing. */
+    nativeWindowChrome?: boolean;
+    /** Enables public snapshot sharing controls for this host. */
+    publicSharing?: boolean;
     precisePointer?: boolean;
     fractionalViewport?: boolean;
     cellWidthPx?: number;
