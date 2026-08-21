@@ -3,9 +3,11 @@ import { formatCompact } from "../../../utils/format";
 
 export { truncateWithEllipsis as truncate } from "../../../utils/text-wrap";
 import type {
+  CloudCongressHousePayload,
   CloudCongressMemberPayload,
   CloudCongressTradePayload,
 } from "../../../api-client";
+import type { CloudCongressHouseParams } from "../../../api-client/paths";
 
 export const CONGRESS_TRADES_PANE_ID = "congress-trades";
 export const CONGRESS_TRADE_LIMIT = 200;
@@ -245,4 +247,52 @@ export function sortedMembers(
 export function selectedIndexById<T extends { id: string }>(rows: T[], selectedId: string | null): number {
   const index = rows.findIndex((row) => row.id === selectedId);
   return index >= 0 ? index : rows.length > 0 ? 0 : -1;
+}
+
+export function canLoadMoreCongress(payload: CloudCongressHousePayload): boolean {
+  return payload.hasMore === true
+    || payload.hasMoreFilings === true
+    || payload.year > 2008;
+}
+
+export function nextCongressPage(payload: CloudCongressHousePayload): CloudCongressHouseParams | null {
+  if (payload.hasMore) {
+    return {
+      year: payload.year,
+      offset: payload.nextOffset ?? payload.trades.length,
+      filingOffset: payload.filingOffset ?? 0,
+    };
+  }
+  if (payload.hasMoreFilings) {
+    return {
+      year: payload.year,
+      offset: 0,
+      filingOffset: payload.nextFilingOffset ?? (payload.filingOffset ?? 0) + payload.filingsScanned,
+    };
+  }
+  if (payload.year > 2008) {
+    return { year: payload.year - 1, offset: 0, filingOffset: 0 };
+  }
+  return null;
+}
+
+export function mergeCongressPages(
+  current: CloudCongressHousePayload,
+  next: CloudCongressHousePayload,
+): CloudCongressHousePayload {
+  const trades = [...current.trades];
+  const seenTrades = new Set(current.trades.map((trade) => trade.id));
+  for (const trade of next.trades) {
+    if (seenTrades.has(trade.id)) continue;
+    seenTrades.add(trade.id);
+    trades.push(trade);
+  }
+  const members = [...current.members];
+  const seenMembers = new Set(current.members.map((member) => member.id));
+  for (const member of next.members) {
+    if (seenMembers.has(member.id)) continue;
+    seenMembers.add(member.id);
+    members.push(member);
+  }
+  return { ...next, trades, members };
 }

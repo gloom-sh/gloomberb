@@ -19,7 +19,9 @@ export type CloudFredSeriesParams = {
 export type CloudCongressHouseParams = {
   year?: number;
   limit?: number;
+  offset?: number;
   filingLimit?: number;
+  filingOffset?: number;
   member?: string;
   ticker?: string;
   refresh?: boolean;
@@ -122,7 +124,9 @@ export function cloudCongressHousePath(params: CloudCongressHouseParams = {}): s
   const search = new URLSearchParams();
   if (params.year != null) search.set("year", String(params.year));
   if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
   if (params.filingLimit != null) search.set("filingLimit", String(params.filingLimit));
+  if (params.filingOffset != null) search.set("filingOffset", String(params.filingOffset));
   if (params.member) search.set("member", params.member);
   if (params.ticker) search.set("ticker", params.ticker);
   if (params.refresh != null) search.set("refresh", String(params.refresh));

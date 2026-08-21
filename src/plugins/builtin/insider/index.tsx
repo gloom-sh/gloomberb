@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingItem } from "../../../types/data-provider";
 import {
@@ -7,7 +7,8 @@ import {
 } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
-import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, type FeedDataTableItem } from "../../../components";
+import type { ScrollBoxRenderable } from "../../../ui";
+import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { formatCompact, formatCurrency } from "../../../utils/format";
@@ -23,11 +24,11 @@ import {
 } from "../sec/filing-display";
 import { useSecFilingContentCache } from "../sec/filing-content";
 
-const FORM4_LIMIT = 20;
+const FORM4_PAGE_SIZE = 20;
 // SEC returns one recent-submissions payload per company, so scanning deep for
 // Form 4s costs no extra request; filtering the newest 20 filings of any form
 // hides insider activity behind a burst of 8-Ks.
-const SEC_FILING_SCAN_LIMIT = 300;
+const SEC_FILING_SCAN_LIMIT = 1000;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
 interface ParsedFiling {
@@ -117,9 +118,23 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   );
   const allFilings = useResolvedEntryValue(filingsEntry) ?? [];
   const form4Filings = useMemo(
-    () => allFilings.filter((f) => f.form.trim() === "4").slice(0, FORM4_LIMIT),
+    () => allFilings.filter((f) => f.form.trim() === "4"),
     [allFilings],
   );
+  const [visibleCount, setVisibleCount] = useState(FORM4_PAGE_SIZE);
+  const visibleForm4Filings = useMemo(
+    () => form4Filings.slice(0, visibleCount),
+    [form4Filings, visibleCount],
+  );
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const loadMore = useTableLoadMore(
+    scrollRef,
+    visibleCount < form4Filings.length,
+    () => setVisibleCount((current) => Math.min(form4Filings.length, current + FORM4_PAGE_SIZE)),
+  );
+  useEffect(() => {
+    setVisibleCount(FORM4_PAGE_SIZE);
+  }, [tickerKey]);
 
   const loading =
     filingsEntry?.phase === "loading" ||
@@ -131,10 +146,10 @@ function InsiderView({ width, height, focused }: { width: number; height: number
 
   const { contentCache: contentMap, pendingCount } = useSecFilingContentCache({
     scopeKey: `${ticker?.metadata.ticker ?? "none"}:${ticker?.metadata.exchange ?? ""}`,
-    targets: form4Filings,
+    targets: visibleForm4Filings,
   });
 
-  const allParsed: ParsedFiling[] = useMemo(() => form4Filings.map((filing) => {
+  const allParsed: ParsedFiling[] = useMemo(() => visibleForm4Filings.map((filing) => {
     const hasContent = contentMap.has(filing.accessionNumber);
     const xml = contentMap.get(filing.accessionNumber) ?? null;
     return {
@@ -142,7 +157,7 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       transaction: xml ? parseForm4Xml(xml) : null,
       isLoading: !hasContent,
     };
-  }), [contentMap, form4Filings]);
+  }), [contentMap, visibleForm4Filings]);
 
   // Apply name filter
   const parsed = useMemo(() => (
@@ -236,6 +251,8 @@ function InsiderView({ width, height, focused }: { width: number; height: number
         : pendingCount > 0
           ? "Loading Form 4 transactions..."
           : "No insider transactions."}
+      scrollRef={scrollRef}
+      onBodyScrollActivity={loadMore}
     />
   );
 }

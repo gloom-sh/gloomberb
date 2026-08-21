@@ -399,6 +399,11 @@ export interface CloudCongressHousePayload {
   indexUpdatedAt: string | null;
   filingsScanned: number;
   filingCount: number;
+  filingOffset?: number;
+  hasMore?: boolean;
+  hasMoreFilings?: boolean;
+  nextOffset?: number;
+  nextFilingOffset?: number;
   trades: CloudCongressTradePayload[];
   members: CloudCongressMemberPayload[];
 }

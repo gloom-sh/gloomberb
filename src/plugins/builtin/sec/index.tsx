@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState } from "../../runtime";
 import { usePaneTicker } from "../../../state/app/context";
-import { EmptyState, FeedDataTableStackView, Spinner, type FeedDataTableItem } from "../../../components";
+import type { ScrollBoxRenderable } from "../../../ui";
+import { EmptyState, FeedDataTableStackView, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { formatCompact, formatCurrency } from "../../../utils/format";
@@ -27,7 +28,8 @@ import {
 } from "./filing-content";
 import { usePaneStatusLinkFooter } from "../shared/pane-footer";
 
-const SEC_FILING_LIMIT = 50;
+const SEC_FILING_FETCH_LIMIT = 1000;
+const SEC_FILING_PAGE_SIZE = 50;
 const OWNERSHIP_FORMS = new Set(["3", "4", "5"]);
 
 function getDisplayFormLabel(form: string): string {
@@ -250,10 +252,21 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
   const filingsEntry = useSecFilingsQuery(
     instrument && eligibleTicker
-      ? { instrument, count: SEC_FILING_LIMIT }
+      ? { instrument, count: SEC_FILING_FETCH_LIMIT }
       : null,
   );
   const filings = useResolvedEntryValue(filingsEntry) ?? [];
+  const [visibleCount, setVisibleCount] = useState(SEC_FILING_PAGE_SIZE);
+  const visibleFilings = useMemo(() => filings.slice(0, visibleCount), [filings, visibleCount]);
+  const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const loadMore = useTableLoadMore(
+    scrollRef,
+    visibleCount < filings.length,
+    () => setVisibleCount((current) => Math.min(filings.length, current + SEC_FILING_PAGE_SIZE)),
+  );
+  useEffect(() => {
+    setVisibleCount(SEC_FILING_PAGE_SIZE);
+  }, [ticker?.metadata.ticker, ticker?.metadata.exchange]);
   const loading = filingsEntry?.phase === "loading" || (filingsEntry?.phase === "refreshing" && filings.length === 0);
   const error = filingsEntry?.phase === "error" ? filingsEntry.error?.message ?? "Failed to load SEC filings" : null;
 
@@ -270,7 +283,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
 
   // Only the filing in view needs its content; queueing every ownership form in
   // the list fires dozens of SEC requests the user never looks at.
-  const selectedFiling = filings[selectedIdx];
+  const selectedFiling = visibleFilings[selectedIdx];
   const contentTargets = useMemo(() => [
     ...(openFiling ? [openFiling] : []),
     ...buildInlineFilingContentTargets(openFiling, openDocuments),
@@ -283,10 +296,10 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   const loadingContent = !!openFiling && !contentCache.has(openFiling.accessionNumber);
 
   useEffect(() => {
-    if (filings.length > 0 && selectedIdx >= filings.length) {
-      setSelectedIdx(Math.max(0, filings.length - 1));
+    if (visibleFilings.length > 0 && selectedIdx >= visibleFilings.length) {
+      setSelectedIdx(Math.max(0, visibleFilings.length - 1));
     }
-  }, [filings.length, selectedIdx, setSelectedIdx]);
+  }, [selectedIdx, setSelectedIdx, visibleFilings.length]);
 
   usePaneStatusLinkFooter({
     registrationId: "sec",
@@ -313,7 +326,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       height={height}
       focused={focused}
       items={toFeedItems(
-        filings,
+        visibleFilings,
         openFiling?.accessionNumber,
         contentCache,
         loadingContent,
@@ -326,6 +339,8 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       sourceLabel="Form"
       titleLabel="Filing"
       emptyStateTitle="No SEC filings."
+      scrollRef={scrollRef}
+      onBodyScrollActivity={loadMore}
     />
   );
 }

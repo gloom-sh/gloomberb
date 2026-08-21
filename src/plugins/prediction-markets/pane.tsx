@@ -5,6 +5,7 @@ import {
   Spinner,
   Tabs,
   usePaneFooter,
+  useTableLoadMore,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
 } from "../../components";
@@ -238,6 +239,12 @@ export function PredictionMarketsPane({ focused, width, height }: PaneProps) {
     watchlistedRowKeys,
   ]);
 
+  const onCatalogScroll = useTableLoadMore(
+    controller.scrollRef,
+    controller.catalogHasMore && !controller.catalogLoadingMore && !controller.detailOpen,
+    () => { void controller.actions.loadMoreCatalog(); },
+  );
+
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,
     context: DataTableRootKeyContext,
@@ -314,6 +321,7 @@ export function PredictionMarketsPane({ focused, width, height }: PaneProps) {
       scrollRef={controller.scrollRef}
       getItemKey={(row) => row.key}
       virtualize
+      onBodyScrollActivity={onCatalogScroll}
       renderCell={renderCell}
       emptyContent={
         rowsLoading ? (

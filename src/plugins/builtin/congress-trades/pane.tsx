@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, useRendererHost } from "../../../ui";
+import { Box, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
   PaneStatusBody,
   Tabs,
+  useTableLoadMore,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
@@ -19,6 +20,9 @@ import {
   CONGRESS_FILING_LIMIT,
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
+  canLoadMoreCongress,
+  mergeCongressPages,
+  nextCongressPage,
   buildMemberColumns,
   buildTradeColumns,
   nextSort,
@@ -50,6 +54,8 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
   const [status, setStatus] = useState<LoadStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [activeTab, setActiveTab] = usePluginPaneState<CongressTab>("activeTab", "trades");
   const [selectedTradeId, setSelectedTradeId] = useDebouncedPluginPaneState<string | null>("selectedTradeId", null);
   const [selectedMemberId, setSelectedMemberId] = useDebouncedPluginPaneState<string | null>("selectedMemberId", null);
@@ -69,6 +75,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     const gen = fetchGenRef.current;
     setStatus((current) => (current === "loaded" && !refresh ? "loaded" : "loading"));
     setError(null);
+    setLoadingMore(false);
     apiClient.getCloudCongressHouse({
       limit: CONGRESS_TRADE_LIMIT,
       filingLimit: CONGRESS_FILING_LIMIT,
@@ -86,6 +93,37 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
         setStatus("error");
       });
   }, []);
+
+  const loadMore = useCallback(() => {
+    if (!payload || loadingMore || status !== "loaded") return;
+    const nextRequest = nextCongressPage(payload);
+    if (!nextRequest) return;
+    const gen = fetchGenRef.current;
+    setLoadingMore(true);
+    apiClient.getCloudCongressHouse({
+      ...nextRequest,
+      limit: CONGRESS_TRADE_LIMIT,
+      filingLimit: CONGRESS_FILING_LIMIT,
+    })
+      .then((nextPayload) => {
+        if (fetchGenRef.current !== gen) return;
+        setPayload((current) => current ? mergeCongressPages(current, nextPayload) : nextPayload);
+      })
+      .catch((loadError) => {
+        if (fetchGenRef.current !== gen) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => {
+        if (fetchGenRef.current !== gen) return;
+        setLoadingMore(false);
+      });
+  }, [loadingMore, payload, status]);
+
+  const onTradeScroll = useTableLoadMore(
+    tradeScrollRef,
+    !!payload && status === "loaded" && !loadingMore && canLoadMoreCongress(payload),
+    loadMore,
+  );
 
   useEffect(() => {
     load(false);
@@ -272,6 +310,8 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
           getItemKey={(trade) => trade.id}
           renderCell={renderCongressTradeCell}
           emptyStateTitle="No House PTR trades."
+          scrollRef={tradeScrollRef}
+          onBodyScrollActivity={onTradeScroll}
         />
       ) : (
         <DataTableStackView<CloudCongressMemberPayload, MemberColumn>

@@ -30,6 +30,16 @@ export { loadPolymarketDetail } from "./detail";
 
 const POLYMARKET_CATALOG_OFFSETS = [0, 200, 400];
 const POLYMARKET_CATEGORY_OFFSETS = [0, 200];
+const POLYMARKET_PAGE_SIZE = 200;
+
+export function nextPolymarketCatalogOffset(
+  categoryId: PredictionCategoryId,
+  searchQuery = "",
+): number | null {
+  if (searchQuery.trim()) return null;
+  const offsets = categoryId === "all" ? POLYMARKET_CATALOG_OFFSETS : POLYMARKET_CATEGORY_OFFSETS;
+  return (offsets.at(-1) ?? 0) + POLYMARKET_PAGE_SIZE;
+}
 
 function buildPolymarketCatalogUrl(offset: number, tagSlug?: string, limit = 200): string {
   const url = new URL("https://gamma-api.polymarket.com/events");
@@ -143,4 +153,25 @@ export async function loadPolymarketCatalog(
     },
     PREDICTION_CACHE_POLICIES.catalog,
   );
+}
+
+export async function loadMorePolymarketCatalog(
+  searchQuery: string,
+  categoryId: PredictionCategoryId,
+  offset: number,
+  signal?: AbortSignal,
+): Promise<{ markets: PredictionMarketSummary[]; hasMore: boolean; nextOffset: number }> {
+  if (searchQuery.trim()) {
+    return { markets: [], hasMore: false, nextOffset: offset };
+  }
+  const tagSlugs = categoryId === "all" ? [undefined] : getPolymarketCategoryTagSlugs(categoryId);
+  const pages = await Promise.all(
+    tagSlugs.map((tagSlug) => loadPolymarketCatalogPages([offset], tagSlug, POLYMARKET_PAGE_SIZE, signal).catch(() => [])),
+  );
+  const raw = pages.flat();
+  return {
+    markets: normalizePolymarketCatalog(raw, "", categoryId),
+    hasMore: raw.length >= POLYMARKET_PAGE_SIZE,
+    nextOffset: offset + POLYMARKET_PAGE_SIZE,
+  };
 }

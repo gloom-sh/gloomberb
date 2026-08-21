@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useRendererHost } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableView,
   usePaneFooter,
+  useTableLoadMore,
   type DataTableKeyEvent,
 } from "../../../components";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
@@ -19,6 +20,9 @@ import {
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_MEMBER_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
+  canLoadMoreCongress,
+  mergeCongressPages,
+  nextCongressPage,
   buildMemberTradeColumns,
   formatAmountRange,
   formatLag,
@@ -121,6 +125,8 @@ export function MemberTradesDetail({
     direction: "desc",
   });
   const fetchGenRef = useRef(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const load = useCallback((refresh = false) => {
     fetchGenRef.current += 1;
@@ -149,6 +155,40 @@ export function MemberTradesDetail({
         setStatus("error");
       });
   }, [filingLimit, member.memberName, member.stateDistrict]);
+
+  const loadMore = useCallback(() => {
+    if (!detailPayload || loadingMore || status !== "loaded") return;
+    const nextRequest = nextCongressPage(detailPayload);
+    if (!nextRequest) return;
+    const gen = fetchGenRef.current;
+    setLoadingMore(true);
+    apiClient.getCloudCongressHouse({
+      ...nextRequest,
+      member: member.memberName,
+      limit: CONGRESS_MEMBER_TRADE_LIMIT,
+      filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
+    })
+      .then((payload) => {
+        if (fetchGenRef.current !== gen) return;
+        const merged = detailPayload ? mergeCongressPages(detailPayload, payload) : payload;
+        const exactMemberTrades = merged.trades.filter((trade) => (
+          trade.memberName === member.memberName
+          && trade.stateDistrict === member.stateDistrict
+        ));
+        setDetailPayload(merged);
+        setTrades(exactMemberTrades.length > 0 ? exactMemberTrades : merged.trades);
+      })
+      .finally(() => {
+        if (fetchGenRef.current !== gen) return;
+        setLoadingMore(false);
+      });
+  }, [detailPayload, filingLimit, loadingMore, member.memberName, member.stateDistrict, status]);
+
+  const onTradeScroll = useTableLoadMore(
+    tradeScrollRef,
+    !!detailPayload && status === "loaded" && !loadingMore && canLoadMoreCongress(detailPayload),
+    loadMore,
+  );
 
   useEffect(() => {
     fetchGenRef.current += 1;
@@ -282,6 +322,8 @@ export function MemberTradesDetail({
         renderCell={renderCongressTradeCell}
         emptyStateTitle={emptyTitle}
         showHorizontalScrollbar={false}
+        scrollRef={tradeScrollRef}
+        onBodyScrollActivity={onTradeScroll}
       />
     </Box>
   );

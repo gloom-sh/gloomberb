@@ -53,9 +53,12 @@ export function usePredictionMarketsDataState({
 }) {
   const {
     allMarkets,
+    catalogHasMore,
     catalogLoadCount,
+    catalogLoadingMore,
     catalogStatus,
     debouncedSearchQuery,
+    loadMoreCatalog,
     setCatalogCache,
   } = usePredictionCatalogData({
     categoryId,
@@ -150,13 +153,16 @@ export function usePredictionMarketsDataState({
   });
 
   return {
-    catalogStatus,
+    catalogHasMore,
     catalogLoadCount,
+    catalogLoadingMore,
+    catalogStatus,
     debouncedSearchQuery,
     detail,
     detailError,
     detailLoadCount,
     lastRefreshAt,
+    loadMoreCatalog,
     selectedIndex,
     selectedRow,
     selectedSummary,

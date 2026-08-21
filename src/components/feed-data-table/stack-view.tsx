@@ -1,6 +1,6 @@
 import { Box, ScrollBox, Text } from "../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { displayWidth, formatTimeAgo } from "../../utils/format";
@@ -64,6 +64,8 @@ interface FeedDataTableStackViewProps {
   isItemRead?: (item: FeedDataTableItem) => boolean;
   onOpenItem?: (item: FeedDataTableItem, index: number) => void;
   onOpenItemIdChange?: (itemId: string | null) => void;
+  scrollRef?: RefObject<ScrollBoxRenderable | null>;
+  onBodyScrollActivity?: () => void;
 }
 
 function timestampValue(item: FeedDataTableItem): number {
@@ -148,6 +150,8 @@ export function FeedDataTableStackView({
   isItemRead,
   onOpenItem,
   onOpenItemIdChange,
+  scrollRef,
+  onBodyScrollActivity,
 }: FeedDataTableStackViewProps) {
   const language = useAppLanguage();
   const [sortPreference, setSortPreference] = useState<SortPreference>({
@@ -362,6 +366,8 @@ export function FeedDataTableStackView({
       emptyStateTitle={t(emptyStateTitle)}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
+      scrollRef={scrollRef}
+      onBodyScrollActivity={onBodyScrollActivity}
     />
   );
 }

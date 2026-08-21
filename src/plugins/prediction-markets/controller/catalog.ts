@@ -13,8 +13,8 @@ import {
 } from "./status";
 import { useAutoRefresh } from "../../builtin/shared/auto-refresh";
 import { getCachedPredictionResource } from "../services/fetch";
-import { loadKalshiCatalog } from "../services/kalshi/adapter";
-import { loadPolymarketCatalog } from "../services/polymarket/adapter";
+import { kalshiCatalogCursor, loadKalshiCatalog, loadMoreKalshiCatalog } from "../services/kalshi/adapter";
+import { loadMorePolymarketCatalog, loadPolymarketCatalog, nextPolymarketCatalogOffset } from "../services/polymarket/adapter";
 import type {
   PredictionCategoryId,
   PredictionMarketSummary,
@@ -46,6 +46,9 @@ export function usePredictionCatalogData({
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
   const [polymarketLoadedAt, setPolymarketLoadedAt] = useState<number | null>(null);
   const [kalshiLoadedAt, setKalshiLoadedAt] = useState<number | null>(null);
+  const [polymarketNextOffset, setPolymarketNextOffset] = useState<number | null>(null);
+  const [kalshiNextCursor, setKalshiNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const activeCatalogRef = useRef<PredictionCatalogCache>({});
 
   const normalizedCatalogQuery = debouncedSearchQuery.trim().toLowerCase();
@@ -192,6 +195,7 @@ export function usePredictionCatalogData({
         setCatalogErrors((current) =>
           updatePredictionErrorState(current, cacheKey, null),
         );
+        setPolymarketNextOffset(nextPolymarketCatalogOffset(category, search));
       } catch (error) {
         setCatalogErrors((current) =>
           updatePredictionErrorState(
@@ -243,6 +247,7 @@ export function usePredictionCatalogData({
         setCatalogErrors((current) =>
           updatePredictionErrorState(current, cacheKey, null),
         );
+        setKalshiNextCursor(kalshiCatalogCursor(search, category));
       } catch (error) {
         setCatalogErrors((current) =>
           updatePredictionErrorState(
@@ -310,11 +315,81 @@ export function usePredictionCatalogData({
     void loadKalshi(kalshiCatalogKey, debouncedSearchQuery, categoryId);
   }, [categoryId, debouncedSearchQuery, kalshiCatalogKey, loadKalshi]));
 
+  const loadMoreCatalog = useCallback(async () => {
+    if (loadingMore) return;
+    const canLoadPolymarket = includePolymarket && polymarketNextOffset != null;
+    const canLoadKalshi = includeKalshi && !!kalshiNextCursor;
+    if (!canLoadPolymarket && !canLoadKalshi) return;
+    setLoadingMore(true);
+    try {
+      if (canLoadPolymarket && polymarketNextOffset != null) {
+        const page = await loadMorePolymarketCatalog(
+          debouncedSearchQuery,
+          categoryId,
+          polymarketNextOffset,
+        );
+        setCatalogCache((current) => ({
+          ...current,
+          [polymarketCatalogKey]: mergeCatalogMarkets(
+            current[polymarketCatalogKey] ?? activeCatalogRef.current[polymarketCatalogKey] ?? [],
+            page.markets,
+          ),
+        }));
+        setPolymarketNextOffset(page.hasMore ? page.nextOffset : null);
+      }
+      if (canLoadKalshi && kalshiNextCursor) {
+        const page = await loadMoreKalshiCatalog(
+          debouncedSearchQuery,
+          categoryId,
+          kalshiNextCursor,
+        );
+        setCatalogCache((current) => ({
+          ...current,
+          [kalshiCatalogKey]: mergeCatalogMarkets(
+            current[kalshiCatalogKey] ?? activeCatalogRef.current[kalshiCatalogKey] ?? [],
+            page.markets,
+          ),
+        }));
+        setKalshiNextCursor(page.nextCursor);
+      }
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [
+    categoryId,
+    debouncedSearchQuery,
+    includeKalshi,
+    includePolymarket,
+    kalshiCatalogKey,
+    kalshiNextCursor,
+    loadingMore,
+    polymarketCatalogKey,
+    polymarketNextOffset,
+  ]);
+
   return {
     allMarkets,
+    catalogHasMore: (includePolymarket && polymarketNextOffset != null) || (includeKalshi && !!kalshiNextCursor),
     catalogLoadCount,
+    catalogLoadingMore: loadingMore,
     catalogStatus,
     debouncedSearchQuery,
+    loadMoreCatalog,
     setCatalogCache,
   };
+}
+
+function mergeCatalogMarkets(
+  current: PredictionMarketSummary[],
+  extra: PredictionMarketSummary[],
+): PredictionMarketSummary[] {
+  if (extra.length === 0) return current;
+  const seen = new Set(current.map((market) => market.key));
+  const merged = [...current];
+  for (const market of extra) {
+    if (seen.has(market.key)) continue;
+    seen.add(market.key);
+    merged.push(market);
+  }
+  return merged;
 }
