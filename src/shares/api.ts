@@ -32,7 +32,11 @@ export async function createShare(payload: SharePayload, fetchImpl: ShareFetch =
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(validated),
   });
-  if (!response.ok) throw new Error(response.status === 401 ? "Sign in to Gloom Cloud to share." : "Could not create share.");
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
+    if (response.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
+    throw new Error("Could not create share.");
+  }
   const body = await readJson(response);
   if (!body || typeof body !== "object") throw new Error("The share service returned an invalid response.");
   const { id, expiresAt } = body as Record<string, unknown>;

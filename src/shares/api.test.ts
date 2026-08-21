@@ -26,6 +26,16 @@ describe("share API client", () => {
     expect(calls[1]).toEqual([`${SHARE_API_ORIGIN}/shares/${shareId}`, expect.objectContaining({ method: "DELETE", credentials: "include" })]);
   });
 
+  test("explains when a Cloud account still needs email verification", async () => {
+    const fetchImpl = (async () => Response.json(
+      { error: "Email verification required" },
+      { status: 403 },
+    )) as typeof fetch;
+    await expect(createShare(article, fetchImpl)).rejects.toThrow(
+      "Verify your Gloom Cloud email to share.",
+    );
+  });
+
   test("loads public shares with optional owner credentials and builds current-origin URLs", async () => {
     let init: RequestInit | undefined;
     const fetchImpl = (async (_url: string | URL | Request, options?: RequestInit) => {
