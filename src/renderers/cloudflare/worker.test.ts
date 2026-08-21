@@ -30,7 +30,7 @@ describe("static Cloudflare host", () => {
     expect(response.headers.get("content-security-policy")).toBe(SECURITY_HEADERS["content-security-policy"]);
     expect(response.headers.has("content-security-policy-report-only")).toBe(false);
     expect(response.headers.get("x-frame-options")).toBe("DENY");
-    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
