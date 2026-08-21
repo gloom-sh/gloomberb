@@ -214,8 +214,8 @@ describe("NewsService", () => {
     expect(breaking.every((i) => i.url !== "https://f.com/old-high")).toBe(true);
   });
 
-  it("retains at most 500 articles", async () => {
-    const items = Array.from({ length: 600 }, (_, i) =>
+  it("retains at most 10000 articles", async () => {
+    const items = Array.from({ length: 10_100 }, (_, i) =>
       makeItem({
         url: `https://g.com/${i}`,
         publishedAt: new Date(Date.now() - i * 1000),
@@ -224,7 +224,7 @@ describe("NewsService", () => {
     agg.register(makeSource("g", items));
     await agg.poll();
 
-    expect(agg.getFirehose(undefined, 1000)).toHaveLength(500);
+    expect(agg.getFirehose(undefined, 20_000)).toHaveLength(10_000);
   });
 
   it("subscribe callback fires on poll and getVersion increments", async () => {

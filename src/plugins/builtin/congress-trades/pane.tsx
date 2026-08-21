@@ -21,6 +21,7 @@ import {
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
   canLoadMoreCongress,
+  congressPageAfterEmpty,
   mergeCongressPages,
   nextCongressPage,
   buildMemberColumns,
@@ -83,7 +84,9 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     })
       .then((nextPayload) => {
         if (fetchGenRef.current !== gen) return;
-        setPayload(nextPayload);
+        setPayload((current) => (
+          refresh && current ? mergeCongressPages(nextPayload, current) : nextPayload
+        ));
         setStatus("loaded");
         setLastLoadedAt(Date.now());
       })
@@ -107,7 +110,13 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     })
       .then((nextPayload) => {
         if (fetchGenRef.current !== gen) return;
-        setPayload((current) => current ? mergeCongressPages(current, nextPayload) : nextPayload);
+        setPayload((current) => {
+          if (!current) return nextPayload;
+          const merged = mergeCongressPages(current, nextPayload);
+          return merged.trades.length > current.trades.length
+            ? merged
+            : congressPageAfterEmpty(merged);
+        });
       })
       .catch((loadError) => {
         if (fetchGenRef.current !== gen) return;

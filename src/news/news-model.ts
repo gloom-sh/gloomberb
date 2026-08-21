@@ -2,7 +2,7 @@ import { canonicalExchange, normalizeSymbol } from "../utils/exchanges";
 import type { NewsCapability } from "../capabilities";
 import type { NewsArticle, NewsFeed, NewsQuery, NewsQueryState } from "./types";
 
-const MAX_ARTICLES = 500;
+export const MAX_ARTICLES = 10_000;
 export const DEFAULT_GLOBAL_QUERY: NewsQuery = { feed: "latest", limit: MAX_ARTICLES };
 
 const FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);

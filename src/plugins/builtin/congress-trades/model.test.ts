@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudCongressHousePayload } from "../../../api-client";
-import { canLoadMoreCongress, mergeCongressPages, nextCongressPage } from "./model";
+import { canLoadMoreCongress, congressPageAfterEmpty, mergeCongressPages, nextCongressPage } from "./model";
 
 function payload(overrides: Partial<CloudCongressHousePayload> = {}): CloudCongressHousePayload {
   return {
@@ -39,7 +39,28 @@ describe("congress paging", () => {
       offset: 0,
       filingOffset: 0,
     });
+    expect(nextCongressPage(payload({
+      hasMore: false,
+      hasMoreFilings: undefined,
+      filingOffset: 0,
+      filingsScanned: 20,
+      filingCount: 80,
+    }))).toEqual({
+      year: 2026,
+      offset: 0,
+      filingOffset: 20,
+    });
     expect(canLoadMoreCongress(payload({ hasMore: false, hasMoreFilings: false, year: 2008 }))).toBe(false);
+    expect(nextCongressPage(congressPageAfterEmpty(payload({
+      hasMore: true,
+      year: 2026,
+      filingsScanned: 20,
+      filingCount: 80,
+    })))).toEqual({
+      year: 2025,
+      offset: 0,
+      filingOffset: 0,
+    });
   });
 
   test("appends unique trades and members from the next page", () => {
