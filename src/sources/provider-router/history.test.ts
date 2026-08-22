@@ -391,7 +391,7 @@ describe("AssetDataRouter chart history", () => {
     expect(history[0]?.close).toBe(102);
   });
 
-  test("accepts previous-session short-range chart history while the exchange is closed", async () => {
+  test("accepts previous-session history without persisted exchange metadata while closed", async () => {
     const originalDateNow = Date.now;
     Date.now = () => Date.parse("2026-05-17T12:00:00Z");
 
@@ -419,7 +419,7 @@ describe("AssetDataRouter chart history", () => {
       };
 
       const router = new AssetDataRouter(yahooProvider, [cloudProvider]);
-      const history = await router.getPriceHistoryForResolution("AAPL", "NASDAQ", "1M", "15m");
+      const history = await router.getPriceHistoryForResolution("AAPL", "", "1M", "15m");
 
       expect(history.map((point) => point.close)).toEqual([101, 102]);
     } finally {
