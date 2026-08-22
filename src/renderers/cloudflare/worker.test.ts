@@ -41,7 +41,46 @@ describe("static Cloudflare host", () => {
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
   });
 
-  test("rejects every mutation without invoking assets or outbound fetch", async () => {
+  test("proxies only the same-origin API path to api.gloom.sh", async () => {
+    const { env, requests } = fixture();
+    let upstream: Request | undefined;
+    const response = await handleRequest(new Request("https://term.example/api/chat/channels/everyone/messages?limit=1", {
+      method: "POST",
+      headers: {
+        Cookie: "session=browser-cookie",
+        Origin: "https://term.example",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ content: "hello" }),
+    }), env, async (request) => {
+      upstream = request;
+      return Response.json({ ok: true });
+    });
+
+    expect(response.status).toBe(200);
+    expect(requests).toHaveLength(0);
+    expect(upstream?.url).toBe("https://api.gloom.sh/chat/channels/everyone/messages?limit=1");
+    expect(upstream?.method).toBe("POST");
+    expect(upstream?.headers.get("cookie")).toBe("session=browser-cookie");
+    expect(upstream?.headers.get("origin")).toBe("https://term.example");
+    expect(await upstream?.text()).toBe('{"content":"hello"}');
+  });
+
+  test("rejects cross-origin API requests before proxying", async () => {
+    const { env } = fixture();
+    let proxied = false;
+    const response = await handleRequest(new Request("https://term.example/api/auth/sign-out", {
+      method: "POST",
+      headers: { Origin: "https://attacker.example" },
+    }), env, async () => {
+      proxied = true;
+      return new Response();
+    });
+    expect(response.status).toBe(403);
+    expect(proxied).toBe(false);
+  });
+
+  test("rejects every non-API mutation without invoking assets or outbound fetch", async () => {
     const { env, requests } = fixture();
     const response = await handleRequest(new Request("https://term.example/shares", {
       method: "POST",

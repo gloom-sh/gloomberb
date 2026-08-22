@@ -60,6 +60,7 @@ async function buildElectrobunViewBundle({
       // The webview has no `process`, so the cloud endpoint override the terminal
       // already reads from the environment is baked in at build time.
       __GLOOMBERB_API_URL__: JSON.stringify(process.env.GLOOMBERB_API_URL ?? ""),
+      __GLOOMBERB_API_PATH__: '""',
     },
     plugins: [electrobunViewAliasPlugin(pluginName, extraAliasRules)],
   });

@@ -7,9 +7,13 @@ export interface WorkerEnv {
 }
 
 const SHARE_PATH = /^\/s\/[a-f0-9]{32}\/?$/;
+const API_PATH = /^\/api(?:\/|$)/;
+const API_ORIGIN = "https://api.gloom.sh";
+const API_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
+type ApiFetch = (request: Request) => Promise<Response>;
 
 export const SECURITY_HEADERS = {
-  "content-security-policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https://api.gloom.sh wss://api.gloom.sh https://api.github.com https://api.fiscaldata.treasury.gov; form-action 'self' https://api.gloom.sh; upgrade-insecure-requests",
+  "content-security-policy": "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; media-src 'self' https:; connect-src 'self' https://api.github.com https://api.fiscaldata.treasury.gov; form-action 'self'; upgrade-insecure-requests",
   "cross-origin-opener-policy": "same-origin",
   "cross-origin-resource-policy": "same-origin",
   "permissions-policy": "camera=(), geolocation=(), microphone=(), payment=(), usb=()",
@@ -29,7 +33,26 @@ export function withSecurityHeaders(response: Response, options: { share?: boole
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-export async function handleRequest(request: Request, env: WorkerEnv): Promise<Response> {
+async function proxyApi(request: Request, fetchApi: ApiFetch): Promise<Response> {
+  const url = new URL(request.url);
+  if (!API_METHODS.has(request.method)) {
+    return Response.json({ error: "Method not allowed" }, {
+      status: 405,
+      headers: { Allow: [...API_METHODS].join(", ") },
+    });
+  }
+  const origin = request.headers.get("origin");
+  if (origin && origin !== url.origin) {
+    return Response.json({ error: "Origin not allowed" }, { status: 403 });
+  }
+  const upstreamUrl = new URL(`${url.pathname.slice(4) || "/"}${url.search}`, API_ORIGIN);
+  return fetchApi(new Request(upstreamUrl, request));
+}
+
+export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: ApiFetch = fetch): Promise<Response> {
+  const url = new URL(request.url);
+  if (API_PATH.test(url.pathname)) return proxyApi(request, fetchApi);
+
   if (request.method !== "GET" && request.method !== "HEAD") {
     return withSecurityHeaders(Response.json({ error: "Method not allowed" }, {
       status: 405,
@@ -37,7 +60,6 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
     }));
   }
 
-  const url = new URL(request.url);
   if (url.pathname === "/health") {
     return withSecurityHeaders(Response.json({ status: "ok" }));
   }
@@ -50,4 +72,8 @@ export async function handleRequest(request: Request, env: WorkerEnv): Promise<R
   return withSecurityHeaders(await env.ASSETS.fetch(request));
 }
 
-export default { fetch: handleRequest };
+export default {
+  fetch(request: Request, env: WorkerEnv): Promise<Response> {
+    return handleRequest(request, env);
+  },
+};

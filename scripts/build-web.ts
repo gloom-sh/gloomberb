@@ -23,7 +23,8 @@ async function buildPage(name: string, entrypoint: string, title: string, loadin
     sourcemap: "none",
     define: {
       "process.env.NODE_ENV": '"production"',
-      __GLOOMBERB_API_URL__: '"https://api.gloom.sh"',
+      __GLOOMBERB_API_URL__: "location.origin",
+      __GLOOMBERB_API_PATH__: '"/api"',
     },
     plugins: [electrobunViewAliasPlugin(`browser-${name}-native-stubs`)],
   });
