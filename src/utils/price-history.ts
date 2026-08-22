@@ -89,10 +89,11 @@ export function isPriceHistoryStaleForCurrentWindow(
   ) {
     return true;
   }
-  if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) {
-    return Boolean(options.exchange && resolveExchangeTimeZone(options.exchange));
-  }
-  return true;
+  const hasExchangeSession = Boolean(
+    options.exchange && resolveExchangeTimeZone(options.exchange),
+  );
+  if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
+  return !hasExchangeSession;
 }
 
 export function normalizeTickerFinancialsPriceHistory(financials: TickerFinancials): TickerFinancials {
