@@ -431,6 +431,7 @@ async function renderHiddenChangePctSortWarmup(options: { staleCachedSiveSnapsho
           previousClose: 0,
           listingExchangeName: "NASDAQ",
           lastUpdated: Date.now() - 24 * 60 * 60_000,
+          stale: true,
         }),
       },
     }]);
