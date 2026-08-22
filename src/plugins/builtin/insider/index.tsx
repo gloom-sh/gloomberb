@@ -25,10 +25,9 @@ import {
 import { useSecFilingContentCache } from "../sec/filing-content";
 
 const FORM4_PAGE_SIZE = 20;
-// SEC returns one recent-submissions payload per company, so scanning deep for
-// Form 4s costs no extra request; filtering the newest 20 filings of any form
-// hides insider activity behind a burst of 8-Ks.
-const SEC_FILING_SCAN_LIMIT = 1000;
+// Recent EDGAR dumps cap at 1,000 mixed forms. Older archives are fetched
+// until this many filings or company history ends.
+const SEC_FILING_SCAN_LIMIT = 20_000;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
 interface ParsedFiling {

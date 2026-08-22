@@ -252,25 +252,35 @@ export function parseTickerLookup(payload: unknown): Map<string, LookupEntry> {
   return results;
 }
 
-export function parseRecentFilings(payload: unknown, count = 15): SecFilingItem[] {
-  const record = asRecord(payload);
-  const filings = asRecord(record?.filings);
-  const recent = asRecord(filings?.recent);
-  if (!record || !recent) return [];
+export function parseSubmissionArchiveNames(payload: unknown): string[] {
+  const files = asRecord(asRecord(payload)?.filings)?.files;
+  if (!Array.isArray(files)) return [];
+  const names: string[] = [];
+  for (const file of files) {
+    const name = asRecord(file)?.name;
+    if (typeof name === "string" && /^CIK\d+-submissions-\d+\.json$/i.test(name)) {
+      names.push(name);
+    }
+  }
+  return names;
+}
 
-  const accessionNumbers = Array.isArray(recent.accessionNumber) ? recent.accessionNumber : [];
-  const forms = Array.isArray(recent.form) ? recent.form : [];
-  const filingDates = Array.isArray(recent.filingDate) ? recent.filingDate : [];
-  const acceptanceTimes = Array.isArray(recent.acceptanceDateTime) ? recent.acceptanceDateTime : [];
-  const primaryDocuments = Array.isArray(recent.primaryDocument) ? recent.primaryDocument : [];
-  const primaryDescriptions = Array.isArray(recent.primaryDocDescription) ? recent.primaryDocDescription : [];
-  const items = Array.isArray(recent.items) ? recent.items : [];
-  const cik = zeroPadCik(record.cik) ?? "";
-  const displayCik = String(Number(cik || "0"));
-  const companyName = typeof record.name === "string" ? record.name : undefined;
+function parseFilingColumns(
+  columns: Record<string, unknown> | null | undefined,
+  company: { cik: string; displayCik: string; companyName?: string },
+  limit: number,
+): SecFilingItem[] {
+  if (!columns || !company.displayCik) return [];
+  const accessionNumbers = Array.isArray(columns.accessionNumber) ? columns.accessionNumber : [];
+  const forms = Array.isArray(columns.form) ? columns.form : [];
+  const filingDates = Array.isArray(columns.filingDate) ? columns.filingDate : [];
+  const acceptanceTimes = Array.isArray(columns.acceptanceDateTime) ? columns.acceptanceDateTime : [];
+  const primaryDocuments = Array.isArray(columns.primaryDocument) ? columns.primaryDocument : [];
+  const primaryDescriptions = Array.isArray(columns.primaryDocDescription) ? columns.primaryDocDescription : [];
+  const items = Array.isArray(columns.items) ? columns.items : [];
   const total = Math.min(
     Math.max(accessionNumbers.length, forms.length, filingDates.length),
-    Math.max(count, 0),
+    Math.max(limit, 0),
   );
 
   const results: SecFilingItem[] = [];
@@ -278,13 +288,13 @@ export function parseRecentFilings(payload: unknown, count = 15): SecFilingItem[
     const accessionNumber = String(accessionNumbers[index] ?? "").trim();
     const form = String(forms[index] ?? "").trim();
     const filingDate = parseDate(filingDates[index]);
-    if (!accessionNumber || !form || !filingDate || !displayCik) continue;
+    if (!accessionNumber || !form || !filingDate) continue;
 
     const accessionNumberNoDashes = stripAccessionDashes(accessionNumber);
     const primaryDocument = String(primaryDocuments[index] ?? "").trim() || undefined;
-    const filingUrl = `https://www.sec.gov/Archives/edgar/data/${displayCik}/${accessionNumber}-index.htm`;
+    const filingUrl = `https://www.sec.gov/Archives/edgar/data/${company.displayCik}/${accessionNumber}-index.htm`;
     const primaryDocumentUrl = primaryDocument
-      ? `https://www.sec.gov/Archives/edgar/data/${displayCik}/${accessionNumberNoDashes}/${primaryDocument}`
+      ? `https://www.sec.gov/Archives/edgar/data/${company.displayCik}/${accessionNumberNoDashes}/${primaryDocument}`
       : undefined;
 
     results.push({
@@ -295,14 +305,36 @@ export function parseRecentFilings(payload: unknown, count = 15): SecFilingItem[
       primaryDocument,
       primaryDocDescription: String(primaryDescriptions[index] ?? "").trim() || undefined,
       items: String(items[index] ?? "").trim() || undefined,
-      cik,
-      companyName,
+      cik: company.cik,
+      companyName: company.companyName,
       filingUrl,
       primaryDocumentUrl,
     });
   }
 
   return results;
+}
+
+function submissionCompany(payload: unknown, fallbackCik = ""): {
+  cik: string;
+  displayCik: string;
+  companyName?: string;
+} {
+  const record = asRecord(payload);
+  const cik = zeroPadCik(record?.cik) ?? fallbackCik;
+  return {
+    cik,
+    displayCik: String(Number(cik || "0")),
+    companyName: typeof record?.name === "string" ? record.name : undefined,
+  };
+}
+
+export function parseRecentFilings(payload: unknown, count = 15): SecFilingItem[] {
+  const record = asRecord(payload);
+  if (!record) return [];
+  const recent = asRecord(asRecord(record.filings)?.recent)
+    ?? (Array.isArray(record.accessionNumber) ? record : null);
+  return parseFilingColumns(recent, submissionCompany(record), count);
 }
 
 export function parseFilingDocuments(indexHtml: string, filing: SecFilingItem): SecFilingDocument[] {
@@ -666,7 +698,15 @@ export class SecEdgarClient {
     if (!entry) return [];
 
     const payload = await this.fetchJson<unknown>(`${SUBMISSIONS_URL}/CIK${entry.cik}.json`);
-    return parseRecentFilings(payload, count);
+    const filings = parseRecentFilings(payload, count);
+    if (filings.length >= count) return filings;
+    const company = submissionCompany(payload, entry.cik);
+    for (const name of parseSubmissionArchiveNames(payload)) {
+      if (filings.length >= count) break;
+      const older = await this.fetchJson<unknown>(`${SUBMISSIONS_URL}/${name}`);
+      filings.push(...parseFilingColumns(asRecord(older), company, count - filings.length));
+    }
+    return filings;
   }
 
   async getFinancialStatements(ticker: string): Promise<SecCompanyFactsStatements | null> {

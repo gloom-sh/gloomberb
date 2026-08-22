@@ -28,7 +28,7 @@ import {
 } from "./filing-content";
 import { usePaneStatusLinkFooter } from "../shared/pane-footer";
 
-const SEC_FILING_FETCH_LIMIT = 1000;
+const SEC_FILING_FETCH_LIMIT = 20_000;
 const SEC_FILING_PAGE_SIZE = 50;
 const OWNERSHIP_FORMS = new Set(["3", "4", "5"]);
 

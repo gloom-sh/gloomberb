@@ -5,6 +5,7 @@ import {
   parseCompanyFactsFinancialStatements,
   parseFilingDocuments,
   parseRecentFilings,
+  parseSubmissionArchiveNames,
   parseTickerLookup,
 } from "./sec-edgar";
 
@@ -64,6 +65,17 @@ describe("parseRecentFilings", () => {
     expect(filings[0]?.form).toBe("8-K");
     expect(filings[0]?.filingUrl).toBe("https://www.sec.gov/Archives/edgar/data/320193/0000320193-24-000123-index.htm");
     expect(filings[0]?.primaryDocumentUrl).toBe("https://www.sec.gov/Archives/edgar/data/320193/000032019324000123/aapl-8k.htm");
+  });
+
+  test("reads older submission archive names", () => {
+    expect(parseSubmissionArchiveNames({
+      filings: {
+        files: [
+          { name: "CIK0000320193-submissions-001.json", filingCount: 1000 },
+          { name: "readme.txt" },
+        ],
+      },
+    })).toEqual(["CIK0000320193-submissions-001.json"]);
   });
 });
 
@@ -611,6 +623,53 @@ describe("SecEdgarClient", () => {
     expect(filings[0]?.form).toBe("10-Q");
     expect(headersSeen[0]?.["User-Agent"]).toBeTruthy();
     expect(headersSeen[0]?.From).toBeTruthy();
+  });
+
+  test("loads older EDGAR submission archives when recent filings run out", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: Request | string | URL) => {
+      const url = String(input);
+      urls.push(url);
+      if (url.includes("company_tickers_exchange.json")) {
+        return new Response(JSON.stringify({
+          fields: ["cik", "name", "ticker", "exchange"],
+          data: [[320193, "Apple Inc.", "AAPL", "Nasdaq"]],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.endsWith("CIK0000320193.json")) {
+        return new Response(JSON.stringify({
+          cik: "0000320193",
+          name: "Apple Inc.",
+          filings: {
+            recent: {
+              accessionNumber: ["0000320193-24-000123"],
+              form: ["8-K"],
+              filingDate: ["2024-08-02"],
+              acceptanceDateTime: ["20240802120000"],
+              primaryDocument: ["aapl-8k.htm"],
+              primaryDocDescription: ["Current report"],
+              items: [""],
+            },
+            files: [{ name: "CIK0000320193-submissions-001.json" }],
+          },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        accessionNumber: ["0000320193-18-000001"],
+        form: ["4"],
+        filingDate: ["2018-01-02"],
+        acceptanceDateTime: ["20180102120000"],
+        primaryDocument: ["xslF345X03/wk-form4.xml"],
+        primaryDocDescription: ["Form 4"],
+        items: [""],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    const client = new SecEdgarClient();
+    const filings = await client.getRecentFilings("AAPL", 2);
+    expect(urls.some((url) => url.endsWith("CIK0000320193-submissions-001.json"))).toBe(true);
+    expect(filings.map((filing) => filing.form)).toEqual(["8-K", "4"]);
+    expect(filings[1]?.accessionNumber).toBe("0000320193-18-000001");
   });
 
   test("surfaces SEC bot blocking errors clearly", async () => {
