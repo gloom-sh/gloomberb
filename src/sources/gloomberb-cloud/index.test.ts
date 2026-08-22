@@ -18,6 +18,7 @@ const verifiedUser: AuthUser = {
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
 const originalGetCloudHistory = apiClient.getCloudHistory.bind(apiClient);
 const originalGetCloudQuote = apiClient.getCloudQuote.bind(apiClient);
+const originalGetCloudExchangeRate = apiClient.getCloudExchangeRate.bind(apiClient);
 const originalGetCloudHolders = apiClient.getCloudHolders.bind(apiClient);
 const originalGetCloudAnalystResearch = apiClient.getCloudAnalystResearch.bind(apiClient);
 const originalGetCloudCorporateActions = apiClient.getCloudCorporateActions.bind(apiClient);
@@ -88,6 +89,7 @@ afterEach(() => {
   apiClient.ensureVerifiedSession = originalEnsureVerifiedSession;
   apiClient.getCloudHistory = originalGetCloudHistory;
   apiClient.getCloudQuote = originalGetCloudQuote;
+  apiClient.getCloudExchangeRate = originalGetCloudExchangeRate;
   apiClient.getCloudHolders = originalGetCloudHolders;
   apiClient.getCloudAnalystResearch = originalGetCloudAnalystResearch;
   apiClient.getCloudCorporateActions = originalGetCloudCorporateActions;
@@ -98,7 +100,65 @@ afterEach(() => {
 });
 
 describe("GloomberbCloudProvider", () => {
-  test("fetches detailed intraday chart history with Twelve Data intervals", async () => {
+  test("uses public delayed market routes anonymously but keeps research protected", async () => {
+    let sessionChecks = 0;
+    apiClient.ensureVerifiedSession = async () => {
+      sessionChecks += 1;
+      return null;
+    };
+    apiClient.getCloudQuote = async () => ({
+      status: "success",
+      data: {
+        symbol: "AAPL",
+        providerId: "gloomberb-cloud",
+        price: 200,
+        currency: "USD",
+        change: 1,
+        changePercent: 0.5,
+        lastUpdated: Date.now(),
+        dataSource: "delayed",
+      },
+    });
+    apiClient.getCloudHistory = async () => ({
+      status: "success",
+      providerMeta: { provider: "yahoo" },
+      data: [{ date: "2026-08-21", close: 200 }],
+    });
+    apiClient.getCloudOptionsChain = async () => ({
+      status: "success",
+      data: {
+        providerId: "gloomberb-cloud",
+        underlyingSymbol: "AAPL",
+        expirationDates: [1_800_000_000],
+        calls: [],
+        puts: [],
+        dataSource: "delayed",
+        feed: "yahoo",
+        delayMinutes: 15,
+        realtimeEligible: false,
+        asOf: "2026-08-21T20:00:00.000Z",
+      },
+    });
+    apiClient.getCloudExchangeRate = async () => ({
+      status: "success",
+      data: { rate: 1.25 },
+    });
+
+    const provider = new GloomberbCloudProvider();
+    expect(await provider.canProvide()).toBe(true);
+    expect((await provider.getQuote("AAPL", "NASDAQ")).price).toBe(200);
+    expect(await provider.getPriceHistory("AAPL", "NASDAQ", "1M")).toHaveLength(1);
+    expect((await provider.getOptionsChain("AAPL", "NASDAQ")).feed).toBe("yahoo");
+    expect(await provider.getExchangeRate("GBP")).toBe(1.25);
+    expect(sessionChecks).toBe(0);
+
+    await expect(provider.getAnalystResearch("AAPL", "NASDAQ")).rejects.toThrow(
+      "requires signup and email verification",
+    );
+    expect(sessionChecks).toBe(1);
+  });
+
+  test("fetches detailed intraday chart history with cloud intervals", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
 
     const requestArgs: { current: { symbol: string; exchange: string; params: Record<string, string | number | undefined> } | null } = { current: null };
