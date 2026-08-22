@@ -73,6 +73,8 @@ const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
 
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
+  private sessionChecked = false;
+  private sessionRequest: Promise<AuthUser | null> | null = null;
   private readonly currentUserListeners = new Set<() => void>();
   private readonly transport = new CloudApiRequestTransport();
   private readonly auth: CloudAuthApi;
@@ -126,11 +128,13 @@ class GloomApiClient {
   }
 
   setCookieSessionMode(enabled: boolean): void {
+    this.sessionChecked = false;
     this.transport.setCookieSessionMode(enabled);
   }
 
   setSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
+    this.sessionChecked = false;
     this.transport.setSessionToken(token);
     if (!token) {
       this.currentUser = null;
@@ -208,7 +212,9 @@ class GloomApiClient {
   }
 
   async ensureVerifiedSession(): Promise<AuthUser | null> {
-    return this.auth.ensureVerifiedSession();
+    if (!this.transport.hasSessionCredential()) return null;
+    if (!this.currentUser && !this.sessionChecked) await this.getSession();
+    return this.currentUser?.emailVerified ? this.currentUser : null;
   }
 
   async signUp(email: string, username: string, name: string, password: string): Promise<AuthUser> {
@@ -232,7 +238,15 @@ class GloomApiClient {
   }
 
   async getSession(): Promise<AuthUser | null> {
-    return this.auth.getSession();
+    if (this.sessionRequest) return this.sessionRequest;
+    this.sessionRequest = this.auth.getSession();
+    try {
+      const user = await this.sessionRequest;
+      this.sessionChecked = true;
+      return user;
+    } finally {
+      this.sessionRequest = null;
+    }
   }
 
   async sendVerification(): Promise<CloudVerificationResponse> {

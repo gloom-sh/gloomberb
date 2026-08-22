@@ -57,15 +57,6 @@ export class CloudAuthApi {
     });
   }
 
-  async ensureVerifiedSession(): Promise<AuthUser | null> {
-    if (!this.options.hasSessionCredential()) return null;
-    if (!this.options.getCurrentUser()) {
-      await this.getSession();
-    }
-    const user = this.options.getCurrentUser();
-    return user?.emailVerified ? user : null;
-  }
-
   async signUp(email: string, username: string, name: string, password: string): Promise<AuthUser> {
     const result = await this.options.request<{ user: AuthUser }>("/auth/sign-up/email", {
       method: "POST",

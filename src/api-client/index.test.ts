@@ -118,6 +118,29 @@ describe("apiClient auth cookies", () => {
     expect(apiClient.isVerified()).toBe(true);
   });
 
+  test("coalesces anonymous browser session checks and remembers the result", async () => {
+    apiClient.setCookieSessionMode(true);
+    let requests = 0;
+    let finishRequest!: () => void;
+    setCloudApiFetchTransport(async () => {
+      requests += 1;
+      await new Promise<void>((resolve) => { finishRequest = resolve; });
+      return createResponse({ user: null });
+    });
+
+    const checks = [
+      apiClient.ensureVerifiedSession(),
+      apiClient.ensureVerifiedSession(),
+      apiClient.ensureVerifiedSession(),
+    ];
+    expect(requests).toBe(1);
+    finishRequest();
+
+    await expect(Promise.all(checks)).resolves.toEqual([null, null, null]);
+    await expect(apiClient.ensureVerifiedSession()).resolves.toBeNull();
+    expect(requests).toBe(1);
+  });
+
   test("captures secure session cookies after login and reuses them on session refresh", async () => {
     const seenCookies: Array<string | null> = [];
 
