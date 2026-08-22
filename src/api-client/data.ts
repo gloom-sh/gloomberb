@@ -4,6 +4,10 @@ import { normalizeTweetSearchResponse } from "./normalizers";
 import {
   cloudCongressHousePath,
   cloudExchangeRatePath,
+  cloudSec13FPath,
+  cloudSecFilingContentPath,
+  cloudSecFilingDocumentsPath,
+  cloudSecFilingsPath,
   cloudFredSeriesPath,
   cloudHistoryPath,
   cloudMarketSearchPath,
@@ -17,6 +21,8 @@ import {
   type CloudFredSeriesParams,
   type CloudHistoryParams,
   type CloudNewsParams,
+  type CloudSecFilingParams,
+  type CloudSecFilingsParams,
   type CloudTickerTweetsParams,
   type CloudTweetSearchParams,
 } from "./paths";
@@ -37,6 +43,9 @@ import type {
   CloudMarketScreenerPayload,
   CloudNewsListResponse,
   CloudNewsPayload,
+  CloudSecContentResponse,
+  CloudSecDocumentsResponse,
+  CloudSecFilingsResponse,
   CloudOptionsChainPayload,
   CloudPricePointPayload,
   CloudQuotePayload,
@@ -180,6 +189,22 @@ export class CloudDataApi {
 
   async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {
     return this.request<CloudCongressHousePayload>(cloudCongressHousePath(params));
+  }
+
+  async getCloudSecFilings(params: CloudSecFilingsParams): Promise<CloudSecFilingsResponse> {
+    return this.request<CloudSecFilingsResponse>(cloudSecFilingsPath(params));
+  }
+
+  async getCloudSecFilingDocuments(params: CloudSecFilingParams): Promise<CloudSecDocumentsResponse> {
+    return this.request<CloudSecDocumentsResponse>(cloudSecFilingDocumentsPath(params));
+  }
+
+  async getCloudSecFilingContent(params: CloudSecFilingParams): Promise<CloudSecContentResponse> {
+    return this.request<CloudSecContentResponse>(cloudSecFilingContentPath(params));
+  }
+
+  async getCloudSec13F(path: string, params: Record<string, string | number | undefined> = {}): Promise<unknown> {
+    return this.request<unknown>(cloudSec13FPath(path, params));
   }
 
   async getCloudNews(params: CloudNewsParams = {}): Promise<CloudNewsListResponse> {

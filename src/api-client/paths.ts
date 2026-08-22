@@ -120,6 +120,21 @@ export function cloudFredSeriesPath(seriesId: string, params: CloudFredSeriesPar
   return appendQuery(`/cloud/econ/series/${encodeURIComponent(seriesId)}`, search);
 }
 
+export type CloudSecFilingsParams = {
+  ticker: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type CloudSecFilingParams = {
+  cik?: string;
+  accession?: string;
+  form?: string;
+  primaryDocument?: string;
+  primaryDocumentUrl?: string;
+  filingUrl?: string;
+};
+
 export function cloudCongressHousePath(params: CloudCongressHouseParams = {}): string {
   const search = new URLSearchParams();
   if (params.year != null) search.set("year", String(params.year));
@@ -131,6 +146,43 @@ export function cloudCongressHousePath(params: CloudCongressHouseParams = {}): s
   if (params.ticker) search.set("ticker", params.ticker);
   if (params.refresh != null) search.set("refresh", String(params.refresh));
   return appendQuery("/cloud/congress/house", search);
+}
+
+export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
+  const search = new URLSearchParams({ ticker: params.ticker });
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
+  return appendQuery("/cloud/sec/filings", search);
+}
+
+export function cloudSecFilingDocumentsPath(params: CloudSecFilingParams): string {
+  const search = new URLSearchParams();
+  if (params.cik) search.set("cik", params.cik);
+  if (params.accession) search.set("accession", params.accession);
+  if (params.form) search.set("form", params.form);
+  if (params.primaryDocument) search.set("primaryDocument", params.primaryDocument);
+  if (params.filingUrl) search.set("filingUrl", params.filingUrl);
+  return appendQuery("/cloud/sec/filing/documents", search);
+}
+
+export function cloudSecFilingContentPath(params: CloudSecFilingParams): string {
+  const search = new URLSearchParams();
+  if (params.cik) search.set("cik", params.cik);
+  if (params.accession) search.set("accession", params.accession);
+  if (params.form) search.set("form", params.form);
+  if (params.primaryDocument) search.set("primaryDocument", params.primaryDocument);
+  if (params.primaryDocumentUrl) search.set("primaryDocumentUrl", params.primaryDocumentUrl);
+  if (params.filingUrl) search.set("filingUrl", params.filingUrl);
+  return appendQuery("/cloud/sec/filing/content", search);
+}
+
+export function cloudSec13FPath(path: string, params: Record<string, string | number | undefined> = {}): string {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined) search.set(key, String(value));
+  }
+  const normalized = path.startsWith("/") ? path.slice(1) : path;
+  return appendQuery(`/cloud/sec/13f/${normalized}`, search);
 }
 
 export function cloudNewsPath(params: CloudNewsParams = {}): string {

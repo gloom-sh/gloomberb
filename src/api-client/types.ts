@@ -408,6 +408,57 @@ export interface CloudCongressHousePayload {
   members: CloudCongressMemberPayload[];
 }
 
+export interface CloudSecFilingPayload {
+  accessionNumber: string;
+  form: string;
+  filingDate: string;
+  acceptedAt?: string;
+  primaryDocument?: string;
+  primaryDocDescription?: string;
+  items?: string;
+  cik: string;
+  companyName?: string;
+  filingUrl: string;
+  primaryDocumentUrl?: string;
+}
+
+export interface CloudSecDocumentPayload {
+  sequence?: string;
+  type: string;
+  description?: string;
+  document: string;
+  url: string;
+  size?: string;
+  isPrimary: boolean;
+}
+
+export interface CloudSecFilingsResponse {
+  filings: CloudSecFilingPayload[];
+  hasMore: boolean;
+  nextOffset: number;
+}
+
+export interface CloudSecDocumentsResponse {
+  documents: CloudSecDocumentPayload[];
+}
+
+export interface CloudSecForm4Payload {
+  filingDate: string;
+  reportedName: string;
+  title: string;
+  transactionType: "P" | "S" | "A" | "D" | "";
+  shares: number;
+  pricePerShare: number | null;
+  totalValue: number | null;
+  sharesOwned: number | null;
+  form: string;
+}
+
+export interface CloudSecContentResponse {
+  content: string | null;
+  form4: CloudSecForm4Payload | null;
+}
+
 interface CloudNewsEntityPayload {
   id: string;
   entityType: string;

@@ -8,6 +8,8 @@ import { CloudApiSocket } from "./socket";
 import type {
   CloudCongressHouseParams,
   CloudFredSeriesParams,
+  CloudSecFilingParams,
+  CloudSecFilingsParams,
   CloudHistoryParams,
   CloudNewsParams,
   CloudTickerTweetsParams,
@@ -44,6 +46,9 @@ import type {
   CloudYieldPointPayload,
   CloudCongressHousePayload,
   CloudNewsPayload,
+  CloudSecContentResponse,
+  CloudSecDocumentsResponse,
+  CloudSecFilingsResponse,
   CloudNewsListResponse,
   CloudTweetSearchResponse,
   CloudMarketResponse,
@@ -526,6 +531,22 @@ class GloomApiClient {
 
   async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {
     return this.data.getCloudCongressHouse(params);
+  }
+
+  async getCloudSecFilings(params: CloudSecFilingsParams): Promise<CloudSecFilingsResponse> {
+    return this.data.getCloudSecFilings(params);
+  }
+
+  async getCloudSecFilingDocuments(params: CloudSecFilingParams): Promise<CloudSecDocumentsResponse> {
+    return this.data.getCloudSecFilingDocuments(params);
+  }
+
+  async getCloudSecFilingContent(params: CloudSecFilingParams): Promise<CloudSecContentResponse> {
+    return this.data.getCloudSecFilingContent(params);
+  }
+
+  async getCloudSec13F(path: string, params: Record<string, string | number | undefined> = {}): Promise<unknown> {
+    return this.data.getCloudSec13F(path, params);
   }
 
   async getCloudNews(params: CloudNewsParams = {}): Promise<CloudNewsListResponse> {

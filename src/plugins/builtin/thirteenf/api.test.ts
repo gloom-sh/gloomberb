@@ -26,7 +26,7 @@ describe("13F API", () => {
 
     const funds = await searchThirteenFFunds("transport-smoke", 1);
 
-    expect(urls[0]).toContain("https://forms13f.com/api/v1/funds");
+    expect(urls[0]).toContain("/cloud/sec/13f/funds");
     expect(funds).toEqual([{ cik: "0001067983", name: "BERKSHIRE HATHAWAY INC" }]);
   });
 
