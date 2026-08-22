@@ -23,13 +23,15 @@ export function setCloudApiFetchTransport(transport: CloudApiFetchTransport | nu
 }
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
-declare const __GLOOMBERB_API_PATH__: string | undefined;
 
 function getCloudApiBaseUrl(): string {
-  // Browser bundles have no `process`; the build replaces these with literals.
+  // Browser bundles have no `process`; the build replaces this with a literal.
   const bundled = typeof __GLOOMBERB_API_URL__ === "string" ? __GLOOMBERB_API_URL__ : "";
-  const path = typeof __GLOOMBERB_API_PATH__ === "string" ? __GLOOMBERB_API_PATH__ : "";
-  if (bundled) return `${bundled}${path}`;
+  if (bundled) {
+    return typeof location !== "undefined" && bundled === location.origin
+      ? `${bundled}/api`
+      : bundled;
+  }
   if (typeof process === "undefined") {
     return DEFAULT_API_URL;
   }

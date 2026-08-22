@@ -1,12 +1,12 @@
 import { parseSharePayload, type SharePayload } from "./payload";
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
-declare const __GLOOMBERB_API_PATH__: string | undefined;
 
 const bundledApiOrigin = typeof __GLOOMBERB_API_URL__ === "string" ? __GLOOMBERB_API_URL__ : "";
-const bundledApiPath = typeof __GLOOMBERB_API_PATH__ === "string" ? __GLOOMBERB_API_PATH__ : "";
 export const SHARE_API_ORIGIN = bundledApiOrigin
-  ? `${bundledApiOrigin}${bundledApiPath}`
+  ? typeof location !== "undefined" && bundledApiOrigin === location.origin
+    ? `${bundledApiOrigin}/api`
+    : bundledApiOrigin
   : "https://api.gloom.sh";
 const SHARE_ID = /^[a-f0-9]{32}$/;
 type ShareFetch = (input: string, init?: RequestInit) => Promise<Response>;

@@ -24,7 +24,6 @@ async function buildPage(name: string, entrypoint: string, title: string, loadin
     define: {
       "process.env.NODE_ENV": '"production"',
       __GLOOMBERB_API_URL__: "location.origin",
-      __GLOOMBERB_API_PATH__: '"/api"',
     },
     plugins: [electrobunViewAliasPlugin(`browser-${name}-native-stubs`)],
   });
