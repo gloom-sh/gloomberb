@@ -41,6 +41,47 @@ describe("static Cloudflare host", () => {
     expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
   });
 
+  test("serves the Apple app site association without touching static assets", async () => {
+    const { env, requests } = fixture();
+    const response = await handleRequest(
+      new Request("https://term.example/.well-known/apple-app-site-association"),
+      env,
+    );
+
+    // Apple's fetcher accepts none of: a redirect, an HTML body, a 404. Any of
+    // those disables universal links silently, so pin the exact contract.
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(requests).toHaveLength(0);
+
+    const body = (await response.json()) as {
+      applinks: { details: { appIDs: string[]; components: { "/": string }[] }[] };
+    };
+    const detail = body.applinks.details[0]!;
+    expect(detail.appIDs).toEqual(["3XQML3UV65.sh.gloom.companion"]);
+    // Only share links are claimed; everything else must stay in the browser.
+    expect(detail.components[0]!["/"]).toBe("/s/*");
+  });
+
+  test("claims exactly the share paths the worker itself rewrites", async () => {
+    const { env } = fixture();
+    const response = await handleRequest(
+      new Request("https://term.example/.well-known/apple-app-site-association"),
+      env,
+    );
+    const body = (await response.json()) as {
+      applinks: { details: { components: { "/": string }[] }[] };
+    };
+    const claimed = body.applinks.details[0]!.components[0]!["/"];
+
+    // A real share id must match the pattern advertised to Apple, otherwise the
+    // app is claiming links the site does not serve, or missing ones it does.
+    const shareId = "0123456789abcdef0123456789abcdef";
+    const pattern = new RegExp(`^${claimed.replace("*", ".*")}$`);
+    expect(pattern.test(`/s/${shareId}`)).toBe(true);
+    expect(pattern.test("/settings")).toBe(false);
+  });
+
   test("proxies only the same-origin API path to api.gloom.sh", async () => {
     const { env, requests } = fixture();
     let upstream: Request | undefined;

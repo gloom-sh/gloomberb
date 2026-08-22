@@ -8,6 +8,31 @@ export interface WorkerEnv {
 
 const SHARE_PATH = /^\/s\/[a-f0-9]{32}\/?$/;
 const API_PATH = /^\/api(?:\/|$)/;
+const APPLE_APP_SITE_ASSOCIATION_PATH = "/.well-known/apple-app-site-association";
+
+/**
+ * Lets the iOS app claim `https://term.gloom.sh/s/...` share links.
+ *
+ * Apple fetches this over HTTPS with its own client, so it has to be a direct
+ * 200 with JSON content type: a redirect, an HTML error page, or a 404 all
+ * silently disable universal links with no visible failure on device.
+ *
+ * The path list mirrors `SHARE_PATH` above. Only shares are claimed, so every
+ * other page on the site still opens in the browser, which is what someone
+ * clicking a marketing or docs link expects.
+ *
+ * `3XQML3UV65` is the Apple team id that prefixes the app id.
+ */
+const APPLE_APP_SITE_ASSOCIATION = {
+  applinks: {
+    details: [
+      {
+        appIDs: ["3XQML3UV65.sh.gloom.companion"],
+        components: [{ "/": "/s/*", comment: "Public portfolio shares" }],
+      },
+    ],
+  },
+} as const;
 const API_ORIGIN = "https://api.gloom.sh";
 const API_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);
 type ApiFetch = (request: Request) => Promise<Response>;
@@ -62,6 +87,17 @@ export async function handleRequest(request: Request, env: WorkerEnv, fetchApi: 
 
   if (url.pathname === "/health") {
     return withSecurityHeaders(Response.json({ status: "ok" }));
+  }
+
+  // Served before the asset handler so it cannot be shadowed by a static file
+  // or the SPA fallback, either of which would hand Apple HTML and quietly
+  // break universal links.
+  if (url.pathname === APPLE_APP_SITE_ASSOCIATION_PATH) {
+    return withSecurityHeaders(
+      Response.json(APPLE_APP_SITE_ASSOCIATION, {
+        headers: { "cache-control": "public, max-age=3600" },
+      }),
+    );
   }
   const share = SHARE_PATH.test(url.pathname);
   if (share) {
