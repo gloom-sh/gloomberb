@@ -71,6 +71,39 @@ test("reports a drag as a drag, never as a move, and keeps its modifiers", async
   expect(modifiers.every((entry) => entry.shift)).toBe(true);
 });
 
+test("chart surfaces consume browser pan and zoom gestures", async () => {
+  const directions: string[] = [];
+  const container = testWindow.document.createElement("div");
+  testWindow.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+  await act(async () => {
+    root.render(
+      <WebChartSurface
+        width={40}
+        height={10}
+        onMouseScroll={(event: { scroll?: { direction?: string }; preventDefault: () => void }) => {
+          directions.push(event.scroll?.direction ?? "");
+          event.preventDefault();
+        }}
+      />,
+    );
+  });
+
+  const surface = container.firstElementChild as unknown as HTMLElement;
+  const wheel = new testWindow.WheelEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    deltaX: 24,
+  });
+  expect(surface.dispatchEvent(wheel as never)).toBe(false);
+  expect(wheel.defaultPrevented).toBe(true);
+  expect(directions).toEqual(["right"]);
+  expect(surface.style.touchAction).toBe("none");
+  expect(surface.style.overscrollBehavior).toBe("none");
+
+  await act(async () => root.unmount());
+});
+
 test("a tab bar occupies exactly the one row panes reserve for it", async () => {
   const { WebTabs } = await import("./tabs");
   const { WEB_CELL_HEIGHT } = await import("../input-host");

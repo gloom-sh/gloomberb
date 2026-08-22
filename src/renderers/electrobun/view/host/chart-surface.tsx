@@ -211,7 +211,13 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
         {...props}
         ref={ref as Ref<HTMLDivElement>}
         data-gloom-role={(props["data-gloom-role"] as string | undefined) ?? "chart-surface"}
-        style={{ position: "relative", overflow: "hidden", ...(props.style as CSSProperties | undefined) }}
+        style={{
+          position: "relative",
+          overflow: "hidden",
+          touchAction: "none",
+          overscrollBehavior: "none",
+          ...(props.style as CSSProperties | undefined),
+        }}
       >
         {layers.length > 0
           ? layers.map((layer, index) => (
