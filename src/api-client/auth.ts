@@ -126,6 +126,18 @@ export class CloudAuthApi {
     }
   }
 
+  /**
+   * Emails a password reset link. The reset itself completes on the gloom.sh
+   * site, so the app only ever sends the email. The server answers the same
+   * way whether or not the address exists.
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    await this.options.request("/auth/request-password-reset", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+  }
+
   async sendVerification(): Promise<CloudVerificationResponse> {
     return this.options.request<CloudVerificationResponse>("/cloud/auth/send-verification", {
       method: "POST",

@@ -5,10 +5,10 @@
  * QR sign-in dialog host.
  */
 import { useCallback, useState } from "react";
-import type { AuthUser } from "../../../api-client";
+import { apiClient, type AuthUser } from "../../../api-client";
 import { Button, Spinner, TextField } from "../../../components";
 import { DialogFrame } from "../../../components/ui/frame";
-import { t } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { colors } from "../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../ui";
@@ -29,6 +29,8 @@ const FIELD_WIDTH = 42;
 
 type AuthField = "email" | "password";
 
+type ResetState = "idle" | "sending" | "sent";
+
 export function AuthDialog({
   initialMode,
   resolve,
@@ -43,6 +45,7 @@ export function AuthDialog({
   const [submitting, setSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<AccountSubmitError | null>(null);
+  const [resetState, setResetState] = useState<ResetState>("idle");
   const attemptRef = useRef(0);
 
   const clearErrors = useCallback(() => {
@@ -60,9 +63,29 @@ export function AuthDialog({
     setMode(nextMode);
     setSubmitting(false);
     setPassword("");
+    setResetState("idle");
     clearErrors();
     setActiveField(email.trim() ? "password" : "email");
   }, [clearErrors, email]);
+
+  const requestReset = useCallback(() => {
+    if (submitting || resetState === "sending") return;
+    const trimmedEmail = email.trim();
+    const emailError = validateAccountEmail(trimmedEmail);
+    if (emailError) {
+      setActiveField("email");
+      setValidationError(emailError);
+      return;
+    }
+    setResetState("sending");
+    clearErrors();
+    void apiClient.requestPasswordReset(trimmedEmail)
+      .then(() => setResetState("sent"))
+      .catch(() => {
+        setResetState("idle");
+        setSubmitError({ message: t("Could not send the reset email."), kind: "retry" });
+      });
+  }, [clearErrors, email, resetState, submitting]);
 
   const submit = useCallback(() => {
     if (submitting) return;
@@ -148,6 +171,7 @@ export function AuthDialog({
           onMouseDown={() => setActiveField("email")}
           onChange={(value) => {
             setEmail(value);
+            setResetState("idle");
             clearErrors();
           }}
           onSubmit={submitField}
@@ -182,8 +206,14 @@ export function AuthDialog({
         <Box flexDirection="column" minHeight={2} width={FIELD_WIDTH}>
           {submitting ? (
             <Spinner label={mode === "signup" ? t("Creating your account...") : t("Signing you in...")} />
+          ) : resetState === "sending" ? (
+            <Spinner label={t("Sending reset link...")} />
           ) : error ? (
             <Text fg={colors.negative} wrapText>{error}</Text>
+          ) : resetState === "sent" ? (
+            <Text fg={colors.positive} wrapText>
+              {tf("Reset link sent to {email}. Check your inbox.", { email: email.trim() })}
+            </Text>
           ) : mode === "signup" ? (
             <Text fg={colors.textMuted} wrapText>{t("We'll email you a verification link.")}</Text>
           ) : null}
@@ -202,6 +232,16 @@ export function AuthDialog({
             onPress={submit}
           />
         </Box>
+        {mode === "login" && (
+          <Box flexDirection="row" width={FIELD_WIDTH}>
+            <Button
+              label={t("Forgot password?")}
+              variant="ghost"
+              disabled={submitting || resetState === "sending"}
+              onPress={requestReset}
+            />
+          </Box>
+        )}
       </Box>
     </DialogFrame>
   );

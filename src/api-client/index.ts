@@ -267,6 +267,10 @@ class GloomApiClient {
     return this.auth.sendVerification();
   }
 
+  async requestPasswordReset(email: string): Promise<void> {
+    return this.auth.requestPasswordReset(email);
+  }
+
   async createBrowserHandoff(): Promise<CloudBrowserHandoffResponse> {
     return this.auth.createBrowserHandoff();
   }
