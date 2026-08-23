@@ -1062,8 +1062,6 @@ export const ko: Record<string, string> = {
   "Signed in as {email}": "{email}(으)로 로그인됨",
   "Signed in to Gloom Cloud": "Gloom Cloud에 로그인됨",
   "Signing you in...": "로그인하는 중...",
-  "Log in to Gloomberb": "Gloomberb에 로그인",
-  "Create your Gloomberb account": "Gloomberb 계정 만들기",
   "Create Account": "계정 만들기",
   "Log in instead": "대신 로그인",
   "Sign up instead": "대신 가입하기",

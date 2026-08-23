@@ -1064,8 +1064,6 @@ export const ja: Record<string, string> = {
   "Signed in as {email}": "{email} でログイン中",
   "Signed in to Gloom Cloud": "Gloom Cloud にログイン中",
   "Signing you in...": "ログイン中...",
-  "Log in to Gloomberb": "Gloomberbにログイン",
-  "Create your Gloomberb account": "Gloomberbアカウントを作成",
   "Create Account": "アカウントを作成",
   "Log in instead": "代わりにログイン",
   "Sign up instead": "代わりに新規登録",

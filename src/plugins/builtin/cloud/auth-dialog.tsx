@@ -135,7 +135,7 @@ export function AuthDialog({
   const error = validationError ?? submitError?.message ?? null;
 
   return (
-    <DialogFrame title={mode === "login" ? t("Log in to Gloomberb") : t("Create your Gloomberb account")}>
+    <DialogFrame title={mode === "login" ? t("Log in to Gloom Cloud") : t("Create your free Gloom Cloud account")}>
       <Box flexDirection="column" gap={1}>
         <TextField
           label={t("Email")}
@@ -190,16 +190,16 @@ export function AuthDialog({
         </Box>
         <Box flexDirection="row" justifyContent="space-between" width={FIELD_WIDTH}>
           <Button
-            label={mode === "login" ? t("Log In") : t("Create Account")}
-            variant="primary"
-            disabled={submitting}
-            onPress={submit}
-          />
-          <Button
             label={switchToLogin || mode === "signup" ? t("Log in instead") : t("Sign up instead")}
             variant="ghost"
             disabled={submitting}
             onPress={() => switchMode(mode === "login" ? "signup" : "login")}
+          />
+          <Button
+            label={mode === "login" ? t("Log In") : t("Create Account")}
+            variant="primary"
+            disabled={submitting}
+            onPress={submit}
           />
         </Box>
       </Box>

@@ -1064,8 +1064,6 @@ export const zhTW: Record<string, string> = {
   "Signed in as {email}": "已登入：{email}",
   "Signed in to Gloom Cloud": "已登入 Gloom 雲端",
   "Signing you in...": "正在登入...",
-  "Log in to Gloomberb": "登入 Gloomberb",
-  "Create your Gloomberb account": "建立你的 Gloomberb 帳戶",
   "Create Account": "建立帳戶",
   "Log in instead": "改為登入",
   "Sign up instead": "改為註冊",

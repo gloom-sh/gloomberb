@@ -1061,8 +1061,6 @@ export const es: Record<string, string> = {
   "Signed in as {email}": "Sesión iniciada como {email}",
   "Signed in to Gloom Cloud": "Sesión iniciada en Gloom Cloud",
   "Signing you in...": "Iniciando sesión...",
-  "Log in to Gloomberb": "Inicia sesión en Gloomberb",
-  "Create your Gloomberb account": "Crea tu cuenta de Gloomberb",
   "Create Account": "Crear cuenta",
   "Log in instead": "Inicia sesión en su lugar",
   "Sign up instead": "Regístrate en su lugar",

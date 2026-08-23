@@ -1064,8 +1064,6 @@ export const zhCN: Record<string, string> = {
   "Signed in as {email}": "已登录：{email}",
   "Signed in to Gloom Cloud": "已登录 Gloom 云",
   "Signing you in...": "正在登录...",
-  "Log in to Gloomberb": "登录 Gloomberb",
-  "Create your Gloomberb account": "创建你的 Gloomberb 账户",
   "Create Account": "创建账户",
   "Log in instead": "改为登录",
   "Sign up instead": "改为注册",
