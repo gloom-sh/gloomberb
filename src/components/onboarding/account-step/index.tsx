@@ -4,7 +4,7 @@ import { AccountChooserPanel } from "./chooser-panel";
 import { AccountFormPanel } from "./form-panel";
 import { AccountQrPanel } from "./qr-panel";
 import { AccountSignedInPanel } from "./signed-in-panel";
-import type { AccountOutcome, AccountSub, AccountSubmitError } from "./model";
+import type { AccountOutcome, AccountSub, AccountSubmitError } from "../../../plugins/builtin/cloud/auth-model";
 
 export interface AccountStepProps {
   sub: AccountSub;

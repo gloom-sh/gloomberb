@@ -1,7 +1,7 @@
 import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
-import type { AccountOutcome } from "./model";
+import type { AccountOutcome } from "../../../plugins/builtin/cloud/auth-model";
 
 export function AccountSignedInPanel({ outcome }: { outcome: AccountOutcome | null }) {
   const email = outcome?.email ?? "";

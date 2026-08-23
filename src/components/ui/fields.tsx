@@ -16,7 +16,9 @@ export interface TextFieldProps {
   onSubmit?: (value: string) => void;
   onBlur?: (value: string) => void;
   hint?: string;
-  type?: "text" | "password" | "date";
+  type?: "text" | "password" | "date" | "email";
+  /** DOM autofill hint, e.g. "email" or "current-password"; terminal hosts ignore it. */
+  autoComplete?: string;
   variant?: "default" | "plain";
   backgroundColor?: string;
   textColor?: string;
@@ -49,6 +51,7 @@ export function TextField({
   onBlur,
   hint,
   type = "text",
+  autoComplete,
   variant = "default",
   backgroundColor = colors.bg,
   textColor = colors.text,
@@ -87,6 +90,7 @@ export function TextField({
         onBlur={onBlur}
         hint={hint}
         type={type}
+        autoComplete={autoComplete}
         variant={variant}
         backgroundColor={backgroundColor}
         textColor={textColor}

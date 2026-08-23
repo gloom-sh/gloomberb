@@ -118,6 +118,16 @@ describe("apiClient auth cookies", () => {
     expect(apiClient.isVerified()).toBe(true);
   });
 
+  test("reports signed-in from the restored user when the cookie hides the raw token", async () => {
+    apiClient.setCookieSessionMode(true);
+    setCloudApiFetchTransport(mockFetch(() => createResponse({ user: verifiedUser })));
+
+    expect(apiClient.isSignedIn()).toBe(false);
+    await apiClient.signIn("test@example.com", "password");
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(apiClient.isSignedIn()).toBe(true);
+  });
+
   test("coalesces anonymous browser session checks and remembers the result", async () => {
     apiClient.setCookieSessionMode(true);
     let requests = 0;

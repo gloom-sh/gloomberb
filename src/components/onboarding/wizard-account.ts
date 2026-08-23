@@ -1,19 +1,17 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { apiClient } from "../../api-client";
-import { chatController } from "../../plugins/builtin/chat/controller";
 import { debugLog } from "../../utils/debug-log";
 import {
   advanceAccountField,
   classifyAccountError,
-  deriveUsernameFromEmail,
-  isUsernameConflictError,
+  performEmailAuth,
   validateAccountEmail,
   validateAccountPassword,
   type AccountMode,
   type AccountOutcome,
   type AccountSub,
   type AccountSubmitError,
-} from "./account-step/model";
+} from "../../plugins/builtin/cloud/auth-model";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 
@@ -175,24 +173,7 @@ export function useOnboardingAccount({
 
     void (async () => {
       try {
-        if (mode === "signup") {
-          try {
-            const username = deriveUsernameFromEmail(email);
-            await apiClient.signUp(email, username, username, password);
-          } catch (error) {
-            if (!isUsernameConflictError(error)) throw error;
-            const retryUsername = deriveUsernameFromEmail(email, 1);
-            await apiClient.signUp(email, retryUsername, retryUsername, password);
-          }
-          await apiClient.sendVerification().catch(() => {});
-        } else {
-          await apiClient.signIn(email, password);
-        }
-
-        // Hands the freshly captured session cookie to the chat controller so it
-        // reaches plugin persistence instead of living only in this process.
-        chatController.clearSession();
-        await chatController.refreshSession().catch(() => {});
+        await performEmailAuth(mode, email, password);
 
         if (attemptRef.current !== attemptId) return;
         onboardingLog.info("Onboarding account step completed", { mode });
@@ -235,7 +216,7 @@ export function useOnboardingAccount({
   }, [accountEmail, accountFieldIdx, accountPassword, accountSub, setEditingField, submitAccount]);
 
   const syncExistingAccountSession = useCallback(() => {
-    if (accountSub !== "choose" || !apiClient.getSessionToken()) return;
+    if (accountSub !== "choose" || !apiClient.isSignedIn()) return;
     const user = apiClient.getCurrentUser();
     setAccountOutcome((current) => current ?? {
       mode: "login",

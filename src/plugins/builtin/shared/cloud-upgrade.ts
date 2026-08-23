@@ -8,7 +8,7 @@ import { useRendererHost } from "../../../ui";
 import type { RendererHost } from "../../../ui";
 import { getSharedRegistry } from "../../registry";
 import { requestAccountManagementTab } from "../account-management/navigation";
-import { usePlanAccess, type PlanAccess } from "./plan-access";
+import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "./plan-access";
 
 export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 
@@ -19,17 +19,20 @@ export const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 let cloudUpgradeOpener: (() => void) | null = null;
 
 /**
- * Resolves a safe handoff URL for a captured native session. Signed-out users
- * still use the public Cloud page, while signed-in users never expose their
- * session cookie to the external browser.
+ * Signed-out users get the public Cloud page. Signed-in free accounts go
+ * straight to Stripe checkout, and accounts that already have Pro (paying or
+ * trialing) get the billing portal, so nobody re-buys a subscription they
+ * already hold. Both URLs are account-bound, so no session handoff is needed.
  */
 export async function resolveCloudUpgradeUrl(): Promise<string> {
-  if (!apiClient.getSessionToken()) return CLOUD_UPGRADE_URL;
-  const handoff = await apiClient.createBrowserHandoff();
-  return handoff.url;
+  if (!apiClient.isSignedIn()) return CLOUD_UPGRADE_URL;
+  const { url } = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
+    ? await apiClient.createBillingPortal()
+    : await apiClient.createCloudCheckout();
+  return url;
 }
 
-/** Opens Cloud Pro, transferring a native session with the server's one-time handoff. */
+/** Opens checkout or the billing portal in the user's browser. */
 export async function openCloudUpgrade(rendererHost: Pick<RendererHost, "openExternal">): Promise<void> {
   await rendererHost.openExternal(await resolveCloudUpgradeUrl());
 }
@@ -45,9 +48,13 @@ export function openCloudUpgradeUrl(): boolean {
 export function useCloudUpgradeAction(): () => void {
   const rendererHost = useRendererHost();
   const openUpgrade = useCallback(() => {
-    void openCloudUpgrade(rendererHost).catch(() => {
-      // Keep the public pricing page reachable if the short-lived handoff cannot be created.
-      void rendererHost.openExternal(CLOUD_UPGRADE_URL);
+    void openCloudUpgrade(rendererHost).catch(async () => {
+      // Keep the Cloud page reachable when checkout cannot be created; a native
+      // session still rides along on the server's one-time handoff URL.
+      const url = await apiClient.createBrowserHandoff()
+        .then((handoff) => handoff.url)
+        .catch(() => CLOUD_UPGRADE_URL);
+      void rendererHost.openExternal(url);
     });
   }, [rendererHost]);
   useEffect(() => {

@@ -4,7 +4,7 @@ import {
   classifyAccountError,
   deriveUsernameFromEmail,
   isUsernameConflictError,
-} from "./model";
+} from "./auth-model";
 
 describe("deriveUsernameFromEmail", () => {
   test("builds a server-legal username from the email local part", () => {

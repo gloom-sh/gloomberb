@@ -21,7 +21,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { EventBus } from "../../plugins/event-bus";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
-import { ACCOUNT_CHOICE_IDS } from "./account-step/model";
+import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
 import { OnboardingWizard } from "./onboarding-wizard";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;

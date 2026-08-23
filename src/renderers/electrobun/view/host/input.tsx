@@ -273,7 +273,7 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
       value={value}
       autoCorrect="off"
       autoCapitalize="off"
-      autoComplete="off"
+      autoComplete={getStringProp(props, "autoComplete") ?? "off"}
       spellCheck={false}
       placeholder={getStringProp(props, "placeholder")}
       onInput={(event) => handleValueChange(event.currentTarget.value)}

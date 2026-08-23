@@ -3,6 +3,7 @@ import type { GloomPluginContext } from "../../../types/plugin";
 import { requestAccountManagementTab } from "../account-management/navigation";
 import { openCloudUpgradeUrl } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../shared/plan-access";
+import { requestAuthDialog } from "./auth-dialog";
 
 export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {
   ctx.registerCommand({
@@ -15,14 +16,20 @@ export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {
     // Paying subscribers have nothing to upgrade to; trial accounts still do.
     hidden: () => resolvePlanAccess(apiClient.getCurrentUser()).isPayingPro,
     execute: () => {
-      if (!apiClient.getSessionToken()) {
-        ctx.openCommandBar("Sign Up");
+      const openUpgrade = () => {
+        if (openCloudUpgradeUrl()) return;
+        // No renderer-backed opener yet: fall back to the in-app billing surface.
+        requestAccountManagementTab("pro");
+        ctx.showPane("account-management");
+      };
+      if (!apiClient.isSignedIn()) {
+        // Upgrading needs an account first; continue to checkout once signed in.
+        if (!requestAuthDialog({ mode: "signup", onSignedIn: openUpgrade })) {
+          ctx.openCommandBar("Sign Up");
+        }
         return;
       }
-      if (openCloudUpgradeUrl()) return;
-      // No renderer-backed opener yet: fall back to the in-app billing surface.
-      requestAccountManagementTab("pro");
-      ctx.showPane("account-management");
+      openUpgrade();
     },
   });
 }

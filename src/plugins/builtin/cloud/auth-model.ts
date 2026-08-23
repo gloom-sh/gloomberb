@@ -1,9 +1,12 @@
 /**
- * Logic for the onboarding account step, kept out of the React hook so the
- * transitions that gate a network call (validation, retry classification,
- * username derivation) can be exercised without rendering the wizard.
+ * Shared email/password auth logic for every sign-in surface (onboarding,
+ * auth dialog), kept out of React so the transitions that gate a network call
+ * (validation, retry classification, username derivation) can be exercised
+ * without rendering.
  */
+import { apiClient, type AuthUser } from "../../../api-client";
 import { t } from "../../../i18n";
+import { chatController } from "../chat/controller";
 
 export type AccountSub = "choose" | "signup" | "login" | "qr" | "signed-in";
 
@@ -98,6 +101,34 @@ export function classifyAccountError(error: unknown, mode: AccountMode): Account
     message: message || (mode === "signup" ? t("Could not create your account.") : t("Could not sign you in.")),
     kind: "retry",
   };
+}
+
+/**
+ * Runs the sign-up or sign-in sequence every surface shares: sign-up derives a
+ * username the user never typed (retrying once when the derivation collides),
+ * unverified accounts get a verification email, and the captured session is
+ * handed to the chat controller so it reaches plugin persistence.
+ */
+export async function performEmailAuth(mode: AccountMode, email: string, password: string): Promise<AuthUser> {
+  let user: AuthUser;
+  if (mode === "signup") {
+    try {
+      const username = deriveUsernameFromEmail(email);
+      user = await apiClient.signUp(email, username, username, password);
+    } catch (error) {
+      if (!isUsernameConflictError(error)) throw error;
+      const retryUsername = deriveUsernameFromEmail(email, 1);
+      user = await apiClient.signUp(email, retryUsername, retryUsername, password);
+    }
+  } else {
+    user = await apiClient.signIn(email, password);
+  }
+  if (!user.emailVerified) {
+    await apiClient.sendVerification().catch(() => {});
+  }
+  chatController.clearSession();
+  await chatController.refreshSession().catch(() => {});
+  return user;
 }
 
 export interface AccountFormState {

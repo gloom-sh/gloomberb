@@ -58,6 +58,7 @@ import {
   useShellResolvedPanes,
   useShellVisibleLayout,
 } from "./layout-state";
+import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
 import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { useShellPaneActions } from "./pane/actions";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
@@ -560,8 +561,9 @@ export function Shell({
         }
         : {})}
     >
-      {/* Renders nothing; gives the QR sign-in command an always-mounted component with dialog access. */}
+      {/* Render nothing; give the auth commands always-mounted components with dialog access. */}
       <DeviceSignInDialogHost />
+      <AuthDialogHost />
       <Box
         position="absolute"
         left={0}

@@ -158,6 +158,15 @@ class GloomApiClient {
     return this.currentUser;
   }
 
+  /**
+   * Whether a signed-in session exists on this surface. Browser builds keep the
+   * session in an HttpOnly cookie, so the raw token is deliberately null there
+   * and the restored user is the only signal.
+   */
+  isSignedIn(): boolean {
+    return !!this.transport.getSessionToken() || !!this.currentUser;
+  }
+
   /** Notifies when the signed-in user changes, including plan and trial entitlement. */
   subscribeCurrentUser(listener: () => void): () => void {
     this.currentUserListeners.add(listener);
@@ -260,6 +269,16 @@ class GloomApiClient {
 
   async createBrowserHandoff(): Promise<CloudBrowserHandoffResponse> {
     return this.auth.createBrowserHandoff();
+  }
+
+  /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
+  async createCloudCheckout(): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({}) });
+  }
+
+  /** Stripe billing portal for an account that already has a subscription. */
+  async createBillingPortal(): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });
   }
 
   async getAccountProfile(): Promise<AccountProfile> {

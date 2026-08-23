@@ -216,6 +216,7 @@ export function WebTextField({
   onBlur,
   hint,
   type = "text",
+  autoComplete,
   variant = "default",
   backgroundColor,
   textColor,
@@ -273,6 +274,7 @@ export function WebTextField({
           width="100%"
           value={value}
           type={type}
+          autoComplete={autoComplete}
           placeholder={placeholder}
           focused={focused}
           textColor={resolvedTextColor}

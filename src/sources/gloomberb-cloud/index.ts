@@ -433,9 +433,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     targets: QuoteSubscriptionTarget[],
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void {
-    if (apiClient.getSessionToken()) {
-      void apiClient.ensureVerifiedSession().catch(() => {});
-    }
+    // No-op without a session credential; covers browser cookie sessions too.
+    void apiClient.ensureVerifiedSession().catch(() => {});
     const targetMap = new Map<string, QuoteSubscriptionTarget[]>();
     for (const target of targets) {
       const key = quoteTargetKey(target.symbol, target.exchange);

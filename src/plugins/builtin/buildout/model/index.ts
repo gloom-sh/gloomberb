@@ -122,7 +122,7 @@ export async function loadBuildoutData(token: string | null) {
 }
 
 export async function getBuildoutProToken() {
-  if (!apiClient.getSessionToken()) return null;
+  if (!apiClient.isSignedIn()) return null;
 
   const session = await apiClient.getSession().catch(() => null);
   if (!session) return null;

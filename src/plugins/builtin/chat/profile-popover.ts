@@ -67,7 +67,7 @@ export function useChatProfilePopover() {
 
     if (
       !ownProfile
-      || !apiClient.getSessionToken()
+      || !apiClient.isSignedIn()
       || ownProfileRequestRef.current
       || (ownProfileRef.current?.id === targetUser.id && Date.now() - ownProfileLoadedAtRef.current < 10_000)
     ) return;

@@ -357,7 +357,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const cachedFinancials = useAppSelector((state) => state.financials);
   const cachedExchangeRates = useAppSelector((state) => state.exchangeRates);
   const [sessionMarker, setSessionMarker] = useState(() => buildAccountSessionMarker());
-  const [hasSession, setHasSession] = useState(() => !!apiClient.getSessionToken());
+  const [hasSession, setHasSession] = useState(() => apiClient.isSignedIn());
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
   const [draft, setDraft] = useState<AccountDraft>(() => profileToDraft(null));
@@ -552,7 +552,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     const unsubscribe = chatController.subscribe((snapshot) => {
-      setHasSession(!!apiClient.getSessionToken() || snapshot.hasSavedSession);
+      setHasSession(apiClient.isSignedIn() || snapshot.hasSavedSession);
       setSessionMarker(buildAccountSessionMarker());
     });
     void chatController.refreshSession().catch(() => {});
@@ -560,7 +560,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const loadProfile = useCallback(async () => {
-    if (!apiClient.getSessionToken()) {
+    if (!apiClient.isSignedIn()) {
       setProfile(null);
       setDraft(profileToDraft(null));
       return;
@@ -598,7 +598,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }, []);
 
   useEffect(() => {
-    if (!hasSession || !apiClient.getSessionToken()) return;
+    if (!hasSession || !apiClient.isSignedIn()) return;
     if (syncStatus.phase !== "synced" || syncStatus.revision == null) return;
     if (refreshedSyncRevisionRef.current === syncStatus.revision) return;
     refreshedSyncRevisionRef.current = syncStatus.revision;
@@ -847,7 +847,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     turnOffEmailAlerts,
   });
 
-  if (!hasSession && !apiClient.getSessionToken()) {
+  if (!hasSession && !apiClient.isSignedIn()) {
     return (
       <Box padding={1}>
         <CloudAuthNotice message={t("Log in to manage your Gloom Cloud account.")} />

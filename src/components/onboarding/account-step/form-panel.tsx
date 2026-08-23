@@ -3,7 +3,7 @@ import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../.
 import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { TextField } from "../../ui";
-import type { AccountMode, AccountSubmitError } from "./model";
+import type { AccountMode, AccountSubmitError } from "../../../plugins/builtin/cloud/auth-model";
 
 function TuiFieldRow({
   label,
@@ -103,7 +103,8 @@ export function AccountFormPanel({
           label={t("Email")}
           inputRef={onEmail ? inputRef : undefined}
           value={email}
-          type="text"
+          type="email"
+          autoComplete="email"
           placeholder="email@example.com"
           focused={onEmail && editing && !submitting}
           backgroundColor={colors.panel}
@@ -118,6 +119,7 @@ export function AccountFormPanel({
           inputRef={!onEmail ? inputRef : undefined}
           value={password}
           type="password"
+          autoComplete={mode === "signup" ? "new-password" : "current-password"}
           placeholder={mode === "signup" ? t("At least 8 characters") : t("Your password")}
           focused={!onEmail && editing && !submitting}
           backgroundColor={colors.panel}
