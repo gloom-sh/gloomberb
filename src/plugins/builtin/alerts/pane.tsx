@@ -6,15 +6,19 @@ import {
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../components";
+import { TextFieldDialog } from "../../../components/pane-settings-dialog/field-dialogs";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
+import { useDialog, type AlertContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
   deserializeAlerts,
+  editAlert,
   readAlertsStoreError,
   serializeAlerts,
 } from "./alert-engine";
+import { parseAlertCommandValues } from "./command";
 import { ALERTS_KEY } from "./constants";
 import {
   conditionLabel,
@@ -59,6 +63,7 @@ const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
 export function AlertsPane({ focused, width, height, close }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<string>(ALERTS_KEY, "[]");
   const { openPluginCommandWorkflow } = usePluginAppActions();
+  const dialog = useDialog();
   const [selectedIdx, setSelectedIdx] = useState(0);
   const showHorizontalScrollbar = ALERT_TABLE_CONTENT_WIDTH > width;
   const storeError = useMemo(() => readAlertsStoreError(alertsJson), [alertsJson]);
@@ -112,6 +117,36 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     if (selected) deleteAlert(selected.id);
   }, [deleteAlert, rows, selectedIdx]);
 
+  const editSelectedAlert = useCallback(() => {
+    const selected = rows[selectedIdx];
+    if (!selected) return;
+    void dialog.alert({
+      closeOnClickOutside: true,
+      content: (context: AlertContext) => (
+        <TextFieldDialog
+          {...context}
+          field={{
+            type: "text",
+            key: "alert",
+            label: "Edit alert",
+            description: "SYMBOL above|below|crosses PRICE",
+            placeholder: "AAPL above 200",
+          }}
+          currentValue={`${selected.symbol} ${selected.condition} ${selected.targetPrice}`}
+          onApply={async (value) => {
+            const parsed = parseAlertCommandValues({ shortcut: value });
+            if (!parsed) throw new Error("Use SYMBOL above|below|crosses PRICE.");
+            savePaneAlerts((current) => current.map((alert) => (
+              alert.id === selected.id
+                ? editAlert(alert, parsed.symbol, parsed.condition, parsed.price)
+                : alert
+            )));
+          }}
+        />
+      ),
+    });
+  }, [dialog, rows, savePaneAlerts, selectedIdx]);
+
   // Quotes come from the plugin's single background poll, which writes into the
   // same persisted store, so the pane never fetches on its own.
 
@@ -124,6 +159,13 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     hints: [
       { id: "add", key: "a", label: "dd alert", onPress: startAddAlert },
       {
+        id: "edit",
+        key: "e",
+        label: "dit",
+        onPress: editSelectedAlert,
+        disabled: rows.length === 0,
+      },
+      {
         id: "delete",
         key: "d",
         label: "elete",
@@ -133,6 +175,7 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     ],
   }), [
     deleteSelectedAlert,
+    editSelectedAlert,
     quoteError,
     rows.length,
     startAddAlert,
@@ -154,13 +197,18 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
       startAddAlert();
       return true;
     }
+    if (event.name === "e") {
+      event.preventDefault?.();
+      editSelectedAlert();
+      return true;
+    }
     if (event.name === "escape") {
       event.preventDefault?.();
       close?.();
       return true;
     }
     return false;
-  }, [close, deleteSelectedAlert, startAddAlert]);
+  }, [close, deleteSelectedAlert, editSelectedAlert, startAddAlert]);
 
   const renderCell = useCallback((
     alert: AlertRule,

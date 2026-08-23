@@ -148,13 +148,14 @@ function storedAlerts(): AlertRule[] {
   return JSON.parse(value);
 }
 
-afterEach(() => {
+afterEach(async () => {
   harnessState = null;
   harnessDispatch = null;
-  if (testSetup) {
-    testSetup.renderer.destroy();
-    testSetup = undefined;
-  }
+  if (!testSetup) return;
+  await act(async () => {
+    testSetup!.renderer.destroy();
+  });
+  testSetup = undefined;
 });
 
 describe("AlertsPane", () => {
@@ -179,6 +180,7 @@ describe("AlertsPane", () => {
     expect(frame).toContain("AAPL");
     expect(frame).toContain("MSFT");
     expect(frame).toContain("[a]dd alert");
+    expect(frame).toContain("[e]dit");
     expect(frame).toContain("[d]elete");
     expect(frame).not.toContain("Add Alert");
     expect(frame).not.toContain("Enter");
@@ -209,6 +211,45 @@ describe("AlertsPane", () => {
     expect(frame).toContain("[a]dd alert");
   });
 
+  test("edits the selected alert through the prefilled edit dialog", async () => {
+    testSetup = await testRender(
+      <AlertsHarness alerts={[makeAlert("alert-aapl", "AAPL", "above", 200)]} />,
+      { width: 110, height: 12 },
+    );
+
+    await renderSettled();
+    await act(async () => {
+      await testSetup!.mockInput.typeText("e");
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    const dialogFrame = testSetup.captureCharFrame();
+    expect(dialogFrame).toContain("Edit alert");
+    expect(dialogFrame).toContain("AAPL above 200");
+
+    await act(async () => {
+      for (const _ of "AAPL above 200") testSetup!.mockInput.pressBackspace();
+      await testSetup!.mockInput.typeText("MSFT crosses 310");
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      testSetup!.mockInput.pressEnter();
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(storedAlerts()).toEqual([{
+      id: "alert-aapl",
+      symbol: "MSFT",
+      condition: "crosses",
+      targetPrice: 310,
+      createdAt: 1_700_000_000_000,
+      status: "active",
+    }]);
+  });
+
   test("opens the shared alert workflow from keyboard and mouse", async () => {
     const workflowCalls: string[] = [];
     const runtime = makeRuntime({
@@ -229,7 +270,9 @@ describe("AlertsPane", () => {
     });
     expect(workflowCalls).toEqual(["set-alert"]);
 
-    testSetup.renderer.destroy();
+    await act(async () => {
+      testSetup!.renderer.destroy();
+    });
     testSetup = await testRender(<AlertsHarness alerts={[]} runtime={runtime} />, {
       width: 110,
       height: 12,

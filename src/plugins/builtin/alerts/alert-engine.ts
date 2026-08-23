@@ -19,6 +19,29 @@ export function createAlert(
   };
 }
 
+/**
+ * Rebuilt from a whitelist rather than spread so every trigger/quote lifecycle
+ * field is dropped: a re-armed `crosses` alert must start from a fresh baseline.
+ */
+export function editAlert(
+  alert: AlertRule,
+  symbol: string,
+  condition: AlertCondition,
+  targetPrice: number,
+): AlertRule {
+  const nextSymbol = symbol.trim().toUpperCase();
+  return {
+    id: alert.id,
+    symbol: nextSymbol,
+    exchange: nextSymbol === alert.symbol.trim().toUpperCase() ? alert.exchange : undefined,
+    condition,
+    targetPrice,
+    createdAt: alert.createdAt,
+    status: "active",
+    message: alert.message,
+  };
+}
+
 export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
   if (alert.status !== "active") return false;
 
