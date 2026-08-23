@@ -307,6 +307,15 @@ function collectAccountsByPortfolio(
   return output;
 }
 
+type SanitizedTickerMetadata = ReturnType<typeof sanitizeTickerMetadata>;
+
+/** Only tickers the user actually filed somewhere are worth syncing. */
+function isSyncableTicker(metadata: Pick<SanitizedTickerMetadata, "portfolios" | "watchlists" | "positions">): boolean {
+  return metadata.portfolios.length > 0
+    || metadata.watchlists.length > 0
+    || metadata.positions.length > 0;
+}
+
 function collectCoreCollectionsPayload(
   config: AppConfig,
   tickers: Map<string, TickerRecord>,
@@ -316,11 +325,7 @@ function collectCoreCollectionsPayload(
 ) {
   const records = [...tickers.values()]
     .map((ticker) => sanitizeTickerMetadata(ticker.metadata, financials.get(ticker.metadata.ticker)))
-    .filter((metadata) => (
-      metadata.portfolios.length > 0 ||
-      metadata.watchlists.length > 0 ||
-      metadata.positions.length > 0
-    ));
+    .filter(isSyncableTicker);
 
   return {
     baseCurrency: config.baseCurrency,
@@ -375,11 +380,22 @@ function mergeConfigPayload(
   config: AppConfig,
   payload: unknown,
   baselineConfig: AppConfig = config,
+  lastSyncedPayload?: unknown,
 ): AppConfig | null {
   if (!isPlainObject(payload)) return null;
   const next: AppConfig = { ...config };
+  // Two guards, both needed. baselineConfig catches edits made while this pull
+  // was in flight; lastSyncedPayload catches edits made while the app was not
+  // running at all (CLI writes, offline edits), which otherwise look pristine.
+  const lastSynced = isPlainObject(lastSyncedPayload) ? lastSyncedPayload : null;
+  const localPayload = lastSynced
+    ? collectCoreConfigPayload(config) as Record<string, unknown>
+    : null;
+  const matchesLastSynced = (key: string) => (
+    !lastSynced || valuesEqual(localPayload?.[key], lastSynced[key])
+  );
   const canApply = <K extends keyof AppConfig>(key: K) => (
-    valuesEqual(config[key], baselineConfig[key])
+    valuesEqual(config[key], baselineConfig[key]) && matchesLastSynced(key as string)
   );
   const assign = <K extends keyof AppConfig>(key: K) => {
     if (key in payload && canApply(key)) {
@@ -420,7 +436,8 @@ function mergeConfigPayload(
 
   const layoutStateUntouched = config.layout === baselineConfig.layout
     && config.layouts === baselineConfig.layouts
-    && config.activeLayoutIndex === baselineConfig.activeLayoutIndex;
+    && config.activeLayoutIndex === baselineConfig.activeLayoutIndex
+    && ["layout", "layouts", "activeLayoutIndex"].every(matchesLastSynced);
   if (
     layoutStateUntouched
     && ["layout", "layouts", "activeLayoutIndex"].every((key) => key in payload)
@@ -450,12 +467,40 @@ function mergeConfigPayload(
   return next;
 }
 
+function lastSyncedTickersById(baselinePayload: unknown): Map<string, Record<string, unknown>> | null {
+  if (!isPlainObject(baselinePayload) || !Array.isArray(baselinePayload.tickers)) return null;
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const entry of baselinePayload.tickers) {
+    if (isPlainObject(entry) && typeof entry.ticker === "string") byId.set(entry.ticker, entry);
+  }
+  return byId;
+}
+
+/** Quotes churn on every refresh, so they cannot signal a user edit. */
+function withoutQuote(metadata: Record<string, unknown>): Record<string, unknown> {
+  const { quote: _quote, ...rest } = metadata;
+  return rest;
+}
+
+function tickerChangedSinceLastSync(
+  current: TickerRecord | null | undefined,
+  lastSyncedTickers: Map<string, Record<string, unknown>> | null,
+): boolean {
+  if (!lastSyncedTickers || !current) return false;
+  const local = sanitizeTickerMetadata(current.metadata);
+  const baseline = lastSyncedTickers.get(current.metadata.ticker);
+  // No baseline entry means this device never uploaded the ticker: filed
+  // locally it is unsynced work, unfiled it is not something sync tracks.
+  if (!baseline) return isSyncableTicker(local);
+  return !valuesEqual(withoutQuote(local), withoutQuote(baseline));
+}
+
 export const coreConfigSyncContributor: SyncContributor = {
   id: "core.config",
   schemaVersion: 1,
   collect: ({ state }) => collectCoreConfigPayload(state.config),
-  apply: (payload, { baselineState, state, dispatch }) => {
-    const nextConfig = mergeConfigPayload(state.config, payload, baselineState.config);
+  apply: (payload, { baselinePayload, baselineState, state, dispatch }) => {
+    const nextConfig = mergeConfigPayload(state.config, payload, baselineState.config, baselinePayload);
     if (!nextConfig || valuesEqual(nextConfig, state.config)) return;
     dispatch({ type: "SET_CONFIG", config: nextConfig });
     scheduleConfigSave(nextConfig);
@@ -472,9 +517,10 @@ export const coreCollectionsSyncContributor: SyncContributor = {
     state.exchangeRates,
     state.brokerAccounts,
   ),
-  apply: async (payload, { getState, isCurrent, dispatch, tickerRepository }) => {
+  apply: async (payload, { baselinePayload, getState, isCurrent, dispatch, tickerRepository }) => {
     if (!isPlainObject(payload)) return;
     hydrateProfileAnalytics(payload);
+    const lastSyncedTickers = lastSyncedTickersById(baselinePayload);
     const incomingRecords: TickerRecord[] = [];
     const rawTickers = Array.isArray(payload.tickers) ? payload.tickers : [];
     for (const rawTicker of rawTickers) {
@@ -483,6 +529,9 @@ export const coreCollectionsSyncContributor: SyncContributor = {
       const current = typeof rawTicker.ticker === "string"
         ? getState().tickers.get(rawTicker.ticker)
         : null;
+      // Local edits the cloud has never seen (CLI positions, offline changes)
+      // win here and are uploaded by the push that follows this pull.
+      if (tickerChangedSinceLastSync(current, lastSyncedTickers)) continue;
       const metadata = hydrateTickerMetadata({
         ...current?.metadata,
         ...rawTicker,

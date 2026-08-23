@@ -260,6 +260,50 @@ describe("core sync contributors", () => {
     expect((payload as any).analyticsByPortfolio.main.oneYearReturn).toBe(0.42);
   });
 
+  test("keeps a position written while the app was closed", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-position-test");
+    config.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+    const withoutPosition: TickerRecord = {
+      metadata: {
+        ticker: "NVDA",
+        exchange: "NASDAQ",
+        currency: "USD",
+        name: "NVIDIA",
+        portfolios: ["main"],
+        watchlists: [],
+        positions: [],
+        custom: {},
+        tags: [],
+      },
+    };
+    const syncedState = createInitialState(config);
+    syncedState.tickers = new Map([["NVDA", withoutPosition]]);
+    const syncedPayload = await coreCollectionsSyncContributor.collect({ state: syncedState });
+
+    // `gloomberb portfolio position set` wrote this straight to the database.
+    const state = createInitialState(config);
+    state.tickers = new Map([["NVDA", {
+      metadata: {
+        ...withoutPosition.metadata,
+        positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual", currency: "USD" }],
+      },
+    }]]);
+
+    const saved: TickerRecord[] = [];
+    await coreCollectionsSyncContributor.apply?.(syncedPayload, {
+      baselinePayload: syncedPayload,
+      baselineState: state,
+      state,
+      getState: () => state,
+      isCurrent: () => true,
+      dispatch: () => {},
+      tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record); } },
+    } as unknown as Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1]);
+
+    expect(saved).toHaveLength(0);
+    expect(state.tickers.get("NVDA")?.metadata.positions).toHaveLength(1);
+  });
+
   test("syncs only public return and beta analytics", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.baseCurrency = "USD";

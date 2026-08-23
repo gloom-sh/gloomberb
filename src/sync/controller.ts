@@ -6,6 +6,7 @@ import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
   type RegisteredSyncContributor,
   type RegisteredSyncTransport,
+  type SyncBaselineStore,
   type SyncContributor,
   type SyncSnapshot,
   type SyncTransport,
@@ -28,6 +29,7 @@ interface SyncRuntime {
   tickerRepository: AppTickerRepositoryPort;
   getContributors: () => RegisteredSyncContributor[];
   getTransport: () => RegisteredSyncTransport | null;
+  baselineStore?: SyncBaselineStore;
 }
 
 const CLIENT_ID_STORAGE_KEY = "gloomberb.sync.clientId";
@@ -65,6 +67,9 @@ export class CloudSyncController {
   private syncQueued = false;
   private clientId: string | null = null;
   private lastSignature: string | null = null;
+  private baseline: Record<string, unknown> | null = null;
+  private baselineLoaded = false;
+  private pulledContributors: SyncSnapshot["contributors"] = {};
   private hasPulledForTransport = new Set<string>();
   private status: CloudSyncStatus = {
     phase: "idle",
@@ -198,6 +203,7 @@ export class CloudSyncController {
       const result = await transport.pushSnapshot(snapshot, { baseRevision: this.status.revision });
       if (!this.isCurrent(runtime, transport)) return;
       this.lastSignature = signature;
+      this.saveBaseline(runtime, snapshot);
       this.setStatus({
         phase: "synced",
         transportId: transport.id,
@@ -224,6 +230,7 @@ export class CloudSyncController {
 
       if (response.snapshot) {
         this.assertSnapshotCompatible(response.snapshot, runtime.getContributors());
+        this.pulledContributors = response.snapshot.contributors;
         for (const entry of runtime.getContributors()) {
           if (!this.isCurrent(runtime, transport)) return false;
           const contributorPayload = response.snapshot.contributors[entry.contributor.id];
@@ -231,6 +238,7 @@ export class CloudSyncController {
           await entry.contributor.apply(contributorPayload.payload, {
             snapshot: response.snapshot,
             baselineState,
+            baselinePayload: this.loadBaseline(runtime)?.[entry.contributor.id] ?? null,
             state: runtime.getState(),
             getState: runtime.getState,
             isCurrent: () => this.isCurrent(runtime, transport),
@@ -287,7 +295,10 @@ export class CloudSyncController {
   private async assembleSnapshot(runtime: SyncRuntime): Promise<SyncSnapshot> {
     const contributors = runtime.getContributors();
     const createdAt = nowIso();
-    const payloads: SyncSnapshot["contributors"] = {};
+    // The snapshot replaces the stored one wholesale, so data owned by a
+    // contributor this client does not run (disabled plugin, older build) is
+    // carried over instead of being deleted for every other device.
+    const payloads: SyncSnapshot["contributors"] = { ...this.pulledContributors };
     for (const entry of contributors) {
       const payload = await entry.contributor.collect({ state: runtime.getState() });
       payloads[entry.contributor.id] = {
@@ -305,6 +316,23 @@ export class CloudSyncController {
     };
   }
 
+  private loadBaseline(runtime: SyncRuntime): Record<string, unknown> | null {
+    if (!this.baselineLoaded) {
+      this.baselineLoaded = true;
+      this.baseline = runtime.baselineStore?.load() ?? null;
+    }
+    return this.baseline;
+  }
+
+  private saveBaseline(runtime: SyncRuntime, snapshot: SyncSnapshot): void {
+    const payloads = Object.fromEntries(
+      Object.entries(snapshot.contributors).map(([id, contributor]) => [id, contributor.payload]),
+    );
+    this.baseline = payloads;
+    this.baselineLoaded = true;
+    runtime.baselineStore?.save(payloads);
+  }
+
   private isCurrent(runtime: SyncRuntime, transport: SyncTransport): boolean {
     return this.runtime === runtime && runtime.getTransport()?.transport === transport;
   }
@@ -316,6 +344,9 @@ export class CloudSyncController {
     this.syncQueued = false;
     this.hasPulledForTransport.clear();
     this.lastSignature = null;
+    this.baseline = null;
+    this.baselineLoaded = false;
+    this.pulledContributors = {};
   }
 
   private updateAvailability(): void {

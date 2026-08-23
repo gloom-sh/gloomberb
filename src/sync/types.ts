@@ -26,6 +26,12 @@ export interface SyncCollectContext {
 export interface SyncApplyContext {
   snapshot: SyncSnapshot;
   baselineState: AppState;
+  /**
+   * The payload this device last pushed for this contributor, or null when it
+   * never synced. Anything that differs from it is local work the cloud has
+   * never seen (CLI edits, offline edits) and must survive the pull.
+   */
+  baselinePayload: unknown;
   state: AppState;
   getState: () => AppState;
   isCurrent: () => boolean;
@@ -67,6 +73,12 @@ export interface SyncSettings {
   selectedSharedPortfolioId?: string | null;
   lastSyncAt?: string | null;
   lastRoundupEmailAt?: string | null;
+}
+
+/** Durable record of the payloads this device last pushed to the cloud. */
+export interface SyncBaselineStore {
+  load(): Record<string, unknown> | null;
+  save(payloads: Record<string, unknown>): void;
 }
 
 export interface RegisteredSyncContributor {

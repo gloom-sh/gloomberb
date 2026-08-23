@@ -14,11 +14,78 @@ import {
 import { CloudSyncController } from "./controller";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
+  type SyncBaselineStore,
   type SyncContributor,
   type SyncSnapshot,
   type SyncSnapshotResponse,
   type SyncTransport,
 } from "./types";
+
+test("keeps workspace edits made while the app was closed and uploads them", async () => {
+  // The CLI writes config.json directly, so at launch local state looks
+  // pristine and the cloud copy used to overwrite it.
+  const syncedConfig = createDefaultConfig("/tmp/gloomberb-sync-offline-edit-test");
+  syncedConfig.portfolios = [{ id: "main", name: "Main", currency: "USD" }];
+  const syncedPayload = __syncContributorInternalsForTests.collectCoreConfigPayload(syncedConfig);
+  const stored: Record<string, unknown> = { "core.config": syncedPayload };
+  const baselineStore: SyncBaselineStore = {
+    load: () => stored,
+    save: (payloads) => Object.assign(stored, payloads),
+  };
+
+  let state = createInitialState({
+    ...syncedConfig,
+    portfolios: [...syncedConfig.portfolios, { id: "research", name: "Research", currency: "USD" }],
+  });
+  const dispatch = (action: AppAction) => {
+    state = appReducer(state, action);
+  };
+  const pushes: SyncSnapshot[] = [];
+  const transport: SyncTransport = {
+    id: "offline-edit",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({
+      snapshot: {
+        schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
+        appId: "gloomberb",
+        clientId: "remote-client",
+        createdAt: "2026-08-23T10:00:00.000Z",
+        contributors: {
+          "core.config": {
+            schemaVersion: 1,
+            updatedAt: "2026-08-23T10:00:00.000Z",
+            payload: syncedPayload,
+          },
+        },
+      },
+      revision: 4,
+      updatedAt: "2026-08-23T10:00:00.000Z",
+    }),
+    pushSnapshot: async (snapshot) => {
+      pushes.push(snapshot);
+      return { revision: 5, updatedAt: "2026-08-23T10:00:05.000Z" };
+    },
+  };
+
+  const controller = new CloudSyncController();
+  controller.setRuntime({
+    getState: () => state,
+    dispatch,
+    tickerRepository: {} as TickerRepository,
+    baselineStore,
+    getContributors: () => [{ pluginId: "core", contributor: coreConfigSyncContributor }],
+    getTransport: () => ({ pluginId: "test", transport }),
+  });
+
+  await controller.requestSync({ reason: "startup" });
+
+  const pushedPortfolios = (pushes[0]?.contributors["core.config"]?.payload as {
+    portfolios: Array<{ id: string }>;
+  }).portfolios.map((portfolio) => portfolio.id);
+  expect(state.config.portfolios.map((portfolio) => portfolio.id)).toEqual(["main", "research"]);
+  expect(pushedPortfolios).toEqual(["main", "research"]);
+  expect((stored["core.config"] as { portfolios: Array<{ id: string }> }).portfolios).toHaveLength(2);
+});
 
 test("does not push local state when the initial pull fails", async () => {
   let pushes = 0;
