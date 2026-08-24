@@ -41,7 +41,7 @@ function createNewsPresetPane(config: NewsPresetPaneConfig) {
 }
 
 const TopPane = createNewsPresetPane({
-  paneKey: "top",
+  paneKey: "top:curated",
   title: "Top News",
   query: NEWS_QUERY_PRESETS.top,
   columns: ["time", "source", "title", "tickers", "categories", "importance"],

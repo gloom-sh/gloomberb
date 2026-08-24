@@ -20,6 +20,18 @@ const RSS_FIXTURE = `<rss version="2.0"><channel><item>
 </item></channel></rss>`;
 
 describe("createRssNewsCapability", () => {
+  test("does not serve unclassified RSS stories as top news", async () => {
+    const fetchText = mock(async () => ({
+      ok: true,
+      text: async () => RSS_FIXTURE,
+    }));
+    const source = createRssNewsCapability([FEED], { fetchText });
+
+    expect(source.provider.supports?.({ feed: "top" })).toBe(false);
+    expect(await source.provider.fetchNews({ feed: "top" })).toEqual([]);
+    expect(fetchText).not.toHaveBeenCalled();
+  });
+
   test("caches fetched feed items with feed authority scoring", async () => {
     const persistence = new MemoryPersistence();
     const fetchText = mock(async () => ({

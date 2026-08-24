@@ -37,7 +37,7 @@ export interface RssNewsCapabilityOptions {
 
 function supportsQuery(query: NewsQuery): boolean {
   const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
-  return feed === "latest" || feed === "top";
+  return feed === "latest";
 }
 
 function serializeItem(item: MarketNewsItem): CachedNewsItem {
