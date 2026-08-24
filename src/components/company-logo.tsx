@@ -26,7 +26,7 @@ export function CompanyLogo({
   width?: number;
   height?: number;
 }) {
-  const { nativePaneChrome } = useUiCapabilities();
+  const { nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18 } = useUiCapabilities();
   const src = nativePaneChrome === true ? resolveCompanyLogoSrc({ symbol, assetCategory }) : null;
   if (!src) return null;
 
@@ -38,7 +38,13 @@ export function CompanyLogo({
       height={height}
       marginRight={1}
       flexShrink={0}
+      overflow="visible"
       objectFit="contain"
+      style={{
+        width: cellWidthPx * width,
+        height: cellHeightPx * height,
+        flexShrink: 0,
+      }}
     />
   );
 }

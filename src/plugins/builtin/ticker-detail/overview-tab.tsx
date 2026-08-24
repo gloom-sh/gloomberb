@@ -49,7 +49,7 @@ export function OverviewTab({
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const exchangeRatesState = useAppSelector((state) => state.exchangeRates);
   const { width: termWidth } = useViewport();
-  const { fractionalViewport = false } = useUiCapabilities();
+  const { fractionalViewport = false, nativePaneChrome } = useUiCapabilities();
 
   if (!ticker) return <EmptyState title={t("No ticker selected.")} />;
 
@@ -137,7 +137,7 @@ export function OverviewTab({
 
   return (
     <ScrollBox flexGrow={1} flexBasis={0} scrollY focusable={false}>
-      <Box flexDirection="column" paddingX={1} paddingBottom={1} gap={1}>
+      <Box flexDirection="column" paddingX={1} paddingTop={nativePaneChrome ? 1 : 0} paddingBottom={1} gap={1}>
         <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
           <Box flexDirection="row" width={quoteSummaryWidth}>
             <CompanyLogo
