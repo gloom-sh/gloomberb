@@ -14,6 +14,7 @@ import {
 } from "../../../market-data/market/status";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { EmptyState } from "../../../components";
+import { CompanyLogo } from "../../../components/company-logo";
 import {
   CompositeChart,
   pricePointsToResolvedSeries,
@@ -140,6 +141,11 @@ export function OverviewTab({
         <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
           <Box flexDirection="column" width={quoteSummaryWidth}>
             <Box flexDirection="row">
+              <CompanyLogo
+                symbol={ticker.metadata.ticker}
+                assetCategory={ticker.metadata.assetCategory}
+                name={ticker.metadata.name || quote?.name}
+              />
               <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
                 {ticker.metadata.ticker}
               </Text>

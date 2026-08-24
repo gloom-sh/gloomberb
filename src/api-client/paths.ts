@@ -62,6 +62,23 @@ export type CloudTweetSearchParams = {
   hours?: number;
 };
 
+const LOGO_SYMBOL_RE = /^[A-Z0-9][A-Z0-9._^:-]{0,23}$/;
+const CRYPTO_QUOTE = /[-/](USD|USDT|USDC|EUR|GBP|BTC)$/;
+
+export type CloudLogoKind = "ticker" | "crypto";
+
+export function normalizeCloudLogoSymbol(kind: CloudLogoKind, symbol: string): string | null {
+  let normalized = symbol.trim().toUpperCase();
+  if (kind === "crypto") normalized = normalized.replace(CRYPTO_QUOTE, "");
+  return LOGO_SYMBOL_RE.test(normalized) ? normalized : null;
+}
+
+export function cloudLogoPath(kind: CloudLogoKind, symbol: string): string | null {
+  const normalized = normalizeCloudLogoSymbol(kind, symbol);
+  if (!normalized) return null;
+  return `/cloud/logos/${kind}/${encodeURIComponent(normalized)}`;
+}
+
 function appendQuery(path: string, search: URLSearchParams): string {
   const query = search.toString();
   return `${path}${query ? `?${query}` : ""}`;

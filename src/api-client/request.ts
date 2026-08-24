@@ -24,7 +24,7 @@ export function setCloudApiFetchTransport(transport: CloudApiFetchTransport | nu
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
 
-function getCloudApiBaseUrl(): string {
+export function getCloudApiBaseUrl(): string {
   // Browser bundles have no `process`; the build replaces this with a literal.
   const bundled = typeof __GLOOMBERB_API_URL__ === "string" ? __GLOOMBERB_API_URL__ : "";
   if (bundled) {
