@@ -199,6 +199,42 @@ describe("ChatController", () => {
     );
   });
 
+  test("keeps private channels when a public refresh finishes after chat state", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+    const directChannel: ChatChannel = {
+      id: "dm:u2",
+      name: "u2",
+      kind: "direct",
+      created_at: "2026-03-28T00:00:00.000Z",
+    };
+    let resolvePublicChannels: ((channels: ChatChannel[]) => void) | undefined;
+
+    persistence.setState("session", {
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+    apiClient.getChannels = () => new Promise((resolve) => {
+      resolvePublicChannels = resolve;
+    });
+    apiClient.getChatState = async () => ({
+      channels: [...SERVER_CHAT_CHANNELS, directChannel],
+      onlineCount: 0,
+      channelStates: [],
+      notifications: [],
+    });
+    controller.attachPersistence(persistence);
+
+    const publicRefresh = controller.refreshChannels();
+    await controller.refreshChatState();
+    expect(controller.getChannels().map((channel) => channel.id)).toContain(directChannel.id);
+
+    resolvePublicChannels!(SERVER_CHAT_CHANNELS);
+    await publicRefresh;
+
+    expect(controller.getChannels().map((channel) => channel.id)).toContain(directChannel.id);
+  });
+
   test("hydrates a cached verified user into the api client for offline use", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();

@@ -68,7 +68,13 @@ export class ChatControllerChannels {
 
     const request = apiClient.getChannels()
       .then((channels) => {
-        this.channels = normalizeChannels(channels);
+        const publicChannels = normalizeChannels(channels);
+        this.channels = this.options.canLoadPrivateState()
+          ? normalizeChannels([
+            ...publicChannels,
+            ...this.channels.filter((channel) => channel.kind === "direct" || channel.kind === "group"),
+          ])
+          : publicChannels;
       })
       .catch(() => {
         // Keep the last backend-provided list if the refresh fails.
