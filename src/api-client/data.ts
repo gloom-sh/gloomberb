@@ -33,6 +33,8 @@ import type {
   CloudCongressHousePayload,
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
+  CloudEquityDiagnosticMode,
+  CloudEquityDiagnosticResponse,
   CloudFredSeriesPayload,
   CloudFundamentals,
   CloudHoldersPayload,
@@ -170,6 +172,26 @@ export class CloudDataApi {
 
   async getCloudExchangeRate(fromCurrency: string): Promise<CloudMarketResponse<{ rate: number }>> {
     return this.request<CloudMarketResponse<{ rate: number }>>(cloudExchangeRatePath(fromCurrency));
+  }
+
+  /**
+   * On-demand single-company evidence review. This is a cloud product endpoint,
+   * not a market-data capability, so it is called directly instead of routed
+   * through the asset-data provider.
+   */
+  async getCloudEquityDiagnostic(
+    symbol: string,
+    exchange?: string,
+    mode: CloudEquityDiagnosticMode = "cache-first",
+  ): Promise<CloudEquityDiagnosticResponse> {
+    return this.request<CloudEquityDiagnosticResponse>("/research/equity-diagnostic", {
+      method: "POST",
+      body: JSON.stringify({
+        symbol: symbol.trim().toUpperCase(),
+        ...(exchange ? { exchange } : {}),
+        mode,
+      }),
+    });
   }
 
   async getCloudEconomicCalendar(): Promise<CloudEconEventPayload[]> {

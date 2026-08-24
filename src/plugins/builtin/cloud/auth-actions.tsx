@@ -53,16 +53,19 @@ export function InlineAuthActions({ showSignup = true }: { showSignup?: boolean 
 export function CloudAuthNotice({
   message,
   showSignup = true,
+  needsVerification = false,
 }: {
   message: string;
   showSignup?: boolean;
+  /** Forces the verification branch and uses `message` as its headline. */
+  needsVerification?: boolean;
 }) {
   const { openCommandBar } = usePluginAppActions();
 
-  if (/verification/i.test(message)) {
+  if (needsVerification || /verification/i.test(message)) {
     return (
       <Box flexDirection="column" padding={1} gap={1}>
-        <Text fg={colors.positive}>{t("Verify your email to use Cloud tweets.")}</Text>
+        <Text fg={colors.positive}>{needsVerification ? message : t("Verify your email to use Cloud tweets.")}</Text>
         <Button label={t("Resend Verification Email")} variant="secondary" onPress={() => openCommandBar("Resend Verification Email")} />
       </Box>
     );

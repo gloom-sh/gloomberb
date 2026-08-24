@@ -240,6 +240,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `CMP <tickers>` | Normalized price comparison |
 | `CORR <tickers>` | Ticker return correlations |
 | `ANR <ticker>` | Analyst targets and ratings |
+| `DIAG <ticker>` | Equity Diagnostic with cited flags and anomalies |
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options monitor |
 | `OVME` | Black-Scholes option calculator with Greeks and implied volatility |

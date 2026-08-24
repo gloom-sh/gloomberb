@@ -42,6 +42,8 @@ import type {
   CloudCorporateActionsPayload,
   CloudPricePointPayload,
   CloudEconEventPayload,
+  CloudEquityDiagnosticMode,
+  CloudEquityDiagnosticResponse,
   CloudFredSeriesPayload,
   CloudYieldPointPayload,
   CloudCongressHousePayload,
@@ -559,6 +561,14 @@ class GloomApiClient {
 
   async getCloudEconomicCalendar(): Promise<CloudEconEventPayload[]> {
     return this.data.getCloudEconomicCalendar();
+  }
+
+  async getCloudEquityDiagnostic(
+    symbol: string,
+    exchange?: string,
+    mode: CloudEquityDiagnosticMode = "cache-first",
+  ): Promise<CloudEquityDiagnosticResponse> {
+    return this.data.getCloudEquityDiagnostic(symbol, exchange, mode);
   }
 
   async getCloudFredSeries(

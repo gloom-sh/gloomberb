@@ -1082,3 +1082,37 @@ describe("apiClient cloud news", () => {
     expect(story.id).toBe("story-1");
   });
 });
+
+describe("apiClient equity diagnostic", () => {
+  test("posts the symbol, exchange, and cache mode to the research route", async () => {
+    let seenUrl = "";
+    let seenInit: RequestInit | undefined;
+    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
+      seenUrl = String(input);
+      seenInit = init;
+      return createResponse({ symbol: "AAPL", status: "complete" });
+    });
+
+    await apiClient.getCloudEquityDiagnostic(" aapl ", "NASDAQ", "refresh");
+
+    expect(new URL(seenUrl).pathname).toBe("/research/equity-diagnostic");
+    expect(seenInit?.method).toBe("POST");
+    expect(JSON.parse(String(seenInit?.body))).toEqual({
+      symbol: "AAPL",
+      exchange: "NASDAQ",
+      mode: "refresh",
+    });
+  });
+
+  test("omits an unknown exchange and defaults to the cached answer", async () => {
+    let seenInit: RequestInit | undefined;
+    globalThis.fetch = mockFetch(async (_input: Request | string | URL, init?: RequestInit) => {
+      seenInit = init;
+      return createResponse({ symbol: "AAPL", status: "complete" });
+    });
+
+    await apiClient.getCloudEquityDiagnostic("AAPL");
+
+    expect(JSON.parse(String(seenInit?.body))).toEqual({ symbol: "AAPL", mode: "cache-first" });
+  });
+});
