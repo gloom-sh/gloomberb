@@ -111,6 +111,7 @@ export function createDomUiHost(
         >
           {imageSrc && !failed ? (
             <img
+              key={imageSrc}
               src={imageSrc}
               alt={alt}
               draggable={false}
