@@ -1105,7 +1105,6 @@ export const zhTW: Record<string, string> = {
   "signing in...": "登入中...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "$29/mo for real-time market data": "即時市場資料每月 $29",
   "Limited founding offer. Start a free 7-day trial.": "限時創始優惠。開始 7 天免費試用。",
   "Start 7-day free trial": "開始 7 天免費試用",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "增加報價、財務資料、選擇權、研究、新聞、聊天與 AI 指令。",

@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { apiClient } from "../../api-client";
+import { apiClient, type CloudPricing } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
 import { saveConfigImmediately } from "../../state/config-save-scheduler";
@@ -28,6 +28,7 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { chatController } from "../../plugins/builtin/chat/controller";
+import { formatCloudMonthlyPrice } from "../../plugins/builtin/account-management/model";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { usePlanAccess } from "../../plugins/builtin/shared/plan-access";
 import type { ListViewItem } from "../ui";
@@ -71,6 +72,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const stage = progress.stage;
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
+  const [pricing, setPricing] = useState<CloudPricing | null>(null);
 
   const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("choose");
   const [portfolioOptionIdx, setPortfolioOptionIdx] = useState(0);
@@ -253,6 +255,11 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       });
     },
   ), [pluginRegistry.events, saveProgressInBackground, stateRef]);
+
+  useEffect(() => {
+    if (stage !== "upgrade" || pricing) return;
+    void apiClient.getCloudPricing().then(setPricing).catch(() => {});
+  }, [pricing, stage]);
 
   const appActive = useAppActive();
   const planAccess = usePlanAccess();
@@ -859,6 +866,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   if (stage === "upgrade") {
     const primaryLabel = planAccess.hasProAccess ? t("Continue with Pro") : t("Start 7-day free trial");
+    const monthlyPrice = formatCloudMonthlyPrice(pricing);
     return (
       <OnboardingModal width={66} height={17}>
         <OnboardingHeader
@@ -871,10 +879,10 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         />
         <OnboardingTitle
           step={desktop ? undefined : t("GLOOM CLOUD PRO")}
-          title={planAccess.hasProAccess ? t("Pro is active") : t("$29/mo for real-time market data")}
-          titlePrefix={!planAccess.hasProAccess ? (
+          title={planAccess.hasProAccess ? t("Pro is active") : monthlyPrice.price}
+          titlePrefix={!planAccess.hasProAccess && monthlyPrice.anchor ? (
             <Text fg={colors.textMuted} attributes={TextAttributes.STRIKETHROUGH}>
-              {t("$49/mo")}
+              {monthlyPrice.anchor}
             </Text>
           ) : undefined}
           description={planAccess.hasProAccess

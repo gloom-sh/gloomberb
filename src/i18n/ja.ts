@@ -1105,7 +1105,6 @@ export const ja: Record<string, string> = {
   "signing in...": "サインイン中...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "$29/mo for real-time market data": "リアルタイム市場データを月額$29で",
   "Limited founding offer. Start a free 7-day trial.": "創設記念の期間限定オファー。7日間の無料トライアルを開始できます。",
   "Start 7-day free trial": "7日間の無料トライアルを開始",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "株価、財務情報、オプション、リサーチ、ニュース、チャット、AIコマンドを追加します。",

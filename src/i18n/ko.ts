@@ -1103,7 +1103,6 @@ export const ko: Record<string, string> = {
   "signing in...": "로그인 중...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "$29/mo for real-time market data": "실시간 시장 데이터 월 $29",
   "Limited founding offer. Start a free 7-day trial.": "창립 한정 혜택. 7일 무료 체험을 시작하세요.",
   "Start 7-day free trial": "7일 무료 체험 시작",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "시세, 재무 정보, 옵션, 리서치, 뉴스, 채팅, AI 명령을 추가합니다.",

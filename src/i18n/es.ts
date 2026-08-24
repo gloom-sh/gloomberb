@@ -1117,7 +1117,6 @@ export const es: Record<string, string> = {
     "Revisa tu bandeja de entrada para verificar tu correo. Después puedes empezar tu prueba Pro gratis de 7 días cuando quieras: escribe UPGRADE.",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "$29/mo for real-time market data": "$29/mes por datos de mercado en tiempo real",
   "Limited founding offer. Start a free 7-day trial.": "Oferta limitada de lanzamiento. Empieza una prueba gratuita de 7 días.",
   "Start 7-day free trial": "Iniciar prueba gratuita de 7 días",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "Añade cotizaciones, datos financieros, opciones, análisis, noticias, chat y comandos de IA.",

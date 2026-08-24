@@ -1105,7 +1105,6 @@ export const zhCN: Record<string, string> = {
   "signing in...": "登录中...",
 
   // ── Onboarding setup ────────────────────────────────────────
-  "$29/mo for real-time market data": "实时市场数据每月 $29",
   "Limited founding offer. Start a free 7-day trial.": "限时创始优惠。开始 7 天免费试用。",
   "Start 7-day free trial": "开始 7 天免费试用",
   "Adds quotes, financials, options, research, news, chat and AI commands.": "增加行情、财务数据、期权、研报、新闻、聊天和 AI 命令。",
