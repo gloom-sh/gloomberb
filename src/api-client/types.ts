@@ -713,6 +713,11 @@ export interface CloudEquityDiagnosticEvidence {
   url?: string;
 }
 
+export interface CloudEquityDiagnosticPending {
+  status: "generating";
+  retryAfterMs: number;
+}
+
 export interface CloudEquityDiagnosticResponse {
   schemaVersion: 1;
   symbol: string;
@@ -735,6 +740,10 @@ export interface CloudEquityDiagnosticResponse {
   promptVersion: 1;
   model: "gpt-5.6-luna";
 }
+
+export type CloudEquityDiagnosticResult =
+  | CloudEquityDiagnosticPending
+  | CloudEquityDiagnosticResponse;
 
 export interface CloudVerificationResponse {
   sent: boolean;

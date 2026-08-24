@@ -43,7 +43,7 @@ import type {
   CloudPricePointPayload,
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
-  CloudEquityDiagnosticResponse,
+  CloudEquityDiagnosticResult,
   CloudFredSeriesPayload,
   CloudYieldPointPayload,
   CloudCongressHousePayload,
@@ -567,7 +567,7 @@ class GloomApiClient {
     symbol: string,
     exchange?: string,
     mode: CloudEquityDiagnosticMode = "cache-first",
-  ): Promise<CloudEquityDiagnosticResponse> {
+  ): Promise<CloudEquityDiagnosticResult> {
     return this.data.getCloudEquityDiagnostic(symbol, exchange, mode);
   }
 

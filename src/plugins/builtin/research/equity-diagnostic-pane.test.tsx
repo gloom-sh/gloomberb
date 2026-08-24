@@ -261,6 +261,27 @@ test("renders a stale partial report with severity order, split observation, and
   expect(frame).not.toContain("luna");
 });
 
+test("polls an uncached diagnostic until the background report is ready", async () => {
+  signIn("pro");
+  let attempts = 0;
+  const requests = mockDiagnosticTransport(() => {
+    attempts += 1;
+    return attempts === 1
+      ? jsonResponse({ status: "generating", retryAfterMs: 10 }, 202)
+      : jsonResponse(makeReport());
+  });
+
+  await renderHarness();
+  await Bun.sleep(20);
+  await settle();
+
+  expect(requests).toEqual([
+    { symbol: "AAPL", exchange: "NASDAQ", mode: "cache-first" },
+    { symbol: "AAPL", exchange: "NASDAQ", mode: "cache-first" },
+  ]);
+  expect(testSetup!.captureCharFrame()).toContain("Gross margin fell for three quarters");
+});
+
 test("asks for a refresh on r and keeps the last report when the retry is rate limited", async () => {
   signIn("pro");
   const requests = mockDiagnosticTransport((body) => (

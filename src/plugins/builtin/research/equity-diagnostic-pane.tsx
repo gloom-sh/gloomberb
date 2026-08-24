@@ -58,29 +58,50 @@ function useEquityDiagnostic(symbol: string | null, exchange: string, enabled: b
     failure: DiagnosticFailure | null;
   }>({ report: null, loading: false, failure: null });
   const generationRef = useRef(0);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPoll = useCallback(() => {
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    pollTimerRef.current = null;
+  }, []);
 
   const load = useCallback((mode: CloudEquityDiagnosticMode) => {
     if (!symbol || !enabled) return;
+    clearPoll();
     generationRef.current += 1;
     const generation = generationRef.current;
     setState((current) => ({ ...current, loading: true, failure: null }));
-    apiClient.getCloudEquityDiagnostic(symbol, exchange || undefined, mode)
-      .then((report) => {
-        if (generationRef.current !== generation) return;
-        setState({ report, loading: false, failure: null });
-      })
-      .catch((error: unknown) => {
-        if (generationRef.current !== generation) return;
-        setState((current) => ({ report: current.report, loading: false, failure: toFailure(error) }));
-      });
-  }, [enabled, exchange, symbol]);
+
+    const request = (nextMode: CloudEquityDiagnosticMode) => {
+      apiClient.getCloudEquityDiagnostic(symbol, exchange || undefined, nextMode)
+        .then((result) => {
+          if (generationRef.current !== generation) return;
+          if (result.status === "generating") {
+            const retryAfterMs = Math.max(10, Math.min(5_000, result.retryAfterMs));
+            pollTimerRef.current = setTimeout(() => request("cache-first"), retryAfterMs);
+            return;
+          }
+          clearPoll();
+          setState({ report: result, loading: false, failure: null });
+        })
+        .catch((error: unknown) => {
+          if (generationRef.current !== generation) return;
+          clearPoll();
+          setState((current) => ({ report: current.report, loading: false, failure: toFailure(error) }));
+        });
+    };
+
+    request(mode);
+  }, [clearPoll, enabled, exchange, symbol]);
 
   useEffect(() => {
     // A report belongs to one company, so drop it rather than show it under the next.
     generationRef.current += 1;
+    clearPoll();
     setState({ report: null, loading: false, failure: null });
     load("cache-first");
-  }, [load]);
+    return clearPoll;
+  }, [clearPoll, load]);
 
   return { ...state, load };
 }

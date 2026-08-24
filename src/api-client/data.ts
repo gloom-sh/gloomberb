@@ -34,7 +34,7 @@ import type {
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
-  CloudEquityDiagnosticResponse,
+  CloudEquityDiagnosticResult,
   CloudFredSeriesPayload,
   CloudFundamentals,
   CloudHoldersPayload,
@@ -183,8 +183,8 @@ export class CloudDataApi {
     symbol: string,
     exchange?: string,
     mode: CloudEquityDiagnosticMode = "cache-first",
-  ): Promise<CloudEquityDiagnosticResponse> {
-    return this.request<CloudEquityDiagnosticResponse>("/research/equity-diagnostic", {
+  ): Promise<CloudEquityDiagnosticResult> {
+    return this.request<CloudEquityDiagnosticResult>("/research/equity-diagnostic", {
       method: "POST",
       body: JSON.stringify({
         symbol: symbol.trim().toUpperCase(),
