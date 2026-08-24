@@ -139,13 +139,14 @@ export function OverviewTab({
     <ScrollBox flexGrow={1} flexBasis={0} scrollY focusable={false}>
       <Box flexDirection="column" paddingX={1} paddingBottom={1} gap={1}>
         <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
-          <Box flexDirection="column" width={quoteSummaryWidth}>
+          <Box flexDirection="row" width={quoteSummaryWidth}>
+            <CompanyLogo
+              symbol={ticker.metadata.ticker}
+              assetCategory={ticker.metadata.assetCategory}
+              name={ticker.metadata.name || quote?.name}
+            />
+            <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
             <Box flexDirection="row">
-              <CompanyLogo
-                symbol={ticker.metadata.ticker}
-                assetCategory={ticker.metadata.assetCategory}
-                name={ticker.metadata.name || quote?.name}
-              />
               <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
                 {ticker.metadata.ticker}
               </Text>
@@ -199,6 +200,7 @@ export function OverviewTab({
             {metadataParts.length > 0 && (
               <Text fg={colors.textDim}>{metadataParts.join(" | ")}</Text>
             )}
+            </Box>
           </Box>
 
           {quote && hasBidAsk && (

@@ -17,10 +17,14 @@ export function CompanyLogo({
   symbol,
   assetCategory,
   name,
+  width = 5,
+  height = 2,
 }: {
   symbol: string;
   assetCategory?: string;
   name?: string;
+  width?: number;
+  height?: number;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const src = nativePaneChrome === true ? resolveCompanyLogoSrc({ symbol, assetCategory }) : null;
@@ -30,9 +34,10 @@ export function CompanyLogo({
     <ImageSurface
       src={src}
       alt={name || symbol}
-      width={2}
-      height={1}
+      width={width}
+      height={height}
       marginRight={1}
+      flexShrink={0}
       objectFit="contain"
     />
   );
