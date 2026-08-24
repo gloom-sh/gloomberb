@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://gloomberb.com/gloomberb-logo-grayscale.svg" alt="Gloomberb logo" width="76" />
+<img src="https://gloom.sh/gloomberb-logo-grayscale.svg" alt="Gloomberb logo" width="76" />
 
 # Gloomberb
 
@@ -8,7 +8,7 @@
 
 桌面应用支持 macOS 和 Windows。终端界面（TUI）支持 macOS、Linux 和 Windows。
 
-<a href="https://gloomberb.com/download/desktop"><strong>下载桌面版</strong></a>
+<a href="https://gloom.sh/download/desktop"><strong>下载桌面版</strong></a>
 &nbsp;&middot;&nbsp;
 <a href="#安装">安装 TUI</a>
 &nbsp;&middot;&nbsp;
@@ -17,7 +17,7 @@
 <br />
 <br />
 
-<img src="https://gloomberb.com/landing-terminal.png" alt="Gloomberb 终端界面，显示投资组合、自选列表、市场数据和图表面板。" width="720" />
+<img src="https://gloom.sh/landing-terminal.png" alt="Gloomberb 终端界面，显示投资组合、自选列表、市场数据和图表面板。" width="720" />
 
 </div>
 
@@ -43,21 +43,21 @@ Gloomberb 有两种使用方式：
 ```bash
 brew install --cask vincelwt/tap/gloomberb
 # 或
-curl -fsSL gloomberb.com/install | bash
+curl -fsSL gloom.sh/install | bash
 ```
 
 两种方式都会安装 `Gloomberb.app`，以及一个通过应用内置运行时执行 TUI 的 `gloomberb` 命令，运行时只会存储一份。
 
 想直接下载？
 
-- [下载 Gloomberb（Mac 版）](https://gloomberb.com/download/desktop)
+- [下载 Gloomberb（Mac 版）](https://gloom.sh/download/desktop)
 
 ### Linux
 
 安装独立的 TUI 可执行文件：
 
 ```bash
-curl -fsSL gloomberb.com/install | bash
+curl -fsSL gloom.sh/install | bash
 ```
 
 默认会将 `gloomberb` 安装到 `~/.local/bin`。Linux 桌面安装包暂未发布。

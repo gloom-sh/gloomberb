@@ -57,7 +57,7 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
       verified: "github.com/gloom-sh/gloomberb/"
   name "Gloomberb"
   desc "Open-source finance terminal"
-  homepage "https://gloomberb.com"
+  homepage "https://gloom.sh"
 
   livecheck do
     url :url

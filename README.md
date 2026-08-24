@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://gloomberb.com/gloomberb-logo-grayscale.svg" alt="Gloomberb logo" width="76" />
+<img src="https://gloom.sh/gloomberb-logo-grayscale.svg" alt="Gloomberb logo" width="76" />
 
 # Gloomberb
 
@@ -8,7 +8,7 @@
 
 Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 
-<a href="https://gloomberb.com/download/desktop"><strong>Download desktop</strong></a>
+<a href="https://gloom.sh/download/desktop"><strong>Download desktop</strong></a>
 &nbsp;&middot;&nbsp;
 <a href="#install"><strong>Install the TUI</strong></a>
 &nbsp;&middot;&nbsp;
@@ -17,7 +17,7 @@ Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 <br />
 <br />
 
-<img src="https://gloomberb.com/landing-terminal.png" alt="Gloomberb terminal showing portfolio, watchlists, market data, and chart panels." width="720" />
+<img src="https://gloom.sh/landing-terminal.png" alt="Gloomberb terminal showing portfolio, watchlists, market data, and chart panels." width="720" />
 
 </div>
 
@@ -57,21 +57,21 @@ Install the desktop app and the `gloomberb` terminal command:
 ```bash
 brew install --cask vincelwt/tap/gloomberb
 # or
-curl -fsSL gloomberb.com/install | bash
+curl -fsSL gloom.sh/install | bash
 ```
 
 Both install `Gloomberb.app` and a `gloomberb` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
 
 Prefer a direct download?
 
-- [Download Gloomberb for Mac](https://gloomberb.com/download/desktop)
+- [Download Gloomberb for Mac](https://gloom.sh/download/desktop)
 
 ### Linux
 
 Install the standalone TUI binary:
 
 ```bash
-curl -fsSL gloomberb.com/install | bash
+curl -fsSL gloom.sh/install | bash
 ```
 
 This installs `gloomberb` to `~/.local/bin` by default. A Linux desktop package is not published yet.
