@@ -112,6 +112,10 @@ export function useCommandBarPaneTemplateActions({
     const trimmedArg = rawArg?.trim() || "";
     const argKind = template.shortcut?.argKind ?? template.shortcut?.argPlaceholder;
     if (argKind === "ticker") {
+      if (!trimmedArg && template.shortcut?.argOptional) {
+        await openPaneTemplateDirect(template);
+        return;
+      }
       const resolvedTicker = await resolveTickerInput(
         trimmedArg || undefined,
         activeTickerSymbol,

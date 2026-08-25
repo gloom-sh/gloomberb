@@ -3,11 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import { CDS_PANE_ID } from "./model";
 import { CdsPane } from "./pane";
 
-/**
- * Only an explicit argument binds a ticker. `CDS` on its own is the
- * market-wide view, so it must not inherit the focused ticker the way the
- * shared ticker-surface templates do.
- */
+/** Only an explicit argument binds a ticker; bare `CDS` stays market-wide. */
 function explicitSymbol(options?: PaneTemplateCreateOptions): string | null {
   const raw = options?.symbol ?? options?.ticker?.metadata.ticker ?? options?.arg;
   return raw?.trim().toUpperCase() || null;
@@ -29,9 +25,7 @@ export const cdsModule: PluginModule = {
     label: "Single-Name CDS",
     description: "Single-name corporate CDS trade activity from DTCC public dissemination.",
     keywords: ["cds", "credit", "default", "swap", "single name", "issuer", "dtcc", "protection"],
-    // Deliberately "text": a "ticker" arg would resolve the focused ticker when
-    // the argument is omitted, and bare CDS must stay market-wide.
-    shortcut: { prefix: "CDS", argPlaceholder: "issuer", argKind: "text", argOptional: true },
+    shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
     createInstance: (_context, options) => {
       const symbol = explicitSymbol(options);
       return symbol
