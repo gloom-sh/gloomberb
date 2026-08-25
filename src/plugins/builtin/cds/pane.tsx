@@ -174,7 +174,7 @@ export function CdsPane({
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [issuerSort, setIssuerSort] = useState<IssuerSortPreference>(DEFAULT_ISSUER_SORT);
   const [tradeSort, setTradeSort] = useState<TradeSortPreference>(DEFAULT_TRADE_SORT);
-  const [selectedIssuer, setSelectedIssuer] = useState<string | null>(null);
+  const [selectedIssuerKey, setSelectedIssuerKey] = useState<string | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const generation = useRef(0);
@@ -210,16 +210,17 @@ export function CdsPane({
     [issuerQuery, issuerSort, trades],
   );
   const visibleTrades = useMemo(() => sortTrades(
-    issuerQuery ? trades : selectedIssuer ? tradesForIssuer(trades, selectedIssuer) : [],
+    issuerQuery ? trades : selectedIssuerKey ? tradesForIssuer(trades, selectedIssuerKey) : [],
     tradeSort,
-  ), [issuerQuery, selectedIssuer, tradeSort, trades]);
+  ), [issuerQuery, selectedIssuerKey, tradeSort, trades]);
+  const selectedSummary = issuers.find((row) => row.key === selectedIssuerKey) ?? null;
 
   useEffect(() => {
     if (issuerQuery) return;
-    if (selectedIssuer && issuers.some((row) => row.issuer === selectedIssuer)) return;
-    setSelectedIssuer(issuers[0]?.issuer ?? null);
+    if (selectedIssuerKey && issuers.some((row) => row.key === selectedIssuerKey)) return;
+    setSelectedIssuerKey(issuers[0]?.key ?? null);
     setDetailOpen(false);
-  }, [issuerQuery, issuers, selectedIssuer]);
+  }, [issuerQuery, issuers, selectedIssuerKey]);
 
   const cycleTradeSort = useCallback((step: 1 | -1) => {
     setTradeSort((current) => {
@@ -314,10 +315,10 @@ export function CdsPane({
   return (
     <DataTableStackView<CdsIssuerSummary, IssuerColumn>
       focused={focused}
-      detailOpen={detailOpen && !!selectedIssuer}
+      detailOpen={detailOpen && !!selectedSummary}
       onBack={() => setDetailOpen(false)}
-      detailTitle={selectedIssuer ?? undefined}
-      detailContent={selectedIssuer ? (
+      detailTitle={selectedSummary?.issuer}
+      detailContent={selectedSummary ? (
         <CdsTradeTable
           trades={visibleTrades}
           focused={focused && detailOpen}
@@ -334,12 +335,12 @@ export function CdsPane({
       rootHeight={height}
       selection={{
         kind: "id",
-        selectedId: selectedIssuer,
-        getId: (row) => row.issuer,
-        onChange: (id) => setSelectedIssuer(id),
+        selectedId: selectedIssuerKey,
+        getId: (row) => row.key,
+        onChange: (id) => setSelectedIssuerKey(id),
       }}
       onActivate={(row) => {
-        setSelectedIssuer(row.issuer);
+        setSelectedIssuerKey(row.key);
         setSelectedTradeId(null);
         setDetailOpen(true);
       }}
@@ -351,7 +352,7 @@ export function CdsPane({
       onHeaderClick={(columnId) => setIssuerSort((current) => (
         nextSort(current, columnId as IssuerColumnId, DEFAULT_ISSUER_SORT)
       ))}
-      getItemKey={(row) => row.issuer}
+      getItemKey={(row) => row.key}
       renderCell={(row, column, _index, state) => renderIssuerCell(row, column, state.selected)}
       emptyStateTitle={error ? "CDS activity unavailable." : "No reported single-name CDS trades."}
     />

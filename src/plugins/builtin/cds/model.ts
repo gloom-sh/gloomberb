@@ -18,7 +18,10 @@ const DECIMAL_TO_BP = 10_000;
 
 export interface CdsTrade {
   id: string;
+  /** Reported spelling, kept verbatim so a display name can be chosen later. */
   issuer: string;
+  /** Alias-collapsed grouping key. Internal only; never shown or sent. */
+  issuerKey: string;
   /** Execution time when the report carried a usable one, else event time. */
   eventAt: number;
   maturity: string | null;
@@ -33,10 +36,59 @@ export interface CdsTrade {
 }
 
 export interface CdsIssuerSummary {
+  /** Grouping key, and the row's selection id. */
+  key: string;
+  /** Best spelling among the aliases in this group. */
   issuer: string;
   trades: number;
   lastTradeAt: number;
   latestSpreadBp: number | null;
+}
+
+/**
+ * Legal-name noise the tape spells inconsistently: "Oracle Corporation",
+ * "ORACLE CORPORATION", and "Oracle Cop" are one issuer. Only suffixes and
+ * articles belong here. Words that distinguish real entities, such as holdings,
+ * group, or a year, must keep their own row.
+ */
+const LEGAL_NAME_NOISE = new Set([
+  "the", "co", "company", "corp", "corporation", "cop",
+  "inc", "incorporated", "limited", "ltd", "plc",
+]);
+
+/** Case, accents, and punctuation folded away, then legal-name noise dropped. */
+export function issuerGroupKey(name: string): string {
+  const tokens = name
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+  const meaningful = tokens.filter((token) => !LEGAL_NAME_NOISE.has(token));
+  // A name made only of noise ("The Company") keeps its tokens rather than
+  // collapsing every such issuer into one empty-key row.
+  return (meaningful.length > 0 ? meaningful : tokens).join(" ") || name.trim().toLowerCase();
+}
+
+/** Mixed case reads as a real name; all-caps is the tape shouting. */
+function isMixedCase(name: string): boolean {
+  return name !== name.toUpperCase();
+}
+
+/**
+ * Picks the spelling a human would write. Mixed case wins over all-caps first,
+ * then the longer name, so a full legal name beats an abbreviated or inverted
+ * one ("Oracle Corporation" over "Oracle Cop", "The Boeing Company" over
+ * "Boeing Co/The"). Ties break lexically so refreshes do not reshuffle.
+ */
+function preferredIssuerName(current: string, candidate: string): string {
+  const currentMixed = isMixedCase(current);
+  const candidateMixed = isMixedCase(candidate);
+  if (currentMixed !== candidateMixed) return candidateMixed ? candidate : current;
+  if (current.length !== candidate.length) return candidate.length > current.length ? candidate : current;
+  return candidate.localeCompare(current) < 0 ? candidate : current;
 }
 
 export function spreadToBasisPoints(value: number | null, notation: string | null): number | null {
@@ -77,9 +129,11 @@ export function normalizeCdsTrades(trades: readonly CloudCdsTradePayload[]): Cds
   for (const trade of trades) {
     const eventAt = tapeTime(trade);
     if (eventAt == null) continue;
+    const issuer = issuerOf(trade);
     rows.push({
       id: trade.disseminationId,
-      issuer: issuerOf(trade),
+      issuer,
+      issuerKey: issuerGroupKey(issuer),
       eventAt,
       maturity: trade.maturityDate ?? trade.expirationDate,
       notional: trade.notionalAmount,
@@ -103,29 +157,31 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
   const byIssuer = new Map<string, CdsIssuerSummary>();
   const spreadAt = new Map<string, number>();
   for (const trade of trades) {
-    const current = byIssuer.get(trade.issuer);
+    const current = byIssuer.get(trade.issuerKey);
     if (!current) {
-      byIssuer.set(trade.issuer, {
+      byIssuer.set(trade.issuerKey, {
+        key: trade.issuerKey,
         issuer: trade.issuer,
         trades: 1,
         lastTradeAt: trade.eventAt,
         latestSpreadBp: trade.spreadBp,
       });
-      if (trade.spreadBp != null) spreadAt.set(trade.issuer, trade.eventAt);
+      if (trade.spreadBp != null) spreadAt.set(trade.issuerKey, trade.eventAt);
       continue;
     }
     current.trades += 1;
+    current.issuer = preferredIssuerName(current.issuer, trade.issuer);
     if (trade.eventAt > current.lastTradeAt) current.lastTradeAt = trade.eventAt;
-    if (trade.spreadBp != null && trade.eventAt >= (spreadAt.get(trade.issuer) ?? -Infinity)) {
+    if (trade.spreadBp != null && trade.eventAt >= (spreadAt.get(trade.issuerKey) ?? -Infinity)) {
       current.latestSpreadBp = trade.spreadBp;
-      spreadAt.set(trade.issuer, trade.eventAt);
+      spreadAt.set(trade.issuerKey, trade.eventAt);
     }
   }
   return [...byIssuer.values()];
 }
 
-export function tradesForIssuer(trades: readonly CdsTrade[], issuer: string): CdsTrade[] {
-  return trades.filter((trade) => trade.issuer === issuer);
+export function tradesForIssuer(trades: readonly CdsTrade[], issuerKey: string): CdsTrade[] {
+  return trades.filter((trade) => trade.issuerKey === issuerKey);
 }
 
 /**

@@ -2,10 +2,12 @@ import { describe, expect, test } from "bun:test";
 import type { CloudCdsTradePayload } from "../../../api-client";
 import {
   formatNotional,
+  issuerGroupKey,
   normalizeCdsTrades,
   resolveIssuerQuery,
   spreadToBasisPoints,
   summarizeIssuers,
+  tradesForIssuer,
 } from "./model";
 
 function payload(overrides: Partial<CloudCdsTradePayload> = {}): CloudCdsTradePayload {
@@ -110,6 +112,59 @@ describe("summarizeIssuers", () => {
     // The newest print carried no spread, so the last quoted level survives.
     expect(oracle.latestSpreadBp).toBeCloseTo(110, 6);
     expect(summaries.find((row) => row.issuer === "Ford Motor Company")!.latestSpreadBp).toBeNull();
+  });
+});
+
+describe("issuer aliases", () => {
+  // Spellings the deployed backend actually returns for one reference entity,
+  // deliberately in an order where the best one is not the first seen.
+  const ORACLE = ["ORACLE CORPORATION", "Oracle Cop", "Oracle Corporation"];
+  const BOEING = ["THE BOEING COMPANY", "Boeing Co/The", "The Boeing Company"];
+
+  const aliasTrades = normalizeCdsTrades([
+    ...ORACLE.map((issuerName, index) => payload({
+      disseminationId: `o${index}`,
+      issuerName,
+      executionTimestamp: `2026-08-25T1${index}:00:00Z`,
+      reportedSpread: 0.009,
+      spreadNotation: "3",
+    })),
+    ...BOEING.map((issuerName, index) => payload({
+      disseminationId: `b${index}`,
+      issuerName,
+      executionTimestamp: `2026-08-25T0${index}:00:00Z`,
+    })),
+  ]);
+
+  test("collapses case, punctuation, and legal-suffix aliases onto one key", () => {
+    expect(new Set(ORACLE.map(issuerGroupKey))).toEqual(new Set(["oracle"]));
+    expect(new Set(BOEING.map(issuerGroupKey))).toEqual(new Set(["boeing"]));
+  });
+
+  test("keeps meaningful words that distinguish real entities", () => {
+    expect(issuerGroupKey("Oracle Holdings Corp")).not.toBe(issuerGroupKey("Oracle Corporation"));
+    expect(issuerGroupKey("Boeing Capital Group")).not.toBe(issuerGroupKey("The Boeing Company"));
+    expect(issuerGroupKey("Acme 2031 Ltd")).not.toBe(issuerGroupKey("Acme 2026 Ltd"));
+    // A name that is only noise keeps its own row instead of an empty key.
+    expect(issuerGroupKey("The Company")).toBe("the company");
+  });
+
+  test("counts every alias in one row and displays the best spelling", () => {
+    const summaries = summarizeIssuers(aliasTrades);
+    expect(summaries).toHaveLength(2);
+
+    const oracle = summaries.find((row) => row.key === "oracle")!;
+    expect(oracle.trades).toBe(3);
+    expect(oracle.issuer).toBe("Oracle Corporation");
+
+    const boeing = summaries.find((row) => row.key === "boeing")!;
+    expect(boeing.trades).toBe(3);
+    expect(boeing.issuer).toBe("The Boeing Company");
+  });
+
+  test("drills down on the key so aliases open together", () => {
+    expect(tradesForIssuer(aliasTrades, "oracle").map((row) => row.issuer)).toEqual(ORACLE);
+    expect(tradesForIssuer(aliasTrades, "boeing").map((row) => row.issuer)).toEqual(BOEING);
   });
 });
 
