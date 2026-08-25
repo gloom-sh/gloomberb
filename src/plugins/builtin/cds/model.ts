@@ -1,6 +1,5 @@
 import type { CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn } from "../../../components";
-import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -237,19 +236,15 @@ export function tradesForIssuer(trades: readonly CdsTrade[], issuerKey: string):
 }
 
 /**
- * The company name the backend matches on. An untracked symbol has no
- * TickerRecord, but its quote arrives with a name shortly after the pane opens,
- * so the raw symbol is only the last resort.
+ * What the pane asks for. A tracked ticker already carries its company name; an
+ * untracked one yields the bare symbol, which the loader expands through
+ * instrument search before it reaches the backend.
  */
 export function resolveIssuerQuery(
   symbol: string | null,
   ticker: TickerRecord | null,
-  financials: TickerFinancials | null,
 ): string | null {
-  return ticker?.metadata.name?.trim()
-    || financials?.quote?.name?.trim()
-    || symbol?.trim().toUpperCase()
-    || null;
+  return ticker?.metadata.name?.trim() || symbol?.trim().toUpperCase() || null;
 }
 
 export function formatBp(value: number | null): string {

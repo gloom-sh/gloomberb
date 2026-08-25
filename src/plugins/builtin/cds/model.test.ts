@@ -222,14 +222,11 @@ describe("issuer aliases", () => {
 
 describe("resolveIssuerQuery", () => {
   const ticker = { metadata: { ticker: "ORCL", name: "Oracle Corporation" } } as never;
-  const quoted = { quote: { name: "Oracle Corporation" } } as never;
 
-  test("prefers metadata, then the quote name, then the raw symbol", () => {
-    expect(resolveIssuerQuery("ORCL", ticker, null)).toBe("Oracle Corporation");
-    // ORCL is not in the ticker map, so the loaded quote resolves the issuer.
-    expect(resolveIssuerQuery("ORCL", null, quoted)).toBe("Oracle Corporation");
-    // Before the quote lands the raw symbol is still queried.
-    expect(resolveIssuerQuery("orcl", null, null)).toBe("ORCL");
-    expect(resolveIssuerQuery(null, null, null)).toBeNull();
+  test("prefers tracked metadata and otherwise hands the loader a bare symbol", () => {
+    expect(resolveIssuerQuery("ORCL", ticker)).toBe("Oracle Corporation");
+    // Untracked: the loader expands this through instrument search.
+    expect(resolveIssuerQuery("orcl", null)).toBe("ORCL");
+    expect(resolveIssuerQuery(null, null)).toBeNull();
   });
 });

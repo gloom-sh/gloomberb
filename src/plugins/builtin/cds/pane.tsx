@@ -160,13 +160,8 @@ export function CdsPane({
   height,
   loadActivity = loadCdsActivity,
 }: CdsPaneProps) {
-  const { symbol, ticker, financials } = usePaneTicker();
-  // An untracked symbol resolves once its quote lands; the in-flight request for
-  // the raw symbol is superseded through the same generation guard as a refresh.
-  const issuerQuery = useMemo(
-    () => resolveIssuerQuery(symbol, ticker, financials),
-    [financials, symbol, ticker],
-  );
+  const { symbol, ticker } = usePaneTicker();
+  const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
 
   const [activity, setActivity] = useState<CdsActivity | null>(null);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
@@ -289,10 +284,13 @@ export function CdsPane({
 
   if (issuerQuery) {
     // The pane title already carries the ticker, so the body leads with the
-    // issuer name the backend was actually queried for.
+    // issuer name the backend was actually queried for, which is the expanded
+    // company name once instrument search has resolved a bare symbol.
     const resolved = (
       <Box height={1} paddingX={1}>
-        <Text fg={colors.textMuted} wrapMode="ellipsis">{`${issuerQuery} · ${activity.source}`}</Text>
+        <Text fg={colors.textMuted} wrapMode="ellipsis">
+          {`${activity.issuer ?? issuerQuery} · ${activity.source}`}
+        </Text>
       </Box>
     );
     return (

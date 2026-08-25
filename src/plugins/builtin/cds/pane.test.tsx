@@ -13,6 +13,8 @@ let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 const ACTIVITY: CdsActivity = {
   source: "DTCC PPD",
   asOf: "2026-08-25T15:00:00Z",
+  // Market-wide: nothing was resolved because nothing was asked for.
+  issuer: null,
   trades: normalizeCdsTrades([
     trade("1", "Oracle Corporation", "2026-08-25T10:00:00Z", { reportedSpread: 0.009, spreadNotation: "3" }),
     trade("2", "Oracle Corporation", "2026-08-25T12:00:00Z", { reportedSpread: null }),
