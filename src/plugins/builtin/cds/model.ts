@@ -94,7 +94,12 @@ function nameTokens(name: string): string[] {
  */
 function identifiesIssuer(name: string): boolean {
   const tokens = nameTokens(name);
-  if (tokens.length === 0 || NAME_PLACEHOLDERS.has(tokens.join(" "))) return false;
+  const folded = tokens.join(" ");
+  if (
+    tokens.length === 0
+    || NAME_PLACEHOLDERS.has(folded)
+    || folded.startsWith("medium term note")
+  ) return false;
   return tokens.some((token) => (
     !OBLIGATION_NOISE.has(token)
     && !LEGAL_NAME_NOISE.has(token)

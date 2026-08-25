@@ -124,6 +124,7 @@ describe("generic obligation names", () => {
     "SR GTD NT 144A",
     "No name obtainable",
     "MEDIUM TERM NOTES EUR 2.3750 S.10/CALL",
+    "MEDIUM TERM NOTES EUR 0.6250 S.001STLA/CALL",
     "GLOBAL BD",
   ];
 
