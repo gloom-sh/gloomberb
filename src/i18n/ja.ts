@@ -221,6 +221,7 @@ export const ja: Record<string, string> = {
   "Dock Pane": "ペインをドッキング",
   "Settings": "設定",
   "Copy Screenshot": "スクリーンショットをコピー",
+  "Share Pane": "ペインを共有",
   "Pop Out": "別ウィンドウで表示",
   "Move Window...": "ウィンドウを移動...",
   "Resize Window...": "ウィンドウのサイズを変更...",

@@ -221,6 +221,7 @@ export const zhCN: Record<string, string> = {
   "Dock Pane": "停靠面板",
   "Settings": "设置",
   "Copy Screenshot": "复制截图",
+  "Share Pane": "分享窗格",
   "Pop Out": "弹出窗口",
   "Move Window...": "移动窗口...",
   "Resize Window...": "调整窗口大小...",

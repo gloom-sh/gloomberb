@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createShare, deleteShare, getShare, publicShareUrl, SHARE_API_ORIGIN } from "./api";
+import { createShare, deleteShare, getShare, openLiveShareUrl, publicShareUrl, SHARE_API_ORIGIN } from "./api";
 import { parseSharePayload } from "./payload";
 
 const article = { kind: "article", data: { title: "AAPL", text: "Research", sourceUrl: "https://example.com/a" } } as const;
@@ -10,6 +10,14 @@ describe("share API client", () => {
     expect(parseSharePayload(article)).toEqual(article);
     expect(parseSharePayload({ ...article, data: { ...article.data, sourceUrl: "javascript:alert(1)" } })).toBeNull();
     expect(parseSharePayload({ kind: "table", data: { title: "x", columns: [], rows: [] } })).toBeNull();
+    expect(parseSharePayload({
+      kind: "pane",
+      data: { version: 1, templateId: "graph-price-pane", title: "AAPL Price", data: { symbol: "AAPL" } },
+    })?.kind).toBe("pane");
+    expect(parseSharePayload({
+      kind: "pane",
+      data: { version: 1, templateId: "../private", title: "Private", data: {} },
+    })).toBeNull();
   });
 
   test("creates and deletes through api.gloom.sh with credentials", async () => {
@@ -38,7 +46,9 @@ describe("share API client", () => {
 
   test("loads public shares with optional owner credentials and builds current-origin URLs", async () => {
     let init: RequestInit | undefined;
-    const fetchImpl = (async (_url: string | URL | Request, options?: RequestInit) => {
+    const urls: string[] = [];
+    const fetchImpl = (async (url: string | URL | Request, options?: RequestInit) => {
+      urls.push(String(url));
       init = options;
       return Response.json({
         ...article,
@@ -48,9 +58,15 @@ describe("share API client", () => {
       });
     }) as typeof fetch;
     const share = await getShare(shareId, fetchImpl);
+    await getShare(shareId, fetchImpl, { trackView: false });
     expect(share?.kind).toBe("article");
     expect(share?.ownedByViewer).toBe(true);
     expect(init?.credentials).toBe("include");
-    expect(publicShareUrl(shareId, "https://term.gloom.sh")).toBe(`https://term.gloom.sh/s/${shareId}`);
+    expect(urls).toEqual([
+      `${SHARE_API_ORIGIN}/shares/${shareId}`,
+      `${SHARE_API_ORIGIN}/shares/${shareId}?purpose=open`,
+    ]);
+    expect(publicShareUrl(shareId)).toBe(`https://term.gloom.sh/s/${shareId}`);
+    expect(openLiveShareUrl(shareId)).toBe(`${SHARE_API_ORIGIN}/shares/${shareId}/open`);
   });
 });

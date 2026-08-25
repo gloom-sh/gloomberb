@@ -1,7 +1,41 @@
 import { describe, expect, test } from "bun:test";
 import { displayWidth } from "../../../utils/format";
 import { getLanguage, setLanguage, t } from "../../../i18n";
-import { actionMenuWidth } from "./menu";
+import { actionMenuWidth, menuForPane } from "./menu";
+
+describe("pane action menu", () => {
+  test("offers the global share action when the pane has a safe share adapter", async () => {
+    let shared = false;
+    const items = menuForPane(
+      {
+        instance: { instanceId: "chart-1", paneId: "chart-composer" },
+        def: { defaultPosition: "right" },
+        floating: false,
+      } as any,
+      {
+        dockRoot: { kind: "pane", instanceId: "chart-1" },
+        instances: [{ instanceId: "chart-1", paneId: "chart-composer" }],
+        floating: [],
+        detached: [],
+      },
+      120,
+      40,
+      {
+        hasPaneSettings: () => false,
+        openWindowMode: () => {},
+      } as any,
+      () => {},
+      () => {},
+      () => {},
+      undefined,
+      undefined,
+      () => { shared = true; },
+    );
+
+    await items.find((item) => item.type !== "divider" && item.id === "share-pane")?.onSelect?.();
+    expect(shared).toBe(true);
+  });
+});
 
 describe("action menu sizing", () => {
   test("uses translated terminal display width", () => {

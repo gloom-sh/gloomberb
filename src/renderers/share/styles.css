@@ -17,3 +17,22 @@ th { color: #f1b94a; background: #30333d; }
 .owner-actions button { border: 1px solid #6d7180; border-radius: 4px; padding: 6px 10px; background: transparent; color: #f2f2f2; font: inherit; cursor: pointer; }
 .owner-actions button:disabled { cursor: default; opacity: 0.55; }
 .owner-actions [role="alert"] { color: #ef7f7f; }
+:focus-visible { outline: 2px solid #f1b94a; outline-offset: 2px; }
+.eyebrow { margin: 0 0 10px; color: #b8bbc5; font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+main.pane h1 { margin-bottom: 14px; overflow-wrap: anywhere; }
+.pane-description { margin: 0; max-width: 62ch; color: #d5d7de; overflow-wrap: anywhere; }
+.pane-facts { margin: 28px 0 0; border: 1px solid #4a4e5c; background: #20232b; }
+.pane-facts > div { display: flex; gap: 16px; padding: 8px 12px; border-bottom: 1px solid #3a3e49; }
+.pane-facts > div:last-child { border-bottom: none; }
+.pane-facts dt { flex: 0 0 clamp(110px, 26%, 200px); color: #b8bbc5; }
+.pane-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.handoff { margin-top: 32px; }
+.cta { margin: 0; border: 1px solid #f1b94a; border-radius: 4px; padding: 10px 16px; color: #f1b94a; text-decoration: none; }
+.cta:hover { background: #f1b94a; color: #20232b; }
+.descriptor { margin: 14px 0 0; max-width: 58ch; color: #b8bbc5; }
+@media (max-width: 640px) {
+  main { padding: 40px 0; }
+  .pane-facts > div { flex-direction: column; gap: 2px; }
+  .pane-facts dt { flex: none; }
+  .cta { display: block; text-align: center; }
+}

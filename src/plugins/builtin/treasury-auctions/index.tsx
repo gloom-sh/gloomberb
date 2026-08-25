@@ -7,6 +7,7 @@ import {
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
 import { TREASURY_AUCTIONS_PANE_ID } from "./types";
+import { createPublicPaneShare } from "../shared/public-pane";
 
 let disposeConnection: (() => void) | null = null;
 
@@ -85,6 +86,7 @@ export const treasuryAuctionsModule: PluginModule = {
       ],
       shortcut: { prefix: "AUCT" },
       createInstance: () => ({ placement: "floating" }),
+      publicShare: createPublicPaneShare("Treasury Auctions"),
     },
   ],
 };

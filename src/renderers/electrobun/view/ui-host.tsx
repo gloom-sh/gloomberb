@@ -9,7 +9,10 @@ import {
 import { createDomUiHost } from "./dom-ui-host";
 
 export function createWebUiHost(desktopPlatform?: string): UiHost {
-  return createDomUiHost(desktopPlatform, { nativeContextMenu: NATIVE_CONTEXT_MENU_SUPPORTED });
+  return createDomUiHost(desktopPlatform, {
+    nativeContextMenu: NATIVE_CONTEXT_MENU_SUPPORTED,
+    publicSharing: true,
+  });
 }
 
 export const webUiHost: UiHost = createWebUiHost();

@@ -1,3 +1,5 @@
+import { apiClient } from "../api-client";
+import { ApiRequestError } from "../api-client/errors";
 import { parseSharePayload, type SharePayload } from "./payload";
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
@@ -8,6 +10,7 @@ export const SHARE_API_ORIGIN = bundledApiOrigin
     ? `${bundledApiOrigin}/api`
     : bundledApiOrigin
   : "https://api.gloom.sh";
+export const PUBLIC_SHARE_ORIGIN = "https://term.gloom.sh";
 const SHARE_ID = /^[a-f0-9]{32}$/;
 type ShareFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -30,21 +33,32 @@ async function readJson(response: Response): Promise<unknown> {
   try { return await response.json(); } catch { throw new Error("The share service returned an invalid response."); }
 }
 
-export async function createShare(payload: SharePayload, fetchImpl: ShareFetch = fetch): Promise<CreatedShare> {
+export async function createShare(payload: SharePayload, fetchImpl?: ShareFetch): Promise<CreatedShare> {
   const validated = parseSharePayload(payload);
   if (!validated) throw new Error("Invalid share payload.");
-  const response = await fetchImpl(`${SHARE_API_ORIGIN}/shares`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(validated),
-  });
-  if (!response.ok) {
-    if (response.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
-    if (response.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
-    throw new Error("Could not create share.");
+  let body: unknown;
+  if (fetchImpl) {
+    const response = await fetchImpl(`${SHARE_API_ORIGIN}/shares`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(validated),
+    });
+    if (!response.ok) {
+      if (response.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
+      if (response.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
+      throw new Error("Could not create share.");
+    }
+    body = await readJson(response);
+  } else {
+    try {
+      body = await apiClient.createTerminalShare(validated);
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
+      if (error instanceof ApiRequestError && error.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
+      throw error;
+    }
   }
-  const body = await readJson(response);
   if (!body || typeof body !== "object") throw new Error("The share service returned an invalid response.");
   const { id, expiresAt } = body as Record<string, unknown>;
   if (typeof id !== "string" || !SHARE_ID.test(id) || !validDate(expiresAt)) {
@@ -53,9 +67,14 @@ export async function createShare(payload: SharePayload, fetchImpl: ShareFetch =
   return { id, expiresAt };
 }
 
-export async function getShare(id: string, fetchImpl: ShareFetch = fetch): Promise<ShareRecord | null> {
+export async function getShare(
+  id: string,
+  fetchImpl: ShareFetch = fetch,
+  options?: { trackView?: boolean },
+): Promise<ShareRecord | null> {
   if (!SHARE_ID.test(id)) return null;
-  const response = await fetchImpl(`${SHARE_API_ORIGIN}/shares/${encodeURIComponent(id)}`, {
+  const purpose = options?.trackView === false ? "?purpose=open" : "";
+  const response = await fetchImpl(`${SHARE_API_ORIGIN}/shares/${encodeURIComponent(id)}${purpose}`, {
     credentials: "include",
   });
   if (response.status === 404) return null;
@@ -86,9 +105,14 @@ export async function deleteShare(id: string, fetchImpl: ShareFetch = fetch): Pr
   }
 }
 
-export function publicShareUrl(id: string, origin = window.location.origin): string {
+export function publicShareUrl(id: string, origin = PUBLIC_SHARE_ORIGIN): string {
   if (!SHARE_ID.test(id)) throw new Error("Invalid share id.");
   return new URL(`/s/${encodeURIComponent(id)}`, origin).toString();
+}
+
+export function openLiveShareUrl(id: string): string {
+  if (!SHARE_ID.test(id)) throw new Error("Invalid share id.");
+  return `${SHARE_API_ORIGIN}/shares/${encodeURIComponent(id)}/open`;
 }
 
 export function parseShareId(pathname: string): string | null {

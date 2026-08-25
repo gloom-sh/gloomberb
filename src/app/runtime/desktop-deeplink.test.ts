@@ -101,6 +101,16 @@ describe("desktop deeplinks", () => {
     });
   });
 
+  test("routes only opaque 32-character pane share ids", () => {
+    const id = "0123456789abcdef0123456789abcdef";
+    expect(resolveDesktopDeepLinkAction(`gloomberb://share/${id}`)).toEqual({
+      type: "open-share",
+      id,
+      message: "Opened shared pane.",
+    });
+    expect(resolveDesktopDeepLinkAction("gloomberb://share/not-valid").type).toBe("unsupported");
+  });
+
   test("rejects command-bar, non-gloomberb, and malformed links", () => {
     expect(resolveDesktopDeepLinkAction("gloomberb://command?query=profile").type).toBe("unsupported");
     expect(resolveDesktopDeepLinkAction("gloomberb://search/NVDA").type).toBe("unsupported");

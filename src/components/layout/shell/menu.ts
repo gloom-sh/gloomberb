@@ -32,6 +32,7 @@ export function menuForPane(
   openPaneSettings: (paneId: string) => void,
   desktopWindowBridge?: DesktopWindowBridge,
   copyPaneScreenshot?: (paneId: string) => void | Promise<void>,
+  sharePane?: () => void | Promise<void>,
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [];
   if (pluginRegistry.hasPaneSettings(pane.instance.instanceId)) {
@@ -40,6 +41,13 @@ export function menuForPane(
       label: "Settings",
       accelerator: PANE_MANAGEMENT_ACCELERATORS.settings,
       onSelect: () => openPaneSettings(pane.instance.instanceId),
+    });
+  }
+  if (sharePane) {
+    baseActions.push({
+      id: "share-pane",
+      label: "Share Pane",
+      onSelect: sharePane,
     });
   }
   if (copyPaneScreenshot) {

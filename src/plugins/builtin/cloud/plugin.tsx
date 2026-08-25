@@ -22,6 +22,7 @@ import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { registerCloudAuthCommands } from "./auth-commands";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
+import { createPublicPaneShare } from "../shared/public-pane";
 
 interface GloomberbCloudPluginComponents {
   ChatPane: (props: PaneProps) => ReactNode;
@@ -172,6 +173,7 @@ const congressTradesModule: PluginModule = {
     keywords: ["congress", "house", "trades", "ptr", "stock", "disclosures"],
     shortcut: { prefix: "CG" },
     createInstance: () => ({ placement: "floating" }),
+    publicShare: createPublicPaneShare("Congress Trades"),
   }],
 };
 

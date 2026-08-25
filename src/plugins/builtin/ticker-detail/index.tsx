@@ -100,6 +100,14 @@ export const tickerDetailModule: PluginModule = {
           }
           : {}
       ),
+      publicShare: {
+        serialize: ({ pane }) => pane.binding?.kind === "fixed" && pane.binding.symbol.trim()
+          ? { title: pane.title?.trim() || pane.binding.symbol, data: { symbol: pane.binding.symbol.trim().toUpperCase() } }
+          : null,
+        restore: (data) => Object.keys(data).length === 1 && typeof data.symbol === "string" && data.symbol.trim()
+          ? { symbol: data.symbol.trim().toUpperCase() }
+          : null,
+      },
     },
     {
       id: "quote-monitor-pane",
@@ -147,6 +155,7 @@ export const tickerDetailModule: PluginModule = {
       description: "Open a historical OHLCV table for a ticker.",
       keywords: ["historical", "prices", "hp", "ohlc", "volume"],
       shortcut: "HP",
+      publicShare: true,
     }),
     createProviderSearchPaneTemplate(),
     createTickerSurfacePaneTemplate({
@@ -156,6 +165,7 @@ export const tickerDetailModule: PluginModule = {
       description: "Open financial statements for a ticker.",
       keywords: ["fa", "financial", "analysis", "statements"],
       shortcut: "FA",
+      publicShare: true,
       titlePrefix: "FA",
     }),
   ],

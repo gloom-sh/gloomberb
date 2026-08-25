@@ -14,7 +14,7 @@ import {
   DATA_CATALOG_PANE_ID,
   DATA_CATALOG_TEMPLATE_ID,
 } from "./catalog-inventory";
-import { CHART_SPEC_SETTING_KEY } from "./chart-spec";
+import { CHART_SPEC_SETTING_KEY, parseChartSpec } from "./chart-spec";
 import {
   buildComparisonChartPreset,
   buildCustomChartPreset,
@@ -148,8 +148,23 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     }],
     canCreate: () => true,
     createInstance: (context, options) => {
+      const sharedSpec = parseChartSpec(options?.shareData);
+      if (sharedSpec) return instanceFor(sharedSpec, "G");
       const expression = options?.arg?.trim() || options?.values?.series?.trim() || context.activeTicker || "";
       return instanceFor(buildCustomChartPreset(expression, context.activeTicker), "G");
+    },
+    publicShare: {
+      serialize: ({ pane }) => {
+        const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
+        return spec
+          ? { title: pane.title?.trim() || chartTitle(spec), data: { chartSpec: spec } }
+          : null;
+      },
+      restore: (data) => {
+        if (Object.keys(data).length !== 1) return null;
+        const spec = parseChartSpec(data.chartSpec);
+        return spec ? { shareData: spec } : null;
+      },
     },
   },
   {
@@ -178,6 +193,16 @@ const chartComposerTemplates: PaneTemplateDef[] = [
         placement: "floating" as const,
         ...(query ? { settings: { query } } : {}),
       };
+    },
+    publicShare: {
+      serialize: ({ pane }) => {
+        const query = typeof pane.settings?.query === "string" ? pane.settings.query.trim() : "";
+        return { title: pane.title?.trim() || "Data Catalog", data: query ? { query } : {} };
+      },
+      restore: (data) => Object.keys(data).every((key) => key === "query")
+        && (data.query === undefined || typeof data.query === "string")
+        ? { arg: typeof data.query === "string" ? data.query : "" }
+        : null,
     },
   },
   securityTemplate({

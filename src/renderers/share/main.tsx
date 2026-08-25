@@ -2,7 +2,7 @@
 import "./styles.css";
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { deleteShare, getShare, parseShareId, type ShareRecord } from "../../shares/api";
+import { deleteShare, getShare, openLiveShareUrl, parseShareId, type ShareRecord } from "../../shares/api";
 import { ShareView } from "./view";
 
 function ShareApp() {
@@ -40,6 +40,7 @@ function ShareApp() {
     return (
       <ShareView
         share={state.share}
+        openLiveUrl={id ? openLiveShareUrl(id) : undefined}
         deleting={state.deleting === true}
         deleteError={state.error}
         onDelete={state.share.ownedByViewer ? remove : undefined}
