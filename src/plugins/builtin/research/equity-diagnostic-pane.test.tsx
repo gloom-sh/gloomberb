@@ -70,6 +70,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 function makeReport(overrides: Partial<CloudEquityDiagnosticResponse> = {}): CloudEquityDiagnosticResponse {
   return {
     schemaVersion: 1,
+    access: "full",
     symbol: "AAPL",
     exchange: "NASDAQ",
     companyName: "Apple Inc.",
@@ -111,7 +112,7 @@ function makeReport(overrides: Partial<CloudEquityDiagnosticResponse> = {}): Clo
     ],
     watchItems: ["Next quarter gross margin guidance"],
     coverage: [
-      { dataset: "financials", status: "available", asOf: "2026-02-01", provider: "polygon" },
+      { dataset: "financials", status: "available", asOf: "2026-02-01", provider: "Twelve Data" },
       { dataset: "insider", status: "no_data" },
     ],
     evidence: [
@@ -210,18 +211,31 @@ afterEach(async () => {
   apiClient.restoreCachedUser(null);
 });
 
-test("keeps the diagnostic behind Pro and never asks the server for a free account", async () => {
+test("shows a cited preview to free accounts and gates the rest", async () => {
   signIn("free");
-  const requests = mockDiagnosticTransport(() => jsonResponse(makeReport()));
+  const fullReport = makeReport();
+  const requests = mockDiagnosticTransport(() => jsonResponse(makeReport({
+    access: "preview",
+    verdict: "unclear",
+    summary: "",
+    confidence: 0.81,
+    findings: [fullReport.findings[1]!],
+    watchItems: [],
+    evidence: [fullReport.evidence[0]!],
+  })));
 
   await renderHarness();
 
   const frame = testSetup!.captureCharFrame();
-  expect(requests).toHaveLength(0);
-  expect(frame).toContain("Gloom Cloud Pro");
+  expect(requests).toEqual([{ symbol: "AAPL", exchange: "NASDAQ", mode: "cache-first" }]);
+  expect(frame).toContain("Free preview");
+  expect(frame).toContain("Gross margin fell for three quarters");
+  expect(frame).not.toContain("Receivables grew faster than sales");
+  expect(frame).not.toContain("Risk skewed");
+  expect(frame).toContain("UNLOCK THE FULL DIAGNOSTIC");
   expect(frame).toContain("Upgrade to Pro");
-  expect(frame).toContain("Manage account");
-  // A gated pane has nothing to refresh.
+  expect(frame).toContain("Gloom Cloud");
+  expect(frame).not.toContain("Twelve Data");
   expect(frame).not.toContain("efresh");
 });
 
@@ -259,6 +273,18 @@ test("renders a stale partial report with severity order, split observation, and
   expect(frame).toContain("stale");
   expect(frame).toContain("efresh");
   expect(frame).not.toContain("luna");
+});
+
+test("adds data sources line by line while the diagnostic generates", async () => {
+  signIn("pro");
+  mockDiagnosticTransport(() => jsonResponse({ status: "generating", retryAfterMs: 5_000 }, 202));
+
+  await renderHarness();
+
+  const frame = testSetup!.captureCharFrame();
+  expect(frame).toContain("Gloom Cloud market data");
+  expect(frame).toContain("SEC EDGAR filings");
+  expect(frame).not.toContain("FINRA short interest");
 });
 
 test("polls an uncached diagnostic until the background report is ready", async () => {
