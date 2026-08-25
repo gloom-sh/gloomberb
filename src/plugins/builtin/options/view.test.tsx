@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -17,6 +17,7 @@ import { OptionsView } from "./view";
 const TEST_PANE_ID = "ticker-detail:options-test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+let setOptionsQuotePrice: ((price: number) => void) | null = null;
 
 function makeTicker(symbol: string): TickerRecord {
   return {
@@ -125,6 +126,12 @@ function OptionsHarness({
   );
 }
 
+function RealtimeOptionsHarness({ ticker }: { ticker: TickerRecord }) {
+  const [quotePrice, setQuotePrice] = useState(120.2);
+  setOptionsQuotePrice = setQuotePrice;
+  return <OptionsHarness ticker={ticker} quotePrice={quotePrice} />;
+}
+
 async function renderSettled() {
   for (let i = 0; i < 4; i += 1) {
     await act(async () => {
@@ -141,6 +148,7 @@ afterEach(async () => {
     });
     testSetup = undefined;
   }
+  setOptionsQuotePrice = null;
   setSharedMarketDataCoordinator(null);
 });
 
@@ -168,7 +176,7 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
-test("streams every visible option row and overlays live contract quotes", async () => {
+test("streams live quotes without resetting manual scroll", async () => {
   const strikes = Array.from({ length: 100 }, (_, index) => 50 + index);
   const subscriptions: QuoteSubscriptionTarget[][] = [];
   let emitQuote:
@@ -187,7 +195,7 @@ test("streams every visible option row and overlays live contract quotes", async
 
   await act(async () => {
     testSetup = await testRender(
-      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={120.2} />,
+      <RealtimeOptionsHarness ticker={makeTicker("AAPL")} />,
       {
         width: 124,
         height: 16,
@@ -238,6 +246,20 @@ test("streams every visible option row and overlays live contract quotes", async
     }).data?.mark,
   ).toBe(99.99);
   expect(testSetup!.captureCharFrame()).toContain("99.99");
+
+  const bodyScroll = testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable;
+  await act(async () => {
+    bodyScroll.scrollTo(0);
+    await testSetup!.renderOnce();
+  });
+  await renderSettled();
+
+  await act(async () => {
+    setOptionsQuotePrice?.(120.3);
+    await testSetup!.renderOnce();
+  });
+  await renderSettled();
+  expect(bodyScroll.scrollTop).toBe(0);
 });
 
 test("lets the expiration tab row use the full available width", async () => {
