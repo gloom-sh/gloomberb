@@ -160,8 +160,13 @@ export function CdsPane({
   height,
   loadActivity = loadCdsActivity,
 }: CdsPaneProps) {
-  const { symbol, ticker } = usePaneTicker();
-  const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
+  const { symbol, ticker, financials } = usePaneTicker();
+  // An untracked symbol resolves once its quote lands; the in-flight request for
+  // the raw symbol is superseded through the same generation guard as a refresh.
+  const issuerQuery = useMemo(
+    () => resolveIssuerQuery(symbol, ticker, financials),
+    [financials, symbol, ticker],
+  );
 
   const [activity, setActivity] = useState<CdsActivity | null>(null);
   const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");

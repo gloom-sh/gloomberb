@@ -14,24 +14,24 @@ const ACTIVITY: CdsActivity = {
   source: "DTCC PPD",
   asOf: "2026-08-25T15:00:00Z",
   trades: normalizeCdsTrades([
-    trade("1", "Oracle Corporation", "2026-08-25T10:00:00Z", { reportedSpread: 0.9, spreadNotation: "Percentage" }),
+    trade("1", "Oracle Corporation", "2026-08-25T10:00:00Z", { reportedSpread: 0.009, spreadNotation: "3" }),
     trade("2", "Oracle Corporation", "2026-08-25T12:00:00Z", { reportedSpread: null }),
-    trade("3", "Ford Motor Company", "2026-08-25T11:00:00Z", { reportedSpread: 250, spreadNotation: "BPS" }),
+    trade("3", "Ford Motor Company", "2026-08-25T11:00:00Z", { reportedSpread: 0.025, spreadNotation: "3" }),
   ]),
 };
 
 function trade(
   id: string,
   issuerName: string,
-  eventTimestamp: string,
+  executionTimestamp: string,
   overrides: { reportedSpread: number | null; spreadNotation?: string | null },
 ) {
   return {
     disseminationId: id,
     originalDisseminationId: null,
     actionType: "NEWT",
-    eventTimestamp,
-    executionTimestamp: null,
+    eventTimestamp: executionTimestamp,
+    executionTimestamp,
     effectiveDate: null,
     expirationDate: null,
     maturityDate: "2031-06-20",
@@ -44,7 +44,8 @@ function trade(
     notionalAmount: 5_000_000,
     notionalCapped: true,
     notionalCurrency: "USD",
-    fixedRate: 1,
+    // Raw DTCC decimal: 0.01 renders as a 100bp coupon.
+    fixedRate: 0.01,
     reportedSpread: overrides.reportedSpread,
     spreadNotation: overrides.spreadNotation ?? null,
     upfrontAmount: null,

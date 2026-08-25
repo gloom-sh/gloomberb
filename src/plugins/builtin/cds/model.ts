@@ -1,5 +1,6 @@
 import type { CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn } from "../../../components";
+import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -7,10 +8,10 @@ import { compareSortValues, type SortPreference } from "../../../utils/sort-valu
 export const CDS_PANE_ID = "cds";
 
 /**
- * DTCC reports rates and spreads as percent unless the report says otherwise,
- * so both the running coupon and the reported spread are converted to basis
- * points here and nowhere else. If the backend ever switches units, this is the
- * single place that changes.
+ * Raw DTCC values are decimals: `Fixed rate-Leg 1 = 0.01` is a 100bp coupon and
+ * `Spread-Leg 1 = 0.00256` under notation code "3" is 25.6bp. Only a report that
+ * explicitly labels itself basis points or percent is read any other way. Both
+ * conversions happen here and nowhere else.
  */
 const PERCENT_TO_BP = 100;
 const DECIMAL_TO_BP = 10_000;
@@ -18,6 +19,7 @@ const DECIMAL_TO_BP = 10_000;
 export interface CdsTrade {
   id: string;
   issuer: string;
+  /** Execution time when the report carried a usable one, else event time. */
   eventAt: number;
   maturity: string | null;
   notional: number | null;
@@ -41,13 +43,26 @@ export function spreadToBasisPoints(value: number | null, notation: string | nul
   if (value == null || !Number.isFinite(value)) return null;
   const unit = (notation ?? "").trim().toLowerCase();
   if (unit.startsWith("bp") || unit.includes("basis")) return value;
-  if (unit.includes("decimal")) return value * DECIMAL_TO_BP;
-  return value * PERCENT_TO_BP;
+  if (unit.includes("percent") || unit === "%") return value * PERCENT_TO_BP;
+  // Notation code "3", textual "decimal", and an unlabelled raw value are all decimals.
+  return value * DECIMAL_TO_BP;
 }
 
 function couponToBasisPoints(fixedRate: number | null): number | null {
   if (fixedRate == null || !Number.isFinite(fixedRate)) return null;
-  return fixedRate * PERCENT_TO_BP;
+  return fixedRate * DECIMAL_TO_BP;
+}
+
+/**
+ * When the trade was struck, not when the tape carried it. A lifecycle
+ * correction is disseminated long after the fact, so using the event time would
+ * date an old trade as new.
+ */
+function tapeTime(trade: CloudCdsTradePayload): number | null {
+  const executed = trade.executionTimestamp ? Date.parse(trade.executionTimestamp) : Number.NaN;
+  if (Number.isFinite(executed)) return executed;
+  const event = Date.parse(trade.eventTimestamp);
+  return Number.isFinite(event) ? event : null;
 }
 
 function issuerOf(trade: CloudCdsTradePayload): string {
@@ -60,8 +75,8 @@ function issuerOf(trade: CloudCdsTradePayload): string {
 export function normalizeCdsTrades(trades: readonly CloudCdsTradePayload[]): CdsTrade[] {
   const rows: CdsTrade[] = [];
   for (const trade of trades) {
-    const eventAt = Date.parse(trade.eventTimestamp);
-    if (!Number.isFinite(eventAt)) continue;
+    const eventAt = tapeTime(trade);
+    if (eventAt == null) continue;
     rows.push({
       id: trade.disseminationId,
       issuer: issuerOf(trade),
@@ -113,12 +128,20 @@ export function tradesForIssuer(trades: readonly CdsTrade[], issuer: string): Cd
   return trades.filter((trade) => trade.issuer === issuer);
 }
 
-/** The company name the backend matches on, or the raw symbol when untracked. */
+/**
+ * The company name the backend matches on. An untracked symbol has no
+ * TickerRecord, but its quote arrives with a name shortly after the pane opens,
+ * so the raw symbol is only the last resort.
+ */
 export function resolveIssuerQuery(
   symbol: string | null,
   ticker: TickerRecord | null,
+  financials: TickerFinancials | null,
 ): string | null {
-  return ticker?.metadata.name?.trim() || symbol?.trim().toUpperCase() || null;
+  return ticker?.metadata.name?.trim()
+    || financials?.quote?.name?.trim()
+    || symbol?.trim().toUpperCase()
+    || null;
 }
 
 export function formatBp(value: number | null): string {
