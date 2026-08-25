@@ -372,24 +372,6 @@ export function Shell({
     transientFocusLayoutState,
   ]);
 
-  useShellPaneManagementShortcuts({
-    cancelActiveDrag,
-    closeAllFloatingPanes,
-    closeFocusedPane,
-    copyFocusedPaneScreenshot,
-    focusedPaneId,
-    gridlockVisiblePanes,
-    hasActiveDrag,
-    inputCaptured,
-    openFocusedPaneSettings,
-    openLayoutMenu,
-    overlayOpen,
-    popOutFocusedPane,
-    startWindowMode,
-    toggleFocusedPaneFullscreen,
-    toggleFocusedPaneFloating,
-  });
-
   const dockLeafLayouts = useMemo(() => getDockLeafLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
   const dockDividerLayouts = useMemo(() => getDockDividerLayouts(activeLayout, bounds, dockGeometryOptions), [activeLayout, bounds, dockGeometryOptions]);
   const snapGuides = useMemo(() => makeSnapGuides(width, contentHeight), [contentHeight, width]);
@@ -462,6 +444,38 @@ export function Shell({
       });
     }
   }, [pluginRegistry, rendererHost]);
+  const shareFocusedPane = useCallback(() => {
+    if (!publicSharing || !focusedPaneId) return false;
+    const pane = paneMap.get(focusedPaneId);
+    if (!pane) return false;
+    const payload = buildPaneSharePayload(
+      pluginRegistry,
+      pane.instance,
+      paneState[focusedPaneId] ?? {},
+    );
+    if (!payload) return false;
+    void sharePane(payload);
+    return true;
+  }, [focusedPaneId, paneMap, paneState, pluginRegistry, publicSharing, sharePane]);
+
+  useShellPaneManagementShortcuts({
+    cancelActiveDrag,
+    closeAllFloatingPanes,
+    closeFocusedPane,
+    copyFocusedPaneScreenshot,
+    focusedPaneId,
+    gridlockVisiblePanes,
+    hasActiveDrag,
+    inputCaptured,
+    openFocusedPaneSettings,
+    openLayoutMenu,
+    overlayOpen,
+    popOutFocusedPane,
+    shareFocusedPane,
+    startWindowMode,
+    toggleFocusedPaneFullscreen,
+    toggleFocusedPaneFloating,
+  });
 
   const openPaneMenu = useCallback((paneId: string, rect: LayoutBounds, event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     const pane = paneMap.get(paneId);

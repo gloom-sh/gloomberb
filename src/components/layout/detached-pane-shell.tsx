@@ -23,6 +23,10 @@ import {
 import { createShare, publicShareUrl } from "../../shares/api";
 import { buildPaneSharePayload } from "../../shares/pane";
 import type { ContextMenuItem } from "../../types/context-menu";
+import {
+  PANE_MANAGEMENT_ACCELERATORS,
+  resolvePaneManagementShortcut,
+} from "./shell/shortcuts";
 
 interface DetachedPaneShellProps {
   pluginRegistry: PluginRegistry;
@@ -142,6 +146,15 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       });
     }
   }, [pluginRegistry, rendererHost, sharePayload]);
+
+  useShortcut((event) => {
+    if (resolvePaneManagementShortcut(event) !== "share" || !sharePayload) return;
+    if (inputCaptured && event.ctrl && !event.meta && !event.super) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void sharePane();
+  });
+
   const openActions = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     focusPane();
@@ -153,7 +166,12 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         onSelect: () => pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId),
       });
     }
-    if (sharePayload) items.push({ id: "share-pane", label: "Share Pane", onSelect: sharePane });
+    if (sharePayload) items.push({
+      id: "share-pane",
+      label: "Share Pane",
+      accelerator: PANE_MANAGEMENT_ACCELERATORS.share,
+      onSelect: sharePane,
+    });
     void showContextMenu({
       kind: "pane",
       paneId: desktopWindowBridge.paneId,

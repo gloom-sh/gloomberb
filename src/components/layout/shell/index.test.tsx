@@ -356,6 +356,7 @@ describe("Shell", () => {
     expect(resolvePaneManagementShortcut({ ...base, name: "D", key: "D" })).toBe("toggle-floating");
     expect(resolvePaneManagementShortcut({ ...base, name: "o", key: "o" })).toBe("pop-out");
     expect(resolvePaneManagementShortcut({ ...base, name: "c", key: "c" })).toBe("copy-screenshot");
+    expect(resolvePaneManagementShortcut({ ...base, name: "s", key: "s" })).toBe("share");
     expect(resolvePaneManagementShortcut({ ...base, name: "l", key: "l" })).toBe("layout-actions");
     expect(resolvePaneManagementShortcut({ ...base, name: "f", key: "f" })).toBe("toggle-fullscreen");
     expect(resolvePaneManagementShortcut({ ...base, name: "g", key: "g" })).toBe("gridlock-all");

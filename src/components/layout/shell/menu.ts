@@ -47,6 +47,7 @@ export function menuForPane(
     baseActions.push({
       id: "share-pane",
       label: "Share Pane",
+      accelerator: PANE_MANAGEMENT_ACCELERATORS.share,
       onSelect: sharePane,
     });
   }

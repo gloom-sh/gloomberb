@@ -32,8 +32,10 @@ describe("pane action menu", () => {
       () => { shared = true; },
     );
 
-    await items.find((item) => item.type !== "divider" && item.id === "share-pane")?.onSelect?.();
+    const share = items.find((item) => item.type !== "divider" && item.id === "share-pane");
+    await share?.onSelect?.();
     expect(shared).toBe(true);
+    expect(share?.accelerator).toBe("CmdOrCtrl+Shift+S");
   });
 });
 
