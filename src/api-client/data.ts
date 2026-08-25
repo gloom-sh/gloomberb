@@ -2,6 +2,7 @@ import type { TickerFinancials } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import { normalizeTweetSearchResponse } from "./normalizers";
 import {
+  cloudCdsPath,
   cloudCongressHousePath,
   cloudExchangeRatePath,
   cloudSec13FPath,
@@ -17,6 +18,7 @@ import {
   cloudStatementsPath,
   cloudTickerTweetsPath,
   cloudTweetSearchPath,
+  type CloudCdsParams,
   type CloudCongressHouseParams,
   type CloudFredSeriesParams,
   type CloudHistoryParams,
@@ -29,6 +31,7 @@ import {
 import type {
   CloudAnalystResearchPayload,
   CloudShortInterestPayload,
+  CloudCdsResponse,
   CloudCompanyProfile,
   CloudCongressHousePayload,
   CloudCorporateActionsPayload,
@@ -207,6 +210,10 @@ export class CloudDataApi {
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
+  }
+
+  async getCloudCds(params: CloudCdsParams = {}): Promise<CloudCdsResponse> {
+    return this.request<CloudCdsResponse>(cloudCdsPath(params));
   }
 
   async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {

@@ -322,6 +322,40 @@ export interface CloudFredSeriesPayload {
   info: CloudFredSeriesInfoPayload | null;
 }
 
+/** One publicly disseminated single-name CDS transaction report. */
+export interface CloudCdsTradePayload {
+  disseminationId: string;
+  originalDisseminationId: string | null;
+  actionType: string;
+  eventTimestamp: string;
+  executionTimestamp: string | null;
+  effectiveDate: string | null;
+  expirationDate: string | null;
+  maturityDate: string | null;
+  issuerName: string | null;
+  underlierId: string | null;
+  underlierIdSource: string | null;
+  upi: string | null;
+  upiFisn: string | null;
+  upiUnderlierName: string | null;
+  notionalAmount: number | null;
+  /** Reported notional is a regulatory cap, so the real trade was at least this size. */
+  notionalCapped: boolean;
+  notionalCurrency: string | null;
+  fixedRate: number | null;
+  reportedSpread: number | null;
+  /** Unit of `reportedSpread`, e.g. basis points or percent. */
+  spreadNotation: string | null;
+  upfrontAmount: number | null;
+  upfrontCurrency: string | null;
+}
+
+export interface CloudCdsResponse {
+  source: string;
+  asOf: string | null;
+  trades: CloudCdsTradePayload[];
+}
+
 export interface CloudShortInterestPointPayload {
   settlementDate: string;
   sharesShort: number;

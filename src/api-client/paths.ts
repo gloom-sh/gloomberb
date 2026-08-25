@@ -16,6 +16,13 @@ export type CloudFredSeriesParams = {
   sortOrder?: "asc" | "desc";
 };
 
+export type CloudCdsParams = {
+  /** Reference entity name, matched by the backend against DTCC issuer names. */
+  issuer?: string;
+  days?: number;
+  limit?: number;
+};
+
 export type CloudCongressHouseParams = {
   year?: number;
   limit?: number;
@@ -135,6 +142,15 @@ export function cloudFredSeriesPath(seriesId: string, params: CloudFredSeriesPar
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.sortOrder) search.set("sortOrder", params.sortOrder);
   return appendQuery(`/cloud/econ/series/${encodeURIComponent(seriesId)}`, search);
+}
+
+export function cloudCdsPath(params: CloudCdsParams = {}): string {
+  const search = new URLSearchParams();
+  const issuer = params.issuer?.trim();
+  if (issuer) search.set("issuer", issuer);
+  if (params.days != null) search.set("days", String(params.days));
+  if (params.limit != null) search.set("limit", String(params.limit));
+  return appendQuery("/cloud/credit/cds", search);
 }
 
 export type CloudSecFilingsParams = {

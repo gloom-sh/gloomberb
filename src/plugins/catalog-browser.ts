@@ -10,6 +10,7 @@ import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
 import { connectionsModule } from "./builtin/connections";
 import { correlationModule } from "./builtin/correlation";
+import { cdsModule } from "./builtin/cds";
 import { creditConditionsModule } from "./builtin/credit-conditions";
 import { economicCalendarModule } from "./builtin/econ";
 import { futuresModule } from "./builtin/futures";
@@ -101,7 +102,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
   id: "macro",
   name: "Macro",
   version: "1.0.0",
-  description: "Economic calendar, rates, volatility, credit spreads, and Treasury auctions.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, and Treasury auctions.",
   toggleable: true,
   modules: [
     browserFredResourcesModule,
@@ -109,6 +110,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,
+    cdsModule,
     treasuryAuctionsModule,
   ],
 });
