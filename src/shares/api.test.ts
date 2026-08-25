@@ -67,6 +67,6 @@ describe("share API client", () => {
       `${SHARE_API_ORIGIN}/shares/${shareId}?purpose=open`,
     ]);
     expect(publicShareUrl(shareId)).toBe(`https://term.gloom.sh/s/${shareId}`);
-    expect(openLiveShareUrl(shareId)).toBe(`${SHARE_API_ORIGIN}/shares/${shareId}/open`);
+    expect(openLiveShareUrl(shareId)).toBe(`https://term.gloom.sh/api/shares/${shareId}/open`);
   });
 });

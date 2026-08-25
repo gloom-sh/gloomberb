@@ -110,9 +110,9 @@ export function publicShareUrl(id: string, origin = PUBLIC_SHARE_ORIGIN): string
   return new URL(`/s/${encodeURIComponent(id)}`, origin).toString();
 }
 
-export function openLiveShareUrl(id: string): string {
+export function openLiveShareUrl(id: string, origin = PUBLIC_SHARE_ORIGIN): string {
   if (!SHARE_ID.test(id)) throw new Error("Invalid share id.");
-  return `${SHARE_API_ORIGIN}/shares/${encodeURIComponent(id)}/open`;
+  return new URL(`/api/shares/${encodeURIComponent(id)}/open`, origin).toString();
 }
 
 export function parseShareId(pathname: string): string | null {

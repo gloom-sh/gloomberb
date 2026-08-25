@@ -20,7 +20,7 @@ import {
   recordDoubleEscapeClose,
   resetDoubleEscapeClose,
 } from "../../utils/double-escape-close";
-import { createShare, publicShareUrl } from "../../shares/api";
+import { createShare, openLiveShareUrl } from "../../shares/api";
 import { buildPaneSharePayload } from "../../shares/pane";
 import type { ContextMenuItem } from "../../types/context-menu";
 import {
@@ -137,7 +137,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     if (!sharePayload) return;
     try {
       const { id } = await createShare(sharePayload);
-      await rendererHost.copyText(publicShareUrl(id));
+      await rendererHost.copyText(openLiveShareUrl(id));
       pluginRegistry.notify({ body: "Share link copied to clipboard", type: "success" });
     } catch (error) {
       pluginRegistry.notify({

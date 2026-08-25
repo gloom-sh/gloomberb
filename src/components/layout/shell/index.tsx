@@ -67,7 +67,7 @@ import {
   resolveShellCursorOcclusionRects,
   useShellCursorOcclusionGuard,
 } from "./cursor-occlusion";
-import { createShare, publicShareUrl } from "../../../shares/api";
+import { createShare, openLiveShareUrl } from "../../../shares/api";
 import { buildPaneSharePayload } from "../../../shares/pane";
 import type { SharePayload } from "../../../shares/payload";
 
@@ -435,7 +435,7 @@ export function Shell({
   const sharePane = useCallback(async (payload: Extract<SharePayload, { kind: "pane" }>) => {
     try {
       const { id } = await createShare(payload);
-      await rendererHost.copyText(publicShareUrl(id));
+      await rendererHost.copyText(openLiveShareUrl(id));
       pluginRegistry.notify({ body: "Share link copied to clipboard", type: "success" });
     } catch (error) {
       pluginRegistry.notify({
