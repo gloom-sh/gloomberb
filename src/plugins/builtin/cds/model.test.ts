@@ -115,6 +115,57 @@ describe("summarizeIssuers", () => {
   });
 });
 
+describe("generic obligation names", () => {
+  // Verbatim `UPI Underlier Name` values seen dominating the live market view.
+  const GENERIC = [
+    "SR NT",
+    "SR NT 144A",
+    "NT",
+    "SR GTD NT 144A",
+    "No name obtainable",
+    "MEDIUM TERM NOTES EUR 2.3750 S.10/CALL",
+    "GLOBAL BD",
+  ];
+
+  function unnamed(id: string, upiUnderlierName: string | null) {
+    return payload({ disseminationId: id, issuerName: null, upiUnderlierName });
+  }
+
+  test("drops records whose only name is a generic obligation label", () => {
+    const rows = normalizeCdsTrades([
+      ...GENERIC.map((name, index) => unnamed(`g${index}`, name)),
+      unnamed("empty", ""),
+      unnamed("missing", null),
+    ]);
+    expect(rows).toEqual([]);
+  });
+
+  test("accepts UPI underlier names that identify an issuer", () => {
+    const rows = normalizeCdsTrades([
+      unnamed("t", "Tencent Holdings Limited"),
+      unnamed("d", "DT.BANK MTN 17/20"),
+    ]);
+    expect(rows.map((row) => row.issuer)).toEqual(["Tencent Holdings Limited", "DT.BANK MTN 17/20"]);
+  });
+
+  test("keeps a reported issuer name and never falls back to an underlier id", () => {
+    const rows = normalizeCdsTrades([
+      payload({ disseminationId: "b", issuerName: "Broadcom Inc", upiUnderlierName: "SR NT 144A" }),
+      payload({ disseminationId: "x", issuerName: null, upiUnderlierName: null, underlierId: "US11135FAX50" }),
+    ]);
+    expect(rows.map((row) => row.issuer)).toEqual(["Broadcom Inc"]);
+  });
+
+  test("leaves the summary to real issuers when fake ones outnumber them", () => {
+    const summaries = summarizeIssuers(normalizeCdsTrades([
+      ...GENERIC.map((name, index) => unnamed(`g${index}`, name)),
+      payload({ disseminationId: "b", issuerName: "Broadcom Inc", upiUnderlierName: "SR GTD NT 144A" }),
+      payload({ disseminationId: "o", issuerName: "Oracle Corporation", upiUnderlierName: "SR NT" }),
+    ]));
+    expect(summaries.map((row) => row.issuer).sort()).toEqual(["Broadcom Inc", "Oracle Corporation"]);
+  });
+});
+
 describe("issuer aliases", () => {
   // Spellings the deployed backend actually returns for one reference entity,
   // deliberately in an order where the best one is not the first seen.

@@ -56,9 +56,27 @@ const LEGAL_NAME_NOISE = new Set([
   "inc", "incorporated", "limited", "ltd", "plc",
 ]);
 
-/** Case, accents, and punctuation folded away, then legal-name noise dropped. */
-export function issuerGroupKey(name: string): string {
-  const tokens = name
+/**
+ * Obligation vocabulary the tape writes into `UPI Underlier Name` when it has
+ * no reference entity: seniority, instrument type, format, rule reference, and
+ * currency. A name built only from these describes a bond, not an issuer.
+ */
+const OBLIGATION_NOISE = new Set([
+  "sr", "senior", "sub", "subordinated", "jr", "junior",
+  "nt", "nts", "note", "notes", "bd", "bds", "bond", "bonds",
+  "gtd", "guaranteed", "global", "medium", "term", "mtn", "emtn",
+  "144a", "regs", "s", "call",
+  "eur", "usd", "gbp", "jpy", "chf", "cad", "aud",
+]);
+
+/** Whole-string sentinels the feed sends instead of leaving the field empty. */
+const NAME_PLACEHOLDERS = new Set([
+  "no name obtainable", "name not available", "not available", "unknown", "n a",
+]);
+
+/** Case, accents, and punctuation folded away into comparable tokens. */
+function nameTokens(name: string): string[] {
+  return name
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
@@ -66,6 +84,27 @@ export function issuerGroupKey(name: string): string {
     .trim()
     .split(" ")
     .filter(Boolean);
+}
+
+/**
+ * Whether a `UPI Underlier Name` names a company at all. "SR GTD NT 144A" and
+ * "MEDIUM TERM NOTES EUR 2.3750 S.10/CALL" are obligation descriptions that
+ * would otherwise become fake issuers and outrank real ones, while
+ * "Tencent Holdings Limited" and "DT.BANK MTN 17/20" carry a real entity.
+ */
+function identifiesIssuer(name: string): boolean {
+  const tokens = nameTokens(name);
+  if (tokens.length === 0 || NAME_PLACEHOLDERS.has(tokens.join(" "))) return false;
+  return tokens.some((token) => (
+    !OBLIGATION_NOISE.has(token)
+    && !LEGAL_NAME_NOISE.has(token)
+    && !/^\d+$/.test(token)
+  ));
+}
+
+/** Case, accents, and punctuation folded away, then legal-name noise dropped. */
+export function issuerGroupKey(name: string): string {
+  const tokens = nameTokens(name);
   const meaningful = tokens.filter((token) => !LEGAL_NAME_NOISE.has(token));
   // A name made only of noise ("The Company") keeps its tokens rather than
   // collapsing every such issuer into one empty-key row.
@@ -117,11 +156,17 @@ function tapeTime(trade: CloudCdsTradePayload): number | null {
   return Number.isFinite(event) ? event : null;
 }
 
-function issuerOf(trade: CloudCdsTradePayload): string {
-  const named = trade.issuerName?.trim()
-    || trade.upiUnderlierName?.trim()
-    || trade.underlierId?.trim();
-  return named || "Unknown issuer";
+/**
+ * A reported issuer name is always trusted, even when the UPI underlier beside
+ * it is generic. Otherwise the UPI name is used only when it names a company.
+ * There is no third fallback: underlier IDs are opaque instrument codes, so
+ * showing one would just be a different kind of fake issuer.
+ */
+function issuerOf(trade: CloudCdsTradePayload): string | null {
+  const reported = trade.issuerName?.trim();
+  if (reported) return reported;
+  const underlier = trade.upiUnderlierName?.trim();
+  return underlier && identifiesIssuer(underlier) ? underlier : null;
 }
 
 export function normalizeCdsTrades(trades: readonly CloudCdsTradePayload[]): CdsTrade[] {
@@ -130,6 +175,8 @@ export function normalizeCdsTrades(trades: readonly CloudCdsTradePayload[]): Cds
     const eventAt = tapeTime(trade);
     if (eventAt == null) continue;
     const issuer = issuerOf(trade);
+    // Nothing names the reference entity, so the row would invent one.
+    if (!issuer) continue;
     rows.push({
       id: trade.disseminationId,
       issuer,
