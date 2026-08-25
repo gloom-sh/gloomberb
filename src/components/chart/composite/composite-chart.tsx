@@ -14,6 +14,7 @@ import {
 import { useShortcut } from "../../../react/input";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import { formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
@@ -1445,6 +1446,7 @@ export function CompositeChart({
   onToggleSeries,
   isSeriesToggleable,
 }: CompositeChartProps) {
+  const activeThemeColors = useThemeColors();
   const { cellWidthPx = 8, pixelRatio = 1 } = useUiCapabilities();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const showTextFallback = useShowChartTextFallback();
@@ -1692,13 +1694,13 @@ export function CompositeChart({
   }).join("|");
   const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows);
   const resolvedColors = useMemo<CompositeChartColors>(() => ({
-    background: colors?.background ?? themeColors.bg,
-    grid: colors?.grid ?? themeColors.border,
-    crosshair: colors?.crosshair ?? themeColors.borderFocused,
-    text: colors?.text ?? themeColors.text,
-    textDim: colors?.textDim ?? themeColors.textDim,
-    negative: colors?.negative ?? themeColors.negative,
-  }), [colors]);
+    background: colors?.background ?? activeThemeColors.bg,
+    grid: colors?.grid ?? activeThemeColors.border,
+    crosshair: colors?.crosshair ?? activeThemeColors.borderFocused,
+    text: colors?.text ?? activeThemeColors.text,
+    textDim: colors?.textDim ?? activeThemeColors.textDim,
+    negative: colors?.negative ?? activeThemeColors.negative,
+  }), [activeThemeColors, colors]);
   const projectedScene = useMemo(() => {
     // lastTickKey busts this memo when a live tick mutates series identity in place.
     void lastTickKey;
