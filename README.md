@@ -321,7 +321,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `PS` | Open focused pane settings |
 | `LAY <action>` | Open layout actions |
 | `WIN move\|resize` | Move or resize the focused window |
-| `GL` | Tile all visible panes |
+| `GL` | Tidy all windows |
 | `SB` | Toggle the status bar |
 | `VF` | Toggle quote value flashing |
 | `TH <theme>` | Change color theme |

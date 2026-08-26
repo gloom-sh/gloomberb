@@ -58,11 +58,8 @@ export {
 export {
   analyzeFloatingPaneVisibility,
   gridlockAllPanes,
-  gridlockFloatingPanes,
-  planTidyWindows,
-  TIDY_WINDOW_LIMIT,
+  shouldShowTidyWindows,
   type FloatingPaneVisibility,
-  type TidyWindowsPlan,
 } from "./pane-manager/gridlock";
 export type {
   DropTarget,

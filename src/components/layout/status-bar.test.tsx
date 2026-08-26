@@ -4,6 +4,7 @@ import { AppContext, createInitialState } from "../../state/app/context";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
 import { StatusBar } from "./status-bar";
+import { getDockedPaneIds } from "../../plugins/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
 import { act, useEffect, useState } from "react";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
@@ -246,7 +247,7 @@ describe("StatusBar", () => {
     expect(actions).toContainEqual({ type: "UNDO_LAYOUT" });
   });
 
-  test("lets users tidy the visible layer without pulling in covered windows", async () => {
+  test("tidies covered windows instead of leaving them floating", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-covered-test");
     const floatingLayout: LayoutConfig = {
       dockRoot: null,
@@ -285,33 +286,19 @@ describe("StatusBar", () => {
       <AppContext value={{ state, dispatch: () => {} }}>
         <StatusBar />
       </AppContext>,
-      { width: 120, height: 18 },
+      { width: 120, height: 1 },
     );
 
     await testSetup.renderOnce();
-    let frame = testSetup.captureCharFrame();
+    const frame = testSetup.captureCharFrame();
     const tidyX = frame.split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
-    await act(async () => {
-      await testSetup!.mockMouse.click(tidyX + 1, 0);
-      await Promise.resolve();
-      await testSetup!.renderOnce();
-    });
+    expect(tidyX).toBeGreaterThanOrEqual(0);
 
-    frame = testSetup.captureCharFrame();
-    expect(frame).toContain("1 visible, 2 covered. Choose up to 6 more.");
-    expect(frame).toContain("Tidy 1 Selected");
-    expect(frame).toContain("Tile All 3");
+    await testSetup.mockMouse.click(tidyX + 1, 0);
+    await testSetup.renderOnce();
 
-    const lines = frame.split("\n");
-    const buttonY = lines.findIndex((line) => line.includes("Tidy 1 Selected"));
-    const buttonX = lines[buttonY]?.indexOf("Tidy 1 Selected") ?? -1;
-    await act(async () => {
-      await testSetup!.mockMouse.click(buttonX + 1, buttonY);
-      await Promise.resolve();
-      await testSetup!.renderOnce();
-    });
-
-    expect(updatedLayout?.floating).toHaveLength(2);
-    expect(notifications[0]?.body).toBe("Tiled 1 window; 2 left floating");
+    expect(updatedLayout?.floating).toHaveLength(0);
+    expect(getDockedPaneIds(updatedLayout!)).toHaveLength(3);
+    expect(notifications[0]?.body).toBe("Tiled all windows");
   });
 });

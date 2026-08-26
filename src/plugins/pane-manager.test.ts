@@ -7,8 +7,7 @@ import {
   floatAtRect,
   getDockResizeTargets,
   gridlockAllPanes,
-  gridlockFloatingPanes,
-  planTidyWindows,
+  shouldShowTidyWindows,
   getDockDividerLayouts,
   getDockLeafLayouts,
   getDockedPaneIds,
@@ -141,56 +140,16 @@ describe("pane-manager split-tree drops", () => {
 
     const visibility = analyzeFloatingPaneVisibility(layout);
     const lower = visibility.find((pane) => pane.instanceId === "lower");
-    const plan = planTidyWindows(layout, "upper");
-
     expect(lower?.visibleRatio).toBeCloseTo(0.8);
     expect(lower?.titleBarVisibleRatio).toBe(0);
     expect(lower?.buried).toBe(true);
-    expect(plan).toMatchObject({ show: true, requiresChoice: true, buriedCount: 1, visibleCount: 1 });
-    expect(plan.selectedFloatingPaneIds).toEqual(["upper"]);
+    expect(shouldShowTidyWindows(layout)).toBe(true);
 
     const separated = {
       ...layout,
       floating: [layout.floating[0]!, { ...layout.floating[1]!, x: 50 }],
     };
-    expect(planTidyWindows(separated, "upper").show).toBe(false);
-  });
-
-  test("caps the tidy working set and leaves unselected windows floating", () => {
-    const floating = Array.from({ length: 6 }, (_, index) => ({
-      instanceId: `float-${index}`,
-      x: (index % 3) * 40,
-      y: Math.floor(index / 3) * 20,
-      width: 40,
-      height: 20,
-      zIndex: 50 + index,
-    }));
-    const layout: LayoutConfig = {
-      dockRoot: {
-        kind: "split",
-        axis: "horizontal",
-        ratio: 0.5,
-        first: { kind: "pane", instanceId: "dock-left" },
-        second: { kind: "pane", instanceId: "dock-right" },
-      },
-      instances: [
-        createPaneInstance("chat", { instanceId: "dock-left" }),
-        createPaneInstance("chat", { instanceId: "dock-right" }),
-        ...floating.map((entry) => createPaneInstance("chat", { instanceId: entry.instanceId })),
-      ],
-      floating,
-      detached: [],
-    };
-
-    const plan = planTidyWindows(layout, "float-0");
-    const next = gridlockFloatingPanes(layout, plan.selectedFloatingPaneIds, BOUNDS);
-
-    expect(plan.capacity).toBe(4);
-    expect(plan.selectedFloatingPaneIds).toHaveLength(4);
-    expect(plan.selectedFloatingPaneIds[0]).toBe("float-0");
-    expect(plan.requiresChoice).toBe(true);
-    expect(getDockedPaneIds(next)).toHaveLength(6);
-    expect(next.floating.map((entry) => entry.instanceId)).toHaveLength(2);
+    expect(shouldShowTidyWindows(separated)).toBe(false);
   });
 
   test("gridlock drops pane types that cannot render before tiling", () => {

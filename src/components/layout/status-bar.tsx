@@ -1,5 +1,5 @@
 import { Box, Span, Text, TextAttributes, contextMenuDivider, useContextMenu, useUiCapabilities } from "../../ui";
-import { useDialog, useDialogKeyboard, type PromptContext } from "../../ui/dialog";
+import { useDialog, type PromptContext } from "../../ui/dialog";
 import { useCallback, useMemo, useState } from "react";
 import { blendHex, hoverBg } from "../../theme/colors";
 import { t, tf } from "../../i18n";
@@ -7,28 +7,21 @@ import { useThemeColors } from "../../theme/theme-context";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
 import {
   selectActiveLayoutIndex,
-  selectFocusedPaneId,
   selectLayout,
   selectSavedLayouts,
   selectStatusBarVisible,
 } from "../../state/selectors-ui";
 import { getSharedRegistry } from "../../plugins/registry";
 import {
-  getDockedPaneIds,
   gridlockAllPanes,
-  gridlockFloatingPanes,
-  planTidyWindows,
-  type TidyWindowsPlan,
+  shouldShowTidyWindows,
 } from "../../plugins/pane-manager";
 import { notifyGridlockComplete } from "../../plugins/gridlock-notification";
 import { PluginSlot } from "../../react/plugins/plugin-slot";
 import type { ContextMenuItem } from "../../types/context-menu";
 import type { LayoutConfig } from "../../types/config";
-import { isPlainKey } from "../../utils/keyboard";
-import { Button, DialogFrame } from "../ui";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Tabs } from "../ui/tabs";
-import { ToggleList } from "../toggle-list";
 import { useTransientLayout } from "./transient-layout";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
@@ -58,16 +51,6 @@ type StatusBarViewProps = {
   showTidyWindows: boolean;
 };
 
-type TidyWindowsChoice =
-  | { mode: "selected"; paneIds: string[] }
-  | { mode: "all" }
-  | null;
-
-type TidyWindowOption = {
-  id: string;
-  label: string;
-};
-
 function truncate(text: string, width: number): string {
   if (width <= 0) return "";
   if (text.length <= width) return text;
@@ -85,13 +68,13 @@ export function StatusBar() {
   const activeLayoutIdx = useAppSelector(selectActiveLayoutIndex);
   const statusBarVisible = useAppSelector(selectStatusBarVisible);
   const layout = useAppSelector(selectLayout);
-  const focusedPaneId = useAppSelector(selectFocusedPaneId);
   const { transientLayout } = useTransientLayout();
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
 
   const hasMultipleLayouts = layouts.length > 1 || !!transientLayout;
-  const tidyPlan = useMemo(() => planTidyWindows(layout, focusedPaneId), [focusedPaneId, layout]);
-  const showTidyWindows = tidyPlan.show && !transientLayout?.active && !!registry;
+  const showTidyWindows = useMemo(() => shouldShowTidyWindows(layout), [layout])
+    && !transientLayout?.active
+    && !!registry;
   const savedLayoutTabs = layouts.map((layout, index) => ({
     label: `^${index + 1} ${truncate(layout.name, 14)}`,
     value: String(index),
@@ -140,60 +123,24 @@ export function StatusBar() {
     dispatch({ type: "REORDER_LAYOUT", fromIndex, toIndex });
   };
 
-  const applyTidyWindows = (choice: Exclude<TidyWindowsChoice, null>) => {
-    if (!registry) return;
-    const currentLayout = registry.getLayoutFn();
-    const { width, height } = registry.getTermSizeFn();
-    const bounds = { x: 0, y: 0, width, height };
-    const nextLayout = choice.mode === "all"
-      ? gridlockAllPanes(currentLayout, bounds, registry.panes)
-      : gridlockFloatingPanes(currentLayout, choice.paneIds, bounds, registry.panes);
-    if (nextLayout === currentLayout) return;
-
-    registry.updateLayoutFn(nextLayout);
-    const tiledCount = getDockedPaneIds(nextLayout).length;
-    const remainingCount = nextLayout.floating.length;
-    const body = remainingCount > 0
-      ? `Tiled ${tiledCount} window${tiledCount === 1 ? "" : "s"}; ${remainingCount} left floating`
-      : "Tiled all windows";
-    notifyGridlockComplete(registry.notify.bind(registry), () => {
-      dispatch({ type: "UNDO_LAYOUT" });
-    }, body);
-  };
-
   const handleTidyWindows = (event?: StatusBarEvent) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (!registry) return;
 
     const currentLayout = registry.getLayoutFn();
-    const currentPlan = planTidyWindows(currentLayout, focusedPaneId);
-    if (!currentPlan.requiresChoice) {
-      applyTidyWindows({ mode: "selected", paneIds: currentPlan.selectedFloatingPaneIds });
-      return;
-    }
+    const { width, height } = registry.getTermSizeFn();
+    const nextLayout = gridlockAllPanes(
+      currentLayout,
+      { x: 0, y: 0, width, height },
+      registry.panes,
+    );
+    if (nextLayout === currentLayout) return;
 
-    const options = currentPlan.floatingPanes.map((pane): TidyWindowOption => {
-      const instance = currentLayout.instances.find((entry) => entry.instanceId === pane.instanceId);
-      const name = instance?.title ?? (instance ? registry.panes.get(instance.paneId)?.name : undefined) ?? instance?.paneId ?? "Window";
-      return {
-        id: pane.instanceId,
-        label: `${name} · ${t(pane.buried ? "Covered" : "Visible")}`,
-      };
+    registry.updateLayoutFn(nextLayout);
+    notifyGridlockComplete(registry.notify.bind(registry), () => {
+      dispatch({ type: "UNDO_LAYOUT" });
     });
-
-    void dialog.prompt<TidyWindowsChoice>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<TidyWindowsChoice>) => (
-        <TidyWindowsDialog
-          {...context}
-          plan={currentPlan}
-          options={options}
-        />
-      ),
-    }).then((choice) => {
-      if (choice) applyTidyWindows(choice);
-    }).catch(() => {});
   };
 
   const openCommandBar = (event?: StatusBarEvent) => {
@@ -332,94 +279,6 @@ export function StatusBar() {
   }
 
   return <TerminalStatusBar {...viewProps} />;
-}
-
-function TidyWindowsDialog({
-  dialogId,
-  resolve,
-  plan,
-  options,
-}: PromptContext<TidyWindowsChoice> & {
-  plan: TidyWindowsPlan;
-  options: TidyWindowOption[];
-}) {
-  const colors = useThemeColors();
-  const [selectedPaneIds, setSelectedPaneIds] = useState(plan.selectedFloatingPaneIds);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const selectedPaneIdSet = new Set(selectedPaneIds);
-  const togglePane = (paneId: string) => {
-    setSelectedPaneIds((current) => {
-      if (current.includes(paneId)) return current.filter((id) => id !== paneId);
-      if (current.length >= plan.capacity) return current;
-      return [...current, paneId];
-    });
-  };
-  const tidySelected = () => {
-    if (selectedPaneIds.length > 0) {
-      resolve({ mode: "selected", paneIds: selectedPaneIds });
-    }
-  };
-
-  useDialogKeyboard((event) => {
-    event.stopPropagation();
-    if (isPlainKey(event, "up", "k")) {
-      setSelectedIndex((current) => Math.max(0, current - 1));
-    } else if (isPlainKey(event, "down", "j")) {
-      setSelectedIndex((current) => Math.min(options.length - 1, current + 1));
-    } else if (event.name === "space" || event.name === " " || event.sequence === " ") {
-      const paneId = options[selectedIndex]?.id;
-      if (paneId) togglePane(paneId);
-    } else if (event.name === "enter" || event.name === "return") {
-      tidySelected();
-    } else if (event.name === "escape") {
-      resolve(null);
-    }
-  }, dialogId);
-
-  return (
-    <DialogFrame
-      title={t("Tidy Windows")}
-      footer={t("↑↓ choose · Space toggle · Enter tidy · Esc cancel")}
-    >
-      <Box flexDirection="column" width={56} gap={1}>
-        <Text fg={colors.textDim}>
-          {tf("{visible} visible, {covered} covered. Choose up to {capacity} more.", {
-            visible: plan.visibleCount,
-            covered: plan.buriedCount,
-            capacity: plan.capacity,
-          })}
-        </Text>
-        <ToggleList
-          items={options.map((option) => ({
-            id: option.id,
-            label: option.label,
-            enabled: selectedPaneIdSet.has(option.id),
-            disabled: !selectedPaneIdSet.has(option.id) && selectedPaneIds.length >= plan.capacity,
-          }))}
-          selectedIdx={selectedIndex}
-          height={Math.min(10, Math.max(4, options.length))}
-          scrollable
-          showSelectedDescription={false}
-          rowIdPrefix="tidy-windows"
-          onSelect={setSelectedIndex}
-          onToggle={togglePane}
-        />
-        <Box flexDirection="row" gap={1}>
-          <Button
-            label={tf("Tidy {count} Selected", { count: selectedPaneIds.length })}
-            variant="primary"
-            disabled={selectedPaneIds.length === 0}
-            onPress={tidySelected}
-          />
-          <Button
-            label={tf("Tile All {count}", { count: options.length })}
-            onPress={() => resolve({ mode: "all" })}
-          />
-          <Button label={t("Cancel")} variant="ghost" onPress={() => resolve(null)} />
-        </Box>
-      </Box>
-    </DialogFrame>
-  );
 }
 
 function NativeStatusBar({
@@ -565,7 +424,7 @@ function NativeTidyWindows({
       <Text
         fg={hovered ? colors.textBright : colors.borderFocused}
         attributes={TextAttributes.BOLD}
-        title={t("Arrange visible windows. Covered windows stay floating.")}
+        title={t("Tile All Windows")}
         onMouseOver={() => setHoveredControl((current) => (current === "tidy-windows" ? current : "tidy-windows"))}
         onMouseDown={handleTidyWindows}
         data-gloom-interactive="true"

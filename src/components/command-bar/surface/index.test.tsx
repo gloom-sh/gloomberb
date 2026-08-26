@@ -179,17 +179,17 @@ describe("CommandBar", () => {
     expect(testSetup.captureCharFrame()).not.toContain("GitHub Light");
   });
 
-  test("runs plugin command shortcuts from the root query", async () => {
+  test("finds the tidy windows command from the root query", async () => {
     const calls: string[] = [];
 
     testSetup = await testRender(<CommandBarHarness
-      query="GL"
+      query="tidy"
       configurePluginRegistry={(pluginRegistry) => {
         (pluginRegistry.commands as Map<string, any>).set("gridlock-all", {
           id: "gridlock-all",
-          label: "Tile All Windows",
-          description: "Arrange all visible panes into a tiled grid",
-          keywords: ["grid", "gridlock", "tile", "arrange", "windows", "layout"],
+          label: "Tidy Windows",
+          description: "Arrange every window into one tiled layout",
+          keywords: ["tidy", "grid", "gridlock", "tile", "arrange", "windows", "layout"],
           shortcut: "GL",
           category: "config",
           execute: async () => {
@@ -215,7 +215,7 @@ describe("CommandBar", () => {
     await testSetup.renderOnce();
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Tile All Windows");
+    expect(frame).toContain("Tidy Windows");
     expect(frame).toContain("GL");
 
     await act(async () => {

@@ -5,7 +5,6 @@ import {
   type GridlockRect,
 } from "./gridlock-inference";
 import {
-  getDockedInstanceIds,
   getDockLeafLayouts,
   type LayoutBounds,
 } from "./dock-tree";
@@ -18,7 +17,6 @@ import {
 const BURIED_VISIBLE_RATIO = 0.2;
 const TITLE_BAR_HEIGHT_RATIO = 0.12;
 const TIDY_FLOATING_THRESHOLD = 3;
-export const TIDY_WINDOW_LIMIT = 6;
 
 type Rect = Pick<FloatingPaneEntry, "x" | "y" | "width" | "height">;
 
@@ -27,16 +25,6 @@ export interface FloatingPaneVisibility {
   buried: boolean;
   visibleRatio: number;
   titleBarVisibleRatio: number;
-}
-
-export interface TidyWindowsPlan {
-  show: boolean;
-  requiresChoice: boolean;
-  capacity: number;
-  buriedCount: number;
-  visibleCount: number;
-  floatingPanes: FloatingPaneVisibility[];
-  selectedFloatingPaneIds: string[];
 }
 
 function rectArea(rect: Rect): number {
@@ -97,49 +85,22 @@ export function analyzeFloatingPaneVisibility(layout: LayoutConfig): FloatingPan
   });
 }
 
-export function planTidyWindows(
-  layout: LayoutConfig,
-  focusedPaneId: string | null,
-  limit = TIDY_WINDOW_LIMIT,
-): TidyWindowsPlan {
-  const floatingPanes = analyzeFloatingPaneVisibility(layout);
-  const buriedCount = floatingPanes.filter((pane) => pane.buried).length;
-  const capacity = Math.max(0, limit - getDockedInstanceIds(layout.dockRoot).length);
-  const focusedFloating = floatingPanes.find((pane) => pane.instanceId === focusedPaneId);
-  const preferred = [
-    ...(focusedFloating ? [focusedFloating] : []),
-    ...floatingPanes.filter((pane) => !pane.buried && pane.instanceId !== focusedPaneId),
-  ];
-  const selectedFloatingPaneIds = preferred.slice(0, capacity).map((pane) => pane.instanceId);
-
-  return {
-    show: layout.floating.length >= TIDY_FLOATING_THRESHOLD || buriedCount > 0,
-    requiresChoice: buriedCount > 0 || selectedFloatingPaneIds.length < layout.floating.length,
-    capacity,
-    buriedCount,
-    visibleCount: floatingPanes.length - buriedCount,
-    floatingPanes,
-    selectedFloatingPaneIds,
-  };
+export function shouldShowTidyWindows(layout: LayoutConfig): boolean {
+  return layout.floating.length >= TIDY_FLOATING_THRESHOLD
+    || analyzeFloatingPaneVisibility(layout).some((pane) => pane.buried);
 }
 
 function gridlockPanes(
   layout: LayoutConfig,
-  selectedFloatingPaneIds: ReadonlySet<string> | null,
   bounds: LayoutBounds,
   paneTypes?: PaneTypeAvailability,
 ): LayoutConfig {
   const visibleLayout = paneTypes
     ? removeUnavailablePaneTypes(layout, paneTypes)
     : layout;
-  const selectedFloating = selectedFloatingPaneIds
-    ? visibleLayout.floating.filter((entry) => selectedFloatingPaneIds.has(entry.instanceId))
-    : visibleLayout.floating;
-  if (selectedFloatingPaneIds && selectedFloating.length === 0) return visibleLayout;
-
   const dockedRects: GridlockRect[] = getDockLeafLayouts(visibleLayout, bounds)
     .map((leaf) => ({ instanceId: leaf.instanceId, ...leaf.rect }));
-  const floatingRects: GridlockRect[] = selectedFloating.map((entry) => ({
+  const floatingRects: GridlockRect[] = visibleLayout.floating.map((entry) => ({
     instanceId: entry.instanceId,
     x: entry.x,
     y: entry.y,
@@ -152,20 +113,8 @@ function gridlockPanes(
   return finalizeLayout({
     ...visibleLayout,
     dockRoot: inferDockTreeFromRects(allRects, boundsForRects(allRects)),
-    floating: selectedFloatingPaneIds
-      ? visibleLayout.floating.filter((entry) => !selectedFloatingPaneIds.has(entry.instanceId))
-      : [],
+    floating: [],
   });
-}
-
-export function gridlockFloatingPanes(
-  layout: LayoutConfig,
-  floatingPaneIds: readonly string[],
-  bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
-  paneTypes?: PaneTypeAvailability,
-): LayoutConfig {
-  if (floatingPaneIds.length === 0) return layout;
-  return gridlockPanes(layout, new Set(floatingPaneIds), bounds, paneTypes);
 }
 
 export function gridlockAllPanes(
@@ -173,5 +122,5 @@ export function gridlockAllPanes(
   bounds: LayoutBounds = { x: 0, y: 0, width: 120, height: 40 },
   paneTypes?: PaneTypeAvailability,
 ): LayoutConfig {
-  return gridlockPanes(layout, null, bounds, paneTypes);
+  return gridlockPanes(layout, bounds, paneTypes);
 }
