@@ -158,7 +158,9 @@ function AppInner({
       const type = notification.type ?? "info";
       let toastId: string | number | undefined;
       const options = {
-        duration: notification.duration,
+        title: notification.title,
+        subtitle: notification.subtitle,
+        duration: notification.persistent ? 0 : notification.duration,
         action: notification.action
           ? {
             label: notification.action.label,

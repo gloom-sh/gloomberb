@@ -1,6 +1,8 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
 export interface ToastOptions {
+  title?: string;
+  subtitle?: string;
   duration?: number;
   action?: {
     label: string;
