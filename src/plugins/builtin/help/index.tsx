@@ -245,7 +245,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
               />
               <ShortcutRow
                 badges={[platformShortcut(["Shift", "G"])]}
-                description="Gridlock all windows."
+                description="Tile all windows."
               />
               <ShortcutRow
                 badges={[platformShortcut(["Shift", "M"])]}

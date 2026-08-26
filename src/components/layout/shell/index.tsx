@@ -519,7 +519,6 @@ export function Shell({
     bounds,
     closePaneMenu,
     contentHeight,
-    dispatch,
     dockGeometryOptions,
     dockDividerLayouts,
     dockLeafLayouts,

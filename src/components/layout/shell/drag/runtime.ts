@@ -15,7 +15,6 @@ import {
   type LayoutBounds,
   type ResolvedPane,
 } from "../../../../plugins/pane-manager";
-import type { AppAction } from "../../../../state/app/context";
 import type { LayoutConfig } from "../../../../types/config";
 import {
   constrainFloatingRectToBounds,
@@ -165,7 +164,6 @@ interface UseShellPointerRuntimeOptions {
   bounds: LayoutBounds;
   closePaneMenu: () => void;
   contentHeight: number;
-  dispatch: Dispatch<AppAction>;
   dockGeometryOptions: DockGeometryOptions;
   dockDividerLayouts: DockDividerLayout[];
   dockLeafLayouts: DockLeafLayout[];
@@ -200,7 +198,6 @@ export function useShellPointerRuntime({
   bounds,
   closePaneMenu,
   contentHeight,
-  dispatch,
   dockGeometryOptions,
   dockDividerLayouts,
   dockLeafLayouts,
@@ -229,7 +226,6 @@ export function useShellPointerRuntime({
     appHeaderHeight,
     bounds,
     contentHeight,
-    dispatch,
     dockGeometryOptions,
     dockLeafLayouts,
     focusPane,

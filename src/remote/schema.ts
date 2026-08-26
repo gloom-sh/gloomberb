@@ -43,7 +43,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op("layout.delete", "Delete a layout.", "{ index: number }", "local-write"),
   op("layout.undo", "Undo last layout change.", "{}", "local-write"),
   op("layout.redo", "Redo last layout change.", "{}", "local-write"),
-  op("layout.gridlock", "Gridlock all visible panes into a dense layout.", "{}", "local-write"),
+  op("layout.gridlock", "Tile all visible panes into a dense layout.", "{}", "local-write"),
   op("layout.closeFloating", "Close all floating panes in the active layout.", "{}", "local-write"),
   op("layout.placePane", "Move a pane to a layout region.", "{ paneId: string, region: 'left' | 'right' | 'top' | 'bottom' | 'floating', relativeTo?: string }", "local-write"),
   op("layout.focusRegion", "Focus a pane by visual layout region.", "{ region: 'left' | 'right' | 'top' | 'bottom' | 'center' }", "local-write"),
