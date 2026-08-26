@@ -424,8 +424,8 @@ export function Shell({
     [config, paneState],
   );
   const getPaneTitle = useCallback(
-    (pane: ResolvedPane): string => getPaneDisplayTitle(titleState, pane.instance, pane.def),
-    [titleState],
+    (pane: ResolvedPane): string => getPaneDisplayTitle(titleState, pane.instance, pane.def, pluginRegistry.panes),
+    [pluginRegistry.panes, titleState],
   );
   const handlePaneQuickSetting = useCallback((paneId: string, key: string, event: any) => {
     event?.preventDefault?.();

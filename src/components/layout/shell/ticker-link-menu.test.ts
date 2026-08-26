@@ -8,6 +8,7 @@ import {
   type LayoutConfig,
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
+import { getPaneDisplayTitle } from "../pane/title";
 import { tickerLinkMenuItems } from "./ticker-link-menu";
 
 const panes = new Map<string, PaneDef>([
@@ -32,6 +33,10 @@ describe("tickerLinkMenuItems", () => {
     state.paneState["portfolio-list:main"] = { collectionId: "main", cursorSymbol: "AAPL" };
     const target = findPaneInstance(state.config.layout, "ticker-detail:main")!;
     let layout: LayoutConfig = state.config.layout;
+
+    expect(getPaneDisplayTitle(state, target, panes.get(TICKER_RESEARCH_PANE_ID)!, panes)).toBe(
+      "AAPL  ⧉ Linked to Main Portfolio",
+    );
 
     tickerLinkMenuItems({
       instance: target,

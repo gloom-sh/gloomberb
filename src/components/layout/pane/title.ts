@@ -1,9 +1,16 @@
 import { resolveCollectionForPane, resolveTickerForPane, type AppState } from "../../../state/app/context";
-import { t } from "../../../i18n";
-import { TICKER_RESEARCH_PANE_ID, type PaneInstanceConfig } from "../../../types/config";
+import { t, tf } from "../../../i18n";
+import {
+  findPaneInstance,
+  TICKER_RESEARCH_PANE_ID,
+  type PaneInstanceConfig,
+} from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
 
-export function getPaneDisplayTitle(
+/** Single-cell link glyph: emoji link icons render double-width in terminals. */
+const LINK_GLYPH = "\u29c9";
+
+function getBasePaneDisplayTitle(
   state: Pick<AppState, "config" | "paneState">,
   instance: PaneInstanceConfig,
   paneDef: PaneDef,
@@ -43,4 +50,22 @@ export function getPaneDisplayTitle(
 
   const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
   return ticker ? `${t(paneDef.name)}: ${ticker}` : t(paneDef.name);
+}
+
+export function getPaneDisplayTitle(
+  state: Pick<AppState, "config" | "paneState">,
+  instance: PaneInstanceConfig,
+  paneDef: PaneDef,
+  panes?: ReadonlyMap<string, PaneDef>,
+): string {
+  const title = getBasePaneDisplayTitle(state, instance, paneDef);
+  if (instance.paneId !== TICKER_RESEARCH_PANE_ID || instance.binding?.kind !== "follow" || !panes) {
+    return title;
+  }
+
+  const source = findPaneInstance(state.config.layout, instance.binding.sourceInstanceId);
+  const sourceDef = source ? panes.get(source.paneId) : null;
+  if (!source || !sourceDef) return title;
+  const sourceTitle = getBasePaneDisplayTitle(state, source, sourceDef);
+  return `${title}  ${LINK_GLYPH} ${tf("Linked to {source}", { source: sourceTitle })}`;
 }

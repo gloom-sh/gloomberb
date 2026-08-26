@@ -55,7 +55,7 @@ export function tickerLinkMenuItems({
   return listVisibleTickerSourcePanes(layout, panes).flatMap((source): ContextMenuItem[] => {
     const paneDef = panes.get(source.paneId);
     if (!paneDef) return [];
-    const title = getPaneDisplayTitle(state, source, paneDef);
+    const title = getPaneDisplayTitle(state, source, paneDef, panes);
 
     if (source.instanceId !== sourceInstanceId) {
       return [{

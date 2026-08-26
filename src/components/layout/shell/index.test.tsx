@@ -478,8 +478,8 @@ describe("Shell", () => {
 
     const frame = testSetup!.captureCharFrame();
     const rows = frame.split("\n");
-    expect(rows[2]?.indexOf("┌─:: Main Portfolio") ?? -1).toBeLessThan(0);
-    expect(rows[5]?.indexOf("┌─:: Main Portfolio")).toBeGreaterThanOrEqual(14);
+    expect(rows[2]?.indexOf(":: Main Portfolio") ?? -1).toBeLessThan(0);
+    expect(rows[5]?.indexOf(":: Main Portfolio")).toBeGreaterThanOrEqual(14);
 
     await act(async () => {
       await testSetup!.mockMouse.release(16, 6);
