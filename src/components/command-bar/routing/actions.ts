@@ -1,4 +1,5 @@
 import { useCallback, type Dispatch, type MutableRefObject } from "react";
+import type { LayoutMarketplaceRuntime } from "../../../layout-marketplace/use-marketplace";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { TickerFinancials } from "../../../types/financials";
@@ -40,6 +41,7 @@ interface UseCommandBarRouteActionsOptions {
   closeAll: CloseAll;
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
+  marketplace: LayoutMarketplaceRuntime;
   notify: Notify;
   notifyGridlockRevert: () => void;
   openAddToPortfolioWorkflow: (ticker: TickerRecord, preferredPortfolioId?: string | null) => void;
@@ -65,6 +67,7 @@ export function useCommandBarRouteActions({
   closeAll,
   dispatch,
   duplicatePane,
+  marketplace,
   notify,
   notifyGridlockRevert,
   openAddToPortfolioWorkflow,
@@ -104,6 +107,7 @@ export function useCommandBarRouteActions({
     confirmDangerousActions: options?.confirmDangerousActions,
     dispatch,
     duplicatePane,
+    marketplace,
     notifyGridlockRevert,
     openBuiltInWorkflow,
     openInlineConfirm,
@@ -116,6 +120,7 @@ export function useCommandBarRouteActions({
     closeAll,
     dispatch,
     duplicatePane,
+    marketplace,
     notifyGridlockRevert,
     openBuiltInWorkflow,
     openInlineConfirm,

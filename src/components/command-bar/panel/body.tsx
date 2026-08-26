@@ -9,6 +9,7 @@ import {
   CommandBarMultiSelectBody,
   isMultiSelectPickerRoute,
 } from "../multi-select-picker";
+import { CommandBarLayoutPreview } from "../layout-preview";
 import { ThemePicker } from "../theme-picker";
 import type {
   CommandBarPanelPalette,
@@ -40,6 +41,7 @@ export function CommandBarPanelBody({
   currentRoute,
   getWorkflowInputRef,
   labelWidth,
+  layoutPreviewRows,
   listBodyHeight,
   nativeListRows,
   nativeListScrollRef,
@@ -67,6 +69,7 @@ export function CommandBarPanelBody({
   rootGhostSuffix,
   rootQueryLength,
   rootShortcutFeedback,
+  selectedLayoutPreview,
   themePickerActive,
   themePickerFilter,
   themePickerRef,
@@ -194,6 +197,14 @@ export function CommandBarPanelBody({
             onHoverIndex={onListHoverIndex}
             onListScroll={onListScroll}
             onRowMouseDown={onListRowMouseDown}
+          />
+        )}
+        {selectedLayoutPreview && layoutPreviewRows > 0 && (
+          <CommandBarLayoutPreview
+            contentPadding={contentPadding}
+            height={layoutPreviewRows}
+            layout={selectedLayoutPreview}
+            width={queryDisplayWidth}
           />
         )}
         {currentRoute?.kind === "workflow" && (

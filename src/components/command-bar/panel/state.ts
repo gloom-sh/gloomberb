@@ -8,6 +8,7 @@ import {
   resolveCommandBarPanelLayout,
 } from "./layout";
 import type { CommandBarRoute } from "../workflow/types";
+import type { LayoutConfig } from "../../../types/config";
 
 type RefLike<T> = { current: T };
 
@@ -91,10 +92,18 @@ export function useCommandBarPanelState({
     });
     return indexByGlobalIndex;
   }, [listRows]);
+  // Only layout rows carry a preview, so the row itself decides whether the
+  // schematic belongs on screen; no separate mode check is needed.
+  const selectedLayoutPreview = useMemo<LayoutConfig | null>(() => {
+    if (!visibleListState || themePickerActive || showCustomMultiSelectPicker) return null;
+    const selectedRow = listRows.find((row) => row.kind === "item" && row.globalIdx === visibleListState.selectedIdx);
+    return (selectedRow?.kind === "item" ? selectedRow.item.previewLayout : undefined) ?? null;
+  }, [listRows, showCustomMultiSelectPicker, themePickerActive, visibleListState]);
   const panelLayout = useMemo(() => resolveCommandBarPanelLayout({
     cellHeightPx,
     cellWidthPx,
     currentRoute,
+    hasSelectedLayoutPreview: selectedLayoutPreview != null,
     hasVisibleListState,
     nativeListRowCount: nativeListRows.length,
     nativePaneChrome,
@@ -110,6 +119,7 @@ export function useCommandBarPanelState({
     hasVisibleListState,
     nativeListRows.length,
     nativePaneChrome,
+    selectedLayoutPreview,
     showCustomMultiSelectPicker,
     termHeight,
     termWidth,
@@ -132,6 +142,7 @@ export function useCommandBarPanelState({
     listRows,
     nativeListRows,
     panelLayout,
+    selectedLayoutPreview,
     selectedScrollRowIndex: selectedListRowIndex,
     visibleListState,
   };

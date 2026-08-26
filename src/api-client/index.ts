@@ -71,6 +71,12 @@ import type {
   ScannerKind,
 } from "./types";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
+import {
+  parseMarketplaceLayoutEntry,
+  parseMarketplaceLayoutList,
+  type LayoutMarketplaceEntry,
+  type LayoutMarketplacePayload,
+} from "../layout-marketplace/payload";
 
 export type * from "./types";
 export { setCloudApiFetchTransport } from "./request";
@@ -321,6 +327,29 @@ class GloomApiClient {
         baseRevision: options?.baseRevision ?? null,
       }),
     });
+  }
+
+  async listMarketplaceLayouts(options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry[]> {
+    const items = parseMarketplaceLayoutList(await this.request<unknown>("/layouts", {
+      method: "GET",
+      signal: options?.signal,
+    }));
+    if (!items) throw new Error("The layout marketplace returned invalid data.");
+    return items;
+  }
+
+  async publishMarketplaceLayout(
+    name: string,
+    payload: LayoutMarketplacePayload,
+    options?: { signal?: AbortSignal },
+  ): Promise<LayoutMarketplaceEntry> {
+    const item = parseMarketplaceLayoutEntry(await this.request<unknown>("/layouts", {
+      method: "POST",
+      body: JSON.stringify({ name: name.trim(), ...payload }),
+      signal: options?.signal,
+    }));
+    if (!item) throw new Error("The layout marketplace returned invalid data.");
+    return item;
   }
 
   async updateSyncSettings(update: Partial<SyncSettings>): Promise<SyncSettings> {

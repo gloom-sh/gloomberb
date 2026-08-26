@@ -1,3 +1,4 @@
+import type { LayoutConfig } from "../../../types/config";
 import { buildSections, type CommandBarSectionOrder } from "../view-model";
 
 export interface ResultItem {
@@ -11,6 +12,8 @@ export interface ResultItem {
   searchText?: string;
   /** Tints the trailing marker and the section heading with the AI accent. */
   accent?: boolean;
+  /** Layout this row would apply; selecting it shows a schematic when the panel has room. */
+  previewLayout?: LayoutConfig;
   /**
    * Set false for rows that answer nothing on their own — a placeholder, or an
    * offer the user never asked for. The list skips them when it picks the

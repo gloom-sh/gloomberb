@@ -114,6 +114,7 @@ export type AppAction =
   | { type: "SWITCH_LAYOUT"; index: number }
   | { type: "REORDER_LAYOUT"; fromIndex: number; toIndex: number }
   | { type: "NEW_LAYOUT"; name: string }
+  | { type: "INSTALL_LAYOUT_COPY"; name: string; layout: LayoutConfig }
   | { type: "DELETE_LAYOUT"; index: number }
   | { type: "RENAME_LAYOUT"; index: number; name: string }
   | { type: "DUPLICATE_LAYOUT"; index: number }

@@ -49,6 +49,11 @@ function createLayoutItemsContext(
     dispatch: (_action: AppAction) => {},
     duplicatePane: () => {},
     focusedPaneId: state.focusedPaneId,
+    marketplace: {
+      state: { status: "signed-out", items: [] },
+      refresh: () => {},
+      publish: async () => { throw new Error("unused"); },
+    },
     notifyGridlockRevert: () => {},
     openBuiltInWorkflow: () => {},
     openInlineConfirm: (confirmOptions) => {

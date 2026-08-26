@@ -140,8 +140,8 @@ export const commands: Command[] = [
   {
     id: "layout",
     prefix: "LAY",
-    label: "Layout Actions",
-    description: "Organize panes and saved layouts",
+    label: "Layouts",
+    description: "Switch, discover, and organize layouts",
     hasArg: true,
     argPlaceholder: "action",
     category: "Config",

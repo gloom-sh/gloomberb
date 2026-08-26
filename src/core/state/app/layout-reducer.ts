@@ -14,6 +14,15 @@ import type { AppAction, AppState } from "./types";
 
 const MAX_LAYOUT_HISTORY = 50;
 
+function availableLayoutName(name: string, layouts: SavedLayout[]): string {
+  const base = name.trim() || "Community Layout";
+  const existing = new Set(layouts.map((layout) => layout.name.toLowerCase()));
+  if (!existing.has(base.toLowerCase())) return base;
+  let suffix = 2;
+  while (existing.has(`${base} (${suffix})`.toLowerCase())) suffix += 1;
+  return `${base} (${suffix})`;
+}
+
 export function reduceLayoutAction(state: AppState, action: AppAction): AppState | undefined {
   switch (action.type) {
     case "PUSH_LAYOUT_HISTORY": {
@@ -145,6 +154,33 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
       }, {
         ...currentConfig,
         layout: cloneLayout(newLayout.layout),
+        layouts,
+        activeLayoutIndex: layouts.length - 1,
+      }, {
+        paneState: {},
+        focusedPaneId: null,
+      });
+    }
+
+    case "INSTALL_LAYOUT_COPY": {
+      const currentConfig = syncConfigActiveLayoutState(
+        state.config,
+        state.paneState,
+        state.focusedPaneId,
+        state.activePanel,
+      );
+      const installed: SavedLayout = {
+        name: availableLayoutName(action.name, currentConfig.layouts),
+        layout: cloneLayout(action.layout),
+        paneState: {},
+      };
+      const layouts = [...currentConfig.layouts, installed];
+      return withFocusedPane({
+        ...state,
+        layoutHistory: setHistoryForIndex(state.layoutHistory, layouts.length - 1, { past: [], future: [] }),
+      }, {
+        ...currentConfig,
+        layout: cloneLayout(installed.layout),
         layouts,
         activeLayoutIndex: layouts.length - 1,
       }, {

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
+import { publishableMarketplaceLayout } from "../../../layout-marketplace/payload";
+import { createDefaultConfig } from "../../../types/config";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { CommandDef, CommandShortcutArgContext, PaneTemplateCreateOptions, WizardStep } from "../../../types/plugin";
@@ -19,6 +22,11 @@ afterEach(() => {
     testSetup.renderer.destroy();
     testSetup = undefined;
   }
+  apiClient.dispose();
+  apiClient.setSessionToken(null);
+  apiClient.setWebSocketToken(null);
+  apiClient.restoreCachedUser(null);
+  setCloudApiFetchTransport(null);
 });
 
 const { waitForFrameToContain, clickFrameText } = createCommandBarTestControls(() => testSetup!);
@@ -81,6 +89,54 @@ function mutablePaneRegistryMap(map: ReadonlyMap<string, unknown>): Map<string, 
 }
 
 describe("CommandBar", () => {
+  test("keeps Discover account-gated while local layouts remain available", async () => {
+    let requests = 0;
+    setCloudApiFetchTransport(async () => {
+      requests += 1;
+      return new Response(JSON.stringify({ items: [] }));
+    });
+    testSetup = await testRender(<CommandBarHarness query="LAY" />, {
+      width: 100,
+      height: 40,
+    });
+
+    await testSetup.renderOnce();
+    await Bun.sleep(0);
+    await testSetup.renderOnce();
+
+    const frame = testSetup.captureCharFrame();
+    expect(frame).toContain("Your Layouts");
+    expect(frame).toContain("Discover");
+    expect(frame).toContain("Log in to discover layouts");
+    expect(frame.indexOf("Your Layouts")).toBeLessThan(frame.indexOf("Discover"));
+    expect(requests).toBe(0);
+  });
+
+  test("loads community layouts for a signed-in account", async () => {
+    const payload = publishableMarketplaceLayout(createDefaultConfig("/tmp/command-bar-marketplace-test").layout);
+    apiClient.setSessionToken("marketplace-test-session");
+    apiClient.restoreCachedUser({ id: "user-1", emailVerified: true });
+    setCloudApiFetchTransport(async () => new Response(JSON.stringify({
+      items: [{
+        id: "0123456789abcdef0123456789abcdef",
+        name: "Earnings War Room",
+        ...payload,
+        author: { username: "analyst", displayName: "Analyst" },
+        publishedAt: "2026-08-26T00:00:00.000Z",
+      }],
+    })));
+    testSetup = await testRender(<CommandBarHarness query="LAY" />, {
+      width: 100,
+      height: 40,
+    });
+
+    await testSetup.renderOnce();
+    const frame = await waitForFrameToContain("Earnings War Room");
+
+    expect(frame).toContain("@analyst");
+    expect(frame.indexOf("Your Layouts")).toBeLessThan(frame.indexOf("Discover"));
+  });
+
   test("keeps generic command filtering separate from ticker search", async () => {
     const searchQueries: string[] = [];
     testSetup = await testRender(<CommandBarHarness

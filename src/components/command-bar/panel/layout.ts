@@ -1,5 +1,6 @@
 import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { resolveAppHeaderHeightCells } from "../../layout/shell/chrome";
+import { resolveLayoutPreviewRows } from "../layout-preview";
 import { estimateWorkflowBodyRows } from "../workflow/fields";
 import type { CommandBarRoute } from "../workflow/types";
 
@@ -8,6 +9,7 @@ export interface CommandBarPanelLayout {
   baseBodyHeight: number;
   bodyHeight: number;
   contentPadding: number;
+  layoutPreviewRows: number;
   listBodyHeight: number;
   nativeOccluderRect: LayoutBounds;
   nativePanelPaddingColumns: number;
@@ -23,6 +25,7 @@ export function resolveCommandBarPanelLayout({
   cellHeightPx,
   cellWidthPx,
   currentRoute,
+  hasSelectedLayoutPreview,
   hasVisibleListState,
   nativeListRowCount,
   nativePaneChrome,
@@ -35,6 +38,7 @@ export function resolveCommandBarPanelLayout({
   cellHeightPx: number;
   cellWidthPx: number;
   currentRoute: CommandBarRoute | null;
+  hasSelectedLayoutPreview: boolean;
   hasVisibleListState: boolean;
   nativeListRowCount: number;
   nativePaneChrome: boolean;
@@ -59,14 +63,9 @@ export function resolveCommandBarPanelLayout({
     && hasVisibleListState
     && !themePickerActive
     && !showCustomMultiSelectPicker;
-  const listBodyHeight = shouldUseCompactListHeight
+  const fullListBodyHeight = shouldUseCompactListHeight
     ? Math.min(baseBodyHeight, Math.max(1, nativeListRowCount))
     : baseBodyHeight;
-  const bodyHeight = currentRoute?.kind === "workflow"
-    ? workflowBodyHeight
-    : shouldUseCompactListHeight
-      ? listBodyHeight
-      : baseBodyHeight;
   const nativePanelPaddingColumns = nativePaneChrome
     ? Math.ceil((14 * 2) / Math.max(1, cellWidthPx))
     : 0;
@@ -78,6 +77,23 @@ export function resolveCommandBarPanelLayout({
     || showCustomMultiSelectPicker)
     ? 1
     : currentRoute ? 3 : 2;
+  const layoutPreviewRows = resolveLayoutPreviewRows({
+    hasSelectedLayoutPreview,
+    chromeRows: nativeBodyChromeRows + nativePanelPaddingRows,
+    growPanel: shouldUseCompactListHeight,
+    listBodyHeight: fullListBodyHeight,
+    termHeight,
+  });
+  // Native chrome sizes the panel to its rows, so the preview adds height there
+  // and takes it from the fixed-height list everywhere else.
+  const listBodyHeight = shouldUseCompactListHeight
+    ? fullListBodyHeight
+    : fullListBodyHeight - layoutPreviewRows;
+  const bodyHeight = currentRoute?.kind === "workflow"
+    ? workflowBodyHeight
+    : shouldUseCompactListHeight
+      ? fullListBodyHeight + layoutPreviewRows
+      : baseBodyHeight;
   const barHeight = nativePaneChrome
     ? bodyHeight + nativeBodyChromeRows + nativePanelPaddingRows
     : bodyHeight + 7;
@@ -94,6 +110,7 @@ export function resolveCommandBarPanelLayout({
     baseBodyHeight,
     bodyHeight,
     contentPadding,
+    layoutPreviewRows,
     listBodyHeight,
     nativeOccluderRect: {
       x: barLeft,

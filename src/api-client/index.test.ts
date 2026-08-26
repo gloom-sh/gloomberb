@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
 import type { AuthUser } from "./index";
 import { apiClient, setCloudApiFetchTransport } from "./index";
+import { publishableMarketplaceLayout } from "../layout-marketplace/payload";
+import { createDefaultConfig } from "../types/config";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
@@ -106,6 +108,38 @@ afterEach(() => {
   apiClient.setWebSocketToken(null);
   apiClient.setCookieSessionMode(false);
   jest.useRealTimers();
+});
+
+describe("apiClient layout marketplace", () => {
+  test("lists and publishes validated layouts through authenticated transport", async () => {
+    const payload = publishableMarketplaceLayout(createDefaultConfig("/tmp/api-layout-marketplace-test").layout);
+    const entry = {
+      id: "0123456789abcdef0123456789abcdef",
+      name: "Research Desk",
+      ...payload,
+      author: { username: "analyst", displayName: "Analyst" },
+      publishedAt: "2026-08-26T00:00:00.000Z",
+    };
+    const calls: Array<{ url: string; method: string; body?: unknown }> = [];
+    apiClient.setSessionToken("marketplace-session");
+    setCloudApiFetchTransport(async (url, init) => {
+      calls.push({
+        url,
+        method: init?.method ?? "GET",
+        ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
+      });
+      return createResponse(init?.method === "POST" ? entry : { items: [entry] });
+    });
+
+    await expect(apiClient.listMarketplaceLayouts()).resolves.toEqual([entry]);
+    await expect(apiClient.publishMarketplaceLayout(entry.name, payload)).resolves.toEqual(entry);
+
+    expect(calls.map((call) => [new URL(call.url).pathname, call.method])).toEqual([
+      ["/layouts", "GET"],
+      ["/layouts", "POST"],
+    ]);
+    expect(calls[1]?.body).toMatchObject({ name: "Research Desk", schemaVersion: 1 });
+  });
 });
 
 describe("apiClient auth cookies", () => {

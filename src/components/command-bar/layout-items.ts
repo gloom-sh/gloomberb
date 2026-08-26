@@ -1,3 +1,4 @@
+import type { LayoutMarketplaceRuntime } from "../../layout-marketplace/use-marketplace";
 import type { PluginRegistry } from "../../plugins/registry";
 import { getLayoutPreview } from "../../plugins/pane-manager";
 import type { AppAction, AppState } from "../../state/app/context";
@@ -8,6 +9,10 @@ import type { ResultItem } from "./list/model";
 import type { CommandBarRoute } from "./workflow/types";
 import { buildCurrentLayoutItems } from "./layout-items/current-layout";
 import { buildFocusedPaneLayoutItems } from "./layout-items/focused-pane";
+import {
+  buildDiscoverLayoutItems,
+  buildPublishLayoutItem,
+} from "./layout-items/marketplace";
 import type { CloseAll, LayoutItemsContext, OpenInlineConfirm } from "./layout-items/types";
 import {
   buildWindowModeResultItems,
@@ -24,6 +29,7 @@ export function buildLayoutResultItems({
   confirmDangerousActions,
   dispatch,
   duplicatePane,
+  marketplace,
   notifyGridlockRevert,
   openBuiltInWorkflow,
   openInlineConfirm,
@@ -37,6 +43,7 @@ export function buildLayoutResultItems({
   confirmDangerousActions?: boolean;
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
+  marketplace: LayoutMarketplaceRuntime;
   notifyGridlockRevert: () => void;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
@@ -52,6 +59,7 @@ export function buildLayoutResultItems({
     dispatch,
     duplicatePane,
     focusedPaneId: state.focusedPaneId,
+    marketplace,
     notifyGridlockRevert,
     openBuiltInWorkflow,
     openInlineConfirm,
@@ -62,9 +70,11 @@ export function buildLayoutResultItems({
     ...(confirmDangerousActions === undefined ? {} : { confirmDangerousActions }),
   };
   const layoutItems = [
-    ...buildFocusedPaneLayoutItems(context),
-    ...buildCurrentLayoutItems(context),
     ...buildSavedLayoutItems(context),
+    buildPublishLayoutItem(context),
+    ...buildDiscoverLayoutItems(context),
+    ...buildCurrentLayoutItems(context),
+    ...buildFocusedPaneLayoutItems(context),
   ];
 
   return query
@@ -82,8 +92,9 @@ function buildSavedLayoutItems({
     label: savedLayout.name,
     detail: index === state.config.activeLayoutIndex ? "Current layout" : "Switch to this saved layout",
     right: getLayoutPreview(savedLayout.layout),
-    category: "Saved Layouts",
+    category: "Your Layouts",
     kind: "action",
+    previewLayout: savedLayout.layout,
     current: index === state.config.activeLayoutIndex,
     action: () => {
       dispatch({ type: "SWITCH_LAYOUT", index });

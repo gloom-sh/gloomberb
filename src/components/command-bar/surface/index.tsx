@@ -4,6 +4,7 @@ import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { usePlanAccess } from "../../../plugins/builtin/shared/plan-access";
+import { useLayoutMarketplace } from "../../../layout-marketplace/use-marketplace";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
 import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
@@ -108,6 +109,12 @@ export function CommandBar({
     initialQuery: state.commandBarQuery,
     restoreThemePreview,
   });
+  const planAccess = usePlanAccess();
+  const marketplace = useLayoutMarketplace(
+    (!currentRoute && rootModeInfo.kind === "layout")
+      || (currentRoute?.kind === "mode" && currentRoute.screen === "layout"),
+    planAccess.signedIn,
+  );
 
   const {
     adaptTickerSearchRouteResult,
@@ -162,6 +169,7 @@ export function CommandBar({
     dataProvider,
     dispatch,
     focusedPaneId: state.focusedPaneId,
+    marketplace,
     onCheckForUpdates,
     persistConfig,
     pluginRegistry,
@@ -190,7 +198,6 @@ export function CommandBar({
     activeTicker: activeTickerSymbol,
   }), [activeTickerSymbol, availableCommands, getAvailablePaneShortcutTemplates, getAvailablePluginCommands, rootQuery]);
 
-  const planAccess = usePlanAccess();
   const buildAssistInventory = useCallback(() => buildAssistCommandInventory({
     commands: availableCommands,
     pluginCommands: getAvailablePluginCommands(),
