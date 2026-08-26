@@ -179,17 +179,17 @@ describe("CommandBar", () => {
     expect(testSetup.captureCharFrame()).not.toContain("GitHub Light");
   });
 
-  test("finds the tidy windows command from the root query", async () => {
+  test("finds the tidy windows command by its snap alias", async () => {
     const calls: string[] = [];
 
     testSetup = await testRender(<CommandBarHarness
-      query="tidy"
+      query="snap"
       configurePluginRegistry={(pluginRegistry) => {
         (pluginRegistry.commands as Map<string, any>).set("gridlock-all", {
           id: "gridlock-all",
           label: "Tidy Windows",
           description: "Arrange every window into one tiled layout",
-          keywords: ["tidy", "grid", "gridlock", "tile", "arrange", "windows", "layout"],
+          keywords: ["tidy", "snap", "grid", "gridlock", "tile", "arrange", "organize", "organise", "cleanup", "dock", "floating", "windows", "layout"],
           shortcut: "GL",
           category: "config",
           execute: async () => {
