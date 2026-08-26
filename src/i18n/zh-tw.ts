@@ -13,6 +13,7 @@ export const zhTW: Record<string, string> = {
   "Cancel": "取消",
   "Close": "關閉",
   "Open": "開啟",
+  "Linked to {source}": "已連結至 {source}",
   "Working…": "處理中…",
   "Searching…": "搜尋中…",
   "Loading...": "載入中...",

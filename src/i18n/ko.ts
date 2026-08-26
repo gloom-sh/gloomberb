@@ -11,6 +11,7 @@ export const ko: Record<string, string> = {
   "Cancel": "취소",
   "Close": "닫기",
   "Open": "열기",
+  "Linked to {source}": "{source}에 연결됨",
   "Working…": "처리 중…",
   "Searching…": "검색 중…",
   "Loading...": "불러오는 중...",

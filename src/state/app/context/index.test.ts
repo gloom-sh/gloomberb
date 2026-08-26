@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { appReducer, createInitialState, resolveCollectionForPane, resolveTickerForPane } from "./index";
-import { cloneLayout, createDefaultConfig, createPaneInstance } from "../../../types/config";
+import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance } from "../../../types/config";
 import type { AppSessionSnapshot } from "../../../core/state/session-persistence";
+import { removePane } from "../../../plugins/pane-manager";
 import { buildBrokerPortfolioId } from "../../../utils/broker-instances";
 
 describe("resolveTickerForPane", () => {
@@ -16,6 +17,45 @@ describe("resolveTickerForPane", () => {
 
     expect(resolveTickerForPane(state, "portfolio-list:main")).toBe("AAPL");
     expect(resolveTickerForPane(state, "ticker-detail:main")).toBe("AAPL");
+  });
+
+  test("follows cursor symbols from any ticker source pane", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const source = createPaneInstance("ai-screener", {
+      instanceId: "ai-screener:main",
+      binding: { kind: "none" },
+    });
+    const follower = createPaneInstance("ticker-detail", {
+      instanceId: "ticker-detail:screener",
+      binding: { kind: "follow", sourceInstanceId: source.instanceId },
+    });
+    config.layout.instances.push(source, follower);
+    config.layout.floating.push(
+      { instanceId: source.instanceId, x: 0, y: 0, width: 40, height: 12 },
+      { instanceId: follower.instanceId, x: 1, y: 1, width: 40, height: 12 },
+    );
+
+    const state = createInitialState(config);
+    state.paneState[source.instanceId] = { cursorSymbol: "NVDA" };
+
+    expect(resolveTickerForPane(state, source.instanceId)).toBe("NVDA");
+    expect(resolveTickerForPane(state, follower.instanceId)).toBe("NVDA");
+  });
+
+  test("pins a follower to its last ticker when its source closes", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const state = createInitialState(config);
+    state.paneState["portfolio-list:main"] = { collectionId: "main", cursorSymbol: "AAPL" };
+
+    const next = appReducer(state, {
+      type: "UPDATE_LAYOUT",
+      layout: removePane(state.config.layout, "portfolio-list:main"),
+    });
+
+    expect(findPaneInstance(next.config.layout, "ticker-detail:main")?.binding).toEqual({
+      kind: "fixed",
+      symbol: "AAPL",
+    });
   });
 
   test("uses fixed ticker bindings for pinned panes", () => {

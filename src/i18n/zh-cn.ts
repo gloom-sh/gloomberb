@@ -13,6 +13,7 @@ export const zhCN: Record<string, string> = {
   "Cancel": "取消",
   "Close": "关闭",
   "Open": "打开",
+  "Linked to {source}": "已链接到 {source}",
   "Working…": "处理中…",
   "Searching…": "搜索中…",
   "Loading...": "加载中...",

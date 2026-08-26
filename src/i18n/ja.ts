@@ -13,6 +13,7 @@ export const ja: Record<string, string> = {
   "Cancel": "キャンセル",
   "Close": "閉じる",
   "Open": "開く",
+  "Linked to {source}": "{source} にリンク中",
   "Working…": "処理中…",
   "Searching…": "検索中…",
   "Loading...": "読み込み中...",

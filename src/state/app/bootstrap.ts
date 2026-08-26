@@ -105,13 +105,12 @@ function resolveSymbolForPane(
   const instance = findPaneInstance(config.layout, instanceId);
   if (!instance) return null;
 
-  if (instance.paneId === "portfolio-list") {
-    const cursor = paneStateSeed[instanceId]?.cursorSymbol
-      ?? (typeof sessionSnapshot?.paneState?.[instanceId]?.cursorSymbol === "string"
-        ? sessionSnapshot.paneState[instanceId]?.cursorSymbol as string
-        : null);
-    return cursor && tickerMap.has(cursor) ? cursor : null;
-  }
+  // Any pane can publish a cursor symbol; followers resolve through it.
+  const cursor = paneStateSeed[instanceId]?.cursorSymbol
+    ?? (typeof sessionSnapshot?.paneState?.[instanceId]?.cursorSymbol === "string"
+      ? sessionSnapshot.paneState[instanceId]?.cursorSymbol as string
+      : null);
+  if (cursor) return tickerMap.has(cursor) ? cursor : null;
 
   if (instance.binding?.kind === "fixed") {
     return tickerMap.has(instance.binding.symbol) ? instance.binding.symbol : null;

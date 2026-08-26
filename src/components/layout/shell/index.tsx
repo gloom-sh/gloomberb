@@ -37,6 +37,7 @@ import {
   menuForPane,
   menuItemsForFallback,
 } from "./menu";
+import { tickerLinkMenuItems } from "./ticker-link-menu";
 import {
   makeSnapGuides,
   resolveExternalDockPreview,
@@ -470,6 +471,13 @@ export function Shell({
       openPaneSettings,
       desktopWindowBridge,
       nativePaneChrome && rendererHost.copyPngImage ? copyPaneScreenshot : undefined,
+      tickerLinkMenuItems({
+        instance: pane.instance,
+        layout: visibleLayout,
+        panes: pluginRegistry.panes,
+        state: titleState,
+        persistLayout,
+      }),
     );
     void showContextMenu(context, items, event).then((shown) => {
       if (shown) return;
@@ -493,7 +501,7 @@ export function Shell({
         items: fallbackItems,
       });
     });
-  }, [contentHeight, copyPaneScreenshot, desktopWindowBridge, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, shortcutDisplayMode, showContextMenu, visibleLayout, width]);
+  }, [contentHeight, copyPaneScreenshot, desktopWindowBridge, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
 
   const {
     handleFloatingCloseMouseDown,

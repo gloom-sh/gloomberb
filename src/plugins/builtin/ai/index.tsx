@@ -335,6 +335,7 @@ export const aiPlugin: GloomPlugin = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 76, height: 24 },
+      tickerSource: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => {
         const providers = detectProviders();

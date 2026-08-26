@@ -38,6 +38,9 @@ export function getPaneDisplayTitle(
       ?? t(paneDef.name);
   }
 
+  // A source pane owns the cursor symbol; echoing it in its own title would just repeat the row.
+  if (paneDef.tickerSource) return t(paneDef.name);
+
   const ticker = resolveTickerForPane(state as AppState, instance.instanceId);
   return ticker ? `${t(paneDef.name)}: ${ticker}` : t(paneDef.name);
 }

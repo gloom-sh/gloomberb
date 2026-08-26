@@ -220,6 +220,7 @@ export function sanitizeLayout(
     const layout = cloneLayout(fallback);
     return normalizePaneLayout(layout, {
       defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout.instances),
+      resolveOrphanSymbol: () => null,
     });
   }
 
@@ -242,5 +243,6 @@ export function sanitizeLayout(
 
   return normalizePaneLayout(layout, {
     defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout.instances),
+    resolveOrphanSymbol: () => null,
   });
 }

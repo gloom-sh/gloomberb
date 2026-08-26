@@ -11,6 +11,8 @@ import {
   usePaneStateValue,
   usePaneTicker,
 } from "../../../state/app/context";
+import { findPaneInstance } from "../../../types/config";
+import { getPaneDisplayTitle } from "../../../components/layout/pane/title";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getCollectionName, getCollectionTickerCount } from "../../../state/selectors";
 import { getSharedRegistry } from "../../registry";
@@ -28,6 +30,8 @@ import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
+/** Single-cell chain glyph: emoji link icons render double-width in terminals. */
+const LINK_GLYPH = "\u29c9";
 
 function sameStringSet(left: Set<string>, right: Set<string>): boolean {
   if (left.size !== right.size) return false;
@@ -117,6 +121,32 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     "ticker-research-access",
     () => cloudAccess.segment ? { info: [cloudAccess.segment], order: -1 } : null,
     [cloudAccess.segment],
+  );
+
+  const linkedSourcePaneId = paneInstance?.binding?.kind === "follow"
+    ? paneInstance.binding.sourceInstanceId
+    : null;
+  const linkedSourceTitle = useAppSelector((state) => {
+    const source = linkedSourcePaneId ? findPaneInstance(state.config.layout, linkedSourcePaneId) : null;
+    const sourceDef = source ? getSharedRegistry()?.panes.get(source.paneId) : null;
+    return source && sourceDef ? getPaneDisplayTitle(state, source, sourceDef) : null;
+  });
+  usePaneFooter(
+    "ticker-research-link",
+    () => (linkedSourcePaneId && linkedSourceTitle
+      ? {
+        order: -2,
+        info: [{
+          id: "ticker-research-link",
+          parts: [
+            { text: LINK_GLYPH, tone: "muted" },
+            { text: tf("Linked to {source}", { source: linkedSourceTitle }), tone: "label" },
+          ],
+          onPress: () => dispatch({ type: "FOCUS_PANE", paneId: linkedSourcePaneId }),
+        }],
+      }
+      : null),
+    [dispatch, linkedSourcePaneId, linkedSourceTitle],
   );
 
   const disabledPlugins = config.disabledPlugins;

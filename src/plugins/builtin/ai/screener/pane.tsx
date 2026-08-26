@@ -1,20 +1,20 @@
 import { Box, Text } from "../../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PaneProps } from "../../../../types/plugin";
-import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
 import {
   useAppDispatch,
   useAppSelector,
   usePaneInstance,
   usePaneInstanceId,
+  usePaneStateValue,
 } from "../../../../state/app/context";
 import {
   useAssetData,
   usePluginConfigState,
   usePluginPaneState,
   usePluginState,
-  usePluginTickerActions,
 } from "../../../runtime";
+import { useTickerSourceActivate } from "../../shared/ticker-source";
 import { type DataTableKeyEvent } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
@@ -57,7 +57,7 @@ import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
 export function AiScreenerPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
-  const { pinTicker } = usePluginTickerActions();
+  const activateTicker = useTickerSourceActivate();
   const paneId = usePaneInstanceId();
   const paneInstance = usePaneInstance();
   const liveStreaming = useLiveStreamingSetting();
@@ -85,7 +85,8 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
     { schemaVersion: 1 },
   );
   const [activeTabId, setActiveTabId] = usePluginPaneState<string | null>("activeTabId", null);
-  const [cursorSymbol, setCursorSymbol] = usePluginPaneState<string | null>("cursorSymbol", null);
+  // Top-level pane state, not plugin-scoped: this is what follower panes resolve.
+  const [cursorSymbol, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
   const [sorts, setSorts] = usePluginPaneState<Record<string, ScreenerSortPreference>>("sorts", {});
   const [now, setNow] = useState(Date.now());
   const initializedRef = useRef(false);
@@ -301,12 +302,9 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
     if (!isEnter || !cursorSymbol) return false;
     event.preventDefault?.();
     event.stopPropagation?.();
-    pinTicker(cursorSymbol, {
-      floating: !!event.shift,
-      paneType: TICKER_RESEARCH_PANE_ID,
-    });
+    activateTicker(cursorSymbol, { floating: !!event.shift, newPane: !!event.shift });
     return true;
-  }, [cursorSymbol, pinTicker]);
+  }, [activateTicker, cursorSymbol]);
 
   const contentHeight = Math.max(height - 3, 4);
   const editorProvider = editorState ? getAiProvider(editorState.providerId, providers) : null;
@@ -406,7 +404,8 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
           onHeaderClick={handleHeaderClick}
           onRootKeyDown={handleTableKeyDown}
           onRowActivate={(ticker) => {
-            pinTicker(ticker.metadata.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
+            setCursorSymbol(ticker.metadata.ticker);
+            activateTicker(ticker.metadata.ticker, { floating: true });
           }}
         />
       )}

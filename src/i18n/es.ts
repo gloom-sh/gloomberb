@@ -13,6 +13,7 @@ export const es: Record<string, string> = {
   "Cancel": "Cancelar",
   "Close": "Cerrar",
   "Open": "Abrir",
+  "Linked to {source}": "Vinculado a {source}",
   "Working…": "Procesando…",
   "Searching…": "Buscando…",
   "Loading...": "Cargando...",

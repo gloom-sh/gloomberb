@@ -6,7 +6,7 @@ import {
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../../components";
-import { usePluginTickerActions } from "../../../runtime";
+import { useTickerSourceActivate } from "../../shared/ticker-source";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../../market-data/hooks";
 import { useAppActive } from "../../../../state/app/activity";
 import {
@@ -20,7 +20,6 @@ import {
 import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PaneProps } from "../../../../types/plugin";
-import { TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
 import { calculatePortfolioSummaryTotals, resolveCollectionSortPreference, type ColumnContext } from "../metrics";
 import {
   PortfolioCashMarginDrawer,
@@ -55,7 +54,7 @@ import { useLiveStreamingSetting } from "../../shared/live-streaming";
 import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 
 export function PortfolioListPane({ focused, width, height }: PaneProps) {
-  const { pinTicker } = usePluginTickerActions();
+  const activateTicker = useTickerSourceActivate();
   const paneInstance = usePaneInstance();
   const appActive = useAppActive();
   const config = useAppSelector((state) => state.config);
@@ -238,9 +237,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     setSortPreference({ columnId, direction: "asc" });
   }, [activeSort.columnId, activeSort.direction, setSortPreference]);
 
-  const openTickerFloating = useCallback((symbol: string) => {
-    pinTicker(symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
-  }, [pinTicker]);
+  const openTickerFloating = useCallback((symbol: string, options?: { newPane?: boolean }) => {
+    activateTicker(symbol, { floating: true, newPane: options?.newPane });
+  }, [activateTicker]);
 
   const toggleViewMode = useCallback(() => {
     if (!isPortfolioTab) return;
@@ -266,7 +265,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       event.stopPropagation?.();
       const ticker = sortedTickers[safeSelectedIdx];
       if (ticker) {
-        openTickerFloating(ticker.metadata.ticker);
+        flushCursorSymbol(ticker.metadata.ticker);
+        openTickerFloating(ticker.metadata.ticker, { newPane: true });
       }
       return true;
     }
@@ -288,6 +288,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     return false;
   }, [
     cashDrawerExpanded,
+    flushCursorSymbol,
     focused,
     isPortfolioTab,
     openTickerFloating,
