@@ -23,8 +23,23 @@ function accountProfileToChatUser(profile: AccountProfile): ChatUserSummary {
   };
 }
 
-export function useChatProfilePopover() {
+const OPTIONAL_PROFILE_FIELDS = [
+  "company",
+  "title",
+  "bio",
+  "publicEmail",
+  "xAccount",
+  "sharedPortfolioId",
+] as const;
+
+/** `profilePublic` is a visibility switch, not a completion test: any filled optional field counts as set up. */
+export function isAccountProfileConfigured(profile: AccountProfile): boolean {
+  return OPTIONAL_PROFILE_FIELDS.some((field) => (profile[field] ?? "").trim().length > 0);
+}
+
+export function useChatProfilePopover(trackOwnProfileUserId?: string) {
   const [profilePopoverUser, setProfilePopoverUser] = useState<ChatUserSummary | null>(null);
+  const [ownProfileConfigured, setOwnProfileConfigured] = useState<boolean | null>(null);
   const profilePopoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ownProfileRef = useRef<ChatUserSummary | null>(null);
   const ownProfileRequestRef = useRef<Promise<void> | null>(null);
@@ -50,6 +65,35 @@ export function useChatProfilePopover() {
     }, PROFILE_POPOVER_CLOSE_DELAY_MS);
   }, [cancelProfilePopoverClose]);
 
+  const refreshOwnProfile = useCallback((expectedUserId?: string, force = false) => {
+    if (
+      !apiClient.isSignedIn()
+      || ownProfileRequestRef.current
+      || (
+        !force
+        && ownProfileRef.current
+        && (!expectedUserId || ownProfileRef.current.id === expectedUserId)
+        && Date.now() - ownProfileLoadedAtRef.current < 10_000
+      )
+    ) return;
+    const request = apiClient.getAccountProfile()
+      .then((profile) => {
+        if (!activeRef.current || (expectedUserId && profile.id !== expectedUserId)) return;
+        const nextUser = accountProfileToChatUser(profile);
+        ownProfileRef.current = nextUser;
+        ownProfileLoadedAtRef.current = Date.now();
+        setOwnProfileConfigured(isAccountProfileConfigured(profile));
+        setProfilePopoverUser((current) => current?.id === profile.id ? nextUser : current);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (ownProfileRequestRef.current === request) {
+          ownProfileRequestRef.current = null;
+        }
+      });
+    ownProfileRequestRef.current = request;
+  }, []);
+
   const showProfilePopover = useCallback((
     targetUser: ChatUserSummary,
     options?: { ownProfile?: boolean },
@@ -64,29 +108,8 @@ export function useChatProfilePopover() {
     }
     cancelProfilePopoverClose();
     setProfilePopoverUser(cachedUser);
-
-    if (
-      !ownProfile
-      || !apiClient.isSignedIn()
-      || ownProfileRequestRef.current
-      || (ownProfileRef.current?.id === targetUser.id && Date.now() - ownProfileLoadedAtRef.current < 10_000)
-    ) return;
-    const request = apiClient.getAccountProfile()
-      .then((profile) => {
-        if (!activeRef.current || profile.id !== targetUser.id) return;
-        const nextUser = accountProfileToChatUser(profile);
-        ownProfileRef.current = nextUser;
-        ownProfileLoadedAtRef.current = Date.now();
-        setProfilePopoverUser((current) => current?.id === targetUser.id ? nextUser : current);
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (ownProfileRequestRef.current === request) {
-          ownProfileRequestRef.current = null;
-        }
-      });
-    ownProfileRequestRef.current = request;
-  }, [cancelProfilePopoverClose, closeProfilePopover]);
+    if (ownProfile) refreshOwnProfile(targetUser.id);
+  }, [cancelProfilePopoverClose, closeProfilePopover, refreshOwnProfile]);
 
   useEffect(() => {
     activeRef.current = true;
@@ -96,9 +119,17 @@ export function useChatProfilePopover() {
     };
   }, [cancelProfilePopoverClose]);
 
+  // Force a refresh when the pane regains focus so returning from Account Management settles the answer.
+  useEffect(() => {
+    if (!trackOwnProfileUserId) return;
+    if (ownProfileRef.current?.id !== trackOwnProfileUserId) setOwnProfileConfigured(null);
+    refreshOwnProfile(trackOwnProfileUserId, true);
+  }, [refreshOwnProfile, trackOwnProfileUserId]);
+
   return {
     cancelProfilePopoverClose,
     closeProfilePopover,
+    ownProfileConfigured,
     profilePopoverUser,
     scheduleProfilePopoverClose,
     showProfilePopover,

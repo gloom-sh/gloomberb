@@ -12,6 +12,10 @@ import { ChatContent } from "./content";
 import { chatController } from "./controller";
 import { useChatChannelNavigation } from "./content/channel-navigation";
 import {
+  subscribeRequestedAccountManagementTab,
+  type AccountManagementTab,
+} from "../account-management/navigation";
+import {
   cleanupChatTest,
   createChatTestControls,
   createController,
@@ -19,6 +23,7 @@ import {
   installChatApiTestDefaults,
   installServerChannels,
   lineText,
+  makeAccountProfile,
   makeMessage,
   MemoryPersistence,
   type ChatTestSetup,
@@ -310,6 +315,82 @@ describe("ChatContent channel sidebar", () => {
     await flushFrame();
 
     expect(setup().captureCharFrame()).toContain("● 6 online");
+  });
+
+  test("offers a sidebar profile shortcut only until the account profile is filled in", async () => {
+    const controller = createController({ sessionToken: "token-123" });
+    installServerChannels(controller);
+    controller.refreshChannels = async () => {};
+    controller.refreshChannelMessages = async () => {};
+    const originalGetAccountProfile = apiClient.getAccountProfile.bind(apiClient);
+    apiClient.getAccountProfile = async () => makeAccountProfile({
+      id: "u0",
+      company: null,
+      title: null,
+      bio: null,
+      publicEmail: null,
+      xAccount: null,
+      // Set, and deliberately not part of the completion test.
+      profilePublic: true,
+      sharedPortfolioId: null,
+    });
+    const requestedTabs: AccountManagementTab[] = [];
+    const unsubscribe = subscribeRequestedAccountManagementTab((tab) => requestedTabs.push(tab));
+    const shownPanes: string[] = [];
+    const runtime = createTestPluginRuntime({
+      showPane: (paneId: string) => {
+        shownPanes.push(paneId);
+      },
+    });
+
+    try {
+      await act(async () => {
+        testSetup = await testRender(createHarness(controller, { width: 90, height: 14, runtime }), {
+          width: 90,
+          height: 14,
+        });
+      });
+      await flushFrame();
+      await flushFrame();
+
+      const lines = setup().captureCharFrame().split("\n");
+      const row = lines.findIndex((line) => line.includes("@ Profile"));
+      const col = lines[row]?.indexOf("Profile") ?? -1;
+      expect(row).toBeGreaterThanOrEqual(0);
+
+      await act(async () => {
+        await setup().mockMouse.click(col + 1, row);
+        await setup().renderOnce();
+        await setup().renderOnce();
+      });
+      await flushFrame();
+
+      expect(requestedTabs).toEqual(["profile"]);
+      expect(shownPanes).toEqual(["account-management"]);
+
+      apiClient.getAccountProfile = async () => makeAccountProfile({
+        id: "u0",
+        company: null,
+        title: "Trader",
+        bio: null,
+        profilePublic: false,
+        sharedPortfolioId: null,
+      });
+      await act(async () => {
+        testSetup?.renderer.destroy();
+        testSetup = await testRender(createHarness(controller, { width: 90, height: 14, runtime }), {
+          width: 90,
+          height: 14,
+        });
+      });
+      await flushFrame();
+      await flushFrame();
+
+      expect(setup().captureCharFrame()).not.toContain("@ Profile");
+    } finally {
+      unsubscribe();
+      apiClient.getAccountProfile = originalGetAccountProfile;
+    }
   });
 
   test("uses arrows to move between channel sidebar and chat content", async () => {

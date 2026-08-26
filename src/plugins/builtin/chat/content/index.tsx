@@ -240,10 +240,11 @@ export function ChatContent({
   const {
     cancelProfilePopoverClose,
     closeProfilePopover,
+    ownProfileConfigured,
     profilePopoverUser,
     scheduleProfilePopoverClose,
     showProfilePopover,
-  } = useChatProfilePopover();
+  } = useChatProfilePopover(focused ? user?.id : undefined);
 
   const showUserProfilePopover = useCallback((targetUser: Parameters<typeof showProfilePopover>[0]) => {
     showProfilePopover(targetUser, { ownProfile: targetUser.id === user?.id });
@@ -537,6 +538,8 @@ export function ChatContent({
           loading={channelsLoading}
           canManageNotifications={!!user?.emailVerified}
           canCreateConversation={!!user?.emailVerified}
+          needsProfileSetup={!!user?.id && ownProfileConfigured === false}
+          onOpenProfile={openProfileSetup}
           directExpanded={directExpanded}
           onSelect={selectSidebarChannel}
           onFocusRequest={() => setSidebarFocused(true)}
