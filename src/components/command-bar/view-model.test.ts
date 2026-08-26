@@ -14,7 +14,8 @@ describe("command bar view model helpers", () => {
     expect(resolveCommandBarMode("T NVDA")).toMatchObject({ kind: "search", badge: "T" });
     expect(resolveCommandBarMode("TH ")).toMatchObject({ kind: "themes", badge: "THEMES" });
     expect(resolveCommandBarMode("PL notes")).toMatchObject({ kind: "plugins", badge: "PLUGINS" });
-    expect(resolveCommandBarMode("LAY ")).toMatchObject({ kind: "layout", badge: "LAYOUTS" });
+    expect(resolveCommandBarMode("LAY")).toMatchObject({ kind: "direct-command", badge: "COMMAND" });
+    expect(resolveCommandBarMode("LMA ")).toMatchObject({ kind: "layout", badge: "LAYOUT" });
     expect(resolveCommandBarMode("NP ")).toMatchObject({ kind: "default", badge: "FILTER" });
     expect(resolveCommandBarMode("PS")).toMatchObject({ kind: "direct-command", badge: "COMMAND" });
     expect(resolveCommandBarMode("AW")).toMatchObject({ kind: "direct-command", badge: "COMMAND" });

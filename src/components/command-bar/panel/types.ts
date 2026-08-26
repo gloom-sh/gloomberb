@@ -5,7 +5,6 @@ import type {
   TextareaRenderable,
 } from "../../../ui";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
-import type { LayoutConfig } from "../../../types/config";
 import type { NativeSelectElement } from "../../ui/native-select";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";
@@ -38,8 +37,6 @@ export interface CommandBarPanelProps {
   currentRoute: CommandBarRoute | null;
   getWorkflowInputRef: (fieldId: string) => RefObject<InputRenderable | TextareaRenderable | null>;
   labelWidth: number;
-  /** Rows reserved for the selected layout schematic; 0 when the panel has no room. */
-  layoutPreviewRows: number;
   listBodyHeight: number;
   nativeListRows: CommandBarListRow[];
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
@@ -70,7 +67,6 @@ export interface CommandBarPanelProps {
   rootGhostSuffix: string | null;
   rootQueryLength: number;
   rootShortcutFeedback: string | null;
-  selectedLayoutPreview: LayoutConfig | null;
   selectedScrollRowIndex: number;
   termHeight: number;
   termWidth: number;

@@ -1,6 +1,5 @@
 import type { Dispatch } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
-import type { LayoutMarketplaceRuntime } from "../../../layout-marketplace/use-marketplace";
 import type { AppAction, AppState } from "../../../state/app/context";
 import type { LayoutConfig } from "../../../types/config";
 import type { OpenInlineConfirm } from "../routing/confirm";
@@ -16,7 +15,6 @@ export interface LayoutItemsContext {
   dispatch: Dispatch<AppAction>;
   duplicatePane: (paneId: string) => void;
   focusedPaneId: string | null;
-  marketplace: LayoutMarketplaceRuntime;
   notifyGridlockRevert: () => void;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;

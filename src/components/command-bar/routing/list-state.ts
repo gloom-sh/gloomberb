@@ -112,8 +112,8 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
         const results = buildLayoutItems(currentRoute.query);
         return {
           kind: "mode",
-          title: "Layouts",
-          subtitle: "Switch layouts or add a community workspace.",
+          title: "Layout Actions",
+          subtitle: "Organize panes and saved layouts.",
           query: currentRoute.query,
           selectedIdx: currentRoute.selectedIdx,
           hoveredIdx: currentRoute.hoveredIdx,

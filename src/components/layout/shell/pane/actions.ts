@@ -55,7 +55,7 @@ export function useShellPaneActions({
   width,
 }: UseShellPaneActionsOptions) {
   const openLayoutMenu = useCallback(() => {
-    pluginRegistry.openCommandBar("LAY ");
+    pluginRegistry.openCommandBar("LMA ");
   }, [pluginRegistry]);
 
   const openPaneSettings = useCallback((paneId: string) => {

@@ -205,7 +205,6 @@ export function useCommandBarPanelRuntime({
     bodySlotKey,
     nativeListRows,
     panelLayout,
-    selectedLayoutPreview,
     selectedScrollRowIndex,
     visibleListState,
   } = useCommandBarPanelState({
@@ -242,7 +241,6 @@ export function useCommandBarPanelRuntime({
     currentRoute,
     getWorkflowInputRef,
     labelWidth: panelLayout.labelWidth,
-    layoutPreviewRows: panelLayout.layoutPreviewRows,
     listBodyHeight: panelLayout.listBodyHeight,
     nativeListRows,
     nativeListScrollRef,
@@ -273,7 +271,6 @@ export function useCommandBarPanelRuntime({
     rootGhostSuffix,
     rootQueryLength,
     rootShortcutFeedback,
-    selectedLayoutPreview,
     selectedScrollRowIndex,
     termHeight,
     termWidth,

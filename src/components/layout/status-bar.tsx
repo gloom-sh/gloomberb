@@ -227,9 +227,14 @@ export function StatusBar() {
       },
       contextMenuDivider("layout:actions-divider"),
       {
+        id: "layout:gallery",
+        label: "Browse Layouts...",
+        onSelect: () => dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true }),
+      },
+      {
         id: "layout:actions",
         label: "Layout Actions...",
-        onSelect: () => registry?.openCommandBar("LAY "),
+        onSelect: () => registry?.openCommandBar("LMA "),
       },
     );
 

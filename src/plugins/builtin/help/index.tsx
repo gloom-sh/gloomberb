@@ -60,7 +60,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
   };
 
   const openLayoutActions = () => {
-    openCommandBar("LAY ");
+    openCommandBar("LMA ");
   };
 
   const openPluginManager = () => {

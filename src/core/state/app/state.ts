@@ -151,6 +151,18 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_COMMAND_BAR_QUERY":
       return { ...state, commandBarQuery: action.query };
 
+    // The gallery owns the whole window, so opening it also closes and clears the
+    // command bar in one commit instead of leaving a stale query behind it.
+    case "SET_LAYOUT_MARKETPLACE":
+      if (state.layoutMarketplaceOpen === action.open && !action.open) return state;
+      return {
+        ...state,
+        layoutMarketplaceOpen: action.open,
+        ...(action.open
+          ? { commandBarOpen: false, commandBarQuery: "", commandBarLaunchRequest: null }
+          : {}),
+      };
+
     case "SET_REFRESHING": {
       const refreshing = new Set(state.refreshing);
       if (action.refreshing) refreshing.add(action.symbol);
@@ -356,6 +368,7 @@ export function createInitialState(config: AppConfig, sessionSnapshot: AppSessio
     commandBarOpen: false,
     commandBarQuery: "",
     commandBarLaunchRequest: null,
+    layoutMarketplaceOpen: false,
     themePreview: null,
     refreshing: new Set(),
     initialized: false,

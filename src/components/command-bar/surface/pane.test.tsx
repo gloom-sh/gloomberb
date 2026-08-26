@@ -219,9 +219,9 @@ describe("CommandBar pane and layout routes", () => {
     },
   });
 
-  test("renders owned layouts and Discover before management actions", async () => {
+  test("renders layout mode with focused pane actions", async () => {
     testSetup = await testRender(<CommandBarHarness
-      query="LAY "
+      query="LMA "
       configureConfig={layoutModeConfig}
       configureState={layoutModeState}
     />, {
@@ -232,29 +232,11 @@ describe("CommandBar pane and layout routes", () => {
     await testSetup.renderOnce();
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Your Layouts");
-    expect(frame).toContain("Default");
-    expect(frame).toContain("Research");
-    expect(frame).toContain("Publish Current Layout");
-    expect(frame).toContain("Discover");
-    expect(frame.indexOf("Your Layouts")).toBeLessThan(frame.indexOf("Discover"));
-  });
-
-  test("keeps focused pane actions searchable from layout mode", async () => {
-    testSetup = await testRender(<CommandBarHarness
-      query="LAY Float Pane"
-      configureConfig={layoutModeConfig}
-      configureState={layoutModeState}
-    />, {
-      width: 90,
-      height: 18,
-    });
-
-    await testSetup.renderOnce();
-
-    const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Focused Pane");
     expect(frame).toContain("Float Pane");
+    expect(frame).toContain("Undo Layout Change");
+    expect(frame).toContain("Current Layout");
+    expect(frame).toContain("Close All Floating Panes");
   });
 
   test("runs layout actions directly from root search", async () => {
@@ -285,7 +267,7 @@ describe("CommandBar pane and layout routes", () => {
 
   test("renders filtered saved layouts with textual previews", async () => {
     testSetup = await testRender(<CommandBarHarness
-      query="LAY Research"
+      query="LMA Research"
       configureConfig={layoutModeConfig}
       configureState={layoutModeState}
     />, {

@@ -5,7 +5,6 @@ import {
   type SetStateAction,
 } from "react";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
-import type { LayoutMarketplaceRuntime } from "../../layout-marketplace/use-marketplace";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
 import type { DataProvider } from "../../types/data-provider";
@@ -34,7 +33,6 @@ interface UseCommandBarActionRuntimeOptions {
   dataProvider: DataProvider;
   dispatch: Dispatch<AppAction>;
   focusedPaneId: string | null;
-  marketplace: LayoutMarketplaceRuntime;
   onCheckForUpdates?: () => void | Promise<void>;
   persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
@@ -63,7 +61,6 @@ export function useCommandBarActionRuntime({
   dataProvider,
   dispatch,
   focusedPaneId,
-  marketplace,
   onCheckForUpdates,
   persistConfig,
   pluginRegistry,
@@ -195,7 +192,6 @@ export function useCommandBarActionRuntime({
     closeAll,
     dispatch,
     duplicatePane,
-    marketplace,
     notify,
     notifyGridlockRevert,
     openAddToPortfolioWorkflow,

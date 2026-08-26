@@ -235,7 +235,7 @@ export const layoutManagerModule: PluginModule = {
           return;
         }
 
-        ctx.openCommandBar("LAY ");
+        ctx.openCommandBar("LMA ");
         notify("Choose a swap target from layout mode", { type: "info" });
       },
     });

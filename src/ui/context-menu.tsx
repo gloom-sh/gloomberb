@@ -189,7 +189,7 @@ function appContextMenuItems(registry: Pick<PluginRegistry, "openCommandBar"> | 
     {
       id: "app:layout-actions",
       label: "Layout Actions...",
-      onSelect: () => registry?.openCommandBar("LAY "),
+      onSelect: () => registry?.openCommandBar("LMA "),
     },
     contextMenuDivider("app:config-divider"),
     {

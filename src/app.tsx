@@ -16,6 +16,9 @@ import { Shell } from "./components/layout/shell";
 import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
+import { LayoutMarketplaceGallery } from "./layout-marketplace/gallery";
+import { AuthDialogHost } from "./plugins/builtin/cloud/auth-dialog";
+import { DeviceSignInDialogHost } from "./plugins/builtin/cloud/device-signin-dialog";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
@@ -113,6 +116,7 @@ function AppInner({
   const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
   const initialized = useAppSelector((state) => state.initialized);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
+  const layoutMarketplaceOpen = useAppSelector((state) => state.layoutMarketplaceOpen);
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const updateAvailable = useAppSelector((state) => state.updateAvailable);
   const updateProgress = useAppSelector((state) => state.updateProgress);
@@ -125,6 +129,7 @@ function AppInner({
     focusedPaneId,
     initialized,
     commandBarOpen,
+    layoutMarketplaceOpen,
     inputCaptured,
     updateAvailable,
     updateProgress,
@@ -135,6 +140,7 @@ function AppInner({
     focusedPaneId,
     initialized,
     inputCaptured,
+    layoutMarketplaceOpen,
     paneState,
     stateRef,
     tickers,
@@ -379,15 +385,22 @@ function AppInner({
               }).catch(() => {});
             }}
           />
-          <TransientLayoutProvider>
-            <Shell
-              pluginRegistry={pluginRegistry}
-              desktopWindowBridge={desktopWindowBridge}
-              desktopDockPreview={desktopDockPreview}
-              commandBarNativeOccluder={commandBarNativeOccluder}
-            />
-            <StatusBar />
-          </TransientLayoutProvider>
+          {/* Auth entry points must survive destination changes such as the layout gallery. */}
+          <DeviceSignInDialogHost />
+          <AuthDialogHost />
+          {layoutMarketplaceOpen ? (
+            <LayoutMarketplaceGallery pluginRegistry={pluginRegistry} />
+          ) : (
+            <TransientLayoutProvider>
+              <Shell
+                pluginRegistry={pluginRegistry}
+                desktopWindowBridge={desktopWindowBridge}
+                desktopDockPreview={desktopDockPreview}
+                commandBarNativeOccluder={commandBarNativeOccluder}
+              />
+              <StatusBar />
+            </TransientLayoutProvider>
+          )}
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
               pluginRegistry={pluginRegistry}

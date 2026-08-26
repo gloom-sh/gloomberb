@@ -184,7 +184,10 @@ describe("useAppGlobalShortcuts", () => {
     expect(event.propagationStopped).toBe(true);
   });
 
-  function layoutState(suffix: string, options: { commandBarOpen?: boolean } = {}) {
+  function layoutState(
+    suffix: string,
+    options: { commandBarOpen?: boolean; layoutMarketplaceOpen?: boolean } = {},
+  ) {
     const config = createDefaultConfig(`/tmp/gloomberb-global-shortcuts-${suffix}`);
     config.layouts = [
       { name: "One", layout: cloneLayout(config.layout) },
@@ -270,6 +273,43 @@ describe("useAppGlobalShortcuts", () => {
     expect(actions).toEqual([]);
     expect(event.defaultPrevented).toBe(true);
     expect(event.propagationStopped).toBe(true);
+  });
+
+  test("switches layouts from the gallery search field and closes the gallery", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(
+      layoutState("layouts-gallery", { layoutMarketplaceOpen: true }),
+      createRegistry(),
+      (action) => actions.push(action),
+    );
+    focusEditor();
+
+    const event = await emitKeypress({ name: "2", super: true });
+
+    expect(actions).toEqual([
+      { type: "SWITCH_LAYOUT", index: 1 },
+      { type: "SET_LAYOUT_MARKETPLACE", open: false },
+    ]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  test("keeps workspace shortcuts inert while the gallery owns the window", async () => {
+    let executed = 0;
+    const openedPanes: string[] = [];
+    const actions: AppAction[] = [];
+    await renderHarness(
+      layoutState("layouts-gallery-inert", { layoutMarketplaceOpen: true }),
+      createRegistry(() => { executed += 1; }, (paneId) => openedPanes.push(paneId)),
+      (action) => actions.push(action),
+    );
+
+    await emitKeypress({ name: "x" });
+    await emitKeypress({ name: "tab" });
+    await emitKeypress({ name: "?", shift: true });
+
+    expect(executed).toBe(0);
+    expect(openedPanes).toEqual([]);
+    expect(actions).toEqual([]);
   });
 
   test("does not run plain plugin shortcuts while input is captured", async () => {

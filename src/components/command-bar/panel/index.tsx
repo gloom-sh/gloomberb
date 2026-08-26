@@ -30,7 +30,6 @@ export function CommandBarPanel({
   currentRoute,
   getWorkflowInputRef,
   labelWidth,
-  layoutPreviewRows,
   listBodyHeight,
   nativeListRows,
   nativeListScrollRef,
@@ -61,7 +60,6 @@ export function CommandBarPanel({
   rootGhostSuffix,
   rootQueryLength,
   rootShortcutFeedback,
-  selectedLayoutPreview,
   selectedScrollRowIndex,
   termHeight,
   termWidth,
@@ -152,7 +150,6 @@ export function CommandBarPanel({
           currentRoute={currentRoute}
           getWorkflowInputRef={getWorkflowInputRef}
           labelWidth={labelWidth}
-          layoutPreviewRows={layoutPreviewRows}
           listBodyHeight={listBodyHeight}
           nativeListRows={nativeListRows}
           nativeListScrollRef={nativeListScrollRef}
@@ -191,7 +188,6 @@ export function CommandBarPanel({
           rootGhostSuffix={rootGhostSuffix}
           rootQueryLength={rootQueryLength}
           rootShortcutFeedback={rootShortcutFeedback}
-          selectedLayoutPreview={selectedLayoutPreview}
           themePickerActive={themePickerActive}
           themePickerFilter={themePickerFilter}
           themePickerRef={themePickerRef}

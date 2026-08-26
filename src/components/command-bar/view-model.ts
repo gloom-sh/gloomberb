@@ -77,7 +77,7 @@ export function resolveCommandBarMode(query: string, commandList?: Command[]): C
     case "plugins":
       return { kind: "plugins", badge: "PLUGINS", hint: t("Toggle plugins without leaving the list") };
     case "layout":
-      return { kind: "layout", badge: "LAYOUTS", hint: t("Switch layouts or discover a new workspace") };
+      return { kind: "layout", badge: "LAYOUT", hint: t("Organize panes, history, and saved layouts") };
     default:
       return { kind: "direct-command", badge: "COMMAND", hint: tf("Run {label}", { label: t(match.command.label) }) };
   }

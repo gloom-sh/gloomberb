@@ -319,7 +319,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `AW` / `AP <ticker>` | Add a ticker to the active watchlist or portfolio |
 | `RW` / `RP <ticker>` | Remove a ticker from the active watchlist or portfolio |
 | `PS` | Open focused pane settings |
-| `LAY <query>` | Switch layouts or browse community layouts |
+| `LAY` | Open the layout gallery to switch, publish, or add layouts |
+| `LMA <query>` | Layout and pane arrangement actions |
 | `WIN move\|resize` | Move or resize the focused window |
 | `GL` | Gridlock all visible panes |
 | `SB` | Toggle the status bar |

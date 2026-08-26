@@ -138,10 +138,20 @@ export const commands: Command[] = [
     category: "Config",
   },
   {
-    id: "layout",
+    id: "layout-marketplace",
     prefix: "LAY",
     label: "Layouts",
-    description: "Switch, discover, and organize layouts",
+    description: "Open the layout gallery to switch, publish, or add layouts",
+    category: "Config",
+    execute: (dispatch) => {
+      dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true });
+    },
+  },
+  {
+    id: "layout",
+    prefix: "LMA",
+    label: "Layout Actions",
+    description: "Organize panes and saved layouts",
     hasArg: true,
     argPlaceholder: "action",
     category: "Config",
