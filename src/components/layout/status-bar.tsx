@@ -424,7 +424,7 @@ function NativeTidyWindows({
       <Text
         fg={hovered ? colors.textBright : colors.borderFocused}
         attributes={TextAttributes.BOLD}
-        title={t("Tile All Windows")}
+        title={t("Tidy Windows")}
         onMouseOver={() => setHoveredControl((current) => (current === "tidy-windows" ? current : "tidy-windows"))}
         onMouseDown={handleTidyWindows}
         data-gloom-interactive="true"

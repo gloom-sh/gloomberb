@@ -239,7 +239,7 @@ describe("StatusBar", () => {
 
     expect(updatedLayout?.floating).toHaveLength(0);
     expect(notifications[0]).toMatchObject({
-      body: "Tiled all windows",
+      body: "Windows tidied",
       type: "success",
       action: { label: "Revert" },
     });
@@ -299,6 +299,6 @@ describe("StatusBar", () => {
 
     expect(updatedLayout?.floating).toHaveLength(0);
     expect(getDockedPaneIds(updatedLayout!)).toHaveLength(3);
-    expect(notifications[0]?.body).toBe("Tiled all windows");
+    expect(notifications[0]?.body).toBe("Windows tidied");
   });
 });

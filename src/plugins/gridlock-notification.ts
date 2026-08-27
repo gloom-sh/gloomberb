@@ -3,7 +3,7 @@ import type { AppNotificationRequest } from "../types/plugin";
 export function notifyGridlockComplete(
   notify: (notification: AppNotificationRequest) => void,
   onRevert: () => void,
-  body = "Tiled all windows",
+  body = "Windows tidied",
 ): void {
   notify({
     body,
