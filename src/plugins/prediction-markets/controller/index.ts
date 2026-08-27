@@ -56,10 +56,14 @@ export function usePredictionMarketsController({
     "browseTab",
     paneSettings.defaultBrowseTab,
   );
-  const [detailTab, setDetailTab] = usePluginPaneState<PredictionDetailTab>(
+  const [storedDetailTab, setDetailTab] = usePluginPaneState<PredictionDetailTab>(
     "detailTab",
     "overview",
   );
+  const detailTab = storedDetailTab === "chart" ? "overview" : storedDetailTab;
+  useEffect(() => {
+    if (storedDetailTab === "chart") setDetailTab("overview");
+  }, [setDetailTab, storedDetailTab]);
   const [searchQuery, setSearchQuery] = usePluginPaneState<string>(
     "searchQuery",
     "",

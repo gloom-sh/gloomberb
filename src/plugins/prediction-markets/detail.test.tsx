@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { act } from "react";
 import { testRender } from "../../renderers/opentui/test-utils";
 import {
   ChartHarness,
@@ -32,7 +33,7 @@ describe("prediction markets detail views", () => {
     expect(frame).not.toContain("TypeError");
   });
 
-  test("renders grouped selections as ranked outcomes in the detail overview", async () => {
+  test("renders grouped outcomes with their chart directly below", async () => {
     testSetup = await testRender(<GroupedDetailHarness />, {
       width: 64,
       height: 24,
@@ -43,6 +44,9 @@ describe("prediction markets detail views", () => {
     expect(frame).toContain("Outcomes");
     expect(frame).toContain("Above 4.25%");
     expect(frame).toContain("Above 4.50%");
+    expect(frame).toContain("1M");
+    expect(frame.indexOf("1M")).toBeGreaterThan(frame.indexOf("Above 4.50%"));
+    expect(frame).not.toContain(" Chart ");
     expect(frame).not.toContain("Ranked by implied YES probability.");
     expect(frame).not.toContain("TOP Above 4.25%");
     expect(frame).not.toContain("Kalshi");
@@ -59,9 +63,32 @@ describe("prediction markets detail views", () => {
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Outcomes");
     expect(frame).toContain("Above 4.25%");
-    expect(frame).toContain("Chart");
+    expect(frame).toContain("Loading chart...");
     expect(frame).not.toContain("No chart history.");
     expect(frame).not.toContain("Loading market detail...");
+  });
+
+  test("shows the chart crosshair on pointer movement", async () => {
+    testSetup = await testRender(
+      <ChartHarness
+        history={[
+          { date: "2026-04-01T00:00:00Z", close: 0.45 },
+          { date: "2026-04-02T00:00:00Z", close: 0.48 },
+          { date: "2026-04-03T00:00:00Z", close: 0.51 },
+        ]}
+      />,
+      { width: 80, height: 12 },
+    );
+    await flushFrames(testSetup);
+    const initialFrame = testSetup.captureCharFrame();
+
+    await act(async () => {
+      await testSetup!.mockMouse.moveTo(30, 5);
+      await testSetup!.renderOnce();
+    });
+    await flushFrames(testSetup);
+
+    expect(testSetup.captureCharFrame()).not.toBe(initialFrame);
   });
 
 });

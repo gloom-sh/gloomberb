@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { DataTableView, type DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { formatNumber } from "../../../utils/format";
@@ -24,20 +25,44 @@ export function PredictionMarketTradesView({
   trades: PredictionTrade[];
   width: number;
 }) {
+  const visibleTrades = trades.slice(0, 30);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(() =>
+    visibleTrades.length > 0 ? 0 : null,
+  );
+
+  useEffect(() => {
+    setSelectedIndex((current) => {
+      if (visibleTrades.length === 0) return null;
+      if (current == null || current >= visibleTrades.length) return 0;
+      return current;
+    });
+  }, [visibleTrades.length]);
+
   return (
     <DataTableView<PredictionTrade, TradeColumn>
       focused={focused}
-      keyboardNavigation={false}
+      keyboardNavigation={focused}
       rootWidth={width}
       rootBackgroundColor={colors.panel}
-      selection={{ kind: "none" }}
+      selection={{
+        kind: "index",
+        selectedIndex,
+        onChange: (index) => setSelectedIndex(index),
+      }}
       columns={TRADE_COLUMNS}
-      items={trades.slice(0, 30)}
+      items={visibleTrades}
       sortColumnId={null}
       sortDirection="asc"
       onHeaderClick={() => {}}
       getItemKey={(trade) => trade.id}
-      renderCell={(trade, column) => {
+      onRowMouseDown={(_trade, index, event) => {
+        event.preventDefault();
+        setSelectedIndex(index);
+        return true;
+      }}
+      renderCell={(trade, column, _index, rowState) => {
+        const color = (fallback: string) =>
+          rowState.selected ? undefined : fallback;
         const tradeColor = trade.side === "buy" ? colors.positive : colors.negative;
         switch (column.id) {
           case "time":
@@ -45,27 +70,27 @@ export function PredictionMarketTradesView({
               text: new Date(trade.timestamp).toLocaleTimeString("en-US", {
                 hour12: false,
               }),
-              color: colors.textDim,
+              color: color(colors.textDim),
             };
           case "side":
             return {
               text: trade.side.toUpperCase(),
-              color: tradeColor,
+              color: color(tradeColor),
             };
           case "outcome":
             return {
               text: trade.outcome.toUpperCase(),
-              color: colors.text,
+              color: color(colors.text),
             };
           case "price":
             return {
               text: formatPredictionProbability(trade.price),
-              color: tradeColor,
+              color: color(tradeColor),
             };
           case "size":
             return {
               text: formatNumber(trade.size, 0),
-              color: colors.textDim,
+              color: color(colors.textDim),
             };
         }
       }}

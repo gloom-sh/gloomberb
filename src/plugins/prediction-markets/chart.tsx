@@ -146,8 +146,8 @@ export function PredictionMarketChart({
       <CompositeChart
         width={width}
         height={chartHeight}
-        focused={false}
-        interactive={false}
+        focused={focused}
+        interactive
         series={[priceSeries]}
         panels={[{ id: "price" }]}
         axisWidth={8}

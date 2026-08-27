@@ -340,6 +340,83 @@ describe("prediction markets pane interactions", () => {
     expect(frame).toContain("/ search markets");
   });
 
+  test("navigates the book and trades tables with arrow keys", async () => {
+    installPredictionMarketMocks();
+
+    testSetup = await testRender(<Harness />, { width: 120, height: 34 });
+    await flushFrames(testSetup);
+    await emitKeypress(testSetup, { name: "j", sequence: "j" });
+    await emitKeypress(testSetup, { name: "enter", sequence: "\r" });
+    await flushFrames(testSetup);
+
+    let rows = testSetup.captureCharFrame().split("\n");
+    const detailTabsRow = rows.findIndex((line) =>
+      line.includes("Overview") && line.includes("Book") && line.includes("Trades"),
+    );
+    const bookColumn = rows[detailTabsRow]!.indexOf("Book");
+    await act(async () => {
+      await testSetup!.mockMouse.click(bookColumn, detailTabsRow);
+      await testSetup!.renderOnce();
+    });
+    await flushFrames(testSetup);
+
+    rows = testSetup.captureCharFrame().split("\n");
+    let headerRow = rows.findIndex((line) =>
+      line.includes("OUT") && line.includes("SIDE") && line.includes("PRICE"),
+    );
+    expect(headerRow).toBeGreaterThanOrEqual(0);
+    let spans = testSetup.captureSpans().lines;
+    const bookFirstBefore = spans[headerRow + 1]!.spans.find(
+      (span) => span.text.trim(),
+    )!.bg;
+    const bookSecondBefore = spans[headerRow + 2]!.spans.find(
+      (span) => span.text.trim(),
+    )!.bg;
+    expect(bookFirstBefore).not.toEqual(bookSecondBefore);
+
+    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
+    await flushFrames(testSetup);
+    spans = testSetup.captureSpans().lines;
+    expect(
+      spans[headerRow + 1]!.spans.find((span) => span.text.trim())!.bg,
+    ).toEqual(bookSecondBefore);
+    expect(
+      spans[headerRow + 2]!.spans.find((span) => span.text.trim())!.bg,
+    ).toEqual(bookFirstBefore);
+
+    rows = testSetup.captureCharFrame().split("\n");
+    const tradesColumn = rows[detailTabsRow]!.indexOf("Trades");
+    await act(async () => {
+      await testSetup!.mockMouse.click(tradesColumn, detailTabsRow);
+      await testSetup!.renderOnce();
+    });
+    await flushFrames(testSetup);
+
+    rows = testSetup.captureCharFrame().split("\n");
+    headerRow = rows.findIndex((line) =>
+      line.includes("TIME") && line.includes("SIDE") && line.includes("PRICE"),
+    );
+    expect(headerRow).toBeGreaterThanOrEqual(0);
+    spans = testSetup.captureSpans().lines;
+    const tradeFirstBefore = spans[headerRow + 1]!.spans.find(
+      (span) => span.text.trim(),
+    )!.bg;
+    const tradeSecondBefore = spans[headerRow + 2]!.spans.find(
+      (span) => span.text.trim(),
+    )!.bg;
+    expect(tradeFirstBefore).not.toEqual(tradeSecondBefore);
+
+    await emitKeypress(testSetup, { name: "down", sequence: "\u001b[B" });
+    await flushFrames(testSetup);
+    spans = testSetup.captureSpans().lines;
+    expect(
+      spans[headerRow + 1]!.spans.find((span) => span.text.trim())!.bg,
+    ).toEqual(tradeSecondBefore);
+    expect(
+      spans[headerRow + 2]!.spans.find((span) => span.text.trim())!.bg,
+    ).toEqual(tradeFirstBefore);
+  });
+
   test("supports detail outcome navigation and escape return from the keyboard", async () => {
     attachPredictionMarketsPersistence(new MemoryPersistence());
 

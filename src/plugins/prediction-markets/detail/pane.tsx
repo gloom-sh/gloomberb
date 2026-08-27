@@ -25,7 +25,6 @@ import { PredictionMarketOverviewView } from "./overview";
 import { PredictionMarketRulesView } from "./rules";
 import { truncatePredictionText } from "./shared";
 import { PredictionMarketTradesView } from "./trades";
-import { PredictionMarketChart } from "../chart";
 
 type RelatedMarketPointerEvent = { preventDefault(): void };
 
@@ -210,7 +209,14 @@ export function PredictionMarketDetailPane({
   const detailTextWidth = Math.max(detailWidth, 12);
 
   return (
-    <>
+    <Box
+      flexDirection="column"
+      flexGrow={1}
+      flexShrink={1}
+      flexBasis={0}
+      minHeight={0}
+      overflow="hidden"
+    >
       {headerHeight > 0 && (
         <Box flexDirection="column" height={headerHeight} paddingBottom={1}>
           <Box flexDirection="row" height={1}>
@@ -274,11 +280,22 @@ export function PredictionMarketDetailPane({
       )}
 
       {detailTab === "overview" || detailTab === "rules" ? (
-        <ScrollBox ref={scrollRef} flexGrow={1} scrollY>
+        <ScrollBox
+          ref={scrollRef}
+          flexGrow={1}
+          flexShrink={1}
+          flexBasis={0}
+          scrollY
+        >
           {detailTab === "overview" && (
             <PredictionMarketOverviewView
               detail={detail}
               detailWidth={detailWidth}
+              focused={focused}
+              height={height}
+              historyRange={historyRange}
+              loading={detailLoading}
+              onHistoryRangeChange={onHistoryRangeChange}
               onSelectMarket={onSelectMarket}
               selectedRow={selectedRow}
               summary={summaryMetrics}
@@ -294,42 +311,34 @@ export function PredictionMarketDetailPane({
         </ScrollBox>
       ) : null}
 
-      {detailTab === "chart" && (
-        <PredictionMarketChart
-          history={detail?.history ?? []}
-          width={detailWidth}
-          height={Math.max(height - 8, 8)}
-          loading={detailLoading}
-          focused={focused}
-          range={historyRange}
-          onRangeSelect={onHistoryRangeChange}
-        />
-      )}
-
       {detailTab === "book" && (
-        detail ? (
-          <PredictionMarketBookView
-            detail={detail}
-            focused={focused}
-            width={detailWidth}
-          />
-        ) : (
-          <Box flexGrow={1} justifyContent="center">
-            <EmptyState
-              title={detailLoading ? "Loading order book." : "No order book."}
-              hint="This venue did not return current order book depth."
+        <Box flexGrow={1} flexShrink={1} flexBasis={0} overflow="hidden">
+          {detail ? (
+            <PredictionMarketBookView
+              detail={detail}
+              focused={focused}
+              width={detailWidth}
             />
-          </Box>
-        )
+          ) : (
+            <Box flexGrow={1} justifyContent="center">
+              <EmptyState
+                title={detailLoading ? "Loading order book." : "No order book."}
+                hint="This venue did not return current order book depth."
+              />
+            </Box>
+          )}
+        </Box>
       )}
 
       {detailTab === "trades" && (
-        <PredictionMarketTradesView
-          focused={focused}
-          trades={detail?.trades ?? []}
-          width={detailWidth}
-        />
+        <Box flexGrow={1} flexShrink={1} flexBasis={0} overflow="hidden">
+          <PredictionMarketTradesView
+            focused={focused}
+            trades={detail?.trades ?? []}
+            width={detailWidth}
+          />
+        </Box>
       )}
-    </>
+    </Box>
   );
 }
