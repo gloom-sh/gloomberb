@@ -54,8 +54,6 @@ export interface AppState {
   commandBarOpen: boolean;
   commandBarQuery: string;
   commandBarLaunchRequest: CommandBarPluginLaunchRequest | CommandBarTickerSearchLaunchRequest | null;
-  /** Session-only: the layout gallery replaces the workspace body while open. */
-  layoutMarketplaceOpen: boolean;
   themePreview: string | null;
   refreshing: Set<string>;
   initialized: boolean;
@@ -91,7 +89,6 @@ export type AppAction =
       launch?: { kind: "plugin-command"; commandId: string } | { kind: "ticker-search"; query?: string } | null;
     }
   | { type: "SET_COMMAND_BAR_QUERY"; query: string }
-  | { type: "SET_LAYOUT_MARKETPLACE"; open: boolean }
   | { type: "SET_REFRESHING"; symbol: string; refreshing: boolean }
   | { type: "SET_BROKER_ACCOUNTS"; instanceId: string; accounts: BrokerAccount[] }
   | { type: "SET_INITIALIZED" }

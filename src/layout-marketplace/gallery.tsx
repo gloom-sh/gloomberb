@@ -4,15 +4,11 @@ import { useShortcut } from "../react/input";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { selectActiveLayoutIndex, selectSavedLayouts } from "../state/selectors-ui";
 import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
-import { useRendererHost, useUiHost } from "../ui";
+import { useUiHost } from "../ui";
 import { requestAuthDialog } from "../plugins/builtin/cloud/auth-dialog";
 import { usePlanAccess } from "../plugins/builtin/shared/plan-access";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LayoutConfig } from "../types/config";
-import type {
-  DesktopLayoutMarketplaceAction,
-  DesktopWindowBridge,
-} from "../types/desktop-window";
 import { LayoutGalleryDesktop } from "./gallery-desktop";
 import { LayoutGalleryTerminal } from "./gallery-terminal";
 import { LayoutNameDialog } from "./name-dialog";
@@ -56,14 +52,18 @@ export interface LayoutGalleryController {
 
 export function LayoutMarketplaceGallery({
   pluginRegistry,
-  desktopWindowBridge,
+  focused = true,
+  width,
+  height,
+  onClose,
 }: {
   pluginRegistry: PluginRegistry;
-  desktopWindowBridge?: DesktopWindowBridge;
+  focused?: boolean;
+  width?: number;
+  height?: number;
+  onClose?: () => void;
 }) {
   const dispatch = useAppDispatch();
-  const rendererHost = useRendererHost();
-  const windowed = desktopWindowBridge?.kind === "marketplace";
   const dialog = useDialog();
   const dialogOpen = useDialogState((state) => state.isOpen);
   const layouts = useAppSelector(selectSavedLayouts);
@@ -92,27 +92,9 @@ export function LayoutMarketplaceGallery({
   );
 
   const close = useCallback(() => {
-    if (windowed && rendererHost.controlWindow) {
-      void rendererHost.controlWindow("close");
-      return;
-    }
-    dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: false });
-  }, [dispatch, rendererHost, windowed]);
-
-  const performLayoutAction = useCallback(async (action: DesktopLayoutMarketplaceAction) => {
-    if (windowed && desktopWindowBridge.performLayoutMarketplaceAction) {
-      await desktopWindowBridge.performLayoutMarketplaceAction(action);
-      return;
-    }
-    dispatch(action);
-  }, [desktopWindowBridge, dispatch, windowed]);
-
-  const reportLayoutActionError = useCallback((error: unknown) => {
-    pluginRegistry.notify({
-      body: error instanceof Error ? error.message : "Could not update layouts.",
-      type: "error",
-    });
-  }, [pluginRegistry]);
+    if (onClose) onClose();
+    else pluginRegistry.hidePane("layout-marketplace");
+  }, [onClose, pluginRegistry]);
 
   const activate = useCallback((entry: GalleryEntry) => {
     if (entry.kind === "community") {
@@ -120,21 +102,17 @@ export function LayoutMarketplaceGallery({
       setSelectedId(entry.id);
       return;
     }
+    close();
     if (entry.index !== null && entry.index !== activeIndex) {
-      void performLayoutAction({ type: "SWITCH_LAYOUT", index: entry.index })
-        .catch(reportLayoutActionError);
+      dispatch({ type: "SWITCH_LAYOUT", index: entry.index });
     }
-    if (!windowed) close();
-  }, [activeIndex, close, performLayoutAction, reportLayoutActionError, windowed]);
+  }, [activeIndex, close, dispatch]);
 
   const install = useCallback((entry: GalleryEntry) => {
-    void performLayoutAction({ type: "INSTALL_LAYOUT_COPY", name: entry.name, layout: entry.layout })
-      .then(() => {
-        pluginRegistry.notify({ body: `Layout "${entry.name}" added`, type: "success" });
-        if (!windowed) close();
-      })
-      .catch(reportLayoutActionError);
-  }, [close, performLayoutAction, pluginRegistry, reportLayoutActionError, windowed]);
+    close();
+    dispatch({ type: "INSTALL_LAYOUT_COPY", name: entry.name, layout: entry.layout });
+    pluginRegistry.notify({ body: `Layout "${entry.name}" added`, type: "success" });
+  }, [close, dispatch, pluginRegistry]);
 
   const requestSignIn = useCallback(() => {
     if (!requestAuthDialog({ mode: "login" })) {
@@ -170,14 +148,10 @@ export function LayoutMarketplaceGallery({
       confirmLabel: "Create Layout",
     });
     if (!name) return;
-    try {
-      await performLayoutAction({ type: "NEW_LAYOUT", name });
-      pluginRegistry.notify({ body: `Layout "${name}" created`, type: "success" });
-      if (!windowed) close();
-    } catch (error) {
-      reportLayoutActionError(error);
-    }
-  }, [close, performLayoutAction, pluginRegistry, promptName, reportLayoutActionError, windowed]);
+    close();
+    dispatch({ type: "NEW_LAYOUT", name });
+    pluginRegistry.notify({ body: `Layout "${name}" created`, type: "success" });
+  }, [close, dispatch, pluginRegistry, promptName]);
 
   const renameLayout = useCallback(async (entry: GalleryEntry) => {
     if (entry.index === null) return;
@@ -188,22 +162,15 @@ export function LayoutMarketplaceGallery({
       initialValue: entry.name,
     });
     if (!name || name === entry.name) return;
-    try {
-      await performLayoutAction({ type: "RENAME_LAYOUT", index: entry.index, name });
-    } catch (error) {
-      reportLayoutActionError(error);
-    }
-  }, [performLayoutAction, promptName, reportLayoutActionError]);
+    dispatch({ type: "RENAME_LAYOUT", index: entry.index, name });
+  }, [dispatch, promptName]);
 
   const duplicateLayout = useCallback((entry: GalleryEntry) => {
     if (entry.index === null) return;
-    void performLayoutAction({ type: "DUPLICATE_LAYOUT", index: entry.index })
-      .then(() => {
-        pluginRegistry.notify({ body: `Layout "${entry.name}" duplicated`, type: "success" });
-        if (!windowed) close();
-      })
-      .catch(reportLayoutActionError);
-  }, [close, performLayoutAction, pluginRegistry, reportLayoutActionError, windowed]);
+    close();
+    dispatch({ type: "DUPLICATE_LAYOUT", index: entry.index });
+    pluginRegistry.notify({ body: `Layout "${entry.name}" duplicated`, type: "success" });
+  }, [close, dispatch, pluginRegistry]);
 
   const deleteLayout = useCallback(async (entry: GalleryEntry) => {
     if (entry.index === null || layouts.length <= 1) return;
@@ -221,13 +188,9 @@ export function LayoutMarketplaceGallery({
       ),
     }).catch(() => false);
     if (confirmed !== true) return;
-    try {
-      await performLayoutAction({ type: "DELETE_LAYOUT", index: entry.index });
-      pluginRegistry.notify({ body: `Layout "${entry.name}" deleted`, type: "success" });
-    } catch (error) {
-      reportLayoutActionError(error);
-    }
-  }, [dialog, layouts.length, performLayoutAction, pluginRegistry, reportLayoutActionError]);
+    dispatch({ type: "DELETE_LAYOUT", index: entry.index });
+    pluginRegistry.notify({ body: `Layout "${entry.name}" deleted`, type: "success" });
+  }, [dialog, dispatch, layouts.length, pluginRegistry]);
 
   const publishCurrent = useCallback(async () => {
     if (!signedIn) {
@@ -274,7 +237,7 @@ export function LayoutMarketplaceGallery({
     event.stopPropagation();
     if (detailId) setDetailId(null);
     else close();
-  }, { enabled: !dialogOpen, phase: "before", allowEditable: true, scope: "layout-gallery" });
+  }, { enabled: focused && !dialogOpen, phase: "before", allowEditable: true, scope: "layout-gallery" });
 
   const controller: LayoutGalleryController = {
     query,
@@ -309,5 +272,13 @@ export function LayoutMarketplaceGallery({
 
   return useUiHost().kind === "desktop-web"
     ? <LayoutGalleryDesktop controller={controller} />
-    : <LayoutGalleryTerminal controller={controller} dialogOpen={dialogOpen} />;
+    : (
+      <LayoutGalleryTerminal
+        controller={controller}
+        dialogOpen={dialogOpen}
+        focused={focused}
+        width={width}
+        height={height}
+      />
+    );
 }

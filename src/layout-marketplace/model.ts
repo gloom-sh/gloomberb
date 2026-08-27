@@ -1,4 +1,9 @@
-import { findPaneInstance, type LayoutConfig, type PaneInstanceConfig } from "../types/config";
+import {
+  findPaneInstance,
+  removePaneInstances,
+  type LayoutConfig,
+  type PaneInstanceConfig,
+} from "../types/config";
 import { getDockedPaneIds } from "../plugins/pane-manager";
 import type { PaneDef } from "../types/plugin";
 import { fuzzyFilter } from "../utils/fuzzy-search";
@@ -128,7 +133,12 @@ export function buildOwnedEntries(
     id: `owned:${index}`,
     kind: "owned" as const,
     name: saved.name,
-    layout: saved.layout,
+    layout: removePaneInstances(
+      saved.layout,
+      saved.layout.instances
+        .filter((instance) => instance.paneId === "layout-marketplace")
+        .map((instance) => instance.instanceId),
+    ),
     index,
     active: index === activeIndex,
     author: null,

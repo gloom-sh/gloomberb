@@ -72,6 +72,22 @@ describe("gallery layout summaries", () => {
     expect(describeArrangement(layout)).toBe("3 docked · 1 floating · 1 detached");
     expect(summarizeLayoutPanes(layout, panes).some((pane) => pane.instanceId === "orphan:1")).toBe(false);
   });
+
+  test("does not preview the layout browser inside its own active layout", () => {
+    const layout = testLayout();
+    layout.instances.push({ instanceId: "layout-marketplace:1", paneId: "layout-marketplace" });
+    layout.floating.push({
+      instanceId: "layout-marketplace:1",
+      x: 20,
+      y: 5,
+      width: 100,
+      height: 30,
+    });
+
+    const entry = buildOwnedEntries([{ name: "Desk", layout }], 0)[0]!;
+    expect(entry.layout.instances.some((instance) => instance.paneId === "layout-marketplace")).toBe(false);
+    expect(describeArrangement(entry.layout)).toBe("3 docked · 1 floating · 1 detached");
+  });
 });
 
 test("search matches layout names and the pane types inside them", () => {

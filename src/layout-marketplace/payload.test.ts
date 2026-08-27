@@ -27,6 +27,18 @@ describe("layout marketplace payloads", () => {
       settings: { prompt: "private", token: "secret" },
       placementMemory: { floating: { x: 1, y: 2, width: 20, height: 8 } },
     };
+    config.layout.instances.push({
+      instanceId: "layout-marketplace:main",
+      paneId: "layout-marketplace",
+      binding: { kind: "none" },
+    });
+    config.layout.floating.push({
+      instanceId: "layout-marketplace:main",
+      x: 10,
+      y: 4,
+      width: 100,
+      height: 32,
+    });
 
     const payload = publishableMarketplaceLayout(config.layout);
 
@@ -37,6 +49,7 @@ describe("layout marketplace payloads", () => {
     });
     expect(JSON.stringify(payload)).not.toContain("private");
     expect(JSON.stringify(payload)).not.toContain("secret");
+    expect(JSON.stringify(payload)).not.toContain("layout-marketplace");
   });
 
   test("rejects malformed marketplace responses before they reach app state", () => {

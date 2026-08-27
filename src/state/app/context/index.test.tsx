@@ -4,29 +4,6 @@ import { appReducer, createInitialState } from "./index";
 import { removePane } from "../../../plugins/pane-manager";
 
 describe("appReducer command bar state", () => {
-  test("opening the layout browser closes and clears the command bar", () => {
-    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-gallery-open-test"));
-    const searching = appReducer(initial, {
-      type: "SET_COMMAND_BAR",
-      open: true,
-      query: "LAY",
-      launch: { kind: "ticker-search", query: "NVDA" },
-    });
-
-    const opened = appReducer(searching, { type: "SET_LAYOUT_MARKETPLACE", open: true });
-    expect(opened).toMatchObject({
-      layoutMarketplaceOpen: true,
-      commandBarOpen: false,
-      commandBarQuery: "",
-      commandBarLaunchRequest: null,
-    });
-
-    const closed = appReducer(opened, { type: "SET_LAYOUT_MARKETPLACE", open: false });
-    expect(closed.layoutMarketplaceOpen).toBe(false);
-    // Closing the gallery must not reopen the command bar it replaced.
-    expect(closed.commandBarOpen).toBe(false);
-  });
-
   test("tracks layout undo and redo history", () => {
     const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
     const defaultRatio = initial.config.layout.dockRoot && initial.config.layout.dockRoot.kind === "split"

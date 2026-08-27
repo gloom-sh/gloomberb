@@ -1,7 +1,6 @@
 import type { PaneRuntimeState } from "../../../../../core/state/app/state";
 import type {
   DesktopDockPreviewState,
-  DesktopLayoutMarketplaceAction,
   DesktopSharedStateSnapshot,
   DesktopThemePreviewState,
   DesktopWindowBridge,
@@ -9,7 +8,7 @@ import type {
 import { backendRequest, getElectrobunBackendInitSnapshot, onDesktopDockPreview, onDesktopState, onDesktopThemePreview } from "../../backend-rpc";
 import { detachedSnapshotKey, prepareDetachedSnapshot } from "./snapshot";
 
-export function createDesktopWindowBridge(kind: "main" | "detached" | "marketplace", paneId?: string): DesktopWindowBridge {
+export function createDesktopWindowBridge(kind: "main" | "detached", paneId?: string): DesktopWindowBridge {
   const initialDesktopSnapshot = getElectrobunBackendInitSnapshot()?.desktopSnapshot ?? null;
   let lastDetachedSnapshotKey = kind === "detached" && paneId && initialDesktopSnapshot
     ? detachedSnapshotKey(initialDesktopSnapshot, paneId)
@@ -18,16 +17,6 @@ export function createDesktopWindowBridge(kind: "main" | "detached" | "marketpla
   return {
     kind,
     paneId,
-    openLayoutMarketplace: kind === "main"
-      ? async () => {
-        await backendRequest("desktop.openLayoutMarketplace");
-      }
-      : undefined,
-    performLayoutMarketplaceAction: kind === "marketplace"
-      ? async (action: DesktopLayoutMarketplaceAction) => {
-        await backendRequest("desktop.performLayoutMarketplaceAction", { action });
-      }
-      : undefined,
     syncMainState: kind === "main"
       ? async (snapshot: DesktopSharedStateSnapshot) => {
         await backendRequest("desktop.syncMainState", { snapshot });

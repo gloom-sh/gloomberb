@@ -87,6 +87,10 @@ export function runDirectCommandAction(options: {
       closeAll({ revertThemePreview: false });
       pluginRegistry.showPane("help");
       return;
+    case "layout-marketplace":
+      closeAll({ revertThemePreview: false });
+      pluginRegistry.showPane("layout-marketplace");
+      return;
     case "pane-settings":
       if (state.focusedPaneId) openPaneSettingsRoute(state.focusedPaneId);
       return;

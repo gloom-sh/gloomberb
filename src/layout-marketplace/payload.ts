@@ -1,5 +1,6 @@
 import {
   CURRENT_CONFIG_VERSION,
+  removePaneInstances,
   type DockLayoutNode,
   type LayoutConfig,
   type PaneBinding,
@@ -208,14 +209,20 @@ function parsePayload(value: unknown): LayoutMarketplacePayload | null {
 }
 
 export function publishableMarketplaceLayout(layout: LayoutConfig): LayoutMarketplacePayload {
+  const publicLayout = removePaneInstances(
+    layout,
+    layout.instances
+      .filter((instance) => instance.paneId === "layout-marketplace")
+      .map((instance) => instance.instanceId),
+  );
   const projected: LayoutConfig = {
-    dockRoot: layout.dockRoot,
-    instances: layout.instances.map((instance) => ({
+    dockRoot: publicLayout.dockRoot,
+    instances: publicLayout.instances.map((instance) => ({
       instanceId: instance.instanceId,
       paneId: instance.paneId,
       ...(instance.binding ? { binding: instance.binding } : {}),
     })),
-    floating: layout.floating.map(({ instanceId, x, y, width, height, zIndex }) => ({
+    floating: publicLayout.floating.map(({ instanceId, x, y, width, height, zIndex }) => ({
       instanceId,
       x,
       y,
@@ -223,7 +230,7 @@ export function publishableMarketplaceLayout(layout: LayoutConfig): LayoutMarket
       height,
       ...(zIndex === undefined ? {} : { zIndex }),
     })),
-    detached: layout.detached.map(({ instanceId, x, y, width, height }) => ({ instanceId, x, y, width, height })),
+    detached: publicLayout.detached.map(({ instanceId, x, y, width, height }) => ({ instanceId, x, y, width, height })),
   };
   const parsed = parsePayload({
     schemaVersion: 1,

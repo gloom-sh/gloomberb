@@ -54,12 +54,21 @@ function discoverStatusRow(controller: LayoutGalleryController): GalleryRow | nu
 export function LayoutGalleryTerminal({
   controller,
   dialogOpen,
+  focused,
+  width,
+  height,
 }: {
   controller: LayoutGalleryController;
   dialogOpen: boolean;
+  focused: boolean;
+  width?: number;
+  height?: number;
 }) {
   const colors = useThemeColors();
   const viewport = useViewport();
+  const paneWidth = width ?? viewport.width;
+  const paneHeight = height ?? viewport.height;
+  const detailsWidth = Math.min(DETAILS_WIDTH, Math.max(28, Math.floor(paneWidth * 0.42)));
   const inputRef = useRef<InputRenderable | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -176,18 +185,12 @@ export function LayoutGalleryTerminal({
       setSearchFocused(true);
       inputRef.current?.focus?.();
     }
-  }, { allowEditable: true, enabled: !dialogOpen, phase: "before", scope: "layout-gallery" });
+  }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before", scope: "layout-gallery" });
 
-  const bodyHeight = Math.max(4, viewport.height - 6);
-  const status = controller.publishing ? t("Publishing…") : null;
+  const bodyHeight = Math.max(4, paneHeight - 1);
 
   return (
     <Box flexGrow={1} flexDirection="column" backgroundColor={colors.bg}>
-      <Box height={1} flexDirection="row" justifyContent="space-between" paddingX={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("LAYOUTS")}</Text>
-        {status && <Text fg={colors.textMuted}>{status}</Text>}
-      </Box>
-
       <Box height={1} flexDirection="row" paddingX={1} backgroundColor={colors.panel}>
         <Text fg={searchFocused ? colors.textBright : colors.textDim}>{"/ "}</Text>
         <Input
@@ -242,7 +245,7 @@ export function LayoutGalleryTerminal({
         </Box>
 
         <Box
-          width={DETAILS_WIDTH}
+          width={detailsWidth}
           flexDirection="column"
           paddingX={1}
           border
@@ -250,7 +253,12 @@ export function LayoutGalleryTerminal({
           borderColor={colors.border}
         >
           {selectedEntry ? (
-            <LayoutDetails controller={controller} entry={selectedEntry} />
+            <LayoutDetails
+              controller={controller}
+              entry={selectedEntry}
+              width={detailsWidth}
+              height={paneHeight}
+            />
           ) : selectedRow?.action ? (
             <Box flexDirection="column" gap={1}>
               <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{selectedRow.label}</Text>
@@ -273,16 +281,19 @@ export function LayoutGalleryTerminal({
 function LayoutDetails({
   controller,
   entry,
+  width,
+  height,
 }: {
   controller: LayoutGalleryController;
   entry: GalleryEntry;
+  width: number;
+  height: number;
 }) {
   const colors = useThemeColors();
-  const viewport = useViewport();
   const allPanes = summarizeLayoutPanes(entry.layout, controller.panes);
   const missing = allPanes.filter((pane) => pane.missing);
   // Leave room for the title block, the warning line, and both action rows.
-  const paneBudget = Math.max(3, viewport.height - 14);
+  const paneBudget = Math.max(3, height - 13);
   const overflow = Math.max(0, allPanes.length - paneBudget);
   const panes = overflow > 0 ? allPanes.slice(0, paneBudget - 1) : allPanes;
 
@@ -304,7 +315,7 @@ function LayoutDetails({
         return (
           <Box key={pane.instanceId} height={1} flexDirection="row" justifyContent="space-between">
             <Text fg={pane.missing ? colors.textMuted : colors.text}>
-              {truncateToDisplayWidth(label, Math.max(4, DETAILS_WIDTH - 5 - trailing.length))}
+              {truncateToDisplayWidth(label, Math.max(4, width - 5 - trailing.length))}
             </Text>
             <Text fg={colors.textMuted}>{trailing}</Text>
           </Box>
@@ -356,7 +367,6 @@ function LayoutDetails({
           disabled={controller.publishing}
           onPress={controller.publishCurrent}
         />
-        <Button label="Close" variant="ghost" onPress={controller.close} />
       </Box>
     </Box>
   );

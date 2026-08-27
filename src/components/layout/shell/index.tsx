@@ -59,6 +59,8 @@ import {
   useShellResolvedPanes,
   useShellVisibleLayout,
 } from "./layout-state";
+import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
+import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { useShellPaneActions } from "./pane/actions";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
@@ -271,8 +273,8 @@ export function Shell({
     width,
   });
   const openLayoutGallery = useCallback(() => {
-    dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true });
-  }, [dispatch]);
+    pluginRegistry.showPane("layout-marketplace");
+  }, [pluginRegistry]);
   const setTransientFocusLayout = useCallback((next: TransientFocusLayoutState | null) => {
     transientFocusLayoutStateRef.current = next;
     setTransientFocusLayoutState(next);
@@ -568,6 +570,9 @@ export function Shell({
         }
         : {})}
     >
+      {/* Render nothing; give the auth commands always-mounted components with dialog access. */}
+      <DeviceSignInDialogHost />
+      <AuthDialogHost />
       <Box
         position="absolute"
         left={0}

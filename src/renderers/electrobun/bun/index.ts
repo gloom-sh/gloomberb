@@ -35,17 +35,13 @@ import {
   defaultMainWindowFrame,
   normalizeWindowFrameWithMinimum,
 } from "./window/frame";
-import {
-  LAYOUT_MARKETPLACE_WINDOW_RPC_KEY,
-  MAIN_WINDOW_RPC_KEY,
-} from "./window/focus";
+import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { handleHttpFetch } from "./desktop/http-fetch";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import {
   applyWindowMoveEvent,
   applyWindowResizeEvent,
-  getWindowFrame,
   updateWindowFrameCache,
   type WindowMoveEvent,
   type WindowResizeEvent,
@@ -68,10 +64,6 @@ import {
 import { applyDesktopWindowControl, type DesktopWindowControlAction } from "./desktop/window-controls";
 import { startRemoteControlServer, type RemoteControlServer } from "../../../remote/server";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
-import {
-  applyDesktopLayoutMarketplaceAction,
-  parseDesktopLayoutMarketplaceAction,
-} from "./desktop/layout-marketplace";
 
 type DesktopRpc = ReturnType<typeof BrowserView.defineRPC<ElectrobunDesktopRpcSchema>>;
 
@@ -85,7 +77,6 @@ setNativeIbkrGatewayModuleLoader(() => import("../../../plugins/ibkr/gateway/ser
 let currentConfig: AppConfig | null = null;
 let services: AppServices | null = null;
 let mainWindow: BrowserWindow | null = null;
-let layoutMarketplaceWindow: BrowserWindow | null = null;
 let desktopWorkspace: DesktopWorkspace | null = null;
 let desktopRestartInProgress = false;
 let desktopRemoteControlServer: RemoteControlServer | null = null;
@@ -230,63 +221,6 @@ function stopDesktopRemoteControlServer(): void {
 
 function openMainWindowDevTools(): void {
   mainWindow?.webview.openDevTools();
-}
-
-const LAYOUT_MARKETPLACE_WINDOW_MIN_SIZE = { width: 820, height: 560 };
-
-function cleanupLayoutMarketplaceWindow(): void {
-  disposeWindowScopedResources(LAYOUT_MARKETPLACE_WINDOW_RPC_KEY);
-  unregisterWindowRpc(LAYOUT_MARKETPLACE_WINDOW_RPC_KEY);
-}
-
-function closeLayoutMarketplaceWindow(): void {
-  const window = layoutMarketplaceWindow;
-  if (!window) return;
-  layoutMarketplaceWindow = null;
-  cleanupLayoutMarketplaceWindow();
-  (window as any).close?.();
-}
-
-function openLayoutMarketplaceWindow(): void {
-  if (layoutMarketplaceWindow) return;
-
-  const mainFrame = getWindowFrame(mainWindow) ?? defaultMainWindowFrame();
-  const width = Math.max(820, Math.min(1120, mainFrame.width - 120));
-  const height = Math.max(560, Math.min(760, mainFrame.height - 100));
-  const frame = normalizeWindowFrameWithMinimum({
-    x: mainFrame.x + Math.max(28, Math.round((mainFrame.width - width) / 2)),
-    y: mainFrame.y + Math.max(28, Math.round((mainFrame.height - height) / 2)),
-    width,
-    height,
-  }, defaultMainWindowFrame(), LAYOUT_MARKETPLACE_WINDOW_MIN_SIZE);
-  const rpc = createWindowRpc(LAYOUT_MARKETPLACE_WINDOW_RPC_KEY);
-  const window = new BrowserWindow({
-    title: "Layouts",
-    frame,
-    url: "views://mainview/index.html",
-    renderer: desktopWindowRenderer(),
-    rpc,
-    styleMask: desktopWindowStyleMask(),
-    titleBarStyle: desktopTitleBarStyle(),
-    navigationRules: JSON.stringify(["views://*"]),
-    sandbox: false,
-  });
-  layoutMarketplaceWindow = window;
-  applyWindowsWindowIcon("Layouts");
-  applyWindowsCustomChrome("Layouts");
-  updateWindowFrameCache(window, frame, LAYOUT_MARKETPLACE_WINDOW_MIN_SIZE);
-  (window as any).on?.("resize", (event: WindowResizeEvent) => {
-    applyWindowResizeEvent(window, event, LAYOUT_MARKETPLACE_WINDOW_MIN_SIZE);
-  });
-  (window as any).on?.("close", () => {
-    if (layoutMarketplaceWindow === window) layoutMarketplaceWindow = null;
-    cleanupLayoutMarketplaceWindow();
-  });
-}
-
-function focusDesktopWindowForRpcKey(windowKey: string | undefined): boolean {
-  if (windowKey === LAYOUT_MARKETPLACE_WINDOW_RPC_KEY) return false;
-  return detachedWindowManager.focusWindowForRpcKey(windowKey);
 }
 
 function syncActiveLayout(
@@ -435,7 +369,6 @@ function reconcileDetachedWindows(): void {
 
 function closeAllDetachedWindows(): void {
   detachedWindowManager.closeAll();
-  closeLayoutMarketplaceWindow();
 }
 
 function quitDesktopApp(): void {
@@ -450,9 +383,7 @@ function quitDesktopApp(): void {
 function controlWindowForRpcKey(windowKey: string | undefined, action: DesktopWindowControlAction): boolean {
   const targetWindow = windowKey === MAIN_WINDOW_RPC_KEY
     ? mainWindow
-    : windowKey === LAYOUT_MARKETPLACE_WINDOW_RPC_KEY
-      ? layoutMarketplaceWindow
-      : detachedWindowManager.getWindowForRpcKey(windowKey);
+    : detachedWindowManager.getWindowForRpcKey(windowKey);
   if (!targetWindow) return false;
   if (action !== "close") {
     detachedWindowManager.suppressAutoDockForRpcKey(windowKey);
@@ -514,16 +445,6 @@ async function handleBackendRequest(
     case "capability.subscribe":
     case "capability.unsubscribe":
       return capabilityBridge.handle(rpc, request);
-    case "desktop.openLayoutMarketplace":
-      openLayoutMarketplaceWindow();
-      return null;
-    case "desktop.performLayoutMarketplaceAction": {
-      const action = parseDesktopLayoutMarketplaceAction(request.payload.action);
-      if (!action) throw new Error("Invalid layout marketplace action.");
-      const workspace = requireDesktopWorkspace();
-      await commitDesktopSnapshot(applyDesktopLayoutMarketplaceAction(workspace.getSnapshot(), action));
-      return null;
-    }
     case "desktop.syncMainState":
     case "desktop.setThemePreview":
     case "desktop.replaceDetachedPaneState":
@@ -562,7 +483,7 @@ async function handleBackendRequest(
           mainWindow = null;
         },
         closeAllDetachedWindows,
-        focusWindowForRpcKey: focusDesktopWindowForRpcKey,
+        focusWindowForRpcKey: (windowKey) => detachedWindowManager.focusWindowForRpcKey(windowKey),
         getMainWindow: () => mainWindow,
         getRpcWindowKey,
         request,

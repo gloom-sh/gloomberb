@@ -47,7 +47,7 @@ export function useDesktopApplicationMenuRuntime({
           dispatch({ type: "TOGGLE_STATUS_BAR" });
           break;
         case "open-layout-gallery":
-          dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true });
+          pluginRegistry.showPane("layout-marketplace");
           break;
         case "layout-undo":
           dispatch({ type: "UNDO_LAYOUT" });

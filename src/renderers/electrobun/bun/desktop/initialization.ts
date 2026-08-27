@@ -21,7 +21,6 @@ import {
   type DesktopWorkspace,
 } from "./workspace";
 import {
-  LAYOUT_MARKETPLACE_WINDOW_RPC_KEY,
   MAIN_WINDOW_RPC_KEY,
   paneIdFromDetachedRpcKey,
 } from "../window/focus";
@@ -29,7 +28,7 @@ import type { DesktopBackendRequestPayload, ElectrobunBackendInit } from "../../
 import type { CapabilityRegistry } from "../../../../capabilities";
 
 interface DesktopWindowTarget {
-  kind: "main" | "detached" | "marketplace";
+  kind: "main" | "detached";
   paneId?: string;
 }
 
@@ -65,7 +64,6 @@ function normalizeInitWindowTarget<TRpc>(
 ): DesktopWindowTarget {
   const rpcKey = getRpcWindowKey(rpc);
   if (rpcKey === MAIN_WINDOW_RPC_KEY) return { kind: "main" };
-  if (rpcKey === LAYOUT_MARKETPLACE_WINDOW_RPC_KEY) return { kind: "marketplace" };
 
   const detachedPaneId = paneIdFromDetachedRpcKey(rpcKey);
   if (detachedPaneId) {
@@ -75,9 +73,7 @@ function normalizeInitWindowTarget<TRpc>(
     };
   }
 
-  const kind = payload.kind === "detached" || payload.kind === "marketplace"
-    ? payload.kind
-    : "main";
+  const kind = payload.kind === "detached" ? "detached" : "main";
   return {
     kind,
     paneId: kind === "detached" && typeof payload.paneId === "string" && payload.paneId.length > 0

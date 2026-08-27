@@ -37,17 +37,18 @@ async function renderGallery() {
     { name: "Default", layout: cloneLayout(config.layout) },
     { name: "Research Desk", layout: cloneLayout(config.layout) },
   ];
-  const state = { ...createInitialState(config), layoutMarketplaceOpen: true };
+  const state = createInitialState(config);
   const actions: AppAction[] = [];
+  let closed = false;
 
   testSetup = await testRender(
     <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
-      <LayoutMarketplaceGallery pluginRegistry={registry} />
+      <LayoutMarketplaceGallery pluginRegistry={registry} onClose={() => { closed = true; }} />
     </AppContext>,
     { width: 100, height: 24 },
   );
   await testSetup.renderOnce();
-  return actions;
+  return { actions, isClosed: () => closed };
 }
 
 test("lists owned layouts before Discover and details the selected layout", async () => {
@@ -67,7 +68,7 @@ test("lists owned layouts before Discover and details the selected layout", asyn
 });
 
 test("j/k move the selection and Enter switches to the layout and closes", async () => {
-  const actions = await renderGallery();
+  const { actions, isClosed } = await renderGallery();
 
   await act(async () => {
     testSetup!.mockInput.pressKey("j");
@@ -79,5 +80,5 @@ test("j/k move the selection and Enter switches to the layout and closes", async
   });
 
   expect(actions).toContainEqual({ type: "SWITCH_LAYOUT", index: 1 });
-  expect(actions).toContainEqual({ type: "SET_LAYOUT_MARKETPLACE", open: false });
+  expect(isClosed()).toBe(true);
 });

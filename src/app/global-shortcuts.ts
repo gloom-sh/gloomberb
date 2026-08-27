@@ -59,18 +59,9 @@ export function useAppGlobalShortcuts({
       && (event.ctrl || event.meta || event.super)) {
       const layouts = state.config.layouts ?? [];
       const idx = parseInt(event.name!, 10) - 1;
-      // The gallery's own search field must not swallow layout switching, so an
-      // editable target only blocks the digit outside the gallery.
-      const uiOwnsKeyboard = dialogOpen
-        || state.commandBarOpen
-        || (event.targetEditable === true && !state.layoutMarketplaceOpen);
-      if (!uiOwnsKeyboard && idx < layouts.length) {
-        if (idx !== state.config.activeLayoutIndex) {
-          dispatch({ type: "SWITCH_LAYOUT", index: idx });
-        }
-        if (state.layoutMarketplaceOpen) {
-          dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: false });
-        }
+      const uiOwnsKeyboard = dialogOpen || state.commandBarOpen || event.targetEditable === true;
+      if (!uiOwnsKeyboard && idx < layouts.length && idx !== state.config.activeLayoutIndex) {
+        dispatch({ type: "SWITCH_LAYOUT", index: idx });
       }
       event.preventDefault();
       event.stopPropagation();
@@ -78,9 +69,6 @@ export function useAppGlobalShortcuts({
     }
 
     if (dialogOpen) return;
-
-    // The gallery replaces the workspace, so workspace keys stay inert until it closes.
-    if (state.layoutMarketplaceOpen) return;
 
     if (!isDetachedWindow && (
       (event.name === "p" && event.ctrl)

@@ -407,9 +407,6 @@ export function LayoutGalleryDesktop({ controller }: { controller: LayoutGallery
           flexShrink: 0,
         }}
       >
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ fontSize: 13 }}>
-          {t("Layouts")}
-        </Text>
         <Box
           backgroundColor={blendHex(colors.panel, colors.bg, 0.3)}
           style={{
@@ -435,7 +432,6 @@ export function LayoutGalleryDesktop({ controller }: { controller: LayoutGallery
           disabled={controller.publishing}
           onPress={controller.publishCurrent}
         />
-        <Button label="Close" variant="ghost" onPress={controller.close} />
       </Box>
 
       <Box flexDirection="row" flexGrow={1} style={{ minHeight: 0 }}>

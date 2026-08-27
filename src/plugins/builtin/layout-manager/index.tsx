@@ -2,6 +2,7 @@ import { findPaneInstance, type LayoutConfig } from "../../../types/config";
 import type { AppNotificationRequest, GloomPluginContext } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import type { AppAction } from "../../../state/app/context";
+import { LayoutMarketplacePane } from "../../../layout-marketplace/pane";
 import { notifyGridlockComplete } from "../../gridlock-notification";
 import {
   dockPane,
@@ -41,6 +42,18 @@ function getFocusedPane(layout: LayoutConfig, focusedPaneId: string | null) {
 }
 
 export const layoutManagerModule: PluginModule = {
+  panes: [
+    {
+      id: "layout-marketplace",
+      name: "Layouts",
+      icon: "L",
+      component: LayoutMarketplacePane,
+      defaultPosition: "right",
+      defaultMode: "floating",
+      defaultFloatingSize: { width: 118, height: 34 },
+    },
+  ],
+
   setup(ctx) {
     const notify = (body: string, options?: Omit<AppNotificationRequest, "body">) => {
       ctx.notify({ body, ...options });

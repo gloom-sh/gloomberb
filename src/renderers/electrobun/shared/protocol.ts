@@ -1,11 +1,6 @@
 import type { AppSessionSnapshot } from "../../../core/state/session-persistence";
 import type { PaneRuntimeState } from "../../../core/state/app/state";
-import type {
-  DesktopDockPreviewState,
-  DesktopLayoutMarketplaceAction,
-  DesktopSharedStateSnapshot,
-  DesktopThemePreviewState,
-} from "../../../types/desktop-window";
+import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState } from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig } from "../../../types/config";
 import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../../../types/media";
@@ -24,7 +19,7 @@ export interface ElectrobunBackendInit {
   pluginState: Record<string, Record<string, unknown>>;
   capabilityManifests: CapabilityManifest[];
   desktopPlatform: string;
-  windowKind: "main" | "detached" | "marketplace";
+  windowKind: "main" | "detached";
   paneId?: string;
 }
 
@@ -90,7 +85,7 @@ export interface DesktopCapabilitySubscribeRequest extends DesktopCapabilityInvo
 
 export interface DesktopBackendRequestMap {
   init: {
-    request: { kind?: "main" | "detached" | "marketplace"; paneId?: string };
+    request: { kind?: "main" | "detached"; paneId?: string };
     response: ElectrobunBackendInit;
   };
   "http.fetch": { request: DesktopHttpFetchRequest; response: DesktopHttpFetchResponse };
@@ -101,11 +96,6 @@ export interface DesktopBackendRequestMap {
   "capability.subscribe": { request: DesktopCapabilitySubscribeRequest; response: null };
   "capability.unsubscribe": { request: { subscriptionId: string }; response: null };
   "desktop.syncMainState": { request: { snapshot: DesktopSharedStateSnapshot }; response: null };
-  "desktop.openLayoutMarketplace": { request: null; response: null };
-  "desktop.performLayoutMarketplaceAction": {
-    request: { action: DesktopLayoutMarketplaceAction };
-    response: null;
-  };
   "desktop.setThemePreview": { request: { preview: DesktopThemePreviewState }; response: null };
   "desktop.replaceDetachedPaneState": {
     request: { paneId: string; paneState: PaneRuntimeState };
@@ -169,10 +159,7 @@ export type DesktopBackendRequestArgs<K extends DesktopBackendRequestMethod> =
     : [payload: DesktopBackendRequestPayload<K>];
 
 export type DesktopCapabilityRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `capability.${string}`>>;
-export type DesktopWorkspaceRequest = DesktopBackendRequestFor<Exclude<
-  Extract<DesktopBackendRequestMethod, `desktop.${string}`>,
-  "desktop.openLayoutMarketplace" | "desktop.performLayoutMarketplaceAction"
->>;
+export type DesktopWorkspaceRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `desktop.${string}`>>;
 export type DesktopPluginStateRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `pluginState.${string}`>>;
 export type DesktopHostRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `host.${string}`>>;
 export type DesktopCoreRequest = DesktopBackendRequestFor<

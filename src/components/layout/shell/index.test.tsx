@@ -62,6 +62,7 @@ function createShellPluginRegistry(options?: {
     hasPaneSettings: (paneId: string) => paneId === "portfolio-list:main",
     openPaneSettingsFn: () => {},
     openCommandBar: () => {},
+    showPane: () => {},
     openWindowMode: () => {},
     openWindowModeFn: () => {},
     updateLayoutFn: () => {},
@@ -368,11 +369,14 @@ describe("Shell", () => {
 
   test("opens the layout browser from the primary Shift-L shortcut", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-layout-browser-shortcut-test");
-    const { actions } = await renderShellForWindowModeTest(createInitialState(config));
+    const opened: string[] = [];
+    const registry = createShellPluginRegistry();
+    registry.showPane = (paneId) => opened.push(paneId);
+    await renderShellForWindowModeTest(createInitialState(config), { registry });
 
     await emitKeypress({ name: "l", ctrl: true, shift: true });
 
-    expect(actions).toContainEqual({ type: "SET_LAYOUT_MARKETPLACE", open: true });
+    expect(opened).toEqual(["layout-marketplace"]);
   });
 
   test("toggles the focused pane fullscreen without persisting layout", async () => {

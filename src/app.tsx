@@ -1,10 +1,4 @@
-import {
-  Box,
-  ContextMenuProvider,
-  useNativeRenderer,
-  useRendererHost,
-  useUiCapabilities,
-} from "./ui";
+import { Box, ContextMenuProvider, useNativeRenderer, useRendererHost } from "./ui";
 import { ToastViewport, useToastHost } from "./ui/toast";
 import { useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from "react";
 import {
@@ -18,15 +12,10 @@ import {
 import { bindAppActivity, useAppActive } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
-import { WindowControls } from "./components/layout/window-controls";
-import { TITLEBAR_OVERLAY_HEIGHT_PX } from "./components/layout/titlebar-overlay";
 import { Shell } from "./components/layout/shell";
 import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
-import { LayoutMarketplaceGallery } from "./layout-marketplace/gallery";
-import { AuthDialogHost } from "./plugins/builtin/cloud/auth-dialog";
-import { DeviceSignInDialogHost } from "./plugins/builtin/cloud/device-signin-dialog";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
@@ -65,7 +54,6 @@ import { scheduleConfigSave } from "./state/config-save-scheduler";
 import { measurePerf } from "./utils/perf-marks";
 import { useAppLanguage } from "./i18n/react";
 import { AppLanguageConfigObserver } from "./app/language-observer";
-import { apiClient } from "./api-client";
 
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
 
@@ -102,52 +90,7 @@ function ThemedAppRoot({ children }: { children: ReactNode }) {
   );
 }
 
-function LayoutMarketplaceWindowApp({
-  pluginRegistry,
-  desktopWindowBridge,
-}: Pick<AppInnerProps, "pluginRegistry" | "desktopWindowBridge">) {
-  const colors = useThemeColors();
-  const rendererHost = useRendererHost();
-  const toast = useToastHost();
-  const { nativeWindowChrome, windowControls } = useUiCapabilities();
-  const showWindowControls = nativeWindowChrome && windowControls === "windows";
-
-  useEffect(() => {
-    void apiClient.getSession().catch(() => null);
-  }, []);
-
-  pluginRegistry.notifyFn = (notification) => {
-    const options = { duration: notification.duration };
-    if (notification.type === "success") toast.success(notification.body, options);
-    else if (notification.type === "error") toast.error(notification.body, options);
-    else toast.info(notification.body, options);
-  };
-
-  return (
-    <ContextMenuProvider pluginRegistry={pluginRegistry}>
-      <ThemedAppRoot>
-        <Box
-          flexShrink={0}
-          height={`${TITLEBAR_OVERLAY_HEIGHT_PX}px`}
-          backgroundColor={colors.bg}
-          onMouseDown={() => rendererHost.startWindowDrag?.()}
-          data-gloom-role="layout-marketplace-titlebar"
-          style={{ borderBottom: `1px solid ${colors.border}` }}
-        />
-        {showWindowControls ? <WindowControls windowKind="marketplace" /> : null}
-        <DeviceSignInDialogHost />
-        <AuthDialogHost />
-        <LayoutMarketplaceGallery
-          pluginRegistry={pluginRegistry}
-          desktopWindowBridge={desktopWindowBridge}
-        />
-        <ToastViewport position="bottom-right" />
-      </ThemedAppRoot>
-    </ContextMenuProvider>
-  );
-}
-
-function AppWorkspaceInner({
+function AppInner({
   pluginRegistry,
   tickerRepository,
   dataProvider,
@@ -170,7 +113,6 @@ function AppWorkspaceInner({
   const focusedPaneId = useAppSelector((state) => state.focusedPaneId);
   const initialized = useAppSelector((state) => state.initialized);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
-  const layoutMarketplaceOpen = useAppSelector((state) => state.layoutMarketplaceOpen);
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const updateAvailable = useAppSelector((state) => state.updateAvailable);
   const updateProgress = useAppSelector((state) => state.updateProgress);
@@ -183,7 +125,6 @@ function AppWorkspaceInner({
     focusedPaneId,
     initialized,
     commandBarOpen,
-    layoutMarketplaceOpen,
     inputCaptured,
     updateAvailable,
     updateProgress,
@@ -194,7 +135,6 @@ function AppWorkspaceInner({
     focusedPaneId,
     initialized,
     inputCaptured,
-    layoutMarketplaceOpen,
     paneState,
     stateRef,
     tickers,
@@ -209,8 +149,6 @@ function AppWorkspaceInner({
   const toast = useToastHost();
   const isDetachedWindow = desktopWindowBridge?.kind === "detached";
   const detachedPaneId = isDetachedWindow ? desktopWindowBridge.paneId ?? null : null;
-  const hasNativeLayoutMarketplace = desktopWindowBridge?.kind === "main"
-    && !!desktopWindowBridge.openLayoutMarketplace;
   const [desktopDockPreview, setDesktopDockPreview] = useState<DesktopDockPreviewState | null>(null);
   const [commandBarNativeOccluder, setCommandBarNativeOccluder] = useState<LayoutBounds | null>(null);
   appActiveRef.current = appActive;
@@ -245,14 +183,6 @@ function AppWorkspaceInner({
   const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
     pluginRegistry.notify({ body, ...options });
   }, [pluginRegistry]);
-
-  useEffect(() => {
-    if (!layoutMarketplaceOpen || !hasNativeLayoutMarketplace) return;
-    dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: false });
-    void desktopWindowBridge.openLayoutMarketplace?.().catch((error) => {
-      notify(error instanceof Error ? error.message : "Could not open layouts.", { type: "error" });
-    });
-  }, [desktopWindowBridge, dispatch, hasNativeLayoutMarketplace, layoutMarketplaceOpen, notify]);
 
   useEffect(() => {
     if (desktopWindowBridge?.kind !== "main" || !desktopWindowBridge.subscribeDockPreview) return;
@@ -451,22 +381,15 @@ function AppWorkspaceInner({
               }).catch(() => {});
             }}
           />
-          {/* Auth entry points must survive destination changes such as the layout gallery. */}
-          <DeviceSignInDialogHost />
-          <AuthDialogHost />
-          {layoutMarketplaceOpen && !hasNativeLayoutMarketplace ? (
-            <LayoutMarketplaceGallery pluginRegistry={pluginRegistry} />
-          ) : (
-            <TransientLayoutProvider>
-              <Shell
-                pluginRegistry={pluginRegistry}
-                desktopWindowBridge={desktopWindowBridge}
-                desktopDockPreview={desktopDockPreview}
-                commandBarNativeOccluder={commandBarNativeOccluder}
-              />
-              <StatusBar />
-            </TransientLayoutProvider>
-          )}
+          <TransientLayoutProvider>
+            <Shell
+              pluginRegistry={pluginRegistry}
+              desktopWindowBridge={desktopWindowBridge}
+              desktopDockPreview={desktopDockPreview}
+              commandBarNativeOccluder={commandBarNativeOccluder}
+            />
+            <StatusBar />
+          </TransientLayoutProvider>
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
               pluginRegistry={pluginRegistry}
@@ -489,13 +412,6 @@ function AppWorkspaceInner({
       </RemoteControlHost>
     </ContextMenuProvider>
   );
-}
-
-function AppInner(props: AppInnerProps) {
-  if (props.desktopWindowBridge?.kind === "marketplace") {
-    return <LayoutMarketplaceWindowApp {...props} />;
-  }
-  return <AppWorkspaceInner {...props} />;
 }
 
 interface AppProps {
@@ -551,7 +467,7 @@ export function App({
     return initialCliLaunch.config;
   });
   const [showOnboarding, setShowOnboarding] = useState(() => (
-    (!desktopWindowBridge || desktopWindowBridge.kind === "main")
+    desktopWindowBridge?.kind !== "detached"
     && (!effectiveInitialConfig.onboardingComplete || !!effectiveInitialConfig.onboardingProgress)
   ));
 
@@ -589,9 +505,7 @@ export function App({
     <RemoteUiRegistryProvider>
       <AppProvider
         config={config}
-        sessionStore={desktopWindowBridge && desktopWindowBridge.kind !== "main"
-          ? undefined
-          : services.persistence.sessions}
+        sessionStore={desktopWindowBridge?.kind === "detached" ? undefined : services.persistence.sessions}
         sessionSnapshot={sessionSnapshot}
         desktopBridge={desktopWindowBridge}
         desktopSnapshot={desktopSnapshot}

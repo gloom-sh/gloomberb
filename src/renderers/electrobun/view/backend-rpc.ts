@@ -178,7 +178,7 @@ export async function backendRequest(
   return decodeRpcValue(result);
 }
 
-export async function initElectrobunBackend(payload?: { kind?: "main" | "detached" | "marketplace"; paneId?: string }): Promise<ElectrobunBackendInit> {
+export async function initElectrobunBackend(payload?: { kind?: "main" | "detached"; paneId?: string }): Promise<ElectrobunBackendInit> {
   initSnapshot = await backendRequest("init", payload ?? {});
   return initSnapshot;
 }

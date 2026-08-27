@@ -220,7 +220,7 @@ export function StatusBar() {
       {
         id: "layout:gallery",
         label: "Browse Layouts...",
-        onSelect: () => dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true }),
+        onSelect: () => registry?.showPane("layout-marketplace"),
       },
       {
         id: "layout:actions",
