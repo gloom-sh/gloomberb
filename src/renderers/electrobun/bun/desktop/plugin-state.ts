@@ -76,9 +76,15 @@ export function handleDesktopPluginStateRequest(
   }
 }
 
+function pluginStateIds(registry: PluginRegistry): string[] {
+  const store = registry.persistence.pluginState as { pluginIds?: () => string[] };
+  const storedIds = typeof store.pluginIds === "function" ? store.pluginIds() : [];
+  return [...new Set(["gloomberb-cloud", ...registry.allPlugins.keys(), ...storedIds])];
+}
+
 export function loadDesktopPluginState(registry: PluginRegistry): Record<string, Record<string, unknown>> {
   const state: Record<string, Record<string, unknown>> = {};
-  for (const pluginId of registry.allPlugins.keys()) {
+  for (const pluginId of pluginStateIds(registry)) {
     const keys = registry.persistence.pluginState.keys(pluginId);
     if (keys.length === 0) continue;
     state[pluginId] = {};

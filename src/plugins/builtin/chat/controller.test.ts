@@ -453,6 +453,55 @@ describe("ChatController", () => {
     }
   });
 
+  test("keeps a persisted native session when get-session returns no user", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+
+    persistence.setState("session", {
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => null;
+
+    await controller.refreshSession();
+
+    expect(apiClient.getSessionToken()).toBe("token-123");
+    expect(persistence.getState<{
+      sessionToken: string;
+      user: { id: string; username: string; emailVerified: boolean };
+    }>("session", { schemaVersion: 1 })).toEqual({
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    });
+    expect(controller.getSnapshot().user).toEqual({
+      id: "u1",
+      username: "vince",
+      emailVerified: true,
+    });
+    controller.dispose();
+  });
+
+  test("signs out when get-session returns no user and no token is stored", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+
+    persistence.setState("session", {
+      sessionToken: null,
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => null;
+
+    await controller.refreshSession();
+
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(controller.getSnapshot().user).toBeNull();
+    controller.dispose();
+  });
+
   test("keeps the cached session when session refresh fails transiently", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();

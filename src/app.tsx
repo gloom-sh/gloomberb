@@ -287,6 +287,7 @@ function AppInner({
     dispatch,
     tickerRepository,
     pluginRegistry,
+    appActive,
     // Keep a first-run workspace stable while the local guide is active. Once
     // onboarding finishes, the normal pull-before-push sync starts immediately.
     initialized: state.initialized

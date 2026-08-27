@@ -126,7 +126,10 @@ export async function performEmailAuth(mode: AccountMode, email: string, passwor
   if (!user.emailVerified) {
     await apiClient.sendVerification().catch(() => {});
   }
-  chatController.clearSession();
+  const sessionToken = apiClient.getSessionToken();
+  if (sessionToken) {
+    chatController.adoptSession(sessionToken, user);
+  }
   await chatController.refreshSession().catch(() => {});
   return user;
 }

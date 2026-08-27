@@ -126,6 +126,17 @@ export class PluginStateStore {
     ));
   }
 
+  pluginIds(): string[] {
+    return withSqliteBusyRetry("list plugin state ids", () => (
+      this.db
+        .query<{ plugin_id: string }, []>(
+          "SELECT DISTINCT plugin_id FROM plugin_state ORDER BY plugin_id",
+        )
+        .all()
+        .map((row) => row.plugin_id)
+    ));
+  }
+
   clear(pluginId: string): void {
     withSqliteBusyRetry("clear plugin state", () => {
       this.db.query("DELETE FROM plugin_state WHERE plugin_id = ?").run(pluginId);
