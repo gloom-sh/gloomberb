@@ -19,6 +19,7 @@ import {
 } from "./cloud-transport";
 import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
+import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing root element");
@@ -34,6 +35,7 @@ async function boot(): Promise<void> {
   await restoreBrowserCloudSession();
   const config = await loadConfig(BROWSER_DATA_DIR);
   applyLanguageFromConfig(config);
+  const deepLinkBridge = createBrowserDeepLinkBridge();
   root.render(
     <BrowserErrorBoundary>
       <UiHostProvider ui={browserUiHost} renderer={browserRendererHost} nativeRenderer={webNativeRenderer}>
@@ -44,6 +46,7 @@ async function boot(): Promise<void> {
                 config={config}
                 servicesFactory={createBrowserAppServices}
                 plugins={getBrowserBuiltinPlugins()}
+                desktopDeepLinkBridge={deepLinkBridge}
                 updatesEnabled={false}
               />
             </WebDialogHostProvider>

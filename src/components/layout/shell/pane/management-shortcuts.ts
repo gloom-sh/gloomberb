@@ -24,6 +24,7 @@ interface ShellPaneManagementShortcutOptions {
   openLayoutGallery(): void;
   overlayOpen: boolean;
   popOutFocusedPane(): boolean;
+  shareFocusedPane(): boolean;
   startWindowMode(paneId?: string, mode?: WindowEditMode): void;
   toggleFocusedPaneFullscreen(): boolean;
   toggleFocusedPaneFloating(): boolean;
@@ -42,6 +43,7 @@ export function useShellPaneManagementShortcuts({
   openLayoutGallery,
   overlayOpen,
   popOutFocusedPane,
+  shareFocusedPane,
   startWindowMode,
   toggleFocusedPaneFullscreen,
   toggleFocusedPaneFloating,
@@ -118,6 +120,9 @@ export function useShellPaneManagementShortcuts({
         break;
       case "copy-screenshot":
         handled = copyFocusedPaneScreenshot();
+        break;
+      case "share":
+        handled = shareFocusedPane();
         break;
       case "layout-gallery":
         openLayoutGallery();

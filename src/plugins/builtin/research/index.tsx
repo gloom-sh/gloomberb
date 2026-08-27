@@ -97,6 +97,7 @@ export const researchModule: PluginModule = {
       description: "Price targets, recommendations, and recent analyst actions.",
       keywords: ["analyst", "research", "ratings", "target", "anr"],
       shortcut: "ANR",
+      publicShare: true,
     }),
     createTickerSurfacePaneTemplate({
       id: "equity-diagnostic-pane",
@@ -105,6 +106,7 @@ export const researchModule: PluginModule = {
       description: "Red flags, anomalies, green flags, and watch items for one company, with cited evidence.",
       keywords: ["diagnostic", "diag", "red flags", "anomalies", "green flags", "review", "evidence"],
       shortcut: "DIAG",
+      publicShare: true,
     }),
     createTickerSurfacePaneTemplate({
       id: "corporate-actions-pane",
@@ -113,6 +115,7 @@ export const researchModule: PluginModule = {
       description: "Dividends, splits, reported earnings, and analyst estimates.",
       keywords: ["events", "corporate", "actions", "dividend", "split", "earnings", "estimate", "revenue", "evt"],
       shortcut: "EVT",
+      publicShare: true,
     }),
     createTickerSurfacePaneTemplate({
       id: "earnings-estimates-pane",
@@ -121,6 +124,7 @@ export const researchModule: PluginModule = {
       description: "EPS and revenue estimates with reported earnings.",
       keywords: ["earnings", "estimates", "ee", "analyst", "eps", "revenue", "events"],
       shortcut: "EE",
+      publicShare: true,
     }),
     {
       id: "relative-valuation-pane",

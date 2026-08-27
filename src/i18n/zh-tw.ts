@@ -222,6 +222,7 @@ export const zhTW: Record<string, string> = {
   "Dock Pane": "停靠面板",
   "Settings": "設定",
   "Copy Screenshot": "複製截圖",
+  "Share Pane": "分享窗格",
   "Pop Out": "彈出視窗",
   "Move Window...": "移動視窗...",
   "Resize Window...": "調整視窗大小...",

@@ -13,6 +13,8 @@ export interface TickerSurfacePaneTemplateOptions {
   description: string;
   keywords: string[];
   shortcut: string;
+  /** Opt in only when this template is available in the hosted browser catalog. */
+  publicShare?: boolean;
   titlePrefix?: string;
   viewKey?: string | ((
     symbol: string,
@@ -109,5 +111,20 @@ export function createTickerSurfacePaneTemplate(
         resolveViewKey(templateOptions.viewKey, symbol, context, createOptions),
       );
     },
+    ...(templateOptions.publicShare ? {
+      publicShare: {
+        serialize: ({ pane }) => pane.binding?.kind === "fixed" && pane.binding.symbol.trim()
+          ? {
+            title: pane.title?.trim() || `${titlePrefix} ${pane.binding.symbol}`,
+            data: { symbol: pane.binding.symbol.trim().toUpperCase() },
+          }
+          : null,
+        restore: (data) => {
+          if (Object.keys(data).length !== 1 || typeof data.symbol !== "string") return null;
+          const symbol = data.symbol.trim().toUpperCase();
+          return symbol ? { symbol } : null;
+        },
+      },
+    } : {}),
   };
 }

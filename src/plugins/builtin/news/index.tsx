@@ -147,6 +147,7 @@ export const tickerNewsModule: PluginModule = {
       description: "Company news for the selected ticker.",
       keywords: ["company", "ticker", "news", "headlines", "cn"],
       shortcut: "CN",
+      publicShare: true,
     }),
   ],
 

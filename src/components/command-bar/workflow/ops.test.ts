@@ -3,6 +3,7 @@ import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig }
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow } from "./ops";
+import type { TickerRecord } from "../../../types/ticker";
 
 function makeDataProvider() {
   return createTestDataProvider({ id: "test" });
@@ -66,6 +67,59 @@ describe("createPaneTemplateOrThrow", () => {
 
     expect(buildCalls).toHaveLength(0);
     expect(placeCalls).toHaveLength(0);
+  });
+
+  test("uses an explicit shared symbol instead of the recipient's active ticker", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
+    const state = createInitialState(config);
+    const msft: TickerRecord = {
+      metadata: {
+        ticker: "MSFT",
+        exchange: "NASDAQ",
+        currency: "USD",
+        name: "Microsoft",
+        portfolios: [],
+        watchlists: [],
+        positions: [],
+        broker_contracts: [],
+        custom: {},
+        tags: [],
+      },
+    };
+    state.tickers.set("MSFT", msft);
+    let createdSymbol: string | null | undefined;
+
+    await createPaneTemplateOrThrow("ticker-pane", { symbol: "MSFT" }, {
+      dataProvider: makeDataProvider() as any,
+      tickerRepository: makeTickerRepository() as any,
+      dispatch: () => {},
+      getState: () => state,
+      pluginRegistry: {
+        paneTemplates: new Map([["ticker-pane", {
+          id: "ticker-pane",
+          paneId: "ticker-view",
+          label: "Ticker View",
+          description: "Ticker View",
+          shortcut: { prefix: "TV", argPlaceholder: "ticker", argKind: "ticker" },
+          createInstance: (_context: unknown, options: { symbol?: string } | undefined) => {
+            createdSymbol = options?.symbol;
+            return { binding: { kind: "fixed", symbol: options?.symbol ?? "" } };
+          },
+        }]]),
+        panes: new Map([["ticker-view", {
+          id: "ticker-view",
+          name: "Ticker View",
+          component: () => null,
+          defaultPosition: "right",
+        }]]),
+        getPaneTemplatePluginId: () => undefined,
+        events: { emit: () => {} },
+      } as any,
+      buildPaneInstance: () => ({ instanceId: "ticker-view:1", paneId: "ticker-view" }) as any,
+      placePaneInstance: () => {},
+    });
+
+    expect(createdSymbol).toBe("MSFT");
   });
 
   test("passes pane template instance ids through to pane creation", async () => {

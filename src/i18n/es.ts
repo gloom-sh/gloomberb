@@ -221,6 +221,7 @@ export const es: Record<string, string> = {
   "Dock Pane": "Anclar panel",
   "Settings": "Ajustes",
   "Copy Screenshot": "Copiar captura",
+  "Share Pane": "Compartir panel",
   "Pop Out": "Abrir en ventana",
   "Move Window...": "Mover ventana...",
   "Resize Window...": "Redimensionar ventana...",

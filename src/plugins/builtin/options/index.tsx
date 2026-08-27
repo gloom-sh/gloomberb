@@ -50,6 +50,7 @@ export const optionsModule: PluginModule = {
       description: "Options chain for the selected ticker.",
       keywords: ["options", "chain", "calls", "puts", "omon"],
       shortcut: "OMON",
+      publicShare: true,
     }),
   ],
 

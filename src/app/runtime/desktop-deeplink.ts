@@ -11,6 +11,8 @@ import type { DesktopDeepLinkBridge } from "../../types/desktop-deeplink";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { requestAccountManagementTab } from "../../plugins/builtin/account-management/navigation";
 import { chatController } from "../../plugins/builtin/chat/controller";
+import { getShare } from "../../shares/api";
+import { openPaneShare } from "../../shares/pane";
 
 type CloudDeepLinkRoute = {
   kind: "cloud-alerts" | "cloud-emails" | "cloud-roundup" | "cloud-success";
@@ -20,6 +22,7 @@ type CloudDeepLinkRoute = {
 type CollectionDeepLinkKind = "collection" | "portfolio" | "watchlist";
 type AlertDeepLinkCondition = "above" | "below" | "crosses";
 type NewsDeepLinkKind = "breaking" | "feed" | "ticker" | "top";
+const SHARE_ID = /^[a-f0-9]{32}$/;
 
 export type DesktopDeepLinkAction =
   | { type: "open-account-management"; route: CloudDeepLinkRoute; message: string }
@@ -33,6 +36,7 @@ export type DesktopDeepLinkAction =
   | { type: "open-chat-channel"; channelId: string; messageId: string | null; message: string }
   | { type: "open-chat-dm"; participants: string; message: string }
   | { type: "open-news"; kind: NewsDeepLinkKind; symbol: string | null; message: string }
+  | { type: "open-share"; id: string; message: string }
   | { type: "unsupported"; message: string };
 
 interface ParsedGloomUrl {
@@ -241,6 +245,13 @@ function parseNewsDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
   return { type: "unsupported", message: "Unsupported Gloomberb news link." };
 }
 
+function parseShareDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
+  const id = parsed.segments[0] ?? param(parsed.url, "id", "share");
+  return id && SHARE_ID.test(id)
+    ? { type: "open-share", id, message: "Opened shared pane." }
+    : { type: "unsupported", message: "Share links need a valid id." };
+}
+
 export function resolveDesktopDeepLinkAction(rawUrl: string): DesktopDeepLinkAction {
   const parsed = parseGloomUrl(rawUrl);
   if (!parsed) return { type: "unsupported", message: "Unsupported Gloomberb link." };
@@ -262,6 +273,8 @@ export function resolveDesktopDeepLinkAction(rawUrl: string): DesktopDeepLinkAct
       return parseChatDeepLink(parsed);
     case "news":
       return parseNewsDeepLink(parsed);
+    case "share":
+      return parseShareDeepLink(parsed);
     default:
       return { type: "unsupported", message: "Unsupported Gloomberb link." };
   }
@@ -462,6 +475,17 @@ function handleOpenNews(
   notifySuccess(pluginRegistry, action.message);
 }
 
+async function handleOpenShare(
+  action: Extract<DesktopDeepLinkAction, { type: "open-share" }>,
+  pluginRegistry: PluginRegistry,
+): Promise<void> {
+  const share = await getShare(action.id, fetch, { trackView: false });
+  if (!share) throw new Error("This share is unavailable or has expired.");
+  if (share.kind !== "pane") throw new Error("This link contains a snapshot, not a live pane.");
+  await openPaneShare(pluginRegistry, share.data);
+  notifySuccess(pluginRegistry, action.message);
+}
+
 export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHandlerOptions): void {
   const action = resolveDesktopDeepLinkAction(rawUrl);
   if (action.type === "unsupported") {
@@ -499,6 +523,11 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
     case "open-news":
       handleOpenNews(action, options.pluginRegistry);
       return;
+    case "open-share":
+      void handleOpenShare(action, options.pluginRegistry).catch((error) => {
+        notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared pane.");
+      });
+      return;
   }
 }
 
@@ -506,19 +535,21 @@ export function useDesktopDeepLinkRuntime({
   desktopDeepLinkBridge,
   desktopWindowKind,
   dispatch,
+  initialized,
   pluginRegistry,
   stateRef,
 }: {
   desktopDeepLinkBridge?: DesktopDeepLinkBridge;
   desktopWindowKind?: DesktopWindowBridge["kind"];
   dispatch: Dispatch<AppAction>;
+  initialized: boolean;
   pluginRegistry: PluginRegistry;
   stateRef: { current: AppState };
 }) {
   useEffect(() => {
-    if (desktopWindowKind !== "main" || !desktopDeepLinkBridge) return;
+    if (!initialized || desktopWindowKind === "detached" || !desktopDeepLinkBridge) return;
     return desktopDeepLinkBridge.subscribe((deeplink) => {
       handleDesktopDeepLink(deeplink.url, { dispatch, pluginRegistry, stateRef });
     });
-  }, [desktopDeepLinkBridge, desktopWindowKind, dispatch, pluginRegistry, stateRef]);
+  }, [desktopDeepLinkBridge, desktopWindowKind, dispatch, initialized, pluginRegistry, stateRef]);
 }

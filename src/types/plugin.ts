@@ -179,6 +179,8 @@ export interface PaneTemplateCreateOptions {
   symbols?: string[] | null;
   ticker?: TickerRecord | null;
   searchResult?: InstrumentSearchResult | null;
+  /** Template-owned, validated data restored from a public pane share. */
+  shareData?: unknown;
 }
 
 export interface PaneTemplateInstanceConfig {
@@ -190,6 +192,22 @@ export interface PaneTemplateInstanceConfig {
   placement?: "default" | "docked" | "floating";
   relativeToPaneId?: string;
   relativePosition?: "left" | "right" | "above" | "below";
+}
+
+export interface PaneTemplatePublicShareContext {
+  pane: PaneInstanceConfig;
+  paneState: Record<string, unknown>;
+}
+
+export interface PaneTemplatePublicShareSnapshot {
+  title: string;
+  description?: string;
+  data: Record<string, unknown>;
+}
+
+export interface PaneTemplatePublicShareDef {
+  serialize(context: PaneTemplatePublicShareContext): PaneTemplatePublicShareSnapshot | null;
+  restore(data: Record<string, unknown>): PaneTemplateCreateOptions | null;
 }
 
 export interface PaneTemplateDef {
@@ -205,6 +223,8 @@ export interface PaneTemplateDef {
     context: PaneTemplateContext,
     options?: PaneTemplateCreateOptions,
   ) => PaneTemplateInstanceConfig | null | Promise<PaneTemplateInstanceConfig | null>;
+  /** Explicit public-data adapter. Templates without one cannot be shared. */
+  publicShare?: PaneTemplatePublicShareDef;
 }
 
 export interface WizardStep {

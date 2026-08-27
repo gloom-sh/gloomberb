@@ -290,6 +290,14 @@ class GloomApiClient {
     return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({}) });
   }
 
+  /** Stores a verified user's public terminal snapshot or pane handoff. */
+  async createTerminalShare(payload: unknown): Promise<{ id: string; expiresAt: string }> {
+    return this.request<{ id: string; expiresAt: string }>("/shares", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   /** Stripe billing portal for an account that already has a subscription. */
   async createBillingPortal(): Promise<{ url: string }> {
     return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });

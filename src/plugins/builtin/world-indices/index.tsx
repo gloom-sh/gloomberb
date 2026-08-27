@@ -8,6 +8,7 @@ import { useAssetData, usePluginTickerActions } from "../../runtime";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
+import { createPublicPaneShare } from "../shared/public-pane";
 import {
   buildFlatRows,
   DEFAULT_SORT_PREFERENCE,
@@ -158,6 +159,7 @@ export const worldIndicesModule: PluginModule = {
       description: "Monitor global equity indices grouped by region.",
       keywords: ["world", "indices", "global", "equity", "markets", "international"],
       shortcut: { prefix: "WEI" },
+      publicShare: createPublicPaneShare("World Equity Indices"),
     },
   ],
 };

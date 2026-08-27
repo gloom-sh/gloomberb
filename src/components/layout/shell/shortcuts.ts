@@ -6,6 +6,7 @@ export const PANE_MANAGEMENT_ACCELERATORS = {
   toggleFloating: "CmdOrCtrl+Shift+D",
   popOut: "CmdOrCtrl+Shift+O",
   copyScreenshot: "CmdOrCtrl+Shift+C",
+  share: "CmdOrCtrl+Shift+S",
   close: "CmdOrCtrl+W",
   closeAllFloating: "CmdOrCtrl+Alt+W",
   layoutGallery: "CmdOrCtrl+Shift+L",
@@ -20,6 +21,7 @@ export type PaneManagementShortcut =
   | "toggle-floating"
   | "pop-out"
   | "copy-screenshot"
+  | "share"
   | "close"
   | "close-all-floating"
   | "layout-gallery"
@@ -39,6 +41,7 @@ export function resolvePaneManagementShortcut(
   if (!shifted && name === ",") return "settings";
   if (!shifted || event.alt) return null;
   if (name === "c") return "copy-screenshot";
+  if (name === "s") return "share";
   if (name === "d") return "toggle-floating";
   if (name === "f") return "toggle-fullscreen";
   if (name === "o") return "pop-out";

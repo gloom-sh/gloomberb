@@ -54,6 +54,7 @@ import { scheduleConfigSave } from "./state/config-save-scheduler";
 import { measurePerf } from "./utils/perf-marks";
 import { useAppLanguage } from "./i18n/react";
 import { AppLanguageConfigObserver } from "./app/language-observer";
+import { isPaneShareHandoff } from "./shares/location";
 
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
 
@@ -248,6 +249,7 @@ function AppInner({
     desktopDeepLinkBridge,
     desktopWindowKind: desktopWindowBridge?.kind,
     dispatch,
+    initialized: state.initialized,
     pluginRegistry,
     stateRef,
   });
@@ -467,8 +469,10 @@ export function App({
   const [config, setConfig] = useState(() => {
     return initialCliLaunch.config;
   });
+  const shareHandoff = isPaneShareHandoff();
   const [showOnboarding, setShowOnboarding] = useState(() => (
     desktopWindowBridge?.kind !== "detached"
+    && !shareHandoff
     && (!effectiveInitialConfig.onboardingComplete || !!effectiveInitialConfig.onboardingProgress)
   ));
 

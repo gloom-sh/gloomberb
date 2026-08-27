@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { browserBuiltinPlugins } from "./catalog-browser";
+import { getLoadablePlugins } from "./catalog";
 
 const ids = browserBuiltinPlugins.map((plugin) => plugin.id);
 const paneIds = browserBuiltinPlugins.flatMap((plugin) => plugin.panes?.map((pane) => pane.id) ?? []);
+const templateIds = new Set(browserBuiltinPlugins.flatMap((plugin) => plugin.paneTemplates?.map((template) => template.id) ?? []));
 
 describe("browser plugin catalog", () => {
   test("contains the reviewed cloud, local, market, and research plugins", () => {
@@ -36,6 +38,14 @@ describe("browser plugin catalog", () => {
     ]) {
       expect(ids).not.toContain(forbidden);
     }
+  });
+
+  test("keeps every public pane handoff restorable in the hosted browser", () => {
+    const unavailable = getLoadablePlugins()
+      .flatMap((plugin) => plugin.paneTemplates ?? [])
+      .filter((template) => template.publicShare && !templateIds.has(template.id))
+      .map((template) => template.id);
+    expect(unavailable).toEqual([]);
   });
 
   test("omits unsupported modules inside otherwise browser-safe product areas", () => {

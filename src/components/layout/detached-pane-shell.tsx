@@ -1,4 +1,4 @@
-import { Box, Span, Text, useRendererHost, useUiCapabilities } from "../../ui";
+import { Box, Span, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
@@ -20,6 +20,13 @@ import {
   recordDoubleEscapeClose,
   resetDoubleEscapeClose,
 } from "../../utils/double-escape-close";
+import { createShare, openLiveShareUrl } from "../../shares/api";
+import { buildPaneSharePayload } from "../../shares/pane";
+import type { ContextMenuItem } from "../../types/context-menu";
+import {
+  PANE_MANAGEMENT_ACCELERATORS,
+  resolvePaneManagementShortcut,
+} from "./shell/shortcuts";
 
 interface DetachedPaneShellProps {
   pluginRegistry: PluginRegistry;
@@ -35,6 +42,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const colors = useThemeColors();
   const dispatch = useAppDispatch();
   const rendererHost = useRendererHost();
+  const { showContextMenu } = useContextMenu();
   const config = useAppSelector((state) => state.config);
   const paneState = useAppSelector((state) => state.paneState);
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
@@ -46,6 +54,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const {
     cellHeightPx = 18,
     nativePaneChrome,
+    publicSharing,
     titleBarOverlay,
     nativeWindowChrome = titleBarOverlay,
     windowControls,
@@ -55,6 +64,9 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, desktopWindowBridge.paneId) ?? null);
   const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) ?? null : null;
   const hasPaneSettings = !!instance && pluginRegistry.hasPaneSettings(instance.instanceId);
+  const sharePayload = useMemo(() => instance && publicSharing
+    ? buildPaneSharePayload(pluginRegistry, instance, paneState[instance.instanceId] ?? {})
+    : null, [instance, paneState, pluginRegistry, publicSharing]);
   const quickSettings = instance ? pluginRegistry.resolvePaneQuickSettings(instance.instanceId) : [];
   const titleState = useMemo(
     () => ({ config, paneState }) as Parameters<typeof getPaneDisplayTitle>[0],
@@ -121,10 +133,56 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     if (nativeWindowChrome) void rendererHost.startWindowDrag?.();
   }, [focusPane, nativeWindowChrome, rendererHost]);
 
-  const openSettings = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
+  const sharePane = useCallback(async () => {
+    if (!sharePayload) return;
+    try {
+      const { id } = await createShare(sharePayload);
+      await rendererHost.copyText(openLiveShareUrl(id));
+      pluginRegistry.notify({ body: "Share link copied to clipboard", type: "success" });
+    } catch (error) {
+      pluginRegistry.notify({
+        body: error instanceof Error ? error.message : "Could not share this pane.",
+        type: "error",
+      });
+    }
+  }, [pluginRegistry, rendererHost, sharePayload]);
+
+  useShortcut((event) => {
+    if (resolvePaneManagementShortcut(event) !== "share" || !sharePayload) return;
+    if (inputCaptured && event.ctrl && !event.meta && !event.super) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void sharePane();
+  });
+
+  const openActions = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
-    pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
-  }, [desktopWindowBridge.paneId, pluginRegistry]);
+    focusPane();
+    const items: ContextMenuItem[] = [];
+    if (hasPaneSettings) {
+      items.push({
+        id: "settings",
+        label: "Settings",
+        onSelect: () => pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId),
+      });
+    }
+    if (sharePayload) items.push({
+      id: "share-pane",
+      label: "Share Pane",
+      accelerator: PANE_MANAGEMENT_ACCELERATORS.share,
+      onSelect: sharePane,
+    });
+    void showContextMenu({
+      kind: "pane",
+      paneId: desktopWindowBridge.paneId,
+      paneType: instance?.paneId ?? "",
+      title,
+      floating: true,
+    }, items, event).then((shown) => {
+      if (!shown && hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
+      else if (!shown && sharePayload) void sharePane();
+    });
+  }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, pluginRegistry, sharePane, sharePayload, showContextMenu, title]);
   const toggleQuickSetting = useCallback((key: string, event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     focusPane();
@@ -230,14 +288,15 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                   </Box>
                 ))}
                 <Box flexGrow={1} minWidth={0} />
-                {hasPaneSettings && (
+                {(hasPaneSettings || sharePayload) && (
                   <Text
                     fg={paneTitleText(focused, true, colors)}
                     selectable={false}
                     className="electrobun-webkit-app-region-no-drag"
                     data-gloom-role="pane-action"
                     data-gloom-interactive="true"
-                    onMouseDown={openSettings}
+                    aria-label="Pane actions"
+                    onMouseDown={openActions}
                   >
                     {" ... "}
                   </Text>

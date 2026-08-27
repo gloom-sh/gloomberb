@@ -220,6 +220,7 @@ export const ko: Record<string, string> = {
   "Dock Pane": "패널 도킹",
   "Settings": "설정",
   "Copy Screenshot": "스크린샷 복사",
+  "Share Pane": "창 공유",
   "Pop Out": "별도 창으로 열기",
   "Move Window...": "창 이동...",
   "Resize Window...": "창 크기 조정...",
