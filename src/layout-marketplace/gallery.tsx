@@ -4,7 +4,7 @@ import { useShortcut } from "../react/input";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { selectActiveLayoutIndex, selectSavedLayouts } from "../state/selectors-ui";
 import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
-import { useUiHost } from "../ui";
+import { useRendererHost, useUiHost } from "../ui";
 import { requestAuthDialog } from "../plugins/builtin/cloud/auth-dialog";
 import { usePlanAccess } from "../plugins/builtin/shared/plan-access";
 import type { PluginRegistry } from "../plugins/registry";
@@ -19,6 +19,11 @@ import {
   missingPaneIds,
   type GalleryEntry,
 } from "./model";
+import { publicMarketplaceLayoutUrl } from "./api";
+import {
+  materializeMarketplaceLayout,
+  publishableMarketplaceLayout,
+} from "./payload";
 import { useLayoutMarketplace } from "./use-marketplace";
 
 export interface LayoutGalleryController {
@@ -39,6 +44,7 @@ export interface LayoutGalleryController {
   signedIn: boolean;
   requestSignIn: () => void;
   publishCurrent: () => void;
+  copyLink: (entry: GalleryEntry) => void;
   publishing: boolean;
   newLayout: () => void;
   renameLayout: (entry: GalleryEntry) => void;
@@ -65,10 +71,12 @@ export function LayoutMarketplaceGallery({
 }) {
   const dispatch = useAppDispatch();
   const dialog = useDialog();
+  const renderer = useRendererHost();
   const dialogOpen = useDialogState((state) => state.isOpen);
   const layouts = useAppSelector(selectSavedLayouts);
   const activeIndex = useAppSelector(selectActiveLayoutIndex);
   const currentLayout = useAppSelector((state) => state.config.layout);
+  const currentPaneState = useAppSelector((state) => state.paneState);
   const { signedIn } = usePlanAccess();
   const discover = useLayoutMarketplace(true, signedIn);
   const [query, setQuery] = useState("");
@@ -109,8 +117,14 @@ export function LayoutMarketplaceGallery({
   }, [activeIndex, close, dispatch]);
 
   const install = useCallback((entry: GalleryEntry) => {
+    const installed = materializeMarketplaceLayout(entry);
     close();
-    dispatch({ type: "INSTALL_LAYOUT_COPY", name: entry.name, layout: entry.layout });
+    dispatch({
+      type: "INSTALL_LAYOUT_COPY",
+      name: entry.name,
+      layout: installed.layout,
+      paneState: installed.paneState,
+    });
     pluginRegistry.notify({ body: `Layout "${entry.name}" added`, type: "success" });
   }, [close, dispatch, pluginRegistry]);
 
@@ -192,6 +206,15 @@ export function LayoutMarketplaceGallery({
     pluginRegistry.notify({ body: `Layout "${entry.name}" deleted`, type: "success" });
   }, [dialog, dispatch, layouts.length, pluginRegistry]);
 
+  const copyLink = useCallback((entry: GalleryEntry) => {
+    if (!entry.marketplaceId) return;
+    void renderer.copyText(publicMarketplaceLayoutUrl(entry.marketplaceId)).then(() => {
+      pluginRegistry.notify({ body: "Layout link copied", type: "success" });
+    }).catch(() => {
+      pluginRegistry.notify({ body: "Could not copy the layout link.", type: "error" });
+    });
+  }, [pluginRegistry, renderer]);
+
   const publishCurrent = useCallback(async () => {
     if (!signedIn) {
       requestSignIn();
@@ -206,8 +229,8 @@ export function LayoutMarketplaceGallery({
           title="Publish Current Layout"
           body={[
             `Publish "${name}" to Discover?`,
-            "Pane arrangement, pane types, and fixed tickers will be public.",
-            "Settings, pane state, accounts, portfolios, and broker data are excluded.",
+            "Pane setup, queries, chart views, drawings, and portable pane state will be public.",
+            "Credentials, accounts, portfolios, and fields marked private are excluded.",
           ]}
           confirmLabel="Publish Layout"
           cancelLabel="Cancel"
@@ -219,8 +242,16 @@ export function LayoutMarketplaceGallery({
     if (confirmed !== true) return;
     setPublishing(true);
     try {
-      await discover.publish(name, currentLayout);
-      pluginRegistry.notify({ body: `Layout "${name}" published`, type: "success" });
+      const item = await discover.publish(
+        name,
+        publishableMarketplaceLayout(currentLayout, currentPaneState, panes),
+      );
+      try {
+        await renderer.copyText(publicMarketplaceLayoutUrl(item.id));
+        pluginRegistry.notify({ body: `Layout "${name}" published · link copied`, type: "success" });
+      } catch {
+        pluginRegistry.notify({ body: `Layout "${name}" published`, type: "success" });
+      }
     } catch (error) {
       pluginRegistry.notify({
         body: error instanceof Error ? error.message : "Could not publish this layout.",
@@ -229,7 +260,7 @@ export function LayoutMarketplaceGallery({
     } finally {
       setPublishing(false);
     }
-  }, [activeIndex, currentLayout, dialog, discover, layouts, pluginRegistry, requestSignIn, signedIn]);
+  }, [activeIndex, currentLayout, currentPaneState, dialog, discover, layouts, panes, pluginRegistry, renderer, requestSignIn, signedIn]);
 
   useShortcut((event) => {
     if (event.name !== "escape") return;
@@ -259,6 +290,7 @@ export function LayoutMarketplaceGallery({
     signedIn,
     requestSignIn,
     publishCurrent,
+    copyLink,
     publishing,
     newLayout,
     renameLayout,

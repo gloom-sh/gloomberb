@@ -6,6 +6,7 @@ import {
 } from "../types/config";
 import { getDockedPaneIds } from "../plugins/pane-manager";
 import type { PaneDef } from "../types/plugin";
+import type { PaneRuntimeState } from "../core/state/app/types";
 import { fuzzyFilter } from "../utils/fuzzy-search";
 import type { LayoutMarketplaceEntry } from "./payload";
 import { paneImagery, type PaneImagery } from "./pane-imagery";
@@ -18,7 +19,7 @@ export interface GalleryPaneSummary {
   /** Registered pane name, or the raw pane id when the type is not installed. */
   name: string;
   icon: string;
-  /** Only a published fixed ticker; follow bindings and pane state stay private. */
+  /** Public fixed ticker shown in the preview; follow bindings remain structural. */
   symbol: string | null;
   linked: boolean;
   placement: PanePlacement;
@@ -28,9 +29,11 @@ export interface GalleryPaneSummary {
 
 export interface GalleryEntry {
   id: string;
+  marketplaceId: string | null;
   kind: "owned" | "community";
   name: string;
   layout: LayoutConfig;
+  paneState: Record<string, PaneRuntimeState>;
   /** Index into config.layouts; community entries have none. */
   index: number | null;
   active: boolean;
@@ -126,11 +129,16 @@ export function formatPublishedAt(iso: string): string {
 }
 
 export function buildOwnedEntries(
-  layouts: readonly { name: string; layout: LayoutConfig }[],
+  layouts: readonly {
+    name: string;
+    layout: LayoutConfig;
+    paneState?: Record<string, PaneRuntimeState>;
+  }[],
   activeIndex: number,
 ): GalleryEntry[] {
   return layouts.map((saved, index) => ({
     id: `owned:${index}`,
+    marketplaceId: null,
     kind: "owned" as const,
     name: saved.name,
     layout: removePaneInstances(
@@ -139,6 +147,7 @@ export function buildOwnedEntries(
         .filter((instance) => instance.paneId === "layout-marketplace")
         .map((instance) => instance.instanceId),
     ),
+    paneState: saved.paneState ?? {},
     index,
     active: index === activeIndex,
     author: null,
@@ -149,9 +158,11 @@ export function buildOwnedEntries(
 export function buildCommunityEntries(items: readonly LayoutMarketplaceEntry[]): GalleryEntry[] {
   return items.map((item) => ({
     id: `community:${item.id}`,
+    marketplaceId: item.id,
     kind: "community" as const,
     name: item.name,
     layout: item.layout,
+    paneState: item.paneState,
     index: null,
     active: false,
     author: marketplaceAuthorLabel(item.author),

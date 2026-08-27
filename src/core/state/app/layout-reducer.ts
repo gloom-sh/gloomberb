@@ -172,7 +172,7 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
       const installed: SavedLayout = {
         name: availableLayoutName(action.name, currentConfig.layouts),
         layout: cloneLayout(action.layout),
-        paneState: {},
+        paneState: clonePaneStateMap(action.paneState),
       };
       const layouts = [...currentConfig.layouts, installed];
       return withFocusedPane({
@@ -184,7 +184,7 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         layouts,
         activeLayoutIndex: layouts.length - 1,
       }, {
-        paneState: {},
+        paneState: clonePaneStateMap(installed.paneState ?? {}),
         focusedPaneId: null,
       });
     }

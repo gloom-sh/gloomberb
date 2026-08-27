@@ -491,6 +491,28 @@ function MyPane() {
 }
 ```
 
+### Portable pane sharing
+
+Published layouts copy a pane's title, params, settings, and per-layout pane state by default. Credentials, account and portfolio identifiers, local paths, and other sensitive key names are rejected automatically. Declare the remaining pane-specific private fields beside the pane definition:
+
+```typescript
+ctx.registerPane({
+  id: "portfolio-risk",
+  name: "Portfolio Risk",
+  component: PortfolioRiskPane,
+  defaultPosition: "right",
+  portableShare: {
+    private: {
+      params: ["portfolioId"],
+      settings: ["accountId"],
+      state: ["bankroll", "positions"],
+    },
+  },
+});
+```
+
+Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`.
+
 ### Pane quick settings
 
 A pane can surface important toggle settings next to its title. Each quick setting references a `toggle` field from the pane's normal settings definition, so the header control and settings dialog share the same persisted value and update behavior.

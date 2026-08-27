@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiClient } from "../api-client";
-import type { LayoutConfig } from "../types/config";
-import {
-  publishableMarketplaceLayout,
-  type LayoutMarketplaceEntry,
+import type {
+  LayoutMarketplaceEntry,
+  LayoutMarketplacePayload,
 } from "./payload";
 
 export type LayoutMarketplaceState =
@@ -16,7 +15,7 @@ export type LayoutMarketplaceState =
 export interface LayoutMarketplaceRuntime {
   state: LayoutMarketplaceState;
   refresh: () => void;
-  publish: (name: string, layout: LayoutConfig) => Promise<LayoutMarketplaceEntry>;
+  publish: (name: string, payload: LayoutMarketplacePayload) => Promise<LayoutMarketplaceEntry>;
 }
 
 export function useLayoutMarketplace(active: boolean, signedIn: boolean): LayoutMarketplaceRuntime {
@@ -51,8 +50,8 @@ export function useLayoutMarketplace(active: boolean, signedIn: boolean): Layout
   }, [active, revision, signedIn]);
 
   const refresh = useCallback(() => setRevision((current) => current + 1), []);
-  const publish = useCallback(async (name: string, layout: LayoutConfig) => {
-    const item = await apiClient.publishMarketplaceLayout(name, publishableMarketplaceLayout(layout));
+  const publish = useCallback(async (name: string, payload: LayoutMarketplacePayload) => {
+    const item = await apiClient.publishMarketplaceLayout(name, payload);
     setState((current) => ({
       status: "ready",
       items: [item, ...current.items.filter((candidate) => candidate.id !== item.id)].slice(0, 50),

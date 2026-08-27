@@ -1,16 +1,118 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig } from "../types/config";
+import type { PaneRuntimeState } from "../core/state/app/types";
+import type { PaneDef } from "../types/plugin";
 import {
+  materializeMarketplaceLayout,
   parseMarketplaceLayoutEntry,
   parseMarketplaceLayoutList,
   publishableMarketplaceLayout,
 } from "./payload";
 
+const component = () => null;
+const panes = new Map<string, PaneDef>([
+  ["twitter-feed", {
+    id: "twitter-feed",
+    name: "X Feed",
+    component,
+    defaultPosition: "right",
+  }],
+  ["prediction-markets", {
+    id: "prediction-markets",
+    name: "Prediction Markets",
+    component,
+    defaultPosition: "right",
+  }],
+  ["portfolio-list", {
+    id: "portfolio-list",
+    name: "Portfolio",
+    component,
+    defaultPosition: "left",
+    portableShare: {
+      private: { title: true, params: true, settings: true, state: true },
+    },
+  }],
+]);
+
+function portableFixture() {
+  const feedId = "twitter-feed:from:@private-user";
+  const predictionId = "prediction-markets:fed-search";
+  const portfolioId = "portfolio-list:private-account";
+  const layout = {
+    dockRoot: {
+      kind: "split" as const,
+      axis: "horizontal" as const,
+      ratio: 0.6,
+      first: { kind: "pane" as const, instanceId: feedId },
+      second: {
+        kind: "split" as const,
+        axis: "vertical" as const,
+        ratio: 0.5,
+        first: { kind: "pane" as const, instanceId: predictionId },
+        second: { kind: "pane" as const, instanceId: portfolioId },
+      },
+    },
+    instances: [
+      {
+        instanceId: feedId,
+        paneId: "twitter-feed",
+        title: "Semiconductor X Feed",
+        params: { query: "$NVDA OR $AMD", queryType: "Latest" },
+        settings: { dense: true, accessToken: "must-not-leave-device" },
+        binding: { kind: "none" as const },
+        placementMemory: { floating: { x: 1, y: 2, width: 20, height: 8 } },
+      },
+      {
+        instanceId: predictionId,
+        paneId: "prediction-markets",
+        params: { query: "fed", scope: "polymarket" },
+        binding: { kind: "follow" as const, sourceInstanceId: feedId },
+      },
+      {
+        instanceId: portfolioId,
+        paneId: "portfolio-list",
+        title: "Family account",
+        params: { collectionId: "family" },
+        settings: { visibleCollectionIds: ["family"] },
+        binding: { kind: "none" as const },
+      },
+    ],
+    floating: [],
+    detached: [],
+  };
+  const paneState: Record<string, PaneRuntimeState> = {
+    [feedId]: {
+      pluginState: {
+        "gloomberb-cloud": {
+          feeds: {
+            feeds: [{ id: "feed-1", query: "$NVDA OR $AMD", queryType: "Latest" }],
+          },
+          sessionToken: "must-not-leave-device",
+        },
+      },
+    },
+    [predictionId]: {
+      pluginState: {
+        "prediction-markets": {
+          venueScope: "polymarket",
+          searchQuery: "fed",
+          browseTab: "top",
+        },
+      },
+    },
+    [portfolioId]: {
+      collectionId: "family",
+      pluginState: { portfolio: { currentValue: 1_000_000 } },
+    },
+  };
+  return { layout, paneState };
+}
+
 function validEntry() {
-  const payload = publishableMarketplaceLayout(createDefaultConfig("/tmp/layout-marketplace-test").layout);
+  const fixture = portableFixture();
+  const payload = publishableMarketplaceLayout(fixture.layout, fixture.paneState, panes);
   return {
     id: "0123456789abcdef0123456789abcdef",
-    name: "Research Desk",
+    name: "Social Desk",
     ...payload,
     author: { username: "analyst", displayName: "Analyst" },
     publishedAt: "2026-08-26T00:00:00.000Z",
@@ -18,50 +120,90 @@ function validEntry() {
 }
 
 describe("layout marketplace payloads", () => {
-  test("publishes only portable pane structure", () => {
-    const config = createDefaultConfig("/tmp/layout-marketplace-test");
-    config.layout.instances[0] = {
-      ...config.layout.instances[0]!,
-      title: "Private desk",
-      params: { collectionId: "private-portfolio" },
-      settings: { prompt: "private", token: "secret" },
-      placementMemory: { floating: { x: 1, y: 2, width: 20, height: 8 } },
-    };
-    config.layout.instances.push({
-      instanceId: "layout-marketplace:main",
-      paneId: "layout-marketplace",
+  test("shares portable pane setup and state while redacting private data", () => {
+    const fixture = portableFixture();
+    const payload = publishableMarketplaceLayout(fixture.layout, fixture.paneState, panes);
+
+    expect(payload.schemaVersion).toBe(2);
+    expect(payload.layout.instances.map((instance) => instance.instanceId)).toEqual(["p1", "p2", "p3"]);
+    expect(payload.layout.instances[0]).toEqual({
+      instanceId: "p1",
+      paneId: "twitter-feed",
+      title: "Semiconductor X Feed",
+      params: { query: "$NVDA OR $AMD", queryType: "Latest" },
+      settings: { dense: true },
       binding: { kind: "none" },
     });
-    config.layout.floating.push({
-      instanceId: "layout-marketplace:main",
-      x: 10,
-      y: 4,
-      width: 100,
-      height: 32,
+    expect(payload.layout.instances[1]?.binding).toEqual({ kind: "follow", sourceInstanceId: "p1" });
+    expect(payload.layout.instances[2]).toEqual({
+      instanceId: "p3",
+      paneId: "portfolio-list",
+      binding: { kind: "none" },
     });
-
-    const payload = publishableMarketplaceLayout(config.layout);
-
-    expect(payload.layout.instances[0]).toEqual({
-      instanceId: config.layout.instances[0]!.instanceId,
-      paneId: config.layout.instances[0]!.paneId,
-      binding: config.layout.instances[0]!.binding,
+    expect(payload.paneState.p1).toMatchObject({
+      pluginState: {
+        "gloomberb-cloud": {
+          feeds: { feeds: [{ query: "$NVDA OR $AMD", queryType: "Latest" }] },
+        },
+      },
     });
-    expect(JSON.stringify(payload)).not.toContain("private");
-    expect(JSON.stringify(payload)).not.toContain("secret");
-    expect(JSON.stringify(payload)).not.toContain("layout-marketplace");
+    expect(payload.paneState.p2).toMatchObject({
+      pluginState: { "prediction-markets": { searchQuery: "fed" } },
+    });
+    expect(payload.paneState.p3).toBeUndefined();
+    expect(JSON.stringify(payload)).not.toContain("must-not-leave-device");
+    expect(JSON.stringify(payload)).not.toContain("family");
+    expect(JSON.stringify(payload)).not.toContain("private-user");
+    expect(JSON.stringify(payload)).not.toContain("placementMemory");
   });
 
-  test("rejects malformed marketplace responses before they reach app state", () => {
+  test("materializes independent pane ids and rewrites state and follow bindings", () => {
+    const entry = validEntry();
+    const materialized = materializeMarketplaceLayout(
+      entry,
+      (paneId, index) => `${paneId}:copy-${index + 1}`,
+    );
+
+    expect(materialized.layout.instances.map((instance) => instance.instanceId)).toEqual([
+      "twitter-feed:copy-1",
+      "prediction-markets:copy-2",
+      "portfolio-list:copy-3",
+    ]);
+    expect(materialized.layout.instances[1]?.binding).toEqual({
+      kind: "follow",
+      sourceInstanceId: "twitter-feed:copy-1",
+    });
+    expect(materialized.paneState["twitter-feed:copy-1"]).toEqual(entry.paneState.p1);
+    expect(materialized.paneState.p1).toBeUndefined();
+  });
+
+  test("accepts old structural entries and rejects malformed or private v2 responses", () => {
     const entry = validEntry();
     expect(parseMarketplaceLayoutList({ items: [entry] })).toEqual([entry]);
 
-    const withSettings = structuredClone(entry);
-    (withSettings.layout.instances[0] as Record<string, unknown>).settings = { url: "https://example.com" };
-    expect(parseMarketplaceLayoutEntry(withSettings)).toBeNull();
+    const legacy = {
+      ...entry,
+      schemaVersion: 1,
+      layout: {
+        dockRoot: { kind: "pane", instanceId: "legacy:query-is-visible" },
+        instances: [{ instanceId: "legacy:query-is-visible", paneId: "twitter-feed" }],
+        floating: [],
+        detached: [],
+      },
+    } as Record<string, unknown>;
+    delete legacy.paneState;
+    expect(parseMarketplaceLayoutEntry(legacy)).toMatchObject({ schemaVersion: 1, paneState: {} });
+
+    const privateResponse = structuredClone(entry);
+    privateResponse.layout.instances[0]!.settings = { sessionToken: "secret" };
+    expect(parseMarketplaceLayoutEntry(privateResponse)).toBeNull();
+
+    const rawIds = structuredClone(entry);
+    rawIds.layout.instances[0]!.instanceId = "twitter-feed:raw-query";
+    expect(parseMarketplaceLayoutEntry(rawIds)).toBeNull();
 
     const dangling = structuredClone(entry);
-    dangling.layout.dockRoot = { kind: "pane", instanceId: "missing" };
+    dangling.layout.dockRoot = { kind: "pane", instanceId: "p99" };
     expect(parseMarketplaceLayoutEntry(dangling)).toBeNull();
   });
 });

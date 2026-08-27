@@ -38,6 +38,9 @@ export const connectionsModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 24 },
+    portableShare: {
+      private: { params: true, settings: true, state: true },
+    },
   }],
   paneTemplates: [{
     id: "connections-pane",

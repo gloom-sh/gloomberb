@@ -60,6 +60,9 @@ function createChatModule(
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 80, height: 30 },
+      portableShare: {
+        private: { title: true, params: true, settings: true, state: true },
+      },
     }],
     paneTemplates: [{
       id: "new-chat-pane",
@@ -138,6 +141,9 @@ const accountModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 72, height: 36 },
+    portableShare: {
+      private: { title: true, params: true, settings: true, state: true },
+    },
   }],
   paneTemplates: [{
     id: "account-management-pane",

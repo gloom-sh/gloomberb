@@ -49,6 +49,13 @@ export const portfolioListModule: PluginModule = {
       defaultWidth: "40%",
       tickerSource: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      portableShare: {
+        private: {
+          params: ["collectionId"],
+          settings: ["collectionId", "visibleCollectionIds"],
+          state: ["collectionId", "collectionSorts"],
+        },
+      },
       settings: (context) => withLiveStreamingSetting(
         buildPortfolioPaneSettingsDef(
           context.config,

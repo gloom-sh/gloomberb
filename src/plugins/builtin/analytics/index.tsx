@@ -347,6 +347,9 @@ export const portfolioAnalyticsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 80, height: 30 },
+      portableShare: {
+        private: { params: true, settings: true, state: true },
+      },
     },
   ],
 

@@ -1,4 +1,5 @@
 import { useEffect, type Dispatch } from "react";
+import { apiClient } from "../../api-client";
 import { getDockedPaneIds } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { AppAction, AppState } from "../../state/app/context";
@@ -13,6 +14,7 @@ import { requestAccountManagementTab } from "../../plugins/builtin/account-manag
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { getShare } from "../../shares/api";
 import { openPaneShare } from "../../shares/pane";
+import { materializeMarketplaceLayout } from "../../layout-marketplace/payload";
 
 type CloudDeepLinkRoute = {
   kind: "cloud-alerts" | "cloud-emails" | "cloud-roundup" | "cloud-success";
@@ -37,6 +39,7 @@ export type DesktopDeepLinkAction =
   | { type: "open-chat-dm"; participants: string; message: string }
   | { type: "open-news"; kind: NewsDeepLinkKind; symbol: string | null; message: string }
   | { type: "open-share"; id: string; message: string }
+  | { type: "open-layout"; id: string; message: string }
   | { type: "unsupported"; message: string };
 
 interface ParsedGloomUrl {
@@ -245,6 +248,13 @@ function parseNewsDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
   return { type: "unsupported", message: "Unsupported Gloomberb news link." };
 }
 
+function parseLayoutDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
+  const id = parsed.segments[0] ?? param(parsed.url, "id", "layout");
+  return id && SHARE_ID.test(id)
+    ? { type: "open-layout", id, message: "Added shared layout." }
+    : { type: "unsupported", message: "Layout links need a valid id." };
+}
+
 function parseShareDeepLink(parsed: ParsedGloomUrl): DesktopDeepLinkAction {
   const id = parsed.segments[0] ?? param(parsed.url, "id", "share");
   return id && SHARE_ID.test(id)
@@ -275,6 +285,8 @@ export function resolveDesktopDeepLinkAction(rawUrl: string): DesktopDeepLinkAct
       return parseNewsDeepLink(parsed);
     case "share":
       return parseShareDeepLink(parsed);
+    case "layout":
+      return parseLayoutDeepLink(parsed);
     default:
       return { type: "unsupported", message: "Unsupported Gloomberb link." };
   }
@@ -475,6 +487,22 @@ function handleOpenNews(
   notifySuccess(pluginRegistry, action.message);
 }
 
+async function handleOpenLayout(
+  action: Extract<DesktopDeepLinkAction, { type: "open-layout" }>,
+  options: DesktopDeepLinkHandlerOptions,
+): Promise<void> {
+  const entry = await apiClient.getMarketplaceLayout(action.id);
+  if (!entry) throw new Error("This shared layout is unavailable.");
+  const installed = materializeMarketplaceLayout(entry);
+  options.dispatch({
+    type: "INSTALL_LAYOUT_COPY",
+    name: entry.name,
+    layout: installed.layout,
+    paneState: installed.paneState,
+  });
+  notifySuccess(options.pluginRegistry, `Layout "${entry.name}" added.`);
+}
+
 async function handleOpenShare(
   action: Extract<DesktopDeepLinkAction, { type: "open-share" }>,
   pluginRegistry: PluginRegistry,
@@ -526,6 +554,11 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
     case "open-share":
       void handleOpenShare(action, options.pluginRegistry).catch((error) => {
         notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared pane.");
+      });
+      return;
+    case "open-layout":
+      void handleOpenLayout(action, options).catch((error) => {
+        notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared layout.");
       });
       return;
   }

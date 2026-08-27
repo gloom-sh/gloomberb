@@ -63,6 +63,7 @@ import { renderCompositePanelBitmap } from "./rasterizer";
 import {
   buildChartToolVectors,
   CHART_DRAWING_COLORS,
+  CHART_DRAWINGS_SETTING_KEY,
   countMeasureBars,
   drawChartToolOverlay,
   resolveChartToolKind,
@@ -71,6 +72,7 @@ import {
   hitTestDrawings,
   isDrawingTool,
   nextDrawingColor,
+  parseChartDrawings,
   resolveDrawingFromDrag,
   resolveZoomBoxRange,
   shiftDrawing,
@@ -1372,7 +1374,6 @@ function CompositeLegend({
   );
 }
 
-const CHART_DRAWINGS_SETTING_KEY = "chartDrawings";
 const NO_DRAWINGS: readonly ChartDrawing[] = [];
 /** Coalesces a drag into one write instead of one per pointer move. */
 const DRAWING_PERSIST_DELAY_MS = 400;
@@ -1398,7 +1399,7 @@ function ChartDrawingStore({
   );
   const restoredRef = useRef<readonly ChartDrawing[] | null>(null);
   if (restoredRef.current === null) {
-    restoredRef.current = Array.isArray(stored) ? stored : NO_DRAWINGS;
+    restoredRef.current = parseChartDrawings(stored);
   }
 
   useEffect(() => {

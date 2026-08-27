@@ -44,6 +44,18 @@ export interface PaneProps {
   close?: () => void;
 }
 
+export type PaneSharePrivateFields = true | readonly string[];
+
+export interface PanePortableShareDef {
+  /** Fields excluded before pane configuration or state leaves the device. */
+  private?: {
+    title?: boolean;
+    params?: PaneSharePrivateFields;
+    settings?: PaneSharePrivateFields;
+    state?: PaneSharePrivateFields;
+  };
+}
+
 export interface PaneDef {
   id: string;
   name: string;
@@ -56,6 +68,8 @@ export interface PaneDef {
   /** Pane publishes its selected symbol as pane-state `cursorSymbol`, so ticker panes can follow it. */
   tickerSource?: boolean;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);
+  /** Portable sharing is public by default; list the few pane-owned fields that must remain local. */
+  portableShare?: PanePortableShareDef;
   /** Compact controls surfaced next to the pane title. Toggle keys reference toggle fields in settings. */
   quickSettings?: readonly PaneQuickSettingDef[];
 }

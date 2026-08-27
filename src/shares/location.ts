@@ -6,5 +6,6 @@ export function paneShareIdFromSearch(search: string): string | null {
 }
 
 export function isPaneShareHandoff(): boolean {
-  return typeof window !== "undefined" && paneShareIdFromSearch(window.location.search) !== null;
+  const location = (globalThis as { window?: { location?: { search?: unknown } } }).window?.location;
+  return typeof location?.search === "string" && paneShareIdFromSearch(location.search) !== null;
 }

@@ -195,11 +195,19 @@ describe("appReducer command bar state", () => {
       type: "INSTALL_LAYOUT_COPY",
       name: "Research",
       layout: marketplaceLayout,
+      paneState: {
+        "ticker-detail:main": {
+          pluginState: { "prediction-markets": { searchQuery: "fed" } },
+        },
+      },
     });
 
     expect(installed.config.layouts.at(-1)?.name).toBe("Research (3)");
     expect(installed.config.activeLayoutIndex).toBe(installed.config.layouts.length - 1);
     expect(installed.config.layout.dockRoot).toMatchObject({ kind: "split", ratio: 0.72 });
+    expect(installed.paneState["ticker-detail:main"]).toMatchObject({
+      pluginState: { "prediction-markets": { searchQuery: "fed" } },
+    });
 
     marketplaceLayout.dockRoot.ratio = 0.2;
     expect(installed.config.layout.dockRoot).toMatchObject({ kind: "split", ratio: 0.72 });

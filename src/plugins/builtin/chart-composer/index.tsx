@@ -14,7 +14,18 @@ import {
   DATA_CATALOG_PANE_ID,
   DATA_CATALOG_TEMPLATE_ID,
 } from "./catalog-inventory";
-import { CHART_SPEC_SETTING_KEY, parseChartSpec } from "./chart-spec";
+import {
+  CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+  CHART_SPEC_SETTING_KEY,
+  parseChartInteractionViewport,
+  parseChartSpec,
+  type ChartInteractionViewport,
+} from "./chart-spec";
+import {
+  CHART_DRAWINGS_SETTING_KEY,
+  parseChartDrawings,
+  type ChartDrawing,
+} from "../../../components/chart/composite/tools";
 import {
   buildComparisonChartPreset,
   buildCustomChartPreset,
@@ -76,7 +87,16 @@ function chartTitle(spec: ChartSpec, prefix = "G"): string {
   return `${prefix} ${labels.join(" · ")}${remaining > 0 ? ` +${remaining}` : ""}`;
 }
 
-function instanceFor(spec: ChartSpec, prefix: string) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+interface SharedChartState {
+  drawings?: ChartDrawing[];
+  viewport?: ChartInteractionViewport;
+}
+
+function instanceFor(spec: ChartSpec, prefix: string, shared: SharedChartState = {}) {
   const symbol = primarySecuritySymbol(spec);
   return {
     title: chartTitle(spec, prefix),
@@ -84,6 +104,12 @@ function instanceFor(spec: ChartSpec, prefix: string) {
     ...(symbol ? { binding: { kind: "fixed" as const, symbol } } : {}),
     settings: {
       [CHART_SPEC_SETTING_KEY]: spec,
+      ...(shared.drawings?.length
+        ? { [CHART_DRAWINGS_SETTING_KEY]: shared.drawings }
+        : {}),
+      ...(shared.viewport
+        ? { [CHART_INTERACTION_VIEWPORT_SETTING_KEY]: shared.viewport }
+        : {}),
     },
   };
 }
@@ -148,22 +174,57 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     }],
     canCreate: () => true,
     createInstance: (context, options) => {
-      const sharedSpec = parseChartSpec(options?.shareData);
-      if (sharedSpec) return instanceFor(sharedSpec, "G");
+      const sharedData = isRecord(options?.shareData) ? options.shareData : null;
+      const sharedSpec = parseChartSpec(sharedData?.chartSpec ?? options?.shareData);
+      if (sharedSpec) {
+        const drawings = parseChartDrawings(sharedData?.chartDrawings);
+        const viewport = parseChartInteractionViewport(sharedData?.chartInteractionViewport);
+        return instanceFor(sharedSpec, "G", {
+          ...(drawings.length > 0 ? { drawings } : {}),
+          ...(viewport ? { viewport } : {}),
+        });
+      }
       const expression = options?.arg?.trim() || options?.values?.series?.trim() || context.activeTicker || "";
       return instanceFor(buildCustomChartPreset(expression, context.activeTicker), "G");
     },
     publicShare: {
       serialize: ({ pane }) => {
         const spec = parseChartSpec(pane.settings?.[CHART_SPEC_SETTING_KEY]);
-        return spec
-          ? { title: pane.title?.trim() || chartTitle(spec), data: { chartSpec: spec } }
-          : null;
+        if (!spec) return null;
+        const drawings = parseChartDrawings(pane.settings?.[CHART_DRAWINGS_SETTING_KEY]);
+        const viewport = parseChartInteractionViewport(
+          pane.settings?.[CHART_INTERACTION_VIEWPORT_SETTING_KEY],
+        );
+        return {
+          title: pane.title?.trim() || chartTitle(spec),
+          data: {
+            chartSpec: spec,
+            ...(drawings.length > 0 ? { chartDrawings: drawings } : {}),
+            ...(viewport ? { chartInteractionViewport: viewport } : {}),
+          },
+        };
       },
       restore: (data) => {
-        if (Object.keys(data).length !== 1) return null;
+        if (!Object.keys(data).every((key) => [
+          "chartSpec",
+          "chartDrawings",
+          "chartInteractionViewport",
+        ].includes(key))) return null;
         const spec = parseChartSpec(data.chartSpec);
-        return spec ? { shareData: spec } : null;
+        if (!spec) return null;
+        const drawings = parseChartDrawings(data.chartDrawings);
+        if (data.chartDrawings !== undefined && (!Array.isArray(data.chartDrawings) || (data.chartDrawings.length > 0 && drawings.length === 0))) return null;
+        const viewport = data.chartInteractionViewport === undefined
+          ? null
+          : parseChartInteractionViewport(data.chartInteractionViewport);
+        if (data.chartInteractionViewport !== undefined && !viewport) return null;
+        return {
+          shareData: {
+            chartSpec: spec,
+            ...(drawings.length > 0 ? { chartDrawings: drawings } : {}),
+            ...(viewport ? { chartInteractionViewport: viewport } : {}),
+          },
+        };
       },
     },
   },

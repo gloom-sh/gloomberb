@@ -30,9 +30,25 @@ main.pane h1 { margin-bottom: 14px; overflow-wrap: anywhere; }
 .cta { margin: 0; border: 1px solid #f1b94a; border-radius: 4px; padding: 10px 16px; color: #f1b94a; text-decoration: none; }
 .cta:hover { background: #f1b94a; color: #20232b; }
 .descriptor { margin: 14px 0 0; max-width: 58ch; color: #b8bbc5; }
+.layout-share h1 { margin-bottom: 10px; overflow-wrap: anywhere; }
+.layout-meta { margin: 0; color: #b8bbc5; }
+.layout-workspace { position: relative; display: flex; height: 440px; margin-top: 28px; padding: 10px; border: 1px solid #4a4e5c; background: #181b22; overflow: hidden; }
+.layout-split { display: flex; flex: 1 1 0; min-width: 0; min-height: 0; gap: 8px; }
+.layout-split.horizontal { flex-direction: row; }
+.layout-split.vertical { flex-direction: column; }
+.layout-split-child { display: flex; flex-grow: var(--share-ratio); flex-basis: 0; min-width: 0; min-height: 0; }
+.layout-pane { display: flex; flex: 1 1 0; min-width: 0; min-height: 42px; flex-direction: column; justify-content: center; gap: 4px; padding: 10px 12px; border: 1px solid #3a4759; background: #20232b; overflow: hidden; }
+.layout-pane strong { color: #f1b94a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layout-pane span { color: #b8bbc5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.layout-pane.missing { color: #b8bbc5; }
+.layout-extra-panes { position: absolute; right: 20px; bottom: 20px; display: grid; width: min(360px, 42%); gap: 8px; padding: 8px; border: 1px solid #52657d; background: #181b22; }
 @media (max-width: 640px) {
   main { padding: 40px 0; }
   .pane-facts > div { flex-direction: column; gap: 2px; }
   .pane-facts dt { flex: none; }
   .cta { display: block; text-align: center; }
+  .layout-workspace { height: 360px; padding: 6px; }
+  .layout-split { gap: 4px; }
+  .layout-pane { padding: 7px; font-size: 12px; }
+  .layout-extra-panes { right: 10px; bottom: 10px; width: 52%; }
 }

@@ -27,6 +27,55 @@ export interface ChartDrawing {
   color: string;
 }
 
+export const CHART_DRAWINGS_SETTING_KEY = "chartDrawings";
+const MAX_SHARED_CHART_DRAWINGS = 100;
+const MAX_SHARED_DRAWING_POINTS = 5_000;
+
+export function parseChartDrawings(value: unknown): ChartDrawing[] {
+  if (!Array.isArray(value) || value.length > MAX_SHARED_CHART_DRAWINGS) return [];
+  let pointCount = 0;
+  const drawings: ChartDrawing[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+    const drawing = entry as Record<string, unknown>;
+    if (!Object.keys(drawing).every((key) => ["id", "panelId", "points", "color"].includes(key))) return [];
+    if (
+      typeof drawing.id !== "string"
+      || drawing.id.length === 0
+      || drawing.id.length > 160
+      || typeof drawing.panelId !== "string"
+      || drawing.panelId.length === 0
+      || drawing.panelId.length > 120
+      || typeof drawing.color !== "string"
+      || !/^#[0-9a-f]{6}$/i.test(drawing.color)
+      || !Array.isArray(drawing.points)
+      || drawing.points.length < 2
+    ) return [];
+    pointCount += drawing.points.length;
+    if (pointCount > MAX_SHARED_DRAWING_POINTS) return [];
+    const points: ChartDrawingPoint[] = [];
+    for (const point of drawing.points) {
+      if (!point || typeof point !== "object" || Array.isArray(point)) return [];
+      const raw = point as Record<string, unknown>;
+      if (
+        !Object.keys(raw).every((key) => key === "time" || key === "value")
+        || typeof raw.time !== "number"
+        || !Number.isFinite(raw.time)
+        || typeof raw.value !== "number"
+        || !Number.isFinite(raw.value)
+      ) return [];
+      points.push({ time: raw.time, value: raw.value });
+    }
+    drawings.push({
+      id: drawing.id,
+      panelId: drawing.panelId,
+      points,
+      color: drawing.color,
+    });
+  }
+  return drawings;
+}
+
 export interface ChartDrawingHit {
   drawing: ChartDrawing;
   /** Grabbed endpoint, or null when the whole shape was grabbed. */

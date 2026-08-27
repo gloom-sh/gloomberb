@@ -34,11 +34,14 @@ describe("static Cloudflare host", () => {
     expect(response.headers.get("cache-control")).toBe("no-store");
   });
 
-  test("rewrites only valid public share paths to the slim document", async () => {
-    const { env, requests } = fixture();
-    const response = await handleRequest(new Request("https://term.example/s/0123456789abcdef0123456789abcdef"), env);
-    expect(new URL(requests[0]!.url).pathname).toBe("/share.html");
-    expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
+  test("rewrites valid pane and layout share paths to the slim document", async () => {
+    const id = "0123456789abcdef0123456789abcdef";
+    for (const prefix of ["s", "l"]) {
+      const { env, requests } = fixture();
+      const response = await handleRequest(new Request(`https://term.example/${prefix}/${id}`), env);
+      expect(new URL(requests[0]!.url).pathname).toBe("/share.html");
+      expect(response.headers.get("x-robots-tag")).toBe("noindex, nofollow, noarchive");
+    }
   });
 
   test("serves the Apple app site association without touching static assets", async () => {

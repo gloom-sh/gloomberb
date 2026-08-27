@@ -84,9 +84,11 @@ afterEach(async () => {
 function communityEntry(): GalleryEntry {
   return {
     id: "community:abc",
+    marketplaceId: "0123456789abcdef0123456789abcdef",
     kind: "community",
     name: "Earnings War Room",
     layout: cloneLayout(createDefaultConfig("/tmp/gloomberb-gallery-desktop-community").layout),
+    paneState: {},
     index: null,
     active: false,
     author: "@analyst",
@@ -99,6 +101,7 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
   activated: GalleryEntry[];
   installed: GalleryEntry[];
   selections: (string | null)[];
+  copied: GalleryEntry[];
 } {
   const config = createDefaultConfig("/tmp/gloomberb-gallery-desktop-test");
   const owned = buildOwnedEntries([
@@ -108,6 +111,7 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
   const activated: GalleryEntry[] = [];
   const installed: GalleryEntry[] = [];
   const selections: (string | null)[] = [];
+  const copied: GalleryEntry[] = [];
   const community = overrides.community ?? [];
   const controller: LayoutGalleryController = {
     query: "",
@@ -130,6 +134,7 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
     signedIn: false,
     requestSignIn: () => {},
     publishCurrent: () => {},
+    copyLink: (entry) => copied.push(entry),
     publishing: false,
     newLayout: () => {},
     renameLayout: () => {},
@@ -141,7 +146,7 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
     missingPaneIds: () => [],
     ...overrides,
   };
-  return { controller, activated, installed, selections };
+  return { controller, activated, installed, selections, copied };
 }
 
 async function renderGallery(controller: LayoutGalleryController) {
@@ -220,7 +225,7 @@ test("preview falls back to the layout in use and runs owned actions", async () 
 
 test("a selected community layout installs as an independent copy", async () => {
   const community = [communityEntry()];
-  const { controller, installed } = createController({
+  const { controller, installed, copied } = createController({
     community,
     selectedId: "community:abc",
     signedIn: true,
@@ -238,6 +243,9 @@ test("a selected community layout installs as an independent copy", async () => 
   expect(previewText).toContain("@analyst");
   expect(previewText).toContain("Adds an editable copy");
   expect(previewText).not.toContain("Rename");
+
+  await pressButton(preview, "Copy Link");
+  expect(copied.map((entry) => entry.marketplaceId)).toEqual(["0123456789abcdef0123456789abcdef"]);
 
   await pressButton(preview, "Add Layout");
   expect(installed.map((entry) => entry.name)).toEqual(["Earnings War Room"]);

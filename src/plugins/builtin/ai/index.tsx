@@ -269,6 +269,9 @@ export const aiPlugin: GloomPlugin = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 32 },
+      portableShare: {
+        private: { title: true, params: true, settings: true, state: true },
+      },
       settings: (context) => {
         const providers = detectProviders();
         const workspaceProviders = providers.filter((provider) => (
@@ -337,6 +340,9 @@ export const aiPlugin: GloomPlugin = {
       defaultFloatingSize: { width: 76, height: 24 },
       tickerSource: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
+      portableShare: {
+        private: { title: true, params: true, settings: true, state: true },
+      },
       settings: (context) => {
         const providers = detectProviders();
         const screenerProviders = providers.filter((provider) => (

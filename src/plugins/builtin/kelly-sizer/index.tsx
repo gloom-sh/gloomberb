@@ -21,6 +21,9 @@ export const positionSizerModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: DEFAULT_FLOATING_SIZE,
+      portableShare: {
+        private: { state: true },
+      },
     },
   ],
   paneTemplates: [

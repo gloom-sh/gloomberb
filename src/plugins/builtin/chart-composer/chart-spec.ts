@@ -8,7 +8,38 @@ import {
 } from "../../../time-series/spec";
 
 export const CHART_SPEC_SETTING_KEY = "chartSpec";
+export const CHART_INTERACTION_VIEWPORT_SETTING_KEY = "chartInteractionViewport";
 export const MAX_CHART_COMPOSER_SERIES = MAX_CHART_SERIES;
+
+export interface ChartInteractionViewport {
+  authoredViewportKey: string;
+  start: string;
+  end: string;
+  adaptive: boolean;
+}
+
+export function parseChartInteractionViewport(value: unknown): ChartInteractionViewport | null {
+  if (!isRecord(value)) return null;
+  if (!Object.keys(value).every((key) => ["authoredViewportKey", "start", "end", "adaptive"].includes(key))) return null;
+  if (
+    typeof value.authoredViewportKey !== "string"
+    || value.authoredViewportKey.length === 0
+    || value.authoredViewportKey.length > 16_384
+    || typeof value.start !== "string"
+    || typeof value.end !== "string"
+    || typeof value.adaptive !== "boolean"
+  ) return null;
+  const start = Date.parse(value.start);
+  const end = Date.parse(value.end);
+  return Number.isFinite(start) && Number.isFinite(end) && start < end
+    ? {
+        authoredViewportKey: value.authoredViewportKey,
+        start: new Date(start).toISOString(),
+        end: new Date(end).toISOString(),
+        adaptive: value.adaptive,
+      }
+    : null;
+}
 
 export function canToggleChartSeries(spec: ChartSpec, seriesId: string): boolean {
   const target = spec.series.find((series) => series.id === seriesId);

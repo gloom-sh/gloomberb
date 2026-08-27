@@ -32,7 +32,9 @@ import { SeriesEditorDialog } from "./editor";
 import { chartComposerSemanticMetadata } from "./semantic";
 import {
   canToggleChartSeries,
+  CHART_INTERACTION_VIEWPORT_SETTING_KEY,
   CHART_SPEC_SETTING_KEY,
+  parseChartInteractionViewport,
   parseChartSpecOr,
   projectVisibleChartSeries,
   toggleChartSeries,
@@ -50,6 +52,7 @@ import {
   type BuiltinStudySelection,
   type PairStudySelection,
 } from "./presets";
+import type { ChartInteractionViewport } from "./chart-spec";
 import {
   CHART_FORMULA_OPTIONS,
   CHART_RANGES as RANGES,
@@ -69,6 +72,28 @@ const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
 interface RuntimeChartViewport {
   start: Date;
   end: Date;
+}
+
+interface RuntimeChartViewportState {
+  key: string;
+  adaptiveViewport: RuntimeChartViewport | null;
+  requestViewport: RuntimeChartViewport;
+}
+
+function runtimeViewportFromSetting(
+  setting: ChartInteractionViewport | null,
+  authoredViewportKey: string,
+): RuntimeChartViewportState | null {
+  if (!setting || setting.authoredViewportKey !== authoredViewportKey) return null;
+  const requestViewport = {
+    start: new Date(setting.start),
+    end: new Date(setting.end),
+  };
+  return {
+    key: authoredViewportKey,
+    adaptiveViewport: setting.adaptive ? requestViewport : null,
+    requestViewport,
+  };
 }
 
 function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number } | undefined {
@@ -137,11 +162,17 @@ function ChartComposerSurface({
         ? [entry.id, entry.source.kind, entry.source.seriesId]
         : [entry.id, entry.source.kind, chartSeriesSourceKey(entry.source)]),
   }), [spec.series, spec.viewport.dateWindow, spec.viewport.maxPoints, spec.viewport.range, spec.viewport.resolution]);
-  const [runtimeViewportState, setRuntimeViewportState] = useState<{
-    key: string;
-    adaptiveViewport: RuntimeChartViewport | null;
-    requestViewport: RuntimeChartViewport;
-  } | null>(null);
+  const [storedInteractionViewport, setStoredInteractionViewport] = usePaneSettingValue<unknown>(
+    CHART_INTERACTION_VIEWPORT_SETTING_KEY,
+    null,
+  );
+  const persistedInteractionViewport = useMemo(
+    () => parseChartInteractionViewport(storedInteractionViewport),
+    [storedInteractionViewport],
+  );
+  const [runtimeViewportState, setRuntimeViewportState] = useState<RuntimeChartViewportState | null>(() => (
+    runtimeViewportFromSetting(persistedInteractionViewport, authoredViewportKey)
+  ));
   const runtimeViewportTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
   const adaptiveViewportRef = useRef<RuntimeChartViewport | null>(null);
   const requestViewportRef = useRef<RuntimeChartViewport | null>(null);
@@ -272,16 +303,21 @@ function ChartComposerSurface({
       clearTimeout(runtimeViewportTimerRef.current);
       runtimeViewportTimerRef.current = null;
     }
-    adaptiveViewportRef.current = null;
-    requestViewportRef.current = null;
-    setRuntimeViewportState((current) => current?.key === authoredViewportKey ? current : null);
+    const restored = runtimeViewportFromSetting(
+      persistedInteractionViewport,
+      authoredViewportKey,
+    );
+    adaptiveViewportRef.current = restored?.adaptiveViewport ?? null;
+    requestViewportRef.current = restored?.requestViewport ?? null;
+    setRuntimeViewportState((current) => current?.key === authoredViewportKey ? current : restored);
+    if (persistedInteractionViewport && !restored) setStoredInteractionViewport(null);
     return () => {
       if (runtimeViewportTimerRef.current !== null) {
         clearTimeout(runtimeViewportTimerRef.current);
         runtimeViewportTimerRef.current = null;
       }
     };
-  }, [authoredViewportKey]);
+  }, [authoredViewportKey, persistedInteractionViewport, setStoredInteractionViewport]);
   const handleChartViewportChange = useCallback((
     next: { start: Date; end: Date } | null,
     interaction: "pan" | "reset" | "sync" | "zoom",
@@ -295,6 +331,7 @@ function ChartComposerSurface({
       adaptiveViewportRef.current = null;
       requestViewportRef.current = null;
       setRuntimeViewportState(null);
+      setStoredInteractionViewport(null);
       return;
     }
     const start = next.start.getTime();
@@ -317,8 +354,14 @@ function ChartComposerSurface({
         adaptiveViewport,
         requestViewport,
       });
+      setStoredInteractionViewport({
+        authoredViewportKey,
+        start: requestViewport.start.toISOString(),
+        end: requestViewport.end.toISOString(),
+        adaptive: adaptiveViewport !== null,
+      } satisfies ChartInteractionViewport);
     }, AUTO_VIEWPORT_DEBOUNCE_MS);
-  }, [authoredViewportKey, spec.viewport.resolution]);
+  }, [authoredViewportKey, setStoredInteractionViewport, spec.viewport.resolution]);
 
   useRemoteUiNode({
     role: "chart-data",

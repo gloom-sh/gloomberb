@@ -3,6 +3,7 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import { CloudAuthApi } from "./auth";
 import { CloudChatApi } from "./chat";
 import { CloudDataApi } from "./data";
+import { ApiRequestError } from "./errors";
 import { CloudApiRequestTransport } from "./request";
 import { CloudApiSocket } from "./socket";
 import type {
@@ -72,6 +73,7 @@ import type {
 } from "./types";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
 import {
+  isMarketplaceLayoutId,
   parseMarketplaceLayoutEntry,
   parseMarketplaceLayoutList,
   type LayoutMarketplaceEntry,
@@ -335,6 +337,22 @@ class GloomApiClient {
         baseRevision: options?.baseRevision ?? null,
       }),
     });
+  }
+
+  async getMarketplaceLayout(
+    id: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<LayoutMarketplaceEntry | null> {
+    if (!isMarketplaceLayoutId(id)) return null;
+    try {
+      return parseMarketplaceLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
+        method: "GET",
+        signal: options?.signal,
+      }));
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) return null;
+      throw error;
+    }
   }
 
   async listMarketplaceLayouts(options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry[]> {

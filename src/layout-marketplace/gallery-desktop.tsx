@@ -258,6 +258,12 @@ function PreviewPane({ controller, entry }: { controller: LayoutGalleryControlle
           variant="primary"
           onPress={() => (community ? controller.install(entry) : controller.activate(entry))}
         />
+        {community && (
+          <>
+            <Box width={1} />
+            <Button label="Copy Link" variant="secondary" onPress={() => controller.copyLink(entry)} />
+          </>
+        )}
         {entry.kind === "owned" && (
           <>
             <Box width={1} />

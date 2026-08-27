@@ -345,6 +345,9 @@ function LayoutDetails({
             ? controller.install(entry)
             : controller.activate(entry))}
         />
+        {entry.kind === "community" && (
+          <Button label="Copy Link" variant="secondary" onPress={() => controller.copyLink(entry)} />
+        )}
         {entry.kind === "owned" && (
           <>
             <Button label="Rename" variant="secondary" onPress={() => controller.renameLayout(entry)} />
