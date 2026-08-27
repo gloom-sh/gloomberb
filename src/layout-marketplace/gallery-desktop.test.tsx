@@ -209,7 +209,6 @@ test("preview falls back to the layout in use and runs owned actions", async () 
   const previewText = preview.textContent ?? "";
   // owned:1 is the active layout and there is no selection yet.
   expect(previewText).toContain("Research Desk");
-  expect(previewText).toContain("PANEPLACEMENT");
   expect(preview.querySelector("svg")).not.toBeNull();
 
   await pressButton(preview, "Rename");

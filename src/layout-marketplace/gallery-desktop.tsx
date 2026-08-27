@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   getPaneSidebarWidth,
   PaneSidebar,
@@ -196,10 +196,6 @@ function PreviewEmpty({ controller }: { controller: LayoutGalleryController }) {
 
 function PreviewPane({ controller, entry }: { controller: LayoutGalleryController; entry: GalleryEntry }) {
   const colors = useThemeColors();
-  const panes = useMemo(
-    () => summarizeLayoutPanes(entry.layout, controller.panes),
-    [controller.panes, entry.layout],
-  );
   const community = entry.kind === "community";
   const metadata = [
     entry.author,
@@ -283,31 +279,6 @@ function PreviewPane({ controller, entry }: { controller: LayoutGalleryControlle
             {t("Adds an editable copy")}
           </Text>
         )}
-      </Box>
-
-      <Box flexGrow={1} minHeight={6} flexDirection="column" style={{ borderTop: `1px solid ${colors.border}` }}>
-        <Box height={1} flexDirection="row" paddingX={1} backgroundColor={colors.panel} flexShrink={0}>
-          <Text fg={colors.textMuted} attributes={TextAttributes.BOLD}>{t("PANE")}</Text>
-          <Box flexGrow={1} />
-          <Text fg={colors.textMuted} attributes={TextAttributes.BOLD}>{t("PLACEMENT")}</Text>
-        </Box>
-        <ScrollBox scrollY flexGrow={1} minHeight={0} focusable={false}>
-          {panes.map((pane) => (
-            <Box key={pane.instanceId} height={1} flexDirection="row" paddingX={1} minWidth={0}>
-              <Text fg={colors.textMuted}>{`${pane.icon} `}</Text>
-              <Text
-                fg={pane.missing ? colors.textMuted : colors.text}
-                style={{ ...ELLIPSIS, minWidth: 0, flexShrink: 1 }}
-              >
-                {pane.symbol ? `${pane.name} · ${pane.symbol}` : pane.name}
-              </Text>
-              <Box flexGrow={1} minWidth={0} />
-              <Text fg={pane.missing ? colors.warning : colors.textMuted}>
-                {pane.missing ? t("unavailable") : pane.placement}
-              </Text>
-            </Box>
-          ))}
-        </ScrollBox>
       </Box>
     </Box>
   );
