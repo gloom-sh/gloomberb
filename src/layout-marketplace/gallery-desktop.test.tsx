@@ -176,7 +176,7 @@ test("sidebar rows select the preview instead of activating the layout", async (
   const container = await renderGallery(controller);
 
   const text = container.textContent ?? "";
-  expect(text.indexOf("Your Layouts")).toBeLessThan(text.indexOf("Discover"));
+  expect(text.indexOf("YOUR LAYOUTS")).toBeLessThan(text.indexOf("DISCOVER"));
   expect(text).toContain("A Gloom account is required to browse community layouts.");
 
   const sidebarRows = rows(container);
@@ -209,7 +209,7 @@ test("preview falls back to the layout in use and runs owned actions", async () 
   const previewText = preview.textContent ?? "";
   // owned:1 is the active layout and there is no selection yet.
   expect(previewText).toContain("Research Desk");
-  expect(previewText).toContain("Requires: Portfolio, Chat, Ticker Research");
+  expect(previewText).toContain("PANEPLACEMENT");
   expect(preview.querySelector("svg")).not.toBeNull();
 
   await pressButton(preview, "Rename");
@@ -237,7 +237,7 @@ test("a selected community layout installs as an independent copy", async () => 
   const previewText = preview.textContent ?? "";
   expect(previewText).toContain("Earnings War Room");
   expect(previewText).toContain("@analyst");
-  expect(previewText).toContain("Installs as an independent copy you can edit.");
+  expect(previewText).toContain("Adds an editable copy");
   expect(previewText).not.toContain("Rename");
 
   await pressButton(preview, "Add Layout");

@@ -271,7 +271,14 @@ export function LayoutMarketplaceGallery({
   };
 
   return useUiHost().kind === "desktop-web"
-    ? <LayoutGalleryDesktop controller={controller} />
+    ? (
+      <LayoutGalleryDesktop
+        controller={controller}
+        focused={focused}
+        width={width}
+        height={height}
+      />
+    )
     : (
       <LayoutGalleryTerminal
         controller={controller}
