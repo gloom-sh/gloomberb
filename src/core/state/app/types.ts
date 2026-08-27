@@ -60,8 +60,6 @@ export interface AppState {
   refreshing: Set<string>;
   initialized: boolean;
   statusBarVisible: boolean;
-  gridlockTipVisible: boolean;
-  gridlockTipSequence: number;
   inputCaptured: boolean;
   updateAvailable: ReleaseInfo | null;
   updateProgress: UpdateProgress | null;
@@ -98,8 +96,6 @@ export type AppAction =
   | { type: "SET_BROKER_ACCOUNTS"; instanceId: string; accounts: BrokerAccount[] }
   | { type: "SET_INITIALIZED" }
   | { type: "TOGGLE_STATUS_BAR" }
-  | { type: "SHOW_GRIDLOCK_TIP" }
-  | { type: "DISMISS_GRIDLOCK_TIP" }
   | { type: "SET_THEME"; theme: string }
   | { type: "PREVIEW_THEME"; theme: string | null }
   | { type: "SET_UPDATE_AVAILABLE"; release: ReleaseInfo | null }

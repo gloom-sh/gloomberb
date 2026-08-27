@@ -4,23 +4,7 @@ import { appReducer, createInitialState } from "./index";
 import { removePane } from "../../../plugins/pane-manager";
 
 describe("appReducer command bar state", () => {
-  test("re-shows the gridlock tip and refreshes its sequence on every trigger", () => {
-    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-test"));
-
-    const shown = appReducer(initial, { type: "SHOW_GRIDLOCK_TIP" });
-    expect(shown.gridlockTipVisible).toBe(true);
-    expect(shown.gridlockTipSequence).toBe(1);
-
-    const dismissed = appReducer(shown, { type: "DISMISS_GRIDLOCK_TIP" });
-    expect(dismissed.gridlockTipVisible).toBe(false);
-    expect(dismissed.gridlockTipSequence).toBe(1);
-
-    const repeated = appReducer(dismissed, { type: "SHOW_GRIDLOCK_TIP" });
-    expect(repeated.gridlockTipVisible).toBe(true);
-    expect(repeated.gridlockTipSequence).toBe(2);
-  });
-
-  test("opening the layout gallery closes and clears the command bar", () => {
+  test("opening the layout browser closes and clears the command bar", () => {
     const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-gallery-open-test"));
     const searching = appReducer(initial, {
       type: "SET_COMMAND_BAR",

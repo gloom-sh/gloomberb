@@ -1,4 +1,4 @@
-import type { ChatChannel, ChatMessage } from "../../../../api-client";
+import type { ChatMessage } from "../../../../api-client";
 import { t, tf } from "../../../../i18n";
 
 const ISO_TIMESTAMP_CURSOR = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
@@ -43,13 +43,11 @@ export function formatReplyToast(message: ChatMessage): string {
   return tf("@{author} replied to you: {snippet}", { author, snippet });
 }
 
-export function formatChannelToast(channelTitle: string, message: ChatMessage, channelKind?: ChatChannel["kind"]): string {
+export function formatChannelToast(message: ChatMessage, direct = false): string {
   const author = message.user.username || t("Someone");
   const snippet = formatMessageSnippet(message.content);
-  if (channelKind === "direct") {
-    return snippet ? `@${author}: ${snippet}` : tf("@{author} sent a message.", { author });
-  }
-  return snippet ? `${channelTitle} @${author}: ${snippet}` : tf("{channel} @{author} sent a message.", { channel: channelTitle, author });
+  if (direct && snippet) return snippet;
+  return snippet ? `@${author}: ${snippet}` : tf("@{author} sent a message.", { author });
 }
 
 export function isLegacyTimestampCursor(cursor: string | null): boolean {

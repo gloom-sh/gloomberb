@@ -1,6 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useMemo, useState, type CSSProperties, type ReactNode } from "react";
-import { colors } from "../../../theme/colors";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { ToastHostProvider, type ToastHost, type ToastOptions } from "../../../ui/toast";
 
 type WebToastType = "info" | "success" | "error";
@@ -9,32 +8,12 @@ interface ToastEntry {
   id: number;
   body: string;
   type: WebToastType;
+  title?: string;
+  subtitle?: string;
   action?: ToastOptions["action"];
 }
 
 let nextToastId = 1;
-
-function webToastBorderColor(type: WebToastType): string {
-  if (type === "success") return colors.positive;
-  if (type === "error") return colors.negative;
-  return colors.borderFocused;
-}
-
-function getToastStyle(type: WebToastType): CSSProperties {
-  return {
-    background: colors.panel,
-    borderColor: webToastBorderColor(type),
-    color: colors.text,
-  };
-}
-
-function getToastActionStyle(): CSSProperties {
-  return {
-    background: colors.selected,
-    border: `1px solid ${colors.borderFocused}`,
-    color: colors.selectedText,
-  };
-}
 
 export function WebToastHostProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
@@ -45,7 +24,14 @@ export function WebToastHostProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback((type: ToastEntry["type"], body: string, options?: ToastOptions) => {
     const id = nextToastId++;
-    setToasts((current) => [...current, { id, type, body, action: options?.action }].slice(-6));
+    setToasts((current) => [...current, {
+      id,
+      type,
+      body,
+      title: options?.title,
+      subtitle: options?.subtitle,
+      action: options?.action,
+    }]);
     if (options?.duration !== 0) {
       setTimeout(() => dismiss(id), options?.duration ?? 4500);
     }
@@ -55,24 +41,64 @@ export function WebToastHostProvider({ children }: { children: ReactNode }) {
   const host = useMemo<ToastHost>(() => ({
     Viewport() {
       return (
-        <div className="gloom-toast-viewport">
-          {toasts.map((toast) => (
-            <div key={toast.id} className="gloom-toast" style={getToastStyle(toast.type)}>
-              <div>{toast.body}</div>
-              {toast.action && (
-                <button
-                  className="gloom-toast-action"
-                  style={getToastActionStyle()}
-                  onClick={() => {
-                    toast.action?.onClick();
-                    dismiss(toast.id);
-                  }}
-                >
-                  {toast.action.label}
-                </button>
-              )}
-            </div>
-          ))}
+        <div className="gloom-toast-viewport" aria-label="Notifications" aria-live="polite">
+          {toasts.map((toast) => {
+            const activate = () => {
+              if (!toast.action) return;
+              try {
+                toast.action.onClick();
+              } finally {
+                dismiss(toast.id);
+              }
+            };
+            return (
+              <div
+                key={toast.id}
+                className="gloom-toast"
+                data-type={toast.type}
+                data-actionable={toast.action ? "true" : "false"}
+                onClick={toast.action ? activate : undefined}
+              >
+                <span className="gloom-toast-indicator" aria-hidden="true" />
+                <div className="gloom-toast-content">
+                  {(toast.title || toast.subtitle) && (
+                    <div className="gloom-toast-heading">
+                      {toast.title && <span className="gloom-toast-title">{toast.title}</span>}
+                      {toast.subtitle && <span className="gloom-toast-subtitle">{toast.subtitle}</span>}
+                    </div>
+                  )}
+                  <div className="gloom-toast-body">{toast.body}</div>
+                </div>
+                <div className="gloom-toast-controls">
+                  {toast.action && (
+                    <button
+                      type="button"
+                      className="gloom-toast-action"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        activate();
+                      }}
+                    >
+                      {toast.action.label}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="gloom-toast-dismiss"
+                    aria-label="Dismiss notification"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      dismiss(toast.id);
+                    }}
+                  >
+                    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+                      <path d="M2.25 2.25 9.75 9.75M9.75 2.25 2.25 9.75" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       );
     },

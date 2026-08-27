@@ -1099,8 +1099,7 @@ describe("ChatController", () => {
     (controller as any).handleChatNotification(mentionNotification());
 
     expect(notifications).toEqual([{
-      title: "Gloomberb chat",
-      subtitle: "#everyone",
+      title: "#everyone",
       body: "@bob mentioned you: hey @vince",
       type: "info",
       desktop: "when-inactive",
@@ -1324,8 +1323,7 @@ describe("ChatController", () => {
       unreadCount: 3,
     });
     expect(notifications).toEqual([{
-      title: "Gloomberb chat",
-      subtitle: "#options",
+      title: "#options",
       body: "@bob replied to you: answering you",
       type: "info",
       desktop: "when-inactive",
@@ -1405,10 +1403,11 @@ describe("ChatController", () => {
     expect(notifications).toHaveLength(1);
   });
 
-  test("displays server-issued channel notifications", () => {
+  test("opens a server-issued channel notification at its exact message", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
+    const openedMessages: string[] = [];
     const message: ChatMessage = {
       id: "m1",
       channelId: "options",
@@ -1424,6 +1423,8 @@ describe("ChatController", () => {
     }, { schemaVersion: 1 });
     controller.setNotifier((entry) => {
       notifications.push(entry);
+    }, (channelId, messageId) => {
+      openedMessages.push(`${channelId}:${messageId}`);
     });
     controller.attachPersistence(persistence);
 
@@ -1437,15 +1438,17 @@ describe("ChatController", () => {
     } satisfies ChatNotification);
 
     expect(notifications).toEqual([{
-      title: "Gloomberb chat",
-      subtitle: "#options",
-      body: "#options @bob: new option flow",
+      title: "#options",
+      body: "@bob: new option flow",
       type: "info",
       desktop: "when-inactive",
+      action: expect.objectContaining({ label: "Open" }),
     }]);
+    notifications[0]?.action?.onClick();
+    expect(openedMessages).toEqual(["options:m1"]);
   });
 
-  test("uses direct channel labels in server-issued notification subtitles", async () => {
+  test("uses direct channel labels in server-issued notification titles", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
@@ -1496,9 +1499,8 @@ describe("ChatController", () => {
     } satisfies ChatNotification);
 
     expect(notifications).toEqual([{
-      title: "Gloomberb chat",
-      subtitle: "@bob",
-      body: "@bob: ping",
+      title: "@bob",
+      body: "ping",
       type: "info",
       desktop: "when-inactive",
     }]);
@@ -1569,8 +1571,7 @@ describe("ChatController", () => {
     } satisfies ChatNotification);
 
     expect(notifications).toEqual([{
-      title: "Gloomberb chat",
-      subtitle: "#options",
+      title: "#options",
       body: "@bob replied to you: reply without channel notify",
       type: "info",
       desktop: "when-inactive",

@@ -55,7 +55,12 @@ export {
   removeUnavailablePaneTypes,
   type PaneTypeAvailability,
 } from "./pane-manager/layout-state";
-export { gridlockAllPanes } from "./pane-manager/gridlock";
+export {
+  analyzeFloatingPaneVisibility,
+  gridlockAllPanes,
+  shouldShowTidyWindows,
+  type FloatingPaneVisibility,
+} from "./pane-manager/gridlock";
 export type {
   DropTarget,
   FloatingResizeCorner,

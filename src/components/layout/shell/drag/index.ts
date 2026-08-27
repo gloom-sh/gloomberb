@@ -46,11 +46,6 @@ export type DragPreview =
     rect: FloatingRect;
   };
 
-export interface PaneDragReleaseResult {
-  nextLayout: LayoutConfig;
-  shouldShowGridlockTip: boolean;
-}
-
 export interface PaneDragRectState {
   mode: "docked" | "floating";
   startX: number;
@@ -272,25 +267,14 @@ export function finalizePaneDragRelease(
   paneId: string,
   previewRect: FloatingRect,
   dockPreview: DragPreview | null,
-): PaneDragReleaseResult {
+): LayoutConfig {
   if (dockPreview?.kind === "dock") {
-    return {
-      nextLayout: applyDrop(layout, paneId, dockPreview.target),
-      shouldShowGridlockTip: false,
-    };
+    return applyDrop(layout, paneId, dockPreview.target);
   }
-
   if (dockPreview?.kind === "snap") {
-    return {
-      nextLayout: floatAtRect(layout, paneId, dockPreview.rect),
-      shouldShowGridlockTip: true,
-    };
+    return floatAtRect(layout, paneId, dockPreview.rect);
   }
-
-  return {
-    nextLayout: floatAtRect(layout, paneId, previewRect),
-    shouldShowGridlockTip: false,
-  };
+  return floatAtRect(layout, paneId, previewRect);
 }
 
 export function makeSnapGuides(width: number, height: number): SnapGuide[] {

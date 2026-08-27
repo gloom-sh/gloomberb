@@ -185,17 +185,6 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "TOGGLE_STATUS_BAR":
       return { ...state, statusBarVisible: !state.statusBarVisible };
 
-    case "SHOW_GRIDLOCK_TIP":
-      return {
-        ...state,
-        gridlockTipVisible: true,
-        gridlockTipSequence: state.gridlockTipSequence + 1,
-      };
-
-    case "DISMISS_GRIDLOCK_TIP":
-      if (!state.gridlockTipVisible) return state;
-      return { ...state, gridlockTipVisible: false };
-
     case "SET_THEME":
       if (state.config.theme === action.theme && state.themePreview == null) return state;
       return { ...state, themePreview: null, config: { ...state.config, theme: action.theme } };
@@ -373,8 +362,6 @@ export function createInitialState(config: AppConfig, sessionSnapshot: AppSessio
     refreshing: new Set(),
     initialized: false,
     statusBarVisible: sessionSnapshot?.statusBarVisible !== false,
-    gridlockTipVisible: false,
-    gridlockTipSequence: 0,
     inputCaptured: false,
     updateAvailable: null,
     updateProgress: null,

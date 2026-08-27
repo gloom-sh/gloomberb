@@ -30,14 +30,6 @@ export function selectActiveLayoutIndex(state: AppState): number {
   return state.config.activeLayoutIndex;
 }
 
-export function selectGridlockTipVisible(state: AppState): boolean {
-  return state.gridlockTipVisible;
-}
-
-export function selectGridlockTipSequence(state: AppState): number {
-  return state.gridlockTipSequence;
-}
-
 export function selectUpdateAvailable(state: AppState): ReleaseInfo | null {
   return state.updateAvailable;
 }

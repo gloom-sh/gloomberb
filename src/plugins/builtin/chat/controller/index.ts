@@ -73,6 +73,7 @@ export class ChatController {
   private readonly session = createChatControllerSessionState();
   private pendingMessageSeq = 0;
   private notifyFn: (notification: AppNotificationRequest) => AppNotificationDelivery | void = () => {};
+  private openMessageFn: ((channelId: string, messageId: string) => void) | undefined;
   private notifiedMessageIds = new Set<string>();
 
   private readonly storage = new ChatControllerStorage({
@@ -125,8 +126,12 @@ export class ChatController {
     this.hydrate();
   }
 
-  setNotifier(notify: (notification: AppNotificationRequest) => AppNotificationDelivery | void): void {
+  setNotifier(
+    notify: (notification: AppNotificationRequest) => AppNotificationDelivery | void,
+    openMessage?: (channelId: string, messageId: string) => void,
+  ): void {
     this.notifyFn = notify;
+    this.openMessageFn = openMessage;
   }
 
   hydrate(): void {
@@ -374,6 +379,7 @@ export class ChatController {
       flushDraftSync: (channelId) => this.storage.flushDraftSync(channelId),
       resetNotifier: () => {
         this.notifyFn = () => {};
+        this.openMessageFn = undefined;
       },
       stopRealtime: () => this.realtime.stopAll(),
     });
@@ -527,6 +533,7 @@ export class ChatController {
       getChannel: (channelId) => this.channelCatalog.getChannels().find((channel) => channel.id === channelId),
       notifiedMessageIds: this.notifiedMessageIds,
       notify: this.notifyFn,
+      openMessage: this.openMessageFn,
     });
   }
 
