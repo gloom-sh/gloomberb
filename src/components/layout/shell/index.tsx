@@ -21,6 +21,7 @@ import {
   syncConfigActiveLayoutState,
   useAppDispatch,
   useAppSelector,
+  useAppStateRef,
 } from "../../../state/app/context";
 import {
   selectCommandBarOpen,
@@ -101,6 +102,7 @@ export function Shell({
   const previousFocusedPaneId = useAppSelector((state) => state.previousFocusedPaneId);
   const activePanel = useAppSelector((state) => state.activePanel);
   const commandBarOpen = useAppSelector(selectCommandBarOpen);
+  const stateRef = useAppStateRef();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const statusBarVisible = useAppSelector(selectStatusBarVisible);
   const rendererHost = useRendererHost();
@@ -120,8 +122,9 @@ export function Shell({
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   const [hoveredPaneId, setHoveredPaneId] = useState<string | null>(null);
   const setHoveredPaneIfChanged = useCallback((paneId: string | null) => {
+    if (commandBarOpen) return;
     setHoveredPaneId((current) => (current === paneId ? current : paneId));
-  }, []);
+  }, [commandBarOpen]);
   const [menuState, setMenuState] = useState<ActionMenuState | null>(null);
   const [transientFocusLayoutState, setTransientFocusLayoutState] = useState<TransientFocusLayoutState | null>(null);
   const transientFocusLayoutStateRef = useRef<TransientFocusLayoutState | null>(null);
@@ -132,6 +135,9 @@ export function Shell({
     setHoveredMenuItemId(null);
   }, []);
   const overlayOpen = commandBarOpen || dialogOpen || !!menuState;
+  useEffect(() => {
+    if (commandBarOpen) setHoveredPaneId(null);
+  }, [commandBarOpen]);
 
   const dragRuntime = useShellDragRuntimeState({
     contentHeight,
@@ -166,13 +172,14 @@ export function Shell({
     dispatch(hasFocusTarget
       ? { type: "UPDATE_LAYOUT", layout: nextLayout, focusedPaneId: options.focusedPaneId ?? null }
       : { type: "UPDATE_LAYOUT", layout: nextLayout });
+    const currentState = stateRef.current;
     scheduleConfigSave(syncConfigActiveLayoutState(
-      { ...config, layout: nextLayout },
-      paneState,
-      hasFocusTarget ? (options.focusedPaneId ?? null) : focusedPaneId,
-      activePanel,
+      { ...currentState.config, layout: nextLayout },
+      currentState.paneState,
+      hasFocusTarget ? (options.focusedPaneId ?? null) : currentState.focusedPaneId,
+      currentState.activePanel,
     ));
-  }, [activePanel, config, dispatch, focusedPaneId, paneState]);
+  }, [dispatch, stateRef]);
 
   const focusPane = useCallback((paneId: string) => {
     dispatch({ type: "FOCUS_PANE", paneId });
@@ -542,6 +549,7 @@ export function Shell({
     visibleLayout,
     width,
     windowMode,
+    commandBarOpen,
   });
   const windowModeDockResizePathKey = windowMode?.focus.kind === "dock-resize"
     ? windowMode.focus.pathKey

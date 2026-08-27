@@ -26,6 +26,7 @@ import {
   getPortfolioPositionMetrics,
   resolveBrokerFallbackMarketValue,
   resolveBrokerFallbackPnl,
+  signedQuoteUnrealizedPnl,
 } from "./position-metrics";
 
 export interface ColumnContext {
@@ -332,7 +333,11 @@ export function getColumnValue(
       return { text: "—" };
     case "pnl":
       if (activeQuote && totalPriceUnits !== 0) {
-        const pnl = toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price) - toBasePosition(totalCost);
+        const pnl = signedQuoteUnrealizedPnl(
+          toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price),
+          toBasePosition(totalCost),
+          totalPriceUnits,
+        );
         return { text: `${pnl >= 0 ? "+" : ""}${formatCompact(pnl)}`, color: priceColor(pnl) };
       }
       if (brokerFallbackPnl != null) {
@@ -344,7 +349,8 @@ export function getColumnValue(
       if (activeQuote && totalCost !== 0) {
         const marketValue = toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price);
         const costBasis = toBasePosition(totalCost);
-        const percent = costBasis !== 0 ? ((marketValue - costBasis) / costBasis) * 100 : 0;
+        const pnl = signedQuoteUnrealizedPnl(marketValue, costBasis, totalPriceUnits);
+        const percent = costBasis !== 0 ? (pnl / costBasis) * 100 : 0;
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
       if (brokerFallbackPnl != null && totalCost !== 0) {
@@ -530,7 +536,11 @@ export function getSortValue(
       return null;
     case "pnl":
       if (activeQuote && totalPriceUnits !== 0) {
-        return toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price) - toBasePosition(totalCost);
+        return signedQuoteUnrealizedPnl(
+          toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price),
+          toBasePosition(totalCost),
+          totalPriceUnits,
+        );
       }
       if (brokerFallbackPnl != null) {
         return toBasePosition(brokerFallbackPnl);
@@ -540,7 +550,8 @@ export function getSortValue(
       if (activeQuote && totalCost !== 0) {
         const marketValue = toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price);
         const costBasis = toBasePosition(totalCost);
-        return costBasis !== 0 ? ((marketValue - costBasis) / costBasis) * 100 : null;
+        const pnl = signedQuoteUnrealizedPnl(marketValue, costBasis, totalPriceUnits);
+        return costBasis !== 0 ? (pnl / costBasis) * 100 : null;
       }
       if (brokerFallbackPnl != null && totalCost !== 0) {
         const costBasis = toBasePosition(totalCost);

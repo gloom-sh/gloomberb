@@ -87,6 +87,7 @@ interface ChartComposerSurfaceProps {
   height: number;
   footerId: string;
   onCapture?: (capturing: boolean) => void;
+  liveWhenUnfocused?: boolean;
 }
 
 const QUICK_ADD_CAPTURE = "quick-add";
@@ -106,6 +107,7 @@ function ChartComposerSurface({
   height,
   footerId,
   onCapture,
+  liveWhenUnfocused = true,
 }: ChartComposerSurfaceProps) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
@@ -153,7 +155,7 @@ function ChartComposerSurface({
       : null,
     requestViewport: activeRuntimeViewport?.requestViewport,
     targetPointCount,
-    liveStreaming,
+    liveStreaming: liveStreaming && (liveWhenUnfocused || focused),
   });
   const availableResolutions = useMemo<ChartResolution[]>(() => {
     if (!resolution.resolutionSupport) {
@@ -656,6 +658,20 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
   );
 }
 
+function firstChartSecuritySymbol(spec: ChartSpec): string | null {
+  for (const entry of spec.series) {
+    if (entry.source.kind === "security") return entry.source.instrument.symbol;
+  }
+  return null;
+}
+
+function specHasSecuritySymbol(spec: ChartSpec, symbol: string | null | undefined): boolean {
+  if (!symbol) return false;
+  return spec.series.some((entry) => (
+    entry.source.kind === "security" && entry.source.instrument.symbol === symbol
+  ));
+}
+
 export function ChartComposerResearchTab({ focused, width, height, onCapture }: TickerResearchTabProps) {
   const { symbol } = usePaneTicker();
   const fallback = useMemo(() => symbol ? buildPriceChartPreset(symbol) : buildEmptyChartPreset(), [symbol]);
@@ -664,11 +680,18 @@ export function ChartComposerResearchTab({ focused, width, height, onCapture }: 
   const previousSymbolRef = useRef(symbol);
 
   useEffect(() => {
+    if (!symbol) return;
     const previousSymbol = previousSymbolRef.current;
-    previousSymbolRef.current = symbol;
-    if (!symbol || !previousSymbol || symbol === previousSymbol) return;
-    const rebound = rebindChartSecuritySymbol(spec, previousSymbol, symbol);
+    const fromSymbol = specHasSecuritySymbol(spec, previousSymbol)
+      ? previousSymbol
+      : firstChartSecuritySymbol(spec) ?? previousSymbol;
+    if (!fromSymbol || fromSymbol === symbol) {
+      previousSymbolRef.current = symbol;
+      return;
+    }
+    const rebound = rebindChartSecuritySymbol(spec, fromSymbol, symbol);
     if (rebound !== spec) setStoredSpec(rebound);
+    previousSymbolRef.current = symbol;
   }, [setStoredSpec, spec, symbol]);
 
   return (
@@ -680,6 +703,7 @@ export function ChartComposerResearchTab({ focused, width, height, onCapture }: 
       height={height}
       footerId="chart-composer:research"
       onCapture={onCapture}
+      liveWhenUnfocused={false}
     />
   );
 }

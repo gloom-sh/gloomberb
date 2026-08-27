@@ -42,6 +42,10 @@ export function editAlert(
   };
 }
 
+export function rearmAlert(alert: AlertRule): AlertRule {
+  return editAlert(alert, alert.symbol, alert.condition, alert.targetPrice);
+}
+
 export function evaluateAlert(alert: AlertRule, currentPrice: number): boolean {
   if (alert.status !== "active") return false;
 

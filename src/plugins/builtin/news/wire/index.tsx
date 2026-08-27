@@ -47,7 +47,7 @@ const TopPane = createNewsPresetPane({
   columns: ["time", "source", "title", "tickers", "categories", "importance"],
   defaultSort: { columnId: "importance", direction: "desc" },
   emptyStateTitle: "No top stories yet",
-  emptyStateHint: "Run the Add News Feed command to wire up another source.",
+  emptyStateHint: "Top stories appear when curated market sources publish them.",
 });
 
 const FeedPane = createNewsPresetPane({

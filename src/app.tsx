@@ -277,7 +277,7 @@ function AppInner({
     importBrokerPositions,
     marketData,
     pluginRegistry,
-    state,
+    stateRef,
     tickerRepository,
   });
 
