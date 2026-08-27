@@ -1,5 +1,5 @@
 import type { PaneRuntimeState } from "../core/state/app/state";
-import type { AppConfig } from "./config";
+import type { AppConfig, LayoutConfig } from "./config";
 
 export interface DesktopSharedStateSnapshot {
   config: AppConfig;
@@ -20,9 +20,19 @@ export interface DesktopThemePreviewState {
   theme: string | null;
 }
 
+export type DesktopLayoutMarketplaceAction =
+  | { type: "SWITCH_LAYOUT"; index: number }
+  | { type: "NEW_LAYOUT"; name: string }
+  | { type: "INSTALL_LAYOUT_COPY"; name: string; layout: LayoutConfig }
+  | { type: "DELETE_LAYOUT"; index: number }
+  | { type: "RENAME_LAYOUT"; index: number; name: string }
+  | { type: "DUPLICATE_LAYOUT"; index: number };
+
 export interface DesktopWindowBridge {
-  kind: "main" | "detached";
+  kind: "main" | "detached" | "marketplace";
   paneId?: string;
+  openLayoutMarketplace?(): Promise<void>;
+  performLayoutMarketplaceAction?(action: DesktopLayoutMarketplaceAction): Promise<void>;
   syncMainState?(snapshot: DesktopSharedStateSnapshot): Promise<void>;
   syncThemePreview?(preview: DesktopThemePreviewState): Promise<void>;
   replaceDetachedPaneState?(paneId: string, paneState: PaneRuntimeState): Promise<void>;

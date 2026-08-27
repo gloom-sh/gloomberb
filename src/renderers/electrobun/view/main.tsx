@@ -129,7 +129,7 @@ async function boot() {
     );
     appMounted = true;
   });
-  requestStartupFocus();
+  if (init.windowKind !== "marketplace") requestStartupFocus();
   bootLog.info("root render scheduled", {
     layoutPanes: config.layout.instances.length,
     floatingPanes: config.layout.floating.length,

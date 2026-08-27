@@ -81,29 +81,47 @@ afterEach(async () => {
   }
 });
 
+function communityEntry(): GalleryEntry {
+  return {
+    id: "community:abc",
+    kind: "community",
+    name: "Earnings War Room",
+    layout: cloneLayout(createDefaultConfig("/tmp/gloomberb-gallery-desktop-community").layout),
+    index: null,
+    active: false,
+    author: "@analyst",
+    publishedAt: "2026-08-26T00:00:00.000Z",
+  };
+}
+
 function createController(overrides: Partial<LayoutGalleryController> = {}): {
   controller: LayoutGalleryController;
   activated: GalleryEntry[];
+  installed: GalleryEntry[];
+  selections: (string | null)[];
 } {
   const config = createDefaultConfig("/tmp/gloomberb-gallery-desktop-test");
   const owned = buildOwnedEntries([
     { name: "Monitor", layout: cloneLayout(config.layout) },
     { name: "Research Desk", layout: cloneLayout(config.layout) },
-  ], 0);
+  ], 1);
   const activated: GalleryEntry[] = [];
+  const installed: GalleryEntry[] = [];
+  const selections: (string | null)[] = [];
+  const community = overrides.community ?? [];
   const controller: LayoutGalleryController = {
     query: "",
     setQuery: () => {},
     owned,
-    community: [],
-    entries: owned,
+    community,
+    entries: [...(overrides.owned ?? owned), ...community],
     selectedId: null,
-    select: () => {},
+    select: (id) => selections.push(id),
     detail: null,
     openDetail: () => {},
     closeDetail: () => {},
     activate: (entry) => activated.push(entry),
-    install: () => {},
+    install: (entry) => installed.push(entry),
     discover: {
       state: { status: "signed-out", items: [] },
       refresh: () => {},
@@ -123,7 +141,7 @@ function createController(overrides: Partial<LayoutGalleryController> = {}): {
     missingPaneIds: () => [],
     ...overrides,
   };
-  return { controller, activated };
+  return { controller, activated, installed, selections };
 }
 
 async function renderGallery(controller: LayoutGalleryController) {
@@ -140,77 +158,98 @@ async function renderGallery(controller: LayoutGalleryController) {
   return container;
 }
 
-test("renders owned cards above an account-gated Discover section", async () => {
-  const { controller, activated } = createController();
+function rows(container: Element) {
+  return [...container.querySelectorAll('[data-gloom-role="layout-gallery-row"]')];
+}
+
+function pressButton(container: Element, label: string) {
+  const button = [...container.querySelectorAll('[data-gloom-role="desktop-button"]')]
+    .find((node) => node.textContent?.includes(label));
+  if (!button) throw new Error(`no button labelled ${label}`);
+  return act(async () => {
+    button.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, button: 0 }) as unknown as MouseEvent);
+  });
+}
+
+test("sidebar rows select the preview instead of activating the layout", async () => {
+  const { controller, activated, selections } = createController();
   const container = await renderGallery(controller);
 
   const text = container.textContent ?? "";
-  expect(text).toContain("Your Layouts");
-  expect(text).toContain("Discover");
   expect(text.indexOf("Your Layouts")).toBeLessThan(text.indexOf("Discover"));
   expect(text).toContain("A Gloom account is required to browse community layouts.");
 
-  const cards = [...container.querySelectorAll('[data-gloom-role="layout-gallery-card"]')];
-  const openTargets = [...container.querySelectorAll('[data-gloom-role="layout-gallery-card-open"]')];
-  expect(cards.length).toBe(2);
-  expect(openTargets.length).toBe(2);
-  for (let index = 0; index < cards.length; index += 1) {
-    // The card is a group, with one dedicated keyboard/mouse target beside its action buttons.
-    expect(cards[index]!.getAttribute("role")).toBe("group");
-    expect(cards[index]!.getAttribute("aria-label")).toContain("panes");
-    expect(openTargets[index]!.getAttribute("role")).toBe("button");
-    expect(openTargets[index]!.getAttribute("tabindex")).toBe("0");
-    expect(cards[index]!.querySelector("svg")).not.toBeNull();
-  }
+  const sidebarRows = rows(container);
+  // Two owned layouts plus the account-gate row.
+  expect(sidebarRows.length).toBe(3);
+  expect(sidebarRows[0]!.getAttribute("role")).toBe("button");
+  expect(sidebarRows[0]!.getAttribute("tabindex")).toBe("0");
+  expect(sidebarRows[0]!.getAttribute("aria-label")).toContain("panes");
 
   await act(async () => {
-    openTargets[1]!.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, button: 0 }) as unknown as MouseEvent);
+    sidebarRows[0]!.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, button: 0 }) as unknown as MouseEvent);
   });
-  expect(activated.map((entry) => entry.name)).toEqual(["Research Desk"]);
+  await act(async () => {
+    sidebarRows[1]!.dispatchEvent(new testWindow.MouseEvent("mouseover", { bubbles: true }) as unknown as MouseEvent);
+  });
+  await act(async () => {
+    (sidebarRows[1] as unknown as HTMLElement).focus();
+  });
+
+  expect(selections).toEqual(["owned:0", "owned:1", "owned:1"]);
+  expect(activated).toEqual([]);
 });
 
-test("card actions do not also activate the card they sit in", async () => {
+test("preview falls back to the layout in use and runs owned actions", async () => {
   const renamed: GalleryEntry[] = [];
   const { controller, activated } = createController({ renameLayout: (entry) => renamed.push(entry) });
   const container = await renderGallery(controller);
 
-  const renameButton = [...container.querySelectorAll('[data-gloom-role="desktop-button"]')]
-    .find((node) => node.textContent?.includes("Rename"))!;
-  await act(async () => {
-    renameButton.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, button: 0 }) as unknown as MouseEvent);
-  });
+  const preview = container.querySelector('[data-gloom-role="layout-gallery-preview"]')!;
+  const previewText = preview.textContent ?? "";
+  // owned:1 is the active layout and there is no selection yet.
+  expect(previewText).toContain("Research Desk");
+  expect(previewText).toContain("Requires: Portfolio, Chat, Ticker Research");
+  expect(preview.querySelector("svg")).not.toBeNull();
 
-  expect(renamed.map((entry) => entry.name)).toEqual(["Monitor"]);
-  expect(activated).toEqual([]);
+  await pressButton(preview, "Rename");
+  expect(renamed.map((entry) => entry.name)).toEqual(["Research Desk"]);
+
+  await pressButton(preview, "Use Layout");
+  expect(activated.map((entry) => entry.name)).toEqual(["Research Desk"]);
 });
 
-test("community detail exposes dependencies and installs as a copy", async () => {
-  const config = createDefaultConfig("/tmp/gloomberb-gallery-desktop-detail");
-  const installed: GalleryEntry[] = [];
-  const detail: GalleryEntry = {
-    id: "community:abc",
-    kind: "community",
-    name: "Earnings War Room",
-    layout: cloneLayout(config.layout),
-    index: null,
-    active: false,
-    author: "@analyst",
-    publishedAt: "2026-08-26T00:00:00.000Z",
-  };
-  const { controller } = createController({ detail, install: (entry) => installed.push(entry) });
+test("a selected community layout installs as an independent copy", async () => {
+  const community = [communityEntry()];
+  const { controller, installed } = createController({
+    community,
+    selectedId: "community:abc",
+    signedIn: true,
+    discover: {
+      state: { status: "ready", items: [] },
+      refresh: () => {},
+      publish: async () => { throw new Error("unused"); },
+    },
+  });
   const container = await renderGallery(controller);
 
-  const text = container.textContent ?? "";
-  expect(text).toContain("Earnings War Room");
-  expect(text).toContain("@analyst");
-  expect(text).toContain("Requires: Portfolio, Chat, Ticker Research");
-  expect(text).toContain("Add Layout");
-  expect(text).toContain("Installs as an independent copy you can edit.");
+  const preview = container.querySelector('[data-gloom-role="layout-gallery-preview"]')!;
+  const previewText = preview.textContent ?? "";
+  expect(previewText).toContain("Earnings War Room");
+  expect(previewText).toContain("@analyst");
+  expect(previewText).toContain("Installs as an independent copy you can edit.");
+  expect(previewText).not.toContain("Rename");
 
-  const addButton = [...container.querySelectorAll('[data-gloom-role="desktop-button"]')]
-    .find((node) => node.textContent?.includes("Add Layout"))!;
-  await act(async () => {
-    addButton.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, button: 0 }) as unknown as MouseEvent);
-  });
+  await pressButton(preview, "Add Layout");
   expect(installed.map((entry) => entry.name)).toEqual(["Earnings War Room"]);
+});
+
+test("an empty gallery keeps a preview placeholder instead of a blank pane", async () => {
+  const { controller } = createController({ owned: [], entries: [] });
+  const container = await renderGallery(controller);
+
+  expect(rows(container).length).toBe(1); // account gate only
+  const empty = container.querySelector('[data-gloom-role="layout-gallery-preview-empty"]')!;
+  expect(empty.textContent).toContain("No layout selected.");
+  expect(container.querySelector('[data-gloom-role="layout-gallery-preview"]')).toBeNull();
 });

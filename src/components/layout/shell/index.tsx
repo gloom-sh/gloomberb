@@ -252,7 +252,6 @@ export function Shell({
     gridlockVisiblePanes,
     handleFloatingClose,
     openFocusedPaneSettings,
-    openLayoutMenu,
     openPaneSettings,
     popOutFocusedPane,
     toggleFocusedPaneFloating,
@@ -271,6 +270,9 @@ export function Shell({
     visibleLayout,
     width,
   });
+  const openLayoutGallery = useCallback(() => {
+    dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true });
+  }, [dispatch]);
   const setTransientFocusLayout = useCallback((next: TransientFocusLayoutState | null) => {
     transientFocusLayoutStateRef.current = next;
     setTransientFocusLayoutState(next);
@@ -378,7 +380,7 @@ export function Shell({
     hasActiveDrag,
     inputCaptured,
     openFocusedPaneSettings,
-    openLayoutMenu,
+    openLayoutGallery,
     overlayOpen,
     popOutFocusedPane,
     startWindowMode,

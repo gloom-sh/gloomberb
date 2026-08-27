@@ -21,7 +21,7 @@ interface ShellPaneManagementShortcutOptions {
   hasActiveDrag(): boolean;
   inputCaptured: boolean;
   openFocusedPaneSettings(): boolean;
-  openLayoutMenu(): void;
+  openLayoutGallery(): void;
   overlayOpen: boolean;
   popOutFocusedPane(): boolean;
   startWindowMode(paneId?: string, mode?: WindowEditMode): void;
@@ -39,7 +39,7 @@ export function useShellPaneManagementShortcuts({
   hasActiveDrag,
   inputCaptured,
   openFocusedPaneSettings,
-  openLayoutMenu,
+  openLayoutGallery,
   overlayOpen,
   popOutFocusedPane,
   startWindowMode,
@@ -119,8 +119,8 @@ export function useShellPaneManagementShortcuts({
       case "copy-screenshot":
         handled = copyFocusedPaneScreenshot();
         break;
-      case "layout-actions":
-        openLayoutMenu();
+      case "layout-gallery":
+        openLayoutGallery();
         handled = true;
         break;
       case "gridlock-all":

@@ -1,4 +1,5 @@
 export const MAIN_WINDOW_RPC_KEY = "main";
+export const LAYOUT_MARKETPLACE_WINDOW_RPC_KEY = "layout-marketplace";
 
 const DETACHED_WINDOW_RPC_PREFIX = "detached:";
 

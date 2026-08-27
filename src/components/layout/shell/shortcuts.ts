@@ -8,7 +8,7 @@ export const PANE_MANAGEMENT_ACCELERATORS = {
   copyScreenshot: "CmdOrCtrl+Shift+C",
   close: "CmdOrCtrl+W",
   closeAllFloating: "CmdOrCtrl+Alt+W",
-  layoutActions: "CmdOrCtrl+Shift+L",
+  layoutGallery: "CmdOrCtrl+Shift+L",
   gridlockAll: "CmdOrCtrl+Shift+G",
   windowMode: "CmdOrCtrl+Shift+M",
   windowResizeMode: "CmdOrCtrl+Shift+R",
@@ -22,7 +22,7 @@ export type PaneManagementShortcut =
   | "copy-screenshot"
   | "close"
   | "close-all-floating"
-  | "layout-actions"
+  | "layout-gallery"
   | "gridlock-all"
   | "window-mode"
   | "window-resize-mode";
@@ -42,7 +42,7 @@ export function resolvePaneManagementShortcut(
   if (name === "d") return "toggle-floating";
   if (name === "f") return "toggle-fullscreen";
   if (name === "o") return "pop-out";
-  if (name === "l") return "layout-actions";
+  if (name === "l") return "layout-gallery";
   if (name === "g") return "gridlock-all";
   if (name === "m") return "window-mode";
   if (name === "r") return "window-resize-mode";

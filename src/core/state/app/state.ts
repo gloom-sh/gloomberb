@@ -151,8 +151,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_COMMAND_BAR_QUERY":
       return { ...state, commandBarQuery: action.query };
 
-    // The gallery owns the whole window, so opening it also closes and clears the
-    // command bar in one commit instead of leaving a stale query behind it.
+    // Opening the layout browser also closes and clears the command bar in one
+    // commit instead of leaving a stale query behind it.
     case "SET_LAYOUT_MARKETPLACE":
       if (state.layoutMarketplaceOpen === action.open && !action.open) return state;
       return {

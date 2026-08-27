@@ -48,7 +48,7 @@ function WindowControlIcon({ action }: { action: WindowControlAction }) {
 }
 
 interface WindowControlsProps {
-  windowKind?: "main" | "detached";
+  windowKind?: "main" | "detached" | "marketplace";
 }
 
 export function WindowControls({ windowKind = "main" }: WindowControlsProps) {

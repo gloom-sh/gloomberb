@@ -141,7 +141,7 @@ export const commands: Command[] = [
     id: "layout-marketplace",
     prefix: "LAY",
     label: "Layouts",
-    description: "Open the layout gallery to switch, publish, or add layouts",
+    description: "Open the layout browser to switch, publish, or add layouts",
     category: "Config",
     execute: (dispatch) => {
       dispatch({ type: "SET_LAYOUT_MARKETPLACE", open: true });

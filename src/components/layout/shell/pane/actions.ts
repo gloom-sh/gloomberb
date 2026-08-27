@@ -54,10 +54,6 @@ export function useShellPaneActions({
   visibleLayout,
   width,
 }: UseShellPaneActionsOptions) {
-  const openLayoutMenu = useCallback(() => {
-    pluginRegistry.openCommandBar("LMA ");
-  }, [pluginRegistry]);
-
   const openPaneSettings = useCallback((paneId: string) => {
     pluginRegistry.openPaneSettingsFn(paneId);
     closePaneMenu();
@@ -143,7 +139,6 @@ export function useShellPaneActions({
     gridlockVisiblePanes,
     handleFloatingClose,
     openFocusedPaneSettings,
-    openLayoutMenu,
     openPaneSettings,
     popOutFocusedPane,
     toggleFocusedPaneFloating,

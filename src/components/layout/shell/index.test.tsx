@@ -356,7 +356,7 @@ describe("Shell", () => {
     expect(resolvePaneManagementShortcut({ ...base, name: "D", key: "D" })).toBe("toggle-floating");
     expect(resolvePaneManagementShortcut({ ...base, name: "o", key: "o" })).toBe("pop-out");
     expect(resolvePaneManagementShortcut({ ...base, name: "c", key: "c" })).toBe("copy-screenshot");
-    expect(resolvePaneManagementShortcut({ ...base, name: "l", key: "l" })).toBe("layout-actions");
+    expect(resolvePaneManagementShortcut({ ...base, name: "l", key: "l" })).toBe("layout-gallery");
     expect(resolvePaneManagementShortcut({ ...base, name: "f", key: "f" })).toBe("toggle-fullscreen");
     expect(resolvePaneManagementShortcut({ ...base, name: "g", key: "g" })).toBe("gridlock-all");
     expect(resolvePaneManagementShortcut({ ...base, name: "m", key: "m" })).toBe("window-mode");
@@ -364,6 +364,15 @@ describe("Shell", () => {
     expect(resolvePaneManagementShortcut({ ...base, name: "n", key: "n" })).toBeNull();
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", alt: true })).toBeNull();
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", meta: false, super: false })).toBeNull();
+  });
+
+  test("opens the layout browser from the primary Shift-L shortcut", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-layout-browser-shortcut-test");
+    const { actions } = await renderShellForWindowModeTest(createInitialState(config));
+
+    await emitKeypress({ name: "l", ctrl: true, shift: true });
+
+    expect(actions).toContainEqual({ type: "SET_LAYOUT_MARKETPLACE", open: true });
   });
 
   test("toggles the focused pane fullscreen without persisting layout", async () => {
