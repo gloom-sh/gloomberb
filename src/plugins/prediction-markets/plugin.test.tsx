@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createDefaultConfig } from "../../types/config";
+import type { CommandDef } from "../../types/plugin";
 import {
   cleanupPredictionTest,
   installPredictionMarketMocks,
@@ -23,12 +25,46 @@ import {
   loadPolymarketDetail,
   normalizePolymarketMarket,
 } from "./services/polymarket/adapter";
+import { predictionMarketsPlugin } from "./index";
 
 afterEach(async () => {
   await cleanupPredictionTest();
 });
 
 describe("prediction markets plugin registration and services", () => {
+  test("routes search state to a materialized pane instance", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-prediction-command-test");
+    const instanceId = "prediction-markets:shared-test";
+    config.layout.instances.push({ instanceId, paneId: "prediction-markets" });
+    const commands: CommandDef[] = [];
+    const paneStateUpdates: Array<{ paneId: string; key: string; value: unknown }> = [];
+    const focused: string[] = [];
+
+    predictionMarketsPlugin.setup?.({
+      persistence: new MemoryPersistence(),
+      getConfig: () => config,
+      resume: {
+        setPaneState(paneId: string, key: string, value: unknown) {
+          paneStateUpdates.push({ paneId, key, value });
+        },
+      },
+      registerCommand: (command: CommandDef) => commands.push(command),
+      focusPane: (paneId: string) => focused.push(paneId),
+    } as any);
+
+    await commands.find((command) => command.id === "prediction-markets-search")?.execute({
+      query: "polymarket:fed",
+    });
+
+    expect(paneStateUpdates).toEqual([
+      { paneId: instanceId, key: "venueScope", value: "polymarket" },
+      { paneId: instanceId, key: "searchQuery", value: "fed" },
+      { paneId: instanceId, key: "selectedRowKey", value: null },
+      { paneId: instanceId, key: "selectedDetailMarketKey", value: null },
+    ]);
+    expect(focused).toEqual([instanceId]);
+  });
+
   test("uses fresh prediction resource cache without refetching", async () => {
     const persistence = new MemoryPersistence();
     attachPredictionMarketsPersistence(persistence);

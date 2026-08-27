@@ -1,4 +1,5 @@
 import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
+import { resolvePaneInstance } from "../../types/config";
 import { parsePredictionSearchShortcut } from "./navigation";
 import { PredictionMarketsPane } from "./pane";
 import { attachPredictionMarketsPersistence, resetPredictionMarketsPersistence } from "./services/fetch";
@@ -15,10 +16,13 @@ const MAIN_INSTANCE_ID = `${PANE_ID}:main`;
 
 function openPredictionMarkets(ctx: GloomPluginContext, query = ""): void {
   const parsed = parsePredictionSearchShortcut(query);
-  ctx.resume.setPaneState(MAIN_INSTANCE_ID, "venueScope", parsed.venueScope);
-  ctx.resume.setPaneState(MAIN_INSTANCE_ID, "searchQuery", parsed.searchQuery);
-  ctx.resume.setPaneState(MAIN_INSTANCE_ID, "selectedMarketKey", null);
-  ctx.focusPane(PANE_ID);
+  const existingInstanceId = resolvePaneInstance(ctx.getConfig().layout, PANE_ID)?.instanceId;
+  const targetInstanceId = existingInstanceId ?? MAIN_INSTANCE_ID;
+  ctx.resume.setPaneState(targetInstanceId, "venueScope", parsed.venueScope);
+  ctx.resume.setPaneState(targetInstanceId, "searchQuery", parsed.searchQuery);
+  ctx.resume.setPaneState(targetInstanceId, "selectedRowKey", null);
+  ctx.resume.setPaneState(targetInstanceId, "selectedDetailMarketKey", null);
+  ctx.focusPane(existingInstanceId ?? PANE_ID);
 }
 
 export const predictionMarketsPlugin: GloomPlugin = {

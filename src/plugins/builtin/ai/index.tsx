@@ -6,7 +6,10 @@ import {
   resolveDefaultAiProviderId,
   type AiProvider,
 } from "./providers";
-import { AiScreenerPane } from "./screener/pane";
+import {
+  AI_SCREENER_PANE_STATE_KEY,
+  AiScreenerPane,
+} from "./screener/pane";
 import { buildAiScreenerPaneSettingsDef, getAiScreenerPaneSettings } from "./settings";
 import {
   LOCAL_AGENT_WORKSPACE_SCHEMA_VERSION,
@@ -50,6 +53,7 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
 } from "../shared/live-streaming";
+import { getPluginPaneStateValue } from "../../runtime";
 
 function settingOrFallback(
   settings: Record<string, unknown>,
@@ -354,7 +358,12 @@ export const aiPlugin: GloomPlugin = {
         const currentFallbackProviderId = resolveDefaultAiProviderId(screenerRunners);
         const defaults = defaultsFromConfig(context.config, currentFallbackProviderId);
         const providerIds = new Set(screenerProviders.map((provider) => provider.id));
-        const persisted = ctx.resume.getState<PersistedAiScreenerPaneState>(
+        const persisted = getPluginPaneStateValue<PersistedAiScreenerPaneState | null>(
+          context.paneState,
+          "ai",
+          AI_SCREENER_PANE_STATE_KEY,
+          null,
+        ) ?? ctx.resume.getState<PersistedAiScreenerPaneState>(
           `screener-pane:${context.paneId}`,
           { schemaVersion: 1 },
         ) ?? EMPTY_PANE_STATE;

@@ -1,5 +1,5 @@
 import { Box, Text } from "../../../../ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from "react";
 import type { PaneProps } from "../../../../types/plugin";
 import {
   useAppDispatch,
@@ -55,6 +55,8 @@ import {
 import { AGE_TICK_MS } from "../../shared/auto-refresh";
 import { useLiveStreamingSetting } from "../../shared/live-streaming";
 
+export const AI_SCREENER_PANE_STATE_KEY = "screener";
+
 export function AiScreenerPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const activateTicker = useTickerSourceActivate();
@@ -79,11 +81,24 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
   );
   const defaultProviderId = defaults.providerId;
   const defaultModelId = defaults.modelId;
-  const [persistedState, setPersistedState] = usePluginState<PersistedAiScreenerPaneState>(
+  const [legacyPersistedState, setLegacyPersistedState] = usePluginState<PersistedAiScreenerPaneState>(
     `screener-pane:${paneId}`,
     EMPTY_PANE_STATE,
     { schemaVersion: 1 },
   );
+  const [panePersistedState, setPanePersistedState] = usePluginPaneState<PersistedAiScreenerPaneState | null>(
+    AI_SCREENER_PANE_STATE_KEY,
+    null,
+  );
+  const persistedState = panePersistedState ?? legacyPersistedState;
+  const setPersistedState = useCallback((nextValue: SetStateAction<PersistedAiScreenerPaneState>) => {
+    setPanePersistedState((currentValue) => {
+      const previousValue = currentValue ?? legacyPersistedState;
+      return typeof nextValue === "function"
+        ? (nextValue as (previous: PersistedAiScreenerPaneState) => PersistedAiScreenerPaneState)(previousValue)
+        : nextValue;
+    });
+  }, [legacyPersistedState, setPanePersistedState]);
   const [activeTabId, setActiveTabId] = usePluginPaneState<string | null>("activeTabId", null);
   // Top-level pane state, not plugin-scoped: this is what follower panes resolve.
   const [cursorSymbol, setCursorSymbol] = usePaneStateValue<string | null>("cursorSymbol", null);
@@ -99,6 +114,15 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const tabs = useMemo(() => normalizeTabs(persistedState), [persistedState]);
+
+  // ponytail: legacy global data is ambiguous across layouts; the first mounted pane claims it.
+  useEffect(() => {
+    const legacyTabs = normalizeTabs(legacyPersistedState);
+    if (legacyTabs.length === 0) return;
+    if (panePersistedState === null) setPanePersistedState({ tabs: legacyTabs });
+    setLegacyPersistedState(EMPTY_PANE_STATE);
+  }, [legacyPersistedState, panePersistedState, setLegacyPersistedState, setPanePersistedState]);
+
   const paneSettings = useMemo(
     () => getAiScreenerPaneSettings(paneInstance?.settings),
     [paneInstance?.settings],
