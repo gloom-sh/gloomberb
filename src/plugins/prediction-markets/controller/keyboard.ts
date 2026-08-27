@@ -134,27 +134,23 @@ export function usePredictionControllerKeyboard({
       }
 
       if (detailOpen) {
-        if (command === "move-down") {
-          event.stopPropagation?.();
-          event.preventDefault?.();
-          if (detailTab === "overview" && sortedOutcomeMarkets.length > 0) {
-            cycleDetailOutcome("next");
-          } else {
-            scrollDetailBy(1);
+        if (detailTab === "overview" && sortedOutcomeMarkets.length > 0) {
+          if (command === "move-down" || command === "move-up") {
+            event.stopPropagation?.();
+            event.preventDefault?.();
+            cycleDetailOutcome(command === "move-down" ? "next" : "previous");
           }
           return;
         }
 
-        if (command === "move-up") {
+        if (
+          (detailTab === "overview" || detailTab === "rules")
+          && (command === "move-down" || command === "move-up")
+        ) {
           event.stopPropagation?.();
           event.preventDefault?.();
-          if (detailTab === "overview" && sortedOutcomeMarkets.length > 0) {
-            cycleDetailOutcome("previous");
-          } else {
-            scrollDetailBy(-1);
-          }
+          scrollDetailBy(command === "move-down" ? 1 : -1);
         }
-
         return;
       }
 

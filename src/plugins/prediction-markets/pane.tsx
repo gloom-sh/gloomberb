@@ -262,9 +262,13 @@ export function PredictionMarketsPane({ focused, width, height }: PaneProps) {
       <Box
         flexDirection="column"
         flexGrow={1}
+        flexShrink={1}
+        flexBasis={0}
+        minHeight={0}
         width={width}
         height={Math.max(height - 1, 1)}
         paddingX={1}
+        overflow="hidden"
         backgroundColor={colors.panel}
       >
         <PredictionMarketDetailPane
