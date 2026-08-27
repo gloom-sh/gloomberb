@@ -34,6 +34,9 @@ export function buildRootShortcutFeedback({
   if (rootShortcutIntent.source === "pane-template") {
     const argKind = getPaneTemplateArgKind(rootShortcutIntent.template);
     if (argKind === "ticker") {
+      if (rootShortcutIntent.template.shortcut?.argOptional && !rootShortcutIntent.argText) {
+        return `Shortcut: ${rootShortcutIntent.label}`;
+      }
       const symbol = normalizeTickerInput(activeTickerSymbol, rootShortcutIntent.argText);
       if (symbol) {
         return rootShortcutIntent.kind === "inferred-complete"

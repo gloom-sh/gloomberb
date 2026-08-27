@@ -7,6 +7,8 @@ import {
 } from "../types/config";
 import {
   findFixedTickerPaneForSymbol,
+  findTickerResearchFollower,
+  resolveTickerActivation,
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
 } from "./ticker-navigation";
@@ -25,6 +27,28 @@ function createLayout(instances: PaneInstanceConfig[]): LayoutConfig {
     detached: [],
   };
 }
+
+describe("ticker source activation", () => {
+  test("focuses a bound follower unless the caller asks for a new pane", () => {
+    const layout = createLayout([
+      createPaneInstance("portfolio-list", {
+        instanceId: "portfolio-list:main",
+        binding: { kind: "none" },
+      }),
+      createPaneInstance("ticker-detail", {
+        instanceId: "ticker-detail:main",
+        binding: { kind: "follow", sourceInstanceId: "portfolio-list:main" },
+      }),
+    ]);
+
+    expect(findTickerResearchFollower(layout, "portfolio-list:main")?.instanceId).toBe("ticker-detail:main");
+    expect(resolveTickerActivation(layout, "portfolio-list:main")).toEqual({
+      kind: "focus",
+      paneId: "ticker-detail:main",
+    });
+    expect(resolveTickerActivation(layout, "portfolio-list:main", { newPane: true })).toEqual({ kind: "open" });
+  });
+});
 
 describe("resolveTickerNavigationReplacementPane", () => {
   test("only replaces the Ticker Research pane that opened ticker navigation", () => {

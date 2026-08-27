@@ -6,7 +6,7 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
-import { apiClient, type ChatChannel, type ChatMessage } from "../../../api-client";
+import { apiClient, type AccountProfile, type ChatChannel, type ChatMessage } from "../../../api-client";
 import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
@@ -66,6 +66,34 @@ export function installServerChannels(controller: ChatController, channels = TES
 }
 
 export { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
+
+export function makeAccountProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
+  return {
+    id: "u1",
+    email: "vince@example.com",
+    emailVerified: true,
+    plan: "pro",
+    username: "vince",
+    name: "Vince",
+    company: "Gloom",
+    title: null,
+    bio: "Made Gloomberb",
+    profilePublic: true,
+    publicEmail: null,
+    xAccount: null,
+    sharedPortfolioId: "broker:ibkr:coldstart",
+    acceptUnknownDms: false,
+    chatEmailNotificationsEnabled: true,
+    portfolioAnalytics: null,
+    syncEnabled: true,
+    weeklyRoundupEnabled: true,
+    positionAlertsEnabled: true,
+    lastSyncAt: null,
+    lastRoundupEmailAt: null,
+    updatedAt: "2026-07-21T22:03:59.832Z",
+    ...overrides,
+  };
+}
 
 export function makeMessage(index: number): ChatMessage {
   return {

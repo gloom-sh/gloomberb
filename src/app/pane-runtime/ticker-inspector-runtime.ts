@@ -3,9 +3,12 @@ import {
   addPaneFloating,
   addPaneToLayout,
   findDockLeaf,
-  isPaneInLayout,
 } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import {
+  findTickerResearchFollower,
+  listVisibleTickerSourcePanes,
+} from "../../plugins/ticker-navigation";
 import type {
   AppAction,
   AppState,
@@ -45,12 +48,25 @@ export function useAppTickerInspectorRuntime({
   pluginRegistry,
   state,
 }: UseAppTickerInspectorRuntimeOptions) {
+  // Only for APIs that must land in a collection (selecting a symbol inside a list).
   const resolveCollectionSourcePaneId = useCallback((preferredPaneId?: string | null) => {
     return resolveFollowBindingInstance(state.config.layout, preferredPaneId, isCollectionPaneInstance)?.instanceId
       ?? resolveFollowBindingInstance(state.config.layout, state.focusedPaneId, isCollectionPaneInstance)?.instanceId
       ?? findPrimaryPaneInstance(state.config.layout, "portfolio-list")?.instanceId
       ?? null;
   }, [state.config.layout, state.focusedPaneId]);
+
+  /** Any visible pane that publishes a cursor symbol can drive a follow binding. */
+  const resolveTickerSourcePaneId = useCallback((preferredPaneId?: string | null) => {
+    const isTickerSource = (instance: PaneInstanceConfig) => (
+      pluginRegistry.panes.get(instance.paneId)?.tickerSource === true
+    );
+    return resolveFollowBindingInstance(state.config.layout, preferredPaneId, isTickerSource)?.instanceId
+      ?? resolveFollowBindingInstance(state.config.layout, state.focusedPaneId, isTickerSource)?.instanceId
+      ?? findPrimaryPaneInstance(state.config.layout, "portfolio-list")?.instanceId
+      ?? listVisibleTickerSourcePanes(state.config.layout, pluginRegistry.panes)[0]?.instanceId
+      ?? null;
+  }, [pluginRegistry, state.config.layout, state.focusedPaneId]);
 
   const resolveTickerContextSourcePaneId = useCallback((preferredPaneId?: string | null) => {
     return resolveFollowBindingInstance(state.config.layout, preferredPaneId, isTickerContextPaneInstance)?.instanceId
@@ -67,12 +83,7 @@ export function useAppTickerInspectorRuntime({
   }, [dispatch, resolveCollectionSourcePaneId]);
 
   const resolveInspectorPane = useCallback((sourcePaneId: string): PaneInstanceConfig | null => {
-    return state.config.layout.instances.find((instance) =>
-      instance.paneId === TICKER_RESEARCH_PANE_ID
-      && instance.binding?.kind === "follow"
-      && instance.binding.sourceInstanceId === sourcePaneId
-      && isPaneInLayout(state.config.layout, instance.instanceId),
-    ) ?? null;
+    return findTickerResearchFollower(state.config.layout, sourcePaneId);
   }, [state.config.layout]);
 
   const ensureInspectorPane = useCallback((sourcePaneId: string) => {
@@ -104,7 +115,7 @@ export function useAppTickerInspectorRuntime({
       if (target?.paneId === TICKER_RESEARCH_PANE_ID) return target.instanceId;
       const focused = state.focusedPaneId ? resolvePaneInstance(state.config.layout, state.focusedPaneId) : null;
       if (focused?.paneId === TICKER_RESEARCH_PANE_ID) return focused.instanceId;
-      const sourcePaneId = resolveCollectionSourcePaneId(preferredPaneId);
+      const sourcePaneId = resolveTickerSourcePaneId(preferredPaneId);
       if (!sourcePaneId) return null;
       const ensured = ensureInspectorPane(sourcePaneId);
       if (!ensured) return null;
@@ -120,14 +131,14 @@ export function useAppTickerInspectorRuntime({
     dispatch,
     ensureInspectorPane,
     persistLayout,
-    resolveCollectionSourcePaneId,
+    resolveTickerSourcePaneId,
     state.config.layout,
     state.focusedPaneId,
   ]);
 
   const buildPaneBinding = useCallback((paneType: string, preferredPaneId?: string | null): PaneBinding | null => {
     if (normalizePaneId(paneType) === TICKER_RESEARCH_PANE_ID) {
-      const sourceInstanceId = resolveCollectionSourcePaneId(preferredPaneId);
+      const sourceInstanceId = resolveTickerSourcePaneId(preferredPaneId);
       return sourceInstanceId ? { kind: "follow", sourceInstanceId } : null;
     }
     if (isTickerPaneId(paneType)) {
@@ -135,12 +146,12 @@ export function useAppTickerInspectorRuntime({
       return sourceInstanceId ? { kind: "follow", sourceInstanceId } : null;
     }
     return { kind: "none" };
-  }, [resolveCollectionSourcePaneId, resolveTickerContextSourcePaneId]);
+  }, [resolveTickerContextSourcePaneId, resolveTickerSourcePaneId]);
 
   const showTickerResearchPane = useCallback(() => {
-    const sourcePaneId = resolveCollectionSourcePaneId();
+    const sourcePaneId = resolveTickerSourcePaneId();
     if (!sourcePaneId) {
-      notify("Open a collection pane first to inspect a ticker.");
+      notify("Open a ticker source pane first to inspect a ticker.");
       return;
     }
     const ensured = ensureInspectorPane(sourcePaneId);
@@ -154,7 +165,7 @@ export function useAppTickerInspectorRuntime({
     ensureInspectorPane,
     notify,
     persistLayout,
-    resolveCollectionSourcePaneId,
+    resolveTickerSourcePaneId,
     state.config.layout,
   ]);
 

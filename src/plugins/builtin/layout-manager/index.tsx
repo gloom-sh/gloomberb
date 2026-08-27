@@ -93,9 +93,9 @@ export const layoutManagerModule: PluginModule = {
 
     ctx.registerCommand({
       id: "gridlock-all",
-      label: "Gridlock All Windows",
-      description: "Arrange all visible panes into a tiled grid",
-      keywords: ["grid", "gridlock", "tile", "arrange", "windows", "layout"],
+      label: "Tidy Windows",
+      description: "Arrange every window into one tiled layout",
+      keywords: ["tidy", "snap", "grid", "gridlock", "tile", "arrange", "organize", "organise", "cleanup", "dock", "floating", "windows", "layout"],
       shortcut: "GL",
       category: "config",
       execute: async () => {

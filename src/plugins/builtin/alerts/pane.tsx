@@ -15,6 +15,7 @@ import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
   deserializeAlerts,
   editAlert,
+  rearmAlert as rebuildAlert,
   readAlertsStoreError,
   serializeAlerts,
 } from "./alert-engine";
@@ -97,14 +98,7 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
 
   const rearmAlert = useCallback((id: string) => {
     savePaneAlerts(
-      alerts.map((a) =>
-        a.id === id ? {
-          ...a,
-          status: "active" as const,
-          triggeredAt: undefined,
-          lastCheckError: undefined,
-        } : a,
-      ),
+      alerts.map((a) => (a.id === id ? rebuildAlert(a) : a)),
     );
   }, [alerts, savePaneAlerts]);
 

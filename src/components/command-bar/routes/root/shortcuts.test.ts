@@ -46,6 +46,13 @@ const paneTemplates: PaneTemplateDef[] = [
     description: "Search provider instruments",
     shortcut: { prefix: "SRCH", argPlaceholder: "query", argKind: "text" },
   },
+  {
+    id: "cds-pane",
+    paneId: "cds",
+    label: "Single-Name CDS",
+    description: "CDS shortcut",
+    shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+  },
 ];
 
 const pluginCommands: CommandDef[] = [{
@@ -133,6 +140,18 @@ describe("ticker data root shortcuts", () => {
       expect(intent.template.id).toBe("provider-search-pane");
       expect(intent.argText).toBe("");
     }
+  });
+
+  test("optional ticker shortcuts do not infer the active ticker", () => {
+    const bare = parse("CDS", "MSFT");
+    expect(bare.kind).toBe("partial");
+    if (bare.kind === "none") throw new Error("Expected shortcut intent");
+    expect(bare.completionQuery).toBeNull();
+
+    const scoped = parse("CDS ORCL", "MSFT");
+    expect(scoped.kind).toBe("complete");
+    if (scoped.kind === "none") throw new Error("Expected shortcut intent");
+    expect(scoped.argText).toBe("ORCL");
   });
 
   test("EM accepts optional text tickers without active ticker inference", () => {

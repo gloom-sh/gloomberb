@@ -145,7 +145,9 @@ export function parseRootShortcutIntent({
   if (!match) return { kind: "none" };
 
   const argText = trimmed.slice(match.prefix.length).trim();
-  const inferredArg = inferShortcutArg(match.argKind, activeTicker);
+  const inferredArg = match.source === "pane-template" && match.template?.shortcut?.argOptional
+    ? null
+    : inferShortcutArg(match.argKind, activeTicker);
   const completionQuery = inferredArg ? `${match.prefix} ${inferredArg}` : null;
 
   let kind: Exclude<ShortcutIntentKind, "none">;

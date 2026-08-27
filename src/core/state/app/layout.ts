@@ -118,15 +118,17 @@ function getPaneState(state: Pick<AppState, "paneState">, paneId: string): PaneR
   return state.paneState[paneId] ?? {};
 }
 
+/**
+ * Any pane that publishes `cursorSymbol` in its pane state is a ticker source; every other pane
+ * resolves through its binding, so follow chains keep working across source types.
+ */
 export function resolveTickerForPane(state: AppState, paneId: string, seen = new Set<string>()): string | null {
   if (seen.has(paneId)) return null;
   seen.add(paneId);
   const instance = findPaneInstance(state.config.layout, paneId);
   if (!instance) return null;
-  if (instance.paneId === "portfolio-list") {
-    const paneState = getPaneState(state, paneId);
-    return typeof paneState.cursorSymbol === "string" ? paneState.cursorSymbol : null;
-  }
+  const cursorSymbol = getPaneState(state, paneId).cursorSymbol;
+  if (typeof cursorSymbol === "string" && cursorSymbol.trim()) return cursorSymbol;
   return resolveTickerFromBinding(state, instance.binding, seen);
 }
 
@@ -388,7 +390,10 @@ export function withFocusedPane(
     activePanel?: "left" | "right";
   } = {},
 ): AppState {
-  const normalizedLayout = normalizePaneLayout(config.layout);
+  const normalizedLayout = normalizePaneLayout(config.layout, {
+    // Keep a follower alive on its last symbol when its source pane is gone.
+    resolveOrphanSymbol: (instanceId) => resolveTickerForPane(state, instanceId),
+  });
   const nextConfig = normalizedLayout === config.layout
     ? config
     : {

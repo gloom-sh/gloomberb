@@ -243,25 +243,25 @@ export function buildPortfolioSummarySegments({
       account.settledCash != null
         ? createSummarySegment("settled", [
           { text: "Settled", tone: "label" },
-          { text: formatCompact(account.settledCash), tone: "value", bold: true },
+          { text: formatCompact(convertAccountValue(account.settledCash)), tone: "value", bold: true },
         ])
         : null,
       account.availableFunds != null
         ? createSummarySegment("avail", [
           { text: "Avail", tone: "label" },
-          { text: formatCompact(account.availableFunds), tone: "value", bold: true },
+          { text: formatCompact(convertAccountValue(account.availableFunds)), tone: "value", bold: true },
         ])
         : null,
       account.excessLiquidity != null
         ? createSummarySegment("excess", [
           { text: "Excess", tone: "label" },
-          { text: formatCompact(account.excessLiquidity), tone: "value", bold: true },
+          { text: formatCompact(convertAccountValue(account.excessLiquidity)), tone: "value", bold: true },
         ])
         : null,
       account.buyingPower != null
         ? createSummarySegment("bp", [
           { text: "BP", tone: "label" },
-          { text: formatCompact(account.buyingPower), tone: "value", bold: true },
+          { text: formatCompact(convertAccountValue(account.buyingPower)), tone: "value", bold: true },
         ])
         : null,
       createSummarySegment("source", [
@@ -393,40 +393,45 @@ export function renderSummarySegments(segments: PortfolioSummarySegment[], width
   );
 }
 
-export function buildDrawerMetricSegments(account: BrokerAccount, widthBudget: number): PortfolioSummarySegment[] {
+export function buildDrawerMetricSegments(
+  account: BrokerAccount,
+  widthBudget: number,
+  convertAccountValue: (value: number) => number = (value) => value,
+): PortfolioSummarySegment[] {
+  const money = (value: number) => convertAccountValue(value);
   const candidates = [
     account.dailyPnl != null
-      ? createSummarySegment("day", [{ text: "Day", tone: "label" }, { text: formatSignedCompact(account.dailyPnl), tone: "value", color: priceColor(account.dailyPnl), bold: true }])
+      ? createSummarySegment("day", [{ text: "Day", tone: "label" }, { text: formatSignedCompact(money(account.dailyPnl)), tone: "value", color: priceColor(money(account.dailyPnl)), bold: true }])
       : null,
     account.unrealizedPnl != null
-      ? createSummarySegment("unreal", [{ text: "Unreal", tone: "label" }, { text: formatSignedCompact(account.unrealizedPnl), tone: "value", color: priceColor(account.unrealizedPnl), bold: true }])
+      ? createSummarySegment("unreal", [{ text: "Unreal", tone: "label" }, { text: formatSignedCompact(money(account.unrealizedPnl)), tone: "value", color: priceColor(money(account.unrealizedPnl)), bold: true }])
       : null,
     account.realizedPnl != null
-      ? createSummarySegment("realized", [{ text: "Realized", tone: "label" }, { text: formatSignedCompact(account.realizedPnl), tone: "value", color: priceColor(account.realizedPnl), bold: true }])
+      ? createSummarySegment("realized", [{ text: "Realized", tone: "label" }, { text: formatSignedCompact(money(account.realizedPnl)), tone: "value", color: priceColor(money(account.realizedPnl)), bold: true }])
       : null,
     account.totalCashValue != null
-      ? createSummarySegment("cash", [{ text: "Cash", tone: "label" }, { text: formatCompact(account.totalCashValue), tone: "value", bold: true }])
+      ? createSummarySegment("cash", [{ text: "Cash", tone: "label" }, { text: formatCompact(money(account.totalCashValue)), tone: "value", bold: true }])
       : null,
     account.settledCash != null
-      ? createSummarySegment("settled", [{ text: "Settled", tone: "label" }, { text: formatCompact(account.settledCash), tone: "value", bold: true }])
+      ? createSummarySegment("settled", [{ text: "Settled", tone: "label" }, { text: formatCompact(money(account.settledCash)), tone: "value", bold: true }])
       : null,
     account.netLiquidation != null
-      ? createSummarySegment("netliq", [{ text: "Net Liq", tone: "label" }, { text: formatCompact(account.netLiquidation), tone: "value", bold: true }])
+      ? createSummarySegment("netliq", [{ text: "Net Liq", tone: "label" }, { text: formatCompact(money(account.netLiquidation)), tone: "value", bold: true }])
       : null,
     account.availableFunds != null
-      ? createSummarySegment("avail", [{ text: "Avail", tone: "label" }, { text: formatCompact(account.availableFunds), tone: "value", bold: true }])
+      ? createSummarySegment("avail", [{ text: "Avail", tone: "label" }, { text: formatCompact(money(account.availableFunds)), tone: "value", bold: true }])
       : null,
     account.excessLiquidity != null
-      ? createSummarySegment("excess", [{ text: "Excess", tone: "label" }, { text: formatCompact(account.excessLiquidity), tone: "value", bold: true }])
+      ? createSummarySegment("excess", [{ text: "Excess", tone: "label" }, { text: formatCompact(money(account.excessLiquidity)), tone: "value", bold: true }])
       : null,
     account.buyingPower != null
-      ? createSummarySegment("bp", [{ text: "BP", tone: "label" }, { text: formatCompact(account.buyingPower), tone: "value", bold: true }])
+      ? createSummarySegment("bp", [{ text: "BP", tone: "label" }, { text: formatCompact(money(account.buyingPower)), tone: "value", bold: true }])
       : null,
     account.initMarginReq != null
-      ? createSummarySegment("init", [{ text: "Init", tone: "label" }, { text: formatCompact(account.initMarginReq), tone: "value", bold: true }])
+      ? createSummarySegment("init", [{ text: "Init", tone: "label" }, { text: formatCompact(money(account.initMarginReq)), tone: "value", bold: true }])
       : null,
     account.maintMarginReq != null
-      ? createSummarySegment("maint", [{ text: "Maint", tone: "label" }, { text: formatCompact(account.maintMarginReq), tone: "value", bold: true }])
+      ? createSummarySegment("maint", [{ text: "Maint", tone: "label" }, { text: formatCompact(money(account.maintMarginReq)), tone: "value", bold: true }])
       : null,
   ].filter((segment): segment is PortfolioSummarySegment => segment != null);
 

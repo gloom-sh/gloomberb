@@ -47,6 +47,7 @@ export const portfolioListModule: PluginModule = {
       defaultPosition: "left",
       defaultMode: "floating",
       defaultWidth: "40%",
+      tickerSource: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
         buildPortfolioPaneSettingsDef(

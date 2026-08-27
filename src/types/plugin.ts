@@ -53,6 +53,8 @@ export interface PaneDef {
   defaultWidth?: string;
   defaultFloatingSize?: { width: number; height: number };
   defaultMode?: "docked" | "floating";
+  /** Pane publishes its selected symbol as pane-state `cursorSymbol`, so ticker panes can follow it. */
+  tickerSource?: boolean;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);
   /** Compact controls surfaced next to the pane title. Toggle keys reference toggle fields in settings. */
   quickSettings?: readonly PaneQuickSettingDef[];

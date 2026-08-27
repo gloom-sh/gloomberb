@@ -20,11 +20,13 @@ function notifyChatServerMessage({
   channel,
   notifiedMessageIds,
   notify,
+  openMessage,
 }: {
   notification: ChatNotification;
   channel: ChatChannel | undefined;
   notifiedMessageIds: Set<string>;
   notify: (notification: AppNotificationRequest) => AppNotificationDelivery | void;
+  openMessage?: (channelId: string, messageId: string) => void;
 }): boolean {
   if (notifiedMessageIds.has(notification.messageId)) return true;
   const channelTitle = formatChatPaneTitle(channel, notification.channelId);
@@ -32,13 +34,18 @@ function notifyChatServerMessage({
     ? formatReplyToast(notification.message)
     : notification.type === "mention"
       ? formatMentionToast(notification.message)
-      : formatChannelToast(channelTitle, notification.message, channel?.kind);
+      : formatChannelToast(notification.message, channel?.kind === "direct");
   const delivered = wasNotificationDelivered(notify({
-    title: "Gloomberb chat",
-    subtitle: channelTitle,
+    title: channelTitle,
     body,
     type: "info",
     desktop: "when-inactive",
+    ...(openMessage ? {
+      action: {
+        label: "Open",
+        onClick: () => openMessage(notification.channelId, notification.messageId),
+      },
+    } : {}),
   }));
   if (delivered) {
     notifiedMessageIds.add(notification.messageId);
@@ -55,6 +62,7 @@ export function handleChatNotification({
   getChannel,
   notifiedMessageIds,
   notify,
+  openMessage,
 }: {
   notification: ChatNotification;
   options?: { countUnread?: boolean };
@@ -64,6 +72,7 @@ export function handleChatNotification({
   getChannel: (channelId: string) => ChatChannel | undefined;
   notifiedMessageIds: Set<string>;
   notify: (notification: AppNotificationRequest) => AppNotificationDelivery | void;
+  openMessage?: (channelId: string, messageId: string) => void;
 }): void {
   mergeMessages(notification.channelId, [notification.message], { countUnread: options.countUnread });
   const channel = ensureChannelState(notification.channelId);
@@ -73,6 +82,7 @@ export function handleChatNotification({
     channel: getChannel(notification.channelId),
     notifiedMessageIds,
     notify,
+    openMessage,
   });
   if (activelyViewed) {
     notifiedMessageIds.add(notification.messageId);

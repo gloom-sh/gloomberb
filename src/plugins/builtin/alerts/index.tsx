@@ -135,6 +135,10 @@ export const alertsPlugin: GloomPlugin = {
             desktop: "always",
             persistent: true,
             sound: "Glass",
+            action: {
+              label: "Open",
+              onClick: () => ctx.showPane("alerts"),
+            },
           });
         }
         Object.assign(alert, quoteAlertFields(quote));

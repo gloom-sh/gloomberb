@@ -2,11 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useEffect } from "react";
 import {
   apiClient,
-  type AccountProfile,
   type ChatUserSummary,
 } from "../../../../api-client";
 import { testRender } from "../../../../renderers/opentui/test-utils";
 import { Box, Text } from "../../../../ui";
+import { makeAccountProfile } from "../test-harness";
 import { useChatProfilePopover } from "../profile-popover";
 import {
   hasPublicChatProfileInfo,
@@ -32,34 +32,6 @@ function makeUser(overrides: Partial<ChatUserSummary>): ChatUserSummary {
     username: "vince",
     displayName: "Vince",
     profilePublic: true,
-    ...overrides,
-  };
-}
-
-function makeAccountProfile(overrides: Partial<AccountProfile> = {}): AccountProfile {
-  return {
-    id: "u1",
-    email: "vince@example.com",
-    emailVerified: true,
-    plan: "pro",
-    username: "vince",
-    name: "Vince",
-    company: "Gloom",
-    title: null,
-    bio: "Made Gloomberb",
-    profilePublic: true,
-    publicEmail: null,
-    xAccount: null,
-    sharedPortfolioId: "broker:ibkr:coldstart",
-    acceptUnknownDms: false,
-    chatEmailNotificationsEnabled: true,
-    portfolioAnalytics: null,
-    syncEnabled: true,
-    weeklyRoundupEnabled: true,
-    positionAlertsEnabled: true,
-    lastSyncAt: null,
-    lastRoundupEmailAt: null,
-    updatedAt: "2026-07-21T22:03:59.832Z",
     ...overrides,
   };
 }

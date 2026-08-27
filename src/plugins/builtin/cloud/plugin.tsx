@@ -97,7 +97,9 @@ function createChatModule(
     },
     setup(ctx) {
       chatController.attachPersistence(ctx.persistence, ctx.resume);
-      chatController.setNotifier(ctx.notify);
+      chatController.setNotifier(ctx.notify, (channelId, messageId) => {
+        ctx.createPaneFromTemplate("new-chat-pane", { arg: channelId, values: { messageId } });
+      });
       ctx.registerCommand({
         id: "direct-message",
         label: "DM",

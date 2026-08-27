@@ -118,7 +118,7 @@ describe("sanitizeLayout", () => {
     expect(getDockedPaneIds(layout)).toEqual(["portfolio-list:main", "ticker-detail:main"]);
   });
 
-  test("removes follow panes whose source pane is missing", () => {
+  test("keeps a ticker research pane safely unlinked when its source is missing", () => {
     const layout = sanitizeLayout({
       dockRoot: { kind: "pane", instanceId: "ticker-detail:main" },
       instances: [
@@ -132,9 +132,8 @@ describe("sanitizeLayout", () => {
       detached: [],
     }, DEFAULT_LAYOUT);
 
-    expect(findPaneInstance(layout, "ticker-detail:main")).toBeUndefined();
-    expect(getDockedPaneIds(layout)).toHaveLength(0);
-    expect(layout.dockRoot).toBeNull();
+    expect(findPaneInstance(layout, "ticker-detail:main")?.binding).toEqual({ kind: "none" });
+    expect(getDockedPaneIds(layout)).toEqual(["ticker-detail:main"]);
   });
 
   test("clamps floating placement memory and drops invalid docked placement hints", () => {

@@ -504,7 +504,11 @@ export function removePaneInstances(layout: LayoutConfig, instanceIds: Iterable<
 
 export function normalizePaneLayout(
   layout: LayoutConfig,
-  options?: { defaultFollowSourceInstanceId?: string | null },
+  options?: {
+    defaultFollowSourceInstanceId?: string | null;
+    /** Last resolved symbol used to pin an orphaned follower; otherwise it remains safely unlinked. */
+    resolveOrphanSymbol?: (instanceId: string) => string | null;
+  },
 ): LayoutConfig {
   const fallbackSourceId = options?.defaultFollowSourceInstanceId ?? null;
   const fallbackAvailable = !!fallbackSourceId && layout.instances.some((instance) => instance.instanceId === fallbackSourceId);
@@ -530,14 +534,27 @@ export function normalizePaneLayout(
   for (;;) {
     const validInstanceIds = new Set(nextLayout.instances.map((instance) => instance.instanceId));
     const removedIds = new Set<string>();
+    const orphanBindings = new Map<string, PaneBinding>();
 
     for (const instance of nextLayout.instances) {
       if (instance.binding?.kind === "follow" && !validInstanceIds.has(instance.binding.sourceInstanceId)) {
-        removedIds.add(instance.instanceId);
+        // Structural helpers remove the source before the app can resolve its last ticker. Preserve
+        // the dangling binding until the runtime normalizes again with a resolver.
+        if (!options?.resolveOrphanSymbol) continue;
+        const orphanSymbol = options.resolveOrphanSymbol(instance.instanceId)?.trim();
+        orphanBindings.set(
+          instance.instanceId,
+          orphanSymbol ? { kind: "fixed", symbol: orphanSymbol } : { kind: "none" },
+        );
         continue;
       }
 
-      if (isTickerPaneInstance(instance) && instance.binding?.kind !== "follow" && instance.binding?.kind !== "fixed") {
+      if (
+        isTickerPaneInstance(instance)
+        && instance.paneId !== TICKER_RESEARCH_PANE_ID
+        && instance.binding?.kind !== "follow"
+        && instance.binding?.kind !== "fixed"
+      ) {
         removedIds.add(instance.instanceId);
         continue;
       }
@@ -547,8 +564,21 @@ export function normalizePaneLayout(
       }
     }
 
-    if (removedIds.size === 0) break;
-    nextLayout = removePaneInstances(nextLayout, removedIds);
+    if (orphanBindings.size > 0) {
+      nextLayout = {
+        ...nextLayout,
+        instances: nextLayout.instances.map((instance) => {
+          const binding = orphanBindings.get(instance.instanceId);
+          return binding ? { ...instance, binding } : instance;
+        }),
+      };
+    }
+
+    if (removedIds.size > 0) {
+      nextLayout = removePaneInstances(nextLayout, removedIds);
+      continue;
+    }
+    if (orphanBindings.size === 0) break;
   }
 
   const validInstanceIds = new Set(nextLayout.instances.map((instance) => instance.instanceId));

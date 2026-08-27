@@ -30,7 +30,7 @@ export const positionSizerModule: PluginModule = {
       label: "Position Sizer",
       description: "Open Kelly-based position sizing for a ticker.",
       keywords: ["kelly", "position", "sizing", "risk", "bet", "portfolio"],
-      shortcut: { prefix: "KELLY", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+      shortcut: { prefix: "KELLY", argPlaceholder: "ticker", argKind: "ticker" },
       canCreate: (context, options) => !!resolveTemplateSymbol(context, options),
       createInstance: (context, options) => {
         const symbol = resolveTemplateSymbol(context, options);

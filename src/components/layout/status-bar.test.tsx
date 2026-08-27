@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
-import { cloneLayout, createDefaultConfig, TICKER_RESEARCH_PANE_ID, type LayoutConfig } from "../../types/config";
+import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
 import { StatusBar } from "./status-bar";
+import { getDockedPaneIds } from "../../plugins/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
 import { act, useEffect, useState } from "react";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
@@ -185,34 +186,35 @@ describe("StatusBar", () => {
     expect(actions).toContainEqual({ type: "REORDER_LAYOUT", fromIndex: 0, toIndex: 2 });
   });
 
-  test("shows a gridlock tip after a corner snap and runs gridlock on click", async () => {
-    const config = createDefaultConfig("/tmp/gloomberb-test");
-    const floatingLayout = cloneLayout(config.layout);
-    floatingLayout.dockRoot = { kind: "pane", instanceId: "portfolio-list:main" };
-    floatingLayout.floating = [{ instanceId: "ticker-detail:main", x: 8, y: 2, width: 36, height: 12 }];
-
+  test("offers to tidy three floating windows and tiles them on click", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-tidy-test");
+    const floatingLayout: LayoutConfig = {
+      dockRoot: null,
+      instances: Array.from({ length: 3 }, (_, index) => createPaneInstance("chat", { instanceId: `chat-${index}` })),
+      floating: Array.from({ length: 3 }, (_, index) => ({
+        instanceId: `chat-${index}`,
+        x: index * 40,
+        y: 0,
+        width: 40,
+        height: 20,
+        zIndex: 50 + index,
+      })),
+      detached: [],
+    };
     const state = {
       ...createInitialState({
         ...config,
         layout: floatingLayout,
-        layouts: [
-          { name: "Default", layout: cloneLayout(floatingLayout) },
-          { name: "Research", layout: cloneLayout(floatingLayout) },
-        ],
+        layouts: [{ name: "Default", layout: cloneLayout(floatingLayout) }],
       }),
       statusBarVisible: true,
-      gridlockTipVisible: true,
     };
-
     const actions: Array<{ type: string }> = [];
-    let updatedLayout = null as ReturnType<typeof cloneLayout> | null;
+    let updatedLayout: LayoutConfig | null = null;
     const notifications: AppNotificationRequest[] = [];
 
     setSharedRegistryForTests({
-      panes: new Map([
-        ["portfolio-list", {}],
-        [TICKER_RESEARCH_PANE_ID, {}],
-      ]),
+      panes: new Map([["chat", { name: "Chat" }]]),
       getLayoutFn: () => state.config.layout,
       getTermSizeFn: () => ({ width: 120, height: 40 }),
       updateLayoutFn: (layout: LayoutConfig) => { updatedLayout = layout; },
@@ -228,76 +230,75 @@ describe("StatusBar", () => {
     );
 
     await testSetup.renderOnce();
-
     const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Snapped a window?");
-    expect(frame).toContain("Gridlock All");
-
-    const buttonX = frame.split("\n")[0]?.indexOf("Gridlock All") ?? -1;
+    const buttonX = frame.split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
     expect(buttonX).toBeGreaterThanOrEqual(0);
 
     await testSetup.mockMouse.click(buttonX + 1, 0);
     await testSetup.renderOnce();
 
     expect(updatedLayout?.floating).toHaveLength(0);
-    expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({
-      body: "Retiled all panes",
+      body: "Windows tidied",
       type: "success",
       action: { label: "Revert" },
     });
-    expect(actions).toContainEqual({ type: "DISMISS_GRIDLOCK_TIP" });
-
     notifications[0]!.action!.onClick();
     expect(actions).toContainEqual({ type: "UNDO_LAYOUT" });
   });
 
-  test("auto-dismisses the gridlock tip after its timeout", async () => {
-    const config = createDefaultConfig("/tmp/gloomberb-test");
-    const state = {
-      ...createInitialState(config),
-      statusBarVisible: true,
-      gridlockTipVisible: true,
-      gridlockTipSequence: 1,
+  test("tidies covered windows instead of leaving them floating", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-covered-test");
+    const floatingLayout: LayoutConfig = {
+      dockRoot: null,
+      instances: Array.from({ length: 3 }, (_, index) => createPaneInstance("chat", { instanceId: `chat-${index}` })),
+      floating: Array.from({ length: 3 }, (_, index) => ({
+        instanceId: `chat-${index}`,
+        x: 10,
+        y: 4,
+        width: 50,
+        height: 20,
+        zIndex: 50 + index,
+      })),
+      detached: [],
     };
-    const actions: Array<{ type: string }> = [];
-    const timers: Array<{ callback: (() => void) | null; delay: number | undefined }> = [];
-    const originalSetTimeout = globalThis.setTimeout;
-    const originalClearTimeout = globalThis.clearTimeout;
-
-    globalThis.setTimeout = ((callback: Parameters<typeof setTimeout>[0], delay?: number) => {
-      timers.push({ callback: typeof callback === "function" ? callback : null, delay });
-      return 1 as unknown as ReturnType<typeof setTimeout>;
-    }) as typeof setTimeout;
-    globalThis.clearTimeout = (() => {}) as typeof clearTimeout;
+    const state = {
+      ...createInitialState({
+        ...config,
+        layout: floatingLayout,
+        layouts: [{ name: "Default", layout: cloneLayout(floatingLayout) }],
+      }),
+      statusBarVisible: true,
+    };
+    let updatedLayout: LayoutConfig | null = null;
+    const notifications: AppNotificationRequest[] = [];
 
     setSharedRegistryForTests({
-      panes: new Map(),
+      panes: new Map([["chat", { name: "Chat" }]]),
       getLayoutFn: () => state.config.layout,
       getTermSizeFn: () => ({ width: 120, height: 40 }),
-      updateLayoutFn: () => {},
-      notify: () => {},
+      updateLayoutFn: (layout: LayoutConfig) => { updatedLayout = layout; },
+      notify: (notification: AppNotificationRequest) => { notifications.push(notification); },
       Slot: () => null,
     } as any);
 
-    try {
-      testSetup = await testRender(
-        <AppContext value={{ state, dispatch: (action) => actions.push(action as { type: string }) }}>
-          <StatusBar />
-        </AppContext>,
-        { width: 120, height: 1 },
-      );
+    testSetup = await testRender(
+      <AppContext value={{ state, dispatch: () => {} }}>
+        <StatusBar />
+      </AppContext>,
+      { width: 120, height: 1 },
+    );
 
-      await testSetup.renderOnce();
+    await testSetup.renderOnce();
+    const frame = testSetup.captureCharFrame();
+    const tidyX = frame.split("\n")[0]?.indexOf("Tidy Windows") ?? -1;
+    expect(tidyX).toBeGreaterThanOrEqual(0);
 
-      const gridlockTimer = timers.find((entry) => entry.delay === 60_000);
-      expect(gridlockTimer?.callback).toBeDefined();
-      gridlockTimer?.callback?.();
+    await testSetup.mockMouse.click(tidyX + 1, 0);
+    await testSetup.renderOnce();
 
-      expect(actions).toContainEqual({ type: "DISMISS_GRIDLOCK_TIP" });
-    } finally {
-      globalThis.setTimeout = originalSetTimeout;
-      globalThis.clearTimeout = originalClearTimeout;
-    }
+    expect(updatedLayout?.floating).toHaveLength(0);
+    expect(getDockedPaneIds(updatedLayout!)).toHaveLength(3);
+    expect(notifications[0]?.body).toBe("Windows tidied");
   });
 });

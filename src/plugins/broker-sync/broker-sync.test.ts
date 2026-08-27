@@ -55,6 +55,35 @@ describe("broker position normalization", () => {
       markPrice: 250,
     }));
   });
+
+  test("stores shorts as absolute shares and weighted-averages merged short lots", () => {
+    const snapshot = normalizeRobinhoodSnapshot(
+      { accounts: [{ account_number: "RH-1", account_type: "INDIVIDUAL" }] },
+      [{ result: { positions: [
+        {
+          accountNumber: "RH-1",
+          instrument: { symbol: "TSLA" },
+          quantity: "-10",
+          average_cost: "100",
+          market_value: "-800",
+        },
+        {
+          accountNumber: "RH-1",
+          instrument: { symbol: "TSLA" },
+          quantity: "-5",
+          average_cost: "110",
+          market_value: "-400",
+        },
+      ] } }],
+    );
+
+    expect(snapshot.positions).toEqual([expect.objectContaining({
+      ticker: "TSLA",
+      shares: 15,
+      avgCost: 1550 / 15,
+      side: "short",
+    })]);
+  });
 });
 
 describe("broker authentication boundaries", () => {

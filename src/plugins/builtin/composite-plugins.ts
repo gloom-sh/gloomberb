@@ -7,6 +7,7 @@ import { brokerManagerModule } from "./broker-manager";
 import { changelogModule } from "./changelog";
 import { connectionsModule } from "./connections";
 import { correlationModule } from "./correlation";
+import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
 import { economicCalendarModule } from "./econ";
 import { earningsModule } from "./earnings";
@@ -89,7 +90,7 @@ export const macroPlugin = composeBuiltinPlugin({
   id: "macro",
   name: "Macro",
   version: "1.0.0",
-  description: "Economic calendar, rates, volatility, credit spreads, Treasury auctions, earnings, IPOs, and live financial TV.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, IPOs, and live financial TV.",
   toggleable: true,
   modules: [
     macroSharedResourcesModule,
@@ -97,6 +98,7 @@ export const macroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,
+    cdsModule,
     treasuryAuctionsModule,
     earningsModule,
     ipoCalendarModule,

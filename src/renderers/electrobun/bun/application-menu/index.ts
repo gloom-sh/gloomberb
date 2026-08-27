@@ -92,7 +92,7 @@ function buildApplicationMenu(): ApplicationMenuItemConfig[] {
         { type: "divider" },
         commandItem("Undo Layout Change", { type: "layout-undo" }),
         commandItem("Redo Layout Change", { type: "layout-redo" }),
-        commandItem("Gridlock All Windows", { type: "layout-gridlock" }, { accelerator: "CmdOrCtrl+Shift+G" }),
+        commandItem("Tidy Windows", { type: "layout-gridlock" }, { accelerator: "CmdOrCtrl+Shift+G" }),
         { type: "divider" },
         commandItem("New Layout...", { type: "open-plugin-workflow", commandId: "new-layout" }),
         commandItem("Rename Current Layout...", { type: "open-plugin-workflow", commandId: "rename-layout" }),

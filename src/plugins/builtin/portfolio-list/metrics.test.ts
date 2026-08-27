@@ -199,7 +199,7 @@ describe("portfolio-metrics", () => {
 
     expect(totals.totalMktValue).toBeCloseTo(58803.06, 2);
     expect(totals.totalCostBasis).toBeCloseTo(50950.7295, 4);
-    expect(totals.unrealizedPnl).toBeCloseTo(7852.3305, 4);
+    expect(totals.unrealizedPnl).toBeCloseTo(7852.33, 4);
     expect(totals.hasPositions).toBe(true);
   });
 
@@ -274,6 +274,36 @@ describe("portfolio-metrics", () => {
     expect(getSortValue(pnlColumn, ticker, financials, defaultColumnContext)).toBe(200);
     expect(getColumnValue(latencyColumn, ticker, financials, defaultColumnContext)).toEqual({
       text: "10s",
+    });
+  });
+
+  test("signs short unrealized P&L from a live quote", () => {
+    const ticker = createTicker({
+      positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "ibkr", side: "short" }],
+    });
+    const financials = createFinancials({
+      quote: { price: 80, change: -20, changePercent: -20, previousClose: 100 },
+    });
+    const dayPnlColumn: ColumnConfig = { id: "day_pnl", label: "DAY", width: 10, align: "right", format: "compact" };
+    const pnlColumn: ColumnConfig = { id: "pnl", label: "P&L", width: 10, align: "right", format: "compact" };
+
+    expect(getSortValue(dayPnlColumn, ticker, financials, defaultColumnContext)).toBe(200);
+    expect(getSortValue(pnlColumn, ticker, financials, defaultColumnContext)).toBe(200);
+    expect(getColumnValue(pnlColumn, ticker, financials, defaultColumnContext)).toEqual({
+      text: "+200",
+      color: expect.any(String),
+    });
+    expect(calculatePortfolioSummaryTotals(
+      [ticker],
+      new Map([["AAPL", financials]]),
+      "USD",
+      new Map([["USD", 1]]),
+      true,
+      "main",
+    )).toMatchObject({
+      totalMktValue: 800,
+      dailyPnl: 200,
+      unrealizedPnl: 200,
     });
   });
 

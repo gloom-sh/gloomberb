@@ -33,6 +33,7 @@ export function menuForPane(
   desktopWindowBridge?: DesktopWindowBridge,
   copyPaneScreenshot?: (paneId: string) => void | Promise<void>,
   sharePane?: () => void | Promise<void>,
+  linkItems: ContextMenuItem[] = [],
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [];
   if (pluginRegistry.hasPaneSettings(pane.instance.instanceId)) {
@@ -99,6 +100,10 @@ export function menuForPane(
     accelerator: PANE_MANAGEMENT_ACCELERATORS.close,
     onSelect: () => persistLayout(removePane(layout, pane.instance.instanceId)),
   });
+
+  if (linkItems.length > 0) {
+    baseActions.push(contextMenuDivider("pane:link-divider"), ...linkItems);
+  }
 
   baseActions.push(
     contextMenuDivider("pane:layout-divider"),

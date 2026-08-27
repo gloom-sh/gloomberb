@@ -27,6 +27,24 @@ function normalizePositionMultiplier(multiplier: number | undefined): number {
     : 1;
 }
 
+export function signedPositionDirection(position: {
+  shares: number;
+  side?: "long" | "short";
+}): 1 | -1 {
+  if (position.side === "short") return -1;
+  if (position.side === "long") return 1;
+  return position.shares < 0 ? -1 : 1;
+}
+
+/** Quote-path unrealized P&L. Shorts profit when market value falls below cost. */
+export function signedQuoteUnrealizedPnl(
+  absMarketValue: number,
+  cost: number,
+  totalPriceUnits: number,
+): number {
+  return (totalPriceUnits < 0 ? -1 : 1) * (absMarketValue - cost);
+}
+
 function resolvePositionCostMultiplier(
   position: TickerRecord["metadata"]["positions"][number],
 ): number {
@@ -37,7 +55,7 @@ function resolvePositionCostMultiplier(
     return priceMultiplier;
   }
 
-  const costWithoutMultiplier = position.shares * position.avgCost;
+  const costWithoutMultiplier = Math.abs(position.shares) * position.avgCost;
   const costWithMultiplier = costWithoutMultiplier * priceMultiplier;
   const withoutMultiplierError = Math.abs((position.marketValue - costWithoutMultiplier) - position.unrealizedPnl);
   const withMultiplierError = Math.abs((position.marketValue - costWithMultiplier) - position.unrealizedPnl);
@@ -65,15 +83,16 @@ export function getPortfolioPositionMetrics(
   let brokerPnl = 0;
   let hasBrokerPnl = false;
   for (const position of tabPositions) {
-    const direction = position.side === "short" ? -1 : 1;
+    const direction = signedPositionDirection(position);
+    const magnitude = Math.abs(position.shares);
     const priceMultiplier = normalizePositionMultiplier(position.multiplier);
     const costMultiplier = resolvePositionCostMultiplier(position);
     multiplierHint = Math.max(multiplierHint, priceMultiplier, costMultiplier);
 
-    totalShares += position.shares * direction;
-    totalCost += position.shares * position.avgCost * costMultiplier;
-    totalCostUnits += position.shares * costMultiplier;
-    totalPriceUnits += position.shares * priceMultiplier * direction;
+    totalShares += magnitude * direction;
+    totalCost += magnitude * position.avgCost * costMultiplier;
+    totalCostUnits += magnitude * costMultiplier;
+    totalPriceUnits += magnitude * priceMultiplier * direction;
 
     if (position.marketValue != null) {
       brokerMktValue += position.marketValue;

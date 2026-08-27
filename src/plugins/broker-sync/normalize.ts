@@ -80,7 +80,14 @@ function uniqueSnapshot(accounts: BrokerAccount[], positions: BrokerPosition[]):
       currency: position.currency,
     });
   }
-  return { accounts: uniqueAccounts, positions: mergeIdenticalPositions(positions) };
+  return { accounts: uniqueAccounts, positions: mergeIdenticalPositions(positions.map(withCanonicalShares)) };
+}
+
+function withCanonicalShares(position: BrokerPosition): BrokerPosition {
+  const side = position.side ?? (position.shares < 0 ? "short" : "long");
+  const shares = Math.abs(position.shares);
+  if (shares === position.shares && side === position.side) return position;
+  return { ...position, shares, side };
 }
 
 function mergeIdenticalPositions(positions: BrokerPosition[]): BrokerPosition[] {
@@ -104,7 +111,7 @@ function mergeIdenticalPositions(positions: BrokerPosition[]): BrokerPosition[] 
     merged.set(key, {
       ...existing,
       shares,
-      avgCost: shares > 0 ? (existingCost + nextCost) / shares : existing.avgCost,
+      avgCost: shares !== 0 ? (existingCost + nextCost) / shares : existing.avgCost,
       marketValue: sumOptional(existing.marketValue, position.marketValue),
       unrealizedPnl: sumOptional(existing.unrealizedPnl, position.unrealizedPnl),
     });

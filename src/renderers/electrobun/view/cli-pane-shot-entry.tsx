@@ -546,7 +546,7 @@ function ShotPane({ payload }: { payload: CliPaneShotPayload }) {
     config: payload.config,
     paneState: payload.paneState,
   } as Pick<AppState, "config" | "paneState">;
-  const title = getPaneDisplayTitle(titleState, instance, pane);
+  const title = getPaneDisplayTitle(titleState, instance, pane, shotRegistry?.panes);
   const width = payload.widthCells;
   const height = payload.heightCells;
   const bodyFrame = resolvePaneBodyFrame({

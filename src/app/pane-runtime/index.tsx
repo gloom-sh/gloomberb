@@ -11,6 +11,7 @@ import {
 import type { PluginRegistry } from "../../plugins/registry";
 import {
   getFocusedCollectionId,
+  resolveTickerForPane,
   syncConfigActiveLayoutState,
   type AppAction,
   type AppState,
@@ -75,7 +76,9 @@ export function useAppPaneRuntime({
 
   const persistLayout = useCallback((layout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => {
     const currentState = stateRef.current;
-    const normalizedLayout = normalizePaneLayout(layout);
+    const normalizedLayout = normalizePaneLayout(layout, {
+      resolveOrphanSymbol: (instanceId) => resolveTickerForPane(currentState, instanceId),
+    });
     if (options?.pushHistory !== false) {
       dispatch({ type: "PUSH_LAYOUT_HISTORY" });
     }

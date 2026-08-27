@@ -6,6 +6,7 @@ import { CloudDataApi } from "./data";
 import { CloudApiRequestTransport } from "./request";
 import { CloudApiSocket } from "./socket";
 import type {
+  CloudCdsParams,
   CloudCongressHouseParams,
   CloudFredSeriesParams,
   CloudSecFilingParams,
@@ -44,6 +45,7 @@ import type {
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResult,
+  CloudCdsResponse,
   CloudFredSeriesPayload,
   CloudYieldPointPayload,
   CloudCongressHousePayload,
@@ -588,6 +590,10 @@ class GloomApiClient {
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
     return this.data.getCloudYieldCurve();
+  }
+
+  async getCloudCds(params: CloudCdsParams = {}): Promise<CloudCdsResponse> {
+    return this.data.getCloudCds(params);
   }
 
   async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {
