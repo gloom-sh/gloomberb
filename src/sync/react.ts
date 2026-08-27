@@ -7,6 +7,8 @@ import { subscribeToCloudVerification } from "./auth-transition";
 import { createSyncBaselineStore } from "./baseline";
 import { cloudSyncController } from "./controller";
 
+const CLOUD_SYNC_POLL_MS = 15_000;
+
 interface CloudSyncRuntimeOptions {
   state: AppState;
   getState: () => AppState;
@@ -14,6 +16,7 @@ interface CloudSyncRuntimeOptions {
   tickerRepository: AppTickerRepositoryPort;
   pluginRegistry: PluginRegistry;
   initialized: boolean;
+  appActive?: boolean;
 }
 
 export function useCloudSyncRuntime({
@@ -23,6 +26,7 @@ export function useCloudSyncRuntime({
   tickerRepository,
   pluginRegistry,
   initialized,
+  appActive = true,
 }: CloudSyncRuntimeOptions): void {
   const baselineStore = useMemo(
     () => createSyncBaselineStore(pluginRegistry.persistence.pluginState),
@@ -44,6 +48,15 @@ export function useCloudSyncRuntime({
     if (!initialized) return;
     void cloudSyncController.requestSync({ reason: "startup" });
   }, [initialized, pluginRegistry]);
+
+  useEffect(() => {
+    if (!initialized || !appActive) return;
+    void cloudSyncController.requestSync({ reason: "foreground" });
+    const timer = setInterval(() => {
+      void cloudSyncController.requestSync({ reason: "poll" });
+    }, CLOUD_SYNC_POLL_MS);
+    return () => clearInterval(timer);
+  }, [appActive, initialized]);
 
   useEffect(() => subscribeToCloudVerification(apiClient, () => {
     if (!initialized) return;

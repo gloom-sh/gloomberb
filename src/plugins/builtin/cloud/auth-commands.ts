@@ -74,10 +74,6 @@ export function registerCloudAuthCommands(ctx: GloomPluginContext): void {
     },
   });
 
-  if (apiClient.getSessionToken()) {
-    void chatController.refreshSession().catch(() => {});
-  }
-
   ctx.registerCommand({
     id: "auth-logout",
     label: "Logout",

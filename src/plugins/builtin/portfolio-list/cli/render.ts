@@ -142,11 +142,13 @@ async function showCollectionWithMarketData(
         const multiplier = position.multiplier ?? 1;
         const quoteCurrency = quote?.currency ?? ticker.metadata.currency ?? baseCurrency;
         const positionCurrency = position.currency ?? quoteCurrency;
+        const direction = position.side === "short" || position.shares < 0 ? -1 : 1;
+        const magnitude = Math.abs(position.shares);
         const currentValueBase = quote
-          ? await toBase(Math.abs(position.shares) * quote.price * multiplier, quoteCurrency)
+          ? await toBase(magnitude * quote.price * multiplier, quoteCurrency)
           : null;
-        const costBasisBase = await toBase(position.shares * position.avgCost * multiplier, positionCurrency);
-        const pnl = currentValueBase != null ? currentValueBase - costBasisBase : null;
+        const costBasisBase = await toBase(magnitude * position.avgCost * multiplier, positionCurrency);
+        const pnl = currentValueBase != null ? direction * (currentValueBase - costBasisBase) : null;
         if (pnl != null) totalPnl += pnl;
 
         rows.push([

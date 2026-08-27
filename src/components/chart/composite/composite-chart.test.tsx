@@ -31,6 +31,9 @@ import {
   resolveCompositeMinimumSpanMs,
   zoomCompositeViewport,
 } from "./interactions";
+import { getThemeColors, syncTheme } from "../../../theme/colors";
+import { ThemeProvider } from "../../../theme/theme-context";
+import { DEFAULT_THEME } from "../../../theme/themes";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let chartShortcut: ((event: KeyEventLike) => void) | null = null;
@@ -131,12 +134,12 @@ function keyEvent(name: string, shift = false): KeyEventLike {
 }
 
 afterEach(async () => {
-  if (!testSetup) return;
-  await act(async () => testSetup!.renderer.destroy());
+  if (testSetup) await act(async () => testSetup!.renderer.destroy());
   testSetup = undefined;
   chartShortcut = null;
   capturedSurfaceProps = null;
   capturedSurfaceNode = null;
+  syncTheme(DEFAULT_THEME);
 });
 
 function point(date: string, value: number): TimeSeriesPoint {
@@ -204,6 +207,46 @@ function twoSessionCandles(): ResolvedSeries {
 }
 
 describe("CompositeChart", () => {
+  test("repaints cached chart rasters when the theme changes", async () => {
+    let setThemeId: ((themeId: string) => void) | null = null;
+    const chartSeries = [series("price", "main", "left", "USD", [100, 101, 102])];
+
+    function ThemedChart() {
+      const [themeId, setTheme] = useState(DEFAULT_THEME);
+      setThemeId = setTheme;
+      return (
+        <ThemeProvider themeId={themeId}>
+          <CaptureChartSurfaceProvider>
+            <CompositeChart
+              width={60}
+              height={12}
+              series={chartSeries}
+              panels={[{ id: "main" }]}
+            />
+          </CaptureChartSurfaceProvider>
+        </ThemeProvider>
+      );
+    }
+
+    testSetup = await testRender(<ThemedChart />, { width: 62, height: 14 });
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    const nextThemeId = "github-light";
+    await act(async () => {
+      setThemeId?.(nextThemeId);
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    const bitmap = capturedSurfaceProps!.bitmaps[0] as { pixels: Uint8Array };
+    const expectedBackground = getThemeColors(nextThemeId).bg;
+    const expectedRgb = [1, 3, 5].map((offset) => parseInt(expectedBackground.slice(offset, offset + 2), 16));
+    expect(Array.from(bitmap.pixels.slice(0, 3))).toEqual(expectedRgb);
+  });
+
   test("shows the regular-session move beside the latest intraday value", async () => {
     testSetup = await testRender(
       <CompositeChart

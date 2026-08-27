@@ -27,9 +27,17 @@ case "$ARCH" in
     ;;
 esac
 
-# macOS x64 uses arm64 binary (runs via Rosetta 2)
+# Apple Silicon shells under Rosetta report x86_64. Genuine Intel Macs cannot
+# run the arm64 app and must fail instead of downloading a bad binary.
 if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
-  arch="arm64"
+  translated="$(sysctl -n sysctl.proc_translated 2>/dev/null || true)"
+  has_arm64="$(sysctl -n hw.optional.arm64 2>/dev/null || true)"
+  if [ "$translated" = "1" ] || [ "$has_arm64" = "1" ]; then
+    arch="arm64"
+  else
+    echo "Intel Macs are not supported. Gloomberb currently ships Apple Silicon (arm64) only."
+    exit 1
+  fi
 fi
 
 download_file() {

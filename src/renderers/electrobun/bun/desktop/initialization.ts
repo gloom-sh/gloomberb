@@ -142,6 +142,7 @@ export async function initializeDesktopBackend<TRpc>(
     plugins: getDesktopBackendPlugins(),
   });
   options.setServices(services);
+  await services.ready;
   options.syncConfigAccessors();
   options.registerCoreCapabilities();
   options.setDesktopWorkspace(createDesktopWorkspace(config, options.getSessionSnapshot()));

@@ -47,6 +47,7 @@ describe("resolvePortfolioAccountMetrics", () => {
       grossPositionValue: 8_000,
       dailyPnl: 100,
       unrealizedPnl: 400,
+      realizedPnl: -50,
     };
     const toUsd = (value: number) => value * 1.1;
 
@@ -55,6 +56,7 @@ describe("resolvePortfolioAccountMetrics", () => {
     expect(metrics.dailyPnlPct).toBeCloseTo(110 / 10_890 * 100);
     expect(metrics.unrealizedPnl).toBeCloseTo(440);
     expect(metrics.unrealizedPnlPct).toBeCloseTo(5.5);
+    expect(metrics.realizedPnl).toBeCloseTo(-55);
     expect(resolvePortfolioMarketValue(createTotals(), account, toUsd)).toBeCloseTo(8_800);
   });
 

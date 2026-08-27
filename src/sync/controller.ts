@@ -70,7 +70,7 @@ export class CloudSyncController {
   private baseline: Record<string, unknown> | null = null;
   private baselineLoaded = false;
   private pulledContributors: SyncSnapshot["contributors"] = {};
-  private hasPulledForTransport = new Set<string>();
+  private appliedRevision: number | null = null;
   private status: CloudSyncStatus = {
     phase: "idle",
     transportId: null,
@@ -186,12 +186,11 @@ export class CloudSyncController {
     }
     const transport = registration.transport;
 
-    if (!this.hasPulledForTransport.has(transport.id)) {
-      this.lastSignature = null;
-      if (!await this.runPull(runtime, transport)) return;
-      if (!this.isCurrent(runtime, transport)) return;
-      this.hasPulledForTransport.add(transport.id);
-    }
+    // Always pull before push. Another device (TUI, browser, phone) may have
+    // written since this process last synced, and contributors already merge
+    // so local-only edits survive the apply.
+    if (!await this.runPull(runtime, transport)) return;
+    if (!this.isCurrent(runtime, transport)) return;
 
     const snapshot = await this.assembleSnapshot(runtime);
     if (!this.isCurrent(runtime, transport)) return;
@@ -203,6 +202,7 @@ export class CloudSyncController {
       const result = await transport.pushSnapshot(snapshot, { baseRevision: this.status.revision });
       if (!this.isCurrent(runtime, transport)) return;
       this.lastSignature = signature;
+      this.appliedRevision = result.revision;
       this.saveBaseline(runtime, snapshot);
       this.setStatus({
         phase: "synced",
@@ -228,7 +228,7 @@ export class CloudSyncController {
       const response = await transport.pullSnapshot();
       if (!this.isCurrent(runtime, transport)) return false;
 
-      if (response.snapshot) {
+      if (response.snapshot && this.shouldApplyPulledRevision(response.revision)) {
         this.assertSnapshotCompatible(response.snapshot, runtime.getContributors());
         this.pulledContributors = response.snapshot.contributors;
         for (const entry of runtime.getContributors()) {
@@ -246,15 +246,16 @@ export class CloudSyncController {
             tickerRepository: runtime.tickerRepository,
           });
         }
+        if (response.revision != null) this.appliedRevision = response.revision;
       }
 
       if (!this.isCurrent(runtime, transport)) return false;
       this.setStatus({
         phase: response.snapshot ? "synced" : "idle",
         transportId: transport.id,
-        revision: response.revision,
+        revision: this.newerRevision(response.revision),
         lastPullAt: response.updatedAt ?? nowIso(),
-        lastSyncAt: response.updatedAt,
+        lastSyncAt: response.updatedAt ?? this.status.lastSyncAt,
         error: null,
       });
       return true;
@@ -337,13 +338,23 @@ export class CloudSyncController {
     return this.runtime === runtime && runtime.getTransport()?.transport === transport;
   }
 
+  private shouldApplyPulledRevision(revision: number | null): boolean {
+    return revision == null || this.appliedRevision == null || revision > this.appliedRevision;
+  }
+
+  private newerRevision(revision: number | null): number | null {
+    if (revision == null) return this.status.revision;
+    if (this.status.revision == null || revision > this.status.revision) return revision;
+    return this.status.revision;
+  }
+
   private resetOperations(): void {
     if (this.pushTimer) clearTimeout(this.pushTimer);
     this.pushTimer = null;
     this.inFlight = null;
     this.syncQueued = false;
-    this.hasPulledForTransport.clear();
     this.lastSignature = null;
+    this.appliedRevision = null;
     this.baseline = null;
     this.baselineLoaded = false;
     this.pulledContributors = {};

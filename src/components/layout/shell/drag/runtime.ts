@@ -191,6 +191,7 @@ interface UseShellPointerRuntimeOptions {
   visibleLayout: LayoutConfig;
   width: number;
   windowMode: WindowEditState | null;
+  commandBarOpen: boolean;
 }
 
 export function useShellPointerRuntime({
@@ -221,6 +222,7 @@ export function useShellPointerRuntime({
   visibleLayout,
   width,
   windowMode,
+  commandBarOpen,
 }: UseShellPointerRuntimeOptions) {
   const handleActiveDrag = useShellActiveDrag({
     appHeaderHeight,
@@ -278,6 +280,7 @@ export function useShellPointerRuntime({
     setMenuState,
     transientFocusActive,
     windowMode,
+    commandBarOpen,
   });
 
   return {

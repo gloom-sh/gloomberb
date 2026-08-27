@@ -119,8 +119,20 @@ export async function refreshChatControllerSession({
   session.sessionToken = apiClient.getSessionToken();
   const apiSession = await apiClient.getSession();
   if (!apiSession) {
-    apiClient.setSessionToken(null);
-    session.sessionToken = null;
+    const persistedToken = apiClient.getSessionToken() || session.sessionToken;
+    // A 200 with no user is what /auth/get-session returns when no cookie
+    // reached the server. Desktop's backend process used to treat that as a
+    // real sign-out and persist a wiped token, so the next launch was logged
+    // out. Keep a captured native session; hard account-missing responses
+    // already clear the token inside getSession().
+    if (persistedToken) {
+      session.sessionToken = persistedToken;
+      session.user = session.user ?? normalizeSessionUser(apiClient.getCurrentUser());
+      session.sessionChecked = true;
+      persistSession(session.sessionToken, session.user);
+      emit();
+      return;
+    }
     applySignedOut();
     return;
   }

@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Box, Span, Text } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
+import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
 import { MESSAGE_ACTION_WIDTH, normalizeInlinePreview } from "../layout";
@@ -32,6 +33,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   registerMessageElement: (messageId: string, node: unknown | null) => void;
 }) {
   useAppLanguage();
+  const themeColors = useThemeColors();
   const state = getChatMessageRenderState({ msg, index, messages, selectedIdx, hoveredIdx, canSend });
   const canEditMessage = msg.id === latestEditableMessageId;
   const showInlineReplyAction = !state.grouped && canSend;
@@ -58,7 +60,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
       data-gloom-role="chat-message"
       data-gloom-chat-message-id={msg.id}
       data-selected={state.isSelected ? "true" : "false"}
-      style={{ "--chat-hover-bg": hoverBg(), minWidth: 0 }}
+      style={{ "--chat-hover-bg": hoverBg(themeColors), minWidth: 0 }}
     >
       {msg.replyTo && (
         <Box

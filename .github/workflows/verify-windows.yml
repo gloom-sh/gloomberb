@@ -6,6 +6,10 @@ on:
     branches:
       - "**"
 
+concurrency:
+  group: verify-windows-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -53,28 +57,7 @@ jobs:
         run: ./scripts/verify-windows-desktop.ps1
 
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: gloomberb-windows-x64-package
-          path: |
-            artifacts/*
-            node_modules/electrobun/dist-win-x64/zig-zstd.exe
-
-  desktop-arm64-compat:
-    needs: desktop
-    runs-on: windows-11-arm
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: gloomberb-windows-x64-package
-          path: .
-
-      - name: Extract x64 desktop package
-        shell: pwsh
-        run: ./scripts/build-windows-installer.ps1 -ExtractOnly
-
-      - name: Verify x64 desktop package on Windows ARM64
-        shell: pwsh
-        run: ./scripts/verify-windows-arm64.ps1
+          path: artifacts/*

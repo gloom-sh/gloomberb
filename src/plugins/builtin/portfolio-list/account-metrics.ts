@@ -60,6 +60,6 @@ export function resolvePortfolioAccountMetrics(
     dailyPnlPct,
     unrealizedPnl,
     unrealizedPnlPct,
-    realizedPnl: finiteNumber(account?.realizedPnl) ? account.realizedPnl : undefined,
+    realizedPnl: finiteNumber(account?.realizedPnl) ? convertAccountValue(account.realizedPnl) : undefined,
   };
 }

@@ -96,6 +96,47 @@ function ChannelNotificationIcon({
   );
 }
 
+function ProfileIcon({
+  color,
+  onMouseDown,
+}: {
+  color: string;
+  onMouseDown?: (event: any) => void;
+}) {
+  const { nativePaneChrome } = useUiCapabilities();
+
+  if (!nativePaneChrome) {
+    return (
+      <Text fg={color} selectable={false} onMouseDown={onMouseDown}>@</Text>
+    );
+  }
+
+  return (
+    <Span
+      fg={color}
+      onMouseDown={onMouseDown}
+      style={{
+        color,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 16,
+        height: 16,
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" aria-hidden="true">
+        <circle cx="12" cy="8.5" r="3.4" stroke="currentColor" strokeWidth="1.8" />
+        <path
+          d="M5.5 19.5a6.5 6.5 0 0 1 13 0"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+        />
+      </svg>
+    </Span>
+  );
+}
+
 export function ChannelSidebar({
   channels,
   channelStates,
@@ -109,9 +150,11 @@ export function ChannelSidebar({
   canManageNotifications,
   canCreateConversation,
   directExpanded,
+  needsProfileSetup = false,
   onSelect,
   onFocusRequest,
   onCreateConversation,
+  onOpenProfile,
   onToggleNotifications,
   onToggleDirectExpanded,
 }: {
@@ -127,9 +170,11 @@ export function ChannelSidebar({
   canManageNotifications: boolean;
   canCreateConversation: boolean;
   directExpanded: boolean;
+  needsProfileSetup?: boolean;
   onSelect?: (channelId: string) => void;
   onFocusRequest?: () => void;
   onCreateConversation?: () => void;
+  onOpenProfile?: () => void;
   onToggleNotifications?: (channelId: string, enabled: boolean) => void;
   onToggleDirectExpanded?: () => void;
 }) {
@@ -240,6 +285,24 @@ export function ChannelSidebar({
               );
             })}
             <Box flexGrow={1} />
+            {needsProfileSetup && (
+              <PaneSidebarRow
+                active={false}
+                ariaLabel={t("Profile")}
+                onSelect={onOpenProfile}
+              >
+                {({ foregroundColor, onMouseDown }) => (
+                  <>
+                    <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
+                    <ProfileIcon color={foregroundColor} onMouseDown={onMouseDown} />
+                    <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>
+                      {` ${truncateChannelLabel(t("Profile"), Math.max(listWidth - 3, 1))}`}
+                    </Text>
+                    <Box flexGrow={1} onMouseDown={onMouseDown} />
+                  </>
+                )}
+              </PaneSidebarRow>
+            )}
             {loading && focused && (
               <Box height={1} width={listWidth} flexDirection="row">
                 <Text fg={colors.textDim}>{` ${t("syncing")}`}</Text>

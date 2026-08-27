@@ -112,7 +112,7 @@ export function bindAppPanePluginRegistry({
       launch: { kind: "plugin-command", commandId },
     });
   };
-  pluginRegistry.getLayoutFn = () => state.config.layout;
+  pluginRegistry.getLayoutFn = () => stateRef.current.config.layout;
   pluginRegistry.updateLayoutFn = (layout) => {
     if (isDetachedWindow) return;
     persistLayout(layout);
@@ -151,8 +151,9 @@ export function bindAppPanePluginRegistry({
   pluginRegistry.hidePaneFn = (paneId) => {
     if (isDetachedWindow) return;
     const instanceId = resolvePaneTarget(paneId);
-    if (!instanceId || !isPaneInLayout(state.config.layout, instanceId)) return;
-    persistLayout(removePane(state.config.layout, instanceId));
+    const layout = stateRef.current.config.layout;
+    if (!instanceId || !isPaneInLayout(layout, instanceId)) return;
+    persistLayout(removePane(layout, instanceId));
   };
   pluginRegistry.focusPaneFn = (paneId) => {
     if (isDetachedWindow) {
@@ -162,7 +163,7 @@ export function bindAppPanePluginRegistry({
       return;
     }
     const instanceId = resolvePaneTarget(paneId);
-    if (!instanceId || !isPaneInLayout(state.config.layout, instanceId)) {
+    if (!instanceId || !isPaneInLayout(stateRef.current.config.layout, instanceId)) {
       showPane(paneId);
       return;
     }

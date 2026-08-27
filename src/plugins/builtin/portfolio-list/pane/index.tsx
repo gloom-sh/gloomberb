@@ -476,6 +476,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
             onToggle={() => setCashDrawerExpanded(!cashDrawerExpanded)}
             width={Math.max(0, width - 2)}
             height={drawerHeight}
+            baseCurrency={config.baseCurrency}
+            exchangeRates={effectiveExchangeRates}
           />
         </Box>
       )}

@@ -221,6 +221,16 @@ describe("AppPersistence", () => {
     persistence.close();
   });
 
+  test("lists plugin ids that have stored state", () => {
+    const dbPath = createTempDbPath("plugin-state-ids");
+    const persistence = new AppPersistence(dbPath);
+    persistence.pluginState.set("gloomberb-cloud", "session", { sessionToken: "token" }, 1);
+    persistence.pluginState.set("ai", "provider", "openai", 1);
+
+    expect(persistence.pluginState.pluginIds()).toEqual(["ai", "gloomberb-cloud"]);
+    persistence.close();
+  });
+
   test("stores multiple plugin state records in one batch", () => {
     const dbPath = createTempDbPath("plugin-state-batch");
     const persistence = new AppPersistence(dbPath);

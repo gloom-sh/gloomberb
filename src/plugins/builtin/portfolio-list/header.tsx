@@ -7,7 +7,7 @@ import { colors } from "../../../theme/colors";
 import type { BrokerConnectionStatus } from "../../../types/broker";
 import type { Portfolio } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
-import { formatCompact, padTo } from "../../../utils/format";
+import { convertCurrency, formatCompact, padTo } from "../../../utils/format";
 import { formatMarketQuantity } from "../../../market-data/market/format";
 import { getBrokerInstance } from "../../../utils/broker-instances";
 import { usePluginBrokerActions } from "../../runtime";
@@ -90,14 +90,24 @@ export function PortfolioCashMarginDrawer({
   onToggle,
   width,
   height,
+  baseCurrency,
+  exchangeRates,
 }: {
   accountState: ResolvedPortfolioAccountState;
   expanded: boolean;
   onToggle: () => void;
   width: number;
   height: number;
+  baseCurrency: string;
+  exchangeRates: Map<string, number>;
 }) {
-  const previewText = `${accountState.visibleCashBalances.length} ccy · Cash ${formatCompact(accountState.account.totalCashValue)} · ${accountState.sourceLabel}`;
+  const convertAccountValue = (value: number) => convertCurrency(
+    value,
+    accountState.account.currency || baseCurrency,
+    baseCurrency,
+    exchangeRates,
+  );
+  const previewText = `${accountState.visibleCashBalances.length} ccy · Cash ${formatCompact(convertAccountValue(accountState.account.totalCashValue ?? 0))} · ${accountState.sourceLabel}`;
   const drawerHeight = Math.max(1, height);
 
   if (!expanded) {
@@ -124,7 +134,7 @@ export function PortfolioCashMarginDrawer({
     );
   }
 
-  const metricSegments = buildDrawerMetricSegments(accountState.account, width);
+  const metricSegments = buildDrawerMetricSegments(accountState.account, width, convertAccountValue);
   const currencyRowsHeight = Math.max(1, drawerHeight - 2);
 
   return (

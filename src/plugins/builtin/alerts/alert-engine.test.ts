@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { evaluateAlert, createAlert, editAlert, serializeAlerts, deserializeAlerts } from "./alert-engine";
+import { evaluateAlert, createAlert, editAlert, rearmAlert, serializeAlerts, deserializeAlerts } from "./alert-engine";
 
 describe("evaluateAlert", () => {
   test("above: triggers when price exceeds target", () => {
@@ -70,6 +70,21 @@ describe("editAlert", () => {
     });
     // A stale lastCheckedPrice would make `crosses` fire off the previous symbol's baseline.
     expect(evaluateAlert(edited, 185)).toBe(false);
+  });
+
+  test("rearming a crosses alert drops the old quote baseline", () => {
+    const alert = {
+      ...createAlert("AAPL", "crosses", 180),
+      status: "triggered" as const,
+      triggeredAt: 123,
+      lastCheckedPrice: 185,
+    };
+
+    const rearmed = rearmAlert(alert);
+
+    expect(rearmed.status).toBe("active");
+    expect(rearmed.lastCheckedPrice).toBeUndefined();
+    expect(evaluateAlert(rearmed, 175)).toBe(false);
   });
 
   test("drops the exchange when the symbol changes", () => {

@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
 import { StaticChartSurface } from "../../../components";
 import { colors, blendHex } from "../../../theme/colors";
@@ -126,13 +127,15 @@ function SentimentChart({
   const chartWidth = Math.max(24, width - 2);
   const chartHeight = width >= 96 ? 12 : 10;
   const color = ratingColor(rating);
-  const basePalette = resolveChartPalette(colors, ratingTrend(rating));
-  const palette = {
-    ...basePalette,
-    lineColor: color,
-    fillColor: blendHex(colors.bg, color, 0.18),
-    gridColor: blendHex(colors.bg, colors.border, 0.55),
-  };
+  const palette = useMemo(() => {
+    const basePalette = resolveChartPalette(colors, ratingTrend(rating));
+    return {
+      ...basePalette,
+      lineColor: color,
+      fillColor: blendHex(colors.bg, color, 0.18),
+      gridColor: blendHex(colors.bg, colors.border, 0.55),
+    };
+  }, [color, rating]);
   const latest = points.length > 0 ? points[points.length - 1]!.close : null;
 
   return (
@@ -294,6 +297,7 @@ export function IndexHistoryChart({ data, width }: { data: FearGreedData; width:
 }
 
 export function IndicatorChart({ indicator, width }: { indicator: FearGreedIndicator; width: number }) {
+  const overlays = useMemo(() => chartOverlay(indicator), [indicator.secondaryPoints]);
   return (
     <SentimentChart
       title={indicator.definition.title}
@@ -306,7 +310,7 @@ export function IndicatorChart({ indicator, width }: { indicator: FearGreedIndic
       primaryLabel={indicator.definition.primaryLabel}
       secondaryLabel={indicator.definition.secondaryLabel}
       secondaryValue={indicator.latestSecondaryValue}
-      overlays={chartOverlay(indicator)}
+      overlays={overlays}
     />
   );
 }
