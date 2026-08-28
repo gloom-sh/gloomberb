@@ -13,38 +13,26 @@ import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData } from "../context";
 import { requireArg, takeOption } from "./command-utils";
 
-function deferredResult(command: string, code: "auth_required" | "not_implemented", message: string) {
-  return {
-    command,
-    status: code,
-    code,
-    message,
-  };
-}
-
 export const brokerCliCommand: CliCommandDef = {
   name: "broker",
   aliases: ["brokers"],
-  description: "Inspect broker profiles and guarded broker operations",
-  help: { usage: ["broker list", "broker status", "broker add|edit|remove|connect|sync"] },
+  description: "Inspect broker profiles",
+  help: { usage: ["broker list", "broker status"] },
   execute: async (args, ctx) => {
     const action = args[0] ?? "list";
+    if (action !== "list" && action !== "status") {
+      ctx.fail("Usage: gloomberb broker list|status");
+    }
     await withCliServices(ctx, async (services) => {
-      if (action === "list" || action === "status") {
-        const rows = services.config.brokerInstances.map((instance) => ({
+      ctx.printResult({
+        data: services.config.brokerInstances.map((instance) => ({
           id: instance.id,
           type: instance.brokerType,
           label: instance.label,
           enabled: instance.enabled !== false,
           connectionMode: instance.connectionMode ?? "",
           lastSyncedAt: instance.lastSyncedAt ? new Date(instance.lastSyncedAt).toISOString() : "",
-        }));
-        ctx.printResult({ data: rows });
-        return;
-      }
-
-      ctx.printResult({
-        data: deferredResult("broker", "not_implemented", "Broker mutation and connection commands need shared non-UI broker service extraction before they can safely run headless."),
+        })),
       });
     });
   },
@@ -52,36 +40,24 @@ export const brokerCliCommand: CliCommandDef = {
 
 export const ibkrCliCommand: CliCommandDef = {
   name: "ibkr",
-  description: "Guarded IBKR account, order preview, and order action commands",
-  help: { usage: ["ibkr accounts|positions|orders|preview|place|cancel"] },
+  description: "Inspect IBKR profiles",
+  help: { usage: ["ibkr accounts", "ibkr status"] },
   execute: async (args, ctx) => {
     const action = args[0] ?? "status";
-    const profile = takeOption(args, "--profile");
-    const account = takeOption(args, "--account");
-    if ((action === "place" || action === "cancel") && (!profile || !account || !ctx.cliOptions.yes)) {
-      ctx.fail(`ibkr ${action} requires --profile, --account, and --yes.`);
+    if (action !== "accounts" && action !== "status") {
+      ctx.fail("Usage: gloomberb ibkr accounts|status");
     }
     await withCliServices(ctx, async (services) => {
-      const ibkrProfiles = services.config.brokerInstances.filter((instance) => instance.brokerType === "ibkr");
-      if (action === "accounts" || action === "status") {
-        ctx.printResult({ data: ibkrProfiles.map((instance) => ({
-          id: instance.id,
-          label: instance.label,
-          enabled: instance.enabled !== false,
-          connectionMode: instance.connectionMode ?? "",
-          lastSyncedAt: instance.lastSyncedAt ? new Date(instance.lastSyncedAt).toISOString() : "",
-        })) });
-        return;
-      }
       ctx.printResult({
-        data: {
-          ...deferredResult("ibkr", "not_implemented", "IBKR trading commands are registered with safety gates, but headless order/account service extraction is still required."),
-          action,
-          profile: profile ?? null,
-          account: account ?? null,
-          dryRun: ctx.cliOptions.dryRun,
-          confirmed: ctx.cliOptions.yes,
-        },
+        data: services.config.brokerInstances
+          .filter((instance) => instance.brokerType === "ibkr")
+          .map((instance) => ({
+            id: instance.id,
+            label: instance.label,
+            enabled: instance.enabled !== false,
+            connectionMode: instance.connectionMode ?? "",
+            lastSyncedAt: instance.lastSyncedAt ? new Date(instance.lastSyncedAt).toISOString() : "",
+          })),
       });
     });
   },
@@ -133,19 +109,12 @@ export function createAiCliCommand(options: CreateAiCliCommandOptions = {}): Cli
       usage: [
         "ai providers",
         "ai ask [--provider id] [--model id] <prompt>",
-        "ai screen list|show|delete|refresh|export",
       ],
     },
     execute: async (args, ctx) => {
       const action = args[0] ?? "providers";
-      if (action === "screen") {
-        ctx.printResult({
-          data: deferredResult("ai screen", "not_implemented", "AI screener tabs are still pane-state backed; expose them through a shared non-UI screener store before headless mutation."),
-        });
-        return;
-      }
       if (action !== "providers" && action !== "ask") {
-        ctx.fail("Usage: gloomberb ai providers|ask|screen");
+        ctx.fail("Usage: gloomberb ai providers|ask");
       }
 
       const rawArgs = args.slice(1);
@@ -258,23 +227,3 @@ export const rssCliCommand: CliCommandDef = {
     })) });
   },
 };
-
-function cloudCommand(name: string, description: string): CliCommandDef {
-  return {
-    name,
-    description,
-    execute: (_args, ctx) => {
-      ctx.printResult({
-        data: deferredResult(name, "auth_required", "This command needs an existing cloud/session token. New auth/account/chat CLI workflows are deferred in this pass."),
-      });
-    },
-  };
-}
-
-export const cloudCliCommands: CliCommandDef[] = [
-  cloudCommand("buildout", "Fetch Buildout company data through an existing cloud session"),
-  cloudCommand("congress", "Fetch congressional trade data through an existing cloud session"),
-  cloudCommand("substack", "Fetch Substack reader data through an existing session"),
-  cloudCommand("x-feed", "Fetch X/Twitter feed data through an existing cloud session"),
-  cloudCommand("tweets", "Alias for x-feed"),
-];

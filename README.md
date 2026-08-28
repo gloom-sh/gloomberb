@@ -166,10 +166,9 @@ Human-readable output is the default. Automation can opt into structured output 
 | `gloomberb portfolio [action]` | Manage manual portfolios |
 | `gloomberb watchlist [action]` | Manage watchlists |
 | `gloomberb notes|alerts [action]` | Manage local notes and alerts |
-| `gloomberb broker|ibkr [action]` | Inspect broker integrations; trading actions require explicit account/profile and `--yes` |
-| `gloomberb ai providers|ask|screen` | Use configured AI providers and screeners |
+| `gloomberb broker|ibkr [action]` | Inspect broker profiles |
+| `gloomberb ai providers|ask` | Use configured AI providers |
 | `gloomberb rss fetch <url>` | Fetch an RSS feed |
-| `gloomberb buildout|congress|substack|x-feed|tweets` | Access cloud and social data sources when an existing session is available |
 | `gloomberb provider status` | Inspect enabled data providers |
 | `gloomberb config|cache|plugin|layout|pane|debug|doctor|version|changelog` | Inspect and manage local app state |
 | `gloomberb fn [...]` | Run a pane-backed report command |
@@ -179,8 +178,6 @@ Human-readable output is the default. Automation can opt into structured output 
 | `gloomberb install <user/repo>` | Install a plugin from GitHub |
 | `gloomberb remove <name>` | Remove an installed plugin |
 | `gloomberb update [name]` | Update plugins |
-
-Commands that need a signed-in cloud session may return `auth_required`; sign-in, account management, and chat workflows are still handled in the app UI for now.
 
 ## Plugins
 

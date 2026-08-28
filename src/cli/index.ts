@@ -23,7 +23,6 @@ import { createSystemCliCommands } from "./commands/system";
 import {
   aiCliCommand,
   brokerCliCommand,
-  cloudCliCommands,
   ibkrCliCommand,
   rssCliCommand,
 } from "./commands/automation";
@@ -198,7 +197,6 @@ function createCoreCliCommands(
     ibkrCliCommand,
     aiCliCommand,
     rssCliCommand,
-    ...cloudCliCommands,
   ];
   return commands;
 }

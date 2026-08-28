@@ -136,10 +136,9 @@ gloomberb
 | `gloomberb portfolio [action]` | 管理手动投资组合 |
 | `gloomberb watchlist [action]` | 管理自选列表 |
 | `gloomberb notes\|alerts [action]` | 管理本地笔记与提醒 |
-| `gloomberb broker\|ibkr [action]` | 查看券商集成状态；交易操作需要显式指定账户/配置并加 `--yes` |
-| `gloomberb ai providers\|ask\|screen` | 使用已配置的 AI 服务商与选股器 |
+| `gloomberb broker\|ibkr [action]` | 查看券商配置 |
+| `gloomberb ai providers\|ask` | 使用已配置的 AI 服务商 |
 | `gloomberb rss fetch <url>` | 抓取 RSS 订阅源 |
-| `gloomberb buildout\|congress\|substack\|x-feed\|tweets` | 在已有会话可用时访问云端与社交数据源 |
 | `gloomberb provider status` | 查看已启用的数据源 |
 | `gloomberb config\|cache\|plugin\|layout\|pane\|debug\|doctor\|version\|changelog` | 查看和管理本地应用状态 |
 | `gloomberb fn [...]` | 运行基于面板的报告命令 |
@@ -149,8 +148,6 @@ gloomberb
 | `gloomberb install <user/repo>` | 从 GitHub 安装插件 |
 | `gloomberb remove <name>` | 移除已安装插件 |
 | `gloomberb update [name]` | 更新插件 |
-
-需要已登录云端会话的命令可能返回 `auth_required`；登录、账户管理与聊天相关操作目前仍需在应用界面中完成。
 
 ## 插件
 

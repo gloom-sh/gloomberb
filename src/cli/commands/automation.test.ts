@@ -199,4 +199,13 @@ describe("headless Pi AI command", () => {
     expect(disconnected.runs).toEqual([]);
     expect(disconnected.closed()).toBe(1);
   });
+
+  test("rejects unsupported verbs instead of returning a stub payload", async () => {
+    const harness = createHarness({
+      catalog: { providers: [], refreshErrors: {} },
+    });
+    await expect(harness.command.execute(["screen"], harness.context))
+      .rejects.toThrow("Usage: gloomberb ai providers|ask");
+    expect(harness.output).toEqual([]);
+  });
 });
