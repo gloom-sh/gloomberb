@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Input, Text, TextAttributes, type InputRenderable } from "../ui";
-import { Button } from "../components/ui/button";
+import { Box, Text, TextAttributes, type InputRenderable } from "../ui";
+import { InputSearchBar, usePaneFooter } from "../components";
 import { ListView, type ListViewItem } from "../components/ui/list-view";
 import { useShortcut, useViewport } from "../react/input";
-import { useAppInputCapture } from "../state/app/input-capture";
 import { useThemeColors } from "../theme/theme-context";
 import { truncateToDisplayWidth } from "../utils/format";
+import { isPlainKey } from "../utils/keyboard";
 import { t, tf } from "../i18n";
 import type { LayoutGalleryController } from "./gallery";
 import {
@@ -71,9 +71,23 @@ export function LayoutGalleryTerminal({
   const detailsWidth = Math.min(DETAILS_WIDTH, Math.max(28, Math.floor(paneWidth * 0.42)));
   const inputRef = useRef<InputRenderable | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchFocusToken, setSearchFocusToken] = useState(0);
   const [selectedIndex, setSelectedIndex] = useState(0);
-  useAppInputCapture(searchFocused && !dialogOpen);
-  const { community, owned, select } = controller;
+  const {
+    activate: activateLayout,
+    canDelete,
+    community,
+    copyLink,
+    deleteLayout,
+    duplicateLayout,
+    install: installLayout,
+    newLayout,
+    owned,
+    publishCurrent,
+    publishing,
+    renameLayout,
+    select,
+  } = controller;
   const discoverStatus = discoverStatusRow(controller);
 
   const rows = useMemo<GalleryRow[]>(() => {
@@ -138,6 +152,12 @@ export function LayoutGalleryTerminal({
     setSelectedIndex(selectableIndexes[nextPosition]!);
   }, [selectableIndexes, selectedIndex]);
 
+  const focusSearch = useCallback(() => {
+    setSearchFocused(true);
+    setSearchFocusToken((current) => current + 1);
+  }, []);
+  const blurSearch = useCallback(() => setSearchFocused(false), []);
+
   // The details panel is always on screen here, so Enter runs the action it shows
   // instead of stepping through a separate detail state.
   const activate = useCallback((row: GalleryRow | null) => {
@@ -147,70 +167,120 @@ export function LayoutGalleryTerminal({
       return;
     }
     if (!row.entry) return;
-    if (row.entry.kind === "community") controller.install(row.entry);
-    else controller.activate(row.entry);
-  }, [controller]);
+    if (row.entry.kind === "community") installLayout(row.entry);
+    else activateLayout(row.entry);
+  }, [activateLayout, installLayout]);
+
+  const selectedRowRef = useRef<GalleryRow | null>(selectedRow);
+  selectedRowRef.current = selectedRow;
+  const activateSelected = useCallback(() => activate(selectedRowRef.current), [activate]);
+  const renameSelected = useCallback(() => {
+    const entry = selectedRowRef.current?.entry;
+    if (entry?.kind === "owned") renameLayout(entry);
+  }, [renameLayout]);
+  const copySelected = useCallback(() => {
+    const entry = selectedRowRef.current?.entry;
+    if (entry?.kind === "community") copyLink(entry);
+    else if (entry?.kind === "owned") duplicateLayout(entry);
+  }, [copyLink, duplicateLayout]);
+  const deleteSelected = useCallback(() => {
+    const entry = selectedRowRef.current?.entry;
+    if (entry?.kind === "owned") deleteLayout(entry);
+  }, [deleteLayout]);
+
+  usePaneFooter("layout-marketplace", () => ({
+    info: publishing
+      ? [{ id: "publishing", parts: [{ text: "publishing", tone: "muted" as const }] }]
+      : [],
+    hints: [
+      { id: "search", key: "/", label: "search", onPress: focusSearch },
+      { id: "new", key: "n", label: "ew", onPress: newLayout },
+      ...(selectedEntry?.kind === "owned"
+        ? [
+            { id: "open", key: "o", label: "pen", onPress: activateSelected },
+            { id: "rename", key: "r", label: "ename", onPress: renameSelected },
+            { id: "copy", key: "c", label: "opy", onPress: copySelected },
+            { id: "delete", key: "d", label: "elete", onPress: deleteSelected, disabled: !canDelete },
+          ]
+        : selectedEntry?.kind === "community"
+          ? [
+              { id: "add", key: "a", label: "dd layout", onPress: activateSelected },
+              { id: "copy-link", key: "c", label: "opy link", onPress: copySelected },
+            ]
+          : selectedRow?.id === "discover:retry"
+            ? [{ id: "retry", key: "r", label: "etry", onPress: activateSelected }]
+            : selectedRow?.action
+              ? [{ id: "open", key: "o", label: "pen", onPress: activateSelected }]
+              : []),
+      { id: "publish", key: "p", label: "ublish", onPress: publishCurrent, disabled: publishing },
+    ],
+  }), [
+    activateSelected,
+    canDelete,
+    copySelected,
+    deleteSelected,
+    focusSearch,
+    newLayout,
+    publishCurrent,
+    publishing,
+    renameSelected,
+    selectedEntry?.kind,
+    selectedRow?.action,
+    selectedRow?.id,
+  ]);
 
   useShortcut((event) => {
     if (dialogOpen) return;
-    const editable = event.targetEditable === true;
     // Leaving the search field is the first Escape; the gallery closes on the next.
-    if (event.name === "escape" && searchFocused) {
+    if (isPlainKey(event, "escape", "esc") && searchFocused) {
       event.preventDefault();
       event.stopPropagation();
-      setSearchFocused(false);
+      blurSearch();
       return;
     }
-    if (event.name === "down" || (!editable && event.name === "j")) {
+    if (event.targetEditable) return;
+
+    const run = (action: () => void) => {
       event.preventDefault();
       event.stopPropagation();
-      move(1);
-      return;
-    }
-    if (event.name === "up" || (!editable && event.name === "k")) {
-      event.preventDefault();
-      event.stopPropagation();
-      move(-1);
-      return;
-    }
-    if (event.name === "enter" || event.name === "return") {
-      event.preventDefault();
-      event.stopPropagation();
-      activate(selectedRow);
-      return;
-    }
-    if (!editable && (event.name === "/" || event.sequence === "/")) {
-      event.preventDefault();
-      event.stopPropagation();
-      setSearchFocused(true);
-      inputRef.current?.focus?.();
-    }
+      action();
+    };
+    if (isPlainKey(event, "down", "j")) run(() => move(1));
+    else if (isPlainKey(event, "up", "k")) {
+      run(() => {
+        if (event.name === "up" && selectedIndex === selectableIndexes[0]) focusSearch();
+        else move(-1);
+      });
+    } else if (isPlainKey(event, "enter", "return")) run(activateSelected);
+    else if (isPlainKey(event, "/")) run(focusSearch);
+    else if (isPlainKey(event, "n")) run(newLayout);
+    else if (isPlainKey(event, "p")) run(publishCurrent);
+    else if (isPlainKey(event, "o") && (selectedEntry?.kind === "owned" || selectedRow?.action)) run(activateSelected);
+    else if (isPlainKey(event, "a") && selectedEntry?.kind === "community") run(activateSelected);
+    else if (isPlainKey(event, "r") && selectedRow?.id === "discover:retry") run(activateSelected);
+    else if (isPlainKey(event, "r") && selectedEntry?.kind === "owned") run(renameSelected);
+    else if (isPlainKey(event, "c") && selectedEntry) run(copySelected);
+    else if (isPlainKey(event, "d") && selectedEntry?.kind === "owned" && canDelete) run(deleteSelected);
   }, { allowEditable: true, enabled: focused && !dialogOpen, phase: "before", scope: "layout-gallery" });
 
   const bodyHeight = Math.max(4, paneHeight - 1);
 
   return (
     <Box flexGrow={1} flexDirection="column" backgroundColor={colors.bg}>
-      <Box height={1} flexDirection="row" paddingX={1} backgroundColor={colors.panel}>
-        <Text fg={searchFocused ? colors.textBright : colors.textDim}>{"/ "}</Text>
-        <Input
-          ref={inputRef}
-          value={controller.query}
-          focused={searchFocused && !dialogOpen}
-          placeholder={t("Search layouts and panes")}
-          placeholderColor={colors.textDim}
-          textColor={colors.text}
-          backgroundColor={colors.panel}
-          focusedBackgroundColor={colors.panel}
-          cursorColor={colors.textBright}
-          flexGrow={1}
-          onInput={controller.setQuery}
-          onChange={controller.setQuery}
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-          onSubmit={() => setSearchFocused(false)}
-        />
-      </Box>
+      <InputSearchBar
+        value={controller.query}
+        focused={focused && !dialogOpen}
+        active={searchFocused}
+        width={paneWidth}
+        focusToken={searchFocusToken}
+        inputRef={inputRef}
+        placeholder={t("Search layouts and panes")}
+        debounceMs={80}
+        onFocus={focusSearch}
+        onBlur={blurSearch}
+        onNavigateDown={blurSearch}
+        onQueryChange={controller.setQuery}
+      />
 
       <Box flexDirection="row" flexGrow={1}>
         <Box flexGrow={1} flexDirection="column" paddingX={1}>
@@ -257,17 +327,12 @@ export function LayoutGalleryTerminal({
               controller={controller}
               entry={selectedEntry}
               width={detailsWidth}
-              height={paneHeight}
+              height={bodyHeight}
             />
           ) : selectedRow?.action ? (
             <Box flexDirection="column" gap={1}>
               <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{selectedRow.label}</Text>
               {selectedRow.detail && <Text fg={colors.textMuted}>{selectedRow.detail}</Text>}
-              <Button
-                label={selectedRow.id === "discover:login" ? "Log in" : "Retry"}
-                variant="primary"
-                onPress={selectedRow.action}
-              />
             </Box>
           ) : (
             <Text fg={colors.textDim}>{t("No layout selected.")}</Text>
@@ -292,8 +357,8 @@ function LayoutDetails({
   const colors = useThemeColors();
   const allPanes = summarizeLayoutPanes(entry.layout, controller.panes);
   const missing = allPanes.filter((pane) => pane.missing);
-  // Leave room for the title block, the warning line, and both action rows.
-  const paneBudget = Math.max(3, height - 13);
+  // Leave room for the title block and the optional warning.
+  const paneBudget = Math.max(3, height - 8);
   const overflow = Math.max(0, allPanes.length - paneBudget);
   const panes = overflow > 0 ? allPanes.slice(0, paneBudget - 1) : allPanes;
 
@@ -336,41 +401,6 @@ function LayoutDetails({
           </Text>
         </>
       )}
-      <Box height={1} />
-      <Box flexDirection="row" gap={1}>
-        <Button
-          label={entry.kind === "community" ? "Add Layout" : "Open"}
-          variant="primary"
-          onPress={() => (entry.kind === "community"
-            ? controller.install(entry)
-            : controller.activate(entry))}
-        />
-        {entry.kind === "community" && (
-          <Button label="Copy Link" variant="secondary" onPress={() => controller.copyLink(entry)} />
-        )}
-        {entry.kind === "owned" && (
-          <>
-            <Button label="Rename" variant="secondary" onPress={() => controller.renameLayout(entry)} />
-            <Button label="Copy" variant="secondary" onPress={() => controller.duplicateLayout(entry)} />
-            <Button
-              label="Delete"
-              variant="secondary"
-              disabled={!controller.canDelete}
-              onPress={() => controller.deleteLayout(entry)}
-            />
-          </>
-        )}
-      </Box>
-      <Box height={1} />
-      <Box flexDirection="row" gap={1}>
-        <Button label="New" variant="ghost" onPress={controller.newLayout} />
-        <Button
-          label={controller.publishing ? "Publishing" : "Publish"}
-          variant="ghost"
-          disabled={controller.publishing}
-          onPress={controller.publishCurrent}
-        />
-      </Box>
     </Box>
   );
 }
