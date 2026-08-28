@@ -46,3 +46,40 @@ jobs:
 
       - name: Test global upgrade from 0.5.0
         run: bun run test:global-upgrade
+
+  deploy-web:
+    name: Deploy terminal to Cloudflare
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - typecheck
+      - build-and-test
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Build browser app
+        run: bun run web:build
+
+      - name: Deploy terminal Worker
+        run: bunx wrangler deploy --config wrangler.production.jsonc --message "$GITHUB_SHA"
+
+      - name: Verify production
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error --max-time 15 https://term.gloom.sh/health >/dev/null \
+              && curl --fail --silent --show-error --max-time 15 "https://term.gloom.sh/l/00000000000000000000000000000000?ref=$GITHUB_SHA" \
+                | grep --fixed-strings --quiet '/assets/share/main.js'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "term.gloom.sh did not become healthy at $GITHUB_SHA" >&2
+          exit 1

@@ -46,7 +46,7 @@ bun run web:build
 bunx wrangler dev
 ```
 
-Validate the public artifacts with `bun run web:audit` and `bun run cloudflare:dry-run`. `wrangler.jsonc` is intentionally generic and contains no account, route, domain, namespace, or secret. Production routing and the private Gloom Cloud API deployment are configured separately.
+Validate the public artifacts with `bun run web:audit` and `bun run cloudflare:dry-run`. `wrangler.jsonc` remains generic for local checks. After verification passes on `main`, GitHub Actions deploys `term.gloom.sh` with `wrangler.production.jsonc`. The private Gloom Cloud API is deployed separately.
 
 ## Install
 
