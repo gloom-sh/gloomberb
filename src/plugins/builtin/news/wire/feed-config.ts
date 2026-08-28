@@ -12,7 +12,7 @@ const DEFAULT_FEED_IDS = new Set(DEFAULT_FEEDS.map((feed) => feed.id));
 export interface NewsFeedSettings {
   userFeeds: RssFeedConfig[];
   disabledDefaultFeedIds: string[];
-  migrated: boolean;
+  needsMigration: boolean;
 }
 
 export interface UserNewsFeedInput {
@@ -109,6 +109,26 @@ function normalizeDisabledDefaultFeedIds(values: unknown[]): string[] {
   return [...ids];
 }
 
+function sameUserFeeds(raw: unknown, normalized: RssFeedConfig[]): boolean {
+  if (!Array.isArray(raw) || raw.length !== normalized.length) return false;
+  return raw.every((entry, index) => {
+    const feed = normalized[index];
+    if (!feed || !entry || typeof entry !== "object") return false;
+    const record = entry as Record<string, unknown>;
+    return record.id === feed.id
+      && record.url === feed.url
+      && record.name === feed.name
+      && record.category === feed.category
+      && record.authority === feed.authority
+      && record.enabled === feed.enabled;
+  });
+}
+
+function sameIdList(raw: unknown, normalized: string[]): boolean {
+  if (!Array.isArray(raw) || raw.length !== normalized.length) return false;
+  return raw.every((value, index) => value === normalized[index]);
+}
+
 export function loadNewsFeedSettings(configState: PluginConfigState): NewsFeedSettings {
   const rawUserFeeds = configState.get<unknown>(USER_FEEDS_KEY);
   const userFeedValues = parseJsonArray(rawUserFeeds);
@@ -123,11 +143,11 @@ export function loadNewsFeedSettings(configState: PluginConfigState): NewsFeedSe
     ...parseJsonArray(rawLegacyDisabled),
   ]);
 
-  const migrated = rawUserFeeds !== null
-    || rawDisabledIds !== null
-    || rawLegacyDisabled !== null;
+  const needsMigration = rawLegacyDisabled !== null
+    || (rawUserFeeds !== null && !sameUserFeeds(rawUserFeeds, userFeeds))
+    || (rawDisabledIds !== null && !sameIdList(rawDisabledIds, disabledDefaultFeedIds));
 
-  return { userFeeds, disabledDefaultFeedIds, migrated };
+  return { userFeeds, disabledDefaultFeedIds, needsMigration };
 }
 
 export async function saveNewsFeedSettings(

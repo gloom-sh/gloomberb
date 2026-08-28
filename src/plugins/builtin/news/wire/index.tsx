@@ -95,7 +95,7 @@ export const newsWireModule: PluginModule = {
   ],
   setup(ctx) {
     const initialSettings = loadNewsFeedSettings(ctx.configState);
-    if (initialSettings.migrated) {
+    if (initialSettings.needsMigration) {
       void saveNewsFeedSettings(ctx.configState, initialSettings);
     }
 
