@@ -372,7 +372,7 @@ export function migrateChartPaneSettings(
   settings: Record<string, unknown> | undefined,
   context: LegacyChartMigrationContext = {},
 ): Record<string, unknown> | undefined {
-  if (context.migrateLegacy === false) return settings;
+  if (!context.migrateLegacy) return settings;
   if (paneId === "chart-composer") {
     const retained = stripKeys(settings, [
       "chartAxisMode",

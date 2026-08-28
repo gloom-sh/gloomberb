@@ -17,13 +17,11 @@ import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig } from "./migrations";
 
-const CURRENT_CHART_SANITIZATION = { migrateLegacy: false } as const;
-
 export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: string): { config: AppConfig; needsSave: boolean } {
   const defaults = createDefaultConfig(dataDir);
   const migration = migrateSavedConfig(saved, dataDir);
   const candidate = migration.config;
-  const directLayout = sanitizeLayout(candidate.layout, defaults.layout, CURRENT_CHART_SANITIZATION);
+  const directLayout = sanitizeLayout(candidate.layout, defaults.layout);
   const layouts = sanitizeSavedLayouts(candidate.layouts, directLayout);
   const activeLayoutIndex = sanitizeActiveLayoutIndex(candidate.activeLayoutIndex, layouts.length);
   const layout = cloneLayout(layouts[activeLayoutIndex]?.layout ?? directLayout);
@@ -88,7 +86,7 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
 
 export function normalizeConfigForSave(config: AppConfig): AppConfig {
   const defaults = createDefaultConfig(config.dataDir);
-  const directLayout = sanitizeLayout(config.layout, defaults.layout, CURRENT_CHART_SANITIZATION);
+  const directLayout = sanitizeLayout(config.layout, defaults.layout);
   const sanitizedLayouts = sanitizeSavedLayouts(config.layouts, directLayout);
   const activeLayoutIndex = sanitizeActiveLayoutIndex(config.activeLayoutIndex, sanitizedLayouts.length || 1);
   const layout = cloneLayout(sanitizedLayouts[activeLayoutIndex]?.layout ?? directLayout);
@@ -306,7 +304,7 @@ function sanitizeSavedLayouts(
       && typeof (entry as SavedLayout).name === "string",
     )
     .map((entry) => {
-      const layout = sanitizeLayout(entry.layout, fallbackLayout, CURRENT_CHART_SANITIZATION);
+      const layout = sanitizeLayout(entry.layout, fallbackLayout);
       const paneState = sanitizeSavedPaneState((entry as { paneState?: unknown }).paneState, layout);
       return {
         id: typeof entry.id === "string" ? entry.id : undefined,

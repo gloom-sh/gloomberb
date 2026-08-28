@@ -210,7 +210,7 @@ describe("sanitizeLayout", () => {
       }],
       floating: [],
       detached: [],
-    }, DEFAULT_LAYOUT);
+    }, DEFAULT_LAYOUT, { migrateLegacy: true });
 
     const pane = findPaneInstance(layout, "comparison-chart:main");
     expect(pane?.paneId).toBe("chart-composer");
@@ -251,7 +251,7 @@ describe("sanitizeLayout", () => {
       }],
       floating: [],
       detached: [],
-    }, DEFAULT_LAYOUT);
+    }, DEFAULT_LAYOUT, { migrateLegacy: true });
 
     const settings = findPaneInstance(layout, "ticker-detail:aapl")?.settings;
     expect(settings).toEqual({
@@ -274,6 +274,28 @@ describe("sanitizeLayout", () => {
     expect(settings).not.toHaveProperty("chartAxisMode");
     expect(settings).not.toHaveProperty("chartRangePreset");
     expect(settings).not.toHaveProperty("chartResolution");
+  });
+
+  test("does not convert legacy chart settings during ordinary sanitization", () => {
+    const layout = sanitizeLayout({
+      dockRoot: { kind: "pane", instanceId: "ticker-detail:aapl" },
+      instances: [{
+        instanceId: "ticker-detail:aapl",
+        paneId: "ticker-research",
+        binding: { kind: "fixed", symbol: "AAPL" },
+        settings: {
+          chartRangePreset: "1Y",
+          chartResolution: "1wk",
+        },
+      }],
+      floating: [],
+      detached: [],
+    }, DEFAULT_LAYOUT);
+
+    expect(findPaneInstance(layout, "ticker-detail:aapl")?.settings).toEqual({
+      chartRangePreset: "1Y",
+      chartResolution: "1wk",
+    });
   });
 
   test("falls back to the default layout when given an obsolete column layout", () => {
