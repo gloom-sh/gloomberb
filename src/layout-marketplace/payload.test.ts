@@ -6,6 +6,7 @@ import {
   parseMarketplaceLayoutEntry,
   parseMarketplaceLayoutList,
   publishableMarketplaceLayout,
+  publishableMarketplacePane,
 } from "./payload";
 
 const component = () => null;
@@ -120,6 +121,42 @@ function validEntry() {
 }
 
 describe("layout marketplace payloads", () => {
+  test("projects one pane through the same privacy contract", () => {
+    const pane = publishableMarketplacePane({
+      instanceId: "twitter-feed:private-source",
+      paneId: "twitter-feed",
+      title: "Semiconductor X Feed",
+      params: { query: "$NVDA OR $AMD" },
+      settings: { dense: true, accessToken: "secret" },
+      binding: { kind: "follow", sourceInstanceId: "portfolio-list:private" },
+    }, {
+      pluginState: {
+        "gloomberb-cloud": {
+          feeds: { feeds: [{ query: "$NVDA OR $AMD" }] },
+          sessionToken: "secret",
+        },
+      },
+    }, panes, "NVDA");
+
+    expect(pane.layout.instances).toEqual([{
+      instanceId: "p1",
+      paneId: "twitter-feed",
+      title: "Semiconductor X Feed",
+      params: { query: "$NVDA OR $AMD" },
+      settings: { dense: true },
+      binding: { kind: "fixed", symbol: "NVDA" },
+    }]);
+    expect(pane.paneState.p1).toMatchObject({
+      pluginState: {
+        "gloomberb-cloud": {
+          feeds: { feeds: [{ query: "$NVDA OR $AMD" }] },
+        },
+      },
+    });
+    expect(JSON.stringify(pane)).not.toContain("private-source");
+    expect(JSON.stringify(pane)).not.toContain("secret");
+  });
+
   test("shares portable pane setup and state while redacting private data", () => {
     const fixture = portableFixture();
     const payload = publishableMarketplaceLayout(fixture.layout, fixture.paneState, panes);

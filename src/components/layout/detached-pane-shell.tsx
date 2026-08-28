@@ -2,7 +2,7 @@ import { Box, Span, Text, useContextMenu, useRendererHost, useUiCapabilities } f
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
-import { useAppDispatch, useAppSelector } from "../../state/app/context";
+import { resolveTickerForPane, useAppDispatch, useAppSelector } from "../../state/app/context";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { findPaneInstance } from "../../types/config";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -64,14 +64,19 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, desktopWindowBridge.paneId) ?? null);
   const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) ?? null : null;
   const hasPaneSettings = !!instance && pluginRegistry.hasPaneSettings(instance.instanceId);
-  const sharePayload = useMemo(() => instance && publicSharing
-    ? buildPaneSharePayload(pluginRegistry, instance, paneState[instance.instanceId] ?? {})
-    : null, [instance, paneState, pluginRegistry, publicSharing]);
-  const quickSettings = instance ? pluginRegistry.resolvePaneQuickSettings(instance.instanceId) : [];
   const titleState = useMemo(
-    () => ({ config, paneState }) as Parameters<typeof getPaneDisplayTitle>[0],
+    () => ({ config, paneState }) as Parameters<typeof resolveTickerForPane>[0],
     [config, paneState],
   );
+  const sharePayload = useMemo(() => instance && publicSharing
+    ? buildPaneSharePayload(
+        pluginRegistry,
+        instance,
+        paneState[instance.instanceId] ?? {},
+        resolveTickerForPane(titleState, instance.instanceId),
+      )
+    : null, [instance, paneState, pluginRegistry, publicSharing, titleState]);
+  const quickSettings = instance ? pluginRegistry.resolvePaneQuickSettings(instance.instanceId) : [];
   const title = instance && paneDef
     ? getPaneDisplayTitle(titleState, instance, paneDef, pluginRegistry.panes)
     : "Detached Pane";

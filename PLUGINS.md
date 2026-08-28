@@ -511,7 +511,7 @@ ctx.registerPane({
 });
 ```
 
-Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`.
+Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share Pane applies this projection automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
 
 ### Pane quick settings
 

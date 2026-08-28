@@ -1,3 +1,7 @@
+import {
+  parseMarketplaceLayoutPayload,
+  type LayoutMarketplacePayload,
+} from "../layout-marketplace/payload";
 import { safeExternalUrl } from "../utils/external-url";
 
 export const MAX_SHARE_BYTES = 128 * 1024;
@@ -39,13 +43,22 @@ export interface ArticleShareData {
   sourceUrl?: string;
 }
 
-export interface PaneShareData {
+export interface LegacyPaneShareData {
   version: 1;
   templateId: string;
   title: string;
   description?: string;
   data: Record<string, ShareJsonValue>;
 }
+
+export interface PortablePaneShareData {
+  version: 2;
+  title: string;
+  description?: string;
+  layout: LayoutMarketplacePayload;
+}
+
+export type PaneShareData = LegacyPaneShareData | PortablePaneShareData;
 
 export type SharePayload =
   | { kind: "table"; data: TableShareData }
@@ -121,16 +134,31 @@ function boundedJson(value: unknown, depth = 0): value is ShareJsonValue {
   return entries.length <= MAX_PANE_OBJECT_KEYS && entries.every(([, entry]) => boundedJson(entry, depth + 1));
 }
 
-function isPaneData(value: unknown): value is PaneShareData {
-  return record(value)
+function parsePaneData(value: unknown): PaneShareData | null {
+  if (!record(value) || !shortString(value.title)) return null;
+  if (
+    value.version === 1
     && Object.keys(value).every((key) => ["version", "templateId", "title", "description", "data"].includes(key))
-    && value.version === 1
     && typeof value.templateId === "string"
     && PANE_TEMPLATE_ID.test(value.templateId)
-    && shortString(value.title)
     && (value.description === undefined || shortString(value.description, MAX_PANE_DESCRIPTION_LENGTH))
     && record(value.data)
-    && boundedJson(value.data);
+    && boundedJson(value.data)
+  ) return value as unknown as LegacyPaneShareData;
+  if (
+    value.version !== 2
+    || !Object.keys(value).every((key) => ["version", "title", "description", "layout"].includes(key))
+    || (value.description !== undefined && !shortString(value.description, MAX_PANE_DESCRIPTION_LENGTH))
+  ) return null;
+  const layout = parseMarketplaceLayoutPayload(value.layout);
+  return layout?.schemaVersion === 2 && layout.layout.instances.length === 1
+    ? {
+        version: 2,
+        title: value.title,
+        ...(value.description === undefined ? {} : { description: value.description }),
+        layout,
+      }
+    : null;
 }
 
 export function parseSharePayload(value: unknown): SharePayload | null {
@@ -141,6 +169,9 @@ export function parseSharePayload(value: unknown): SharePayload | null {
   if (value.kind === "table" && isTableData(value.data)) return value as unknown as SharePayload;
   if (value.kind === "chart" && isChartData(value.data)) return value as unknown as SharePayload;
   if (value.kind === "article" && isArticleData(value.data)) return value as unknown as SharePayload;
-  if (value.kind === "pane" && isPaneData(value.data)) return value as unknown as SharePayload;
+  if (value.kind === "pane") {
+    const data = parsePaneData(value.data);
+    if (data) return { kind: "pane", data };
+  }
   return null;
 }

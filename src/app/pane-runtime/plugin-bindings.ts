@@ -5,6 +5,7 @@ import {
 } from "../../components/command-bar/workflow/ops";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
+import { materializeMarketplaceLayout } from "../../layout-marketplace/payload";
 import {
   isPaneInLayout,
   removePane,
@@ -133,6 +134,25 @@ export function bindAppPanePluginRegistry({
       buildPaneInstance,
       placePaneInstance,
     });
+  };
+  pluginRegistry.openPortablePaneShareAsyncFn = async (payload) => {
+    if (isDetachedWindow) throw new Error("Open shared panes in the main window.");
+    const materialized = materializeMarketplaceLayout(payload);
+    const sharedPane = materialized.layout.instances[0];
+    if (!sharedPane) throw new Error("This shared pane is invalid.");
+    const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
+    const ownerId = pluginRegistry.getPanePluginId(sharedPane.paneId);
+    if (!paneDef || (ownerId && stateRef.current.config.disabledPlugins.includes(ownerId))) {
+      throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+    }
+    const instance = buildPaneInstance(sharedPane.paneId, sharedPane);
+    if (!instance) throw new Error("This shared pane could not be created.");
+    dispatch({
+      type: "REPLACE_PANE_STATE",
+      paneId: instance.instanceId,
+      state: materialized.paneState[instance.instanceId] ?? {},
+    });
+    placePaneInstance(instance, paneDef, { placement: "floating" });
   };
   pluginRegistry.createPaneFromTemplateFn = (templateId, options) => {
     if (isDetachedWindow) return;

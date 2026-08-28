@@ -237,7 +237,7 @@ export interface PaneTemplateDef {
     context: PaneTemplateContext,
     options?: PaneTemplateCreateOptions,
   ) => PaneTemplateInstanceConfig | null | Promise<PaneTemplateInstanceConfig | null>;
-  /** Explicit public-data adapter. Templates without one cannot be shared. */
+  /** Legacy v1 restoration or an explicit transformed snapshot; normal pane shares use portableShare. */
   publicShare?: PaneTemplatePublicShareDef;
 }
 

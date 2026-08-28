@@ -3,6 +3,24 @@ import { createShare, deleteShare, getShare, openLiveShareUrl, publicShareUrl, S
 import { parseSharePayload } from "./payload";
 
 const article = { kind: "article", data: { title: "AAPL", text: "Research", sourceUrl: "https://example.com/a" } } as const;
+const portablePane = {
+  kind: "pane",
+  data: {
+    version: 2,
+    title: "AAPL Price",
+    layout: {
+      schemaVersion: 2,
+      sourceConfigVersion: 13,
+      layout: {
+        dockRoot: null,
+        instances: [{ instanceId: "p1", paneId: "graph-price", binding: { kind: "fixed", symbol: "AAPL" } }],
+        floating: [{ instanceId: "p1", x: 0, y: 0, width: 100, height: 30 }],
+        detached: [],
+      },
+      paneState: {},
+    },
+  },
+} as const;
 const shareId = "0123456789abcdef0123456789abcdef";
 
 describe("share API client", () => {
@@ -17,6 +35,21 @@ describe("share API client", () => {
     expect(parseSharePayload({
       kind: "pane",
       data: { version: 1, templateId: "../private", title: "Private", data: {} },
+    })).toBeNull();
+    expect(parseSharePayload(portablePane)).toEqual(portablePane);
+    expect(parseSharePayload({
+      ...portablePane,
+      data: {
+        ...portablePane.data,
+        layout: {
+          ...portablePane.data.layout,
+          layout: {
+            ...portablePane.data.layout.layout,
+            instances: [],
+            floating: [],
+          },
+        },
+      },
     })).toBeNull();
   });
 

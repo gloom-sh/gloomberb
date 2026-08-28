@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
+import type { LayoutMarketplacePayload } from "../../layout-marketplace/payload";
 import {
   connectionHealth as sharedConnectionHealth,
   type ConnectionHealthRegistry,
@@ -129,6 +130,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   showPaneFn: ((paneId: string) => void) = () => {};
   createPaneFromTemplateFn: ((templateId: string, options?: PaneTemplateCreateOptions) => void) = () => {};
   createPaneFromTemplateAsyncFn: ((templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>) = async () => {};
+  openPortablePaneShareAsyncFn: ((layout: LayoutMarketplacePayload) => Promise<void>) = async () => {};
   hidePaneFn: ((paneId: string) => void) = () => {};
   focusPaneFn: ((paneId: string) => void) = () => {};
   pinTickerFn: ((symbol: string, options?: PinTickerOptions) => void) = () => {};

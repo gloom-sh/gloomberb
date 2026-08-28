@@ -462,11 +462,12 @@ export function Shell({
       pluginRegistry,
       pane.instance,
       paneState[focusedPaneId] ?? {},
+      resolveTickerForPane(titleState, focusedPaneId),
     );
     if (!payload) return false;
     void sharePane(payload);
     return true;
-  }, [focusedPaneId, paneMap, paneState, pluginRegistry, publicSharing, sharePane]);
+  }, [focusedPaneId, paneMap, paneState, pluginRegistry, publicSharing, sharePane, titleState]);
 
   useShellPaneManagementShortcuts({
     cancelActiveDrag,
@@ -499,7 +500,12 @@ export function Shell({
       floating: !!pane.floating,
     };
     const sharePayload = publicSharing
-      ? buildPaneSharePayload(pluginRegistry, pane.instance, paneState[paneId] ?? {})
+      ? buildPaneSharePayload(
+          pluginRegistry,
+          pane.instance,
+          paneState[paneId] ?? {},
+          resolveTickerForPane(titleState, paneId),
+        )
       : null;
     const items = menuForPane(
       pane,

@@ -4,7 +4,7 @@ import { getLanguage, setLanguage, t } from "../../../i18n";
 import { actionMenuWidth, menuForPane } from "./menu";
 
 describe("pane action menu", () => {
-  test("offers the global share action when the pane has a safe share adapter", async () => {
+  test("offers the global share action for a portable pane", async () => {
     let shared = false;
     const items = menuForPane(
       {

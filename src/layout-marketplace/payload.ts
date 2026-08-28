@@ -406,7 +406,7 @@ function parsePaneState(
   return parsed;
 }
 
-function parsePayload(value: unknown): LayoutMarketplacePayload | null {
+export function parseMarketplaceLayoutPayload(value: unknown): LayoutMarketplacePayload | null {
   if (!record(value) || (value.schemaVersion !== 1 && value.schemaVersion !== 2)) return null;
   const schemaVersion = value.schemaVersion;
   const required = schemaVersion === 2
@@ -449,17 +449,11 @@ function mapBinding(binding: PaneBinding | undefined, ids: ReadonlyMap<string, s
     : binding ? structuredClone(binding) : undefined;
 }
 
-export function publishableMarketplaceLayout(
-  layout: LayoutConfig,
+function publishableLayout(
+  publicLayout: LayoutConfig,
   paneState: Record<string, PaneRuntimeState>,
   panes: ReadonlyMap<string, PaneDef>,
 ): LayoutMarketplacePayload {
-  const publicLayout = removePaneInstances(
-    layout,
-    layout.instances
-      .filter((instance) => instance.paneId === "layout-marketplace")
-      .map((instance) => instance.instanceId),
-  );
   const ids = new Map(publicLayout.instances.map((instance, index) => [instance.instanceId, `p${index + 1}`]));
   const projectedState: Record<string, PaneRuntimeState> = {};
   const instances = publicLayout.instances.map((instance) => {
@@ -499,7 +493,7 @@ export function publishableMarketplaceLayout(
       height,
     })),
   };
-  const parsed = parsePayload({
+  const parsed = parseMarketplaceLayoutPayload({
     schemaVersion: 2,
     sourceConfigVersion: CURRENT_CONFIG_VERSION,
     layout: projected,
@@ -507,6 +501,47 @@ export function publishableMarketplaceLayout(
   });
   if (!parsed) throw new Error("This layout cannot be published safely.");
   return parsed;
+}
+
+export function publishableMarketplaceLayout(
+  layout: LayoutConfig,
+  paneState: Record<string, PaneRuntimeState>,
+  panes: ReadonlyMap<string, PaneDef>,
+): LayoutMarketplacePayload {
+  return publishableLayout(removePaneInstances(
+    layout,
+    layout.instances
+      .filter((instance) => instance.paneId === "layout-marketplace")
+      .map((instance) => instance.instanceId),
+  ), paneState, panes);
+}
+
+export function publishableMarketplacePane(
+  pane: LayoutConfig["instances"][number],
+  paneState: PaneRuntimeState,
+  panes: ReadonlyMap<string, PaneDef>,
+  resolvedTicker?: string | null,
+): LayoutMarketplacePayload {
+  const def = panes.get(pane.paneId);
+  if (!def) throw new Error("This pane is unavailable.");
+  const binding = pane.binding?.kind === "follow"
+    ? resolvedTicker?.trim()
+      ? { kind: "fixed" as const, symbol: resolvedTicker.trim() }
+      : { kind: "none" as const }
+    : pane.binding;
+  const size = def.defaultFloatingSize ?? { width: 80, height: 24 };
+  return publishableLayout({
+    dockRoot: null,
+    instances: [{ ...pane, ...(binding ? { binding } : {}) }],
+    floating: [{
+      instanceId: pane.instanceId,
+      x: 0,
+      y: 0,
+      width: size.width,
+      height: size.height,
+    }],
+    detached: [],
+  }, { [pane.instanceId]: paneState }, panes);
 }
 
 export function materializeMarketplaceLayout(
@@ -559,7 +594,7 @@ export function parseMarketplaceLayoutEntry(value: unknown): LayoutMarketplaceEn
     || !boundedString(value.publishedAt, 64)
     || Number.isNaN(Date.parse(value.publishedAt))
   ) return null;
-  const payload = parsePayload({
+  const payload = parseMarketplaceLayoutPayload({
     schemaVersion: value.schemaVersion,
     sourceConfigVersion: value.sourceConfigVersion,
     layout: value.layout,

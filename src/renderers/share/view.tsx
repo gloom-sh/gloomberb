@@ -72,7 +72,19 @@ export function ShareView({
     <OwnerActions deleting={deleting} error={deleteError} onDelete={onDelete} />
   );
   if (share.kind === "pane") {
-    const facts = paneFacts(share.data.data);
+    const instance = share.data.version === 2
+      ? share.data.layout.layout.instances[0]
+      : null;
+    const facts = share.data.version === 1
+      ? paneFacts(share.data.data)
+      : paneFacts({
+          paneType: instance
+            ? factLabel(instance.paneId).replace(/\b\w/g, (character) => character.toUpperCase())
+            : undefined,
+          ...(instance?.binding?.kind === "fixed" ? { symbol: instance.binding.symbol } : {}),
+          ...(instance?.params ?? {}),
+          ...(instance?.settings ?? {}),
+        });
     return (
       <main className="pane">
         <header>
