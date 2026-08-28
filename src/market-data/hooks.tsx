@@ -213,47 +213,6 @@ export function useQuoteEntries(
   }, [coordinator, instrumentKey, keysVersion]);
 }
 
-export function useChartQuery(
-  request: ChartRequest | null | undefined,
-  options: ChartQueryOptions = {},
-): QueryEntry<PricePoint[]> | null {
-  const key = request ? buildChartKey(request) : null;
-  useCoordinatorKeysVersion(key ? [key] : []);
-  const coordinator = getSharedMarketDataCoordinator();
-  const entry = coordinator && request ? coordinator.getChartEntry(request) : null;
-  const appActive = useAppActive();
-  const wasActiveRef = useRef(appActive);
-  const refreshIntervalMs = Math.max(0, options.refreshIntervalMs ?? 0);
-
-  useEffect(() => {
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !request) {
-      wasActiveRef.current = appActive;
-      return;
-    }
-    if (!appActive) {
-      wasActiveRef.current = false;
-      return;
-    }
-
-    const forceRefresh = refreshIntervalMs > 0 && !wasActiveRef.current;
-    wasActiveRef.current = true;
-    void coordinator.loadChart(request, { forceRefresh }).catch(() => {});
-  }, [appActive, key, refreshIntervalMs]);
-
-  useEffect(() => {
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !request || !appActive || refreshIntervalMs <= 0) return;
-
-    const interval = setInterval(() => {
-      void coordinator.loadChart(request, { forceRefresh: true }).catch(() => {});
-    }, refreshIntervalMs);
-    return () => clearInterval(interval);
-  }, [appActive, key, refreshIntervalMs]);
-
-  return entry;
-}
-
 export function useChartQueries(
   requests: readonly ChartRequest[],
   options: ChartQueryOptions = {},

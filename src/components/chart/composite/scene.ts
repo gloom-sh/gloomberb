@@ -17,7 +17,6 @@ import type {
 import {
   buildCompositeTimeScale,
   projectCompositeTimestamp,
-  unprojectCompositeTimestamp,
 } from "./time-scale";
 import type { CompositeTimeScale } from "./types";
 
@@ -521,26 +520,6 @@ export function resolveCompositeCursorDate(scene: CompositeChartScene, localX: n
     }
   });
   return scene.dates[nearestIndex] ?? null;
-}
-
-export function resolveCompositeTimeAxisDate(
-  scene: CompositeChartScene,
-  ratio: number,
-): Date {
-  const safeRatio = Math.max(0, Math.min(1, ratio));
-  if (scene.timeScale.kind === "market" && scene.dates.length > 0) {
-    let nearestIndex = 0;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-    scene.dateRatios.forEach((candidate, index) => {
-      const distance = Math.abs(candidate - safeRatio);
-      if (distance < nearestDistance) {
-        nearestIndex = index;
-        nearestDistance = distance;
-      }
-    });
-    return scene.dates[nearestIndex] ?? new Date(scene.startTime);
-  }
-  return new Date(unprojectCompositeTimestamp(scene.timeScale, safeRatio));
 }
 
 export function resolveAdjacentCompositeCursorDate(

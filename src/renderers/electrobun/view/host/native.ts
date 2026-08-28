@@ -1,5 +1,4 @@
 import type { ContextMenuItem } from "../../../../types/context-menu";
-import { editableTextContextMenuItems } from "../../../../ui/context-menu";
 import { backendRequest, onContextMenuSelect } from "../backend-rpc";
 import {
   DesktopContextMenuActionScope,
@@ -41,8 +40,4 @@ export async function showDesktopContextMenu(items: ContextMenuItem[]): Promise<
     contextMenuActionScope.clearRequest(requestId);
     return false;
   }
-}
-
-export function showEditableTextContextMenu(): Promise<boolean> {
-  return showDesktopContextMenu(editableTextContextMenuItems());
 }

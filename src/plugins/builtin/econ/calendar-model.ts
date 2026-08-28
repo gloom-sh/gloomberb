@@ -168,11 +168,6 @@ export function getCalendarCache(options?: { allowExpired?: boolean }): EconCale
   return readPersistedCache(options);
 }
 
-export function getFreshCalendarCache(): EconCalendarCacheEntry | null {
-  const cached = getCalendarCache();
-  return cached && !cached.stale ? cached : null;
-}
-
 export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
   /** Set when the network failed and cached events were served instead. */
   refreshError?: string;

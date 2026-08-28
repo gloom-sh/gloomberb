@@ -56,7 +56,3 @@ export function createBrowserConfigStore(storage: StorageLike): ConfigStoreHost 
 export function installBrowserConfigStore(storage: StorageLike = localStorage): void {
   setConfigStoreHost(createBrowserConfigStore(storage));
 }
-
-export async function loadBrowserConfig(store = createBrowserConfigStore(localStorage)): Promise<AppConfig> {
-  return store.loadConfig(BROWSER_DATA_DIR);
-}

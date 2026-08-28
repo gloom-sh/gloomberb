@@ -28,10 +28,6 @@ export function clampFontSize(value: unknown): number {
   return Math.min(MAX_FONT_SIZE_PX, Math.max(MIN_FONT_SIZE_PX, Math.round(numeric)));
 }
 
-export function getFontSize(): number {
-  return appliedFontSizePx;
-}
-
 function roundToHundredth(value: number): number {
   return Math.round(value * 100) / 100;
 }
@@ -59,11 +55,4 @@ export function syncFontScale(fontSizePx: unknown): boolean {
   style.setProperty("font-size", `${size}px`);
   appliedToDocument = true;
   return true;
-}
-
-export function resetFontScaleForTests(): void {
-  appliedFontSizePx = BASE_FONT_SIZE_PX;
-  appliedToDocument = false;
-  WEB_CELL_WIDTH = BASE_CELL_WIDTH_PX;
-  WEB_CELL_HEIGHT = BASE_CELL_HEIGHT_PX;
 }
