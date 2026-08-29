@@ -9,6 +9,7 @@ import {
   type PaneFooterSegment,
   type SpeedometerSegment,
 } from "../../../components";
+import { ExternalLinkText } from "../../../components/ui";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { blendHex, colors } from "../../../theme/colors";
@@ -48,6 +49,7 @@ const RANGE_OPTIONS = [
 ];
 
 const GAUGE_SEGMENTS: SpeedometerSegment[] = gaugeSegmentsFromZones();
+const WIKIPEDIA_ARTICLE_URL = "https://en.wikipedia.org/wiki/Buffett_indicator";
 
 function bundleOf(state: BuffettLoadState): BuffettBundle | null {
   switch (state.status) {
@@ -297,16 +299,20 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
             />
           </Box>
 
-          <Box flexDirection="column" gap={0} width={Math.max(1, width - 2)}>
-            <Text fg={colors.textDim} wrapMode="word">
-              Market cap divided by GDP. 100% means the market equals one year of output.
+          <Box flexDirection="column" gap={1} width={Math.max(1, width - 2)}>
+            <Text fg={colors.textDim} wrapMode="word" wrapText>
+              The Buffett Indicator is the total value of US stocks divided by GDP. At 100%, the market is worth one year of economic output. Warren Buffett popularized the ratio in a December 2001 Fortune essay with Carol Loomis, drawn from a Sun Valley talk after the 1990s boom. He called it probably the best single measure of where valuations stand at any given moment.
             </Text>
-            <Text fg={colors.textDim} wrapMode="word">
-              Cheap below 75%, fair 90 to 115%, rich above 135%. σ is the trend gap on this range.
+            <Text fg={colors.textDim} wrapMode="word" wrapText>
+              He treated it as a market-wide compass, not a trade timer. After that boom, 70 to 80% looked cheap and the 200% peak in 1999 and 2000 looked like fire. It is still the usual whole-market valuation check, though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like versus 2001, which is why this pane also shows the gap versus trend (σ). Cheap here is below 75%, fair 90 to 115%, rich above 135%. Wilshire is a daily full-cap proxy; Z.1 is the Fed's quarterly corporate-equities series.
             </Text>
-            <Text fg={colors.textDim} wrapMode="word">
-              Wilshire is daily. Z.1 is the Fed quarterly corporate-equities series.
-            </Text>
+            <Box flexDirection="row" height={1} overflow="hidden">
+              <ExternalLinkText
+                url={WIKIPEDIA_ARTICLE_URL}
+                label="Buffett indicator, Wikipedia"
+                color={colors.text}
+              />
+            </Box>
           </Box>
         </Box>
       </ScrollBox>

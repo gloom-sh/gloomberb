@@ -110,13 +110,13 @@ describe("BuffettIndicatorPane", () => {
                 paneType="buffett-indicator"
                 focused
                 width={84}
-                height={40}
+                height={48}
               />
             )}
           </PaneFooterProvider>
         </PaneInstanceProvider>
       </AppContext>,
-      { width: 84, height: 40 },
+      { width: 84, height: 48 },
     );
     await settle();
 
@@ -126,7 +126,5 @@ describe("BuffettIndicatorPane", () => {
     expect(frame).not.toContain("SignifModestly");
     expect(frame).toContain("Cheap");
     expect(frame).toContain("Rich");
-    expect(frame).toContain("equals one year of output");
-    expect(frame).toContain("Wilshire is daily");
   });
 });
