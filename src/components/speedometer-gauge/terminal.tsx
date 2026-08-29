@@ -64,13 +64,15 @@ function labelForSegment(segment: SpeedometerSegment, gaugeWidth: number): strin
   return compact;
 }
 
-function renderLabelRow(width: number, min: number, max: number, segments: SpeedometerSegment[]): GaugeChunk[] {
+function renderLabelRow(width: number, segments: SpeedometerSegment[]): GaugeChunk[] {
   const cells = blankGaugeLine(width);
-  for (const segment of segments) {
-    const centerValue = (segment.from + segment.to) / 2;
-    const center = normalizeValue(centerValue, min, max) * (width - 1);
+  const lastIndex = Math.max(segments.length - 1, 0);
+  segments.forEach((segment, index) => {
+    const center = lastIndex === 0
+      ? (width - 1) / 2
+      : (index / lastIndex) * (width - 1);
     placeText(cells, labelForSegment(segment, width), center, segment.color);
-  }
+  });
   return cellsToChunks(cells);
 }
 
@@ -211,7 +213,7 @@ export function TerminalSpeedometerGauge({
   } = useUiCapabilities();
   const nativeRenderer = useNativeRenderer();
   const gaugeWidth = Math.max(minWidth, Math.min(maxWidth, Math.floor(width - 4)));
-  const labelRow = useMemo(() => renderLabelRow(gaugeWidth, min, max, segments), [gaugeWidth, max, min, segments]);
+  const labelRow = useMemo(() => renderLabelRow(gaugeWidth, segments), [gaugeWidth, segments]);
   const tickRow = useMemo(
     () => renderTickRow(gaugeWidth, min, max, colors),
     [colors.textDim, gaugeWidth, max, min],

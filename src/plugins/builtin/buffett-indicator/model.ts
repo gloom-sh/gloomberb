@@ -73,6 +73,8 @@ export interface Extreme {
 export interface BuffettChartProjection {
   points: ProjectedChartPoint[];
   overlays: ChartIndicatorOverlays;
+  yDomain: { min: number; max: number };
+  yearLabels: string[];
 }
 
 export interface BuffettViewModel {
@@ -163,12 +165,13 @@ export const ZONE_TABLE: readonly {
   max: number | null;
   id: ValuationZoneId;
   label: string;
+  gaugeLabel: string;
 }[] = [
-  { max: 75, id: "significantly-undervalued", label: "Significantly Undervalued" },
-  { max: 90, id: "modestly-undervalued", label: "Modestly Undervalued" },
-  { max: 115, id: "fair", label: "Fair Valued" },
-  { max: 135, id: "modestly-overvalued", label: "Modestly Overvalued" },
-  { max: null, id: "significantly-overvalued", label: "Significantly Overvalued" },
+  { max: 75, id: "significantly-undervalued", label: "Significantly Undervalued", gaugeLabel: "Cheap" },
+  { max: 90, id: "modestly-undervalued", label: "Modestly Undervalued", gaugeLabel: "Low" },
+  { max: 115, id: "fair", label: "Fair Valued", gaugeLabel: "Fair" },
+  { max: 135, id: "modestly-overvalued", label: "Modestly Overvalued", gaugeLabel: "High" },
+  { max: null, id: "significantly-overvalued", label: "Significantly Overvalued", gaugeLabel: "Rich" },
 ];
 
 function zoneColor(id: ValuationZoneId): string {
@@ -420,10 +423,6 @@ export function sliceByRange(
   return sliced.length >= 2 ? sliced : [...points];
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
 export function projectChart(
   visible: readonly RatioPoint[],
   fit: TrendFit,
@@ -457,11 +456,15 @@ export function projectChart(
     const date = visible[i]!.date;
     const mid = trendAt(fit, date);
     const band = (k: number) => mid * Math.exp(k * fit.sigma);
-    middle.push({ index: i, value: clamp(mid, yMin, yMax) });
-    upper2.push({ index: i, value: clamp(band(2), yMin, yMax) });
-    lower2.push({ index: i, value: clamp(band(-2), yMin, yMax) });
-    upper1.push({ index: i, value: clamp(band(1), yMin, yMax) });
-    lower1.push({ index: i, value: clamp(band(-1), yMin, yMax) });
+    const upper = band(2);
+    const lower = band(-2);
+    middle.push({ index: i, value: mid });
+    upper2.push({ index: i, value: upper });
+    lower2.push({ index: i, value: lower });
+    upper1.push({ index: i, value: band(1) });
+    lower1.push({ index: i, value: band(-1) });
+    yMin = Math.min(yMin, lower);
+    yMax = Math.max(yMax, upper);
   }
 
   const overlays: ChartIndicatorOverlays = {
@@ -480,7 +483,30 @@ export function projectChart(
     macd: null,
   };
 
-  return { points, overlays };
+  const span = Math.max(yMax - yMin, 1);
+  const pad = span * 0.08;
+  return {
+    points,
+    overlays,
+    yDomain: { min: yMin - pad, max: yMax + pad },
+    yearLabels: chartYearLabels(points),
+  };
+}
+
+export function chartYearLabels(points: readonly ProjectedChartPoint[], maxLabels = 8): string[] {
+  if (points.length === 0) return [];
+  const years: string[] = [];
+  for (const point of points) {
+    const year = String(point.date.getFullYear());
+    if (years[years.length - 1] !== year) years.push(year);
+  }
+  if (years.length <= maxLabels) return years;
+  const picked: string[] = [];
+  for (let i = 0; i < maxLabels; i += 1) {
+    const year = years[Math.round((i / Math.max(maxLabels - 1, 1)) * (years.length - 1))]!;
+    if (picked[picked.length - 1] !== year) picked.push(year);
+  }
+  return picked;
 }
 
 function findExtreme(
@@ -569,7 +595,7 @@ export function gaugeSegmentsFromZones(): {
     const segment = {
       from,
       to: row.max == null ? maxGauge : to - 0.001,
-      label: row.label,
+      label: row.gaugeLabel,
       color: zoneColor(row.id),
     };
     from = row.max ?? maxGauge;

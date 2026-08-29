@@ -247,8 +247,10 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
               mode="line"
               colors={palette}
               indicators={view.chart.overlays}
-              showTimeAxis
-              timeAxisColor={colors.textDim}
+              yDomain={view.chart.yDomain}
+              yAxisSide="left"
+              xAxisLabels={view.chart.yearLabels}
+              xAxisColor={colors.textDim}
               yAxisColor={colors.textDim}
               formatYAxisValue={(v) => formatRatioPct(v)}
             />
@@ -293,6 +295,18 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
               value={range}
               onChange={(value) => setRange(value as BuffettRangeId)}
             />
+          </Box>
+
+          <Box flexDirection="column" gap={0} width={Math.max(1, width - 2)}>
+            <Text fg={colors.textDim} wrapMode="word">
+              Market cap divided by GDP. 100% means the market equals one year of output.
+            </Text>
+            <Text fg={colors.textDim} wrapMode="word">
+              Cheap below 75%, fair 90 to 115%, rich above 135%. σ is the trend gap on this range.
+            </Text>
+            <Text fg={colors.textDim} wrapMode="word">
+              Wilshire is daily. Z.1 is the Fed quarterly corporate-equities series.
+            </Text>
           </Box>
         </Box>
       </ScrollBox>

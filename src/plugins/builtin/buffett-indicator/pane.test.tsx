@@ -111,19 +111,23 @@ describe("BuffettIndicatorPane", () => {
                 paneType="buffett-indicator"
                 focused
                 width={84}
-                height={26}
+                height={40}
               />
             )}
           </PaneFooterProvider>
         </PaneInstanceProvider>
       </AppContext>,
-      { width: 84, height: 26 },
+      { width: 84, height: 40 },
     );
     await settle();
 
     const frame = setup.captureCharFrame();
-    // 45000 / 31700 * 100 ≈ 141.96 → 142%
     expect(frame).toContain("142%");
     expect(frame).toContain("Significantly Overvalued");
+    expect(frame).not.toContain("SignifModestly");
+    expect(frame).toContain("Cheap");
+    expect(frame).toContain("Rich");
+    expect(frame).toContain("equals one year of output");
+    expect(frame).toContain("Wilshire is daily");
   });
 });

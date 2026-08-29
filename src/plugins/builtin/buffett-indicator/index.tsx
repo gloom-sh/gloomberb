@@ -10,7 +10,7 @@ export const buffettIndicatorModule: PluginModule = {
     component: BuffettIndicatorPane,
     defaultPosition: "right",
     defaultMode: "floating",
-    defaultFloatingSize: { width: 84, height: 26 },
+    defaultFloatingSize: { width: 84, height: 38 },
     settings: buildBuffettSettingsDef(),
   }],
   paneTemplates: [{

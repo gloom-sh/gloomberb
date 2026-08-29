@@ -555,6 +555,23 @@ describe("renderChart", () => {
     expect(sceneWithIndicators?.max).toBe(baseScene?.max);
   });
 
+  test("honors an explicit yDomain over the data range", () => {
+    const projection = projectChartData(chartFixture, 12, "line", false);
+    const scene = buildChartScene(projection.points, {
+      width: 12,
+      height: 6,
+      showVolume: false,
+      volumeHeight: 0,
+      cursorX: null,
+      cursorY: null,
+      mode: projection.effectiveMode,
+      colors: palette,
+      yDomain: { min: 0, max: 500 },
+    });
+    expect(scene?.min).toBe(0);
+    expect(scene?.max).toBe(500);
+  });
+
   test("draws indicator overlays below price pixels", () => {
     const points: PricePoint[] = [
       { date: new Date("2024-01-02"), close: 10, volume: 100 },

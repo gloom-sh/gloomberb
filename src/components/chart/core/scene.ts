@@ -46,6 +46,7 @@ export interface RenderChartOptions {
   timeAxisDates?: Array<Date | string | number>;
   indicators?: ChartIndicatorOverlays | null;
   marketSession?: ChartMarketSession | null;
+  yDomain?: { min: number; max: number };
 }
 
 export interface ChartScene {
@@ -115,8 +116,10 @@ export function buildChartScene(
   const dataMax = isHighLowMode(opts.mode)
     ? Math.max(...points.map((point) => point.high))
     : Math.max(...points.map((point) => point.close));
-  const min = dataMin;
-  const max = dataMax;
+  const domainMin = opts.yDomain && Number.isFinite(opts.yDomain.min) ? opts.yDomain.min : dataMin;
+  const domainMax = opts.yDomain && Number.isFinite(opts.yDomain.max) ? opts.yDomain.max : dataMax;
+  const min = domainMin;
+  const max = domainMax > domainMin ? domainMax : domainMin + 1;
   const activeIdx = getActivePointIndex(points.length, dimensions.width, opts.cursorX, opts.mode);
   const activePoint = points[activeIdx]!;
   const range = max - min || 1;
