@@ -136,20 +136,19 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
     listeners.forEach((listener) => listener());
     expect(fillRects).toHaveLength(2);
 
-    const pointer = (type: string, clientX: number) => canvas.dispatchEvent(
-      new testWindow.PointerEvent(type, {
+    const mouse = (type: string, target: EventTarget, clientX: number) => target.dispatchEvent(
+      new testWindow.MouseEvent(type, {
         bubbles: true,
         cancelable: true,
         button: 0,
         clientX,
         clientY: 20,
-        pointerId: 7,
       }) as never,
     );
     await act(async () => {
-      pointer("pointerdown", 10);
-      pointer("pointermove", 11);
-      pointer("pointerup", 11);
+      mouse("mousedown", canvas, 10);
+      mouse("mousemove", testWindow.document, 11);
+      mouse("mouseup", testWindow.document, 11);
     });
     expect(pointerXs).toEqual([10, 11, 11]);
   } finally {

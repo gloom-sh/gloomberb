@@ -6,7 +6,6 @@ import {
   useLayoutEffect,
   useRef,
   type CSSProperties,
-  type PointerEvent,
   type ReactNode,
   type Ref,
 } from "react";
@@ -50,8 +49,8 @@ const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurf
 
 const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaintSource }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const pointerIdRef = useRef<number | null>(null);
-  const lastPointerXRef = useRef<number | null>(null);
+  const draggingRef = useRef(false);
+  const lastMouseXRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     let paintedRevision = Number.NaN;
@@ -77,8 +76,9 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
     return source.subscribe(paint);
   }, [source]);
 
-  const pointerInput = (event: PointerEvent<HTMLCanvasElement>): ChartPointerInput => {
-    const bounds = (event.currentTarget.parentElement ?? event.currentTarget).getBoundingClientRect();
+  const mouseInput = (event: Pick<globalThis.MouseEvent, "clientX" | "clientY" | "shiftKey" | "altKey" | "ctrlKey" | "metaKey">): ChartPointerInput => {
+    const surface = canvasRef.current?.parentElement ?? canvasRef.current;
+    const bounds = surface?.getBoundingClientRect() ?? { left: 0, top: 0 };
     return {
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
@@ -87,58 +87,54 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       ctrl: event.ctrlKey || event.metaKey,
     };
   };
-  const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (event.button !== 0 || !source.pointerDown?.(pointerInput(event))) return;
-    pointerIdRef.current = event.pointerId;
-    lastPointerXRef.current = event.clientX;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const active = document.activeElement;
-    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.blur();
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
-    if (pointerIdRef.current !== event.pointerId) return;
-    source.pointerMove?.(pointerInput(event));
-    lastPointerXRef.current = event.clientX;
-    event.preventDefault();
-    event.stopPropagation();
-  };
-  const finishPointer = (event: PointerEvent<HTMLCanvasElement>, cancelled: boolean) => {
-    if (pointerIdRef.current !== event.pointerId) return;
-    pointerIdRef.current = null;
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (cancelled) {
-      source.pointerCancel?.();
-    } else {
-      const input = pointerInput(event);
-      if (lastPointerXRef.current !== event.clientX) source.pointerMove?.(input);
+
+  useEffect(() => {
+    const move = (event: globalThis.MouseEvent) => {
+      if (!draggingRef.current) return;
+      source.pointerMove?.(mouseInput(event));
+      lastMouseXRef.current = event.clientX;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const finish = (event: globalThis.MouseEvent) => {
+      if (!draggingRef.current || event.button !== 0) return;
+      draggingRef.current = false;
+      const input = mouseInput(event);
+      if (lastMouseXRef.current !== event.clientX) source.pointerMove?.(input);
       source.pointerUp?.(input);
-    }
-    lastPointerXRef.current = null;
-    event.preventDefault();
-    event.stopPropagation();
-  };
+      lastMouseXRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    const cancel = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      lastMouseXRef.current = null;
+      source.pointerCancel?.();
+    };
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mouseup", finish, true);
+    window.addEventListener("blur", cancel);
+    return () => {
+      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mouseup", finish, true);
+      window.removeEventListener("blur", cancel);
+      cancel();
+    };
+  }, [source]);
 
   return (
     <canvas
       ref={canvasRef}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={(event) => finishPointer(event, false)}
       onMouseDown={(event) => {
-        if (pointerIdRef.current === null) return;
+        if (event.button !== 0 || !source.pointerDown?.(mouseInput(event.nativeEvent))) return;
+        draggingRef.current = true;
+        lastMouseXRef.current = event.clientX;
+        const active = document.activeElement;
+        if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.blur();
         event.preventDefault();
         event.stopPropagation();
       }}
-      onMouseMove={(event) => {
-        if (pointerIdRef.current === null) return;
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      onPointerCancel={(event) => finishPointer(event, true)}
       style={{
         display: "block",
         width: "100%",
