@@ -4,7 +4,7 @@ import {
   resetFredSeriesPersistence,
 } from "../../../data/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { loadBuffettBundle } from "./client";
+import { createBuffettSeriesLoader, loadBuffettBundle } from "./client";
 import type { BuffettSeriesLoader } from "./model";
 
 function payload(seriesId: string, observations: Array<{ date: string; value: number }>) {
@@ -67,14 +67,14 @@ describe("loadBuffettBundle", () => {
     for (const request of requests) {
       expect(request.startDate).toBeUndefined();
       expect(request.sortOrder).toBe("desc");
-      if (request.seriesId === "WILL5000PRFC") expect(request.limit).toBe(4000);
+      if (request.seriesId === "WILL5000PRFC") expect(request.limit).toBe(10000);
       else expect(request.limit).toBe(340);
     }
   });
 
   test("degrades to one mode when a numerator fails", async () => {
     const loader: BuffettSeriesLoader = async (request) => {
-      if (request.seriesId === "WILL5000PRFC" || request.seriesId === "WILL5000PR") {
+      if (request.seriesId === "WILL5000PRFC") {
         throw new Error("Unsupported FRED series");
       }
       if (request.seriesId === "NCBEILQ027S") return payload(request.seriesId, z1Obs);
@@ -86,19 +86,48 @@ describe("loadBuffettBundle", () => {
     expect(bundle.modes.wilshire).toBeUndefined();
   });
 
-  test("retries Wilshire fallback after primary failure", async () => {
-    const seen: string[] = [];
-    const loader: BuffettSeriesLoader = async (request) => {
-      seen.push(request.seriesId);
-      if (request.seriesId === "WILL5000PRFC") throw new Error("Unsupported FRED series");
-      if (request.seriesId === "WILL5000PR") return payload(request.seriesId, wilshireObs);
-      if (request.seriesId === "NCBEILQ027S") throw new Error("Unsupported FRED series");
-      if (request.seriesId === "GDP") return payload(request.seriesId, gdpObs);
-      throw new Error(`unexpected ${request.seriesId}`);
-    };
+  test("default loader uses Yahoo for Wilshire and FRED CSV after an allowlist rejection", async () => {
+    const cloud: string[] = [];
+    const yahoo: string[] = [];
+    const csv: string[] = [];
+    const loader = createBuffettSeriesLoader({
+      loadCloudFred: async (request) => {
+        cloud.push(request.seriesId);
+        if (request.seriesId === "GDP") return payload("GDP", gdpObs);
+        throw new Error("Unsupported FRED series");
+      },
+      loadYahooIndex: async (symbol, seriesId) => {
+        yahoo.push(`${symbol}:${seriesId}`);
+        return payload(seriesId, wilshireObs);
+      },
+      loadFredCsv: async (seriesId) => {
+        csv.push(seriesId);
+        return payload(seriesId, z1Obs);
+      },
+    });
+
     const bundle = await loadBuffettBundle({ force: true, loader });
-    expect(seen).toContain("WILL5000PR");
-    expect(bundle.modes.wilshire?.series.resolvedNumeratorId).toBe("WILL5000PR");
+    expect(yahoo).toEqual(["^W5000:WILL5000PRFC"]);
+    expect(cloud.sort()).toEqual(["GDP", "NCBEILQ027S"]);
+    expect(csv).toEqual(["NCBEILQ027S"]);
+    expect(bundle.modes.wilshire).toBeDefined();
+    expect(bundle.modes.z1).toBeDefined();
+  });
+
+  test("does not fall back to FRED CSV on a non-allowlist cloud error", async () => {
+    const loader = createBuffettSeriesLoader({
+      loadCloudFred: async (request) => {
+        if (request.seriesId === "GDP") return payload("GDP", gdpObs);
+        throw new Error("offline");
+      },
+      loadYahooIndex: async (_symbol, seriesId) => payload(seriesId, wilshireObs),
+      loadFredCsv: async () => {
+        throw new Error("csv should not run");
+      },
+    });
+    const bundle = await loadBuffettBundle({ force: true, loader });
+    expect(bundle.modes.wilshire).toBeDefined();
+    expect(bundle.modes.z1).toBeUndefined();
   });
 
   test("throws when every mode fails", async () => {
@@ -114,7 +143,7 @@ describe("loadBuffettBundle", () => {
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource(
       "fred-series",
-      "WILL5000PRFC:limit=4000:sort=desc",
+      "WILL5000PRFC:limit=10000:sort=desc",
       payload("WILL5000PRFC", wilshireObs),
       { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
     );

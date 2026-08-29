@@ -7,7 +7,6 @@ import {
 } from "../../../data/fred-series";
 import {
   BUFFETT_MODES,
-  WILSHIRE_NUMERATOR,
   buildRatioSeries,
   fitLogLinearTrend,
   seriesRequest,
@@ -19,12 +18,39 @@ import {
   type ModeDef,
   type SeriesDef,
 } from "./model";
+import {
+  isUnsupportedFredSeries,
+  loadFredGraphCsvSeries,
+  loadYahooIndexSeries,
+  yahooSymbolFor,
+} from "./sources";
 
-const defaultLoader: BuffettSeriesLoader = (request) =>
-  apiClient.getCloudFredSeries(request.seriesId, {
-    limit: request.limit,
-    sortOrder: request.sortOrder,
-  });
+export function createBuffettSeriesLoader(deps: {
+  loadCloudFred: (request: FredSeriesRequest) => Promise<FredSeriesData>;
+  loadYahooIndex: (symbol: string, seriesId: string) => Promise<FredSeriesData>;
+  loadFredCsv: (seriesId: string) => Promise<FredSeriesData>;
+}): BuffettSeriesLoader {
+  return async (request) => {
+    const yahooSymbol = yahooSymbolFor(request.seriesId);
+    if (yahooSymbol) return deps.loadYahooIndex(yahooSymbol, request.seriesId);
+    try {
+      return await deps.loadCloudFred(request);
+    } catch (error) {
+      if (!isUnsupportedFredSeries(error)) throw error;
+      return deps.loadFredCsv(request.seriesId);
+    }
+  };
+}
+
+const defaultLoader: BuffettSeriesLoader = createBuffettSeriesLoader({
+  loadCloudFred: (request) =>
+    apiClient.getCloudFredSeries(request.seriesId, {
+      limit: request.limit,
+      sortOrder: request.sortOrder,
+    }),
+  loadYahooIndex: loadYahooIndexSeries,
+  loadFredCsv: loadFredGraphCsvSeries,
+});
 
 function summarizeSeriesErrors(errors: readonly string[]): string {
   if (errors.length === 0) return "Buffett Indicator data unavailable";
@@ -41,19 +67,11 @@ function tryBuildMode(
   const gdp = byId.get(mode.denominator.seriesId.trim().toUpperCase());
   if (!gdp) return null;
 
-  const primaryId = mode.numerator.seriesId.trim().toUpperCase();
-  const fallbackId = mode.numerator.fallbackSeriesId?.trim().toUpperCase();
-  const primary = byId.get(primaryId);
-  const fallback = fallbackId ? byId.get(fallbackId) : undefined;
-  const numerator = primary ?? fallback;
+  const numerator = byId.get(mode.numerator.seriesId.trim().toUpperCase());
   if (!numerator) return null;
 
-  const resolvedNumeratorId = primary
-    ? mode.numerator.seriesId
-    : mode.numerator.fallbackSeriesId!;
-
   try {
-    const series = buildRatioSeries(mode, numerator.data, gdp.data, resolvedNumeratorId);
+    const series = buildRatioSeries(mode, numerator.data, gdp.data, mode.numerator.seriesId);
     return {
       series,
       trend: fitLogLinearTrend(series.points),
@@ -93,16 +111,6 @@ export function getCachedBuffettBundle(): BuffettBundle | null {
         data: cached.data,
         stale: cached.stale,
       });
-    }
-    if (def.fallbackSeriesId) {
-      const fallbackReq = seriesRequest(def, def.fallbackSeriesId);
-      const fallbackCached = getCachedFredSeries(fallbackReq, { allowExpired: true });
-      if (fallbackCached) {
-        byId.set(def.fallbackSeriesId.trim().toUpperCase(), {
-          data: fallbackCached.data,
-          stale: fallbackCached.stale,
-        });
-      }
     }
   }
   return assembleBundle(byId, [], Date.now());
@@ -165,30 +173,6 @@ export async function loadBuffettBundle(options?: {
     const reason = outcome.reason as { def: SeriesDef; seriesId: string; error: unknown };
     const message = reason.error instanceof Error ? reason.error.message : String(reason.error);
     errors.push(`${reason.seriesId}: ${message}`);
-
-    // Wilshire primary only: retry the fallback id with the same limit/sort.
-    if (
-      reason.def.seriesId === WILSHIRE_NUMERATOR.seriesId
-      && reason.def.fallbackSeriesId
-    ) {
-      try {
-        const fallbackReq = seriesRequest(reason.def, reason.def.fallbackSeriesId);
-        const result = await loadSeries(fallbackReq, force, loader);
-        byId.set(reason.def.fallbackSeriesId.trim().toUpperCase(), {
-          data: result.data,
-          stale: result.stale,
-        });
-        if (result.refreshError) {
-          errors.push(`${reason.def.fallbackSeriesId}: ${result.refreshError}`);
-        }
-      } catch (fallbackError) {
-        errors.push(
-          `${reason.def.fallbackSeriesId}: ${
-            fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
-          }`,
-        );
-      }
-    }
   }
 
   const bundle = assembleBundle(byId, errors, Date.now());

@@ -84,7 +84,7 @@ async function settle() {
 beforeEach(() => {
   resetFredSeriesPersistence();
   const persistence = new MemoryPluginPersistence();
-  persistence.seedResource("fred-series", "WILL5000PRFC:limit=4000:sort=desc", wilshireData, FRED_SEED_META);
+  persistence.seedResource("fred-series", "WILL5000PRFC:limit=10000:sort=desc", wilshireData, FRED_SEED_META);
   persistence.seedResource("fred-series", "NCBEILQ027S:limit=340:sort=desc", z1Data, FRED_SEED_META);
   persistence.seedResource("fred-series", "GDP:limit=340:sort=desc", gdpData, FRED_SEED_META);
   attachFredSeriesPersistence(persistence);

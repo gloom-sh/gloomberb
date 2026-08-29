@@ -12,8 +12,8 @@ export interface SeriesDef {
   /** Multiply raw FRED values to $ billions. Z.1 is 1/1000; others 1. */
   scaleToBillions: number;
   request: Pick<FredSeriesRequest, "limit" | "sortOrder">;
-  /** Tried only if the primary seriesId fails to produce observations. */
-  fallbackSeriesId?: string;
+  /** When set, load this Yahoo index instead of the FRED seriesId. */
+  yahooSymbol?: string;
 }
 
 export interface ModeDef {
@@ -124,8 +124,8 @@ export const GDP: SeriesDef = {
 export const WILSHIRE_NUMERATOR: SeriesDef = {
   seriesId: "WILL5000PRFC",
   scaleToBillions: 1,
-  request: { limit: 4000, sortOrder: "desc" },
-  fallbackSeriesId: "WILL5000PR",
+  request: { limit: 10000, sortOrder: "desc" },
+  yahooSymbol: "^W5000",
 };
 
 export const Z1_NUMERATOR: SeriesDef = {
@@ -190,8 +190,8 @@ function zoneColor(id: ValuationZoneId): string {
   }
 }
 
-export function seriesRequest(def: SeriesDef, seriesId = def.seriesId): FredSeriesRequest {
-  return { seriesId, limit: def.request.limit, sortOrder: def.request.sortOrder };
+export function seriesRequest(def: SeriesDef): FredSeriesRequest {
+  return { seriesId: def.seriesId, limit: def.request.limit, sortOrder: def.request.sortOrder };
 }
 
 export function uniqueSeriesDefs(
