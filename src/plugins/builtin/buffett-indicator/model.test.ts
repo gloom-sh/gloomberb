@@ -121,11 +121,9 @@ describe("fitLogLinearTrend", () => {
     const betaPerDay = betaPerYear / daysPerYear;
     const points: RatioPoint[] = [];
     for (let year = 0; year <= 20; year += 1) {
-      const tDays = year * daysPerYear;
-      const date = new Date(originMs + tDays * 86_400_000).toISOString().slice(0, 10);
-      // Rebuild tDays from the date string the fitter will see, so the series is exact in log space.
-      const exactDays = (Date.parse(date) - originMs) / 86_400_000;
-      const ratio = 80 * Math.exp(betaPerDay * exactDays);
+      const date = `${2000 + year}-01-01`;
+      const tDays = (Date.parse(date) - originMs) / 86_400_000;
+      const ratio = 80 * Math.exp(betaPerDay * tDays);
       points.push({
         date,
         ratio,

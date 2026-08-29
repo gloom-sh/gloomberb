@@ -34,7 +34,6 @@ function payload(seriesId: string, observations: Array<{ date: string; value: nu
   };
 }
 
-// Wilshire ≈ $45T against GDP ≈ $31.7T → ~142%
 const wilshireData = payload("WILL5000PRFC", [
   { date: "2024-01-02", value: 40_000 },
   { date: "2024-07-01", value: 42_000 },
