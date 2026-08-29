@@ -211,6 +211,11 @@ function drawIndicatorOverlays(
     drawOverlay(scene.indicators.bollinger.middle, scene.indicators.bollinger.color);
     drawOverlay(scene.indicators.bollinger.lower, scene.indicators.bollinger.color);
   }
+  for (const reference of scene.indicators.referenceLines ?? []) {
+    const y = projectY(reference.value, scene.min, scene.max, top, bottom);
+    const color = parseHex(reference.color, 0.95);
+    drawLine(data, width, height, 0, y, Math.max(width - 1, 0), y, color, 1.2);
+  }
 }
 
 export function renderNativeChartBase(scene: ChartScene, pixelWidth: number, pixelHeight: number): NativeChartBitmap {

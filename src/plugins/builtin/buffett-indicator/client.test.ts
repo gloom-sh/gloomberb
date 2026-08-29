@@ -5,9 +5,18 @@ import {
 } from "../../../data/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createBuffettSeriesLoader, errorForMode, loadBuffettBundle } from "./client";
-import type { BuffettSeriesLoader } from "./model";
+import type { BuffettSeriesLoader } from "./client";
+import type { DatedSeries } from "./series";
 
-function payload(seriesId: string, observations: Array<{ date: string; value: number }>) {
+function dated(
+  seriesId: string,
+  observations: Array<{ date: string; value: number }>,
+  provenance: DatedSeries["provenance"] = "fred",
+): DatedSeries {
+  return { seriesId, observations, provenance };
+}
+
+function cachePayload(seriesId: string, observations: Array<{ date: string; value: number }>) {
   return {
     observations,
     info: {
@@ -43,18 +52,17 @@ afterEach(resetFredSeriesPersistence);
 
 describe("loadBuffettBundle", () => {
   test("loader requests use fixed limits and never a range startDate", async () => {
-    const requests: Array<{ seriesId: string; limit?: number; sortOrder?: string; startDate?: string }> = [];
-    const loader: BuffettSeriesLoader = async (request) => {
+    const requests: Array<{ seriesId: string; limit?: number; sortOrder?: string }> = [];
+    const loader: BuffettSeriesLoader = async (def) => {
       requests.push({
-        seriesId: request.seriesId,
-        limit: request.limit,
-        sortOrder: request.sortOrder,
-        startDate: request.startDate,
+        seriesId: def.seriesId,
+        limit: def.request.limit,
+        sortOrder: def.request.sortOrder,
       });
-      if (request.seriesId === "WILL5000PRFC") return payload(request.seriesId, wilshireObs);
-      if (request.seriesId === "NCBEILQ027S") return payload(request.seriesId, z1Obs);
-      if (request.seriesId === "GDP") return payload(request.seriesId, gdpObs);
-      throw new Error(`unexpected ${request.seriesId}`);
+      if (def.seriesId === "WILL5000PRFC") return dated(def.seriesId, wilshireObs, "yahoo");
+      if (def.seriesId === "NCBEILQ027S") return dated(def.seriesId, z1Obs);
+      if (def.seriesId === "GDP") return dated(def.seriesId, gdpObs);
+      throw new Error(`unexpected ${def.seriesId}`);
     };
 
     const bundle = await loadBuffettBundle({ force: true, loader });
@@ -65,7 +73,6 @@ describe("loadBuffettBundle", () => {
       "WILL5000PRFC",
     ]);
     for (const request of requests) {
-      expect(request.startDate).toBeUndefined();
       expect(request.sortOrder).toBe("desc");
       if (request.seriesId === "WILL5000PRFC") expect(request.limit).toBe(10000);
       else expect(request.limit).toBe(340);
@@ -73,13 +80,13 @@ describe("loadBuffettBundle", () => {
   });
 
   test("degrades to one mode when a numerator fails", async () => {
-    const loader: BuffettSeriesLoader = async (request) => {
-      if (request.seriesId === "WILL5000PRFC") {
+    const loader: BuffettSeriesLoader = async (def) => {
+      if (def.seriesId === "WILL5000PRFC") {
         throw new Error("Unsupported FRED series");
       }
-      if (request.seriesId === "NCBEILQ027S") return payload(request.seriesId, z1Obs);
-      if (request.seriesId === "GDP") return payload(request.seriesId, gdpObs);
-      throw new Error(`unexpected ${request.seriesId}`);
+      if (def.seriesId === "NCBEILQ027S") return dated(def.seriesId, z1Obs);
+      if (def.seriesId === "GDP") return dated(def.seriesId, gdpObs);
+      throw new Error(`unexpected ${def.seriesId}`);
     };
     const bundle = await loadBuffettBundle({ force: true, loader });
     expect(bundle.modes.z1).toBeDefined();
@@ -93,16 +100,16 @@ describe("loadBuffettBundle", () => {
     const loader = createBuffettSeriesLoader({
       loadCloudFred: async (request) => {
         cloud.push(request.seriesId);
-        if (request.seriesId === "GDP") return payload("GDP", gdpObs);
+        if (request.seriesId === "GDP") return dated("GDP", gdpObs);
         throw new Error("Unsupported FRED series");
       },
       loadYahooIndex: async (symbol, seriesId) => {
         yahoo.push(`${symbol}:${seriesId}`);
-        return payload(seriesId, wilshireObs);
+        return dated(seriesId, wilshireObs, "yahoo");
       },
       loadFredCsv: async (seriesId) => {
         csv.push(seriesId);
-        return payload(seriesId, z1Obs);
+        return dated(seriesId, z1Obs, "fred-csv");
       },
     });
 
@@ -117,10 +124,10 @@ describe("loadBuffettBundle", () => {
   test("does not fall back to FRED CSV on a non-allowlist cloud error", async () => {
     const loader = createBuffettSeriesLoader({
       loadCloudFred: async (request) => {
-        if (request.seriesId === "GDP") return payload("GDP", gdpObs);
+        if (request.seriesId === "GDP") return dated("GDP", gdpObs);
         throw new Error("offline");
       },
-      loadYahooIndex: async (_symbol, seriesId) => payload(seriesId, wilshireObs),
+      loadYahooIndex: async (_symbol, seriesId) => dated(seriesId, wilshireObs, "yahoo"),
       loadFredCsv: async () => {
         throw new Error("csv should not run");
       },
@@ -144,19 +151,19 @@ describe("loadBuffettBundle", () => {
     persistence.seedResource(
       "fred-series",
       "WILL5000PRFC:limit=10000:sort=desc",
-      payload("WILL5000PRFC", wilshireObs),
+      cachePayload("WILL5000PRFC", wilshireObs),
       { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
     );
     persistence.seedResource(
       "fred-series",
       "NCBEILQ027S:limit=340:sort=desc",
-      payload("NCBEILQ027S", z1Obs),
+      cachePayload("NCBEILQ027S", z1Obs),
       { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
     );
     persistence.seedResource(
       "fred-series",
       "GDP:limit=340:sort=desc",
-      payload("GDP", gdpObs),
+      cachePayload("GDP", gdpObs),
       { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
     );
     attachFredSeriesPersistence(persistence);

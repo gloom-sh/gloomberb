@@ -6,26 +6,6 @@ export const BUFFETT_DEFAULTS = { mode: "wilshire", range: "10Y" } as const sati
   range: BuffettRangeId;
 };
 
-const MODE_IDS = ["wilshire", "z1"] as const satisfies readonly BuffettModeId[];
-const RANGE_IDS = ["10Y", "25Y", "ALL"] as const satisfies readonly BuffettRangeId[];
-
-function isBuffettModeId(value: unknown): value is BuffettModeId {
-  return MODE_IDS.includes(value as BuffettModeId);
-}
-
-function isBuffettRangeId(value: unknown): value is BuffettRangeId {
-  return RANGE_IDS.includes(value as BuffettRangeId);
-}
-
-export function getBuffettPaneSettings(
-  settings: Record<string, unknown> | undefined,
-): { mode: BuffettModeId; range: BuffettRangeId } {
-  return {
-    mode: isBuffettModeId(settings?.mode) ? settings.mode : BUFFETT_DEFAULTS.mode,
-    range: isBuffettRangeId(settings?.range) ? settings.range : BUFFETT_DEFAULTS.range,
-  };
-}
-
 export function buildBuffettSettingsDef(): PaneSettingsDef {
   return {
     title: "Buffett Indicator Settings",

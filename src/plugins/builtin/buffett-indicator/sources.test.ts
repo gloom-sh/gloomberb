@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseFredGraphCsv, yahooChartToFredSeries } from "./sources";
+import { parseFredGraphCsv, yahooChartToDatedSeries } from "./sources";
 
 describe("parseFredGraphCsv", () => {
   test("parses values and keeps blank FRED cells as null", () => {
@@ -7,6 +7,7 @@ describe("parseFredGraphCsv", () => {
       "observation_date,NCBEILQ027S\n1945-10-01,103694\n1946-01-01,\n2024-01-01,5500000\n",
       "NCBEILQ027S",
     );
+    expect(data.provenance).toBe("fred-csv");
     expect(data.observations).toEqual([
       { date: "1945-10-01", value: 103694 },
       { date: "1946-01-01", value: null },
@@ -19,9 +20,9 @@ describe("parseFredGraphCsv", () => {
   });
 });
 
-describe("yahooChartToFredSeries", () => {
+describe("yahooChartToDatedSeries", () => {
   test("keeps finite closes and drops null bars", () => {
-    const data = yahooChartToFredSeries({
+    const data = yahooChartToDatedSeries({
       chart: {
         result: [{
           meta: { longName: "Wilshire 5000 Total Market Index" },
@@ -30,10 +31,10 @@ describe("yahooChartToFredSeries", () => {
         }],
       },
     }, "WILL5000PRFC");
+    expect(data.provenance).toBe("yahoo");
     expect(data.observations).toEqual([
       { date: "1989-01-05", value: 2718.5 },
       { date: "1989-01-07", value: 2800 },
     ]);
-    expect(data.info?.source).toBe("Yahoo Finance");
   });
 });

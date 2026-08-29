@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import type { FredSeriesData } from "../../../data/fred-series";
 import {
   BUFFETT_MODES,
   buildRatioSeries,
@@ -28,11 +27,8 @@ function scaled(date: string, value: number): ScaledObs {
   return { date, value };
 }
 
-function series(observations: Array<{ date: string; value: number | null }>): FredSeriesData {
-  return {
-    observations,
-    info: null,
-  };
+function series(observations: Array<{ date: string; value: number | null }>) {
+  return { seriesId: "test", observations, provenance: "fred" as const };
 }
 
 describe("interpolateGdpAligner", () => {
@@ -219,7 +215,7 @@ describe("nicePercentDomain", () => {
 });
 
 describe("projectChart", () => {
-  test("pins MEAN at 100% and colors the series from classifyZone", () => {
+  test("pins parity at 100% and colors the series from classifyZone", () => {
     const points: RatioPoint[] = [
       { date: "2024-01-01", ratio: 50, marketCapBillions: 10_000, gdpBillions: 20_000 },
       { date: "2025-01-01", ratio: 100, marketCapBillions: 20_000, gdpBillions: 20_000 },
@@ -227,8 +223,8 @@ describe("projectChart", () => {
     ];
     const chart = projectChart(points);
     expect(chart.overlays.bollinger).toBeNull();
-    expect(chart.overlays.smaLines).toHaveLength(1);
-    expect(chart.overlays.smaLines[0]!.points.every((point) => point.value === 100)).toBe(true);
+    expect(chart.overlays.smaLines).toEqual([]);
+    expect(chart.overlays.referenceLines).toEqual([{ value: 100, color: expect.any(String) }]);
     expect(chart.yDomain).toEqual({ min: 0, max: 300 });
     expect(chart.yearLabels).toEqual(["2024", "2025", "2026"]);
     expect(chart.lineColors).toEqual(points.map((point) => classifyZone(point.ratio).color));

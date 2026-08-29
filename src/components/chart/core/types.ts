@@ -58,10 +58,16 @@ export interface VisibleWindow {
 
 import type { OverlayPoint, OscillatorPoint, MacdResult, BollingerResult } from "../indicators/types";
 
+export interface ChartReferenceLine {
+  value: number;
+  color: string;
+}
+
 export interface ChartIndicatorOverlays {
   smaLines: { period: number; points: OverlayPoint[]; color: string }[];
   emaLines: { period: number; points: OverlayPoint[]; color: string }[];
   bollinger: (BollingerResult & { color: string }) | null;
   rsi: OscillatorPoint[] | null;
   macd: MacdResult | null;
+  referenceLines?: ChartReferenceLine[];
 }

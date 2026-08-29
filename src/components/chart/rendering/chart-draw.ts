@@ -268,4 +268,8 @@ export function drawIndicatorOverlays(
     drawOverlay(indicators.bollinger.middle, indicators.bollinger.color);
     drawOverlay(indicators.bollinger.lower, indicators.bollinger.color);
   }
+  for (const reference of indicators.referenceLines ?? []) {
+    const y = getScaledY(reference.value, min, max, dotTop, dotBottom);
+    drawLine(buf, 0, y, Math.max(buf.width - 1, 0), y, reference.color, LAYER_OVERLAY);
+  }
 }

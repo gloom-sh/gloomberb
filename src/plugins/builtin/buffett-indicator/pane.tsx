@@ -20,23 +20,19 @@ import { getCachedBuffettBundle, loadBuffettBundle, errorForMode } from "./clien
 import {
   BUFFETT_MODES,
   PARITY_RATIO,
-  ZONE_SCALE_MAX,
-  ZONE_SCALE_TICKS,
   selectBuffettView,
-  zoneScaleBands,
-  zoneScaleMarkerColumn,
   type BuffettBundle,
   type BuffettModeId,
   type BuffettRangeId,
   type BuffettViewModel,
 } from "./model";
 import { BUFFETT_DEFAULTS } from "./settings";
+import { ZoneColorScale } from "./zone-scale";
 
 export type BuffettLoadState =
   | { status: "idle" }
   | { status: "loading"; previous: BuffettBundle | null }
   | { status: "ready"; bundle: BuffettBundle }
-  | { status: "partial"; bundle: BuffettBundle }
   | { status: "error"; message: string; previous: BuffettBundle | null };
 
 const MODE_OPTIONS = [
@@ -60,7 +56,6 @@ function bundleOf(state: BuffettLoadState): BuffettBundle | null {
     case "error":
       return state.previous;
     case "ready":
-    case "partial":
       return state.bundle;
     default: {
       const _exhaustive: never = state;
@@ -69,15 +64,9 @@ function bundleOf(state: BuffettLoadState): BuffettBundle | null {
   }
 }
 
-function fromBundle(bundle: BuffettBundle): Extract<BuffettLoadState, { status: "ready" | "partial" }> {
-  return Object.keys(bundle.modes).length === 1
-    ? { status: "partial", bundle }
-    : { status: "ready", bundle };
-}
-
 function initialLoadState(): BuffettLoadState {
   const cached = getCachedBuffettBundle();
-  return cached ? fromBundle(cached) : { status: "idle" };
+  return cached ? { status: "ready", bundle: cached } : { status: "idle" };
 }
 
 function formatTrillions(billions: number): string {
@@ -93,7 +82,7 @@ function formatRatioPct(ratio: number): string {
   return `${Math.round(ratio)}%`;
 }
 
-/** Row for the mean caption — one above the 100% line so the stroke does not cover it. */
+/** Place the mean caption one row above the 100% line. */
 function meanLabelTop(
   yDomain: { min: number; max: number },
   chartHeight: number,
@@ -111,126 +100,18 @@ function meanLabelTop(
   return Math.max(0, lineRow - 1);
 }
 
-function footerInfoFromView(
-  view: BuffettViewModel | null,
-  state: BuffettLoadState,
-): PaneFooterSegment[] {
+function footerInfoFromView(view: BuffettViewModel | null): PaneFooterSegment[] {
   const info: PaneFooterSegment[] = [];
-  if (view) {
-    info.push({ id: "as-of", parts: [{ text: `as of ${view.asOf}`, tone: "muted" }] });
-    info.push({ id: "delayed", parts: [{ text: "delayed", tone: "muted" }] });
-    if (view.observationStale || view.cacheStale) {
-      info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
-    }
-    if (view.partial || state.status === "partial") {
-      info.push({ id: "partial", parts: [{ text: "PARTIAL", tone: "warning", bold: true }] });
-    }
+  if (!view) return info;
+  info.push({ id: "as-of", parts: [{ text: `as of ${view.asOf}`, tone: "muted" }] });
+  info.push({ id: "delayed", parts: [{ text: "delayed", tone: "muted" }] });
+  if (view.observationStale || view.cacheStale) {
+    info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
+  }
+  if (view.partial) {
+    info.push({ id: "partial", parts: [{ text: "PARTIAL", tone: "warning", bold: true }] });
   }
   return info;
-}
-
-/** Same zone colors as the history line, laid out on a 0–250% axis with a marker at now. */
-function ZoneColorScale({
-  value,
-  width,
-  markerColor,
-}: {
-  value: number;
-  width: number;
-  markerColor: string;
-}) {
-  const scaleWidth = Math.max(12, width);
-  const bands = zoneScaleBands();
-  const marker = zoneScaleMarkerColumn(value, scaleWidth);
-  const cells: Array<{ char: string; color: string }> = [];
-
-  for (let column = 0; column < scaleWidth; column += 1) {
-    const ratio = scaleWidth === 1 ? 0 : (column / (scaleWidth - 1)) * ZONE_SCALE_MAX;
-    const band = bands.find((entry) => ratio >= entry.from && ratio < entry.to) ?? bands[bands.length - 1]!;
-    cells.push({
-      char: column === marker ? "●" : "━",
-      color: column === marker ? markerColor : band.color,
-    });
-  }
-
-  const underLabel = scaleWidth >= 48 ? "undervalued" : scaleWidth >= 28 ? "under" : "";
-  const overLabel = scaleWidth >= 48 ? "overvalued" : scaleWidth >= 28 ? "over" : "";
-  const fairLabel = scaleWidth >= 64 ? "fair" : "";
-  const captionCells: Array<{ char: string; color: string }> = Array.from(
-    { length: scaleWidth },
-    () => ({ char: " ", color: colors.textDim }),
-  );
-  const placeCaption = (label: string, start: number) => {
-    for (let index = 0; index < label.length; index += 1) {
-      const column = start + index;
-      if (column < 0 || column >= scaleWidth) continue;
-      captionCells[column] = { char: label[index]!, color: colors.textDim };
-    }
-  };
-  if (underLabel) placeCaption(underLabel, 0);
-  if (overLabel) placeCaption(overLabel, scaleWidth - overLabel.length);
-  if (fairLabel) {
-    const fairStart = zoneScaleMarkerColumn(PARITY_RATIO, scaleWidth) - Math.floor(fairLabel.length / 2);
-    const underEnd = underLabel.length;
-    const overStart = scaleWidth - overLabel.length;
-    if (fairStart >= underEnd + 1 && fairStart + fairLabel.length <= overStart - 1) {
-      placeCaption(fairLabel, fairStart);
-    }
-  }
-
-  const ticks = scaleWidth >= 40
-    ? ZONE_SCALE_TICKS
-    : ZONE_SCALE_TICKS.filter((tick) => tick === 0 || tick === PARITY_RATIO || tick === ZONE_SCALE_MAX);
-  const tickCells: Array<{ char: string; color: string }> = Array.from(
-    { length: scaleWidth },
-    () => ({ char: " ", color: colors.textDim }),
-  );
-  for (const tick of ticks) {
-    const label = tick === PARITY_RATIO ? "100" : String(tick);
-    const center = zoneScaleMarkerColumn(tick, scaleWidth);
-    const start = Math.max(0, Math.min(scaleWidth - label.length, center - Math.floor(label.length / 2)));
-    for (let index = 0; index < label.length; index += 1) {
-      tickCells[start + index] = {
-        char: label[index]!,
-        color: tick === PARITY_RATIO ? colors.textMuted : colors.textDim,
-      };
-    }
-  }
-
-  const chunkRow = (row: Array<{ char: string; color: string }>) => {
-    const chunks: Array<{ text: string; color: string }> = [];
-    for (const cell of row) {
-      const last = chunks[chunks.length - 1];
-      if (last && last.color === cell.color) last.text += cell.char;
-      else chunks.push({ text: cell.char, color: cell.color });
-    }
-    return chunks;
-  };
-  const captionChunks = chunkRow(captionCells);
-  const barChunks = chunkRow(cells);
-  const tickChunks = chunkRow(tickCells);
-
-  return (
-    <Box flexDirection="column" width={scaleWidth} gap={0}>
-      {underLabel || overLabel ? (
-        <Box flexDirection="row" height={1} overflow="hidden">
-          {captionChunks.map((chunk, index) => (
-            <Text key={`caption:${index}`} fg={chunk.color}>{chunk.text}</Text>
-          ))}
-        </Box>
-      ) : null}
-      <Box flexDirection="row" height={1} overflow="hidden">
-        {barChunks.map((chunk, index) => (
-          <Text key={`bar:${index}`} fg={chunk.color}>{chunk.text}</Text>
-        ))}
-      </Box>
-      <Box flexDirection="row" height={1} overflow="hidden">
-        {tickChunks.map((chunk, index) => (
-          <Text key={`tick:${index}`} fg={chunk.color}>{chunk.text}</Text>
-        ))}
-      </Box>
-    </Box>
-  );
 }
 
 export function BuffettIndicatorPane({ paneId, focused, width, height }: PaneProps) {
@@ -246,7 +127,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
     try {
       const next = await loadBuffettBundle({ force });
       if (generation.current !== current) return;
-      setState(fromBundle(next));
+      setState({ status: "ready", bundle: next });
       if (!next.stale) setLastUpdated(Date.now());
     } catch (error) {
       if (generation.current !== current) return;
@@ -290,7 +171,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
     : view
       ? errorForMode(bundle?.errors ?? [], view.displayedMode)
       : bundle?.errors[0] ?? null;
-  const footerInfo = useMemo(() => footerInfoFromView(view, state), [state, view]);
+  const footerInfo = useMemo(() => footerInfoFromView(view), [view]);
 
   usePaneStatusFooter({
     registrationId: "buffett-indicator",

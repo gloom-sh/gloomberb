@@ -41,8 +41,6 @@ export interface StaticChartSurfaceProps extends Omit<
   yAxisLabel?: string;
   yAxisColor?: string;
   formatYAxisValue?: (value: number) => string;
-  yAxisSide?: "left" | "right";
-  yDomain?: { min: number; max: number };
 }
 
 interface ChartMouseEventLike {
@@ -104,7 +102,6 @@ export function StaticChartSurface({
   yAxisLabel,
   yAxisColor,
   formatYAxisValue,
-  yAxisSide = "right",
   yDomain,
   lineColors,
 }: StaticChartSurfaceProps) {
@@ -272,34 +269,6 @@ export function StaticChartSurface({
     setCursor(null);
   }, []);
 
-  const axisOnLeft = yAxisSide === "left";
-  const priceAxis = effectiveAxisWidth > 0 ? (
-    <PriceAxisLabels
-      axisLabels={effectiveAxisLabelsByRow}
-      axisWidth={effectiveAxisWidth}
-      axisSectionWidth={effectiveAxisWidth}
-      side={axisOnLeft ? "left" : undefined}
-      height={plotHeight}
-      cursorRow={textResult.cursorRow}
-      cursorPixelY={cursor ? cursor.y * cellHeightPx : null}
-      cursorLabel={cursorAxisLabel}
-      cursorColor={colors.crosshairColor}
-      axisColor={yAxisColor}
-    />
-  ) : null;
-  const leftAxisSpacer = axisOnLeft && effectiveAxisWidth > 0 ? (
-    <>
-      <Box width={effectiveAxisWidth} />
-      <Box width={effectiveAxisGap} />
-    </>
-  ) : null;
-  const rightAxisSpacer = !axisOnLeft && effectiveAxisWidth > 0 ? (
-    <>
-      <Box width={effectiveAxisGap} />
-      <Box width={effectiveAxisWidth} />
-    </>
-  ) : null;
-
   return (
     <Box flexDirection="column" width={totalWidth} height={plotHeight + xAxisRows + xMarkerRows + labelRows}>
       {yAxisLabel ? (
@@ -308,12 +277,6 @@ export function StaticChartSurface({
         </Box>
       ) : null}
       <Box flexDirection="row" height={plotHeight}>
-        {axisOnLeft && priceAxis ? (
-          <>
-            {priceAxis}
-            <Box width={effectiveAxisGap} />
-          </>
-        ) : null}
         <Box
           ref={plotRef}
           position="relative"
@@ -348,16 +311,25 @@ export function StaticChartSurface({
             />
           ) : null}
         </Box>
-        {!axisOnLeft && priceAxis ? (
+        {effectiveAxisWidth > 0 ? (
           <>
             <Box width={effectiveAxisGap} />
-            {priceAxis}
+            <PriceAxisLabels
+              axisLabels={effectiveAxisLabelsByRow}
+              axisWidth={effectiveAxisWidth}
+              axisSectionWidth={effectiveAxisWidth}
+              height={plotHeight}
+              cursorRow={textResult.cursorRow}
+              cursorPixelY={cursor ? cursor.y * cellHeightPx : null}
+              cursorLabel={cursorAxisLabel}
+              cursorColor={colors.crosshairColor}
+              axisColor={yAxisColor}
+            />
           </>
         ) : null}
       </Box>
       {showTimeAxis || (xAxisLabels?.length ?? 0) > 0 ? (
         <Box height={1} flexDirection="row">
-          {leftAxisSpacer}
           {xAxisLabels ? (
             <StaticXAxisLabels
               labels={xAxisLabels}
@@ -370,18 +342,25 @@ export function StaticChartSurface({
               cursorBackgroundColor={colors.bgColor ?? themeColors.bg}
             />
           ) : (
-            <Box width={plotWidth} height={1} overflow="hidden">
-              <Text fg={timeAxisColor}>{textResult.timeLabels}</Text>
-            </Box>
+            <Text fg={timeAxisColor}>{textResult.timeLabels}</Text>
           )}
-          {rightAxisSpacer}
+          {effectiveAxisWidth > 0 ? (
+            <>
+              <Box width={effectiveAxisGap} />
+              <Box width={effectiveAxisWidth} />
+            </>
+          ) : null}
         </Box>
       ) : null}
       {xMarkers && xMarkerRows > 0 ? (
         <Box height={1} flexDirection="row">
-          {leftAxisSpacer}
           <StaticXMarkerLabels markers={xMarkers} width={plotWidth} fallbackColor={xAxisColor ?? timeAxisColor} />
-          {rightAxisSpacer}
+          {effectiveAxisWidth > 0 ? (
+            <>
+              <Box width={effectiveAxisGap} />
+              <Box width={effectiveAxisWidth} />
+            </>
+          ) : null}
         </Box>
       ) : null}
     </Box>

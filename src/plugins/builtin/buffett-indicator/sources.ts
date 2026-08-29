@@ -2,7 +2,8 @@ import type { FredSeriesData } from "../../../data/fred-series";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
 import type { ChartResponse } from "../../../sources/yahoo-finance/types";
 import { httpFetch } from "../../../utils/http-transport";
-import { uniqueSeriesDefs } from "./model";
+import type { SeriesDef } from "./defs";
+import type { DatedObservation, DatedSeries } from "./series";
 
 const yahoo = new YahooHttpClient();
 
@@ -11,9 +12,7 @@ const FRED_CSV_HEADERS = {
   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
 };
 
-export function yahooSymbolFor(seriesId: string): string | undefined {
-  const def = uniqueSeriesDefs().find((entry) => entry.seriesId === seriesId);
-  if (!def) return undefined;
+export function yahooSymbolFor(def: SeriesDef): string | undefined {
   switch (def.source.kind) {
     case "yahoo-index":
       return def.source.symbol;
@@ -31,13 +30,25 @@ export function isUnsupportedFredSeries(error: unknown): boolean {
   return /unsupported fred series/i.test(message);
 }
 
-export function parseFredGraphCsv(csv: string, seriesId: string): FredSeriesData {
+export function fredDataToDatedSeries(
+  data: FredSeriesData,
+  seriesId: string,
+  provenance: DatedSeries["provenance"],
+): DatedSeries {
+  return { seriesId, observations: data.observations, provenance };
+}
+
+export function datedSeriesToCachePayload(series: DatedSeries): FredSeriesData {
+  return { observations: series.observations, info: null };
+}
+
+export function parseFredGraphCsv(csv: string, seriesId: string): DatedSeries {
   const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
   if (lines.length < 2 || !lines[0]!.includes("observation_date")) {
     throw new Error(`Unexpected FRED CSV for ${seriesId}`);
   }
 
-  const observations: FredSeriesData["observations"] = [];
+  const observations: DatedObservation[] = [];
   for (const line of lines.slice(1)) {
     const comma = line.indexOf(",");
     if (comma < 0) continue;
@@ -56,21 +67,10 @@ export function parseFredGraphCsv(csv: string, seriesId: string): FredSeriesData
     throw new Error(`FRED CSV has no observations for ${seriesId}`);
   }
 
-  return {
-    observations,
-    info: {
-      id: seriesId,
-      title: seriesId,
-      units: "",
-      frequency: "",
-      seasonalAdjustment: "",
-      source: "FRED",
-      notes: "",
-    },
-  };
+  return { seriesId, observations, provenance: "fred-csv" };
 }
 
-export async function loadFredGraphCsvSeries(seriesId: string): Promise<FredSeriesData> {
+export async function loadFredGraphCsvSeries(seriesId: string): Promise<DatedSeries> {
   const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(seriesId)}`;
   const response = await httpFetch(url, {
     headers: FRED_CSV_HEADERS,
@@ -87,7 +87,7 @@ function utcDate(epochSec: number): string {
   return new Date(epochSec * 1000).toISOString().slice(0, 10);
 }
 
-export function yahooChartToFredSeries(payload: ChartResponse, seriesId: string): FredSeriesData {
+export function yahooChartToDatedSeries(payload: ChartResponse, seriesId: string): DatedSeries {
   const result = payload.chart?.result?.[0];
   const timestamps = result?.timestamp;
   const closes = result?.indicators?.quote?.[0]?.close;
@@ -95,7 +95,7 @@ export function yahooChartToFredSeries(payload: ChartResponse, seriesId: string)
     throw new Error(payload.chart?.error?.description || `No chart data for ${seriesId}`);
   }
 
-  const observations: FredSeriesData["observations"] = [];
+  const observations: DatedObservation[] = [];
   for (let i = 0; i < timestamps.length; i++) {
     const close = closes[i];
     if (close == null || !Number.isFinite(close) || close <= 0) continue;
@@ -105,18 +105,7 @@ export function yahooChartToFredSeries(payload: ChartResponse, seriesId: string)
     throw new Error(`No chart data for ${seriesId}`);
   }
 
-  return {
-    observations,
-    info: {
-      id: seriesId,
-      title: result.meta?.longName || result.meta?.shortName || seriesId,
-      units: "Index",
-      frequency: "Daily",
-      seasonalAdjustment: "Not Seasonally Adjusted",
-      source: "Yahoo Finance",
-      notes: "",
-    },
-  };
+  return { seriesId, observations, provenance: "yahoo" };
 }
 
 function yahooDailyHistoryFromEpochQuery(nowSec: number): URLSearchParams {
@@ -128,9 +117,9 @@ function yahooDailyHistoryFromEpochQuery(nowSec: number): URLSearchParams {
   });
 }
 
-export async function loadYahooDailyIndexFromEpoch(symbol: string, seriesId: string): Promise<FredSeriesData> {
+export async function loadYahooDailyIndexFromEpoch(symbol: string, seriesId: string): Promise<DatedSeries> {
   const params = yahooDailyHistoryFromEpochQuery(Math.floor(Date.now() / 1000));
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
   const payload = await yahoo.fetchJson<ChartResponse>(url);
-  return yahooChartToFredSeries(payload, seriesId);
+  return yahooChartToDatedSeries(payload, seriesId);
 }

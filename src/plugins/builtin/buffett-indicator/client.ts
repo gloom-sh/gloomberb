@@ -2,7 +2,6 @@ import { apiClient } from "../../../api-client";
 import {
   getCachedFredSeries,
   loadCachedFredSeries,
-  type FredSeriesData,
   type FredSeriesRequest,
 } from "../../../data/fred-series";
 import {
@@ -13,41 +12,48 @@ import {
   uniqueSeriesDefs,
   type BuffettBundle,
   type BuffettModeId,
-  type BuffettSeriesLoader,
   type ModeBuild,
   type ModeDef,
   type SeriesDef,
 } from "./model";
+import type { DatedSeries } from "./series";
 import {
+  datedSeriesToCachePayload,
+  fredDataToDatedSeries,
   isUnsupportedFredSeries,
   loadFredGraphCsvSeries,
   loadYahooDailyIndexFromEpoch,
   yahooSymbolFor,
 } from "./sources";
 
+export type BuffettSeriesLoader = (def: SeriesDef) => Promise<DatedSeries>;
+
 export function createBuffettSeriesLoader(deps: {
-  loadCloudFred: (request: FredSeriesRequest) => Promise<FredSeriesData>;
-  loadYahooIndex: (symbol: string, seriesId: string) => Promise<FredSeriesData>;
-  loadFredCsv: (seriesId: string) => Promise<FredSeriesData>;
+  loadCloudFred: (request: FredSeriesRequest) => Promise<DatedSeries>;
+  loadYahooIndex: (symbol: string, seriesId: string) => Promise<DatedSeries>;
+  loadFredCsv: (seriesId: string) => Promise<DatedSeries>;
 }): BuffettSeriesLoader {
-  return async (request) => {
-    const yahooSymbol = yahooSymbolFor(request.seriesId);
-    if (yahooSymbol) return deps.loadYahooIndex(yahooSymbol, request.seriesId);
+  return async (def) => {
+    const yahooSymbol = yahooSymbolFor(def);
+    if (yahooSymbol) return deps.loadYahooIndex(yahooSymbol, def.seriesId);
+    const request = seriesRequest(def);
     try {
       return await deps.loadCloudFred(request);
     } catch (error) {
       if (!isUnsupportedFredSeries(error)) throw error;
-      return deps.loadFredCsv(request.seriesId);
+      return deps.loadFredCsv(def.seriesId);
     }
   };
 }
 
 const defaultLoader: BuffettSeriesLoader = createBuffettSeriesLoader({
-  loadCloudFred: (request) =>
-    apiClient.getCloudFredSeries(request.seriesId, {
+  loadCloudFred: async (request) => {
+    const data = await apiClient.getCloudFredSeries(request.seriesId, {
       limit: request.limit,
       sortOrder: request.sortOrder,
-    }),
+    });
+    return fredDataToDatedSeries(data, request.seriesId, "fred");
+  },
   loadYahooIndex: loadYahooDailyIndexFromEpoch,
   loadFredCsv: loadFredGraphCsvSeries,
 });
@@ -59,7 +65,7 @@ function summarizeSeriesErrors(errors: readonly string[]): string {
   return errors.length > 1 ? `${reason} (${errors.length} series)` : reason;
 }
 
-/** First error tied to a mode's numerator/GDP; skips the other mode's series noise. */
+/** First error for this mode's series ids. */
 export function errorForMode(
   errors: readonly string[],
   modeId: BuffettModeId,
@@ -79,7 +85,7 @@ export function errorForMode(
 
 function tryBuildMode(
   mode: ModeDef,
-  byId: Map<string, { data: FredSeriesData; stale: boolean }>,
+  byId: Map<string, { data: DatedSeries; stale: boolean }>,
   errors: string[],
 ): ModeBuild | null {
   const gdp = byId.get(mode.denominator.seriesId.trim().toUpperCase());
@@ -102,7 +108,7 @@ function tryBuildMode(
 }
 
 function assembleBundle(
-  byId: Map<string, { data: FredSeriesData; stale: boolean }>,
+  byId: Map<string, { data: DatedSeries; stale: boolean }>,
   errors: string[],
   fetchedAt: number,
 ): BuffettBundle | null {
@@ -120,13 +126,26 @@ function assembleBundle(
   };
 }
 
+function provenanceFor(def: SeriesDef): DatedSeries["provenance"] {
+  switch (def.source.kind) {
+    case "yahoo-index":
+      return "yahoo";
+    case "fred":
+      return "fred";
+    default: {
+      const _exhaustive: never = def.source;
+      return _exhaustive;
+    }
+  }
+}
+
 export function getCachedBuffettBundle(): BuffettBundle | null {
-  const byId = new Map<string, { data: FredSeriesData; stale: boolean }>();
+  const byId = new Map<string, { data: DatedSeries; stale: boolean }>();
   for (const def of uniqueSeriesDefs()) {
     const cached = getCachedFredSeries(seriesRequest(def), { allowExpired: true });
     if (cached) {
       byId.set(def.seriesId.trim().toUpperCase(), {
-        data: cached.data,
+        data: fredDataToDatedSeries(cached.data, def.seriesId, provenanceFor(def)),
         stale: cached.stale,
       });
     }
@@ -134,21 +153,45 @@ export function getCachedBuffettBundle(): BuffettBundle | null {
   return assembleBundle(byId, [], Date.now());
 }
 
+type SeriesLoadOk = {
+  ok: true;
+  def: SeriesDef;
+  seriesId: string;
+  data: DatedSeries;
+  stale: boolean;
+  refreshError?: string;
+};
+
+type SeriesLoadErr = {
+  ok: false;
+  def: SeriesDef;
+  seriesId: string;
+  error: unknown;
+};
+
 async function loadSeries(
-  request: FredSeriesRequest,
+  def: SeriesDef,
   force: boolean,
   loader: BuffettSeriesLoader,
-): Promise<{ data: FredSeriesData; stale: boolean; refreshError?: string }> {
-  const result = await loadCachedFredSeries(
-    request,
-    () => loader(request),
-    { force },
-  );
-  return {
-    data: result.data,
-    stale: result.stale,
-    refreshError: result.refreshError,
-  };
+): Promise<SeriesLoadOk | SeriesLoadErr> {
+  const request = seriesRequest(def);
+  try {
+    const result = await loadCachedFredSeries(
+      request,
+      async () => datedSeriesToCachePayload(await loader(def)),
+      { force },
+    );
+    return {
+      ok: true,
+      def,
+      seriesId: def.seriesId,
+      data: fredDataToDatedSeries(result.data, def.seriesId, provenanceFor(def)),
+      stale: result.stale,
+      refreshError: result.refreshError,
+    };
+  } catch (error) {
+    return { ok: false, def, seriesId: def.seriesId, error };
+  }
 }
 
 export async function loadBuffettBundle(options?: {
@@ -158,44 +201,28 @@ export async function loadBuffettBundle(options?: {
   const force = options?.force ?? false;
   const loader = options?.loader ?? defaultLoader;
   const errors: string[] = [];
-  const byId = new Map<string, { data: FredSeriesData; stale: boolean }>();
+  const byId = new Map<string, { data: DatedSeries; stale: boolean }>();
 
-  const defs = uniqueSeriesDefs();
-  const settled = await Promise.allSettled(
-    defs.map(async (def) => {
-      const request = seriesRequest(def);
-      try {
-        return {
-          def,
-          seriesId: def.seriesId,
-          result: await loadSeries(request, force, loader),
-        };
-      } catch (error) {
-        throw { def, seriesId: def.seriesId, error };
-      }
-    }),
+  const settled = await Promise.all(
+    uniqueSeriesDefs().map((def) => loadSeries(def, force, loader)),
   );
 
   for (const outcome of settled) {
-    if (outcome.status === "fulfilled") {
-      const { seriesId, result } = outcome.value;
-      byId.set(seriesId.trim().toUpperCase(), {
-        data: result.data,
-        stale: result.stale,
+    if (outcome.ok) {
+      byId.set(outcome.seriesId.trim().toUpperCase(), {
+        data: outcome.data,
+        stale: outcome.stale,
       });
-      if (result.refreshError) {
-        errors.push(`${seriesId}: ${result.refreshError}`);
+      if (outcome.refreshError) {
+        errors.push(`${outcome.seriesId}: ${outcome.refreshError}`);
       }
       continue;
     }
-    const reason = outcome.reason as { def: SeriesDef; seriesId: string; error: unknown };
-    const message = reason.error instanceof Error ? reason.error.message : String(reason.error);
-    errors.push(`${reason.seriesId}: ${message}`);
+    const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+    errors.push(`${outcome.seriesId}: ${message}`);
   }
 
   const bundle = assembleBundle(byId, errors, Date.now());
   if (!bundle) throw new Error(summarizeSeriesErrors(errors));
   return bundle;
 }
-
-export type { BuffettSeriesLoader };
