@@ -55,6 +55,7 @@ import type {
   CloudPricePointPayload,
   CloudQuotePayload,
   CloudTweetSearchResponse,
+  CloudWorldVenueMapPayload,
   CloudYieldPointPayload,
 } from "./types";
 
@@ -92,6 +93,10 @@ export class CloudDataApi {
     mode: "cache-first" | "refresh" = "cache-first",
   ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
     return this.postMarketBatch("/market/quotes/batch", targets, mode);
+  }
+
+  async getCloudWorldVenues(): Promise<CloudMarketResponse<CloudWorldVenueMapPayload>> {
+    return this.request<CloudMarketResponse<CloudWorldVenueMapPayload>>("/market/venues");
   }
 
   async getCloudMarketScreener(
