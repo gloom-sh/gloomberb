@@ -298,10 +298,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
               70 to 80% is where stocks looked cheap, while the 200% peak of 1999 and 2000 was, in his words, "playing with fire." It is still the standard whole-market valuation check.
             </Text>
             <Text fg={colors.textDim} wrapMode="word" wrapText>
-              Though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like since 2001, this tool also shows a gap versus trend (σ) for alignment.
-            </Text>
-            <Text fg={colors.textDim} wrapMode="word" wrapText>
-              How to read: Below 75% is significantly undervalued, 90 to 115% fair, above 135% significantly overvalued.
+              How to read: Below 75% is significantly undervalued, 90 to 115% fair, above 135% significantly overvalued. Though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like since 2001, this tool also shows a gap versus trend (σ) for alignment.
             </Text>
             <Text fg={colors.textDim} wrapMode="word" wrapText>
               The Math: It's the Wilshire 5000 divided by nominal GDP, times 100. The Wilshire is a daily full-cap index of US listed stocks, priced so one point is about $1B of market value, while GDP only prints quarterly and is interpolated across the days in between.
