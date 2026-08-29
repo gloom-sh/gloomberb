@@ -63,6 +63,7 @@ describe("browser plugin catalog", () => {
       "market-heatmap",
       "market-movers",
       "market-halts",
+      "fear-greed",
       "earnings-calendar",
       "ipo-calendar",
       "tv",
@@ -71,6 +72,7 @@ describe("browser plugin catalog", () => {
       "thirteenf",
       "sec",
       "insider",
+      "buffett-indicator",
     ]) {
       expect(paneIds).not.toContain(forbidden);
     }

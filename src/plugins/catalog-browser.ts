@@ -12,7 +12,6 @@ import { connectionsModule } from "./builtin/connections";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
 import { creditConditionsModule } from "./builtin/credit-conditions";
-import { buffettIndicatorModule } from "./builtin/buffett-indicator";
 import { economicCalendarModule } from "./builtin/econ";
 import { futuresModule } from "./builtin/futures";
 import { fxMatrixModule } from "./builtin/fx-matrix";
@@ -111,7 +110,6 @@ const browserMacroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,
-    buffettIndicatorModule,
     cdsModule,
     treasuryAuctionsModule,
   ],
