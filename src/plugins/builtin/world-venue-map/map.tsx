@@ -119,7 +119,7 @@ function renderWorldBitmap(
     const selected = isSelectedCluster(cluster, selectedMic);
     const radius = Math.max(3, Math.min(14, 3 + Math.sqrt(cluster.venues.length) * 1.7));
     if (selected) {
-      drawCircle(bitmap.pixels, width, height, cluster.x, cluster.y, radius + 2.5, parseHex(colors.textBright));
+      drawCircle(bitmap.pixels, width, height, cluster.x, cluster.y, radius + 2.5, parseHex(colors.selected));
     }
     drawCircle(
       bitmap.pixels,
@@ -306,8 +306,8 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
               cy={cluster.y}
               r={radius + (selected ? 0.24 : 0)}
               fill={cluster.isOpen ? colors.positive : colors.textMuted}
-              stroke={selected ? colors.textBright : colors.bg}
-              strokeWidth={selected ? 1.1 : 0.65}
+              stroke={selected ? colors.selected : colors.bg}
+              strokeWidth={selected ? 0.5 : 0.16}
               vectorEffect="non-scaling-stroke"
             />
             {cluster.venues.length > 1 ? createElement("text", {
