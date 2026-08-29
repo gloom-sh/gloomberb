@@ -12,7 +12,18 @@ const FRED_CSV_HEADERS = {
 };
 
 export function yahooSymbolFor(seriesId: string): string | undefined {
-  return uniqueSeriesDefs().find((def) => def.seriesId === seriesId)?.yahooSymbol;
+  const def = uniqueSeriesDefs().find((entry) => entry.seriesId === seriesId);
+  if (!def) return undefined;
+  switch (def.source.kind) {
+    case "yahoo-index":
+      return def.source.symbol;
+    case "fred":
+      return undefined;
+    default: {
+      const _exhaustive: never = def.source;
+      return _exhaustive;
+    }
+  }
 }
 
 export function isUnsupportedFredSeries(error: unknown): boolean {
@@ -108,15 +119,17 @@ export function yahooChartToFredSeries(payload: ChartResponse, seriesId: string)
   };
 }
 
-export async function loadYahooIndexSeries(symbol: string, seriesId: string): Promise<FredSeriesData> {
-  const period2 = Math.floor(Date.now() / 1000);
-  const params = new URLSearchParams({
+function yahooDailyHistoryFromEpochQuery(nowSec: number): URLSearchParams {
+  return new URLSearchParams({
     period1: "0",
-    period2: String(period2),
+    period2: String(nowSec),
     interval: "1d",
     events: "div,split",
   });
-  // Yahoo `range=max` on ^W5000 returns monthly bars. period1=0 keeps daily history.
+}
+
+export async function loadYahooDailyIndexFromEpoch(symbol: string, seriesId: string): Promise<FredSeriesData> {
+  const params = yahooDailyHistoryFromEpochQuery(Math.floor(Date.now() / 1000));
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
   const payload = await yahoo.fetchJson<ChartResponse>(url);
   return yahooChartToFredSeries(payload, seriesId);

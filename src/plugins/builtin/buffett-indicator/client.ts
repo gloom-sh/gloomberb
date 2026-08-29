@@ -21,7 +21,7 @@ import {
 import {
   isUnsupportedFredSeries,
   loadFredGraphCsvSeries,
-  loadYahooIndexSeries,
+  loadYahooDailyIndexFromEpoch,
   yahooSymbolFor,
 } from "./sources";
 
@@ -48,7 +48,7 @@ const defaultLoader: BuffettSeriesLoader = createBuffettSeriesLoader({
       limit: request.limit,
       sortOrder: request.sortOrder,
     }),
-  loadYahooIndex: loadYahooIndexSeries,
+  loadYahooIndex: loadYahooDailyIndexFromEpoch,
   loadFredCsv: loadFredGraphCsvSeries,
 });
 

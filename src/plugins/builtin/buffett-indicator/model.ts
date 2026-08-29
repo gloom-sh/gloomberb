@@ -7,13 +7,15 @@ export type BuffettModeId = "wilshire" | "z1";
 export type BuffettRangeId = "10Y" | "25Y" | "ALL";
 export type AlignmentRuleId = "interpolate-gdp" | "same-quarter";
 
+export type SeriesSource =
+  | { kind: "fred" }
+  | { kind: "yahoo-index"; symbol: string };
+
 export interface SeriesDef {
   seriesId: string;
-  /** Multiply raw FRED values to $ billions. Z.1 is 1/1000; others 1. */
   scaleToBillions: number;
   request: Pick<FredSeriesRequest, "limit" | "sortOrder">;
-  /** When set, load this Yahoo index instead of the FRED seriesId. */
-  yahooSymbol?: string;
+  source: SeriesSource;
 }
 
 export interface ModeDef {
@@ -22,7 +24,6 @@ export interface ModeDef {
   numerator: SeriesDef;
   denominator: SeriesDef;
   align: AlignmentRuleId;
-  /** Observation cadence including publication lag. Footer STALE uses this. */
   staleAfterMs: number;
 }
 
@@ -121,19 +122,21 @@ export const GDP: SeriesDef = {
   seriesId: "GDP",
   scaleToBillions: 1,
   request: { limit: 340, sortOrder: "desc" },
+  source: { kind: "fred" },
 };
 
 export const WILSHIRE_NUMERATOR: SeriesDef = {
   seriesId: "WILL5000PRFC",
   scaleToBillions: 1,
   request: { limit: 10000, sortOrder: "desc" },
-  yahooSymbol: "^W5000",
+  source: { kind: "yahoo-index", symbol: "^W5000" },
 };
 
 export const Z1_NUMERATOR: SeriesDef = {
   seriesId: "NCBEILQ027S",
   scaleToBillions: 1 / 1000,
   request: { limit: 340, sortOrder: "desc" },
+  source: { kind: "fred" },
 };
 
 export const BUFFETT_MODES: { readonly [K in BuffettModeId]: ModeDef } = {
