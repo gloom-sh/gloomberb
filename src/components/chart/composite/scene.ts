@@ -472,8 +472,9 @@ export function buildCompositeChartScene(
     const domainSeries = emptyRange
       ? dataSeries.filter((entry) => entry.panelId === panel.id)
       : panelSeries;
-    const left = buildAxisDomain("left", domainSeries, scale);
-    const right = buildAxisDomain("right", domainSeries, scale);
+    const stableDomains = options.axisDomains?.get(panel.id);
+    const left = stableDomains?.left ?? buildAxisDomain("left", domainSeries, scale);
+    const right = stableDomains?.right ?? buildAxisDomain("right", domainSeries, scale);
     const axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>> = { left, right };
     return [{
       id: panel.id,

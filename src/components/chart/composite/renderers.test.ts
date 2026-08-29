@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import type { CompositePanelScene } from "./types";
+import { renderCompositePanelBitmap } from "./rasterizer";
 import {
-  renderCompositePanelBitmap,
   resolveCompositeColumnWidth,
   resolveCompositeOhlcWidth,
-} from "./rasterizer";
+} from "./painter";
 import { buildCompositeColumnLayout } from "./column-layout";
 import { buildCompositeChartScene, projectCompositeValue } from "./scene";
 import {

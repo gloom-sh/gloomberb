@@ -2,6 +2,7 @@ import { createContext, useContext, type ComponentType, type ReactNode, type Ref
 import type { ContextMenuItem } from "../types/context-menu";
 import type { AppNotificationRequest } from "../types/plugin";
 import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../types/media";
+import type { ChartPaintSource } from "../components/chart/core/painter";
 import type { AsciiFontName } from "./ascii-font";
 
 export const TextAttributes = {
@@ -227,6 +228,7 @@ export interface ChartSurfaceProps extends BoxProps {
   bitmap?: BitmapSurface | null;
   /** Desktop stacks every layer; the terminal renders only the first. */
   bitmaps?: readonly BitmapSurface[] | null;
+  paintSource?: ChartPaintSource | null;
   crosshair?: ChartCrosshairOverlay | null;
   vectors?: readonly ChartVectorShape[] | null;
   nativeBitmapsEnabled?: boolean;

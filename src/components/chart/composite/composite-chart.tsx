@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Box,
   ChartSurface,
@@ -48,17 +56,19 @@ import {
   COMPOSITE_KEYBOARD_PAN_RATIO,
   COMPOSITE_ZOOM_STEP_FACTOR,
   clampCompositeViewport,
-  panCompositeViewport,
   resolveCompositeChartInteraction,
   resolveCompositeMinimumSpanMs,
   resolveCompositeNavigationBounds,
   resolveCompositeWheelPanRatio,
-  sameCompositeViewport,
   shouldResetCompositeViewport,
-  zoomCompositeViewport,
   type CompositeViewportRange,
 } from "./interactions";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
+import {
+  CompositeChartEngine,
+  createCompositePanelPaintSource,
+  type CompositeAxisDomains,
+} from "./engine";
 import { renderCompositePanelBitmap } from "./rasterizer";
 import {
   buildChartToolVectors,
@@ -84,8 +94,6 @@ import {
 } from "./tools";
 import { unprojectCompositeTimestamp } from "./time-scale";
 import {
-  allocateCompositePanelHeights,
-  applyCompositeChartCursor,
   buildCompositeChartScene,
   projectCompositeValue,
   resolveAdjacentCompositeCursorDate,
@@ -108,9 +116,6 @@ import type {
   CompositePanelScene,
 } from "./types";
 
-// A short resize-only delay coalesces geometry churn without delaying
-// live-data paints or depending on a foreground animation frame.
-const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
 
 function isVerticalWheelDirection(
@@ -142,120 +147,20 @@ function useCompositePanelBitmap({
   colors: CompositeChartColors;
   isDesktopWeb: boolean;
 }): NativeChartBitmap | null {
-  const [desktopBitmap, setDesktopBitmap] = useState<NativeChartBitmap | null>(null);
-  const desktopBitmapRef = useRef<NativeChartBitmap | null>(null);
-  const desktopRenderInputRef = useRef<{
-    panel: CompositePanelScene;
-    pixelWidth: number;
-    pixelHeight: number;
-    colors: CompositeChartColors;
-  } | null>(null);
-  const desktopRequestedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
-  const desktopRenderedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
-  const desktopRenderTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
-  const desktopActiveRef = useRef(false);
-  const pixelWidth = bitmapSize?.pixelWidth ?? null;
-  const pixelHeight = bitmapSize?.pixelHeight ?? null;
-
-  desktopRenderInputRef.current = isDesktopWeb && pixelWidth !== null && pixelHeight !== null
-    ? { panel, pixelWidth, pixelHeight, colors }
-    : null;
-
-  // The cursor is drawn as a separate overlay, so the plot raster stays cached
-  // (and resident in the terminal) while the crosshair moves.
-  const terminalBitmap = useMemo(() => {
-    if (isDesktopWeb || !bitmapSize) return null;
-    return renderPanelBitmap(panel, bitmapSize, colors);
-  }, [bitmapSize, colors, isDesktopWeb, panel]);
-
-  useEffect(() => {
-    const cancelRender = () => {
-      if (desktopRenderTimerRef.current === null) return;
-      clearTimeout(desktopRenderTimerRef.current);
-      desktopRenderTimerRef.current = null;
-    };
-    const scheduleRender = (delay: number) => {
-      if (desktopRenderTimerRef.current !== null) return;
-      desktopRenderTimerRef.current = globalThis.setTimeout(() => {
-        desktopRenderTimerRef.current = null;
-        if (!desktopActiveRef.current) return;
-        const input = desktopRenderInputRef.current;
-        if (!input) return;
-        const next = renderPanelBitmap(
-          input.panel,
-          { pixelWidth: input.pixelWidth, pixelHeight: input.pixelHeight },
-          input.colors,
-        );
-        if (!desktopActiveRef.current) return;
-        desktopRenderedSizeRef.current = {
-          pixelWidth: input.pixelWidth,
-          pixelHeight: input.pixelHeight,
-        };
-        desktopBitmapRef.current = next;
-        setDesktopBitmap(next);
-      }, delay);
-    };
-
-    if (!isDesktopWeb) {
-      desktopActiveRef.current = false;
-      cancelRender();
-      desktopRequestedSizeRef.current = null;
-      desktopRenderedSizeRef.current = null;
-      return;
-    }
-    if (pixelWidth === null || pixelHeight === null) {
-      desktopActiveRef.current = false;
-      cancelRender();
-      desktopRequestedSizeRef.current = null;
-      desktopRenderedSizeRef.current = null;
-      desktopBitmapRef.current = null;
-      setDesktopBitmap((current) => current === null ? current : null);
-      return;
-    }
-
-    desktopActiveRef.current = true;
-    const nextSize = { pixelWidth, pixelHeight };
-    const requestedSize = desktopRequestedSizeRef.current;
-    const requestedSizeChanged = !requestedSize
-      || requestedSize.pixelWidth !== pixelWidth
-      || requestedSize.pixelHeight !== pixelHeight;
-    desktopRequestedSizeRef.current = nextSize;
-    const renderedSize = desktopRenderedSizeRef.current;
-    const sizeAlreadyRendered = !!renderedSize
-      && renderedSize.pixelWidth === pixelWidth
-      && renderedSize.pixelHeight === pixelHeight;
-
-    if (!desktopBitmapRef.current || sizeAlreadyRendered) {
-      if (requestedSizeChanged) cancelRender();
-      scheduleRender(0);
-      return;
-    }
-
-    if (!requestedSizeChanged || desktopRenderTimerRef.current !== null) return;
-    scheduleRender(DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS);
-  }, [colors, isDesktopWeb, panel, pixelHeight, pixelWidth]);
-
-  useEffect(() => () => {
-    desktopActiveRef.current = false;
-    if (desktopRenderTimerRef.current !== null) {
-      clearTimeout(desktopRenderTimerRef.current);
-      desktopRenderTimerRef.current = null;
-    }
-  }, []);
-
-  if (!bitmapSize) return null;
-  return isDesktopWeb ? desktopBitmap : terminalBitmap;
+  return useMemo(() => (
+    isDesktopWeb || !bitmapSize ? null : renderPanelBitmap(panel, bitmapSize, colors)
+  ), [bitmapSize, colors, isDesktopWeb, panel]);
 }
 
 function resolvePanelCrosshair(
   panel: CompositePanelScene,
   columnLayout: CompositeColumnLayout,
-  bitmap: NativeChartBitmap | null,
+  surface: { width: number; height: number } | null,
   cursorXRatio: number | null,
   cursorYRatio: number | null,
   color: string,
 ): ChartSurfaceProps["crosshair"] {
-  if (!bitmap || cursorXRatio === null || cursorYRatio === null) return null;
+  if (!surface || cursorXRatio === null || cursorYRatio === null) return null;
   const markers = panel.series.flatMap((series) => {
     // Column cohorts are drawn at their group center, not each observation's
     // own timestamp, so match the position the bar actually occupies.
@@ -267,14 +172,14 @@ function resolvePanelCrosshair(
     });
     return cursorPoint
       ? [{
-        pixelY: cursorPoint.yRatio * Math.max(bitmap.height - 1, 0),
+        pixelY: cursorPoint.yRatio * Math.max(surface.height - 1, 0),
         color: series.source.color,
       }]
       : [];
   });
   return {
-    pixelX: cursorXRatio * Math.max(bitmap.width - 1, 0),
-    pixelY: cursorYRatio * Math.max(bitmap.height - 1, 0),
+    pixelX: cursorXRatio * Math.max(surface.width - 1, 0),
+    pixelY: cursorYRatio * Math.max(surface.height - 1, 0),
     color,
     markers,
   };
@@ -596,6 +501,7 @@ function resolveSeriesCursorYRatio(
 }
 
 interface CompositePanelSurfaceProps {
+  engine: CompositeChartEngine;
   panel: CompositePanelScene;
   scene: CompositeChartScene;
   plotWidth: number;
@@ -623,6 +529,7 @@ interface CompositePanelSurfaceProps {
 }
 
 function CompositePanelSurface({
+  engine,
   panel,
   scene,
   plotWidth,
@@ -676,10 +583,43 @@ function CompositePanelSurface({
   const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
+  const paintSource = useMemo(() => (
+    isDesktopWeb
+      ? createCompositePanelPaintSource({
+          engine,
+          panelId: panel.id,
+          colors,
+          width: plotWidth * cellWidthPx,
+          height: panel.height * cellHeightPx,
+          interactive: interactive && armedTool === null,
+          onActivate,
+        })
+      : null
+  ), [
+    armedTool,
+    cellHeightPx,
+    cellWidthPx,
+    colors,
+    engine,
+    interactive,
+    isDesktopWeb,
+    onActivate,
+    panel.height,
+    panel.id,
+    plotWidth,
+  ]);
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
+  const crosshairSurface = paintSource?.getFrame() ?? bitmap;
   const crosshair = useMemo(
-    () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, activeCursorYRatio, colors.crosshair),
-    [activeCursorYRatio, bitmap, colors.crosshair, columnLayout, panel, scene.cursorXRatio],
+    () => resolvePanelCrosshair(
+      panel,
+      columnLayout,
+      crosshairSurface,
+      scene.cursorXRatio,
+      activeCursorYRatio,
+      colors.crosshair,
+    ),
+    [activeCursorYRatio, colors.crosshair, columnLayout, crosshairSurface, panel, scene.cursorXRatio],
   );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
   const toolReadout = useMemo(() => {
@@ -943,7 +883,9 @@ function CompositePanelSurface({
       updateCursor(event);
       return;
     }
-    if (!updateCursor(event)) return;
+    // Desktop panning belongs to the Canvas pointer path. Falling back here
+    // would quantize the drag through terminal-cell mouse coordinates.
+    if (isDesktopWeb || !updateCursor(event)) return;
     dragRef.current = {
       kind: "pan",
       startGlobalX: getGlobalMouseX(event, renderer),
@@ -952,6 +894,7 @@ function CompositePanelSurface({
   }, [
     armedTool,
     drawings,
+    isDesktopWeb,
     onActivate,
     onSelectDrawing,
     panel,
@@ -1108,6 +1051,7 @@ function CompositePanelSurface({
         height={panel.height}
         flexDirection="column"
         bitmaps={bitmapLayers}
+        paintSource={paintSource}
         crosshair={crosshair}
         vectors={vectors}
         onMouseMove={interactive ? handleMouseMove : undefined}
@@ -1518,19 +1462,28 @@ export function CompositeChart({
     ));
   }, [visibleLegendSeries.length]);
   const previousAuthoredViewportRef = useRef<CompositeViewportRange | null>(viewport ?? null);
-  const previousViewportResetKeyRef = useRef(viewportResetKey);
-  const [interactionViewport, setInteractionViewport] = useState<CompositeViewportRange | null>(null);
-  const hasViewportResetKey = viewportResetKey !== undefined
-    || previousViewportResetKeyRef.current !== undefined;
-  const authoredViewportChanged = hasViewportResetKey
-    ? previousViewportResetKeyRef.current !== viewportResetKey
-    : shouldResetCompositeViewport(
-        previousAuthoredViewportRef.current,
-        viewport ?? null,
-      );
-  const navigationAnchorViewport = authoredViewportChanged
-    ? viewport
-    : interactionViewport ?? viewport;
+  const viewportResetSequenceRef = useRef(0);
+  if (viewportResetKey === undefined && shouldResetCompositeViewport(
+    previousAuthoredViewportRef.current,
+    viewport ?? null,
+  )) {
+    viewportResetSequenceRef.current += 1;
+  }
+  previousAuthoredViewportRef.current = viewport ?? null;
+  const engineResetKey = viewportResetKey === undefined
+    ? `viewport:${viewportResetSequenceRef.current}`
+    : `authored:${viewportResetKey}`;
+  const engineRef = useRef<CompositeChartEngine | null>(null);
+  if (!engineRef.current) engineRef.current = new CompositeChartEngine();
+  const engine = engineRef.current;
+  const engineSnapshot = useSyncExternalStore(
+    engine.subscribeState,
+    engine.getSnapshot,
+    engine.getSnapshot,
+  );
+  const navigationAnchorViewport = engine.hasResetKey(engineResetKey) && !engine.isDragging()
+    ? engineSnapshot.interactionViewport ?? viewport
+    : viewport;
   const navigationBounds = useMemo(
     () => resolveCompositeNavigationBounds(
       visibleSeries,
@@ -1546,137 +1499,13 @@ export function CompositeChart({
         : navigationBounds
       : null
   ), [navigationBounds, viewport]);
-  const viewportSeriesKey = visibleLegendSeries
-    .map((entry) => `${entry.id}:${entry.label}`)
-    .join("|");
-  const clampedInteractionViewport = interactionViewport && navigationBounds
-    ? clampCompositeViewport(interactionViewport, navigationBounds)
-    : interactionViewport;
-  const interactionViewportNeedsSync = !!interactionViewport
-    && !!clampedInteractionViewport
-    && !sameCompositeViewport(interactionViewport, clampedInteractionViewport);
-  const currentInteractionViewport = authoredViewportChanged
-    ? null
-    : clampedInteractionViewport;
-  const effectiveViewport = navigationBounds
-    ? currentInteractionViewport
-      ? clampCompositeViewport(currentInteractionViewport, navigationBounds)
-      : initialViewport
-    : null;
-  const interactionViewportStart = currentInteractionViewport?.start.getTime() ?? null;
-  const interactionViewportEnd = currentInteractionViewport?.end.getTime() ?? null;
-  const lastReportedViewportRef = useRef<string | null>(null);
-  const viewportInteractionRef = useRef<"pan" | "reset" | "sync" | "zoom">("reset");
-  useEffect(() => {
-    if (!onViewportChange) return;
-    if (interactionViewportNeedsSync) return;
-    const interactionKey = interactionViewportStart === null || interactionViewportEnd === null
-      ? "none"
-      : `${interactionViewportStart}:${interactionViewportEnd}`;
-    const key = `${viewportSeriesKey}|${interactionKey}`;
-    // The callback drives adaptive data loading. Seed it from the authored
-    // viewport without echoing that controlled value back into the loader.
-    if (lastReportedViewportRef.current === null) {
-      lastReportedViewportRef.current = key;
-      return;
-    }
-    if (lastReportedViewportRef.current === key) return;
-    lastReportedViewportRef.current = key;
-    onViewportChange(
-      interactionViewportStart === null || interactionViewportEnd === null
-        ? null
-        : {
-            start: new Date(interactionViewportStart),
-            end: new Date(interactionViewportEnd),
-          },
-      viewportInteractionRef.current,
-    );
-  }, [
-    interactionViewportEnd,
-    interactionViewportNeedsSync,
-    interactionViewportStart,
-    onViewportChange,
-    viewportSeriesKey,
-  ]);
+  const effectiveViewport = engine.hasResetKey(engineResetKey)
+    ? engineSnapshot.viewport ?? initialViewport
+    : initialViewport;
   const minimumViewportSpanMs = useMemo(
     () => navigationBounds ? resolveCompositeMinimumSpanMs(visibleSeries, navigationBounds) : 1,
     [navigationBounds, visibleSeries],
   );
-
-  useEffect(() => {
-    previousAuthoredViewportRef.current = viewport ?? null;
-    previousViewportResetKeyRef.current = viewportResetKey;
-    if (
-      authoredViewportChanged
-      || (interactionViewport && !navigationBounds)
-    ) {
-      viewportInteractionRef.current = "reset";
-      setInteractionViewport(null);
-      return;
-    }
-    if (interactionViewportNeedsSync && clampedInteractionViewport) {
-      viewportInteractionRef.current = "sync";
-      setInteractionViewport(clampedInteractionViewport);
-    }
-  }, [
-    authoredViewportChanged,
-    clampedInteractionViewport,
-    interactionViewport,
-    interactionViewportNeedsSync,
-    navigationBounds,
-    viewport,
-    viewportResetKey,
-  ]);
-
-  const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
-    if (!navigationBounds || !initialViewport) return;
-    viewportInteractionRef.current = "zoom";
-    setInteractionViewport((current) => {
-      const base = current ?? initialViewport;
-      const next = zoomCompositeViewport(
-        base,
-        navigationBounds,
-        zoomFactor,
-        anchorRatio,
-        minimumViewportSpanMs,
-        marketTimelineSeries,
-      );
-      if (sameCompositeViewport(next, base)) return current;
-      return sameCompositeViewport(next, initialViewport) ? null : next;
-    });
-  }, [initialViewport, marketTimelineSeries, minimumViewportSpanMs, navigationBounds]);
-  const panViewport = useCallback((
-    shiftRatio: number,
-    fromViewport?: CompositeViewportRange,
-  ) => {
-    if (!navigationBounds || !initialViewport) return;
-    viewportInteractionRef.current = "pan";
-    setInteractionViewport((current) => {
-      const base = fromViewport ?? current ?? initialViewport;
-      const next = panCompositeViewport(
-        base,
-        navigationBounds,
-        shiftRatio,
-        marketTimelineSeries,
-        allowHistoricalBackfill,
-      );
-      if (sameCompositeViewport(next, base)) {
-        if (!fromViewport) return current;
-        return sameCompositeViewport(base, initialViewport) ? null : base;
-      }
-      return sameCompositeViewport(next, initialViewport) ? null : next;
-    });
-  }, [allowHistoricalBackfill, initialViewport, marketTimelineSeries, navigationBounds]);
-  const setViewportRange = useCallback((range: CompositeViewportRange) => {
-    if (!navigationBounds || !initialViewport) return;
-    viewportInteractionRef.current = "zoom";
-    const next = clampCompositeViewport(range, navigationBounds);
-    setInteractionViewport(sameCompositeViewport(next, initialViewport) ? null : next);
-  }, [initialViewport, navigationBounds]);
-  const resetViewport = useCallback(() => {
-    viewportInteractionRef.current = "reset";
-    setInteractionViewport(null);
-  }, []);
   // Sticky while armed: the toolbar chip shows which tool owns the drag, and a
   // one-shot tool would blink off before the user could see it.
   const armTool = useCallback((tool: ChartToolKind | null) => {
@@ -1745,43 +1574,86 @@ export function CompositeChart({
     1,
     Math.round(plotWidth * cellWidthPx * Math.max(1, pixelRatio)),
   );
-  const layoutPanels = useMemo<CompositePanelScene[] | null>(() => {
-    if (!projectedScene) return null;
-    const panelSpecById = new Map(panels.map((panel) => [panel.id, panel] as const));
-    const panelHeights = allocateCompositePanelHeights(
-      projectedScene.panels.map((panel) => ({
-        id: panel.id,
-        height: panelSpecById.get(panel.id)?.height,
-      })),
-      plotHeight,
-    );
-    return projectedScene.panels.map((panel) => {
-      const height = panelHeights.get(panel.id) ?? 1;
-      return panel.height === height ? panel : { ...panel, height };
-    });
-  }, [panels, plotHeight, projectedScene]);
-  const baseScene = useMemo<CompositeChartScene | null>(() => {
-    if (!projectedScene || !layoutPanels) return null;
-    const laidOut: CompositeChartScene = {
-      ...projectedScene,
-      width: plotWidth,
-      height: layoutPanels.reduce((sum, panel) => sum + panel.height, 0),
-      panels: layoutPanels,
-    };
-    return downsampleCompositeChartScene(laidOut, downsampleWidth);
-  }, [downsampleWidth, layoutPanels, plotWidth, projectedScene]);
   const resolvedCursorTimestamp = resolvedCursorDate?.getTime() ?? null;
   const normalizedCursorTimestamp = resolvedCursorTimestamp !== null && Number.isFinite(resolvedCursorTimestamp)
     ? resolvedCursorTimestamp
     : null;
-  const scene = useMemo(() => (
-    baseScene
-      ? applyCompositeChartCursor(
-        baseScene,
-        normalizedCursorTimestamp === null ? null : new Date(normalizedCursorTimestamp),
-      )
+  const buildEngineScene = useCallback((
+    nextViewport: CompositeViewportRange,
+    axisDomains?: CompositeAxisDomains,
+  ) => {
+    // lastTickKey busts the builder when a live source mutates in place.
+    void lastTickKey;
+    const next = buildCompositeChartScene(visibleSeries, panels, {
+      width: plotWidth,
+      height: plotHeight,
+      cursorDate: normalizedCursorTimestamp === null
+        ? null
+        : new Date(normalizedCursorTimestamp),
+      viewport: nextViewport,
+      timelineSeries: marketTimelineSeries,
+      axisDomains,
+    });
+    return next ? downsampleCompositeChartScene(next, downsampleWidth) : null;
+  }, [
+    downsampleWidth,
+    lastTickKey,
+    marketTimelineSeries,
+    normalizedCursorTimestamp,
+    panels,
+    plotHeight,
+    plotWidth,
+    visibleSeries,
+  ]);
+  const fallbackScene = useMemo(() => (
+    effectiveViewport ? buildEngineScene(effectiveViewport) : null
+  ), [buildEngineScene, effectiveViewport]);
+  const engineConfig = useMemo(() => (
+    initialViewport && navigationBounds
+      ? {
+          resetKey: engineResetKey,
+          initialViewport,
+          navigationBounds,
+          series: marketTimelineSeries,
+          allowHistoricalBackfill,
+          buildScene: buildEngineScene,
+          onCommit: (
+            next: CompositeViewportRange | null,
+            interaction: "pan" | "reset" | "sync" | "zoom",
+          ) => onViewportChange?.(next, interaction),
+        }
       : null
-  ), [baseScene, normalizedCursorTimestamp]);
+  ), [
+    allowHistoricalBackfill,
+    buildEngineScene,
+    engineResetKey,
+    initialViewport,
+    marketTimelineSeries,
+    navigationBounds,
+    onViewportChange,
+  ]);
+  useLayoutEffect(() => {
+    if (engineConfig) engine.configure(engineConfig);
+  }, [engine, engineConfig]);
+  const scene = engineConfig && engine.isConfigured(engineConfig)
+    ? engineSnapshot.scene
+    : fallbackScene;
+  const liveViewport = engineConfig && engine.isConfigured(engineConfig)
+    ? engineSnapshot.viewport ?? effectiveViewport
+    : effectiveViewport;
+  const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
+    engine.zoom(zoomFactor, anchorRatio, minimumViewportSpanMs);
+  }, [engine, minimumViewportSpanMs]);
+  const panViewport = useCallback((
+    shiftRatio: number,
+    fromViewport?: CompositeViewportRange,
+  ) => {
+    engine.pan(shiftRatio, fromViewport);
+  }, [engine]);
+  const setViewportRange = useCallback((range: CompositeViewportRange) => {
+    engine.setViewport(range);
+  }, [engine]);
+  const resetViewport = useCallback(() => engine.reset(), [engine]);
   const handleEmptyMouseScroll = useCallback((event: ChartMouseEvent) => {
     const direction = event.scroll?.direction;
     if (!interactive || !navigationBounds || !direction) return;
@@ -1931,8 +1803,8 @@ export function CompositeChart({
   const timeAxisLayout = scene && showTimeAxis
     ? buildCompositeTimeAxisLayout(scene, plotWidth)
     : null;
-  const emptyTimeAxisLayout = !scene && showTimeAxis && effectiveViewport
-    ? buildCompositeViewportTimeAxisLayout(effectiveViewport, plotWidth)
+  const emptyTimeAxisLayout = !scene && showTimeAxis && liveViewport
+    ? buildCompositeViewportTimeAxisLayout(liveViewport, plotWidth)
     : null;
 
   if (!scene) {
@@ -2071,6 +1943,7 @@ export function CompositeChart({
       {scene.panels.map((panel) => (
         <CompositePanelSurface
           key={panel.id}
+          engine={engine}
           panel={panel}
           scene={scene}
           plotWidth={plotWidth}
@@ -2079,7 +1952,7 @@ export function CompositeChart({
           axisGap={axisGap}
           colors={resolvedColors}
           interactive={interactive}
-          viewport={effectiveViewport!}
+          viewport={liveViewport!}
           minimumViewportSpanMs={minimumViewportSpanMs}
           armedTool={armedTool}
           drawings={drawings}

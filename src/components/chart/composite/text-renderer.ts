@@ -1,6 +1,6 @@
 import { compositeAxisTicks } from "./format";
 import type { CompositeViewportRange } from "./interactions";
-import { resolveCompositeObservationWidth } from "./rasterizer";
+import { resolveCompositeObservationWidth } from "./painter";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue } from "./scene";
 import {

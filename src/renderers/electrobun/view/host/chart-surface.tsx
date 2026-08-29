@@ -3,11 +3,14 @@ import {
   forwardRef,
   memo,
   useEffect,
+  useLayoutEffect,
   useRef,
   type CSSProperties,
+  type PointerEvent,
   type ReactNode,
   type Ref,
 } from "react";
+import type { ChartPaintSource, ChartPointerInput } from "../../../../components/chart/core/painter";
 import type {
   BitmapSurface,
   BoxRenderable,
@@ -15,6 +18,8 @@ import type {
   ChartVectorShape,
 } from "../../../../ui/host";
 import { WebBox } from "./box";
+import { CanvasChartPainter } from "./chart-painter";
+import { cancelWebFrame, requestWebFrame } from "./mouse";
 
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -39,6 +44,120 @@ const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurf
         display: "block",
         width: "100%",
         height: "100%",
+      }}
+    />
+  );
+});
+
+const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaintSource }) {
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
+  const pointerFrameRef = useRef<number | null>(null);
+  const pendingPointerRef = useRef<ChartPointerInput | null>(null);
+
+  useLayoutEffect(() => {
+    const paint = () => {
+      const canvas = canvasRef.current;
+      const frame = source.getFrame();
+      if (!canvas || !frame) return;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round(frame.width * ratio));
+      const height = Math.max(1, Math.round(frame.height * ratio));
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      frame.paint(new CanvasChartPainter(context, frame.width, frame.height));
+    };
+    paint();
+    return source.subscribe(paint);
+  }, [source]);
+
+  useEffect(() => () => {
+    if (pointerFrameRef.current !== null) cancelWebFrame(pointerFrameRef.current);
+  }, []);
+
+  const pointerInput = (event: PointerEvent<HTMLCanvasElement>): ChartPointerInput => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return {
+      x: event.clientX - bounds.left,
+      y: event.clientY - bounds.top,
+      shift: event.shiftKey,
+      alt: event.altKey,
+      ctrl: event.ctrlKey || event.metaKey,
+    };
+  };
+  const flushPointerMove = (input: ChartPointerInput) => {
+    pendingPointerRef.current = null;
+    source.pointerMove?.(input);
+  };
+  const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0 || !source.pointerDown?.(pointerInput(event))) return;
+    pointerIdRef.current = event.pointerId;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.blur();
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
+    if (pointerIdRef.current !== event.pointerId) return;
+    pendingPointerRef.current = pointerInput(event);
+    if (pointerFrameRef.current === null) {
+      pointerFrameRef.current = requestWebFrame(() => {
+        pointerFrameRef.current = null;
+        const input = pendingPointerRef.current;
+        if (input) flushPointerMove(input);
+      });
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const finishPointer = (event: PointerEvent<HTMLCanvasElement>, cancelled: boolean) => {
+    if (pointerIdRef.current !== event.pointerId) return;
+    pointerIdRef.current = null;
+    if (pointerFrameRef.current !== null) {
+      cancelWebFrame(pointerFrameRef.current);
+      pointerFrameRef.current = null;
+    }
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled) {
+      pendingPointerRef.current = null;
+      source.pointerCancel?.();
+    } else {
+      flushPointerMove(pointerInput(event));
+      source.pointerUp?.(pointerInput(event));
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  return (
+    <canvas
+      ref={canvasRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={(event) => finishPointer(event, false)}
+      onMouseDown={(event) => {
+        if (pointerIdRef.current === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onMouseMove={(event) => {
+        if (pointerIdRef.current === null) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onPointerCancel={(event) => finishPointer(event, true)}
+      style={{
+        display: "block",
+        width: "100%",
+        height: "100%",
+        position: "absolute",
+        inset: 0,
       }}
     />
   );
@@ -137,15 +256,15 @@ const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly
 });
 
 function ChartCrosshair({
-  bitmap,
+  surface,
   crosshair,
 }: {
-  bitmap: BitmapSurface | null;
+  surface: { width: number; height: number } | null;
   crosshair: ChartCrosshairOverlay | null;
 }) {
-  if (!bitmap || !crosshair) return null;
-  const x = bitmap.width <= 1 ? 0 : (crosshair.pixelX / (bitmap.width - 1)) * 100;
-  const y = bitmap.height <= 1 ? 0 : (crosshair.pixelY / (bitmap.height - 1)) * 100;
+  if (!surface || !crosshair) return null;
+  const x = surface.width <= 1 ? 0 : (crosshair.pixelX / (surface.width - 1)) * 100;
+  const y = surface.height <= 1 ? 0 : (crosshair.pixelY / (surface.height - 1)) * 100;
   const clampedX = Math.max(0, Math.min(100, x));
   const clampedY = Math.max(0, Math.min(100, y));
   return (
@@ -202,10 +321,11 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
   function WebChartSurface({ children, ...props }, ref) {
     const bitmap = (props.bitmap ?? null) as BitmapSurface | null;
     const bitmaps = (props.bitmaps ?? null) as readonly BitmapSurface[] | null;
+    const paintSource = (props.paintSource ?? null) as ChartPaintSource | null;
     const layers = bitmaps ?? (bitmap ? [bitmap] : []);
     const crosshair = (props.crosshair ?? null) as ChartCrosshairOverlay | null;
     const vectors = (props.vectors ?? null) as readonly ChartVectorShape[] | null;
-    const baseLayer = layers[0] ?? null;
+    const surface = paintSource?.getFrame() ?? layers[0] ?? null;
     return (
       <WebBox
         {...props}
@@ -219,13 +339,15 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
           ...(props.style as CSSProperties | undefined),
         }}
       >
-        {layers.length > 0
-          ? layers.map((layer, index) => (
-            <BoxLayer key={`layer:${index}`} index={index} bitmap={layer} />
-          ))
-          : children as ReactNode}
+        {paintSource
+          ? <PaintedChart source={paintSource} />
+          : layers.length > 0
+            ? layers.map((layer, index) => (
+              <BoxLayer key={`layer:${index}`} index={index} bitmap={layer} />
+            ))
+            : children as ReactNode}
         <ChartVectors vectors={vectors ?? []} />
-        <ChartCrosshair bitmap={baseLayer} crosshair={crosshair} />
+        <ChartCrosshair surface={surface} crosshair={crosshair} />
       </WebBox>
     );
   },

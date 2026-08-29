@@ -109,6 +109,11 @@ export interface BuildCompositeChartSceneOptions {
   };
   /** Authored series order retained even when the primary anchor is hidden. */
   timelineSeries?: ResolvedSeries[];
+  /** Stable value domains retained during direct manipulation. */
+  axisDomains?: ReadonlyMap<
+    string,
+    Partial<Record<CompositeAxisSide, CompositeAxisDomain>>
+  >;
 }
 
 export interface CompositeChartProps {

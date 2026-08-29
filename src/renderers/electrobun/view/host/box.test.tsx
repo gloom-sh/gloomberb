@@ -11,6 +11,8 @@ Object.assign(globalThis, {
   MouseEvent: testWindow.MouseEvent,
   Event: testWindow.Event,
   HTMLElement: testWindow.HTMLElement,
+  HTMLInputElement: testWindow.HTMLInputElement,
+  HTMLTextAreaElement: testWindow.HTMLTextAreaElement,
   Node: testWindow.Node,
   requestAnimationFrame: (callback: (time: number) => void) => setTimeout(() => callback(Date.now()), 8),
   cancelAnimationFrame: (id: number) => clearTimeout(id),
@@ -69,6 +71,79 @@ test("reports a drag as a drag, never as a move, and keeps its modifiers", async
 
   expect(seen).toEqual(["move", "down", "drag", "up"]);
   expect(modifiers.every((entry) => entry.shift)).toBe(true);
+});
+
+test("desktop charts paint renderer-neutral frames through canvas", async () => {
+  const fillRects: number[][] = [];
+  const canvasPrototype = testWindow.HTMLCanvasElement.prototype as unknown as {
+    getContext: (...args: unknown[]) => unknown;
+  };
+  const originalGetContext = canvasPrototype.getContext;
+  canvasPrototype.getContext = () => ({
+    globalAlpha: 1,
+    fillStyle: "",
+    setTransform: () => {},
+    fillRect: (...values: number[]) => fillRects.push(values),
+  });
+  const listeners = new Set<() => void>();
+  const pointerXs: number[] = [];
+  const container = testWindow.document.createElement("div");
+  testWindow.document.body.appendChild(container);
+  const root = createRoot(container as unknown as HTMLElement);
+
+  try {
+    await act(async () => {
+      root.render(
+        <WebChartSurface
+          width={40}
+          height={10}
+          paintSource={{
+            getFrame: () => ({
+              width: 320,
+              height: 180,
+              paint: (painter) => painter.clear("#101010"),
+            }),
+            subscribe: (listener) => {
+              listeners.add(listener);
+              return () => listeners.delete(listener);
+            },
+            pointerDown: (input) => {
+              pointerXs.push(input.x);
+              return true;
+            },
+            pointerMove: (input) => pointerXs.push(input.x),
+            pointerUp: (input) => pointerXs.push(input.x),
+          }}
+        />,
+      );
+    });
+
+    const canvas = container.querySelector("canvas") as unknown as HTMLCanvasElement;
+    expect(canvas.width).toBe(320);
+    expect(canvas.height).toBe(180);
+    expect(fillRects).toEqual([[0, 0, 320, 180]]);
+    expect(listeners.size).toBe(1);
+
+    const pointer = (type: string, clientX: number) => canvas.dispatchEvent(
+      new testWindow.PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientX,
+        clientY: 20,
+        pointerId: 7,
+      }) as never,
+    );
+    await act(async () => {
+      pointer("pointerdown", 10);
+      pointer("pointermove", 11);
+      pointer("pointerup", 11);
+    });
+    expect(pointerXs).toEqual([10, 11, 11]);
+  } finally {
+    await act(async () => root.unmount());
+    canvasPrototype.getContext = originalGetContext;
+  }
 });
 
 test("chart surfaces consume browser pan and zoom gestures", async () => {
