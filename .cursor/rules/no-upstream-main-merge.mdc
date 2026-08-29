@@ -1,0 +1,39 @@
+---
+description: This is seth-wood's fork — never target gloom-sh/upstream for PRs, merges, or syncs
+alwaysApply: true
+---
+
+# Fork ownership: origin only
+
+This checkout is **seth-wood/gloomberb**, a personal fork. It is not the upstream
+`gloom-sh/gloomberb` project workspace for shipping.
+
+## Never do (hard ban)
+
+- Open, update, or close PRs with `--repo gloom-sh/gloomberb` (or any `gloom-sh/*` repo)
+- `gh pr create` whose base repo resolves to `gloom-sh/gloomberb`
+- Push feature branches to `gloom-sh` remotes
+- `git fetch upstream` / `git pull upstream` / rebase or merge `upstream/main`
+- Sync fork / "Update from upstream" / reset onto the original upstream `main`
+- File issues on `gloom-sh/gloomberb` unless the user explicitly asks for that exact upstream issue
+
+## Always do
+
+- Treat `origin` as `seth-wood/gloomberb` (verify with `git remote -v` if unsure)
+- Push with `git push -u origin HEAD`
+- Open PRs only against the fork:
+
+```bash
+gh pr create --repo seth-wood/gloomberb --head <branch> --base main …
+```
+
+  Or omit `--repo` only when `gh` defaults to `seth-wood/gloomberb` from `origin`.
+- If a command would touch `gloom-sh/*`, stop and retarget to the fork
+
+## If you already mistargeted upstream
+
+1. Close the upstream PR immediately with a short note that it was opened by mistake.
+2. Open the same PR on `seth-wood/gloomberb`.
+3. Do not leave an open PR on `gloom-sh/gloomberb`.
+
+If upstream interaction seems required, ask the user first. Default answer is no.
