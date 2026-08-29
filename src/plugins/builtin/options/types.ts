@@ -1,27 +1,34 @@
 import type { DataTableColumn } from "../../../components";
 import type { OptionContract } from "../../../types/financials";
+import type { OptionSide, OptionValuation } from "../options-calculator/model";
 
-export type OptionColumnId =
-  | "callLast"
-  | "callBid"
-  | "callAsk"
-  | "callVolume"
-  | "callOpenInterest"
-  | "callIv"
-  | "strike"
-  | "putLast"
-  | "putBid"
-  | "putAsk"
-  | "putVolume"
-  | "putOpenInterest"
-  | "putIv";
+export type OptionFieldId =
+  | "bid"
+  | "ask"
+  | "last"
+  | "delta"
+  | "gamma"
+  | "theta"
+  | "vega"
+  | "rho"
+  | "iv"
+  | "volume"
+  | "openInterest";
 
-export type OptionColumn = DataTableColumn & { id: OptionColumnId };
+export type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}`;
+
+export type OptionColumn = DataTableColumn & {
+  id: OptionColumnId;
+  field: OptionFieldId | "strike";
+  side: OptionSide | null;
+};
 
 export interface OptionTableRow {
   strike: number;
   call?: OptionContract;
   put?: OptionContract;
+  callGreeks?: OptionValuation;
+  putGreeks?: OptionValuation;
   isPositionStrike: boolean;
 }
 

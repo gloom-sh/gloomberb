@@ -6,11 +6,26 @@ import {
   LIVE_STREAMING_QUICK_SETTING,
   withLiveStreamingSetting,
 } from "../shared/live-streaming";
+import { OPTION_FIELD_DEFS, resolveOptionFieldIds } from "./table";
 
-function optionsSettings(): PaneSettingsDef {
+function optionsSettings(settings: Record<string, unknown>): PaneSettingsDef {
   return {
     title: "Options Settings",
+    values: {
+      optionColumnIds: resolveOptionFieldIds(settings.optionColumnIds),
+    },
     fields: [
+      {
+        key: "optionColumnIds",
+        label: "Columns",
+        description: "Choose and order the fields mirrored around the strike.",
+        type: "ordered-multi-select",
+        options: OPTION_FIELD_DEFS.map((field) => ({
+          value: field.id,
+          label: field.label,
+          description: field.description,
+        })),
+      },
       {
         key: "chainRefreshMinutes",
         label: "Chain refresh",
@@ -38,7 +53,7 @@ export const optionsModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 112, height: 28 },
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
-      settings: (context) => withLiveStreamingSetting(optionsSettings(), context.settings),
+      settings: (context) => withLiveStreamingSetting(optionsSettings(context.settings), context.settings),
     },
   ],
 
