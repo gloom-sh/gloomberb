@@ -429,7 +429,7 @@ export function projectChart(
   fit: TrendFit,
 ): BuffettChartProjection {
   const points: ProjectedChartPoint[] = visible.map((p) => ({
-    date: p.date,
+    date: new Date(p.date),
     open: p.ratio,
     high: p.ratio,
     low: p.ratio,

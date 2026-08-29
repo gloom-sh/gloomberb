@@ -9,6 +9,7 @@ import { connectionsModule } from "./connections";
 import { correlationModule } from "./correlation";
 import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
+import { buffettIndicatorModule } from "./buffett-indicator";
 import { economicCalendarModule } from "./econ";
 import { earningsModule } from "./earnings";
 import { ipoCalendarModule } from "./ipo-calendar";
@@ -98,6 +99,7 @@ export const macroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,
+    buffettIndicatorModule,
     cdsModule,
     treasuryAuctionsModule,
     earningsModule,

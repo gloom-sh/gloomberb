@@ -5,10 +5,10 @@ import {
   SpeedometerGauge,
   Spinner,
   StaticChartSurface,
+  resolveChartPalette,
   type PaneFooterSegment,
   type SpeedometerSegment,
 } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { blendHex, colors } from "../../../theme/colors";

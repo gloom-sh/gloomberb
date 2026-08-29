@@ -22,6 +22,7 @@ const IMAGERY_RULES: ReadonlyArray<readonly [string, PaneImagery]> = [
   ["sectors", "heatmap"],
   ["treemap", "heatmap"],
   ["fear-greed", "gauge"],
+  ["buffett", "gauge"],
   ["kelly", "gauge"],
   ["gauge", "gauge"],
   ["calendar", "calendar"],
