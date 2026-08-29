@@ -40,7 +40,10 @@ export interface ChartPainter {
 
 /** A complete chart frame in logical surface pixels. */
 export interface ChartPaintFrame {
+  /** Width of the complete paintable strip. */
   width: number;
+  /** Width of the clipped visible surface. */
+  surfaceWidth: number;
   height: number;
   /** Changes only when pixels must be repainted. */
   revision: number;

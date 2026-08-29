@@ -88,6 +88,7 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
   const listeners = new Set<() => void>();
   const pointerXs: number[] = [];
   let revision = 1;
+  let width = 320;
   let offsetX = 0;
   const container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
@@ -101,7 +102,8 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
           height={10}
           paintSource={{
             getFrame: () => ({
-              width: 320,
+              width,
+              surfaceWidth: 320,
               height: 180,
               revision,
               offsetX,
@@ -132,9 +134,28 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
     listeners.forEach((listener) => listener());
     expect(canvas.style.transform).toBe("translate3d(12px, 0, 0)");
     expect(fillRects).toHaveLength(1);
+    width = 960;
+    offsetX = -320;
     revision = 2;
     listeners.forEach((listener) => listener());
-    expect(fillRects).toHaveLength(2);
+    const tiles = [...container.querySelectorAll("canvas")];
+    expect(tiles).toHaveLength(3);
+    expect(tiles.map((tile) => tile.width)).toEqual([320, 320, 320]);
+    expect(tiles.map((tile) => tile.style.transform)).toEqual([
+      "translate3d(-320px, 0, 0)",
+      "translate3d(0px, 0, 0)",
+      "translate3d(320px, 0, 0)",
+    ]);
+    expect(fillRects).toHaveLength(4);
+
+    offsetX = -308;
+    listeners.forEach((listener) => listener());
+    expect(tiles.map((tile) => tile.style.transform)).toEqual([
+      "translate3d(-308px, 0, 0)",
+      "translate3d(12px, 0, 0)",
+      "translate3d(332px, 0, 0)",
+    ]);
+    expect(fillRects).toHaveLength(4);
 
     const pointer = (type: string, clientX: number) => canvas.dispatchEvent(
       new testWindow.PointerEvent(type, {
