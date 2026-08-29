@@ -91,16 +91,20 @@ views — no cross-calibration between them.
 
 ### ⚠️ Verify before building the UI
 
-FRED discontinued several Wilshire series, and `fred.stlouisfed.org` blocks automated fetches, so
-this could not be confirmed while planning. **First task after the branch exists:** run the app and
-confirm `WILL5000PRFC` returns recent observations through the cloud proxy. If it is dead or months
-stale:
+**Verified 2026-08-29 against `api.gloom.sh`:** `GDP` returns data. `WILL5000PRFC`,
+`WILL5000PR`, and `NCBEILQ027S` all return `500 Unsupported FRED series`. The cloud FRED proxy
+allowlists series; those IDs are not on it. Tracking: https://github.com/gloom-sh/gloomberb/issues/658
+
+Until the allowlist lands, build model/client/pane against injectable loaders and seeded
+`fred-series` persistence. Live Terminal/Desktop verification of real numbers waits on #658.
+
+If after allowlisting Wilshire is dead or months stale:
 
 1. Try `WILL5000PR` (price index, non-full-cap).
 2. Otherwise make Z.1 the default and mark Wilshire unavailable.
 
-Z.1 is the guaranteed path and must work regardless. The pane degrades to whichever mode resolves and
-names the resolved source in the body — never an empty pane.
+The pane degrades to whichever mode resolves and names the resolved source in the body — never an
+empty pane.
 
 ### GDP handling
 
