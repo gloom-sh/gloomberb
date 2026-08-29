@@ -292,10 +292,19 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
 
           <Box flexDirection="column" gap={1} width={Math.max(1, width - 2)}>
             <Text fg={colors.textDim} wrapMode="word" wrapText>
-              The Buffett Indicator is the total value of US stocks divided by GDP. At 100%, the market is worth one year of economic output. Warren Buffett popularized the ratio in a December 2001 Fortune essay with Carol Loomis, drawn from a Sun Valley talk after the 1990s boom. He called it probably the best single measure of where valuations stand at any given moment.
+              The Buffett Indicator divides the total value of US stocks by GDP: the market is priced at one year of economic output. Warren Buffett popularized the ratio in a December 2001 Fortune essay written with Carol Loomis, drawn from a Sun Valley talk at the tail of the 1990s boom, and called it probably the best single measure of where valuations stand at any given moment. It is used as a market-wide compass.
             </Text>
             <Text fg={colors.textDim} wrapMode="word" wrapText>
-              He treated it as a market-wide compass, not a trade timer. After that boom, 70 to 80% looked cheap and the 200% peak in 1999 and 2000 looked like fire. It is still the usual whole-market valuation check, though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like versus 2001, which is why this pane also shows the gap versus trend (σ). Significantly undervalued is below 75%, fair 90 to 115%, significantly overvalued above 135%. The numerator is the Wilshire 5000, a daily full-cap proxy for US listed stocks.
+              70 to 80% is where stocks looked cheap, while the 200% peak of 1999 and 2000 was, in his words, "playing with fire." It is still the standard whole-market valuation check.
+            </Text>
+            <Text fg={colors.textDim} wrapMode="word" wrapText>
+              Though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like since 2001, this tool also shows a gap versus trend (σ) for alignment.
+            </Text>
+            <Text fg={colors.textDim} wrapMode="word" wrapText>
+              How to read: Below 75% is significantly undervalued, 90 to 115% fair, above 135% significantly overvalued.
+            </Text>
+            <Text fg={colors.textDim} wrapMode="word" wrapText>
+              The Math: It's the Wilshire 5000 divided by nominal GDP, times 100. The Wilshire is a daily full-cap index of US listed stocks, priced so one point is about $1B of market value, while GDP only prints quarterly and is interpolated across the days in between.
             </Text>
             <Box flexDirection="row" height={1} overflow="hidden">
               <ExternalLinkText
