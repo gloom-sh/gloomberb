@@ -178,7 +178,7 @@ export function renderChart(
       drawAreaChart(buf, points, 0, chartDotBottom, palette.lineColor, palette.fillColor, min, max);
       break;
     case "line":
-      drawLineSeries(buf, points, 0, chartDotBottom, palette.lineColor, min, max);
+      drawLineSeries(buf, points, 0, chartDotBottom, palette.lineColor, min, max, scene.lineColors);
       break;
     case "candles":
       drawCandlestickChart(buf, points, 0, chartDotBottom, palette, min, max);

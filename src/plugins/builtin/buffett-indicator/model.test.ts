@@ -6,6 +6,7 @@ import {
   chartYearLabels,
   classifyZone,
   fitLogLinearTrend,
+  nicePercentDomain,
   gaugeSegmentsFromZones,
   interpolateGdpAligner,
   projectChart,
@@ -184,28 +185,33 @@ describe("chartYearLabels", () => {
       close: 100,
       volume: 0,
     }));
-    expect(chartYearLabels(long, 5)).toEqual(["2000", "2005", "2010", "2014", "2019"]);
+    expect(chartYearLabels(long, 5)).toEqual(["2000", "2005", "2010", "2015", "2019"]);
+  });
+});
+
+describe("nicePercentDomain", () => {
+  test("snaps to 150-point spans so grid ticks land on round percents", () => {
+    expect(nicePercentDomain(40)).toEqual({ min: 0, max: 150 });
+    expect(nicePercentDomain(151)).toEqual({ min: 0, max: 300 });
+    expect(nicePercentDomain(300)).toEqual({ min: 0, max: 300 });
   });
 });
 
 describe("projectChart", () => {
-  test("leaves trend bands unclamped and pads the y domain around them", () => {
+  test("pins MEAN at 100% and colors the series from classifyZone", () => {
     const points: RatioPoint[] = [
-      { date: "2024-01-01", ratio: 200, marketCapBillions: 40_000, gdpBillions: 20_000 },
-      { date: "2025-01-01", ratio: 210, marketCapBillions: 42_000, gdpBillions: 20_000 },
-      { date: "2026-01-01", ratio: 220, marketCapBillions: 44_000, gdpBillions: 20_000 },
+      { date: "2024-01-01", ratio: 50, marketCapBillions: 10_000, gdpBillions: 20_000 },
+      { date: "2025-01-01", ratio: 100, marketCapBillions: 20_000, gdpBillions: 20_000 },
+      { date: "2026-01-01", ratio: 200, marketCapBillions: 40_000, gdpBillions: 20_000 },
     ];
-    const fit = fitLogLinearTrend(points);
-    const chart = projectChart(points, fit);
-    const lastDate = points[2]!.date;
-    const mid = trendAt(fit, lastDate);
-    const expectedUpper = mid * Math.exp(2 * fit.sigma);
-    const expectedLower = mid * Math.exp(-2 * fit.sigma);
-    expect(chart.overlays.bollinger?.upper.at(-1)?.value).toBeCloseTo(expectedUpper);
-    expect(chart.overlays.bollinger?.lower.at(-1)?.value).toBeCloseTo(expectedLower);
-    expect(chart.yDomain.max).toBeGreaterThan(expectedUpper);
-    expect(chart.yDomain.min).toBeLessThan(expectedLower);
+    const chart = projectChart(points);
+    expect(chart.overlays.bollinger).toBeNull();
+    expect(chart.overlays.smaLines).toHaveLength(1);
+    expect(chart.overlays.smaLines[0]!.points.every((point) => point.value === 100)).toBe(true);
+    expect(chart.yDomain).toEqual({ min: 0, max: 300 });
     expect(chart.yearLabels).toEqual(["2024", "2025", "2026"]);
+    expect(chart.lineColors).toEqual(points.map((point) => classifyZone(point.ratio).color));
+    expect(new Set(chart.lineColors).size).toBe(3);
   });
 });
 

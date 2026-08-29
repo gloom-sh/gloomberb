@@ -76,6 +76,7 @@ export interface BuffettChartProjection {
   overlays: ChartIndicatorOverlays;
   yDomain: { min: number; max: number };
   yearLabels: string[];
+  lineColors: string[];
 }
 
 export interface BuffettViewModel {
@@ -194,6 +195,27 @@ function zoneColor(id: ValuationZoneId): string {
       return _exhaustive;
     }
   }
+}
+
+interface ZoneSpan {
+  min: number;
+  max: number | null;
+  gaugeLabel: string;
+  color: string;
+}
+
+function zoneSpans(): ZoneSpan[] {
+  let from = 0;
+  return ZONE_TABLE.map((row) => {
+    const span = {
+      min: from,
+      max: row.max,
+      gaugeLabel: row.gaugeLabel,
+      color: zoneColor(row.id),
+    };
+    from = row.max ?? from;
+    return span;
+  });
 }
 
 export function seriesRequest(def: SeriesDef): FredSeriesRequest {
@@ -426,10 +448,18 @@ export function sliceByRange(
   return sliced.length >= 2 ? sliced : [...points];
 }
 
-export function projectChart(
-  visible: readonly RatioPoint[],
-  fit: TrendFit,
-): BuffettChartProjection {
+/** 50% ticks land on the shared chart's 3 grid gaps when the span is a multiple of 150. */
+const PERCENT_GRID_SPAN = 150;
+
+export function nicePercentDomain(dataMax: number): { min: number; max: number } {
+  const hi = Number.isFinite(dataMax) && dataMax > 0 ? dataMax : 0;
+  return { min: 0, max: Math.max(PERCENT_GRID_SPAN, Math.ceil(hi / PERCENT_GRID_SPAN) * PERCENT_GRID_SPAN) };
+}
+
+/** Market cap equal to one year of GDP — the Buffett Indicator's baseline, not a sample average. */
+export const PARITY_RATIO = 100;
+
+export function projectChart(visible: readonly RatioPoint[]): BuffettChartProjection {
   const points: ProjectedChartPoint[] = visible.map((p) => ({
     date: new Date(p.date),
     open: p.ratio,
@@ -438,61 +468,28 @@ export function projectChart(
     close: p.ratio,
     volume: 0,
   }));
-  let yMin = Infinity;
   let yMax = -Infinity;
-  for (const p of points) {
-    yMin = Math.min(yMin, p.close);
-    yMax = Math.max(yMax, p.close);
+  for (const point of visible) {
+    yMax = Math.max(yMax, point.ratio);
   }
-  if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
-    yMin = 0;
-    yMax = 1;
-  }
+  if (!Number.isFinite(yMax)) yMax = 0;
 
-  const middle: { index: number; value: number }[] = [];
-  const upper2: { index: number; value: number }[] = [];
-  const lower2: { index: number; value: number }[] = [];
-  const upper1: { index: number; value: number }[] = [];
-  const lower1: { index: number; value: number }[] = [];
-
-  for (let i = 0; i < visible.length; i += 1) {
-    const date = visible[i]!.date;
-    const mid = trendAt(fit, date);
-    const band = (k: number) => mid * Math.exp(k * fit.sigma);
-    const upper = band(2);
-    const lower = band(-2);
-    middle.push({ index: i, value: mid });
-    upper2.push({ index: i, value: upper });
-    lower2.push({ index: i, value: lower });
-    upper1.push({ index: i, value: band(1) });
-    lower1.push({ index: i, value: band(-1) });
-    yMin = Math.min(yMin, lower);
-    yMax = Math.max(yMax, upper);
-  }
-
+  const meanLine = visible.map((_, index) => ({ index, value: PARITY_RATIO }));
+  const lineColors = visible.map((point) => classifyZone(point.ratio).color);
   const overlays: ChartIndicatorOverlays = {
-    smaLines: [
-      { period: 0, points: upper1, color: colors.textMuted },
-      { period: 0, points: lower1, color: colors.textMuted },
-    ],
+    smaLines: [{ period: 0, points: meanLine, color: colors.textDim }],
     emaLines: [],
-    bollinger: {
-      middle,
-      upper: upper2,
-      lower: lower2,
-      color: colors.textDim,
-    },
+    bollinger: null,
     rsi: null,
     macd: null,
   };
 
-  const span = Math.max(yMax - yMin, 1);
-  const pad = span * 0.08;
   return {
     points,
     overlays,
-    yDomain: { min: yMin - pad, max: yMax + pad },
+    yDomain: nicePercentDomain(yMax),
     yearLabels: chartYearLabels(points),
+    lineColors,
   };
 }
 
@@ -504,11 +501,22 @@ export function chartYearLabels(points: readonly ProjectedChartPoint[], maxLabel
     if (years[years.length - 1] !== year) years.push(year);
   }
   if (years.length <= maxLabels) return years;
-  const picked: string[] = [];
-  for (let i = 0; i < maxLabels; i += 1) {
-    const year = years[Math.round((i / Math.max(maxLabels - 1, 1)) * (years.length - 1))]!;
+
+  const start = Number(years[0]);
+  const end = Number(years[years.length - 1]);
+  let step = 5;
+  while (Math.floor((end - start) / step) + 1 > maxLabels) {
+    step = step === 5 ? 10 : step * 2;
+    if (step > 100) break;
+  }
+
+  const picked: string[] = [years[0]!];
+  for (const year of years) {
+    if (Number(year) % step !== 0) continue;
     if (picked[picked.length - 1] !== year) picked.push(year);
   }
+  const last = years[years.length - 1]!;
+  if (picked[picked.length - 1] !== last) picked.push(last);
   return picked;
 }
 
@@ -563,7 +571,7 @@ export function projectView(
     allTimeHigh: findExtreme(points, "high"),
     allTimeLow: findExtreme(points, "low"),
     percentile: points.length === 0 ? 0 : (100 * atOrBelow) / points.length,
-    chart: projectChart(visible, trend),
+    chart: projectChart(visible),
     asOf: current.date,
     observationStale: observationAgeMs > mode.staleAfterMs,
     cacheStale,
@@ -592,16 +600,10 @@ export function gaugeSegmentsFromZones(): {
   color: string;
 }[] {
   const maxGauge = 250;
-  let from = 0;
-  return ZONE_TABLE.map((row) => {
-    const to = row.max == null ? maxGauge : row.max;
-    const segment = {
-      from,
-      to: row.max == null ? maxGauge : to - 0.001,
-      label: row.gaugeLabel,
-      color: zoneColor(row.id),
-    };
-    from = row.max ?? maxGauge;
-    return segment;
-  });
+  return zoneSpans().map((span) => ({
+    from: span.min,
+    to: span.max == null ? maxGauge : span.max - 0.001,
+    label: span.gaugeLabel,
+    color: span.color,
+  }));
 }

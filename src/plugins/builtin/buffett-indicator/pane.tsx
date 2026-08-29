@@ -172,16 +172,10 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
     info: footerInfo,
   });
 
-  const palette = useMemo(() => {
-    const zoneColor = view?.zone.color ?? colors.textBright;
-    const base = resolveChartPalette(colors, "neutral");
-    return {
-      ...base,
-      lineColor: zoneColor,
-      fillColor: blendHex(colors.bg, zoneColor, 0.18),
-      gridColor: blendHex(colors.bg, colors.border, 0.55),
-    };
-  }, [view?.zone.color]);
+  const palette = {
+    ...resolveChartPalette(colors, "neutral"),
+    gridColor: blendHex(colors.bg, colors.border, 0.55),
+  };
 
   if (!bundle && loading) {
     return (
@@ -205,7 +199,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
   const sourceLabel = BUFFETT_MODES[view.displayedMode].label;
   const showFallbackSource = view.displayedMode !== view.requestedMode;
   const chartWidth = Math.max(24, width - 2);
-  const chartHeight = width >= 96 ? 12 : 10;
+  const chartHeight = width >= 96 ? 14 : 12;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -241,21 +235,39 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
             segments={GAUGE_SEGMENTS}
           />
 
-          {view.chart.points.length >= 2 ? (
-            <StaticChartSurface
-              points={view.chart.points}
-              width={chartWidth}
-              height={chartHeight}
-              mode="line"
-              colors={palette}
-              indicators={view.chart.overlays}
-              yDomain={view.chart.yDomain}
-              yAxisSide="left"
-              xAxisLabels={view.chart.yearLabels}
-              xAxisColor={colors.textDim}
-              yAxisColor={colors.textDim}
-              formatYAxisValue={(v) => formatRatioPct(v)}
+          <Box flexDirection="row" height={1} gap={2} overflow="hidden">
+            <SegmentedControl
+              options={MODE_OPTIONS}
+              value={mode}
+              onChange={(value) => setMode(value as BuffettModeId)}
             />
+            <SegmentedControl
+              options={RANGE_OPTIONS}
+              value={range}
+              onChange={(value) => setRange(value as BuffettRangeId)}
+            />
+          </Box>
+
+          {view.chart.points.length >= 2 ? (
+            <Box flexDirection="column" gap={0}>
+              <Box flexDirection="row" height={1} overflow="hidden">
+                <Text fg={colors.textDim}>— MEAN 100%</Text>
+              </Box>
+              <StaticChartSurface
+                points={view.chart.points}
+                width={chartWidth}
+                height={chartHeight}
+                mode="line"
+                colors={palette}
+                indicators={view.chart.overlays}
+                yDomain={view.chart.yDomain}
+                lineColors={view.chart.lineColors}
+                xAxisLabels={view.chart.yearLabels}
+                xAxisColor={colors.textDim}
+                yAxisColor={colors.textDim}
+                formatYAxisValue={(v) => formatRatioPct(v)}
+              />
+            </Box>
           ) : (
             <Box height={chartHeight} justifyContent="center" alignItems="center">
               <Text fg={colors.textMuted}>Not enough chart data</Text>
@@ -284,19 +296,6 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
               <Text fg={colors.textDim}>{"  %ile "}</Text>
               <Text fg={colors.textBright}>{formatNumber(view.percentile, 0)}</Text>
             </Box>
-          </Box>
-
-          <Box flexDirection="row" height={1} gap={2} overflow="hidden">
-            <SegmentedControl
-              options={MODE_OPTIONS}
-              value={mode}
-              onChange={(value) => setMode(value as BuffettModeId)}
-            />
-            <SegmentedControl
-              options={RANGE_OPTIONS}
-              value={range}
-              onChange={(value) => setRange(value as BuffettRangeId)}
-            />
           </Box>
 
           <Box flexDirection="column" gap={1} width={Math.max(1, width - 2)}>

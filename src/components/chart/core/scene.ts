@@ -47,6 +47,7 @@ export interface RenderChartOptions {
   indicators?: ChartIndicatorOverlays | null;
   marketSession?: ChartMarketSession | null;
   yDomain?: { min: number; max: number };
+  lineColors?: readonly string[] | null;
 }
 
 export interface ChartScene {
@@ -60,6 +61,7 @@ export interface ChartScene {
   colors: ResolvedChartPalette;
   indicators: ChartIndicatorOverlays | null;
   sessionBackgroundSpans: ChartSessionBackgroundSpan[];
+  lineColors: readonly string[] | null;
   min: number;
   max: number;
   activeIdx: number;
@@ -164,6 +166,7 @@ export function buildChartScene(
     colors: opts.colors,
     indicators: opts.indicators ?? null,
     sessionBackgroundSpans,
+    lineColors: opts.lineColors && opts.lineColors.length > 0 ? opts.lineColors : null,
     min,
     max,
     activeIdx,
