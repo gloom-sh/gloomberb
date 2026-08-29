@@ -79,9 +79,11 @@ export class CompositeChartEngine {
   private stateListeners = new Set<() => void>();
   private interactionViewport: CompositeViewportRange | null = null;
   private drag: {
-    startX: number;
     width: number;
     startViewport: CompositeViewportRange;
+    anchorX: number;
+    anchorViewport: CompositeViewportRange;
+    lastX: number;
     axes: CompositeAxisDomains | undefined;
     previewScene: CompositeChartScene | null;
     previewWidth: number;
@@ -283,9 +285,11 @@ export class CompositeChartEngine {
       ? 1 + Math.max(width - 1, 1) / (ratios.end - ratios.start)
       : width;
     this.drag = {
-      startX: x,
       width: Math.max(width - 1, 1),
       startViewport: viewport,
+      anchorX: x,
+      anchorViewport: viewport,
+      lastX: x,
       axes,
       previewScene,
       previewWidth,
@@ -299,13 +303,21 @@ export class CompositeChartEngine {
     const drag = this.drag;
     if (!drag || !this.config) return;
     const next = panCompositeViewport(
-      drag.startViewport,
+      drag.anchorViewport,
       this.config.navigationBounds,
-      (x - drag.startX) / drag.width,
+      (x - drag.anchorX) / drag.width,
       this.config.series,
       this.config.allowHistoricalBackfill,
     );
-    if (sameCompositeViewport(next, this.effectiveViewport())) return;
+    if (sameCompositeViewport(next, this.effectiveViewport())) {
+      if (x !== drag.lastX) {
+        drag.anchorX = x;
+        drag.anchorViewport = next;
+      }
+      drag.lastX = x;
+      return;
+    }
+    drag.lastX = x;
     this.interactionViewport = sameCompositeViewport(next, this.config.initialViewport)
       ? null
       : next;

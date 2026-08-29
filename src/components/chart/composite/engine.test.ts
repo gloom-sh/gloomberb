@@ -99,6 +99,37 @@ test("drag frames always derive from the pointer-down viewport", () => {
   expect(offsets[1]!).toBeLessThan(offsets[2]!);
 });
 
+test("reverses immediately after overscrolling the newest boundary", () => {
+  const data = priceSeries();
+  const commits: Array<CompositeViewportRange | null> = [];
+  const engine = new CompositeChartEngine();
+  engine.configure({
+    resetKey: "price:1D",
+    initialViewport: viewport(3, 9),
+    navigationBounds: viewport(1, 11),
+    series: [data],
+    allowHistoricalBackfill: false,
+    buildScene: (next, axisDomains) => buildCompositeChartScene(
+      [data],
+      [{ id: "main" }],
+      { width: 101, height: 20, viewport: next, axisDomains },
+    ),
+    onCommit: (next) => commits.push(next),
+  });
+
+  engine.beginPixelPan(100, 101);
+  engine.movePixelPan(0);
+  const boundaryOffset = engine.getPaintState(101).offsetX;
+  engine.movePixelPan(-100);
+  expect(engine.getPaintState(101).offsetX).toBe(boundaryOffset);
+
+  engine.movePixelPan(-99);
+  expect(engine.getPaintState(101).offsetX - boundaryOffset).toBeCloseTo(1, 6);
+
+  engine.endPixelPan();
+  expect(commits).toHaveLength(1);
+});
+
 test("data refreshes stay outside an active pixel drag", () => {
   const data = priceSeries();
   const engine = new CompositeChartEngine();
