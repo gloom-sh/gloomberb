@@ -4,7 +4,6 @@ import type {
   CliCommandDef,
   CliDispatchResult,
   GloomPlugin,
-  PluginCliCommandDescriptor,
 } from "../types/plugin";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { getPluginCatalog } from "../plugins/catalog";
@@ -35,7 +34,6 @@ export interface CliCommandRegistry {
   config: AppConfig | null;
   plugins: GloomPlugin[];
   externalPlugins: LoadedExternalPlugin[];
-  descriptors: Array<{ pluginId: string; descriptor: PluginCliCommandDescriptor }>;
 }
 
 interface BuildCliCommandRegistryOptions {
@@ -69,19 +67,6 @@ export function normalizeCliDispatchResult(result: void | CliDispatchResult): Cl
 
 function getCommandUsageLabel(command: CliCommandDef): string {
   return command.help?.usage?.[0] ?? command.name;
-}
-
-function descriptorToCommand(descriptor: PluginCliCommandDescriptor): CliCommandDef | null {
-  if (!descriptor.execute) return null;
-  return {
-    name: descriptor.name,
-    aliases: descriptor.aliases,
-    description: descriptor.summary,
-    help: descriptor.examples?.length
-      ? { usage: descriptor.examples }
-      : undefined,
-    execute: descriptor.execute,
-  };
 }
 
 function renderHelpSections(registry: CliCommandRegistry): string[] {
@@ -172,7 +157,6 @@ export function buildCliCommandRegistry({
   }
 
   const loadablePlugins: GloomPlugin[] = [];
-  const descriptors: Array<{ pluginId: string; descriptor: PluginCliCommandDescriptor }> = [];
   for (const entry of catalog) {
     if (entry.error) {
       registryLog.warn(`Skipping external plugin "${entry.plugin.id}" for CLI registration.`, {
@@ -184,11 +168,6 @@ export function buildCliCommandRegistry({
     loadablePlugins.push(entry.plugin);
     for (const command of entry.plugin.cliCommands ?? []) {
       registerCommand(command, entry.plugin.id, "plugin");
-    }
-    for (const descriptor of entry.plugin.cli?.commands ?? []) {
-      descriptors.push({ pluginId: entry.plugin.id, descriptor });
-      const command = descriptorToCommand(descriptor);
-      if (command) registerCommand(command, entry.plugin.id, "plugin");
     }
   }
 
@@ -210,7 +189,6 @@ export function buildCliCommandRegistry({
     config,
     plugins: loadablePlugins.filter((plugin) => !disabledPlugins.has(plugin.id)),
     externalPlugins,
-    descriptors,
   };
 }
 

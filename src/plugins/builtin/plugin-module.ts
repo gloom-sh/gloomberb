@@ -2,7 +2,6 @@ import { Fragment, createElement, type ReactNode } from "react";
 import type {
   GloomPlugin,
   GloomPluginContext,
-  PluginCliDescriptor,
 } from "../../types/plugin";
 
 type PluginMetadataKey = "id" | "name" | "version" | "description" | "toggleable" | "order";
@@ -12,7 +11,6 @@ export type PluginModule = Omit<GloomPlugin, PluginMetadataKey>;
 
 const HANDLED_MODULE_KEYS = [
   "cliCommands",
-  "cli",
   "setup",
   "dispose",
   "panes",
@@ -23,11 +21,8 @@ const HANDLED_MODULE_KEYS = [
 ] as const satisfies readonly (keyof PluginModule)[];
 
 type MissingModuleKey = Exclude<keyof PluginModule, typeof HANDLED_MODULE_KEYS[number]>;
-type MissingCliDescriptorKey = Exclude<keyof PluginCliDescriptor, "commands">;
 const ALL_MODULE_KEYS_HANDLED: MissingModuleKey extends never ? true : never = true;
-const ALL_CLI_DESCRIPTOR_KEYS_HANDLED: MissingCliDescriptorKey extends never ? true : never = true;
 void ALL_MODULE_KEYS_HANDLED;
-void ALL_CLI_DESCRIPTOR_KEYS_HANDLED;
 
 interface CompositePluginOptions extends PluginMetadata {
   modules: readonly PluginModule[];
@@ -72,7 +67,6 @@ function composeSlots(modules: readonly PluginModule[]): GloomPlugin["slots"] {
 export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlugin {
   const { modules, ...metadata } = options;
   const cliCommands = modules.flatMap((module) => module.cliCommands ?? []);
-  const cliDescriptors = modules.flatMap((module) => module.cli?.commands ?? []);
   const panes = modules.flatMap((module) => module.panes ?? []);
   const paneTemplates = modules.flatMap((module) => module.paneTemplates ?? []);
   const capabilities = modules.flatMap((module) => module.capabilities ?? []);
@@ -83,7 +77,6 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
   return {
     ...metadata,
     ...(cliCommands.length > 0 ? { cliCommands } : {}),
-    ...(cliDescriptors.length > 0 ? { cli: { commands: cliDescriptors } } : {}),
     ...(panes.length > 0 ? { panes } : {}),
     ...(paneTemplates.length > 0 ? { paneTemplates } : {}),
     ...(capabilities.length > 0 ? { capabilities } : {}),

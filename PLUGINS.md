@@ -75,7 +75,7 @@ For external plugins, create a directory in `~/.gloomberb/plugins/`:
 
 ## What plugins can do
 
-Use `setup()` for interactive runtime registration, `capabilities` for reusable headless services, and `cli.commands` for root-level CLI commands that should be discoverable without rendering panes. The older `cliCommands` array still works, but new plugins should prefer the typed `cli.commands` descriptor because it exposes summaries, input/output shape, formats, safety notes, and side-effect level to `gloomberb help`, `gloomberb catalog --json`, and `gloomberb api list`.
+Use `setup()` for interactive runtime registration, `capabilities` for reusable headless services, and `cliCommands` for root-level CLI commands that should be discoverable without rendering panes. Capability operations can still declare `cli` manifests (`summary`, input/output shape, formats, safety notes, side-effect level) for `gloomberb api list`.
 
 ## Renderer-neutral UI
 
@@ -145,7 +145,7 @@ Commands registered with `ctx.registerCommand({ shortcut, shortcutArg })` and pa
 
 ### CLI commands
 
-Plugins can declare root CLI commands directly on the plugin object. Prefer `cli.commands` for new commands; keep `cliCommands` only for compatibility with older plugins.
+Plugins can declare root CLI commands directly on the plugin object with `cliCommands`.
 
 ```typescript
 import type { GloomPlugin } from "gloomberb/types/plugin";
@@ -154,44 +154,40 @@ export const myPlugin: GloomPlugin = {
   id: "my-plugin",
   name: "My Plugin",
   version: "1.0.0",
-  cli: {
-    commands: [
-      {
-        name: "my-plugin",
-        aliases: ["mp"],
-        summary: "Run a plugin-owned CLI command",
-        inputShape: "my-plugin run [--limit N]",
-        outputShape: "rows: [{ id, label }]",
-        formats: ["text", "json", "csv", "ndjson"],
-        sideEffectLevel: "none",
-        examples: ["gloomberb my-plugin run --json"],
-        async execute(args, ctx) {
-          if (args[0] !== "run") {
-            ctx.fail("Usage: gloomberb my-plugin run");
-          }
-
-          const services = await ctx.initServices();
-          try {
-            ctx.printResult(
-              {
-                data: [
-                  { id: "demo", label: `Using data dir ${services.config.dataDir}` },
-                ],
-              },
-              {
-                columns: [
-                  { key: "id", header: "ID" },
-                  { key: "label", header: "Label" },
-                ],
-              },
-            );
-          } finally {
-            services.close();
-          }
-        },
+  cliCommands: [
+    {
+      name: "my-plugin",
+      aliases: ["mp"],
+      description: "Run a plugin-owned CLI command",
+      help: {
+        usage: ["my-plugin run [--limit N]"],
       },
-    ],
-  },
+      async execute(args, ctx) {
+        if (args[0] !== "run") {
+          ctx.fail("Usage: gloomberb my-plugin run");
+        }
+
+        const services = await ctx.initServices();
+        try {
+          ctx.printResult(
+            {
+              data: [
+                { id: "demo", label: `Using data dir ${services.config.dataDir}` },
+              ],
+            },
+            {
+              columns: [
+                { key: "id", header: "ID" },
+                { key: "label", header: "Label" },
+              ],
+            },
+          );
+        } finally {
+          services.close();
+        }
+      },
+    },
+  ],
 };
 ```
 

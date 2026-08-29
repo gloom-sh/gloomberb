@@ -19,8 +19,7 @@ describe("composeBuiltinPlugin", () => {
   test("combines every declarative contribution under the parent plugin", async () => {
     const registeredBrokers: string[] = [];
     const first: PluginModule = {
-      cliCommands: [{ name: "legacy", description: "Legacy", execute: () => {} }],
-      cli: { commands: [{ name: "typed", summary: "Typed" }] },
+      cliCommands: [{ name: "example", description: "Example", execute: () => {} }],
       panes: [{ id: "one", name: "One", component: () => null, defaultPosition: "right" }],
       paneTemplates: [{ id: "one-pane", paneId: "one", label: "One", description: "One" }],
       capabilities: [{ id: "capability-one" } as never],
@@ -40,8 +39,7 @@ describe("composeBuiltinPlugin", () => {
       modules: [first, second],
     });
 
-    expect(plugin.cliCommands?.map((command) => command.name)).toEqual(["legacy"]);
-    expect(plugin.cli?.commands?.map((command) => command.name)).toEqual(["typed"]);
+    expect(plugin.cliCommands?.map((command) => command.name)).toEqual(["example"]);
     expect(plugin.panes?.map((pane) => pane.id)).toEqual(["one", "two"]);
     expect(plugin.paneTemplates?.map((template) => template.id)).toEqual(["one-pane"]);
     expect(plugin.capabilities?.map((capability) => capability.id)).toEqual(["capability-one"]);

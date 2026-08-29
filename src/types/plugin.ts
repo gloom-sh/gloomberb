@@ -356,25 +356,6 @@ export interface CliCommandDef {
   execute(args: string[], ctx: CliCommandContext): void | CliDispatchResult | Promise<void | CliDispatchResult>;
 }
 
-export interface PluginCliCommandDescriptor {
-  name: string;
-  aliases?: string[];
-  summary: string;
-  inputShape?: string;
-  outputShape?: string;
-  examples?: string[];
-  sideEffectLevel?: "none" | "local-write" | "network-write" | "external-trade" | "external-side-effect";
-  requirements?: string[];
-  batch?: boolean;
-  formats?: Array<"text" | "json" | "csv" | "ndjson">;
-  safety?: string[];
-  execute?: CliCommandDef["execute"];
-}
-
-export interface PluginCliDescriptor {
-  commands?: PluginCliCommandDescriptor[];
-}
-
 export interface CommandDef {
   id: string;
   label: string;
@@ -602,7 +583,6 @@ export interface GloomPlugin {
   toggleable?: boolean;
   order?: number;
   cliCommands?: CliCommandDef[];
-  cli?: PluginCliDescriptor;
 
   setup?(ctx: GloomPluginContext): void | Promise<void>;
   dispose?(): void;
