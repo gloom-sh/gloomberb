@@ -302,10 +302,11 @@ export class CompositeChartEngine {
   movePixelPan(x: number): void {
     const drag = this.drag;
     if (!drag || !this.config) return;
+    const shiftRatio = (x - drag.anchorX) / drag.width;
     const next = panCompositeViewport(
       drag.anchorViewport,
       this.config.navigationBounds,
-      (x - drag.anchorX) / drag.width,
+      shiftRatio,
       this.config.series,
       this.config.allowHistoricalBackfill,
     );
@@ -321,6 +322,14 @@ export class CompositeChartEngine {
     this.interactionViewport = sameCompositeViewport(next, this.config.initialViewport)
       ? null
       : next;
+    const bounds = this.config.navigationBounds;
+    if (
+      (shiftRatio < 0 && next.end.getTime() === bounds.end.getTime())
+      || (shiftRatio > 0 && next.start.getTime() === bounds.start.getTime())
+    ) {
+      drag.anchorX = x;
+      drag.anchorViewport = next;
+    }
     const ratios = drag.previewScene ? viewportRatios(drag.previewScene, next) : null;
     if (ratios) drag.offsetX = -ratios.start * (drag.previewWidth - 1);
     this.emit(false);
