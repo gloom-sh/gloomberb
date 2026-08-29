@@ -371,7 +371,6 @@ export function createCompositePanelPaintSource({
     return panel
       ? {
           width: paintState.width,
-          surfaceWidth: width,
           height,
           revision: paintState.revision,
           offsetX: paintState.offsetX,

@@ -49,65 +49,36 @@ const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurf
 });
 
 const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaintSource }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pointerIdRef = useRef<number | null>(null);
   const lastPointerXRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     let paintedRevision = Number.NaN;
-    const canvases: HTMLCanvasElement[] = [];
     const paint = () => {
-      const container = containerRef.current;
+      const canvas = canvasRef.current;
       const frame = source.getFrame();
-      if (!container || !frame) return;
-      const tileWidth = Math.max(1, frame.surfaceWidth);
-      const tileCount = Math.max(1, Math.ceil(frame.width / tileWidth));
-      while (canvases.length < tileCount) {
-        const canvas = document.createElement("canvas");
-        canvas.style.position = "absolute";
-        canvas.style.left = "0";
-        canvas.style.top = "0";
-        canvas.style.pointerEvents = "none";
-        canvas.style.willChange = "transform";
-        container.appendChild(canvas);
-        canvases.push(canvas);
-      }
-      while (canvases.length > tileCount) canvases.pop()?.remove();
-
-      canvases.forEach((canvas, index) => {
-        const startX = index * tileWidth;
-        const width = Math.min(tileWidth, frame.width - startX);
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${frame.height}px`;
-        canvas.style.transform = `translate3d(${startX + frame.offsetX}px, 0, 0)`;
-      });
+      if (!canvas || !frame) return;
+      canvas.style.width = `${frame.width}px`;
+      canvas.style.transform = `translate3d(${frame.offsetX}px, 0, 0)`;
       if (paintedRevision === frame.revision) return;
-
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
-      canvases.forEach((canvas, index) => {
-        const startX = index * tileWidth;
-        const width = Math.min(tileWidth, frame.width - startX);
-        const pixelWidth = Math.max(1, Math.round(width * ratio));
-        const pixelHeight = Math.max(1, Math.round(frame.height * ratio));
-        if (canvas.width !== pixelWidth) canvas.width = pixelWidth;
-        if (canvas.height !== pixelHeight) canvas.height = pixelHeight;
-        const context = canvas.getContext("2d");
-        if (!context) return;
-        context.setTransform(ratio, 0, 0, ratio, -startX * ratio, 0);
-        frame.paint(new CanvasChartPainter(context, frame.width, frame.height));
-      });
+      const width = Math.max(1, Math.round(frame.width * ratio));
+      const height = Math.max(1, Math.round(frame.height * ratio));
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      frame.paint(new CanvasChartPainter(context, frame.width, frame.height));
       paintedRevision = frame.revision;
     };
     paint();
-    const unsubscribe = source.subscribe(paint);
-    return () => {
-      unsubscribe();
-      for (const canvas of canvases) canvas.remove();
-    };
+    return source.subscribe(paint);
   }, [source]);
 
-  const pointerInput = (event: PointerEvent<HTMLDivElement>): ChartPointerInput => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+  const pointerInput = (event: PointerEvent<HTMLCanvasElement>): ChartPointerInput => {
+    const bounds = (event.currentTarget.parentElement ?? event.currentTarget).getBoundingClientRect();
     return {
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
@@ -116,7 +87,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       ctrl: event.ctrlKey || event.metaKey,
     };
   };
-  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+  const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 || !source.pointerDown?.(pointerInput(event))) return;
     pointerIdRef.current = event.pointerId;
     lastPointerXRef.current = event.clientX;
@@ -126,14 +97,14 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
     event.preventDefault();
     event.stopPropagation();
   };
-  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
     if (pointerIdRef.current !== event.pointerId) return;
     source.pointerMove?.(pointerInput(event));
     lastPointerXRef.current = event.clientX;
     event.preventDefault();
     event.stopPropagation();
   };
-  const finishPointer = (event: PointerEvent<HTMLDivElement>, cancelled: boolean) => {
+  const finishPointer = (event: PointerEvent<HTMLCanvasElement>, cancelled: boolean) => {
     if (pointerIdRef.current !== event.pointerId) return;
     pointerIdRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -152,8 +123,8 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   };
 
   return (
-    <div
-      ref={containerRef}
+    <canvas
+      ref={canvasRef}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={(event) => finishPointer(event, false)}
@@ -169,8 +140,13 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       }}
       onPointerCancel={(event) => finishPointer(event, true)}
       style={{
+        display: "block",
+        width: "100%",
+        height: "100%",
         position: "absolute",
-        inset: 0,
+        left: 0,
+        top: 0,
+        willChange: "transform",
       }}
     />
   );
@@ -338,10 +314,7 @@ export const WebChartSurface = forwardRef<BoxRenderable, Record<string, unknown>
     const layers = bitmaps ?? (bitmap ? [bitmap] : []);
     const crosshair = (props.crosshair ?? null) as ChartCrosshairOverlay | null;
     const vectors = (props.vectors ?? null) as readonly ChartVectorShape[] | null;
-    const frame = paintSource?.getFrame() ?? null;
-    const surface = frame
-      ? { width: frame.surfaceWidth, height: frame.height }
-      : layers[0] ?? null;
+    const surface = paintSource?.getFrame() ?? layers[0] ?? null;
     return (
       <WebBox
         {...props}
