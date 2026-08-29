@@ -19,7 +19,6 @@ import type {
 } from "../../../../ui/host";
 import { WebBox } from "./box";
 import { CanvasChartPainter } from "./chart-painter";
-import { cancelWebFrame, requestWebFrame } from "./mouse";
 
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,8 +51,7 @@ const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurf
 const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaintSource }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pointerIdRef = useRef<number | null>(null);
-  const pointerFrameRef = useRef<number | null>(null);
-  const pendingPointerRef = useRef<ChartPointerInput | null>(null);
+  const lastPointerXRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
     const paint = () => {
@@ -74,10 +72,6 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
     return source.subscribe(paint);
   }, [source]);
 
-  useEffect(() => () => {
-    if (pointerFrameRef.current !== null) cancelWebFrame(pointerFrameRef.current);
-  }, []);
-
   const pointerInput = (event: PointerEvent<HTMLCanvasElement>): ChartPointerInput => {
     const bounds = event.currentTarget.getBoundingClientRect();
     return {
@@ -88,13 +82,10 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       ctrl: event.ctrlKey || event.metaKey,
     };
   };
-  const flushPointerMove = (input: ChartPointerInput) => {
-    pendingPointerRef.current = null;
-    source.pointerMove?.(input);
-  };
   const handlePointerDown = (event: PointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 || !source.pointerDown?.(pointerInput(event))) return;
     pointerIdRef.current = event.pointerId;
+    lastPointerXRef.current = event.clientX;
     event.currentTarget.setPointerCapture(event.pointerId);
     const active = document.activeElement;
     if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.blur();
@@ -103,34 +94,25 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   };
   const handlePointerMove = (event: PointerEvent<HTMLCanvasElement>) => {
     if (pointerIdRef.current !== event.pointerId) return;
-    pendingPointerRef.current = pointerInput(event);
-    if (pointerFrameRef.current === null) {
-      pointerFrameRef.current = requestWebFrame(() => {
-        pointerFrameRef.current = null;
-        const input = pendingPointerRef.current;
-        if (input) flushPointerMove(input);
-      });
-    }
+    source.pointerMove?.(pointerInput(event));
+    lastPointerXRef.current = event.clientX;
     event.preventDefault();
     event.stopPropagation();
   };
   const finishPointer = (event: PointerEvent<HTMLCanvasElement>, cancelled: boolean) => {
     if (pointerIdRef.current !== event.pointerId) return;
     pointerIdRef.current = null;
-    if (pointerFrameRef.current !== null) {
-      cancelWebFrame(pointerFrameRef.current);
-      pointerFrameRef.current = null;
-    }
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (cancelled) {
-      pendingPointerRef.current = null;
       source.pointerCancel?.();
     } else {
-      flushPointerMove(pointerInput(event));
-      source.pointerUp?.(pointerInput(event));
+      const input = pointerInput(event);
+      if (lastPointerXRef.current !== event.clientX) source.pointerMove?.(input);
+      source.pointerUp?.(input);
     }
+    lastPointerXRef.current = null;
     event.preventDefault();
     event.stopPropagation();
   };

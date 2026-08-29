@@ -1,5 +1,7 @@
 Stack: Bun + OpenTUI
 
+Before making any code change, kill every project dev server/watcher and app process it spawned. Keep them stopped throughout editing and build/test work; restart only after the code changes and checks are complete.
+
 Tests:
 - Be selective: add or keep a test only when it protects behavior that is easy to break and hard to catch in review.
 - Good test targets: parser/math/state complexity, async/cache/persistence behavior, integration boundaries, and regressions with a concrete failure mode that could plausibly return.
