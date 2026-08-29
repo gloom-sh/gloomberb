@@ -59,6 +59,7 @@ export const treasuryAuctionsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 28 },
+      tableExport: true,
       settings: treasuryAuctionsSettings(),
     },
   ],

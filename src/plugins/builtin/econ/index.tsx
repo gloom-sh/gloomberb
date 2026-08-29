@@ -399,6 +399,7 @@ export const economicCalendarModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 30 },
+    tableExport: true,
   }],
   paneTemplates: [{
     id: "econ-calendar-pane",

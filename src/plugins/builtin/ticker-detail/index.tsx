@@ -52,6 +52,7 @@ export const tickerDetailModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 98, height: 30 },
+      tableExport: true,
     },
     {
       id: "quote-monitor",
@@ -72,6 +73,7 @@ export const tickerDetailModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 26 },
+      tableExport: true,
     },
     {
       id: "provider-search-results",

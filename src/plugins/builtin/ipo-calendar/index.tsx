@@ -40,6 +40,7 @@ export const ipoCalendarModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 28 },
+      tableExport: true,
     },
   ],
 

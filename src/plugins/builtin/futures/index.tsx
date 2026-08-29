@@ -250,6 +250,7 @@ export const futuresModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 76, height: 34 },
+      tableExport: true,
       // Resolved per open so the dialog shows the full default set until the
       // user saves a narrower selection.
       settings: (context) => ({

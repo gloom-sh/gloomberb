@@ -324,6 +324,7 @@ export const marketMoversModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 36 },
+      tableExport: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting({
         title: "Market Movers Settings",

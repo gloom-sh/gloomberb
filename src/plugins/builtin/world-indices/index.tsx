@@ -129,6 +129,7 @@ export const worldIndicesModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 32 },
+      tableExport: true,
       // Resolved per open so the dialog shows the full board until the user
       // saves a narrower selection.
       settings: (context) => ({

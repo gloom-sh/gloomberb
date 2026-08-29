@@ -72,6 +72,7 @@ export const scannerModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 76, height: 26 },
+      tableExport: true,
       settings: hiloSettings(),
     },
     {
@@ -82,6 +83,7 @@ export const scannerModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 88, height: 28 },
+      tableExport: true,
       settings: flowSettings(),
     },
   ],

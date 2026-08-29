@@ -12,6 +12,11 @@ import type {
   PaneSettingsContext,
   PaneSettingsDef,
 } from "../../types/plugin";
+import {
+  exportPaneTable,
+  hasPaneTableExporter,
+} from "../../state/pane-table-export-registry";
+import { createCsvExportFilename } from "../../utils/csv";
 
 export interface ResolvedRegistryPaneSettings {
   paneId: string;
@@ -76,7 +81,7 @@ export function resolveRegistryPaneSettings({
   if (!pane) return null;
 
   const paneDef = paneDefs.get(pane.paneId);
-  if (!paneDef?.settings) return null;
+  if (!paneDef || (!paneDef.settings && !paneDef.tableExport)) return null;
 
   const pluginId = paneOwners.get(pane.paneId);
   const paneSettings = getPaneSettings(pane);
@@ -99,10 +104,38 @@ export function resolveRegistryPaneSettings({
     activeTicker: resolveTickerForPane(stateView, targetPaneId),
     activeCollectionId: resolveCollectionForPane(stateView, targetPaneId),
   };
-  const settingsDef = typeof paneDef.settings === "function"
+  const baseSettingsDef = typeof paneDef.settings === "function"
     ? paneDef.settings(context)
     : paneDef.settings;
-  if (!settingsDef) return null;
+  if (!baseSettingsDef && !paneDef.tableExport) return null;
+  const settingsDef: PaneSettingsDef = paneDef.tableExport
+    ? {
+      ...(baseSettingsDef ?? {}),
+      fields: [
+        ...(baseSettingsDef?.fields ?? []),
+        {
+          key: "tableExport.csv",
+          label: "Export CSV",
+          description: "Export the current table as an Excel-compatible CSV file.",
+          type: "action",
+          actionId: "table.export-csv",
+          actionLabel: "Export",
+          disabled: !hasPaneTableExporter(targetPaneId),
+          action: async (actionContext) => {
+            try {
+              const location = await exportPaneTable(
+                targetPaneId,
+                createCsvExportFilename(pane.title ?? paneDef.name),
+              );
+              actionContext.notify({ body: `Exported to ${location}`, type: "success" });
+            } catch {
+              actionContext.notify({ body: "Failed to export CSV", type: "error" });
+            }
+          },
+        },
+      ],
+    }
+    : baseSettingsDef!;
 
   const rawSettings = { ...paneSettings };
   const resolvedSettings = {

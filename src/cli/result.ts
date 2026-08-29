@@ -1,5 +1,6 @@
 import type { CliGlobalOptions } from "./options";
 import { renderTable, type CliTableColumn } from "../utils/cli-output";
+import { serializeCsv } from "../utils/csv";
 
 export interface CliResult<T = unknown> {
   data: T;
@@ -57,11 +58,6 @@ function inferColumns(rows: Record<string, unknown>[]): CliResultColumn<Record<s
   return [...keys].map((key) => ({ key, header: key }));
 }
 
-function csvEscape(value: string): string {
-  if (!/[",\n\r]/.test(value)) return value;
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
 function serializeColumns<Row>(columns?: CliResultColumn<Row>[]) {
   return columns?.map((column) => ({
     key: column.key,
@@ -78,11 +74,12 @@ function renderCsv<Row extends Record<string, unknown>>(
   const resolvedColumns = columns && columns.length > 0
     ? columns
     : inferColumns(rows as Record<string, unknown>[]) as CliResultColumn<Row>[];
-  const header = resolvedColumns.map((column) => csvEscape(column.header)).join(",");
-  const body = rows.map((row) => resolvedColumns
-    .map((column) => csvEscape(normalizeCell(column.value ? column.value(row) : row[column.key])))
-    .join(","));
-  return [header, ...body].join("\n");
+  return serializeCsv([
+    resolvedColumns.map((column) => column.header),
+    ...rows.map((row) => resolvedColumns.map((column) => (
+      column.value ? column.value(row) : row[column.key]
+    ))),
+  ]);
 }
 
 function renderTextTable<Row extends Record<string, unknown>>(

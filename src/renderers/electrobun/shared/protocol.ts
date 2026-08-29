@@ -119,6 +119,10 @@ export interface DesktopBackendRequestMap {
   "host.focusWindow": { request: null; response: null };
   "host.copyPngImage": { request: { pngBase64: string }; response: null };
   "host.readText": { request: null; response: string };
+  "host.saveTextFile": {
+    request: { name: string; text: string; mimeType: string };
+    response: string;
+  };
   "host.notify": {
     request: { title?: string; body?: string; subtitle?: string; sound?: string };
     response: null;

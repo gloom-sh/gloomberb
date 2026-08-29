@@ -476,6 +476,7 @@ async function handleBackendRequest(
     case "host.focusWindow":
     case "host.copyPngImage":
     case "host.readText":
+    case "host.saveTextFile":
     case "host.notify":
     case "host.showContextMenu":
       return handleDesktopHostRequest({

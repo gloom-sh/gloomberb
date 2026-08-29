@@ -61,6 +61,9 @@ export const webRendererHost: RendererHost = {
       return backendRequest("host.readText");
     }
   },
+  async saveTextFile({ name, text, mimeType }) {
+    return backendRequest("host.saveTextFile", { name, text, mimeType });
+  },
   notify(notification) {
     void backendRequest("host.notify", {
       title: notification.title,

@@ -378,6 +378,12 @@ export interface UiHost {
   colorFromHex?(hex: string): unknown;
 }
 
+export interface SaveTextFileRequest {
+  name: string;
+  text: string;
+  mimeType: string;
+}
+
 export interface RendererHost {
   requestExit(): void;
   startWindowDrag?(): Promise<void> | void;
@@ -386,6 +392,7 @@ export interface RendererHost {
   copyText(text: string): Promise<void>;
   copyPngImage?(pngBase64: string): Promise<void>;
   readText(): Promise<string>;
+  saveTextFile?(request: SaveTextFileRequest): Promise<string>;
   supportsNativeDesktopNotifications?: boolean;
   notify(notification: AppNotificationRequest): void;
   showContextMenu?(items: ContextMenuItem[]): Promise<boolean>;
