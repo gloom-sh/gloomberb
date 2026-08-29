@@ -123,8 +123,13 @@ describe("BuffettIndicatorPane", () => {
     const frame = setup.captureCharFrame();
     expect(frame).toContain("142%");
     expect(frame).toContain("Significantly Overvalued");
-    expect(frame).not.toContain("SignifModestly");
-    expect(frame).toContain("Cheap");
-    expect(frame).toContain("Rich");
+    expect(frame).toContain("undervalued");
+    expect(frame).toContain("overvalued");
+    expect(frame).toContain("mean");
+    expect(frame).not.toContain("MEAN 100%");
+    expect(frame).toContain("100");
+    expect(frame).toContain("135");
+    expect(frame).not.toContain("SIG UNDER");
+    expect(frame).not.toContain("Cheap");
   });
 });

@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EmptyState,
   SegmentedControl,
-  SpeedometerGauge,
   Spinner,
   StaticChartSurface,
   resolveChartPalette,
   type PaneFooterSegment,
-  type SpeedometerSegment,
 } from "../../../components";
 import { ExternalLinkText } from "../../../components/ui";
 import { useShortcut } from "../../../react/input";
@@ -18,11 +16,15 @@ import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
-import { getCachedBuffettBundle, loadBuffettBundle } from "./client";
+import { getCachedBuffettBundle, loadBuffettBundle, errorForMode } from "./client";
 import {
   BUFFETT_MODES,
-  gaugeSegmentsFromZones,
+  PARITY_RATIO,
+  ZONE_SCALE_MAX,
+  ZONE_SCALE_TICKS,
   selectBuffettView,
+  zoneScaleBands,
+  zoneScaleMarkerColumn,
   type BuffettBundle,
   type BuffettModeId,
   type BuffettRangeId,
@@ -48,7 +50,6 @@ const RANGE_OPTIONS = [
   { value: "ALL" as const, label: "All" },
 ];
 
-const GAUGE_SEGMENTS: SpeedometerSegment[] = gaugeSegmentsFromZones();
 const WIKIPEDIA_ARTICLE_URL = "https://en.wikipedia.org/wiki/Buffett_indicator";
 
 function bundleOf(state: BuffettLoadState): BuffettBundle | null {
@@ -92,6 +93,24 @@ function formatRatioPct(ratio: number): string {
   return `${Math.round(ratio)}%`;
 }
 
+/** Row for the mean caption — one above the 100% line so the stroke does not cover it. */
+function meanLabelTop(
+  yDomain: { min: number; max: number },
+  chartHeight: number,
+  hasXAxis: boolean,
+): number {
+  const plotHeight = Math.max(1, chartHeight - (hasXAxis ? 1 : 0));
+  const range = yDomain.max - yDomain.min || 1;
+  const lineRow = Math.max(
+    0,
+    Math.min(
+      plotHeight - 1,
+      Math.round((1 - (PARITY_RATIO - yDomain.min) / range) * Math.max(plotHeight - 1, 0)),
+    ),
+  );
+  return Math.max(0, lineRow - 1);
+}
+
 function footerInfoFromView(
   view: BuffettViewModel | null,
   state: BuffettLoadState,
@@ -108,6 +127,110 @@ function footerInfoFromView(
     }
   }
   return info;
+}
+
+/** Same zone colors as the history line, laid out on a 0–250% axis with a marker at now. */
+function ZoneColorScale({
+  value,
+  width,
+  markerColor,
+}: {
+  value: number;
+  width: number;
+  markerColor: string;
+}) {
+  const scaleWidth = Math.max(12, width);
+  const bands = zoneScaleBands();
+  const marker = zoneScaleMarkerColumn(value, scaleWidth);
+  const cells: Array<{ char: string; color: string }> = [];
+
+  for (let column = 0; column < scaleWidth; column += 1) {
+    const ratio = scaleWidth === 1 ? 0 : (column / (scaleWidth - 1)) * ZONE_SCALE_MAX;
+    const band = bands.find((entry) => ratio >= entry.from && ratio < entry.to) ?? bands[bands.length - 1]!;
+    cells.push({
+      char: column === marker ? "●" : "━",
+      color: column === marker ? markerColor : band.color,
+    });
+  }
+
+  const underLabel = scaleWidth >= 48 ? "undervalued" : scaleWidth >= 28 ? "under" : "";
+  const overLabel = scaleWidth >= 48 ? "overvalued" : scaleWidth >= 28 ? "over" : "";
+  const fairLabel = scaleWidth >= 64 ? "fair" : "";
+  const captionCells: Array<{ char: string; color: string }> = Array.from(
+    { length: scaleWidth },
+    () => ({ char: " ", color: colors.textDim }),
+  );
+  const placeCaption = (label: string, start: number) => {
+    for (let index = 0; index < label.length; index += 1) {
+      const column = start + index;
+      if (column < 0 || column >= scaleWidth) continue;
+      captionCells[column] = { char: label[index]!, color: colors.textDim };
+    }
+  };
+  if (underLabel) placeCaption(underLabel, 0);
+  if (overLabel) placeCaption(overLabel, scaleWidth - overLabel.length);
+  if (fairLabel) {
+    const fairStart = zoneScaleMarkerColumn(PARITY_RATIO, scaleWidth) - Math.floor(fairLabel.length / 2);
+    const underEnd = underLabel.length;
+    const overStart = scaleWidth - overLabel.length;
+    if (fairStart >= underEnd + 1 && fairStart + fairLabel.length <= overStart - 1) {
+      placeCaption(fairLabel, fairStart);
+    }
+  }
+
+  const ticks = scaleWidth >= 40
+    ? ZONE_SCALE_TICKS
+    : ZONE_SCALE_TICKS.filter((tick) => tick === 0 || tick === PARITY_RATIO || tick === ZONE_SCALE_MAX);
+  const tickCells: Array<{ char: string; color: string }> = Array.from(
+    { length: scaleWidth },
+    () => ({ char: " ", color: colors.textDim }),
+  );
+  for (const tick of ticks) {
+    const label = tick === PARITY_RATIO ? "100" : String(tick);
+    const center = zoneScaleMarkerColumn(tick, scaleWidth);
+    const start = Math.max(0, Math.min(scaleWidth - label.length, center - Math.floor(label.length / 2)));
+    for (let index = 0; index < label.length; index += 1) {
+      tickCells[start + index] = {
+        char: label[index]!,
+        color: tick === PARITY_RATIO ? colors.textMuted : colors.textDim,
+      };
+    }
+  }
+
+  const chunkRow = (row: Array<{ char: string; color: string }>) => {
+    const chunks: Array<{ text: string; color: string }> = [];
+    for (const cell of row) {
+      const last = chunks[chunks.length - 1];
+      if (last && last.color === cell.color) last.text += cell.char;
+      else chunks.push({ text: cell.char, color: cell.color });
+    }
+    return chunks;
+  };
+  const captionChunks = chunkRow(captionCells);
+  const barChunks = chunkRow(cells);
+  const tickChunks = chunkRow(tickCells);
+
+  return (
+    <Box flexDirection="column" width={scaleWidth} gap={0}>
+      {underLabel || overLabel ? (
+        <Box flexDirection="row" height={1} overflow="hidden">
+          {captionChunks.map((chunk, index) => (
+            <Text key={`caption:${index}`} fg={chunk.color}>{chunk.text}</Text>
+          ))}
+        </Box>
+      ) : null}
+      <Box flexDirection="row" height={1} overflow="hidden">
+        {barChunks.map((chunk, index) => (
+          <Text key={`bar:${index}`} fg={chunk.color}>{chunk.text}</Text>
+        ))}
+      </Box>
+      <Box flexDirection="row" height={1} overflow="hidden">
+        {tickChunks.map((chunk, index) => (
+          <Text key={`tick:${index}`} fg={chunk.color}>{chunk.text}</Text>
+        ))}
+      </Box>
+    </Box>
+  );
 }
 
 export function BuffettIndicatorPane({ paneId, focused, width, height }: PaneProps) {
@@ -162,7 +285,11 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
   );
 
   const loading = state.status === "loading" || state.status === "idle";
-  const error = state.status === "error" ? state.message : bundle?.errors[0] ?? null;
+  const error = state.status === "error"
+    ? state.message
+    : view
+      ? errorForMode(bundle?.errors ?? [], view.displayedMode)
+      : bundle?.errors[0] ?? null;
   const footerInfo = useMemo(() => footerInfoFromView(view, state), [state, view]);
 
   usePaneStatusFooter({
@@ -226,16 +353,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
             </Box>
           </Box>
 
-          <SpeedometerGauge
-            value={view.current.ratio}
-            valueLabel={formatRatioPct(view.current.ratio)}
-            width={width - 2}
-            min={0}
-            max={250}
-            segments={GAUGE_SEGMENTS}
-          />
-
-          <Box flexDirection="row" height={1} gap={2} overflow="hidden">
+          <Box flexDirection="row" height={1} gap={2} overflow="hidden" justifyContent="flex-end">
             <SegmentedControl
               options={MODE_OPTIONS}
               value={mode}
@@ -250,23 +368,42 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
 
           {view.chart.points.length >= 2 ? (
             <Box flexDirection="column" gap={0}>
-              <Box flexDirection="row" height={1} overflow="hidden">
-                <Text fg={colors.textDim}>— MEAN 100%</Text>
-              </Box>
-              <StaticChartSurface
-                points={view.chart.points}
+              <ZoneColorScale
+                value={view.current.ratio}
                 width={chartWidth}
-                height={chartHeight}
-                mode="line"
-                colors={palette}
-                indicators={view.chart.overlays}
-                yDomain={view.chart.yDomain}
-                lineColors={view.chart.lineColors}
-                xAxisLabels={view.chart.yearLabels}
-                xAxisColor={colors.textDim}
-                yAxisColor={colors.textDim}
-                formatYAxisValue={(v) => formatRatioPct(v)}
+                markerColor={view.zone.color}
               />
+              <Box position="relative" width={chartWidth} height={chartHeight}>
+                <StaticChartSurface
+                  points={view.chart.points}
+                  width={chartWidth}
+                  height={chartHeight}
+                  mode="line"
+                  colors={palette}
+                  indicators={view.chart.overlays}
+                  yDomain={view.chart.yDomain}
+                  lineColors={view.chart.lineColors}
+                  xAxisLabels={view.chart.yearLabels}
+                  xAxisColor={colors.textDim}
+                  yAxisColor={colors.textDim}
+                  formatYAxisValue={(v) => formatRatioPct(v)}
+                />
+                <Box
+                  position="absolute"
+                  left={0}
+                  top={meanLabelTop(
+                    view.chart.yDomain,
+                    chartHeight,
+                    view.chart.yearLabels.length > 0,
+                  )}
+                  height={1}
+                  overflow="hidden"
+                >
+                  <Text fg={colors.textMuted} attributes={TextAttributes.ITALIC | TextAttributes.DIM}>
+                    mean
+                  </Text>
+                </Box>
+              </Box>
             </Box>
           ) : (
             <Box height={chartHeight} justifyContent="center" alignItems="center">
@@ -303,7 +440,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
               The Buffett Indicator is the total value of US stocks divided by GDP. At 100%, the market is worth one year of economic output. Warren Buffett popularized the ratio in a December 2001 Fortune essay with Carol Loomis, drawn from a Sun Valley talk after the 1990s boom. He called it probably the best single measure of where valuations stand at any given moment.
             </Text>
             <Text fg={colors.textDim} wrapMode="word" wrapText>
-              He treated it as a market-wide compass, not a trade timer. After that boom, 70 to 80% looked cheap and the 200% peak in 1999 and 2000 looked like fire. It is still the usual whole-market valuation check, though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like versus 2001, which is why this pane also shows the gap versus trend (σ). Cheap here is below 75%, fair 90 to 115%, rich above 135%. Wilshire is a daily full-cap proxy; Z.1 is the Fed's quarterly corporate-equities series.
+              He treated it as a market-wide compass, not a trade timer. After that boom, 70 to 80% looked cheap and the 200% peak in 1999 and 2000 looked like fire. It is still the usual whole-market valuation check, though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like versus 2001, which is why this pane also shows the gap versus trend (σ). Significantly undervalued is below 75%, fair 90 to 115%, significantly overvalued above 135%. Wilshire is a daily full-cap proxy; Z.1 is the Fed's quarterly corporate-equities series.
             </Text>
             <Box flexDirection="row" height={1} overflow="hidden">
               <ExternalLinkText

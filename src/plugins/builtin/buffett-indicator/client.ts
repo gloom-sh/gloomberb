@@ -59,6 +59,24 @@ function summarizeSeriesErrors(errors: readonly string[]): string {
   return errors.length > 1 ? `${reason} (${errors.length} series)` : reason;
 }
 
+/** First error tied to a mode's numerator/GDP; skips the other mode's series noise. */
+export function errorForMode(
+  errors: readonly string[],
+  modeId: BuffettModeId,
+): string | null {
+  if (errors.length === 0) return null;
+  const mode = BUFFETT_MODES[modeId];
+  const relevantIds = new Set([
+    mode.numerator.seriesId.trim().toUpperCase(),
+    mode.denominator.seriesId.trim().toUpperCase(),
+  ]);
+  for (const entry of errors) {
+    const seriesId = entry.split(":")[0]?.trim().toUpperCase();
+    if (seriesId && relevantIds.has(seriesId)) return entry;
+  }
+  return null;
+}
+
 function tryBuildMode(
   mode: ModeDef,
   byId: Map<string, { data: FredSeriesData; stale: boolean }>,

@@ -169,14 +169,19 @@ export const ZONE_TABLE: readonly {
   max: number | null;
   id: ValuationZoneId;
   label: string;
-  gaugeLabel: string;
 }[] = [
-  { max: 75, id: "significantly-undervalued", label: "Significantly Undervalued", gaugeLabel: "Cheap" },
-  { max: 90, id: "modestly-undervalued", label: "Modestly Undervalued", gaugeLabel: "Low" },
-  { max: 115, id: "fair", label: "Fair Valued", gaugeLabel: "Fair" },
-  { max: 135, id: "modestly-overvalued", label: "Modestly Overvalued", gaugeLabel: "High" },
-  { max: null, id: "significantly-overvalued", label: "Significantly Overvalued", gaugeLabel: "Rich" },
+  { max: 75, id: "significantly-undervalued", label: "Significantly Undervalued" },
+  { max: 90, id: "modestly-undervalued", label: "Modestly Undervalued" },
+  { max: 115, id: "fair", label: "Fair Valued" },
+  { max: 135, id: "modestly-overvalued", label: "Modestly Overvalued" },
+  { max: null, id: "significantly-overvalued", label: "Significantly Overvalued" },
 ];
+
+/** Linear scale ceiling — matches the speedometer range and keeps rich values on-screen. */
+export const ZONE_SCALE_MAX = 250;
+
+/** Landmarks shared with the history chart (parity at 100%). */
+export const ZONE_SCALE_TICKS = [0, 75, 100, 135, ZONE_SCALE_MAX] as const;
 
 function zoneColor(id: ValuationZoneId): string {
   switch (id) {
@@ -197,25 +202,26 @@ function zoneColor(id: ValuationZoneId): string {
   }
 }
 
-interface ZoneSpan {
-  min: number;
-  max: number | null;
-  gaugeLabel: string;
+export interface ZoneScaleBand {
+  from: number;
+  to: number;
   color: string;
 }
 
-function zoneSpans(): ZoneSpan[] {
+export function zoneScaleBands(max: number = ZONE_SCALE_MAX): ZoneScaleBand[] {
   let from = 0;
   return ZONE_TABLE.map((row) => {
-    const span = {
-      min: from,
-      max: row.max,
-      gaugeLabel: row.gaugeLabel,
-      color: zoneColor(row.id),
-    };
+    const to = row.max == null ? max : row.max;
+    const band = { from, to, color: zoneColor(row.id) };
     from = row.max ?? from;
-    return span;
+    return band;
   });
+}
+
+export function zoneScaleMarkerColumn(value: number, width: number, max: number = ZONE_SCALE_MAX): number {
+  if (width <= 1) return 0;
+  const clamped = Math.max(0, Math.min(max, value));
+  return Math.round((clamped / max) * (width - 1));
 }
 
 export function seriesRequest(def: SeriesDef): FredSeriesRequest {
@@ -591,19 +597,4 @@ export function selectBuffettView(
   return projectView(chosen, requestedMode, range, {
     partial: Object.keys(bundle.modes).length === 1,
   });
-}
-
-export function gaugeSegmentsFromZones(): {
-  from: number;
-  to: number;
-  label: string;
-  color: string;
-}[] {
-  const maxGauge = 250;
-  return zoneSpans().map((span) => ({
-    from: span.min,
-    to: span.max == null ? maxGauge : span.max - 0.001,
-    label: span.gaugeLabel,
-    color: span.color,
-  }));
 }

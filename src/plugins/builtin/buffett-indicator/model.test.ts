@@ -7,7 +7,9 @@ import {
   classifyZone,
   fitLogLinearTrend,
   nicePercentDomain,
-  gaugeSegmentsFromZones,
+  zoneScaleBands,
+  zoneScaleMarkerColumn,
+  ZONE_SCALE_MAX,
   interpolateGdpAligner,
   projectChart,
   projectView,
@@ -158,11 +160,30 @@ describe("classifyZone", () => {
   });
 });
 
-describe("gaugeSegmentsFromZones", () => {
-  test("uses short dial labels and keeps full names on the zone table", () => {
-    const segments = gaugeSegmentsFromZones();
-    expect(segments.map((segment) => segment.label)).toEqual(["Cheap", "Low", "Fair", "High", "Rich"]);
-    expect(classifyZone(238).label).toBe("Significantly Overvalued");
+describe("zoneScaleBands", () => {
+  test("covers 0–250 with the same colors as classifyZone", () => {
+    const bands = zoneScaleBands();
+    expect(bands.map((band) => [band.from, band.to])).toEqual([
+      [0, 75],
+      [75, 90],
+      [90, 115],
+      [115, 135],
+      [135, ZONE_SCALE_MAX],
+    ]);
+    expect(bands.map((band) => band.color)).toEqual([
+      classifyZone(0).color,
+      classifyZone(75).color,
+      classifyZone(90).color,
+      classifyZone(115).color,
+      classifyZone(135).color,
+    ]);
+  });
+
+  test("pins the marker to the right edge at and above the scale max", () => {
+    expect(zoneScaleMarkerColumn(0, 51)).toBe(0);
+    expect(zoneScaleMarkerColumn(125, 51)).toBe(25);
+    expect(zoneScaleMarkerColumn(ZONE_SCALE_MAX, 51)).toBe(50);
+    expect(zoneScaleMarkerColumn(400, 51)).toBe(50);
   });
 });
 

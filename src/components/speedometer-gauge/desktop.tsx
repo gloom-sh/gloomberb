@@ -15,13 +15,6 @@ const DESKTOP_CENTER_X = 260;
 const DESKTOP_CENTER_Y = 182;
 const DESKTOP_ARC_RADIUS = 138;
 const DESKTOP_NEEDLE_RADIUS = 104;
-const DESKTOP_LABEL_POSITIONS = [
-  { x: 76, y: 84 },
-  { x: 154, y: 44 },
-  { x: 260, y: 18 },
-  { x: 366, y: 44 },
-  { x: 444, y: 84 },
-];
 
 function SvgText(props: SVGProps<SVGTextElement>) {
   return createElement("text", props);
@@ -94,12 +87,9 @@ export function DesktopSpeedometerGauge({
             opacity={value >= segment.from && value <= segment.to ? 0.96 : 0.42}
           />
         ))}
-        {segments.map((segment, index) => {
-          const fixedPoint = segments.length === DESKTOP_LABEL_POSITIONS.length
-            ? DESKTOP_LABEL_POSITIONS[index]
-            : null;
+        {segments.map((segment) => {
           const midpoint = (valueToDegrees(segment.from, min, max) + valueToDegrees(segment.to, min, max)) / 2;
-          const point = fixedPoint ?? polarToCartesian(DESKTOP_CENTER_X, DESKTOP_CENTER_Y, DESKTOP_ARC_RADIUS + 36, midpoint);
+          const point = polarToCartesian(DESKTOP_CENTER_X, DESKTOP_CENTER_Y, DESKTOP_ARC_RADIUS + 36, midpoint);
           return (
             <SvgText
               key={`label:${segment.label}`}

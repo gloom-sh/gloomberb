@@ -4,7 +4,7 @@ import {
   resetFredSeriesPersistence,
 } from "../../../data/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { createBuffettSeriesLoader, loadBuffettBundle } from "./client";
+import { createBuffettSeriesLoader, errorForMode, loadBuffettBundle } from "./client";
 import type { BuffettSeriesLoader } from "./model";
 
 function payload(seriesId: string, observations: Array<{ date: string; value: number }>) {
@@ -172,5 +172,20 @@ describe("loadBuffettBundle", () => {
     expect(calls).toBe(0);
     expect(bundle.modes.wilshire).toBeDefined();
     expect(bundle.modes.z1).toBeDefined();
+  });
+});
+
+describe("errorForMode", () => {
+  test("ignores the other numerator when the displayed mode is healthy", () => {
+    const errors = [
+      "NCBEILQ027S: Unsupported FRED series",
+      "GDP: delayed refresh",
+    ];
+    expect(errorForMode(errors, "wilshire")).toBe("GDP: delayed refresh");
+    expect(errorForMode(errors, "z1")).toBe("NCBEILQ027S: Unsupported FRED series");
+  });
+
+  test("returns null when only the inactive mode failed", () => {
+    expect(errorForMode(["NCBEILQ027S: offline"], "wilshire")).toBeNull();
   });
 });

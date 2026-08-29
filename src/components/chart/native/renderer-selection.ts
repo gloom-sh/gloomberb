@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { type PixelResolution } from "../../../ui";
 import { type NativeRendererHost as CliRenderer } from "../../../ui";
 import type { ChartRendererPreference, ResolvedChartRenderer } from "../core/types";
@@ -56,46 +56,96 @@ function shouldQueryKittySupport(
   return !renderer.isDestroyed && preference !== "braille" && snapshot.kittySupport === null;
 }
 
+/**
+ * One capabilities/resolution/resize trio per CliRenderer. Chart surfaces used to
+ * each attach their own listeners, so multi-chart panes blew past MaxListeners(10).
+ */
+interface RendererReadinessHub {
+  snapshot: NativeChartRendererSnapshot;
+  consumers: Set<() => void>;
+  attached: boolean;
+  refresh: () => void;
+}
+
+const readinessHubs = new WeakMap<CliRenderer, RendererReadinessHub>();
+
+function getReadinessHub(renderer: CliRenderer): RendererReadinessHub {
+  let hub = readinessHubs.get(renderer);
+  if (hub) return hub;
+
+  hub = {
+    snapshot: readNativeChartRendererSnapshot(renderer),
+    consumers: new Set(),
+    attached: false,
+    refresh: () => {},
+  };
+  hub.refresh = () => {
+    const next = readNativeChartRendererSnapshot(renderer);
+    if (sameSnapshot(hub!.snapshot, next)) return;
+    hub!.snapshot = next;
+    for (const notify of hub!.consumers) notify();
+  };
+  readinessHubs.set(renderer, hub);
+  return hub;
+}
+
+function subscribeRendererReadiness(renderer: CliRenderer, onStoreChange: () => void): () => void {
+  const hub = getReadinessHub(renderer);
+  const wasEmpty = hub.consumers.size === 0;
+  hub.consumers.add(onStoreChange);
+
+  if (wasEmpty && !hub.attached) {
+    hub.attached = true;
+    renderer.on("capabilities", hub.refresh);
+    renderer.on("resolution", hub.refresh);
+    renderer.on("resize", hub.refresh);
+    hub.refresh();
+  }
+
+  return () => {
+    hub.consumers.delete(onStoreChange);
+    if (hub.consumers.size === 0 && hub.attached) {
+      renderer.off("capabilities", hub.refresh);
+      renderer.off("resolution", hub.refresh);
+      renderer.off("resize", hub.refresh);
+      hub.attached = false;
+    }
+  };
+}
+
+function getRendererReadinessSnapshot(renderer: CliRenderer): NativeChartRendererSnapshot {
+  return getReadinessHub(renderer).snapshot;
+}
+
 export function useResolvedChartRendererState(
   preference: ChartRendererPreference,
   renderer: CliRenderer,
 ): ResolvedChartRendererState {
-  const [snapshot, setSnapshot] = useState<NativeChartRendererSnapshot>(() => (
-    readNativeChartRendererSnapshot(renderer)
-  ));
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => subscribeRendererReadiness(renderer, onStoreChange),
+    [renderer],
+  );
+
+  const getSnapshot = useCallback(
+    () => getRendererReadinessSnapshot(renderer),
+    [renderer],
+  );
+
+  const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
   useEffect(() => {
+    const current = getRendererReadinessSnapshot(renderer);
+    if (!shouldQueryKittySupport(preference, renderer, current)) return;
     let cancelled = false;
-    const commitSnapshot = (next: NativeChartRendererSnapshot) => {
-      if (cancelled) return;
-      setSnapshot((current) => (sameSnapshot(current, next) ? current : next));
-    };
-
-    const refreshReadiness = () => {
-      const next = readNativeChartRendererSnapshot(renderer);
-      commitSnapshot(next);
-    };
-
-    renderer.on("capabilities", refreshReadiness);
-    renderer.on("resolution", refreshReadiness);
-    renderer.on("resize", refreshReadiness);
-    refreshReadiness();
-
-    if (shouldQueryKittySupport(preference, renderer, readNativeChartRendererSnapshot(renderer))) {
-      ensureKittySupport(renderer).then(() => {
-        refreshReadiness();
-      }).catch(() => {
-        refreshReadiness();
-      });
-    }
-
+    ensureKittySupport(renderer).then(() => {
+      if (!cancelled) getReadinessHub(renderer).refresh();
+    }).catch(() => {
+      if (!cancelled) getReadinessHub(renderer).refresh();
+    });
     return () => {
       cancelled = true;
-      renderer.off("capabilities", refreshReadiness);
-      renderer.off("resolution", refreshReadiness);
-      renderer.off("resize", refreshReadiness);
     };
-  }, [preference, renderer]);
+  }, [preference, renderer, snapshot.kittySupport]);
 
   return useMemo(
     () => resolveChartRendererState(preference, snapshot.kittySupport, snapshot.resolution),
