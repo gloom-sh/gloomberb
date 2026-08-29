@@ -1,5 +1,5 @@
 import type { CliCommandDef } from "../../types/plugin";
-import type { TimeRange } from "../../time-series/range";
+import { TIME_RANGES, type TimeRange } from "../../time-series/range";
 import type { EarningsEvent, QuoteBatchResult, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
@@ -15,7 +15,7 @@ import { formatCompact } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 
-const VALID_RANGES = new Set<TimeRange>(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"]);
+const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
 
 type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & { error: string | null };

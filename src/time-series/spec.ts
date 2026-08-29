@@ -1,4 +1,4 @@
-import type { ChartResolution, TimeRange } from "./range";
+import { CHART_RESOLUTIONS, TIME_RANGES, type ChartResolution, type TimeRange } from "./range";
 import { getChartResolutionLabel } from "./resolution";
 import {
   canonicalTimeSeriesFieldId,
@@ -31,8 +31,8 @@ import {
   isValidChartSeriesId,
 } from "../capabilities/chart-series";
 
-const TIME_RANGES = new Set<TimeRange>(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"]);
-const RESOLUTIONS = new Set<ChartResolution>(["auto", "1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk", "1mo"]);
+const RANGE_SET = new Set<TimeRange>(TIME_RANGES);
+const RESOLUTIONS = new Set<ChartResolution>(CHART_RESOLUTIONS);
 const PERIODS = new Set<SeriesPeriod>(["auto", "daily", "weekly", "monthly", "quarterly", "annual", "ttm"]);
 const STYLES = new Set<SeriesStyle>(["line", "area", "step", "columns", "points", "candles", "ohlc", "hlc"]);
 const ECONOMIC_STYLES = new Set<SeriesStyle>(["line", "area", "step", "columns", "points"]);
@@ -306,7 +306,7 @@ export function normalizeChartSpec(value: unknown, fallback: ChartSpec = DEFAULT
   return {
     version: CHART_SPEC_VERSION,
     viewport: {
-      range: TIME_RANGES.has(viewport?.range as TimeRange)
+      range: RANGE_SET.has(viewport?.range as TimeRange)
         ? viewport!.range as TimeRange
         : fallbackCopy.viewport.range,
       resolution: RESOLUTIONS.has(viewport?.resolution as ChartResolution)
@@ -340,7 +340,7 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
   if (spec.version !== CHART_SPEC_VERSION) {
     errors.push(issue("version", "unsupported-version", `Unsupported chart spec version ${String(spec.version)}.`));
   }
-  if (!TIME_RANGES.has(spec.viewport.range)) errors.push(issue("viewport.range", "invalid-range", "Invalid date range."));
+  if (!RANGE_SET.has(spec.viewport.range)) errors.push(issue("viewport.range", "invalid-range", "Invalid date range."));
   if (!RESOLUTIONS.has(spec.viewport.resolution)) {
     errors.push(issue("viewport.resolution", "invalid-resolution", "Invalid chart resolution."));
   }

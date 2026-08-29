@@ -1,4 +1,4 @@
-import type { ChartResolution, TimeRange } from "../../time-series/range";
+import { CHART_RESOLUTIONS, TIME_RANGES, type ChartResolution, type TimeRange } from "../../time-series/range";
 import type { LayoutConfig, PaneBinding } from "../../types/config";
 import type {
   ChartPanelSpec,
@@ -16,8 +16,8 @@ import {
   validateChartSpec,
 } from "../../time-series/spec";
 
-const CHART_RANGES = new Set<TimeRange>(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"]);
-const CHART_RESOLUTIONS = new Set<ChartResolution>(["auto", "1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk", "1mo"]);
+const CHART_RANGES = new Set<TimeRange>(TIME_RANGES);
+const CHART_RESOLUTION_SET = new Set<ChartResolution>(CHART_RESOLUTIONS);
 const PRICE_RENDER_MODES = new Set<SeriesStyle>(["area", "line", "candles", "ohlc", "hlc"]);
 const LEGACY_INDICATOR_IDS = new Set<LegacyChartIndicatorId>([
   "volume",
@@ -94,7 +94,7 @@ function range(value: unknown, fallback: TimeRange): TimeRange {
 }
 
 function resolution(value: unknown, fallback: ChartResolution): ChartResolution {
-  return CHART_RESOLUTIONS.has(value as ChartResolution) ? value as ChartResolution : fallback;
+  return CHART_RESOLUTION_SET.has(value as ChartResolution) ? value as ChartResolution : fallback;
 }
 
 function makeSpec(

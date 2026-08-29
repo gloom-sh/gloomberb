@@ -1,3 +1,4 @@
+import { CHART_RESOLUTIONS } from "../../time-series/range";
 import type { PaneDef, PaneTemplateDef } from "../../types/plugin";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "unsupported";
@@ -128,8 +129,7 @@ const CAPABILITIES: Record<string, PaneFunctionCapability> = {
         description: "Market-price sampling resolution.",
         type: "enum",
         aliases: ["resolution"],
-        values: ["auto", "1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk", "1mo"]
-          .map((value) => ({ value })),
+        values: CHART_RESOLUTIONS.map((value) => ({ value })),
       },
     ],
   },
@@ -251,7 +251,7 @@ const CAPABILITIES: Record<string, PaneFunctionCapability> = {
         description: "Price sampling resolution.",
         type: "enum",
         aliases: ["resolution"],
-        values: ["1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk", "1mo"].map((value) => ({ value })),
+        values: CHART_RESOLUTIONS.filter((value) => value !== "auto").map((value) => ({ value })),
         defaultValue: "1d",
       },
     ],

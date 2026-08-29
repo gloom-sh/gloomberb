@@ -9,7 +9,7 @@ import {
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../../components";
-import type { TimeRange } from "../../../../components/chart/core/types";
+import { TIME_RANGES, type TimeRange } from "../../../../time-series/range";
 import type { PaneProps } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { colors, priceColor } from "../../../../theme/colors";
@@ -32,8 +32,6 @@ export type HistoricalPriceRow = {
   change: number | null;
   changePercent: number | null;
 };
-
-const HISTORY_RANGES: TimeRange[] = ["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"];
 
 function pricePointDate(point: PricePoint): Date | null {
   const value = point.date as Date | string | number;
@@ -93,8 +91,8 @@ function buildHistoryColumns(width: number): HistoryColumn[] {
 }
 
 function nextHistoryRange(current: TimeRange): TimeRange {
-  const index = HISTORY_RANGES.indexOf(current);
-  return HISTORY_RANGES[(index + 1) % HISTORY_RANGES.length] ?? "1Y";
+  const index = TIME_RANGES.indexOf(current);
+  return TIME_RANGES[(index + 1) % TIME_RANGES.length] ?? "1Y";
 }
 
 export function HistoricalPricesPane({ focused, width, height }: PaneProps) {

@@ -9,6 +9,7 @@ import type {
   SeriesTransform,
   TimeSeriesPoint,
 } from "../time-series/types";
+import { CHART_RESOLUTIONS, TIME_RANGES } from "../time-series/range";
 import type {
   CapabilityInvoker,
   CapabilitySchema,
@@ -24,8 +25,8 @@ export const MAX_CHART_SERIES_POINTS = 20_000;
 const CAPABILITY_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 const SERIES_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~%:/-]{0,239}$/;
 const chartSeriesLog = debugLog.createLogger("chart-series");
-const ranges = new Set(["1D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"]);
-const resolutions = new Set(["auto", "1m", "5m", "15m", "30m", "45m", "1h", "1d", "1wk", "1mo"]);
+const ranges = new Set<string>(TIME_RANGES);
+const resolutions = new Set<string>(CHART_RESOLUTIONS);
 const periods = new Set(["auto", "daily", "weekly", "monthly", "quarterly", "annual", "ttm"]);
 const styles = new Set(["line", "area", "step", "columns", "points", "candles", "ohlc", "hlc"]);
 const transforms = new Set(["raw", "percent", "index100", "yoy", "qoq", "log"]);

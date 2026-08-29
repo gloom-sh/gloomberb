@@ -1,5 +1,11 @@
 import type { NormalizedPaneFunctionOptions } from "../../../cli/pane-functions/capabilities";
 import {
+  CHART_RESOLUTIONS,
+  TIME_RANGES,
+  type ChartResolution,
+  type TimeRange,
+} from "../../../time-series/range";
+import {
   coerceSeriesTransformForStyle,
   normalizeChartSpec,
 } from "../../../time-series/spec";
@@ -7,20 +13,17 @@ import type { ChartSeriesSpec, ChartSpec, SeriesPeriod } from "../../../time-ser
 
 const PRICE_CAPABILITIES = new Set(["price-chart", "intraday-price-chart", "price-comparison"]);
 
-function chartRange(options: NormalizedPaneFunctionOptions): ChartSpec["viewport"]["range"] | null {
+function chartRange(options: NormalizedPaneFunctionOptions): TimeRange | null {
   const value = options.rangePreset ?? options.range;
-  return value === "1D" || value === "1W" || value === "1M" || value === "3M"
-    || value === "6M" || value === "1Y" || value === "5Y" || value === "ALL"
-    ? value
+  return typeof value === "string" && (TIME_RANGES as readonly string[]).includes(value)
+    ? value as TimeRange
     : null;
 }
 
-function chartResolution(options: NormalizedPaneFunctionOptions): ChartSpec["viewport"]["resolution"] | null {
+function chartResolution(options: NormalizedPaneFunctionOptions): ChartResolution | null {
   const value = options.chartResolution ?? options.resolution;
-  return value === "auto" || value === "1m" || value === "5m" || value === "15m"
-    || value === "30m" || value === "45m" || value === "1h" || value === "1d"
-    || value === "1wk" || value === "1mo"
-    ? value
+  return typeof value === "string" && (CHART_RESOLUTIONS as readonly string[]).includes(value)
+    ? value as ChartResolution
     : null;
 }
 
