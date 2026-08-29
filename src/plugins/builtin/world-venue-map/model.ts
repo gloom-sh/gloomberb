@@ -19,11 +19,21 @@ export function projectWorldPoint(
   latitude: number,
   width: number,
   height: number,
+  yUnitAspect = 1,
 ): WorldMapPoint {
+  const availableWidth = Math.max(width - 1, 0);
+  const availableHeight = Math.max(height - 1, 0);
+  const unitAspect = Math.max(yUnitAspect, Number.EPSILON);
+  const effectiveHeight = availableHeight * unitAspect;
+  const latitudeSpan = MAX_LATITUDE - MIN_LATITUDE;
+  const scale = Math.min(availableWidth / 360, effectiveHeight / latitudeSpan);
+  const mapWidth = 360 * scale;
+  const mapHeight = latitudeSpan * scale;
+  const clampedLatitude = Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, latitude));
+
   return {
-    x: ((longitude + 180) / 360) * Math.max(width - 1, 0),
-    y: ((MAX_LATITUDE - Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, latitude)))
-      / (MAX_LATITUDE - MIN_LATITUDE)) * Math.max(height - 1, 0),
+    x: (availableWidth - mapWidth) / 2 + (longitude + 180) * scale,
+    y: ((effectiveHeight - mapHeight) / 2 + (MAX_LATITUDE - clampedLatitude) * scale) / unitAspect,
   };
 }
 
@@ -31,13 +41,14 @@ export function clusterWorldVenues(
   venues: readonly CloudWorldVenuePayload[],
   width: number,
   height: number,
+  yUnitAspect = 1,
 ): WorldVenueCluster[] {
   const buckets = new Map<string, CloudWorldVenuePayload[]>();
   const cellWidth = Math.max(4, Math.round(width / 18));
   const cellHeight = Math.max(2, Math.round(height / 12));
 
   for (const venue of venues) {
-    const point = projectWorldPoint(venue.longitude, venue.latitude, width, height);
+    const point = projectWorldPoint(venue.longitude, venue.latitude, width, height, yUnitAspect);
     const key = `${Math.floor(point.x / cellWidth)}:${Math.floor(point.y / cellHeight)}`;
     const bucket = buckets.get(key) ?? [];
     bucket.push(venue);
@@ -47,7 +58,7 @@ export function clusterWorldVenues(
   return [...buckets.entries()].map(([id, grouped]) => {
     const point = grouped.reduce(
       (sum, venue) => {
-        const projected = projectWorldPoint(venue.longitude, venue.latitude, width, height);
+        const projected = projectWorldPoint(venue.longitude, venue.latitude, width, height, yUnitAspect);
         return { x: sum.x + projected.x, y: sum.y + projected.y };
       },
       { x: 0, y: 0 },

@@ -77,8 +77,8 @@ function drawClusterCount(
   const glyphWidth = 3 * scale;
   const gap = scale;
   const totalWidth = value.length * glyphWidth + (value.length - 1) * gap;
-  const left = Math.round(x - totalWidth / 2);
-  const top = Math.round(y - (5 * scale) / 2);
+  const left = Math.round(x - (totalWidth - 1) / 2);
+  const top = Math.round(y - (5 * scale - 1) / 2);
   for (let digitIndex = 0; digitIndex < value.length; digitIndex += 1) {
     const glyph = DIGITS[value[digitIndex]!]!;
     for (let row = 0; row < glyph.length; row += 1) {
@@ -142,17 +142,18 @@ function renderAsciiMap(
   selectedMic: string | null,
   width: number,
   height: number,
+  cellAspect: number,
 ): string[] {
   const grid = Array.from({ length: height }, () => Array.from({ length: width }, () => " "));
   for (const outline of WORLD_OUTLINES) {
     for (const coordinate of outline) {
-      const point = projectWorldPoint(coordinate[0], coordinate[1], width, height);
+      const point = projectWorldPoint(coordinate[0], coordinate[1], width, height, cellAspect);
       const x = Math.round(point.x);
       const y = Math.round(point.y);
       if (grid[y]?.[x] === " ") grid[y]![x] = ".";
     }
   }
-  for (const cluster of clusterWorldVenues(venues, width, height)) {
+  for (const cluster of clusterWorldVenues(venues, width, height, cellAspect)) {
     const x = Math.round(cluster.x);
     const y = Math.round(cluster.y);
     grid[y]![x] = isSelectedCluster(cluster, selectedMic)
@@ -202,13 +203,14 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
     rendererTerminalHeight,
     rendererTerminalWidth,
   ]);
+  const cellAspect = cellHeightPx / Math.max(cellWidthPx, 1);
   const clusters = useMemo(
-    () => clusterWorldVenues(props.venues, props.width, props.height),
-    [props.height, props.venues, props.width],
+    () => clusterWorldVenues(props.venues, props.width, props.height, cellAspect),
+    [cellAspect, props.height, props.venues, props.width],
   );
   const ascii = useMemo(
-    () => renderAsciiMap(props.venues, props.selectedMic, props.width, props.height),
-    [props.height, props.selectedMic, props.venues, props.width],
+    () => renderAsciiMap(props.venues, props.selectedMic, props.width, props.height, cellAspect),
+    [cellAspect, props.height, props.selectedMic, props.venues, props.width],
   );
 
   const selectAt = (event: ChartMouseEvent) => {
@@ -236,8 +238,8 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
 
 function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const colors = useThemeColors();
-  // Desktop rows are roughly twice as tall as they are wide. Match the SVG
-  // view box to those pixels so the map fills its pane without stretching.
+  // Desktop rows are roughly twice as tall as they are wide. Matching the SVG
+  // view box to those pixels lets the contained world projection keep its shape.
   const plotHeight = props.height * 2.12;
   const clusters = useMemo(
     () => clusterWorldVenues(props.venues, props.width, plotHeight),
@@ -300,7 +302,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
               if (event.key === "Enter" || event.key === " ") props.onSelect(venue);
             }}
           >
-            <title>{cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}</title>
+            <title>{`${cluster.venues.length} venue${cluster.venues.length === 1 ? "" : "s"} near ${venue.city}: ${cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}`}</title>
             <circle
               cx={cluster.x}
               cy={cluster.y}
@@ -314,11 +316,11 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
               x: cluster.x,
               y: cluster.y,
               fill: colors.bg,
-              fontSize: Math.max(0.72, radius),
+              dy: "0.34em",
+              fontSize: Math.max(0.62, Math.min(0.95, radius * 0.78)),
               fontWeight: "700",
               fontFamily: "inherit",
               textAnchor: "middle",
-              dominantBaseline: "central",
               pointerEvents: "none",
             }, cluster.venues.length) : null}
           </g>

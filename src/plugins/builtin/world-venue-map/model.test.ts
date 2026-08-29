@@ -25,8 +25,18 @@ function venue(overrides: Partial<CloudWorldVenuePayload>): CloudWorldVenuePaylo
 
 describe("world venue map model", () => {
   test("projects, clusters, filters, and advances server countdowns", () => {
-    expect(projectWorldPoint(-180, 85, 101, 51)).toEqual({ x: 0, y: 0 });
-    expect(projectWorldPoint(180, -60, 101, 51)).toEqual({ x: 100, y: 50 });
+    expect(projectWorldPoint(-180, 85, 361, 146)).toEqual({ x: 0, y: 0 });
+    expect(projectWorldPoint(180, -60, 361, 146)).toEqual({ x: 360, y: 145 });
+
+    const tallTopLeft = projectWorldPoint(-180, 85, 101, 101);
+    const tallBottomRight = projectWorldPoint(180, -60, 101, 101);
+    expect(tallTopLeft.x).toBe(0);
+    expect(tallBottomRight.x).toBe(100);
+    expect(100 / (tallBottomRight.y - tallTopLeft.y)).toBeCloseTo(360 / 145);
+
+    const terminalTopLeft = projectWorldPoint(-180, 85, 101, 51, 2);
+    const terminalBottomRight = projectWorldPoint(180, -60, 101, 51, 2);
+    expect(100 / ((terminalBottomRight.y - terminalTopLeft.y) * 2)).toBeCloseTo(360 / 145);
 
     const rows = [
       venue({ mic: "XNYS", timeToOpenSeconds: 3_600 }),
