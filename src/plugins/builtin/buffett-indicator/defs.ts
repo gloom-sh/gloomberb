@@ -1,9 +1,7 @@
 import type { FredSeriesRequest } from "../../../data/fred-series";
 import { blendHex, colors } from "../../../theme/colors";
 
-export type BuffettModeId = "wilshire" | "z1";
 export type BuffettRangeId = "10Y" | "25Y" | "ALL";
-export type AlignmentRuleId = "interpolate-gdp" | "same-quarter";
 
 export type SeriesSource =
   | { kind: "fred" }
@@ -14,15 +12,6 @@ export interface SeriesDef {
   scaleToBillions: number;
   request: Pick<FredSeriesRequest, "limit" | "sortOrder">;
   source: SeriesSource;
-}
-
-export interface ModeDef {
-  id: BuffettModeId;
-  label: string;
-  numerator: SeriesDef;
-  denominator: SeriesDef;
-  align: AlignmentRuleId;
-  staleAfterMs: number;
 }
 
 export type ValuationZoneId =
@@ -60,31 +49,9 @@ export const WILSHIRE_NUMERATOR: SeriesDef = {
   source: { kind: "yahoo-index", symbol: "^W5000" },
 };
 
-export const Z1_NUMERATOR: SeriesDef = {
-  seriesId: "NCBEILQ027S",
-  scaleToBillions: 1 / 1000,
-  request: { limit: 340, sortOrder: "desc" },
-  source: { kind: "fred" },
-};
+export const BUFFETT_SERIES_DEFS: readonly SeriesDef[] = [WILSHIRE_NUMERATOR, GDP];
 
-export const BUFFETT_MODES: { readonly [K in BuffettModeId]: ModeDef } = {
-  wilshire: {
-    id: "wilshire",
-    label: "Wilshire 5000 (daily)",
-    numerator: WILSHIRE_NUMERATOR,
-    denominator: GDP,
-    align: "interpolate-gdp",
-    staleAfterMs: 5 * 24 * 60 * 60 * 1000,
-  },
-  z1: {
-    id: "z1",
-    label: "Z.1 corporate equities (quarterly)",
-    numerator: Z1_NUMERATOR,
-    denominator: GDP,
-    align: "same-quarter",
-    staleAfterMs: 150 * 24 * 60 * 60 * 1000,
-  },
-};
+export const BUFFETT_STALE_AFTER_MS = 5 * 24 * 60 * 60 * 1000;
 
 export const RANGE_WINDOWS_MS: { readonly [K in BuffettRangeId]: number | null } = {
   "10Y": 10 * MS_PER_YEAR,
@@ -158,20 +125,4 @@ export function classifyZone(ratio: number): ZoneHit {
 
 export function seriesRequest(def: SeriesDef): FredSeriesRequest {
   return { seriesId: def.seriesId, limit: def.request.limit, sortOrder: def.request.sortOrder };
-}
-
-export function uniqueSeriesDefs(
-  modes: typeof BUFFETT_MODES = BUFFETT_MODES,
-): SeriesDef[] {
-  const seen = new Set<string>();
-  const defs: SeriesDef[] = [];
-  for (const mode of Object.values(modes)) {
-    for (const def of [mode.numerator, mode.denominator]) {
-      const key = def.seriesId.trim().toUpperCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      defs.push(def);
-    }
-  }
-  return defs;
 }

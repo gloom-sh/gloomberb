@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  BUFFETT_MODES,
+  GDP,
+  WILSHIRE_NUMERATOR,
   buildRatioSeries,
   chartYearLabels,
   classifyZone,
@@ -12,13 +13,10 @@ import {
   interpolateGdpAligner,
   projectChart,
   projectView,
-  sameQuarterAligner,
-  scaleObservations,
   sigmaVsTrend,
   sliceByRange,
   trendAt,
-  Z1_NUMERATOR,
-  type ModeBuild,
+  type BuffettBuild,
   type RatioPoint,
   type ScaledObs,
 } from "./model";
@@ -65,23 +63,6 @@ describe("interpolateGdpAligner", () => {
   });
 });
 
-describe("scaleObservations Z.1", () => {
-  test("divides millions by 1000 so ratio is 20 not 20000", () => {
-    const market = scaleObservations(
-      Z1_NUMERATOR,
-      series([{ date: "2024-01-01", value: 5_000_000 }]),
-    );
-    const gdp = scaleObservations(
-      BUFFETT_MODES.z1.denominator,
-      series([{ date: "2024-01-01", value: 25_000 }]),
-    );
-    expect(market[0]!.value).toBe(5_000);
-    const points = sameQuarterAligner(market, gdp);
-    expect(points).toHaveLength(1);
-    expect(points[0]!.ratio).toBeCloseTo(20, 10);
-  });
-});
-
 describe("ratio alignment", () => {
   test("daily market × quarterly GDP yields one ratio per market obs inside the span", () => {
     const gdp = [
@@ -97,17 +78,6 @@ describe("ratio alignment", () => {
     const points = interpolateGdpAligner(market, gdp);
     expect(points.map((p) => p.date)).toEqual(market.map((m) => m.date));
     expect(new Set(points.map((p) => p.date)).size).toBe(points.length);
-  });
-
-  test("same-quarter drops unmatched quarters and keeps matches", () => {
-    const gdp = [scaled("2024-01-01", 20_000), scaled("2024-07-01", 21_000)];
-    const market = [
-      scaled("2024-01-01", 4_000),
-      scaled("2024-04-01", 4_100),
-      scaled("2024-07-01", 4_200),
-    ];
-    const points = sameQuarterAligner(market, gdp);
-    expect(points.map((p) => p.date)).toEqual(["2024-01-01", "2024-07-01"]);
   });
 });
 
@@ -247,15 +217,14 @@ describe("projectView range independence", () => {
       });
     }
     const series = {
-      mode: "wilshire" as const,
       resolvedNumeratorId: "WILL5000PRFC",
       points,
       gdpVintageDate: points[points.length - 1]!.date,
     };
     const trend = fitLogLinearTrend(points);
-    const build: ModeBuild = { series, trend, cacheStale: false };
-    const view10 = projectView(build, "wilshire", "10Y", { partial: false });
-    const viewAll = projectView(build, "wilshire", "ALL", { partial: false });
+    const build: BuffettBuild = { series, trend, cacheStale: false };
+    const view10 = projectView(build, "10Y");
+    const viewAll = projectView(build, "ALL");
     expect(view10.current.ratio).toBe(viewAll.current.ratio);
     expect(view10.sigmaVsTrend).toBe(viewAll.sigmaVsTrend);
     expect(view10.percentile).toBe(viewAll.percentile);
@@ -266,19 +235,20 @@ describe("projectView range independence", () => {
 });
 
 describe("buildRatioSeries", () => {
-  test("wires Z.1 scale through same-quarter alignment", () => {
+  test("wires Wilshire through interpolated GDP", () => {
     const built = buildRatioSeries(
-      BUFFETT_MODES.z1,
+      WILSHIRE_NUMERATOR,
       series([
-        { date: "2024-01-01", value: 5_000_000 },
-        { date: "2024-04-01", value: 5_100_000 },
+        { date: "2024-01-01", value: 40_000 },
+        { date: "2024-04-01", value: 42_000 },
       ]),
+      GDP,
       series([
-        { date: "2024-01-01", value: 25_000 },
-        { date: "2024-04-01", value: 25_500 },
+        { date: "2024-01-01", value: 20_000 },
+        { date: "2024-04-01", value: 21_000 },
       ]),
-      "NCBEILQ027S",
     );
-    expect(built.points[0]!.ratio).toBeCloseTo(20, 8);
+    expect(built.resolvedNumeratorId).toBe("WILL5000PRFC");
+    expect(built.points[0]!.ratio).toBeCloseTo(200, 8);
   });
 });

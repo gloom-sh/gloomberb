@@ -4,7 +4,7 @@ import {
   resetFredSeriesPersistence,
 } from "../../../data/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { createBuffettSeriesLoader, errorForMode, loadBuffettBundle } from "./client";
+import { createBuffettSeriesLoader, loadBuffettBundle } from "./client";
 import type { BuffettSeriesLoader } from "./client";
 import type { DatedSeries } from "./series";
 
@@ -36,11 +36,6 @@ const wilshireObs = [
   { date: "2024-04-02", value: 42_000 },
   { date: "2025-01-02", value: 45_000 },
 ];
-const z1Obs = [
-  { date: "2024-01-01", value: 5_000_000 },
-  { date: "2024-04-01", value: 5_200_000 },
-  { date: "2025-01-01", value: 5_500_000 },
-];
 const gdpObs = [
   { date: "2024-01-01", value: 25_000 },
   { date: "2024-04-01", value: 25_500 },
@@ -60,18 +55,13 @@ describe("loadBuffettBundle", () => {
         sortOrder: def.request.sortOrder,
       });
       if (def.seriesId === "WILL5000PRFC") return dated(def.seriesId, wilshireObs, "yahoo");
-      if (def.seriesId === "NCBEILQ027S") return dated(def.seriesId, z1Obs);
       if (def.seriesId === "GDP") return dated(def.seriesId, gdpObs);
       throw new Error(`unexpected ${def.seriesId}`);
     };
 
     const bundle = await loadBuffettBundle({ force: true, loader });
-    expect(Object.keys(bundle.modes).sort()).toEqual(["wilshire", "z1"]);
-    expect(requests.map((r) => r.seriesId).sort()).toEqual([
-      "GDP",
-      "NCBEILQ027S",
-      "WILL5000PRFC",
-    ]);
+    expect(bundle.build.series.resolvedNumeratorId).toBe("WILL5000PRFC");
+    expect(requests.map((r) => r.seriesId).sort()).toEqual(["GDP", "WILL5000PRFC"]);
     for (const request of requests) {
       expect(request.sortOrder).toBe("desc");
       if (request.seriesId === "WILL5000PRFC") expect(request.limit).toBe(10000);
@@ -79,18 +69,13 @@ describe("loadBuffettBundle", () => {
     }
   });
 
-  test("degrades to one mode when a numerator fails", async () => {
+  test("throws when Wilshire is unavailable", async () => {
     const loader: BuffettSeriesLoader = async (def) => {
-      if (def.seriesId === "WILL5000PRFC") {
-        throw new Error("Unsupported FRED series");
-      }
-      if (def.seriesId === "NCBEILQ027S") return dated(def.seriesId, z1Obs);
+      if (def.seriesId === "WILL5000PRFC") throw new Error("Unsupported FRED series");
       if (def.seriesId === "GDP") return dated(def.seriesId, gdpObs);
       throw new Error(`unexpected ${def.seriesId}`);
     };
-    const bundle = await loadBuffettBundle({ force: true, loader });
-    expect(bundle.modes.z1).toBeDefined();
-    expect(bundle.modes.wilshire).toBeUndefined();
+    await expect(loadBuffettBundle({ force: true, loader })).rejects.toThrow("Unsupported FRED series");
   });
 
   test("default loader uses Yahoo for Wilshire and FRED CSV after an allowlist rejection", async () => {
@@ -100,7 +85,6 @@ describe("loadBuffettBundle", () => {
     const loader = createBuffettSeriesLoader({
       loadCloudFred: async (request) => {
         cloud.push(request.seriesId);
-        if (request.seriesId === "GDP") return dated("GDP", gdpObs);
         throw new Error("Unsupported FRED series");
       },
       loadYahooIndex: async (symbol, seriesId) => {
@@ -109,22 +93,20 @@ describe("loadBuffettBundle", () => {
       },
       loadFredCsv: async (seriesId) => {
         csv.push(seriesId);
-        return dated(seriesId, z1Obs, "fred-csv");
+        return dated(seriesId, gdpObs, "fred-csv");
       },
     });
 
     const bundle = await loadBuffettBundle({ force: true, loader });
     expect(yahoo).toEqual(["^W5000:WILL5000PRFC"]);
-    expect(cloud.sort()).toEqual(["GDP", "NCBEILQ027S"]);
-    expect(csv).toEqual(["NCBEILQ027S"]);
-    expect(bundle.modes.wilshire).toBeDefined();
-    expect(bundle.modes.z1).toBeDefined();
+    expect(cloud).toEqual(["GDP"]);
+    expect(csv).toEqual(["GDP"]);
+    expect(bundle.build.series.resolvedNumeratorId).toBe("WILL5000PRFC");
   });
 
   test("does not fall back to FRED CSV on a non-allowlist cloud error", async () => {
     const loader = createBuffettSeriesLoader({
-      loadCloudFred: async (request) => {
-        if (request.seriesId === "GDP") return dated("GDP", gdpObs);
+      loadCloudFred: async () => {
         throw new Error("offline");
       },
       loadYahooIndex: async (_symbol, seriesId) => dated(seriesId, wilshireObs, "yahoo"),
@@ -132,12 +114,10 @@ describe("loadBuffettBundle", () => {
         throw new Error("csv should not run");
       },
     });
-    const bundle = await loadBuffettBundle({ force: true, loader });
-    expect(bundle.modes.wilshire).toBeDefined();
-    expect(bundle.modes.z1).toBeUndefined();
+    await expect(loadBuffettBundle({ force: true, loader })).rejects.toThrow("offline");
   });
 
-  test("throws when every mode fails", async () => {
+  test("throws when every series fails", async () => {
     await expect(loadBuffettBundle({
       force: true,
       loader: async () => {
@@ -152,12 +132,6 @@ describe("loadBuffettBundle", () => {
       "fred-series",
       "WILL5000PRFC:limit=10000:sort=desc",
       cachePayload("WILL5000PRFC", wilshireObs),
-      { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
-    );
-    persistence.seedResource(
-      "fred-series",
-      "NCBEILQ027S:limit=340:sort=desc",
-      cachePayload("NCBEILQ027S", z1Obs),
       { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
     );
     persistence.seedResource(
@@ -177,22 +151,6 @@ describe("loadBuffettBundle", () => {
       },
     });
     expect(calls).toBe(0);
-    expect(bundle.modes.wilshire).toBeDefined();
-    expect(bundle.modes.z1).toBeDefined();
-  });
-});
-
-describe("errorForMode", () => {
-  test("ignores the other numerator when the displayed mode is healthy", () => {
-    const errors = [
-      "NCBEILQ027S: Unsupported FRED series",
-      "GDP: delayed refresh",
-    ];
-    expect(errorForMode(errors, "wilshire")).toBe("GDP: delayed refresh");
-    expect(errorForMode(errors, "z1")).toBe("NCBEILQ027S: Unsupported FRED series");
-  });
-
-  test("returns null when only the inactive mode failed", () => {
-    expect(errorForMode(["NCBEILQ027S: offline"], "wilshire")).toBeNull();
+    expect(bundle.build.series.resolvedNumeratorId).toBe("WILL5000PRFC");
   });
 });

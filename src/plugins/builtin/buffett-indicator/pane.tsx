@@ -16,13 +16,11 @@ import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
-import { getCachedBuffettBundle, loadBuffettBundle, errorForMode } from "./client";
+import { getCachedBuffettBundle, loadBuffettBundle } from "./client";
 import {
-  BUFFETT_MODES,
   PARITY_RATIO,
   selectBuffettView,
   type BuffettBundle,
-  type BuffettModeId,
   type BuffettRangeId,
   type BuffettViewModel,
 } from "./model";
@@ -34,11 +32,6 @@ export type BuffettLoadState =
   | { status: "loading"; previous: BuffettBundle | null }
   | { status: "ready"; bundle: BuffettBundle }
   | { status: "error"; message: string; previous: BuffettBundle | null };
-
-const MODE_OPTIONS = [
-  { value: "wilshire" as const, label: "Wilshire" },
-  { value: "z1" as const, label: "Z.1" },
-];
 
 const RANGE_OPTIONS = [
   { value: "10Y" as const, label: "10Y" },
@@ -108,14 +101,10 @@ function footerInfoFromView(view: BuffettViewModel | null): PaneFooterSegment[] 
   if (view.observationStale || view.cacheStale) {
     info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
   }
-  if (view.partial) {
-    info.push({ id: "partial", parts: [{ text: "PARTIAL", tone: "warning", bold: true }] });
-  }
   return info;
 }
 
 export function BuffettIndicatorPane({ paneId, focused, width, height }: PaneProps) {
-  const [mode, setMode] = usePaneSettingValue<BuffettModeId>("mode", BUFFETT_DEFAULTS.mode);
   const [range, setRange] = usePaneSettingValue<BuffettRangeId>("range", BUFFETT_DEFAULTS.range);
   const [state, setState] = useState<BuffettLoadState>(initialLoadState);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
@@ -161,16 +150,14 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
 
   const bundle = bundleOf(state);
   const view = useMemo(
-    () => (bundle ? selectBuffettView(bundle, mode, range) : null),
-    [bundle, mode, range],
+    () => (bundle ? selectBuffettView(bundle, range) : null),
+    [bundle, range],
   );
 
   const loading = state.status === "loading" || state.status === "idle";
   const error = state.status === "error"
     ? state.message
-    : view
-      ? errorForMode(bundle?.errors ?? [], view.displayedMode)
-      : bundle?.errors[0] ?? null;
+    : bundle?.errors[0] ?? null;
   const footerInfo = useMemo(() => footerInfoFromView(view), [view]);
 
   usePaneStatusFooter({
@@ -204,8 +191,6 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
     );
   }
 
-  const sourceLabel = BUFFETT_MODES[view.displayedMode].label;
-  const showFallbackSource = view.displayedMode !== view.requestedMode;
   const chartWidth = Math.max(24, width - 2);
   const chartHeight = width >= 96 ? 14 : 12;
 
@@ -225,21 +210,10 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
             </Box>
             <Box flexDirection="row" height={1} overflow="hidden">
               <Text fg={colors.textDim}>{`as of ${view.asOf}`}</Text>
-              {showFallbackSource ? (
-                <>
-                  <Text fg={colors.textDim}>{" · "}</Text>
-                  <Text fg={colors.warning}>{sourceLabel}</Text>
-                </>
-              ) : null}
             </Box>
           </Box>
 
           <Box flexDirection="row" height={1} gap={2} overflow="hidden" justifyContent="flex-end">
-            <SegmentedControl
-              options={MODE_OPTIONS}
-              value={mode}
-              onChange={(value) => setMode(value as BuffettModeId)}
-            />
             <SegmentedControl
               options={RANGE_OPTIONS}
               value={range}
@@ -321,7 +295,7 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
               The Buffett Indicator is the total value of US stocks divided by GDP. At 100%, the market is worth one year of economic output. Warren Buffett popularized the ratio in a December 2001 Fortune essay with Carol Loomis, drawn from a Sun Valley talk after the 1990s boom. He called it probably the best single measure of where valuations stand at any given moment.
             </Text>
             <Text fg={colors.textDim} wrapMode="word" wrapText>
-              He treated it as a market-wide compass, not a trade timer. After that boom, 70 to 80% looked cheap and the 200% peak in 1999 and 2000 looked like fire. It is still the usual whole-market valuation check, though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like versus 2001, which is why this pane also shows the gap versus trend (σ). Significantly undervalued is below 75%, fair 90 to 115%, significantly overvalued above 135%. Wilshire is a daily full-cap proxy; Z.1 is the Fed's quarterly corporate-equities series.
+              He treated it as a market-wide compass, not a trade timer. After that boom, 70 to 80% looked cheap and the 200% peak in 1999 and 2000 looked like fire. It is still the usual whole-market valuation check, though interest rates, buybacks, and a larger listed share of the economy have all raised what fair looks like versus 2001, which is why this pane also shows the gap versus trend (σ). Significantly undervalued is below 75%, fair 90 to 115%, significantly overvalued above 135%. The numerator is the Wilshire 5000, a daily full-cap proxy for US listed stocks.
             </Text>
             <Box flexDirection="row" height={1} overflow="hidden">
               <ExternalLinkText

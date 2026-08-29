@@ -43,15 +43,6 @@ const wilshireData = payload("WILL5000PRFC", [
   { date: "2026-06-15", value: 45_000 },
 ]);
 
-const z1Data = payload("NCBEILQ027S", [
-  { date: "2024-01-01", value: 40_000_000 },
-  { date: "2024-04-01", value: 42_000_000 },
-  { date: "2025-01-01", value: 43_000_000 },
-  { date: "2025-04-01", value: 44_000_000 },
-  { date: "2026-01-01", value: 44_500_000 },
-  { date: "2026-04-01", value: 45_000_000 },
-]);
-
 const gdpData = payload("GDP", [
   { date: "2024-01-01", value: 28_000 },
   { date: "2024-04-01", value: 28_500 },
@@ -84,7 +75,6 @@ beforeEach(() => {
   resetFredSeriesPersistence();
   const persistence = new MemoryPluginPersistence();
   persistence.seedResource("fred-series", "WILL5000PRFC:limit=10000:sort=desc", wilshireData, FRED_SEED_META);
-  persistence.seedResource("fred-series", "NCBEILQ027S:limit=340:sort=desc", z1Data, FRED_SEED_META);
   persistence.seedResource("fred-series", "GDP:limit=340:sort=desc", gdpData, FRED_SEED_META);
   attachFredSeriesPersistence(persistence);
 });

@@ -81,38 +81,29 @@ Unlike #632, this pane needs **no `src/api-client/` changes** — it reuses the 
 
 `Buffett Indicator = US total equity market capitalization ÷ US GDP × 100`
 
-Two numerator modes, both dimensionally correct in $ billions, both from FRED. Separate labeled
-views — no cross-calibration between them.
+One construction, both legs in $ billions:
 
-| Mode | Numerator | Denominator | Notes |
-|------|-----------|-------------|-------|
-| **Wilshire** (default) | `WILL5000PRFC` — Wilshire 5000 Full Cap Price Index, daily. Index level ≈ market cap in $B by construction (≈50,000 ↔ ≈$50T). | `GDP` (billions, quarterly SAAR), linearly interpolated | Daily, history to 1971 |
-| **Z.1** | `NCBEILQ027S` — Nonfinancial Corporate Business; Corporate Equities; Liability, Level. **Units are millions — divide by 1000.** | `GDP`, same quarter | Quarterly, official Flow of Funds, to 1945, ~1 quarter lag |
+| | Series | Notes |
+|--|--------|-------|
+| **Numerator** | Wilshire 5000 Full Cap (`WILL5000PRFC` / Yahoo `^W5000`). Index level ≈ market cap in $B by construction (≈50,000 ↔ ≈$50T). | Daily, history to 1971 |
+| **Denominator** | `GDP` (billions, quarterly SAAR), linearly interpolated | Hold the last print flat forward. Do not extrapolate the trend. |
 
 ### ⚠️ Verify before building the UI
 
-**Verified 2026-08-29 against `api.gloom.sh`:** `GDP` returns data. `WILL5000PRFC`,
-`WILL5000PR`, and `NCBEILQ027S` all return `500 Unsupported FRED series`. The cloud FRED proxy
-allowlists series; those IDs are not on it. Tracking: https://github.com/gloom-sh/gloomberb/issues/658
+**Verified 2026-08-29 against `api.gloom.sh`:** `GDP` returns data. `WILL5000PRFC` and
+`WILL5000PR` return `500 Unsupported FRED series`. The cloud FRED proxy allowlists series; those
+IDs are not on it. Tracking: https://github.com/gloom-sh/gloomberb/issues/658
 
-Until the allowlist lands, build model/client/pane against injectable loaders and seeded
-`fred-series` persistence. Live Terminal/Desktop verification of real numbers waits on #658.
-
-If after allowlisting Wilshire is dead or months stale:
-
-1. Try `WILL5000PR` (price index, non-full-cap).
-2. Otherwise make Z.1 the default and mark Wilshire unavailable.
-
-The pane degrades to whichever mode resolves and names the resolved source in the body — never an
-empty pane.
+Wilshire loads from Yahoo (`^W5000`). GDP loads from the cloud FRED proxy, with a public FRED CSV
+fallback only on an allowlist rejection. Until the allowlist lands, build model/client/pane against
+injectable loaders and seeded `fred-series` persistence.
 
 ### GDP handling
 
 Quarterly, seasonally adjusted at an annual rate, published with a lag.
 
-- **Wilshire mode:** linearly interpolate GDP between quarterly observations; hold the last value
-  flat forward past the final one. Do **not** extrapolate the trend.
-- **Z.1 mode:** align on the quarter, no interpolation.
+- Linearly interpolate GDP between quarterly observations; hold the last value flat forward past
+  the final one. Do **not** extrapolate the trend.
 - Show the GDP vintage (`GDP as of 2026Q2`) in the body. The lag is a real caveat; hiding it
   misrepresents the number.
 
@@ -144,7 +135,7 @@ New directory `src/plugins/builtin/buffett-indicator/`:
 
 | File | Contents |
 |------|----------|
-| `model.ts` | Series definitions, mode types, GDP interpolation, ratio construction, log-linear trend + σ, zone classification, percentile/extremes. Pure functions, no React, no network. |
+| `model.ts` | Series definitions, GDP interpolation, ratio construction, log-linear trend + σ, zone classification, percentile/extremes. Pure functions, no React, no network. |
 | `model.test.ts` | The math. See Tests. |
 | `settings.ts` | `buildBuffettSettingsDef()` + `getBuffettPaneSettings()`. |
 | `client.ts` | FRED fetch + cache orchestration. |
@@ -157,10 +148,10 @@ New directory `src/plugins/builtin/buffett-indicator/`:
 Mirror `src/plugins/builtin/credit-conditions/client.ts` in shape:
 
 - `requestFor(seriesId)` → `FredSeriesRequest`
-- `getCachedBuffettIndicator(mode)` — synchronous cached-first read via
+- `getCachedBuffettBundle()` — synchronous cached-first read via
   `getCachedFredSeries(..., { allowExpired: true })`, so the pane paints instantly on open
-- `loadBuffettIndicator(mode, force)` — `Promise.allSettled` over the mode's two series through
-  `loadCachedFredSeries(request, () => apiClient.getCloudFredSeries(...), { force })`
+- `loadBuffettBundle(force)` — `Promise.allSettled` over Wilshire + GDP through
+  `loadCachedFredSeries(request, () => loader(def), { force })`
 - Fail with one summarized message when both series fail — reuse the idea in `summarizeSeriesErrors`
   (`credit-conditions/client.ts:100`), which exists because six failing series produced a message
   several times wider than the pane
@@ -170,32 +161,28 @@ Persistence is already attached: `macroSharedResourcesModule` calls `attachFredS
 (`catalog-browser.ts:91`). Nothing to add, and do not call it from this module.
 
 History limits: Wilshire wants a long daily history — `sortOrder: "desc"` with a generous limit
-(≈4000 ≈ 16 years of business days) or a `startDate`. Z.1 is quarterly; ~340 covers 1945→now.
+(≈10000). GDP is quarterly; ~340 covers 1945→now.
 
 ### `settings.ts`
 
-Mode and range are pane **settings**, not component state — PLUGINS.md's pane-settings section is
-the documented home for per-instance options, and it brings layout persistence, the settings
-dialog, and command-bar editing along with it.
+Range is a pane **setting**, not component state — PLUGINS.md's pane-settings section is the
+documented home for per-instance options, and it brings layout persistence, the settings dialog,
+and command-bar editing along with it.
 
 Follow `src/plugins/builtin/correlation/settings.ts`: export
-`buildBuffettSettingsDef(): PaneSettingsDef` plus a `getBuffettPaneSettings(settings)` normalizer
-that coerces unknown stored values back to defaults.
+`buildBuffettSettingsDef(): PaneSettingsDef`.
 
 ```typescript
 fields: [
-  { key: "mode",  label: "Numerator", type: "select",
-    options: [{ value: "wilshire", label: "Wilshire 5000 (daily)" },
-              { value: "z1",       label: "Z.1 corporate equities (quarterly)" }] },
   { key: "range", label: "History",   type: "select",
     options: [{ value: "10Y", label: "10Y" }, { value: "25Y", label: "25Y" }, { value: "ALL", label: "All" }] },
 ]
 ```
 
-Read with `usePaneSettingValue<Mode>("mode", defaults.mode)` (`correlation/index.tsx:50`) and bind
-the in-body `SegmentedControl`s to the same setter, so the header control and the dialog share one
-value. Do **not** use `usePluginPaneState` — PLUGINS.md describes it as per-pane transient state,
-and this is a persisted preference.
+Read with `usePaneSettingValue<BuffettRangeId>("range", defaults.range)` and bind the in-body
+`SegmentedControl` to the same setter, so the header control and the dialog share one value. Do
+**not** use `usePluginPaneState` — PLUGINS.md describes it as per-pane transient state, and this is
+a persisted preference.
 
 ### `pane.tsx`
 
@@ -222,12 +209,12 @@ Top to bottom:
 3. **Chart** (below).
 4. **Stats strip** — market cap ($T), GDP ($T) + vintage quarter, ratio 1y ago, all-time high/low
    with dates, percentile.
-5. **Controls** — `SegmentedControl` for mode and range, bound to the pane settings.
+5. **Controls** — `SegmentedControl` for range, bound to the pane settings.
 
 **Footer** via `usePaneStatusFooter({ registrationId: "buffett-indicator", loading, error, info })`.
 Info segments: `as of <date>`, `delayed`, `STALE` when the newest observation is older than the
-series' cadence, `PARTIAL` when only one mode resolved. Per AGENTS.md the footer carries only
-changing status — no pane label, no row counts.
+series' cadence. Per AGENTS.md the footer carries only changing status — no pane label, no row
+counts.
 
 > **Conflict, resolve in the repo's favor:** PLUGINS.md's footer section lists `[r]efresh` as an
 > acceptable pane hint. The repo has since decided otherwise — `r` refreshes every pane, so it is
@@ -329,8 +316,6 @@ on the pane; that ratio is right.
 **`model.test.ts`** — the real value:
 - GDP interpolation: midpoint between two quarterly observations; flat-forward past the last one;
   market observations that predate the first GDP point.
-- **Unit conversion: `NCBEILQ027S` millions → billions.** A 1000× error here is silently plausible
-  and would make the pane wrong by three orders of magnitude.
 - Ratio alignment: a daily market series against quarterly GDP yields one ratio point per market
   observation, none dropped or duplicated.
 - Log-linear trend + σ: on a synthetic series with a known exponential growth rate, the fitted slope
@@ -362,8 +347,8 @@ bun run dev
 ```
 
 Type `BUF`. Check: pane opens floating at a sane size; gauge needle sits in the right segment; chart
-draws with trend and σ lines visible and not clipped; mode and range toggles switch by click and
-survive closing and reopening the pane; `r` reloads; footer shows `as of` / `delayed` and nothing
+draws with trend and σ lines visible and not clipped; the range toggle switches by click and
+survives closing and reopening the pane; `r` reloads; footer shows `as of` / `delayed` and nothing
 static. Narrow the pane to ~60 columns and confirm the layout degrades rather than overflowing.
 
 **Desktop (Electrobun)** — `bun run desktop:dev`, open `BUF`. Confirm the SVG speedometer renders

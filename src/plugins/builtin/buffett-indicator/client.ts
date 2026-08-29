@@ -5,15 +5,14 @@ import {
   type FredSeriesRequest,
 } from "../../../data/fred-series";
 import {
-  BUFFETT_MODES,
+  BUFFETT_SERIES_DEFS,
+  GDP,
+  WILSHIRE_NUMERATOR,
   buildRatioSeries,
   fitLogLinearTrend,
   seriesRequest,
-  uniqueSeriesDefs,
   type BuffettBundle,
-  type BuffettModeId,
-  type ModeBuild,
-  type ModeDef,
+  type BuffettBuild,
   type SeriesDef,
 } from "./model";
 import type { DatedSeries } from "./series";
@@ -65,37 +64,16 @@ function summarizeSeriesErrors(errors: readonly string[]): string {
   return errors.length > 1 ? `${reason} (${errors.length} series)` : reason;
 }
 
-/** First error for this mode's series ids. */
-export function errorForMode(
-  errors: readonly string[],
-  modeId: BuffettModeId,
-): string | null {
-  if (errors.length === 0) return null;
-  const mode = BUFFETT_MODES[modeId];
-  const relevantIds = new Set([
-    mode.numerator.seriesId.trim().toUpperCase(),
-    mode.denominator.seriesId.trim().toUpperCase(),
-  ]);
-  for (const entry of errors) {
-    const seriesId = entry.split(":")[0]?.trim().toUpperCase();
-    if (seriesId && relevantIds.has(seriesId)) return entry;
-  }
-  return null;
-}
-
-function tryBuildMode(
-  mode: ModeDef,
+function tryBuild(
   byId: Map<string, { data: DatedSeries; stale: boolean }>,
   errors: string[],
-): ModeBuild | null {
-  const gdp = byId.get(mode.denominator.seriesId.trim().toUpperCase());
-  if (!gdp) return null;
-
-  const numerator = byId.get(mode.numerator.seriesId.trim().toUpperCase());
-  if (!numerator) return null;
+): BuffettBuild | null {
+  const gdp = byId.get(GDP.seriesId.trim().toUpperCase());
+  const numerator = byId.get(WILSHIRE_NUMERATOR.seriesId.trim().toUpperCase());
+  if (!gdp || !numerator) return null;
 
   try {
-    const series = buildRatioSeries(mode, numerator.data, gdp.data, mode.numerator.seriesId);
+    const series = buildRatioSeries(WILSHIRE_NUMERATOR, numerator.data, GDP, gdp.data);
     return {
       series,
       trend: fitLogLinearTrend(series.points),
@@ -112,15 +90,11 @@ function assembleBundle(
   errors: string[],
   fetchedAt: number,
 ): BuffettBundle | null {
-  const modes: Partial<Record<BuffettModeId, ModeBuild>> = {};
-  for (const mode of Object.values(BUFFETT_MODES)) {
-    const built = tryBuildMode(mode, byId, errors);
-    if (built) modes[mode.id] = built;
-  }
-  if (Object.keys(modes).length === 0) return null;
+  const build = tryBuild(byId, errors);
+  if (!build) return null;
   return {
-    modes,
-    stale: Object.values(modes).some((mode) => mode!.cacheStale),
+    build,
+    stale: build.cacheStale,
     errors,
     fetchedAt,
   };
@@ -141,7 +115,7 @@ function provenanceFor(def: SeriesDef): DatedSeries["provenance"] {
 
 export function getCachedBuffettBundle(): BuffettBundle | null {
   const byId = new Map<string, { data: DatedSeries; stale: boolean }>();
-  for (const def of uniqueSeriesDefs()) {
+  for (const def of BUFFETT_SERIES_DEFS) {
     const cached = getCachedFredSeries(seriesRequest(def), { allowExpired: true });
     if (cached) {
       byId.set(def.seriesId.trim().toUpperCase(), {
@@ -204,7 +178,7 @@ export async function loadBuffettBundle(options?: {
   const byId = new Map<string, { data: DatedSeries; stale: boolean }>();
 
   const settled = await Promise.all(
-    uniqueSeriesDefs().map((def) => loadSeries(def, force, loader)),
+    BUFFETT_SERIES_DEFS.map((def) => loadSeries(def, force, loader)),
   );
 
   for (const outcome of settled) {

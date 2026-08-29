@@ -1,10 +1,9 @@
 import { gdpVintageLabel, type RatioPoint, type RatioSeries } from "./align";
 import { projectChart, type BuffettChartProjection } from "./chart-projection";
 import {
-  BUFFETT_MODES,
+  BUFFETT_STALE_AFTER_MS,
   RANGE_WINDOWS_MS,
   classifyZone,
-  type BuffettModeId,
   type BuffettRangeId,
   type ZoneHit,
 } from "./defs";
@@ -17,22 +16,20 @@ export interface Extreme {
   date: string;
 }
 
-export interface ModeBuild {
+export interface BuffettBuild {
   series: RatioSeries;
   trend: TrendFit;
   cacheStale: boolean;
 }
 
 export interface BuffettBundle {
-  modes: Partial<Record<BuffettModeId, ModeBuild>>;
+  build: BuffettBuild;
   stale: boolean;
   errors: string[];
   fetchedAt: number;
 }
 
 export interface BuffettViewModel {
-  requestedMode: BuffettModeId;
-  displayedMode: BuffettModeId;
   range: BuffettRangeId;
   resolvedNumeratorId: string;
   current: RatioPoint;
@@ -49,7 +46,6 @@ export interface BuffettViewModel {
   asOf: string;
   observationStale: boolean;
   cacheStale: boolean;
-  partial: boolean;
 }
 
 function parseDateMs(date: string): number {
@@ -89,10 +85,9 @@ function ratioOneYearAgo(points: readonly RatioPoint[], currentDate: string): nu
 }
 
 export function projectView(
-  build: ModeBuild,
-  requestedMode: BuffettModeId,
+  build: BuffettBuild,
   range: BuffettRangeId,
-  opts: { partial: boolean; nowMs?: number },
+  opts: { nowMs?: number } = {},
 ): BuffettViewModel {
   const { series, trend, cacheStale } = build;
   const points = series.points;
@@ -100,13 +95,10 @@ export function projectView(
   const nowMs = opts.nowMs ?? Date.now();
   const visible = sliceByRange(points, range);
   const zone = classifyZone(current.ratio);
-  const mode = BUFFETT_MODES[series.mode];
   const observationAgeMs = nowMs - parseDateMs(current.date);
   const atOrBelow = points.filter((p) => p.ratio <= current.ratio).length;
 
   return {
-    requestedMode,
-    displayedMode: series.mode,
     range,
     resolvedNumeratorId: series.resolvedNumeratorId,
     current,
@@ -121,22 +113,14 @@ export function projectView(
     percentile: points.length === 0 ? 0 : (100 * atOrBelow) / points.length,
     chart: projectChart(visible),
     asOf: current.date,
-    observationStale: observationAgeMs > mode.staleAfterMs,
+    observationStale: observationAgeMs > BUFFETT_STALE_AFTER_MS,
     cacheStale,
-    partial: opts.partial,
   };
 }
 
 export function selectBuffettView(
   bundle: BuffettBundle,
-  requestedMode: BuffettModeId,
   range: BuffettRangeId,
 ): BuffettViewModel {
-  const primary = bundle.modes[requestedMode];
-  const fallbackId: BuffettModeId = requestedMode === "wilshire" ? "z1" : "wilshire";
-  const chosen = primary ?? bundle.modes[fallbackId];
-  if (!chosen) throw new Error("Buffett Indicator unavailable");
-  return projectView(chosen, requestedMode, range, {
-    partial: Object.keys(bundle.modes).length === 1,
-  });
+  return projectView(bundle.build, range);
 }

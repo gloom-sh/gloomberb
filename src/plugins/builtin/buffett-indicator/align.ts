@@ -1,4 +1,4 @@
-import type { AlignmentRuleId, ModeDef, SeriesDef } from "./defs";
+import type { SeriesDef } from "./defs";
 import type { DatedSeries } from "./series";
 
 export interface ScaledObs {
@@ -14,7 +14,6 @@ export interface RatioPoint {
 }
 
 export interface RatioSeries {
-  mode: ModeDef["id"];
   resolvedNumeratorId: string;
   points: RatioPoint[];
   gdpVintageDate: string;
@@ -22,14 +21,6 @@ export interface RatioSeries {
 
 function parseDateMs(date: string): number {
   return Date.parse(date);
-}
-
-function yearQuarter(date: string): string {
-  const ms = parseDateMs(date);
-  const d = new Date(ms);
-  const year = d.getUTCFullYear();
-  const quarter = Math.floor(d.getUTCMonth() / 3) + 1;
-  return `${year}-Q${quarter}`;
 }
 
 export function gdpVintageLabel(gdpVintageDate: string): string {
@@ -103,47 +94,18 @@ export function interpolateGdpAligner(
   return out;
 }
 
-export function sameQuarterAligner(
-  market: readonly ScaledObs[],
-  gdp: readonly ScaledObs[],
-): RatioPoint[] {
-  const gdpByQuarter = new Map<string, number>();
-  for (const g of gdp) gdpByQuarter.set(yearQuarter(g.date), g.value);
-  const out: RatioPoint[] = [];
-  for (const m of market) {
-    const gdpValue = gdpByQuarter.get(yearQuarter(m.date));
-    if (gdpValue == null || !(gdpValue > 0)) continue;
-    out.push(ratioPoint(m.date, m.value, gdpValue));
-  }
-  return out;
-}
-
-const ALIGNERS: {
-  readonly [K in AlignmentRuleId]: (
-    market: readonly ScaledObs[],
-    gdp: readonly ScaledObs[],
-  ) => RatioPoint[];
-} = {
-  "interpolate-gdp": interpolateGdpAligner,
-  "same-quarter": sameQuarterAligner,
-};
-
 export function buildRatioSeries(
-  mode: ModeDef,
+  marketDef: SeriesDef,
   numerator: DatedSeries,
+  gdpDef: SeriesDef,
   denominator: DatedSeries,
-  resolvedNumeratorId: string,
 ): RatioSeries {
-  const market = scaleObservations(
-    { ...mode.numerator, seriesId: resolvedNumeratorId },
-    numerator,
-  );
-  const gdp = scaleObservations(mode.denominator, denominator);
-  const points = ALIGNERS[mode.align](market, gdp);
-  if (points.length === 0) throw new Error(`${mode.id}: no overlapping observations`);
+  const market = scaleObservations(marketDef, numerator);
+  const gdp = scaleObservations(gdpDef, denominator);
+  const points = interpolateGdpAligner(market, gdp);
+  if (points.length === 0) throw new Error("no overlapping observations");
   return {
-    mode: mode.id,
-    resolvedNumeratorId,
+    resolvedNumeratorId: marketDef.seriesId,
     points,
     gdpVintageDate: gdp.at(-1)!.date,
   };
