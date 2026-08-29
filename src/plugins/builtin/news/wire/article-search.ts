@@ -1,5 +1,7 @@
 import type { NewsArticle, NewsQuery } from "../../../../news/types";
 import { getSharedNewsService } from "../../../../news/hooks";
+import { apiClient } from "../../../../api-client";
+import { mapCloudNewsArticle } from "../../../../sources/gloomberb-cloud/news";
 
 const ARTICLE_SEARCH_LIMIT = 8;
 
@@ -137,4 +139,11 @@ export async function loadNewsArticles(): Promise<NewsArticle[]> {
   const service = getSharedNewsService();
   if (!service) return [];
   return (await service.load(ARTICLE_SEARCH_QUERY)).articles;
+}
+
+export async function searchCloudNewsArticles(query: string): Promise<NewsArticle[]> {
+  const search = tokenizeArticleQuery(query).join(" ");
+  if (!search) return [];
+  const response = await apiClient.searchCloudNews(search, ARTICLE_SEARCH_LIMIT);
+  return response.items.map((item) => mapCloudNewsArticle(item));
 }

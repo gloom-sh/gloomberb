@@ -1097,6 +1097,21 @@ describe("apiClient cloud news", () => {
     expect(result).toEqual({ items: [], nextCursor: null });
   });
 
+  test("searches cloud news with an encoded query and limit", async () => {
+    let seenUrl = "";
+    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
+      seenUrl = String(input);
+      return createResponse({ items: [], nextCursor: null });
+    });
+
+    await apiClient.searchCloudNews("strait hormuz", 8);
+
+    const url = new URL(seenUrl);
+    expect(url.pathname).toBe("/news/search");
+    expect(url.searchParams.get("query")).toBe("strait hormuz");
+    expect(url.searchParams.get("limit")).toBe("8");
+  });
+
   test("fetches news story details from the story route", async () => {
     let seenUrl = "";
     globalThis.fetch = mockFetch(async (input: Request | string | URL) => {

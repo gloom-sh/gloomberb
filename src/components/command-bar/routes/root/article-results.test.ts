@@ -44,6 +44,19 @@ describe("buildArticleSearchResultItems", () => {
     expect(opened).toEqual(["Iran Threatens to Close the Strait of Hormuz"]);
   });
 
+  test("shows typo-tolerant cloud matches without re-filtering them locally", () => {
+    const items = buildArticleSearchResultItems({
+      articles: [],
+      cloudArticles: [article("Microsoft announces new cloud region", "Reuters")],
+      query: "ART mikrosoft",
+      phase: "ready",
+      onOpen: () => {},
+    });
+    expect(items.map((item) => item.label)).toEqual([
+      "Microsoft announces new cloud region",
+    ]);
+  });
+
   test("shows a lookup row while subscribed feeds are still loading", () => {
     const items = buildArticleSearchResultItems({
       articles: [],

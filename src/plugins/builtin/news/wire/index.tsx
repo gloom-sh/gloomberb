@@ -21,6 +21,7 @@ import { openUrl } from "../../../../components/ui/external-link";
 import {
   cachedNewsArticles,
   loadNewsArticles,
+  searchCloudNewsArticles,
   searchNewsArticles,
 } from "./article-search";
 
@@ -108,7 +109,7 @@ export const newsWireModule: PluginModule = {
     ctx.registerCommand({
       id: "open-news-article",
       label: "Open Article",
-      description: "Search loaded news headlines by topic, e.g. ART hormuz.",
+      description: "Search cloud and loaded news headlines, e.g. ART hormuz.",
       keywords: ["article", "news", "rss", "headline", "story", "open"],
       category: "navigation",
       shortcut: "ART",
@@ -119,10 +120,10 @@ export const newsWireModule: PluginModule = {
       },
       async execute(values) {
         const query = values?.query ?? values?.shortcut ?? "";
-        const articles = cachedNewsArticles().length > 0
-          ? cachedNewsArticles()
-          : await loadNewsArticles();
-        const match = searchNewsArticles(articles, query)[0];
+        const cached = cachedNewsArticles();
+        const cloudMatches = searchCloudNewsArticles(query).catch(() => []);
+        const articles = cached.length > 0 ? cached : await loadNewsArticles();
+        const match = searchNewsArticles(articles, query)[0] ?? (await cloudMatches)[0];
         if (!match) {
           ctx.notify({
             body: query.trim()

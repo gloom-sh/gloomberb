@@ -676,6 +676,10 @@ class GloomApiClient {
     return this.data.getCloudNewsStory(storyId);
   }
 
+  async searchCloudNews(query: string, limit = 8): Promise<CloudNewsListResponse> {
+    return this.data.searchCloudNews(query, limit);
+  }
+
   async getCloudTickerTweets(params: CloudTickerTweetsParams): Promise<CloudTweetSearchResponse> {
     return this.data.getCloudTickerTweets(params);
   }

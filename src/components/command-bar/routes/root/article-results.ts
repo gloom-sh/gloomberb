@@ -11,6 +11,7 @@ import type { ResultItem } from "../../list/model";
  */
 export function buildArticleSearchResultItems(options: {
   articles: readonly NewsArticle[];
+  cloudArticles?: readonly NewsArticle[];
   query: string;
   phase?: "idle" | "loading" | "ready" | "refreshing" | "error";
   onOpen: (article: NewsArticle) => void;
@@ -18,7 +19,15 @@ export function buildArticleSearchResultItems(options: {
   const query = options.query.trim();
   if (!query || !looksLikeArticleQuery(query)) return [];
 
-  const matches = searchNewsArticles(options.articles, query);
+  const seen = new Set<string>();
+  const matches = [
+    ...(options.cloudArticles ?? []),
+    ...searchNewsArticles(options.articles, query),
+  ].filter((article) => {
+    if (seen.has(article.id)) return false;
+    seen.add(article.id);
+    return true;
+  }).slice(0, 8);
   const items = matches.map((article) => ({
     id: `article:${article.id}`,
     label: article.title,

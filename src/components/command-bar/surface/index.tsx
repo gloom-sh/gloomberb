@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataProvider } from "../../../types/data-provider";
+import type { NewsArticle } from "../../../news/types";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutBounds } from "../../../plugins/pane-manager";
@@ -12,6 +13,8 @@ import {
   ARTICLE_SEARCH_QUERY,
   cachedNewsArticles,
   looksLikeArticleQuery,
+  searchCloudNewsArticles,
+  tokenizeArticleQuery,
 } from "../../../plugins/builtin/news/wire/article-search";
 import { buildArticleSearchResultItems } from "../routes/root/article-results";
 import { openUrl } from "../../ui/external-link";
@@ -258,7 +261,39 @@ export function CommandBar({
     ),
   }), [askAssistNow, assistActive, assistAutoAsk, assistState, planAccess.emailVerified, startAssistSignUp]);
 
-  const newsState = useNewsArticles(looksLikeArticleQuery(rootQuery) ? ARTICLE_SEARCH_QUERY : null);
+  const articleLookupQuery = looksLikeArticleQuery(rootQuery) ? rootQuery.trim() : "";
+  const newsState = useNewsArticles(articleLookupQuery ? ARTICLE_SEARCH_QUERY : null);
+  const [cloudArticleSearch, setCloudArticleSearch] = useState<{
+    query: string;
+    phase: "loading" | "ready";
+    articles: NewsArticle[];
+  }>({ query: "", phase: "ready", articles: [] });
+  useEffect(() => {
+    if (tokenizeArticleQuery(articleLookupQuery).length === 0) {
+      setCloudArticleSearch((current) => (
+        current.query === articleLookupQuery && current.phase === "ready" && current.articles.length === 0
+          ? current
+          : { query: articleLookupQuery, phase: "ready", articles: [] }
+      ));
+      return;
+    }
+
+    let cancelled = false;
+    setCloudArticleSearch({ query: articleLookupQuery, phase: "loading", articles: [] });
+    const timer = setTimeout(() => {
+      void searchCloudNewsArticles(articleLookupQuery)
+        .then((articles) => {
+          if (!cancelled) setCloudArticleSearch({ query: articleLookupQuery, phase: "ready", articles });
+        })
+        .catch(() => {
+          if (!cancelled) setCloudArticleSearch({ query: articleLookupQuery, phase: "ready", articles: [] });
+        });
+    }, 120);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [articleLookupQuery]);
   const articleResultItems = useMemo(() => {
     const cached = cachedNewsArticles();
     const seen = new Set<string>();
@@ -272,17 +307,20 @@ export function CommandBar({
       || newsState.phase === "ready"
       || newsState.phase === "refreshing"
       || newsState.phase === "error";
-    const stillLoading = !localReady && (newsState.phase === "idle" || newsState.phase === "loading");
+    const localLoading = !localReady && (newsState.phase === "idle" || newsState.phase === "loading");
+    const cloudCurrent = cloudArticleSearch.query === articleLookupQuery;
+    const cloudLoading = !!articleLookupQuery && (!cloudCurrent || cloudArticleSearch.phase === "loading");
     return buildArticleSearchResultItems({
       articles,
+      cloudArticles: cloudCurrent ? cloudArticleSearch.articles : [],
       query: rootQuery,
-      phase: stillLoading ? "loading" : "ready",
+      phase: localLoading || cloudLoading ? "loading" : "ready",
       onOpen: (article) => {
         openUrl(article.url);
         closeAll({ revertThemePreview: false });
       },
     });
-  }, [closeAll, newsState.articles, newsState.phase, rootQuery]);
+  }, [articleLookupQuery, closeAll, cloudArticleSearch, newsState.articles, newsState.phase, rootQuery]);
 
   const {
     activeMatch,

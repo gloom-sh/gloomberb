@@ -245,6 +245,13 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
   return appendQuery("/news", search);
 }
 
+export function cloudNewsSearchPath(query: string, limit: number): string {
+  return appendQuery("/news/search", new URLSearchParams({
+    query,
+    limit: String(limit),
+  }));
+}
+
 export function cloudTickerTweetsPath(params: CloudTickerTweetsParams): string {
   const search = new URLSearchParams({ ticker: params.ticker });
   if (params.limit != null) search.set("limit", String(params.limit));

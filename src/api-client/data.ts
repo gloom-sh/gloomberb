@@ -14,6 +14,7 @@ import {
   cloudMarketSearchPath,
   cloudMarketSymbolPath,
   cloudNewsPath,
+  cloudNewsSearchPath,
   cloudOptionsChainPath,
   cloudStatementsPath,
   cloudTickerTweetsPath,
@@ -247,6 +248,10 @@ export class CloudDataApi {
 
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {
     return this.request<CloudNewsPayload>(`/news/${encodeURIComponent(storyId)}`);
+  }
+
+  async searchCloudNews(query: string, limit = 8): Promise<CloudNewsListResponse> {
+    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit));
   }
 
   async getCloudTickerTweets(params: CloudTickerTweetsParams): Promise<CloudTweetSearchResponse> {
