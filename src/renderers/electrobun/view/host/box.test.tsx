@@ -87,6 +87,8 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
   });
   const listeners = new Set<() => void>();
   const pointerXs: number[] = [];
+  let revision = 1;
+  let offsetX = 0;
   const container = testWindow.document.createElement("div");
   testWindow.document.body.appendChild(container);
   const root = createRoot(container as unknown as HTMLElement);
@@ -101,6 +103,8 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
             getFrame: () => ({
               width: 320,
               height: 180,
+              revision,
+              offsetX,
               paint: (painter) => painter.clear("#101010"),
             }),
             subscribe: (listener) => {
@@ -123,6 +127,14 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
     expect(canvas.height).toBe(180);
     expect(fillRects).toEqual([[0, 0, 320, 180]]);
     expect(listeners.size).toBe(1);
+
+    offsetX = 12;
+    listeners.forEach((listener) => listener());
+    expect(canvas.style.transform).toBe("translate3d(12px, 0, 0)");
+    expect(fillRects).toHaveLength(1);
+    revision = 2;
+    listeners.forEach((listener) => listener());
+    expect(fillRects).toHaveLength(2);
 
     const pointer = (type: string, clientX: number) => canvas.dispatchEvent(
       new testWindow.PointerEvent(type, {

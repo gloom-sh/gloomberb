@@ -609,7 +609,9 @@ function CompositePanelSurface({
     plotWidth,
   ]);
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
-  const crosshairSurface = paintSource?.getFrame() ?? bitmap;
+  const crosshairSurface = isDesktopWeb
+    ? { width: plotWidth * cellWidthPx, height: panel.height * cellHeightPx }
+    : bitmap;
   const crosshair = useMemo(
     () => resolvePanelCrosshair(
       panel,
@@ -1581,11 +1583,12 @@ export function CompositeChart({
   const buildEngineScene = useCallback((
     nextViewport: CompositeViewportRange,
     axisDomains?: CompositeAxisDomains,
+    widthScale = 1,
   ) => {
     // lastTickKey busts the builder when a live source mutates in place.
     void lastTickKey;
     const next = buildCompositeChartScene(visibleSeries, panels, {
-      width: plotWidth,
+      width: Math.max(1, Math.round(plotWidth * widthScale)),
       height: plotHeight,
       cursorDate: normalizedCursorTimestamp === null
         ? null
@@ -1594,7 +1597,9 @@ export function CompositeChart({
       timelineSeries: marketTimelineSeries,
       axisDomains,
     });
-    return next ? downsampleCompositeChartScene(next, downsampleWidth) : null;
+    return next
+      ? downsampleCompositeChartScene(next, Math.max(1, Math.round(downsampleWidth * widthScale)))
+      : null;
   }, [
     downsampleWidth,
     lastTickKey,

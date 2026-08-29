@@ -54,10 +54,14 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   const lastPointerXRef = useRef<number | null>(null);
 
   useLayoutEffect(() => {
+    let paintedRevision = Number.NaN;
     const paint = () => {
       const canvas = canvasRef.current;
       const frame = source.getFrame();
       if (!canvas || !frame) return;
+      canvas.style.width = `${frame.width}px`;
+      canvas.style.transform = `translate3d(${frame.offsetX}px, 0, 0)`;
+      if (paintedRevision === frame.revision) return;
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.max(1, Math.round(frame.width * ratio));
       const height = Math.max(1, Math.round(frame.height * ratio));
@@ -67,13 +71,14 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       if (!context) return;
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       frame.paint(new CanvasChartPainter(context, frame.width, frame.height));
+      paintedRevision = frame.revision;
     };
     paint();
     return source.subscribe(paint);
   }, [source]);
 
   const pointerInput = (event: PointerEvent<HTMLCanvasElement>): ChartPointerInput => {
-    const bounds = event.currentTarget.getBoundingClientRect();
+    const bounds = (event.currentTarget.parentElement ?? event.currentTarget).getBoundingClientRect();
     return {
       x: event.clientX - bounds.left,
       y: event.clientY - bounds.top,
@@ -139,7 +144,9 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
         width: "100%",
         height: "100%",
         position: "absolute",
-        inset: 0,
+        left: 0,
+        top: 0,
+        willChange: "transform",
       }}
     />
   );

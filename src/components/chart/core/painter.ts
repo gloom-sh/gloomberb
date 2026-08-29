@@ -42,6 +42,10 @@ export interface ChartPainter {
 export interface ChartPaintFrame {
   width: number;
   height: number;
+  /** Changes only when pixels must be repainted. */
+  revision: number;
+  /** Compositor-only horizontal placement inside the clipped chart surface. */
+  offsetX: number;
   paint(painter: ChartPainter): void;
 }
 
