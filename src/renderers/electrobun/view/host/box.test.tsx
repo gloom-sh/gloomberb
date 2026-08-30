@@ -142,11 +142,6 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
     expect(canvas.height).toBe(180);
     expect(fillRects).toEqual([[0, 0, 320, 180]]);
     expect(listeners.size).toBe(1);
-    const verticalCrosshair = [...container.querySelectorAll("div")].find((element) => (
-      element.style.width === "1px" && element.style.bottom === "0px"
-    ));
-    expect(parseFloat(verticalCrosshair!.style.left)).toBeCloseTo((20 / 39) * 100, 6);
-
     offsetX = 12;
     listeners.forEach((listener) => listener());
     expect(canvas.style.transform).toBe("translate3d(12px, 0, 0)");
@@ -167,8 +162,9 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
     await act(async () => {
       mouse("mousedown", canvas, 10);
       mouse("mousemove", testWindow.document, 11);
-      mouse("mouseup", testWindow.document, 11);
     });
+    expect(canvas.parentElement!.style.getPropertyValue("--gloom-chart-pan-x")).toBe("11px");
+    await act(async () => mouse("mouseup", testWindow.document, 11));
     expect(pointerXs).toEqual([10, 11, 11]);
     expect(panFrameXs).toEqual([11]);
     expect(genericDrags).toBe(0);

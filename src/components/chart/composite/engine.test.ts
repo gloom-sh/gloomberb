@@ -133,6 +133,7 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
   const commits: Array<CompositeViewportRange | null> = [];
   const panFrames: Array<{ date: Date | null; yRatio: number }> = [];
   const panEnds: Array<Date | null> = [];
+  let sceneBuilds = 0;
   const engine = new CompositeChartEngine();
   engine.configure({
     resetKey: "price:1D",
@@ -140,11 +141,14 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
     navigationBounds: viewport(1, 11),
     series: [data],
     allowHistoricalBackfill: false,
-    buildScene: (next, axisDomains, _widthScale, cursorDate) => buildCompositeChartScene(
-      [data],
-      [{ id: "main" }],
-      { width: 101, height: 20, viewport: next, axisDomains, cursorDate },
-    ),
+    buildScene: (next, axisDomains, _widthScale, cursorDate) => {
+      sceneBuilds += 1;
+      return buildCompositeChartScene(
+        [data],
+        [{ id: "main" }],
+        { width: 101, height: 20, viewport: next, axisDomains, cursorDate },
+      );
+    },
     onCommit: (next) => commits.push(next),
   });
   const initialAxisMin = engine.getSnapshot().scene!.panels[0]!.axes.left!.min;
@@ -166,8 +170,10 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
     onPanEnd: (date) => panEnds.push(date),
   });
 
-  expect(source.scrollPan?.(10)).toBe(true);
+  expect(source.scrollPan?.(1)).toBe(true);
+  const buildsBeforeFrame = sceneBuilds;
   source.panFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  expect(sceneBuilds).toBe(buildsBeforeFrame + 1);
   expect(engine.getSnapshot().scene!.panels[0]!.axes.left!.min).toBeGreaterThan(initialAxisMin);
   expect(panFrames[0]?.date).not.toBeNull();
   expect(panFrames[0]?.yRatio).toBeCloseTo(10 / 19, 6);

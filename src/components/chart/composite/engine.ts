@@ -12,8 +12,8 @@ import {
   type CompositeViewportRange,
 } from "./interactions";
 import { paintCompositePanel } from "./painter";
+import { applyCompositeChartCursor, projectCompositeValue } from "./scene";
 import { projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
-import { applyCompositeChartCursor } from "./scene";
 import type {
   CompositeAxisDomain,
   CompositeAxisSide,
@@ -88,6 +88,22 @@ function sameAxisDomains(
     }
   }
   return true;
+}
+
+function reprojectSceneAxes(
+  scene: CompositeChartScene,
+  domains: CompositeAxisDomains,
+): void {
+  for (const panel of scene.panels) {
+    panel.axes = domains.get(panel.id) ?? panel.axes;
+    for (const series of panel.series) {
+      const domain = panel.axes[series.source.axis];
+      if (!domain) continue;
+      for (const point of series.points) {
+        point.yRatio = projectCompositeValue(point.value, domain) ?? point.yRatio;
+      }
+    }
+  }
 }
 
 function viewportRatios(
@@ -398,7 +414,8 @@ export class CompositeChartEngine {
     const needsRecentering = !visibleRatios
       || (visibleRatios.start < 0.15 && viewport.start.getTime() > bounds.start.getTime())
       || (visibleRatios.end > 0.85 && viewport.end.getTime() < bounds.end.getTime());
-    if (!sameAxisDomains(drag.axes, nextAxes) || needsRecentering) {
+    const axesChanged = !sameAxisDomains(drag.axes, nextAxes);
+    if (needsRecentering) {
       const older = panCompositeViewport(
         viewport,
         bounds,
@@ -430,6 +447,11 @@ export class CompositeChartEngine {
       drag.previewWidth = previewWidth;
       drag.previewRevision = nextVersion + 0.5;
       drag.offsetX = ratios ? -ratios.start * (previewWidth - 1) : 0;
+      this.emit(true);
+    } else if (axesChanged && drag.previewScene && nextAxes) {
+      drag.axes = nextAxes;
+      reprojectSceneAxes(drag.previewScene, nextAxes);
+      drag.previewRevision = nextVersion + 0.5;
       this.emit(true);
     } else {
       for (const listener of this.stateListeners) listener();

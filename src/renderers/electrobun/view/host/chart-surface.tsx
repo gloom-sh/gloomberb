@@ -20,6 +20,10 @@ import { WebBox } from "./box";
 import { CanvasChartPainter } from "./chart-painter";
 import { cancelWebFrame, requestWebFrame } from "./mouse";
 
+const PAN_SCENE_INTERVAL_MS = 50;
+const PAN_CROSSHAIR_X = "--gloom-chart-pan-x";
+const PAN_CROSSHAIR_Y = "--gloom-chart-pan-y";
+
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -56,6 +60,12 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   const scrollAxisRef = useRef<"x" | "y" | null>(null);
   const panFrameRef = useRef<number | null>(null);
   const latestPanInputRef = useRef<ChartPointerInput | null>(null);
+  const lastPanFrameTimeRef = useRef(Number.NEGATIVE_INFINITY);
+  const crosshairClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (crosshairClearTimerRef.current !== null) clearTimeout(crosshairClearTimerRef.current);
+  }, []);
 
   useLayoutEffect(() => {
     let paintedRevision = Number.NaN;
@@ -93,6 +103,33 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
     };
   };
 
+  const setTransientCrosshair = (input: ChartPointerInput) => {
+    if (crosshairClearTimerRef.current !== null) clearTimeout(crosshairClearTimerRef.current);
+    crosshairClearTimerRef.current = null;
+    const surface = canvasRef.current?.parentElement;
+    if (!surface) return;
+    const viewport = source.getViewportSize();
+    surface.style.setProperty(
+      PAN_CROSSHAIR_X,
+      `${Math.max(0, Math.min(viewport.width - 1, input.x))}px`,
+    );
+    surface.style.setProperty(
+      PAN_CROSSHAIR_Y,
+      `${Math.max(0, Math.min(viewport.height - 1, input.y))}px`,
+    );
+  };
+  const clearTransientCrosshair = () => {
+    const surface = canvasRef.current?.parentElement;
+    surface?.style.removeProperty(PAN_CROSSHAIR_X);
+    surface?.style.removeProperty(PAN_CROSSHAIR_Y);
+  };
+  const scheduleCrosshairClear = () => {
+    if (crosshairClearTimerRef.current !== null) clearTimeout(crosshairClearTimerRef.current);
+    crosshairClearTimerRef.current = setTimeout(() => {
+      crosshairClearTimerRef.current = null;
+      clearTransientCrosshair();
+    }, 100);
+  };
   const flushPanFrame = () => {
     if (panFrameRef.current !== null) cancelWebFrame(panFrameRef.current);
     panFrameRef.current = null;
@@ -103,12 +140,18 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   const schedulePanFrame = (input: ChartPointerInput) => {
     latestPanInputRef.current = input;
     if (!source.panFrame || panFrameRef.current !== null) return;
-    panFrameRef.current = requestWebFrame(() => {
+    const update = (timestamp: number) => {
+      if (timestamp - lastPanFrameTimeRef.current < PAN_SCENE_INTERVAL_MS) {
+        panFrameRef.current = requestWebFrame(update);
+        return;
+      }
       panFrameRef.current = null;
+      lastPanFrameTimeRef.current = timestamp;
       const latest = latestPanInputRef.current;
       latestPanInputRef.current = null;
       if (latest) source.panFrame?.(latest);
-    });
+    };
+    panFrameRef.current = requestWebFrame(update);
   };
 
   useEffect(() => {
@@ -120,6 +163,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       scrollAxisRef.current = null;
       flushPanFrame();
       source.scrollPanEnd?.();
+      scheduleCrosshairClear();
     };
     const wheel = (event: globalThis.WheelEvent) => {
       if (event.ctrlKey || event.metaKey || event.deltaMode !== 0) return;
@@ -127,7 +171,9 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
         ?? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? "x" : "y");
       const delta = axis === "x" ? event.deltaX : event.deltaY;
       if (delta === 0 || !source.scrollPan?.(delta)) return;
-      schedulePanFrame(mouseInput(event));
+      const input = mouseInput(event);
+      setTransientCrosshair(input);
+      schedulePanFrame(input);
       scrollAxisRef.current = axis;
       if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
       scrollEndTimerRef.current = setTimeout(finish, 120);
@@ -146,6 +192,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       if (!draggingRef.current) return;
       const input = mouseInput(event);
       source.pointerMove?.(input);
+      setTransientCrosshair(input);
       schedulePanFrame(input);
       lastMouseXRef.current = event.clientX;
       event.preventDefault();
@@ -159,6 +206,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       latestPanInputRef.current = input;
       flushPanFrame();
       source.pointerUp?.(input);
+      scheduleCrosshairClear();
       lastMouseXRef.current = null;
       event.preventDefault();
       event.stopPropagation();
@@ -171,6 +219,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       panFrameRef.current = null;
       latestPanInputRef.current = null;
       source.pointerCancel?.();
+      clearTransientCrosshair();
     };
     window.addEventListener("mousemove", move, true);
     window.addEventListener("mouseup", finish, true);
@@ -190,6 +239,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
         if (event.button !== 0 || !source.pointerDown?.(mouseInput(event.nativeEvent))) return;
         draggingRef.current = true;
         lastMouseXRef.current = event.clientX;
+        setTransientCrosshair(mouseInput(event.nativeEvent));
         const active = document.activeElement;
         if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) active.blur();
         event.preventDefault();
@@ -319,7 +369,7 @@ function ChartCrosshair({
           position: "absolute",
           top: 0,
           bottom: 0,
-          left: `${clampedX}%`,
+          left: `var(${PAN_CROSSHAIR_X}, ${clampedX}%)`,
           width: 1,
           backgroundColor: crosshair.color,
           opacity: 0.78,
@@ -333,7 +383,7 @@ function ChartCrosshair({
           position: "absolute",
           left: 0,
           right: 0,
-          top: `${clampedY}%`,
+          top: `var(${PAN_CROSSHAIR_Y}, ${clampedY}%)`,
           height: 1,
           backgroundColor: crosshair.color,
           opacity: 0.78,
@@ -345,8 +395,8 @@ function ChartCrosshair({
       <div
         style={{
           position: "absolute",
-          left: `${clampedX}%`,
-          top: `${clampedY}%`,
+          left: `var(${PAN_CROSSHAIR_X}, ${clampedX}%)`,
+          top: `var(${PAN_CROSSHAIR_Y}, ${clampedY}%)`,
           width: 7,
           height: 7,
           borderRadius: 7,
