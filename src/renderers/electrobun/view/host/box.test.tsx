@@ -88,7 +88,6 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
   const listeners = new Set<() => void>();
   const pointerXs: number[] = [];
   const scrollDeltas: number[] = [];
-  const panFrameXs: number[] = [];
   let scrollEnds = 0;
   let genericScrolls = 0;
   let revision = 1;
@@ -125,7 +124,6 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
               scrollDeltas.push(delta);
               return true;
             },
-            panFrame: (input) => panFrameXs.push(input.x),
             scrollPanEnd: () => scrollEnds += 1,
           }}
           onMouseScroll={() => genericScrolls += 1}
@@ -162,34 +160,24 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
       mouse("mouseup", testWindow.document, 11);
     });
     expect(pointerXs).toEqual([10, 11, 11]);
-    expect(panFrameXs).toEqual([11]);
 
     const firstWheel = new testWindow.WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
-      clientX: 12,
-      clientY: 5,
       deltaX: 24,
       deltaY: 1,
     });
     const secondWheel = new testWindow.WheelEvent("wheel", {
       bubbles: true,
       cancelable: true,
-      clientX: 12,
-      clientY: 5,
       deltaX: 2,
       deltaY: 40,
-    });
-    Object.defineProperties(secondWheel, {
-      clientX: { value: 12 },
-      clientY: { value: 5 },
     });
     expect(canvas.dispatchEvent(firstWheel as never)).toBe(false);
     expect(canvas.dispatchEvent(secondWheel as never)).toBe(false);
     expect(scrollDeltas).toEqual([24, 2]);
     expect(genericScrolls).toBe(0);
     await act(async () => new Promise((resolve) => setTimeout(resolve, 150)));
-    expect(panFrameXs).toEqual([11, 12]);
     expect(scrollEnds).toBe(1);
 
     const controlWheel = new testWindow.WheelEvent("wheel", {
