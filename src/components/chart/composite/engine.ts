@@ -13,6 +13,7 @@ import {
 } from "./interactions";
 import { paintCompositePanel } from "./painter";
 import { projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
+import { applyCompositeChartCursor } from "./scene";
 import type {
   CompositeAxisDomain,
   CompositeAxisSide,
@@ -370,14 +371,17 @@ export class CompositeChartEngine {
     const viewport = this.effectiveViewport();
     const config = this.pendingConfig ?? this.config;
     if (!drag || !viewport || !config) return null;
-    const ratio = Math.max(0, Math.min(
-      1,
-      (pointerX - drag.offsetX) / Math.max(drag.previewWidth - 1, 1),
-    ));
-    const cursorDate = drag.previewScene
-      ? new Date(unprojectCompositeTimestamp(drag.previewScene.timeScale, ratio))
+    const pointerRatio = Math.max(0, Math.min(1, pointerX / drag.width));
+    const baseScene = config.buildScene(viewport, undefined, 1, null);
+    const cursorDate = baseScene
+      ? new Date(unprojectCompositeTimestamp(baseScene.timeScale, pointerRatio))
       : null;
-    const scene = config.buildScene(viewport, undefined, 1, cursorDate);
+    const cursorScene = baseScene && cursorDate
+      ? applyCompositeChartCursor(baseScene, cursorDate)
+      : baseScene;
+    const scene = cursorScene
+      ? { ...cursorScene, cursorXRatio: pointerRatio }
+      : null;
     const nextVersion = this.snapshot.version + 1;
     this.snapshot = {
       viewport,
@@ -485,8 +489,9 @@ export function createCompositePanelPaintSource({
   height,
   interactive,
   onActivate,
-  onScrollPanFrame,
-  onScrollPanEnd,
+  onPanFrame,
+  onPanEnd,
+  onPanCancel,
 }: {
   engine: CompositeChartEngine;
   panelId: string;
@@ -495,8 +500,9 @@ export function createCompositePanelPaintSource({
   height: number;
   interactive: boolean;
   onActivate?: () => void;
-  onScrollPanFrame?: (cursorDate: Date | null, yRatio: number) => void;
-  onScrollPanEnd?: (cursorDate: Date | null) => void;
+  onPanFrame?: (scene: CompositeChartScene | null, yRatio: number) => void;
+  onPanEnd?: (cursorDate: Date | null) => void;
+  onPanCancel?: () => void;
 }): ChartPaintSource {
   const frame = (): ChartPaintFrame | null => {
     const paintState = engine.getPaintState(width);
@@ -517,45 +523,63 @@ export function createCompositePanelPaintSource({
         }
       : null;
   };
-  let scrollPosition = 0;
+  let panPosition = 0;
+  let lastCursorDate: Date | null | undefined;
   let scrollPanning = false;
+  const endPan = () => {
+    const cursorDate = lastCursorDate ?? engine.getSnapshot().scene?.cursorDate ?? null;
+    lastCursorDate = undefined;
+    engine.endPixelPan();
+    onPanEnd?.(cursorDate);
+  };
   const endScrollPan = () => {
     if (!scrollPanning) return;
     scrollPanning = false;
-    scrollPosition = 0;
-    const cursorDate = engine.getSnapshot().scene?.cursorDate ?? null;
-    engine.endPixelPan();
-    onScrollPanEnd?.(cursorDate);
+    endPan();
   };
   return {
     getFrame: frame,
+    getViewportSize: () => ({ width, height }),
     subscribe: engine.subscribeFrame,
     pointerDown(input: ChartPointerInput): boolean {
       if (!interactive || input.shift || input.alt || input.ctrl) return false;
       endScrollPan();
       const accepted = engine.beginPixelPan(input.x, width);
-      if (accepted) onActivate?.();
+      if (accepted) {
+        panPosition = input.x;
+        lastCursorDate = undefined;
+        onActivate?.();
+      }
       return accepted;
     },
-    pointerMove: (input) => engine.movePixelPan(input.x),
-    pointerUp: () => engine.endPixelPan(),
-    pointerCancel: () => engine.cancelPixelPan(),
+    pointerMove(input) {
+      panPosition = input.x;
+      engine.movePixelPan(input.x);
+    },
+    pointerUp: endPan,
+    pointerCancel() {
+      lastCursorDate = undefined;
+      engine.cancelPixelPan();
+      onPanCancel?.();
+    },
     scrollPan(deltaPixels: number): boolean {
       if (!interactive || !Number.isFinite(deltaPixels) || deltaPixels === 0) return false;
       if (!scrollPanning) {
         if (engine.isDragging() || !engine.beginPixelPan(0, width)) return false;
         scrollPanning = true;
-        scrollPosition = 0;
+        panPosition = 0;
+        lastCursorDate = undefined;
         onActivate?.();
       }
-      scrollPosition -= deltaPixels;
-      engine.movePixelPan(scrollPosition);
+      panPosition -= deltaPixels;
+      engine.movePixelPan(panPosition);
       return true;
     },
-    scrollPanFrame(input) {
-      const scene = engine.refreshPixelPanState(scrollPosition, input.x);
-      onScrollPanFrame?.(
-        scene?.cursorDate ?? null,
+    panFrame(input) {
+      const scene = engine.refreshPixelPanState(panPosition, input.x);
+      lastCursorDate = scene?.cursorDate ?? null;
+      onPanFrame?.(
+        scene,
         Math.max(0, Math.min(1, input.y / Math.max(height - 1, 1))),
       );
     },

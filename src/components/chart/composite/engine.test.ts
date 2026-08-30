@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import { CompositeChartEngine, createCompositePanelPaintSource } from "./engine";
-import { buildCompositeChartScene } from "./scene";
+import { buildCompositeChartScene, resolveCompositeCursorDate } from "./scene";
 import type { CompositeViewportRange } from "./interactions";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -162,12 +162,12 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
     width: 101,
     height: 20,
     interactive: true,
-    onScrollPanFrame: (date, yRatio) => panFrames.push({ date, yRatio }),
-    onScrollPanEnd: (date) => panEnds.push(date),
+    onPanFrame: (scene, yRatio) => panFrames.push({ date: scene?.cursorDate ?? null, yRatio }),
+    onPanEnd: (date) => panEnds.push(date),
   });
 
   expect(source.scrollPan?.(10)).toBe(true);
-  source.scrollPanFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  source.panFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
   expect(engine.getSnapshot().scene!.panels[0]!.axes.left!.min).toBeGreaterThan(initialAxisMin);
   expect(panFrames[0]?.date).not.toBeNull();
   expect(panFrames[0]?.yRatio).toBeCloseTo(10 / 19, 6);
@@ -175,7 +175,7 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
 
   const firstViewport = engine.getSnapshot().viewport!;
   expect(source.scrollPan?.(1)).toBe(true);
-  source.scrollPanFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  source.panFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
   const secondViewport = engine.getSnapshot().viewport!;
   expect(secondViewport.start.getTime() - firstViewport.start.getTime()).toBeCloseTo(
     6 * DAY_MS / 100,
@@ -183,7 +183,7 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
   );
 
   expect(source.scrollPan?.(200)).toBe(true);
-  source.scrollPanFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  source.panFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
   const boundaryOffset = engine.getPaintState(101).offsetX;
   expect(source.scrollPan?.(10)).toBe(true);
   expect(engine.getPaintState(101).offsetX).toBe(boundaryOffset);
@@ -192,6 +192,17 @@ test("scroll panning adapts axes and crosshair without losing the pixel hot path
   source.scrollPanEnd?.();
   expect(commits).toHaveLength(1);
   expect(panEnds).toEqual([panFrames.at(-1)!.date]);
+
+  expect(source.pointerDown?.({ x: 20, y: 5, shift: false, alt: false, ctrl: false })).toBe(true);
+  source.pointerMove?.({ x: 60, y: 5, shift: false, alt: false, ctrl: false });
+  source.panFrame?.({ x: 60, y: 5, shift: false, alt: false, ctrl: false });
+  const mouseScene = engine.getSnapshot().scene!;
+  expect(mouseScene.cursorDate).toEqual(resolveCompositeCursorDate(mouseScene, 60));
+  expect(mouseScene.cursorXRatio).toBeCloseTo(0.6, 6);
+  expect(panFrames.at(-1)?.yRatio).toBeCloseTo(5 / 19, 6);
+  source.pointerUp?.({ x: 60, y: 5, shift: false, alt: false, ctrl: false });
+  expect(commits).toHaveLength(2);
+  expect(panEnds.at(-1)).toEqual(mouseScene.cursorDate);
 });
 
 test("reverses immediately after overscrolling the oldest boundary", () => {

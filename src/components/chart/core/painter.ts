@@ -60,12 +60,13 @@ export interface ChartPointerInput {
 /** Mutable frame source used by native chart surfaces outside React's render loop. */
 export interface ChartPaintSource {
   getFrame(): ChartPaintFrame | null;
+  getViewportSize(): { width: number; height: number };
   subscribe(listener: () => void): () => void;
   pointerDown?(input: ChartPointerInput): boolean;
   pointerMove?(input: ChartPointerInput): void;
   pointerUp?(input: ChartPointerInput): void;
   pointerCancel?(): void;
   scrollPan?(deltaPixels: number): boolean;
-  scrollPanFrame?(input: ChartPointerInput): void;
+  panFrame?(input: ChartPointerInput): void;
   scrollPanEnd?(): void;
 }

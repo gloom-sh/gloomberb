@@ -521,6 +521,7 @@ interface CompositePanelSurfaceProps {
   onSelectDrawing: (id: string | null) => void;
   onActivate?: () => void;
   onCursorDateChange: (date: Date | null) => void;
+  onPanSceneChange: (scene: CompositeChartScene | null) => void;
   onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
@@ -549,6 +550,7 @@ function CompositePanelSurface({
   onSelectDrawing,
   onActivate,
   onCursorDateChange,
+  onPanSceneChange,
   onPanViewport,
   onZoomViewport,
   onSetViewport,
@@ -583,14 +585,19 @@ function CompositePanelSurface({
   const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
-  const paintCallbacksRef = useRef({ onActivate, onCursorDateChange });
-  paintCallbacksRef.current = { onActivate, onCursorDateChange };
+  const paintCallbacksRef = useRef({ onActivate, onCursorDateChange, onPanSceneChange });
+  paintCallbacksRef.current = { onActivate, onCursorDateChange, onPanSceneChange };
   const activatePaintSource = useCallback(() => paintCallbacksRef.current.onActivate?.(), []);
-  const updateScrollCrosshair = useCallback((_date: Date | null, yRatio: number) => {
+  const updatePanCrosshair = useCallback((nextScene: CompositeChartScene | null, yRatio: number) => {
     setCursorYRatio((current) => current === yRatio ? current : yRatio);
+    paintCallbacksRef.current.onPanSceneChange(nextScene);
   }, []);
-  const commitScrollCrosshair = useCallback((date: Date | null) => {
+  const commitPanCrosshair = useCallback((date: Date | null) => {
+    paintCallbacksRef.current.onPanSceneChange(null);
     paintCallbacksRef.current.onCursorDateChange(date);
+  }, []);
+  const cancelPanCrosshair = useCallback(() => {
+    paintCallbacksRef.current.onPanSceneChange(null);
   }, []);
   const paintSource = useMemo(() => (
     isDesktopWeb
@@ -602,24 +609,26 @@ function CompositePanelSurface({
           height: panel.height * cellHeightPx,
           interactive: interactive && armedTool === null,
           onActivate: activatePaintSource,
-          onScrollPanFrame: updateScrollCrosshair,
-          onScrollPanEnd: commitScrollCrosshair,
+          onPanFrame: updatePanCrosshair,
+          onPanEnd: commitPanCrosshair,
+          onPanCancel: cancelPanCrosshair,
         })
       : null
   ), [
     activatePaintSource,
     armedTool,
+    cancelPanCrosshair,
     cellHeightPx,
     cellWidthPx,
     colors,
-    commitScrollCrosshair,
+    commitPanCrosshair,
     engine,
     interactive,
     isDesktopWeb,
     panel.height,
     panel.id,
     plotWidth,
-    updateScrollCrosshair,
+    updatePanCrosshair,
   ]);
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
   const crosshairSurface = isDesktopWeb
@@ -1489,6 +1498,7 @@ export function CompositeChart({
     ? `viewport:${viewportResetSequenceRef.current}`
     : `authored:${viewportResetKey}`;
   const engineRef = useRef<CompositeChartEngine | null>(null);
+  const [panScene, setPanScene] = useState<CompositeChartScene | null>(null);
   if (!engineRef.current) engineRef.current = new CompositeChartEngine();
   const engine = engineRef.current;
   const engineSnapshot = useSyncExternalStore(
@@ -1658,9 +1668,10 @@ export function CompositeChart({
   useLayoutEffect(() => {
     if (engineConfig) engine.configure(engineConfig);
   }, [engine, engineConfig]);
-  const scene = engineConfig && engine.isConfigured(engineConfig)
+  const settledScene = engineConfig && engine.isConfigured(engineConfig)
     ? engineSnapshot.scene
     : fallbackScene;
+  const scene = panScene ?? settledScene;
   const liveViewport = engineConfig && engine.isConfigured(engineConfig)
     ? engineSnapshot.viewport ?? effectiveViewport
     : effectiveViewport;
@@ -1986,6 +1997,7 @@ export function CompositeChart({
           onSelectDrawing={setSelectedDrawingId}
           onActivate={onActivate}
           onCursorDateChange={updateCursor}
+          onPanSceneChange={setPanScene}
           onPanViewport={panViewport}
           onZoomViewport={zoomViewport}
           onSetViewport={setViewportRange}

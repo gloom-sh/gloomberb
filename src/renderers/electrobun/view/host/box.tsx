@@ -133,7 +133,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       const hasDirectDrag = typeof propsRef.current.onMouseDrag === "function" || typeof propsRef.current.onMouseDragEnd === "function";
       pendingMoveRef.current = null;
       callMouseHandler(propsRef.current.onMouseDown, event, "down");
-      if (event.button !== 0 || (event.isPropagationStopped() && !hasDirectDrag)) return;
+      if (event.button !== 0 || event.isPropagationStopped()) return;
       if (!hasSyntheticDrag && !hasDirectDrag) return;
       callMouseHandler(propsRef.current.onMouse, event, "down");
       draggingRef.current = true;

@@ -54,7 +54,13 @@ function assignRef(ref: ForwardedRef<any>, value: any) {
   else if (ref) ref.current = value;
 }
 
-function CaptureChartSurfaceProvider({ children }: { children: ReactNode }) {
+function CaptureChartSurfaceProvider({
+  children,
+  desktop = false,
+}: {
+  children: ReactNode;
+  desktop?: boolean;
+}) {
   const baseUi = useUiHost();
   const renderer = useRendererHost();
   const nativeRenderer = useNativeRenderer();
@@ -72,8 +78,8 @@ function CaptureChartSurfaceProvider({ children }: { children: ReactNode }) {
     });
   }, [baseUi]);
   const ui = useMemo(
-    () => ({ ...baseUi, ChartSurface: CapturingChartSurface }),
-    [CapturingChartSurface, baseUi],
+    () => ({ ...baseUi, kind: desktop ? "desktop-web" as const : baseUi.kind, ChartSurface: CapturingChartSurface }),
+    [CapturingChartSurface, baseUi, desktop],
   );
   return (
     <UiHostProvider ui={ui} renderer={renderer} nativeRenderer={nativeRenderer}>
@@ -1309,6 +1315,57 @@ describe("CompositeChart", () => {
     expect(frame).toContain("106%");
     expect(frame).toContain("2025-01-03");
     expect(frame).toContain("────────");
+  });
+
+  test("uses one live scene path for mouse and trackpad panning", async () => {
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider desktop>
+        <CompositeChart
+          width={60}
+          height={12}
+          showLegend={false}
+          interactive
+          allowHistoricalBackfill={false}
+          series={[series("price", "main", "left", "USD", [
+            10, 20, 30, 40, 50, 60, 700, 800, 900, 1000, 1100,
+          ])]}
+          panels={[{ id: "main" }]}
+          viewport={{
+            start: new Date("2025-01-03T00:00:00.000Z"),
+            end: new Date("2025-01-08T00:00:00.000Z"),
+          }}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+
+    const source = capturedSurfaceProps!.paintSource;
+    const width = source.getFrame().width as number;
+    const mouseX = (width - 1) * 0.6;
+    const input = (x: number) => ({ x, y: 4, shift: false, alt: false, ctrl: false });
+    const initialAxisLabels = testSetup.captureCharFrame().match(/\$[\d,.]+/g);
+
+    await act(async () => {
+      expect(source.pointerDown(input((width - 1) * 0.3))).toBe(true);
+      source.pointerMove(input(mouseX));
+      source.panFrame(input(mouseX));
+      await testSetup!.renderOnce();
+    });
+
+    expect(capturedSurfaceProps!.paintSource).toBe(source);
+    expect(capturedSurfaceProps!.crosshair.pixelX).toBeCloseTo(mouseX, 6);
+    expect(testSetup.captureCharFrame().match(/\$[\d,.]+/g)).not.toEqual(initialAxisLabels);
+
+    await act(async () => {
+      source.pointerUp(input(mouseX));
+      expect(source.scrollPan(-12)).toBe(true);
+      source.panFrame(input((width - 1) * 0.4));
+      await testSetup!.renderOnce();
+    });
+    expect(capturedSurfaceProps!.paintSource).toBe(source);
+    expect(capturedSurfaceProps!.crosshair.pixelX).toBeCloseTo((width - 1) * 0.4, 6);
+    await act(async () => source.scrollPanEnd());
   });
 
   test("zooms around the mouse pointer with control-wheel", async () => {
