@@ -583,6 +583,10 @@ function CompositePanelSurface({
   const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
+  const handlePanFrame = useCallback((date: Date | null, yRatio: number) => {
+    setCursorYRatio((current) => current === yRatio ? current : yRatio);
+    onCursorDateChange(date);
+  }, [onCursorDateChange]);
   const paintSource = useMemo(() => (
     isDesktopWeb
       ? createCompositePanelPaintSource({
@@ -593,6 +597,7 @@ function CompositePanelSurface({
           height: panel.height * cellHeightPx,
           interactive: interactive && armedTool === null,
           onActivate,
+          onPanFrame: handlePanFrame,
         })
       : null
   ), [
@@ -601,6 +606,7 @@ function CompositePanelSurface({
     cellWidthPx,
     colors,
     engine,
+    handlePanFrame,
     interactive,
     isDesktopWeb,
     onActivate,
@@ -1584,15 +1590,17 @@ export function CompositeChart({
     nextViewport: CompositeViewportRange,
     axisDomains?: CompositeAxisDomains,
     widthScale = 1,
+    cursorDate?: Date | null,
   ) => {
     // lastTickKey busts the builder when a live source mutates in place.
     void lastTickKey;
+    const cursorTimestamp = cursorDate === undefined
+      ? normalizedCursorTimestamp
+      : cursorDate?.getTime() ?? null;
     const next = buildCompositeChartScene(visibleSeries, panels, {
       width: Math.max(1, Math.round(plotWidth * widthScale)),
       height: plotHeight,
-      cursorDate: normalizedCursorTimestamp === null
-        ? null
-        : new Date(normalizedCursorTimestamp),
+      cursorDate: cursorTimestamp === null ? null : new Date(cursorTimestamp),
       viewport: nextViewport,
       timelineSeries: marketTimelineSeries,
       axisDomains,

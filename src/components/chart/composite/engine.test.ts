@@ -128,9 +128,10 @@ test("reverses immediately after overscrolling the newest boundary", () => {
   expect(commits).toHaveLength(1);
 });
 
-test("scroll panning uses the pixel hot path and commits once", () => {
+test("scroll panning adapts axes and crosshair without losing the pixel hot path", () => {
   const data = priceSeries();
   const commits: Array<CompositeViewportRange | null> = [];
+  const panFrames: Array<{ date: Date | null; yRatio: number }> = [];
   const engine = new CompositeChartEngine();
   engine.configure({
     resetKey: "price:1D",
@@ -138,13 +139,16 @@ test("scroll panning uses the pixel hot path and commits once", () => {
     navigationBounds: viewport(1, 11),
     series: [data],
     allowHistoricalBackfill: false,
-    buildScene: (next, axisDomains) => buildCompositeChartScene(
+    buildScene: (next, axisDomains, _widthScale, cursorDate) => buildCompositeChartScene(
       [data],
       [{ id: "main" }],
-      { width: 101, height: 20, viewport: next, axisDomains },
+      { width: 101, height: 20, viewport: next, axisDomains, cursorDate },
     ),
     onCommit: (next) => commits.push(next),
   });
+  const initialAxisMin = engine.getSnapshot().scene!.panels[0]!.axes.left!.min;
+  let semanticUpdates = 0;
+  engine.subscribeState(() => semanticUpdates += 1);
   const source = createCompositePanelPaintSource({
     engine,
     panelId: "main",
@@ -159,14 +163,20 @@ test("scroll panning uses the pixel hot path and commits once", () => {
     width: 101,
     height: 20,
     interactive: true,
+    onPanFrame: (date, yRatio) => panFrames.push({ date, yRatio }),
   });
 
   expect(source.scrollPan?.(100)).toBe(true);
+  source.panFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  expect(engine.getSnapshot().scene!.panels[0]!.axes.left!.min).toBeGreaterThan(initialAxisMin);
+  expect(panFrames[0]?.date).not.toBeNull();
+  expect(panFrames[0]?.yRatio).toBeCloseTo(10 / 19, 6);
+  expect(semanticUpdates).toBe(1);
+  expect(commits).toHaveLength(0);
+
   const boundaryOffset = engine.getPaintState(101).offsetX;
   expect(source.scrollPan?.(10)).toBe(true);
   expect(engine.getPaintState(101).offsetX).toBe(boundaryOffset);
-  expect(commits).toHaveLength(0);
-
   expect(source.scrollPan?.(-1)).toBe(true);
   expect(engine.getPaintState(101).offsetX - boundaryOffset).toBeCloseTo(1, 6);
   source.scrollPanEnd?.();

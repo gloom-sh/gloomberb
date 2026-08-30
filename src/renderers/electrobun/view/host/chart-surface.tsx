@@ -18,6 +18,7 @@ import type {
 } from "../../../../ui/host";
 import { WebBox } from "./box";
 import { CanvasChartPainter } from "./chart-painter";
+import { cancelWebFrame, requestWebFrame } from "./mouse";
 
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -53,6 +54,8 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   const lastMouseXRef = useRef<number | null>(null);
   const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollAxisRef = useRef<"x" | "y" | null>(null);
+  const panFrameRef = useRef<number | null>(null);
+  const latestPanInputRef = useRef<ChartPointerInput | null>(null);
 
   useLayoutEffect(() => {
     let paintedRevision = Number.NaN;
@@ -90,6 +93,24 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
     };
   };
 
+  const flushPanFrame = () => {
+    if (panFrameRef.current !== null) cancelWebFrame(panFrameRef.current);
+    panFrameRef.current = null;
+    const input = latestPanInputRef.current;
+    latestPanInputRef.current = null;
+    if (input) source.panFrame?.(input);
+  };
+  const schedulePanFrame = (input: ChartPointerInput) => {
+    latestPanInputRef.current = input;
+    if (!source.panFrame || panFrameRef.current !== null) return;
+    panFrameRef.current = requestWebFrame(() => {
+      panFrameRef.current = null;
+      const latest = latestPanInputRef.current;
+      latestPanInputRef.current = null;
+      if (latest) source.panFrame?.(latest);
+    });
+  };
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !source.scrollPan) return;
@@ -97,6 +118,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
       scrollEndTimerRef.current = null;
       scrollAxisRef.current = null;
+      flushPanFrame();
       source.scrollPanEnd?.();
     };
     const wheel = (event: globalThis.WheelEvent) => {
@@ -105,6 +127,7 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
         ?? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? "x" : "y");
       const delta = axis === "x" ? event.deltaX : event.deltaY;
       if (delta === 0 || !source.scrollPan?.(delta)) return;
+      schedulePanFrame(mouseInput(event));
       scrollAxisRef.current = axis;
       if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
       scrollEndTimerRef.current = setTimeout(finish, 120);
@@ -121,7 +144,9 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   useEffect(() => {
     const move = (event: globalThis.MouseEvent) => {
       if (!draggingRef.current) return;
-      source.pointerMove?.(mouseInput(event));
+      const input = mouseInput(event);
+      source.pointerMove?.(input);
+      schedulePanFrame(input);
       lastMouseXRef.current = event.clientX;
       event.preventDefault();
       event.stopPropagation();
@@ -131,6 +156,8 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       draggingRef.current = false;
       const input = mouseInput(event);
       if (lastMouseXRef.current !== event.clientX) source.pointerMove?.(input);
+      latestPanInputRef.current = input;
+      flushPanFrame();
       source.pointerUp?.(input);
       lastMouseXRef.current = null;
       event.preventDefault();
@@ -140,6 +167,9 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       if (!draggingRef.current) return;
       draggingRef.current = false;
       lastMouseXRef.current = null;
+      if (panFrameRef.current !== null) cancelWebFrame(panFrameRef.current);
+      panFrameRef.current = null;
+      latestPanInputRef.current = null;
       source.pointerCancel?.();
     };
     window.addEventListener("mousemove", move, true);
