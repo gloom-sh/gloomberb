@@ -5,6 +5,7 @@ import {
   ZONE_SCALE_MAX,
   ZONE_SCALE_TICKS,
   zoneScaleBands,
+  zoneScaleColumnRatio,
   zoneScaleMarkerColumn,
 } from "./defs";
 
@@ -23,7 +24,7 @@ export function ZoneColorScale({
   const cells: Array<{ char: string; color: string }> = [];
 
   for (let column = 0; column < scaleWidth; column += 1) {
-    const ratio = scaleWidth === 1 ? 0 : (column / (scaleWidth - 1)) * ZONE_SCALE_MAX;
+    const ratio = zoneScaleColumnRatio(column, scaleWidth);
     const band = bands.find((entry) => ratio >= entry.from && ratio < entry.to) ?? bands[bands.length - 1]!;
     cells.push({
       char: column === marker ? "●" : "━",
@@ -48,7 +49,8 @@ export function ZoneColorScale({
   if (underLabel) placeCaption(underLabel, 0);
   if (overLabel) placeCaption(overLabel, scaleWidth - overLabel.length);
   if (fairLabel) {
-    const fairStart = zoneScaleMarkerColumn(PARITY_RATIO, scaleWidth) - Math.floor(fairLabel.length / 2);
+    const fairCenter = zoneScaleMarkerColumn(PARITY_RATIO, scaleWidth);
+    const fairStart = fairCenter - Math.floor((fairLabel.length - 1) / 2);
     const underEnd = underLabel.length;
     const overStart = scaleWidth - overLabel.length;
     if (fairStart >= underEnd + 1 && fairStart + fairLabel.length <= overStart - 1) {
@@ -66,7 +68,10 @@ export function ZoneColorScale({
   for (const tick of ticks) {
     const label = tick === PARITY_RATIO ? "100" : String(tick);
     const center = zoneScaleMarkerColumn(tick, scaleWidth);
-    const start = Math.max(0, Math.min(scaleWidth - label.length, center - Math.floor(label.length / 2)));
+    const start = Math.max(
+      0,
+      Math.min(scaleWidth - label.length, center - Math.floor((label.length - 1) / 2)),
+    );
     for (let index = 0; index < label.length; index += 1) {
       tickCells[start + index] = {
         char: label[index]!,

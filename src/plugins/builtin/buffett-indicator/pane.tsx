@@ -75,6 +75,16 @@ function formatRatioPct(ratio: number): string {
   return `${Math.round(ratio)}%`;
 }
 
+/** Match StaticChartSurface's right Y-axis gutter so the zone scale lines up with the plot. */
+function chartPlotInset(yDomain: { min: number; max: number }): number {
+  const labelWidth = Math.max(
+    formatRatioPct(yDomain.min).length,
+    formatRatioPct(yDomain.max).length,
+    5,
+  );
+  return Math.min(labelWidth, 12) + 1;
+}
+
 /** Place the mean caption one row above the 100% line. */
 function meanLabelTop(
   yDomain: { min: number; max: number },
@@ -193,6 +203,8 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
 
   const chartWidth = Math.max(24, width - 2);
   const chartHeight = width >= 96 ? 14 : 12;
+  const plotInset = chartPlotInset(view.chart.yDomain);
+  const plotWidth = Math.max(1, chartWidth - plotInset);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -223,11 +235,14 @@ export function BuffettIndicatorPane({ paneId, focused, width, height }: PanePro
 
           {view.chart.points.length >= 2 ? (
             <Box flexDirection="column" gap={0}>
-              <ZoneColorScale
-                value={view.current.ratio}
-                width={chartWidth}
-                markerColor={view.zone.color}
-              />
+              <Box flexDirection="row" width={chartWidth} overflow="hidden">
+                <ZoneColorScale
+                  value={view.current.ratio}
+                  width={plotWidth}
+                  markerColor={view.zone.color}
+                />
+                <Text>{" ".repeat(plotInset)}</Text>
+              </Box>
               <Box position="relative" width={chartWidth} height={chartHeight}>
                 <StaticChartSurface
                   points={view.chart.points}

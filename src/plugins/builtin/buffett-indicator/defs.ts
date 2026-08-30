@@ -76,20 +76,23 @@ export const PARITY_RATIO = 100;
 
 export const ZONE_SCALE_MAX = 250;
 
+/** Ratio edges for the five valuation bands on the color scale. */
+export const ZONE_SCALE_EDGES = [0, 75, 90, 115, 135, ZONE_SCALE_MAX] as const;
+
 export const ZONE_SCALE_TICKS = [0, 75, 100, 135, ZONE_SCALE_MAX] as const;
 
 function zoneColor(id: ValuationZoneId): string {
   switch (id) {
     case "significantly-undervalued":
-      return colors.positive;
+      return blendHex(colors.positive, "#000000", 0.2);
     case "modestly-undervalued":
-      return blendHex(colors.bg, colors.positive, 0.55);
+      return colors.positive;
     case "fair":
       return colors.textBright;
     case "modestly-overvalued":
-      return colors.warning;
+      return blendHex(colors.warning, colors.negative, 0.25);
     case "significantly-overvalued":
-      return colors.negative;
+      return blendHex(colors.negative, "#000000", 0.2);
     default: {
       const _exhaustive: never = id;
       return _exhaustive;
@@ -107,10 +110,46 @@ export function zoneScaleBands(max: number = ZONE_SCALE_MAX): ZoneScaleBand[] {
   });
 }
 
+/**
+ * Map a ratio onto the color-scale column axis.
+ * Each valuation band gets equal width so fair (~100) sits near the visual center
+ * instead of being pushed left by the long 135–250 overvalued span.
+ */
 export function zoneScaleMarkerColumn(value: number, width: number, max: number = ZONE_SCALE_MAX): number {
   if (width <= 1) return 0;
+  const edges = zoneScaleEdges(max);
+  const bands = edges.length - 1;
   const clamped = Math.max(0, Math.min(max, value));
-  return Math.round((clamped / max) * (width - 1));
+  let bandIdx = bands - 1;
+  for (let i = 0; i < bands; i += 1) {
+    if (clamped < edges[i + 1]! || i === bands - 1) {
+      bandIdx = i;
+      break;
+    }
+  }
+  const lo = edges[bandIdx]!;
+  const hi = edges[bandIdx + 1]!;
+  const t = hi === lo ? 0 : (clamped - lo) / (hi - lo);
+  const seg = (width - 1) / bands;
+  return Math.round(bandIdx * seg + t * seg);
+}
+
+/** Inverse of zoneScaleMarkerColumn: column → ratio for painting equal-width bands. */
+export function zoneScaleColumnRatio(column: number, width: number, max: number = ZONE_SCALE_MAX): number {
+  if (width <= 1) return 0;
+  const edges = zoneScaleEdges(max);
+  const bands = edges.length - 1;
+  const pos = (column / Math.max(width - 1, 1)) * bands;
+  const bandIdx = Math.min(bands - 1, Math.max(0, Math.floor(pos)));
+  const t = Math.min(1, Math.max(0, pos - bandIdx));
+  const lo = edges[bandIdx]!;
+  const hi = edges[bandIdx + 1]!;
+  return lo + t * (hi - lo);
+}
+
+function zoneScaleEdges(max: number): number[] {
+  if (max === ZONE_SCALE_MAX) return [...ZONE_SCALE_EDGES];
+  return [0, 75, 90, 115, 135, max];
 }
 
 export function classifyZone(ratio: number): ZoneHit {

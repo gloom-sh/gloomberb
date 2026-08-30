@@ -145,11 +145,14 @@ describe("zoneScaleBands", () => {
     ]);
   });
 
-  test("pins the marker to the right edge at and above the scale max", () => {
+  test("gives each valuation band equal width so fair sits near center", () => {
     expect(zoneScaleMarkerColumn(0, 51)).toBe(0);
-    expect(zoneScaleMarkerColumn(125, 51)).toBe(25);
     expect(zoneScaleMarkerColumn(ZONE_SCALE_MAX, 51)).toBe(50);
     expect(zoneScaleMarkerColumn(400, 51)).toBe(50);
+    // 100% is in the middle (fair) band → near column 25 on a 0..50 axis
+    expect(zoneScaleMarkerColumn(100, 51)).toBe(24);
+    expect(zoneScaleMarkerColumn(75, 51)).toBe(10);
+    expect(zoneScaleMarkerColumn(135, 51)).toBe(40);
   });
 });
 
