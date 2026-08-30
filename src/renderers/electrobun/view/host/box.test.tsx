@@ -87,6 +87,9 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
   });
   const listeners = new Set<() => void>();
   const pointerXs: number[] = [];
+  const scrollDeltas: number[] = [];
+  let scrollEnds = 0;
+  let genericScrolls = 0;
   let revision = 1;
   let offsetX = 0;
   const container = testWindow.document.createElement("div");
@@ -117,7 +120,13 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
             },
             pointerMove: (input) => pointerXs.push(input.x),
             pointerUp: (input) => pointerXs.push(input.x),
+            scrollPan: (delta) => {
+              scrollDeltas.push(delta);
+              return true;
+            },
+            scrollPanEnd: () => scrollEnds += 1,
           }}
+          onMouseScroll={() => genericScrolls += 1}
         />,
       );
     });
@@ -151,6 +160,34 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
       mouse("mouseup", testWindow.document, 11);
     });
     expect(pointerXs).toEqual([10, 11, 11]);
+
+    const firstWheel = new testWindow.WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 24,
+      deltaY: 1,
+    });
+    const secondWheel = new testWindow.WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaX: 2,
+      deltaY: 40,
+    });
+    expect(canvas.dispatchEvent(firstWheel as never)).toBe(false);
+    expect(canvas.dispatchEvent(secondWheel as never)).toBe(false);
+    expect(scrollDeltas).toEqual([24, 2]);
+    expect(genericScrolls).toBe(0);
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 150)));
+    expect(scrollEnds).toBe(1);
+
+    const controlWheel = new testWindow.WheelEvent("wheel", {
+      bubbles: true,
+      cancelable: true,
+      deltaY: -4,
+    });
+    Object.defineProperty(controlWheel, "ctrlKey", { value: true });
+    canvas.dispatchEvent(controlWheel as never);
+    expect(genericScrolls).toBe(1);
   } finally {
     await act(async () => root.unmount());
     canvasPrototype.getContext = originalGetContext;

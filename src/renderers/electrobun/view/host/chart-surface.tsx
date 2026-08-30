@@ -51,6 +51,8 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const draggingRef = useRef(false);
   const lastMouseXRef = useRef<number | null>(null);
+  const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollAxisRef = useRef<"x" | "y" | null>(null);
 
   useLayoutEffect(() => {
     let paintedRevision = Number.NaN;
@@ -87,6 +89,34 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
       ctrl: event.ctrlKey || event.metaKey,
     };
   };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !source.scrollPan) return;
+    const finish = () => {
+      if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
+      scrollEndTimerRef.current = null;
+      scrollAxisRef.current = null;
+      source.scrollPanEnd?.();
+    };
+    const wheel = (event: globalThis.WheelEvent) => {
+      if (event.ctrlKey || event.metaKey || event.deltaMode !== 0) return;
+      const axis = scrollAxisRef.current
+        ?? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? "x" : "y");
+      const delta = axis === "x" ? event.deltaX : event.deltaY;
+      if (delta === 0 || !source.scrollPan?.(delta)) return;
+      scrollAxisRef.current = axis;
+      if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
+      scrollEndTimerRef.current = setTimeout(finish, 120);
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    canvas.addEventListener("wheel", wheel, { passive: false });
+    return () => {
+      canvas.removeEventListener("wheel", wheel);
+      finish();
+    };
+  }, [source]);
 
   useEffect(() => {
     const move = (event: globalThis.MouseEvent) => {

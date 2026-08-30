@@ -65,4 +65,6 @@ export interface ChartPaintSource {
   pointerMove?(input: ChartPointerInput): void;
   pointerUp?(input: ChartPointerInput): void;
   pointerCancel?(): void;
+  scrollPan?(deltaPixels: number): boolean;
+  scrollPanEnd?(): void;
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
-import { CompositeChartEngine } from "./engine";
+import { CompositeChartEngine, createCompositePanelPaintSource } from "./engine";
 import { buildCompositeChartScene } from "./scene";
 import type { CompositeViewportRange } from "./interactions";
 
@@ -125,6 +125,51 @@ test("reverses immediately after overscrolling the newest boundary", () => {
   expect(engine.getPaintState(101).offsetX - boundaryOffset).toBeCloseTo(1, 6);
 
   engine.endPixelPan();
+  expect(commits).toHaveLength(1);
+});
+
+test("scroll panning uses the pixel hot path and commits once", () => {
+  const data = priceSeries();
+  const commits: Array<CompositeViewportRange | null> = [];
+  const engine = new CompositeChartEngine();
+  engine.configure({
+    resetKey: "price:1D",
+    initialViewport: viewport(3, 9),
+    navigationBounds: viewport(1, 11),
+    series: [data],
+    allowHistoricalBackfill: false,
+    buildScene: (next, axisDomains) => buildCompositeChartScene(
+      [data],
+      [{ id: "main" }],
+      { width: 101, height: 20, viewport: next, axisDomains },
+    ),
+    onCommit: (next) => commits.push(next),
+  });
+  const source = createCompositePanelPaintSource({
+    engine,
+    panelId: "main",
+    colors: {
+      background: "#000",
+      grid: "#111",
+      crosshair: "#fff",
+      text: "#fff",
+      textDim: "#888",
+      negative: "#f00",
+    },
+    width: 101,
+    height: 20,
+    interactive: true,
+  });
+
+  expect(source.scrollPan?.(100)).toBe(true);
+  const boundaryOffset = engine.getPaintState(101).offsetX;
+  expect(source.scrollPan?.(10)).toBe(true);
+  expect(engine.getPaintState(101).offsetX).toBe(boundaryOffset);
+  expect(commits).toHaveLength(0);
+
+  expect(source.scrollPan?.(-1)).toBe(true);
+  expect(engine.getPaintState(101).offsetX - boundaryOffset).toBeCloseTo(1, 6);
+  source.scrollPanEnd?.();
   expect(commits).toHaveLength(1);
 });
 

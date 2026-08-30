@@ -405,11 +405,20 @@ export function createCompositePanelPaintSource({
         }
       : null;
   };
+  let scrollPosition = 0;
+  let scrollPanning = false;
+  const endScrollPan = () => {
+    if (!scrollPanning) return;
+    scrollPanning = false;
+    scrollPosition = 0;
+    engine.endPixelPan();
+  };
   return {
     getFrame: frame,
     subscribe: engine.subscribeFrame,
     pointerDown(input: ChartPointerInput): boolean {
       if (!interactive || input.shift || input.alt || input.ctrl) return false;
+      endScrollPan();
       const accepted = engine.beginPixelPan(input.x, width);
       if (accepted) onActivate?.();
       return accepted;
@@ -417,5 +426,18 @@ export function createCompositePanelPaintSource({
     pointerMove: (input) => engine.movePixelPan(input.x),
     pointerUp: () => engine.endPixelPan(),
     pointerCancel: () => engine.cancelPixelPan(),
+    scrollPan(deltaPixels: number): boolean {
+      if (!interactive || !Number.isFinite(deltaPixels) || deltaPixels === 0) return false;
+      if (!scrollPanning) {
+        if (engine.isDragging() || !engine.beginPixelPan(0, width)) return false;
+        scrollPanning = true;
+        scrollPosition = 0;
+        onActivate?.();
+      }
+      scrollPosition -= deltaPixels;
+      engine.movePixelPan(scrollPosition);
+      return true;
+    },
+    scrollPanEnd: endScrollPan,
   };
 }
