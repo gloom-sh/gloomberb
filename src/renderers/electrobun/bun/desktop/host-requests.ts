@@ -10,6 +10,7 @@ import type {
 import { safeExternalUrl } from "../../../../utils/external-url";
 import { getContextMenuRequestId, normalizeContextMenuItems } from "../context-menu/normalize";
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
+import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
 
 interface DesktopHostRequestOptions<TRpc> {
   clearMainWindow: () => void;
@@ -51,7 +52,7 @@ function normalizeWindowControlAction(action: unknown): DesktopWindowControlActi
   throw new Error("host.windowControl requires a valid action.");
 }
 
-export function handleDesktopHostRequest<TRpc>({
+export async function handleDesktopHostRequest<TRpc>({
   clearMainWindow,
   closeAllDetachedWindows,
   controlWindowForRpcKey,
@@ -63,7 +64,7 @@ export function handleDesktopHostRequest<TRpc>({
   rpc,
   teardownServices,
   trackContextMenuRequest,
-}: DesktopHostRequestOptions<TRpc>): DesktopBackendRequestResponse<DesktopHostRequest["method"]> {
+}: DesktopHostRequestOptions<TRpc>): Promise<DesktopBackendRequestResponse<DesktopHostRequest["method"]>> {
   switch (request.method) {
     case "host.restart":
       restartDesktopApp({
@@ -127,6 +128,12 @@ export function handleDesktopHostRequest<TRpc>({
     }
     case "host.readText":
       return Utils.clipboardReadText() ?? "";
+    case "host.saveTextFile": {
+      if (typeof request.payload.name !== "string" || typeof request.payload.text !== "string") {
+        throw new Error("host.saveTextFile requires a name and text.");
+      }
+      return saveTextFileToDownloads(request.payload.name, request.payload.text);
+    }
     case "host.notify":
       playNotificationSound(normalizeText(request.payload.sound));
       Utils.showNotification({

@@ -12,6 +12,7 @@ export const marketHaltsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 124, height: 26 },
+      tableExport: true,
     },
   ],
 

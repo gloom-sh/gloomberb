@@ -30,6 +30,7 @@ import { tickerDetailModule } from "./builtin/ticker-detail";
 import { treasuryAuctionsModule } from "./builtin/treasury-auctions";
 import { volatilityModule } from "./builtin/volatility";
 import { worldIndicesModule } from "./builtin/world-indices";
+import { worldVenueMapModule } from "./builtin/world-venue-map";
 import { yieldCurveModule } from "./builtin/yield-curve";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
@@ -82,6 +83,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
   modules: [
     correlationModule,
     worldIndicesModule,
+    worldVenueMapModule,
     scannerModule,
     sectorsModule,
     fxMatrixModule,

@@ -169,6 +169,7 @@ export const fxMatrixModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 105, height: 14 },
+      tableExport: true,
       settings: (context) => ({
         title: "FX Cross Rates Settings",
         values: {

@@ -1,5 +1,5 @@
-import { type ComponentType } from "react";
-import { useUiHost } from "../../../ui";
+import { type ComponentType, useEffect, useRef } from "react";
+import { useRendererHost, useUiHost } from "../../../ui";
 import { OpenTuiDataTable } from "./opentui";
 import type {
   DataTableColumn,
@@ -7,6 +7,9 @@ import type {
 } from "./types";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { remoteNumberValue, resolveRemoteItemIndex } from "../../../remote/semantic-helpers";
+import { useOptionalPaneInstanceId } from "../../../state/app/context";
+import { registerPaneTableExporter } from "../../../state/pane-table-export-registry";
+import { createDataTableCsv } from "../../data-table/export";
 
 export type {
   DataTableCell,
@@ -19,6 +22,20 @@ export type {
 export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   props: DataTableProps<T, C>,
 ) {
+  const paneId = useOptionalPaneInstanceId();
+  const renderer = useRendererHost();
+  const propsRef = useRef(props);
+  propsRef.current = props;
+
+  useEffect(() => {
+    if (!paneId || !renderer.saveTextFile) return;
+    return registerPaneTableExporter(paneId, (filename) => renderer.saveTextFile!({
+      name: filename,
+      text: createDataTableCsv(propsRef.current),
+      mimeType: "text/csv;charset=utf-8",
+    }));
+  }, [paneId, renderer]);
+
   useRemoteUiNode({
     role: "table",
     label: "Data table",

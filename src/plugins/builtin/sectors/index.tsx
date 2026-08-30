@@ -320,6 +320,7 @@ export const sectorsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 82, height: 18 },
+      tableExport: true,
       settings: (context) => ({
         title: "Sector Performance Settings",
         values: {

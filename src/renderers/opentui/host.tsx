@@ -7,6 +7,7 @@ import type { NativeRendererHost, PixelResolution, RendererHost } from "../../ui
 import { colors } from "../../theme/colors";
 import { safeExternalUrl } from "../../utils/external-url";
 import { createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
+import { saveTextFileToDownloads } from "../../utils/save-text-file";
 
 export { useKeyboard, useTerminalDimensions };
 
@@ -133,6 +134,9 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
         stderr: "ignore",
       });
       return await new Response(proc.stdout).text();
+    },
+    async saveTextFile({ name, text }) {
+      return saveTextFileToDownloads(name, text);
     },
     notify() {
       // The app-level notifier still owns toast/desktop notification behavior.

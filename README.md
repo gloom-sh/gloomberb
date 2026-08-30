@@ -280,6 +280,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `TBO` | TheBuildout infrastructure intelligence |
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
+| `MAP` | Live world venue map with local market status and clocks |
 | `FUT` | Front-month futures across index, rates, energy, metals, grains, and FX |
 | `ECON` | Economic events and releases |
 | `GC` | Yield curve |

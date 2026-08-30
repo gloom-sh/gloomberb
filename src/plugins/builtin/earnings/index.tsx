@@ -253,6 +253,7 @@ export const earningsModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 85, height: 25 },
+      tableExport: true,
       settings: earningsSettings,
     },
   ],

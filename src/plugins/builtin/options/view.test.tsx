@@ -176,6 +176,30 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
+test("shows volatility statistics and mirrored default Greeks", async () => {
+  const provider = createTestDataProvider({
+    getOptionsChain: async () => makeChain([100, 101], 101),
+  });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+
+  await act(async () => {
+    testSetup = await testRender(
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} />,
+      { width: 124, height: 16 },
+    );
+  });
+  await renderSettled();
+
+  const frame = testSetup!.captureCharFrame();
+  expect(frame).toContain("ATM IV 20.0%");
+  expect(frame).toContain("HV30 —");
+  expect(frame).toContain("EXP VOL");
+  expect(frame).toContain("C Δ");
+  expect(frame).toContain("C Γ");
+  expect(frame).toContain("P Γ");
+  expect(frame).toContain("P Δ");
+});
+
 test("streams live quotes without resetting manual scroll", async () => {
   const strikes = Array.from({ length: 100 }, (_, index) => 50 + index);
   const subscriptions: QuoteSubscriptionTarget[][] = [];

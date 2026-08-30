@@ -1,31 +1,80 @@
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell } from "../../../components";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
-import { blendHex, colors, hoverBg } from "../../../theme/colors";
+import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { formatMarketPrice } from "../../../market-data/market/format";
-import type { OptionColumn, OptionColumnId, OptionTableRow } from "./types";
+import type {
+  OptionColumn,
+  OptionFieldId,
+  OptionTableRow,
+} from "./types";
+import type { OptionSide, OptionValuation } from "../options-calculator/model";
 
 type OptionColorRole = "call" | "put" | "price" | "activity" | "iv" | "strike";
 
+type OptionFieldDef = {
+  id: OptionFieldId;
+  label: string;
+  header: string;
+  width: number;
+  description: string;
+};
+
 const OPTION_TEXT_MIN_CONTRAST = 4.5;
 
-export const OPTION_COLUMNS: Array<Omit<OptionColumn, "headerColor">> = [
-  { id: "callOpenInterest", label: "C OI", width: 6, align: "right" },
-  { id: "callVolume", label: "C VOL", width: 6, align: "right" },
-  { id: "callLast", label: "C LAST", width: 7, align: "right" },
-  { id: "callIv", label: "C IV", width: 6, align: "right" },
-  { id: "callBid", label: "C BID", width: 7, align: "right" },
-  { id: "callAsk", label: "C ASK", width: 7, align: "right" },
-  { id: "strike", label: "STRIKE", width: 9, align: "right" },
-  { id: "putBid", label: "P BID", width: 7, align: "right" },
-  { id: "putAsk", label: "P ASK", width: 7, align: "right" },
-  { id: "putIv", label: "P IV", width: 6, align: "right" },
-  { id: "putLast", label: "P LAST", width: 7, align: "right" },
-  { id: "putVolume", label: "P VOL", width: 6, align: "right" },
-  { id: "putOpenInterest", label: "P OI", width: 6, align: "right" },
+export const OPTION_FIELD_DEFS: OptionFieldDef[] = [
+  { id: "bid", label: "Bid", header: "BID", width: 7, description: "Best bid price." },
+  { id: "ask", label: "Ask", header: "ASK", width: 7, description: "Best ask price." },
+  { id: "last", label: "Last", header: "LAST", width: 7, description: "Last traded price." },
+  { id: "delta", label: "Delta", header: "Δ", width: 6, description: "Price sensitivity to a $1 move in the underlying." },
+  { id: "gamma", label: "Gamma", header: "Γ", width: 7, description: "Delta sensitivity to a $1 move in the underlying." },
+  { id: "theta", label: "Theta", header: "Θ", width: 7, description: "Estimated value decay per calendar day." },
+  { id: "vega", label: "Vega", header: "VEGA", width: 7, description: "Price sensitivity to one volatility point." },
+  { id: "rho", label: "Rho", header: "RHO", width: 7, description: "Price sensitivity to one interest-rate point." },
+  { id: "iv", label: "Implied volatility", header: "IV", width: 6, description: "Volatility implied by the contract price." },
+  { id: "volume", label: "Volume", header: "VOL", width: 6, description: "Contracts traded in the current session." },
+  { id: "openInterest", label: "Open interest", header: "OI", width: 6, description: "Outstanding open contracts." },
 ];
+
+export const DEFAULT_OPTION_FIELD_IDS: OptionFieldId[] = ["bid", "ask", "last", "delta", "gamma"];
+
+const OPTION_FIELDS_BY_ID = new Map(OPTION_FIELD_DEFS.map((field) => [field.id, field]));
+
+export function resolveOptionFieldIds(value: unknown): OptionFieldId[] {
+  if (!Array.isArray(value)) return [...DEFAULT_OPTION_FIELD_IDS];
+  const seen = new Set<OptionFieldId>();
+  const fields = value.filter((id): id is OptionFieldId => {
+    if (typeof id !== "string" || !OPTION_FIELDS_BY_ID.has(id as OptionFieldId) || seen.has(id as OptionFieldId)) {
+      return false;
+    }
+    seen.add(id as OptionFieldId);
+    return true;
+  });
+  return fields.length > 0 ? fields : [...DEFAULT_OPTION_FIELD_IDS];
+}
+
+function sideColumn(side: OptionSide, field: OptionFieldId): Omit<OptionColumn, "headerColor"> {
+  const definition = OPTION_FIELDS_BY_ID.get(field)!;
+  return {
+    id: `${side}${field[0]!.toUpperCase()}${field.slice(1)}` as OptionColumn["id"],
+    field,
+    side,
+    label: `${side === "call" ? "C" : "P"} ${definition.header}`,
+    width: definition.width,
+    align: "right",
+  };
+}
+
+export function createOptionColumns(fieldIds: readonly OptionFieldId[]): Array<Omit<OptionColumn, "headerColor">> {
+  const fields = resolveOptionFieldIds(fieldIds);
+  return [
+    ...fields.map((field) => sideColumn("call", field)),
+    { id: "strike", field: "strike", side: null, label: "STRIKE", width: 9, align: "right" },
+    ...[...fields].reverse().map((field) => sideColumn("put", field)),
+  ];
+}
 
 export function buildStrikeList(chain: OptionsChain): number[] {
   const set = new Set<number>();
@@ -68,20 +117,32 @@ export function formatIv(value: number | undefined): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-export function optionColumnColor(columnId: OptionColumnId, surface = colors.bg): string {
-  return optionRoleColor(optionColumnRole(columnId), surface);
+function formatGreek(value: number | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "\u2014";
+  return value.toFixed(3).replace(/^(-?)0\./, "$1.");
 }
 
-function optionContractForColumn(row: OptionTableRow, columnId: OptionColumnId): OptionContract | undefined {
-  return columnId.startsWith("call") ? row.call : row.put;
+export function optionColumnColor(
+  column: Pick<OptionColumn, "field" | "side">,
+  surface = colors.bg,
+): string {
+  return optionRoleColor(optionColumnRole(column), surface);
 }
 
-function optionColumnRole(columnId: OptionColumnId): OptionColorRole {
-  if (columnId === "strike") return "strike";
-  if (columnId.endsWith("Iv")) return "iv";
-  if (columnId.endsWith("Volume") || columnId.endsWith("OpenInterest")) return "activity";
-  if (columnId.endsWith("Bid") || columnId.endsWith("Ask")) return "price";
-  return columnId.startsWith("call") ? "call" : "put";
+function optionContractForColumn(row: OptionTableRow, column: OptionColumn): OptionContract | undefined {
+  return column.side === "call" ? row.call : row.put;
+}
+
+function optionGreeksForColumn(row: OptionTableRow, column: OptionColumn): OptionValuation | undefined {
+  return column.side === "call" ? row.callGreeks : row.putGreeks;
+}
+
+function optionColumnRole(column: Pick<OptionColumn, "field" | "side">): OptionColorRole {
+  if (column.field === "strike") return "strike";
+  if (column.field === "iv") return "iv";
+  if (column.field === "volume" || column.field === "openInterest") return "activity";
+  if (column.field === "bid" || column.field === "ask") return "price";
+  return column.side ?? "strike";
 }
 
 function optionRoleThemeColor(role: OptionColorRole): string {
@@ -131,12 +192,12 @@ function optionMutedColor(surface: string): string {
 function optionMoneynessBackground(
   row: OptionTableRow,
   contract: OptionContract | undefined,
-  columnId: OptionColumnId,
+  column: OptionColumn,
   rowState: { selected: boolean },
 ): string | undefined {
-  if (rowState.selected) return undefined;
-  const inTheMoney = inferColumnMoneyness(row, contract, columnId);
-  const sideColor = columnId.startsWith("call") ? colors.positive : colors.negative;
+  if (rowState.selected || !column.side) return undefined;
+  const inTheMoney = inferColumnMoneyness(row, contract, column.side);
+  const sideColor = column.side === "call" ? colors.positive : colors.negative;
   return inTheMoney
     ? blendHex(colors.bg, sideColor, 0.13)
     : blendHex(colors.bg, colors.neutral, 0.055);
@@ -145,34 +206,43 @@ function optionMoneynessBackground(
 function inferColumnMoneyness(
   row: OptionTableRow,
   contract: OptionContract | undefined,
-  columnId: OptionColumnId,
+  side: OptionSide,
 ): boolean {
   if (contract) return contract.inTheMoney;
-  const oppositeContract = columnId.startsWith("call") ? row.put : row.call;
+  const oppositeContract = side === "call" ? row.put : row.call;
   return oppositeContract ? !oppositeContract.inTheMoney : false;
 }
 
-function formatOptionContractCell(contract: OptionContract | undefined, column: OptionColumn): string {
+function formatOptionContractCell(
+  row: OptionTableRow,
+  contract: OptionContract | undefined,
+  column: OptionColumn,
+): string {
   if (!contract) return "—";
-  switch (column.id) {
-    case "callLast":
-    case "putLast":
+  const greeks = optionGreeksForColumn(row, column);
+  switch (column.field) {
+    case "last":
       return formatMarketPrice(contract.lastPrice, { assetCategory: "OPT", maxWidth: column.width });
-    case "callBid":
-    case "putBid":
+    case "bid":
       return formatMarketPrice(contract.bid, { assetCategory: "OPT", maxWidth: column.width });
-    case "callAsk":
-    case "putAsk":
+    case "ask":
       return formatMarketPrice(contract.ask, { assetCategory: "OPT", maxWidth: column.width });
-    case "callVolume":
-    case "putVolume":
+    case "volume":
       return formatCompact(contract.volume);
-    case "callOpenInterest":
-    case "putOpenInterest":
+    case "openInterest":
       return formatCompact(contract.openInterest);
-    case "callIv":
-    case "putIv":
+    case "iv":
       return formatIv(contract.impliedVolatility);
+    case "delta":
+      return formatGreek(greeks?.delta);
+    case "gamma":
+      return formatGreek(greeks?.gamma);
+    case "theta":
+      return formatGreek(greeks?.thetaPerDay);
+    case "vega":
+      return formatGreek(greeks?.vegaPerPoint);
+    case "rho":
+      return formatGreek(greeks?.rhoPerPoint);
     case "strike":
       return formatStrikeLabel(contract.strike);
   }
@@ -187,7 +257,7 @@ export function renderOptionCell(
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   const rowSurface = rowState.selected ? colors.selected : colors.bg;
 
-  if (column.id === "strike") {
+  if (column.field === "strike") {
     const backgroundColor = rowState.selected
       ? undefined
       : blendHex(colors.bg, row.isPositionStrike ? colors.borderFocused : colors.header, row.isPositionStrike ? 0.18 : 0.1);
@@ -200,12 +270,12 @@ export function renderOptionCell(
     };
   }
 
-  const contract = optionContractForColumn(row, column.id);
-  const backgroundColor = optionMoneynessBackground(row, contract, column.id, rowState);
+  const contract = optionContractForColumn(row, column);
+  const backgroundColor = optionMoneynessBackground(row, contract, column, rowState);
   const surface = backgroundColor ?? rowSurface;
   return {
-    text: formatOptionContractCell(contract, column),
-    color: selectedColor ?? (contract ? optionRoleColor(optionColumnRole(column.id), surface) : optionMutedColor(surface)),
+    text: formatOptionContractCell(row, contract, column),
+    color: selectedColor ?? (contract ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface)),
     backgroundColor,
   };
 }

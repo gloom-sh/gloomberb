@@ -48,6 +48,7 @@ export const portfolioListModule: PluginModule = {
       defaultMode: "floating",
       defaultWidth: "40%",
       tickerSource: true,
+      tableExport: true,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       portableShare: {
         private: {

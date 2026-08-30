@@ -30,6 +30,7 @@ import { scannerModule } from "./scanner";
 import { sectorsModule } from "./sectors";
 import { treasuryAuctionsModule } from "./treasury-auctions";
 import { worldIndicesModule } from "./world-indices";
+import { worldVenueMapModule } from "./world-venue-map";
 import { yieldCurveModule } from "./yield-curve";
 
 const macroSharedResourcesModule = {
@@ -76,6 +77,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
   modules: [
     correlationModule,
     worldIndicesModule,
+    worldVenueMapModule,
     marketHeatmapModule,
     marketMoversModule,
     marketHaltsModule,

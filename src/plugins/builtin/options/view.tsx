@@ -3,6 +3,7 @@ import { Box, Text } from "../../../ui";
 import { usePaneSettingValue, usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
+import { formatCompact } from "../../../utils/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
 import { useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import {
@@ -21,15 +22,19 @@ import {
   type OptionSide,
 } from "../options-calculator/model";
 import { buildChainCalcParams, resolveCalcSide } from "./calc-seed";
+import { calculateOptionGreeks, calculateOptionsSummary, type OptionsSummary } from "./analytics";
 import {
-  OPTION_COLUMNS,
+  DEFAULT_OPTION_FIELD_IDS,
   buildStrikeList,
+  createOptionColumns,
   findNearestStrikeIndex,
+  formatIv,
   optionColumnColor,
   renderOptionCell,
   resolveDefaultStrikeTarget,
+  resolveOptionFieldIds,
 } from "./table";
-import type { OptionColumn, OptionTableRow, OptionsViewProps } from "./types";
+import type { OptionColumn, OptionFieldId, OptionTableRow, OptionsViewProps } from "./types";
 import {
   buildOptionQuoteTargets,
   overlayOptionRowQuotes,
@@ -38,6 +43,48 @@ import {
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+
+type SummaryMetric = { label: string; value: string };
+
+function formatRatio(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "—" : value.toFixed(2);
+}
+
+function SummaryRow({ metrics }: { metrics: SummaryMetric[] }) {
+  return (
+    <Box flexDirection="row" height={1} gap={3} overflow="hidden">
+      {metrics.map((metric) => (
+        <Box key={metric.label} flexDirection="row" flexShrink={0}>
+          <Text fg={colors.textDim}>{`${metric.label} `}</Text>
+          <Text fg={colors.textBright}>{metric.value}</Text>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
+function OptionsSummaryStrip({ summary, secondary }: {
+  summary: OptionsSummary | null;
+  secondary: boolean;
+}) {
+  const volatility: SummaryMetric[] = [
+    { label: "ATM IV", value: formatIv(summary?.atmImpliedVolatility ?? undefined) },
+    { label: "HV30", value: formatIv(summary?.historicalVolatility30d ?? undefined) },
+    { label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
+  ];
+  return (
+    <Box flexDirection="column" height={secondary ? 2 : 1}>
+      <SummaryRow metrics={volatility} />
+      {secondary && (
+        <SummaryRow metrics={[
+          { label: "EXP VOL", value: summary ? formatCompact(summary.expirationVolume) : "—" },
+          { label: "P/C VOL", value: formatRatio(summary?.putCallVolumeRatio) },
+          { label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
+        ]} />
+      )}
+    </Box>
+  );
+}
 
 export function OptionsView({ width, height, focused, onCapture = () => {} }: OptionsViewProps) {
   const { ticker, financials } = usePaneTicker();
@@ -61,6 +108,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const effectiveTicker = target?.effectiveTicker ?? "";
   const effectiveExchange = target?.effectiveExchange ?? "";
   const underlyingFinancials = useTickerFinancials(isOpt ? effectiveTicker : null, null);
+  const underlying = isOpt ? underlyingFinancials : financials;
+  const spot = underlying?.quote?.price;
+  const dividendYield = underlying?.fundamentals?.dividendYield;
   const instrument = target?.instrument ?? null;
   const baseRequest = target
     ? {
@@ -74,6 +124,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     }
     : null;
   const [chainRefreshMinutes] = usePaneSettingValue<string>("chainRefreshMinutes", "");
+  const [storedOptionFieldIds] = usePaneSettingValue<OptionFieldId[]>("optionColumnIds", DEFAULT_OPTION_FIELD_IDS);
+  const optionFieldIds = useMemo(() => resolveOptionFieldIds(storedOptionFieldIds), [storedOptionFieldIds]);
   const initialChainEntry = useOptionsQuery(baseRequest);
   const initialChain = useResolvedEntryValue(initialChainEntry);
   const selectedExpiration = initialChain?.expirationDates[expIdx];
@@ -157,12 +209,27 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     () => new Map(strikeChain?.puts.map((p) => [p.strike, p]) ?? []),
     [strikeChain],
   );
-  const snapshotRows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => ({
-    strike,
-    call: callsByStrike.get(strike),
-    put: putsByStrike.get(strike),
-    isPositionStrike: !!parsed && Math.abs(strike - parsed.strike) < 0.01,
-  })), [callsByStrike, parsed, putsByStrike, strikes]);
+  const snapshotRows = useMemo<OptionTableRow[]>(() => {
+    const now = Date.now();
+    return strikes.map((strike) => {
+      const call = callsByStrike.get(strike);
+      const put = putsByStrike.get(strike);
+      return {
+        strike,
+        call,
+        put,
+        callGreeks: calculateOptionGreeks(call, "call", spot, dividendYield, now),
+        putGreeks: calculateOptionGreeks(put, "put", spot, dividendYield, now),
+        isPositionStrike: !!parsed && Math.abs(strike - parsed.strike) < 0.01,
+      };
+    });
+  }, [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes]);
+  const summary = useMemo(
+    () => strikeChain
+      ? calculateOptionsSummary(strikeChain, spot, underlying?.priceHistory ?? [])
+      : null,
+    [spot, strikeChain, underlying?.priceHistory],
+  );
   const visibleStrikeRange = visibleStrikeViewport?.key === viewportKey
     ? visibleStrikeViewport.range
     : null;
@@ -210,10 +277,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     ),
     [optionQuoteEntries, optionQuoteFreshness, optionQuoteTargets],
   );
-  const optionColumns: OptionColumn[] = OPTION_COLUMNS.map((column) => ({
+  const optionColumns = useMemo<OptionColumn[]>(() => createOptionColumns(optionFieldIds).map((column) => ({
     ...column,
-    headerColor: optionColumnColor(column.id, colors.panel),
-  }));
+    headerColor: optionColumnColor(column, colors.panel),
+  })), [optionFieldIds]);
 
   const selectedRow = rows[strikeIdx] ?? null;
   const calcParams = useMemo(() => buildChainCalcParams({
@@ -222,9 +289,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     side: resolveCalcSide(calcSide, parsed?.side, selectedRow),
     // On an option ticker the pane quote is the contract's own price, so load
     // the underlying snapshot rather than silently using the option mark as spot.
-    spot: (isOpt ? underlyingFinancials : financials)?.quote?.price,
-    dividendYield: (isOpt ? underlyingFinancials : financials)?.fundamentals?.dividendYield,
-  }), [calcSide, effectiveTicker, financials, isOpt, parsed?.side, selectedRow, underlyingFinancials]);
+    spot,
+    dividendYield,
+  }), [calcSide, dividendYield, effectiveTicker, parsed?.side, selectedRow, spot]);
 
   const openCalculator = useCallback(() => {
     if (!calcParams) return;
@@ -243,10 +310,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     rowState: { selected: boolean },
   ) => {
     const cell = renderOptionCell(row, column, index, rowState);
-    if (column.id === "strike") return cell;
+    if (!column.side) return cell;
     // Clicking a call or put cell is the mouse way to choose which contract
     // [c]alc opens, so it has to select the row itself as well.
-    const side: OptionSide = column.id.startsWith("call") ? "call" : "put";
+    const side: OptionSide = column.side;
     return {
       ...cell,
       onMouseDown: () => {
@@ -277,12 +344,12 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
 
   useEffect(() => {
     if (strikes.length === 0 || userSelectedStrikeRef.current) return;
-    const targetStrike = resolveDefaultStrikeTarget(parsed?.strike, financials?.quote?.price);
+    const targetStrike = resolveDefaultStrikeTarget(parsed?.strike, spot);
     if (targetStrike == null) return;
     setScrollToIndexAlign("center");
     setStrikeIdx(findNearestStrikeIndex(strikes, targetStrike));
     setAutoScrollVersion((version) => version + 1);
-  }, [expIdx, financials?.quote?.price, parsed?.strike, strikes]);
+  }, [expIdx, parsed?.strike, spot, strikes]);
 
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.targetEditable) return;
@@ -399,13 +466,18 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     ? ticker.metadata.positions.reduce((sum, p) => sum + p.shares, 0)
     : 0;
   const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
-  const tableHeight = Math.max(1, height - 1 - (isOpt && parsed ? 1 : 0));
+  const summaryRowCount = height >= 10 ? 2 : height >= 7 ? 1 : 0;
+  const tableHeight = Math.max(1, height - 1 - summaryRowCount - (isOpt && parsed ? 1 : 0));
   // The strip scrolls; without a marker a clipped last date reads as the last expiry.
   const expirationStripOverflows = chain.expirationDates
     .reduce((total, ts) => total + formatExpDate(ts).length + 2, 0) > expirationTabsWidth;
 
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
+      {summaryRowCount > 0 && (
+        <OptionsSummaryStrip summary={summary} secondary={summaryRowCount > 1} />
+      )}
+
       <Box flexDirection="row" height={1} gap={1}>
         <Text fg={colors.textDim}>Exp:</Text>
         <Box width={expirationTabsWidth} height={1} overflow="hidden">
