@@ -128,9 +128,11 @@ test("reverses immediately after overscrolling the newest boundary", () => {
   expect(commits).toHaveLength(1);
 });
 
-test("scroll panning uses the pixel hot path and commits once", () => {
+test("scroll panning adapts axes and crosshair without losing the pixel hot path", () => {
   const data = priceSeries();
   const commits: Array<CompositeViewportRange | null> = [];
+  const panFrames: Array<{ date: Date | null; yRatio: number }> = [];
+  const panEnds: Array<Date | null> = [];
   const engine = new CompositeChartEngine();
   engine.configure({
     resetKey: "price:1D",
@@ -138,13 +140,14 @@ test("scroll panning uses the pixel hot path and commits once", () => {
     navigationBounds: viewport(1, 11),
     series: [data],
     allowHistoricalBackfill: false,
-    buildScene: (next, axisDomains) => buildCompositeChartScene(
+    buildScene: (next, axisDomains, _widthScale, cursorDate) => buildCompositeChartScene(
       [data],
       [{ id: "main" }],
-      { width: 101, height: 20, viewport: next, axisDomains },
+      { width: 101, height: 20, viewport: next, axisDomains, cursorDate },
     ),
     onCommit: (next) => commits.push(next),
   });
+  const initialAxisMin = engine.getSnapshot().scene!.panels[0]!.axes.left!.min;
   const source = createCompositePanelPaintSource({
     engine,
     panelId: "main",
@@ -159,18 +162,36 @@ test("scroll panning uses the pixel hot path and commits once", () => {
     width: 101,
     height: 20,
     interactive: true,
+    onScrollPanFrame: (date, yRatio) => panFrames.push({ date, yRatio }),
+    onScrollPanEnd: (date) => panEnds.push(date),
   });
 
-  expect(source.scrollPan?.(100)).toBe(true);
+  expect(source.scrollPan?.(10)).toBe(true);
+  source.scrollPanFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  expect(engine.getSnapshot().scene!.panels[0]!.axes.left!.min).toBeGreaterThan(initialAxisMin);
+  expect(panFrames[0]?.date).not.toBeNull();
+  expect(panFrames[0]?.yRatio).toBeCloseTo(10 / 19, 6);
+  expect(commits).toHaveLength(0);
+
+  const firstViewport = engine.getSnapshot().viewport!;
+  expect(source.scrollPan?.(1)).toBe(true);
+  source.scrollPanFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
+  const secondViewport = engine.getSnapshot().viewport!;
+  expect(secondViewport.start.getTime() - firstViewport.start.getTime()).toBeCloseTo(
+    6 * DAY_MS / 100,
+    6,
+  );
+
+  expect(source.scrollPan?.(200)).toBe(true);
+  source.scrollPanFrame?.({ x: 50, y: 10, shift: false, alt: false, ctrl: false });
   const boundaryOffset = engine.getPaintState(101).offsetX;
   expect(source.scrollPan?.(10)).toBe(true);
   expect(engine.getPaintState(101).offsetX).toBe(boundaryOffset);
-  expect(commits).toHaveLength(0);
-
   expect(source.scrollPan?.(-1)).toBe(true);
   expect(engine.getPaintState(101).offsetX - boundaryOffset).toBeCloseTo(1, 6);
   source.scrollPanEnd?.();
   expect(commits).toHaveLength(1);
+  expect(panEnds).toEqual([panFrames.at(-1)!.date]);
 });
 
 test("reverses immediately after overscrolling the oldest boundary", () => {

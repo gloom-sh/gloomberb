@@ -88,6 +88,7 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
   const listeners = new Set<() => void>();
   const pointerXs: number[] = [];
   const scrollDeltas: number[] = [];
+  const scrollFrameXs: number[] = [];
   let scrollEnds = 0;
   let genericScrolls = 0;
   let revision = 1;
@@ -124,6 +125,7 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
               scrollDeltas.push(delta);
               return true;
             },
+            scrollPanFrame: (input) => scrollFrameXs.push(input.x),
             scrollPanEnd: () => scrollEnds += 1,
           }}
           onMouseScroll={() => genericScrolls += 1}
@@ -173,11 +175,16 @@ test("desktop charts paint renderer-neutral frames through canvas", async () => 
       deltaX: 2,
       deltaY: 40,
     });
+    Object.defineProperties(secondWheel, {
+      clientX: { value: 12 },
+      clientY: { value: 5 },
+    });
     expect(canvas.dispatchEvent(firstWheel as never)).toBe(false);
     expect(canvas.dispatchEvent(secondWheel as never)).toBe(false);
     expect(scrollDeltas).toEqual([24, 2]);
     expect(genericScrolls).toBe(0);
     await act(async () => new Promise((resolve) => setTimeout(resolve, 150)));
+    expect(scrollFrameXs).toEqual([12]);
     expect(scrollEnds).toBe(1);
 
     const controlWheel = new testWindow.WheelEvent("wheel", {

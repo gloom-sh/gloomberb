@@ -18,6 +18,7 @@ import type {
 } from "../../../../ui/host";
 import { WebBox } from "./box";
 import { CanvasChartPainter } from "./chart-painter";
+import { cancelWebFrame, requestWebFrame } from "./mouse";
 
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -53,6 +54,8 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   const lastMouseXRef = useRef<number | null>(null);
   const scrollEndTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollAxisRef = useRef<"x" | "y" | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
+  const latestScrollInputRef = useRef<ChartPointerInput | null>(null);
 
   useLayoutEffect(() => {
     let paintedRevision = Number.NaN;
@@ -93,10 +96,18 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !source.scrollPan) return;
+    const flushFrame = () => {
+      if (scrollFrameRef.current !== null) cancelWebFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+      const input = latestScrollInputRef.current;
+      latestScrollInputRef.current = null;
+      if (input) source.scrollPanFrame?.(input);
+    };
     const finish = () => {
       if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
       scrollEndTimerRef.current = null;
       scrollAxisRef.current = null;
+      flushFrame();
       source.scrollPanEnd?.();
     };
     const wheel = (event: globalThis.WheelEvent) => {
@@ -105,6 +116,15 @@ const PaintedChart = memo(function PaintedChart({ source }: { source: ChartPaint
         ?? (Math.abs(event.deltaX) > Math.abs(event.deltaY) ? "x" : "y");
       const delta = axis === "x" ? event.deltaX : event.deltaY;
       if (delta === 0 || !source.scrollPan?.(delta)) return;
+      latestScrollInputRef.current = mouseInput(event);
+      if (source.scrollPanFrame && scrollFrameRef.current === null) {
+        scrollFrameRef.current = requestWebFrame(() => {
+          scrollFrameRef.current = null;
+          const input = latestScrollInputRef.current;
+          latestScrollInputRef.current = null;
+          if (input) source.scrollPanFrame?.(input);
+        });
+      }
       scrollAxisRef.current = axis;
       if (scrollEndTimerRef.current !== null) clearTimeout(scrollEndTimerRef.current);
       scrollEndTimerRef.current = setTimeout(finish, 120);

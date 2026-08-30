@@ -12,7 +12,7 @@ import {
   type CompositeViewportRange,
 } from "./interactions";
 import { paintCompositePanel } from "./painter";
-import { projectCompositeTimestamp } from "./time-scale";
+import { projectCompositeTimestamp, unprojectCompositeTimestamp } from "./time-scale";
 import type {
   CompositeAxisDomain,
   CompositeAxisSide,
@@ -35,6 +35,7 @@ export interface CompositeChartEngineConfig {
     viewport: CompositeViewportRange,
     axisDomains?: CompositeAxisDomains,
     widthScale?: number,
+    cursorDate?: Date | null,
   ): CompositeChartScene | null;
   onCommit(
     viewport: CompositeViewportRange | null,
@@ -59,6 +60,33 @@ interface CompositePaintState {
 function axisDomains(scene: CompositeChartScene | null): CompositeAxisDomains | undefined {
   if (!scene) return undefined;
   return new Map(scene.panels.map((panel) => [panel.id, panel.axes] as const));
+}
+
+function sameAxisDomains(
+  left: CompositeAxisDomains | undefined,
+  right: CompositeAxisDomains | undefined,
+): boolean {
+  if (!left || !right) return left === right;
+  if (left.size !== right.size) return false;
+  for (const [panelId, leftAxes] of left) {
+    const rightAxes = right.get(panelId);
+    if (!rightAxes) return false;
+    for (const side of ["left", "right"] as const) {
+      const a = leftAxes[side];
+      const b = rightAxes[side];
+      if (a === b) continue;
+      if (
+        !a || !b
+        || a.min !== b.min
+        || a.max !== b.max
+        || a.scale !== b.scale
+        || a.unit !== b.unit
+        || a.unitGroup !== b.unitGroup
+        || a.seriesIds.join("\0") !== b.seriesIds.join("\0")
+      ) return false;
+    }
+  }
+  return true;
 }
 
 function viewportRatios(
@@ -87,6 +115,7 @@ export class CompositeChartEngine {
     axes: CompositeAxisDomains | undefined;
     previewScene: CompositeChartScene | null;
     previewWidth: number;
+    previewRevision: number;
     offsetX: number;
   } | null = null;
   private snapshot: CompositeChartEngineSnapshot = {
@@ -148,7 +177,7 @@ export class CompositeChartEngine {
           scene: this.drag.previewScene,
           width: this.drag.previewWidth,
           offsetX: this.drag.offsetX,
-          revision: this.snapshot.version + 0.5,
+          revision: this.drag.previewRevision,
         }
       : {
           scene: this.snapshot.scene,
@@ -293,6 +322,7 @@ export class CompositeChartEngine {
       axes,
       previewScene,
       previewWidth,
+      previewRevision: this.snapshot.version + 0.5,
       offsetX: ratios ? -ratios.start * (previewWidth - 1) : 0,
     };
     this.emit(false);
@@ -335,16 +365,94 @@ export class CompositeChartEngine {
     this.emit(false);
   }
 
+  refreshPixelPanState(panX: number, pointerX: number): CompositeChartScene | null {
+    const drag = this.drag;
+    const viewport = this.effectiveViewport();
+    const config = this.pendingConfig ?? this.config;
+    if (!drag || !viewport || !config) return null;
+    const ratio = Math.max(0, Math.min(
+      1,
+      (pointerX - drag.offsetX) / Math.max(drag.previewWidth - 1, 1),
+    ));
+    const cursorDate = drag.previewScene
+      ? new Date(unprojectCompositeTimestamp(drag.previewScene.timeScale, ratio))
+      : null;
+    const scene = config.buildScene(viewport, undefined, 1, cursorDate);
+    const nextVersion = this.snapshot.version + 1;
+    this.snapshot = {
+      viewport,
+      interactionViewport: this.interactionViewport,
+      scene,
+      version: nextVersion,
+    };
+
+    const nextAxes = axisDomains(scene);
+    const visibleRatios = drag.previewScene
+      ? viewportRatios(drag.previewScene, viewport)
+      : null;
+    const bounds = config.navigationBounds;
+    const needsRecentering = !visibleRatios
+      || (visibleRatios.start < 0.15 && viewport.start.getTime() > bounds.start.getTime())
+      || (visibleRatios.end > 0.85 && viewport.end.getTime() < bounds.end.getTime());
+    if (!sameAxisDomains(drag.axes, nextAxes) || needsRecentering) {
+      const older = panCompositeViewport(
+        viewport,
+        bounds,
+        0.5,
+        config.series,
+        config.allowHistoricalBackfill,
+      );
+      const newer = panCompositeViewport(
+        viewport,
+        bounds,
+        -0.5,
+        config.series,
+        config.allowHistoricalBackfill,
+      );
+      const previewScene = config.buildScene(
+        { start: older.start, end: newer.end },
+        nextAxes,
+        2,
+        cursorDate,
+      ) ?? scene;
+      const ratios = previewScene ? viewportRatios(previewScene, viewport) : null;
+      const previewWidth = ratios
+        ? 1 + drag.width / (ratios.end - ratios.start)
+        : drag.width + 1;
+      drag.anchorX = panX;
+      drag.anchorViewport = viewport;
+      drag.axes = nextAxes;
+      drag.previewScene = previewScene;
+      drag.previewWidth = previewWidth;
+      drag.previewRevision = nextVersion + 0.5;
+      drag.offsetX = ratios ? -ratios.start * (previewWidth - 1) : 0;
+      this.emit(true);
+    } else {
+      for (const listener of this.stateListeners) listener();
+    }
+    return scene;
+  }
+
   endPixelPan(): void {
     const drag = this.drag;
     if (!drag) return;
     const pendingConfig = this.pendingConfig;
     const commit = (pendingConfig ?? this.config)?.onCommit;
+    const viewport = this.effectiveViewport();
+    const hasLiveScene = !!viewport
+      && !!this.snapshot.viewport
+      && sameCompositeViewport(viewport, this.snapshot.viewport);
     this.drag = null;
-    if (!sameCompositeViewport(drag.startViewport, this.effectiveViewport())) {
+    if (!sameCompositeViewport(drag.startViewport, viewport)) {
       commit?.(this.interactionViewport, "pan");
     }
-    if (pendingConfig) {
+    if (hasLiveScene) {
+      if (pendingConfig) {
+        this.pendingConfig = null;
+        this.config = pendingConfig;
+      }
+      this.emit(true);
+    } else if (pendingConfig) {
       this.pendingConfig = null;
       this.configure(pendingConfig);
     } else {
@@ -377,6 +485,8 @@ export function createCompositePanelPaintSource({
   height,
   interactive,
   onActivate,
+  onScrollPanFrame,
+  onScrollPanEnd,
 }: {
   engine: CompositeChartEngine;
   panelId: string;
@@ -385,6 +495,8 @@ export function createCompositePanelPaintSource({
   height: number;
   interactive: boolean;
   onActivate?: () => void;
+  onScrollPanFrame?: (cursorDate: Date | null, yRatio: number) => void;
+  onScrollPanEnd?: (cursorDate: Date | null) => void;
 }): ChartPaintSource {
   const frame = (): ChartPaintFrame | null => {
     const paintState = engine.getPaintState(width);
@@ -411,7 +523,9 @@ export function createCompositePanelPaintSource({
     if (!scrollPanning) return;
     scrollPanning = false;
     scrollPosition = 0;
+    const cursorDate = engine.getSnapshot().scene?.cursorDate ?? null;
     engine.endPixelPan();
+    onScrollPanEnd?.(cursorDate);
   };
   return {
     getFrame: frame,
@@ -437,6 +551,13 @@ export function createCompositePanelPaintSource({
       scrollPosition -= deltaPixels;
       engine.movePixelPan(scrollPosition);
       return true;
+    },
+    scrollPanFrame(input) {
+      const scene = engine.refreshPixelPanState(scrollPosition, input.x);
+      onScrollPanFrame?.(
+        scene?.cursorDate ?? null,
+        Math.max(0, Math.min(1, input.y / Math.max(height - 1, 1))),
+      );
     },
     scrollPanEnd: endScrollPan,
   };

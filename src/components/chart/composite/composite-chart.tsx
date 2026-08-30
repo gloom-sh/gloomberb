@@ -583,6 +583,15 @@ function CompositePanelSurface({
   const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
+  const paintCallbacksRef = useRef({ onActivate, onCursorDateChange });
+  paintCallbacksRef.current = { onActivate, onCursorDateChange };
+  const activatePaintSource = useCallback(() => paintCallbacksRef.current.onActivate?.(), []);
+  const updateScrollCrosshair = useCallback((_date: Date | null, yRatio: number) => {
+    setCursorYRatio((current) => current === yRatio ? current : yRatio);
+  }, []);
+  const commitScrollCrosshair = useCallback((date: Date | null) => {
+    paintCallbacksRef.current.onCursorDateChange(date);
+  }, []);
   const paintSource = useMemo(() => (
     isDesktopWeb
       ? createCompositePanelPaintSource({
@@ -592,21 +601,25 @@ function CompositePanelSurface({
           width: plotWidth * cellWidthPx,
           height: panel.height * cellHeightPx,
           interactive: interactive && armedTool === null,
-          onActivate,
+          onActivate: activatePaintSource,
+          onScrollPanFrame: updateScrollCrosshair,
+          onScrollPanEnd: commitScrollCrosshair,
         })
       : null
   ), [
+    activatePaintSource,
     armedTool,
     cellHeightPx,
     cellWidthPx,
     colors,
+    commitScrollCrosshair,
     engine,
     interactive,
     isDesktopWeb,
-    onActivate,
     panel.height,
     panel.id,
     plotWidth,
+    updateScrollCrosshair,
   ]);
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
   const crosshairSurface = isDesktopWeb
@@ -1556,7 +1569,7 @@ export function CompositeChart({
   const maximumAxisWidth = Math.max(0, Math.floor(axisWidth));
   // Gutters follow their labels. A fixed budget left dead space beside short
   // prices, which costs plot width on every chart that does not need it.
-  const resolvedAxisWidth = useMemo(() => Math.min(
+  const computedAxisWidth = useMemo(() => Math.min(
     maximumAxisWidth,
     Math.max(
       MINIMUM_AXIS_LABEL_WIDTH,
@@ -1566,6 +1579,9 @@ export function CompositeChart({
       ]),
     ),
   ), [maximumAxisWidth, projectedScene]);
+  const restingAxisWidthRef = useRef(computedAxisWidth);
+  if (!engine.isDragging()) restingAxisWidthRef.current = computedAxisWidth;
+  const resolvedAxisWidth = engine.isDragging() ? restingAxisWidthRef.current : computedAxisWidth;
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
@@ -1584,15 +1600,17 @@ export function CompositeChart({
     nextViewport: CompositeViewportRange,
     axisDomains?: CompositeAxisDomains,
     widthScale = 1,
+    cursorDate?: Date | null,
   ) => {
     // lastTickKey busts the builder when a live source mutates in place.
     void lastTickKey;
+    const cursorTimestamp = cursorDate === undefined
+      ? normalizedCursorTimestamp
+      : cursorDate?.getTime() ?? null;
     const next = buildCompositeChartScene(visibleSeries, panels, {
       width: Math.max(1, Math.round(plotWidth * widthScale)),
       height: plotHeight,
-      cursorDate: normalizedCursorTimestamp === null
-        ? null
-        : new Date(normalizedCursorTimestamp),
+      cursorDate: cursorTimestamp === null ? null : new Date(cursorTimestamp),
       viewport: nextViewport,
       timelineSeries: marketTimelineSeries,
       axisDomains,
