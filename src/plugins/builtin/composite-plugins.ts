@@ -11,6 +11,7 @@ import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
 import { economicCalendarModule } from "./econ";
 import { earningsModule } from "./earnings";
+import { earningsCallsModule } from "./earnings-calls";
 import { ipoCalendarModule } from "./ipo-calendar";
 import { fearGreedModule } from "./fear-greed";
 import { futuresModule } from "./futures";
@@ -103,6 +104,7 @@ export const macroPlugin = composeBuiltinPlugin({
     cdsModule,
     treasuryAuctionsModule,
     earningsModule,
+    earningsCallsModule,
     ipoCalendarModule,
     tvModule,
   ],

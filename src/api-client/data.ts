@@ -4,6 +4,8 @@ import { normalizeTweetSearchResponse } from "./normalizers";
 import {
   cloudCdsPath,
   cloudCongressHousePath,
+  cloudEarningsCallsPath,
+  cloudEarningsTranscriptPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
   cloudSecFilingContentPath,
@@ -20,6 +22,7 @@ import {
   cloudTweetSearchPath,
   type CloudCdsParams,
   type CloudCongressHouseParams,
+  type CloudEarningsCallsParams,
   type CloudFredSeriesParams,
   type CloudHistoryParams,
   type CloudNewsParams,
@@ -34,6 +37,8 @@ import type {
   CloudCdsResponse,
   CloudCompanyProfile,
   CloudCongressHousePayload,
+  CloudEarningsCallListPayload,
+  CloudEarningsTranscriptPayload,
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
@@ -223,6 +228,16 @@ export class CloudDataApi {
 
   async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {
     return this.request<CloudCongressHousePayload>(cloudCongressHousePath(params));
+  }
+
+  async getCloudEarningsCalls(
+    params: CloudEarningsCallsParams = {},
+  ): Promise<CloudEarningsCallListPayload> {
+    return this.request<CloudEarningsCallListPayload>(cloudEarningsCallsPath(params));
+  }
+
+  async getCloudEarningsTranscript(id: string): Promise<CloudEarningsTranscriptPayload> {
+    return this.request<CloudEarningsTranscriptPayload>(cloudEarningsTranscriptPath(id));
   }
 
   async getCloudSecFilings(params: CloudSecFilingsParams): Promise<CloudSecFilingsResponse> {
