@@ -75,6 +75,8 @@ export interface RootResultModelOptions {
   rootQuery: string;
   rootShortcutIntent: RootShortcutIntent;
   articleResultItems?: ResultItem[];
+  /** Free-text fallthrough row; appended last so navigation keeps the top rows. */
+  documentSearchItem?: ResultItem | null;
   runDirectCommand: (command: Command, arg: string) => void;
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   state: AppState;
@@ -124,6 +126,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     rootQuery,
     rootShortcutIntent,
     articleResultItems = [],
+    documentSearchItem = null,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,
@@ -240,8 +243,18 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...matchedItems);
   }
 
-  if (rootShortcutIntent.kind === "none" || isArticleLookupShortcut(rootShortcutIntent)) {
+  const shortcutClaimedQuery = rootShortcutIntent.kind !== "none"
+    && !isArticleLookupShortcut(rootShortcutIntent);
+  if (!shortcutClaimedQuery) {
     items.push(...articleResultItems);
+  }
+  // Counted before the fallthrough row, which is an offer rather than a match
+  // and must not make an unanswered query look answered.
+  const matchCount = items.length;
+  // A resolved prefix means the user is speaking the command language, so the
+  // full-text offer stays out of the way. Otherwise it closes the list.
+  if (documentSearchItem && !shortcutClaimedQuery) {
+    items.push(documentSearchItem);
   }
 
   // Built from the local matches, then moved above them: the AI answers the
@@ -251,8 +264,8 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     && isAssistSectionVisible(
       assist,
       rootQuery,
-      items.length,
-      rootShortcutIntent.kind !== "none" && !isArticleLookupShortcut(rootShortcutIntent),
+      matchCount,
+      shortcutClaimedQuery,
     )
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];

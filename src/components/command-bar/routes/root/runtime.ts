@@ -63,6 +63,7 @@ interface UseCommandBarRootRuntimeOptions {
   pluginCommandItems(): ResultItem[];
   pluginCommandResultItems(command: CommandDef, shortcutArg: string): ResultItem[];
   articleResultItems?: ResultItem[];
+  documentSearchItem?: ResultItem | null;
   readTickerSearchCache(
     query: string,
     brokerId?: string | null,
@@ -114,6 +115,7 @@ export function useCommandBarRootRuntime({
   pluginCommandItems,
   pluginCommandResultItems,
   articleResultItems = [],
+  documentSearchItem = null,
   readTickerSearchCache,
   rootModeKind,
   rootQuery,
@@ -187,6 +189,7 @@ export function useCommandBarRootRuntime({
     rootQuery,
     rootShortcutIntent,
     articleResultItems,
+    documentSearchItem,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,
@@ -215,6 +218,7 @@ export function useCommandBarRootRuntime({
     rootQuery,
     rootShortcutIntent,
     articleResultItems,
+    documentSearchItem,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,

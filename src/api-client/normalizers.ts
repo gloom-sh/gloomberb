@@ -3,10 +3,31 @@ import type {
   ChatMessage,
   ChatNotification,
   ChatStateResponse,
+  CloudSavedSearch,
+  CloudSearchHit,
   CloudTweetPayload,
   CloudTweetSearchResponse,
 } from "./types";
 import { normalizeTimestamp } from "../utils/timestamp";
+
+/**
+ * Saved-search writes answer with either the record itself or `{ search }`.
+ * Both shapes are accepted so a server-side envelope change cannot silently
+ * hand the pane an object with no `id`.
+ */
+export function normalizeSavedSearchResponse(response: unknown): CloudSavedSearch {
+  const envelope = response as { search?: CloudSavedSearch } | CloudSavedSearch | null;
+  const search = envelope && "search" in envelope && envelope.search
+    ? envelope.search
+    : envelope as CloudSavedSearch | null;
+  if (!search?.id) throw new Error("The saved search response was missing a record.");
+  return search;
+}
+
+export function normalizeSavedSearchHits(response: unknown): CloudSearchHit[] {
+  const hits = (response as { hits?: unknown } | null)?.hits;
+  return Array.isArray(hits) ? hits as CloudSearchHit[] : [];
+}
 
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   return {

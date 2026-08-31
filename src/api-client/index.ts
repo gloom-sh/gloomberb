@@ -11,6 +11,7 @@ import type {
   CloudCongressHouseParams,
   CloudEarningsCallsParams,
   CloudFredSeriesParams,
+  CloudSearchParams,
   CloudSecFilingParams,
   CloudSecFilingsParams,
   CloudHistoryParams,
@@ -54,6 +55,13 @@ import type {
   CloudEarningsCallListPayload,
   CloudEarningsTranscriptPayload,
   CloudNewsPayload,
+  CloudSavedSearch,
+  CloudSavedSearchInput,
+  CloudSearchDocType,
+  CloudSearchDocument,
+  CloudSearchDocumentResponse,
+  CloudSearchHit,
+  CloudSearchResponse,
   CloudSecContentResponse,
   CloudSecDocumentsResponse,
   CloudSecFilingsResponse,
@@ -679,6 +687,47 @@ class GloomApiClient {
 
   async getCloudSec13F(path: string, params: Record<string, string | number | undefined> = {}): Promise<unknown> {
     return this.data.getCloudSec13F(path, params);
+  }
+
+  async searchCloudDocuments(
+    params: CloudSearchParams,
+    options?: { signal?: AbortSignal },
+  ): Promise<CloudSearchResponse> {
+    return this.data.searchCloudDocuments(params, options);
+  }
+
+  async getCloudSearchDocument(
+    docType: CloudSearchDocType,
+    sourceId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<CloudSearchDocument> {
+    return this.data.getCloudSearchDocument(docType, sourceId, options);
+  }
+
+  async getCloudSavedSearches(options?: { signal?: AbortSignal }): Promise<CloudSavedSearch[]> {
+    return this.data.getCloudSavedSearches(options);
+  }
+
+  async createCloudSavedSearch(input: CloudSavedSearchInput): Promise<CloudSavedSearch> {
+    return this.data.createCloudSavedSearch(input);
+  }
+
+  async updateCloudSavedSearch(
+    id: string,
+    update: Partial<CloudSavedSearchInput>,
+  ): Promise<CloudSavedSearch> {
+    return this.data.updateCloudSavedSearch(id, update);
+  }
+
+  async deleteCloudSavedSearch(id: string): Promise<void> {
+    return this.data.deleteCloudSavedSearch(id);
+  }
+
+  async getCloudSavedSearchHits(
+    id: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<CloudSearchHit[]> {
+    return this.data.getCloudSavedSearchHits(id, options);
   }
 
   async getCloudNews(params: CloudNewsParams = {}): Promise<CloudNewsListResponse> {

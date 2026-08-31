@@ -234,6 +234,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `EE <ticker>` | Events view with earnings and revenue estimates |
 | `EM [tickers]` | Earnings monitor |
 | `SRCH <query>` | Provider symbol search |
+| `RSCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `QQ <tickers>` | Ticker quote monitor |
 | `CMP <tickers>` | Normalized price comparison |
 | `CORR <tickers>` | Ticker return correlations |

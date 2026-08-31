@@ -14,6 +14,7 @@ import {
   looksLikeArticleQuery,
 } from "../../../plugins/builtin/news/wire/article-search";
 import { buildArticleSearchResultItems } from "../routes/root/article-results";
+import { buildDocumentSearchResultItem } from "../routes/root/document-search-results";
 import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
@@ -283,6 +284,12 @@ export function CommandBar({
     });
   }, [closeAll, newsState.articles, newsState.phase, rootQuery]);
 
+  const documentSearchItem = useMemo(() => buildDocumentSearchResultItem({
+    query: rootQuery,
+    templates: getAvailablePaneTemplates(),
+    createPaneTemplateItem,
+  }), [createPaneTemplateItem, getAvailablePaneTemplates, rootQuery]);
+
   const {
     activeMatch,
     orderedRootResults,
@@ -319,6 +326,7 @@ export function CommandBar({
     pluginCommandItems,
     pluginCommandResultItems,
     articleResultItems,
+    documentSearchItem,
     readTickerSearchCache,
     rootModeKind: rootModeInfo.kind,
     rootQuery,

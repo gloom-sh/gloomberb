@@ -10,6 +10,7 @@ import { simpleFinPlugin } from "./broker-sync/simplefin";
 import { predictionMarketsPlugin } from "./prediction-markets";
 import { pollsPlugin } from "./builtin/polls";
 import { alertsPlugin } from "./builtin/alerts";
+import { researchSearchPlugin } from "./builtin/research-search";
 import {
   applicationPlugin,
   brokerPlugin,
@@ -36,6 +37,7 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   marketOverviewPlugin,
   macroPlugin,
   alertsPlugin,
+  researchSearchPlugin,
 ];
 
 export function getRendererBuiltinPlugins(): GloomPlugin[] {

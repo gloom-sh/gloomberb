@@ -14,6 +14,7 @@ export function InputSearchBar({
   inputRef,
   placeholder,
   debounceMs,
+  glyph = "/",
   normalizeValue = identity,
   onNavigateDown,
   onFocus,
@@ -28,6 +29,8 @@ export function InputSearchBar({
   inputRef: RefObject<InputRenderable | null>;
   placeholder: string;
   debounceMs: number;
+  /** Leading marker; override when a pane shows more than one field. */
+  glyph?: string;
   normalizeValue?: (value: string) => string;
   onNavigateDown?: () => void;
   onFocus: () => void;
@@ -95,7 +98,7 @@ export function InputSearchBar({
         inputRef.current?.focus?.();
       }}
     >
-      <Text fg={active ? colors.textBright : colors.textDim}>/</Text>
+      <Text fg={active ? colors.textBright : colors.textDim}>{glyph}</Text>
       <Box width={1} />
       <Input
         ref={inputRef}

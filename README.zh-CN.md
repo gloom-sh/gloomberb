@@ -202,6 +202,7 @@ gloomberb
 | `EE <ticker>` | 含 EPS 与营收预估的事件视图 |
 | `EM [tickers]` | 财报监控 |
 | `SRCH <query>` | 数据源符号搜索 |
+| `RSCH [query]` | 跨财报电话会记录、新闻与 SEC 文件的全文检索 |
 | `QQ <tickers>` | 股票行情监控 |
 | `CMP <tickers>` | 股票图表对比 |
 | `CORR <tickers>` | 股票收益率相关性 |

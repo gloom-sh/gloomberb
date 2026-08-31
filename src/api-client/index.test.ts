@@ -1163,3 +1163,87 @@ describe("apiClient equity diagnostic", () => {
     expect(JSON.parse(String(seenInit?.body))).toEqual({ symbol: "AAPL", mode: "cache-first" });
   });
 });
+
+describe("apiClient document search", () => {
+  test("builds the search query from filters and omits empty ones", async () => {
+    let seenUrl = "";
+    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
+      seenUrl = String(input);
+      return createResponse({
+        hits: [],
+        total: 0,
+        countCapped: false,
+        hasMore: false,
+        nextOffset: 0,
+        tookMs: 3,
+      });
+    });
+
+    await apiClient.searchCloudDocuments({
+      query: "  margin pressure  ",
+      tickers: [" aapl ", "msft"],
+      docTypes: ["transcript", "filing"],
+      sources: [],
+      from: "2026-01-01T00:00:00.000Z",
+      sort: "newest",
+      limit: 40,
+      offset: 0,
+    });
+
+    const url = new URL(seenUrl);
+    expect(url.pathname).toBe("/cloud/search");
+    expect(url.searchParams.get("q")).toBe("margin pressure");
+    expect(url.searchParams.get("tickers")).toBe("AAPL,MSFT");
+    expect(url.searchParams.get("docTypes")).toBe("transcript,filing");
+    expect(url.searchParams.get("from")).toBe("2026-01-01T00:00:00.000Z");
+    expect(url.searchParams.get("sort")).toBe("newest");
+    expect(url.searchParams.get("limit")).toBe("40");
+    expect(url.searchParams.has("sources")).toBe(false);
+    expect(url.searchParams.has("to")).toBe(false);
+    // Offset 0 is the first page; sending it only lengthens the cache key.
+    expect(url.searchParams.has("offset")).toBe(false);
+  });
+
+  test("escapes the document route segments", async () => {
+    let seenUrl = "";
+    globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
+      seenUrl = String(input);
+      return createResponse({ document: { chunks: [] } });
+    });
+
+    await apiClient.getCloudSearchDocument("filing", "0000320193-26-000042/a b");
+
+    expect(new URL(seenUrl).pathname).toBe(
+      "/cloud/search/documents/filing/0000320193-26-000042%2Fa%20b",
+    );
+  });
+
+  test("accepts a saved-search write with or without an envelope", async () => {
+    const record = {
+      id: "saved-1",
+      name: "margin pressure",
+      query: "margin pressure",
+      filters: {},
+      alertEnabled: true,
+      alertChannels: ["email"],
+      lastRunAt: null,
+      lastMatchAt: null,
+      matchCount: 0,
+      createdAt: "2026-05-01T00:00:00.000Z",
+    };
+
+    globalThis.fetch = mockFetch(async () => createResponse({ search: record }));
+    expect((await apiClient.createCloudSavedSearch({
+      name: record.name,
+      query: record.query,
+    })).id).toBe("saved-1");
+
+    globalThis.fetch = mockFetch(async () => createResponse(record));
+    expect((await apiClient.updateCloudSavedSearch("saved-1", { alertEnabled: false })).id)
+      .toBe("saved-1");
+
+    globalThis.fetch = mockFetch(async () => createResponse({}));
+    await expect(apiClient.updateCloudSavedSearch("saved-1", { alertEnabled: false }))
+      .rejects.toThrow("missing a record");
+  });
+});
