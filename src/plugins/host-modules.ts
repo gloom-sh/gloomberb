@@ -16,7 +16,6 @@ export async function installPluginHostModules(): Promise<void> {
   const [
     react,
     jsxRuntime,
-    reactDom,
     typesPlugin,
     typesPersistence,
     ui,
@@ -28,7 +27,6 @@ export async function installPluginHostModules(): Promise<void> {
   ] = await Promise.all([
     import("react"),
     import("react/jsx-runtime"),
-    import("react-dom"),
     // Type-only modules still need an entry: a plugin may import a runtime
     // value from them, and a missing key throws a clearer error than undefined.
     import("../types/plugin"),
@@ -45,7 +43,6 @@ export async function installPluginHostModules(): Promise<void> {
     "react": react,
     "react/jsx-runtime": jsxRuntime,
     "react/jsx-dev-runtime": jsxRuntime,
-    "react-dom": reactDom,
     "gloomberb/types/plugin": typesPlugin,
     "gloomberb/types/persistence": typesPersistence,
     "gloomberb/ui": ui,
