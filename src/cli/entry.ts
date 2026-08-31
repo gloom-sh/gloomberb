@@ -1,7 +1,6 @@
 import { dispatchCli } from "./index";
 import { fail, inferCliErrorOptions, printCliError } from "./errors";
 import { loadExternalPlugins } from "../plugins/loader";
-import { restoreExtractedPlugins } from "./restore-plugins";
 import type { CliLaunchRequest } from "../types/plugin";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
@@ -36,10 +35,6 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     await smokeOpenTuiRuntime();
     process.exit(0);
   }
-
-  // Restores plugins that used to ship inside Gloomberb, before the catalog is
-  // read, so an upgrade does not silently drop a feature the user was relying on.
-  await restoreExtractedPlugins();
 
   const externalPlugins = await loadExternalPlugins();
 

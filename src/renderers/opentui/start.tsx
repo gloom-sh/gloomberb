@@ -6,6 +6,7 @@ import { getDataDir, initDataDir, setConfigStoreHost } from "../../data/config/s
 import { applyLanguageFromConfig } from "../../i18n";
 import * as nodeConfigStoreHost from "../../data/config/store/node";
 import { loadExternalPlugins } from "../../plugins/loader";
+import { restoreExtractedPlugins } from "../../cli/restore-plugins";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { OpenTuiInputHostProvider } from "./input-host";
@@ -78,6 +79,14 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
   };
 
   const cliArgs = options.cliArgs ?? process.argv.slice(2);
+  // Before the catalog is read, so a plugin that moved out of this repository is
+  // available in the same session rather than only after a restart. Placed here
+  // rather than in the CLI entry because `src/index.tsx` starts the app directly
+  // and would otherwise skip it.
+  if (!options.externalPlugins) {
+    await measurePerfAsync("startup.opentui.restore-plugins", restoreExtractedPlugins);
+  }
+
   const externalPlugins = options.externalPlugins ?? await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
   let cliLaunchRequest = options.cliLaunchRequest ?? null;
   if (!options.skipCliDispatch && cliArgs.length > 0) {
