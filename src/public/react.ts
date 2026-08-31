@@ -31,4 +31,15 @@ export {
 export type { PluginRuntimeAccess } from "../plugins/runtime";
 
 export { useInlineTickerOpener, useInlineTickers } from "../state/hooks/inline-tickers";
+
+// Any feed plugin needs to remember which items have been read, persisted and
+// capped. Substack and the news wire both use this; a third-party feed plugin
+// would otherwise reimplement it or copy it and drift.
+export {
+  DEFAULT_MAX_READ_IDS,
+  markPersistedReadId,
+  normalizePersistedReadIdState,
+  usePersistedReadIds,
+} from "../plugins/builtin/shared/read-state";
+export type { PersistedReadIdAdapter } from "../plugins/builtin/shared/read-state";
 export type { InlineTickerCatalogEntry, UseInlineTickersOptions } from "../state/hooks/inline-tickers";

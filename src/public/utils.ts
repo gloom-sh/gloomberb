@@ -36,6 +36,7 @@ export {
   formatNumber,
   formatPercent,
   formatPercentRaw,
+  formatTimeAgo,
   formatWithDivisor,
   padTo,
   pickUnit,

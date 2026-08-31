@@ -148,6 +148,13 @@ export interface AppConfig {
   activeLayoutIndex: number;
   brokerInstances: BrokerInstanceConfig[];
   disabledPlugins: string[];
+  /**
+   * Plugins that used to ship inside Gloomberb and have since moved to their own
+   * repositories. Recorded once installed, so an upgrade restores them without
+   * re-installing on every launch, and so a user who removes one on purpose is
+   * not fought with.
+   */
+  seededPlugins?: string[];
   disabledSources: string[];
   pluginConfig: Record<string, Record<string, unknown>>;
   theme: string;
@@ -657,6 +664,7 @@ export function createDefaultConfig(dataDir: string): AppConfig {
     activeLayoutIndex: 0,
     brokerInstances: [],
     disabledPlugins: [],
+    seededPlugins: [],
     disabledSources: [],
     pluginConfig: {},
     theme: "amber",

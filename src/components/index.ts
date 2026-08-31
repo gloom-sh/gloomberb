@@ -13,6 +13,7 @@ export type { SpeedometerSegment } from "./speedometer-gauge";
 export { TickerListTableView } from "./ticker/list-table-view";
 export type { TickerListVisibleRange } from "./ticker/list-table-view";
 export { TickerBadgeList } from "./ticker/badge/list";
+export { TickerBadgeText } from "./ticker/badge/text";
 export { InputSearchBar } from "./input-search-bar";
 export { isTableScrollNearEnd, useTableLoadMore } from "./table-view-shared";
 export { DataTableView } from "./data-table/view";
@@ -48,5 +49,6 @@ export { getMessageComposerBlockHeight, MessageComposer } from "./ui/message-com
 export { NumberField, TextField } from "./ui/fields";
 export { SegmentedControl } from "./ui/toggle";
 export { Spinner } from "./ui/loading";
+export { RemoteImage } from "./ui";
 export { Tabs } from "./ui/tabs";
 export { usePaneTicker } from "../state/app/context";
