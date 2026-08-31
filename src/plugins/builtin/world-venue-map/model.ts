@@ -11,8 +11,49 @@ export interface WorldVenueCluster extends WorldMapPoint {
   isOpen: boolean;
 }
 
+export interface WorldMapViewport {
+  zoom: number;
+  centerLongitude: number;
+  centerLatitude: number;
+}
+
 const MAX_LATITUDE = 85;
 const MIN_LATITUDE = -60;
+const LONGITUDE_SPAN = 360;
+export const MAX_WORLD_MAP_ZOOM = 18;
+
+export const DEFAULT_WORLD_MAP_VIEWPORT: WorldMapViewport = {
+  zoom: 1,
+  centerLongitude: 0,
+  centerLatitude: (MAX_LATITUDE + MIN_LATITUDE) / 2,
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function mapExtent(width: number, height: number, yUnitAspect = 1) {
+  const availableWidth = Math.max(width - 1, 0);
+  const availableHeight = Math.max(height - 1, 0);
+  const unitAspect = Math.max(yUnitAspect, Number.EPSILON);
+  const effectiveHeight = availableHeight * unitAspect;
+  const latitudeSpan = MAX_LATITUDE - MIN_LATITUDE;
+  return { availableWidth, availableHeight, unitAspect, effectiveHeight, latitudeSpan };
+}
+
+function fittedWorldMapScale(width: number, height: number, yUnitAspect = 1): number {
+  const { availableWidth, effectiveHeight, latitudeSpan } = mapExtent(width, height, yUnitAspect);
+  return Math.min(availableWidth / LONGITUDE_SPAN, effectiveHeight / latitudeSpan);
+}
+
+function worldMapScale(
+  width: number,
+  height: number,
+  yUnitAspect: number,
+  viewport: WorldMapViewport,
+): number {
+  return fittedWorldMapScale(width, height, yUnitAspect) * Math.max(viewport.zoom, 1);
+}
 
 export function projectWorldPoint(
   longitude: number,
@@ -20,21 +61,100 @@ export function projectWorldPoint(
   width: number,
   height: number,
   yUnitAspect = 1,
+  viewport: WorldMapViewport = DEFAULT_WORLD_MAP_VIEWPORT,
 ): WorldMapPoint {
-  const availableWidth = Math.max(width - 1, 0);
-  const availableHeight = Math.max(height - 1, 0);
-  const unitAspect = Math.max(yUnitAspect, Number.EPSILON);
-  const effectiveHeight = availableHeight * unitAspect;
-  const latitudeSpan = MAX_LATITUDE - MIN_LATITUDE;
-  const scale = Math.min(availableWidth / 360, effectiveHeight / latitudeSpan);
-  const mapWidth = 360 * scale;
-  const mapHeight = latitudeSpan * scale;
-  const clampedLatitude = Math.max(MIN_LATITUDE, Math.min(MAX_LATITUDE, latitude));
+  const { availableWidth, unitAspect, effectiveHeight } = mapExtent(width, height, yUnitAspect);
+  const scale = worldMapScale(width, height, yUnitAspect, viewport);
+  const clampedLatitude = clamp(latitude, MIN_LATITUDE, MAX_LATITUDE);
 
   return {
-    x: (availableWidth - mapWidth) / 2 + (longitude + 180) * scale,
-    y: ((effectiveHeight - mapHeight) / 2 + (MAX_LATITUDE - clampedLatitude) * scale) / unitAspect,
+    x: availableWidth / 2 + (longitude - viewport.centerLongitude) * scale,
+    y: (effectiveHeight / 2 - (clampedLatitude - viewport.centerLatitude) * scale) / unitAspect,
   };
+}
+
+export function unprojectWorldPoint(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  yUnitAspect = 1,
+  viewport: WorldMapViewport = DEFAULT_WORLD_MAP_VIEWPORT,
+): { longitude: number; latitude: number } {
+  const { availableWidth, unitAspect, effectiveHeight } = mapExtent(width, height, yUnitAspect);
+  const scale = worldMapScale(width, height, yUnitAspect, viewport);
+  return {
+    longitude: viewport.centerLongitude + (x - availableWidth / 2) / scale,
+    latitude: viewport.centerLatitude - (y * unitAspect - effectiveHeight / 2) / scale,
+  };
+}
+
+export function clampWorldMapViewport(
+  viewport: WorldMapViewport,
+  width: number,
+  height: number,
+  yUnitAspect = 1,
+): WorldMapViewport {
+  const zoom = clamp(viewport.zoom, 1, MAX_WORLD_MAP_ZOOM);
+  if (zoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
+
+  const { availableWidth, effectiveHeight, latitudeSpan } = mapExtent(width, height, yUnitAspect);
+  const scale = fittedWorldMapScale(width, height, yUnitAspect) * zoom;
+  const halfLongitude = availableWidth / (2 * scale);
+  const halfLatitude = effectiveHeight / (2 * scale);
+  const minLongitude = -180 + halfLongitude;
+  const maxLongitude = 180 - halfLongitude;
+  const minLatitude = MIN_LATITUDE + halfLatitude;
+  const maxLatitude = MAX_LATITUDE - halfLatitude;
+
+  return {
+    zoom,
+    centerLongitude: minLongitude < maxLongitude
+      ? clamp(viewport.centerLongitude, minLongitude, maxLongitude)
+      : DEFAULT_WORLD_MAP_VIEWPORT.centerLongitude,
+    centerLatitude: halfLatitude < latitudeSpan / 2
+      ? clamp(viewport.centerLatitude, minLatitude, maxLatitude)
+      : DEFAULT_WORLD_MAP_VIEWPORT.centerLatitude,
+  };
+}
+
+export function zoomWorldMapViewport(
+  viewport: WorldMapViewport,
+  width: number,
+  height: number,
+  point: WorldMapPoint,
+  zoomFactor: number,
+  yUnitAspect = 1,
+): WorldMapViewport {
+  const nextZoom = clamp(viewport.zoom * zoomFactor, 1, MAX_WORLD_MAP_ZOOM);
+  if (nextZoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
+
+  const geographic = unprojectWorldPoint(point.x, point.y, width, height, yUnitAspect, viewport);
+  const { availableWidth, unitAspect, effectiveHeight } = mapExtent(width, height, yUnitAspect);
+  const scale = fittedWorldMapScale(width, height, yUnitAspect) * nextZoom;
+  return clampWorldMapViewport({
+    zoom: nextZoom,
+    centerLongitude: geographic.longitude - (point.x - availableWidth / 2) / scale,
+    centerLatitude: geographic.latitude + (point.y * unitAspect - effectiveHeight / 2) / scale,
+  }, width, height, yUnitAspect);
+}
+
+export function panWorldMapViewport(
+  viewport: WorldMapViewport,
+  width: number,
+  height: number,
+  deltaX: number,
+  deltaY: number,
+  yUnitAspect = 1,
+): WorldMapViewport {
+  if (viewport.zoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
+  const scale = worldMapScale(width, height, yUnitAspect, viewport);
+  const unitAspect = Math.max(yUnitAspect, Number.EPSILON);
+  return clampWorldMapViewport({
+    zoom: viewport.zoom,
+    centerLongitude: viewport.centerLongitude - deltaX / scale,
+    centerLatitude: viewport.centerLatitude + (deltaY * unitAspect) / scale,
+  }, width, height, yUnitAspect);
 }
 
 export function clusterWorldVenues(
@@ -42,13 +162,14 @@ export function clusterWorldVenues(
   width: number,
   height: number,
   yUnitAspect = 1,
+  viewport: WorldMapViewport = DEFAULT_WORLD_MAP_VIEWPORT,
 ): WorldVenueCluster[] {
   const buckets = new Map<string, CloudWorldVenuePayload[]>();
   const cellWidth = Math.max(4, Math.round(width / 18));
   const cellHeight = Math.max(2, Math.round(height / 12));
 
   for (const venue of venues) {
-    const point = projectWorldPoint(venue.longitude, venue.latitude, width, height, yUnitAspect);
+    const point = projectWorldPoint(venue.longitude, venue.latitude, width, height, yUnitAspect, viewport);
     const key = `${Math.floor(point.x / cellWidth)}:${Math.floor(point.y / cellHeight)}`;
     const bucket = buckets.get(key) ?? [];
     bucket.push(venue);
@@ -58,7 +179,7 @@ export function clusterWorldVenues(
   return [...buckets.entries()].map(([id, grouped]) => {
     const point = grouped.reduce(
       (sum, venue) => {
-        const projected = projectWorldPoint(venue.longitude, venue.latitude, width, height, yUnitAspect);
+        const projected = projectWorldPoint(venue.longitude, venue.latitude, width, height, yUnitAspect, viewport);
         return { x: sum.x + projected.x, y: sum.y + projected.y };
       },
       { x: 0, y: 0 },
