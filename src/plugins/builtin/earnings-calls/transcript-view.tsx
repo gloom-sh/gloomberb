@@ -80,6 +80,8 @@ export function TranscriptView({
         <Text fg={colors.textDim}>{meta}</Text>
 
         <Section title="SUMMARY" body={transcript.summary ?? ""} />
+        <Section title="WHAT STOOD OUT" body={transcript.notable ?? ""} />
+        <Section title="ANALYSTS PRESSED ON" body={transcript.analystFocus ?? ""} />
         <Section title="GUIDANCE" body={transcript.guidance ?? ""} />
         <Section title="RISKS" body={transcript.riskFactors ?? ""} />
 

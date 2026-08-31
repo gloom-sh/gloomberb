@@ -516,6 +516,8 @@ export interface CloudEarningsTranscriptPayload {
   summary: string | null;
   guidance: string | null;
   riskFactors: string | null;
+  analystFocus: string | null;
+  notable: string | null;
   sentiment: number | null;
   sentimentRationale: string | null;
   qaStartTurn: number | null;
