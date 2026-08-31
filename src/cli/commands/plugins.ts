@@ -51,8 +51,45 @@ function parseGitHubRef(rawRef: string): { url: string; name: string } {
   throw new Error(`Invalid plugin reference: ${ref}. Use user/repo or a GitHub URL.`);
 }
 
-export async function installPlugin(ref: string) {
+const PLUGIN_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Resolves a bare plugin id through the registry, so `gloomberb install
+ * hackernews` works alongside `gloomberb install owner/repo`. Anything already
+ * shaped like a repo reference is left alone, and a registry lookup failure
+ * falls through to the normal parse error rather than inventing a repo name.
+ */
+async function resolveRegistryRef(rawRef: string): Promise<string> {
+  if (rawRef.includes("/") || rawRef.includes(":") || !PLUGIN_ID_PATTERN.test(rawRef)) return rawRef;
+
+  try {
+    const response = await fetch(`https://plugins.gloom.sh/plugins/${rawRef}.json`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return rawRef;
+    const entry = await response.json() as { repo?: string; bundled?: boolean; name?: string };
+
+    if (entry.bundled) {
+      fail(
+        `"${entry.name ?? rawRef}" ships with Gloomberb.`,
+        `Enable it from the plugin marketplace (PL) instead.`,
+      );
+    }
+    if (typeof entry.repo === "string" && entry.repo.length > 0) {
+      console.log(cliStyles.muted(`Resolved "${rawRef}" to ${entry.repo}`));
+      return entry.repo;
+    }
+  } catch {
+    // Offline or registry down: fall through so the plain parse error explains
+    // the accepted formats rather than blaming the network.
+  }
+  return rawRef;
+}
+
+export async function installPlugin(rawRef: string) {
   ensurePluginsDir();
+  const ref = await resolveRegistryRef(rawRef);
   const { url, name } = parseGitHubRef(ref);
   const targetDir = join(PLUGINS_DIR, name);
 
