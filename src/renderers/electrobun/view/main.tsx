@@ -31,7 +31,8 @@ import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
-import { getRendererBuiltinPlugins } from "../../../plugins/catalog-ui";
+import { getRendererPlugins } from "../../../plugins/catalog-ui";
+import { loadDesktopExternalPlugins } from "./external-plugins";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -105,6 +106,21 @@ async function boot() {
   const desktopApplicationMenuBridge = createApplicationMenuBridge();
   const desktopDeepLinkBridge = createDesktopDeepLinkBridge();
   const webUiHost = createWebUiHost(init.desktopPlatform);
+  // Compiled by the Bun process, which owns the filesystem. A failure here must
+  // not stop the app from starting: the marketplace reports broken plugins, and
+  // the built-in catalog is enough to run on.
+  const externalPlugins = await measurePerfAsync(
+    "startup.electrobun.load-external-plugins",
+    async () => {
+      try {
+        return await loadDesktopExternalPlugins(await backendRequest("plugins.listExternal"));
+      } catch (error) {
+        debugLog.createLogger("desktop-plugins").error(`External plugin load failed: ${error}`);
+        return [];
+      }
+    },
+  );
+
   const remoteControlAdapter = init.windowKind === "main"
     ? { registerHandler: setElectrobunRemoteRequestHandler }
     : undefined;
@@ -118,7 +134,8 @@ async function boot() {
                 <App
                   config={config}
                   servicesFactory={createElectrobunAppServices}
-                  plugins={getRendererBuiltinPlugins()}
+                  externalPlugins={externalPlugins}
+                  plugins={getRendererPlugins(externalPlugins)}
                   desktopWindowBridge={desktopWindowBridge}
                   desktopApplicationMenuBridge={desktopApplicationMenuBridge}
                   desktopDeepLinkBridge={desktopDeepLinkBridge}
