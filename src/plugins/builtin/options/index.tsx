@@ -54,6 +54,7 @@ export const optionsModule: PluginModule = {
       defaultFloatingSize: { width: 112, height: 28 },
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(optionsSettings(context.settings), context.settings),
+      tableExport: true,
     },
   ],
 

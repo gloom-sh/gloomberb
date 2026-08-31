@@ -13,6 +13,10 @@ import type { PluginRegistry } from "../../../../plugins/registry";
 import type { LayoutConfig } from "../../../../types/config";
 import type { RendererHost } from "../../../../ui";
 import { capturePaneScreenshotPngBase64 } from "../../../../utils/dom-screenshot";
+import {
+  exportPaneTableCsv,
+  hasPaneTableExporter,
+} from "../../../../state/pane-table-export-registry";
 
 function removedFocusRestoreOptions(
   layout: LayoutConfig,
@@ -75,6 +79,28 @@ export function useShellPaneActions({
     }
   }, [closePaneMenu, pluginRegistry, rendererHost]);
 
+  const canExportPaneCsv = useCallback((paneId: string) => {
+    const pane = paneMap.get(paneId);
+    return pane?.def.tableExport === true && hasPaneTableExporter(paneId);
+  }, [paneMap]);
+
+  const exportPaneCsv = useCallback(async (paneId: string) => {
+    closePaneMenu();
+    const pane = paneMap.get(paneId);
+    if (!pane) return;
+    await exportPaneTableCsv(
+      paneId,
+      pane.instance.title ?? pane.def.name,
+      pluginRegistry.notify,
+    );
+  }, [closePaneMenu, paneMap, pluginRegistry]);
+
+  const exportFocusedPaneCsv = useCallback(() => {
+    if (!focusedPaneId || !canExportPaneCsv(focusedPaneId)) return false;
+    void exportPaneCsv(focusedPaneId);
+    return true;
+  }, [canExportPaneCsv, exportPaneCsv, focusedPaneId]);
+
   const closeFocusedPane = useCallback(() => {
     if (!focusedPaneId || !isPaneInLayout(visibleLayout, focusedPaneId)) return false;
     const nextLayout = removePane(visibleLayout, focusedPaneId);
@@ -132,10 +158,13 @@ export function useShellPaneActions({
   }, [focusedPaneId, persistLayout, previousFocusedPaneId, visibleLayout]);
 
   return {
+    canExportPaneCsv,
     closeAllFloatingPanes,
     closeFocusedPane,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,
+    exportFocusedPaneCsv,
+    exportPaneCsv,
     gridlockVisiblePanes,
     handleFloatingClose,
     openFocusedPaneSettings,

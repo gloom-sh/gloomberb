@@ -240,6 +240,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 />
               )}
               <ShortcutRow
+                badges={[platformShortcut(["Shift", "E"])]}
+                description="Export the focused pane's table as CSV."
+              />
+              <ShortcutRow
                 badges={[platformShortcut(["Shift", "L"])]}
                 description="Open layout actions."
               />

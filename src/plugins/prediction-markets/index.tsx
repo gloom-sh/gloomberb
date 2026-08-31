@@ -43,6 +43,7 @@ export const predictionMarketsPlugin: GloomPlugin = {
       defaultPosition: "left",
       defaultMode: "floating",
       defaultFloatingSize: { width: 132, height: 36 },
+      tableExport: true,
       settings: (context) =>
         buildPredictionMarketsPaneSettingsDef(
           context.config,

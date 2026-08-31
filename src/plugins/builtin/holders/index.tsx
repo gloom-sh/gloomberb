@@ -22,6 +22,7 @@ export const holdersModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 105, height: 34 },
+      tableExport: true,
     },
   ],
 

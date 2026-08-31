@@ -38,6 +38,7 @@ export const thirteenFModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 112, height: 36 },
+      tableExport: true,
     },
   ],
 

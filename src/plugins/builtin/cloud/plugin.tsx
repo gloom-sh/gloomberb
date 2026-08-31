@@ -172,6 +172,7 @@ const congressTradesModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 112, height: 30 },
+    tableExport: true,
   }],
   paneTemplates: [{
     id: "congress-trades-pane",

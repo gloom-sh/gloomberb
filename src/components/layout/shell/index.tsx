@@ -257,10 +257,13 @@ export function Shell({
   });
 
   const {
+    canExportPaneCsv,
     closeAllFloatingPanes,
     closeFocusedPane,
     copyFocusedPaneScreenshot,
     copyPaneScreenshot,
+    exportFocusedPaneCsv,
+    exportPaneCsv,
     gridlockVisiblePanes,
     handleFloatingClose,
     openFocusedPaneSettings,
@@ -474,6 +477,7 @@ export function Shell({
     closeAllFloatingPanes,
     closeFocusedPane,
     copyFocusedPaneScreenshot,
+    exportFocusedPaneCsv,
     focusedPaneId,
     gridlockVisiblePanes,
     hasActiveDrag,
@@ -526,6 +530,7 @@ export function Shell({
         state: titleState,
         persistLayout,
       }),
+      canExportPaneCsv(paneId) ? exportPaneCsv : undefined,
     );
     void showContextMenu(context, items, event).then((shown) => {
       if (shown) return;
@@ -549,7 +554,7 @@ export function Shell({
         items: fallbackItems,
       });
     });
-  }, [contentHeight, copyPaneScreenshot, desktopWindowBridge, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [canExportPaneCsv, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, nativePaneChrome, openPaneSettings, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
 
   const {
     handleFloatingCloseMouseDown,

@@ -45,6 +45,7 @@ export const dividendYieldModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 28 },
+      tableExport: true,
     },
   ],
 

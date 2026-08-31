@@ -9,6 +9,15 @@ import { openTuiUiHost } from "./ui-host";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { openTuiToastHost } from "./toast-host";
 
+let lastSavedTextFile: { name: string; text: string } | null = null;
+
+/** Returns the most recent file written through the test renderer's `saveTextFile`. */
+export function takeSavedTextFile(): { name: string; text: string } | null {
+  const saved = lastSavedTextFile;
+  lastSavedTextFile = null;
+  return saved;
+}
+
 export function TestDialogProvider({ children }: { children: ReactNode }) {
   return (
     <OpenTuiDialogHostProvider
@@ -46,6 +55,10 @@ function OpenTuiTestProviders({ children }: { children: ReactNode }) {
     copyText: async () => {},
     readText: async () => "",
     notify: () => {},
+    saveTextFile: async ({ name, text }) => {
+      lastSavedTextFile = { name, text };
+      return `~/Downloads/${name}`;
+    },
   }), [renderer]);
   const nativeRenderer = useMemo(() => createTestNativeRendererHost(renderer), [renderer]);
 

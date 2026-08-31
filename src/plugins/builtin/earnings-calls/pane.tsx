@@ -1,18 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   DataTableStackView,
   EmptyState,
+  InputSearchBar,
   Spinner,
   usePaneFooter,
   type DataTableCell,
+  type DataTableKeyEvent,
+  type DataTableRootKeyContext,
   type PaneFooterSegment,
 } from "../../../components";
 import { CloudAuthNotice } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { colors } from "../../../theme/colors";
-import { Box, Text } from "../../../ui";
+import { Box, Text, type InputRenderable } from "../../../ui";
+import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
+import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { usePlanAccess } from "../shared/plan-access";
 import type {
@@ -140,6 +145,28 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   } | null>(null);
   const [qaOnly, setQaOnly] = useState(false);
   const [sort, setSort] = useState<CallSort>(DEFAULT_SORT);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const searchInputRef = useRef<InputRenderable | null>(null);
+
+  const focusSearch = useCallback(() => {
+    setSearchFocused(true);
+    setSearchFocusToken((current) => current + 1);
+  }, []);
+  const blurSearch = useCallback(() => setSearchFocused(false), []);
+
+  // The search input swallows keys while focused, so Escape has to be caught
+  // ahead of it, otherwise there is no way out of the field.
+  useShortcut(
+    (event) => {
+      if (event.name !== "escape") return;
+      stopSearchFocusNavigation(event);
+      setSearchQuery("");
+      blurSearch();
+    },
+    { allowEditable: true, enabled: focused && searchFocused, phase: "before" },
+  );
 
   const ticker = symbol ? symbol.toUpperCase() : null;
 
@@ -172,7 +199,21 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }, [fetchCalls]);
 
   const rows = useMemo(() => {
-    const sorted = [...calls].sort((a, b) => {
+    const query = searchQuery.trim().toLowerCase();
+    const matched = query
+      ? calls.filter((call) =>
+          [
+            call.ticker,
+            call.companyName ?? "",
+            formatPeriod(call.fiscalYear, call.fiscalQuarter),
+            formatCallDate(call.callAt),
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        )
+      : calls;
+    const sorted = [...matched].sort((a, b) => {
       const left = sortValue(a, sort.columnId);
       const right = sortValue(b, sort.columnId);
       if (left === right) return 0;
@@ -180,7 +221,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       return sort.direction === "asc" ? order : -order;
     });
     return sorted;
-  }, [calls, sort]);
+  }, [calls, sort, searchQuery]);
 
   const selected = useMemo(
     () => calls.find((call) => call.id === selectedId) ?? null,
@@ -228,25 +269,42 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const columns = useMemo(() => buildColumns(width, !ticker), [width, ticker]);
 
   const handleRootKey = useCallback(
-    (event: { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean }) => {
+    (event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
+      if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
+        stopSearchFocusNavigation(event);
+        focusSearch();
+        return true;
+      }
+      if (isPlainKey(event, "/")) {
+        stopSearchFocusNavigation(event);
+        focusSearch();
+        return true;
+      }
       if (isPlainKey(event, "r")) {
+        stopSearchFocusNavigation(event);
         fetchCalls(true);
         return true;
       }
       return false;
     },
-    [fetchCalls],
+    [fetchCalls, focusSearch],
   );
 
   const handleDetailKey = useCallback(
-    (event: { name?: string; ctrl?: boolean; meta?: boolean; shift?: boolean }) => {
+    (event: DataTableKeyEvent) => {
       if (isPlainKey(event, "q")) {
+        stopSearchFocusNavigation(event);
         setQaOnly((current) => !current);
+        return true;
+      }
+      if (isPlainKey(event, "/")) {
+        stopSearchFocusNavigation(event);
+        focusSearch();
         return true;
       }
       return false;
     },
-    [],
+    [focusSearch],
   );
 
   usePaneFooter(
@@ -271,10 +329,22 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (detailOpen && qaOnly) {
         info.push({ id: "qa", parts: [{ text: "Q&A only", tone: "muted" }] });
       }
+      if (searchQuery.trim()) {
+        info.push({
+          id: "filter",
+          parts: [{ text: `"${searchQuery.trim()}"`, tone: "muted" }],
+        });
+      }
 
       const hints = detailOpen
-        ? [{ id: "qa", key: "q", label: "&A only", onPress: () => setQaOnly((v) => !v) }]
-        : [{ id: "refresh", key: "r", label: "efresh", onPress: () => fetchCalls(true) }];
+        ? [
+            { id: "qa", key: "q", label: "&A only", onPress: () => setQaOnly((v) => !v) },
+            { id: "find", key: "/", label: "find", onPress: focusSearch },
+          ]
+        : [
+            { id: "search", key: "/", label: "search", onPress: focusSearch },
+            { id: "refresh", key: "r", label: "efresh", onPress: () => fetchCalls(true) },
+          ];
 
       return { info, hints };
     },
@@ -287,6 +357,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       transcriptProRequired,
       detailOpen,
       qaOnly,
+      searchQuery,
+      focusSearch,
       fetchCalls,
     ],
   );
@@ -358,25 +430,62 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       </Text>
     </Box>
   ) : (
-    <TranscriptView
-      transcript={transcript}
-      loading={transcriptLoading}
-      error={transcriptError?.message ?? null}
-      qaOnly={qaOnly}
-      width={width}
-    />
+    // The reader gets its own search bar: a transcript runs to thousands of
+    // words, so finding a topic matters as much as filtering the call list.
+    <Box flexDirection="column" flexGrow={1}>
+      <InputSearchBar
+        value={searchQuery}
+        focused={focused && detailOpen}
+        active={searchFocused}
+        width={width}
+        focusToken={searchFocusToken}
+        inputRef={searchInputRef}
+        placeholder="find in transcript"
+        debounceMs={80}
+        onFocus={focusSearch}
+        onBlur={blurSearch}
+        onNavigateDown={blurSearch}
+        onQueryChange={setSearchQuery}
+      />
+      <TranscriptView
+        transcript={transcript}
+        loading={transcriptLoading}
+        error={transcriptError?.message ?? null}
+        qaOnly={qaOnly}
+        query={searchQuery}
+        width={width}
+      />
+    </Box>
   );
 
   return (
     <DataTableStackView<CloudEarningsCallPayload, CallColumn>
-      focused={focused}
+      focused={focused && !searchFocused}
       detailOpen={detailOpen && !!selected}
       onBack={() => {
         setDetailOpen(false);
         setQaOnly(false);
+        setSearchQuery("");
+        blurSearch();
       }}
       detailContent={detailContent}
       detailTitle={selected ? callTitle(selected) : undefined}
+      rootBefore={
+        <InputSearchBar
+          value={searchQuery}
+          focused={focused && !detailOpen}
+          active={searchFocused}
+          width={width}
+          focusToken={searchFocusToken}
+          inputRef={searchInputRef}
+          placeholder="ticker, company, or period"
+          debounceMs={80}
+          onFocus={focusSearch}
+          onBlur={blurSearch}
+          onNavigateDown={blurSearch}
+          onQueryChange={setSearchQuery}
+        />
+      }
       onRootKeyDown={handleRootKey}
       onDetailKeyDown={handleDetailKey}
       selection={{
@@ -385,7 +494,11 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         getId: (call) => call.id,
         onChange: setSelectedId,
       }}
-      onActivate={() => setDetailOpen(true)}
+      onActivate={() => {
+        blurSearch();
+        setSearchQuery("");
+        setDetailOpen(true);
+      }}
       rootWidth={width}
       rootHeight={Math.max(1, height - 1)}
       columns={columns}
@@ -401,7 +514,10 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       }
       getItemKey={(call) => call.id}
       renderCell={renderCell}
-      emptyStateTitle="No transcribed calls yet."
+      emptyStateTitle={
+        searchQuery.trim() ? "No matching calls." : "No transcribed calls yet."
+      }
+      emptyStateHint={searchQuery.trim() ? "Clear the search to see all calls." : undefined}
     />
   );
 }

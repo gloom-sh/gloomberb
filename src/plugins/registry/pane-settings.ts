@@ -13,10 +13,9 @@ import type {
   PaneSettingsDef,
 } from "../../types/plugin";
 import {
-  exportPaneTable,
+  exportPaneTableCsv,
   hasPaneTableExporter,
 } from "../../state/pane-table-export-registry";
-import { createCsvExportFilename } from "../../utils/csv";
 
 export interface ResolvedRegistryPaneSettings {
   paneId: string;
@@ -121,17 +120,11 @@ export function resolveRegistryPaneSettings({
           actionId: "table.export-csv",
           actionLabel: "Export",
           disabled: !hasPaneTableExporter(targetPaneId),
-          action: async (actionContext) => {
-            try {
-              const location = await exportPaneTable(
-                targetPaneId,
-                createCsvExportFilename(pane.title ?? paneDef.name),
-              );
-              actionContext.notify({ body: `Exported to ${location}`, type: "success" });
-            } catch {
-              actionContext.notify({ body: "Failed to export CSV", type: "error" });
-            }
-          },
+          action: (actionContext) => exportPaneTableCsv(
+            targetPaneId,
+            pane.title ?? paneDef.name,
+            actionContext.notify,
+          ),
         },
       ],
     }

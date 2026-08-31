@@ -31,18 +31,26 @@ export function TranscriptView({
   loading,
   error,
   qaOnly,
+  query,
   width,
 }: {
   transcript: CloudEarningsTranscriptPayload | null;
   loading: boolean;
   error: string | null;
   qaOnly: boolean;
+  /** Free-text filter applied to the turns, for finding a topic in a long call. */
+  query?: string;
   width: number;
 }) {
   const turns = useMemo(() => {
     const all = transcript?.turns ?? [];
-    return qaOnly ? all.filter((turn) => turn.isQa) : all;
-  }, [transcript, qaOnly]);
+    const scoped = qaOnly ? all.filter((turn) => turn.isQa) : all;
+    const needle = (query ?? "").trim().toLowerCase();
+    if (!needle) return scoped;
+    return scoped.filter((turn) =>
+      `${turn.speaker} ${turn.company ?? ""} ${turn.text}`.toLowerCase().includes(needle),
+    );
+  }, [transcript, qaOnly, query]);
 
   if (loading && !transcript) {
     return (
@@ -124,7 +132,11 @@ export function TranscriptView({
         ))}
 
         {turns.length === 0 && (
-          <Text fg={colors.textDim}>No question and answer section in this call.</Text>
+          <Text fg={colors.textDim}>
+            {query?.trim()
+              ? `Nothing matching "${query.trim()}" in this call.`
+              : "No question and answer section in this call."}
+          </Text>
         )}
       </Box>
     </ScrollBox>
