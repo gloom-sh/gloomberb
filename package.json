@@ -5,6 +5,19 @@
   "description": "Market research and portfolio tracker for the terminal",
   "module": "src/index.tsx",
   "type": "module",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./types/plugin": "./src/types/plugin.ts",
+    "./types/persistence": "./src/types/persistence.ts",
+    "./ui": "./src/ui/index.tsx",
+    "./components": "./src/components/index.ts",
+    "./theme": "./src/theme/colors.ts",
+    "./capabilities": "./src/capabilities/index.ts",
+    "./utils": "./src/public/utils.ts",
+    "./react": "./src/public/react.ts",
+    "./test-support": "./src/public/test-support.ts",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "gloomberb": "bin/gloomberb"
   },

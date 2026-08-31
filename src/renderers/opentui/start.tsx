@@ -73,7 +73,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
   };
 
   const cliArgs = options.cliArgs ?? process.argv.slice(2);
-  const externalPlugins = options.externalPlugins ?? await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins());
+  const externalPlugins = options.externalPlugins ?? await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
   let cliLaunchRequest = options.cliLaunchRequest ?? null;
   if (!options.skipCliDispatch && cliArgs.length > 0) {
     const dispatchResult = await dispatchCli(cliArgs, { externalPlugins });

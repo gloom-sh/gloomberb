@@ -1,0 +1,41 @@
+/**
+ * Public utility surface for external plugins (`gloomberb/utils`).
+ *
+ * Everything re-exported here is a compatibility commitment: plugins in other
+ * repositories import it, so removing or changing a signature is a breaking
+ * change for them. Internal helpers stay internal — add to this barrel only
+ * when a real plugin needs it, and prefer widening later over exporting
+ * speculatively.
+ *
+ * `scripts/check-public-api.ts` pins the exported names so the surface cannot
+ * grow by accident during an unrelated refactor.
+ */
+
+export { createThrottledFetch } from "../utils/throttled-fetch";
+export type {
+  ThrottledFetchClient,
+  ThrottledFetchOptions,
+  ThrottledFetchTransport,
+} from "../utils/throttled-fetch";
+
+export { normalizedHttpUrl } from "../utils/url";
+
+export { decodeHtmlEntities } from "../utils/html-entities";
+
+export { isPlainKey, isPlainKeyboardEvent } from "../utils/keyboard";
+export type { KeyboardModifierEventLike } from "../utils/keyboard";
+
+export {
+  displayWidth,
+  formatCompact,
+  formatCompactCurrency,
+  formatCurrency,
+  formatGrowthShort,
+  formatNumber,
+  formatPercent,
+  formatPercentRaw,
+  formatWithDivisor,
+  padTo,
+  pickUnit,
+  truncateToDisplayWidth,
+} from "../utils/format";

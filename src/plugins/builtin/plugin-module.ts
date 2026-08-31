@@ -4,7 +4,15 @@ import type {
   GloomPluginContext,
 } from "../../types/plugin";
 
-type PluginMetadataKey = "id" | "name" | "version" | "description" | "toggleable" | "order";
+type PluginMetadataKey =
+  | "id"
+  | "name"
+  | "version"
+  | "description"
+  | "toggleable"
+  | "order"
+  | "targets"
+  | "homepage";
 type PluginMetadata = Pick<GloomPlugin, PluginMetadataKey>;
 
 export type PluginModule = Omit<GloomPlugin, PluginMetadataKey>;

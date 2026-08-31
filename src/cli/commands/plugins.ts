@@ -2,6 +2,7 @@ import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "fs";
 import { execFileSync } from "child_process";
 import { getPluginsDir } from "../../plugins/loader";
+import { linkHostPackages } from "../../plugins/host-link";
 import {
   cliStyles,
   renderSection,
@@ -79,6 +80,13 @@ export async function installPlugin(ref: string) {
     }
   }
 
+  // After `bun install`, which prunes links it does not know about.
+  const link = linkHostPackages(targetDir);
+  if (link.error) {
+    console.error(cliStyles.warning(`Warning: could not link the Gloomberb runtime (${link.error}).`));
+    console.error(cliStyles.muted("The plugin's \"gloomberb/*\" imports will not resolve."));
+  }
+
   try {
     let entryFile: string | null = null;
     if (existsSync(pkgPath)) {
@@ -143,6 +151,7 @@ export async function updatePlugins(name?: string) {
       if (existsSync(pkgPath)) {
         execFileSync("bun", ["install"], { cwd: targetDir, stdio: "inherit" });
       }
+      linkHostPackages(targetDir);
     } catch {
       console.error(cliStyles.danger(`Failed to update ${dir}.`));
     }
