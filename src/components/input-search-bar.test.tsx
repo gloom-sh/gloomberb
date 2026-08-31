@@ -21,9 +21,13 @@ afterEach(async () => {
 function Harness({
   actions,
   onNavigateDown,
+  onBlur,
+  onQueryChange,
 }: {
   actions: AppAction[];
   onNavigateDown?: () => void;
+  onBlur?: () => void;
+  onQueryChange?: (query: string) => void;
 }) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-input-search-bar"));
   const inputRef = useRef<InputRenderable | null>(null);
@@ -46,8 +50,8 @@ function Harness({
         debounceMs={100}
         onNavigateDown={onNavigateDown}
         onFocus={() => {}}
-        onBlur={() => {}}
-        onQueryChange={() => {}}
+        onBlur={onBlur ?? (() => {})}
+        onQueryChange={onQueryChange ?? (() => {})}
       />
     </AppContext>
   );
@@ -74,6 +78,36 @@ describe("InputSearchBar", () => {
       { type: "SET_INPUT_CAPTURED", captured: true },
       { type: "SET_INPUT_CAPTURED", captured: false },
     ]);
+  });
+
+  test("Escape clears the query and releases the field", async () => {
+    // The input consumes every key while focused, so without this there is no
+    // way out of a search once it is entered.
+    const actions: AppAction[] = [];
+    const queries: string[] = [];
+    let blurred = false;
+
+    testSetup = await testRender(
+      <Harness
+        actions={actions}
+        onBlur={() => {
+          blurred = true;
+        }}
+        onQueryChange={(query) => queries.push(query)}
+      />,
+      { width: 40, height: 4 },
+    );
+    await act(async () => {
+      await testSetup!.renderOnce();
+    });
+
+    await act(async () => {
+      testSetup!.renderer.keyInput.emit("keypress", { name: "escape" });
+      await testSetup!.renderOnce();
+    });
+
+    expect(queries).toEqual([""]);
+    expect(blurred).toBe(true);
   });
 
   test("moves from the active search input to the table with Down", async () => {

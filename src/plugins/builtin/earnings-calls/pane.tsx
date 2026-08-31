@@ -15,7 +15,6 @@ import { CloudAuthNotice } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { colors } from "../../../theme/colors";
 import { Box, Text, type InputRenderable } from "../../../ui";
-import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
@@ -155,18 +154,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     setSearchFocusToken((current) => current + 1);
   }, []);
   const blurSearch = useCallback(() => setSearchFocused(false), []);
-
-  // The search input swallows keys while focused, so Escape has to be caught
-  // ahead of it, otherwise there is no way out of the field.
-  useShortcut(
-    (event) => {
-      if (event.name !== "escape") return;
-      stopSearchFocusNavigation(event);
-      setSearchQuery("");
-      blurSearch();
-    },
-    { allowEditable: true, enabled: focused && searchFocused, phase: "before" },
-  );
 
   const ticker = symbol ? symbol.toUpperCase() : null;
 
@@ -341,10 +328,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
             { id: "qa", key: "q", label: "&A only", onPress: () => setQaOnly((v) => !v) },
             { id: "find", key: "/", label: "find", onPress: focusSearch },
           ]
-        : [
-            { id: "search", key: "/", label: "search", onPress: focusSearch },
-            { id: "refresh", key: "r", label: "efresh", onPress: () => fetchCalls(true) },
-          ];
+        : [{ id: "search", key: "/", label: "search", onPress: focusSearch }];
 
       return { info, hints };
     },
