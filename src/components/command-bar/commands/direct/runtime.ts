@@ -39,7 +39,7 @@ interface UseCommandBarDirectCommandRuntimeOptions {
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
   openModeRoute: (
-    screen: "ticker-search" | "plugins" | "layout",
+    screen: "ticker-search" | "layout",
     initialQuery?: string,
     payload?: Record<string, unknown>,
   ) => void;

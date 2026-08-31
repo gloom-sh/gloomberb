@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { setCurrentPluginTarget } from "../../../plugins/current-target";
 import { createRoot } from "react-dom/client";
 import { App } from "../../../app";
 import { applyLanguageFromConfig } from "../../../i18n";
@@ -31,6 +32,10 @@ import { createDesktopWindowBridge } from "./desktop/window/bridge";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
 import { getRendererBuiltinPlugins } from "../../../plugins/catalog-ui";
+
+// Declared here rather than sniffed: the desktop view and the hosted browser
+// app are both browser contexts but differ in what plugins may do.
+setCurrentPluginTarget("desktop");
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

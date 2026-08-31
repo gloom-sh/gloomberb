@@ -17,21 +17,18 @@ export {
   summarizeWorkflowFieldValue,
 } from "./workflow/fields";
 
-export type RouteCommandId = "security-description" | "plugins" | "layout";
+export type RouteCommandId = "security-description" | "layout";
 export type CollectionCommandId = "add-watchlist" | "add-portfolio" | "remove-watchlist" | "remove-portfolio";
 
 export function isRouteCommandId(commandId: string): commandId is RouteCommandId {
   return commandId === "security-description"
-    || commandId === "plugins"
     || commandId === "layout";
 }
 
-export function routeCommandIdToScreen(commandId: RouteCommandId): "ticker-search" | "plugins" | "layout" {
+export function routeCommandIdToScreen(commandId: RouteCommandId): "ticker-search" | "layout" {
   switch (commandId) {
     case "security-description":
       return "ticker-search";
-    case "plugins":
-      return "plugins";
     case "layout":
       return "layout";
   }
@@ -60,7 +57,6 @@ export function getScreenFooterLeft(route: CommandBarRoute | null): string {
   if (!route) return "up/down move  enter select";
   switch (route.kind) {
     case "mode":
-      if (route.screen === "plugins") return "up/down move  enter select  space toggle";
       return "up/down move  enter select";
     case "picker":
       if (route.pickerId === "field-multi-select") {

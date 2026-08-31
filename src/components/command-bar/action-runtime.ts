@@ -105,7 +105,7 @@ export function useCommandBarActionRuntime({
   });
 
   const openModeRoute = useCallback((
-    screen: "ticker-search" | "plugins" | "layout",
+    screen: "ticker-search" | "layout",
     initialQuery = "",
     payload?: Record<string, unknown>,
   ) => {
@@ -178,7 +178,6 @@ export function useCommandBarActionRuntime({
   const {
     buildLayoutItems,
     buildPaneSettingItems,
-    buildPluginItems,
     buildWindowModeItems,
     executeCollectionCommand,
     openPaneSettingsRoute,
@@ -287,7 +286,6 @@ export function useCommandBarActionRuntime({
     adaptTickerSearchRouteResult,
     buildLayoutItems,
     buildPaneSettingItems,
-    buildPluginItems,
     buildTickerSearchResultItems,
     buildWindowModeItems,
     collectionWorkflowActions,

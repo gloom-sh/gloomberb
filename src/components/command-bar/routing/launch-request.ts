@@ -8,7 +8,7 @@ interface UseCommandBarLaunchRequestOptions {
   commandBarLaunchRequest: AppState["commandBarLaunchRequest"];
   commandBarOpen: boolean;
   openModeRoute: (
-    screen: "ticker-search" | "plugins" | "layout",
+    screen: "ticker-search" | "layout",
     initialQuery?: string,
     payload?: Record<string, unknown>,
   ) => void;

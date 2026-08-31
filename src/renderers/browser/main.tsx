@@ -1,4 +1,5 @@
 /** @jsxImportSource react */
+import { setCurrentPluginTarget } from "../../plugins/current-target";
 import "../electrobun/view/styles.css";
 import { createRoot } from "react-dom/client";
 import { App } from "../../app";
@@ -20,6 +21,10 @@ import {
 import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
+
+// Declared here rather than sniffed: the desktop view and the hosted browser
+// app are both browser contexts but differ in what plugins may do.
+setCurrentPluginTarget("web");
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Missing root element");

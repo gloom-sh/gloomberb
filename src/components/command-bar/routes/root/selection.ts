@@ -32,7 +32,7 @@ interface RootSelectionCommandOptions {
   getAvailablePaneShortcutTemplates: (query: string) => PaneTemplateDef[];
   getAvailablePluginCommands: () => CommandDef[];
   openModeRoute: (
-    screen: "ticker-search" | "plugins" | "layout",
+    screen: "ticker-search" | "layout",
     initialQuery?: string,
     payload?: Record<string, unknown>,
   ) => void;
@@ -182,17 +182,6 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
       right: match.arg || match.command.prefix,
       shortcutQuery: match.command.prefix,
       action: () => options.runDirectCommand(match.command, match.arg),
-    };
-  }
-
-  if (match.command.id === "plugins") {
-    return {
-      id: "plugins-route",
-      label: "Manage Plugins",
-      detail: "Toggle optional plugins without leaving the command bar",
-      category: "Plugins",
-      kind: "command",
-      action: () => options.openModeRoute("plugins", match.arg),
     };
   }
 

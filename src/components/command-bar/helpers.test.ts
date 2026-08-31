@@ -134,8 +134,8 @@ describe("command-bar helpers", () => {
   });
 
   test("maps route and collection command ids", () => {
-    expect(isRouteCommandId("plugins")).toBe(true);
-    expect(routeCommandIdToScreen("plugins")).toBe("plugins");
+    expect(isRouteCommandId("layout")).toBe(true);
+    expect(routeCommandIdToScreen("layout")).toBe("layout");
     expect(isCollectionCommand("remove-portfolio")).toBe(true);
     expect(getCollectionCommandKind("remove-portfolio")).toBe("portfolio");
     expect(getCollectionCommandAction("remove-portfolio")).toBe("remove");

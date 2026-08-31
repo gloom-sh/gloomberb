@@ -6,6 +6,7 @@ import { portfolioAnalyticsModule } from "./analytics";
 import { brokerManagerModule } from "./broker-manager";
 import { changelogModule } from "./changelog";
 import { connectionsModule } from "./connections";
+import { pluginMarketplaceModule } from "./plugin-marketplace";
 import { correlationModule } from "./correlation";
 import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
@@ -47,7 +48,7 @@ export const applicationPlugin = composeBuiltinPlugin({
   name: "Application",
   version: "1.0.0",
   description: "Core layout, help, and release information.",
-  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule],
+  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule],
 });
 
 export const portfolioPlugin = composeBuiltinPlugin({

@@ -35,7 +35,7 @@ import {
 type CloseAllFn = (options?: { revertThemePreview?: boolean }) => void;
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
 type OpenModeRouteFn = (
-  screen: "ticker-search" | "plugins" | "layout",
+  screen: "ticker-search" | "layout",
   initialQuery?: string,
   payload?: Record<string, unknown>,
 ) => void;

@@ -45,7 +45,7 @@ export function runDirectCommandAction(options: {
   onCheckForUpdates?: () => void | Promise<void>;
   openBuiltInWorkflow: (actionId: string) => void;
   openInlineConfirm: OpenInlineConfirm;
-  openModeRoute: (screen: "ticker-search" | "plugins" | "layout", initialQuery?: string) => void;
+  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
   openPaneSettingsRoute: (paneId: string) => void;
   pluginRegistry: PluginRegistry;
   persistConfig: (nextConfig: AppState["config"]) => void;

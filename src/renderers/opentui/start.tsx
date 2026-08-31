@@ -6,6 +6,7 @@ import { getDataDir, initDataDir, setConfigStoreHost } from "../../data/config/s
 import { applyLanguageFromConfig } from "../../i18n";
 import * as nodeConfigStoreHost from "../../data/config/store/node";
 import { loadExternalPlugins } from "../../plugins/loader";
+import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { OpenTuiInputHostProvider } from "./input-host";
 import { debugLog } from "../../utils/debug-log";
@@ -26,6 +27,10 @@ import {
   installAiRunHost,
 } from "../../plugins/builtin/ai/runner";
 import { createAppServices } from "../../core/app-services";
+
+// Declared here rather than sniffed: the desktop view and the hosted browser
+// app are both browser contexts but differ in what plugins may do.
+setCurrentPluginTarget("tui");
 
 const AI_STARTUP_READINESS_TIMEOUT_MS = 5_000;
 

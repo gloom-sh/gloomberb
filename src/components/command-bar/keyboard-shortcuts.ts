@@ -186,17 +186,6 @@ export function useCommandBarKeyboardShortcuts({
       return;
     }
 
-    const pluginToggleMode = (currentRoute?.kind === "mode" && currentRoute.screen === "plugins")
-      || (!currentRoute && rootModeKind === "plugins");
-    if (pluginToggleMode && event.name === "space") {
-      consumeShortcutEvent(event);
-      const selected = activeListState.results[activeListState.selectedIdx];
-      if (selected?.pluginToggle) {
-        void selected.pluginToggle();
-      }
-      return;
-    }
-
     if (isCommitShortcut(event)) {
       consumeShortcutEvent(event);
       if (event.shift) {
