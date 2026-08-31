@@ -155,6 +155,7 @@ const PUBLIC_API: Record<string, readonly string[]> = {
     "formatNumber",
     "formatPercent",
     "formatPercentRaw",
+    "formatRelativeAge",
     "formatWithDivisor",
     "isPlainKey",
     "isPlainKeyboardEvent",

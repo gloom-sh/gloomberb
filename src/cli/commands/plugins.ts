@@ -74,7 +74,11 @@ export async function installPlugin(ref: string) {
   if (existsSync(pkgPath)) {
     console.log(cliStyles.muted("Installing plugin dependencies..."));
     try {
-      execFileSync("bun", ["install"], { cwd: targetDir, stdio: "inherit" });
+      // --production: plugin repos depend on `gloomberb` as a devDependency so
+      // their own CI can typecheck against the real API. At runtime the host is
+      // symlinked in instead, and pulling a second full copy here would both
+      // waste a lot of disk and risk a duplicate React.
+      execFileSync("bun", ["install", "--production"], { cwd: targetDir, stdio: "inherit" });
     } catch {
       console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
     }
@@ -149,7 +153,7 @@ export async function updatePlugins(name?: string) {
       execFileSync("git", ["pull", "--ff-only"], { cwd: targetDir, stdio: "inherit" });
       const pkgPath = join(targetDir, "package.json");
       if (existsSync(pkgPath)) {
-        execFileSync("bun", ["install"], { cwd: targetDir, stdio: "inherit" });
+        execFileSync("bun", ["install", "--production"], { cwd: targetDir, stdio: "inherit" });
       }
       linkHostPackages(targetDir);
     } catch {

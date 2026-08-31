@@ -20,6 +20,8 @@ export type {
 
 export { normalizedHttpUrl } from "../utils/url";
 
+export { formatRelativeAge } from "../utils/relative-time";
+
 export { decodeHtmlEntities } from "../utils/html-entities";
 
 export { isPlainKey, isPlainKeyboardEvent } from "../utils/keyboard";
