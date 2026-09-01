@@ -1,4 +1,4 @@
-import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./bundle";
+import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-contract";
 
 /**
  * Publishes the host's shared modules for compiled plugin bundles to read.

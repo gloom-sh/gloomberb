@@ -2,6 +2,7 @@ import { mkdir } from "fs/promises";
 import { join } from "path";
 
 import { resolvePluginEntry } from "./loader";
+import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-contract";
 
 /**
  * Compiles an external plugin for a renderer that cannot read the filesystem.
@@ -20,32 +21,7 @@ import { resolvePluginEntry } from "./loader";
  * host is symlinked in.
  */
 
-export const PLUGIN_HOST_GLOBAL = "__GLOOM_PLUGIN_HOST__";
 
-/**
- * Specifiers a plugin may import that must resolve to the host's copy. Anything
- * else is a plugin's own dependency and gets bundled normally.
- *
- * Deliberately no `react-dom`: it is a renderer package, and plugins are
- * required to be renderer-neutral so the same code runs in the terminal. A
- * plugin reaching for it should fail to bundle rather than quietly work on the
- * desktop and break in the TUI.
- */
-export const SHARED_SPECIFIERS = [
-  "react",
-  "react/jsx-runtime",
-  "react/jsx-dev-runtime",
-  "gloomberb/types/plugin",
-  "gloomberb/types/persistence",
-  "gloomberb/ui",
-  "gloomberb/components",
-  "gloomberb/theme",
-  "gloomberb/capabilities",
-  "gloomberb/utils",
-  "gloomberb/react",
-] as const;
-
-export type SharedSpecifier = (typeof SHARED_SPECIFIERS)[number];
 
 /**
  * Source for a module that re-exports one shared specifier from the host

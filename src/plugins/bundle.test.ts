@@ -3,11 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import {
-  bundleExternalPlugin,
-  buildSharedModuleSource,
-  PLUGIN_HOST_GLOBAL,
-} from "./bundle";
+import { bundleExternalPlugin, buildSharedModuleSource } from "./bundle";
+import { PLUGIN_HOST_GLOBAL } from "./host-contract";
 
 /**
  * This is the seam that lets a plugin on disk run inside the desktop and
