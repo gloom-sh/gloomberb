@@ -5,7 +5,6 @@ import {
   EmptyState,
   InputSearchBar,
   Spinner,
-  Tabs,
   useExternalLinkFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -26,20 +25,15 @@ import {
   mergeCatalog,
   sortEntries,
   unsupportedLabel,
+  isInstallable,
   type MarketplaceEntry,
-  type MarketplaceSection,
   type RegistryPlugin,
 } from "./model";
-import { getMarketplaceHost } from "./store";
+import { getMarketplaceHost, getPluginInstaller } from "./store";
 
 export const PLUGIN_MARKETPLACE_PANE_ID = "plugin-marketplace";
 
 type Column = DataTableColumn & { id: "name" | "tagline" | "stars" | "status" };
-
-const SECTIONS: { label: string; value: MarketplaceSection }[] = [
-  { label: "Installed", value: "installed" },
-  { label: "Browse", value: "browse" },
-];
 
 function buildColumns(width: number): Column[] {
   const starsWidth = 6;
@@ -146,7 +140,6 @@ function EntryDetail({ entry, width }: { entry: MarketplaceEntry; width: number 
 }
 
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
-  const [section, setSection] = useState<MarketplaceSection>("installed");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -160,8 +153,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [stale, setStale] = useState(false);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  // Bumped after a toggle so the installed list is re-read from the host.
+  // Bumped after a toggle or install so the list is re-read from the host.
   const [localRevision, setLocalRevision] = useState(0);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installError, setInstallError] = useState<string | null>(null);
 
   const refresh = useCallback((force: boolean) => {
     setStatus((current) => (current === "ready" ? current : "loading"));
@@ -183,11 +178,11 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   }, [registry, target, localRevision]);
 
   const rows = useMemo(() => {
-    const filtered = filterEntries(entries, { section, query, category: null });
+    const filtered = filterEntries(entries, { query, category: null });
     if (sortColumn === "name") return [...filtered].sort((a, b) => a.name.localeCompare(b.name));
     if (sortColumn === "stars") return [...filtered].sort((a, b) => b.stars - a.stars);
     return filtered;
-  }, [entries, query, section, sortColumn]);
+  }, [entries, query, sortColumn]);
 
   const selected = useMemo(
     () => rows.find((entry) => entry.id === selectedId) ?? rows[0] ?? null,
@@ -207,6 +202,22 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     setLocalRevision((value) => value + 1);
   }, [selected]);
 
+  const installSelected = useCallback(() => {
+    const install = getPluginInstaller();
+    if (!selected || !isInstallable(selected) || !install || installing) return;
+    const target = selected.id;
+    setInstalling(target);
+    setInstallError(null);
+    void install(target).then((result) => {
+      setInstalling(null);
+      if (result.ok) {
+        setLocalRevision((value) => value + 1);
+        return;
+      }
+      setInstallError(result.error ?? "Install failed.");
+    });
+  }, [installing, selected]);
+
   useShortcut((event) => {
     if (!focused || searchFocused) return;
     const key = (event.name ?? event.key ?? "").toLowerCase();
@@ -223,6 +234,11 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     if (key === "/" && isPlainKey(event)) {
       event.preventDefault?.();
       focusSearch();
+      return;
+    }
+    if (key === "i" && isPlainKey(event)) {
+      event.preventDefault?.();
+      installSelected();
     }
   });
 
@@ -230,10 +246,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (status === "loading") info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
   if (status === "error") info.push({ id: "error", parts: [{ text: "catalog unavailable", tone: "warning" }] });
   if (stale) info.push({ id: "stale", parts: [{ text: "stale catalog", tone: "warning" }] });
-  if (!canInstallPlugins() && section === "browse") {
-    // Installing shells out to git and bun, which only the terminal build can do.
-    info.push({ id: "install", parts: [{ text: "install from the terminal", tone: "muted" }] });
+  if (installing) {
+    info.push({ id: "installing", parts: [{ text: `installing ${installing}`, tone: "muted" }] });
   }
+  if (installError) info.push({ id: "install-error", parts: [{ text: installError, tone: "warning" }] });
   if (status === "ready" && fetchedAt && !stale) {
     info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
   }
@@ -244,31 +260,18 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     url: selected ? registryPluginUrl(selected.id) : null,
     source: selected ? "gloom.sh" : null,
     info,
-    hints: selected?.installed && selected.toggleable
-      ? [{ id: "toggle", key: "e", label: selected.enabled ? "disable" : "nable", onPress: toggleSelected }]
-      : [],
+    hints: selected && isInstallable(selected) && getPluginInstaller()
+      ? [{ id: "install", key: "i", label: "nstall", onPress: installSelected }]
+      : selected?.installed && selected.toggleable
+        ? [{ id: "toggle", key: "e", label: selected.enabled ? "disable" : "nable", onPress: toggleSelected }]
+        : [],
   });
 
   const columns = useMemo(() => buildColumns(width), [width]);
 
-  const tabs = (
-    <Tabs
-      tabs={SECTIONS}
-      activeValue={section}
-      onSelect={(value) => {
-        setSection(value as MarketplaceSection);
-        setDetailOpen(false);
-      }}
-      focused={focused && !detailOpen}
-      variant="underline"
-      dense
-    />
-  );
-
   if (status === "loading" && entries.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        {tabs}
         <Box flexGrow={1} alignItems="center" justifyContent="center">
           <Spinner />
         </Box>
@@ -278,7 +281,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {tabs}
       <DataTableStackView<MarketplaceEntry, Column>
         focused={focused && !searchFocused}
         detailOpen={detailOpen && !!selected}
@@ -309,7 +311,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         }}
         onActivate={() => setDetailOpen(true)}
         rootWidth={width}
-        rootHeight={Math.max(1, height - 1)}
+        rootHeight={height}
         columns={columns}
         items={rows}
         getItemKey={(entry) => entry.id}
@@ -323,13 +325,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
           }
         }}
         renderCell={(entry, column, _index, rowState) => renderCell(entry, column, rowState)}
-        emptyStateTitle={
-          status === "error"
-            ? "Plugin catalog unavailable."
-            : section === "browse"
-              ? "Everything in the catalog is installed."
-              : "No plugins match."
-        }
+        emptyStateTitle={status === "error" ? "Plugin catalog unavailable." : "No plugins match."}
         emptyStateHint={status === "error" ? "Press r to retry." : undefined}
       />
     </Box>

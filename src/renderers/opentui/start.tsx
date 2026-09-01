@@ -7,6 +7,7 @@ import { applyLanguageFromConfig } from "../../i18n";
 import * as nodeConfigStoreHost from "../../data/config/store/node";
 import { loadExternalPlugins } from "../../plugins/loader";
 import { restoreExtractedPlugins } from "../../cli/restore-plugins";
+import { setPluginInstaller } from "../../plugins/builtin/plugin-marketplace/store";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
 import { OpenTuiInputHostProvider } from "./input-host";
@@ -86,6 +87,16 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
   if (!options.externalPlugins) {
     await measurePerfAsync("startup.opentui.restore-plugins", restoreExtractedPlugins);
   }
+
+  setPluginInstaller(async (ref) => {
+    try {
+      const { installPlugin } = await import("../../cli/commands/plugins");
+      await installPlugin(ref);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
 
   const externalPlugins = options.externalPlugins ?? await measurePerfAsync("startup.opentui.load-external-plugins", () => loadExternalPlugins("tui"));
   let cliLaunchRequest = options.cliLaunchRequest ?? null;

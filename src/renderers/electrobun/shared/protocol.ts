@@ -131,6 +131,7 @@ export interface DesktopBackendRequestMap {
   "pluginState.setMany": { request: { entries: DesktopPluginStateSetEntry[] }; response: null };
   "pluginState.delete": { request: { pluginId: string; key: string }; response: null };
   "plugins.listExternal": { request: null; response: DesktopExternalPluginBundle[] };
+  "plugins.install": { request: { ref: string }; response: { ok: boolean; error?: string } };
   "host.restart": { request: DesktopRestartMessage; response: null };
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };

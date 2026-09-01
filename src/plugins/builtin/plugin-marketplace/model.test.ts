@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   collectCategories,
+  isInstallable,
   mergeCatalog,
   sortEntries,
   unsupportedLabel,
@@ -12,6 +13,7 @@ import {
 function registryPlugin(overrides: Partial<RegistryPlugin> & Pick<RegistryPlugin, "id">): RegistryPlugin {
   return {
     name: overrides.id,
+    repo: `gloom-sh/${overrides.id}`,
     tagline: "",
     author: { name: "Someone" },
     categories: ["data"],
@@ -114,6 +116,23 @@ describe("mergeCatalog", () => {
 });
 
 describe("sortEntries", () => {
+  test("puts what is installed above the rest of the catalog", () => {
+    // One list rather than two tabs: acting on what you already have should not
+    // require a mode switch, and an uninstalled plugin should never outrank one
+    // that is present just because it has more stars.
+    const entries = mergeCatalog({
+      registry: [
+        registryPlugin({ id: "popular-uninstalled", tier: "official", stars: 5000 }),
+        registryPlugin({ id: "quiet-installed", tier: "community", stars: 0 }),
+      ],
+      installed: [installedPlugin({ id: "quiet-installed" })],
+      target: "tui",
+    });
+
+    expect(sortEntries(entries).map((entry) => entry.id))
+      .toEqual(["quiet-installed", "popular-uninstalled"]);
+  });
+
   test("puts the featured plugin first, then tier, then stars", () => {
     const entries = mergeCatalog({
       registry: [
@@ -126,6 +145,7 @@ describe("sortEntries", () => {
       target: "tui",
     });
 
+    // All uninstalled, so the curated order applies within that half.
     expect(sortEntries(entries).map((entry) => entry.id)).toEqual([
       "cloud",
       "official-quiet",
@@ -147,5 +167,34 @@ describe("collectCategories", () => {
     });
 
     expect(collectCategories(entries)).toEqual(["data", "news"]);
+  });
+});
+
+describe("isInstallable", () => {
+  test("offers an install only for a catalog plugin that is absent", () => {
+    const [available, bundled, installed] = mergeCatalog({
+      registry: [
+        registryPlugin({ id: "available" }),
+        registryPlugin({ id: "bundled", bundled: true }),
+        registryPlugin({ id: "installed" }),
+      ],
+      installed: [installedPlugin({ id: "installed" })],
+      target: "tui",
+    });
+
+    expect(isInstallable(available!)).toBe(true);
+    // Ships with the app; there is nothing to fetch.
+    expect(isInstallable(bundled!)).toBe(false);
+    expect(isInstallable(installed!)).toBe(false);
+  });
+
+  test("does not offer an install without a repository to clone", () => {
+    const [entry] = mergeCatalog({
+      registry: [],
+      installed: [installedPlugin({ id: "sideloaded" })],
+      target: "tui",
+    });
+
+    expect(isInstallable(entry!)).toBe(false);
   });
 });

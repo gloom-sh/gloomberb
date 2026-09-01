@@ -37,7 +37,7 @@ import {
 } from "./window/frame";
 import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { handleHttpFetch } from "./desktop/http-fetch";
-import { collectExternalPluginBundles } from "./external-plugins";
+import { collectExternalPluginBundles, installExternalPlugin } from "./external-plugins";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import {
@@ -471,6 +471,8 @@ async function handleBackendRequest(
       return handleDesktopPluginStateRequest(requireServices().persistence.pluginState, request);
     case "plugins.listExternal":
       return collectExternalPluginBundles();
+    case "plugins.install":
+      return installExternalPlugin(request.payload.ref);
     case "host.restart":
     case "host.exit":
     case "host.windowControl":

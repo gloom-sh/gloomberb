@@ -72,6 +72,7 @@ const PUBLIC_API: Record<string, readonly string[]> = {
     "PriceSelectorDialog",
     "RemoteImage",
     "SegmentedControl",
+    "SelectButton",
     "SpeedometerGauge",
     "Spinner",
     "StaticChartSurface",

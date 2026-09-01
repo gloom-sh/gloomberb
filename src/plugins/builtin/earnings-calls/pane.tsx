@@ -383,7 +383,11 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   }
 
   if (listStatus === "error" && calls.length === 0) {
-    return <EmptyState title="Could not load earnings calls." message={listError?.message ?? ""} />;
+    return (
+      <Box flexDirection="column" paddingX={1}>
+        <EmptyState title="Could not load earnings calls." message={listError?.message ?? ""} />
+      </Box>
+    );
   }
 
   if (calls.length === 0) {

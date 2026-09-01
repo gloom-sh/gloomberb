@@ -24,3 +24,23 @@ export function setMarketplaceHost(next: MarketplaceHost | null): void {
 export function getMarketplaceHost(): MarketplaceHost | null {
   return host;
 }
+
+/**
+ * Installing a plugin means running git and bun, which only the Bun-hosted
+ * renderers can do — and the desktop view has to ask its Bun process over RPC.
+ * Rather than let this pane reach for a renderer API and break the
+ * renderer-neutrality rule, each renderer installs its own implementation at
+ * startup. A renderer that leaves it unset (the browser) gets the install
+ * command shown instead of a button.
+ */
+export type PluginInstaller = (ref: string) => Promise<{ ok: boolean; error?: string }>;
+
+let installer: PluginInstaller | null = null;
+
+export function setPluginInstaller(next: PluginInstaller | null): void {
+  installer = next;
+}
+
+export function getPluginInstaller(): PluginInstaller | null {
+  return installer;
+}

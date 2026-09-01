@@ -119,3 +119,22 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
 
   return bundles;
 }
+
+/**
+ * Installs a plugin on behalf of the desktop view, which cannot run git or bun
+ * itself. Errors are returned rather than thrown so the marketplace can show
+ * them next to the plugin instead of surfacing an RPC failure.
+ *
+ * The bundle cache is cleared so the next `plugins.listExternal` compiles the
+ * newly installed plugin rather than serving a stale set.
+ */
+export async function installExternalPlugin(ref: string): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const { installPlugin } = await import("../../../cli/commands/plugins");
+    await installPlugin(ref);
+    bundleCache.clear();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}

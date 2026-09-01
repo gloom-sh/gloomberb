@@ -152,8 +152,16 @@ export function mergeCatalog(options: {
   return entries;
 }
 
+/**
+ * One ordered list rather than an installed/available split.
+ *
+ * What you already have is what you act on most, so it sorts to the top; the
+ * rest of the catalog continues below without a mode switch to find it. Within
+ * each half the order is the curated one: featured, then tier, then stars.
+ */
 export function sortEntries(entries: readonly MarketplaceEntry[]): MarketplaceEntry[] {
   return [...entries].sort((a, b) => {
+    if (a.installed !== b.installed) return a.installed ? -1 : 1;
     if (a.featured !== b.featured) return a.featured ? -1 : 1;
     if (a.tier !== b.tier) return TIER_RANK[a.tier] - TIER_RANK[b.tier];
     if (a.stars !== b.stars) return b.stars - a.stars;
@@ -161,20 +169,13 @@ export function sortEntries(entries: readonly MarketplaceEntry[]): MarketplaceEn
   });
 }
 
-export type MarketplaceSection = "installed" | "browse";
-
-export function sectionOf(entry: MarketplaceEntry): MarketplaceSection {
-  return entry.installed ? "installed" : "browse";
-}
-
 export function filterEntries(
   entries: readonly MarketplaceEntry[],
-  options: { section: MarketplaceSection; query: string; category: string | null },
+  options: { query: string; category: string | null },
 ): MarketplaceEntry[] {
   const query = options.query.trim().toLowerCase();
 
   return entries.filter((entry) => {
-    if (sectionOf(entry) !== options.section) return false;
     if (options.category && !entry.categories.includes(options.category)) return false;
     if (!query) return true;
     return [entry.name, entry.id, entry.tagline, entry.description, ...entry.categories]
@@ -188,6 +189,11 @@ export function collectCategories(entries: readonly MarketplaceEntry[]): string[
     for (const category of entry.categories) seen.add(category);
   }
   return [...seen].sort();
+}
+
+/** Whether this entry can be installed from inside the app right now. */
+export function isInstallable(entry: MarketplaceEntry): boolean {
+  return !entry.installed && !entry.bundled && !!entry.repo;
 }
 
 /** Short label for a plugin that cannot run on the current renderer. */

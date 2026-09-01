@@ -33,6 +33,7 @@ import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
 import { getRendererPlugins } from "../../../plugins/catalog-ui";
 import { loadDesktopExternalPlugins } from "./external-plugins";
+import { setPluginInstaller } from "../../../plugins/builtin/plugin-marketplace/store";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -120,6 +121,8 @@ async function boot() {
       }
     },
   );
+
+  setPluginInstaller((ref) => backendRequest("plugins.install", { ref }));
 
   const remoteControlAdapter = init.windowKind === "main"
     ? { registerHandler: setElectrobunRemoteRequestHandler }
