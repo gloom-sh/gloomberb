@@ -160,6 +160,13 @@ function AppInner({
     renderToast: (notification) => {
       const type = notification.type ?? "info";
       let toastId: string | number | undefined;
+      const dismissAfter = (run: () => void) => () => {
+        try {
+          run();
+        } finally {
+          if (toastId != null) toast.dismiss(toastId);
+        }
+      };
       const options = {
         title: notification.title,
         subtitle: notification.subtitle,
@@ -167,13 +174,13 @@ function AppInner({
         action: notification.action
           ? {
             label: notification.action.label,
-            onClick: () => {
-              try {
-                notification.action?.onClick();
-              } finally {
-                if (toastId != null) toast.dismiss(toastId);
-              }
-            },
+            onClick: dismissAfter(() => notification.action?.onClick()),
+          }
+          : undefined,
+        secondaryAction: notification.secondaryAction
+          ? {
+            label: notification.secondaryAction.label,
+            onClick: dismissAfter(() => notification.secondaryAction?.onClick()),
           }
           : undefined,
       };

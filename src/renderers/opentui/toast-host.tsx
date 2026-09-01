@@ -13,6 +13,10 @@ interface ToastRecord {
   options?: ToastOptions;
 }
 
+const MAX_VISIBLE_TOASTS = 4;
+/** Small buffer above the visible cap so a dismissal can reveal a recent toast. */
+const MAX_RETAINED_TOASTS = 8;
+
 let nextToastId = 1;
 let toasts: ToastRecord[] = [];
 const listeners = new Set<() => void>();
@@ -36,7 +40,16 @@ function dismissToast(id: string | number): void {
 
 function addToast(tone: ToastTone, body: string, options?: ToastOptions): number {
   const id = nextToastId++;
-  toasts = [...toasts, { id, body, tone, options }];
+  // Only the newest MAX_VISIBLE_TOASTS render, so anything past the cap is
+  // unreachable. Keeping it would let a dismissal resurface a stale toast.
+  const kept = [...toasts, { id, body, tone, options }].slice(-MAX_RETAINED_TOASTS);
+  for (const dropped of toasts) {
+    if (kept.some((toast) => toast.id === dropped.id)) continue;
+    const timer = timers.get(dropped.id);
+    if (timer) clearTimeout(timer);
+    timers.delete(dropped.id);
+  }
+  toasts = kept;
   publish();
   const duration = options?.duration ?? 4_000;
   if (Number.isFinite(duration) && duration > 0) {
@@ -89,7 +102,7 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
       flexDirection="column"
       gap={1}
     >
-      {visibleToasts.slice(-4).map((toast) => (
+      {visibleToasts.slice(-MAX_VISIBLE_TOASTS).map((toast) => (
         <box
           key={toast.id}
           width="100%"
@@ -113,6 +126,17 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
               }}
             >
               {`[${toast.options.action.label}]`}
+            </text>
+          )}
+          {toast.options?.secondaryAction && (
+            <text
+              fg={colors.textMuted}
+              onMouseDown={(event) => {
+                event.stopPropagation();
+                toast.options?.secondaryAction?.onClick();
+              }}
+            >
+              {`[${toast.options.secondaryAction.label}]`}
             </text>
           )}
           <text

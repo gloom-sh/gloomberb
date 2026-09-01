@@ -504,6 +504,11 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   border-radius: 4px;
   color: var(--gloom-text-bright);
 }
+/* Secondary reads as the quieter option next to the primary action. */
+.gloom-toast-action-secondary {
+  border-color: var(--gloom-border);
+  color: var(--gloom-text-dim);
+}
 .gloom-toast-dismiss {
   display: grid;
   width: 22px;

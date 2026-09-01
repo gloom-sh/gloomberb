@@ -7,6 +7,12 @@ import {
   setupBreakingNewsNotifications,
 } from "./breaking/notifications";
 import {
+  BREAKING_MUTED_SECTOR_OPTIONS,
+  BREAKING_NEWS_MUTED_SECTORS_KEY,
+  BREAKING_NEWS_SCOPE_KEY,
+  BREAKING_SCOPE_OPTIONS,
+} from "./breaking/filters";
+import {
   addUserNewsFeed,
   getEnabledNewsFeeds,
   loadNewsFeedSettings,
@@ -77,13 +83,31 @@ export const newsWireModule: PluginModule = {
       defaultFloatingSize: { width: 85, height: 20 },
       settings: {
         title: "Breaking News Settings",
-        fields: [{
-          key: BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY,
-          label: "Notifications",
-          description: "Notify when new breaking stories arrive, even while this pane is closed.",
-          type: "toggle",
-          storage: "plugin",
-        }],
+        fields: [
+          {
+            key: BREAKING_NEWS_NOTIFICATIONS_ENABLED_KEY,
+            label: "Notifications",
+            description: "Notify when new breaking stories arrive, even while this pane is closed.",
+            type: "toggle",
+            storage: "plugin",
+          },
+          {
+            key: BREAKING_NEWS_SCOPE_KEY,
+            label: "Notify About",
+            description: "Which breaking stories are worth interrupting you for.",
+            type: "select",
+            storage: "plugin",
+            options: BREAKING_SCOPE_OPTIONS,
+          },
+          {
+            key: BREAKING_NEWS_MUTED_SECTORS_KEY,
+            label: "Muted Sectors",
+            description: "Never notify about stories confined to these sectors.",
+            type: "multi-select",
+            storage: "plugin",
+            options: BREAKING_MUTED_SECTOR_OPTIONS,
+          },
+        ],
       },
     },
   ],
