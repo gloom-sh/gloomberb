@@ -43,3 +43,20 @@ export {
 } from "../plugins/builtin/shared/read-state";
 export type { PersistedReadIdAdapter } from "../plugins/builtin/shared/read-state";
 export type { InlineTickerCatalogEntry, UseInlineTickersOptions } from "../state/hooks/inline-tickers";
+
+export {
+  AppContext,
+  PaneInstanceProvider,
+  useAppConfig,
+  useAppDispatch,
+  useAppSelector,
+  useBrokerAccounts,
+  useInputCapture,
+  usePaneCollection,
+  usePaneInstanceId,
+  usePaneTicker,
+  useTickers,
+} from "./pane-hooks";
+
+// Keyboard handling for plugin panes; the renderer decides how events arrive.
+export { useShortcut } from "../react/input";

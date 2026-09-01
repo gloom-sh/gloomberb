@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { setHttpFetchTransport } from "../../../utils/http-transport";
+import { setHttpFetchTransport } from "gloomberb/utils";
 import {
   parseFlexAccounts,
   parseFlexPortfolioPerformance,

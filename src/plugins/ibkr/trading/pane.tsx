@@ -1,18 +1,18 @@
-import { usePaneFooter } from "../../../components";
-import { useShortcut } from "../../../react/input";
-import { useDialog } from "../../../ui/dialog";
+import { usePaneFooter } from "gloomberb/components";
+import { useShortcut } from "gloomberb/react";
+import { useDialog } from "gloomberb/dialog";
 import { useCallback, useEffect, useRef } from "react";
-import { resolveTickerFinancialsForInstrument } from "../../../market-data/coordinator";
-import { instrumentFromTicker } from "../../../market-data/request-types";
+import { resolveTickerFinancialsForInstrument } from "gloomberb/broker";
+import { instrumentFromTicker } from "gloomberb/market-data";
 import {
   useAppDispatch,
   useAppSelector,
   usePaneCollection,
   usePaneInstanceId,
-} from "../../../state/app/context";
-import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
-import { getBrokerInstance } from "../../../utils/broker-instances";
+} from "gloomberb/react";
+import type { PaneProps } from "gloomberb/types/plugin";
+import { isPlainKey } from "gloomberb/utils";
+import { getBrokerInstance } from "gloomberb/utils";
 import { usePluginPaneActions } from "../../runtime";
 import { isGatewayConfigured } from "../config";
 import { useIbkrGatewaySelection } from "../gateway/selection";

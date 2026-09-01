@@ -1,11 +1,11 @@
-import type { BrokerPosition } from "../../../types/broker";
-import type { BrokerContractRef } from "../../../types/instrument";
+import type { BrokerPosition } from "gloomberb/types/broker";
+import type { BrokerContractRef } from "gloomberb/types/instrument";
 import type {
   BrokerAccount,
   BrokerCashBalance,
   BrokerPortfolioPerformance,
   BrokerPortfolioPerformancePoint,
-} from "../../../types/trading";
+} from "gloomberb/types/trading";
 
 export {
   loadFlexStatement,

@@ -1,5 +1,5 @@
-import type { BrokerContractRef } from "../../../../types/instrument";
-import type { TickerRecord } from "../../../../types/ticker";
+import type { BrokerContractRef } from "gloomberb/types/instrument";
+import type { TickerRecord } from "gloomberb/types/ticker";
 import type { IbkrSnapshot } from "../../gateway/types";
 import { normalizeContract, type TradeTicketState } from "../../trading/state";
 import {

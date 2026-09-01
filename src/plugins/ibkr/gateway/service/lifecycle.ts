@@ -1,6 +1,6 @@
 import { ConnectionState, IBApiNext, type MarketDataType } from "@stoqey/ib";
 import { firstValueFrom, filter, take, timeout } from "rxjs";
-import { debugLog } from "../../../../utils/debug-log";
+import { debugLog } from "gloomberb/utils";
 import type { IbkrClientLockManager } from "../client-lock";
 import {
   buildConnectionNote,

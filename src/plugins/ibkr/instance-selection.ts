@@ -1,5 +1,5 @@
-import type { AppConfig, BrokerInstanceConfig } from "../../types/config";
-import { getBrokerInstance, getBrokerInstancesByType } from "../../utils/broker-instances";
+import type { AppConfig, BrokerInstanceConfig } from "gloomberb/types/config";
+import { getBrokerInstance, getBrokerInstancesByType } from "gloomberb/utils";
 import { isGatewayConfigured, normalizeIbkrConfig } from "./config";
 
 function isIbkrGatewayInstance(instance?: BrokerInstanceConfig): instance is BrokerInstanceConfig {

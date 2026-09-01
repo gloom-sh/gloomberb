@@ -1,4 +1,4 @@
-import type { BrokerConfigField } from "../../types/broker";
+import type { BrokerConfigField } from "gloomberb/types/broker";
 import type { IbkrGatewayConfig, ResolvedIbkrGatewayConnection } from "./gateway/service";
 
 export const LEGACY_IBKR_STATEMENT_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest";

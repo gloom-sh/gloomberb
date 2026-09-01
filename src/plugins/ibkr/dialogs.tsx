@@ -1,12 +1,12 @@
-import { Box, Input, Text } from "../../ui";
-import { TextAttributes } from "../../ui";
-import { type InputRenderable } from "../../ui";
+import { Box, Input, Text } from "gloomberb/ui";
+import { TextAttributes } from "gloomberb/ui";
+import { type InputRenderable } from "gloomberb/ui";
 import { useEffect, useRef, useState } from "react";
-import { type PromptContext } from "../../ui/dialog";
-import type { WizardStep } from "../../types/plugin";
-import { colors } from "../../theme/colors";
+import { type PromptContext } from "gloomberb/dialog";
+import type { WizardStep } from "gloomberb/types/plugin";
+import { colors } from "gloomberb/theme";
 
-export { ChoiceDialog } from "../../components";
+export { ChoiceDialog } from "gloomberb/components";
 
 export function InputDialog({ resolve, step }: PromptContext<string> & { step: WizardStep }) {
   const inputRef = useRef<InputRenderable>(null);

@@ -1,4 +1,4 @@
-import type { Fundamentals, FinancialStatement } from "../../types/financials";
+import type { Fundamentals, FinancialStatement } from "gloomberb/types/financials";
 
 /**
  * Parse IBKR ReportSnapshot XML (from getFundamentalData "ReportSnapshot")

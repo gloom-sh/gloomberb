@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cloneLayout, CURRENT_CONFIG_VERSION, DEFAULT_LAYOUT, type AppConfig, type BrokerInstanceConfig } from "../../types/config";
+import { cloneLayout, CURRENT_CONFIG_VERSION, DEFAULT_LAYOUT, type AppConfig, type BrokerInstanceConfig } from "gloomberb/types/config";
 import { resolveIbkrTradingInstanceId, getLockedIbkrTradingInstanceId } from "./instance-selection";
 
 function createIbkrInstance(

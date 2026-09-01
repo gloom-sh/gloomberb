@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "../../../types/config";
-import type { TickerRecord } from "../../../types/ticker";
+import { createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "gloomberb/types/config";
+import type { TickerRecord } from "gloomberb/types/ticker";
 import {
   findTickerForOrder,
   formatContractLabel,

@@ -1,7 +1,7 @@
 import {
   normalizePriceValueByDivisor,
   resolveExchangeSubUnitCurrencyUnit,
-} from "../../../utils/currency-units";
+} from "gloomberb/utils";
 
 interface IbkrPriceContractLike {
   currency?: string;

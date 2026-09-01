@@ -42,3 +42,36 @@ export {
   pickUnit,
   truncateToDisplayWidth,
 } from "../utils/format";
+
+// Broker and instrument helpers. IBKR needs all of these, and any broker plugin
+// will: instance lookup, currency minor units, venue normalization, and stable
+// hashing for cache keys.
+export {
+  buildBrokerPortfolioId,
+  createBrokerInstanceId,
+  getBrokerInstance,
+  getBrokerInstancesByType,
+  isBrokerPortfolioId,
+} from "../utils/broker-instances";
+export {
+  hasLikelyQuoteUnitMismatch,
+  normalizePriceValueByDivisor,
+  resolveCurrencyUnit,
+  resolveExchangeSubUnitCurrencyUnit,
+  resolvePriceHistoryCurrencyUnit,
+} from "../utils/currency-units";
+export type { CurrencyUnitInfo } from "../utils/currency-units";
+export {
+  canonicalExchange,
+  canonicalTickerKey,
+  normalizeSymbol,
+  parsePublicTickerKey,
+  publicExchange,
+  publicTickerKey,
+  resolveExchangeTimeZone,
+} from "../utils/exchanges";
+export { fnv1aHashString } from "../utils/hash";
+export { splitLongTextSegmentByDisplayWidth, truncateWithEllipsis, wrapTextLines } from "../utils/text-wrap";
+export { httpFetch, setHttpFetchTransport } from "../utils/http-transport";
+export type { HttpFetchTransport } from "../utils/http-transport";
+export { debugLog } from "../utils/debug-log";

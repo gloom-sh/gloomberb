@@ -1,12 +1,12 @@
 import { useMemo } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
-import { DataTableView, type DataTableCell, type DataTableColumn } from "../../../components";
-import { colors, priceColor } from "../../../theme/colors";
-import type { BrokerInstanceConfig } from "../../../types/config";
-import type { Quote } from "../../../types/financials";
-import type { BrokerAccount } from "../../../types/trading";
-import { formatCurrency } from "../../../utils/format";
-import { formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
+import { Box, Text, TextAttributes } from "gloomberb/ui";
+import { DataTableView, type DataTableCell, type DataTableColumn } from "gloomberb/components";
+import { colors, priceColor } from "gloomberb/theme";
+import type { BrokerInstanceConfig } from "gloomberb/types/config";
+import type { Quote } from "gloomberb/types/financials";
+import type { BrokerAccount } from "gloomberb/types/trading";
+import { formatCurrency } from "gloomberb/utils";
+import { formatMarketPrice, formatMarketQuantity } from "gloomberb/market-data";
 import type { IbkrSnapshot } from "../gateway/types";
 import type { TradingPaneState } from "./state";
 

@@ -4,19 +4,19 @@ import {
   type ContractDetails,
   type IBApiNext,
 } from "@stoqey/ib";
-import type { TimeRange } from "../../../../time-series/range";
-import type { ChartResolutionSupport, ManualChartResolution } from "../../../../time-series/resolution";
-import type { BrokerConnectionStatus, BrokerPosition } from "../../../../types/broker";
-import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
-import type { Quote, PricePoint, TickerFinancials } from "../../../../types/financials";
-import type { BrokerContractRef, InstrumentSearchResult } from "../../../../types/instrument";
+import type { TimeRange } from "gloomberb/time-series";
+import type { ChartResolutionSupport, ManualChartResolution } from "gloomberb/time-series";
+import type { BrokerConnectionStatus, BrokerPosition } from "gloomberb/types/broker";
+import type { QuoteSubscriptionTarget } from "gloomberb/types/data-provider";
+import type { Quote, PricePoint, TickerFinancials } from "gloomberb/types/financials";
+import type { BrokerContractRef, InstrumentSearchResult } from "gloomberb/types/instrument";
 import type {
   BrokerAccount,
   BrokerExecution,
   BrokerOrder,
   BrokerOrderPreview,
   BrokerOrderRequest,
-} from "../../../../types/trading";
+} from "gloomberb/types/trading";
 import {
   loadIbkrAccounts,
   loadIbkrExecutions,

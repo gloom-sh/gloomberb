@@ -1,6 +1,6 @@
-import { Box, Text } from "../../../ui";
-import { TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { Box, Text } from "gloomberb/ui";
+import { TextAttributes } from "gloomberb/ui";
+import { colors } from "gloomberb/theme";
 import { getTradeTonePalette, type TradeTone } from "./utils";
 
 interface TradeBadgeProps {

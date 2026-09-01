@@ -1,10 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Box, Text } from "../../../ui";
-import { TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
-import type { BrokerContractRef } from "../../../types/instrument";
-import type { TickerRecord } from "../../../types/ticker";
-import { formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
+import { Box, Text } from "gloomberb/ui";
+import { TextAttributes } from "gloomberb/ui";
+import { colors } from "gloomberb/theme";
+import type { BrokerContractRef } from "gloomberb/types/instrument";
+import type { TickerRecord } from "gloomberb/types/ticker";
+import { formatMarketPrice, formatMarketQuantity } from "gloomberb/market-data";
 import type { TradeTicketState } from "../trading/state";
 import { truncateTradeText as truncateText } from "./utils";
 

@@ -1,11 +1,11 @@
-import { Button } from "../../../../components/ui/button";
-import { Box, Text } from "../../../../ui";
-import { TextAttributes } from "../../../../ui";
-import { colors } from "../../../../theme/colors";
-import type { TickerFinancials } from "../../../../types/financials";
-import type { TickerRecord } from "../../../../types/ticker";
-import type { BrokerAccount } from "../../../../types/trading";
-import { formatCurrency } from "../../../../utils/format";
+import { Button } from "gloomberb/components";
+import { Box, Text } from "gloomberb/ui";
+import { TextAttributes } from "gloomberb/ui";
+import { colors } from "gloomberb/theme";
+import type { TickerFinancials } from "gloomberb/types/financials";
+import type { TickerRecord } from "gloomberb/types/ticker";
+import type { BrokerAccount } from "gloomberb/types/trading";
+import { formatCurrency } from "gloomberb/utils";
 import { TradeBadge } from "../badge";
 import {
   formatQuoteSummary,

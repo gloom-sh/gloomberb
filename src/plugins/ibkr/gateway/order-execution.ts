@@ -1,6 +1,6 @@
 import { EventName, type Contract, type Order, type OrderState } from "@stoqey/ib";
-import type { BrokerContractRef } from "../../../types/instrument";
-import type { BrokerOrder, BrokerOrderPreview, BrokerOrderRequest } from "../../../types/trading";
+import type { BrokerContractRef } from "gloomberb/types/instrument";
+import type { BrokerOrder, BrokerOrderPreview, BrokerOrderRequest } from "gloomberb/types/trading";
 import type { IbkrGatewayConfig } from "./types";
 import { buildIbkrOrder } from "./orders";
 

@@ -16,7 +16,18 @@
     "./utils": "./src/public/utils.ts",
     "./react": "./src/public/react.ts",
     "./test-support": "./src/public/test-support.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./types/broker": "./src/types/broker.ts",
+    "./types/config": "./src/types/config.ts",
+    "./types/data-provider": "./src/types/data-provider.ts",
+    "./types/financials": "./src/types/financials.ts",
+    "./types/instrument": "./src/types/instrument.ts",
+    "./types/ticker": "./src/types/ticker.ts",
+    "./types/trading": "./src/types/trading.ts",
+    "./time-series": "./src/public/time-series.ts",
+    "./market-data": "./src/public/market-data.ts",
+    "./dialog": "./src/ui/dialog.tsx",
+    "./broker": "./src/public/broker.ts"
   },
   "bin": {
     "gloomberb": "bin/gloomberb"

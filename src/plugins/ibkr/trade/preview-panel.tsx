@@ -1,8 +1,8 @@
-import { Button } from "../../../components/ui/button";
-import { Box, Text } from "../../../ui";
-import { TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
-import { formatCurrency } from "../../../utils/format";
+import { Button } from "gloomberb/components";
+import { Box, Text } from "gloomberb/ui";
+import { TextAttributes } from "gloomberb/ui";
+import { colors } from "gloomberb/theme";
+import { formatCurrency } from "gloomberb/utils";
 import type { TradeTicketState } from "../trading/state";
 import {
   formatPreviewMetric,

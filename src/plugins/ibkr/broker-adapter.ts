@@ -1,4 +1,4 @@
-import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
+import type { BrokerAdapter, BrokerPosition } from "gloomberb/types/broker";
 import {
   buildPersistedIbkrGatewayConfig,
   buildIbkrConfigFromValues,

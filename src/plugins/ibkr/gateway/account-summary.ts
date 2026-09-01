@@ -1,4 +1,4 @@
-import type { BrokerAccount, BrokerCashBalance } from "../../../types/trading";
+import type { BrokerAccount, BrokerCashBalance } from "gloomberb/types/trading";
 
 type AccountSummaryValueMap = ReadonlyMap<string, { value: string }>;
 export type AccountSummaryTags = ReadonlyMap<string, AccountSummaryValueMap>;

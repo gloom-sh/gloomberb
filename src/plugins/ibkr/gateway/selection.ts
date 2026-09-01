@@ -1,6 +1,6 @@
-import type { AppConfig } from "../../../types/config";
-import type { BrokerAccount } from "../../../types/trading";
-import { getBrokerInstance } from "../../../utils/broker-instances";
+import type { AppConfig } from "gloomberb/types/config";
+import type { BrokerAccount } from "gloomberb/types/trading";
+import { getBrokerInstance } from "gloomberb/utils";
 import { normalizeIbkrConfig } from "../config";
 import { ibkrGatewayManager } from "./service";
 import {

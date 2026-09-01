@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { TickerRecord } from "../../../types/ticker";
-import type { BrokerOrder } from "../../../types/trading";
+import type { TickerRecord } from "gloomberb/types/ticker";
+import type { BrokerOrder } from "gloomberb/types/trading";
 import {
   clearTradingDraft,
   getTradeTicketState,

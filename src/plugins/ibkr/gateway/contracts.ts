@@ -5,7 +5,7 @@ import {
   type ContractDescription,
   type ContractDetails,
 } from "@stoqey/ib";
-import type { BrokerContractRef, InstrumentSearchResult } from "../../../types/instrument";
+import type { BrokerContractRef, InstrumentSearchResult } from "gloomberb/types/instrument";
 
 export function buildInstrumentSearchKey(result: InstrumentSearchResult): string {
   return `${result.symbol}|${result.exchange}|${result.type}`;

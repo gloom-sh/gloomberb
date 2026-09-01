@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
-import type { TickerRecord } from "../../../types/ticker";
-import type { BrokerContractRef, InstrumentSearchResult } from "../../../types/instrument";
-import type { BrokerOrder, BrokerOrderPreview, BrokerOrderRequest } from "../../../types/trading";
+import type { TickerRecord } from "gloomberb/types/ticker";
+import type { BrokerContractRef, InstrumentSearchResult } from "gloomberb/types/instrument";
+import type { BrokerOrder, BrokerOrderPreview, BrokerOrderRequest } from "gloomberb/types/trading";
 
 export interface TradeTicketState {
   draft: BrokerOrderRequest;

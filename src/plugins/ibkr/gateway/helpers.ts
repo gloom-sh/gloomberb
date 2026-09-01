@@ -1,5 +1,5 @@
 import { useCallback, useSyncExternalStore } from "react";
-import type { BrokerInstanceConfig } from "../../../types/config";
+import type { BrokerInstanceConfig } from "gloomberb/types/config";
 import { getGatewayConfig } from "../config";
 import { ibkrGatewayManager } from "./service";
 

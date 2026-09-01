@@ -1,14 +1,14 @@
-import { Box, ScrollBox, Text } from "../../../../ui";
-import { useDialog } from "../../../../ui/dialog";
+import { Box, ScrollBox, Text } from "gloomberb/ui";
+import { useDialog } from "gloomberb/dialog";
 import { useCallback, useEffect, useState } from "react";
 import {
   useAppSelector,
   usePaneCollection,
   usePaneInstanceId,
   usePaneTicker,
-} from "../../../../state/app/context";
-import { colors, hoverBg } from "../../../../theme/colors";
-import type { TickerResearchTabProps } from "../../../../types/plugin";
+} from "gloomberb/react";
+import { colors, hoverBg } from "gloomberb/theme";
+import type { TickerResearchTabProps } from "gloomberb/types/plugin";
 import { isGatewayConfigured } from "../../config";
 import { useIbkrGatewaySelection } from "../../gateway/selection";
 import { TradePreviewPanel } from "../preview-panel";

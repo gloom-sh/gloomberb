@@ -6,8 +6,8 @@ import {
   type IBApiNext,
   type MarketDataUpdate,
 } from "@stoqey/ib";
-import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import type { Quote } from "../../../types/financials";
+import type { QuoteSubscriptionTarget } from "gloomberb/types/data-provider";
+import type { Quote } from "gloomberb/types/financials";
 import {
   applyTickByTickAllLastToQuote,
   applyTickByTickBidAskToQuote,
