@@ -1,6 +1,9 @@
 import type { BrokerConnectionStatus } from "../../types/broker";
 import type { BrokerInstanceConfig } from "../../types/config";
-import type { IbkrGatewayServiceFacade } from "./gateway/service";
+// Type-only, so it is erased at build time and creates no runtime dependency on
+// the Gateway plugin. It is the contract the two sides share; when Gateway moves
+// to its own repository this becomes a types-only peer dependency.
+import type { IbkrGatewayServiceFacade } from "../ibkr-gateway/gateway/service";
 
 /**
  * The seam between IBKR Flex and IBKR Gateway.

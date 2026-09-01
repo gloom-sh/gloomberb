@@ -1,5 +1,5 @@
 import type { BrokerConfigField } from "../../types/broker";
-import type { IbkrGatewayConfig, ResolvedIbkrGatewayConnection } from "./gateway/service";
+import type { IbkrGatewayConfig, ResolvedIbkrGatewayConnection } from "./gateway-types";
 
 export const LEGACY_IBKR_STATEMENT_URL = "https://gdcdyn.interactivebrokers.com/Universal/servlet/FlexStatementService.SendRequest";
 export const IBKR_STATEMENT_URL = "https://ndcdyn.interactivebrokers.com/AccountManagement/FlexWebService/SendRequest";

@@ -8,6 +8,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
 import { PluginRenderProvider } from "../../runtime";
 import { ibkrBroker } from "../../ibkr/broker-adapter";
+import { setIbkrGatewayBridge, type IbkrGatewayBridge } from "../../ibkr/gateway-bridge";
 import { BrokersPane } from "./index";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -112,7 +113,18 @@ async function pressKey(key: string) {
 }
 
 describe("BrokersPane", () => {
+  // The IBKR Console action is Gateway-only. A profile row in an install with
+  // the Gateway plugin has a bridge registered; without one the action is
+  // correctly disabled, which is covered in gateway-bridge.test.ts.
   test("renders IBKR row and invokes broker actions", async () => {
+    setIbkrGatewayBridge({
+      refresh: async () => {},
+      getService: () => ({}),
+      removeInstance: async () => {},
+      getStatus: () => ({ state: "connected", message: "", updatedAt: 0 }),
+      subscribeStatus: () => () => {},
+    } as unknown as IbkrGatewayBridge);
+
     const calls: string[] = [];
     testSetup = await testRender(<FooterHarness calls={calls} instance={createGatewayInstance()} height={35} />, { width: 92, height: 35 });
     await act(async () => {
