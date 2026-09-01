@@ -47,23 +47,54 @@ describe("command bar view model helpers", () => {
     expect(sections.map((section) => section.category)).toEqual(["Tickers", "Config", "Danger", "Debug"]);
   });
 
-  test("drops an offer-only section below real matches even when its category leads", () => {
+  test("drops an offer-only section below real matches whatever its category priority", () => {
     const sections = buildSections([
-      { id: "assist:sign-up", category: "Ask AI", disabled: true, defaultSelectable: false },
+      { id: "exact", category: "Exact Match", disabled: true, defaultSelectable: false },
       { id: "holders", category: "Panes" },
     ]);
 
-    expect(sections.map((section) => section.category)).toEqual(["Panes", "Ask AI"]);
+    expect(sections.map((section) => section.category)).toEqual(["Panes", "Exact Match"]);
     expect(sections[0]?.items[0]?.id).toBe("holders");
   });
 
-  test("keeps an answered AI section leading the list", () => {
-    const sections = buildSections([
+  test("lands async sections under the local matches in arrival order, whatever the array order", () => {
+    // The AI answers last (~600ms+), then documents, then symbol search, so
+    // each arrival only pushes rows below itself. Documents come from a
+    // provider, which contributes its own priority.
+    const items = [
       { id: "assist:candidate:0", category: "Ask AI" },
+      { id: "doc", category: "Documents" },
+      { id: "nvda-mx", category: "Instruments" },
+      { id: "nvda", category: "Exact Match" },
       { id: "holders", category: "Panes" },
-    ]);
+      { id: "help", category: "Commands" },
+      { id: "quit", category: "Application" },
+      { id: "plugin-row", category: "Portfolio" },
+    ];
+    const categoryPriorities = new Map([["Documents", 200]]);
 
-    expect(sections.map((section) => section.category)).toEqual(["Ask AI", "Panes"]);
+    for (const sectionOrder of ["default", "app-first"] as const) {
+      const sections = buildSections(items, { sectionOrder, categoryPriorities });
+      expect(sections.map((section) => section.category)).toEqual([
+        "Exact Match",
+        "Panes",
+        "Commands",
+        "Application",
+        "Portfolio",
+        "Instruments",
+        "Documents",
+        "Ask AI",
+      ]);
+    }
+  });
+
+  test("lets a provider's contributed priority override the built-in band", () => {
+    const sections = buildSections([
+      { id: "assist", category: "Ask AI" },
+      { id: "doc", category: "Documents" },
+    ], { categoryPriorities: new Map([["Documents", 400]]) });
+
+    expect(sections.map((section) => section.category)).toEqual(["Ask AI", "Documents"]);
   });
 
   test("keeps non-exact ticker suggestions behind app sections in app-first order", () => {

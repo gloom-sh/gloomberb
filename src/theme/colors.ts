@@ -212,6 +212,42 @@ export function commandBarMatchText(palette: ThemeColors = colors): string {
   );
 }
 
+export type CommandBarBadgeTone = "command" | "instrument" | "document";
+
+/** Panel, hover and selection: the surfaces a badge sits on. */
+function commandBarBadgeSurfaces(palette: ThemeColors): readonly [string, string, string, string] {
+  return [
+    commandBarBg(palette),
+    commandBarPanelBg(palette),
+    commandBarHoverBg(palette),
+    commandBarSelectedBg(palette),
+  ] as const;
+}
+
+function commandBarBadgeHue(tone: CommandBarBadgeTone, palette: ThemeColors): string {
+  if (tone === "instrument") return palette.warning;
+  if (tone === "document") return palette.neutral;
+  return palette.borderFocused;
+}
+
+/**
+ * Background of the tag left of a result label. Three theme hues so commands,
+ * instruments and documents scan apart without shouting: a tint of the hue over
+ * the panel, pushed further towards the hue only until it separates from every
+ * surface it can land on, the selected row included.
+ */
+export function commandBarBadgeBg(tone: CommandBarBadgeTone, palette: ThemeColors = colors): string {
+  const hue = commandBarBadgeHue(tone, palette);
+  const surfaces = commandBarBadgeSurfaces(palette);
+  return blendForContrastOnSurfaces(blendHex(surfaces[0], hue, 0.4), surfaces, hue, 1.4);
+}
+
+export function commandBarBadgeText(tone: CommandBarBadgeTone, palette: ThemeColors = colors): string {
+  const base = commandBarBadgeBg(tone, palette);
+  const preferred = higherContrast(palette.textBright, palette.bg, base);
+  return blendForContrast(preferred, base, higherContrast("#ffffff", "#000000", base), 4.5);
+}
+
 export function commandBarSelectedText(palette: ThemeColors = colors): string {
   const base = commandBarSelectedBg(palette);
   const preferred = higherContrast(palette.selectedText, palette.text, base);

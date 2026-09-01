@@ -19,6 +19,7 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneSettingField } from "../../../types/plugin";
 import { useShortcut } from "../../../react/input";
 import { Box, Text } from "../../../ui";
+import { Header } from "../../layout/header";
 
 export async function emitKeypress(
   renderer: Awaited<ReturnType<typeof testRender>>,
@@ -387,10 +388,14 @@ export function CommandBarHarness({
     <ThemeProvider themeId={getEffectiveThemeId(currentState)}>
       <AppContext value={{ state: currentState, dispatch: currentDispatch }}>
         <TestDialogProvider>
-          {/* The command bar now opens over the header row too, so it covers the
-              top of the frame. Probes sit to the right of the panel, which is
-              width-clamped and never reaches the far edge. */}
-          <Box flexDirection="row" gap={1} justifyContent="flex-end">
+          {/* The header hosts the bar's input while it is open, so typing in a
+              test needs the real header on the first row. */}
+          <Header />
+          <Box flexGrow={1} />
+          {/* The sheet spans the full width and can reach as far down as
+              termHeight - 6 (panel/layout.ts), so probes live on the bottom row,
+              the one place no sheet height can cover. */}
+          <Box flexDirection="row" gap={1} height={1}>
             {live && <ThemeProbe />}
             {showQueryState && <Text>{`query:${currentState.commandBarQuery}`}</Text>}
           </Box>

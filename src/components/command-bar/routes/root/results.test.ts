@@ -113,3 +113,49 @@ describe("provider rows in the root result model", () => {
     expect(items.map((item) => item.id)).not.toContain(documentRow.id);
   });
 });
+
+describe("assist rows in the root result model", () => {
+  const assist = {
+    enabled: true,
+    auto: true,
+    state: { status: "idle" as const },
+    onAsk: () => {},
+    onSignUp: () => {},
+    onRunCandidate: () => {},
+  };
+
+  test("land under provider rows and keep the Thinking placeholder", () => {
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: "margin",
+      assist,
+      paneShortcutItems: () => [paneRow],
+      providerResultItems: [documentRow],
+    }));
+
+    expect(orderListResults(items, { categoryPriorities: new Map([["Documents", 200]]) }).map((item) => item.id))
+      .toEqual([paneRow.id, documentRow.id, "assist:pending"]);
+  });
+
+  test("the local matcher no longer drags in panes whose keywords scatter the letters", () => {
+    const optionsRow: ResultItem = {
+      id: "pane-template:options-calculator",
+      label: "Options Calculator",
+      detail: "Price options with the Black-Scholes model and view the Greeks",
+      searchText: "options greeks implied volatility derivatives pricing",
+      category: "Panes",
+      kind: "action",
+      action: () => {},
+    };
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: "nvidia",
+      paneShortcutItems: () => [optionsRow],
+    }));
+    expect(items).toEqual([]);
+
+    const { items: abbreviated } = buildRootResultModel(rootOptions({
+      rootQuery: "opt calc",
+      paneShortcutItems: () => [optionsRow],
+    }));
+    expect(abbreviated.map((item) => item.id)).toEqual([optionsRow.id]);
+  });
+});

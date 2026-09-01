@@ -1,11 +1,15 @@
 import type { LayoutBounds } from "../../../plugins/pane-manager";
-import {
-  resolveAppHeaderHeightCells,
-  resolveCommandSurfaceWidth,
-  resolveHeaderPromptGeometry,
-} from "../../layout/shell/chrome";
+import { resolveAppHeaderHeightCells } from "../../layout/shell/chrome";
 import { estimateWorkflowBodyRows } from "../workflow/fields";
 import type { CommandBarRoute } from "../workflow/types";
+
+/**
+ * Widest the results column gets. The sheet spans the window, but a label that
+ * runs 180 cells is unreadable and the right column would drift off to where
+ * the eye never goes. Left-aligned under the header prompt rather than centred
+ * so the list stays attached to the prompt it drops out of.
+ */
+const RESULTS_MAX_WIDTH = 110;
 
 export interface CommandBarPanelLayout {
   barWidth: number;
@@ -48,7 +52,7 @@ export function resolveCommandBarPanelLayout({
   themePickerActive: boolean;
   titleBarOverlay: boolean | undefined;
 }): CommandBarPanelLayout {
-  const barWidth = resolveCommandSurfaceWidth({ nativePaneChrome, termWidth });
+  const barWidth = termWidth;
   const baseBodyHeight = Math.min(16, Math.max(9, termHeight - 9));
   const contentPadding = nativePaneChrome ? 1 : 3;
   const workflowBodyHeight = currentRoute?.kind === "workflow"
@@ -75,23 +79,19 @@ export function resolveCommandBarPanelLayout({
   const nativePanelPaddingRows = nativePaneChrome
     ? Math.ceil((14 * 2) / Math.max(1, cellHeightPx))
     : 0;
-  const nativeBodyChromeRows = (currentRoute?.kind === "workflow"
-    || currentRoute?.kind === "confirm"
-    || showCustomMultiSelectPicker)
-    ? 1
-    : currentRoute ? 3 : 2;
+  // The query lives in the header prompt, so the sheet's only chrome row is the
+  // shortcut feedback line on the root screen or the back link on a nested one.
+  // The terminal adds a title row and a padding row at the bottom edge.
+  const bodyChromeRows = 1;
   const barHeight = nativePaneChrome
-    ? bodyHeight + nativeBodyChromeRows + nativePanelPaddingRows
-    : bodyHeight + 7;
+    ? bodyHeight + bodyChromeRows + nativePanelPaddingRows
+    : bodyHeight + bodyChromeRows + 2;
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
-  // The panel opens *over* the header prompt rather than under it, so its query
-  // row lands on the prompt's own row. Anchoring below instead left the typed
-  // text in a second field under an empty-looking prompt, which read as two
-  // controls.
-  const promptGeometry = resolveHeaderPromptGeometry({ nativePaneChrome, termWidth, titleBarOverlay });
-  const barLeft = Math.max(0, Math.min(promptGeometry.left, termWidth - barWidth));
-  const barTop = 0;
-  const resultsInnerWidth = Math.max(12, barWidth - nativePanelPaddingColumns - contentPadding * 2);
+  const barTop = appHeaderHeight;
+  const resultsInnerWidth = Math.max(
+    12,
+    Math.min(RESULTS_MAX_WIDTH, barWidth - nativePanelPaddingColumns - contentPadding * 2),
+  );
   const trailingWidth = Math.max(8, Math.min(12, Math.floor(resultsInnerWidth * 0.18)));
   const labelWidth = Math.max(10, resultsInnerWidth - trailingWidth);
   const queryDisplayWidth = Math.max(8, resultsInnerWidth);
@@ -102,18 +102,17 @@ export function resolveCommandBarPanelLayout({
     bodyHeight,
     contentPadding,
     listBodyHeight,
-    // Occluder coordinates are relative to the content area, which starts below
-    // the header. The panel now begins above that origin, so the part covering
-    // the header is clipped off rather than reported as negative.
+    // Occluder coordinates are relative to the content area, which starts where
+    // the sheet does, so the sheet's own top is the content origin.
     nativeOccluderRect: {
-      x: barLeft,
-      y: Math.max(0, barTop - appHeaderHeight),
+      x: 0,
+      y: 0,
       width: barWidth,
-      height: Math.max(0, barHeight - Math.max(0, appHeaderHeight - barTop)),
+      height: barHeight,
     },
     nativePanelPaddingColumns,
     panelBounds: {
-      x: barLeft,
+      x: 0,
       y: barTop,
       width: barWidth,
       height: barHeight,

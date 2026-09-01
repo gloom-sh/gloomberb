@@ -53,29 +53,43 @@ export function mergeTickerSearchResultItems(
       : item);
 }
 
+export const ROOT_INSTRUMENTS_CATEGORY = "Instruments";
+
+/** Enough to surface the listing the user means without burying the sections below. */
+const ROOT_INSTRUMENTS_LIMIT = 5;
+
+function isInstrumentItem(item: ResultItem): boolean {
+  return item.kind === "ticker" || item.kind === "search";
+}
+
+/**
+ * Fold symbol-search rows into a plain root query's list. An exact symbol hit
+ * is promoted ahead of everything; the rest collapse into one Instruments
+ * section with one row per symbol, since the listing split of the DES route
+ * is noise next to panes and commands. Info rows ("no matches", "search
+ * failed") are dropped: the instruments are an extra here, never the answer.
+ */
 export function mergePlainRootTickerResults(
   query: string,
   providerItems: ResultItem[],
   rootItems: ResultItem[],
 ): ResultItem[] {
-  const merged: ResultItem[] = [];
-  const seen = new Set<string>();
-  const addItem = (item: ResultItem, options?: { skipInfo?: boolean }) => {
-    if (options?.skipInfo && item.kind === "info") return;
-    const key = (item.kind === "ticker" || item.kind === "search")
-      ? `${item.kind}:${item.label.trim().toUpperCase()}:${(item.right || "").trim().toUpperCase()}`
-      : `${item.kind}:${item.id}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    merged.push(item);
-  };
+  const seenSymbols = new Set<string>();
+  const instruments: ResultItem[] = [];
+  for (const item of providerItems) {
+    if (!isInstrumentItem(item)) continue;
+    const symbol = item.label.trim().toUpperCase();
+    if (seenSymbols.has(symbol)) continue;
+    seenSymbols.add(symbol);
+    instruments.push(item);
+    if (instruments.length >= ROOT_INSTRUMENTS_LIMIT) break;
+  }
+  if (instruments.length === 0) return rootItems;
 
-  providerItems
-    .filter((item) => item.category === "Exact Match" || isExactTickerResultMatch(item, query))
-    .forEach((item) => addItem(item, { skipInfo: true }));
-  rootItems.forEach((item) => addItem(item));
-  providerItems
-    .filter((item) => item.category !== "Exact Match" && !isExactTickerResultMatch(item, query))
-    .forEach((item) => addItem(item, { skipInfo: true }));
-  return merged.length > 0 ? merged : rootItems;
+  const isExact = (item: ResultItem) => item.category === "Exact Match" || isExactTickerResultMatch(item, query);
+  return [
+    ...instruments.filter(isExact).map((item) => ({ ...item, category: "Exact Match" })),
+    ...rootItems,
+    ...instruments.filter((item) => !isExact(item)).map((item) => ({ ...item, category: ROOT_INSTRUMENTS_CATEGORY })),
+  ];
 }

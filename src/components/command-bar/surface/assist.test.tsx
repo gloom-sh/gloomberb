@@ -101,7 +101,7 @@ async function waitForFrameWithout(text: string): Promise<string> {
 }
 
 describe("CommandBar AI assist", () => {
-  test("asks on its own, with no Enter, and leads the list with the answer", async () => {
+  test("asks on its own, with no Enter, and lands the answer under the local matches", async () => {
     signInVerified();
     let sentCommandCount = 0;
     let releaseResponse = () => {};
@@ -134,15 +134,16 @@ describe("CommandBar AI assist", () => {
     const answered = await waitForFrameToContain("CHAT #general — Open the general channel", ASSIST_WAIT_ATTEMPTS);
     expect(answered).not.toContain("Thinking…");
     expect(requests).toHaveLength(1);
-    // Above the local matches, and holding the selection an untouched query
-    // never moved: plain Enter runs the AI's best guess.
-    expect(answered.indexOf("Ask AI")).toBeLessThan(answered.indexOf("Panes"));
+    // The slowest source lands last, under the local matches, so its arrival
+    // shifts nothing the user was already looking at, and plain Enter still
+    // runs the local match the untouched selection rests on.
+    expect(answered.indexOf("Panes")).toBeLessThan(answered.indexOf("Ask AI"));
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });
 
-  test("keeps the row the user picked when an answer lands above it", async () => {
+  test("keeps the user's place when the answer replaces the thinking row", async () => {
     signInVerified();
     let releaseResponse = () => {};
     const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
@@ -167,15 +168,15 @@ describe("CommandBar AI assist", () => {
 
     await testSetup.renderOnce();
     await waitForRequest(requests);
-    // Down lands on the local match while a single "Thinking…" row sits above.
+    // Down leaves the local match for the single "Thinking…" row under it.
     await emitKeypress(testSetup, { name: "down" });
     releaseResponse();
     await waitForFrameToContain("CHAT #random — Open the random channel", ASSIST_WAIT_ATTEMPTS);
 
-    // Two answers replaced that one row, so the chosen row moved down by one —
-    // Enter still runs it rather than whatever now sits at its old index.
+    // Two answers replaced that row in place, so the selection stays where the
+    // user put it and Enter runs the best candidate, not the local match above.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
   });
 
   test("runs an argless prefix candidate that still carries an argument", async () => {
@@ -227,6 +228,7 @@ describe("CommandBar AI assist", () => {
 
     // Enter on "Thinking…" is a promise, not a dead key: there is nothing to
     // run yet, so the ask is claimed and its answer runs when it arrives.
+    await emitKeypress(testSetup, { name: "down" });
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([]);
 
@@ -275,8 +277,8 @@ describe("CommandBar AI assist", () => {
     await testSetup.renderOnce();
     expect(requests).toEqual([]);
 
-    // The offer leads the list but never takes the Enter that belongs to the
-    // local match the user was already looking at.
+    // The offer sits under the list and never takes the Enter that belongs to
+    // the local match the user was already looking at.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });

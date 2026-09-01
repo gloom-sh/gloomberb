@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ResultItem } from "../../list/model";
-import { mergeTickerSearchResultItems } from "./results";
+import { mergePlainRootTickerResults, mergeTickerSearchResultItems } from "./results";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -31,4 +31,38 @@ test("keeps completed ticker-search results authoritative over provisional rows"
 
   const noResults = resultItem("no-results", "No matches for Apple", "", "info");
   expect(mergeTickerSearchResultItems("Apple", [noResults], [])).toEqual([noResults]);
+});
+
+test("folds a plain query's symbol hits into one capped Instruments section behind the local rows", () => {
+  const pane: ResultItem = {
+    id: "pane:news",
+    label: "News",
+    detail: "",
+    category: "Panes",
+    kind: "action",
+    action: () => {},
+  };
+  const providerItems = [
+    resultItem("search:NVDA", "NVDA", "Equity NASDAQ", "search"),
+    // The saved row for the same symbol carries a different badge; one row per symbol.
+    resultItem("goto:NVDA", "NVDA", "NASDAQ"),
+    resultItem("search:NVDA.MX", "NVDA.MX", "Equity BMV", "search"),
+    resultItem("search:NVD.DE", "NVD.DE", "Equity XETRA", "search"),
+    resultItem("search:NVDL", "NVDL", "Fund NASDAQ", "search"),
+    resultItem("search:NVDS", "NVDS", "Fund NASDAQ", "search"),
+    resultItem("search:NVDX", "NVDX", "Fund NASDAQ", "search"),
+    resultItem("search-error", "Search failed", "", "info"),
+  ];
+
+  const merged = mergePlainRootTickerResults("nvda", providerItems, [pane]);
+
+  expect(merged.map((item) => [item.id, item.category])).toEqual([
+    ["search:NVDA", "Exact Match"],
+    ["pane:news", "Panes"],
+    ["search:NVDA.MX", "Instruments"],
+    ["search:NVD.DE", "Instruments"],
+    ["search:NVDL", "Instruments"],
+    ["search:NVDS", "Instruments"],
+  ]);
+  expect(merged.find((item) => item.id === "search:NVDA.MX")?.right).toBe("Equity BMV");
 });

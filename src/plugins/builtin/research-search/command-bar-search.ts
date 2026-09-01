@@ -27,6 +27,8 @@ function hitResultDef(hit: CloudSearchHit, openPane: (hit: CloudSearchHit) => vo
     id: hit.id,
     label: hit.title,
     detail: [hitTypeLabel(hit), formatHitDate(hit.publishedAt)].filter(Boolean).join(" · "),
+    // NEWS, CALL, or the filing form; the ticker stays on the right.
+    badge: hitTypeLabel(hit),
     right: hit.ticker,
     lines: segments.length > 0 ? [{ segments }] : undefined,
     keywords: [hit.ticker, hitTypeLabel(hit)],
@@ -49,14 +51,13 @@ export function createDocumentSearchProvider(ctx: GloomPluginContext): CommandBa
     id: "research-search:documents",
     category: "Documents",
     /**
-     * Below every ticker category (-40 to -10) and below Ask AI, so navigation
-     * and exact matches still lead. Above the default 0 that generic command and
-     * pane matches use, because those are fuzzy: "nvidia earnings" pulls in
-     * Treasury Auctions and Dividend Yield, and at a positive priority the real
-     * hits sorted beneath that noise and fell outside the panel's 16-row body
-     * entirely, so nothing was visible without scrolling.
+     * Async sections sit below every synchronous one, ordered by how long they
+     * take to arrive, so a late arrival only ever pushes rows below itself and
+     * never the rows the eye is already on. Instruments answer in ~200ms,
+     * documents in ~400ms, Ask AI later still; the view model pins those bands
+     * at 100, 200 and 300 and this is the middle one.
      */
-    priority: -5,
+    priority: 200,
     minQueryLength: 3,
     debounceMs: 350,
 

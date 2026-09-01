@@ -13,7 +13,10 @@ import {
   commandBarText,
 } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
+import { t } from "../../../i18n";
+import type { ListScreenState } from "../list/model";
 import { CommandBarPanelBody } from "./body";
+import { publishCommandBarPrompt } from "./prompt-binding";
 import type { CommandBarPanelProps } from "./types";
 
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
@@ -21,6 +24,12 @@ const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
 const NATIVE_COMMAND_BAR_PADDING_X_PX = 14;
 const NATIVE_COMMAND_BAR_PADDING_Y_PX = 14;
 const NATIVE_COMMAND_BAR_SHADOW = "0 10px 18px color-mix(in srgb, var(--gloom-bg) 34%, transparent)";
+
+function resolvePromptPlaceholder(listState: ListScreenState): string {
+  if (listState.kind === "root") return t("Command or plain English…");
+  if (listState.title === "Security Description") return t("Search tickers");
+  return t("Filter");
+}
 
 export function CommandBarPanel({
   bodyHeight,
@@ -58,7 +67,6 @@ export function CommandBarPanel({
   panelBounds,
   queryDisplayWidth,
   rootGhostSuffix,
-  rootQueryLength,
   rootShortcutFeedback,
   selectedScrollRowIndex,
   termHeight,
@@ -95,6 +103,24 @@ export function CommandBarPanel({
     }
   }, [listBodyHeight, nativeListScrollRef, selectedScrollRowIndex, visibleListState?.kind, visibleListState?.query]);
 
+  // The header prompt is the bar's input while a list screen is showing. A
+  // workflow owns its own fields, so it publishes nothing and the prompt goes
+  // quiet rather than taking focus from them.
+  useLayoutEffect(() => {
+    if (!visibleListState) {
+      publishCommandBarPrompt(null);
+      return;
+    }
+    publishCommandBarPrompt({
+      screenKey: `${visibleListState.kind}:${visibleListState.title}`,
+      query: visibleListState.query,
+      placeholder: resolvePromptPlaceholder(visibleListState),
+      ghostSuffix: visibleListState.kind === "root" ? rootGhostSuffix : null,
+      onQueryChange,
+    });
+  }, [onQueryChange, rootGhostSuffix, visibleListState]);
+  useLayoutEffect(() => () => publishCommandBarPrompt(null), []);
+
   useLayoutEffect(() => {
     onNativeOccluderChange?.(nativeOccluderRect);
     return () => {
@@ -109,12 +135,14 @@ export function CommandBarPanel({
   ]);
 
   return (
+    // The click-away overlay starts where the sheet does: the header above it
+    // holds the bar's input, and a click there must reach it, not close the bar.
     <Box
       position="absolute"
-      top={0}
+      top={panelBounds.y}
       left={0}
       width={termWidth}
-      height={termHeight}
+      height={Math.max(0, termHeight - panelBounds.y)}
       zIndex={nativePaneChrome ? COMMAND_BAR_OVERLAY_Z_INDEX : 100}
       onMouseDown={(event: any) => {
         event.stopPropagation?.();
@@ -124,7 +152,7 @@ export function CommandBarPanel({
     >
       <Box
         position="absolute"
-        top={panelBounds.y}
+        top={0}
         left={panelBounds.x}
         width={panelBounds.width}
         height={panelBounds.height}
@@ -136,7 +164,9 @@ export function CommandBarPanel({
         }}
         data-gloom-role="command-bar-panel"
         style={nativePaneChrome ? {
-          borderRadius: 8,
+          // A sheet hanging off the header: square where it meets the header,
+          // rounded only along its free bottom edge.
+          borderRadius: "0 0 8px 8px",
           boxShadow: NATIVE_COMMAND_BAR_SHADOW,
           overflow: "hidden",
           padding: `${NATIVE_COMMAND_BAR_PADDING_Y_PX}px ${NATIVE_COMMAND_BAR_PADDING_X_PX}px`,
@@ -167,7 +197,6 @@ export function CommandBarPanel({
           onMultiSelectSelect={onMultiSelectSelect}
           onMultiSelectToggle={onMultiSelectToggle}
           onNativeSelectRef={onNativeSelectRef}
-          onQueryChange={onQueryChange}
           onThemeCommit={onThemeCommit}
           onThemePreview={onThemePreview}
           onWorkflowActiveTextareaSync={onWorkflowActiveTextareaSync}
@@ -185,8 +214,6 @@ export function CommandBarPanel({
             panelBg,
           }}
           queryDisplayWidth={queryDisplayWidth}
-          rootGhostSuffix={rootGhostSuffix}
-          rootQueryLength={rootQueryLength}
           rootShortcutFeedback={rootShortcutFeedback}
           themePickerActive={themePickerActive}
           themePickerFilter={themePickerFilter}

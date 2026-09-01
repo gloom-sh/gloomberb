@@ -65,7 +65,6 @@ export interface CommandBarPanelProps {
   panelBounds: LayoutBounds;
   queryDisplayWidth: number;
   rootGhostSuffix: string | null;
-  rootQueryLength: number;
   rootShortcutFeedback: string | null;
   /**
    * Line the scroll box has to reach for the selected row to be fully visible,

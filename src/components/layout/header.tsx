@@ -1,7 +1,27 @@
-import { Box, SpinnerMark, Text, TextAttributes, useRendererHost, useUiCapabilities, useUiHost } from "../../ui";
-import { useCallback, useEffect } from "react";
-import { blendHex, commandBarBg } from "../../theme/colors";
+import {
+  Box,
+  Input,
+  SpinnerMark,
+  Text,
+  TextAttributes,
+  useRendererHost,
+  useUiCapabilities,
+  useUiHost,
+  type InputRenderable,
+} from "../../ui";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import {
+  blendHex,
+  commandBarBg,
+  commandBarInputBg,
+  commandBarSubtleText,
+  commandBarText,
+} from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
+import {
+  useCommandBarPromptBinding,
+  type CommandBarPromptBinding,
+} from "../command-bar/panel/prompt-binding";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
 import {
   selectCommandBarOpen,
@@ -12,6 +32,7 @@ import {
 } from "../../state/selectors-ui";
 import { useViewport } from "../../react/input";
 import { t, tf } from "../../i18n";
+import { truncateToDisplayWidth } from "../../utils/format";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { getTitlebarLeadingInset } from "./titlebar-overlay";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
@@ -43,11 +64,66 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
   return { placeholder: "", shortcut: "" };
 }
 
+const PROMPT_CARET = "> ";
+
 /**
- * An affordance, not an input: it opens the overlay and never takes keyboard
- * focus. Gloomberb's panes are driven by bare single keys, so a live header
- * input would swallow every pane shortcut.
+ * The command bar's input while the bar is open. Gloomberb's panes are driven
+ * by bare single keys, so the input only exists while the bar is open; the idle
+ * prompt is an affordance that never takes keyboard focus.
  */
+function HeaderPromptInput({
+  binding,
+  nativePaneChrome,
+  width,
+}: {
+  binding: CommandBarPromptBinding;
+  nativePaneChrome: boolean;
+  width: number;
+}) {
+  const colors = useThemeColors();
+  const inputRef = useRef<InputRenderable | null>(null);
+  const { ghostSuffix, onQueryChange, placeholder, query, screenKey } = binding;
+  const textColor = commandBarText(colors);
+  const subtleColor = commandBarSubtleText(colors);
+
+  // The buffer is the source of truth while typing; only an outside change,
+  // such as Ctrl+U or a popped route restoring its query, has to be written back.
+  useLayoutEffect(() => {
+    const input = inputRef.current;
+    if (!input || input.editBuffer.getText() === query) return;
+    input.editBuffer.setText?.(query);
+    input.setCursorOffset?.(query.length);
+  }, [query, screenKey]);
+
+  const ghostLeft = Math.max(0, Math.min(query.length, width - 1));
+  return (
+    <Box width={width} height={1} position="relative" style={nativePaneChrome ? undefined : { overflow: "hidden" }}>
+      <Input
+        key={screenKey}
+        ref={inputRef}
+        value={query}
+        onInput={onQueryChange}
+        placeholder={placeholder}
+        focused
+        data-gloom-remote-scope="command-bar"
+        data-gloom-remote-surface="command-bar"
+        width={nativePaneChrome ? "100%" : width}
+        backgroundColor="transparent"
+        focusedBackgroundColor="transparent"
+        textColor={textColor}
+        focusedTextColor={textColor}
+        placeholderColor={subtleColor}
+        cursorColor={colors.textBright}
+      />
+      {ghostSuffix && (
+        <Box position="absolute" top={0} left={ghostLeft} width={Math.max(0, width - ghostLeft)} height={1}>
+          <Text fg={subtleColor}>{truncateToDisplayWidth(ghostSuffix, Math.max(0, width - ghostLeft))}</Text>
+        </Box>
+      )}
+    </Box>
+  );
+}
+
 function HeaderCommandPrompt({
   nativePaneChrome,
   onOpen,
@@ -62,14 +138,19 @@ function HeaderCommandPrompt({
   width: number;
 }) {
   const colors = useThemeColors();
+  const binding = useCommandBarPromptBinding();
   const { placeholder, shortcut } = resolveHeaderPromptContent(width, shortcutLabel);
   const idleBg = blendHex(colors.header, colors.bg, 0.55);
-  // The overlay opens across this row and renders the live query there, so the
-  // prompt yields the row entirely rather than painting a second surface under
-  // it.
-  const backgroundColor = open ? undefined : idleBg;
-  const caretColor = blendHex(colors.headerText, colors.header, 0.15);
+  // Open, the prompt takes the sheet's own surface so the two read as one
+  // control: the sheet is the prompt, expanded.
+  const backgroundColor = open
+    ? (nativePaneChrome ? commandBarInputBg(colors) : commandBarBg(colors))
+    : idleBg;
+  const caretColor = open
+    ? commandBarText(colors)
+    : blendHex(colors.headerText, colors.header, 0.15);
   const mutedColor = blendHex(colors.headerText, colors.header, 0.42);
+  const inputWidth = Math.max(1, width - 2 - PROMPT_CARET.length);
 
   return (
     <Box
@@ -101,9 +182,11 @@ function HeaderCommandPrompt({
           : {}),
       }}
     >
-      {open ? null : (
+      <Text fg={caretColor} attributes={TextAttributes.BOLD}>{PROMPT_CARET}</Text>
+      {open ? (
+        binding ? <HeaderPromptInput binding={binding} nativePaneChrome={nativePaneChrome} width={inputWidth} /> : null
+      ) : (
         <>
-          <Text fg={caretColor} attributes={TextAttributes.BOLD}>{"> "}</Text>
           <Text fg={mutedColor}>{placeholder}</Text>
           <Box flexGrow={1} minWidth={0} />
           {shortcut ? <Text fg={mutedColor}>{shortcut}</Text> : null}

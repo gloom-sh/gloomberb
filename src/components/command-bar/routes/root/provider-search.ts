@@ -85,10 +85,13 @@ export function useRootProviderSearch(options: {
     }
 
     const searchQuery = rootTickerSearchArg;
-    if (rootSearchTimerRef.current) clearTimeout(rootSearchTimerRef.current);
+    // A re-run for the same query (a quote refresh changed `tickers`, say) must
+    // leave the pending debounce alone, or the search is lost and the spinner
+    // never clears. Only a new query cancels it.
     if (rootLastSearchedQueryRef.current === searchQuery) {
       return;
     }
+    if (rootSearchTimerRef.current) clearTimeout(rootSearchTimerRef.current);
 
     rootLastSearchedQueryRef.current = searchQuery;
     setRootSearching(true);
@@ -158,10 +161,6 @@ export function useRootProviderSearch(options: {
         }
       }
     }, 200);
-
-    return () => {
-      if (rootSearchTimerRef.current) clearTimeout(rootSearchTimerRef.current);
-    };
   }, [
     activeCollectionId,
     buildTickerSearchResultItems,
@@ -174,6 +173,10 @@ export function useRootProviderSearch(options: {
     tickers,
     writeTickerSearchCache,
   ]);
+
+  useEffect(() => () => {
+    if (rootSearchTimerRef.current) clearTimeout(rootSearchTimerRef.current);
+  }, []);
 
   const rootResults = useMemo(() => {
     if (rootTickerSearchArg && rootProviderResultsQuery === rootTickerSearchArg && rootProviderResults) {
@@ -199,13 +202,17 @@ export function useRootProviderSearch(options: {
     () => orderListResults(rootResults, { sectionOrder: rootSectionOrder, categoryPriorities }),
     [categoryPriorities, rootResults, rootSectionOrder],
   );
+  // Only the DES route replaces the list wholesale and so wants the selection
+  // reset when the answer lands; a plain query's instruments append below the
+  // local matches, and the row the user is on must stay put.
   const activeRootProviderResultsKey = useMemo(() => {
+    if (rootPlainTickerSearchArg) return null;
     if (!rootTickerSearchArg || rootProviderResultsQuery !== rootTickerSearchArg || !rootProviderResults) return null;
     return [
       rootTickerSearchArg,
       ...rootProviderResults.map((item) => `${item.id}:${item.category}:${item.label}:${item.right || ""}`),
     ].join("\n");
-  }, [rootProviderResults, rootProviderResultsQuery, rootTickerSearchArg]);
+  }, [rootPlainTickerSearchArg, rootProviderResults, rootProviderResultsQuery, rootTickerSearchArg]);
 
   return {
     activeRootProviderResultsKey,

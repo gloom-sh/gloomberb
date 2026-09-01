@@ -102,6 +102,8 @@ const PUBLIC_API: Record<string, readonly string[]> = {
     "clearTransientThemePreview",
     "colors",
     "commandBarAccentText",
+    "commandBarBadgeBg",
+    "commandBarBadgeText",
     "commandBarBg",
     "commandBarHeadingText",
     "commandBarHoverBg",

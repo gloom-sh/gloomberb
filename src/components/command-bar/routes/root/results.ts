@@ -243,7 +243,12 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       ...tickerActionItems(),
       ...pluginCommandItems(),
     ];
-    const matchedItems = fuzzyFilter(allItems, rootQuery, (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`);
+    const matchedItems = fuzzyFilter(
+      allItems,
+      rootQuery,
+      (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`,
+      (item) => item.label,
+    );
     items.push(...matchedItems);
   }
 
@@ -261,9 +266,8 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...providerResultItems);
   }
 
-  // Built from the local matches, then moved above them: the AI answers the
-  // question the user typed, so it leads the list. Rows landing here renumber
-  // everything below, which the root selection effect absorbs by identity.
+  // Appended last: the AI is the slowest source to answer, and its section is
+  // placed by buildSections, so its rows land under everything already shown.
   const assistItems = assist
     && isAssistSectionVisible(
       assist,
@@ -274,5 +278,5 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];
 
-  return { items: dedupeById([...assistItems, ...items]), initialIdx };
+  return { items: dedupeById([...items, ...assistItems]), initialIdx };
 }

@@ -22,9 +22,9 @@ export function resolveAppHeaderHeightCells(options: { titleBarOverlay?: boolean
 }
 
 /**
- * Width shared by the header prompt and the overlay that drops out of it. They
- * are one control shown in two states, so a single width keeps the overlay
- * reading as the prompt expanding rather than as a separate panel.
+ * Width of the header prompt. It stays a fraction of the window so the update
+ * status and the Help pill keep their place; the command sheet that drops out
+ * of it spans the full width on its own.
  */
 export function resolveCommandSurfaceWidth(options: { termWidth: number; nativePaneChrome?: boolean }): number {
   const { termWidth } = options;
@@ -34,15 +34,15 @@ export function resolveCommandSurfaceWidth(options: { termWidth: number; nativeP
 }
 
 export interface HeaderPromptGeometry {
-  /** Column the prompt starts at; the command overlay opens at the same column. */
+  /** Column the prompt starts at. */
   left: number;
   width: number;
 }
 
 /**
- * Geometry of the always-visible command prompt in the header. The command bar
- * overlay resolves it too, so both sides agree on the anchor without the header
- * having to report a measured rect.
+ * Geometry of the always-visible command prompt in the header. While the
+ * command bar is open the same prompt hosts its input, so the geometry never
+ * changes underneath the user.
  */
 export function resolveHeaderPromptGeometry(options: {
   termWidth: number;

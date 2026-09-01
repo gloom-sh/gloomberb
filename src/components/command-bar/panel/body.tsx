@@ -2,10 +2,7 @@ import { Box, Text, TextAttributes } from "../../../ui";
 import { commandBarMatchText } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Button, Spinner } from "../../ui";
-import {
-  CommandBarListBody,
-  CommandBarListHeader,
-} from "../list/view";
+import { CommandBarListBody } from "../list/view";
 import {
   CommandBarMultiSelectBody,
   isMultiSelectPickerRoute,
@@ -25,7 +22,9 @@ type CommandBarPanelBodyProps = Omit<
   | "nativeOccluderRect"
   | "onNativeOccluderChange"
   | "onOverlayClose"
+  | "onQueryChange"
   | "panelBounds"
+  | "rootGhostSuffix"
   | "selectedScrollRowIndex"
   | "termHeight"
   | "termWidth"
@@ -58,15 +57,12 @@ export function CommandBarPanelBody({
   onMultiSelectSelect,
   onMultiSelectToggle,
   onNativeSelectRef,
-  onQueryChange,
   onThemeCommit,
   onThemePreview,
   onWorkflowActiveTextareaSync,
   onWorkflowSubmit,
   palette,
   queryDisplayWidth,
-  rootGhostSuffix,
-  rootQueryLength,
   rootShortcutFeedback,
   themePickerActive,
   themePickerFilter,
@@ -91,8 +87,6 @@ export function CommandBarPanelBody({
 
   return (
     <>
-      {!nativePaneChrome && <Box height={1} backgroundColor={paletteBg} />}
-
       {!nativePaneChrome && (
         <Box
           height={1}
@@ -113,9 +107,19 @@ export function CommandBarPanelBody({
         </Box>
       )}
 
-      <Box key={bodySlotKey} flexDirection="column" flexGrow={1} width="100%" backgroundColor={panelBg}>
-        {nativePaneChrome && currentRoute && (
-          <Box height={1} paddingX={contentPadding}>
+      {/* Rows stop at the results column, so a selection bar on a wide window
+          does not run on past the text into empty sheet. */}
+      <Box
+        key={bodySlotKey}
+        flexDirection="column"
+        flexGrow={1}
+        width={queryDisplayWidth + contentPadding * 2}
+        backgroundColor={panelBg}
+      >
+        {/* The query itself is typed in the header prompt; this row is the
+            sheet's only chrome and its height is pinned in panel/layout.ts. */}
+        <Box height={1} paddingX={contentPadding}>
+          {nativePaneChrome && currentRoute ? (
             <Text
               fg={paletteSubtleText}
               onMouseDown={(event: any) => {
@@ -127,27 +131,12 @@ export function CommandBarPanelBody({
             >
               {`← ${t("Back")}`}
             </Text>
-          </Box>
-        )}
-        {(visibleListState || currentRoute?.kind === "picker") && visibleListState && (
-          <CommandBarListHeader
-            kind={visibleListState.kind}
-            title={visibleListState.title}
-            query={visibleListState.query}
-            queryDisplayWidth={queryDisplayWidth}
-            nativePaneChrome={nativePaneChrome}
-            inputBg={inputBg}
-            paletteBg={paletteBg}
-            paletteText={paletteText}
-            paletteSubtleText={paletteSubtleText}
-            cursorColor={themeColors.textBright}
-            contentPadding={contentPadding}
-            rootGhostSuffix={rootGhostSuffix}
-            rootQueryLength={rootQueryLength}
-            rootShortcutFeedback={rootShortcutFeedback}
-            onQueryChange={onQueryChange}
-          />
-        )}
+          ) : visibleListState?.kind === "root" && rootShortcutFeedback ? (
+            <Text fg={paletteSubtleText}>
+              {truncateText(rootShortcutFeedback, queryDisplayWidth)}
+            </Text>
+          ) : null}
+        </Box>
 
         {themePickerActive && (
           <ThemePicker

@@ -470,7 +470,6 @@ export function CommandBar({
     resetAssist,
     rootModeKind: rootModeInfo.kind,
     rootGhostSuffix,
-    rootQueryLength: rootQuery.length,
     rootShortcutFeedback,
     routeListState,
     setActiveListQuery,

@@ -176,15 +176,24 @@ export function truncateText(text: string, width: number): string {
   return truncateToDisplayWidth(text, width);
 }
 
+/**
+ * Async sections sit below the local matches in the order they usually arrive,
+ * so each answer only ever pushes rows below itself: instruments in the 100s,
+ * documents at 200 (contributed by the provider), and the AI at 300 since it
+ * is the slowest by far (~600ms+) and would otherwise shift the whole list.
+ */
+const INSTRUMENTS_SECTION_PRIORITY = 100;
+const ASSIST_SECTION_PRIORITY = 300;
+
 function getCategoryPriority(category: string, options?: CommandBarSectionOptions): number {
   const contributed = options?.categoryPriorities?.get(category);
   if (contributed !== undefined) return contributed;
   const sectionOrder = options?.sectionOrder ?? "default";
   const normalized = category.trim().toLowerCase();
   if (sectionOrder === "ranked") return 0;
-  // The AI answers the question the user actually typed, so it leads the list.
-  if (normalized === "ask ai") return -100;
+  if (normalized === "ask ai") return ASSIST_SECTION_PRIORITY;
   if (normalized === "exact match") return -50;
+  if (normalized === "instruments") return INSTRUMENTS_SECTION_PRIORITY;
   if (sectionOrder === "app-first") {
     if (normalized === "saved") return 100;
     if (normalized === "primary listing") return 110;

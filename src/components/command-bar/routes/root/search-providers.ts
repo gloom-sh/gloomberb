@@ -37,6 +37,7 @@ export function toProviderResultItem(
     category: result.category ?? provider.category,
     kind: "action",
     lines: result.lines,
+    badge: result.badge,
     right: result.right,
     searchText: [result.label, result.detail ?? "", ...(result.keywords ?? [])].join(" "),
     disabled: result.disabled,

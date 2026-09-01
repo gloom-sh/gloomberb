@@ -298,6 +298,8 @@ export interface CommandBarResultDef {
   /** Rendered under the label. Each entry is one additional row. */
   lines?: CommandBarResultLine[];
   category?: string;
+  /** Short tag drawn left of the label, e.g. a document type. Six characters at most. */
+  badge?: string;
   right?: string;
   keywords?: string[];
   disabled?: boolean;

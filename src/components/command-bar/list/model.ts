@@ -20,6 +20,8 @@ export interface ResultItem {
   kind: "command" | "ticker" | "search" | "plugin" | "action" | "info";
   /** Extra rows under the label, e.g. a matched snippet from a search provider. */
   lines?: CommandBarResultLine[];
+  /** Short tag drawn left of the label: a shortcut, an asset class, a document type. */
+  badge?: string;
   right?: string;
   shortcutQuery?: string;
   searchText?: string;

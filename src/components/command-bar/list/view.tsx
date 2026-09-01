@@ -1,17 +1,23 @@
-import { memo, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { memo, useMemo, type RefObject } from "react";
 import {
   Box,
-  Input,
   ScrollBox,
   Text,
   TextAttributes,
-  type InputRenderable,
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { Spinner } from "../../ui";
 import { t } from "../../../i18n";
+import { commandBarBadgeBg, commandBarBadgeText, type CommandBarBadgeTone } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import type { CommandBarResultLineSegment } from "../../../types/plugin";
 import { truncateTextSegments } from "../../../utils/format";
+import {
+  BADGE_GAP,
+  badgeConsumesRight,
+  resolveBadgeColumnWidth,
+  resolveRowBadge,
+} from "./badge";
 import {
   getListRowsHeight,
   getResultItemLines,
@@ -28,110 +34,6 @@ export type CommandBarListScrollEvent = {
   scroll?: { direction?: string; delta?: number };
 };
 
-interface CommandBarListHeaderProps {
-  kind: ListScreenState["kind"];
-  title: string;
-  query: string;
-  queryDisplayWidth: number;
-  nativePaneChrome: boolean;
-  inputBg: string;
-  paletteBg: string;
-  paletteText: string;
-  paletteSubtleText: string;
-  cursorColor: string;
-  contentPadding: number;
-  rootGhostSuffix: string | null;
-  rootQueryLength: number;
-  rootShortcutFeedback: string | null;
-  onQueryChange: (query: string) => void;
-}
-
-export const CommandBarListHeader = memo(function CommandBarListHeader({
-  kind,
-  title,
-  query,
-  queryDisplayWidth,
-  nativePaneChrome,
-  inputBg,
-  paletteBg,
-  paletteText,
-  paletteSubtleText,
-  cursorColor,
-  contentPadding,
-  rootGhostSuffix,
-  rootQueryLength,
-  rootShortcutFeedback,
-  onQueryChange,
-}: CommandBarListHeaderProps) {
-  const inputRef = useRef<InputRenderable | null>(null);
-
-  useLayoutEffect(() => {
-    const input = inputRef.current;
-    if (!input || input.editBuffer.getText() === query) return;
-    input.editBuffer.setText?.(query);
-    input.setCursorOffset?.(query.length);
-  }, [kind, query, title]);
-
-  return (
-    <>
-      <Box height={1} paddingX={contentPadding}>
-        <Box
-          width={queryDisplayWidth}
-          height={1}
-          position="relative"
-          backgroundColor={nativePaneChrome ? undefined : inputBg}
-          style={nativePaneChrome ? undefined : {
-            overflow: "hidden",
-          }}
-        >
-          <Input
-            key={`${kind}:${title}`}
-            ref={inputRef}
-            value={query}
-            onInput={onQueryChange}
-            placeholder={kind === "root" ? t("Command or plain English…") : title === "Security Description" ? t("Search tickers") : t("Filter")}
-            focused
-            data-gloom-remote-scope="command-bar"
-            data-gloom-remote-surface="command-bar"
-            width={nativePaneChrome ? "100%" : queryDisplayWidth}
-            backgroundColor={nativePaneChrome ? "transparent" : paletteBg}
-            focusedBackgroundColor={nativePaneChrome ? "transparent" : paletteBg}
-            textColor={paletteText}
-            focusedTextColor={paletteText}
-            placeholderColor={paletteSubtleText}
-            cursorColor={cursorColor}
-          />
-          {kind === "root" && rootGhostSuffix && (
-            <Box
-              position="absolute"
-              top={0}
-              left={Math.max(0, Math.min(rootQueryLength, queryDisplayWidth - 1))}
-              width={Math.max(0, queryDisplayWidth - Math.min(rootQueryLength, queryDisplayWidth - 1))}
-              height={1}
-            >
-              <Text fg={paletteSubtleText}>
-                {truncateText(
-                  rootGhostSuffix,
-                  Math.max(0, queryDisplayWidth - Math.min(rootQueryLength, queryDisplayWidth - 1)),
-                )}
-              </Text>
-            </Box>
-          )}
-        </Box>
-      </Box>
-      <Box height={1} paddingX={contentPadding}>
-        {kind === "root" && rootShortcutFeedback
-          ? (
-            <Text fg={paletteSubtleText}>
-              {truncateText(rootShortcutFeedback, queryDisplayWidth)}
-            </Text>
-          )
-          : null}
-      </Box>
-    </>
-  );
-});
-
 interface CommandBarListItemRowProps {
   item: ResultItem;
   globalIdx: number;
@@ -140,6 +42,8 @@ interface CommandBarListItemRowProps {
   listKind: ListScreenState["kind"];
   listTitle: string;
   listQuery: string;
+  /** Shared by every row of the list so labels line up; 0 when no row has a badge. */
+  badgeColumnWidth: number;
   contentPadding: number;
   labelWidth: number;
   trailingWidth: number;
@@ -166,6 +70,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   listKind,
   listTitle,
   listQuery,
+  badgeColumnWidth,
   contentPadding,
   labelWidth,
   trailingWidth,
@@ -184,9 +89,18 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   onRowMouseDown,
 }: CommandBarListItemRowProps) {
   const presentation = getRowPresentation(item, isSelected, trailingWidth > 0);
-  const label = truncateText(presentation.label, labelWidth);
-  const trailing = truncateText(presentation.trailing, trailingWidth);
-  const lineWidth = labelWidth + trailingWidth;
+  const badge = resolveRowBadge(item);
+  // The badge column and its gap come out of the label, so the right column
+  // stays where it is for rows with and without a badge alike.
+  const badgeIndent = badgeColumnWidth > 0 ? badgeColumnWidth + BADGE_GAP : 0;
+  const labelColumnWidth = Math.max(1, labelWidth - badgeIndent);
+  const label = truncateText(presentation.label, labelColumnWidth);
+  // "current" outranks the shortcut on the right; otherwise a badge lifted from
+  // `right` must not be repeated there.
+  const trailing = badgeConsumesRight(item) && !item.current
+    ? ""
+    : truncateText(presentation.trailing, trailingWidth);
+  const lineWidth = labelColumnWidth + trailingWidth;
   const lines = useMemo(
     () => getResultItemLines(item).map((line) => truncateTextSegments(
       line.segments,
@@ -250,7 +164,18 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
       style={nativePaneChrome ? { borderRadius: 6 } : undefined}
     >
       <Box flexDirection="row" height={1}>
-        <Box width={labelWidth}>
+        {badgeIndent > 0 && (
+          <Box width={badgeIndent} flexDirection="row">
+            {badge && (
+              <CommandBarRowBadge
+                text={badge.text}
+                tone={badge.tone}
+                width={badgeColumnWidth}
+              />
+            )}
+          </Box>
+        )}
+        <Box width={labelColumnWidth}>
           <Text fg={isSelected ? paletteSelectedText : presentation.primaryMuted ? paletteSubtleText : paletteText}>
             {label}
           </Text>
@@ -268,7 +193,14 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
         </Box>
       </Box>
       {lines.map((segments, index) => (
-        <Box key={`line:${index}`} flexDirection="row" height={1} width={lineWidth} overflow="hidden">
+        <Box
+          key={`line:${index}`}
+          flexDirection="row"
+          height={1}
+          width={lineWidth}
+          marginLeft={badgeIndent}
+          overflow="hidden"
+        >
           {segments.map((segment, segmentIndex) => (
             <Text
               key={segmentIndex}
@@ -288,6 +220,25 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
     </Box>
   );
 });
+
+/**
+ * A tag with its own background, centred in a column padded to the widest tag
+ * in the list. The desktop renderer paints the same coloured box; no cell
+ * characters are drawn around it.
+ */
+function CommandBarRowBadge({ text, tone, width }: { text: string; tone: CommandBarBadgeTone; width: number }) {
+  const themeColors = useThemeColors();
+  const visible = truncateText(text, width);
+  const lead = Math.max(0, Math.floor((width - visible.length) / 2));
+  const padded = `${" ".repeat(lead)}${visible}`.padEnd(width, " ");
+  return (
+    <Box width={width} height={1} backgroundColor={commandBarBadgeBg(tone, themeColors)}>
+      <Text fg={commandBarBadgeText(tone, themeColors)} attributes={TextAttributes.BOLD}>
+        {padded}
+      </Text>
+    </Box>
+  );
+}
 
 /**
  * Matched runs keep their highlight on the selected row: the selection colour is
@@ -355,6 +306,12 @@ export const CommandBarListBody = memo(function CommandBarListBody({
   onListScroll,
   onRowMouseDown,
 }: CommandBarListBodyProps) {
+  const badgeColumnWidth = useMemo(
+    () => resolveBadgeColumnWidth(
+      nativeListRows.flatMap((row) => (row.kind === "item" ? [row.item] : [])),
+    ),
+    [nativeListRows],
+  );
   const visibleRows = useMemo(() => {
     const rows = nativeListRows;
     if (nativePaneChrome) return rows;
@@ -415,6 +372,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             listKind={visibleListState.kind}
             listTitle={visibleListState.title}
             listQuery={visibleListState.query}
+            badgeColumnWidth={badgeColumnWidth}
             contentPadding={contentPadding}
             labelWidth={labelWidth}
             trailingWidth={trailingWidth}

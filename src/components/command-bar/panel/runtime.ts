@@ -62,7 +62,6 @@ interface CommandBarPanelRuntimeOptions {
   resetAssist: () => boolean;
   rootGhostSuffix: string | null;
   rootModeKind: string;
-  rootQueryLength: number;
   rootShortcutFeedback: string | null;
   routeListState: ListScreenState | null;
   setActiveListQuery: (query: string) => void;
@@ -115,7 +114,6 @@ export function useCommandBarPanelRuntime({
   resetAssist,
   rootGhostSuffix,
   rootModeKind,
-  rootQueryLength,
   rootShortcutFeedback,
   routeListState,
   setActiveListQuery,
@@ -269,7 +267,6 @@ export function useCommandBarPanelRuntime({
     panelBounds: panelLayout.panelBounds,
     queryDisplayWidth: panelLayout.queryDisplayWidth,
     rootGhostSuffix,
-    rootQueryLength,
     rootShortcutFeedback,
     selectedScrollRowIndex,
     termHeight,

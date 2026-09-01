@@ -47,13 +47,17 @@ export function useCommandBarTickerSearchActions({
 
   const mapTickerSearchCandidateToResultItem = useCallback((candidate: TickerSearchCandidate): ResultItem => {
     const detail = formatTickerSearchDetail(candidate);
-    const right = formatTickerSearchRight(candidate);
+    // The class lives in the badge, so the trailing text carries only the
+    // venue rather than saying "Equity" twice on one row.
+    const badge = formatInstrumentBadge(candidate.instrumentClass);
+    const right = candidate.exchangeLabel || candidate.primaryExchangeLabel || candidate.right || undefined;
 
     if (candidate.kind === "ticker" && candidate.ticker) {
       return {
         id: candidate.id,
         label: candidate.label,
         detail,
+        badge,
         right,
         category: candidate.category,
         kind: "ticker",
@@ -72,6 +76,7 @@ export function useCommandBarTickerSearchActions({
       id: candidate.id,
       label: candidate.label,
       detail,
+      badge,
       right,
       category: candidate.category,
       kind: "search",
@@ -145,14 +150,6 @@ export function useCommandBarTickerSearchActions({
   };
 }
 
-function formatTickerSearchRight(candidate: TickerSearchCandidate): string | undefined {
-  const assetClass = formatInstrumentClass(candidate.instrumentClass);
-  const exchange = candidate.exchangeLabel || candidate.primaryExchangeLabel || candidate.right || "";
-  if (!exchange) return assetClass;
-  if (assetClass === "Other") return exchange;
-  return `${assetClass} ${exchange}`;
-}
-
 function formatTickerSearchDetail(candidate: TickerSearchCandidate): string {
   const metadata = [
     formatInstrumentClass(candidate.instrumentClass),
@@ -164,6 +161,19 @@ function formatTickerSearchDetail(candidate: TickerSearchCandidate): string {
   return metadata.length > 0
     ? `${candidate.detail} | ${metadata.join(" | ")}`
     : candidate.detail;
+}
+
+function formatInstrumentBadge(instrumentClass: TickerSearchInstrumentClass): string {
+  switch (instrumentClass) {
+    case "equity":
+      return "EQ";
+    case "fund":
+      return "FUND";
+    case "derivative":
+      return "DERIV";
+    case "other":
+      return "SYM";
+  }
 }
 
 function formatInstrumentClass(instrumentClass: TickerSearchInstrumentClass): string {

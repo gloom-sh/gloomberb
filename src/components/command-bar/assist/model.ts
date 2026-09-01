@@ -5,7 +5,7 @@ import type { ResultItem } from "../list/model";
 /** Marker shown on every AI-resolved row, matching the AI plugin's iconography. */
 const ASSIST_GLYPH = "✦";
 
-/** Category heading the assist rows group under; sorted first by the view model. */
+/** Category heading the assist rows group under; the view model sorts it last. */
 const ASSIST_CATEGORY = "Ask AI";
 
 /** Shorter queries are almost always a half-typed prefix, not a question. */
@@ -97,8 +97,8 @@ function assistRow(options: {
 
 /**
  * Rows for the assist section. They always land in their own category, which
- * sorts to the top of the list, so the answer to what the user typed leads the
- * results and plain Enter runs the AI's best guess.
+ * sorts to the bottom of the list: the AI is the slowest source to answer, so
+ * its rows arrive under everything the user is already looking at.
  */
 export function buildAssistResultItems({
   query,
@@ -113,8 +113,8 @@ export function buildAssistResultItems({
   if (!trimmed) return [];
 
   if (!enabled) {
-    // An offer, not an answer: it leads the list without ever taking the Enter
-    // that belongs to the local match the user is looking at.
+    // An offer, not an answer: it never takes the Enter that belongs to the
+    // local match the user is looking at.
     return [assistRow({
       id: "assist:sign-up",
       label: t("Ask AI — sign up to enable"),
@@ -134,8 +134,8 @@ export function buildAssistResultItems({
   }
 
   if (active.status === "loading") {
-    // Selected by default while it leads the list, so Enter has to mean
-    // something: it claims the answer that is already on the wire.
+    // Selectable so that Enter on it means something: it claims the answer
+    // that is already on the wire.
     return [assistRow({ id: "assist:loading", label: t("Thinking…"), kind: "info", action: onAsk })];
   }
 
