@@ -131,7 +131,7 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
 export async function installExternalPlugin(ref: string): Promise<{ ok: boolean; error?: string }> {
   try {
     const { installPlugin } = await import("../../../cli/commands/plugins");
-    await installPlugin(ref);
+    await installPlugin(ref, { quiet: true });
     bundleCache.clear();
     return { ok: true };
   } catch (error) {

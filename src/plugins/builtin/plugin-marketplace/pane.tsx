@@ -8,6 +8,7 @@ import {
   useExternalLinkFooter,
   type DataTableCell,
   type DataTableColumn,
+  type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -48,7 +49,11 @@ function buildColumns(width: number): Column[] {
   ];
 }
 
-function statusOf(entry: MarketplaceEntry): { text: string; color: string } {
+function statusOf(
+  entry: MarketplaceEntry,
+  installedNow: readonly string[],
+): { text: string; color: string } {
+  if (installedNow.includes(entry.id)) return { text: "restart to load", color: colors.warning };
   if (entry.loadError) return { text: "failed", color: colors.negative };
   const unsupported = unsupportedLabel(entry);
   if (unsupported) return { text: unsupported.toLowerCase(), color: colors.warning };
@@ -61,7 +66,12 @@ function statusOf(entry: MarketplaceEntry): { text: string; color: string } {
   return { text: "available", color: colors.textBright };
 }
 
-function renderCell(entry: MarketplaceEntry, column: Column, rowState: { selected: boolean }): DataTableCell {
+function renderCell(
+  entry: MarketplaceEntry,
+  column: Column,
+  rowState: { selected: boolean },
+  installedNow: readonly string[],
+): DataTableCell {
   const selected = rowState.selected ? colors.selectedText : undefined;
 
   switch (column.id) {
@@ -79,7 +89,7 @@ function renderCell(entry: MarketplaceEntry, column: Column, rowState: { selecte
         color: selected ?? colors.textDim,
       };
     case "status": {
-      const status = statusOf(entry);
+      const status = statusOf(entry, installedNow);
       return { text: status.text, color: rowState.selected ? colors.selectedText : status.color };
     }
   }
@@ -157,6 +167,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [localRevision, setLocalRevision] = useState(0);
   const [installing, setInstalling] = useState<string | null>(null);
   const [installError, setInstallError] = useState<string | null>(null);
+  // Installed during this session. A plugin is only registered at startup, so
+  // saying "enabled" here would be a lie — the pane it adds is not there yet.
+  const [installedNow, setInstalledNow] = useState<readonly string[]>([]);
 
   const refresh = useCallback((force: boolean) => {
     setStatus((current) => (current === "ready" ? current : "loading"));
@@ -205,18 +218,47 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const installSelected = useCallback(() => {
     const install = getPluginInstaller();
     if (!selected || !isInstallable(selected) || !install || installing) return;
+    if (installedNow.includes(selected.id)) return;
     const target = selected.id;
     setInstalling(target);
     setInstallError(null);
     void install(target).then((result) => {
       setInstalling(null);
       if (result.ok) {
+        setInstalledNow((current) => [...current, target]);
         setLocalRevision((value) => value + 1);
         return;
       }
       setInstallError(result.error ?? "Install failed.");
     });
-  }, [installing, selected]);
+  }, [installedNow, installing, selected]);
+
+  /**
+   * Pane keys go through the table's key handler rather than a global shortcut:
+   * while the DataTable holds key focus it consumes plain letters, so a
+   * `useShortcut` for "i" never fires.
+   */
+  const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (searchFocused) return;
+    const key = (event.name ?? "").toLowerCase();
+    if (key === "i") {
+      installSelected();
+      return true;
+    }
+    if (key === "e") {
+      toggleSelected();
+      return true;
+    }
+    if (key === "r") {
+      refresh(true);
+      return true;
+    }
+    if (key === "/") {
+      focusSearch();
+      return true;
+    }
+    return undefined;
+  }, [focusSearch, installSelected, refresh, searchFocused, toggleSelected]);
 
   useShortcut((event) => {
     if (!focused || searchFocused) return;
@@ -250,6 +292,9 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     info.push({ id: "installing", parts: [{ text: `installing ${installing}`, tone: "muted" }] });
   }
   if (installError) info.push({ id: "install-error", parts: [{ text: installError, tone: "warning" }] });
+  if (installedNow.length > 0 && !installing) {
+    info.push({ id: "restart", parts: [{ text: "restart to load new plugins", tone: "warning" }] });
+  }
   if (status === "ready" && fetchedAt && !stale) {
     info.push({ id: "updated", parts: [{ text: formatRelativeAge(fetchedAt), tone: "muted" }] });
   }
@@ -260,7 +305,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     url: selected ? registryPluginUrl(selected.id) : null,
     source: selected ? "gloom.sh" : null,
     info,
-    hints: selected && isInstallable(selected) && getPluginInstaller()
+    hints: selected && isInstallable(selected) && !installedNow.includes(selected.id) && getPluginInstaller()
       ? [{ id: "install", key: "i", label: "nstall", onPress: installSelected }]
       : selected?.installed && selected.toggleable
         ? [{ id: "toggle", key: "e", label: selected.enabled ? "disable" : "nable", onPress: toggleSelected }]
@@ -309,6 +354,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
           getId: (entry) => entry.id,
           onChange: (id) => setSelectedId(typeof id === "string" ? id : null),
         }}
+        onRootKeyDown={handleRootKeyDown}
+        onDetailKeyDown={handleRootKeyDown}
         onActivate={() => setDetailOpen(true)}
         rootWidth={width}
         rootHeight={height}
@@ -324,7 +371,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
             setSortColumn((current) => (current === columnId ? null : columnId));
           }
         }}
-        renderCell={(entry, column, _index, rowState) => renderCell(entry, column, rowState)}
+        renderCell={(entry, column, _index, rowState) => renderCell(entry, column, rowState, installedNow)}
         emptyStateTitle={status === "error" ? "Plugin catalog unavailable." : "No plugins match."}
         emptyStateHint={status === "error" ? "Press r to retry." : undefined}
       />

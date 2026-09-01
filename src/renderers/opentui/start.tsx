@@ -91,7 +91,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
   setPluginInstaller(async (ref) => {
     try {
       const { installPlugin } = await import("../../cli/commands/plugins");
-      await installPlugin(ref);
+      await installPlugin(ref, { quiet: true });
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
