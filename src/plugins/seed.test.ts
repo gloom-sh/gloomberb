@@ -56,7 +56,7 @@ describe("seedExtractedPlugins", () => {
       dir,
     ));
 
-    expect(installs).toEqual([]);
+    expect(installs).not.toContain("gloom-sh/gloomberb-substack");
     // Recorded, so we stop asking rather than retrying every launch.
     expect(result.seeded).toContain("substack");
   });
@@ -68,7 +68,7 @@ describe("seedExtractedPlugins", () => {
       return seedExtractedPlugins(config(), async (ref) => { installs.push(ref); }, pluginsDir);
     });
 
-    expect(installs).toEqual([]);
+    expect(installs).not.toContain("gloom-sh/gloomberb-substack");
     expect(result.seeded).toContain("substack");
   });
 

@@ -4,8 +4,6 @@ import { newsPlugin } from "./builtin/news";
 import { notesPlugin } from "./builtin/notes";
 import { aiPlugin } from "./builtin/ai";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
-import { ibkrPlugin } from "./ibkr";
-import { ibkrGatewayPlugin } from "./ibkr-gateway";
 import { publicPlugin } from "./broker-sync/public";
 import { robinhoodPlugin } from "./broker-sync/robinhood";
 import { simpleFinPlugin } from "./broker-sync/simplefin";
@@ -26,8 +24,6 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   portfolioPlugin,
   tickerResearchPlugin,
   brokerPlugin,
-  ibkrPlugin,
-  ibkrGatewayPlugin,
   publicPlugin,
   robinhoodPlugin,
   simpleFinPlugin,

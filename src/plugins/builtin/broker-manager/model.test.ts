@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BrokerAdapter } from "../../../types/broker";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
-import { ibkrBroker } from "../../ibkr/broker-adapter";
+import { testBroker } from "../../../brokers/test-broker";
 import { buildBrokerProfileRows, formatBrokerUpdatedAt } from "./model";
 
 function createInstance(patch: Partial<BrokerInstanceConfig> = {}): BrokerInstanceConfig {
@@ -131,7 +131,7 @@ describe("broker manager rows", () => {
         enabled: true,
       }],
     };
-    const rows = buildBrokerProfileRows(config, new Map([["ibkr", ibkrBroker]]), {});
+    const rows = buildBrokerProfileRows(config, new Map([["ibkr", testBroker]]), {});
 
     expect(rows[0]?.mode).toBe("Flex");
     expect(rows[0]?.stateLabel).toBe("Sync only");

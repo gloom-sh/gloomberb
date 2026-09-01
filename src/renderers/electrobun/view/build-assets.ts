@@ -23,7 +23,6 @@ const COMMON_ALIAS_RULES: AliasRule[] = [
   ["./kitty/support", "components/chart/native/renderer-selection.ts", "native-stubs/chart/kitty-support.ts"],
   ["native/surface/manager", "native-stubs/chart/surface-manager.ts"],
   ["native/surface/sync", "native-stubs/chart/surface-sync.ts"],
-  ["./native-loader", "plugins/ibkr-gateway/gateway/service/index.ts", "native-stubs/ibkr-native-loader.ts"],
   ["./native-loader", "plugins/broker-sync/robinhood.ts", "native-stubs/broker-sync-native-loader.ts"],
   ["./native-loader", "plugins/broker-sync/simplefin.ts", "native-stubs/broker-sync-native-loader.ts"],
 ];

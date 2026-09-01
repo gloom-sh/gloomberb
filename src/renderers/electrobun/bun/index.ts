@@ -25,7 +25,6 @@ import type { DesktopWorkspace } from "./desktop/workspace";
 import { buildDesktopApplicationMenu } from "./application-menu";
 import { applicationMenuCommand } from "./application-menu/click";
 import { registerElectrobunCoreCapabilities } from "./core-capabilities";
-import { setNativeIbkrGatewayModuleLoader } from "../../../plugins/ibkr-gateway/gateway/service";
 import {
   runElectrobunDesktopUpdate,
 } from "./desktop/update";
@@ -73,7 +72,6 @@ console.info = (...args) => console.error(...args);
 console.warn = (...args) => console.error(...args);
 
 setConfigStoreHost(nodeConfigStoreHost);
-setNativeIbkrGatewayModuleLoader(() => import("../../../plugins/ibkr-gateway/gateway/service/native"));
 
 let currentConfig: AppConfig | null = null;
 let services: AppServices | null = null;

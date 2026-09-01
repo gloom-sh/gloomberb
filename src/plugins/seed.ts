@@ -17,6 +17,8 @@ const log = debugLog.createLogger("plugin-seed");
  */
 export const EXTRACTED_PLUGINS = [
   { id: "substack", repo: "gloom-sh/gloomberb-substack", directory: "gloomberb-substack" },
+  { id: "ibkr", repo: "gloom-sh/gloomberb-ibkr", directory: "gloomberb-ibkr" },
+  { id: "ibkr-gateway", repo: "gloom-sh/gloomberb-ibkr-gateway", directory: "gloomberb-ibkr-gateway" },
 ] as const;
 
 export interface SeedResult {

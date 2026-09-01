@@ -62,6 +62,49 @@ function alreadyLinked(path: string, target: string): boolean {
   }
 }
 
+/**
+ * Links sibling plugins a plugin declares as peer dependencies.
+ *
+ * A plugin can legitimately extend another — IBKR Gateway builds on the Flex
+ * plugin, which owns the broker id and the shared bridge. Those live in separate
+ * install directories with no path between them, so the peer is linked the same
+ * way the host is. A missing sibling is not an error here: the plugin reports it
+ * at load, which is more useful than failing the install.
+ */
+function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
+  const linked: string[] = [];
+  let peers: string[] = [];
+  try {
+    const pkg = JSON.parse(require("fs").readFileSync(join(pluginDir, "package.json"), "utf-8"));
+    peers = Object.keys(pkg.peerDependencies ?? {}).filter((name) => name.startsWith("gloomberb-"));
+  } catch {
+    return linked;
+  }
+
+  for (const peer of peers) {
+    // Installed directories are named after the repository, which is the package
+    // name for every plugin in the registry.
+    const target = join(pluginsDir, peer);
+    if (!existsSync(target)) continue;
+    const linkPath = join(pluginDir, "node_modules", peer);
+    if (alreadyLinked(linkPath, target)) {
+      linked.push(peer);
+      continue;
+    }
+    try {
+      mkdirSync(join(pluginDir, "node_modules"), { recursive: true });
+      if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
+        rmSync(linkPath, { recursive: true, force: true });
+      }
+      symlinkSync(target, linkPath, "dir");
+      linked.push(peer);
+    } catch {
+      // Reported by the plugin's own load failure if it actually needed it.
+    }
+  }
+  return linked;
+}
+
 export interface HostLinkResult {
   linked: string[];
   skipped: string[];
@@ -72,7 +115,11 @@ export interface HostLinkResult {
  * Points `<pluginDir>/node_modules/{gloomberb,react,react-dom}` at the running
  * install. Safe to call repeatedly.
  */
-export function linkHostPackages(pluginDir: string, hostRoot = findHostPackageRoot()): HostLinkResult {
+export function linkHostPackages(
+  pluginDir: string,
+  hostRoot = findHostPackageRoot(),
+  pluginsDir = dirname(pluginDir),
+): HostLinkResult {
   if (!hostRoot) return { linked: [], skipped: [...LINKED_PACKAGES], error: "Could not locate the Gloomberb install." };
 
   const modulesDir = join(pluginDir, "node_modules");
@@ -104,6 +151,8 @@ export function linkHostPackages(pluginDir: string, hostRoot = findHostPackageRo
       if (pkg === "gloomberb") return { linked, skipped, error: String(err) };
     }
   }
+
+  linked.push(...linkPeerPlugins(pluginDir, pluginsDir));
 
   return { linked, skipped };
 }
