@@ -1,4 +1,4 @@
-import type { GloomPlugin, GloomPluginContext } from "gloomberb/types/plugin";
+import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
 import { ibkrBroker } from "./broker-adapter";
 import { buildPersistedIbkrGatewayConfig } from "./config";
 import { ibkrGatewayManager, setResolvedIbkrGatewayListener } from "./gateway/service";

@@ -4,13 +4,13 @@ import {
   type IBApiNext,
 } from "@stoqey/ib";
 import { firstValueFrom, filter, take, timeout } from "rxjs";
-import type { BrokerPosition } from "gloomberb/types/broker";
+import type { BrokerPosition } from "../../../types/broker";
 import type {
   BrokerAccount,
   BrokerExecution,
   BrokerOrder,
-} from "gloomberb/types/trading";
-import { debugLog } from "gloomberb/utils";
+} from "../../../types/trading";
+import { debugLog } from "../../../utils/debug-log";
 import {
   finiteNumber,
   summarizeBrokerAccount,

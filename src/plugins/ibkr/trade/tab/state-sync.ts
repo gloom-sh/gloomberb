@@ -1,7 +1,7 @@
 import { useEffect } from "react";
-import type { AppConfig, BrokerInstanceConfig } from "gloomberb/types/config";
-import type { BrokerAccount } from "gloomberb/types/trading";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import type { AppConfig, BrokerInstanceConfig } from "../../../../types/config";
+import type { BrokerAccount } from "../../../../types/trading";
+import type { TickerRecord } from "../../../../types/ticker";
 import {
   setTradeTicketDraft,
   updateTradeTicketState,

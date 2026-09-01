@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "gloomberb/types/config";
-import type { CommandDef, GloomPluginContext, TickerAction } from "gloomberb/types/plugin";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import { createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "../../types/config";
+import type { CommandDef, GloomPluginContext, TickerAction } from "../../types/plugin";
+import type { TickerRecord } from "../../types/ticker";
 import { ibkrPlugin } from "./index";
 
 function createTicker(symbol: string): TickerRecord {

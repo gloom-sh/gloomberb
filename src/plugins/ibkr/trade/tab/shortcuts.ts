@@ -1,5 +1,5 @@
-import { useShortcut } from "gloomberb/react";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import { useShortcut } from "../../../../react/input";
+import type { TickerRecord } from "../../../../types/ticker";
 import type { TradeTicketState } from "../../trading/state";
 import type { TradeTabActions } from "./actions";
 

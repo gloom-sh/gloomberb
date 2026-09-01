@@ -1,12 +1,12 @@
-import type { AppConfig } from "gloomberb/types/config";
-import type { Quote } from "gloomberb/types/financials";
-import type { BrokerContractRef } from "gloomberb/types/instrument";
-import type { TickerRecord } from "gloomberb/types/ticker";
-import type { BrokerAccount, BrokerOrderPreview, BrokerOrderType } from "gloomberb/types/trading";
-import { colors } from "gloomberb/theme";
-import { formatCompact, formatCurrency } from "gloomberb/utils";
-export { truncateWithEllipsis as truncateTradeText } from "gloomberb/utils";
-import { formatMarketPrice, formatMarketPriceWithCurrency, formatSignedMarketPrice, type AssetDisplayContext } from "gloomberb/market-data";
+import type { AppConfig } from "../../../types/config";
+import type { Quote } from "../../../types/financials";
+import type { BrokerContractRef } from "../../../types/instrument";
+import type { TickerRecord } from "../../../types/ticker";
+import type { BrokerAccount, BrokerOrderPreview, BrokerOrderType } from "../../../types/trading";
+import { colors } from "../../../theme/colors";
+import { formatCompact, formatCurrency } from "../../../utils/format";
+export { truncateWithEllipsis as truncateTradeText } from "../../../utils/text-wrap";
+import { formatMarketPrice, formatMarketPriceWithCurrency, formatSignedMarketPrice, type AssetDisplayContext } from "../../../market-data/market/format";
 import { getConfiguredIbkrGatewayInstances } from "../instance-selection";
 
 export type TradeTone = "neutral" | "accent" | "positive" | "negative";

@@ -1,13 +1,13 @@
 import { useCallback, useMemo } from "react";
-import type { DialogApi, PromptContext } from "gloomberb/dialog";
-import type { AppConfig, BrokerInstanceConfig } from "gloomberb/types/config";
-import type { TickerFinancials } from "gloomberb/types/financials";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import type { DialogApi, PromptContext } from "../../../../ui/dialog";
+import type { AppConfig, BrokerInstanceConfig } from "../../../../types/config";
+import type { TickerFinancials } from "../../../../types/financials";
+import type { TickerRecord } from "../../../../types/ticker";
 import type {
   BrokerAccount,
   BrokerOrderType,
-} from "gloomberb/types/trading";
-import { getBrokerInstance } from "gloomberb/utils";
+} from "../../../../types/trading";
+import { getBrokerInstance } from "../../../../utils/broker-instances";
 import { isGatewayConfigured, type IbkrConfig } from "../../config";
 import { ChoiceDialog, InputDialog } from "../../dialogs";
 import type { ibkrGatewayManager } from "../../gateway/service";

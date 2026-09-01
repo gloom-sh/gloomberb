@@ -4,10 +4,10 @@ import {
   type ContractDetails,
   type IBApiNext,
 } from "@stoqey/ib";
-import type { TimeRange } from "gloomberb/time-series";
-import type { ManualChartResolution } from "gloomberb/time-series";
-import type { PricePoint } from "gloomberb/types/financials";
-import type { BrokerContractRef } from "gloomberb/types/instrument";
+import type { TimeRange } from "../../../time-series/range";
+import type { ManualChartResolution } from "../../../time-series/resolution";
+import type { PricePoint } from "../../../types/financials";
+import type { BrokerContractRef } from "../../../types/instrument";
 import {
   formatIbkrHistoricalEndDateTime,
   getIbkrHistoryDuration,

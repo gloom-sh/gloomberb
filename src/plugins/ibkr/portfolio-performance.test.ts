@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { BrokerInstanceConfig } from "gloomberb/types/config";
+import type { BrokerInstanceConfig } from "../../types/config";
 import {
   getIbkrPortfolioPerformance,
   setIbkrPortfolioPerformanceResourceStore,

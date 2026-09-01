@@ -1,11 +1,11 @@
 import { BarSizeSetting } from "@stoqey/ib";
-import type { TimeRange } from "gloomberb/time-series";
+import type { TimeRange } from "../../../time-series/range";
 import {
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
   type ManualChartResolution,
-} from "gloomberb/time-series";
-import type { PricePoint } from "gloomberb/types/financials";
+} from "../../../time-series/resolution";
+import type { PricePoint } from "../../../types/financials";
 import { normalizeIbkrPriceValue } from "./price-normalization";
 
 export interface IbkrHistoricalBar {

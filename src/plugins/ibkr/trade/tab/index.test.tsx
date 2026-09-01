@@ -1,11 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
-import { TestDialogProvider, testRender } from "gloomberb/test-support";
+import { TestDialogProvider, testRender } from "../../../../renderers/opentui/test-utils";
 import { act } from "react";
-import { AppContext, PaneInstanceProvider } from "gloomberb/react";
-import { createInitialState } from "gloomberb/test-support";
-import { cloneLayout, createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "gloomberb/types/config";
-import type { TickerFinancials } from "gloomberb/types/financials";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import {
+  AppContext,
+  PaneInstanceProvider,
+  createInitialState,
+} from "../../../../state/app/context";
+import { cloneLayout, createDefaultConfig, type AppConfig, type BrokerInstanceConfig } from "../../../../types/config";
+import type { TickerFinancials } from "../../../../types/financials";
+import type { TickerRecord } from "../../../../types/ticker";
 import { ibkrGatewayManager } from "../../gateway/service";
 import { TradeTab } from "./index";
 import {
@@ -102,7 +105,7 @@ function TradeHarness({
   config: AppConfig;
   ticker: TickerRecord;
   financials: TickerFinancials;
-  brokerAccounts?: Record<string, import("gloomberb/types/trading").BrokerAccount[]>;
+  brokerAccounts?: Record<string, import("../../../../types/trading").BrokerAccount[]>;
 }) {
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;

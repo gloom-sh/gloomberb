@@ -1,17 +1,17 @@
-import type { TimeRange } from "gloomberb/time-series";
-import type { ChartResolutionSupport, ManualChartResolution } from "gloomberb/time-series";
-import { getBrokerRemoteClient } from "gloomberb/broker";
-import type { BrokerPosition } from "gloomberb/types/broker";
-import type { QuoteSubscriptionTarget } from "gloomberb/types/data-provider";
-import type { Quote, PricePoint, TickerFinancials } from "gloomberb/types/financials";
-import type { BrokerContractRef, InstrumentSearchResult } from "gloomberb/types/instrument";
+import type { TimeRange } from "../../../../time-series/range";
+import type { ChartResolutionSupport, ManualChartResolution } from "../../../../time-series/resolution";
+import { getBrokerRemoteClient } from "../../../../brokers/remote-broker-adapter";
+import type { BrokerPosition } from "../../../../types/broker";
+import type { QuoteSubscriptionTarget } from "../../../../types/data-provider";
+import type { Quote, PricePoint, TickerFinancials } from "../../../../types/financials";
+import type { BrokerContractRef, InstrumentSearchResult } from "../../../../types/instrument";
 import type {
   BrokerAccount,
   BrokerExecution,
   BrokerOrder,
   BrokerOrderPreview,
   BrokerOrderRequest,
-} from "gloomberb/types/trading";
+} from "../../../../types/trading";
 import type {
   IbkrGatewayConfig,
   IbkrSnapshot,

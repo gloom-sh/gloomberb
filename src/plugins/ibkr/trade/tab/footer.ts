@@ -1,5 +1,5 @@
-import { usePaneFooter } from "gloomberb/components";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import { usePaneFooter } from "../../../../components";
+import type { TickerRecord } from "../../../../types/ticker";
 import type { TradeTicketState } from "../../trading/state";
 import type { TradeTabActions } from "./actions";
 

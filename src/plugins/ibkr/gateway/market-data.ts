@@ -4,9 +4,9 @@ import {
   type Contract,
   type ContractDetails,
 } from "@stoqey/ib";
-import type { QuoteSubscriptionTarget } from "gloomberb/types/data-provider";
-import type { Quote } from "gloomberb/types/financials";
-import { normalizeSymbol } from "gloomberb/utils";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import type { Quote } from "../../../types/financials";
+import { normalizeSymbol } from "../../../utils/exchanges";
 import type { IbkrGatewayConfig } from "./types";
 import { getIbkrPriceDivisor, normalizeIbkrPriceValue } from "./price-normalization";
 

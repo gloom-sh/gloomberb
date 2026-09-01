@@ -6,8 +6,8 @@ import {
   type Order,
   type OrderState,
 } from "@stoqey/ib";
-import type { BrokerContractRef } from "gloomberb/types/instrument";
-import type { BrokerOrder, BrokerOrderRequest } from "gloomberb/types/trading";
+import type { BrokerContractRef } from "../../../types/instrument";
+import type { BrokerOrder, BrokerOrderRequest } from "../../../types/trading";
 
 export interface OpenIbkrOrder {
   orderId: number;

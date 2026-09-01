@@ -1,5 +1,5 @@
 import type { Contract, ContractDetails, IBApiNext } from "@stoqey/ib";
-import type { BrokerContractRef, InstrumentSearchResult } from "gloomberb/types/instrument";
+import type { BrokerContractRef, InstrumentSearchResult } from "../../../types/instrument";
 import {
   brokerRefToContract,
   buildDirectContractCandidates,

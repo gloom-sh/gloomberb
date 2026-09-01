@@ -1,6 +1,6 @@
-import type { BrokerInstanceConfig } from "gloomberb/types/config";
-import type { TickerRecord } from "gloomberb/types/ticker";
-import type { BrokerOrderRequest } from "gloomberb/types/trading";
+import type { BrokerInstanceConfig } from "../../../../types/config";
+import type { TickerRecord } from "../../../../types/ticker";
+import type { BrokerOrderRequest } from "../../../../types/trading";
 import { isGatewayConfigured, type IbkrConfig } from "../../config";
 import { setTradeTicketMessage, type TradeTicketState } from "../../trading/state";
 import { isLimitOrder, isStopOrder } from "../utils";

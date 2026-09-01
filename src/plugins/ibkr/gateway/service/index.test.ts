@@ -7,8 +7,8 @@ import { Subject, of } from "rxjs";
 import {
   setBrokerRemoteClient,
   type BrokerRemoteClient,
-} from "gloomberb/broker";
-import type { BrokerConnectionStatus } from "gloomberb/types/broker";
+} from "../../../../brokers/remote-broker-adapter";
+import type { BrokerConnectionStatus } from "../../../../types/broker";
 import {
   ibkrGatewayManager,
   setNativeIbkrGatewayModuleLoader,

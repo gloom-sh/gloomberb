@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import { PriceSelectorDialog } from "gloomberb/components";
-import type { DialogApi, PromptContext } from "gloomberb/dialog";
-import type { TickerFinancials } from "gloomberb/types/financials";
-import type { TickerRecord } from "gloomberb/types/ticker";
+import { PriceSelectorDialog } from "../../../../components";
+import type { DialogApi, PromptContext } from "../../../../ui/dialog";
+import type { TickerFinancials } from "../../../../types/financials";
+import type { TickerRecord } from "../../../../types/ticker";
 import { InputDialog } from "../../dialogs";
 import { setTradeTicketMessage } from "../../trading/state";
 

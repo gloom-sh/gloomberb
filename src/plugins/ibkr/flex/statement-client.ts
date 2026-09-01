@@ -1,4 +1,4 @@
-import { httpFetch } from "gloomberb/utils";
+import { httpFetch } from "../../../utils/http-transport";
 import type { FlexQueryConfig } from "../config";
 import { IBKR_STATEMENT_URL } from "../config";
 

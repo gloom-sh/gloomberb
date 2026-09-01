@@ -1,5 +1,5 @@
-import type { BrokerConnectionStatus } from "gloomberb/types/broker";
-import type { BrokerAccount, BrokerExecution, BrokerOrder } from "gloomberb/types/trading";
+import type { BrokerConnectionStatus } from "../../../types/broker";
+import type { BrokerAccount, BrokerExecution, BrokerOrder } from "../../../types/trading";
 
 export interface IbkrGatewayConfig {
   host: string;

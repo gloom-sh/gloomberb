@@ -1,7 +1,7 @@
 import { MarketDataType, type Contract, type ContractDetails, type IBApiNext } from "@stoqey/ib";
-import type { QuoteSubscriptionTarget } from "gloomberb/types/data-provider";
-import { debugLog } from "gloomberb/utils";
-import type { BrokerContractRef } from "gloomberb/types/instrument";
+import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
+import { debugLog } from "../../../utils/debug-log";
+import type { BrokerContractRef } from "../../../types/instrument";
 import type { IbkrGatewayConfig } from "./types";
 import {
   buildQuoteStreamKey,
