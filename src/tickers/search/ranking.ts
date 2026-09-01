@@ -225,6 +225,15 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       a.issuerGroupKey
       && a.issuerGroupKey === b.issuerGroupKey
     ) {
+      // Letters mixed with digits (4NVDA, NVDC34, 0R1I) mark a leveraged
+      // product, a depositary receipt or a secondary venue's code filed under
+      // the issuer's name, never its primary listing. All-digit symbols are
+      // Tokyo, Shanghai and Hong Kong primaries and must not be touched.
+      // Provider order is trusted for real listings of one issuer, but it put
+      // a Milan 4x product above NVDA, so mixed codes yield first.
+      const aSynthetic = isMixedCode(a.item.label);
+      const bSynthetic = isMixedCode(b.item.label);
+      if (aSynthetic !== bSynthetic) return aSynthetic ? 1 : -1;
       const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
       const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
       if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
@@ -436,6 +445,11 @@ function scoreExchangePreference(
   );
 
   return matchesHint ? 2_000 : -800;
+}
+
+function isMixedCode(label: string): boolean {
+  const symbol = label.split(".")[0] ?? label;
+  return /\d/.test(symbol) && /[A-Za-z]/.test(symbol);
 }
 
 function scoreListingPriority(item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>): number {

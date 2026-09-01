@@ -38,6 +38,7 @@ export function CommandBarPanel({
   contentPadding,
   currentRoute,
   getWorkflowInputRef,
+  hasChromeRow,
   labelWidth,
   listBodyHeight,
   nativeListRows,
@@ -179,6 +180,7 @@ export function CommandBarPanel({
           contentPadding={contentPadding}
           currentRoute={currentRoute}
           getWorkflowInputRef={getWorkflowInputRef}
+          hasChromeRow={hasChromeRow}
           labelWidth={labelWidth}
           listBodyHeight={listBodyHeight}
           nativeListRows={nativeListRows}

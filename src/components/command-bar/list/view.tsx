@@ -8,7 +8,7 @@ import {
 } from "../../../ui";
 import { Spinner } from "../../ui";
 import { t } from "../../../i18n";
-import { commandBarBadgeBg, commandBarBadgeText, type CommandBarBadgeTone } from "../../../theme/colors";
+import { commandBarBadgeText, type CommandBarBadgeTone } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { CommandBarResultLineSegment } from "../../../types/plugin";
 import { truncateTextSegments } from "../../../utils/format";
@@ -50,6 +50,7 @@ interface CommandBarListItemRowProps {
   nativePaneChrome: boolean;
   paletteAccentText: string;
   paletteBg: string;
+  paletteHeadingText: string;
   paletteHoverBg: string;
   paletteMatchText: string;
   paletteSelectedBg: string;
@@ -77,6 +78,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   nativePaneChrome,
   paletteAccentText,
   paletteBg,
+  paletteHeadingText,
   paletteHoverBg,
   paletteMatchText,
   paletteSelectedBg,
@@ -94,7 +96,9 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   // stays where it is for rows with and without a badge alike.
   const badgeIndent = badgeColumnWidth > 0 ? badgeColumnWidth + BADGE_GAP : 0;
   const labelColumnWidth = Math.max(1, labelWidth - badgeIndent);
-  const label = truncateText(presentation.label, labelColumnWidth);
+  // A long title stops one cell short of the right column, so its ellipsis
+  // never runs into the date or shortcut sitting there.
+  const label = truncateText(presentation.label, Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0)));
   // "current" outranks the shortcut on the right; otherwise a badge lifted from
   // `right` must not be repeated there.
   const trailing = badgeConsumesRight(item) && !item.current
@@ -206,6 +210,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
               key={segmentIndex}
               fg={resolveLineSegmentColor(segment, {
                 isSelected,
+                paletteHeadingText,
                 paletteMatchText,
                 paletteSelectedText,
                 paletteSubtleText,
@@ -222,19 +227,16 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
 });
 
 /**
- * A tag with its own background, centred in a column padded to the widest tag
- * in the list. The desktop renderer paints the same coloured box; no cell
- * characters are drawn around it.
+ * A tag set flush against the label edge in a column padded to the widest tag
+ * in the list, so the labels line up and the tags share one right edge. Text
+ * only: a filled box would outweigh the label it introduces.
  */
 function CommandBarRowBadge({ text, tone, width }: { text: string; tone: CommandBarBadgeTone; width: number }) {
   const themeColors = useThemeColors();
-  const visible = truncateText(text, width);
-  const lead = Math.max(0, Math.floor((width - visible.length) / 2));
-  const padded = `${" ".repeat(lead)}${visible}`.padEnd(width, " ");
   return (
-    <Box width={width} height={1} backgroundColor={commandBarBadgeBg(tone, themeColors)}>
-      <Text fg={commandBarBadgeText(tone, themeColors)} attributes={TextAttributes.BOLD}>
-        {padded}
+    <Box width={width} height={1}>
+      <Text fg={commandBarBadgeText(tone, themeColors)}>
+        {truncateText(text, width).padStart(width, " ")}
       </Text>
     </Box>
   );
@@ -243,18 +245,23 @@ function CommandBarRowBadge({ text, tone, width }: { text: string; tone: Command
 /**
  * Matched runs keep their highlight on the selected row: the selection colour is
  * what tells you where you are, the match colour is what you were looking for.
+ * A muted run (a source lead-in, an ellipsis) steps down one more level than
+ * the snippet so it reads as metadata, except on the selected row where the
+ * whole line takes the selection text so nothing there goes dim.
  */
 function resolveLineSegmentColor(
   segment: CommandBarResultLineSegment,
   palette: {
     isSelected: boolean;
+    paletteHeadingText: string;
     paletteMatchText: string;
     paletteSelectedText: string;
     paletteSubtleText: string;
   },
 ): string {
   if (segment.emphasis === "match") return palette.paletteMatchText;
-  return palette.isSelected ? palette.paletteSelectedText : palette.paletteSubtleText;
+  if (palette.isSelected) return palette.paletteSelectedText;
+  return segment.emphasis === "muted" ? palette.paletteHeadingText : palette.paletteSubtleText;
 }
 
 interface CommandBarListBodyProps {
@@ -312,6 +319,11 @@ export const CommandBarListBody = memo(function CommandBarListBody({
     ),
     [nativeListRows],
   );
+  // Headings, messages and the spinner sit on the label edge: the badge column
+  // is a gutter for the rows, not an indent for everything else.
+  const badgeIndent = badgeColumnWidth > 0 ? badgeColumnWidth + BADGE_GAP : 0;
+  const labelEdgePadding = contentPadding + badgeIndent;
+  const labelEdgeWidth = Math.max(1, queryDisplayWidth - badgeIndent);
   const visibleRows = useMemo(() => {
     const rows = nativeListRows;
     if (nativePaneChrome) return rows;
@@ -337,23 +349,23 @@ export const CommandBarListBody = memo(function CommandBarListBody({
         }
         if (row.kind === "spinner") {
           return (
-            <Box key={row.id} height={1} paddingX={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
+            <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
               <Spinner label={t(row.label)} />
             </Box>
           );
         }
         if (row.kind === "message") {
           return (
-            <Box key={row.id} height={1} paddingX={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text fg={paletteText}>{truncateText(t(row.label), queryDisplayWidth)}</Text>
+            <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
+              <Text fg={paletteText}>{truncateText(t(row.label), labelEdgeWidth)}</Text>
             </Box>
           );
         }
         if (row.kind === "heading") {
           return (
-            <Box key={row.id} height={1} paddingX={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
+            <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
               <Text attributes={TextAttributes.BOLD} fg={row.accent ? paletteAccentText : paletteHeadingText}>
-                {truncateText(t(row.label), queryDisplayWidth)}
+                {truncateText(t(row.label), labelEdgeWidth)}
               </Text>
             </Box>
           );
@@ -379,6 +391,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             nativePaneChrome={nativePaneChrome}
             paletteAccentText={paletteAccentText}
             paletteBg={paletteBg}
+            paletteHeadingText={paletteHeadingText}
             paletteHoverBg={paletteHoverBg}
             paletteMatchText={paletteMatchText}
             paletteSelectedBg={paletteSelectedBg}

@@ -22,15 +22,17 @@ export function resolveAppHeaderHeightCells(options: { titleBarOverlay?: boolean
 }
 
 /**
- * Width of the header prompt. It stays a fraction of the window so the update
- * status and the Help pill keep their place; the command sheet that drops out
- * of it spans the full width on its own.
+ * Width shared by the header prompt and the command sheet that drops out of
+ * it, so the sheet reads as the prompt expanding downward. A fraction of the
+ * window so the update status and the Help pill keep their place, capped where
+ * a document snippet still has room but a label does not run past where the
+ * eye goes.
  */
 export function resolveCommandSurfaceWidth(options: { termWidth: number; nativePaneChrome?: boolean }): number {
   const { termWidth } = options;
   return options.nativePaneChrome
-    ? Math.max(46, Math.min(78, termWidth - 10, Math.floor(termWidth * 0.64)))
-    : Math.max(42, Math.min(72, termWidth - 8, Math.floor(termWidth * 0.68)));
+    ? Math.max(46, Math.min(104, termWidth - 10, Math.floor(termWidth * 0.64)))
+    : Math.max(42, Math.min(96, termWidth - 8, Math.floor(termWidth * 0.68)));
 }
 
 export interface HeaderPromptGeometry {

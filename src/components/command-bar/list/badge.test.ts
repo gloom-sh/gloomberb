@@ -14,15 +14,28 @@ describe("command bar row badges", () => {
   });
 
   test("keeps an explicit badge and the right column both", () => {
-    const row = { kind: "action" as const, badge: "NEWS", right: "NVDA" };
+    const row = { kind: "action" as const, badge: "NEWS", right: "Aug 30" };
     expect(resolveRowBadge(row)).toEqual({ text: "NEWS", tone: "document" });
     expect(badgeConsumesRight(row)).toBe(false);
+    // The "search all" row keeps its shortcut on the right under its own tag.
+    expect(resolveRowBadge({ kind: "action", badge: "DOCS", right: "RSCH" })).toEqual({ text: "DOCS", tone: "document" });
   });
 
-  test("tones follow the row kind and placeholders get nothing", () => {
-    expect(resolveRowBadge({ kind: "ticker", right: "EQ" })?.tone).toBe("instrument");
-    expect(resolveRowBadge({ kind: "search", badge: "EQ" })?.tone).toBe("instrument");
-    expect(resolveRowBadge({ kind: "info", right: "EQ" })).toBeNull();
+  /**
+   * An unclassified instrument has no class tag, so its exchange code is
+   * lifted from the right column instead; a long venue name stays there and
+   * the row goes badge-less.
+   */
+  test("tags instruments by class, or by a short exchange code when the class is unknown", () => {
+    expect(resolveRowBadge({ kind: "search", badge: "EQ", right: "NASDAQ" })).toEqual({ text: "EQ", tone: "instrument" });
+    expect(resolveRowBadge({ kind: "ticker", right: "CCC" })).toEqual({ text: "CCC", tone: "instrument" });
+    expect(badgeConsumesRight({ kind: "ticker", right: "CCC" })).toBe(true);
+    expect(resolveRowBadge({ kind: "search", right: "Cboe Global" })).toBeNull();
+  });
+
+  test("tags AI answers with their prefix in the assist tone, upper-cased", () => {
+    expect(resolveRowBadge({ kind: "action", badge: "des", accent: true })).toEqual({ text: "DES", tone: "assist" });
+    expect(resolveRowBadge({ kind: "info", accent: true, right: "✦" })).toBeNull();
     expect(resolveRowBadge({ kind: "plugin", right: "EQ" })).toBeNull();
   });
 

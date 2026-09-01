@@ -91,9 +91,10 @@ export function resolveCommandBarMode(query: string, commandList?: Command[]): C
 
 /**
  * A section whose every row is disabled or unselectable is an offer, not an
- * answer, so it sorts below real matches however its category is prioritized.
+ * answer, so it sorts below real matches however its category is prioritized:
+ * past the async bands (100 to 200) and the AI's lead, short of danger (900).
  */
-const OFFER_SECTION_DEMOTION = 200;
+const OFFER_SECTION_DEMOTION = 500;
 
 interface SectionSortableItem {
   category: string;
@@ -177,13 +178,18 @@ export function truncateText(text: string, width: number): string {
 }
 
 /**
- * Async sections sit below the local matches in the order they usually arrive,
- * so each answer only ever pushes rows below itself: instruments in the 100s,
- * documents at 200 (contributed by the provider), and the AI at 300 since it
- * is the slowest by far (~600ms+) and would otherwise shift the whole list.
+ * The AI leads even though it is the slowest source (~600ms+): it translates
+ * the sentence the user typed into commands, which is the answer to what they
+ * asked. Its Thinking placeholder reserves the rows from the start, so the
+ * arrival replaces a row instead of shifting the list.
+ */
+const ASSIST_SECTION_PRIORITY = -100;
+/**
+ * The other async sections sit below the local matches in arrival order, so
+ * each answer only ever pushes rows below itself: instruments in the 100s,
+ * documents at 200 (contributed by the provider).
  */
 const INSTRUMENTS_SECTION_PRIORITY = 100;
-const ASSIST_SECTION_PRIORITY = 300;
 
 function getCategoryPriority(category: string, options?: CommandBarSectionOptions): number {
   const contributed = options?.categoryPriorities?.get(category);

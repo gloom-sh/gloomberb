@@ -107,6 +107,7 @@ describe("CommandBar", () => {
     expect(frame.split("\n").filter((line) => /^\s*\S+\s+MSFT\b/.test(line))).toHaveLength(1);
     expect(frame).toContain("Exact Match");
     expect(frame.indexOf("Exact Match")).toBeLessThan(frame.indexOf("Instruments"));
+    // Signed out, the AI section is a sign-up offer, which sits under the answers.
     expect(frame.indexOf("Instruments")).toBeLessThan(frame.indexOf("Ask AI"));
   });
 
@@ -181,7 +182,7 @@ describe("CommandBar", () => {
     await testSetup.renderOnce();
 
     expect(calls).toHaveLength(1);
-    expect(testSetup.captureCharFrame()).not.toContain("Commands");
+    expect(testSetup.captureCharFrame()).toContain("Search or run a command");
   });
 
   test("shows one account management result when searching profile", async () => {
@@ -597,7 +598,6 @@ describe("CommandBar", () => {
     await testSetup.renderOnce();
 
     let frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Commands");
     expect(frame).toContain("DES");
     expect(frame).toContain("Type a ticker symbol");
     expect(frame).not.toContain("Back");
@@ -771,14 +771,10 @@ describe("CommandBar", () => {
     await testSetup.renderOnce();
     expect(testSetup.captureCharFrame()).toContain("DES AMD");
 
-    await act(async () => {
-      testSetup!.mockInput.pressKey("backspace", { meta: true });
-      await testSetup!.renderOnce();
-    });
+    await emitKeypress(testSetup, { name: "backspace", meta: true });
 
     const frame = testSetup.captureCharFrame();
-    expect(frame).toContain("Commands");
-    expect(frame).toContain("Search");
+    expect(frame).toContain("Type a ticker symbol");
     expect(frame).not.toContain("DES AMD");
   });
 
@@ -795,7 +791,7 @@ describe("CommandBar", () => {
       await testSetup!.renderOnce();
     });
 
-    expect(testSetup.captureCharFrame()).not.toContain("Commands");
+    expect(testSetup.captureCharFrame()).toContain("Search or run a command");
   });
 
   test("DES MSFT opens an exact ticker directly", async () => {
@@ -912,7 +908,7 @@ describe("CommandBar", () => {
     });
     await testSetup.renderOnce();
 
-    expect(testSetup.captureCharFrame()).not.toContain("Commands");
+    expect(testSetup.captureCharFrame()).toContain("Search or run a command");
   });
 
   test("groups ticker search sections and keeps saved matches above looser provider results", async () => {

@@ -124,7 +124,7 @@ describe("assist rows in the root result model", () => {
     onRunCandidate: () => {},
   };
 
-  test("land under provider rows and keep the Thinking placeholder", () => {
+  test("lead the list ahead of provider rows and keep the Thinking placeholder", () => {
     const { items } = buildRootResultModel(rootOptions({
       rootQuery: "margin",
       assist,
@@ -133,7 +133,7 @@ describe("assist rows in the root result model", () => {
     }));
 
     expect(orderListResults(items, { categoryPriorities: new Map([["Documents", 200]]) }).map((item) => item.id))
-      .toEqual([paneRow.id, documentRow.id, "assist:pending"]);
+      .toEqual(["assist:pending", paneRow.id, documentRow.id]);
   });
 
   test("the local matcher no longer drags in panes whose keywords scatter the letters", () => {

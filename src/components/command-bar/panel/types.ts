@@ -36,6 +36,8 @@ export interface CommandBarPanelProps {
   contentPadding: number;
   currentRoute: CommandBarRoute | null;
   getWorkflowInputRef: (fieldId: string) => RefObject<InputRenderable | TextareaRenderable | null>;
+  /** The sheet height already reserves the chrome row, so the body must render it whenever this is set. */
+  hasChromeRow: boolean;
   labelWidth: number;
   listBodyHeight: number;
   nativeListRows: CommandBarListRow[];

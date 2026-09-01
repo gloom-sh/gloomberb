@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ResultItem } from "../../list/model";
-import { mergePlainRootTickerResults, mergeTickerSearchResultItems } from "./results";
+import { formatInstrumentBadge, mergePlainRootTickerResults, mergeTickerSearchResultItems } from "./results";
 
 function resultItem(id: string, label: string, right: string, kind: ResultItem["kind"] = "ticker"): ResultItem {
   return {
@@ -65,4 +65,23 @@ test("folds a plain query's symbol hits into one capped Instruments section behi
     ["search:NVDS", "Instruments"],
   ]);
   expect(merged.find((item) => item.id === "search:NVDA.MX")?.right).toBe("Equity BMV");
+});
+
+/**
+ * The class tag is what the eye sorts instruments by, so the mapping from a
+ * provider's type strings has to stay put: an exchange-traded fund is not a
+ * mutual fund, and an unclassified instrument gets no tag rather than a stand-in.
+ */
+test("names the instrument class for the badge column", () => {
+  const search = (type: string) => ({ providerId: "yahoo", symbol: "X", name: "X", exchange: "NYQ", type });
+  expect(formatInstrumentBadge({ instrumentClass: "equity" })).toBe("EQ");
+  expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETF") })).toBe("ETF");
+  expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("ETN") })).toBe("ETF");
+  expect(formatInstrumentBadge({ instrumentClass: "fund", result: search("MUTUALFUND") })).toBe("FUND");
+  expect(formatInstrumentBadge({
+    instrumentClass: "fund",
+    ticker: { metadata: { ticker: "VTI", assetCategory: "ETF" } } as never,
+  })).toBe("ETF");
+  expect(formatInstrumentBadge({ instrumentClass: "derivative" })).toBe("DERIV");
+  expect(formatInstrumentBadge({ instrumentClass: "other", result: search("INDEX") })).toBeUndefined();
 });

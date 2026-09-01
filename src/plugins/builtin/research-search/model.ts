@@ -164,6 +164,46 @@ export function formatHitDate(value: string | null | undefined): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "2-digit" });
 }
 
+const MS_PER_HOUR = 60 * 60 * 1000;
+
+/**
+ * Date for a column too narrow for a full one: the age while it is fresh
+ * ("3h"), the day for the rest of this year ("Aug 30"), the month and year
+ * beyond that ("Aug 2025"). Empty rather than a dash when unknown, so a row
+ * without a date shows nothing rather than a placeholder.
+ */
+export function formatHitDateShort(value: string | null | undefined, now = Date.now()): string {
+  if (!value) return "";
+  const date = new Date(value);
+  const time = date.getTime();
+  if (Number.isNaN(time)) return "";
+  const age = now - time;
+  if (age >= 0 && age < MS_PER_HOUR) return `${Math.max(1, Math.floor(age / 60_000))}m`;
+  if (age >= 0 && age < 24 * MS_PER_HOUR) return `${Math.floor(age / MS_PER_HOUR)}h`;
+  if (date.getFullYear() === new Date(now).getFullYear()) {
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  return date.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+}
+
+/**
+ * Who or what a hit's text came from, shorter than `chunkAttribution` because
+ * the command bar sets it before the ticker on one line: the wire for news,
+ * "speaker, role" for a call, the section for a filing (its form is the badge).
+ */
+export function hitLeadIn(hit: Pick<CloudSearchHit, "docType" | "metadata">): string {
+  const metadata = hit.metadata;
+  if (!metadata) return "";
+  if (hit.docType === "transcript") {
+    return [metadata.speaker, metadata.role]
+      .map((part) => part?.trim())
+      .filter((part): part is string => !!part)
+      .join(", ");
+  }
+  if (hit.docType === "filing") return metadata.section?.trim() || "";
+  return metadata.source?.trim() || "";
+}
+
 /** Speaker, wire source, or filing section — whatever identifies a chunk's origin. */
 export function chunkAttribution(
   docType: CloudSearchDocType,

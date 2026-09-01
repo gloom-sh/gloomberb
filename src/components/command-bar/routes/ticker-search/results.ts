@@ -19,6 +19,33 @@ export function createQuickLookTickerCandidates(tickers: Iterable<TickerRecord>)
   return createLocalTickerSearchCandidates(tickers, new Map(), QUICK_LOOK_TICKER_SEARCH_OPTIONS);
 }
 
+/** Provider type or saved asset category, whichever classified the candidate. */
+function rawInstrumentType(candidate: Pick<TickerSearchCandidate, "result" | "ticker">): string {
+  return candidate.result?.brokerContract?.secType
+    || candidate.result?.type
+    || candidate.ticker?.metadata.assetCategory
+    || "";
+}
+
+/**
+ * Class tag for the badge column. An unclassified instrument gets none: the
+ * row lifts its exchange code there instead when the code is short enough.
+ */
+export function formatInstrumentBadge(
+  candidate: Pick<TickerSearchCandidate, "instrumentClass" | "result" | "ticker">,
+): string | undefined {
+  switch (candidate.instrumentClass) {
+    case "equity":
+      return "EQ";
+    case "fund":
+      return /\bET[FNP]\b/i.test(rawInstrumentType(candidate)) ? "ETF" : "FUND";
+    case "derivative":
+      return "DERIV";
+    case "other":
+      return undefined;
+  }
+}
+
 export function normalizeCommandTickerSearchText(value: string): string {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
 }

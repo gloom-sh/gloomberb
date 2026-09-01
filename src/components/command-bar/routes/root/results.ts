@@ -266,8 +266,10 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...providerResultItems);
   }
 
-  // Appended last: the AI is the slowest source to answer, and its section is
-  // placed by buildSections, so its rows land under everything already shown.
+  // Built from the local matches, then placed above them: the AI turns the
+  // typed sentence into commands, so its answer leads the list. Its Thinking
+  // placeholder holds the rows from the start, and the root selection effect
+  // follows rows by identity when the answer renumbers what sits below.
   const assistItems = assist
     && isAssistSectionVisible(
       assist,
@@ -278,5 +280,5 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     ? buildAssistResultItems({ ...assist, query: rootQuery })
     : [];
 
-  return { items: dedupeById([...items, ...assistItems]), initialIdx };
+  return { items: dedupeById([...assistItems, ...items]), initialIdx };
 }

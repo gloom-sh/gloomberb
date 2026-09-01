@@ -82,7 +82,13 @@ export function useCommandBarEnvironment() {
   }, []);
   const { symbol: activeTickerSymbol, ticker: activeTickerData, financials: activeFinancials } = useFocusedTicker();
   const { width: termWidth, height: termHeight } = useViewport();
-  const { nativePaneChrome: nativePaneChromeCapability, cellWidthPx = 8, cellHeightPx = 18, titleBarOverlay } = useUiCapabilities();
+  const {
+    nativePaneChrome: nativePaneChromeCapability,
+    cellWidthPx = 8,
+    cellHeightPx = 18,
+    nativeWindowChrome,
+    titleBarOverlay,
+  } = useUiCapabilities();
   const nativePaneChrome = nativePaneChromeCapability === true;
   const availableCommands = useMemo(
     () => nativePaneChrome
@@ -111,6 +117,7 @@ export function useCommandBarEnvironment() {
     getCommittedThemeId,
     nativeListScrollRef,
     nativePaneChrome,
+    nativeWindowChrome,
     persistConfig,
     skipTickerSearchDebounceRef,
     state,

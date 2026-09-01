@@ -101,7 +101,7 @@ async function waitForFrameWithout(text: string): Promise<string> {
 }
 
 describe("CommandBar AI assist", () => {
-  test("asks on its own, with no Enter, and lands the answer under the local matches", async () => {
+  test("asks on its own, with no Enter, and leads the list with the answer", async () => {
     signInVerified();
     let sentCommandCount = 0;
     let releaseResponse = () => {};
@@ -131,19 +131,20 @@ describe("CommandBar AI assist", () => {
     expect(sentCommandCount).toBeGreaterThan(0);
 
     releaseResponse();
-    const answered = await waitForFrameToContain("CHAT #general — Open the general channel", ASSIST_WAIT_ATTEMPTS);
+    const answered = await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
     expect(answered).not.toContain("Thinking…");
     expect(requests).toHaveLength(1);
-    // The slowest source lands last, under the local matches, so its arrival
-    // shifts nothing the user was already looking at, and plain Enter still
-    // runs the local match the untouched selection rests on.
-    expect(answered.indexOf("Panes")).toBeLessThan(answered.indexOf("Ask AI"));
+    // Above the local matches, laid out like any other row with the prefix in
+    // the badge column, and holding the selection an untouched query never
+    // moved: plain Enter runs the AI's best guess.
+    expect(answered.indexOf("Ask AI")).toBeLessThan(answered.indexOf("Panes"));
+    expect(answered).toMatch(/CHAT\s+#general · Open the general channel/);
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
   });
 
-  test("keeps the user's place when the answer replaces the thinking row", async () => {
+  test("keeps the row the user picked when an answer lands above it", async () => {
     signInVerified();
     let releaseResponse = () => {};
     const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
@@ -168,15 +169,15 @@ describe("CommandBar AI assist", () => {
 
     await testSetup.renderOnce();
     await waitForRequest(requests);
-    // Down leaves the local match for the single "Thinking…" row under it.
+    // Down lands on the local match while a single "Thinking…" row sits above.
     await emitKeypress(testSetup, { name: "down" });
     releaseResponse();
-    await waitForFrameToContain("CHAT #random — Open the random channel", ASSIST_WAIT_ATTEMPTS);
+    await waitForFrameToContain("#random · Open the random channel", ASSIST_WAIT_ATTEMPTS);
 
-    // Two answers replaced that row in place, so the selection stays where the
-    // user put it and Enter runs the best candidate, not the local match above.
+    // Two answers replaced that one row, so the chosen row moved down by one;
+    // Enter still runs it rather than whatever now sits at its old index.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
-    expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
+    expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
   });
 
   test("runs an argless prefix candidate that still carries an argument", async () => {
@@ -197,7 +198,7 @@ describe("CommandBar AI assist", () => {
     );
 
     await testSetup.renderOnce();
-    await waitForFrameToContain("ERN NVDA — Earnings Calendar for NVDA", ASSIST_WAIT_ATTEMPTS);
+    await waitForFrameToContain("NVDA · Earnings Calendar", ASSIST_WAIT_ATTEMPTS);
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "earnings-calendar-pane", options: undefined }]);
@@ -228,7 +229,6 @@ describe("CommandBar AI assist", () => {
 
     // Enter on "Thinking…" is a promise, not a dead key: there is nothing to
     // run yet, so the ask is claimed and its answer runs when it arrives.
-    await emitKeypress(testSetup, { name: "down" });
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([]);
 

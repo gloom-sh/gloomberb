@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildAssistResultItems,
+  formatAssistCandidateLabel,
   shouldAutoAskAssist,
   shouldShowAssistRow,
   type AssistRequestState,
@@ -68,7 +69,20 @@ describe("buildAssistResultItems", () => {
       .toEqual(["Rate limited — try again in a minute"]);
   });
 
-  test("shows candidates input-first and runs the exact command-bar text", () => {
+  test("lays a candidate out like any other row: prefix in the badge, argument leading the label", () => {
+    expect(formatAssistCandidateLabel({ input: "DES NVDA", prefix: "DES", title: "Open security details for NVDA" }))
+      .toBe("NVDA \u00b7 Open security details");
+    expect(formatAssistCandidateLabel({ input: "G NVDA AMD", prefix: "G", title: "Chart NVDA vs AMD" }))
+      .toBe("NVDA AMD \u00b7 Chart NVDA vs AMD");
+    // No argument: the title stands alone rather than a stray separator.
+    expect(formatAssistCandidateLabel({ input: "ERN", prefix: "ERN", title: "Earnings Calendar" }))
+      .toBe("Earnings Calendar");
+    // A prefix the input does not start with is not stripped out of it.
+    expect(formatAssistCandidateLabel({ input: "show earnings", prefix: "ERN", title: "Earnings" }))
+      .toBe("show earnings \u00b7 Earnings");
+  });
+
+  test("shows candidates with the prefix as badge and runs the exact command-bar text", () => {
     const runs: Array<[string, string | undefined]> = [];
     const items = buildAssistResultItems({
       ...handlers,
@@ -84,7 +98,8 @@ describe("buildAssistResultItems", () => {
       },
     });
 
-    expect(items[0]?.label).toBe("G NVDA AMD — Chart NVDA vs AMD");
+    expect(items[0]?.label).toBe("NVDA AMD \u00b7 Chart NVDA vs AMD");
+    expect(items[0]?.badge).toBe("G");
     // The marker rides the trailing column instead of shifting the label.
     expect(items[0]?.right).toBe("✦");
     expect(items[0]?.accent).toBe(true);

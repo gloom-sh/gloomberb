@@ -359,6 +359,32 @@ describe("ticker-search utilities", () => {
     expect(rankTickerSearchItems([...candidates].reverse(), "Apple").map((item) => item.symbol)).toEqual(expected);
   });
 
+  test("ranks the primary listing above leveraged and depositary look-alikes", () => {
+    const make = (symbol: string, right: string, providerRank: number) => ({
+      id: symbol,
+      label: symbol,
+      symbol,
+      detail: "NVIDIA Corporation",
+      right,
+      category: "Other Listings",
+      kind: "search" as const,
+      instrumentClass: "equity" as const,
+      providerRank,
+    });
+    // Provider order puts the Milan 4x product first; every text signal ties.
+    const candidates = [make("4NVDA", "MTA", 0), make("NVDA", "NASDAQ", 1), make("NVDC34", "BOVESPA", 2)];
+
+    expect(rankTickerSearchItems(candidates, "nvidia").map((item) => item.symbol))
+      .toEqual(["NVDA", "4NVDA", "NVDC34"]);
+
+    // All-digit symbols are Tokyo, Shanghai and Hong Kong primaries, not look-alikes.
+    const toyota = [
+      { ...make("7203", "TSE", 0), detail: "Toyota Motor Corporation" },
+      { ...make("TM", "NYSE", 1), detail: "Toyota Motor Corporation" },
+    ];
+    expect(rankTickerSearchItems(toyota, "toyota").map((item) => item.symbol)).toEqual(["7203", "TM"]);
+  });
+
   test("normalizes punctuated legal suffixes before applying same-issuer provider order", () => {
     const results = buildTickerSearchCandidates({
       query: "Acme",

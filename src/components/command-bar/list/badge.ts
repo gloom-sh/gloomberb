@@ -17,10 +17,16 @@ export const BADGE_GAP = 1;
  */
 const SHORTCUT_PATTERN = /^[A-Z0-9][A-Z0-9-]{0,5}$/;
 
-type BadgeSource = Pick<ResultItem, "badge" | "right" | "kind">;
+type BadgeSource = Pick<ResultItem, "accent" | "badge" | "right" | "kind">;
 
 export function looksLikeShortcut(value: string | undefined): value is string {
   return value !== undefined && SHORTCUT_PATTERN.test(value);
+}
+
+function resolveBadgeTone(item: BadgeSource): CommandBarBadgeTone {
+  if (item.accent) return "assist";
+  if (item.kind === "ticker" || item.kind === "search") return "instrument";
+  return item.badge ? "document" : "command";
 }
 
 /**
@@ -32,14 +38,9 @@ export function looksLikeShortcut(value: string | undefined): value is string {
  */
 export function resolveRowBadge(item: BadgeSource): CommandBarRowBadge | null {
   if (item.kind === "info" || item.kind === "plugin") return null;
-  const tone: CommandBarBadgeTone = item.kind === "ticker" || item.kind === "search"
-    ? "instrument"
-    : item.badge
-      ? "document"
-      : "command";
-  if (item.badge) return { text: item.badge, tone };
-  if (looksLikeShortcut(item.right)) return { text: item.right, tone };
-  return null;
+  const text = item.badge || (looksLikeShortcut(item.right) ? item.right : null);
+  if (!text) return null;
+  return { text: text.toUpperCase(), tone: resolveBadgeTone(item) };
 }
 
 /** True when the badge was lifted from `right`, so the right column must not repeat it. */

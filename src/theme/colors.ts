@@ -212,40 +212,35 @@ export function commandBarMatchText(palette: ThemeColors = colors): string {
   );
 }
 
-export type CommandBarBadgeTone = "command" | "instrument" | "document";
+export type CommandBarBadgeTone = "command" | "instrument" | "document" | "assist";
 
-/** Panel, hover and selection: the surfaces a badge sits on. */
-function commandBarBadgeSurfaces(palette: ThemeColors): readonly [string, string, string, string] {
-  return [
+function commandBarBadgeHue(tone: CommandBarBadgeTone, palette: ThemeColors): string {
+  if (tone === "instrument") return palette.warning;
+  if (tone === "document") return palette.neutral;
+  if (tone === "assist") return ASSIST_ACCENT;
+  return palette.borderFocused;
+}
+
+/**
+ * Text-only tag left of a result label. One hue per family so commands,
+ * instruments, documents and AI answers scan apart without a filled box, pulled
+ * towards the subtle text so the tag stays quieter than the label, then pushed
+ * only until it clears every surface it can land on, the selected row included.
+ */
+export function commandBarBadgeText(tone: CommandBarBadgeTone, palette: ThemeColors = colors): string {
+  const surfaces = [
     commandBarBg(palette),
     commandBarPanelBg(palette),
     commandBarHoverBg(palette),
     commandBarSelectedBg(palette),
   ] as const;
-}
-
-function commandBarBadgeHue(tone: CommandBarBadgeTone, palette: ThemeColors): string {
-  if (tone === "instrument") return palette.warning;
-  if (tone === "document") return palette.neutral;
-  return palette.borderFocused;
-}
-
-/**
- * Background of the tag left of a result label. Three theme hues so commands,
- * instruments and documents scan apart without shouting: a tint of the hue over
- * the panel, pushed further towards the hue only until it separates from every
- * surface it can land on, the selected row included.
- */
-export function commandBarBadgeBg(tone: CommandBarBadgeTone, palette: ThemeColors = colors): string {
-  const hue = commandBarBadgeHue(tone, palette);
-  const surfaces = commandBarBadgeSurfaces(palette);
-  return blendForContrastOnSurfaces(blendHex(surfaces[0], hue, 0.4), surfaces, hue, 1.4);
-}
-
-export function commandBarBadgeText(tone: CommandBarBadgeTone, palette: ThemeColors = colors): string {
-  const base = commandBarBadgeBg(tone, palette);
-  const preferred = higherContrast(palette.textBright, palette.bg, base);
-  return blendForContrast(preferred, base, higherContrast("#ffffff", "#000000", base), 4.5);
+  const muted = blendHex(commandBarBadgeHue(tone, palette), commandBarSubtleText(palette), 0.4);
+  return blendForContrastOnSurfaces(
+    muted,
+    surfaces,
+    higherContrast("#ffffff", "#000000", surfaces[0]),
+    3.6,
+  );
 }
 
 export function commandBarSelectedText(palette: ThemeColors = colors): string {

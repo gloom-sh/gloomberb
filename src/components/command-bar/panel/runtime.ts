@@ -54,6 +54,7 @@ interface CommandBarPanelRuntimeOptions {
   moveWorkflowFocus: (delta: number) => void;
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
   nativePaneChrome: boolean;
+  nativeWindowChrome?: boolean;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
   openWorkflowFieldPicker: OpenWorkflowFieldPicker;
   persistConfig: (nextConfig: AppState["config"]) => void;
@@ -106,6 +107,7 @@ export function useCommandBarPanelRuntime({
   moveWorkflowFocus,
   nativeListScrollRef,
   nativePaneChrome,
+  nativeWindowChrome,
   onNativeOccluderChange,
   openWorkflowFieldPicker,
   persistConfig,
@@ -210,6 +212,8 @@ export function useCommandBarPanelRuntime({
     cellWidthPx,
     currentRoute,
     nativePaneChrome,
+    nativeWindowChrome,
+    rootShortcutFeedback,
     routeListState,
     setRootSelectedIdx,
     showCustomMultiSelectPicker,
@@ -238,6 +242,7 @@ export function useCommandBarPanelRuntime({
     contentPadding: panelLayout.contentPadding,
     currentRoute,
     getWorkflowInputRef,
+    hasChromeRow: panelLayout.hasChromeRow,
     labelWidth: panelLayout.labelWidth,
     listBodyHeight: panelLayout.listBodyHeight,
     nativeListRows,

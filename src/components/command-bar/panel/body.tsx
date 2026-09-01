@@ -39,6 +39,7 @@ export function CommandBarPanelBody({
   contentPadding,
   currentRoute,
   getWorkflowInputRef,
+  hasChromeRow,
   labelWidth,
   listBodyHeight,
   nativeListRows,
@@ -87,25 +88,8 @@ export function CommandBarPanelBody({
 
   return (
     <>
-      {!nativePaneChrome && (
-        <Box
-          height={1}
-          paddingX={contentPadding}
-          flexDirection="row"
-          alignItems="center"
-        >
-          {currentRoute && (
-            <Box marginRight={1}>
-              <Button label={t("Back")} variant="ghost" onPress={onBack} />
-            </Box>
-          )}
-          <Box flexGrow={1}>
-            <Text fg={paletteText} attributes={TextAttributes.BOLD}>
-              {t(getCommandBarPanelTitle(currentRoute))}
-            </Text>
-          </Box>
-        </Box>
-      )}
+      {/* The desktop sheet pads itself in CSS; the terminal spends a row. */}
+      {!nativePaneChrome && <Box height={1} />}
 
       {/* Rows stop at the results column, so a selection bar on a wide window
           does not run on past the text into empty sheet. */}
@@ -116,27 +100,40 @@ export function CommandBarPanelBody({
         width={queryDisplayWidth + contentPadding * 2}
         backgroundColor={panelBg}
       >
-        {/* The query itself is typed in the header prompt; this row is the
-            sheet's only chrome and its height is pinned in panel/layout.ts. */}
-        <Box height={1} paddingX={contentPadding}>
-          {nativePaneChrome && currentRoute ? (
-            <Text
-              fg={paletteSubtleText}
-              onMouseDown={(event: any) => {
-                event.stopPropagation?.();
-                event.preventDefault?.();
-                onBack();
-              }}
-              data-gloom-interactive="true"
-            >
-              {`← ${t("Back")}`}
-            </Text>
-          ) : visibleListState?.kind === "root" && rootShortcutFeedback ? (
-            <Text fg={paletteSubtleText}>
-              {truncateText(rootShortcutFeedback, queryDisplayWidth)}
-            </Text>
-          ) : null}
-        </Box>
+        {/* The query itself is typed in the header prompt. This row only exists
+            when it has something to say: the way back from a nested screen, or
+            what a typed prefix resolved to. Its height is reserved in
+            panel/layout.ts, which is why the render is keyed on the same flag. */}
+        {hasChromeRow && (
+          <>
+            <Box height={1} paddingX={contentPadding} flexDirection="row">
+              {currentRoute ? (
+                <>
+                  <Text
+                    fg={paletteSubtleText}
+                    onMouseDown={(event: any) => {
+                      event.stopPropagation?.();
+                      event.preventDefault?.();
+                      onBack();
+                    }}
+                    data-gloom-interactive="true"
+                  >
+                    {`\u2190 ${t("Back")}`}
+                  </Text>
+                  <Box width={2} />
+                  <Text fg={paletteText} attributes={TextAttributes.BOLD}>
+                    {truncateText(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
+                  </Text>
+                </>
+              ) : rootShortcutFeedback ? (
+                <Text fg={paletteSubtleText}>
+                  {truncateText(rootShortcutFeedback, queryDisplayWidth)}
+                </Text>
+              ) : null}
+            </Box>
+            <Box height={1} />
+          </>
+        )}
 
         {themePickerActive && (
           <ThemePicker
@@ -240,13 +237,12 @@ export function CommandBarPanelBody({
         )}
       </Box>
 
-      {!nativePaneChrome && <Box flexGrow={1} />}
+      {!nativePaneChrome && <Box height={1} />}
     </>
   );
 }
 
-function getCommandBarPanelTitle(route: CommandBarRoute | null): string {
-  if (!route) return "Commands";
+function getCommandBarPanelTitle(route: CommandBarRoute): string {
   if (route.kind === "mode") {
     if (route.screen === "layout") return "Layout Actions";
     return "Security Description";

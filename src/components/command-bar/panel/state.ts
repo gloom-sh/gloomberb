@@ -18,6 +18,8 @@ interface UseCommandBarPanelStateOptions {
   cellWidthPx: number;
   currentRoute: CommandBarRoute | null;
   nativePaneChrome: boolean;
+  nativeWindowChrome?: boolean;
+  rootShortcutFeedback: string | null;
   routeListState: ListScreenState | null;
   setRootSelectedIdx: Dispatch<SetStateAction<number>>;
   showCustomMultiSelectPicker: boolean;
@@ -34,6 +36,8 @@ export function useCommandBarPanelState({
   cellWidthPx,
   currentRoute,
   nativePaneChrome,
+  nativeWindowChrome,
+  rootShortcutFeedback,
   routeListState,
   setRootSelectedIdx,
   showCustomMultiSelectPicker,
@@ -94,13 +98,16 @@ export function useCommandBarPanelState({
     return indexByGlobalIndex;
   }, [nativeListRows]);
 
+  const hasRootFeedback = visibleListState?.kind === "root" && rootShortcutFeedback !== null;
   const panelLayout = useMemo(() => resolveCommandBarPanelLayout({
     cellHeightPx,
     cellWidthPx,
     currentRoute,
+    hasRootFeedback,
     hasVisibleListState,
     nativeListRowCount: getListRowsHeight(nativeListRows),
     nativePaneChrome,
+    nativeWindowChrome,
     showCustomMultiSelectPicker,
     termHeight,
     termWidth,
@@ -110,9 +117,11 @@ export function useCommandBarPanelState({
     cellHeightPx,
     cellWidthPx,
     currentRoute,
+    hasRootFeedback,
     hasVisibleListState,
     nativeListRows,
     nativePaneChrome,
+    nativeWindowChrome,
     showCustomMultiSelectPicker,
     termHeight,
     termWidth,

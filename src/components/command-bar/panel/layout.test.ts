@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { resolveAppHeaderHeightCells } from "../../layout/shell/chrome";
+import { resolveAppHeaderHeightCells, resolveHeaderPromptGeometry } from "../../layout/shell/chrome";
 import { resolveCommandBarPanelLayout } from "./layout";
 
 const BASE = {
   cellHeightPx: 0,
   cellWidthPx: 0,
   currentRoute: null,
+  hasRootFeedback: false,
   hasVisibleListState: true,
   nativeListRowCount: 8,
   nativePaneChrome: false,
@@ -14,85 +15,95 @@ const BASE = {
   titleBarOverlay: undefined as boolean | undefined,
 };
 
+const DESKTOP = {
+  ...BASE,
+  cellHeightPx: 18,
+  cellWidthPx: 8,
+  nativePaneChrome: true,
+  nativeWindowChrome: true,
+  titleBarOverlay: true,
+};
+
 describe("command bar sheet geometry", () => {
   /**
-   * The sheet hangs off the header: full width, top edge on the header's
-   * bottom edge. Any gap or inset reads as a floating window again.
+   * The sheet is the header prompt expanding downward: same left edge, same
+   * width, top edge on the header's bottom edge. Any drift between the two
+   * reads as a banner, or a floating window, hanging near the prompt.
    */
-  test("spans the window flush under the header", () => {
+  test("shares the prompt's left edge and width on every window size", () => {
     for (const termWidth of [46, 80, 120, 200]) {
       const layout = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth });
-      expect(layout.panelBounds).toMatchObject({ x: 0, y: resolveAppHeaderHeightCells({}), width: termWidth });
+      const prompt = resolveHeaderPromptGeometry({ termWidth });
+      expect(layout.panelBounds).toEqual({
+        x: prompt.left,
+        y: resolveAppHeaderHeightCells({}),
+        width: prompt.width,
+        height: layout.panelBounds.height,
+      });
+      expect(layout.nativeOccluderRect).toEqual({
+        x: prompt.left,
+        y: 0,
+        width: prompt.width,
+        height: layout.panelBounds.height,
+      });
     }
 
     // A titlebar-overlay header is 28px tall, so its height in cells is fractional.
-    const desktop = resolveCommandBarPanelLayout({
-      ...BASE,
-      cellHeightPx: 18,
-      cellWidthPx: 8,
+    const desktop = resolveCommandBarPanelLayout({ ...DESKTOP, termHeight: 40, termWidth: 200 });
+    const desktopPrompt = resolveHeaderPromptGeometry({
       nativePaneChrome: true,
-      termHeight: 40,
-      termWidth: 160,
+      nativeWindowChrome: true,
+      termWidth: 200,
       titleBarOverlay: true,
     });
-    expect(desktop.panelBounds.x).toBe(0);
-    expect(desktop.panelBounds.width).toBe(160);
+    expect(desktop.panelBounds.x).toBe(desktopPrompt.left);
+    expect(desktop.panelBounds.width).toBe(desktopPrompt.width);
     expect(desktop.panelBounds.y).toBeCloseTo(28 / 18, 6);
   });
 
   /**
-   * Occluder coordinates are relative to the content area, which starts under
-   * the header exactly where the sheet does, so nothing is clipped and the
-   * occluder is the sheet itself.
+   * The selection bar is the row box, padding included, so the columns have
+   * to add back up to the sheet: nothing capped short of it, nothing past it.
    */
-  test("reports the whole sheet as the content-relative occluder", () => {
-    const terminal = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth: 120 });
-    expect(terminal.nativeOccluderRect).toEqual({
-      x: 0,
-      y: 0,
-      width: 120,
-      height: terminal.panelBounds.height,
-    });
+  test("fills the sheet with the results columns", () => {
+    const terminal = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth: 200 });
+    expect(terminal.queryDisplayWidth + terminal.contentPadding * 2).toBe(terminal.panelBounds.width);
+    expect(terminal.labelWidth + terminal.trailingWidth).toBe(terminal.resultsInnerWidth);
+    expect(terminal.trailingWidth).toBe(12);
 
-    const desktop = resolveCommandBarPanelLayout({
-      ...BASE,
-      cellHeightPx: 18,
-      cellWidthPx: 8,
-      nativePaneChrome: true,
-      termHeight: 40,
-      termWidth: 160,
-      titleBarOverlay: true,
-    });
-    expect(desktop.nativeOccluderRect).toEqual({
-      x: 0,
-      y: 0,
-      width: 160,
-      height: desktop.panelBounds.height,
-    });
-  });
-
-  /** The bottom row of a 24-line terminal stays clear at every sheet height. */
-  test("never reaches the last terminal row", () => {
-    for (const termHeight of [18, 24, 40]) {
-      const layout = resolveCommandBarPanelLayout({ ...BASE, termHeight, termWidth: 80 });
-      expect(layout.panelBounds.y + layout.panelBounds.height).toBeLessThan(termHeight - 1);
-    }
+    const desktop = resolveCommandBarPanelLayout({ ...DESKTOP, termHeight: 40, termWidth: 200 });
+    expect(desktop.queryDisplayWidth + desktop.contentPadding * 2 + desktop.nativePanelPaddingColumns)
+      .toBe(desktop.panelBounds.width);
   });
 
   /**
-   * Full width does not mean full-width labels: past ~110 cells the right
-   * column would sit where nobody looks. Below the cap the columns follow
-   * the window.
+   * A 24-row terminal keeps its 16 rows; from there the list takes about
+   * 55% of the window, up to 26 rows, so a tall window shows more of a
+   * multi-line document list. The chrome row and its blank line come out of
+   * the same budget, so the sheet's footprint does not grow when they show.
    */
-  test("caps the results column and keeps the trailing column proportional", () => {
-    const narrow = resolveCommandBarPanelLayout({ ...BASE, termHeight: 24, termWidth: 80 });
-    expect(narrow.resultsInnerWidth).toBe(80 - 3 * 2);
-    expect(narrow.trailingWidth).toBe(12);
-    expect(narrow.labelWidth).toBe(narrow.resultsInnerWidth - narrow.trailingWidth);
+  test("grows with the window past 24 rows and caps at 26", () => {
+    const expected: Array<[number, number]> = [[24, 16], [40, 22], [60, 26]];
+    for (const [termHeight, bodyHeight] of expected) {
+      const plain = resolveCommandBarPanelLayout({ ...BASE, termHeight, termWidth: 120 });
+      expect(plain.bodyHeight).toBe(bodyHeight);
+      expect(plain.hasChromeRow).toBe(false);
+      expect(plain.panelBounds.height).toBe(bodyHeight + 2);
 
-    const wide = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth: 200 });
-    expect(wide.resultsInnerWidth).toBe(110);
-    expect(wide.labelWidth + wide.trailingWidth).toBe(110);
-    expect(wide.queryDisplayWidth).toBe(110);
+      const withChrome = resolveCommandBarPanelLayout({ ...BASE, hasRootFeedback: true, termHeight, termWidth: 120 });
+      expect(withChrome.hasChromeRow).toBe(true);
+      expect(withChrome.panelBounds.height).toBe(withChrome.bodyHeight + 4);
+      expect(withChrome.panelBounds.height).toBeLessThanOrEqual(plain.panelBounds.height);
+    }
+  });
+
+  /** The bottom rows of a short terminal stay clear at every sheet height. */
+  test("never reaches the last terminal row", () => {
+    for (const termHeight of [18, 24, 40]) {
+      for (const hasRootFeedback of [false, true]) {
+        const layout = resolveCommandBarPanelLayout({ ...BASE, hasRootFeedback, termHeight, termWidth: 80 });
+        expect(layout.panelBounds.y + layout.panelBounds.height).toBeLessThan(termHeight - 1);
+      }
+    }
   });
 });

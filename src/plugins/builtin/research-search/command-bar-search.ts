@@ -9,6 +9,8 @@ import { runDocumentSearch } from "./data";
 import { requestDocumentFocus } from "./focus-handoff";
 import {
   formatHitDate,
+  formatHitDateShort,
+  hitLeadIn,
   hitTypeLabel,
   researchSearchInstanceId,
   RESEARCH_SEARCH_TEMPLATE_ID,
@@ -18,18 +20,28 @@ import { parseMarkedSnippet } from "./snippet";
 /** Enough hits to judge whether the corpus has the answer, few enough to scan. */
 const COMMAND_BAR_HIT_LIMIT = 3;
 
-function hitResultDef(hit: CloudSearchHit, openPane: (hit: CloudSearchHit) => void): CommandBarResultDef {
-  const segments = parseMarkedSnippet(hit.snippet).map((segment) => ({
+export function hitResultDef(
+  hit: CloudSearchHit,
+  openPane: (hit: CloudSearchHit) => void,
+  now = Date.now(),
+): CommandBarResultDef {
+  const leadIn = [hitLeadIn(hit), hit.ticker].filter(Boolean).join(" · ");
+  const snippet = parseMarkedSnippet(hit.snippet).map((segment) => ({
     text: segment.text,
     emphasis: segment.marked ? "match" as const : undefined,
   }));
+  // Source and ticker open the snippet line, so the right column is free for
+  // the date, which is what decides whether a hit is still worth reading.
+  const segments = leadIn
+    ? [{ text: `${leadIn} · `, emphasis: "muted" as const }, ...snippet]
+    : snippet;
   return {
     id: hit.id,
     label: hit.title,
-    detail: [hitTypeLabel(hit), formatHitDate(hit.publishedAt)].filter(Boolean).join(" · "),
-    // NEWS, CALL, or the filing form; the ticker stays on the right.
+    detail: [leadIn, formatHitDate(hit.publishedAt)].filter(Boolean).join(" · "),
+    // NEWS, CALL, or the filing form.
     badge: hitTypeLabel(hit),
-    right: hit.ticker,
+    right: formatHitDateShort(hit.publishedAt, now),
     lines: segments.length > 0 ? [{ segments }] : undefined,
     keywords: [hit.ticker, hitTypeLabel(hit)],
     execute: () => openPane(hit),
@@ -93,6 +105,7 @@ export function createDocumentSearchProvider(ctx: GloomPluginContext): CommandBa
           id: "search-all",
           label: "Search all documents \u2192",
           detail: "Earnings calls, news, and SEC filings",
+          badge: "DOCS",
           right: "RSCH",
           execute: () => openSearchPane(query),
         },

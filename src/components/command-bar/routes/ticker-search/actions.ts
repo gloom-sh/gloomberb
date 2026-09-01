@@ -12,6 +12,7 @@ import type { ResultItem } from "../../list/model";
 import {
   buildTickerSearchCacheKey,
   createQuickLookTickerCandidates,
+  formatInstrumentBadge,
 } from "./results";
 
 interface UseCommandBarTickerSearchActionsOptions {
@@ -48,8 +49,11 @@ export function useCommandBarTickerSearchActions({
   const mapTickerSearchCandidateToResultItem = useCallback((candidate: TickerSearchCandidate): ResultItem => {
     const detail = formatTickerSearchDetail(candidate);
     // The class lives in the badge, so the trailing text carries only the
-    // venue rather than saying "Equity" twice on one row.
-    const badge = formatInstrumentBadge(candidate.instrumentClass);
+    // venue rather than saying "Equity" twice on one row. An unclassified
+    // instrument has no class to show, so the badge column lifts its venue
+    // instead (a short exchange code qualifies on its own) and the trailing
+    // text goes quiet rather than repeating it.
+    const badge = formatInstrumentBadge(candidate);
     const right = candidate.exchangeLabel || candidate.primaryExchangeLabel || candidate.right || undefined;
 
     if (candidate.kind === "ticker" && candidate.ticker) {
@@ -161,19 +165,6 @@ function formatTickerSearchDetail(candidate: TickerSearchCandidate): string {
   return metadata.length > 0
     ? `${candidate.detail} | ${metadata.join(" | ")}`
     : candidate.detail;
-}
-
-function formatInstrumentBadge(instrumentClass: TickerSearchInstrumentClass): string {
-  switch (instrumentClass) {
-    case "equity":
-      return "EQ";
-    case "fund":
-      return "FUND";
-    case "derivative":
-      return "DERIV";
-    case "other":
-      return "SYM";
-  }
 }
 
 function formatInstrumentClass(instrumentClass: TickerSearchInstrumentClass): string {
