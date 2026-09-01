@@ -19,6 +19,7 @@ import type {
   AppNotificationDelivery,
   AppNotificationRequest,
   BrokerInstanceUpdateOptions,
+  CommandBarSearchProvider,
   CommandDef,
   CustomColumnDef,
   GloomPlugin,
@@ -258,6 +259,9 @@ export class PluginRegistry implements PluginRuntimeAccess {
   get panes(): ReadonlyMap<string, PaneDef> { return this.contributions.panesMap; }
   get paneTemplates(): ReadonlyMap<string, PaneTemplateDef> { return this.contributions.paneTemplatesMap; }
   get commands(): ReadonlyMap<string, CommandDef> { return this.contributions.commandsMap; }
+  get commandBarSearchProviders(): ReadonlyMap<string, CommandBarSearchProvider> {
+    return this.contributions.commandBarSearchProvidersMap;
+  }
   get columns(): ReadonlyMap<string, CustomColumnDef> { return this.contributions.columnsMap; }
   get brokers(): ReadonlyMap<string, BrokerAdapter> { return this.contributions.brokersMap; }
   get tickerResearchTabs(): ReadonlyMap<string, TickerResearchTabDef> { return this.contributions.tickerResearchTabsMap; }
@@ -428,6 +432,10 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   getCommandPluginId(commandId: string): string | undefined {
     return this.contributions.commandOwners.get(commandId);
+  }
+
+  getCommandBarSearchProviderPluginId(providerId: string): string | undefined {
+    return this.contributions.commandBarSearchProviderOwners.get(providerId);
   }
 
   getPanePluginId(paneId: string): string | undefined {

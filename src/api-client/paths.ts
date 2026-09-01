@@ -250,6 +250,8 @@ export type CloudSearchParams = {
   sort?: CloudSearchSort;
   limit?: number;
   offset?: number;
+  /** Set false to skip the total-count pass when only the top hits are shown. */
+  count?: boolean;
 };
 
 function csvParam(values: readonly string[] | undefined): string | null {
@@ -272,6 +274,8 @@ export function cloudSearchPath(params: CloudSearchParams): string {
   if (params.limit != null) search.set("limit", String(params.limit));
   // Offset 0 is the default page, so sending it only lengthens the cache key.
   if (params.offset) search.set("offset", String(params.offset));
+  // Counting is the server default, so only opting out is worth a parameter.
+  if (params.count === false) search.set("count", "false");
   return appendQuery("/cloud/search", search);
 }
 

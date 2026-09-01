@@ -67,6 +67,11 @@ export interface CommandBarPanelProps {
   rootGhostSuffix: string | null;
   rootQueryLength: number;
   rootShortcutFeedback: string | null;
+  /**
+   * Line the scroll box has to reach for the selected row to be fully visible,
+   * or -1 when nothing is selected. Rows are not all one line tall, so this is a
+   * line offset rather than a row index.
+   */
   selectedScrollRowIndex: number;
   termHeight: number;
   termWidth: number;

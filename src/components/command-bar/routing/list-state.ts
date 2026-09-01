@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
 import {
   getEmptyState,
+  type CommandBarCategoryPriorities,
   type CommandBarMode,
   type CommandBarSectionOrder,
 } from "../view-model";
@@ -39,6 +40,7 @@ interface BuildRouteListStateOptions {
   rootHoveredIdx: number | null;
   rootModeKind: CommandBarMode;
   rootQuery: string;
+  rootCategoryPriorities?: CommandBarCategoryPriorities;
   rootSearching: boolean;
   rootSectionOrder: CommandBarSectionOrder;
   rootSelectedIdx: number;
@@ -57,6 +59,7 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
     pluginRegistry,
     rootHoveredIdx,
     rootModeKind,
+    rootCategoryPriorities,
     rootQuery,
     rootSearching,
     rootSectionOrder,
@@ -84,6 +87,7 @@ function buildRouteListState(options: BuildRouteListStateOptions): ListScreenSta
       footerLeft: getScreenFooterLeft(null),
       footerRight: getScreenFooterRight(null),
       sectionOrder: rootSectionOrder,
+      categoryPriorities: rootCategoryPriorities,
     };
   }
 
@@ -191,6 +195,7 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
     currentRoute,
     orderedRootResults,
     pluginRegistry,
+    rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind,
     rootQuery,
@@ -209,6 +214,7 @@ export function useRouteListState(options: BuildRouteListStateOptions): ListScre
     currentRoute,
     orderedRootResults,
     pluginRegistry,
+    rootCategoryPriorities,
     rootHoveredIdx,
     rootModeKind,
     rootQuery,

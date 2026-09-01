@@ -1,4 +1,16 @@
-import { buildSections, type CommandBarSectionOrder } from "../view-model";
+import type { CommandBarResultLine } from "../../../types/plugin";
+import {
+  buildSections,
+  type CommandBarCategoryPriorities,
+  type CommandBarSectionOptions,
+  type CommandBarSectionOrder,
+} from "../view-model";
+
+/**
+ * A row stays scannable next to its neighbours, so a snippet gets two rows at
+ * most however many lines a provider hands over.
+ */
+const MAX_RESULT_ITEM_LINES = 2;
 
 export interface ResultItem {
   id: string;
@@ -6,6 +18,8 @@ export interface ResultItem {
   detail: string;
   category: string;
   kind: "command" | "ticker" | "search" | "plugin" | "action" | "info";
+  /** Extra rows under the label, e.g. a matched snippet from a search provider. */
+  lines?: CommandBarResultLine[];
   right?: string;
   shortcutQuery?: string;
   searchText?: string;
@@ -40,6 +54,7 @@ export interface ListScreenState {
   footerLeft: string;
   footerRight: string;
   sectionOrder?: CommandBarSectionOrder;
+  categoryPriorities?: CommandBarCategoryPriorities;
 }
 
 export type CommandBarListRow =
@@ -52,14 +67,17 @@ export type CommandBarListRow =
 
 export function orderListResults(
   results: ResultItem[],
-  options?: { sectionOrder?: CommandBarSectionOrder },
+  options?: CommandBarSectionOptions,
 ): ResultItem[] {
   return buildSections(results, options).flatMap((section) => section.items);
 }
 
 export function buildListRows(listState: ListScreenState): CommandBarListRow[] {
   const rows: CommandBarListRow[] = [];
-  const sections = buildSections(listState.results, { sectionOrder: listState.sectionOrder });
+  const sections = buildSections(listState.results, {
+    sectionOrder: listState.sectionOrder,
+    categoryPriorities: listState.categoryPriorities,
+  });
   let globalIdx = 0;
   sections.forEach((section, sectionIndex) => {
     if (sectionIndex > 0) {
@@ -77,6 +95,44 @@ export function buildListRows(listState: ListScreenState): CommandBarListRow[] {
     }
   });
   return rows;
+}
+
+export function getResultItemLines(item: ResultItem): CommandBarResultLine[] {
+  const lines = item.lines;
+  if (!lines || lines.length === 0) return [];
+  return lines.length > MAX_RESULT_ITEM_LINES ? lines.slice(0, MAX_RESULT_ITEM_LINES) : lines;
+}
+
+/** Terminal rows the list spends on one entry; every row but an item is one line. */
+function getListRowHeight(row: CommandBarListRow): number {
+  return row.kind === "item" ? 1 + getResultItemLines(row.item).length : 1;
+}
+
+export function getListRowsHeight(rows: readonly CommandBarListRow[]): number {
+  return rows.reduce((total, row) => total + getListRowHeight(row), 0);
+}
+
+/**
+ * Line the list has to scroll to for the selected row to be fully visible.
+ *
+ * The scroll box works in lines and takes a single target, which is enough to
+ * pull one line into view from either edge but not a whole multi-line row. So
+ * the target follows the direction of travel: moving down aims at the row's last
+ * line, which lands its snippet just inside the bottom edge, and anything else
+ * aims at its first line. Returns -1 when nothing is selected.
+ */
+export function resolveSelectedScrollLine(
+  rows: readonly CommandBarListRow[],
+  selectedRowIndex: number,
+  movedDown: boolean,
+): number {
+  const selectedRow = rows[selectedRowIndex];
+  if (!selectedRow) return -1;
+  let line = 0;
+  for (let index = 0; index < selectedRowIndex; index += 1) {
+    line += getListRowHeight(rows[index]!);
+  }
+  return movedDown ? line + getListRowHeight(selectedRow) - 1 : line;
 }
 
 export function buildNativeListRows(listState: ListScreenState, rows: CommandBarListRow[]): CommandBarListRow[] {

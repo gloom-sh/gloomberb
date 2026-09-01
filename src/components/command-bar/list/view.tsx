@@ -10,7 +10,15 @@ import {
 } from "../../../ui";
 import { Spinner } from "../../ui";
 import { t } from "../../../i18n";
-import type { CommandBarListRow, ListScreenState, ResultItem } from "./model";
+import type { CommandBarResultLineSegment } from "../../../types/plugin";
+import { truncateTextSegments } from "../../../utils/format";
+import {
+  getListRowsHeight,
+  getResultItemLines,
+  type CommandBarListRow,
+  type ListScreenState,
+  type ResultItem,
+} from "./model";
 import { getRowPresentation, truncateText } from "../view-model";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
@@ -139,6 +147,7 @@ interface CommandBarListItemRowProps {
   paletteAccentText: string;
   paletteBg: string;
   paletteHoverBg: string;
+  paletteMatchText: string;
   paletteSelectedBg: string;
   paletteSelectedText: string;
   paletteSubtleText: string;
@@ -164,6 +173,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   paletteAccentText,
   paletteBg,
   paletteHoverBg,
+  paletteMatchText,
   paletteSelectedBg,
   paletteSelectedText,
   paletteSubtleText,
@@ -176,6 +186,15 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   const presentation = getRowPresentation(item, isSelected, trailingWidth > 0);
   const label = truncateText(presentation.label, labelWidth);
   const trailing = truncateText(presentation.trailing, trailingWidth);
+  const lineWidth = labelWidth + trailingWidth;
+  const lines = useMemo(
+    () => getResultItemLines(item).map((line) => truncateTextSegments(
+      line.segments,
+      lineWidth,
+      (ellipsis) => ({ text: ellipsis, emphasis: "muted" as const }),
+    )),
+    [item, lineWidth],
+  );
   const activate = () => onRowMouseDown({
     preventDefault() {},
     stopPropagation() {},
@@ -215,8 +234,8 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   return (
     <Box
       key={item.id}
-      flexDirection="row"
-      height={1}
+      flexDirection="column"
+      height={1 + lines.length}
       paddingX={contentPadding}
       backgroundColor={isSelected
         ? paletteSelectedBg
@@ -230,25 +249,62 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
       data-command-bar-row-selected={nativePaneChrome && isSelected ? "true" : undefined}
       style={nativePaneChrome ? { borderRadius: 6 } : undefined}
     >
-      <Box width={labelWidth}>
-        <Text fg={isSelected ? paletteSelectedText : presentation.primaryMuted ? paletteSubtleText : paletteText}>
-          {label}
-        </Text>
+      <Box flexDirection="row" height={1}>
+        <Box width={labelWidth}>
+          <Text fg={isSelected ? paletteSelectedText : presentation.primaryMuted ? paletteSubtleText : paletteText}>
+            {label}
+          </Text>
+        </Box>
+        <Box width={trailingWidth}>
+          <Text
+            fg={isSelected
+              ? paletteSelectedText
+              : presentation.trailingAccent
+                ? paletteAccentText
+                : paletteSubtleText}
+          >
+            {trailing}
+          </Text>
+        </Box>
       </Box>
-      <Box width={trailingWidth}>
-        <Text
-          fg={isSelected
-            ? paletteSelectedText
-            : presentation.trailingAccent
-              ? paletteAccentText
-              : paletteSubtleText}
-        >
-          {trailing}
-        </Text>
-      </Box>
+      {lines.map((segments, index) => (
+        <Box key={`line:${index}`} flexDirection="row" height={1} width={lineWidth} overflow="hidden">
+          {segments.map((segment, segmentIndex) => (
+            <Text
+              key={segmentIndex}
+              fg={resolveLineSegmentColor(segment, {
+                isSelected,
+                paletteMatchText,
+                paletteSelectedText,
+                paletteSubtleText,
+              })}
+              attributes={segment.emphasis === "match" ? TextAttributes.BOLD : TextAttributes.NONE}
+            >
+              {segment.text}
+            </Text>
+          ))}
+        </Box>
+      ))}
     </Box>
   );
 });
+
+/**
+ * Matched runs keep their highlight on the selected row: the selection colour is
+ * what tells you where you are, the match colour is what you were looking for.
+ */
+function resolveLineSegmentColor(
+  segment: CommandBarResultLineSegment,
+  palette: {
+    isSelected: boolean;
+    paletteMatchText: string;
+    paletteSelectedText: string;
+    paletteSubtleText: string;
+  },
+): string {
+  if (segment.emphasis === "match") return palette.paletteMatchText;
+  return palette.isSelected ? palette.paletteSelectedText : palette.paletteSubtleText;
+}
 
 interface CommandBarListBodyProps {
   visibleListState: ListScreenState;
@@ -262,6 +318,7 @@ interface CommandBarListBodyProps {
   paletteBg: string;
   paletteHeadingText: string;
   paletteHoverBg: string;
+  paletteMatchText: string;
   paletteSelectedBg: string;
   paletteSelectedText: string;
   paletteSubtleText: string;
@@ -286,6 +343,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
   paletteBg,
   paletteHeadingText,
   paletteHoverBg,
+  paletteMatchText,
   paletteSelectedBg,
   paletteSelectedText,
   paletteSubtleText,
@@ -301,8 +359,11 @@ export const CommandBarListBody = memo(function CommandBarListBody({
     const rows = nativeListRows;
     if (nativePaneChrome) return rows;
     const paddedRows = [...rows];
-    while (paddedRows.length < listBodyHeight) {
+    // Padded in lines, not rows: a multi-line result already fills several.
+    let filledLines = getListRowsHeight(rows);
+    while (filledLines < listBodyHeight) {
       paddedRows.push({ kind: "filler", id: `filler:${paddedRows.length}` });
+      filledLines += 1;
     }
     return paddedRows;
   }, [
@@ -361,6 +422,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             paletteAccentText={paletteAccentText}
             paletteBg={paletteBg}
             paletteHoverBg={paletteHoverBg}
+            paletteMatchText={paletteMatchText}
             paletteSelectedBg={paletteSelectedBg}
             paletteSelectedText={paletteSelectedText}
             paletteSubtleText={paletteSubtleText}

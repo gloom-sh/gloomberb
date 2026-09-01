@@ -36,6 +36,14 @@ export interface CommandBarSection<T> {
 
 export type CommandBarSectionOrder = "default" | "app-first" | "ranked";
 
+/** Sort positions contributed by plugin search providers, keyed by section heading. */
+export type CommandBarCategoryPriorities = ReadonlyMap<string, number>;
+
+export interface CommandBarSectionOptions {
+  sectionOrder?: CommandBarSectionOrder;
+  categoryPriorities?: CommandBarCategoryPriorities;
+}
+
 export interface CommandBarItemView {
   id: string;
   label: string;
@@ -100,7 +108,7 @@ function isOfferOnlySection<T extends SectionSortableItem>(items: T[]): boolean 
 
 export function buildSections<T extends SectionSortableItem>(
   items: T[],
-  options?: { sectionOrder?: CommandBarSectionOrder },
+  options?: CommandBarSectionOptions,
 ): Array<CommandBarSection<T>> {
   const sections: Array<CommandBarSection<T>> = [];
   for (const item of items) {
@@ -114,9 +122,9 @@ export function buildSections<T extends SectionSortableItem>(
   return sections
     .map((section, index) => ({ section, index }))
     .sort((a, b) => {
-      const leftPriority = getCategoryPriority(a.section.category, options?.sectionOrder)
+      const leftPriority = getCategoryPriority(a.section.category, options)
         + (isOfferOnlySection(a.section.items) ? OFFER_SECTION_DEMOTION : 0);
-      const rightPriority = getCategoryPriority(b.section.category, options?.sectionOrder)
+      const rightPriority = getCategoryPriority(b.section.category, options)
         + (isOfferOnlySection(b.section.items) ? OFFER_SECTION_DEMOTION : 0);
       const priorityDiff = leftPriority - rightPriority;
       return priorityDiff !== 0 ? priorityDiff : a.index - b.index;
@@ -168,7 +176,10 @@ export function truncateText(text: string, width: number): string {
   return truncateToDisplayWidth(text, width);
 }
 
-function getCategoryPriority(category: string, sectionOrder: CommandBarSectionOrder = "default"): number {
+function getCategoryPriority(category: string, options?: CommandBarSectionOptions): number {
+  const contributed = options?.categoryPriorities?.get(category);
+  if (contributed !== undefined) return contributed;
+  const sectionOrder = options?.sectionOrder ?? "default";
   const normalized = category.trim().toLowerCase();
   if (sectionOrder === "ranked") return 0;
   // The AI answers the question the user actually typed, so it leads the list.

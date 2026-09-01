@@ -76,6 +76,7 @@ function buildDiscoveryContext({
     registerPane: (pane: PaneDef) => panes.set(pane.id, pane),
     registerPaneTemplate: (template: PaneTemplateDef) => paneTemplates.set(template.id, template),
     registerCommand: () => {},
+    registerCommandBarSearchProvider: () => () => {},
     registerColumn: () => {},
     registerBroker: () => {},
     registerCapability: () => {},

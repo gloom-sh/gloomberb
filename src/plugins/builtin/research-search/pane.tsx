@@ -42,6 +42,7 @@ import {
   statusOf,
   updateSavedSearch,
 } from "./data";
+import { useDocumentFocusRequest } from "./focus-handoff";
 import { SearchFilterBar } from "./filter-bar";
 import { SearchDocumentView } from "./document-view";
 import { SavedSearchesView } from "./saved-view";
@@ -75,7 +76,7 @@ interface RequestFailure {
   status?: number;
 }
 
-export function ResearchSearchPane({ focused, width, height }: PaneProps) {
+export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps) {
   const access = usePlanAccess();
   const openPlan = useCloudPlanAction();
   const dialog = useDialog();
@@ -360,6 +361,13 @@ export function ResearchSearchPane({ focused, width, height }: PaneProps) {
   }, []);
 
   const closeDetail = useCallback(() => setOpenHit(null), []);
+
+  // Opened straight onto a hit from the command bar, ahead of its own results.
+  const focusRequestedHit = useCallback((hit: CloudSearchHit) => {
+    setSelectedHitId(hit.id);
+    setOpenHit(hit);
+  }, []);
+  useDocumentFocusRequest(paneId, focusRequestedHit);
 
   const handleRootKeyDown = useCallback((
     event: DataTableKeyEvent,

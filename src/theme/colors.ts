@@ -193,6 +193,25 @@ export function commandBarAccentText(palette: ThemeColors = colors): string {
   );
 }
 
+/**
+ * Matched terms inside a result row's snippet. It has to stay legible on the
+ * selected row too, so contrast is checked against the selection background as
+ * well as the two panel surfaces.
+ */
+export function commandBarMatchText(palette: ThemeColors = colors): string {
+  const surfaces = [
+    commandBarBg(palette),
+    commandBarPanelBg(palette),
+    commandBarSelectedBg(palette),
+  ] as const;
+  return blendForContrastOnSurfaces(
+    palette.warning,
+    surfaces,
+    higherContrast("#ffffff", "#000000", surfaces[0]),
+    3.6,
+  );
+}
+
 export function commandBarSelectedText(palette: ThemeColors = colors): string {
   const base = commandBarSelectedBg(palette);
   const preferred = higherContrast(palette.selectedText, palette.text, base);

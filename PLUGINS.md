@@ -91,6 +91,7 @@ The `setup()` function receives a context object with these capabilities:
 |--------|-------------|
 | `ctx.registerTickerResearchTab(tab)` | Add a tab to the Ticker Research pane |
 | `ctx.registerCommand(cmd)` | Add a command to the command bar |
+| `ctx.registerCommandBarSearchProvider(provider)` | Add asynchronous result rows to the command bar (see [Command-bar search providers](#command-bar-search-providers)) |
 | `ctx.registerColumn(col)` | Add a custom column to the ticker list |
 | `ctx.registerPane(pane)` | Add a full pane (left/right/bottom) |
 | `ctx.registerPaneTemplate(template)` | Add a reusable pane template (see [Pane templates](#pane-templates)) |
@@ -142,6 +143,44 @@ Available context kinds are `pane`, `ticker`, `link`, `editable-text`, `selected
 ### Command-bar shortcut discovery
 
 Commands registered with `ctx.registerCommand({ shortcut, shortcutArg })` and pane templates registered with `shortcut` are picked up by the in-app Help pane automatically. Use those fields for user-facing command-bar prefixes instead of adding separate Help text. When a built-in command or pane shortcut is added or renamed, also update the README command tables so the public docs match the live registry.
+
+### Command-bar search providers
+
+`registerCommand` covers actions the user can name. A search provider covers everything else the user might type: it is asked for rows whenever free text stays in the command bar, and answers over the network.
+
+```typescript
+setup(ctx) {
+  ctx.registerCommandBarSearchProvider({
+    id: "my-plugin:documents",
+    category: "Documents",   // section heading
+    priority: 50,            // higher sinks; navigation sections are negative
+    minQueryLength: 3,
+    debounceMs: 350,
+    async provide(query, context, signal) {
+      const hits = await fetchDocuments(query, context.activeTicker, signal);
+      return hits.map((hit) => ({
+        id: hit.id,
+        label: hit.title,
+        right: hit.ticker,
+        detail: hit.source,
+        // Extra rows under the label; matched runs are highlighted.
+        lines: [{
+          segments: [
+            { text: "…margin " },
+            { text: "pressure", emphasis: "match" },
+            { text: " eased in Q3…", emphasis: "muted" },
+          ],
+        }],
+        execute: () => openDocument(hit),
+      }));
+    },
+  });
+}
+```
+
+The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches — return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`.
+
+The returned function withdraws the provider; otherwise it is removed with the plugin.
 
 ### CLI commands
 

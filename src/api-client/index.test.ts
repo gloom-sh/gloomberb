@@ -1202,6 +1202,11 @@ describe("apiClient document search", () => {
     expect(url.searchParams.has("to")).toBe(false);
     // Offset 0 is the first page; sending it only lengthens the cache key.
     expect(url.searchParams.has("offset")).toBe(false);
+    // Counting is the server default, so only opting out travels.
+    expect(url.searchParams.has("count")).toBe(false);
+
+    await apiClient.searchCloudDocuments({ query: "margin", limit: 3, count: false });
+    expect(new URL(seenUrl).searchParams.get("count")).toBe("false");
   });
 
   test("escapes the document route segments", async () => {

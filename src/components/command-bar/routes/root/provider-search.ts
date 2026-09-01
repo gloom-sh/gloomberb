@@ -9,12 +9,13 @@ import {
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
 } from "../ticker-search/results";
 import { orderListResults, type ResultItem } from "../../list/model";
-import type { CommandBarSectionOrder } from "../../view-model";
+import type { CommandBarCategoryPriorities, CommandBarSectionOrder } from "../../view-model";
 import type { CommandBarRoute } from "../../workflow/types";
 
 export function useRootProviderSearch(options: {
   activeCollectionId: string | null;
   buildTickerSearchResultItems: (candidates: TickerSearchCandidate[], query: string) => ResultItem[];
+  categoryPriorities?: CommandBarCategoryPriorities;
   currentRoute: CommandBarRoute | null;
   dataProvider: DataProvider;
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
@@ -43,6 +44,7 @@ export function useRootProviderSearch(options: {
   const {
     activeCollectionId,
     buildTickerSearchResultItems,
+    categoryPriorities,
     currentRoute,
     dataProvider,
     localTickerSearchResultItems,
@@ -194,8 +196,8 @@ export function useRootProviderSearch(options: {
       ? "ranked"
       : "default";
   const orderedRootResults = useMemo(
-    () => orderListResults(rootResults, { sectionOrder: rootSectionOrder }),
-    [rootResults, rootSectionOrder],
+    () => orderListResults(rootResults, { sectionOrder: rootSectionOrder, categoryPriorities }),
+    [categoryPriorities, rootResults, rootSectionOrder],
   );
   const activeRootProviderResultsKey = useMemo(() => {
     if (!rootTickerSearchArg || rootProviderResultsQuery !== rootTickerSearchArg || !rootProviderResults) return null;

@@ -13,6 +13,13 @@ export const RESEARCH_SEARCH_PANE_ID = "research-search";
 export const RESEARCH_SEARCH_TEMPLATE_ID = "research-search-pane";
 const RESEARCH_SEARCH_PAGE_SIZE = 40;
 
+/** One pane per query, so two searches can sit side by side. */
+export function researchSearchInstanceId(query: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) return `${RESEARCH_SEARCH_PANE_ID}:main`;
+  return `${RESEARCH_SEARCH_PANE_ID}:${encodeURIComponent(trimmed).replace(/%/g, "~")}`;
+}
+
 export type SearchRangeKey = "all" | "7d" | "30d" | "1y" | "custom";
 
 export interface SearchFilters {

@@ -1,4 +1,5 @@
 import { Box, Text, TextAttributes } from "../../../ui";
+import { commandBarMatchText } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Button, Spinner } from "../../ui";
 import {
@@ -184,6 +185,7 @@ export function CommandBarPanelBody({
             paletteBg={paletteBg}
             paletteHeadingText={paletteHeadingText}
             paletteHoverBg={paletteHoverBg}
+            paletteMatchText={commandBarMatchText(themeColors)}
             paletteSelectedBg={paletteSelectedBg}
             paletteSelectedText={paletteSelectedText}
             paletteSubtleText={paletteSubtleText}

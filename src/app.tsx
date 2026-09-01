@@ -391,14 +391,7 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header
-            onOpenHelp={() => pluginRegistry.showPane("help")}
-            onOpenChangelog={(version) => {
-              void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
-                values: { version },
-              }).catch(() => {});
-            }}
-          />
+          <Header onOpenHelp={() => pluginRegistry.showPane("help")} />
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
@@ -406,7 +399,13 @@ function AppInner({
               desktopDockPreview={desktopDockPreview}
               commandBarNativeOccluder={commandBarNativeOccluder}
             />
-            <StatusBar />
+            <StatusBar
+              onOpenChangelog={(version) => {
+                void pluginRegistry.createPaneFromTemplateAsyncFn("changelog-pane", {
+                  values: { version },
+                }).catch(() => {});
+              }}
+            />
           </TransientLayoutProvider>
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard

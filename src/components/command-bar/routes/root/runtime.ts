@@ -8,6 +8,7 @@ import type { TickerSearchCandidate } from "../../../../tickers/search";
 import type { AssistRowHandlers } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import type { ResultItem } from "../../list/model";
+import type { CommandBarCategoryPriorities } from "../../view-model";
 import type { CommandBarRoute } from "../../workflow/types";
 import { useTickerSearchRouteResults } from "../ticker-search/route";
 import { buildRootResultModel, type RootResultModel } from "./results";
@@ -63,7 +64,9 @@ interface UseCommandBarRootRuntimeOptions {
   pluginCommandItems(): ResultItem[];
   pluginCommandResultItems(command: CommandDef, shortcutArg: string): ResultItem[];
   articleResultItems?: ResultItem[];
-  documentSearchItem?: ResultItem | null;
+  providerResultItems?: ResultItem[];
+  providerCategoryPriorities?: CommandBarCategoryPriorities;
+  providerSearching?: boolean;
   readTickerSearchCache(
     query: string,
     brokerId?: string | null,
@@ -115,7 +118,9 @@ export function useCommandBarRootRuntime({
   pluginCommandItems,
   pluginCommandResultItems,
   articleResultItems = [],
-  documentSearchItem = null,
+  providerResultItems = [],
+  providerCategoryPriorities,
+  providerSearching = false,
   readTickerSearchCache,
   rootModeKind,
   rootQuery,
@@ -189,7 +194,7 @@ export function useCommandBarRootRuntime({
     rootQuery,
     rootShortcutIntent,
     articleResultItems,
-    documentSearchItem,
+    providerResultItems,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,
@@ -218,7 +223,7 @@ export function useCommandBarRootRuntime({
     rootQuery,
     rootShortcutIntent,
     articleResultItems,
-    documentSearchItem,
+    providerResultItems,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,
@@ -233,11 +238,12 @@ export function useCommandBarRootRuntime({
   const {
     activeRootProviderResultsKey,
     orderedRootResults,
-    rootSearching,
+    rootSearching: tickerSearching,
     rootSectionOrder,
   } = useRootProviderSearch({
     activeCollectionId,
     buildTickerSearchResultItems,
+    categoryPriorities: providerCategoryPriorities,
     currentRoute,
     dataProvider,
     localTickerSearchResultItems,
@@ -249,6 +255,7 @@ export function useCommandBarRootRuntime({
     tickers: state.tickers,
     writeTickerSearchCache,
   });
+  const rootSearching = tickerSearching || providerSearching;
 
   useLayoutEffect(() => {
     if (currentRoute) return;

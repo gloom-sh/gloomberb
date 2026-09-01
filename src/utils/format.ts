@@ -193,6 +193,41 @@ export function truncateToDisplayWidth(value: string, width: number): string {
   return `${truncateToWidth(value, width - 3)}...`;
 }
 
+/**
+ * Clips a styled run of text to a display width. A highlighted snippet is many
+ * text nodes rather than one string, so the clipping cannot go through
+ * `truncateToDisplayWidth`; the ellipsis is built by the caller so the returned
+ * segments keep whatever styling flags the caller's segment type carries.
+ */
+export function truncateTextSegments<T extends { text: string }>(
+  segments: T[],
+  width: number,
+  makeEllipsis: (ellipsis: string) => T,
+): T[] {
+  if (width <= 0) return [];
+  const total = segments.reduce((sum, segment) => sum + displayWidth(segment.text), 0);
+  if (total <= width) return segments;
+  if (width <= 1) return [makeEllipsis("\u2026".slice(0, width))];
+
+  const budget = width - 1;
+  const clipped: T[] = [];
+  let used = 0;
+  for (const segment of segments) {
+    const remaining = budget - used;
+    if (remaining <= 0) break;
+    const segmentWidth = displayWidth(segment.text);
+    if (segmentWidth <= remaining) {
+      clipped.push(segment);
+      used += segmentWidth;
+      continue;
+    }
+    clipped.push({ ...segment, text: truncateToWidth(segment.text, remaining) });
+    break;
+  }
+  clipped.push(makeEllipsis("\u2026"));
+  return clipped;
+}
+
 /** Pad/truncate a string to a fixed display width */
 export function padTo(str: string, width: number, align: "left" | "right" | "center" = "left"): string {
   const clipped = displayWidth(str) > width ? truncateToWidth(str, width) : str;

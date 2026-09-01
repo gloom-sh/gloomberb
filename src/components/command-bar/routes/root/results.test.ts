@@ -1,37 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneTemplateDef } from "../../../../types/plugin";
-import type { ResultItem } from "../../list/model";
-import { orderListResults } from "../../list/model";
-import {
-  buildDocumentSearchResultItem,
-  DOCUMENT_SEARCH_ITEM_ID,
-  DOCUMENT_SEARCH_TEMPLATE_ID,
-} from "./document-search-results";
+import { orderListResults, type ResultItem } from "../../list/model";
 import { buildRootResultModel, type RootResultModelOptions } from "./results";
-
-const searchTemplate = {
-  id: DOCUMENT_SEARCH_TEMPLATE_ID,
-  paneId: "research-search",
-  label: "Research Search",
-  description: "Search documents",
-  shortcut: { prefix: "RSCH", argPlaceholder: "query", argKind: "text" },
-} as unknown as PaneTemplateDef;
-
-function documentSearchItem(query: string): ResultItem | null {
-  return buildDocumentSearchResultItem({
-    query,
-    templates: [searchTemplate],
-    createPaneTemplateItem: (template, options) => ({
-      id: `pane-template:${template.id}`,
-      label: template.label,
-      detail: template.description,
-      category: "Panes",
-      kind: "action",
-      searchText: options?.createOptions?.arg ?? "",
-      action: () => {},
-    }),
-  });
-}
 
 function rootOptions(overrides: Partial<RootResultModelOptions>): RootResultModelOptions {
   const empty = () => [] as ResultItem[];
@@ -92,43 +62,41 @@ const paneRow: ResultItem = {
   action: () => {},
 };
 
-describe("buildDocumentSearchResultItem", () => {
-  test("carries the typed words into the pane the template opens", () => {
-    const item = documentSearchItem("margin pressure");
-    expect(item?.id).toBe(DOCUMENT_SEARCH_ITEM_ID);
-    expect(item?.label).toBe('Search all documents for "margin pressure"');
-    expect(item?.right).toBe("RSCH");
-    expect(item?.searchText).toBe("margin pressure");
-  });
+const documentRow: ResultItem = {
+  id: "search-provider:research-search:documents:hit-1",
+  label: "Q3 earnings call",
+  detail: "CALL",
+  category: "Documents",
+  kind: "action",
+  lines: [{ segments: [{ text: "margin pressure", emphasis: "match" }] }],
+  action: () => {},
+};
 
-  test("stays hidden for a single keystroke or a missing plugin", () => {
-    expect(documentSearchItem("m")).toBeNull();
-    expect(buildDocumentSearchResultItem({
-      query: "margin",
-      templates: [],
-      createPaneTemplateItem: () => {
-        throw new Error("should not build an item without the template");
-      },
-    })).toBeNull();
-  });
-});
-
-describe("document search fallthrough placement", () => {
-  test("lands after existing matches instead of displacing them", () => {
+describe("provider rows in the root result model", () => {
+  test("land after the local matches instead of displacing them", () => {
     const { items } = buildRootResultModel(rootOptions({
       rootQuery: "margin",
       paneShortcutItems: () => [paneRow],
-      documentSearchItem: documentSearchItem("margin"),
+      providerResultItems: [documentRow],
     }));
 
-    const ordered = orderListResults(items);
-    expect(ordered.map((item) => item.id)).toEqual([paneRow.id, DOCUMENT_SEARCH_ITEM_ID]);
+    expect(orderListResults(items).map((item) => item.id)).toEqual([paneRow.id, documentRow.id]);
   });
 
-  test("stays out of the way once a prefix claims the query", () => {
+  test("leave the local matches alone when a provider contributes nothing", () => {
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: "margin",
+      paneShortcutItems: () => [paneRow],
+      providerResultItems: [],
+    }));
+
+    expect(items.map((item) => item.id)).toEqual([paneRow.id]);
+  });
+
+  test("stay out of the way once a prefix claims the query", () => {
     const { items } = buildRootResultModel(rootOptions({
       rootQuery: "SEC AAPL",
-      documentSearchItem: documentSearchItem("SEC AAPL"),
+      providerResultItems: [documentRow],
       rootShortcutIntent: {
         kind: "complete",
         source: "pane-template",
@@ -138,10 +106,10 @@ describe("document search fallthrough placement", () => {
         argKind: "ticker",
         argText: "AAPL",
         completionQuery: null,
-        template: searchTemplate,
+        template: { id: "sec-pane" } as unknown as PaneTemplateDef,
       },
     }));
 
-    expect(items.map((item) => item.id)).not.toContain(DOCUMENT_SEARCH_ITEM_ID);
+    expect(items.map((item) => item.id)).not.toContain(documentRow.id);
   });
 });

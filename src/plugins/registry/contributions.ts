@@ -1,5 +1,6 @@
 import type { BrokerAdapter } from "../../types/broker";
 import type {
+  CommandBarSearchProvider,
   CommandDef,
   ContextMenuProviderDef,
   CustomColumnDef,
@@ -19,6 +20,7 @@ export interface PluginItems {
   panes: string[];
   paneTemplates: string[];
   commands: string[];
+  commandBarSearchProviders: string[];
   columns: string[];
   brokers: string[];
   capabilities: string[];
@@ -45,6 +47,7 @@ function setUnique<T>(map: Map<string, T>, id: string, value: T): void {
 export class RegistryContributions {
   readonly pluginItems = new Map<string, PluginItems>();
   readonly commandOwners = new Map<string, string>();
+  readonly commandBarSearchProviderOwners = new Map<string, string>();
   readonly paneOwners = new Map<string, string>();
   readonly paneTemplateOwners = new Map<string, string>();
   readonly shortcutOwners = new Map<string, string>();
@@ -54,6 +57,7 @@ export class RegistryContributions {
   readonly panesMap = new Map<string, PaneDef>();
   readonly paneTemplatesMap = new Map<string, PaneTemplateDef>();
   readonly commandsMap = new Map<string, CommandDef>();
+  readonly commandBarSearchProvidersMap = new Map<string, CommandBarSearchProvider>();
   readonly columnsMap = new Map<string, CustomColumnDef>();
   readonly brokersMap = new Map<string, BrokerAdapter>();
   readonly tickerResearchTabsMap = new Map<string, TickerResearchTabDef>();
@@ -71,6 +75,7 @@ export class RegistryContributions {
       panes: [],
       paneTemplates: [],
       commands: [],
+      commandBarSearchProviders: [],
       columns: [],
       brokers: [],
       capabilities: [],
@@ -102,6 +107,24 @@ export class RegistryContributions {
     setUnique(this.commandsMap, command.id, command);
     this.commandOwners.set(command.id, pluginId);
     items.commands.push(command.id);
+  }
+
+  registerCommandBarSearchProvider(
+    pluginId: string,
+    provider: CommandBarSearchProvider,
+    items = this.getOrCreatePluginItems(pluginId),
+  ): () => void {
+    setUnique(this.commandBarSearchProvidersMap, provider.id, provider);
+    this.commandBarSearchProviderOwners.set(provider.id, pluginId);
+    items.commandBarSearchProviders.push(provider.id);
+    return () => {
+      // Only the registration still in place may be withdrawn: a re-registered
+      // provider under the same id belongs to whoever registered it last.
+      if (this.commandBarSearchProvidersMap.get(provider.id) !== provider) return;
+      this.commandBarSearchProvidersMap.delete(provider.id);
+      this.commandBarSearchProviderOwners.delete(provider.id);
+      items.commandBarSearchProviders = items.commandBarSearchProviders.filter((id) => id !== provider.id);
+    };
   }
 
   registerColumn(_pluginId: string, column: CustomColumnDef, items: PluginItems): void {
@@ -157,6 +180,10 @@ export class RegistryContributions {
     for (const commandId of items.commands) {
       this.commandsMap.delete(commandId);
       this.commandOwners.delete(commandId);
+    }
+    for (const providerId of items.commandBarSearchProviders) {
+      this.commandBarSearchProvidersMap.delete(providerId);
+      this.commandBarSearchProviderOwners.delete(providerId);
     }
     for (const columnId of items.columns) this.columnsMap.delete(columnId);
     for (const brokerId of items.brokers) this.brokersMap.delete(brokerId);

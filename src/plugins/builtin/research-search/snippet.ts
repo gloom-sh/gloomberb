@@ -1,4 +1,4 @@
-import { displayWidth } from "../../../utils/format";
+import { truncateTextSegments } from "../../../utils/format";
 
 export interface SnippetSegment {
   text: string;
@@ -101,40 +101,7 @@ export function snippetMatchTerms(snippet: string): string[] {
  * highlighted snippet is many text nodes, so the clipping happens here instead.
  */
 export function truncateSegments(segments: SnippetSegment[], width: number): SnippetSegment[] {
-  if (width <= 0) return [];
-  const total = segments.reduce((sum, segment) => sum + displayWidth(segment.text), 0);
-  if (total <= width) return segments;
-  if (width <= 1) return [{ text: "\u2026".slice(0, width), marked: false }];
-
-  const budget = width - 1;
-  const clipped: SnippetSegment[] = [];
-  let used = 0;
-  for (const segment of segments) {
-    const remaining = budget - used;
-    if (remaining <= 0) break;
-    const segmentWidth = displayWidth(segment.text);
-    if (segmentWidth <= remaining) {
-      clipped.push(segment);
-      used += segmentWidth;
-      continue;
-    }
-    clipped.push({ ...segment, text: clipToWidth(segment.text, remaining) });
-    break;
-  }
-  clipped.push({ text: "\u2026", marked: false });
-  return clipped;
-}
-
-function clipToWidth(value: string, width: number): string {
-  let output = "";
-  let used = 0;
-  for (const character of Array.from(value)) {
-    const next = used + displayWidth(character);
-    if (next > width) break;
-    output += character;
-    used = next;
-  }
-  return output;
+  return truncateTextSegments(segments, width, (ellipsis) => ({ text: ellipsis, marked: false }));
 }
 
 /** Splits plain text on the matched terms so a full chunk can show the same highlights. */

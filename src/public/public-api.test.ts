@@ -106,6 +106,7 @@ const PUBLIC_API: Record<string, readonly string[]> = {
     "commandBarHeadingText",
     "commandBarHoverBg",
     "commandBarInputBg",
+    "commandBarMatchText",
     "commandBarPanelBg",
     "commandBarSelectedBg",
     "commandBarSelectedText",

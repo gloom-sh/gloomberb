@@ -1,6 +1,12 @@
 import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
+import { createDocumentSearchProvider } from "./command-bar-search";
 import { attachResearchSearchPersistence, resetResearchSearchPersistence } from "./data";
-import { RESEARCH_SEARCH_PANE_ID, RESEARCH_SEARCH_TEMPLATE_ID } from "./model";
+import { resetDocumentFocusRequests } from "./focus-handoff";
+import {
+  researchSearchInstanceId,
+  RESEARCH_SEARCH_PANE_ID,
+  RESEARCH_SEARCH_TEMPLATE_ID,
+} from "./model";
 import { ResearchSearchPane } from "./pane";
 
 const description =
@@ -19,10 +25,12 @@ export const researchSearchPlugin: GloomPlugin = {
 
   setup(ctx) {
     attachResearchSearchPersistence(ctx.persistence);
+    ctx.registerCommandBarSearchProvider(createDocumentSearchProvider(ctx));
   },
 
   dispose() {
     resetResearchSearchPersistence();
+    resetDocumentFocusRequests();
   },
 
   panes: [
@@ -65,10 +73,7 @@ export const researchSearchPlugin: GloomPlugin = {
       createInstance(_context, options) {
         const query = queryFromOptions(options);
         return {
-          // One pane per query, so two searches can sit side by side.
-          instanceId: query
-            ? `${RESEARCH_SEARCH_PANE_ID}:${encodeURIComponent(query).replace(/%/g, "~")}`
-            : `${RESEARCH_SEARCH_PANE_ID}:main`,
+          instanceId: researchSearchInstanceId(query),
           title: query ? `Search ${query}` : "Research Search",
           placement: "floating",
           settings: { query },

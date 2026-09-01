@@ -317,6 +317,31 @@ describe("PluginRegistry ticker research tabs", () => {
   });
 });
 
+describe("PluginRegistry command bar search providers", () => {
+  test("withdraws providers on dispose and on plugin unregister", async () => {
+    const registry = createRegistry();
+    const provider = (id: string) => ({
+      id,
+      category: "Documents",
+      provide: async () => [],
+    });
+    let disposeSelfRegistered: (() => void) | null = null;
+
+    await registry.register(plugin("research-search", (ctx) => {
+      ctx.registerCommandBarSearchProvider(provider("documents"));
+      disposeSelfRegistered = ctx.registerCommandBarSearchProvider(provider("self-withdrawn"));
+    }));
+
+    expect(registry.getCommandBarSearchProviderPluginId("documents")).toBe("research-search");
+    disposeSelfRegistered!();
+    expect(registry.commandBarSearchProviders.has("self-withdrawn")).toBe(false);
+
+    registry.unregister("research-search");
+    expect(registry.commandBarSearchProviders.size).toBe(0);
+    expect(registry.getCommandBarSearchProviderPluginId("documents")).toBeUndefined();
+  });
+});
+
 describe("PluginRegistry pane settings", () => {
   test("resolves effective pane setting values from settings definitions", async () => {
     const registry = createRegistry();

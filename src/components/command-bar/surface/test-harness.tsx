@@ -18,7 +18,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneSettingField } from "../../../types/plugin";
 import { useShortcut } from "../../../react/input";
-import { Text } from "../../../ui";
+import { Box, Text } from "../../../ui";
 
 export async function emitKeypress(
   renderer: Awaited<ReturnType<typeof testRender>>,
@@ -213,6 +213,8 @@ function makePluginRegistry(hasPaneSettings: (paneId: string) => boolean = () =>
         execute: async () => {},
       }],
     ]),
+    commandBarSearchProviders: new Map<string, any>(),
+    getCommandBarSearchProviderPluginId: () => undefined,
     tickerActions: new Map<string, any>([
       ["pin", {
         id: "pin",
@@ -385,8 +387,11 @@ export function CommandBarHarness({
     <ThemeProvider themeId={getEffectiveThemeId(currentState)}>
       <AppContext value={{ state: currentState, dispatch: currentDispatch }}>
         <TestDialogProvider>
-          {live && <ThemeProbe />}
-          {showQueryState && <Text>{`query:${currentState.commandBarQuery}`}</Text>}
+          {/* Row 0 only: the command bar drops from the header and covers every row below it. */}
+          <Box flexDirection="row" gap={1}>
+            {live && <ThemeProbe />}
+            {showQueryState && <Text>{`query:${currentState.commandBarQuery}`}</Text>}
+          </Box>
           {currentState.commandBarOpen && (
             <CommandBar
               dataProvider={dataProvider}

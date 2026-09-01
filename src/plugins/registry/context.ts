@@ -142,6 +142,9 @@ export function createRegistryPluginContext({
     registerPane: (pane) => contributions.registerPane(pluginId, pane, items),
     registerPaneTemplate: (template) => contributions.registerPaneTemplate(pluginId, template, items),
     registerCommand: (command) => contributions.registerCommand(pluginId, command, items),
+    registerCommandBarSearchProvider: (provider) => (
+      contributions.registerCommandBarSearchProvider(pluginId, provider, items)
+    ),
     registerColumn: (column) => contributions.registerColumn(pluginId, column, items),
     registerBroker: (broker) => contributions.registerBroker(pluginId, broker, items),
     registerCapability: (capability) => {

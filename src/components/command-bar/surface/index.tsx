@@ -14,7 +14,10 @@ import {
   looksLikeArticleQuery,
 } from "../../../plugins/builtin/news/wire/article-search";
 import { buildArticleSearchResultItems } from "../routes/root/article-results";
-import { buildDocumentSearchResultItem } from "../routes/root/document-search-results";
+import {
+  getAvailableCommandBarSearchProviders,
+  useCommandBarSearchProviders,
+} from "../routes/root/search-providers";
 import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
@@ -284,11 +287,30 @@ export function CommandBar({
     });
   }, [closeAll, newsState.articles, newsState.phase, rootQuery]);
 
-  const documentSearchItem = useMemo(() => buildDocumentSearchResultItem({
+  const searchProviders = useMemo(
+    () => getAvailableCommandBarSearchProviders(pluginRegistry, state.config.disabledPlugins),
+    [pluginRegistry, state.config.disabledPlugins],
+  );
+  const searchProviderContext = useMemo(() => ({
+    activeTicker: activeTickerSymbol,
+    activeCollectionId,
+  }), [activeCollectionId, activeTickerSymbol]);
+  const closeAfterProviderResult = useCallback(() => {
+    closeAll({ revertThemePreview: false });
+  }, [closeAll]);
+  const { providerResultItems, providerSearching } = useCommandBarSearchProviders({
+    providers: searchProviders,
     query: rootQuery,
-    templates: getAvailablePaneTemplates(),
-    createPaneTemplateItem,
-  }), [createPaneTemplateItem, getAvailablePaneTemplates, rootQuery]);
+    // A resolved prefix means the user is running a command, so free-text
+    // providers neither ask the network nor add rows.
+    enabled: !currentRoute && rootShortcutIntent.kind === "none",
+    context: searchProviderContext,
+    onExecuted: closeAfterProviderResult,
+  });
+  const providerCategoryPriorities = useMemo(
+    () => new Map(searchProviders.map((provider) => [provider.category, provider.priority ?? 0])),
+    [searchProviders],
+  );
 
   const {
     activeMatch,
@@ -326,7 +348,9 @@ export function CommandBar({
     pluginCommandItems,
     pluginCommandResultItems,
     articleResultItems,
-    documentSearchItem,
+    providerResultItems,
+    providerCategoryPriorities,
+    providerSearching,
     readTickerSearchCache,
     rootModeKind: rootModeInfo.kind,
     rootQuery,
@@ -393,6 +417,7 @@ export function CommandBar({
     currentRoute,
     orderedRootResults,
     pluginRegistry,
+    rootCategoryPriorities: providerCategoryPriorities,
     rootHoveredIdx,
     rootModeKind: rootModeInfo.kind,
     rootQuery,

@@ -1,5 +1,9 @@
 import type { LayoutBounds } from "../../../plugins/pane-manager";
-import { resolveAppHeaderHeightCells } from "../../layout/shell/chrome";
+import {
+  resolveAppHeaderHeightCells,
+  resolveCommandSurfaceWidth,
+  resolveHeaderPromptGeometry,
+} from "../../layout/shell/chrome";
 import { estimateWorkflowBodyRows } from "../workflow/fields";
 import type { CommandBarRoute } from "../workflow/types";
 
@@ -44,9 +48,7 @@ export function resolveCommandBarPanelLayout({
   themePickerActive: boolean;
   titleBarOverlay: boolean | undefined;
 }): CommandBarPanelLayout {
-  const barWidth = nativePaneChrome
-    ? Math.max(46, Math.min(78, termWidth - 10, Math.floor(termWidth * 0.64)))
-    : Math.max(42, Math.min(72, termWidth - 8, Math.floor(termWidth * 0.68)));
+  const barWidth = resolveCommandSurfaceWidth({ nativePaneChrome, termWidth });
   const baseBodyHeight = Math.min(16, Math.max(9, termHeight - 9));
   const contentPadding = nativePaneChrome ? 1 : 3;
   const workflowBodyHeight = currentRoute?.kind === "workflow"
@@ -81,9 +83,12 @@ export function resolveCommandBarPanelLayout({
   const barHeight = nativePaneChrome
     ? bodyHeight + nativeBodyChromeRows + nativePanelPaddingRows
     : bodyHeight + 7;
-  const barLeft = Math.max(4, Math.floor((termWidth - barWidth) / 2));
-  const barTop = Math.max(1, Math.floor((termHeight - barHeight) / 2));
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
+  // The panel drops out of the header prompt: same left edge, flush under the
+  // header row, so opening it reads as the prompt expanding.
+  const promptGeometry = resolveHeaderPromptGeometry({ nativePaneChrome, termWidth, titleBarOverlay });
+  const barLeft = Math.max(0, Math.min(promptGeometry.left, termWidth - barWidth));
+  const barTop = appHeaderHeight;
   const resultsInnerWidth = Math.max(12, barWidth - nativePanelPaddingColumns - contentPadding * 2);
   const trailingWidth = Math.max(8, Math.min(12, Math.floor(resultsInnerWidth * 0.18)));
   const labelWidth = Math.max(10, resultsInnerWidth - trailingWidth);
