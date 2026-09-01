@@ -49,8 +49,15 @@ export function createDocumentSearchProvider(ctx: GloomPluginContext): CommandBa
   return {
     id: "research-search:documents",
     category: "Documents",
-    // Below tickers, commands and panes: a document is context, not a destination.
-    priority: 50,
+    /**
+     * Below every ticker category (-40 to -10) and below Ask AI, so navigation
+     * and exact matches still lead. Above the default 0 that generic command and
+     * pane matches use, because those are fuzzy: "nvidia earnings" pulls in
+     * Treasury Auctions and Dividend Yield, and at a positive priority the real
+     * hits sorted beneath that noise and fell outside the panel's 16-row body
+     * entirely, so nothing was visible without scrolling.
+     */
+    priority: -5,
     minQueryLength: 3,
     debounceMs: 350,
 
