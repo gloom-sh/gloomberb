@@ -22,6 +22,7 @@ import {
   type NativeGatewayModule,
 } from "./native-loader";
 
+export type { IbkrGatewayServiceFacade };
 export type {
   IbkrGatewayConfig,
   ResolvedIbkrGatewayConnection,

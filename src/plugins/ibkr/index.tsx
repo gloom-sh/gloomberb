@@ -1,5 +1,7 @@
 import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
 import { ibkrBroker } from "./broker-adapter";
+import { setIbkrGatewayBridge } from "./gateway-bridge";
+import { refreshGatewayData } from "./gateway/helpers";
 import { buildPersistedIbkrGatewayConfig } from "./config";
 import { ibkrGatewayManager, setResolvedIbkrGatewayListener } from "./gateway/service";
 import {
@@ -62,6 +64,17 @@ export const ibkrPlugin: GloomPlugin = {
 
   setup(ctx) {
     ctx.log.info("IBKR plugin initializing");
+
+    // In-repo both halves ship together, so Gateway registers itself here. Once
+    // Gateway is its own plugin this call moves to its setup, and the Flex
+    // adapter degrades on its own when it is absent.
+    setIbkrGatewayBridge({
+      refresh: refreshGatewayData,
+      getService: (instanceId) => ibkrGatewayManager.getService(instanceId),
+      removeInstance: (instanceId) => ibkrGatewayManager.removeInstance(instanceId),
+      getStatus: (instanceId) => ibkrGatewayManager.getSnapshot(instanceId).status,
+      subscribeStatus: (instanceId, listener) => ibkrGatewayManager.subscribe(instanceId, listener),
+    });
     setResolvedIbkrGatewayListener(async (instanceId, resolved) => {
       if (!instanceId) return;
       const instance = ctx.getConfig().brokerInstances.find((entry) => entry.id === instanceId);
