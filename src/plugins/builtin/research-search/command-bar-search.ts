@@ -5,7 +5,6 @@ import type {
   GloomPluginContext,
 } from "../../../types/plugin";
 import { apiClient } from "../../../api-client";
-import { resolvePlanAccess } from "../shared/plan-access";
 import { runDocumentSearch } from "./data";
 import { requestDocumentFocus } from "./focus-handoff";
 import {
@@ -62,10 +61,14 @@ export function createDocumentSearchProvider(ctx: GloomPluginContext): CommandBa
     debounceMs: 350,
 
     async provide(query, _context, signal) {
-      // The corpus is account-gated, so a signed-out bar would spend a request
-      // per query only to be told so. Entitlement itself is left to the server:
-      // the free tier is what is changing, not who may ask.
-      if (!resolvePlanAccess(apiClient.getCurrentUser()).emailVerified) return [];
+      // Only skip when there is no session at all, so a signed-out bar does not
+      // spend a request per query to be told so. Deliberately not gated on the
+      // cached user's plan: that cache is cleared whenever a session refresh
+      // comes back empty, which leaves the app authenticated for every other
+      // surface while reporting itself signed out here. Entitlement is the
+      // server's answer anyway, and it already returns 401, 402, or a delayed
+      // result on its own.
+      if (!apiClient.isSignedIn()) return [];
 
       let hits: CloudSearchHit[] = [];
       try {
