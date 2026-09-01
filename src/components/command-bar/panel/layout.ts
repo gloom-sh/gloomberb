@@ -84,11 +84,13 @@ export function resolveCommandBarPanelLayout({
     ? bodyHeight + nativeBodyChromeRows + nativePanelPaddingRows
     : bodyHeight + 7;
   const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
-  // The panel drops out of the header prompt: same left edge, flush under the
-  // header row, so opening it reads as the prompt expanding.
+  // The panel opens *over* the header prompt rather than under it, so its query
+  // row lands on the prompt's own row. Anchoring below instead left the typed
+  // text in a second field under an empty-looking prompt, which read as two
+  // controls.
   const promptGeometry = resolveHeaderPromptGeometry({ nativePaneChrome, termWidth, titleBarOverlay });
   const barLeft = Math.max(0, Math.min(promptGeometry.left, termWidth - barWidth));
-  const barTop = appHeaderHeight;
+  const barTop = 0;
   const resultsInnerWidth = Math.max(12, barWidth - nativePanelPaddingColumns - contentPadding * 2);
   const trailingWidth = Math.max(8, Math.min(12, Math.floor(resultsInnerWidth * 0.18)));
   const labelWidth = Math.max(10, resultsInnerWidth - trailingWidth);
@@ -100,11 +102,14 @@ export function resolveCommandBarPanelLayout({
     bodyHeight,
     contentPadding,
     listBodyHeight,
+    // Occluder coordinates are relative to the content area, which starts below
+    // the header. The panel now begins above that origin, so the part covering
+    // the header is clipped off rather than reported as negative.
     nativeOccluderRect: {
       x: barLeft,
-      y: barTop - appHeaderHeight,
+      y: Math.max(0, barTop - appHeaderHeight),
       width: barWidth,
-      height: barHeight,
+      height: Math.max(0, barHeight - Math.max(0, appHeaderHeight - barTop)),
     },
     nativePanelPaddingColumns,
     panelBounds: {

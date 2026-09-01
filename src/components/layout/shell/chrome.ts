@@ -2,10 +2,6 @@ import { TITLEBAR_OVERLAY_HEIGHT_PX, getTitlebarLeadingInset } from "../titlebar
 
 export const DEFAULT_HEADER_HEIGHT = 1;
 
-export const HEADER_BRAND_LABEL = "Gloomberb";
-
-/** Brand label plus the gap that separates it from the prompt. */
-const HEADER_BRAND_COLUMNS = HEADER_BRAND_LABEL.length + 1;
 const HEADER_PROMPT_MIN_WIDTH = 10;
 /** Columns the header keeps free right of the prompt for the update status. */
 const HEADER_PROMPT_TRAILING_COLUMNS = 14;
@@ -18,8 +14,7 @@ const HEADER_PROMPT_TRAILING_COLUMNS = 14;
 function headerPromptTrailingColumns(termWidth: number): number {
   return Math.min(HEADER_PROMPT_TRAILING_COLUMNS, Math.max(4, Math.floor(termWidth * 0.12)));
 }
-/** Below this the brand crowds the prompt, so the brand goes and the prompt stays. */
-const HEADER_BRAND_PROMPT_FLOOR = HEADER_PROMPT_MIN_WIDTH + 6;
+
 
 export function resolveAppHeaderHeightCells(options: { titleBarOverlay?: boolean; cellHeightPx?: number }): number {
   if (!options.titleBarOverlay || !options.cellHeightPx || options.cellHeightPx <= 0) return DEFAULT_HEADER_HEIGHT;
@@ -39,9 +34,8 @@ export function resolveCommandSurfaceWidth(options: { termWidth: number; nativeP
 }
 
 export interface HeaderPromptGeometry {
-  /** Column the prompt starts at; the command overlay drops from the same column. */
+  /** Column the prompt starts at; the command overlay opens at the same column. */
   left: number;
-  showBrand: boolean;
   width: number;
 }
 
@@ -60,9 +54,7 @@ export function resolveHeaderPromptGeometry(options: {
   const nativeWindowChrome = options.nativeWindowChrome ?? titleBarOverlay;
   const leadingInset = titleBarOverlay && nativeWindowChrome ? getTitlebarLeadingInset() : 0;
   const trailing = headerPromptTrailingColumns(termWidth);
-  const brandedLeft = leadingInset + 1 + HEADER_BRAND_COLUMNS;
-  const showBrand = termWidth - brandedLeft - trailing >= HEADER_BRAND_PROMPT_FLOOR;
-  const left = showBrand ? brandedLeft : leadingInset + 1;
+  const left = leadingInset + 1;
   const width = Math.max(
     HEADER_PROMPT_MIN_WIDTH,
     Math.min(
@@ -70,5 +62,5 @@ export function resolveHeaderPromptGeometry(options: {
       termWidth - left - trailing,
     ),
   );
-  return { left, showBrand, width };
+  return { left, width };
 }

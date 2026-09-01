@@ -14,7 +14,7 @@ import { useViewport } from "../../react/input";
 import { t, tf } from "../../i18n";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { getTitlebarLeadingInset } from "./titlebar-overlay";
-import { HEADER_BRAND_LABEL, resolveHeaderPromptGeometry } from "./shell/chrome";
+import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
@@ -64,9 +64,10 @@ function HeaderCommandPrompt({
   const colors = useThemeColors();
   const { placeholder, shortcut } = resolveHeaderPromptContent(width, shortcutLabel);
   const idleBg = blendHex(colors.header, colors.bg, 0.55);
-  // Open, the prompt wears the overlay's own surface and drops its contents, so
-  // the two read as one control that grew downwards rather than as two panels.
-  const backgroundColor = open ? commandBarBg(colors) : idleBg;
+  // The overlay opens across this row and renders the live query there, so the
+  // prompt yields the row entirely rather than painting a second surface under
+  // it.
+  const backgroundColor = open ? undefined : idleBg;
   const caretColor = blendHex(colors.headerText, colors.header, 0.15);
   const mutedColor = blendHex(colors.headerText, colors.header, 0.42);
 
@@ -266,13 +267,7 @@ export function Header({
           paddingLeft={titlebarLeadingInset + 1}
           flexDirection="row"
           alignItems="center"
-        >
-          {prompt.showBrand ? (
-            <Text attributes={TextAttributes.BOLD} fg={colors.headerText}>
-              {HEADER_BRAND_LABEL}
-            </Text>
-          ) : null}
-        </Box>
+        />
         {commandPrompt}
         <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
           <UpdateStatus />
@@ -321,11 +316,7 @@ export function Header({
       data-titlebar-overlay={titleBarOverlay ? "true" : undefined}
       onMouseDown={startWindowDrag}
     >
-      <Box width={prompt.left} paddingLeft={1} flexDirection="row">
-        {prompt.showBrand ? (
-          <Text attributes={TextAttributes.BOLD} fg={colors.headerText}>{HEADER_BRAND_LABEL}</Text>
-        ) : null}
-      </Box>
+      <Box width={prompt.left} paddingLeft={1} flexDirection="row" />
       {commandPrompt}
       <Box flexGrow={1} minWidth={0} paddingLeft={2}>
         <UpdateStatus />

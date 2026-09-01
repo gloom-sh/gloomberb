@@ -387,8 +387,10 @@ export function CommandBarHarness({
     <ThemeProvider themeId={getEffectiveThemeId(currentState)}>
       <AppContext value={{ state: currentState, dispatch: currentDispatch }}>
         <TestDialogProvider>
-          {/* Row 0 only: the command bar drops from the header and covers every row below it. */}
-          <Box flexDirection="row" gap={1}>
+          {/* The command bar now opens over the header row too, so it covers the
+              top of the frame. Probes sit to the right of the panel, which is
+              width-clamped and never reaches the far edge. */}
+          <Box flexDirection="row" gap={1} justifyContent="flex-end">
             {live && <ThemeProbe />}
             {showQueryState && <Text>{`query:${currentState.commandBarQuery}`}</Text>}
           </Box>
