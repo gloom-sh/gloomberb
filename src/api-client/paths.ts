@@ -252,6 +252,8 @@ export type CloudSearchParams = {
   offset?: number;
   /** Set false to skip the total-count pass when only the top hits are shown. */
   count?: boolean;
+  /** One row per source document instead of one per matching chunk. */
+  distinct?: boolean;
 };
 
 function csvParam(values: readonly string[] | undefined): string | null {
@@ -276,6 +278,7 @@ export function cloudSearchPath(params: CloudSearchParams): string {
   if (params.offset) search.set("offset", String(params.offset));
   // Counting is the server default, so only opting out is worth a parameter.
   if (params.count === false) search.set("count", "false");
+  if (params.distinct) search.set("distinct", "true");
   return appendQuery("/cloud/search", search);
 }
 

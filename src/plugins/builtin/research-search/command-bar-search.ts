@@ -74,7 +74,9 @@ export function createDocumentSearchProvider(ctx: GloomPluginContext): CommandBa
       let hits: CloudSearchHit[] = [];
       try {
         const response = await runDocumentSearch(
-          { query, limit: COMMAND_BAR_HIT_LIMIT, count: false },
+          // One row per story: three matching paragraphs of one article is one
+          // result, and the teaser has three rows to spend.
+          { query, limit: COMMAND_BAR_HIT_LIMIT, count: false, distinct: true },
           signal,
         );
         hits = response.hits ?? [];

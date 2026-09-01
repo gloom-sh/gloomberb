@@ -198,6 +198,44 @@ describe("apiClient auth cookies", () => {
     expect(requests).toBe(1);
   });
 
+  /**
+   * On boot a session check can leave before the persisted token is installed.
+   * Its "no session" answer must not overwrite the verified user that hydrate
+   * restored in the meantime; that exact sequence left the app authenticated
+   * for chat while every plan-gated surface reported signed out.
+   */
+  test("a session check that predates the restored token does not wipe the restored user", async () => {
+    const seen: Array<string | null> = [];
+    let releaseFirst!: () => void;
+    setCloudApiFetchTransport(async (_url, init) => {
+      const cookie = new Headers(init?.headers).get("cookie");
+      seen.push(cookie);
+      if (seen.length === 1) {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        return createResponse({ user: null });
+      }
+      return createResponse({ user: verifiedUser });
+    });
+
+    // A cookie-less check goes out first.
+    const early = apiClient.getSession();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeNull();
+
+    // Hydrate installs the token and the cached user while it is in flight.
+    apiClient.setSessionToken("restored-token");
+    apiClient.restoreCachedUser(verifiedUser);
+    expect(apiClient.getCurrentUser()?.emailVerified).toBe(true);
+
+    releaseFirst();
+    await expect(early).resolves.toMatchObject({ id: verifiedUser.id });
+
+    // The stale answer was discarded and a second check went out with the real cookie.
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toContain("restored-token");
+    expect(apiClient.getCurrentUser()?.emailVerified).toBe(true);
+  });
+
   test("captures secure session cookies after login and reuses them on session refresh", async () => {
     const seenCookies: Array<string | null> = [];
 

@@ -1,5 +1,6 @@
 import type { Dispatch } from "react";
 import type { PluginRegistry } from "../plugins/registry";
+import { apiClient } from "../api-client";
 import type { AppAction, AppState } from "../state/app/context";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import { setPaneSettings } from "../pane-settings";
@@ -99,6 +100,7 @@ export function createRemoteResources({
     if (resource === "app://command-bar") return commandBarSnapshot(state, uiNodes);
     if (resource === "app://command-bar/results") return commandBarResultsFromNodes(uiNodes);
     if (resource === "app://capabilities") return pluginRegistry.capabilities.manifests();
+    if (resource === "app://auth") return apiClient.describeAuthState();
     if (resource === "app://remote/help") return REMOTE_AGENT_HELP;
     if (resource === "ui://tree") return uiNodes;
     throw new Error(`Unknown remote resource "${resource}".`);

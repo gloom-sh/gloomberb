@@ -103,6 +103,8 @@ const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
   private sessionChecked = false;
+  /** Last few session transitions, content-free, for app://auth. */
+  private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
   private sessionRequest: Promise<AuthUser | null> | null = null;
   private readonly currentUserListeners = new Set<() => void>();
   private readonly transport = new CloudApiRequestTransport();
@@ -165,6 +167,7 @@ class GloomApiClient {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
+    this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
       this.currentUser = null;
       this.emitCurrentUserChange();
@@ -207,8 +210,58 @@ class GloomApiClient {
     return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
   }
 
+  /**
+   * What this client currently believes about its session, with no secrets.
+   * Exposed over remote control so a "shows my username but not my
+   * subscription" report can be answered from the running app instead of
+   * from guesses about it.
+   */
+  describeAuthState(): {
+    hasSessionCredential: boolean;
+    hasSessionToken: boolean;
+    sessionChecked: boolean;
+    sessionRequestInFlight: boolean;
+    trace: Array<{ at: number; event: string; token: boolean; user: string }>;
+    currentUser: {
+      id: string;
+      emailVerified: boolean;
+      plan: string | null;
+      effectivePlan: string | null;
+      trialEndsAt: string | null;
+    } | null;
+  } {
+    const user = this.currentUser;
+    return {
+      hasSessionCredential: this.transport.hasSessionCredential(),
+      hasSessionToken: !!this.transport.getSessionToken(),
+      sessionChecked: this.sessionChecked,
+      sessionRequestInFlight: !!this.sessionRequest,
+      trace: [...this.authTrace],
+      currentUser: user
+        ? {
+          id: user.id,
+          emailVerified: user.emailVerified === true,
+          plan: user.plan ?? null,
+          effectivePlan: user.effectivePlan ?? null,
+          trialEndsAt: user.trialEndsAt ?? null,
+        }
+        : null,
+    };
+  }
+
+  private traceAuth(event: string, user: AuthUser | null = this.currentUser): void {
+    this.authTrace.push({
+      at: Date.now(),
+      event,
+      token: !!this.transport.getSessionToken(),
+      user: user ? (user.emailVerified ? "verified" : "unverified") : "none",
+    });
+    if (this.authTrace.length > 24) this.authTrace.shift();
+  }
+
   private setCurrentUser(user: AuthUser | null): void {
     const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
+    this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
     this.socket.syncAuthState({ reconnect: changed });
     this.emitCurrentUserChange();
@@ -276,12 +329,20 @@ class GloomApiClient {
   }
 
   async getSession(): Promise<AuthUser | null> {
-    if (this.sessionRequest) return this.sessionRequest;
+    if (this.sessionRequest) {
+      this.traceAuth("getSession:joined-inflight");
+      return this.sessionRequest;
+    }
+    this.traceAuth("getSession:start");
     this.sessionRequest = this.auth.getSession();
     try {
       const user = await this.sessionRequest;
       this.sessionChecked = true;
+      this.traceAuth("getSession:done", user);
       return user;
+    } catch (error) {
+      this.traceAuth(`getSession:error:${error instanceof Error ? error.message.slice(0, 60) : "unknown"}`);
+      throw error;
     } finally {
       this.sessionRequest = null;
     }
