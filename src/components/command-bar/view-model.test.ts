@@ -57,12 +57,14 @@ describe("command bar view model helpers", () => {
     expect(sections[0]?.items[0]?.id).toBe("holders");
   });
 
-  test("leads with the AI and lands the other async sections under the local matches in arrival order", () => {
-    // The AI turns the typed sentence into commands, so it leads even though
-    // it answers last; its placeholder holds the rows meanwhile. Symbol search
-    // and documents arrive in that order under the local matches, so each only
-    // pushes rows below itself. Documents come from a provider, which
-    // contributes its own priority.
+  test("leads with an exact symbol, then the AI, then the async sections in arrival order", () => {
+    // An exactly matching symbol is the most certain answer available, so it
+    // outranks the AI's reading of the same query. Below it the AI leads even
+    // though it answers last, since it turns the typed sentence into commands;
+    // its placeholder holds the rows meanwhile. Symbol search and documents
+    // arrive in that order under the local matches, so each only pushes rows
+    // below itself. Documents come from a provider, which contributes its own
+    // priority.
     const items = [
       { id: "doc", category: "Documents" },
       { id: "nvda-mx", category: "Instruments" },
@@ -78,8 +80,8 @@ describe("command bar view model helpers", () => {
     for (const sectionOrder of ["default", "app-first"] as const) {
       const sections = buildSections(items, { sectionOrder, categoryPriorities });
       expect(sections.map((section) => section.category)).toEqual([
-        "Ask AI",
         "Exact Match",
+        "Ask AI",
         "Panes",
         "Commands",
         "Application",
