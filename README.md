@@ -283,7 +283,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `WEI` | Global equity indices |
 | `MAP` | Live world venue map with local market status and clocks |
 | `FUT` | Front-month futures across index, rates, energy, metals, grains, and FX |
-| `ECON` | Economic events and releases |
+| `ECO` | Economic events and releases |
+| `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC` | Yield curve |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 30-day/3-month implied-volatility curve |

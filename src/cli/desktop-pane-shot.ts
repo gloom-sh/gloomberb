@@ -27,6 +27,7 @@ export interface DesktopPaneShotPayload {
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
   valuationSeries: Array<[string, DatedObservation[]]>;
+  statSeries: Array<[string, DatedObservation[]]>;
   capabilitySeries: Array<[string, ResolvedSeries]>;
   paneState: Record<string, PaneRuntimeState>;
 }

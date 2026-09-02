@@ -406,8 +406,9 @@ export const economicCalendarModule: PluginModule = {
     paneId: "econ-calendar",
     label: "Economic Calendar",
     description: "Upcoming economic events, releases, and indicators.",
+    // "econ" stays a keyword so the old ECON prefix still finds this pane.
     keywords: ["econ", "economic", "calendar", "events", "macro", "releases", "fed", "cpi", "gdp"],
-    shortcut: { prefix: "ECON" },
+    shortcut: { prefix: "ECO" },
   }],
   setup(ctx) {
     attachEconCalendarPersistence(ctx.persistence);

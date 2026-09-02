@@ -272,22 +272,28 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
 };
 
 /**
- * One screen for "where are we": valuation against history on the left, and the
- * faster sentiment, volatility and credit reads stacked beside it. These stay
+ * One screen for "where are we": valuation and the economy in the wide slots,
+ * with the faster sentiment, volatility and credit reads beside them. These stay
  * separate panes because each measures a different thing on a different horizon;
  * the layout is what puts them on one screen.
  */
 const DEFAULT_MACRO_LAYOUT: LayoutConfig = {
   dockRoot: {
     kind: "split",
-    axis: "horizontal",
-    ratio: 0.56,
-    first: { kind: "pane", instanceId: "market-valuation:macro" },
+    axis: "vertical",
+    ratio: 0.54,
+    first: {
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.58,
+      first: { kind: "pane", instanceId: "market-valuation:macro" },
+      second: { kind: "pane", instanceId: "fear-greed:macro" },
+    },
     second: {
       kind: "split",
-      axis: "vertical",
-      ratio: 0.42,
-      first: { kind: "pane", instanceId: "fear-greed:macro" },
+      axis: "horizontal",
+      ratio: 0.58,
+      first: { kind: "pane", instanceId: "econ-statistics:macro" },
       second: {
         kind: "split",
         axis: "vertical",
@@ -303,6 +309,12 @@ const DEFAULT_MACRO_LAYOUT: LayoutConfig = {
       paneId: "market-valuation",
       binding: { kind: "none" },
       settings: { indicator: "buffett", range: "25Y" },
+    },
+    {
+      instanceId: "econ-statistics:macro",
+      paneId: "econ-statistics",
+      binding: { kind: "none" },
+      settings: { stat: "cpi-yoy", range: "20Y" },
     },
     {
       instanceId: "fear-greed:macro",

@@ -44,6 +44,8 @@ import {
   requiredSeries as valuationRequiredSeries,
 } from "../../plugins/builtin/market-valuation/client";
 import type { DatedObservation } from "../../plugins/builtin/market-valuation/series";
+import { defaultStatLoader } from "../../plugins/builtin/econ-statistics/client";
+import { STATS } from "../../plugins/builtin/econ-statistics/stats";
 import { publicTickerKey } from "../../utils/exchanges";
 import { apiClient } from "../../api-client";
 import type { FredSeriesCacheEntry } from "../../data/fred-series";
@@ -63,6 +65,22 @@ const DESKTOP_CELL_WIDTH_PX = 8;
 const DESKTOP_CELL_HEIGHT_PX = 18;
 const OPTIONS_PANE_ID = "options";
 const MARKET_VALUATION_PANE_ID = "market-valuation";
+const ECON_STATISTICS_PANE_ID = "econ-statistics";
+
+/** Same reason as the valuation legs: the renderer cannot fill its own cache. */
+async function collectShotStatSeries(
+  resolved: ResolvedPaneFunction,
+): Promise<Array<[string, DatedObservation[]]>> {
+  if (resolved.pane.id !== ECON_STATISTICS_PANE_ID) return [];
+  const loaded = await Promise.all(STATS.map(async (def) => {
+    try {
+      return [def.seriesId, await defaultStatLoader(def)] as [string, DatedObservation[]];
+    } catch {
+      return null;
+    }
+  }));
+  return loaded.filter((entry): entry is [string, DatedObservation[]] => !!entry);
+}
 
 async function collectShotFredSeries(
   resolved: ResolvedPaneFunction,
@@ -310,10 +328,11 @@ async function buildDesktopShotPayload(
   const tickers: TickerRecord[] = [];
   const financials: Array<[string, TickerFinancials]> = [];
   const optionsChains: Array<[string, OptionsChain]> = [];
-  const [fredSeries, capabilitySeries, valuationSeries] = await Promise.all([
+  const [fredSeries, capabilitySeries, valuationSeries, statSeries] = await Promise.all([
     collectShotFredSeries(resolved),
     collectShotCapabilitySeries(resolved),
     collectShotValuationSeries(resolved),
+    collectShotStatSeries(resolved),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
   for (const symbol of collectShotSymbols(resolved, rawArg)) {
@@ -358,6 +377,7 @@ async function buildDesktopShotPayload(
     optionsChains,
     fredSeries,
     valuationSeries,
+    statSeries,
     capabilitySeries,
     paneState,
   };

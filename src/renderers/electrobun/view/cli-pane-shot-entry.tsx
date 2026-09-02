@@ -42,6 +42,7 @@ import type { PaneDef } from "../../../types/plugin";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { hydrateFredSeries, type FredSeriesCacheEntry } from "../../../data/fred-series";
 import { hydrateValuationSeries } from "../../../plugins/builtin/market-valuation/cache";
+import { statsCache } from "../../../plugins/builtin/econ-statistics/cache";
 import type { DatedObservation } from "../../../plugins/builtin/market-valuation/series";
 import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import type { ResolvedSeries } from "../../../time-series/types";
@@ -57,6 +58,7 @@ interface CliPaneShotPayload {
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
   valuationSeries: Array<[string, DatedObservation[]]>;
+  statSeries: Array<[string, DatedObservation[]]>;
   capabilitySeries: Array<[string, ResolvedSeries]>;
   paneState: Record<string, PaneRuntimeState>;
 }
@@ -591,6 +593,7 @@ async function render() {
   installShotFetchTracker();
   hydrateFredSeries(payload.fredSeries ?? []);
   hydrateValuationSeries(payload.valuationSeries ?? []);
+  statsCache.hydrate(payload.statSeries ?? []);
   installShotMarketData(payload);
   // Panes contributed from an async setup() only exist once every plugin has
   // finished registering, so the tree cannot mount before that resolves.

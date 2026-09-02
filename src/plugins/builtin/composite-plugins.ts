@@ -12,6 +12,7 @@ import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
 import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
+import { econStatisticsModule } from "./econ-statistics";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
 import { ipoCalendarModule } from "./ipo-calendar";
@@ -106,6 +107,7 @@ export const macroPlugin = composeBuiltinPlugin({
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
+    econStatisticsModule,
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,

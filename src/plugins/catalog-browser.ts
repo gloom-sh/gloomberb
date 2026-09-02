@@ -18,6 +18,7 @@ import {
   resetValuationPersistence,
 } from "./builtin/market-valuation/cache";
 import { economicCalendarModule } from "./builtin/econ";
+import { econStatisticsModule } from "./builtin/econ-statistics";
 import { futuresModule } from "./builtin/futures";
 import { fxMatrixModule } from "./builtin/fx-matrix";
 import { helpModule } from "./builtin/help";
@@ -116,6 +117,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
   modules: [
     browserFredResourcesModule,
     economicCalendarModule,
+    econStatisticsModule,
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,
