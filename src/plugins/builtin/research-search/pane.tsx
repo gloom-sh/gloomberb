@@ -478,10 +478,13 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   // the title cannot: which company, when, what kind, and how long it is.
   const documentIdentity = useMemo(() => {
     if (!openHit) return null;
+    const sections = document?.chunks.length ?? 0;
     return [
       formatHitDate(openHit.publishedAt),
-      hitTypeLabel(openHit),
-      document ? `${document.chunks.length} sections` : null,
+      // The type leads the footer when the document has no ticker, so repeating
+      // it here would say the same thing twice on one row.
+      openHit.ticker ? hitTypeLabel(openHit) : null,
+      sections ? `${sections} section${sections === 1 ? "" : "s"}` : null,
     ].filter((part): part is string => !!part).join(" \u00b7 ");
   }, [document, openHit]);
 
@@ -490,7 +493,10 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     focused,
     url: openHit?.url ?? null,
     source: documentIdentity,
-    label: openHit?.ticker || "document",
+    // Never a fixed word: the row is led by whichever of these the document
+    // actually has, because a footer is for what changes as you move between
+    // documents, not for saying "document".
+    label: openHit ? (openHit.ticker || hitTypeLabel(openHit)) : "",
     info: footerInfo,
     hints: footerHints,
     showHint: !!openHit?.url,
