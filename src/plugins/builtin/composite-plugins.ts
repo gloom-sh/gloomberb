@@ -34,13 +34,19 @@ import { treasuryAuctionsModule } from "./treasury-auctions";
 import { worldIndicesModule } from "./world-indices";
 import { worldVenueMapModule } from "./world-venue-map";
 import { yieldCurveModule } from "./yield-curve";
+import {
+  attachValuationPersistence,
+  resetValuationPersistence,
+} from "./market-valuation/cache";
 
 const macroSharedResourcesModule = {
   setup(ctx) {
     attachFredSeriesPersistence(ctx.persistence);
+    attachValuationPersistence(ctx.persistence);
   },
   dispose() {
     resetFredSeriesPersistence();
+    resetValuationPersistence();
   },
 } satisfies PluginModule;
 

@@ -1,4 +1,4 @@
-import { vintageLabel, type RatioPoint, type RatioSeries } from "./align";
+import { vintageLabel, type RatioPoint, type ValuationSeries } from "./align";
 import { meanRatio, projectChart, type ValuationChartProjection } from "./chart-projection";
 import {
   RANGE_WINDOWS_MS,
@@ -18,9 +18,8 @@ export interface Extreme {
 
 export interface IndicatorBuild {
   indicator: IndicatorDef;
-  series: RatioSeries;
+  series: ValuationSeries;
   trend: TrendFit;
-  cacheStale: boolean;
 }
 
 export interface ValuationBundle {
@@ -37,7 +36,7 @@ export interface IndicatorViewModel {
   sigmaVsTrend: number;
   trendNow: number;
   mean: number;
-  denominatorVintageLabel: string;
+  vintageLabel: string | null;
   ratioOneYearAgo: number | null;
   allTimeHigh: Extreme;
   allTimeLow: Extreme;
@@ -45,7 +44,6 @@ export interface IndicatorViewModel {
   chart: ValuationChartProjection;
   asOf: string;
   observationStale: boolean;
-  cacheStale: boolean;
 }
 
 function parseDateMs(date: string): number {
@@ -86,7 +84,7 @@ export function projectView(
   range: ValuationRangeId,
   opts: { nowMs?: number } = {},
 ): IndicatorViewModel {
-  const { indicator, series, trend, cacheStale } = build;
+  const { indicator, series, trend } = build;
   const points = series.points;
   const current = points[points.length - 1]!;
   const nowMs = opts.nowMs ?? Date.now();
@@ -102,7 +100,9 @@ export function projectView(
     sigmaVsTrend: sigmaVsTrend(trend, current.ratio, current.date),
     trendNow: trendAt(trend, current.date),
     mean,
-    denominatorVintageLabel: vintageLabel(indicator.denominatorLabel, series.denominatorVintageDate),
+    vintageLabel: indicator.input.kind === "ratio" && indicator.input.levels
+      ? vintageLabel(indicator.input.levels.denominatorLabel, series.vintageDate)
+      : null,
     ratioOneYearAgo: ratioOneYearAgo(points, current.date),
     allTimeHigh: findExtreme(points, "high"),
     allTimeLow: findExtreme(points, "low"),
@@ -110,7 +110,6 @@ export function projectView(
     chart: projectChart(indicator, visible, mean),
     asOf: current.date,
     observationStale: nowMs - parseDateMs(current.date) > indicator.staleAfterMs,
-    cacheStale,
   };
 }
 

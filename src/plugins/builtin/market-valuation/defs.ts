@@ -1,17 +1,31 @@
-import type { FredSeriesRequest } from "../../../data/fred-series";
 import { blendHex, colors } from "../../../theme/colors";
 
 export type ValuationRangeId = "10Y" | "25Y" | "ALL";
 
+/** Columns of Shiller's monthly dataset the pane can chart. */
+export type ShillerField =
+  | "price"
+  | "dividend"
+  | "earnings"
+  | "cpi"
+  | "longRate"
+  | "cape"
+  | "excessCapeYield";
+
+/**
+ * Every leg resolves through the Gloom Cloud proxy. Nothing here talks to Yahoo or
+ * FRED directly, which is what lets the pane run in the hosted browser build.
+ */
 export type SeriesSource =
-  | { kind: "fred" }
-  | { kind: "yahoo-index"; symbol: string };
+  | { kind: "fred"; seriesId: string; limit: number }
+  | { kind: "market-history"; symbol: string; exchange: string; startDate: string }
+  | { kind: "shiller"; field: ShillerField };
 
 export interface SeriesDef {
-  seriesId: string;
-  /** Multiplier that brings the raw observation into billions of dollars. */
+  /** Stable identity for caching and for de-duplicating legs shared by indicators. */
+  key: string;
+  /** Multiplier that brings a raw observation into billions of dollars. */
   scaleToBillions: number;
-  request: Pick<FredSeriesRequest, "limit" | "sortOrder">;
   source: SeriesSource;
 }
 
@@ -28,7 +42,12 @@ export interface ZoneHit {
   color: string;
 }
 
-/** Upper edge of a valuation band, in the indicator's own units. `max: null` is the open top band. */
+/**
+ * Upper edge of a valuation band, in the indicator's own units, ascending.
+ * `max: null` is the open top band. Bands carry their own id, so an indicator
+ * where a high reading means cheap (a yield spread) simply lists them in the
+ * opposite order rather than needing an inversion flag.
+ */
 export interface ZoneBand {
   max: number | null;
   id: ValuationZoneId;
@@ -42,28 +61,36 @@ export interface ZoneScaleBand {
   color: string;
 }
 
-/**
- * One whole-market valuation ratio: a numerator series over a denominator
- * series, plus the bands, copy, and formatting that make the quotient readable.
- */
+/** A ratio of two series, or a single series that is already the measure. */
+export type IndicatorInput =
+  | {
+    kind: "ratio";
+    numerator: SeriesDef;
+    denominator: SeriesDef;
+    /**
+     * Set only when both legs are dollar amounts worth showing. A ratio of two
+     * index columns has no meaningful level to print, so it omits this.
+     */
+    levels?: { numeratorLabel: string; denominatorLabel: string };
+  }
+  | { kind: "direct"; series: SeriesDef };
+
 export interface IndicatorDef {
   id: string;
   /** Full name for the detail heading and catalog copy. */
   label: string;
-  /** Fits the summary table's NAME column. */
+  /** Fits the summary table's INDICATOR column. */
   shortLabel: string;
   description: string;
-  numerator: SeriesDef;
-  denominator: SeriesDef;
-  numeratorLabel: string;
-  denominatorLabel: string;
-  /** Multiplies the raw quotient: 100 renders it as a percent, 1 leaves it a ratio. */
+  input: IndicatorInput;
+  /** Multiplies the raw value: 100 renders a quotient as a percent. */
   ratioScale: number;
   formatValue: (value: number) => string;
   zones: readonly ZoneBand[];
   zoneScale: {
+    min: number;
     max: number;
-    /** Band edges, low to high, ending at `max`. Each band gets equal width on the scale. */
+    /** Band edges, low to high, from `min` to `max`. Each band gets equal width. */
     edges: readonly number[];
     ticks: readonly number[];
   };
@@ -71,8 +98,12 @@ export interface IndicatorDef {
   reference: { value: number; label: string } | null;
   /** Y-axis gridline spacing, in the indicator's own units. */
   chartGridStep: number;
-  /** How old the newest observation may get before the pane flags it stale. Quarterly
-   *  series need months of headroom where a daily series needs days. */
+  /**
+   * Log-linear suits a level that compounds. A measure that can sit at or below
+   * zero, like an excess yield, needs the linear fit.
+   */
+  trendModel: "log" | "linear";
+  /** How old the newest observation may get before the pane flags it stale. */
   staleAfterMs: number;
   notes: string[];
   link: { url: string; label: string } | null;
@@ -136,8 +167,8 @@ export function classifyZone(indicator: IndicatorDef, value: number): ZoneHit {
 }
 
 export function zoneScaleBands(indicator: IndicatorDef): ZoneScaleBand[] {
-  const max = indicator.zoneScale.max;
-  let from = 0;
+  const { min, max } = indicator.zoneScale;
+  let from = min;
   return indicator.zones.map((band) => {
     const to = band.max == null ? max : band.max;
     const entry = { id: band.id, from, to, color: zoneColor(band.id) };
@@ -148,14 +179,15 @@ export function zoneScaleBands(indicator: IndicatorDef): ZoneScaleBand[] {
 
 /**
  * Position a value on the scale as a 0..1 fraction. Each valuation band gets equal
- * width so fair sits near the visual center instead of being pushed left by a long
- * open-ended overvalued span.
+ * width so fair sits near the visual center instead of being pushed to one side by
+ * a long open-ended band.
  */
 export function zoneScaleFraction(indicator: IndicatorDef, value: number): number {
   const edges = indicator.zoneScale.edges;
   const bands = edges.length - 1;
   if (bands <= 0) return 0;
-  const clamped = Math.max(0, Math.min(indicator.zoneScale.max, value));
+  const { min, max } = indicator.zoneScale;
+  const clamped = Math.max(min, Math.min(max, value));
   let bandIdx = bands - 1;
   for (let i = 0; i < bands; i += 1) {
     if (clamped < edges[i + 1]! || i === bands - 1) {
@@ -199,6 +231,9 @@ export function zoneScaleColumnValue(
   return zoneScaleValueAt(indicator, column / Math.max(width - 1, 1));
 }
 
-export function seriesRequest(def: SeriesDef): FredSeriesRequest {
-  return { seriesId: def.seriesId, limit: def.request.limit, sortOrder: def.request.sortOrder };
+/** Every leg an indicator needs, so callers can fetch without knowing its shape. */
+export function indicatorSeries(indicator: IndicatorDef): SeriesDef[] {
+  return indicator.input.kind === "ratio"
+    ? [indicator.input.numerator, indicator.input.denominator]
+    : [indicator.input.series];
 }

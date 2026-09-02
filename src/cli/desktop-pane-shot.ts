@@ -9,6 +9,7 @@ import type { TickerRecord } from "../types/ticker";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { FredSeriesCacheEntry } from "../data/fred-series";
+import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
@@ -25,6 +26,7 @@ export interface DesktopPaneShotPayload {
   financials: Array<[string, TickerFinancials]>;
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
+  valuationSeries: Array<[string, DatedObservation[]]>;
   capabilitySeries: Array<[string, ResolvedSeries]>;
   paneState: Record<string, PaneRuntimeState>;
 }

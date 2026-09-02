@@ -50,6 +50,7 @@ export function IndicatorDetail({
   height: number;
 }) {
   const indicator = view.indicator;
+  const levels = indicator.input.kind === "ratio" ? indicator.input.levels : undefined;
   const chartWidth = Math.max(24, width - 2);
   const chartHeight = Math.max(7, Math.min(width >= 96 ? 14 : 12, height - 9));
   const plotInset = chartPlotInset(view);
@@ -121,13 +122,18 @@ export function IndicatorDetail({
       )}
 
       <Box flexDirection="column" gap={0}>
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={colors.textDim}>{`${indicator.numeratorLabel} `}</Text>
-          <Text fg={colors.textBright}>{formatTrillions(view.current.numeratorBillions)}</Text>
-          <Text fg={colors.textDim}>{`  ${indicator.denominatorLabel} `}</Text>
-          <Text fg={colors.textBright}>{formatTrillions(view.current.denominatorBillions)}</Text>
-          <Text fg={colors.textDim}>{`  ${view.denominatorVintageLabel}`}</Text>
-        </Box>
+        {levels && view.current.numeratorBillions != null
+          && view.current.denominatorBillions != null ? (
+          <Box flexDirection="row" height={1} overflow="hidden">
+            <Text fg={colors.textDim}>{`${levels.numeratorLabel} `}</Text>
+            <Text fg={colors.textBright}>{formatTrillions(view.current.numeratorBillions)}</Text>
+            <Text fg={colors.textDim}>{`  ${levels.denominatorLabel} `}</Text>
+            <Text fg={colors.textBright}>{formatTrillions(view.current.denominatorBillions)}</Text>
+            {view.vintageLabel ? (
+              <Text fg={colors.textDim}>{`  ${view.vintageLabel}`}</Text>
+            ) : null}
+          </Box>
+        ) : null}
         <Box flexDirection="row" height={1} overflow="hidden">
           <Text fg={colors.textDim}>1Y ago </Text>
           <Text fg={colors.text}>

@@ -98,6 +98,21 @@ const FRED_CATALOG_SERIES: ReadonlyArray<{ seriesId: string; label: string }> = 
   }));
 })();
 
+/**
+ * Macro series the catalog should offer that are not economic-calendar releases, so
+ * they have no natural home in SERIES_MAP above.
+ */
+const EXTRA_CATALOG_SERIES: ReadonlyArray<{ seriesId: string; label: string }> = [
+  { seriesId: "M2SL", label: "M2 Money Stock" },
+  { seriesId: "DFII10", label: "10Y TIPS Real Yield" },
+  { seriesId: "NCBEILQ027S", label: "Corporate Equities, Z.1" },
+  { seriesId: "TNWMVBSNNCB", label: "Corporate Net Worth, Z.1" },
+];
+
 export function listFredCatalogSeries(): ReadonlyArray<{ seriesId: string; label: string }> {
-  return FRED_CATALOG_SERIES;
+  const known = new Set(FRED_CATALOG_SERIES.map((entry) => entry.seriesId));
+  return [
+    ...FRED_CATALOG_SERIES,
+    ...EXTRA_CATALOG_SERIES.filter((entry) => !known.has(entry.seriesId)),
+  ];
 }

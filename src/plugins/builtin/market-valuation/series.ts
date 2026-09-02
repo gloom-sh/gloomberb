@@ -1,4 +1,4 @@
-export type SeriesProvenance = "fred" | "fred-csv" | "yahoo";
+export type SeriesProvenance = "fred" | "market" | "shiller";
 
 export interface DatedObservation {
   date: string;

@@ -1,98 +1,68 @@
-import { apiClient } from "../../../api-client";
-import {
-  getCachedFredSeries,
-  loadCachedFredSeries,
-  type FredSeriesRequest,
-} from "../../../data/fred-series";
-import { buildRatioSeries } from "./align";
-import { seriesRequest, type IndicatorDef, type SeriesDef } from "./defs";
+import { buildValuationSeries } from "./align";
+import { getCachedSeries, loadCachedSeries } from "./cache";
+import { indicatorSeries, type IndicatorDef, type SeriesDef } from "./defs";
 import { INDICATORS } from "./indicators";
 import type { DatedSeries } from "./series";
-import {
-  datedSeriesToCachePayload,
-  fredDataToDatedSeries,
-  isUnsupportedFredSeries,
-  loadFredGraphCsvSeries,
-  loadYahooDailyIndexFromEpoch,
-  provenanceFor,
-  yahooSymbolFor,
-} from "./sources";
-import { fitLogLinearTrend } from "./trend";
+import { cloudSourceDeps, createSourceLoader, provenanceFor } from "./sources";
+import { fitIndicatorTrend } from "./trend";
 import type { IndicatorBuild, ValuationBundle } from "./view";
 
 export type ValuationSeriesLoader = (def: SeriesDef) => Promise<DatedSeries>;
 
-interface LoadedSeries {
-  data: DatedSeries;
-  stale: boolean;
-}
-
-export function createValuationSeriesLoader(deps: {
-  loadCloudFred: (request: FredSeriesRequest) => Promise<DatedSeries>;
-  loadYahooIndex: (symbol: string, seriesId: string) => Promise<DatedSeries>;
-  loadFredCsv: (seriesId: string) => Promise<DatedSeries>;
-}): ValuationSeriesLoader {
-  return async (def) => {
-    const yahooSymbol = yahooSymbolFor(def);
-    if (yahooSymbol) return deps.loadYahooIndex(yahooSymbol, def.seriesId);
-    try {
-      return await deps.loadCloudFred(seriesRequest(def));
-    } catch (error) {
-      // The cloud proxy allowlists series; fall back to FRED directly for the rest.
-      if (!isUnsupportedFredSeries(error)) throw error;
-      return deps.loadFredCsv(def.seriesId);
-    }
-  };
-}
-
-/** Exported so Bun-side tooling can hydrate the same series a renderer would fetch. */
-export const defaultValuationSeriesLoader: ValuationSeriesLoader = createValuationSeriesLoader({
-  loadCloudFred: async (request) => {
-    const data = await apiClient.getCloudFredSeries(request.seriesId, {
-      limit: request.limit,
-      sortOrder: request.sortOrder,
-    });
-    return fredDataToDatedSeries(data, request.seriesId, "fred");
-  },
-  loadYahooIndex: loadYahooDailyIndexFromEpoch,
-  loadFredCsv: loadFredGraphCsvSeries,
-});
-
-function seriesKey(seriesId: string): string {
-  return seriesId.trim().toUpperCase();
-}
-
-/** Every distinct series the registry needs, so shared legs are fetched once. */
+/** Every distinct leg the registry needs, so shared series are fetched once. */
 export function requiredSeries(
   indicators: readonly IndicatorDef[] = INDICATORS,
 ): SeriesDef[] {
   const seen = new Map<string, SeriesDef>();
   for (const indicator of indicators) {
-    for (const def of [indicator.numerator, indicator.denominator]) {
-      const key = seriesKey(def.seriesId);
-      if (!seen.has(key)) seen.set(key, def);
+    for (const def of indicatorSeries(indicator)) {
+      if (!seen.has(def.key)) seen.set(def.key, def);
     }
   }
   return [...seen.values()];
 }
 
+const cloudLoader = createSourceLoader(cloudSourceDeps);
+
+/** Cache-first around the cloud sources; exported so Bun-side tooling can reuse it. */
+export const defaultValuationSeriesLoader: ValuationSeriesLoader = async (def) => ({
+  seriesId: def.key,
+  observations: await loadCachedSeries(def.key, async () => (await cloudLoader(def)).observations),
+  provenance: provenanceFor(def),
+});
+
+/** Builds whatever the on-disk cache can already answer, for an instant first paint. */
+export function getCachedValuationBundle(
+  indicators: readonly IndicatorDef[] = INDICATORS,
+): ValuationBundle | null {
+  const legs = new Map<string, DatedSeries>();
+  for (const def of requiredSeries(indicators)) {
+    const cached = getCachedSeries(def.key, { allowExpired: true });
+    if (!cached) continue;
+    legs.set(def.key, {
+      seriesId: def.key,
+      observations: cached.observations,
+      provenance: provenanceFor(def),
+    });
+  }
+  const builds = buildIndicators(legs, [], indicators);
+  return builds.length > 0 ? { builds, errors: [], fetchedAt: Date.now() } : null;
+}
+
 function buildIndicators(
-  byId: Map<string, LoadedSeries>,
+  legs: Map<string, DatedSeries>,
   errors: string[],
   indicators: readonly IndicatorDef[],
 ): IndicatorBuild[] {
   const builds: IndicatorBuild[] = [];
   for (const indicator of indicators) {
-    const numerator = byId.get(seriesKey(indicator.numerator.seriesId));
-    const denominator = byId.get(seriesKey(indicator.denominator.seriesId));
-    if (!numerator || !denominator) continue;
+    if (indicatorSeries(indicator).some((def) => !legs.has(def.key))) continue;
     try {
-      const series = buildRatioSeries(indicator, numerator.data, denominator.data);
+      const series = buildValuationSeries(indicator, legs);
       builds.push({
         indicator,
         series,
-        trend: fitLogLinearTrend(series.points),
-        cacheStale: numerator.stale || denominator.stale,
+        trend: fitIndicatorTrend(indicator, series.points),
       });
     } catch (error) {
       errors.push(`${indicator.label}: ${error instanceof Error ? error.message : String(error)}`);
@@ -108,70 +78,31 @@ function summarizeErrors(errors: readonly string[]): string {
   return errors.length > 1 ? `${reason} (${errors.length} series)` : reason;
 }
 
-export function getCachedValuationBundle(
-  indicators: readonly IndicatorDef[] = INDICATORS,
-): ValuationBundle | null {
-  const byId = new Map<string, LoadedSeries>();
-  for (const def of requiredSeries(indicators)) {
-    const cached = getCachedFredSeries(seriesRequest(def), { allowExpired: true });
-    if (!cached) continue;
-    byId.set(seriesKey(def.seriesId), {
-      data: fredDataToDatedSeries(cached.data, def.seriesId, provenanceFor(def)),
-      stale: cached.stale,
-    });
-  }
-  const builds = buildIndicators(byId, [], indicators);
-  return builds.length > 0 ? { builds, errors: [], fetchedAt: Date.now() } : null;
-}
-
-async function loadSeries(
-  def: SeriesDef,
-  force: boolean,
-  loader: ValuationSeriesLoader,
-): Promise<{ def: SeriesDef; loaded: LoadedSeries | null; error?: string }> {
-  try {
-    const result = await loadCachedFredSeries(
-      seriesRequest(def),
-      async () => datedSeriesToCachePayload(await loader(def)),
-      { force },
-    );
-    return {
-      def,
-      loaded: {
-        data: fredDataToDatedSeries(result.data, def.seriesId, provenanceFor(def)),
-        stale: result.stale,
-      },
-      ...(result.refreshError ? { error: `${def.seriesId}: ${result.refreshError}` } : {}),
-    };
-  } catch (error) {
-    return {
-      def,
-      loaded: null,
-      error: `${def.seriesId}: ${error instanceof Error ? error.message : String(error)}`,
-    };
-  }
-}
-
 export async function loadValuationBundle(options?: {
-  force?: boolean;
   loader?: ValuationSeriesLoader;
   indicators?: readonly IndicatorDef[];
 }): Promise<ValuationBundle> {
-  const force = options?.force ?? false;
   const loader = options?.loader ?? defaultValuationSeriesLoader;
   const indicators = options?.indicators ?? INDICATORS;
   const errors: string[] = [];
-  const byId = new Map<string, LoadedSeries>();
+  const legs = new Map<string, DatedSeries>();
 
-  const settled = await Promise.all(
-    requiredSeries(indicators).map((def) => loadSeries(def, force, loader)),
-  );
+  const settled = await Promise.all(requiredSeries(indicators).map(async (def) => {
+    try {
+      return { def, data: await loader(def) };
+    } catch (error) {
+      return {
+        def,
+        error: `${def.key}: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }));
   for (const outcome of settled) {
-    if (outcome.error) errors.push(outcome.error);
-    if (outcome.loaded) byId.set(seriesKey(outcome.def.seriesId), outcome.loaded);
+    if ("error" in outcome && outcome.error) errors.push(outcome.error);
+    if ("data" in outcome && outcome.data) legs.set(outcome.def.key, outcome.data);
   }
 
-  const builds = buildIndicators(byId, errors, indicators);
+  const builds = buildIndicators(legs, errors, indicators);
   if (builds.length === 0) throw new Error(summarizeErrors(errors));
   return { builds, errors, fetchedAt: Date.now() };
 }

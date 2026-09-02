@@ -43,6 +43,7 @@ import {
   defaultValuationSeriesLoader,
   requiredSeries as valuationRequiredSeries,
 } from "../../plugins/builtin/market-valuation/client";
+import type { DatedObservation } from "../../plugins/builtin/market-valuation/series";
 import { publicTickerKey } from "../../utils/exchanges";
 import { apiClient } from "../../api-client";
 import type { FredSeriesCacheEntry } from "../../data/fred-series";
@@ -63,30 +64,9 @@ const DESKTOP_CELL_HEIGHT_PX = 18;
 const OPTIONS_PANE_ID = "options";
 const MARKET_VALUATION_PANE_ID = "market-valuation";
 
-/**
- * The valuation legs are not all on the cloud FRED allowlist, so reuse the pane's
- * own loader here on the Bun side, where the Yahoo and FRED CSV fallbacks work.
- */
-async function collectValuationFredSeries(): Promise<Array<[string, FredSeriesCacheEntry]>> {
-  const loaded = await Promise.all(valuationRequiredSeries().map(async (def) => {
-    try {
-      const series = await defaultValuationSeriesLoader(def);
-      return [def.seriesId, {
-        data: { observations: series.observations, info: null },
-        fetchedAt: Date.now(),
-        stale: false,
-      }] as [string, FredSeriesCacheEntry];
-    } catch {
-      return null;
-    }
-  }));
-  return loaded.filter((entry): entry is [string, FredSeriesCacheEntry] => !!entry);
-}
-
 async function collectShotFredSeries(
   resolved: ResolvedPaneFunction,
 ): Promise<Array<[string, FredSeriesCacheEntry]>> {
-  if (resolved.pane.id === MARKET_VALUATION_PANE_ID) return collectValuationFredSeries();
   if (resolved.pane.id !== CHART_COMPOSER_PANE_ID) return [];
   const spec = parseChartSpec(resolved.instance.settings?.chartSpec);
   if (!spec) return [];
@@ -105,6 +85,25 @@ async function collectShotFredSeries(
     }
   }));
   return loaded.filter((entry): entry is [string, FredSeriesCacheEntry] => !!entry);
+}
+
+/**
+ * The pane reads its legs from a client cache the shot renderer cannot fill itself,
+ * so fetch them here on the Bun side and hand them over with the payload.
+ */
+async function collectShotValuationSeries(
+  resolved: ResolvedPaneFunction,
+): Promise<Array<[string, DatedObservation[]]>> {
+  if (resolved.pane.id !== MARKET_VALUATION_PANE_ID) return [];
+  const loaded = await Promise.all(valuationRequiredSeries().map(async (def) => {
+    try {
+      const series = await defaultValuationSeriesLoader(def);
+      return [def.key, series.observations] as [string, DatedObservation[]];
+    } catch {
+      return null;
+    }
+  }));
+  return loaded.filter((entry): entry is [string, DatedObservation[]] => !!entry);
 }
 
 async function collectShotCapabilitySeries(
@@ -311,9 +310,10 @@ async function buildDesktopShotPayload(
   const tickers: TickerRecord[] = [];
   const financials: Array<[string, TickerFinancials]> = [];
   const optionsChains: Array<[string, OptionsChain]> = [];
-  const [fredSeries, capabilitySeries] = await Promise.all([
+  const [fredSeries, capabilitySeries, valuationSeries] = await Promise.all([
     collectShotFredSeries(resolved),
     collectShotCapabilitySeries(resolved),
+    collectShotValuationSeries(resolved),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
   for (const symbol of collectShotSymbols(resolved, rawArg)) {
@@ -357,6 +357,7 @@ async function buildDesktopShotPayload(
     financials,
     optionsChains,
     fredSeries,
+    valuationSeries,
     capabilitySeries,
     paneState,
   };

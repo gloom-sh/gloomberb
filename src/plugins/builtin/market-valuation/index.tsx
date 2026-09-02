@@ -1,7 +1,8 @@
 import type { PluginModule } from "../plugin-module";
+import { createValuationChartSeriesCapability } from "./chart-series";
 import { INDICATORS, resolveIndicatorArg } from "./indicators";
 import { MarketValuationPane } from "./pane";
-import { buildValuationSettingsDef, indicatorOptions, VALUATION_DEFAULTS } from "./settings";
+import { buildValuationSettingsDef, VALUATION_DEFAULTS } from "./settings";
 
 const MARKET_VALUATION_PANE_ID = "market-valuation";
 
@@ -12,6 +13,8 @@ const INDICATOR_KEYWORDS = INDICATORS.flatMap((indicator) => [
 ]);
 
 export const marketValuationModule: PluginModule = {
+  // Exposes each ratio as a chartable series, so G can overlay them on anything else.
+  capabilities: [createValuationChartSeriesCapability()],
   panes: [{
     id: MARKET_VALUATION_PANE_ID,
     name: "Market Valuation",
@@ -44,16 +47,11 @@ export const marketValuationModule: PluginModule = {
       argKind: "text",
       argOptional: true,
     },
-    wizard: [{
-      key: "indicator",
-      label: "Indicator",
-      type: "select",
-      defaultValue: VALUATION_DEFAULTS.indicator,
-      options: indicatorOptions(),
-    }],
+    // No wizard: VAL opens straight into the pane, where the summary rows swap
+    // indicators with the cursor. The argument form stays for deep links.
     canCreate: () => true,
     createInstance: (_context, options) => {
-      const indicator = resolveIndicatorArg(options?.arg ?? options?.values?.indicator);
+      const indicator = resolveIndicatorArg(options?.arg);
       return {
         settings: { indicator: indicator?.id ?? VALUATION_DEFAULTS.indicator },
       };

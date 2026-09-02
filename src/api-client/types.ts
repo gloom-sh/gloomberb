@@ -346,6 +346,28 @@ export interface CloudFredSeriesPayload {
   info: CloudFredSeriesInfoPayload | null;
 }
 
+/**
+ * One month of Robert Shiller's dataset. FRED carries no long-run S&P earnings,
+ * so this is what every earnings-based valuation ratio is built from.
+ */
+export interface CloudShillerObservationPayload {
+  date: string;
+  price: number | null;
+  dividend: number | null;
+  earnings: number | null;
+  cpi: number | null;
+  longRate: number | null;
+  cape: number | null;
+  /** CAPE earnings yield over the real 10-year rate; Shiller's equity risk premium. */
+  excessCapeYield: number | null;
+}
+
+export interface CloudShillerPayload {
+  observations: CloudShillerObservationPayload[];
+  sourceUrl: string;
+  fetchedAt: string;
+}
+
 /** One publicly disseminated single-name CDS transaction report. */
 export interface CloudCdsTradePayload {
   disseminationId: string;

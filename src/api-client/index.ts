@@ -49,6 +49,7 @@ import type {
   CloudEquityDiagnosticResult,
   CloudCdsResponse,
   CloudFredSeriesPayload,
+  CloudShillerPayload,
   CloudYieldPointPayload,
   CloudCongressHousePayload,
   CloudEarningsCallListPayload,
@@ -641,6 +642,10 @@ class GloomApiClient {
     params: CloudFredSeriesParams = {},
   ): Promise<CloudFredSeriesPayload> {
     return this.data.getCloudFredSeries(seriesId, params);
+  }
+
+  async getCloudShiller(): Promise<CloudShillerPayload> {
+    return this.data.getCloudShiller();
   }
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {

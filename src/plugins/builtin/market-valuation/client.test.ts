@@ -1,183 +1,138 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import {
-  attachFredSeriesPersistence,
-  resetFredSeriesPersistence,
-} from "../../../data/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import {
-  createValuationSeriesLoader,
-  loadValuationBundle,
-  requiredSeries,
-  type ValuationSeriesLoader,
-} from "./client";
-import { BUFFETT_INDICATOR, TOBINS_Q } from "./indicators";
-import type { IndicatorDef } from "./defs";
-import type { DatedSeries } from "./series";
+import { attachValuationPersistence, resetValuationPersistence } from "./cache";
+import { loadValuationBundle, requiredSeries, type ValuationSeriesLoader } from "./client";
+import { BUFFETT_INDICATOR, INDICATORS, SHILLER_CAPE, TOBINS_Q } from "./indicators";
+import type { DatedObservation, DatedSeries } from "./series";
+import { createSourceLoader, shillerObservations } from "./sources";
 
-function dated(
-  seriesId: string,
-  observations: Array<{ date: string; value: number }>,
-  provenance: DatedSeries["provenance"] = "fred",
-): DatedSeries {
-  return { seriesId, observations, provenance };
+function obs(values: Array<[string, number]>): DatedObservation[] {
+  return values.map(([date, value]) => ({ date, value }));
 }
 
-function cachePayload(seriesId: string, observations: Array<{ date: string; value: number }>) {
-  return {
-    observations,
-    info: {
-      id: seriesId,
-      title: seriesId,
-      units: "Billions of Dollars",
-      frequency: "Quarterly",
-      seasonalAdjustment: "Seasonally Adjusted Annual Rate",
-      source: "FRED",
-      notes: "",
-    },
-  };
-}
-
-const wilshireObs = [
-  { date: "2024-01-02", value: 40_000 },
-  { date: "2024-04-02", value: 42_000 },
-  { date: "2025-01-02", value: 45_000 },
-];
-const gdpObs = [
-  { date: "2024-01-01", value: 25_000 },
-  { date: "2024-04-01", value: 25_500 },
-  { date: "2025-01-01", value: 26_000 },
-];
-const zOneObs = [
-  { date: "2024-01-01", value: 60_000_000 },
-  { date: "2024-04-01", value: 62_000_000 },
-  { date: "2025-01-01", value: 64_000_000 },
-];
-const zTwoObs = [
-  { date: "2024-01-01", value: 40_000_000 },
-  { date: "2024-04-01", value: 40_500_000 },
-  { date: "2025-01-01", value: 41_000_000 },
-];
-
-const OBSERVATIONS: Record<string, Array<{ date: string; value: number }>> = {
-  WILL5000PRFC: wilshireObs,
-  GDP: gdpObs,
-  NCBEILQ027S: zOneObs,
-  TNWMVBSNNCB: zTwoObs,
+const LEGS: Record<string, DatedObservation[]> = {
+  W5000: obs([["2024-01-02", 40_000], ["2025-01-02", 45_000]]),
+  GDP: obs([["2024-01-01", 25_000], ["2025-01-01", 26_000]]),
+  M2SL: obs([["2024-01-01", 20_000], ["2025-01-01", 21_000]]),
+  NCBEILQ027S: obs([["2024-01-01", 60_000_000], ["2025-01-01", 64_000_000]]),
+  TNWMVBSNNCB: obs([["2024-01-01", 40_000_000], ["2025-01-01", 41_000_000]]),
+  SHILLER_CAPE: obs([["2024-01-01", 33.2], ["2025-01-01", 38.1]]),
+  SHILLER_ECY: obs([["2024-01-01", 0.021], ["2025-01-01", 0.013]]),
+  SHILLER_DIVIDEND: obs([["2024-01-01", 70], ["2025-01-01", 78]]),
+  SHILLER_PRICE: obs([["2024-01-01", 4800], ["2025-01-01", 6000]]),
 };
 
-const everySeriesLoader: ValuationSeriesLoader = async (def) => {
-  const observations = OBSERVATIONS[def.seriesId];
-  if (!observations) throw new Error(`unexpected ${def.seriesId}`);
-  return dated(def.seriesId, observations);
+const everyLeg: ValuationSeriesLoader = async (def) => {
+  const observations = LEGS[def.key];
+  if (!observations) throw new Error(`unexpected ${def.key}`);
+  return { seriesId: def.key, observations, provenance: "fred" } satisfies DatedSeries;
 };
 
-beforeEach(resetFredSeriesPersistence);
-afterEach(resetFredSeriesPersistence);
+beforeEach(() => {
+  resetValuationPersistence();
+  attachValuationPersistence(new MemoryPluginPersistence());
+});
+afterEach(resetValuationPersistence);
 
 describe("requiredSeries", () => {
   test("fetches a leg shared by two indicators only once", () => {
-    const shared: IndicatorDef = { ...TOBINS_Q, id: "shared", denominator: BUFFETT_INDICATOR.denominator };
-    const ids = requiredSeries([BUFFETT_INDICATOR, shared]).map((def) => def.seriesId);
-    expect(ids).toEqual(["WILL5000PRFC", "GDP", "NCBEILQ027S"]);
+    // Buffett and Cap/M2 share the Wilshire leg.
+    const keys = requiredSeries(INDICATORS).map((def) => def.key);
+    expect(keys.filter((key) => key === "W5000")).toHaveLength(1);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 });
 
 describe("loadValuationBundle", () => {
-  test("builds every indicator with its own fixed request limits", async () => {
-    const requests: Array<{ seriesId: string; limit?: number; sortOrder?: string }> = [];
-    const bundle = await loadValuationBundle({
-      force: true,
-      loader: async (def) => {
-        requests.push({
-          seriesId: def.seriesId,
-          limit: def.request.limit,
-          sortOrder: def.request.sortOrder,
-        });
-        return everySeriesLoader(def);
-      },
-    });
-
-    expect(bundle.builds.map((build) => build.indicator.id)).toEqual(["buffett", "tobins-q"]);
-    expect(requests.map((r) => r.seriesId).sort()).toEqual([
-      "GDP",
-      "NCBEILQ027S",
-      "TNWMVBSNNCB",
-      "WILL5000PRFC",
-    ]);
-    for (const request of requests) expect(request.sortOrder).toBe("desc");
-    expect(requests.find((r) => r.seriesId === "WILL5000PRFC")!.limit).toBe(10000);
-    expect(requests.find((r) => r.seriesId === "GDP")!.limit).toBe(340);
+  test("builds every registered indicator", async () => {
+    const bundle = await loadValuationBundle({ loader: everyLeg });
+    expect(bundle.builds.map((build) => build.indicator.id))
+      .toEqual(INDICATORS.map((indicator) => indicator.id));
   });
 
-  test("one broken indicator does not take down the rest", async () => {
+  test("one broken leg only drops the indicators that need it", async () => {
     const bundle = await loadValuationBundle({
-      force: true,
       loader: async (def) => {
-        if (def.seriesId === "WILL5000PRFC") throw new Error("Unsupported FRED series");
-        return everySeriesLoader(def);
+        if (def.key === "W5000") throw new Error("history unavailable");
+        return everyLeg(def);
       },
     });
-    expect(bundle.builds.map((build) => build.indicator.id)).toEqual(["tobins-q"]);
-    expect(bundle.errors.join(" ")).toContain("WILL5000PRFC");
+    const ids = bundle.builds.map((build) => build.indicator.id);
+    expect(ids).not.toContain("buffett");
+    expect(ids).not.toContain("market-cap-m2");
+    expect(ids).toContain("shiller-cape");
+    expect(bundle.errors.join(" ")).toContain("W5000");
   });
 
   test("throws when nothing builds", async () => {
     await expect(loadValuationBundle({
-      force: true,
       loader: async () => { throw new Error("offline"); },
     })).rejects.toThrow("offline");
   });
+});
 
-  test("default loader takes Yahoo for the index leg and FRED CSV after an allowlist rejection", async () => {
-    const cloud: string[] = [];
-    const yahoo: string[] = [];
-    const csv: string[] = [];
-    const loader = createValuationSeriesLoader({
-      loadCloudFred: async (request) => {
-        cloud.push(request.seriesId);
-        throw new Error("Unsupported FRED series");
-      },
-      loadYahooIndex: async (symbol, seriesId) => {
-        yahoo.push(`${symbol}:${seriesId}`);
-        return dated(seriesId, wilshireObs, "yahoo");
-      },
-      loadFredCsv: async (seriesId) => {
-        csv.push(seriesId);
-        return dated(seriesId, OBSERVATIONS[seriesId]!, "fred-csv");
+describe("createSourceLoader", () => {
+  test("fetches the Shiller dataset once for every column that needs it", async () => {
+    let shillerCalls = 0;
+    const loader = createSourceLoader({
+      loadFred: async () => obs([["2024-01-01", 1]]),
+      loadMarketHistory: async () => obs([["2024-01-01", 1]]),
+      loadShiller: async () => {
+        shillerCalls += 1;
+        return {
+          observations: [
+            { date: "2026-08-01", price: 7600, dividend: 81, earnings: null, cpi: 333, longRate: 4.75, cape: 41.2, excessCapeYield: 0.0097 },
+          ],
+          sourceUrl: "https://example.test/ie_data.xls",
+          fetchedAt: "2026-09-02T00:00:00.000Z",
+        };
       },
     });
 
-    const bundle = await loadValuationBundle({ force: true, loader });
-    expect(yahoo).toEqual(["^W5000:WILL5000PRFC"]);
-    expect(cloud.sort()).toEqual(["GDP", "NCBEILQ027S", "TNWMVBSNNCB"]);
-    expect(csv.sort()).toEqual(["GDP", "NCBEILQ027S", "TNWMVBSNNCB"]);
-    expect(bundle.builds).toHaveLength(2);
+    const shillerLegs = requiredSeries(INDICATORS)
+      .filter((def) => def.source.kind === "shiller");
+    expect(shillerLegs.length).toBeGreaterThan(1);
+    const loaded = await Promise.all(shillerLegs.map((def) => loader(def)));
+    expect(shillerCalls).toBe(1);
+    expect(loaded.every((entry) => entry.observations.length === 1)).toBe(true);
   });
 
-  test("does not fall back to FRED CSV on a non-allowlist cloud error", async () => {
-    const loader = createValuationSeriesLoader({
-      loadCloudFred: async () => { throw new Error("offline"); },
-      loadYahooIndex: async (_symbol, seriesId) => dated(seriesId, wilshireObs, "yahoo"),
-      loadFredCsv: async () => { throw new Error("csv should not run"); },
+  test("routes each source kind to its own transport", async () => {
+    const seen: string[] = [];
+    const loader = createSourceLoader({
+      loadFred: async (seriesId) => { seen.push(`fred:${seriesId}`); return obs([["2024-01-01", 1]]); },
+      loadMarketHistory: async (symbol) => { seen.push(`history:${symbol}`); return obs([["2024-01-01", 1]]); },
+      loadShiller: async () => { throw new Error("not needed"); },
     });
-    await expect(loadValuationBundle({ force: true, loader })).rejects.toThrow("offline");
+    if (BUFFETT_INDICATOR.input.kind !== "ratio") throw new Error("expected a ratio");
+    await loader(BUFFETT_INDICATOR.input.numerator);
+    await loader(BUFFETT_INDICATOR.input.denominator);
+    if (TOBINS_Q.input.kind !== "ratio") throw new Error("expected a ratio");
+    await loader(TOBINS_Q.input.numerator);
+    expect(seen).toEqual(["history:^W5000", "fred:GDP", "fred:NCBEILQ027S"]);
+  });
+});
+
+describe("shillerObservations", () => {
+  test("keeps a column's nulls rather than dropping the month", () => {
+    const observations = shillerObservations({
+      observations: [
+        { date: "2026-07-01", price: 7481, dividend: null, earnings: null, cpi: 333, longRate: 4.6, cape: 40.6, excessCapeYield: 0.0118 },
+        { date: "2026-08-01", price: 7600, dividend: 81, earnings: null, cpi: 333, longRate: 4.75, cape: 41.2, excessCapeYield: 0.0097 },
+      ],
+      sourceUrl: "x",
+      fetchedAt: "y",
+    }, "dividend");
+    expect(observations.map((entry) => entry.value)).toEqual([null, 81]);
   });
 
-  test("serves seeded cache keys without touching the network", async () => {
-    const persistence = new MemoryPluginPersistence();
-    const meta = { sourceKey: "gloomberb-cloud", schemaVersion: 1 } as const;
-    persistence.seedResource("fred-series", "WILL5000PRFC:limit=10000:sort=desc", cachePayload("WILL5000PRFC", wilshireObs), meta);
-    persistence.seedResource("fred-series", "GDP:limit=340:sort=desc", cachePayload("GDP", gdpObs), meta);
-    persistence.seedResource("fred-series", "NCBEILQ027S:limit=400:sort=desc", cachePayload("NCBEILQ027S", zOneObs), meta);
-    persistence.seedResource("fred-series", "TNWMVBSNNCB:limit=400:sort=desc", cachePayload("TNWMVBSNNCB", zTwoObs), meta);
-    attachFredSeriesPersistence(persistence);
-
-    let calls = 0;
-    const bundle = await loadValuationBundle({
-      force: false,
-      loader: async () => { calls += 1; throw new Error("should not hit network"); },
-    });
-    expect(calls).toBe(0);
-    expect(bundle.builds.map((build) => build.indicator.id)).toEqual(["buffett", "tobins-q"]);
+  test("throws when a column is entirely empty", () => {
+    expect(() => shillerObservations({
+      observations: [
+        { date: "2026-08-01", price: 7600, dividend: null, earnings: null, cpi: null, longRate: null, cape: null, excessCapeYield: null },
+      ],
+      sourceUrl: "x",
+      fetchedAt: "y",
+    }, "earnings")).toThrow("no earnings observations");
   });
 });

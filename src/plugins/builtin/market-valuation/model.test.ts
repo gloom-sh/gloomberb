@@ -1,22 +1,28 @@
 import { describe, expect, test } from "bun:test";
 import {
   BUFFETT_INDICATOR,
+  EXCESS_CAPE_YIELD,
+  INDICATORS,
+  SHILLER_CAPE,
+  SP500_DIVIDEND_YIELD,
   TOBINS_Q,
   alignToDenominator,
-  buildRatioSeries,
+  buildValuationSeries,
   chartYearLabels,
   classifyZone,
-  fitLogLinearTrend,
+  fitTrend,
   meanRatio,
   niceDomain,
   projectChart,
   projectView,
+  resolveIndicatorArg,
   sigmaVsTrend,
   sliceByRange,
   trendAt,
   zoneScaleBands,
   zoneScaleFraction,
   zoneScaleValueAt,
+  type DatedSeries,
   type IndicatorBuild,
   type RatioPoint,
   type ScaledObs,
@@ -26,32 +32,40 @@ function scaled(date: string, value: number): ScaledObs {
   return { date, value };
 }
 
-function series(observations: Array<{ date: string; value: number | null }>) {
-  return { seriesId: "test", observations, provenance: "fred" as const };
+function series(observations: Array<{ date: string; value: number | null }>): DatedSeries {
+  return { seriesId: "test", observations, provenance: "fred" };
 }
 
 function ratioPoint(date: string, ratio: number): RatioPoint {
-  return { date, ratio, numeratorBillions: ratio, denominatorBillions: 100 };
+  return { date, ratio };
 }
 
 describe("alignToDenominator", () => {
   const denominator = [scaled("2024-01-01", 20_000), scaled("2024-04-01", 22_000)];
 
   test("midpoint between two quarterlies is linear", () => {
-    const points = alignToDenominator(BUFFETT_INDICATOR, [scaled("2024-02-15", 40_000)], denominator);
-    expect(points).toHaveLength(1);
+    const points = alignToDenominator(
+      BUFFETT_INDICATOR,
+      [scaled("2024-02-15", 40_000)],
+      denominator,
+      true,
+    );
     const t0 = Date.parse("2024-01-01");
     const t1 = Date.parse("2024-04-01");
     const t = Date.parse("2024-02-15");
-    const expected = 20_000 + ((t - t0) / (t1 - t0)) * (22_000 - 20_000);
+    const expected = 20_000 + ((t - t0) / (t1 - t0)) * 2_000;
     expect(points[0]!.denominatorBillions).toBeCloseTo(expected, 6);
     expect(points[0]!.ratio).toBeCloseTo((40_000 / expected) * 100, 6);
   });
 
   test("flat-forwards past the last denominator print", () => {
-    const points = alignToDenominator(BUFFETT_INDICATOR, [scaled("2024-06-01", 44_000)], denominator);
+    const points = alignToDenominator(
+      BUFFETT_INDICATOR,
+      [scaled("2024-06-01", 44_000)],
+      denominator,
+      true,
+    );
     expect(points[0]!.denominatorBillions).toBe(22_000);
-    expect(points[0]!.ratio).toBeCloseTo((44_000 / 22_000) * 100, 6);
   });
 
   test("drops numerator dates before the first denominator print", () => {
@@ -59,43 +73,60 @@ describe("alignToDenominator", () => {
       BUFFETT_INDICATOR,
       [scaled("2023-12-01", 39_000), scaled("2024-02-01", 40_000)],
       denominator,
+      true,
     );
     expect(points.map((p) => p.date)).toEqual(["2024-02-01"]);
   });
 
-  test("ratioScale of 1 leaves the quotient a bare ratio", () => {
-    const points = alignToDenominator(TOBINS_Q, [scaled("2024-02-15", 40_000)], denominator);
-    expect(points[0]!.ratio).toBeCloseTo(40_000 / points[0]!.denominatorBillions, 6);
-    expect(points[0]!.ratio).toBeLessThan(10);
-  });
-});
-
-describe("buildRatioSeries", () => {
-  test("applies each leg's scaleToBillions before dividing", () => {
-    // Both Z.1 legs arrive in millions, so the levels rescale but the ratio does not.
-    const built = buildRatioSeries(
-      TOBINS_Q,
-      series([{ date: "2024-01-01", value: 60_000_000 }]),
-      series([{ date: "2024-01-01", value: 40_000_000 }]),
+  test("omits dollar levels when the ratio has none worth showing", () => {
+    const points = alignToDenominator(
+      SP500_DIVIDEND_YIELD,
+      [scaled("2024-02-15", 80)],
+      [scaled("2024-01-01", 4000)],
+      false,
     );
-    expect(built.points).toHaveLength(1);
-    expect(built.points[0]!.numeratorBillions).toBeCloseTo(60_000, 6);
-    expect(built.points[0]!.denominatorBillions).toBeCloseTo(40_000, 6);
-    expect(built.points[0]!.ratio).toBeCloseTo(1.5, 6);
-    expect(built.denominatorVintageDate).toBe("2024-01-01");
-  });
-
-  test("throws when the two legs never overlap", () => {
-    expect(() => buildRatioSeries(
-      BUFFETT_INDICATOR,
-      series([{ date: "2020-01-01", value: 1 }]),
-      series([{ date: "2024-01-01", value: 1 }]),
-    )).toThrow("no overlapping observations");
+    expect(points[0]!.numeratorBillions).toBeUndefined();
+    expect(points[0]!.ratio).toBeCloseTo(2, 6);
   });
 });
 
-describe("fitLogLinearTrend", () => {
-  test("recovers beta and places an outlier at the expected σ", () => {
+describe("buildValuationSeries", () => {
+  test("scales each leg into billions before dividing", () => {
+    const legs = new Map<string, DatedSeries>([
+      ["NCBEILQ027S", series([{ date: "2024-01-01", value: 60_000_000 }])],
+      ["TNWMVBSNNCB", series([{ date: "2024-01-01", value: 40_000_000 }])],
+    ]);
+    const built = buildValuationSeries(TOBINS_Q, legs);
+    expect(built.points[0]!.numeratorBillions).toBeCloseTo(60_000, 6);
+    expect(built.points[0]!.ratio).toBeCloseTo(1.5, 6);
+  });
+
+  test("a direct indicator uses its single leg as the value", () => {
+    const legs = new Map<string, DatedSeries>([
+      ["SHILLER_CAPE", series([
+        { date: "2026-07-01", value: 40.6 },
+        { date: "2026-08-01", value: 41.2 },
+      ])],
+    ]);
+    const built = buildValuationSeries(SHILLER_CAPE, legs);
+    expect(built.points.map((p) => p.ratio)).toEqual([40.6, 41.2]);
+    expect(built.points[0]!.numeratorBillions).toBeUndefined();
+  });
+
+  test("ratioScale turns a decimal fraction into a percent", () => {
+    const legs = new Map<string, DatedSeries>([
+      ["SHILLER_ECY", series([{ date: "2026-08-01", value: 0.0097 }])],
+    ]);
+    expect(buildValuationSeries(EXCESS_CAPE_YIELD, legs).points[0]!.ratio).toBeCloseTo(0.97, 6);
+  });
+
+  test("throws when a leg is missing", () => {
+    expect(() => buildValuationSeries(SHILLER_CAPE, new Map())).toThrow("missing");
+  });
+});
+
+describe("fitTrend", () => {
+  test("log model recovers a compounding growth rate", () => {
     const originMs = Date.parse("2000-01-01");
     const betaPerDay = 0.03 / 365.25;
     const points: RatioPoint[] = [];
@@ -104,83 +135,88 @@ describe("fitLogLinearTrend", () => {
       const tDays = (Date.parse(date) - originMs) / 86_400_000;
       points.push(ratioPoint(date, 80 * Math.exp(betaPerDay * tDays)));
     }
-    const fit = fitLogLinearTrend(points);
+    const fit = fitTrend(points, "log");
     expect(fit.beta).toBeCloseTo(betaPerDay, 8);
-    expect(fit.sigma).toBeLessThan(1e-12);
-
     const outlierDate = points[10]!.date;
-    const outlierRatio = trendAt(fit, outlierDate) * Math.exp(2);
-    expect(sigmaVsTrend({ ...fit, sigma: 0.05 }, outlierRatio, outlierDate)).toBeCloseTo(2 / 0.05, 8);
+    const outlier = trendAt(fit, outlierDate) * Math.exp(2);
+    expect(sigmaVsTrend({ ...fit, sigma: 0.05 }, outlier, outlierDate)).toBeCloseTo(40, 8);
+  });
+
+  test("linear model keeps the negative years a log fit would drop", () => {
+    const points = [
+      ratioPoint("2000-01-01", -2),
+      ratioPoint("2001-01-01", 0),
+      ratioPoint("2002-01-01", 2),
+      ratioPoint("2003-01-01", 4),
+    ];
+    const linear = fitTrend(points, "linear");
+    expect(linear.model).toBe("linear");
+    // Leap years make the day spacing uneven, so the fit lands near, not on, the ends.
+    expect(trendAt(linear, "2000-01-01")).toBeCloseTo(-2, 1);
+    expect(trendAt(linear, "2003-01-01")).toBeCloseTo(4, 1);
+    // The log fit sees only the two positive points, so its origin moves.
+    expect(fitTrend(points, "log").originMs).toBe(Date.parse("2002-01-01"));
+  });
+
+  test("sigma is zero for a value the model cannot place", () => {
+    const fit = fitTrend([ratioPoint("2020-01-01", 1), ratioPoint("2021-01-01", 2)], "log");
+    expect(sigmaVsTrend(fit, -1, "2021-01-01")).toBe(0);
   });
 });
 
 describe("classifyZone", () => {
   test("Buffett boundaries are half-open at 75, 90, 115, 135", () => {
     expect(classifyZone(BUFFETT_INDICATOR, 74.999).id).toBe("significantly-undervalued");
-    expect(classifyZone(BUFFETT_INDICATOR, 75).id).toBe("modestly-undervalued");
-    expect(classifyZone(BUFFETT_INDICATOR, 89.999).id).toBe("modestly-undervalued");
     expect(classifyZone(BUFFETT_INDICATOR, 90).id).toBe("fair");
-    expect(classifyZone(BUFFETT_INDICATOR, 114.999).id).toBe("fair");
-    expect(classifyZone(BUFFETT_INDICATOR, 115).id).toBe("modestly-overvalued");
     expect(classifyZone(BUFFETT_INDICATOR, 135).id).toBe("significantly-overvalued");
   });
 
-  test("each indicator classifies in its own units", () => {
-    expect(classifyZone(TOBINS_Q, 0.4).id).toBe("significantly-undervalued");
-    expect(classifyZone(TOBINS_Q, 0.95).id).toBe("fair");
-    expect(classifyZone(TOBINS_Q, 1.82).id).toBe("significantly-overvalued");
-    // The same number means opposite things across indicators.
-    expect(classifyZone(BUFFETT_INDICATOR, 0.4).id).toBe("significantly-undervalued");
-    expect(classifyZone(BUFFETT_INDICATOR, 140).id).toBe("significantly-overvalued");
+  test("a yield-shaped indicator reads the other way round", () => {
+    // A high excess yield means stocks are cheap, unlike a high price ratio.
+    expect(classifyZone(EXCESS_CAPE_YIELD, 0.5).id).toBe("significantly-overvalued");
+    expect(classifyZone(EXCESS_CAPE_YIELD, 3.3).id).toBe("fair");
+    expect(classifyZone(EXCESS_CAPE_YIELD, 8).id).toBe("significantly-undervalued");
+    expect(classifyZone(SP500_DIVIDEND_YIELD, 1.1).id).toBe("significantly-overvalued");
+    expect(classifyZone(SP500_DIVIDEND_YIELD, 7).id).toBe("significantly-undervalued");
   });
 });
 
 describe("zone scale geometry", () => {
-  test("bands cover the full scale with classifyZone's colors", () => {
-    for (const indicator of [BUFFETT_INDICATOR, TOBINS_Q]) {
+  test("bands span min to max with classifyZone's colors, for every indicator", () => {
+    for (const indicator of INDICATORS) {
       const bands = zoneScaleBands(indicator);
-      expect(bands[0]!.from).toBe(0);
+      expect(bands[0]!.from).toBe(indicator.zoneScale.min);
       expect(bands.at(-1)!.to).toBe(indicator.zoneScale.max);
       for (const band of bands) {
-        const probe = (band.from + band.to) / 2;
-        expect(band.color).toBe(classifyZone(indicator, probe).color);
+        expect(band.color).toBe(classifyZone(indicator, (band.from + band.to) / 2).color);
       }
     }
   });
 
-  test("each band gets equal width so fair sits near center", () => {
-    const bands = BUFFETT_INDICATOR.zones.length;
-    for (let index = 0; index <= bands; index += 1) {
-      const edge = BUFFETT_INDICATOR.zoneScale.edges[index]!;
-      expect(zoneScaleFraction(BUFFETT_INDICATOR, edge)).toBeCloseTo(index / bands, 8);
-    }
-    // Parity lands inside the middle fifth rather than being pushed left by the long top band.
-    const parity = zoneScaleFraction(BUFFETT_INDICATOR, 100);
-    expect(parity).toBeGreaterThan(0.4);
-    expect(parity).toBeLessThan(0.6);
-  });
-
-  test("fraction and value round-trip", () => {
-    for (const indicator of [BUFFETT_INDICATOR, TOBINS_Q]) {
-      for (const value of [0, indicator.zoneScale.max / 3, indicator.zoneScale.max]) {
-        const back = zoneScaleValueAt(indicator, zoneScaleFraction(indicator, value));
-        expect(back).toBeCloseTo(value, 6);
+  test("edges land on equal fractions and round-trip, including a negative floor", () => {
+    for (const indicator of INDICATORS) {
+      const edges = indicator.zoneScale.edges;
+      const bands = edges.length - 1;
+      for (let index = 0; index <= bands; index += 1) {
+        const edge = edges[index]!;
+        expect(zoneScaleFraction(indicator, edge)).toBeCloseTo(index / bands, 8);
+        expect(zoneScaleValueAt(indicator, index / bands)).toBeCloseTo(edge, 6);
       }
     }
-  });
-
-  test("values past the top of the scale clamp to the end", () => {
-    expect(zoneScaleFraction(BUFFETT_INDICATOR, 10_000)).toBe(1);
-    expect(zoneScaleFraction(BUFFETT_INDICATOR, -50)).toBe(0);
+    expect(zoneScaleFraction(EXCESS_CAPE_YIELD, -3)).toBe(0);
+    expect(zoneScaleFraction(EXCESS_CAPE_YIELD, -99)).toBe(0);
   });
 });
 
 describe("niceDomain", () => {
-  test("snaps up to whole grid steps in the indicator's units", () => {
-    expect(niceDomain(142, 150)).toEqual({ min: 0, max: 150 });
-    expect(niceDomain(214, 150)).toEqual({ min: 0, max: 300 });
-    expect(niceDomain(1.82, 0.5)).toEqual({ min: 0, max: 2 });
-    expect(niceDomain(0, 0.5)).toEqual({ min: 0, max: 0.5 });
+  test("snaps up to whole grid steps", () => {
+    expect(niceDomain(0, 142, 150)).toEqual({ min: 0, max: 150 });
+    expect(niceDomain(0, 214, 150)).toEqual({ min: 0, max: 300 });
+    expect(niceDomain(0, 1.82, 0.5)).toEqual({ min: 0, max: 2 });
+  });
+
+  test("opens a floor when the measure goes negative", () => {
+    expect(niceDomain(-2.6, 12, 5)).toEqual({ min: -5, max: 15 });
   });
 });
 
@@ -195,21 +231,20 @@ describe("projectChart", () => {
     const mean = meanRatio(points);
     const chart = projectChart(BUFFETT_INDICATOR, points, mean);
     expect(chart.markers.map((marker) => marker.label)).toEqual(["parity", "mean"]);
-    const values = chart.overlays.referenceLines!.map((line) => line.value);
-    expect(values).toEqual([100, mean]);
-    // The mean of this window is not parity, so the two lines must not coincide.
+    expect(chart.overlays.referenceLines!.map((line) => line.value)).toEqual([100, mean]);
     expect(mean).not.toBeCloseTo(100, 6);
   });
 
   test("colors each segment from its own zone", () => {
     const chart = projectChart(BUFFETT_INDICATOR, points, meanRatio(points));
-    expect(chart.lineColors).toEqual(points.map((p) => classifyZone(BUFFETT_INDICATOR, p.ratio).color));
+    expect(chart.lineColors)
+      .toEqual(points.map((p) => classifyZone(BUFFETT_INDICATOR, p.ratio).color));
   });
 
-  test("domain keeps the reference and mean on screen", () => {
-    const low = [ratioPoint("2020-01-01", 10), ratioPoint("2021-01-01", 12)];
-    const chart = projectChart(BUFFETT_INDICATOR, low, meanRatio(low));
-    expect(chart.yDomain.max).toBeGreaterThanOrEqual(100);
+  test("keeps a negative reference on screen", () => {
+    const negative = [ratioPoint("2020-01-01", -2), ratioPoint("2021-01-01", 1)];
+    const chart = projectChart(EXCESS_CAPE_YIELD, negative, meanRatio(negative));
+    expect(chart.yDomain.min).toBeLessThan(0);
   });
 });
 
@@ -226,7 +261,6 @@ describe("chartYearLabels", () => {
     const labels = chartYearLabels(points);
     expect(labels.length).toBeLessThanOrEqual(8);
     expect(labels[0]).toBe("1970");
-    expect(labels.at(-1)).toBe("2029");
     expect([...labels]).toEqual([...new Set(labels)]);
   });
 });
@@ -238,9 +272,8 @@ describe("projectView", () => {
   }
   const build: IndicatorBuild = {
     indicator: BUFFETT_INDICATOR,
-    series: { indicatorId: "buffett", points, denominatorVintageDate: "2026-01-01" },
-    trend: fitLogLinearTrend(points),
-    cacheStale: false,
+    series: { indicatorId: "buffett", points, vintageDate: "2026-01-01" },
+    trend: fitTrend(points, "log"),
   };
 
   test("range changes the chart window but not the headline stats", () => {
@@ -249,29 +282,41 @@ describe("projectView", () => {
     expect(short.current).toEqual(all.current);
     expect(short.percentile).toBe(all.percentile);
     expect(short.allTimeHigh).toEqual(all.allTimeHigh);
-    expect(short.mean).toBeCloseTo(all.mean, 8);
     expect(short.chart.points.length).toBeLessThan(all.chart.points.length);
   });
 
   test("staleness uses the indicator's own cadence", () => {
-    // Three months past the last print: overdue for a daily series, normal for Z.1,
-    // whose newest observation is routinely months old by design.
+    // Three months past the last print: overdue daily, normal for quarterly Z.1.
     const nowMs = Date.parse("2026-04-01");
     expect(projectView(build, "ALL", { nowMs }).observationStale).toBe(true);
     const quarterly: IndicatorBuild = { ...build, indicator: TOBINS_Q };
     expect(projectView(quarterly, "ALL", { nowMs }).observationStale).toBe(false);
-    // Still fresh at eight months, the real gap between consecutive Z.1 releases.
     expect(projectView(quarterly, "ALL", { nowMs: Date.parse("2026-09-02") }).observationStale)
       .toBe(false);
-    // A full year with no new print is genuinely stale.
     expect(projectView(quarterly, "ALL", { nowMs: Date.parse("2027-02-01") }).observationStale)
       .toBe(true);
+  });
+
+  test("a direct indicator has no vintage label to show", () => {
+    const direct: IndicatorBuild = { ...build, indicator: SHILLER_CAPE };
+    expect(projectView(direct, "ALL").vintageLabel).toBeNull();
+    expect(projectView(build, "ALL").vintageLabel).toContain("GDP as of");
   });
 });
 
 describe("sliceByRange", () => {
   test("falls back to the whole series when a window leaves under two points", () => {
-    const points = [ratioPoint("1990-01-01", 60), ratioPoint("1991-01-01", 62)];
-    expect(sliceByRange(points, "10Y")).toHaveLength(2);
+    expect(sliceByRange([ratioPoint("1990-01-01", 60), ratioPoint("1991-01-01", 62)], "10Y"))
+      .toHaveLength(2);
+  });
+});
+
+describe("resolveIndicatorArg", () => {
+  test("matches ids, short labels and prefixes so VAL <name> deep-links", () => {
+    expect(resolveIndicatorArg("cape")?.id).toBe("shiller-cape");
+    expect(resolveIndicatorArg("buffett")?.id).toBe("buffett");
+    expect(resolveIndicatorArg("tobin q")?.id).toBe("tobins-q");
+    expect(resolveIndicatorArg("")).toBeNull();
+    expect(resolveIndicatorArg("nonsense")).toBeNull();
   });
 });

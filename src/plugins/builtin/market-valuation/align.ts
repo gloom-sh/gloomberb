@@ -9,27 +9,27 @@ export interface ScaledObs {
 export interface RatioPoint {
   date: string;
   ratio: number;
-  numeratorBillions: number;
-  denominatorBillions: number;
+  /** Present only when both legs are dollar amounts worth showing. */
+  numeratorBillions?: number;
+  denominatorBillions?: number;
 }
 
-export interface RatioSeries {
+export interface ValuationSeries {
   indicatorId: string;
   points: RatioPoint[];
-  /** Observation date of the last denominator print, which usually lags the numerator. */
-  denominatorVintageDate: string;
+  /** Observation date of the slowest leg, which usually lags the headline value. */
+  vintageDate: string;
 }
 
 function parseDateMs(date: string): number {
   return Date.parse(date);
 }
 
-/** "2026Q1" style label for the quarterly denominator behind a daily ratio. */
+/** "2026Q1" style label for the low-frequency leg behind a faster-moving value. */
 export function vintageLabel(prefix: string, vintageDate: string): string {
   const d = new Date(parseDateMs(vintageDate));
-  const year = d.getUTCFullYear();
   const quarter = Math.floor(d.getUTCMonth() / 3) + 1;
-  return `${prefix} as of ${year}Q${quarter}`;
+  return `${prefix} as of ${d.getUTCFullYear()}Q${quarter}`;
 }
 
 export function scaleObservations(def: SeriesDef, data: DatedSeries): ScaledObs[] {
@@ -50,6 +50,7 @@ export function alignToDenominator(
   indicator: IndicatorDef,
   numerator: readonly ScaledObs[],
   denominator: readonly ScaledObs[],
+  withLevels: boolean,
 ): RatioPoint[] {
   if (denominator.length === 0 || numerator.length === 0) return [];
   const firstMs = parseDateMs(denominator[0]!.date);
@@ -80,26 +81,42 @@ export function alignToDenominator(
     if (!(value > 0)) continue;
     out.push({
       date: point.date,
-      numeratorBillions: point.value,
-      denominatorBillions: value,
       ratio: (point.value / value) * indicator.ratioScale,
+      ...(withLevels
+        ? { numeratorBillions: point.value, denominatorBillions: value }
+        : {}),
     });
   }
   return out;
 }
 
-export function buildRatioSeries(
+export function buildValuationSeries(
   indicator: IndicatorDef,
-  numerator: DatedSeries,
-  denominator: DatedSeries,
-): RatioSeries {
-  const top = scaleObservations(indicator.numerator, numerator);
-  const bottom = scaleObservations(indicator.denominator, denominator);
-  const points = alignToDenominator(indicator, top, bottom);
+  legs: ReadonlyMap<string, DatedSeries>,
+): ValuationSeries {
+  if (indicator.input.kind === "direct") {
+    const def = indicator.input.series;
+    const data = legs.get(def.key);
+    if (!data) throw new Error(`missing ${def.key}`);
+    const points = scaleObservations(def, data).map((obs) => ({
+      date: obs.date,
+      ratio: obs.value * indicator.ratioScale,
+    }));
+    if (points.length === 0) throw new Error("no observations");
+    return { indicatorId: indicator.id, points, vintageDate: points.at(-1)!.date };
+  }
+
+  const { numerator, denominator, levels } = indicator.input;
+  const top = legs.get(numerator.key);
+  const bottom = legs.get(denominator.key);
+  if (!top || !bottom) throw new Error(`missing ${!top ? numerator.key : denominator.key}`);
+  const scaledTop = scaleObservations(numerator, top);
+  const scaledBottom = scaleObservations(denominator, bottom);
+  const points = alignToDenominator(indicator, scaledTop, scaledBottom, levels != null);
   if (points.length === 0) throw new Error("no overlapping observations");
   return {
     indicatorId: indicator.id,
     points,
-    denominatorVintageDate: bottom.at(-1)!.date,
+    vintageDate: scaledBottom.at(-1)!.date,
   };
 }

@@ -72,7 +72,6 @@ describe("browser plugin catalog", () => {
       "thirteenf",
       "sec",
       "insider",
-      "market-valuation",
     ]) {
       expect(paneIds).not.toContain(forbidden);
     }

@@ -12,6 +12,7 @@ import {
   cloudSecFilingDocumentsPath,
   cloudSecFilingsPath,
   cloudFredSeriesPath,
+  cloudShillerPath,
   cloudHistoryPath,
   cloudMarketSearchPath,
   cloudMarketSymbolPath,
@@ -44,6 +45,7 @@ import type {
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResult,
   CloudFredSeriesPayload,
+  CloudShillerPayload,
   CloudFundamentals,
   CloudHoldersPayload,
   CloudMarketBatchPayload,
@@ -216,6 +218,10 @@ export class CloudDataApi {
     params: CloudFredSeriesParams = {},
   ): Promise<CloudFredSeriesPayload> {
     return this.request<CloudFredSeriesPayload>(cloudFredSeriesPath(seriesId, params));
+  }
+
+  async getCloudShiller(): Promise<CloudShillerPayload> {
+    return this.request<CloudShillerPayload>(cloudShillerPath());
   }
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {

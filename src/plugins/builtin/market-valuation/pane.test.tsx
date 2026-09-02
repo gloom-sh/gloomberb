@@ -2,9 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import {
-  attachFredSeriesPersistence,
-  resetFredSeriesPersistence,
-} from "../../../data/fred-series";
+  attachValuationPersistence,
+  hydrateValuationSeries,
+  resetValuationPersistence,
+} from "./cache";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
@@ -17,58 +18,58 @@ import { MarketValuationPane } from "./pane";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 
-const FRED_SEED_META = { sourceKey: "gloomberb-cloud", schemaVersion: 1 } as const;
-
-function payload(seriesId: string, observations: Array<{ date: string; value: number }>) {
-  return {
-    observations,
-    info: {
-      id: seriesId,
-      title: seriesId,
-      units: "Billions of Dollars",
-      frequency: "Daily",
-      seasonalAdjustment: "Not Seasonally Adjusted",
-      source: "FRED",
-      notes: "",
-    },
-  };
+function obs(values: Array<[string, number]>) {
+  return values.map(([date, value]) => ({ date, value }));
 }
 
-const wilshireData = payload("WILL5000PRFC", [
-  { date: "2024-01-02", value: 40_000 },
-  { date: "2024-07-01", value: 42_000 },
-  { date: "2025-01-02", value: 43_500 },
-  { date: "2025-07-01", value: 44_000 },
-  { date: "2026-01-02", value: 44_500 },
-  { date: "2026-06-15", value: 45_000 },
-]);
-
-const gdpData = payload("GDP", [
-  { date: "2024-01-01", value: 28_000 },
-  { date: "2024-04-01", value: 28_500 },
-  { date: "2024-07-01", value: 29_000 },
-  { date: "2025-01-01", value: 30_000 },
-  { date: "2025-07-01", value: 31_000 },
-  { date: "2026-01-01", value: 31_400 },
-  { date: "2026-04-01", value: 31_700 },
-]);
-
-// Z.1 legs arrive in millions; the last pair is 38.0T / 40.0T = 0.95, inside the fair band.
-const equitiesData = payload("NCBEILQ027S", [
-  { date: "2024-01-01", value: 30_000_000 },
-  { date: "2024-07-01", value: 33_000_000 },
-  { date: "2025-01-01", value: 35_000_000 },
-  { date: "2025-07-01", value: 36_500_000 },
-  { date: "2026-01-01", value: 38_000_000 },
-]);
-
-const netWorthData = payload("TNWMVBSNNCB", [
-  { date: "2024-01-01", value: 38_000_000 },
-  { date: "2024-07-01", value: 38_600_000 },
-  { date: "2025-01-01", value: 39_200_000 },
-  { date: "2025-07-01", value: 39_600_000 },
-  { date: "2026-01-01", value: 40_000_000 },
-]);
+/** Wilshire 76.2T over GDP 32.5T is 235%; the Z.1 pair is 38.0T / 40.0T, or 0.95. */
+const LEGS: Array<[string, Array<{ date: string; value: number }>]> = [
+  ["W5000", obs([
+    ["2024-01-02", 60_000],
+    ["2025-01-02", 68_000],
+    ["2026-06-15", 76_200],
+  ])],
+  ["GDP", obs([
+    ["2024-01-01", 28_000],
+    ["2025-01-01", 30_000],
+    ["2026-04-01", 32_500],
+  ])],
+  ["M2SL", obs([
+    ["2024-01-01", 21_000],
+    ["2025-01-01", 22_000],
+    ["2026-07-01", 23_200],
+  ])],
+  ["NCBEILQ027S", obs([
+    ["2024-01-01", 30_000_000],
+    ["2025-01-01", 35_000_000],
+    ["2026-01-01", 38_000_000],
+  ])],
+  ["TNWMVBSNNCB", obs([
+    ["2024-01-01", 38_000_000],
+    ["2025-01-01", 39_200_000],
+    ["2026-01-01", 40_000_000],
+  ])],
+  ["SHILLER_CAPE", obs([
+    ["2024-01-01", 33.2],
+    ["2025-01-01", 38.1],
+    ["2026-08-01", 41.2],
+  ])],
+  ["SHILLER_ECY", obs([
+    ["2024-01-01", 0.021],
+    ["2025-01-01", 0.013],
+    ["2026-08-01", 0.0097],
+  ])],
+  ["SHILLER_DIVIDEND", obs([
+    ["2024-01-01", 70],
+    ["2025-01-01", 76],
+    ["2026-08-01", 83],
+  ])],
+  ["SHILLER_PRICE", obs([
+    ["2024-01-01", 4800],
+    ["2025-01-01", 6000],
+    ["2026-08-01", 7600],
+  ])],
+];
 
 async function settle() {
   await act(async () => {
@@ -122,13 +123,9 @@ async function renderPane(settings: Record<string, unknown> = {}) {
 }
 
 beforeEach(() => {
-  resetFredSeriesPersistence();
-  const persistence = new MemoryPluginPersistence();
-  persistence.seedResource("fred-series", "WILL5000PRFC:limit=10000:sort=desc", wilshireData, FRED_SEED_META);
-  persistence.seedResource("fred-series", "GDP:limit=340:sort=desc", gdpData, FRED_SEED_META);
-  persistence.seedResource("fred-series", "NCBEILQ027S:limit=400:sort=desc", equitiesData, FRED_SEED_META);
-  persistence.seedResource("fred-series", "TNWMVBSNNCB:limit=400:sort=desc", netWorthData, FRED_SEED_META);
-  attachFredSeriesPersistence(persistence);
+  resetValuationPersistence();
+  attachValuationPersistence(new MemoryPluginPersistence());
+  hydrateValuationSeries(LEGS);
 });
 
 afterEach(async () => {
@@ -136,29 +133,47 @@ afterEach(async () => {
     await act(async () => setup?.renderer.destroy());
     setup = undefined;
   }
-  resetFredSeriesPersistence();
+  resetValuationPersistence();
 });
 
 describe("MarketValuationPane", () => {
   test("summarizes every indicator in one table, each in its own units", async () => {
     const frame = await renderPane();
+    // A percent, a bare multiple, and two yields all sit in one VALUE column.
     expect(frame).toContain("Buffett");
+    expect(frame).toContain("234%");
+    expect(frame).toContain("CAPE");
+    expect(frame).toContain("41.2");
     expect(frame).toContain("Tobin Q");
-    expect(frame).toContain("142%");
     expect(frame).toContain("0.95");
-    expect(frame).toContain("Sig. over");
-    expect(frame).toContain("Fair");
+    expect(frame).toContain("Cap / M2");
+    expect(frame).toContain("329%");
+    expect(frame).toContain("Div yield");
+    expect(frame).toContain("1.1%");
+  });
+
+  test("a yield reads cheap when it is high, unlike a price ratio", async () => {
+    const frame = await renderPane();
+    // Both Buffett at 234% and an excess CAPE yield of 1.0% mean expensive.
+    expect(frame).toMatch(/Buffett\s+234%\s+Sig\. over/);
+    expect(frame).toMatch(/ERP \(ECY\)\s+1\.0%\s+Sig\. over/);
   });
 
   test("detail follows the selected indicator without repeating the row", async () => {
     const frame = await renderPane({ indicator: "tobins-q" });
-    // Tobin's own leg labels and reference line, not Buffett's.
     expect(frame).toContain("Equities");
     expect(frame).toContain("Net worth");
     expect(frame).toContain("replacement cost");
     expect(frame).not.toContain("Mkt cap");
-    // The table row already names the indicator and its zone, so the body must not repeat them.
+    // The row above already names the indicator and its zone.
     expect(frame).not.toContain("Fair Valued");
+  });
+
+  test("a direct indicator shows no dollar levels row", async () => {
+    const frame = await renderPane({ indicator: "shiller-cape" });
+    expect(frame).toContain("ten years of real earnings");
+    expect(frame).not.toContain("Mkt cap");
+    expect(frame).not.toContain("Equities");
   });
 
   test("draws the mean apart from the reference line", async () => {

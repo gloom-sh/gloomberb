@@ -88,11 +88,11 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const generation = useRef(0);
 
-  const load = useCallback(async (force = false) => {
+  const load = useCallback(async () => {
     const current = ++generation.current;
     setState((previous) => ({ status: "loading", previous: bundleOf(previous) }));
     try {
-      const next = await loadValuationBundle({ force });
+      const next = await loadValuationBundle();
       if (generation.current !== current) return;
       setState({ status: "ready", bundle: next });
       setLastUpdated(Date.now());
@@ -106,9 +106,9 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     }
   }, []);
 
-  useEffect(() => { void load(false); }, [load]);
-  const refresh = useCallback(() => { void load(false); }, [load]);
-  const reload = useCallback(() => { void load(true); }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  const refresh = useCallback(() => { void load(); }, [load]);
+  const reload = refresh;
   useAutoRefresh(lastUpdated, refresh);
 
   useShortcut((event) => {
@@ -132,7 +132,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
       { id: "as-of", parts: [{ text: `as of ${selected.asOf}`, tone: "muted" }] },
       { id: "delayed", parts: [{ text: "delayed", tone: "muted" }] },
     ];
-    if (selected.observationStale || selected.cacheStale) {
+    if (selected.observationStale) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
     return info;

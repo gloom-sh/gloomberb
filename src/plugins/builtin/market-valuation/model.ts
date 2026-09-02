@@ -5,3 +5,4 @@ export * from "./align";
 export * from "./trend";
 export * from "./chart-projection";
 export * from "./view";
+export * from "./sources";

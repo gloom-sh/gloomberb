@@ -139,6 +139,10 @@ export function cloudHistoryPath(symbol: string, exchange: string, params: Cloud
   return appendQuery("/market/history", search);
 }
 
+export function cloudShillerPath(): string {
+  return "/cloud/econ/shiller";
+}
+
 export function cloudExchangeRatePath(fromCurrency: string): string {
   return appendQuery("/market/exchange-rate", new URLSearchParams({ fromCurrency }));
 }

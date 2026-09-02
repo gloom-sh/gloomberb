@@ -10,6 +10,8 @@ import {
   FUTURES_CONTRACTS,
   FUTURES_SECTOR_LABELS,
 } from "../futures/contracts";
+import { INDICATORS as VALUATION_INDICATORS } from "../market-valuation/indicators";
+import { MARKET_VALUATION_CAPABILITY_ID } from "../market-valuation/chart-series";
 import { TREASURY_MATURITIES } from "../yield-curve/treasury-data";
 import { fieldCategory, type SeriesCatalogInstrument } from "./series-catalog";
 
@@ -23,7 +25,8 @@ export type CatalogSourceId =
   | "crypto"
   | "fred"
   | "futures"
-  | "treasury";
+  | "treasury"
+  | "valuation";
 
 export type CatalogFilterId =
   | "all"
@@ -31,7 +34,8 @@ export type CatalogFilterId =
   | "options"
   | "crypto"
   | "fred"
-  | "futures";
+  | "futures"
+  | "valuation";
 
 export interface CatalogSeriesRow {
   id: string;
@@ -53,6 +57,7 @@ export const CATALOG_FILTERS: ReadonlyArray<{ id: CatalogFilterId; label: string
   { id: "crypto", label: "Crypto" },
   { id: "fred", label: "FRED" },
   { id: "futures", label: "Futures" },
+  { id: "valuation", label: "Valuation" },
 ];
 
 const FILTER_SOURCES: Record<CatalogFilterId, ReadonlySet<CatalogSourceId> | null> = {
@@ -62,6 +67,7 @@ const FILTER_SOURCES: Record<CatalogFilterId, ReadonlySet<CatalogSourceId> | nul
   crypto: new Set(["crypto"]),
   fred: new Set(["fred", "treasury"]),
   futures: new Set(["futures"]),
+  valuation: new Set(["valuation"]),
 };
 
 const CRYPTO_CATALOG: ReadonlyArray<{ symbol: string; name: string }> = [
@@ -320,6 +326,14 @@ const STATIC_CATALOG_INVENTORY: readonly CatalogSeriesRow[] = [
     kind: "Treasury",
     expression: `UST:${entry.maturity}`,
     url: `https://fred.stlouisfed.org/series/${entry.seriesId}`,
+  })),
+  ...VALUATION_INDICATORS.map((entry) => row({
+    id: `valuation:${entry.id}`,
+    label: entry.label,
+    source: "Gloom Cloud",
+    sourceId: "valuation",
+    kind: "Valuation",
+    expression: `CAP:${MARKET_VALUATION_CAPABILITY_ID}:${entry.id}`,
   })),
   ...FUTURES_CONTRACTS.map((entry) => row({
     id: `fut:${entry.code}`,

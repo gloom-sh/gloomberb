@@ -19,10 +19,19 @@ export interface ValuationChartProjection {
   markers: ChartMarkerLine[];
 }
 
-export function niceDomain(dataMax: number, step: number): { min: number; max: number } {
-  const hi = Number.isFinite(dataMax) && dataMax > 0 ? dataMax : 0;
+/** Snaps to whole grid steps, and opens a floor when the measure can go negative. */
+export function niceDomain(
+  dataMin: number,
+  dataMax: number,
+  step: number,
+): { min: number; max: number } {
   const span = step > 0 ? step : 1;
-  return { min: 0, max: Math.max(span, Math.ceil(hi / span) * span) };
+  const hi = Number.isFinite(dataMax) && dataMax > 0 ? dataMax : 0;
+  const lo = Number.isFinite(dataMin) ? Math.min(0, dataMin) : 0;
+  return {
+    min: lo < 0 ? Math.floor(lo / span) * span : 0,
+    max: Math.max(span, Math.ceil(hi / span) * span),
+  };
 }
 
 export function meanRatio(points: readonly RatioPoint[]): number {
@@ -51,10 +60,19 @@ export function projectChart(
   }));
 
   let yMax = -Infinity;
-  for (const point of visible) yMax = Math.max(yMax, point.ratio);
+  let yMin = Infinity;
+  for (const point of visible) {
+    yMax = Math.max(yMax, point.ratio);
+    yMin = Math.min(yMin, point.ratio);
+  }
   if (!Number.isFinite(yMax)) yMax = 0;
-  if (indicator.reference) yMax = Math.max(yMax, indicator.reference.value);
-  if (mean > 0) yMax = Math.max(yMax, mean);
+  if (!Number.isFinite(yMin)) yMin = 0;
+  if (indicator.reference) {
+    yMax = Math.max(yMax, indicator.reference.value);
+    yMin = Math.min(yMin, indicator.reference.value);
+  }
+  yMax = Math.max(yMax, mean);
+  yMin = Math.min(yMin, mean);
 
   const markers: ChartMarkerLine[] = [];
   const referenceLines = [];
@@ -62,7 +80,7 @@ export function projectChart(
     referenceLines.push({ value: indicator.reference.value, color: colors.textDim });
     markers.push({ value: indicator.reference.value, label: indicator.reference.label });
   }
-  if (mean > 0) {
+  if (Number.isFinite(mean)) {
     referenceLines.push({ value: mean, color: blendHex(colors.textDim, colors.bg, 0.35) });
     markers.push({ value: mean, label: "mean" });
   }
@@ -79,7 +97,7 @@ export function projectChart(
   return {
     points,
     overlays,
-    yDomain: niceDomain(yMax, indicator.chartGridStep),
+    yDomain: niceDomain(yMin, yMax, indicator.chartGridStep),
     yearLabels: chartYearLabels(points),
     lineColors: visible.map((point) => classifyZone(indicator, point.ratio).color),
     markers,
