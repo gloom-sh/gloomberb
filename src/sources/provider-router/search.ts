@@ -7,6 +7,12 @@ const SEARCH_CACHE_TTL_MS = 30_000;
 const SEARCH_CACHE_MAX_ENTRIES = 100;
 
 const SEARCH_PROVIDER_TIMEOUT_MS = 5_000;
+/**
+ * A keystroke path cannot wait the batch budget on a source that is failing
+ * slowly. A broker whose gateway is down is the common case, and five seconds
+ * of it is indistinguishable from the feature being broken.
+ */
+const INTERACTIVE_SEARCH_TIMEOUT_MS = 800;
 
 interface BrokerSearchCandidate {
   brokerId: string;
@@ -14,9 +20,9 @@ interface BrokerSearchCandidate {
   brokerLabel: string;
 }
 
-function withSearchTimeout<T>(promise: Promise<T>): Promise<T | null> {
+function withSearchTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
   return new Promise<T | null>((resolve) => {
-    const timer = setTimeout(() => resolve(null), SEARCH_PROVIDER_TIMEOUT_MS);
+    const timer = setTimeout(() => resolve(null), timeoutMs);
     promise.then(
       (value) => { clearTimeout(timer); resolve(value); },
       () => { clearTimeout(timer); resolve(null); },
@@ -93,72 +99,119 @@ export class ProviderRouterSearchRoutes {
     const inFlight = this.searchInFlight.get(cacheKey);
     if (inFlight) return inFlight;
 
-    const task = this.fetchSearchResults(query, context, cacheKey).finally(() => {
+    const { first, settled } = this.fetchSearchResults(query, context, cacheKey);
+    // Held until every source settles, not until the first answer, so a repeat
+    // of the same query joins this run instead of starting a second one.
+    this.searchInFlight.set(cacheKey, first);
+    void settled.finally(() => {
       this.searchInFlight.delete(cacheKey);
     });
-
-    this.searchInFlight.set(cacheKey, task);
-    return task;
+    return first;
   }
 
-  private async fetchSearchResults(
+  /**
+   * Brokers and the preferred provider run at once, rather than each being
+   * awaited in turn. The old order tried brokers one at a time before the
+   * preferred provider was asked at all, so one unreachable broker delayed
+   * every lookup by its full timeout.
+   *
+   * Fallback providers stay a fallback: they are only asked when that first
+   * round found nothing, because they are metered upstreams and racing them on
+   * every keystroke would bill for answers already in hand.
+   *
+   * Ordering still matters, it just no longer costs latency: `mergeSearchResults`
+   * keeps the richest entry per symbol, so a broker arriving after the cloud
+   * still upgrades the row, and `onPartial` hands that upgrade to the caller.
+   */
+  private fetchSearchResults(
     query: string,
     context: SearchRequestContext | undefined,
     cacheKey: string,
-  ): Promise<InstrumentSearchResult[]> {
+  ): { first: Promise<InstrumentSearchResult[]>; settled: Promise<void> } {
     const results: InstrumentSearchResult[] = [];
     const resultIndexByKey = new Map<string, number>();
+    const timeoutMs = context?.interactive
+      ? INTERACTIVE_SEARCH_TIMEOUT_MS
+      : SEARCH_PROVIDER_TIMEOUT_MS;
+
     const cacheResults = (ttl = SEARCH_CACHE_TTL_MS) => {
       this.searchCache.set(cacheKey, {
         expiresAt: Date.now() + ttl,
-        results,
+        results: [...results],
       });
       if (this.searchCache.size > SEARCH_CACHE_MAX_ENTRIES) {
         this.searchCache.delete(this.searchCache.keys().next().value!);
       }
     };
-    const push = (items: InstrumentSearchResult[]) => {
+
+    let resolveFirst!: (value: InstrumentSearchResult[]) => void;
+    const first = new Promise<InstrumentSearchResult[]>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let answered = false;
+
+    const record = (items: InstrumentSearchResult[] | null) => {
+      if (!items?.length) return;
       mergeSearchResults(results, resultIndexByKey, items, context);
+      cacheResults();
+      if (!answered) {
+        answered = true;
+        resolveFirst([...results]);
+        return;
+      }
+      // The caller already has an answer, so a later, richer source is handed
+      // over rather than silently dropped into the cache.
+      context?.onPartial?.([...results]);
     };
 
-    if (context?.preferBroker !== false) {
-      for (const candidate of this.deps.getBrokerCandidates(
-        context?.brokerInstanceId,
-        context?.brokerId,
-      )) {
-        if (!candidate.broker.searchInstruments) continue;
-        try {
-          const items = await withSearchTimeout(candidate.broker.searchInstruments(query, candidate.instance));
-          if (!items) continue;
-          push(annotateBrokerSearchResults(items, candidate));
-          if (results.length > 0) {
-            cacheResults();
-            return results;
-          }
-        } catch {
-          // continue through broker candidates
-        }
-      }
-    }
-
-    for (const provider of this.deps.providersInPriorityOrder()) {
+    const searchBroker = (candidate: BrokerCandidate) => (async () => {
       try {
-        const items = await withSearchTimeout(provider.search(query, context));
-        if (!items) continue;
-        push(items);
-        if (results.length > 0) {
-          cacheResults();
-          return results;
-        }
+        const items = await withSearchTimeout(
+          candidate.broker.searchInstruments!(query, candidate.instance),
+          timeoutMs,
+        );
+        record(items && annotateBrokerSearchResults(items, candidate));
+      } catch {
+        // A broker that cannot answer must not hold up the ones that can.
+      }
+    })();
+
+    const searchProvider = (provider: DataProvider) => (async () => {
+      try {
+        record(await withSearchTimeout(provider.search(query, context), timeoutMs));
       } catch (error) {
         if (shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);
         }
       }
-    }
+    })();
 
-    cacheResults(Math.min(SEARCH_CACHE_TTL_MS, 5_000));
-    return results;
+    const brokers = context?.preferBroker === false
+      ? []
+      : this.deps
+        .getBrokerCandidates(context?.brokerInstanceId, context?.brokerId)
+        .filter((candidate) => candidate.broker.searchInstruments);
+    const [preferred, ...fallbacks] = this.deps.providersInPriorityOrder();
+
+    const settled = (async () => {
+      await Promise.allSettled([
+        ...brokers.map(searchBroker),
+        ...(preferred ? [searchProvider(preferred)] : []),
+      ]);
+      if (results.length === 0) {
+        await Promise.allSettled(fallbacks.map(searchProvider));
+      }
+    })().then(() => {
+      if (!answered) {
+        answered = true;
+        // Nothing matched anywhere, so hold the empty answer briefly rather
+        // than asking every source again on the next keystroke.
+        cacheResults(Math.min(SEARCH_CACHE_TTL_MS, 5_000));
+        resolveFirst([]);
+      }
+    });
+
+    return { first, settled };
   }
 }
 

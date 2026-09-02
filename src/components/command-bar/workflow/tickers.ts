@@ -36,6 +36,7 @@ function getTickerSearchContext(state: AppState, collectionId: string | null) {
   const activePortfolio = state.config.portfolios.find((portfolio) => portfolio.id === collectionId);
   return {
     preferBroker: true,
+    interactive: true,
     brokerId: activePortfolio?.brokerId,
     brokerInstanceId: activePortfolio?.brokerInstanceId,
   };

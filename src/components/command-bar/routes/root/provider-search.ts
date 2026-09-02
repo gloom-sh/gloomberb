@@ -105,14 +105,29 @@ export function useRootProviderSearch(options: {
     const requestId = ++rootSearchRequestIdRef.current;
     rootSearchTimerRef.current = setTimeout(async () => {
       try {
+        const publish = (candidates: TickerSearchCandidate[]) => {
+          setRootProviderResults(mergeTickerSearchResultItems(
+            searchQuery,
+            buildTickerSearchResultItems(candidates, searchQuery),
+            localTickerSearchResultItems(searchQuery, { limit: 6 }),
+          ));
+          setRootProviderResultsQuery(searchQuery);
+        };
         const combined = await searchTickerCandidates({
           query: searchQuery,
           tickers,
           dataProvider,
           searchContext: {
             preferBroker: true,
+            interactive: true,
             brokerId: activeSearchPortfolio?.brokerId,
             brokerInstanceId: activeSearchPortfolio?.brokerInstanceId,
+          },
+          // A broker that answers after the cloud upgrades the rows in place
+          // rather than being dropped because the list was already drawn.
+          onPartial: (candidates) => {
+            if (requestId !== rootSearchRequestIdRef.current) return;
+            publish(candidates);
           },
           ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
         });
@@ -123,12 +138,7 @@ export function useRootProviderSearch(options: {
           activeSearchPortfolio?.brokerId,
           activeSearchPortfolio?.brokerInstanceId,
         );
-        setRootProviderResults(mergeTickerSearchResultItems(
-          searchQuery,
-          buildTickerSearchResultItems(combined, searchQuery),
-          localTickerSearchResultItems(searchQuery, { limit: 6 }),
-        ));
-        setRootProviderResultsQuery(searchQuery);
+        publish(combined);
       } catch {
         if (requestId !== rootSearchRequestIdRef.current) return;
         setRootProviderResults([{

@@ -93,6 +93,17 @@ export interface SearchRequestContext {
   preferBroker?: boolean;
   brokerId?: string;
   brokerInstanceId?: string;
+  /**
+   * A person is waiting on this result, so a slow source should be abandoned in
+   * well under a second rather than given the batch budget.
+   */
+  interactive?: boolean;
+  /**
+   * Called when a later source improves the result the search already returned,
+   * typically a broker adding contract detail to a symbol the cloud found
+   * first. Receives the full merged list, not a delta.
+   */
+  onPartial?: (results: InstrumentSearchResult[]) => void;
 }
 
 export interface QuoteSubscriptionTarget {
