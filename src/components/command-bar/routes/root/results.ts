@@ -22,13 +22,6 @@ import { buildRootShortcutItem } from "./shortcut-items";
 
 type RootShortcutIntent = ReturnType<typeof parseRootShortcutIntent>;
 
-/** The ART plugin command claims the prefix, so article rows must still be shown. */
-export function isArticleLookupShortcut(intent: RootShortcutIntent): boolean {
-  return intent.kind !== "none"
-    && intent.source === "plugin-command"
-    && intent.command.id === "open-news-article";
-}
-
 interface PaneTemplateItemOptions {
   category?: string;
   createOptions?: PaneTemplateCreateOptions;
@@ -74,7 +67,6 @@ export interface RootResultModelOptions {
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
   rootQuery: string;
   rootShortcutIntent: RootShortcutIntent;
-  articleResultItems?: ResultItem[];
   /**
    * Rows from plugin search providers, already ordered by provider priority.
    * Appended after the local matches so a late answer never moves the row the
@@ -129,7 +121,6 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     pluginCommandResultItems,
     rootQuery,
     rootShortcutIntent,
-    articleResultItems = [],
     providerResultItems = [],
     runDirectCommand,
     runSecurityDescriptionShortcut,
@@ -186,13 +177,9 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     && rootShortcutIntent.source === "plugin-command"
     && shortcutItem
   ) {
-    if (isArticleLookupShortcut(rootShortcutIntent)) {
-      items.push(shortcutItem);
-    } else {
-      const dynamicItems = pluginCommandResultItems(rootShortcutIntent.command, rootShortcutIntent.argText);
-      items.push(...(dynamicItems.length > 0 ? dynamicItems : [shortcutItem]));
-    }
-    } else if (match && match.command.id === "layout") {
+    const dynamicItems = pluginCommandResultItems(rootShortcutIntent.command, rootShortcutIntent.argText);
+    items.push(...(dynamicItems.length > 0 ? dynamicItems : [shortcutItem]));
+  } else if (match && match.command.id === "layout") {
     items.push(...buildLayoutItems(match.arg, { confirmDangerousActions: true }));
   } else if (match && match.command.id === "window-mode") {
     items.push(...buildWindowModeItems(match.arg));
@@ -252,11 +239,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...matchedItems);
   }
 
-  const shortcutClaimedQuery = rootShortcutIntent.kind !== "none"
-    && !isArticleLookupShortcut(rootShortcutIntent);
-  if (!shortcutClaimedQuery) {
-    items.push(...articleResultItems);
-  }
+  const shortcutClaimedQuery = rootShortcutIntent.kind !== "none";
   // Counted before the provider rows: they arrive whenever the network answers,
   // and an assist offer must not appear and vanish as they land.
   const matchCount = items.length;

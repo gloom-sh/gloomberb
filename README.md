@@ -233,8 +233,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `GR <tickers>` | Security relationship graph |
 | `EE <ticker>` | Events view with earnings and revenue estimates |
 | `EM [tickers]` | Earnings monitor |
-| `SRCH <query>` | Provider symbol search |
-| `RSCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
+| `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
 | `QQ <tickers>` | Ticker quote monitor |
 | `CMP <tickers>` | Normalized price comparison |
 | `CORR <tickers>` | Ticker return correlations |
@@ -329,7 +328,6 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `FONT+` / `FONT-` | Increase or decrease desktop font size |
 | `CONN` | Connection health |
 | `POLL` | Prediction-market polls |
-| `ART` | Loaded article lookup |
 | `UPGRADE` | Account upgrade |
 | `CR` | Cycle chart renderer |
 | `LANG <locale>` | Change interface language (`auto`, `en`, `es`, `zh-CN`, `zh-TW`, `ja`, or `ko`) |

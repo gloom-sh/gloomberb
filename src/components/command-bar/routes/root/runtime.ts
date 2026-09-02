@@ -64,7 +64,6 @@ interface UseCommandBarRootRuntimeOptions {
   }): ResultItem[];
   pluginCommandItems(): ResultItem[];
   pluginCommandResultItems(command: CommandDef, shortcutArg: string): ResultItem[];
-  articleResultItems?: ResultItem[];
   providerResultItems?: ResultItem[];
   providerCategoryPriorities?: CommandBarCategoryPriorities;
   providerSearching?: boolean;
@@ -118,7 +117,6 @@ export function useCommandBarRootRuntime({
   paneShortcutItems,
   pluginCommandItems,
   pluginCommandResultItems,
-  articleResultItems = [],
   providerResultItems = [],
   providerCategoryPriorities,
   providerSearching = false,
@@ -194,7 +192,6 @@ export function useCommandBarRootRuntime({
     pluginCommandResultItems,
     rootQuery,
     rootShortcutIntent,
-    articleResultItems,
     providerResultItems,
     runDirectCommand,
     runSecurityDescriptionShortcut,
@@ -223,7 +220,6 @@ export function useCommandBarRootRuntime({
     pluginCommandResultItems,
     rootQuery,
     rootShortcutIntent,
-    articleResultItems,
     providerResultItems,
     runDirectCommand,
     runSecurityDescriptionShortcut,

@@ -18,7 +18,7 @@ describe("command bar row badges", () => {
     expect(resolveRowBadge(row)).toEqual({ text: "NEWS", tone: "document" });
     expect(badgeConsumesRight(row)).toBe(false);
     // The "search all" row keeps its shortcut on the right under its own tag.
-    expect(resolveRowBadge({ kind: "action", badge: "DOCS", right: "RSCH" })).toEqual({ text: "DOCS", tone: "document" });
+    expect(resolveRowBadge({ kind: "action", badge: "DOCS", right: "SRCH" })).toEqual({ text: "DOCS", tone: "document" });
   });
 
   /**
@@ -45,7 +45,7 @@ describe("command bar row badges", () => {
    * or documents arrive and shift every label above them sideways.
    */
   test("holds a column wide enough for any badge the bar can show", () => {
-    for (const badge of ["EQ", "ETF", "DERIV", "SYM", "NEWS", "CALL", "DOCS", "RSCH", "10-K", "8-K", "ABCDEF"]) {
+    for (const badge of ["EQ", "ETF", "DERIV", "SYM", "NEWS", "CALL", "DOCS", "SRCH", "10-K", "8-K", "ABCDEF"]) {
       expect(resolveRowBadge({ kind: "action", badge })?.text.length).toBeLessThanOrEqual(BADGE_COLUMN_WIDTH);
     }
     // Six characters is what the shortcut pattern admits; a seventh is prose.

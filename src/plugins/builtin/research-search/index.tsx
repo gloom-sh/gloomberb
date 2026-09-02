@@ -1,5 +1,5 @@
 import type { GloomPlugin, PaneTemplateCreateOptions } from "../../../types/plugin";
-import { createDocumentSearchProvider } from "./command-bar-search";
+import { createDocumentSearchProvider, createNewsSearchProvider } from "./command-bar-search";
 import { attachResearchSearchPersistence, resetResearchSearchPersistence } from "./data";
 import { resetDocumentFocusRequests } from "./focus-handoff";
 import {
@@ -25,6 +25,7 @@ export const researchSearchPlugin: GloomPlugin = {
 
   setup(ctx) {
     attachResearchSearchPersistence(ctx.persistence);
+    ctx.registerCommandBarSearchProvider(createNewsSearchProvider(ctx));
     ctx.registerCommandBarSearchProvider(createDocumentSearchProvider(ctx));
   },
 
@@ -65,7 +66,7 @@ export const researchSearchPlugin: GloomPlugin = {
         "saved search",
       ],
       shortcut: {
-        prefix: "RSCH",
+        prefix: "SRCH",
         argPlaceholder: "query",
         argKind: "text",
         argOptional: true,

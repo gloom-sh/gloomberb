@@ -68,6 +68,17 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
 const PROMPT_CARET = "> ";
 
 /**
+ * The topbar's own fill. The prompt used to be the only thing wearing it, which
+ * left the bar reading as a pale input pasted onto a darker strip; in the
+ * terminal the whole row carries it and the prompt paints nothing of its own.
+ * Desktop keeps the pill, where the fill is one part of real chrome — it has a
+ * border and a radius too — rather than a stray band.
+ */
+function headerSurface(colors: ReturnType<typeof useThemeColors>): string {
+  return blendHex(colors.header, colors.bg, 0.55);
+}
+
+/**
  * Desktop chrome for the prompt. Closed it is a self-contained pill. Open it is
  * the top half of the command surface: same fill, same border and same shadow
  * as the sheet, rounded only where it is not touching it, and stretched to the
@@ -167,16 +178,20 @@ function HeaderCommandPrompt({
   const colors = useThemeColors();
   const binding = useCommandBarPromptBinding();
   const { placeholder, shortcut } = resolveHeaderPromptContent(width, shortcutLabel);
-  const idleBg = blendHex(colors.header, colors.bg, 0.55);
+  const idleBg = headerSurface(colors);
   // Open, the prompt takes the sheet's own surface so the two read as one
-  // control: the sheet is the prompt, expanded.
+  // control: the sheet is the prompt, expanded. Closed, only the desktop pill
+  // fills itself; the terminal row is already this colour end to end.
   const backgroundColor = open
     ? (nativePaneChrome ? commandBarPanelBg(colors) : commandBarBg(colors))
-    : idleBg;
+    : (nativePaneChrome ? idleBg : undefined);
   const caretColor = open
     ? commandBarText(colors)
     : blendHex(colors.headerText, colors.header, 0.15);
   const mutedColor = blendHex(colors.headerText, colors.header, 0.42);
+  // Dimmer than the placeholder it trails: the label is what names the control,
+  // the binding is a footnote to it.
+  const shortcutColor = blendHex(colors.headerText, colors.header, 0.62);
   const inputWidth = Math.max(1, width - 2 - PROMPT_CARET.length);
 
   return (
@@ -210,8 +225,8 @@ function HeaderCommandPrompt({
       ) : (
         <>
           <Text fg={mutedColor}>{placeholder}</Text>
+          {shortcut ? <Text fg={shortcutColor}>{`  ${shortcut}`}</Text> : null}
           <Box flexGrow={1} minWidth={0} />
-          {shortcut ? <Text fg={mutedColor}>{shortcut}</Text> : null}
         </>
       )}
     </Box>
@@ -363,6 +378,9 @@ export function Header({
   const shortcutLabel = getShortcutDisplayMode(uiKind) === "terminal"
     ? "Ctrl+P"
     : formatPrimaryShortcut("K", detectShortcutPlatform(), "platform");
+  // Desktop draws a pill on the bar; the terminal has no chrome to hang one off,
+  // so the bar itself wears the prompt's fill and reads as a single strip.
+  const headerBg = nativePaneChrome ? colors.header : headerSurface(colors);
 
   const startWindowDrag = useCallback(() => {
     if (!titleBarOverlay || !nativeWindowChrome) return;
@@ -400,12 +418,12 @@ export function Header({
         flexDirection="row"
         height={1}
         alignItems="center"
-        backgroundColor={colors.header}
+        backgroundColor={headerBg}
         data-gloom-role="app-header"
         data-titlebar-overlay="true"
         onMouseDown={startWindowDrag}
         style={{
-          boxShadow: `0 -1px 0 ${colors.header}, inset 0 1px 0 ${colors.header}`,
+          boxShadow: `0 -1px 0 ${headerBg}, inset 0 1px 0 ${headerBg}`,
           paddingRight: showWindowControls ? 0 : 12,
           position: "relative",
         }}
@@ -455,7 +473,7 @@ export function Header({
     <Box
       flexDirection="row"
       height={1}
-      backgroundColor={colors.header}
+      backgroundColor={headerBg}
       data-gloom-role="app-header"
       data-titlebar-overlay={titleBarOverlay ? "true" : undefined}
       onMouseDown={startWindowDrag}

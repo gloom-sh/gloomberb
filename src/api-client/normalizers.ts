@@ -5,6 +5,7 @@ import type {
   ChatStateResponse,
   CloudSavedSearch,
   CloudSearchHit,
+  CloudSearchResponse,
   CloudTweetPayload,
   CloudTweetSearchResponse,
 } from "./types";
@@ -26,7 +27,24 @@ export function normalizeSavedSearchResponse(response: unknown): CloudSavedSearc
 
 export function normalizeSavedSearchHits(response: unknown): CloudSearchHit[] {
   const hits = (response as { hits?: unknown } | null)?.hits;
-  return Array.isArray(hits) ? hits as CloudSearchHit[] : [];
+  return Array.isArray(hits) ? (hits as CloudSearchHit[]).map(normalizeSearchHit) : [];
+}
+
+/**
+ * A wire story or filing need not name an issuer, and the server sends `ticker:
+ * null` when it does not. Coerced to an empty string at the boundary so the
+ * declared `string` is true of every hit: consumers test it for truthiness,
+ * join it into search text, and hand it to a badge, and a null reaches each of
+ * those as an empty chip, the literal "null", or a crash.
+ */
+export function normalizeSearchHit(hit: CloudSearchHit): CloudSearchHit {
+  return hit.ticker ? hit : { ...hit, ticker: "" };
+}
+
+export function normalizeSearchResponse(response: CloudSearchResponse): CloudSearchResponse {
+  const hits = response.hits;
+  if (!Array.isArray(hits)) return { ...response, hits: [] };
+  return { ...response, hits: hits.map(normalizeSearchHit) };
 }
 
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {

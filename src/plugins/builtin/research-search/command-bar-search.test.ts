@@ -74,5 +74,8 @@ describe("document hit rows", () => {
 
     const bare = hitResultDef(hit({ metadata: {} }), () => {}, NOW);
     expect(bare.lines?.[0]?.segments[0]?.text).toBe("NVDA · ");
+
+    // The News section is all one kind, so a badge there would only repeat the heading.
+    expect(hitResultDef(hit({}), () => {}, NOW, { badge: false }).badge).toBeUndefined();
   });
 });

@@ -11,7 +11,7 @@ export interface CommandBarRowBadge {
  *
  * Sized to the widest badge the bar can show, which is a six-character command
  * prefix; the class and document tags in play (EQ, ETF, DERIV, SYM, NEWS,
- * CALL, DOCS, RSCH, 10-K, 10-Q, 8-K) all fit inside it. Fixed rather than
+ * CALL, DOCS, SRCH, 10-K, 10-Q, 8-K) all fit inside it. Fixed rather than
  * measured, because the sections arrive at different times: instruments and
  * documents land after the local rows, and their badges are wider, so a
  * measured column would widen mid-query and shift every label above it

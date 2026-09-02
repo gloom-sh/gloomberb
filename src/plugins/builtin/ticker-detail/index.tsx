@@ -4,10 +4,6 @@ import { normalizeTickerInput } from "../../../tickers/search";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { FinancialAnalysisPane } from "./financials/pane";
 import { HistoricalPricesPane } from "./data-panes/historical-prices";
-import {
-  createProviderSearchPaneTemplate,
-  ProviderSearchPane,
-} from "./data-panes/provider-search";
 import { TickerResearchPane } from "./pane";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
@@ -74,15 +70,6 @@ export const tickerDetailModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 26 },
       tableExport: true,
-    },
-    {
-      id: "provider-search-results",
-      name: "Provider Search",
-      icon: "S",
-      component: ProviderSearchPane,
-      defaultPosition: "right",
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 86, height: 24 },
     },
   ],
   paneTemplates: [
@@ -159,7 +146,6 @@ export const tickerDetailModule: PluginModule = {
       shortcut: "HP",
       publicShare: true,
     }),
-    createProviderSearchPaneTemplate(),
     createTickerSurfacePaneTemplate({
       id: "financial-analysis-pane",
       paneId: "financial-analysis",

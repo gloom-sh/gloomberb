@@ -40,11 +40,11 @@ const paneTemplates: PaneTemplateDef[] = [
   },
   tickerTemplate("earnings-estimates-pane", "EE"),
   {
-    id: "provider-search-pane",
-    paneId: "provider-search-results",
-    label: "Provider Search",
-    description: "Search provider instruments",
-    shortcut: { prefix: "SRCH", argPlaceholder: "query", argKind: "text" },
+    id: "research-search-pane",
+    paneId: "research-search",
+    label: "Research Search",
+    description: "Full-text document search",
+    shortcut: { prefix: "SRCH", argPlaceholder: "query", argKind: "text", argOptional: true },
   },
   {
     id: "cds-pane",
@@ -125,19 +125,19 @@ describe("ticker data root shortcuts", () => {
     if (intent.kind === "none") throw new Error("Expected shortcut intent");
     expect(intent.source).toBe("pane-template");
     if (intent.source === "pane-template") {
-      expect(intent.template.id).toBe("provider-search-pane");
+      expect(intent.template.id).toBe("research-search-pane");
       expect(intent.argText).toBe("apple inc");
       expect(intent.completionQuery).toBeNull();
     }
   });
 
-  test("SRCH without a query remains a provider search shortcut", () => {
+  test("SRCH without a query remains a document search shortcut", () => {
     const intent = parse("SRCH");
     expect(intent.kind).toBe("partial");
     if (intent.kind === "none") throw new Error("Expected shortcut intent");
     expect(intent.source).toBe("pane-template");
     if (intent.source === "pane-template") {
-      expect(intent.template.id).toBe("provider-search-pane");
+      expect(intent.template.id).toBe("research-search-pane");
       expect(intent.argText).toBe("");
     }
   });

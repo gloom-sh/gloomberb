@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
-import { EmptyState, Spinner } from "../../../components";
+import { Button, EmptyState, Spinner } from "../../../components";
+import { openUrl } from "../../../components/ui/external-link";
 import { colors } from "../../../theme/colors";
 import {
   Box,
@@ -207,6 +208,26 @@ export function SearchDocumentView({
     );
   }
   if (error && !document) {
+    // A news hit names a story that is public at its source, so a server that
+    // will not hand over the indexed copy is not a dead end: the whole point of
+    // opening one is to read it, and the original always can be.
+    if (hit.url) {
+      return (
+        <Box flexDirection="column" paddingX={1}>
+          <EmptyState
+            title="Could not load the indexed copy."
+            message={error}
+          />
+          <Box flexDirection="row" marginTop={1}>
+            <Button
+              label="Open original"
+              variant="secondary"
+              onPress={() => openUrl(hit.url)}
+            />
+          </Box>
+        </Box>
+      );
+    }
     return <EmptyState title="Could not load this document." message={error} />;
   }
   if (!document || !layout) return null;

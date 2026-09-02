@@ -116,7 +116,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const searchAbortRef = useRef<AbortController | null>(null);
   const moreAbortRef = useRef<AbortController | null>(null);
 
-  const entitled = access.emailVerified && access.hasProAccess;
   const trimmedQuery = query.trim();
 
   const focusField = useCallback((field: Exclude<ActiveField, null>) => {
@@ -128,7 +127,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const runSearch = useCallback(() => {
     searchAbortRef.current?.abort();
     moreAbortRef.current?.abort();
-    if (!trimmedQuery || !entitled) {
+    if (!trimmedQuery || !access.emailVerified) {
       searchAbortRef.current = null;
       setHits([]);
       setStatus("idle");
@@ -157,7 +156,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         setFailure({ message: errorMessage(error), status: statusOf(error) });
         setStatus("error");
       });
-  }, [entitled, filters, trimmedQuery]);
+  }, [access.emailVerified, filters, trimmedQuery]);
 
   useEffect(() => {
     runSearch();
@@ -414,9 +413,9 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     return false;
   }, [focusField, saveCurrentSearch]);
 
-  const proRequired = access.signedIn
-    && access.emailVerified
-    && (!access.hasProAccess || failure?.status === 402);
+  // Search is free and uncapped, so nothing is gated up front: the upsell only
+  // appears if the server itself refuses the query.
+  const proRequired = failure?.status === 402;
   const signInRequired = !access.signedIn || failure?.status === 401 || savedFailure?.status === 401;
   const verificationRequired = !signInRequired
     && (!access.emailVerified || failure?.status === 403);
@@ -460,10 +459,9 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         { id: "delete", key: "d", label: "elete", onPress: () => { void removeSaved(selected); } },
       ];
     }
-    if (openHit || !trimmedQuery || !entitled) return [];
+    if (openHit || !trimmedQuery) return [];
     return [{ id: "save", key: "Ctrl+S", label: "save search", onPress: saveCurrentSearch }];
   }, [
-    entitled,
     mode,
     openHit,
     removeSaved,
@@ -554,7 +552,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         {tabs}
         <Box flexDirection="column" paddingX={1}>
           <EmptyState
-            title="Document search is part of Gloom Cloud Pro."
+            title="This search needs Gloom Cloud Pro."
             message="It indexes earnings call transcripts, news wires, and SEC filings so one query reaches across all three."
           />
           <Box flexDirection="row" marginTop={1}>

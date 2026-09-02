@@ -115,7 +115,7 @@ function installTransport(): { requests: RecordedRequest[] } {
   return { requests };
 }
 
-function signInAsPro(): void {
+function signIn(plan: "free" | "pro" = "free"): void {
   apiClient.setSessionToken("test-session");
   apiClient.restoreCachedUser({
     id: "user-1",
@@ -123,8 +123,8 @@ function signInAsPro(): void {
     email: "test@example.com",
     username: "test",
     emailVerified: true,
-    plan: "pro",
-    effectivePlan: "pro",
+    plan,
+    effectivePlan: plan,
   } as never);
 }
 
@@ -193,7 +193,7 @@ afterEach(async () => {
 describe("ResearchSearchPane", () => {
   test("renders a hit with the matched terms styled instead of tagged", async () => {
     installTransport();
-    signInAsPro();
+    signIn();
 
     testSetup = await testRender(<Harness />, { width: 110, height: 20 });
     await renderFrames();
@@ -205,9 +205,11 @@ describe("ResearchSearchPane", () => {
     expect(frame).not.toContain("<mark>");
   });
 
-  test("opens the document at the chunk that matched", async () => {
+  // Searching and reading a hit are free: the pane used to refuse to issue the
+  // request at all without Pro, which was stricter than the server ever was.
+  test("a free account searches and opens the document at the chunk that matched", async () => {
     installTransport();
-    signInAsPro();
+    signIn();
 
     testSetup = await testRender(<Harness />, { width: 110, height: 20 });
     await renderFrames();
@@ -222,7 +224,7 @@ describe("ResearchSearchPane", () => {
 
   test("flips a saved-search alert and persists it", async () => {
     const { requests } = installTransport();
-    signInAsPro();
+    signIn("pro");
 
     testSetup = await testRender(<Harness mode="saved" />, { width: 110, height: 20 });
     await renderFrames();

@@ -18,15 +18,29 @@ export function TickerBadgeList({
   liveQuote = true,
 }: TickerBadgeListProps) {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
-  const tickerTexts = useMemo(
-    () => symbols.map((symbol) => `$${symbol}`),
+  /**
+   * A blank symbol names nothing, and a badge is a filled chip: drawing one for
+   * it puts an empty block where a reader expects a ticker, which looks like a
+   * name that failed to load rather than like a row that simply has no ticker.
+   * Filtered here so no caller has to remember that a row's ticker is optional —
+   * and typed loosely on purpose, because upstream rows do carry a null through
+   * a `string[]` in practice.
+   */
+  const named = useMemo(
+    () => symbols.filter((symbol): symbol is string => (
+      typeof symbol === "string" && symbol.trim().length > 0
+    )),
     [symbols],
+  );
+  const tickerTexts = useMemo(
+    () => named.map((symbol) => `$${symbol}`),
+    [named],
   );
   const { catalog, openTicker } = useInlineTickers(tickerTexts, { liveQuotes: liveQuote });
 
   return (
     <Box flexDirection="row" width={width} height={1} overflow="hidden">
-      {symbols.map((symbol) => {
+      {named.map((symbol) => {
         const entry = catalog[symbol];
         if (entry?.status === "missing") {
           return (

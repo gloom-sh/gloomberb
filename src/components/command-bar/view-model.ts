@@ -193,8 +193,8 @@ const EXACT_MATCH_SECTION_PRIORITY = -150;
 const ASSIST_SECTION_PRIORITY = -100;
 /**
  * The other async sections sit below the local matches in arrival order, so
- * each answer only ever pushes rows below itself: instruments in the 100s,
- * documents at 200 (contributed by the provider).
+ * each answer only ever pushes rows below itself: instruments at 100, then news
+ * at 190 and the rest of the corpus at 200 (both contributed by their provider).
  */
 const INSTRUMENTS_SECTION_PRIORITY = 100;
 

@@ -3,6 +3,7 @@ import type { InstrumentSearchResult } from "../types/instrument";
 import {
   normalizeSavedSearchHits,
   normalizeSavedSearchResponse,
+  normalizeSearchResponse,
   normalizeTweetSearchResponse,
 } from "./normalizers";
 import {
@@ -282,7 +283,9 @@ export class CloudDataApi {
     params: CloudSearchParams,
     options?: { signal?: AbortSignal },
   ): Promise<CloudSearchResponse> {
-    return this.request<CloudSearchResponse>(cloudSearchPath(params), { signal: options?.signal });
+    return normalizeSearchResponse(
+      await this.request<CloudSearchResponse>(cloudSearchPath(params), { signal: options?.signal }),
+    );
   }
 
   async getCloudSearchDocument(
