@@ -14,7 +14,7 @@ import {
 } from "../../../state/app/context";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { cloneLayout, createDefaultConfig } from "../../../types/config";
-import { MarketValuationPane } from "./pane";
+import { MarketValuationPane, shouldPersistSelection } from "./pane";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -59,6 +59,7 @@ const LEGS: Array<[string, Array<{ date: string; value: number }>]> = [
     ["2025-01-01", 620_000],
     ["2026-01-01", 650_000],
   ])],
+  ["CPROFIT", obs([["2024-01-01", 3_400], ["2025-01-01", 4_200], ["2026-01-01", 4_800]])],
   ["SHILLER_CAPE", obs([
     ["2024-01-01", 33.2],
     ["2025-01-01", 38.1],
@@ -201,5 +202,46 @@ describe("MarketValuationPane", () => {
     const frame = await renderPane();
     expect(frame).toContain("parity");
     expect(frame).toContain("mean");
+  });
+});
+
+describe("shouldPersistSelection", () => {
+  const knownIds = ["buffett", "shiller-cape", "tobins-q"];
+
+  test("keeps the setting when a filter moved the rows under a pending commit", () => {
+    // The row the keyboard commit resolves to is real, but the user never chose it.
+    expect(shouldPersistSelection({
+      id: "tobins-q",
+      reason: "keyboard",
+      selectionOnScreen: false,
+      knownIds,
+    })).toBe(false);
+  });
+
+  test("honours an explicit click even while the selection is filtered away", () => {
+    expect(shouldPersistSelection({
+      id: "shiller-cape",
+      reason: "pointer",
+      selectionOnScreen: false,
+      knownIds,
+    })).toBe(true);
+  });
+
+  test("accepts ordinary keyboard movement", () => {
+    expect(shouldPersistSelection({
+      id: "shiller-cape",
+      reason: "keyboard",
+      selectionOnScreen: true,
+      knownIds,
+    })).toBe(true);
+  });
+
+  test("never persists an indicator that is not in the registry", () => {
+    expect(shouldPersistSelection({
+      id: "nonsense",
+      reason: "pointer",
+      selectionOnScreen: true,
+      knownIds,
+    })).toBe(false);
   });
 });

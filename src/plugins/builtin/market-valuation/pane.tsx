@@ -8,6 +8,7 @@ import {
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
+  type DataTableSelectionChangeReason,
   type PaneFooterSegment,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -104,6 +105,27 @@ function cellsFor(view: IndicatorViewModel): Record<ColumnId, DataTableCell> {
   };
 }
 
+/**
+ * The table commits keyboard moves by index after a short delay. When a filter
+ * changes the rows in between, that index lands on a different indicator, and
+ * honouring it would silently rewrite the persisted setting as the user types.
+ * Pointer and activation commits are explicit, so they are always honoured.
+ */
+export function shouldPersistSelection({
+  id,
+  reason,
+  selectionOnScreen,
+  knownIds,
+}: {
+  id: string;
+  reason: DataTableSelectionChangeReason;
+  selectionOnScreen: boolean;
+  knownIds: readonly string[];
+}): boolean {
+  if (!knownIds.includes(id)) return false;
+  return reason !== "keyboard" || selectionOnScreen;
+}
+
 export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [indicatorId, setIndicatorId] = usePaneSettingValue<string>(
     "indicator",
@@ -180,6 +202,20 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   // Filtering narrows the list, but the detail keeps showing the chosen indicator
   // until the user picks another, so typing never blanks the chart.
   const selected = views.find((view) => view.indicator.id === indicatorId) ?? views[0] ?? null;
+  const selectionOnScreen = visible.some((view) => view.indicator.id === selected?.indicator.id);
+
+  const chooseIndicator = useCallback((
+    id: string,
+    reason: DataTableSelectionChangeReason,
+  ) => {
+    if (!shouldPersistSelection({
+      id,
+      reason,
+      selectionOnScreen,
+      knownIds: views.map((view) => view.indicator.id),
+    })) return;
+    setIndicatorId(id);
+  }, [selectionOnScreen, setIndicatorId, views]);
 
   const error = state.status === "error" ? state.message : bundle?.errors[0] ?? null;
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
@@ -257,9 +293,9 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
             kind: "id",
             selectedId: selected.indicator.id,
             getId: (view) => view.indicator.id,
-            onChange: (id) => setIndicatorId(String(id)),
+            onChange: (id, _item, _index, reason) => chooseIndicator(String(id), reason),
           }}
-          onCursorChange={(view) => setIndicatorId(view.indicator.id)}
+          onCursorChange={(view, _index, reason) => chooseIndicator(view.indicator.id, reason)}
           onHeaderClick={() => {}}
           onRootKeyDown={handlePaneKey}
           getItemKey={(view) => view.indicator.id}

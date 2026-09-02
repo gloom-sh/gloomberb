@@ -271,6 +271,59 @@ const DEFAULT_HOME_LAYOUT: LayoutConfig = {
   detached: [],
 };
 
+/**
+ * One screen for "where are we": valuation against history on the left, and the
+ * faster sentiment, volatility and credit reads stacked beside it. These stay
+ * separate panes because each measures a different thing on a different horizon;
+ * the layout is what puts them on one screen.
+ */
+const DEFAULT_MACRO_LAYOUT: LayoutConfig = {
+  dockRoot: {
+    kind: "split",
+    axis: "horizontal",
+    ratio: 0.56,
+    first: { kind: "pane", instanceId: "market-valuation:macro" },
+    second: {
+      kind: "split",
+      axis: "vertical",
+      ratio: 0.42,
+      first: { kind: "pane", instanceId: "fear-greed:macro" },
+      second: {
+        kind: "split",
+        axis: "vertical",
+        ratio: 0.5,
+        first: { kind: "pane", instanceId: "volatility-term-structure:macro" },
+        second: { kind: "pane", instanceId: "credit-conditions:macro" },
+      },
+    },
+  },
+  instances: [
+    {
+      instanceId: "market-valuation:macro",
+      paneId: "market-valuation",
+      binding: { kind: "none" },
+      settings: { indicator: "buffett", range: "25Y" },
+    },
+    {
+      instanceId: "fear-greed:macro",
+      paneId: "fear-greed",
+      binding: { kind: "none" },
+    },
+    {
+      instanceId: "volatility-term-structure:macro",
+      paneId: "volatility-term-structure",
+      binding: { kind: "none" },
+    },
+    {
+      instanceId: "credit-conditions:macro",
+      paneId: "credit-conditions",
+      binding: { kind: "none" },
+    },
+  ],
+  floating: [],
+  detached: [],
+};
+
 const DEFAULT_MONITOR_LAYOUT: LayoutConfig = {
   dockRoot: {
     kind: "split",
@@ -660,6 +713,7 @@ export function createDefaultConfig(dataDir: string): AppConfig {
     layouts: [
       { name: "Home", layout: cloneLayout(layout), paneState: {} },
       { name: "Monitor", layout: cloneLayout(DEFAULT_MONITOR_LAYOUT), paneState: {} },
+      { name: "Macro", layout: cloneLayout(DEFAULT_MACRO_LAYOUT), paneState: {} },
     ],
     activeLayoutIndex: 0,
     brokerInstances: [],

@@ -346,6 +346,47 @@ export const MARGIN_DEBT_TO_GDP: IndicatorDef = {
   },
 };
 
+export const MARKET_CAP_TO_PROFITS: IndicatorDef = {
+  id: "market-cap-profits",
+  label: "Market Cap to Corporate Profits",
+  shortLabel: "Cap / profits",
+  description: "US total market cap over after-tax corporate profits.",
+  input: {
+    kind: "ratio",
+    numerator: WILSHIRE_5000,
+    denominator: {
+      key: "CPROFIT",
+      scaleToBillions: 1,
+      source: { kind: "fred", seriesId: "CPROFIT", limit: 400 },
+    },
+    levels: { numeratorLabel: "Mkt cap", denominatorLabel: "Profits" },
+  },
+  ratioScale: 1,
+  formatValue: (value) => formatNumber(value, 1),
+  axisUnit: "",
+  // Bands anchored on the 1989-2026 distribution: p25 7.9, median 9.1, p75 12.3.
+  zones: [
+    { max: 8, id: "significantly-undervalued", label: "Significantly Undervalued" },
+    { max: 9, id: "modestly-undervalued", label: "Modestly Undervalued" },
+    { max: 12, id: "fair", label: "Fair Valued" },
+    { max: 15, id: "modestly-overvalued", label: "Modestly Overvalued" },
+    { max: null, id: "significantly-overvalued", label: "Significantly Overvalued" },
+  ],
+  zoneScale: { min: 0, max: 20, edges: [0, 8, 9, 12, 15, 20], ticks: [0, 9, 12, 15, 20] },
+  reference: { value: 9.1, label: "median" },
+  chartGridStep: 5,
+  trendModel: "log",
+  staleAfterMs: DAILY_STALE_MS,
+  notes: [
+    "A price-to-earnings ratio for the whole economy rather than the index, using what every US corporation actually earned after tax.",
+    "Profits are near a record share of GDP, so this asks whether the market is dear even against unusually good earnings. Its highest reading is March 2000.",
+  ],
+  link: {
+    url: "https://fred.stlouisfed.org/series/CPROFIT",
+    label: "Corporate profits after tax, FRED",
+  },
+};
+
 export const INDICATORS: readonly IndicatorDef[] = [
   BUFFETT_INDICATOR,
   SHILLER_CAPE,
@@ -354,6 +395,7 @@ export const INDICATORS: readonly IndicatorDef[] = [
   HOUSEHOLD_EQUITY_ALLOCATION,
   SP500_DIVIDEND_YIELD,
   MARGIN_DEBT_TO_GDP,
+  MARKET_CAP_TO_PROFITS,
   MARKET_CAP_TO_M2,
 ];
 
