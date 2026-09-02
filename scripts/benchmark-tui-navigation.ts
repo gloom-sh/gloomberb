@@ -14,6 +14,7 @@ import {
 interface Options {
   command: string;
   count: number;
+  expectedPaneId: string;
   intervalMs: number;
   output: string;
   width: number;
@@ -70,7 +71,7 @@ try {
   await Bun.sleep(100);
   await runTmux(["send-keys", "-t", session, "-l", options.command]);
   await runTmux(["send-keys", "-t", session, "Enter"]);
-  await waitForPopulatedTable(dataDir, 15_000);
+  await waitForPopulatedTable(dataDir, options.expectedPaneId, 15_000);
   await Bun.sleep(500);
 
   await sendNavigation("Down", 2, 35);
@@ -96,12 +97,20 @@ try {
     );
   }
   const navigation = allNavigationSamples.slice(4);
-  if (navigation.every((sample) => sample.cellsUpdated === 0)) {
+  const navigationFrames = [...new Map(
+    navigation.map((sample) => [sample.frameId, sample]),
+  ).values()];
+  if (navigationFrames.every((sample) => sample.cellsUpdated === 0)) {
     throw new Error("Navigation inputs produced no rendered cell updates.");
   }
   const summary = summarizeInteractionPerformance(navigation);
-  const peakRssBytes = navigation.reduce((maximum, sample) => Math.max(maximum, sample.rssBytes), 0);
-  const cells = navigation.map((sample) => sample.cellsUpdated).sort((left, right) => left - right);
+  const peakRssBytes = navigationFrames.reduce(
+    (maximum, sample) => Math.max(maximum, sample.rssBytes),
+    0,
+  );
+  const cells = navigationFrames
+    .map((sample) => sample.cellsUpdated)
+    .sort((left, right) => left - right);
   const medianCellsUpdated = cells.length === 0
     ? 0
     : cells.length % 2 === 0
@@ -216,39 +225,77 @@ async function waitForFile(path: string, timeoutMs: number): Promise<void> {
   throw new Error(`Benchmark report was not written: ${path}`);
 }
 
-async function waitForPopulatedTable(targetDataDir: string, timeoutMs: number): Promise<void> {
+async function waitForPopulatedTable(
+  targetDataDir: string,
+  expectedPaneId: string,
+  timeoutMs: number,
+): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       const response = await sendRemoteControlRequest(
-        { type: "get", resource: "ui://tree" },
+        { type: "get", resource: "app://snapshot" },
         { dataDir: targetDataDir, appKind: "tui" },
       );
-      if (response.ok && Array.isArray(response.data)) {
-        const ready = response.data.some((node: unknown) => {
-          if (!node || typeof node !== "object") return false;
-          const candidate = node as { role?: unknown; metadata?: { rowCount?: unknown } };
-          return candidate.role === "table"
-            && typeof candidate.metadata?.rowCount === "number"
-            && candidate.metadata.rowCount > 1;
+      if (response.ok && response.data && typeof response.data === "object") {
+        const snapshot = response.data as {
+          app?: { commandBarOpen?: unknown; focusedPaneId?: unknown };
+          panes?: Array<{ instanceId?: unknown; paneId?: unknown; focused?: unknown }>;
+          ui?: Array<{
+            role?: unknown;
+            metadata?: { paneInstanceId?: unknown; rowCount?: unknown };
+          }>;
+        };
+        const focusedPane = snapshot.panes?.find((pane) => (
+          pane.focused === true
+          || pane.instanceId === snapshot.app?.focusedPaneId
+        ));
+        const hasPopulatedTable = snapshot.ui?.some((node) => {
+          const metadata = node.metadata;
+          if (!metadata) return false;
+          return node.role === "table"
+            && metadata.paneInstanceId === focusedPane?.instanceId
+            && typeof metadata.rowCount === "number"
+            && metadata.rowCount > 1;
         });
-        if (ready) return;
+        if (
+          snapshot.app?.commandBarOpen === false
+          && focusedPane?.paneId === expectedPaneId
+          && hasPopulatedTable
+        ) return;
       }
     } catch {
       // The app may still be replacing its command-bar surface.
     }
     await Bun.sleep(50);
   }
-  throw new Error(`Command ${options.command} did not render a populated table.`);
+  throw new Error(
+    `Command ${options.command} did not focus pane ${expectedPaneId} with a populated table.`,
+  );
 }
 
 function parseOptions(args: string[]): Options {
   const output = takeOption(args, "--output")
     ?? join(tmpdir(), `gloomberb-navigation-${Date.now()}.json`);
+  const command = takeOption(args, "--command") ?? "ECST";
+  const expectedPaneId = takeOption(args, "--pane-id")
+    ?? (command.trim().split(/\s+/, 1)[0]?.toUpperCase() === "ECST" ? "econ-statistics" : null);
+  if (!expectedPaneId) {
+    throw new Error("--pane-id is required when benchmarking a command other than ECST.");
+  }
   return {
-    command: takeOption(args, "--command") ?? "ECST",
-    count: positiveInteger(takeOption(args, "--count"), 12, "count"),
-    intervalMs: positiveInteger(takeOption(args, "--interval"), 25, "interval"),
+    command,
+    count: positiveInteger(
+      takeOption(args, "--count") ?? takeOption(args, "--keys"),
+      12,
+      "count",
+    ),
+    expectedPaneId,
+    intervalMs: positiveInteger(
+      takeOption(args, "--interval") ?? takeOption(args, "--interval-ms"),
+      25,
+      "interval",
+    ),
     output: resolve(output),
     width: positiveInteger(takeOption(args, "--width"), 140, "width"),
     height: positiveInteger(takeOption(args, "--height"), 45, "height"),

@@ -1,6 +1,6 @@
 import { createCliRenderer, type CliRenderer } from "@opentui/core";
 import { createRoot, useKeyboard, useTerminalDimensions } from "@opentui/react";
-import type { ReactNode } from "react";
+import { Profiler, type ReactNode } from "react";
 import { resetTerminalInputState } from "../../utils/terminal-input-reset";
 import type { KeyEventLike } from "../../react/input";
 import type { NativeRendererHost, PixelResolution, RendererHost } from "../../ui/host";
@@ -248,7 +248,18 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     renderer,
     rendererHost,
     nativeRenderer,
-    render: (node) => root.render(node),
+    render: (node) => root.render(
+      stopInteractionPerformanceRecorder.enabled
+        ? (
+            <Profiler
+              id="interaction-performance"
+              onRender={stopInteractionPerformanceRecorder.markCommit}
+            >
+              {node}
+            </Profiler>
+          )
+        : node,
+    ),
     destroy: () => renderer.destroy(),
   };
 }

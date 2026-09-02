@@ -27,8 +27,10 @@ export interface InteractionPerformanceSample {
   id: number;
   key: string;
   frameId: number;
+  inputsInFrame: number;
   latencyMs: number;
   frameCallbackMs: number;
+  /** Renderer-wide count shared by every input completed in this frame. */
   cellsUpdated: number;
   rssBytes: number;
 }
@@ -38,6 +40,12 @@ export interface InteractionPerformanceSummary {
   p50Ms: number;
   p95Ms: number;
   maxMs: number;
+}
+
+export interface InteractionPerformanceRecorder {
+  (): void;
+  readonly enabled: boolean;
+  markCommit(): void;
 }
 
 function round(value: number): number {
@@ -91,12 +99,20 @@ function statsForFrame(renderer: CliRenderer): CliRendererStats {
 export function installInteractionPerformanceRecorder(
   renderer: CliRenderer,
   outputPath = process.env.GLOOMBERB_INTERACTION_PERF,
-): () => void {
-  if (!outputPath) return () => {};
+): InteractionPerformanceRecorder {
+  if (!outputPath) {
+    const stop = (() => {}) as InteractionPerformanceRecorder;
+    Object.defineProperties(stop, {
+      enabled: { value: false },
+      markCommit: { value: () => {} },
+    });
+    return stop;
+  }
 
   const startedAt = new Date().toISOString();
   const pending: PendingInteraction[] = [];
   const samples: InteractionPerformanceSample[] = [];
+  let committedCount = 0;
   let nextId = 1;
   let stopped = false;
 
@@ -108,15 +124,18 @@ export function installInteractionPerformanceRecorder(
     pending.push({ id: nextId++, key, startedAtMs: performance.now() });
   };
   const onFrame = (event: { frameId: number }) => {
-    if (pending.length === 0) return;
+    if (committedCount === 0) return;
     const completedAtMs = performance.now();
     const stats = statsForFrame(renderer);
     const rssBytes = process.memoryUsage.rss();
-    for (const interaction of pending.splice(0)) {
+    const completed = pending.splice(0, committedCount);
+    committedCount = 0;
+    for (const interaction of completed) {
       samples.push({
         id: interaction.id,
         key: interaction.key,
         frameId: event.frameId,
+        inputsInFrame: completed.length,
         latencyMs: round(completedAtMs - interaction.startedAtMs),
         frameCallbackMs: round(stats.frameCallbackTime),
         cellsUpdated: stats.cellsUpdated,
@@ -128,7 +147,7 @@ export function installInteractionPerformanceRecorder(
   renderer.keyInput.on("keypress", onKeypress);
   renderer.on("frame", onFrame);
 
-  return () => {
+  const stop = (() => {
     if (stopped) return;
     stopped = true;
     renderer.keyInput.off("keypress", onKeypress);
@@ -143,7 +162,7 @@ export function installInteractionPerformanceRecorder(
         ]),
     );
     const report = {
-      version: 1,
+      version: 2,
       startedAt,
       endedAt: new Date().toISOString(),
       summary: summarizeInteractionPerformance(samples),
@@ -154,5 +173,16 @@ export function installInteractionPerformanceRecorder(
     const target = resolve(outputPath);
     mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  };
+  }) as InteractionPerformanceRecorder;
+  Object.defineProperties(stop, {
+    enabled: { value: true },
+    markCommit: {
+      value: () => {
+        // A React Profiler callback runs after host mutations commit. Only
+        // inputs present by then may be completed by the following frame.
+        committedCount = pending.length;
+      },
+    },
+  });
+  return stop;
 }

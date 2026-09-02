@@ -209,7 +209,18 @@ export function DataTableView<
     key: string | number | null;
     resolved: boolean;
   } | null>(null);
-  const effectiveScrollToIndex = selectionScrollTarget ?? scrollToIndex;
+  const lastControlledScrollRequestRef = useRef({
+    index: scrollToIndex,
+    version: scrollToIndexVersion,
+  });
+  const controlledScrollRequestChanged = scrollToIndex !== undefined
+    && (
+      lastControlledScrollRequestRef.current.index !== scrollToIndex
+      || lastControlledScrollRequestRef.current.version !== scrollToIndexVersion
+    );
+  const effectiveScrollToIndex = controlledScrollRequestChanged
+    ? scrollToIndex
+    : selectionScrollTarget ?? scrollToIndex;
 
   const requestSelectionScroll = useCallback((index: number) => {
     if (index < 0 || selectionScrollTargetRef.current === index) return;
@@ -233,6 +244,10 @@ export function DataTableView<
   }, []);
 
   useEffect(() => {
+    lastControlledScrollRequestRef.current = {
+      index: scrollToIndex,
+      version: scrollToIndexVersion,
+    };
     if (scrollToIndex === undefined) return;
     clearSelectionScrollTarget();
   }, [clearSelectionScrollTarget, scrollToIndex, scrollToIndexVersion]);

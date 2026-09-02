@@ -83,6 +83,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       },
     },
     getMetadata: () => ({
+      paneInstanceId: paneId,
       sortColumnId: props.sortColumnId,
       sortDirection: props.sortDirection,
       columns: props.columns.map((column) => ({ id: column.id, label: column.label })),
