@@ -257,6 +257,23 @@
       }
     },
     {
+      "id": "research-search",
+      "name": "Research Search",
+      "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",
+      "categories": [
+        "research",
+        "news"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "research-search"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "robinhood",
       "name": "Robinhood",
       "description": "Read-only account and position sync through Robinhood Trading MCP.",

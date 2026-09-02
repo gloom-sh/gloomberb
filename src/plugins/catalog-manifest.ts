@@ -45,6 +45,7 @@ const EDITORIAL: Record<string, { categories: string[]; featured?: true }> = {
   portfolio: { categories: ["portfolio"] },
   "prediction-markets": { categories: ["markets"] },
   public: { categories: ["broker"] },
+  "research-search": { categories: ["research", "news"] },
   robinhood: { categories: ["broker"] },
   simplefin: { categories: ["broker"] },
   "ticker-research": { categories: ["research"] },
