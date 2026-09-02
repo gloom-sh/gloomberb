@@ -1,6 +1,9 @@
 import { useMemo } from "react";
 import { useNativeRenderer, useUiCapabilities } from "../../../../ui";
+import { useOptionalAppSelector } from "../../../../state/app/context";
+import type { ChartRendererPreference } from "../../core/types";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../../native/bitmap-support";
+import { useResolvedChartRendererState } from "../../native/renderer-selection";
 
 export interface StaticChartBitmapSize {
   pixelWidth: number;
@@ -16,13 +19,22 @@ export function useStaticChartBitmapSize(width: number, height: number): StaticC
     pixelRatio = 1,
   } = useUiCapabilities();
   const nativeRenderer = useNativeRenderer();
+  const preferredRenderer = useOptionalAppSelector<ChartRendererPreference | null>(
+    (state) => state.config.chartPreferences.renderer,
+    null,
+  );
+  const rendererState = useResolvedChartRendererState(
+    nativeCharts === true ? preferredRenderer ?? "auto" : "braille",
+    nativeRenderer,
+  );
   const rendererCapabilities = nativeRenderer.capabilities;
   const rendererResolution = nativeRenderer.resolution;
   const rendererTerminalWidth = nativeRenderer.terminalWidth;
   const rendererTerminalHeight = nativeRenderer.terminalHeight;
 
   return useMemo(() => {
-    if (shouldRenderNativeBitmap(nativeRenderer, nativeCharts === true)) {
+    const nativeRendererActive = preferredRenderer === null || rendererState.renderer === "kitty";
+    if (nativeRendererActive && shouldRenderNativeBitmap(nativeRenderer, nativeCharts === true)) {
       return resolveNativeBitmapSize({
         width,
         height,
@@ -48,8 +60,10 @@ export function useStaticChartBitmapSize(width: number, height: number): StaticC
     nativeCharts,
     nativeRenderer,
     pixelRatio,
+    preferredRenderer,
     rendererCapabilities,
     rendererResolution,
+    rendererState.renderer,
     rendererTerminalHeight,
     rendererTerminalWidth,
     width,

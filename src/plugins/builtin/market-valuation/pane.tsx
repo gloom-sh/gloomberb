@@ -295,7 +295,6 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
             getId: (view) => view.indicator.id,
             onChange: (id, _item, _index, reason) => chooseIndicator(String(id), reason),
           }}
-          onCursorChange={(view, _index, reason) => chooseIndicator(view.indicator.id, reason)}
           onHeaderClick={() => {}}
           onRootKeyDown={handlePaneKey}
           getItemKey={(view) => view.indicator.id}

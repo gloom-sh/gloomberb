@@ -423,25 +423,6 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       return true;
     }
 
-    if (isPlainKey(event, "j", "down")) {
-      if (strikes.length === 0) return true;
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      userSelectedStrikeRef.current = true;
-      setScrollToIndexAlign("nearest");
-      setStrikeIdx((i) => Math.min(i + 1, strikes.length - 1));
-      return true;
-    }
-    if (isPlainKey(event, "k", "up")) {
-      if (strikes.length === 0) return true;
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      userSelectedStrikeRef.current = true;
-      setScrollToIndexAlign("nearest");
-      setStrikeIdx((i) => Math.max(i - 1, 0));
-      return true;
-    }
-
     return false;
   }, [
     calcParams,
@@ -450,7 +431,6 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     interactive,
     openCalculator,
     selectAdjacentExpiration,
-    strikes.length,
   ]);
 
   if (!ticker) {
@@ -522,11 +502,10 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
             setStrikeIdx(index);
           },
         }}
-        onCursorChange={(_row, index) => {
+        onCursorChange={() => {
           userSelectedStrikeRef.current = true;
           setScrollToIndexAlign("nearest");
           enterInteractive();
-          setStrikeIdx(index);
         }}
         onRootKeyDown={handleTableKeyDown}
         headerScrollId="options-table-header-scroll"

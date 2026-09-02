@@ -54,7 +54,13 @@ function assignRef(ref: ForwardedRef<any>, value: any) {
   else if (ref) ref.current = value;
 }
 
-function CaptureChartSurfaceProvider({ children }: { children: ReactNode }) {
+function CaptureChartSurfaceProvider({
+  children,
+  canvasCharts = false,
+}: {
+  children: ReactNode;
+  canvasCharts?: boolean;
+}) {
   const baseUi = useUiHost();
   const renderer = useRendererHost();
   const nativeRenderer = useNativeRenderer();
@@ -72,8 +78,14 @@ function CaptureChartSurfaceProvider({ children }: { children: ReactNode }) {
     });
   }, [baseUi]);
   const ui = useMemo(
-    () => ({ ...baseUi, ChartSurface: CapturingChartSurface }),
-    [CapturingChartSurface, baseUi],
+    () => ({
+      ...baseUi,
+      ChartSurface: CapturingChartSurface,
+      capabilities: canvasCharts
+        ? { ...baseUi.capabilities, canvasCharts: true, nativeCharts: false }
+        : baseUi.capabilities,
+    }),
+    [CapturingChartSurface, baseUi, canvasCharts],
   );
   return (
     <UiHostProvider ui={ui} renderer={renderer} nativeRenderer={nativeRenderer}>
@@ -245,6 +257,31 @@ describe("CompositeChart", () => {
     const expectedBackground = getThemeColors(nextThemeId).bg;
     const expectedRgb = [1, 3, 5].map((offset) => parseInt(expectedBackground.slice(offset, offset + 2), 16));
     expect(Array.from(bitmap.pixels.slice(0, 3))).toEqual(expectedRgb);
+  });
+
+  test("does not allocate a native raster when braille rendering is forced", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-composite-braille");
+    config.chartPreferences.renderer = "braille";
+
+    testSetup = await testRender(
+      <AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
+        <CaptureChartSurfaceProvider>
+          <CompositeChart
+            width={60}
+            height={12}
+            series={[series("price", "main", "left", "USD", [100, 101, 102])]}
+            panels={[{ id: "main" }]}
+          />
+        </CaptureChartSurfaceProvider>
+      </AppContext>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => {
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
+
+    expect(capturedSurfaceProps!.bitmaps).toBeNull();
   });
 
   test("shows the regular-session move beside the latest intraday value", async () => {
@@ -1575,7 +1612,7 @@ describe("CompositeChart", () => {
       testSetup = await testRender(
         <AppContext value={{ state: createInitialState(config), dispatch: () => {} }}>
           <PaneInstanceProvider paneId="chart:test">
-            <CaptureChartSurfaceProvider>
+            <CaptureChartSurfaceProvider canvasCharts>
               <CompositeChart
                 width={60}
                 height={12}

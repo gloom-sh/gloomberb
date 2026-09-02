@@ -62,6 +62,7 @@
     "typecheck:cloudflare": "tsc --project tsconfig.cloudflare.json",
     "typecheck:scripts": "tsc --project tsconfig.scripts.json",
     "test": "bun test",
+    "benchmark:tui:navigation": "bun run scripts/benchmark-tui-navigation.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"
   },

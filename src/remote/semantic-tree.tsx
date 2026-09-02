@@ -17,11 +17,13 @@ export interface RemoteUiNodeRegistration {
   disabled?: boolean;
   actions?: Record<string, RemoteUiAction | undefined>;
   metadata?: Record<string, unknown>;
+  /** Defers expensive metadata projection until a remote snapshot requests it. */
+  getMetadata?: () => Record<string, unknown>;
 }
 
-interface RegisteredRemoteUiNode extends RemoteUiNodeRegistration {
+interface RegisteredRemoteUiNode {
   id: string;
-  actions: Record<string, RemoteUiAction>;
+  registration: RemoteUiNodeRegistration;
 }
 
 export interface RemoteUiRegistry {
@@ -33,46 +35,54 @@ export interface RemoteUiRegistry {
 
 const RemoteUiRegistryContext = createContext<RemoteUiRegistry | null>(null);
 
-function createRemoteUiRegistry(): RemoteUiRegistry {
+export function createRemoteUiRegistry(): RemoteUiRegistry {
   const nodes = new Map<string, RegisteredRemoteUiNode>();
 
   return {
     register(id, registration) {
-      nodes.set(id, {
-        ...registration,
-        id,
-        actions: Object.fromEntries(
-          Object.entries(registration.actions ?? {})
-            .filter((entry): entry is [string, RemoteUiAction] => typeof entry[1] === "function"),
-        ),
-      });
+      nodes.set(id, { id, registration });
     },
     unregister(id) {
       nodes.delete(id);
     },
     snapshot() {
-      return [...nodes.values()].map((node) => ({
-        id: node.id,
-        role: node.role,
-        label: node.label,
-        disabled: node.disabled,
-        actions: Object.keys(node.actions).sort(),
-        metadata: node.metadata,
-      }));
+      return [...nodes.values()].map((node) => {
+        const registration = node.registration;
+        return {
+          id: node.id,
+          role: registration.role,
+          label: registration.label,
+          disabled: registration.disabled,
+          actions: Object.entries(registration.actions ?? {})
+            .filter((entry): entry is [string, RemoteUiAction] => typeof entry[1] === "function")
+            .map(([action]) => action)
+            .sort(),
+          metadata: registration.getMetadata?.() ?? registration.metadata,
+        };
+      });
     },
     async invoke(nodeId, action, input) {
       const node = nodes.get(nodeId);
       if (!node) throw new Error(`Unknown UI node "${nodeId}".`);
-      if (node.disabled) throw new Error(`UI node "${nodeId}" is disabled.`);
-      const handler = node.actions[action];
-      if (!handler) throw new Error(`UI node "${nodeId}" does not expose action "${action}".`);
+      const registration = node.registration;
+      if (registration.disabled) throw new Error(`UI node "${nodeId}" is disabled.`);
+      const handler = registration.actions?.[action];
+      if (typeof handler !== "function") {
+        throw new Error(`UI node "${nodeId}" does not expose action "${action}".`);
+      }
       return await handler(input);
     },
   };
 }
 
-export function RemoteUiRegistryProvider({ children }: { children: ReactNode }) {
-  const registryRef = useRef<RemoteUiRegistry | null>(null);
+export function RemoteUiRegistryProvider({
+  children,
+  registry,
+}: {
+  children: ReactNode;
+  registry?: RemoteUiRegistry;
+}) {
+  const registryRef = useRef<RemoteUiRegistry | null>(registry ?? null);
   if (!registryRef.current) {
     registryRef.current = createRemoteUiRegistry();
   }
@@ -91,22 +101,30 @@ export function useRemoteUiNode(registration: RemoteUiNodeRegistration | null | 
   const registry = useRemoteUiRegistry();
   const generatedId = useId();
   const nodeId = useMemo(() => `ui:${generatedId.replace(/:/g, "")}`, [generatedId]);
+  const registrationRef = useRef(registration);
+  registrationRef.current = registration;
+  const dynamicRegistrationRef = useRef<RemoteUiNodeRegistration | null>(null);
+  if (!dynamicRegistrationRef.current) {
+    dynamicRegistrationRef.current = {
+      get role() { return registrationRef.current?.role ?? "unknown"; },
+      get label() { return registrationRef.current?.label; },
+      get disabled() { return registrationRef.current?.disabled; },
+      get actions() { return registrationRef.current?.actions; },
+      get metadata() { return registrationRef.current?.metadata; },
+      get getMetadata() { return registrationRef.current?.getMetadata; },
+    };
+  }
+  const registered = registration != null;
 
   useEffect(() => {
     if (!registry) return;
-    if (!registration) {
+    if (!registered) {
       registry.unregister(nodeId);
       return;
     }
-    registry.register(nodeId, registration);
-  });
+    registry.register(nodeId, dynamicRegistrationRef.current!);
+    return () => registry.unregister(nodeId);
+  }, [nodeId, registered, registry]);
 
-  useEffect(() => {
-    return () => registry?.unregister(nodeId);
-  }, [
-    nodeId,
-    registry,
-  ]);
-
-  return registry && registration ? nodeId : null;
+  return registry && registered ? nodeId : null;
 }

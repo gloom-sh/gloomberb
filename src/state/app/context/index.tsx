@@ -287,6 +287,7 @@ export function usePaneStateValue<T>(key: string, fallback: T, paneId?: string):
     const resolved = typeof nextValue === "function"
       ? (nextValue as (previousValue: T) => T)(currentValue)
       : nextValue;
+    if (Object.is(currentValue, resolved)) return;
     dispatch({ type: "UPDATE_PANE_STATE", paneId: scopedPaneId, patch: { [key]: resolved } });
   }, [dispatch, key, scopedPaneId, stateRef]);
   return [value, setValue];
@@ -309,6 +310,7 @@ export function usePaneSettingValue<T>(
     const resolved = typeof nextValue === "function"
       ? (nextValue as (previousValue: T) => T)(currentValue)
       : nextValue;
+    if (Object.is(currentValue, resolved)) return;
     const layout = setPaneSetting(currentState.config.layout, scopedPaneId, key, resolved);
     const nextConfig = syncConfigActiveLayoutState(
       { ...currentState.config, layout },

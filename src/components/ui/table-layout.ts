@@ -177,7 +177,7 @@ export function useMeasuredTableContentWidth(
     queueMicrotask(measureContentWidth);
   }, [measureContentWidth]);
 
-  useEffect(scheduleContentWidthMeasure);
+  useEffect(scheduleContentWidthMeasure, [scheduleContentWidthMeasure]);
 
   return {
     contentWidth: Math.max(tableWidth, viewportWidth),

@@ -52,7 +52,7 @@ export function setPaneSetting(
   value: unknown,
 ): LayoutConfig {
   const current = findPaneInstance(layout, paneId);
-  if (!current) return layout;
+  if (!current || Object.is(current.settings?.[key], value)) return layout;
   return setPaneSettings(layout, paneId, {
     ...(current.settings ?? {}),
     [key]: value,

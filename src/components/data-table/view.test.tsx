@@ -43,7 +43,7 @@ afterEach(async () => {
   testSetup = undefined;
 });
 
-function Harness() {
+function Harness({ onCursor = () => {} }: { onCursor?: () => void }) {
   const [selectedIndex, setSelectedIndex] = useState(1);
   const [cursorIndex, setCursorIndex] = useState(1);
   const [activatedTitle, setActivatedTitle] = useState("");
@@ -64,7 +64,10 @@ function Harness() {
             selectedIndex,
             onChange: (index) => setSelectedIndex(index),
           }}
-          onCursorChange={(_row, index) => setCursorIndex(index)}
+          onCursorChange={(_row, index) => {
+            onCursor();
+            setCursorIndex(index);
+          }}
           onActivate={(row) => {
             if (row.type === "row") setActivatedTitle(row.title);
           }}
@@ -122,6 +125,7 @@ function LargeSelectionHarness({
             return { text: row.title + (index === 500 ? "" : "") };
           }}
           emptyStateTitle="No rows"
+          scrollToIndex={500}
         />
       </PaneInstanceProvider>
     </AppContext>
@@ -228,6 +232,20 @@ describe("DataTableView", () => {
     expect(testSetup.captureCharFrame()).toContain("cursor=Second row selected=First row activated=First row");
   });
 
+  test("does no cursor or scroll work when navigation is already at an edge", async () => {
+    let cursorChanges = 0;
+    testSetup = await testRender(
+      <Harness onCursor={() => { cursorChanges += 1; }} />,
+      { width: 60, height: 12 },
+    );
+
+    await renderSettled();
+    await emitKeypress({ name: "up", sequence: "\u001B[A" });
+    await renderSettled();
+
+    expect(cursorChanges).toBe(0);
+  });
+
   test("keeps selection current across repeated keypresses before the next render", async () => {
     testSetup = await testRender(<Harness />, { width: 60, height: 12 });
 
@@ -242,19 +260,40 @@ describe("DataTableView", () => {
     expect(testSetup.captureCharFrame()).toContain("selected=Third row activated=Third row");
   });
 
-  test("does not scan every row when the selected index is explicit", async () => {
-    let isSelectedCalls = 0;
+  test("keeps the immediate cursor visible while a controlled selection is deferred", async () => {
+    testSetup = await testRender(
+      <LargeSelectionHarness onIsSelected={() => {}} />,
+      { width: 60, height: 12 },
+    );
+
+    await renderSettled();
+    await emitKeypressBatch(Array.from({ length: 30 }, () => ({
+      name: "down",
+      sequence: "\u001B[B",
+    })));
+    await renderSettled();
+
+    expect(testSetup.captureCharFrame()).toContain("Row 530");
+  });
+
+  test("renders only the visible rows and the rows changed by navigation", async () => {
+    let renderedCells = 0;
     testSetup = await testRender(
       <LargeSelectionHarness
         onIsSelected={() => {
-          isSelectedCalls += 1;
+          renderedCells += 1;
         }}
       />,
       { width: 60, height: 12 },
     );
 
     await renderSettled();
+    expect(renderedCells).toBeLessThan(150);
 
-    expect(isSelectedCalls).toBeLessThan(150);
+    const beforeNavigation = renderedCells;
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await renderSettled();
+
+    expect(renderedCells - beforeNavigation).toBeLessThanOrEqual(4);
   });
 });

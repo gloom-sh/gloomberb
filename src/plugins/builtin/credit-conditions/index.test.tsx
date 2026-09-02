@@ -14,8 +14,8 @@ import {
   PaneInstanceProvider,
 } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
-import { CREDIT_SERIES, type CreditConditionRow } from "./model";
-import { CreditConditionsPane, moveCreditSelection } from "./index";
+import { CREDIT_SERIES } from "./model";
+import { CreditConditionsPane } from "./index";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -80,9 +80,6 @@ afterEach(async () => {
 
 describe("CreditConditionsPane", () => {
   test("selects credit rows with keyboard and mouse", async () => {
-    const keyboardRows = CREDIT_SERIES.map((definition) => ({ ...definition }) as CreditConditionRow);
-    expect(moveCreditSelection(keyboardRows, CREDIT_SERIES[5].seriesId, -1)).toBe(CREDIT_SERIES[4].seriesId);
-
     const state = createInitialState(createDefaultConfig("/tmp/gloomberb-credit-test"));
     setup = await testRender(
       <AppContext value={{ state, dispatch: () => {} }}>
@@ -98,13 +95,22 @@ describe("CreditConditionsPane", () => {
 
     expect(setup.captureCharFrame()).toContain(`${CREDIT_SERIES[0].seriesId} Option-Adjusted Spread`);
 
+    await act(async () => {
+      setup!.mockInput.pressArrow("up");
+      setup!.mockInput.pressEnter();
+      await setup!.renderOnce();
+    });
+    await settle();
+    const keyboardTitle = `${CREDIT_SERIES[5].seriesId} Option-Adjusted Spread`;
+    expect(setup.captureCharFrame()).toContain(keyboardTitle);
+
     let mouseSelected = false;
     for (let row = 3; row < 9 && !mouseSelected; row += 1) {
       await act(async () => {
         await setup!.mockMouse.click(2, row);
         await setup!.renderOnce();
       });
-      mouseSelected = !setup.captureCharFrame().includes(`${CREDIT_SERIES[0].seriesId} Option-Adjusted Spread`);
+      mouseSelected = !setup.captureCharFrame().includes(keyboardTitle);
     }
     expect(mouseSelected).toBe(true);
   });

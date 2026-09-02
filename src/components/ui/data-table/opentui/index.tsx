@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
 import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
@@ -47,6 +47,147 @@ function setScrollBarVisible(scrollBar: unknown, visible: boolean): void {
   }
   bar.visible = visible;
 }
+
+function OpenTuiDataTableRowInner<
+  T,
+  C extends DataTableColumn,
+>({
+  colors,
+  columnGap,
+  contentWidth,
+  displayColumns,
+  focusPane,
+  getRowBackgroundColor,
+  handleRowMouseDown,
+  horizontalPadding,
+  index,
+  item,
+  itemKey,
+  onRowContextMenu,
+  onRowMouseDown,
+  onTableMouseDown,
+  renderCell,
+  renderSectionHeader,
+  rowContextMenuSurface,
+  selected,
+}: {
+  colors: ReturnType<typeof useThemeColors>;
+  columnGap: number;
+  contentWidth: number;
+  displayColumns: C[];
+  focusPane: () => void;
+  getRowBackgroundColor?: DataTableProps<T, C>["getRowBackgroundColor"];
+  handleRowMouseDown: (
+    targetKey: string,
+    value: DataTableRowPointerTarget<T>,
+    event?: { detail?: number },
+  ) => void;
+  horizontalPadding: number;
+  index: number;
+  item: T;
+  itemKey: string;
+  onRowContextMenu?: DataTableProps<T, C>["onRowContextMenu"];
+  onRowMouseDown?: DataTableProps<T, C>["onRowMouseDown"];
+  onTableMouseDown?: DataTableProps<T, C>["onTableMouseDown"];
+  renderCell: DataTableProps<T, C>["renderCell"];
+  renderSectionHeader?: DataTableProps<T, C>["renderSectionHeader"];
+  rowContextMenuSurface: boolean;
+  selected: boolean;
+}) {
+  const sectionHeader = renderSectionHeader?.(item, index) ?? null;
+
+  if (sectionHeader) {
+    return (
+      <Box
+        flexDirection="row"
+        height={1}
+        {...tableContentWidthProps(contentWidth)}
+        paddingX={horizontalPadding}
+        backgroundColor={sectionHeader.backgroundColor ?? colors.bg}
+        onMouseDown={(event: any) => {
+          focusPane();
+          onTableMouseDown?.(event);
+          sectionHeader.onMouseDown?.(event);
+          event.preventDefault();
+        }}
+      >
+        <Text
+          attributes={sectionHeader.attributes ?? TextAttributes.BOLD}
+          fg={sectionHeader.color ?? colors.textBright}
+        >
+          {sectionHeader.text}
+        </Text>
+      </Box>
+    );
+  }
+
+  const rowState = { selected };
+  const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
+  const rowBg = selected ? colors.selected : rowBackgroundColor ?? colors.bg;
+  const rowHoverBg = selected ? undefined : hoverBg(colors);
+
+  return (
+    <Box
+      flexDirection="row"
+      height={1}
+      {...tableContentWidthProps(contentWidth)}
+      paddingX={horizontalPadding}
+      backgroundColor={rowBg}
+      hoverBackgroundColor={rowHoverBg}
+      data-gloom-context-menu-surface={rowContextMenuSurface ? "true" : undefined}
+      onMouseDown={(event: any) => {
+        focusPane();
+        onTableMouseDown?.(event);
+        if (onRowMouseDown?.(item, index, event) === true) return;
+        event.preventDefault();
+        handleRowMouseDown(itemKey, { item, index }, event);
+      }}
+      onContextMenu={(event: any) => {
+        focusPane();
+        onRowContextMenu?.(item, index, event);
+      }}
+    >
+      {displayColumns.map((column) => {
+        const cell = renderCell(item, column, index, rowState);
+        return (
+          <Box
+            key={column.id}
+            width={column.width + columnGap}
+            backgroundColor={cell.backgroundColor ?? rowBg}
+            onMouseDown={(event: any) => {
+              focusPane();
+              onTableMouseDown?.(event);
+              if (cell.onMouseDown) {
+                cell.onMouseDown(event);
+                return;
+              }
+              if (onRowMouseDown?.(item, index, event) === true) {
+                event.stopPropagation?.();
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation?.();
+              handleRowMouseDown(itemKey, { item, index }, event);
+            }}
+          >
+            {cell.content !== undefined ? (
+              cell.content
+            ) : (
+              <Text
+                attributes={cell.attributes ?? TextAttributes.NONE}
+                fg={cell.color ?? (selected ? colors.selectedText : colors.text)}
+              >
+                {fitTableCellText(cell.text, column.width, column.align)}
+              </Text>
+            )}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+}
+
+const OpenTuiDataTableRow = memo(OpenTuiDataTableRowInner) as typeof OpenTuiDataTableRowInner;
 
 export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>({
   columns,
@@ -229,22 +370,13 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
 
     if (nextTop === currentTop) return true;
     scrollBox.scrollTo(nextTop);
-    if (scrollBox.scrollTop !== nextTop) return false;
-    if (virtualize) {
-      setScrollVersion((current) => current + 1);
-    }
-    syncHeaderScroll();
-    queueMicrotask(emitVisibleRange);
-    return true;
+    return scrollBox.scrollTop === nextTop;
   }, [
     appViewport.height,
     items.length,
     scrollRef,
     scrollToIndex,
     scrollToIndexAlign,
-    emitVisibleRange,
-    syncHeaderScroll,
-    virtualize,
   ]);
 
   useEffect(() => {
@@ -400,116 +532,29 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
               "data-table.render-visible-rows",
               () => visibleItems.map((item, visibleIndex) => {
                 const index = startIndex + visibleIndex;
-                const sectionHeader = renderSectionHeader?.(item, index) ?? null;
-
-                if (sectionHeader) {
-                  return (
-                    <Box
-                      key={getItemKey(item, index)}
-                      flexDirection="row"
-                      height={1}
-                      {...tableContentWidthProps(contentWidth)}
-                      paddingX={horizontalPadding}
-                      backgroundColor={sectionHeader.backgroundColor ?? colors.bg}
-                      onMouseDown={(event: any) => {
-                        focusPane();
-                        onTableMouseDown?.(event);
-                        sectionHeader.onMouseDown?.(event);
-                        event.preventDefault();
-                      }}
-                    >
-                      <Text
-                        attributes={sectionHeader.attributes ?? TextAttributes.BOLD}
-                        fg={sectionHeader.color ?? colors.textBright}
-                      >
-                        {sectionHeader.text}
-                      </Text>
-                    </Box>
-                  );
-                }
-
-                const selected = isSelected(item, index);
-                const rowState = { selected };
-                const rowBackgroundColor = getRowBackgroundColor?.(
-                  item,
-                  index,
-                  rowState,
-                );
-                const rowBg = selected
-                  ? colors.selected
-                  : rowBackgroundColor ?? colors.bg;
-                const rowHoverBg = selected ? undefined : hoverBg(colors);
-
+                const itemKey = getItemKey(item, index);
                 return (
-                  <Box
-                    key={getItemKey(item, index)}
-                    flexDirection="row"
-                    height={1}
-                    {...tableContentWidthProps(contentWidth)}
-                    paddingX={horizontalPadding}
-                    backgroundColor={rowBg}
-                    hoverBackgroundColor={rowHoverBg}
-                    data-gloom-context-menu-surface={rowContextMenuSurface ? "true" : undefined}
-                    onMouseDown={(event: any) => {
-                      focusPane();
-                      onTableMouseDown?.(event);
-                      if (onRowMouseDown?.(item, index, event) === true) {
-                        return;
-                      }
-                      event.preventDefault();
-                      handleRowMouseDown(getItemKey(item, index), {
-                        item,
-                        index,
-                      }, event);
-                    }}
-                    onContextMenu={(event: any) => {
-                      focusPane();
-                      onRowContextMenu?.(item, index, event);
-                    }}
-                  >
-                    {displayColumns.map((column) => {
-                      const cell = renderCell(item, column, index, rowState);
-                      return (
-                        <Box
-                          key={column.id}
-                          width={column.width + columnGap}
-                          backgroundColor={cell.backgroundColor ?? rowBg}
-                          onMouseDown={(event: any) => {
-                            focusPane();
-                            onTableMouseDown?.(event);
-                            if (cell.onMouseDown) {
-                              cell.onMouseDown(event);
-                              return;
-                            }
-                            if (onRowMouseDown?.(item, index, event) === true) {
-                              event.stopPropagation?.();
-                              return;
-                            }
-                            event.preventDefault();
-                            event.stopPropagation?.();
-                            handleRowMouseDown(getItemKey(item, index), {
-                              item,
-                              index,
-                            }, event);
-                          }}
-                        >
-                          {cell.content !== undefined ? (
-                            cell.content
-                          ) : (
-                            <Text
-                              attributes={cell.attributes ?? TextAttributes.NONE}
-                              fg={
-                                cell.color ??
-                                (selected ? colors.selectedText : colors.text)
-                              }
-                            >
-                              {fitTableCellText(cell.text, column.width, column.align)}
-                            </Text>
-                          )}
-                        </Box>
-                      );
-                    })}
-                  </Box>
+                  <OpenTuiDataTableRow<T, C>
+                    key={itemKey}
+                    colors={colors}
+                    columnGap={columnGap}
+                    contentWidth={contentWidth}
+                    displayColumns={displayColumns}
+                    focusPane={focusPane}
+                    getRowBackgroundColor={getRowBackgroundColor}
+                    handleRowMouseDown={handleRowMouseDown}
+                    horizontalPadding={horizontalPadding}
+                    index={index}
+                    item={item}
+                    itemKey={itemKey}
+                    onRowContextMenu={onRowContextMenu}
+                    onRowMouseDown={onRowMouseDown}
+                    onTableMouseDown={onTableMouseDown}
+                    renderCell={renderCell}
+                    renderSectionHeader={renderSectionHeader}
+                    rowContextMenuSurface={rowContextMenuSurface}
+                    selected={isSelected(item, index)}
+                  />
                 );
               }),
               {

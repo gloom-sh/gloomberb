@@ -16,21 +16,25 @@ export function useDoubleClickActivation<T>({
   onActivate?: (value: T) => void;
 }) {
   const lastClickRef = useRef<LastClickState | null>(null);
+  const onSelectRef = useRef(onSelect);
+  const onActivateRef = useRef(onActivate);
+  onSelectRef.current = onSelect;
+  onActivateRef.current = onActivate;
 
   return useCallback((targetKey: string, value: T, event?: ClickEventLike) => {
     const lastClick = lastClickRef.current;
 
-    onSelect?.(value);
+    onSelectRef.current?.(value);
 
     if ((typeof event?.detail === "number" && event.detail >= 2)
         || (lastClick && lastClick.targetKey === targetKey)) {
       lastClickRef.current = null;
-      onActivate?.(value);
+      onActivateRef.current?.(value);
       return;
     }
 
     lastClickRef.current = {
       targetKey,
     };
-  }, [onActivate, onSelect]);
+  }, []);
 }

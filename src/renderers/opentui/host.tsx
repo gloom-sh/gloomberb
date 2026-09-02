@@ -8,6 +8,7 @@ import { colors } from "../../theme/colors";
 import { safeExternalUrl } from "../../utils/external-url";
 import { createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
+import { installInteractionPerformanceRecorder } from "./interaction-performance";
 
 export { useKeyboard, useTerminalDimensions };
 
@@ -97,6 +98,8 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
   });
   const root = createRoot(renderer);
   installResolutionEventBridge(renderer);
+  const stopInteractionPerformanceRecorder = installInteractionPerformanceRecorder(renderer);
+  renderer.once("destroy", stopInteractionPerformanceRecorder);
 
   const rendererHost: RendererHost = {
     requestExit: () => renderer.destroy(),

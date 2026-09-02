@@ -80,6 +80,11 @@ export interface DataTableViewProps<
   focused?: boolean;
   selection: DataTableSelection<T>;
   onActivate?: (item: T, index: number) => void;
+  /**
+   * Fires immediately as the lightweight visual cursor moves. Expensive detail
+   * work and persisted selection belong in selection.onChange, which is
+   * coalesced across keyboard repeats.
+   */
   onCursorChange?: (
     item: T,
     index: number,
@@ -198,20 +203,39 @@ export function DataTableView<
   effectiveSelectedIndexRef.current = effectiveSelectedIndex;
   const [selectionScrollVersion, setSelectionScrollVersion] = useState(0);
   const [selectionScrollTarget, setSelectionScrollTarget] = useState<number | null>(null);
+  const selectionScrollTargetRef = useRef<number | null>(null);
   const lastExternalSelectionScrollRef = useRef<{
     kind: DataTableSelection<T>["kind"];
     key: string | number | null;
     resolved: boolean;
   } | null>(null);
-  const effectiveScrollToIndex = scrollToIndex !== undefined
-    ? scrollToIndex
-    : selectionScrollTarget;
+  const effectiveScrollToIndex = selectionScrollTarget ?? scrollToIndex;
 
   const requestSelectionScroll = useCallback((index: number) => {
-    if (scrollToIndex !== undefined || index < 0) return;
+    if (index < 0 || selectionScrollTargetRef.current === index) return;
+    const scrollBox = effectiveScrollRef.current;
+    const viewportHeight = scrollBox?.viewport?.height;
+    const scrollTop = scrollBox?.scrollTop;
+    if (
+      typeof viewportHeight === "number"
+      && typeof scrollTop === "number"
+      && index >= Math.floor(scrollTop)
+      && index < Math.floor(scrollTop) + Math.max(1, Math.floor(viewportHeight))
+    ) return;
+    selectionScrollTargetRef.current = index;
     setSelectionScrollTarget(index);
     setSelectionScrollVersion((current) => current + 1);
-  }, [scrollToIndex]);
+  }, [effectiveScrollRef]);
+  const clearSelectionScrollTarget = useCallback(() => {
+    if (selectionScrollTargetRef.current === null) return;
+    selectionScrollTargetRef.current = null;
+    setSelectionScrollTarget(null);
+  }, []);
+
+  useEffect(() => {
+    if (scrollToIndex === undefined) return;
+    clearSelectionScrollTarget();
+  }, [clearSelectionScrollTarget, scrollToIndex, scrollToIndexVersion]);
 
   const clearPendingCommit = useCallback(() => {
     if (pendingCommitTimerRef.current) {
@@ -220,7 +244,8 @@ export function DataTableView<
     }
     pendingCommitRef.current = false;
     pendingCommitTargetRef.current = null;
-  }, []);
+    clearSelectionScrollTarget();
+  }, [clearSelectionScrollTarget]);
 
   useEffect(() => {
     if (selection.kind === "none") {
@@ -268,7 +293,7 @@ export function DataTableView<
     lastExternalSelectionScrollRef.current = current;
 
     if (selection.kind === "none") {
-      if (scrollToIndex === undefined) setSelectionScrollTarget(null);
+      clearSelectionScrollTarget();
       return;
     }
     if (effectiveSelectedIndex < 0) return;
@@ -281,6 +306,7 @@ export function DataTableView<
       requestSelectionScroll(effectiveSelectedIndex);
     }
   }, [
+    clearSelectionScrollTarget,
     effectiveSelectedIndex,
     requestSelectionScroll,
     scrollToIndex,
@@ -360,9 +386,10 @@ export function DataTableView<
       pendingCommitRef.current = false;
       const pendingTarget = pendingCommitTargetRef.current;
       pendingCommitTargetRef.current = null;
+      clearSelectionScrollTarget();
       commitTarget(pendingTarget, "keyboard");
     }, DATA_TABLE_SELECTION_COMMIT_DELAY_MS);
-  }, [commitTarget, getCommitTarget, selection.kind]);
+  }, [clearSelectionScrollTarget, commitTarget, getCommitTarget, selection.kind]);
 
   const updateCursorIndex = useCallback((
     index: number,
@@ -375,13 +402,17 @@ export function DataTableView<
     if (index < 0 || index >= tableProps.items.length) return;
     const item = tableProps.items[index]!;
     if (isNavigable && !isNavigable(item, index)) return;
-    effectiveSelectedIndexRef.current = index;
-    setCursorIndex(index);
     const reason = options.reason ?? (options.commit === "deferred"
       ? "keyboard"
       : options.commit === "immediate"
         ? "pointer"
         : "keyboard");
+    if (effectiveSelectedIndexRef.current === index) {
+      if (options.commit === "immediate") commitIndexImmediately(index, reason);
+      return;
+    }
+    effectiveSelectedIndexRef.current = index;
+    setCursorIndex(index);
     onCursorChange?.(item, index, reason);
     if (options.commit === "deferred") {
       requestSelectionScroll(index);

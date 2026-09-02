@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useRef, type Dispatch } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppProvider, PaneInstanceProvider, useAppDispatch, useAppSelector, usePaneTicker, type AppAction } from "./index";
+import { AppProvider, PaneInstanceProvider, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneTicker, type AppAction } from "./index";
 import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import { applyTheme } from "../../../theme/colors";
 import { useThemeId } from "../../../theme/theme-context";
@@ -11,6 +11,7 @@ const TEST_PANE_ID = "ticker-detail:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let capturedDispatch: Dispatch<AppAction> | null = null;
+let capturedPaneSetting: ((value: string) => void) | null = null;
 
 function createTickerDetailConfig(symbol: string): AppConfig {
   const config = createDefaultConfig("/tmp/gloomberb-test");
@@ -42,6 +43,14 @@ function PaneTickerHarness() {
   renderCountRef.current += 1;
   const { symbol } = usePaneTicker();
   return <text>{`${symbol ?? "none"}:${renderCountRef.current}`}</text>;
+}
+
+function PaneSettingHarness() {
+  const renderCountRef = useRef(0);
+  renderCountRef.current += 1;
+  const [value, setValue] = usePaneSettingValue("mode", "table");
+  capturedPaneSetting = setValue;
+  return <text>{`${value}:${renderCountRef.current}`}</text>;
 }
 
 function ThemeSelectorHarness() {
@@ -99,6 +108,7 @@ describe("pane selectors", () => {
     }
     testSetup = undefined;
     capturedDispatch = null;
+    capturedPaneSetting = null;
     applyTheme("amber");
   });
 
@@ -123,6 +133,28 @@ describe("pane selectors", () => {
     await testSetup.renderOnce();
     await testSetup.renderOnce();
     expect(testSetup.captureCharFrame()).toContain("AAPL:1");
+  });
+
+  test("does not dispatch or rerender when a pane setting keeps its effective value", async () => {
+    testSetup = await testRender(
+      <AppProvider config={createTickerDetailConfig("AAPL")}>
+        <PaneInstanceProvider paneId={TEST_PANE_ID}>
+          <PaneSettingHarness />
+        </PaneInstanceProvider>
+      </AppProvider>,
+      { width: 24, height: 4 },
+    );
+
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("table:1");
+
+    await act(() => {
+      capturedPaneSetting?.("table");
+    });
+    await testSetup.renderOnce();
+    await testSetup.renderOnce();
+
+    expect(testSetup.captureCharFrame()).toContain("table:1");
   });
 
   test("rerenders theme hook consumers when the theme changes", async () => {

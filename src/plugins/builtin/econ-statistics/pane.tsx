@@ -310,9 +310,6 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
                 getId: (row) => row.id,
                 onChange: (id, _item, _index, reason) => chooseStat(String(id), reason),
               }}
-              onCursorChange={(row, _index, reason) => {
-                if (row.kind === "stat") chooseStat(row.view.stat.id, reason);
-              }}
               isNavigable={(row) => row.kind === "stat"}
               onHeaderClick={() => {}}
               onRootKeyDown={handlePaneKey}

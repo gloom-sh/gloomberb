@@ -47,16 +47,6 @@ function sortRows(rows: CreditConditionRow[], id: SortId, descending: boolean): 
   });
 }
 
-export function moveCreditSelection(
-  rows: CreditConditionRow[],
-  selectedId: CreditSeriesId | null,
-  offset: -1 | 1,
-): CreditSeriesId | null {
-  if (rows.length === 0) return null;
-  const current = Math.max(0, rows.findIndex((row) => row.seriesId === selectedId));
-  return rows[Math.max(0, Math.min(current + offset, rows.length - 1))]!.seriesId;
-}
-
 function renderCell(
   row: CreditConditionRow,
   column: Column,
@@ -131,16 +121,8 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
     onMouseDown: () => setSelectedId(row.seriesId),
   }), []);
   useShortcut((event) => {
-    if (!focused) return;
-    if (event.name === "r") {
-      if (loading) return;
-      reload();
-    } else if (["up", "k", "down", "j"].includes(event.name ?? "")) {
-      const offset = event.name === "up" || event.name === "k" ? -1 : 1;
-      setSelectedId(moveCreditSelection(sorted, selectedId, offset));
-    } else {
-      return;
-    }
+    if (!focused || event.name !== "r" || loading) return;
+    reload();
     event.preventDefault?.();
     event.stopPropagation?.();
   });
@@ -190,7 +172,6 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
         getId: (row) => row.seriesId,
         onChange: (id) => setSelectedId(id as CreditSeriesId),
       }}
-      onCursorChange={(row) => setSelectedId(row.seriesId)}
       columns={columns}
       items={sorted}
       sortColumnId={sort.id}
