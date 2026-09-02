@@ -9,6 +9,7 @@ import {
   isPaneInLayout,
 } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import type { LoadedExternalPlugin } from "../../plugins/loader";
 import {
   getFocusedCollectionId,
   resolveTickerForPane,
@@ -50,8 +51,10 @@ interface AppPaneRuntimeArgs {
   detachedPaneId: string | null;
   dialog: DialogApi;
   dispatch: Dispatch<AppAction>;
+  externalPlugins: readonly LoadedExternalPlugin[];
   isDetachedWindow: boolean;
   notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
+  persistConfig: (nextConfig: AppState["config"]) => void;
   pluginRegistry: PluginRegistry;
   state: AppState;
   stateRef: { current: AppState };
@@ -63,8 +66,10 @@ export function useAppPaneRuntime({
   detachedPaneId,
   dialog,
   dispatch,
+  externalPlugins,
   isDetachedWindow,
   notify,
+  persistConfig,
   pluginRegistry,
   state,
   stateRef,
@@ -286,10 +291,12 @@ export function useAppPaneRuntime({
     dataProvider,
     detachedPaneId,
     dispatch,
+    externalPlugins,
     focusVisiblePane,
     isDetachedWindow,
     openPaneSettings,
     openPinnedTicker,
+    persistConfig,
     persistLayout,
     placePaneInstance,
     placePinnedTickerTarget,

@@ -28,7 +28,7 @@ import type { OpenInlineConfirm } from "./routing/confirm";
 import { activatePickerSelectionAction } from "./picker-activation";
 
 type OpenModeRouteFn = (
-  screen: "ticker-search" | "plugins" | "layout",
+  screen: "ticker-search" | "layout",
   initialQuery?: string,
   payload?: Record<string, unknown>,
 ) => void;

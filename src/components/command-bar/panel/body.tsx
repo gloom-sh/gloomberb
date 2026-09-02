@@ -257,7 +257,6 @@ export function CommandBarPanelBody({
 function getCommandBarPanelTitle(route: CommandBarRoute | null): string {
   if (!route) return "Commands";
   if (route.kind === "mode") {
-    if (route.screen === "plugins") return "Manage Plugins";
     if (route.screen === "layout") return "Layout Actions";
     return "Security Description";
   }

@@ -33,7 +33,6 @@ interface UseCommandBarRootRuntimeOptions {
   availableCommands: Command[];
   buildLayoutItems(query: string, options?: { confirmDangerousActions?: boolean }): ResultItem[];
   buildPaneSettingItems(paneId: string | null, query: string): ResultItem[];
-  buildPluginItems(query: string): ResultItem[];
   buildTickerSearchResultItems(candidates: TickerSearchCandidate[], query: string): ResultItem[];
   buildWindowModeItems(arg: string): ResultItem[];
   createPaneTemplateItem(template: PaneTemplateDef, options?: {
@@ -55,7 +54,7 @@ interface UseCommandBarRootRuntimeOptions {
   localTickerSearchResultItems(query?: string, options?: { category?: string; limit?: number }): ResultItem[];
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
   nonShortcutPaneTemplateItems(filterQuery?: string): ResultItem[];
-  openModeRoute(screen: "ticker-search" | "plugins" | "layout", initialQuery?: string): void;
+  openModeRoute(screen: "ticker-search" | "layout", initialQuery?: string): void;
   paneShortcutItems(options?: {
     filterQuery?: string;
     createOptions?: PaneTemplateCreateOptions;
@@ -97,7 +96,6 @@ export function useCommandBarRootRuntime({
   availableCommands,
   buildLayoutItems,
   buildPaneSettingItems,
-  buildPluginItems,
   buildTickerSearchResultItems,
   buildWindowModeItems,
   createPaneTemplateItem,
@@ -173,7 +171,6 @@ export function useCommandBarRootRuntime({
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
-    buildPluginItems,
     buildWindowModeItems,
     createPaneTemplateItem,
     createPluginCommandItem,
@@ -202,7 +199,6 @@ export function useCommandBarRootRuntime({
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
-    buildPluginItems,
     buildWindowModeItems,
     createPaneTemplateItem,
     createPluginCommandItem,
@@ -263,14 +259,12 @@ export function useCommandBarRootRuntime({
       previousRootSelectionContextRef.current?.query !== rootQuery
       || previousRootSelectionContextRef.current?.mode !== rootModeKind;
     previousRootSelectionContextRef.current = { query: rootQuery, mode: rootModeKind };
-    // Filtering the plugin list is not meant to move the row being toggled.
-    const keepSelectionAcrossQueries = activeMatch?.command.id === "plugins";
-    if (selectionContextChanged && !keepSelectionAcrossQueries) {
+    if (selectionContextChanged) {
       rootSelectionNavigatedRef.current = false;
     }
 
     setRootSelectedIdx((current) => {
-      if (rootSelectionNavigatedRef.current || keepSelectionAcrossQueries) {
+      if (rootSelectionNavigatedRef.current) {
         // The user picked this row: rows arriving above it — an AI answer, a
         // provider result — may renumber it, never take the highlight from it.
         const selectedId = previousResultIds[current];

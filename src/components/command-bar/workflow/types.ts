@@ -39,7 +39,7 @@ interface CommandBarRouteBase {
 
 interface CommandBarModeRoute extends CommandBarRouteBase {
   kind: "mode";
-  screen: "ticker-search" | "plugins" | "layout";
+  screen: "ticker-search" | "layout";
   query: string;
   selectedIdx: number;
   hoveredIdx: number | null;

@@ -229,17 +229,6 @@ export const commands: Command[] = [
     category: "Config",
   },
 
-  // Plugins
-  {
-    id: "plugins",
-    prefix: "PL",
-    label: "Manage Plugins",
-    description: "Toggle plugins on/off",
-    hasArg: true,
-    argPlaceholder: "plugin name",
-    category: "Config",
-  },
-
   // Import/Export
   {
     id: "export-config",

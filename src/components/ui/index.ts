@@ -15,6 +15,9 @@ export type { PopoverProps } from "./popover";
 export { MultiSelectDialogButton, MultiSelectDialogContent } from "./multi-select/dialog";
 export type { MultiSelectDialogButtonHandle, MultiSelectPopoverAnchorPoint } from "./multi-select/dialog";
 
+export { SelectButton } from "./select-button";
+export type { SelectButtonOption, SelectButtonProps } from "./select-button";
+
 export { TextField, NumberField } from "./fields";
 
 export { getMessageComposerBlockHeight, MessageComposer } from "./message-composer";

@@ -56,7 +56,6 @@ export interface RootResultModelOptions {
   availableCommands: Command[];
   buildLayoutItems: (query: string, options?: { confirmDangerousActions?: boolean }) => ResultItem[];
   buildPaneSettingItems: (paneId: string | null, query: string) => ResultItem[];
-  buildPluginItems: (query: string) => ResultItem[];
   buildWindowModeItems: (arg: string) => ResultItem[];
   createPaneTemplateItem: (template: PaneTemplateDef, options?: PaneTemplateItemOptions) => ResultItem;
   createPluginCommandItem: (command: CommandDef, options?: { shortcutArg?: string }) => ResultItem;
@@ -69,7 +68,7 @@ export interface RootResultModelOptions {
   hasPaneSettings: (paneId: string) => boolean;
   localTickerSearchResultItems: (query?: string, options?: { category?: string; limit?: number }) => ResultItem[];
   nonShortcutPaneTemplateItems: (filterQuery?: string) => ResultItem[];
-  openModeRoute: (screen: "ticker-search" | "plugins" | "layout", initialQuery?: string) => void;
+  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string) => void;
   paneShortcutItems: (options?: PaneShortcutItemsOptions) => ResultItem[];
   pluginCommandItems: () => ResultItem[];
   pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
@@ -109,7 +108,6 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     availableCommands,
     buildLayoutItems,
     buildPaneSettingItems,
-    buildPluginItems,
     buildWindowModeItems,
     createPaneTemplateItem,
     createPluginCommandItem,
@@ -187,9 +185,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       const dynamicItems = pluginCommandResultItems(rootShortcutIntent.command, rootShortcutIntent.argText);
       items.push(...(dynamicItems.length > 0 ? dynamicItems : [shortcutItem]));
     }
-  } else if (match && match.command.id === "plugins") {
-    items.push(...buildPluginItems(match.arg));
-  } else if (match && match.command.id === "layout") {
+    } else if (match && match.command.id === "layout") {
     items.push(...buildLayoutItems(match.arg, { confirmDangerousActions: true }));
   } else if (match && match.command.id === "window-mode") {
     items.push(...buildWindowModeItems(match.arg));

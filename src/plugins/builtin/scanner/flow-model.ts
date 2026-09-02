@@ -1,4 +1,4 @@
-import type { ScannerFlowEvent } from "../../../api-client";
+import type { ScannerFlowEvent, ScannerStatus } from "../../../api-client";
 
 export type FlowMinPremium = "50000" | "250000" | "1000000";
 export type FlowSide = "calls" | "puts" | "both";
@@ -99,6 +99,34 @@ export function filterFlowEvents(
     if (filters.universe === "watchlist" && !watchlist.has(event.underlying.toUpperCase())) return false;
     return true;
   });
+}
+
+/**
+ * An empty table has two unrelated causes, and blaming the filters for a tape
+ * the server never sent sends people to tune filters that were never the
+ * problem. Say which one happened.
+ */
+export function flowEmptyState(
+  received: number,
+  visible: number,
+  status: ScannerStatus | undefined,
+): { title: string; hint: string } {
+  if (received > visible) {
+    return {
+      title: `${received - visible} ${received - visible === 1 ? "print" : "prints"} hidden by filters.`,
+      hint: "Loosen the premium, expiry, or universe filter.",
+    };
+  }
+  if (status === "closed") {
+    return {
+      title: "No prints on the tape.",
+      hint: "Options are closed; the tape fills again at the next session.",
+    };
+  }
+  return {
+    title: "No prints on the tape yet.",
+    hint: "Large sweeps, blocks, and premium prints appear here as they cross.",
+  };
 }
 
 export function formatFlowPremium(premium: number): string {

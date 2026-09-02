@@ -16,6 +16,7 @@ interface ShellPaneManagementShortcutOptions {
   closeAllFloatingPanes(): boolean;
   closeFocusedPane(): boolean;
   copyFocusedPaneScreenshot(): boolean;
+  exportFocusedPaneCsv(): boolean;
   focusedPaneId: string | null;
   gridlockVisiblePanes(): boolean;
   hasActiveDrag(): boolean;
@@ -35,6 +36,7 @@ export function useShellPaneManagementShortcuts({
   closeAllFloatingPanes,
   closeFocusedPane,
   copyFocusedPaneScreenshot,
+  exportFocusedPaneCsv,
   focusedPaneId,
   gridlockVisiblePanes,
   hasActiveDrag,
@@ -120,6 +122,9 @@ export function useShellPaneManagementShortcuts({
         break;
       case "copy-screenshot":
         handled = copyFocusedPaneScreenshot();
+        break;
+      case "export-csv":
+        handled = exportFocusedPaneCsv();
         break;
       case "share":
         handled = shareFocusedPane();

@@ -47,6 +47,20 @@ export function InputSearchBar({
     phase: "before",
   });
 
+  // A focused input consumes every key, so Escape has to be intercepted before
+  // it reaches the field. Without this there is no way back out of a search.
+  useShortcut((event) => {
+    if (event.name !== "escape") return;
+    stopSearchFocusNavigation(event);
+    setDraft("");
+    onQueryChange("");
+    onBlur();
+  }, {
+    allowEditable: true,
+    enabled: focused && active,
+    phase: "before",
+  });
+
   useEffect(() => {
     setDraft(value);
   }, [value]);

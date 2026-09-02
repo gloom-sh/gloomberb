@@ -34,6 +34,14 @@ export type CloudCongressHouseParams = {
   refresh?: boolean;
 };
 
+export type CloudEarningsCallsParams = {
+  ticker?: string;
+  limit?: number;
+  offset?: number;
+  /** Include calls still working through the transcription pipeline. */
+  includePending?: boolean;
+};
+
 export type CloudNewsParams = {
   feed?: "latest" | "top" | "breaking" | "ticker" | "sector" | "topic";
   ticker?: string;
@@ -179,6 +187,19 @@ export function cloudCongressHousePath(params: CloudCongressHouseParams = {}): s
   if (params.ticker) search.set("ticker", params.ticker);
   if (params.refresh != null) search.set("refresh", String(params.refresh));
   return appendQuery("/cloud/congress/house", search);
+}
+
+export function cloudEarningsCallsPath(params: CloudEarningsCallsParams = {}): string {
+  const search = new URLSearchParams();
+  if (params.ticker) search.set("ticker", params.ticker);
+  if (params.limit != null) search.set("limit", String(params.limit));
+  if (params.offset != null) search.set("offset", String(params.offset));
+  if (params.includePending) search.set("includePending", "true");
+  return appendQuery("/cloud/transcripts", search);
+}
+
+export function cloudEarningsTranscriptPath(id: string): string {
+  return `/cloud/transcripts/${encodeURIComponent(id)}`;
 }
 
 export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {

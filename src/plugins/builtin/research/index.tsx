@@ -50,6 +50,7 @@ export const researchModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 28 },
+      tableExport: true,
     },
     {
       id: "equity-diagnostic",
@@ -68,6 +69,7 @@ export const researchModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 24 },
+      tableExport: true,
     },
     {
       id: "relative-valuation",
@@ -77,6 +79,7 @@ export const researchModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 24 },
+      tableExport: true,
     },
     {
       id: "earnings-estimates",
@@ -86,6 +89,7 @@ export const researchModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 22 },
+      tableExport: true,
     },
   ],
 

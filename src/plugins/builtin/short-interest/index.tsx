@@ -45,6 +45,7 @@ export const shortInterestModule: PluginModule = {
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 25 },
+      tableExport: true,
     },
   ],
 

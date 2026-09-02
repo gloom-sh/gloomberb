@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from "react";
 import { Box, TextAttributes } from "../../../ui";
 import {
-  Button,
   DataTableView,
+  SelectButton,
   type DataTableCell,
   type DataTableColumn,
+  type SelectButtonOption,
 } from "../../../components";
 import { ScannerWaitingState } from "./waiting";
 import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
@@ -20,6 +21,7 @@ import {
   DEFAULT_FLOW_FILTERS,
   FLOW_FILTER_OPTIONS,
   filterFlowEvents,
+  flowEmptyState,
   formatFlowExpiry,
   formatFlowPremium,
   formatFlowSide,
@@ -35,28 +37,33 @@ import {
   type FlowVolOi,
 } from "./flow-model";
 
-/** Cycles a select-style pane setting, so every filter is reachable without the settings dialog. */
-function FilterChip<T extends string>({
+/** Every filter is reachable from the pane body, not just the settings dialog. */
+function FlowFilter<T extends string>({
+  id,
   label,
   value,
   options,
+  defaultValue,
   onChange,
 }: {
+  id: string;
   label: string;
   value: T;
-  options: readonly { value: T; label: string; short: string }[];
+  options: readonly SelectButtonOption<T>[];
+  defaultValue: T;
   onChange: (value: T) => void;
 }) {
-  const current = options.find((option) => option.value === value) ?? options[0]!;
   return (
-    <Button
-      label={`${label} ${current.short}`}
-      variant="ghost"
-      onPress={() => {
-        const index = options.findIndex((option) => option.value === value);
-        onChange(options[(index + 1 + options.length) % options.length]!.value);
-      }}
-    />
+    <Box marginRight={2}>
+      <SelectButton
+        label={label}
+        value={value}
+        options={options}
+        emphasized={value !== defaultValue}
+        onChange={onChange}
+        idPrefix={`flow-filter-${id}`}
+      />
+    </Box>
   );
 }
 
@@ -145,6 +152,11 @@ function FlowPane({ focused, width, height }: PaneProps) {
     [feed.payload?.events, filters, watchlist],
   );
 
+  const emptyState = useMemo(
+    () => flowEmptyState(feed.payload?.events.length ?? 0, events.length, feed.payload?.status),
+    [events.length, feed.payload?.events.length, feed.payload?.status],
+  );
+
   useScannerStatusFooter("flow", feed, focused);
 
   const columns = useMemo(() => buildColumns(width), [width]);
@@ -160,13 +172,57 @@ function FlowPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box height={1} flexDirection="row" overflow="hidden">
-        <FilterChip label="Prem" value={minPremium} options={FLOW_FILTER_OPTIONS.minPremium} onChange={setMinPremium} />
-        <FilterChip label="Side" value={side} options={FLOW_FILTER_OPTIONS.side} onChange={setSide} />
-        <FilterChip label="Kind" value={kind} options={FLOW_FILTER_OPTIONS.kind} onChange={setKind} />
-        <FilterChip label="V/OI" value={volOi} options={FLOW_FILTER_OPTIONS.volOi} onChange={setVolOi} />
-        <FilterChip label="Exp" value={expiry} options={FLOW_FILTER_OPTIONS.expiry} onChange={setExpiry} />
-        <FilterChip label="Univ" value={universe} options={FLOW_FILTER_OPTIONS.universe} onChange={setUniverse} />
+      {/* paddingLeft matches the table's own left inset, so the filter row and
+          the TIME column start on the same cell. */}
+      <Box height={1} flexDirection="row" overflow="hidden" paddingLeft={1}>
+        <FlowFilter
+          id="premium"
+          label="Prem"
+          value={minPremium}
+          options={FLOW_FILTER_OPTIONS.minPremium}
+          defaultValue={DEFAULT_FLOW_FILTERS.minPremium}
+          onChange={setMinPremium}
+        />
+        <FlowFilter
+          id="side"
+          label="Side"
+          value={side}
+          options={FLOW_FILTER_OPTIONS.side}
+          defaultValue={DEFAULT_FLOW_FILTERS.side}
+          onChange={setSide}
+        />
+        <FlowFilter
+          id="kind"
+          label="Kind"
+          value={kind}
+          options={FLOW_FILTER_OPTIONS.kind}
+          defaultValue={DEFAULT_FLOW_FILTERS.kind}
+          onChange={setKind}
+        />
+        <FlowFilter
+          id="voloi"
+          label="V/OI"
+          value={volOi}
+          options={FLOW_FILTER_OPTIONS.volOi}
+          defaultValue={DEFAULT_FLOW_FILTERS.volOi}
+          onChange={setVolOi}
+        />
+        <FlowFilter
+          id="expiry"
+          label="Exp"
+          value={expiry}
+          options={FLOW_FILTER_OPTIONS.expiry}
+          defaultValue={DEFAULT_FLOW_FILTERS.expiry}
+          onChange={setExpiry}
+        />
+        <FlowFilter
+          id="universe"
+          label="Univ"
+          value={universe}
+          options={FLOW_FILTER_OPTIONS.universe}
+          defaultValue={DEFAULT_FLOW_FILTERS.universe}
+          onChange={setUniverse}
+        />
       </Box>
       <DataTableView<ScannerFlowEvent>
         focused={focused}
@@ -187,8 +243,8 @@ function FlowPane({ focused, width, height }: PaneProps) {
         onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
         renderCell={(event, column, _index, rowState) => renderCell(event, column, rowState)}
         emptyContent={feed.payload ? undefined : <ScannerWaitingState />}
-        emptyStateTitle="No prints match these filters."
-        emptyStateHint="Loosen the premium, expiry, or universe filter."
+        emptyStateTitle={emptyState.title}
+        emptyStateHint={emptyState.hint}
       />
     </Box>
   );

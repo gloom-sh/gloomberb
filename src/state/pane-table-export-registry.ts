@@ -1,3 +1,5 @@
+import { createCsvExportFilename } from "../utils/csv";
+
 export type PaneTableExporter = (filename: string) => Promise<string>;
 
 const exporters = new Map<string, Map<symbol, PaneTableExporter>>();
@@ -28,4 +30,21 @@ export async function exportPaneTable(paneId: string, filename: string): Promise
     throw new Error("This pane does not have one active exportable table.");
   }
   return [...paneExporters.values()][0]!(filename);
+}
+
+/**
+ * Shared entry point for the pane menu, the keyboard shortcut, and pane settings so
+ * every surface produces the same filename and the same success/failure notification.
+ */
+export async function exportPaneTableCsv(
+  paneId: string,
+  title: string,
+  notify: (notification: { body: string; type: "success" | "error" }) => void,
+): Promise<void> {
+  try {
+    const location = await exportPaneTable(paneId, createCsvExportFilename(title));
+    notify({ body: `Exported to ${location}`, type: "success" });
+  } catch {
+    notify({ body: "Failed to export CSV", type: "error" });
+  }
 }

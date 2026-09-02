@@ -508,6 +508,11 @@ export interface AppNotificationRequest {
     label: string;
     onClick: () => void;
   };
+  /** Rendered next to `action`. Use for a dismissing counterpart such as snooze. */
+  secondaryAction?: {
+    label: string;
+    onClick: () => void;
+  };
 }
 
 export interface BrokerInstanceUpdateOptions {
@@ -577,6 +582,21 @@ export interface GloomPluginContext {
   notify(notification: AppNotificationRequest): AppNotificationDelivery | void;
 }
 
+/**
+ * Where a plugin can actually run.
+ *
+ * `cli` and `tui` run in Bun and may use Node APIs. `desktop` runs in the
+ * Electrobun view. `web` runs in the browser at term.gloom.sh, which rules out
+ * Node builtins entirely — a plugin opening a TCP socket (IBKR Gateway) can
+ * never be web-capable, no matter what it declares.
+ *
+ * Plugins may declare this, but the registry derives it from a static import
+ * scan and overwrites the declaration. Treat an author-supplied value as a hint.
+ */
+export type PluginTarget = "cli" | "tui" | "desktop" | "web";
+
+export const ALL_PLUGIN_TARGETS: readonly PluginTarget[] = ["cli", "tui", "desktop", "web"];
+
 export interface GloomPlugin {
   id: string;
   name: string;
@@ -585,6 +605,10 @@ export interface GloomPlugin {
   toggleable?: boolean;
   order?: number;
   cliCommands?: CliCommandDef[];
+  /** Defaults to every target when omitted. */
+  targets?: readonly PluginTarget[];
+  /** Shown in the marketplace pane and on the website. */
+  homepage?: string;
 
   setup?(ctx: GloomPluginContext): void | Promise<void>;
   dispose?(): void;

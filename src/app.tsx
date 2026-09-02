@@ -59,6 +59,7 @@ import { isPaneShareHandoff } from "./shares/location";
 const EMPTY_EXTERNAL_PLUGINS: LoadedExternalPlugin[] = [];
 
 interface AppInnerProps {
+  externalPlugins: readonly LoadedExternalPlugin[];
   pluginRegistry: PluginRegistry;
   tickerRepository: AppTickerRepositoryPort;
   dataProvider: DataProvider;
@@ -92,6 +93,7 @@ function ThemedAppRoot({ children }: { children: ReactNode }) {
 }
 
 function AppInner({
+  externalPlugins,
   pluginRegistry,
   tickerRepository,
   dataProvider,
@@ -158,6 +160,13 @@ function AppInner({
     renderToast: (notification) => {
       const type = notification.type ?? "info";
       let toastId: string | number | undefined;
+      const dismissAfter = (run: () => void) => () => {
+        try {
+          run();
+        } finally {
+          if (toastId != null) toast.dismiss(toastId);
+        }
+      };
       const options = {
         title: notification.title,
         subtitle: notification.subtitle,
@@ -165,13 +174,13 @@ function AppInner({
         action: notification.action
           ? {
             label: notification.action.label,
-            onClick: () => {
-              try {
-                notification.action?.onClick();
-              } finally {
-                if (toastId != null) toast.dismiss(toastId);
-              }
-            },
+            onClick: dismissAfter(() => notification.action?.onClick()),
+          }
+          : undefined,
+        secondaryAction: notification.secondaryAction
+          ? {
+            label: notification.secondaryAction.label,
+            onClick: dismissAfter(() => notification.secondaryAction?.onClick()),
           }
           : undefined,
       };
@@ -297,13 +306,19 @@ function AppInner({
       && !onboardingActive,
   });
 
+  const persistConfig = useCallback((nextConfig: AppState["config"]) => {
+    scheduleConfigSave(nextConfig);
+  }, []);
+
   useAppPaneRuntime({
     dataProvider,
     detachedPaneId,
     dialog,
     dispatch,
+    externalPlugins,
     isDetachedWindow,
     notify,
+    persistConfig,
     pluginRegistry,
     state,
     stateRef,
@@ -518,6 +533,7 @@ export function App({
       >
         <AppLanguageConfigObserver />
         <AppInner
+          externalPlugins={externalPlugins}
           pluginRegistry={services.pluginRegistry}
           tickerRepository={services.tickerRepository}
           dataProvider={services.dataProvider}

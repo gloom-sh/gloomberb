@@ -1,62 +1,60 @@
 import { describe, expect, test } from "bun:test";
 import type { BrokerAdapter } from "../types/broker";
 import type { BrokerInstanceConfig } from "../types/config";
-import { ibkrBroker } from "../plugins/ibkr/broker-adapter";
+import { testBroker } from "./test-broker";
 import {
   buildBrokerProfileConfig,
   createBrokerProfileDraft,
   validateBrokerProfileValues,
 } from "./profile-form";
 
-function createFlexInstance(): BrokerInstanceConfig {
+function createSavedInstance(): BrokerInstanceConfig {
   return {
-    id: "ibkr-flex",
-    brokerType: "ibkr",
-    label: "IBKR Flex",
-    connectionMode: "flex",
+    id: "saved-profile",
+    brokerType: "test-broker",
+    label: "Saved Profile",
+    connectionMode: "token",
     config: {
-      connectionMode: "flex",
-      gatewaySetupMode: "auto",
-      flex: { token: "saved-token", queryId: "123", endpoint: "https://example.test/flex" },
-      gateway: { host: "127.0.0.1", marketDataType: "auto" },
+      connectionMode: "token",
+      credentials: { token: "saved-token", accountId: "123" },
+      host: "127.0.0.1",
     },
     enabled: true,
   };
 }
 
 describe("broker profile form helpers", () => {
-  test("builds canonical IBKR Flex config from flat values", () => {
-    const config = buildBrokerProfileConfig(ibkrBroker, {
-      connectionMode: "flex",
+  test("builds a nested broker config from flat form values", () => {
+    const config = buildBrokerProfileConfig(testBroker, {
+      connectionMode: "token",
       token: "token",
-      queryId: "456",
-      endpoint: "",
-      gatewaySetupMode: "auto",
+      accountId: "456",
+      host: "",
     });
 
     expect(config).toMatchObject({
-      connectionMode: "flex",
-      flex: { token: "token", queryId: "456" },
+      connectionMode: "token",
+      credentials: { token: "token", accountId: "456" },
     });
   });
 
   test("preserves saved password fields when editing leaves them blank", () => {
-    const previous = createFlexInstance();
-    const draft = createBrokerProfileDraft(ibkrBroker, previous);
+    const previous = createSavedInstance();
+    const draft = createBrokerProfileDraft(testBroker, previous);
     draft.values.token = "";
 
-    expect(validateBrokerProfileValues(ibkrBroker, draft.values, previous)).toBeNull();
-    expect(buildBrokerProfileConfig(ibkrBroker, draft.values, previous)).toMatchObject({
-      flex: { token: "saved-token" },
+    expect(validateBrokerProfileValues(testBroker, draft.values, previous)).toBeNull();
+    expect(buildBrokerProfileConfig(testBroker, draft.values, previous)).toMatchObject({
+      credentials: { token: "saved-token" },
     });
   });
 
   test("requires password fields for new profiles", () => {
-    expect(validateBrokerProfileValues(ibkrBroker, {
-      connectionMode: "flex",
+    expect(validateBrokerProfileValues(testBroker, {
+      connectionMode: "token",
       token: "",
-      queryId: "123",
-    })).toBe("Flex Token is required.");
+      accountId: "123",
+    })).toBe("API Token is required.");
   });
 
   test("falls back to raw values for generic brokers", () => {

@@ -17,7 +17,6 @@ export interface ResultItem {
    * selection for an untouched query, so plain Enter always runs a real match.
    */
   defaultSelectable?: boolean;
-  pluginToggle?: () => void | Promise<void>;
   secondaryAction?: () => void | Promise<void>;
   checked?: boolean;
   current?: boolean;

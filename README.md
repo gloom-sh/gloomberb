@@ -202,6 +202,7 @@ See [PLUGINS.md](PLUGINS.md) for the plugin API and the shared UI surface availa
 | `Ctrl+W` | Close focused pane |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
 | `Ctrl+Shift+D` | Dock or float focused pane |
+| `Ctrl+Shift+E` | Export focused pane table as CSV |
 | `Ctrl+Shift+L` | Layout actions |
 | `Ctrl+Shift+G` | Tidy windows |
 | `Tab` | Switch panes |

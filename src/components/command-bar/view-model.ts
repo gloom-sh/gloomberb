@@ -21,7 +21,7 @@ export function dedupeById<T extends { id: string }>(items: T[]): T[] {
   return result;
 }
 
-export type CommandBarMode = "default" | "search" | "themes" | "plugins" | "layout" | "direct-command";
+export type CommandBarMode = "default" | "search" | "themes" | "layout" | "direct-command";
 
 export interface CommandBarModeInfo {
   kind: CommandBarMode;
@@ -74,8 +74,6 @@ export function resolveCommandBarMode(query: string, commandList?: Command[]): C
       return { kind: "search", badge: match.prefix, hint: t("Open security details for a ticker") };
     case "theme":
       return { kind: "themes", badge: "THEMES", hint: t("Preview with arrows, Enter to save, Esc to revert") };
-    case "plugins":
-      return { kind: "plugins", badge: "PLUGINS", hint: t("Toggle plugins without leaving the list") };
     case "layout":
       return { kind: "layout", badge: "LAYOUT", hint: t("Organize panes, history, and saved layouts") };
     default:
@@ -133,8 +131,6 @@ export function getEmptyState(mode: CommandBarMode, query: string, searchQuery?:
         return { label: t("Type a ticker symbol"), detail: t("Open security details after resolving a ticker") };
       }
       return { label: tf('No matches for "{query}"', { query: searchQuery }), detail: t("Try a symbol, company name, or exchange variant") };
-    case "plugins":
-      return { label: t("No plugins match"), detail: query.trim() || t("Toggleable plugins will appear here") };
     case "themes":
       return { label: t("No themes match"), detail: query.trim() || t("Installed themes will appear here") };
     case "layout":

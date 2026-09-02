@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import type { ScrollBoxRenderable } from "@opentui/core";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
+import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
@@ -150,6 +151,33 @@ afterEach(async () => {
   }
   setOptionsQuotePrice = null;
   setSharedMarketDataCoordinator(null);
+});
+
+test("exposes exactly one exportable table so CSV export stays wired up", async () => {
+  const provider = createTestDataProvider({
+    getOptionsChain: async () => makeChain([100, 101], 101),
+  });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+
+  await act(async () => {
+    testSetup = await testRender(
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} />,
+      { width: 124, height: 12 },
+    );
+  });
+  await renderSettled();
+
+  // `tableExport: true` on the options pane only works when the pane mounts a single
+  // DataTable; a second concurrent table would silently disable the export action.
+  expect(hasPaneTableExporter(TEST_PANE_ID)).toBe(true);
+
+  const location = await exportPaneTable(TEST_PANE_ID, "options.csv");
+  expect(location).toBe("~/Downloads/options.csv");
+
+  const saved = takeSavedTextFile();
+  expect(saved?.name).toBe("options.csv");
+  expect(saved?.text.split("\n")[0]).toContain("STRIKE");
+  expect(saved?.text).toContain("101");
 });
 
 test("defaults the table around the nearest strike to the current quote", async () => {

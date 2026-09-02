@@ -172,6 +172,7 @@ gloomberb
 | `Ctrl+W` | 关闭聚焦面板 |
 | `Ctrl+Shift+M` | 移动聚焦窗口（`WIN resize` 进入缩放模式） |
 | `Ctrl+Shift+D` | 停靠或浮动聚焦面板 |
+| `Ctrl+Shift+E` | 将聚焦面板的表格导出为 CSV |
 | `Ctrl+Shift+L` | 布局操作 |
 | `Ctrl+Shift+G` | 所有窗口网格对齐 |
 | `Tab` | 切换面板 |

@@ -14,7 +14,7 @@ import { assetDataProvider, newsProvider } from "../capabilities";
 import type { DataProvider } from "../types/data-provider";
 import { debugLog } from "../utils/debug-log";
 import { measurePerf, measurePerfAsync } from "../utils/perf-marks";
-import { setIbkrPortfolioPerformanceResourceStore } from "../plugins/ibkr/portfolio-performance";
+import { setPluginResourceStore } from "../public/broker";
 import type { AppRuntimeServices, AppServicesFactoryOptions } from "./app-service-ports";
 
 const servicesLog = debugLog.createLogger("services");
@@ -41,7 +41,7 @@ export function createAppServices({
   });
   const dbPath = join(config.dataDir, ".gloomberb-cache.db");
   const persistence = measurePerf("startup.services.persistence", () => new AppPersistence(dbPath));
-  setIbkrPortfolioPerformanceResourceStore(persistence.resources);
+  setPluginResourceStore(persistence.resources);
   const tickerRepository = measurePerf("startup.services.ticker-repository", () => new TickerRepository(persistence.tickers));
   const disposeCloudConnectionSources = registerGloomCloudConnectionSources(connectionHealth);
   const providerRouter = measurePerf("startup.services.asset-data-router", () => (
@@ -105,7 +105,7 @@ export function createAppServices({
       newsService.stop();
       pluginRegistry.destroy();
       disposeCloudConnectionSources();
-      setIbkrPortfolioPerformanceResourceStore(null);
+      setPluginResourceStore(null);
       persistence.close();
     },
   };

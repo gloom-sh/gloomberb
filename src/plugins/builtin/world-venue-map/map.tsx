@@ -1,6 +1,6 @@
-import { createElement, useMemo, useRef } from "react";
+import { createElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { CloudWorldVenuePayload } from "../../../api-client";
-import { ChartSurface, Text, useNativeRenderer, useUiHost } from "../../../ui";
+import { Box, ChartSurface, Text, useNativeRenderer, useUiHost } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../../../components/chart/native/bitmap-support";
 import { drawCircle, drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
@@ -9,7 +9,12 @@ import { getLocalPlotPointer, type ChartMouseEvent } from "../../../components/c
 import {
   closestWorldVenueCluster,
   clusterWorldVenues,
+  DEFAULT_WORLD_MAP_VIEWPORT,
+  panWorldMapViewport,
   projectWorldPoint,
+  zoomWorldMapViewport,
+  type WorldMapPoint,
+  type WorldMapViewport,
   type WorldVenueCluster,
 } from "./model";
 import { WORLD_OUTLINES } from "./world-outlines";
@@ -236,17 +241,67 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
   );
 }
 
+const DESKTOP_MAP_ASPECT = 2.12;
+const MAP_PAN_THRESHOLD_PX = 4;
+const MAP_CLICK_HIT_PX = 14;
+const MAP_DOUBLE_CLICK_ZOOM = 1.8;
+
+function wheelZoomFactor(event: WheelEvent): number {
+  const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
+  return Math.exp(-delta * 0.002);
+}
+
+function clientToMapPoint(
+  event: { clientX: number; clientY: number },
+  element: HTMLElement,
+  width: number,
+  height: number,
+): WorldMapPoint {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.width <= 0 ? 0 : ((event.clientX - rect.left) / rect.width) * width,
+    y: rect.height <= 0 ? 0 : ((event.clientY - rect.top) / rect.height) * height,
+  };
+}
+
+function clientDeltaToMapDelta(
+  deltaX: number,
+  deltaY: number,
+  element: HTMLElement,
+  width: number,
+  height: number,
+): WorldMapPoint {
+  const rect = element.getBoundingClientRect();
+  return {
+    x: rect.width <= 0 ? 0 : (deltaX / rect.width) * width,
+    y: rect.height <= 0 ? 0 : (deltaY / rect.height) * height,
+  };
+}
+
 function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const colors = useThemeColors();
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState<WorldMapViewport>(DEFAULT_WORLD_MAP_VIEWPORT);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{
+    pointerId: number;
+    lastX: number;
+    lastY: number;
+    originX: number;
+    originY: number;
+    moved: boolean;
+  } | null>(null);
   // Desktop rows are roughly twice as tall as they are wide. Matching the SVG
   // view box to those pixels lets the contained world projection keep its shape.
-  const plotHeight = props.height * 2.12;
+  const plotHeight = props.height * DESKTOP_MAP_ASPECT;
+  const zoomed = viewport.zoom > 1;
   const clusters = useMemo(
-    () => clusterWorldVenues(props.venues, props.width, plotHeight),
-    [plotHeight, props.venues, props.width],
+    () => clusterWorldVenues(props.venues, props.width, plotHeight, 1, viewport),
+    [plotHeight, props.venues, props.width, viewport],
   );
-
-  const outlinePath = (outline: (typeof WORLD_OUTLINES)[number]) => {
+  const outlinePaths = useMemo(() => WORLD_OUTLINES.map((outline) => {
     let drawing = false;
     let previousLongitude: number | null = null;
     return outline.map(([longitude, latitude]) => {
@@ -255,78 +310,167 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
         previousLongitude = longitude;
         return "";
       }
-      const point = projectWorldPoint(longitude, latitude, props.width, plotHeight);
+      const point = projectWorldPoint(longitude, latitude, props.width, plotHeight, 1, viewport);
       previousLongitude = longitude;
       const command = drawing ? "L" : "M";
       drawing = true;
       return `${command}${point.x.toFixed(2)} ${point.y.toFixed(2)}`;
     }).join(" ");
+  }), [plotHeight, props.width, viewport]);
+
+  const selectAt = useCallback((point: WorldMapPoint, element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    const hit = rect.height <= 0 ? 2.4 : (MAP_CLICK_HIT_PX / rect.height) * plotHeight;
+    const cluster = closestWorldVenueCluster(clusters, point.x, point.y, Math.max(1.6, hit));
+    if (cluster) props.onSelect(clusterVenue(cluster, props.selectedMic));
+  }, [clusters, plotHeight, props]);
+
+  useEffect(() => {
+    const element = surfaceRef.current;
+    if (!element) return;
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const point = clientToMapPoint(event, element, props.width, plotHeight);
+      const factor = wheelZoomFactor(event);
+      setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, factor));
+    };
+    element.addEventListener("wheel", onWheel, { passive: false });
+    return () => element.removeEventListener("wheel", onWheel);
+  }, [plotHeight, props.width]);
+
+  const endDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (!drag.moved) selectAt(clientToMapPoint(event, event.currentTarget, props.width, plotHeight), event.currentTarget);
   };
 
   return (
-    <svg
-      viewBox={`0 0 ${props.width} ${plotHeight}`}
-      width="100%"
-      height="100%"
-      role="img"
-      aria-label="World venue map"
-      style={{ display: "block", background: colors.bg }}
-    >
-      {WORLD_OUTLINES.map((outline, index) => (
-        <path
-          key={index}
-          d={outlinePath(outline)}
-          fill="none"
-          stroke={colors.textDim}
-          strokeOpacity="0.64"
-          strokeWidth="0.55"
-          vectorEffect="non-scaling-stroke"
-        />
-      ))}
-      {clusters.map((cluster) => {
-        const selected = isSelectedCluster(cluster, props.selectedMic);
-        const venue = clusterVenue(cluster, props.selectedMic);
-        const radius = Math.max(0.55, Math.min(1.5, 0.45 + Math.sqrt(cluster.venues.length) * 0.22));
-        return (
-          <g
-            key={cluster.id}
-            role="button"
-            tabIndex={0}
-            aria-label={`${cluster.venues.length} venues near ${venue.city}`}
-            style={{ cursor: "pointer" }}
-            onMouseDown={(event) => {
-              event.stopPropagation();
-              props.onSelect(venue);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") props.onSelect(venue);
-            }}
-          >
-            <title>{`${cluster.venues.length} venue${cluster.venues.length === 1 ? "" : "s"} near ${venue.city}: ${cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}`}</title>
-            <circle
-              cx={cluster.x}
-              cy={cluster.y}
-              r={radius + (selected ? 0.24 : 0)}
-              fill={cluster.isOpen ? colors.positive : colors.textMuted}
-              stroke={selected ? colors.selectedText : colors.bg}
-              strokeWidth={selected ? 0.35 : 0.16}
+    <Box width={props.width} height={props.height} overflow="hidden">
+      <div
+        ref={surfaceRef}
+        data-gloom-role="world-venue-map"
+        data-zoomed={zoomed ? "true" : "false"}
+        role="application"
+        aria-label="World venue map"
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          event.stopPropagation();
+          dragRef.current = {
+            pointerId: event.pointerId,
+            lastX: event.clientX,
+            lastY: event.clientY,
+            originX: event.clientX,
+            originY: event.clientY,
+            moved: false,
+          };
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          const travel = Math.hypot(event.clientX - drag.originX, event.clientY - drag.originY);
+          if (!drag.moved && travel < MAP_PAN_THRESHOLD_PX) return;
+          if (viewportRef.current.zoom <= 1) return;
+          drag.moved = true;
+          const delta = clientDeltaToMapDelta(
+            event.clientX - drag.lastX,
+            event.clientY - drag.lastY,
+            event.currentTarget,
+            props.width,
+            plotHeight,
+          );
+          drag.lastX = event.clientX;
+          drag.lastY = event.clientY;
+          setDragging(true);
+          setViewport((current) => panWorldMapViewport(current, props.width, plotHeight, delta.x, delta.y));
+        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onDoubleClick={(event) => {
+          const point = clientToMapPoint(event, event.currentTarget, props.width, plotHeight);
+          setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, MAP_DOUBLE_CLICK_ZOOM));
+        }}
+        style={{
+          position: "relative",
+          width: "100%",
+          height: "100%",
+          flex: 1,
+          minHeight: 0,
+          overflow: "hidden",
+          touchAction: "none",
+          userSelect: "none",
+          cursor: dragging ? "grabbing" : zoomed ? "grab" : "pointer",
+          background: colors.bg,
+        }}
+      >
+        <svg
+          viewBox={`0 0 ${props.width} ${plotHeight}`}
+          width="100%"
+          height="100%"
+          aria-hidden="true"
+          style={{ display: "block", background: colors.bg, pointerEvents: "none" }}
+        >
+          {outlinePaths.map((path, index) => (
+            <path
+              key={index}
+              d={path}
+              fill="none"
+              stroke={colors.textDim}
+              strokeOpacity="0.64"
+              strokeWidth="0.55"
               vectorEffect="non-scaling-stroke"
             />
-            {cluster.venues.length > 1 ? createElement("text", {
-              x: cluster.x,
-              y: cluster.y,
-              fill: colors.bg,
-              dy: "0.34em",
-              fontSize: Math.max(0.62, Math.min(0.95, radius * 0.78)),
-              fontWeight: "700",
-              fontFamily: "inherit",
-              textAnchor: "middle",
-              pointerEvents: "none",
-            }, cluster.venues.length) : null}
-          </g>
-        );
-      })}
-    </svg>
+          ))}
+          {clusters.map((cluster) => {
+            const selected = isSelectedCluster(cluster, props.selectedMic);
+            const venue = clusterVenue(cluster, props.selectedMic);
+            const radius = Math.max(0.55, Math.min(1.5, 0.45 + Math.sqrt(cluster.venues.length) * 0.22));
+            return (
+              <g
+                key={cluster.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${cluster.venues.length} venues near ${venue.city}`}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    props.onSelect(venue);
+                  }
+                }}
+              >
+                <title>{`${cluster.venues.length} venue${cluster.venues.length === 1 ? "" : "s"} near ${venue.city}: ${cluster.venues.map((item) => `${item.mic} ${item.name}`).join(", ")}`}</title>
+                <circle
+                  cx={cluster.x}
+                  cy={cluster.y}
+                  r={radius + (selected ? 0.24 : 0)}
+                  fill={cluster.isOpen ? colors.positive : colors.textMuted}
+                  stroke={selected ? colors.selectedText : colors.bg}
+                  strokeWidth={selected ? 0.35 : 0.16}
+                  vectorEffect="non-scaling-stroke"
+                />
+                {cluster.venues.length > 1 ? createElement("text", {
+                  x: cluster.x,
+                  y: cluster.y,
+                  fill: colors.bg,
+                  dy: "0.34em",
+                  fontSize: Math.max(0.62, Math.min(0.95, radius * 0.78)),
+                  fontWeight: "700",
+                  fontFamily: "inherit",
+                  textAnchor: "middle",
+                  pointerEvents: "none",
+                }, cluster.venues.length) : null}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </Box>
   );
 }
 

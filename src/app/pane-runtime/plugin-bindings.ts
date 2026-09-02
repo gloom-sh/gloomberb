@@ -5,6 +5,9 @@ import {
 } from "../../components/command-bar/workflow/ops";
 import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
+import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
+import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
+import type { LoadedExternalPlugin } from "../../plugins/loader";
 import { materializeMarketplaceLayout } from "../../layout-marketplace/payload";
 import {
   isPaneInLayout,
@@ -46,10 +49,12 @@ interface BindAppPanePluginRegistryOptions {
   dataProvider: DataProvider;
   detachedPaneId: string | null;
   dispatch: Dispatch<AppAction>;
+  externalPlugins: readonly LoadedExternalPlugin[];
   focusVisiblePane: (paneId: string, layout?: LayoutConfig) => void;
   isDetachedWindow: boolean;
   openPaneSettings: (paneId?: string) => Promise<void>;
   openPinnedTicker: (rawSymbol: string, options?: PinTickerOptions) => Promise<void>;
+  persistConfig: (nextConfig: AppState["config"]) => void;
   persistLayout: (layout: LayoutConfig, options?: { pushHistory?: boolean }) => void;
   placePaneInstance: (
     instance: PaneInstanceConfig,
@@ -76,10 +81,12 @@ export function bindAppPanePluginRegistry({
   dataProvider,
   detachedPaneId,
   dispatch,
+  externalPlugins,
   focusVisiblePane,
   isDetachedWindow,
   openPaneSettings,
   openPinnedTicker,
+  persistConfig,
   persistLayout,
   placePaneInstance,
   placePinnedTickerTarget,
@@ -249,4 +256,59 @@ export function bindAppPanePluginRegistry({
     termHeight: pluginRegistry.getTermSizeFn().height,
     focusedPaneId: state.focusedPaneId,
   }));
+
+  setMarketplaceHost({
+    listInstalled: () => {
+      const disabled = new Set(stateRef.current.config.disabledPlugins ?? []);
+      const externalById = new Map(externalPlugins.map((entry) => [entry.plugin.id, entry]));
+      const installed: InstalledPlugin[] = [];
+
+      for (const plugin of pluginRegistry.allPlugins.values()) {
+        const external = externalById.get(plugin.id);
+        externalById.delete(plugin.id);
+        installed.push({
+          id: plugin.id,
+          name: plugin.name,
+          version: plugin.version,
+          ...(plugin.description ? { description: plugin.description } : {}),
+          toggleable: plugin.toggleable === true,
+          enabled: !disabled.has(plugin.id),
+          source: external ? "external" : "builtin",
+        });
+      }
+
+      // Entries that never registered — a broken import, or a plugin this
+      // renderer cannot run. They are invisible everywhere else, which is
+      // exactly why the marketplace has to show them.
+      for (const entry of externalById.values()) {
+        installed.push({
+          id: entry.plugin.id,
+          name: entry.plugin.name,
+          version: entry.plugin.version ?? "0.0.0",
+          ...(entry.plugin.description ? { description: entry.plugin.description } : {}),
+          toggleable: true,
+          enabled: !disabled.has(entry.plugin.id),
+          source: "external",
+          ...(entry.unsupportedTarget ? { unsupportedTarget: entry.unsupportedTarget } : {}),
+          ...(entry.error ? { loadError: entry.error } : {}),
+        });
+      }
+
+      return installed;
+    },
+    setPluginEnabled: (pluginId, enabled) => {
+      const current = stateRef.current.config;
+      if (!enabled) {
+        for (const paneId of pluginRegistry.getPluginPaneIds(pluginId)) pluginRegistry.hidePane(paneId);
+      }
+      dispatch({ type: "TOGGLE_PLUGIN", pluginId });
+      const disabled = current.disabledPlugins ?? [];
+      persistConfig({
+        ...current,
+        disabledPlugins: enabled
+          ? disabled.filter((entry) => entry !== pluginId)
+          : [...disabled, pluginId],
+      });
+    },
+  });
 }

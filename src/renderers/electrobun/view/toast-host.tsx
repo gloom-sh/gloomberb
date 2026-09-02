@@ -11,6 +11,7 @@ interface ToastEntry {
   title?: string;
   subtitle?: string;
   action?: ToastOptions["action"];
+  secondaryAction?: ToastOptions["secondaryAction"];
 }
 
 let nextToastId = 1;
@@ -31,6 +32,7 @@ export function WebToastHostProvider({ children }: { children: ReactNode }) {
       title: options?.title,
       subtitle: options?.subtitle,
       action: options?.action,
+      secondaryAction: options?.secondaryAction,
     }]);
     if (options?.duration !== 0) {
       setTimeout(() => dismiss(id), options?.duration ?? 4500);
@@ -80,6 +82,22 @@ export function WebToastHostProvider({ children }: { children: ReactNode }) {
                       }}
                     >
                       {toast.action.label}
+                    </button>
+                  )}
+                  {toast.secondaryAction && (
+                    <button
+                      type="button"
+                      className="gloom-toast-action gloom-toast-action-secondary"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        try {
+                          toast.secondaryAction?.onClick();
+                        } finally {
+                          dismiss(toast.id);
+                        }
+                      }}
+                    >
+                      {toast.secondaryAction.label}
                     </button>
                   )}
                   <button

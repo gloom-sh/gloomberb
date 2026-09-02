@@ -25,7 +25,6 @@ import type { DesktopWorkspace } from "./desktop/workspace";
 import { buildDesktopApplicationMenu } from "./application-menu";
 import { applicationMenuCommand } from "./application-menu/click";
 import { registerElectrobunCoreCapabilities } from "./core-capabilities";
-import { setNativeIbkrGatewayModuleLoader } from "../../../plugins/ibkr/gateway/service";
 import {
   runElectrobunDesktopUpdate,
 } from "./desktop/update";
@@ -37,6 +36,7 @@ import {
 } from "./window/frame";
 import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { handleHttpFetch } from "./desktop/http-fetch";
+import { collectExternalPluginBundles, installExternalPlugin } from "./external-plugins";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
 import { scheduleDesktopRelaunch } from "./desktop/relaunch";
 import {
@@ -72,7 +72,6 @@ console.info = (...args) => console.error(...args);
 console.warn = (...args) => console.error(...args);
 
 setConfigStoreHost(nodeConfigStoreHost);
-setNativeIbkrGatewayModuleLoader(() => import("../../../plugins/ibkr/gateway/service/native"));
 
 let currentConfig: AppConfig | null = null;
 let services: AppServices | null = null;
@@ -468,6 +467,10 @@ async function handleBackendRequest(
     case "pluginState.setMany":
     case "pluginState.delete":
       return handleDesktopPluginStateRequest(requireServices().persistence.pluginState, request);
+    case "plugins.listExternal":
+      return collectExternalPluginBundles();
+    case "plugins.install":
+      return installExternalPlugin(request.payload.ref);
     case "host.restart":
     case "host.exit":
     case "host.windowControl":

@@ -83,6 +83,25 @@ export interface DesktopCapabilitySubscribeRequest extends DesktopCapabilityInvo
   subscriptionId: string;
 }
 
+/**
+ * One external plugin, compiled for the view.
+ *
+ * The Bun process owns the filesystem, so it reads and bundles the plugin and
+ * hands the view executable module text. `error` is carried rather than thrown
+ * so a single broken plugin surfaces in the marketplace instead of taking down
+ * the renderer.
+ */
+export interface DesktopExternalPluginBundle {
+  id: string;
+  name: string;
+  version: string;
+  path: string;
+  /** ES module source, absent when `error` is set. */
+  code?: string;
+  targets?: readonly ("cli" | "tui" | "desktop" | "web")[];
+  error?: string;
+}
+
 export interface DesktopBackendRequestMap {
   init: {
     request: { kind?: "main" | "detached"; paneId?: string };
@@ -111,6 +130,8 @@ export interface DesktopBackendRequestMap {
   "pluginState.set": { request: DesktopPluginStateSetEntry; response: null };
   "pluginState.setMany": { request: { entries: DesktopPluginStateSetEntry[] }; response: null };
   "pluginState.delete": { request: { pluginId: string; key: string }; response: null };
+  "plugins.listExternal": { request: null; response: DesktopExternalPluginBundle[] };
+  "plugins.install": { request: { ref: string }; response: { ok: boolean; error?: string } };
   "host.restart": { request: DesktopRestartMessage; response: null };
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };

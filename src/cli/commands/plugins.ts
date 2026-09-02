@@ -2,6 +2,7 @@ import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "fs";
 import { execFileSync } from "child_process";
 import { getPluginsDir } from "../../plugins/loader";
+import { linkHostPackages } from "../../plugins/host-link";
 import {
   cliStyles,
   renderSection,
@@ -50,8 +51,58 @@ function parseGitHubRef(rawRef: string): { url: string; name: string } {
   throw new Error(`Invalid plugin reference: ${ref}. Use user/repo or a GitHub URL.`);
 }
 
-export async function installPlugin(ref: string) {
+const PLUGIN_ID_PATTERN = /^[a-z][a-z0-9-]*$/;
+
+/**
+ * Resolves a bare plugin id through the registry, so `gloomberb install
+ * hackernews` works alongside `gloomberb install owner/repo`. Anything already
+ * shaped like a repo reference is left alone, and a registry lookup failure
+ * falls through to the normal parse error rather than inventing a repo name.
+ */
+async function resolveRegistryRef(rawRef: string): Promise<string> {
+  if (rawRef.includes("/") || rawRef.includes(":") || !PLUGIN_ID_PATTERN.test(rawRef)) return rawRef;
+
+  try {
+    const response = await fetch(`https://plugins.gloom.sh/plugins/${rawRef}.json`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return rawRef;
+    const entry = await response.json() as { repo?: string; bundled?: boolean; name?: string };
+
+    if (entry.bundled) {
+      fail(
+        `"${entry.name ?? rawRef}" ships with Gloomberb.`,
+        `Enable it from the plugin marketplace (PL) instead.`,
+      );
+    }
+    if (typeof entry.repo === "string" && entry.repo.length > 0) {
+    
+      return entry.repo;
+    }
+  } catch {
+    // Offline or registry down: fall through so the plain parse error explains
+    // the accepted formats rather than blaming the network.
+  }
+  return rawRef;
+}
+
+export interface InstallPluginOptions {
+  /**
+   * Suppress child-process output and progress logging. The marketplace pane
+   * installs while the terminal UI owns the screen, and git and bun writing to
+   * stdout corrupts the rendered frame.
+   */
+  quiet?: boolean;
+}
+
+export async function installPlugin(rawRef: string, options: InstallPluginOptions = {}) {
+  const stdio = options.quiet ? "pipe" : "inherit";
+  const say = (message: string) => {
+    if (!options.quiet) console.log(message);
+  };
   ensurePluginsDir();
+  const ref = await resolveRegistryRef(rawRef);
   const { url, name } = parseGitHubRef(ref);
   const targetDir = join(PLUGINS_DIR, name);
 
@@ -59,11 +110,11 @@ export async function installPlugin(ref: string) {
     fail(`Plugin "${name}" already exists.`, `Use "gloomberb update ${name}" to refresh it.`);
   }
 
-  console.log(cliStyles.accent(`Installing ${name}`));
-  console.log(cliStyles.muted(url));
+  say(cliStyles.accent(`Installing ${name}`));
+  say(cliStyles.muted(url));
 
   try {
-    execFileSync("git", ["clone", "--depth", "1", url, targetDir], { stdio: "inherit" });
+    execFileSync("git", ["clone", "--depth", "1", url, targetDir], { stdio });
   } catch {
     rmSync(targetDir, { recursive: true, force: true });
     fail(`Failed to clone ${url}.`);
@@ -71,11 +122,24 @@ export async function installPlugin(ref: string) {
 
   const pkgPath = join(targetDir, "package.json");
   if (existsSync(pkgPath)) {
-    console.log(cliStyles.muted("Installing plugin dependencies..."));
+    say(cliStyles.muted("Installing plugin dependencies..."));
     try {
-      execFileSync("bun", ["install"], { cwd: targetDir, stdio: "inherit" });
+      // --production: plugin repos depend on `gloomberb` as a devDependency so
+      // their own CI can typecheck against the real API. At runtime the host is
+      // symlinked in instead, and pulling a second full copy here would both
+      // waste a lot of disk and risk a duplicate React.
+      execFileSync("bun", ["install", "--production"], { cwd: targetDir, stdio });
     } catch {
-      console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
+      if (!options.quiet) console.error(cliStyles.warning("Warning: failed to install plugin dependencies."));
+    }
+  }
+
+  // After `bun install`, which prunes links it does not know about.
+  const link = linkHostPackages(targetDir);
+  if (link.error) {
+    if (!options.quiet) {
+      console.error(cliStyles.warning(`Warning: could not link the Gloomberb runtime (${link.error}).`));
+      console.error(cliStyles.muted("The plugin's \"gloomberb/*\" imports will not resolve."));
     }
   }
 
@@ -98,13 +162,13 @@ export async function installPlugin(ref: string) {
       const mod = await import(entryFile);
       const plugin = mod.default ?? mod.plugin;
       if (plugin?.id && plugin?.name) {
-        console.log(cliStyles.success(`Installed ${plugin.name} v${plugin.version || "0.0.0"}`));
+        say(cliStyles.success(`Installed ${plugin.name} v${plugin.version || "0.0.0"}`));
         return;
       }
     }
-    console.log(cliStyles.warning("Installed files, but no valid GloomPlugin export was found."));
+    say(cliStyles.warning("Installed files, but no valid GloomPlugin export was found."));
   } catch (err) {
-    console.log(cliStyles.warning(`Plugin validation failed: ${err}`));
+    say(cliStyles.warning(`Plugin validation failed: ${err}`));
   }
 }
 
@@ -141,8 +205,9 @@ export async function updatePlugins(name?: string) {
       execFileSync("git", ["pull", "--ff-only"], { cwd: targetDir, stdio: "inherit" });
       const pkgPath = join(targetDir, "package.json");
       if (existsSync(pkgPath)) {
-        execFileSync("bun", ["install"], { cwd: targetDir, stdio: "inherit" });
+        execFileSync("bun", ["install", "--production"], { cwd: targetDir, stdio: "inherit" });
       }
+      linkHostPackages(targetDir);
     } catch {
       console.error(cliStyles.danger(`Failed to update ${dir}.`));
     }

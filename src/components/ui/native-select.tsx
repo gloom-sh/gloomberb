@@ -3,6 +3,7 @@
 import { type CSSProperties } from "react";
 import { Box } from "../../ui";
 import { blendHex, colors } from "../../theme/colors";
+import { WEB_CELL_HEIGHT } from "../../theme/font-scale";
 
 export type NativeSelectElement = HTMLSelectElement & { showPicker?: () => void };
 
@@ -18,6 +19,11 @@ export interface NativeSelectProps {
   options: NativeSelectOption[];
   width?: number | string;
   height?: number;
+  /**
+   * `field` is the settings-dialog control. `inline` drops the box so a dense
+   * pane row reads as text while staying a real, keyboard-accessible select.
+   */
+  variant?: "field" | "inline";
   includeUnsetOption?: boolean;
   selectRef?: (element: NativeSelectElement | null) => void;
   onFocus?: () => void;
@@ -41,23 +47,27 @@ export function openNativeSelect(element: NativeSelectElement | null | undefined
 export function NativeSelect({
   value,
   options,
-  width = 184,
-  height = 28,
+  width,
+  height,
+  variant = "field",
   includeUnsetOption = false,
   selectRef,
   onFocus,
   onChange,
 }: NativeSelectProps) {
+  const inline = variant === "inline";
   const hasCurrentValue = options.some((option) => option.value === value);
+  const resolvedWidth = width ?? (inline ? "auto" : 184);
+  const resolvedHeight = height ?? (inline ? WEB_CELL_HEIGHT : 28);
   const style: CSSProperties = {
-    width,
-    height,
+    width: resolvedWidth,
+    height: resolvedHeight,
     color: colors.text,
-    backgroundColor: blendHex(colors.panel, colors.textBright, 0.06),
-    border: `1px solid ${colors.border}`,
-    borderRadius: 6,
-    padding: "0 8px",
-    boxShadow: `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
+    backgroundColor: inline ? "transparent" : blendHex(colors.panel, colors.textBright, 0.06),
+    border: inline ? "none" : `1px solid ${colors.border}`,
+    borderRadius: inline ? 0 : 6,
+    padding: inline ? 0 : "0 8px",
+    boxShadow: inline ? "none" : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
     cursor: "pointer",
     font: "inherit",
     letterSpacing: 0,
@@ -68,7 +78,7 @@ export function NativeSelect({
 
   return (
     <Box
-      height={`${height}px`}
+      height={`${resolvedHeight}px`}
       flexDirection="row"
       alignItems="center"
       onMouseDown={(event: any) => {

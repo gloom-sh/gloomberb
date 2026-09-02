@@ -1,13 +1,17 @@
 import { createContext, useContext, type ComponentType, type ReactNode } from "react";
 
+export interface ToastAction {
+  label: string;
+  onClick(): void;
+}
+
 export interface ToastOptions {
   title?: string;
   subtitle?: string;
   duration?: number;
-  action?: {
-    label: string;
-    onClick(): void;
-  };
+  action?: ToastAction;
+  /** Rendered next to `action`. Use for a dismissing counterpart such as snooze. */
+  secondaryAction?: ToastAction;
 }
 
 export interface ToastHost {
