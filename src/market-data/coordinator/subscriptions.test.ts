@@ -5,6 +5,11 @@ import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { Quote } from "../../types/financials";
 import type { DataProvider, QuoteSubscriptionTarget } from "../../types/data-provider";
+import {
+  QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS,
+  QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS,
+  type QuoteSubscriptionRequest,
+} from "./quotes";
 
 function createProvider(): {
   provider: DataProvider;
@@ -75,47 +80,220 @@ describe("MarketDataCoordinator key subscriptions", () => {
   });
 
   test("keeps the highest-priority target when duplicate surfaces subscribe", () => {
-    const subscriptions: QuoteSubscriptionTarget[][] = [];
-    let disposals = 0;
-    const provider = createTestDataProvider({
-      id: "test-provider",
-      subscribeQuotes: (targets) => {
-        subscriptions.push(targets);
-        return () => {
-          disposals += 1;
-        };
-      },
-    });
-    const coordinator = new MarketDataCoordinator(provider);
-    const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
+    jest.useFakeTimers();
+    try {
+      const subscriptions: QuoteSubscriptionTarget[][] = [];
+      let disposals = 0;
+      const provider = createTestDataProvider({
+        id: "test-provider",
+        subscribeQuotes: (targets) => {
+          subscriptions.push(targets);
+          return () => {
+            disposals += 1;
+          };
+        },
+      });
+      const coordinator = new MarketDataCoordinator(provider);
+      const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
 
-    const unsubscribeDetail = coordinator.subscribeQuotes([{
-      instrument,
-      priority: { surface: "detail", visible: true, selected: true, weight: 100 },
-    }]);
-    coordinator.subscribeQuotes([{
-      instrument,
-      priority: { surface: "portfolio", visible: false, selected: false, weight: 10 },
-    }]);
+      const unsubscribeDetail = coordinator.subscribeQuotes([{
+        instrument,
+        priority: { surface: "detail", visible: true, selected: true, weight: 100 },
+      }]);
+      const unsubscribePortfolio = coordinator.subscribeQuotes([{
+        instrument,
+        priority: { surface: "portfolio", visible: false, selected: false, weight: 10 },
+      }]);
 
-    expect(subscriptions).toHaveLength(1);
-    expect(subscriptions[0]?.[0]).toMatchObject({
-      surface: "detail",
-      visible: true,
-      selected: true,
-      weight: 100,
-    });
+      expect(subscriptions).toHaveLength(1);
+      expect(subscriptions[0]?.[0]).toMatchObject({
+        surface: "detail",
+        visible: true,
+        selected: true,
+        weight: 100,
+      });
 
-    unsubscribeDetail();
+      unsubscribeDetail();
+      expect(subscriptions).toHaveLength(1);
 
-    expect(subscriptions).toHaveLength(2);
-    expect(disposals).toBe(1);
-    expect(subscriptions[1]?.[0]).toMatchObject({
-      surface: "portfolio",
-      visible: false,
-      selected: false,
-      weight: 10,
-    });
+      jest.advanceTimersByTime(QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS);
+      expect(subscriptions).toHaveLength(2);
+      expect(disposals).toBe(1);
+      expect(subscriptions[1]?.[0]).toMatchObject({
+        surface: "portfolio",
+        visible: false,
+        selected: false,
+        weight: 10,
+      });
+
+      unsubscribePortfolio();
+      jest.runAllTimers();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("coalesces priority updates and overlaps the upstream replacement", () => {
+    jest.useFakeTimers();
+    try {
+      const events: string[] = [];
+      const subscriptions: QuoteSubscriptionTarget[][] = [];
+      const provider = createTestDataProvider({
+        id: "test-provider",
+        subscribeQuotes: (targets) => {
+          const subscriptionId = subscriptions.length + 1;
+          subscriptions.push(targets);
+          events.push(`subscribe:${subscriptionId}`);
+          return () => events.push(`dispose:${subscriptionId}`);
+        },
+      });
+      const coordinator = new MarketDataCoordinator(provider);
+      const instruments = ["AAPL", "MSFT", "NVDA"].map((symbol) => ({
+        symbol,
+        exchange: "NASDAQ",
+      }));
+      const requests = (
+        selectedSymbol: string,
+        selectedSurface: "portfolio" | "detail" = "portfolio",
+      ): QuoteSubscriptionRequest[] => instruments.map((instrument) => ({
+        instrument,
+        priority: {
+          surface: instrument.symbol === selectedSymbol ? selectedSurface : "portfolio",
+          visible: instrument.symbol === selectedSymbol,
+          selected: instrument.symbol === selectedSymbol,
+          weight: instrument.symbol === selectedSymbol ? 100 : 10,
+        },
+      }));
+
+      const subscription = coordinator.subscribeQuotes(requests("AAPL"));
+      subscription.update(requests("MSFT"));
+      subscription.update(requests("NVDA", "detail"));
+
+      jest.advanceTimersByTime(QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS - 1);
+      expect(subscriptions).toHaveLength(1);
+      expect(events).toEqual(["subscribe:1"]);
+
+      jest.advanceTimersByTime(1);
+      expect(subscriptions).toHaveLength(2);
+      expect(subscriptions[1]?.find((target) => target.symbol === "NVDA")).toMatchObject({
+        surface: "detail",
+        visible: true,
+        selected: true,
+        weight: 100,
+      });
+      expect(events).toEqual(["subscribe:1", "subscribe:2", "dispose:1"]);
+
+      subscription();
+      jest.runAllTimers();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("applies membership and routing changes immediately", () => {
+    jest.useFakeTimers();
+    try {
+      const subscriptions: QuoteSubscriptionTarget[][] = [];
+      let disposals = 0;
+      const provider = createTestDataProvider({
+        id: "test-provider",
+        subscribeQuotes: (targets) => {
+          subscriptions.push(targets);
+          return () => { disposals += 1; };
+        },
+      });
+      const coordinator = new MarketDataCoordinator(provider);
+      const aapl = {
+        symbol: "AAPL",
+        exchange: "NASDAQ",
+        brokerId: "ibkr",
+        brokerInstanceId: "ibkr-work",
+        instrument: {
+          brokerId: "ibkr",
+          brokerInstanceId: "ibkr-work",
+          conId: 1001,
+          symbol: "AAPL",
+        },
+      };
+      const msft = { symbol: "MSFT", exchange: "NASDAQ" };
+      const subscription = coordinator.subscribeQuotes([{
+        instrument: aapl,
+        priority: { route: "provider", surface: "portfolio" },
+      }]);
+
+      subscription.update([
+        { instrument: aapl, priority: { route: "provider", surface: "portfolio" } },
+        { instrument: msft, priority: { route: "provider", surface: "portfolio" } },
+      ]);
+      expect(subscriptions).toHaveLength(2);
+      expect(disposals).toBe(1);
+      expect(subscriptions[1]?.map((target) => target.symbol).sort()).toEqual(["AAPL", "MSFT"]);
+
+      subscription.update([
+        { instrument: aapl, priority: { route: "broker", surface: "detail" } },
+        { instrument: msft, priority: { route: "provider", surface: "portfolio" } },
+      ]);
+      expect(subscriptions).toHaveLength(3);
+      expect(disposals).toBe(2);
+      expect(subscriptions[2]?.find((target) => target.symbol === "AAPL")).toMatchObject({
+        route: "broker",
+        surface: "detail",
+        context: {
+          brokerId: "ibkr",
+          brokerInstanceId: "ibkr-work",
+          instrument: { brokerId: "ibkr", conId: 1001, symbol: "AAPL" },
+        },
+      });
+
+      subscription();
+      jest.runAllTimers();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test("keeps an updated handle callable and honors removal grace on dispose", () => {
+    jest.useFakeTimers();
+    try {
+      const subscriptions: QuoteSubscriptionTarget[][] = [];
+      let disposals = 0;
+      const provider = createTestDataProvider({
+        id: "test-provider",
+        subscribeQuotes: (targets) => {
+          subscriptions.push(targets);
+          return () => { disposals += 1; };
+        },
+      });
+      const coordinator = new MarketDataCoordinator(provider);
+      const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
+      const subscription = coordinator.subscribeQuotes([{
+        instrument,
+        priority: { surface: "portfolio", selected: false, weight: 10 },
+      }]);
+
+      expect(typeof subscription).toBe("function");
+      expect(typeof subscription.update).toBe("function");
+      subscription.update([{
+        instrument,
+        priority: { surface: "detail", selected: true, weight: 100 },
+      }]);
+      jest.advanceTimersByTime(QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS);
+      expect(subscriptions).toHaveLength(2);
+      expect(disposals).toBe(1);
+
+      subscription();
+      subscription.update([{ instrument: { symbol: "MSFT", exchange: "NASDAQ" } }]);
+      subscription();
+      jest.advanceTimersByTime(QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS - 1);
+      expect(subscriptions).toHaveLength(2);
+      expect(disposals).toBe(1);
+
+      jest.advanceTimersByTime(1);
+      expect(subscriptions).toHaveLength(2);
+      expect(disposals).toBe(2);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("replaces a capped target window without retaining pending removals", () => {

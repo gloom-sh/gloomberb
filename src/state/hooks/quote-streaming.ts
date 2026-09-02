@@ -4,7 +4,7 @@ import type { QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { Quote } from "../../types/financials";
 import { debugLog } from "../../utils/debug-log";
 import { normalizeSymbol } from "../../utils/exchanges";
-import { getSharedMarketDataCoordinator } from "../../market-data/coordinator";
+import { getSharedMarketDataCoordinator, type MarketDataCoordinator } from "../../market-data/coordinator";
 import { useQuoteEntries } from "../../market-data/hooks";
 import type { InstrumentRef } from "../../market-data/request-types";
 import type { QueryEntry } from "../../market-data/result-types";
@@ -33,12 +33,11 @@ export function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscription
   };
 }
 
-export function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget): string {
+export function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget): string {
   const contractKey = target.context?.instrument?.conId
     ?? target.context?.instrument?.localSymbol
     ?? target.context?.instrument?.symbol
     ?? "";
-  const weight = Number.isFinite(target.weight) ? String(target.weight) : "";
   return [
     target.symbol,
     target.exchange ?? "",
@@ -46,11 +45,49 @@ export function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget)
     target.context?.brokerInstanceId ?? "",
     contractKey,
     target.route ?? "auto",
+  ].join("|");
+}
+
+export function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget): string {
+  const weight = Number.isFinite(target.weight) ? String(target.weight) : "";
+  return [
+    buildQuoteStreamSubscriptionIdentityKey(target),
     target.surface ?? "",
     target.visible ? "visible" : "",
     target.selected ? "selected" : "",
     weight,
   ].join("|");
+}
+
+type CoordinatorQuoteTargets = Parameters<MarketDataCoordinator["subscribeQuotes"]>[0];
+type UpdateableQuoteSubscription = (() => void) & {
+  update?: (targets: CoordinatorQuoteTargets) => void;
+};
+
+interface ActiveQuoteSubscription {
+  identityKey: string;
+  subscriptionKey: string;
+  count: number;
+  dispose: UpdateableQuoteSubscription;
+}
+
+function toCoordinatorQuoteTargets(targets: QuoteSubscriptionTarget[]): CoordinatorQuoteTargets {
+  return targets.map((target) => ({
+    instrument: {
+      symbol: target.symbol,
+      exchange: target.exchange,
+      brokerId: target.context?.brokerId,
+      brokerInstanceId: target.context?.brokerInstanceId,
+      instrument: target.context?.instrument ?? null,
+    },
+    priority: {
+      route: target.route,
+      surface: target.surface,
+      visible: target.visible,
+      selected: target.selected,
+      weight: target.weight,
+    },
+  }));
 }
 
 export function useQuoteStreaming(
@@ -70,48 +107,86 @@ export function useQuoteStreaming(
   const sortedEntries = [...normalizedEntries.entries()].sort(([left], [right]) => left.localeCompare(right));
   const normalizedTargets = sortedEntries.map(([, target]) => target);
   const subscriptionKey = sortedEntries.map(([key]) => key).join("|");
+  const identityKey = [...new Set(normalizedTargets.map(buildQuoteStreamSubscriptionIdentityKey))]
+    .sort()
+    .join("\u001f");
+  const coordinatorTargets = toCoordinatorQuoteTargets(normalizedTargets);
+  const latestSubscriptionRef = useRef({
+    identityKey,
+    subscriptionKey,
+    targets: coordinatorTargets,
+  });
+  latestSubscriptionRef.current = {
+    identityKey,
+    subscriptionKey,
+    targets: coordinatorTargets,
+  };
+  const activeSubscriptionRef = useRef<ActiveQuoteSubscription | null>(null);
 
   useEffect(() => {
+    const latest = latestSubscriptionRef.current;
     if (!enabled || !appActive) {
-      if (normalizedTargets.length > 0) {
+      if (latest.targets.length > 0) {
         quoteStreamLog.info("skipping subscription", {
           reason: enabled ? "inactive" : "disabled",
-          targets: subscriptionKey,
+          targets: latest.subscriptionKey,
         });
       }
       return;
     }
-    if (!coordinator || normalizedTargets.length === 0) return;
+    if (!coordinator || latest.targets.length === 0) return;
     quoteStreamLog.info("subscribe", {
       providerId: "market-data",
-      count: normalizedTargets.length,
-      targets: subscriptionKey,
+      count: latest.targets.length,
+      targets: latest.subscriptionKey,
     });
-    const unsubscribe = coordinator.subscribeQuotes(normalizedTargets.map((target) => ({
-      instrument: {
-        symbol: target.symbol,
-        exchange: target.exchange,
-        brokerId: target.context?.brokerId,
-        brokerInstanceId: target.context?.brokerInstanceId,
-        instrument: target.context?.instrument ?? null,
-      },
-      priority: {
-        route: target.route,
-        surface: target.surface,
-        visible: target.visible,
-        selected: target.selected,
-        weight: target.weight,
-      },
-    })));
+    const active: ActiveQuoteSubscription = {
+      identityKey: latest.identityKey,
+      subscriptionKey: latest.subscriptionKey,
+      count: latest.targets.length,
+      dispose: coordinator.subscribeQuotes(latest.targets) as UpdateableQuoteSubscription,
+    };
+    activeSubscriptionRef.current = active;
     return () => {
+      if (activeSubscriptionRef.current === active) {
+        activeSubscriptionRef.current = null;
+      }
       quoteStreamLog.info("unsubscribe", {
         providerId: "market-data",
-        count: normalizedTargets.length,
-        targets: subscriptionKey,
+        count: active.count,
+        targets: active.subscriptionKey,
       });
-      unsubscribe?.();
+      active.dispose();
     };
-  }, [appActive, coordinator, enabled, subscriptionKey]);
+  }, [appActive, coordinator, enabled, identityKey]);
+
+  useEffect(() => {
+    if (!enabled || !appActive || !coordinator) return;
+    const active = activeSubscriptionRef.current;
+    const latest = latestSubscriptionRef.current;
+    if (
+      !active
+      || active.identityKey !== latest.identityKey
+      || active.subscriptionKey === latest.subscriptionKey
+    ) {
+      return;
+    }
+
+    quoteStreamLog.info("update subscription", {
+      providerId: "market-data",
+      count: latest.targets.length,
+      targets: latest.subscriptionKey,
+    });
+    if (typeof active.dispose.update === "function") {
+      active.dispose.update(latest.targets);
+    } else {
+      const previousDispose = active.dispose;
+      active.dispose = coordinator.subscribeQuotes(latest.targets) as UpdateableQuoteSubscription;
+      previousDispose();
+    }
+    active.subscriptionKey = latest.subscriptionKey;
+    active.count = latest.targets.length;
+  }, [appActive, coordinator, enabled, identityKey, subscriptionKey]);
 }
 
 export function useQuoteUpdates(
@@ -195,8 +270,9 @@ export function useLiveQuoteEntries(
     const normalized = normalizeQuoteStreamSubscriptionTarget(target);
     return normalized ? [normalized] : [];
   });
-  const targetKey = normalizedTargets
-    .map((target) => buildQuoteStreamSubscriptionKey(target))
+  const targetKey = [...new Set(
+    normalizedTargets.map((target) => buildQuoteStreamSubscriptionIdentityKey(target)),
+  )]
     .sort()
     .join("\u001f");
   const liveStreaming = options.liveStreaming !== false;

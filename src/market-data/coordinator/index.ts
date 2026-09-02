@@ -55,7 +55,8 @@ import {
   loadQuoteBatchEntries,
   loadQuoteEntry,
   QuoteSubscriptionManager,
-  type QuoteSubscriptionPriority,
+  type QuoteSubscriptionHandle,
+  type QuoteSubscriptionRequest,
 } from "./quotes";
 
 export class MarketDataCoordinator {
@@ -361,7 +362,7 @@ export class MarketDataCoordinator {
     });
   }
 
-  subscribeQuotes(targets: Array<{ instrument: InstrumentRef; priority?: QuoteSubscriptionPriority }>): () => void {
+  subscribeQuotes(targets: QuoteSubscriptionRequest[]): QuoteSubscriptionHandle {
     return this.quoteSubscriptionManager.subscribe(targets);
   }
 

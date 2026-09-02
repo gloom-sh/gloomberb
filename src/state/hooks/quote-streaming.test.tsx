@@ -10,6 +10,7 @@ import { useLiveQuoteEntries, useQuoteStreaming, useQuoteUpdates } from "./quote
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let bumpHarness: (() => void) | null = null;
+let toggleStreamingPriority: (() => void) | null = null;
 let togglePollingPriority: (() => void) | null = null;
 let updateLiveTargets: ((symbol: string) => void) | null = null;
 let updateFreshnessScope: ((scope: string) => void) | null = null;
@@ -25,6 +26,31 @@ function QuoteStreamingHarness() {
   }]);
 
   return <text>{String(tick)}</text>;
+}
+
+function QuoteStreamingPriorityHarness() {
+  const [selected, setSelected] = useState(false);
+  toggleStreamingPriority = () => setSelected((current) => !current);
+  useQuoteStreaming([{
+    symbol: "AAPL",
+    exchange: "NASDAQ",
+    context: {
+      brokerId: "ibkr",
+      brokerInstanceId: "ibkr-work",
+      instrument: {
+        brokerId: "ibkr",
+        brokerInstanceId: "ibkr-work",
+        conId: 1001,
+        symbol: "AAPL",
+      },
+    },
+    route: "provider",
+    surface: selected ? "detail" : "portfolio",
+    visible: true,
+    selected,
+    weight: selected ? 100 : 10,
+  }]);
+  return <text>{selected ? "selected" : "idle"}</text>;
 }
 
 function QuotePollingHarness() {
@@ -82,6 +108,7 @@ afterEach(async () => {
     testSetup = undefined;
   }
   bumpHarness = null;
+  toggleStreamingPriority = null;
   togglePollingPriority = null;
   updateLiveTargets = null;
   updateFreshnessScope = null;
@@ -125,6 +152,72 @@ describe("useQuoteStreaming", () => {
 
     expect(subscribeCalls).toBe(1);
     expect(unsubscribeCalls).toBe(0);
+  });
+
+  test("updates priorities without replacing the hook subscription", async () => {
+    type CoordinatorTargets = Parameters<MarketDataCoordinator["subscribeQuotes"]>[0];
+    const initialTargets: CoordinatorTargets[] = [];
+    const updates: CoordinatorTargets[] = [];
+    let unsubscribeCalls = 0;
+    const coordinator = {
+      subscribeQuotes: (targets: CoordinatorTargets) => {
+        initialTargets.push(targets);
+        return Object.assign(
+          () => { unsubscribeCalls += 1; },
+          { update: (nextTargets: CoordinatorTargets) => updates.push(nextTargets) },
+        );
+      },
+    };
+    setSharedMarketDataCoordinator(coordinator as unknown as MarketDataCoordinator);
+
+    testSetup = await testRender(<QuoteStreamingPriorityHarness />, {
+      width: 20,
+      height: 1,
+    });
+    await act(async () => testSetup!.renderOnce());
+
+    expect(initialTargets).toHaveLength(1);
+    expect(initialTargets[0]?.[0]).toMatchObject({
+      instrument: {
+        symbol: "AAPL",
+        exchange: "NASDAQ",
+        brokerId: "ibkr",
+        brokerInstanceId: "ibkr-work",
+        instrument: { conId: 1001, symbol: "AAPL" },
+      },
+      priority: {
+        route: "provider",
+        surface: "portfolio",
+        visible: true,
+        selected: false,
+        weight: 10,
+      },
+    });
+
+    await act(async () => {
+      toggleStreamingPriority?.();
+      await Promise.resolve();
+      await testSetup!.renderOnce();
+    });
+
+    expect(initialTargets).toHaveLength(1);
+    expect(unsubscribeCalls).toBe(0);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.[0]).toMatchObject({
+      instrument: {
+        symbol: "AAPL",
+        brokerId: "ibkr",
+        brokerInstanceId: "ibkr-work",
+        instrument: { conId: 1001 },
+      },
+      priority: {
+        route: "provider",
+        surface: "detail",
+        visible: true,
+        selected: true,
+        weight: 100,
+      },
+    });
   });
 
   test("uses forced polling instead of a subscription when live streaming is disabled", async () => {

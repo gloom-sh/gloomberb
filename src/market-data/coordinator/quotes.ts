@@ -19,6 +19,21 @@ import {
 
 export type QuoteSubscriptionPriority = Pick<QuoteSubscriptionTarget, "route" | "surface" | "visible" | "selected" | "weight">;
 
+export interface QuoteSubscriptionRequest {
+  instrument: InstrumentRef;
+  priority?: QuoteSubscriptionPriority;
+}
+
+/**
+ * Remains callable for compatibility with the original disposer API. Updating
+ * the handle lets long-lived consumers change priorities without unregistering
+ * their whole target set first.
+ */
+export interface QuoteSubscriptionHandle {
+  (): void;
+  update(targets: QuoteSubscriptionRequest[]): void;
+}
+
 export interface QuoteSubscriptionEntry {
   target: QuoteSubscriptionTarget;
   targets: Map<number, QuoteSubscriptionTarget>;
@@ -30,7 +45,8 @@ interface PendingStreamQuote {
   quote: Quote;
 }
 
-const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
+export const QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS = 250;
+export const QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS = 100;
 
 const STREAM_QUOTE_FIELDS: Array<keyof Quote> = [
   "symbol",
@@ -198,101 +214,192 @@ export class QuoteSubscriptionManager {
   private readonly pendingStreamQuotes = new Map<string, PendingStreamQuote>();
   private lastStreamQuoteBatchAppliedAt: number | null = null;
   private pendingStreamQuoteTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingPriorityUpdateTimer: ReturnType<typeof setTimeout> | null = null;
   private nextQuoteSubscriptionId = 1;
   private quoteSubscriptionDispose: (() => void) | null = null;
   private quoteSubscriptionSignature = "";
+  private quoteSubscriptionRoutingSignature = "";
 
   constructor(
     private readonly dataProvider: DataProvider,
     private readonly applyQuote: (instrument: InstrumentRef, quote: Quote) => void,
   ) {}
 
-  subscribe(targets: Array<{ instrument: InstrumentRef; priority?: QuoteSubscriptionPriority }>): () => void {
-    if (!this.dataProvider.subscribeQuotes || targets.length === 0) {
-      return () => {};
+  subscribe(targets: QuoteSubscriptionRequest[]): QuoteSubscriptionHandle {
+    if (!this.dataProvider.subscribeQuotes) {
+      return this.createNoopSubscription();
     }
 
     const subscriptionId = this.nextQuoteSubscriptionId++;
-    const subscribedKeys = new Set<string>();
-    for (const { instrument, priority } of targets) {
-      const key = buildQuoteKey(instrument);
-      subscribedKeys.add(key);
-      const target = quoteTargetFromInstrument(instrument, priority);
-      const existing = this.quoteSubscriptions.get(key);
-      if (existing) {
-        existing.targets.set(subscriptionId, target);
-        existing.target = mergeQuoteSubscriptionTargets(existing.targets.values()) ?? target;
-        if (existing.removeTimer) {
-          clearTimeout(existing.removeTimer);
-          existing.removeTimer = null;
-        }
-        continue;
-      }
-      this.quoteSubscriptions.set(key, {
-        target,
-        targets: new Map([[subscriptionId, target]]),
-        removeTimer: null,
-      });
-    }
-    this.flush();
-
-    return () => {
-      for (const key of subscribedKeys) {
-        const existing = this.quoteSubscriptions.get(key);
-        if (!existing) continue;
-        existing.targets.delete(subscriptionId);
-        const mergedTarget = mergeQuoteSubscriptionTargets(existing.targets.values());
-        if (mergedTarget) {
-          existing.target = mergedTarget;
-          this.flush();
-          continue;
-        }
-        if (existing.removeTimer) continue;
-        this.clearPendingStreamQuote(key);
-        existing.removeTimer = setTimeout(() => {
-          const current = this.quoteSubscriptions.get(key);
-          if (!current || current.targets.size > 0) return;
-          this.quoteSubscriptions.delete(key);
-          this.clearPendingStreamQuote(key);
-          this.flush();
-        }, QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS);
-      }
+    let subscribedKeys = new Set<string>();
+    let disposed = false;
+    const update = (nextTargets: QuoteSubscriptionRequest[]) => {
+      if (disposed) return;
+      subscribedKeys = this.updateSubscriptionTargets(subscriptionId, subscribedKeys, nextTargets);
     };
+    const dispose = (() => {
+      if (disposed) return;
+      disposed = true;
+      subscribedKeys = this.updateSubscriptionTargets(subscriptionId, subscribedKeys, []);
+    }) as QuoteSubscriptionHandle;
+    dispose.update = update;
+    update(targets);
+    return dispose;
   }
 
-  private flush(): void {
+  private createNoopSubscription(): QuoteSubscriptionHandle {
+    const dispose = (() => {}) as QuoteSubscriptionHandle;
+    dispose.update = () => {};
+    return dispose;
+  }
+
+  private updateSubscriptionTargets(
+    subscriptionId: number,
+    subscribedKeys: Set<string>,
+    targets: QuoteSubscriptionRequest[],
+  ): Set<string> {
+    const nextTargets = new Map<string, QuoteSubscriptionTarget>();
+    for (const { instrument, priority } of targets) {
+      const key = buildQuoteKey(instrument);
+      const target = quoteTargetFromInstrument(instrument, priority);
+      const duplicate = nextTargets.get(key);
+      nextTargets.set(
+        key,
+        duplicate
+          ? mergeQuoteSubscriptionTargets([duplicate, target]) ?? target
+          : target,
+      );
+    }
+
+    const nextKeys = new Set(nextTargets.keys());
+    const affectedKeys = new Set([...subscribedKeys, ...nextKeys]);
+    let shouldFlush = false;
+    for (const key of affectedKeys) {
+      const nextTarget = nextTargets.get(key);
+      let entry = this.quoteSubscriptions.get(key);
+      if (nextTarget) {
+        if (!entry) {
+          entry = {
+            target: nextTarget,
+            targets: new Map(),
+            removeTimer: null,
+          };
+          this.quoteSubscriptions.set(key, entry);
+        }
+        entry.targets.set(subscriptionId, nextTarget);
+        if (entry.removeTimer) {
+          clearTimeout(entry.removeTimer);
+          entry.removeTimer = null;
+        }
+      } else if (entry) {
+        entry.targets.delete(subscriptionId);
+      }
+      if (!entry) continue;
+
+      const mergedTarget = mergeQuoteSubscriptionTargets(entry.targets.values());
+      if (mergedTarget) {
+        entry.target = mergedTarget;
+        shouldFlush = true;
+        continue;
+      }
+      this.scheduleSubscriptionRemoval(key, entry);
+    }
+    if (shouldFlush) {
+      this.flush();
+    } else if (![...this.quoteSubscriptions.values()].some((entry) => entry.targets.size > 0)) {
+      this.cancelPendingPriorityUpdate();
+    }
+    return nextKeys;
+  }
+
+  private scheduleSubscriptionRemoval(key: string, entry: QuoteSubscriptionEntry): void {
+    if (entry.removeTimer) return;
+    this.clearPendingStreamQuote(key);
+    entry.removeTimer = setTimeout(() => {
+      const current = this.quoteSubscriptions.get(key);
+      if (!current || current.targets.size > 0) return;
+      this.quoteSubscriptions.delete(key);
+      this.clearPendingStreamQuote(key);
+      this.flush();
+    }, QUOTE_SUBSCRIPTION_REMOVE_GRACE_MS);
+  }
+
+  private flush({
+    coalescePriorityChanges = true,
+    requireStableRouting = false,
+  }: {
+    coalescePriorityChanges?: boolean;
+    requireStableRouting?: boolean;
+  } = {}): void {
     if (!this.dataProvider.subscribeQuotes) return;
 
     const activeEntries = [...this.quoteSubscriptions.entries()]
       .filter(([, entry]) => entry.targets.size > 0)
       .sort(([left], [right]) => left.localeCompare(right));
-    const nextSignature = activeEntries.map(([key, entry]) => [
+    const nextRoutingSignature = JSON.stringify(activeEntries.map(([key, entry]) => [
       key,
-      entry.target.route ?? "",
+      entry.target.route ?? "auto",
+    ]));
+    const nextSignature = JSON.stringify(activeEntries.map(([key, entry]) => [
+      key,
+      entry.target.route ?? "auto",
       entry.target.surface ?? "",
-      entry.target.visible ? "visible" : "",
-      entry.target.selected ? "selected" : "",
-      Number.isFinite(entry.target.weight) ? entry.target.weight : "",
-    ].join(":")).join("|");
-    if (nextSignature === this.quoteSubscriptionSignature) return;
+      entry.target.visible === true,
+      entry.target.selected === true,
+      Number.isFinite(entry.target.weight) ? entry.target.weight : null,
+    ]));
+    if (nextSignature === this.quoteSubscriptionSignature) {
+      this.cancelPendingPriorityUpdate();
+      return;
+    }
+    if (requireStableRouting && nextRoutingSignature !== this.quoteSubscriptionRoutingSignature) {
+      return;
+    }
 
-    this.quoteSubscriptionDispose?.();
-    this.quoteSubscriptionDispose = null;
-    this.quoteSubscriptionSignature = nextSignature;
+    const priorityOnlyChange = this.quoteSubscriptionSignature.length > 0
+      && nextRoutingSignature === this.quoteSubscriptionRoutingSignature;
+    if (coalescePriorityChanges && priorityOnlyChange) {
+      this.schedulePriorityUpdate();
+      return;
+    }
+    this.cancelPendingPriorityUpdate();
 
     const targets = activeEntries.map(([, entry]) => entry.target);
-    if (targets.length === 0) return;
+    const nextDispose = targets.length > 0
+      ? this.dataProvider.subscribeQuotes(targets, (target, quote) => {
+          const instrument: InstrumentRef = {
+            symbol: target.symbol,
+            exchange: target.exchange ?? "",
+            brokerId: target.context?.brokerId,
+            brokerInstanceId: target.context?.brokerInstanceId,
+            instrument: target.context?.instrument ?? null,
+          };
+          this.enqueueStreamQuote(instrument, quote);
+        })
+      : null;
+    // Register first so the cloud socket and desktop registries can merge the
+    // overlapping listeners without observing a zero-listener disconnect.
+    const previousDispose = this.quoteSubscriptionDispose;
+    this.quoteSubscriptionDispose = nextDispose;
+    this.quoteSubscriptionSignature = nextSignature;
+    this.quoteSubscriptionRoutingSignature = nextRoutingSignature;
+    previousDispose?.();
+  }
 
-    this.quoteSubscriptionDispose = this.dataProvider.subscribeQuotes(targets, (target, quote) => {
-      const instrument: InstrumentRef = {
-        symbol: target.symbol,
-        exchange: target.exchange ?? "",
-        brokerId: target.context?.brokerId,
-        brokerInstanceId: target.context?.brokerInstanceId,
-        instrument: target.context?.instrument ?? null,
-      };
-      this.enqueueStreamQuote(instrument, quote);
-    });
+  private schedulePriorityUpdate(): void {
+    // Do not reset this timer. Continuous navigation must still publish the
+    // latest priorities instead of postponing them indefinitely.
+    if (this.pendingPriorityUpdateTimer !== null) return;
+    this.pendingPriorityUpdateTimer = setTimeout(() => {
+      this.pendingPriorityUpdateTimer = null;
+      this.flush({ coalescePriorityChanges: false, requireStableRouting: true });
+    }, QUOTE_SUBSCRIPTION_PRIORITY_UPDATE_DELAY_MS);
+  }
+
+  private cancelPendingPriorityUpdate(): void {
+    if (this.pendingPriorityUpdateTimer === null) return;
+    clearTimeout(this.pendingPriorityUpdateTimer);
+    this.pendingPriorityUpdateTimer = null;
   }
 
   private enqueueStreamQuote(instrument: InstrumentRef, quote: Quote): void {
