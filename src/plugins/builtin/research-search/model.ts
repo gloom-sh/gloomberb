@@ -102,6 +102,9 @@ export function buildSearchParams(
     sort: filters.sort,
     limit: options.limit ?? RESEARCH_SEARCH_PAGE_SIZE,
     ...(options.offset ? { offset: options.offset } : {}),
+    // A long press release matches on a dozen chunks, and repeating it a dozen
+    // times buries every other document. One row per document, best chunk wins.
+    distinct: true,
   };
 }
 
@@ -220,6 +223,15 @@ export function chunkAttribution(
   return metadata.source?.trim() || "";
 }
 
+/**
+ * Columns a wrapped paragraph gets in the document view. The scroll box keeps
+ * one column of text inset on the left, and its vertical scrollbar sits in the
+ * last column of the pane, so those are the only two the body cannot use.
+ */
+export function documentBodyWidth(width: number): number {
+  return Math.max(20, Math.floor(width) - 2);
+}
+
 type SearchColumnId = "ticker" | "type" | "date" | "title" | "match";
 
 export interface SearchColumn extends DataTableColumn {
@@ -227,7 +239,8 @@ export interface SearchColumn extends DataTableColumn {
 }
 
 export function buildResultColumns(width: number): SearchColumn[] {
-  const tickerWidth = 7;
+  // Wide enough for a five-letter symbol plus the badge's own padding.
+  const tickerWidth = 8;
   const typeWidth = 7;
   const dateWidth = 10;
   const fixed = tickerWidth + typeWidth + dateWidth + 8;
@@ -243,17 +256,33 @@ export function buildResultColumns(width: number): SearchColumn[] {
   ];
 }
 
+/**
+ * Identity of the thing a row stands for. Distinct search returns one row per
+ * source document but picks whichever chunk scored best, so the same document
+ * can arrive on two pages under two different chunk ids.
+ */
+function hitDocumentKey(hit: CloudSearchHit): string {
+  return `${hit.docType}:${hit.sourceId}`;
+}
+
 /** Paged responses can overlap when new documents land between requests. */
 export function appendUniqueHits(current: CloudSearchHit[], next: CloudSearchHit[]): CloudSearchHit[] {
   if (next.length === 0) return current;
-  const seen = new Set(current.map((hit) => hit.id));
+  const seen = new Set(current.map(hitDocumentKey));
   const merged = [...current];
   for (const hit of next) {
-    if (seen.has(hit.id)) continue;
-    seen.add(hit.id);
+    const key = hitDocumentKey(hit);
+    if (seen.has(key)) continue;
+    seen.add(key);
     merged.push(hit);
   }
   return merged;
+}
+
+/** Chunks behind a collapsed row, so hiding the rest stays visible. */
+export function hitMatchCountLabel(hit: CloudSearchHit): string {
+  const count = hit.matchCount ?? 0;
+  return count > 1 ? `${count}\u00d7 ` : "";
 }
 
 export function savedSearchName(query: string, filters: SearchFilters): string {

@@ -563,6 +563,11 @@ export interface CloudSearchHit {
   snippet: string;
   score: number;
   metadata: CloudSearchChunkMetadata;
+  /**
+   * Chunks of this document that matched. Only sent for a distinct search,
+   * where the row stands for the document rather than for one chunk.
+   */
+  matchCount?: number;
 }
 
 export interface CloudSearchResponse {

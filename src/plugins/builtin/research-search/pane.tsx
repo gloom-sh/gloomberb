@@ -15,6 +15,7 @@ import {
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
+import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
@@ -54,6 +55,7 @@ import {
   filtersFromSaved,
   filtersToSaved,
   formatHitDate,
+  hitMatchCountLabel,
   hitTypeLabel,
   parseTickerFilter,
   RESEARCH_SEARCH_PANE_ID,
@@ -336,7 +338,18 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "ticker":
-        return { text: hit.ticker, color: selectedColor ?? colors.text };
+        return {
+          text: hit.ticker,
+          color: selectedColor ?? colors.textBright,
+          content: (
+            <TickerBadgeList
+              symbols={[hit.ticker]}
+              width={column.width}
+              fallbackColor={selectedColor ?? colors.textBright}
+              liveQuote={false}
+            />
+          ),
+        };
       case "type":
         return { text: hitTypeLabel(hit), color: selectedColor ?? colors.textMuted };
       case "date":
@@ -344,10 +357,15 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       case "title":
         return { text: hit.title, color: selectedColor ?? colors.text };
       case "match": {
-        const segments = truncateSegments(parseMarkedSnippet(hit.snippet), column.width);
+        // The count leads so collapsing chunks into one row stays visible even
+        // where the snippet behind it is cut off.
+        const count = hitMatchCountLabel(hit);
+        const segments = truncateSegments(
+          [...(count ? [{ text: count, marked: false }] : []), ...parseMarkedSnippet(hit.snippet)],
+          column.width,
+        );
         return {
-          // `text` stays the plain snippet so CSV export keeps the match.
-          text: snippetPlainText(hit.snippet),
+          text: `${count}${snippetPlainText(hit.snippet)}`,
           content: (
             <SnippetText
               segments={segments}
@@ -456,12 +474,23 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     trimmedQuery,
   ]);
 
+  // The stack title already names the open document, so the footer carries what
+  // the title cannot: which company, when, what kind, and how long it is.
+  const documentIdentity = useMemo(() => {
+    if (!openHit) return null;
+    return [
+      formatHitDate(openHit.publishedAt),
+      hitTypeLabel(openHit),
+      document ? `${document.chunks.length} sections` : null,
+    ].filter((part): part is string => !!part).join(" \u00b7 ");
+  }, [document, openHit]);
+
   useExternalLinkFooter({
     registrationId: RESEARCH_SEARCH_PANE_ID,
     focused,
     url: openHit?.url ?? null,
-    source: openHit ? hitTypeLabel(openHit) : null,
-    label: "document",
+    source: documentIdentity,
+    label: openHit?.ticker || "document",
     info: footerInfo,
     hints: footerHints,
     showHint: !!openHit?.url,
@@ -488,7 +517,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       activeValue={mode}
       onSelect={(value) => setMode(value as PaneMode)}
       focused={focused && !openHit && activeField === null && !typePickerOpen}
-      dense
     />
   );
 

@@ -17,8 +17,12 @@ import {
 } from "./model";
 import { parseMarkedSnippet } from "./snippet";
 
-/** Enough hits to judge whether the corpus has the answer, few enough to scan. */
-const COMMAND_BAR_HIT_LIMIT = 3;
+/**
+ * Each hit costs two rows (title, then source and snippet), and the sheet now
+ * takes about half the terminal rather than a fixed sixteen rows, so six fits
+ * without pushing the sections below it off screen.
+ */
+const COMMAND_BAR_HIT_LIMIT = 6;
 
 export function hitResultDef(
   hit: CloudSearchHit,

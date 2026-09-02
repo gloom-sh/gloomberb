@@ -1,10 +1,23 @@
 import { useEffect, useMemo, useRef } from "react";
 import { EmptyState, Spinner } from "../../../components";
 import { colors } from "../../../theme/colors";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import {
+  Box,
+  ScrollBox,
+  StyledText,
+  Text,
+  TextAttributes,
+  useUiCapabilities,
+  type ScrollBoxRenderable,
+} from "../../../ui";
 import { wrapTextLines } from "../../../utils/text-wrap";
-import type { CloudSearchDocument, CloudSearchHit } from "../../../api-client";
-import { chunkAttribution, docTypeLabel, formatHitDate } from "./model";
+import type {
+  CloudSearchDocType,
+  CloudSearchDocument,
+  CloudSearchDocumentChunk,
+  CloudSearchHit,
+} from "../../../api-client";
+import { chunkAttribution, documentBodyWidth } from "./model";
 import { highlightTerms, snippetMatchTerms, type SnippetSegment } from "./snippet";
 import { SnippetText } from "./snippet-text";
 
@@ -62,6 +75,96 @@ function buildLayout(
   return { lines, matchLine };
 }
 
+const WRAPPED_BODY_STYLE = { display: "block" };
+
+function segmentsToStyledText(segments: readonly SnippetSegment[], color: string): StyledText {
+  return new StyledText(segments.map((segment) => ({
+    text: segment.text,
+    fg: segment.marked ? colors.warning : color,
+    attributes: segment.marked ? TextAttributes.BOLD : TextAttributes.NONE,
+  })));
+}
+
+function AttributionText({ text, active }: { text: string; active: boolean }) {
+  return (
+    <Text
+      fg={active ? colors.textBright : colors.textDim}
+      attributes={TextAttributes.BOLD}
+    >
+      {text}
+    </Text>
+  );
+}
+
+/**
+ * One chunk as a single paragraph the host wraps for itself. The desktop lays
+ * boxes out on the cell grid but draws glyphs on a narrower advance, so a line
+ * pre-wrapped to a cell count stops roughly a tenth of the pane short of the
+ * right edge there. Only the terminal, whose cell is the glyph, can pre-wrap.
+ */
+function DocumentChunkView({
+  chunk,
+  docType,
+  terms,
+  active,
+}: {
+  chunk: CloudSearchDocumentChunk;
+  docType: CloudSearchDocType;
+  terms: readonly string[];
+  active: boolean;
+}) {
+  const attribution = chunkAttribution(docType, chunk.metadata);
+  const body = chunk.body ?? "";
+  const color = active ? colors.textBright : colors.text;
+  const highlighted = active && terms.length > 0;
+
+  return (
+    <Box
+      flexDirection="column"
+      width="100%"
+      paddingBottom={1}
+      backgroundColor={active ? colors.panel : undefined}
+    >
+      {attribution ? <AttributionText text={attribution} active={active} /> : null}
+      {highlighted ? (
+        <Text
+          wrapText
+          width="100%"
+          style={WRAPPED_BODY_STYLE}
+          content={segmentsToStyledText(highlightTerms(body, terms), color)}
+        />
+      ) : (
+        <Text fg={color} wrapText width="100%" style={WRAPPED_BODY_STYLE}>{body}</Text>
+      )}
+    </Box>
+  );
+}
+
+function DocumentLineView({ line }: { line: DocumentLine }) {
+  const background = line.active ? colors.panel : undefined;
+  if (line.kind === "attribution") {
+    return (
+      <Box height={1} backgroundColor={background}>
+        <AttributionText text={line.text} active={line.active} />
+      </Box>
+    );
+  }
+  if (line.segments) {
+    return (
+      <SnippetText
+        segments={line.segments}
+        color={colors.textBright}
+        backgroundColor={background}
+      />
+    );
+  }
+  return (
+    <Box height={1} backgroundColor={background}>
+      <Text fg={line.active ? colors.textBright : colors.text}>{line.text}</Text>
+    </Box>
+  );
+}
+
 export function SearchDocumentView({
   hit,
   document,
@@ -76,17 +179,25 @@ export function SearchDocumentView({
   width: number;
 }) {
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const bodyWidth = Math.max(20, width - 2);
+  const { nativePaneChrome } = useUiCapabilities();
+  const bodyWidth = documentBodyWidth(width);
+  const terms = useMemo(() => snippetMatchTerms(hit.snippet), [hit.snippet]);
   const layout = useMemo(
     () => (document ? buildLayout(document, hit, bodyWidth) : null),
     [bodyWidth, document, hit],
   );
 
   // Land the reader on the chunk that matched, with a little context above it.
+  // The host wraps the same text into its own number of lines, so aim by the
+  // share of the document above the match rather than by the counted line.
   useEffect(() => {
-    if (layout?.matchLine == null) return;
-    scrollRef.current?.scrollTo(Math.max(0, layout.matchLine - 2));
-  }, [layout]);
+    const scrollBox = scrollRef.current;
+    if (!scrollBox || layout?.matchLine == null) return;
+    const target = nativePaneChrome && layout.lines.length > 0
+      ? Math.round((layout.matchLine / layout.lines.length) * scrollBox.scrollHeight)
+      : layout.matchLine;
+    scrollBox.scrollTo(Math.max(0, target - 2));
+  }, [layout, nativePaneChrome]);
 
   if (loading && !document) {
     return (
@@ -100,54 +211,22 @@ export function SearchDocumentView({
   }
   if (!document || !layout) return null;
 
-  // The stack title already names the document, so the body opens on metadata.
-  const meta = [
-    document.ticker,
-    formatHitDate(document.publishedAt),
-    hit.docType === "filing" ? hit.metadata?.form?.trim() || docTypeLabel(document.docType) : docTypeLabel(document.docType),
-    hit.metadata?.accession,
-    `${document.chunks.length} sections`,
-  ]
-    .filter((part): part is string => !!part && part.length > 0)
-    .join("  \u00b7  ");
-
   return (
-    <ScrollBox ref={scrollRef} scrollY flexGrow={1} paddingX={1}>
-      <Box flexDirection="column" width={bodyWidth}>
-        <Box height={1}>
-          <Text fg={colors.textMuted}>{meta}</Text>
-        </Box>
-        <Box height={1} />
-        {layout.lines.map((line) => {
-          const background = line.active ? colors.panel : undefined;
-          if (line.kind === "attribution") {
-            return (
-              <Box key={line.key} height={1} backgroundColor={background}>
-                <Text
-                  fg={line.active ? colors.textBright : colors.textDim}
-                  attributes={TextAttributes.BOLD}
-                >
-                  {line.text}
-                </Text>
-              </Box>
-            );
-          }
-          if (line.segments) {
-            return (
-              <SnippetText
-                key={line.key}
-                segments={line.segments}
-                color={colors.textBright}
-                backgroundColor={background}
-              />
-            );
-          }
-          return (
-            <Box key={line.key} height={1} backgroundColor={background}>
-              <Text fg={line.active ? colors.textBright : colors.text}>{line.text}</Text>
-            </Box>
-          );
-        })}
+    // Only the left inset lives here: the scrollbar already holds the column on
+    // the right, and padding on both sides would push the text under it.
+    <ScrollBox ref={scrollRef} scrollY flexGrow={1} paddingLeft={1}>
+      <Box flexDirection="column" width={nativePaneChrome ? "100%" : bodyWidth}>
+        {nativePaneChrome
+          ? document.chunks.map((chunk) => (
+            <DocumentChunkView
+              key={chunk.id}
+              chunk={chunk}
+              docType={document.docType}
+              terms={terms}
+              active={chunk.chunkIndex === hit.chunkIndex}
+            />
+          ))
+          : layout.lines.map((line) => <DocumentLineView key={line.key} line={line} />)}
       </Box>
     </ScrollBox>
   );
