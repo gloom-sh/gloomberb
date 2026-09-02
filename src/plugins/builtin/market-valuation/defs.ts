@@ -156,6 +156,16 @@ export function shortZoneLabel(id: ValuationZoneId): string {
   }
 }
 
+/**
+ * True when a bigger number means a more expensive market. A yield-shaped measure
+ * runs the other way, and lists its bands starting at overvalued to say so. The
+ * summary table uses this to put every row on one "expensive" scale, so a column
+ * can be read straight down.
+ */
+export function higherIsExpensive(indicator: IndicatorDef): boolean {
+  return indicator.zones[0]?.id !== "significantly-overvalued";
+}
+
 export function classifyZone(indicator: IndicatorDef, value: number): ZoneHit {
   for (const band of indicator.zones) {
     if (band.max == null || value < band.max) {

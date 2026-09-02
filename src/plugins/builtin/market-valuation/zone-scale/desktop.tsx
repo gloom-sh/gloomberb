@@ -9,6 +9,7 @@ const BAR_TOP = 26;
 const BAR_HEIGHT = 14;
 const BAR_RADIUS = 7;
 const GAP = 3;
+const TICK_LABEL_INSET = 34;
 
 function SvgText(props: SVGProps<SVGTextElement>) {
   return createElement("text", props);
@@ -64,7 +65,8 @@ export function DesktopZoneColorScale({ indicator, value, width, markerColor }: 
                 strokeWidth="2"
               />
               <SvgText
-                x={Math.min(VIEWBOX_WIDTH - 18, Math.max(18, x))}
+                // Half a label's width of inset, so the end ticks are not clipped.
+                x={Math.min(VIEWBOX_WIDTH - TICK_LABEL_INSET, Math.max(TICK_LABEL_INSET, x))}
                 y={VIEWBOX_HEIGHT - 4}
                 fill={colors.textDim}
                 textAnchor="middle"

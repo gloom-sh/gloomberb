@@ -63,7 +63,7 @@ function buildColumns(width: number): Column[] {
     { id: "name", label: "INDICATOR", width: name, align: "left" },
     { id: "value", label: "VALUE", width: 8, align: "right" },
     { id: "zone", label: "ZONE", width: 11, align: "right" },
-    ...(wide ? [{ id: "percentile" as const, label: "%ILE", width: 6, align: "right" as const }] : []),
+    ...(wide ? [{ id: "percentile" as const, label: "RICH", width: 6, align: "right" as const }] : []),
     { id: "sigma", label: "TREND", width: 8, align: "right" },
   ];
 }
@@ -73,8 +73,10 @@ function cellsFor(view: IndicatorViewModel): Record<ColumnId, DataTableCell> {
     name: { text: view.indicator.shortLabel, color: colors.textBright },
     value: { text: view.indicator.formatValue(view.current.ratio), color: view.zone.color },
     zone: { text: shortZoneLabel(view.zone.id), color: view.zone.color },
-    percentile: { text: formatNumber(view.percentile, 0), color: colors.text },
-    sigma: { text: formatSigma(view.sigmaVsTrend), color: colors.textMuted },
+    // Both restated so a high number always means expensive, whichever way the
+    // underlying measure runs, otherwise the columns cannot be read down.
+    percentile: { text: formatNumber(view.richPercentile, 0), color: colors.text },
+    sigma: { text: formatSigma(view.richSigma), color: colors.textMuted },
   };
 }
 

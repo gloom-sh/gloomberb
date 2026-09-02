@@ -3,6 +3,7 @@ import { meanRatio, projectChart, type ValuationChartProjection } from "./chart-
 import {
   RANGE_WINDOWS_MS,
   classifyZone,
+  higherIsExpensive,
   type IndicatorDef,
   type ValuationRangeId,
   type ZoneHit,
@@ -33,7 +34,12 @@ export interface IndicatorViewModel {
   range: ValuationRangeId;
   current: RatioPoint;
   zone: ZoneHit;
+  /** Raw fit deviation, in the indicator's own direction. */
   sigmaVsTrend: number;
+  /** Deviation restated so positive always means expensive. */
+  richSigma: number;
+  /** Share of history this market was cheaper than, so 100 is the richest ever. */
+  richPercentile: number;
   trendNow: number;
   mean: number;
   vintageLabel: string | null;
@@ -91,13 +97,18 @@ export function projectView(
   const visible = sliceByRange(points, range);
   const mean = meanRatio(points);
   const atOrBelow = points.filter((p) => p.ratio <= current.ratio).length;
+  const percentile = points.length === 0 ? 0 : (100 * atOrBelow) / points.length;
+  const sigma = sigmaVsTrend(trend, current.ratio, current.date);
+  const expensiveUp = higherIsExpensive(indicator);
 
   return {
     indicator,
     range,
     current,
     zone: classifyZone(indicator, current.ratio),
-    sigmaVsTrend: sigmaVsTrend(trend, current.ratio, current.date),
+    sigmaVsTrend: sigma,
+    richSigma: expensiveUp ? sigma : -sigma,
+    richPercentile: expensiveUp ? percentile : 100 - percentile,
     trendNow: trendAt(trend, current.date),
     mean,
     vintageLabel: indicator.input.kind === "ratio" && indicator.input.levels
@@ -106,7 +117,7 @@ export function projectView(
     ratioOneYearAgo: ratioOneYearAgo(points, current.date),
     allTimeHigh: findExtreme(points, "high"),
     allTimeLow: findExtreme(points, "low"),
-    percentile: points.length === 0 ? 0 : (100 * atOrBelow) / points.length,
+    percentile,
     chart: projectChart(indicator, visible, mean),
     asOf: current.date,
     observationStale: nowMs - parseDateMs(current.date) > indicator.staleAfterMs,

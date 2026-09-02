@@ -304,6 +304,34 @@ describe("projectView", () => {
   });
 });
 
+describe("richness normalisation", () => {
+  const rising: RatioPoint[] = [];
+  for (let year = 2000; year <= 2026; year += 1) {
+    rising.push(ratioPoint(`${year}-01-01`, 1 + (year - 2000) * 0.2));
+  }
+
+  test("a yield at its historic low reads as the richest, not the cheapest", () => {
+    // Same rising series, read as a price ratio and as a yield.
+    const asPrice = projectView({
+      indicator: BUFFETT_INDICATOR,
+      series: { indicatorId: "b", points: rising, vintageDate: "2026-01-01" },
+      trend: fitTrend(rising, "log"),
+    }, "ALL");
+    const asYield = projectView({
+      indicator: SP500_DIVIDEND_YIELD,
+      series: { indicatorId: "d", points: rising, vintageDate: "2026-01-01" },
+      trend: fitTrend(rising, "log"),
+    }, "ALL");
+
+    expect(asPrice.percentile).toBeCloseTo(asYield.percentile, 8);
+    // The raw percentile is identical, but a high yield is cheap.
+    expect(asPrice.richPercentile).toBeCloseTo(100, 6);
+    expect(asYield.richPercentile).toBeCloseTo(0, 6);
+    expect(Math.sign(asPrice.richSigma)).toBe(-Math.sign(asYield.richSigma));
+    expect(asYield.richSigma).toBeCloseTo(-asYield.sigmaVsTrend, 8);
+  });
+});
+
 describe("sliceByRange", () => {
   test("falls back to the whole series when a window leaves under two points", () => {
     expect(sliceByRange([ratioPoint("1990-01-01", 60), ratioPoint("1991-01-01", 62)], "10Y"))
