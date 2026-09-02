@@ -66,6 +66,7 @@ export const BUFFETT_INDICATOR: IndicatorDef = {
   },
   ratioScale: 100,
   formatValue: percent,
+  axisUnit: "%",
   zones: [
     { max: 75, id: "significantly-undervalued", label: "Significantly Undervalued" },
     { max: 90, id: "modestly-undervalued", label: "Modestly Undervalued" },
@@ -109,6 +110,7 @@ export const TOBINS_Q: IndicatorDef = {
   },
   ratioScale: 1,
   formatValue: ratio,
+  axisUnit: "",
   // Bands anchored on the 1945-2026 distribution: p25 0.54, median 0.93, p75 1.34.
   zones: [
     { max: 0.55, id: "significantly-undervalued", label: "Significantly Undervalued" },
@@ -137,6 +139,7 @@ export const SHILLER_CAPE: IndicatorDef = {
   input: { kind: "direct", series: shillerSeries("SHILLER_CAPE", "cape") },
   ratioScale: 1,
   formatValue: (value) => formatNumber(value, 1),
+  axisUnit: "",
   // Bands anchored on the 1881-2026 distribution: p25 12.0, median 16.6, p75 21.5.
   zones: [
     { max: 12, id: "significantly-undervalued", label: "Significantly Undervalued" },
@@ -169,6 +172,7 @@ export const EXCESS_CAPE_YIELD: IndicatorDef = {
   // Shiller publishes it as a decimal fraction; show it as a percent.
   ratioScale: 100,
   formatValue: percentTenths,
+  axisUnit: "%",
   // A high excess yield means stocks are paid well over bonds, so the bands run the
   // opposite way to a price ratio. Anchored on p25 1.5%, median 3.3%, p75 6.6%.
   zones: [
@@ -206,6 +210,7 @@ export const SP500_DIVIDEND_YIELD: IndicatorDef = {
   },
   ratioScale: 100,
   formatValue: percentTenths,
+  axisUnit: "%",
   // Higher yield is cheaper, so the bands invert. Anchored on p25 3.0%, median 4.2%.
   zones: [
     { max: 2, id: "significantly-overvalued", label: "Significantly Overvalued" },
@@ -226,6 +231,46 @@ export const SP500_DIVIDEND_YIELD: IndicatorDef = {
   link: { url: "https://en.wikipedia.org/wiki/Dividend_yield", label: "Dividend yield, Wikipedia" },
 };
 
+export const HOUSEHOLD_EQUITY_ALLOCATION: IndicatorDef = {
+  id: "household-equity-allocation",
+  label: "Investor Equity Allocation",
+  shortLabel: "Equity alloc",
+  description: "Share of household financial assets held in equities.",
+  input: {
+    kind: "direct",
+    series: {
+      key: "BOGZ1FL153064486Q",
+      scaleToBillions: 1,
+      source: { kind: "fred", seriesId: "BOGZ1FL153064486Q", limit: 400 },
+    },
+  },
+  // FRED publishes it as a percentage already, so it needs no rescaling.
+  ratioScale: 1,
+  formatValue: percentTenths,
+  axisUnit: "%",
+  // Bands anchored on the 1945-2026 distribution: p25 17.7%, median 24.3%, p75 30.0%.
+  zones: [
+    { max: 18, id: "significantly-undervalued", label: "Significantly Undervalued" },
+    { max: 22, id: "modestly-undervalued", label: "Modestly Undervalued" },
+    { max: 28, id: "fair", label: "Fair Valued" },
+    { max: 34, id: "modestly-overvalued", label: "Modestly Overvalued" },
+    { max: null, id: "significantly-overvalued", label: "Significantly Overvalued" },
+  ],
+  zoneScale: { min: 0, max: 50, edges: [0, 18, 22, 28, 34, 50], ticks: [0, 18, 28, 34, 50] },
+  reference: { value: 24.3, label: "median" },
+  chartGridStep: 10,
+  trendModel: "log",
+  staleAfterMs: QUARTERLY_STALE_MS,
+  notes: [
+    "How much of what households own sits in stocks. When investors are already all-in there is little cash left to bid prices higher, which is why this has tracked ten-year forward returns more closely than any price ratio.",
+    "From the Fed's quarterly Z.1 accounts, counting equities held directly and through funds.",
+  ],
+  link: {
+    url: "https://fred.stlouisfed.org/series/BOGZ1FL153064486Q",
+    label: "Household equity share, FRED",
+  },
+};
+
 export const MARKET_CAP_TO_M2: IndicatorDef = {
   id: "market-cap-m2",
   label: "Market Cap to M2",
@@ -239,6 +284,7 @@ export const MARKET_CAP_TO_M2: IndicatorDef = {
   },
   ratioScale: 100,
   formatValue: percent,
+  axisUnit: "%",
   // Bands anchored on the 1989-2026 distribution: p25 142%, median 180%, p75 206%.
   zones: [
     { max: 130, id: "significantly-undervalued", label: "Significantly Undervalued" },
@@ -259,12 +305,55 @@ export const MARKET_CAP_TO_M2: IndicatorDef = {
   link: { url: "https://fred.stlouisfed.org/series/M2SL", label: "M2 money stock, FRED" },
 };
 
+export const MARGIN_DEBT_TO_GDP: IndicatorDef = {
+  id: "margin-debt-gdp",
+  label: "Margin Debt to GDP",
+  shortLabel: "Margin debt",
+  description: "Borrowing against securities, against the size of the economy.",
+  input: {
+    kind: "ratio",
+    numerator: {
+      key: "BOGZ1FL663067003Q",
+      scaleToBillions: MILLIONS_TO_BILLIONS,
+      source: { kind: "fred", seriesId: "BOGZ1FL663067003Q", limit: 400 },
+    },
+    denominator: NOMINAL_GDP,
+    levels: { numeratorLabel: "Margin debt", denominatorLabel: "GDP" },
+  },
+  ratioScale: 100,
+  formatValue: percentTenths,
+  axisUnit: "%",
+  // Bands anchored on the 1945-2026 distribution: p25 0.71%, median 0.92%, p75 1.40%.
+  zones: [
+    { max: 0.7, id: "significantly-undervalued", label: "Significantly Undervalued" },
+    { max: 0.9, id: "modestly-undervalued", label: "Modestly Undervalued" },
+    { max: 1.4, id: "fair", label: "Fair Valued" },
+    { max: 1.8, id: "modestly-overvalued", label: "Modestly Overvalued" },
+    { max: null, id: "significantly-overvalued", label: "Significantly Overvalued" },
+  ],
+  zoneScale: { min: 0, max: 3, edges: [0, 0.7, 0.9, 1.4, 1.8, 3], ticks: [0, 0.9, 1.4, 1.8, 3] },
+  reference: { value: 0.92, label: "median" },
+  chartGridStep: 1,
+  trendModel: "log",
+  staleAfterMs: QUARTERLY_STALE_MS,
+  notes: [
+    "How much investors have borrowed against their holdings. Leverage is what turns a decline into forced selling, so it is froth rather than value, but it peaks where valuations do.",
+    "Its two highest readings are the first quarter of 2000 and the third of 2008. From the Fed's Z.1 accounts, which reach further back than FINRA's own margin table.",
+  ],
+  link: {
+    url: "https://fred.stlouisfed.org/series/BOGZ1FL663067003Q",
+    label: "Margin account receivables, FRED",
+  },
+};
+
 export const INDICATORS: readonly IndicatorDef[] = [
   BUFFETT_INDICATOR,
   SHILLER_CAPE,
   EXCESS_CAPE_YIELD,
   TOBINS_Q,
+  HOUSEHOLD_EQUITY_ALLOCATION,
   SP500_DIVIDEND_YIELD,
+  MARGIN_DEBT_TO_GDP,
   MARKET_CAP_TO_M2,
 ];
 

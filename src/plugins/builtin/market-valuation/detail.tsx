@@ -1,40 +1,12 @@
-import { StaticChartSurface } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
+import { useMemo, useState } from "react";
+import { CompositeChart } from "../../../components/chart/composite";
 import { ExternalLinkText } from "../../../components/ui";
 import { blendHex, colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
+import { markerSeries, zoneSeriesFor } from "./chart-projection";
 import type { IndicatorViewModel } from "./view";
 import { ZoneColorScale } from "./zone-scale";
-
-/** Matches StaticChartSurface's right Y-axis gutter so the zone scale lines up with the plot. */
-function chartPlotInset(view: IndicatorViewModel): number {
-  const format = view.indicator.formatValue;
-  const labelWidth = Math.max(
-    format(view.chart.yDomain.min).length,
-    format(view.chart.yDomain.max).length,
-    5,
-  );
-  return Math.min(labelWidth, 12) + 1;
-}
-
-/** Row of the plot a value lands on, so its caption can sit just above the line. */
-function plotRow(
-  value: number,
-  yDomain: { min: number; max: number },
-  chartHeight: number,
-  hasXAxis: boolean,
-): number {
-  const plotHeight = Math.max(1, chartHeight - (hasXAxis ? 1 : 0));
-  const range = yDomain.max - yDomain.min || 1;
-  return Math.max(
-    0,
-    Math.min(
-      plotHeight - 1,
-      Math.round((1 - (value - yDomain.min) / range) * Math.max(plotHeight - 1, 0)),
-    ),
-  );
-}
 
 function formatTrillions(billions: number): string {
   return `${formatNumber(billions / 1000, 1)}T`;
@@ -44,76 +16,90 @@ export function IndicatorDetail({
   view,
   width,
   height,
+  focused = false,
 }: {
   view: IndicatorViewModel;
   width: number;
   height: number;
+  focused?: boolean;
 }) {
+  const PANELS = [{ id: "main" }];
   const indicator = view.indicator;
   const levels = indicator.input.kind === "ratio" ? indicator.input.levels : undefined;
+  const [userViewport, setUserViewport] = useState<{ start: Date; end: Date } | null>(null);
   const chartWidth = Math.max(24, width - 2);
-  const chartHeight = Math.max(7, Math.min(width >= 96 ? 14 : 12, height - 9));
-  const plotInset = chartPlotInset(view);
-  const plotWidth = Math.max(1, chartWidth - plotInset);
-  const hasXAxis = view.chart.yearLabels.length > 0;
+  const AXIS_WIDTH = 8;
+  // Give a tall pane a taller plot instead of leaving the space empty below.
+  const chartHeight = Math.max(8, Math.min(26, height - 16));
 
-  const palette = {
-    ...resolveChartPalette(colors, "neutral"),
-    gridColor: blendHex(colors.bg, colors.border, 0.55),
-  };
+  const visible = view.chart.sourcePoints;
+  const series = useMemo(() => {
+    const zones = zoneSeriesFor(indicator, visible);
+    const markers = [
+      indicator.reference
+        ? markerSeries(
+          indicator,
+          "reference",
+          indicator.reference.label,
+          indicator.reference.value,
+          colors.textDim,
+          visible,
+        )
+        : null,
+      markerSeries(
+        indicator,
+        "mean",
+        "mean",
+        view.mean,
+        blendHex(colors.textDim, colors.bg, 0.35),
+        visible,
+      ),
+    ].filter((entry) => entry != null);
+    return [...markers, ...zones];
+  }, [indicator, view.mean, visible]);
 
-  // Captions for the reference and mean lines, dropped when they would collide.
-  const captions = view.chart.markers
-    .map((marker) => ({
-      ...marker,
-      row: plotRow(marker.value, view.chart.yDomain, chartHeight, hasXAxis),
-    }))
-    .sort((a, b) => a.row - b.row)
-    .filter((marker, index, all) => index === 0 || marker.row - all[index - 1]!.row >= 2);
+  // One clean entry instead of a row per valuation band.
+  const legendSeries = useMemo(
+    () => series.filter((entry) => entry.id === "reference" || entry.id === "mean"),
+    [series],
+  );
+
+  const viewport = useMemo(() => {
+    if (userViewport) return userViewport;
+    if (visible.length < 2) return undefined;
+    return { start: new Date(visible[0]!.date), end: new Date(visible.at(-1)!.date) };
+  }, [userViewport, visible]);
+
 
   return (
     <Box flexDirection="column" width={width} paddingX={1} gap={1}>
       {view.chart.points.length >= 2 ? (
         <Box flexDirection="column" gap={0}>
           <Box flexDirection="row" width={chartWidth} overflow="hidden">
+            <Text>{" ".repeat(AXIS_WIDTH)}</Text>
             <ZoneColorScale
               indicator={indicator}
               value={view.current.ratio}
-              width={plotWidth}
+              width={Math.max(1, chartWidth - AXIS_WIDTH)}
               markerColor={view.zone.color}
             />
-            <Text>{" ".repeat(plotInset)}</Text>
           </Box>
-          <Box position="relative" width={chartWidth} height={chartHeight}>
-            <StaticChartSurface
-              points={view.chart.points}
-              width={chartWidth}
-              height={chartHeight}
-              mode="line"
-              colors={palette}
-              indicators={view.chart.overlays}
-              yDomain={view.chart.yDomain}
-              lineColors={view.chart.lineColors}
-              xAxisLabels={view.chart.yearLabels}
-              xAxisColor={colors.textDim}
-              yAxisColor={colors.textDim}
-              formatYAxisValue={(value) => indicator.formatValue(value)}
-            />
-            {captions.map((marker) => (
-              <Box
-                key={marker.label}
-                position="absolute"
-                left={0}
-                top={Math.max(0, marker.row - 1)}
-                height={1}
-                overflow="hidden"
-              >
-                <Text fg={colors.textMuted} attributes={TextAttributes.ITALIC | TextAttributes.DIM}>
-                  {marker.label}
-                </Text>
-              </Box>
-            ))}
-          </Box>
+          <CompositeChart
+            series={series}
+            legendSeries={legendSeries}
+            panels={PANELS}
+            width={chartWidth}
+            height={chartHeight}
+            focused={focused}
+            interactive
+            axisWidth={AXIS_WIDTH}
+            showLegend
+            viewport={viewport}
+            viewportResetKey={`${indicator.id}:${view.range}`}
+            onViewportChange={setUserViewport}
+            formatValue={(value) => indicator.formatValue(value)}
+            emptyMessage="Not enough chart data"
+          />
         </Box>
       ) : (
         <Box height={chartHeight} justifyContent="center" alignItems="center">

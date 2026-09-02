@@ -2,7 +2,14 @@ import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import type { ChartIndicatorOverlays } from "../../../components/chart/core/types";
 import { blendHex, colors } from "../../../theme/colors";
 import type { RatioPoint } from "./align";
-import { classifyZone, type IndicatorDef } from "./defs";
+import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import {
+  classifyZone,
+  shortZoneLabel,
+  zoneColor,
+  type IndicatorDef,
+  type ValuationZoneId,
+} from "./defs";
 
 export interface ChartMarkerLine {
   value: number;
@@ -11,6 +18,8 @@ export interface ChartMarkerLine {
 
 export interface ValuationChartProjection {
   points: ProjectedChartPoint[];
+  /** The ratio points behind the projection, for the interactive chart. */
+  sourcePoints: RatioPoint[];
   overlays: ChartIndicatorOverlays;
   yDomain: { min: number; max: number };
   yearLabels: string[];
@@ -96,6 +105,7 @@ export function projectChart(
 
   return {
     points,
+    sourcePoints: [...visible],
     overlays,
     yDomain: niceDomain(yMin, yMax, indicator.chartGridStep),
     yearLabels: chartYearLabels(points),
@@ -129,4 +139,84 @@ export function chartYearLabels(points: readonly ProjectedChartPoint[], maxLabel
   const last = years[years.length - 1]!;
   if (picked[picked.length - 1] !== last) picked.push(last);
   return picked;
+}
+
+/**
+ * CompositeChart draws one colour per series, so the zone gradient is carried by
+ * one series per zone that holds nulls everywhere the ratio sits in another band.
+ * A run keeps its neighbours' boundary points so the segments join without gaps.
+ */
+export function zoneSeriesFor(
+  indicator: IndicatorDef,
+  points: readonly RatioPoint[],
+): ResolvedSeries[] {
+  const byZone = new Map<ValuationZoneId, TimeSeriesPoint[]>();
+  const zones = points.map((point) => classifyZone(indicator, point.ratio));
+  for (const band of indicator.zones) {
+    if (!byZone.has(band.id)) byZone.set(band.id, []);
+  }
+
+  points.forEach((point, index) => {
+    const date = new Date(point.date);
+    const here = zones[index]!.id;
+    const before = zones[index - 1]?.id;
+    const after = zones[index + 1]?.id;
+    for (const [zoneId, series] of byZone) {
+      // Carry a boundary point into the neighbouring run so the line is continuous.
+      const belongs = zoneId === here || zoneId === before || zoneId === after;
+      series.push({ date, observedAt: date, value: belongs ? point.ratio : null });
+    }
+  });
+
+  const built: ResolvedSeries[] = [];
+  for (const [zoneId, series] of byZone) {
+    if (!series.some((entry) => entry.value != null)) continue;
+    built.push({
+      id: `zone:${zoneId}`,
+      label: shortZoneLabel(zoneId),
+      color: zoneColor(zoneId),
+      unit: indicator.axisUnit,
+      unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation",
+      nativeFrequency: "daily",
+      dataShape: "scalar",
+      style: "line",
+      transform: "raw",
+      axis: "left",
+      panelId: "main",
+      interpolation: "none",
+      points: series,
+    });
+  }
+  return built;
+}
+
+/** Flat line at a fixed level, for parity, replacement cost, or the sample mean. */
+export function markerSeries(
+  indicator: IndicatorDef,
+  id: string,
+  label: string,
+  value: number,
+  color: string,
+  points: readonly RatioPoint[],
+): ResolvedSeries | null {
+  if (points.length === 0 || !Number.isFinite(value)) return null;
+  const ends = [points[0]!, points[points.length - 1]!].map((point) => {
+    const date = new Date(point.date);
+    return { date, observedAt: date, value };
+  });
+  return {
+    id,
+    label,
+    color,
+    unit: indicator.axisUnit,
+    unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation",
+    nativeFrequency: "daily",
+    dataShape: "scalar",
+    style: "line",
+    transform: "raw",
+    axis: "left",
+    panelId: "main",
+    interpolation: "none",
+    points: ends,
+  };
 }

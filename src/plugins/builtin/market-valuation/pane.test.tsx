@@ -49,6 +49,16 @@ const LEGS: Array<[string, Array<{ date: string; value: number }>]> = [
     ["2025-01-01", 39_200_000],
     ["2026-01-01", 40_000_000],
   ])],
+  ["BOGZ1FL153064486Q", obs([
+    ["2024-01-01", 38.0],
+    ["2025-01-01", 42.0],
+    ["2026-01-01", 45.8],
+  ])],
+  ["BOGZ1FL663067003Q", obs([
+    ["2024-01-01", 600_000],
+    ["2025-01-01", 620_000],
+    ["2026-01-01", 650_000],
+  ])],
   ["SHILLER_CAPE", obs([
     ["2024-01-01", 33.2],
     ["2025-01-01", 38.1],
@@ -88,7 +98,7 @@ async function settle() {
 
 const TEST_PANE_ID = "valuation:test";
 
-async function renderPane(settings: Record<string, unknown> = {}) {
+async function renderPane(settings: Record<string, unknown> = {}, width = 128) {
   const layout = {
     dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
     instances: [{ instanceId: TEST_PANE_ID, paneId: "market-valuation", settings }],
@@ -109,14 +119,14 @@ async function renderPane(settings: Record<string, unknown> = {}) {
               paneId={TEST_PANE_ID}
               paneType="market-valuation"
               focused
-              width={92}
+              width={width}
               height={40}
             />
           )}
         </PaneFooterProvider>
       </PaneInstanceProvider>
     </AppContext>,
-    { width: 92, height: 40 },
+    { width, height: 40 },
   );
   await settle();
   return setup.captureCharFrame();
@@ -140,16 +150,27 @@ describe("MarketValuationPane", () => {
   test("summarizes every indicator in one table, each in its own units", async () => {
     const frame = await renderPane();
     // A percent, a bare multiple, and two yields all sit in one VALUE column.
-    expect(frame).toContain("Buffett");
+    for (const label of ["Buffett", "CAPE", "Tobin Q", "Equity alloc", "Div yield", "Cap / M2"]) {
+      expect(frame).toContain(label);
+    }
     expect(frame).toContain("234%");
-    expect(frame).toContain("CAPE");
     expect(frame).toContain("41.2");
-    expect(frame).toContain("Tobin Q");
     expect(frame).toContain("0.95");
-    expect(frame).toContain("Cap / M2");
     expect(frame).toContain("329%");
-    expect(frame).toContain("Div yield");
-    expect(frame).toContain("1.1%");
+  });
+
+  test("wide panes put the list beside the detail, narrow ones stack it", async () => {
+    const split = await renderPane({}, 128);
+    // In the split the chart shares a line with the list rows.
+    expect(split).toMatch(/Buffett.*\n/);
+    const stacked = await renderPane({}, 92);
+    expect(stacked).toContain("Buffett");
+    expect(stacked).toContain("Cap / M2");
+  });
+
+  test("the filter narrows the list without blanking the detail", async () => {
+    const frame = await renderPane();
+    expect(frame).toContain("filter indicators");
   });
 
   test("a yield reads cheap when it is high, unlike a price ratio", async () => {

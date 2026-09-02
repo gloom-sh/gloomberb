@@ -2,18 +2,22 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   EmptyState,
+  InputSearchBar,
   SegmentedControl,
   Spinner,
   type DataTableCell,
   type DataTableColumn,
+  type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text } from "../../../ui";
+import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
+import { isPlainKey } from "../../../utils/keyboard";
+import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { getCachedValuationBundle, loadValuationBundle } from "./client";
@@ -21,6 +25,10 @@ import { shortZoneLabel, type ValuationRangeId } from "./defs";
 import { IndicatorDetail } from "./detail";
 import { RANGE_OPTIONS, VALUATION_DEFAULTS } from "./settings";
 import { selectValuationViews, type IndicatorViewModel, type ValuationBundle } from "./view";
+
+/** Below this the detail sits under the table instead of beside it. */
+const SPLIT_MIN_WIDTH = 108;
+const LIST_WIDTH = 46;
 
 type LoadState =
   | { status: "idle" }
@@ -56,15 +64,31 @@ function formatSigma(sigma: number): string {
   return `${sigma > 0 ? "+" : ""}${formatNumber(sigma, 1)}σ`;
 }
 
-function buildColumns(width: number): Column[] {
-  const wide = width >= 64;
-  const name = Math.max(10, width - (wide ? 38 : 28) - 2);
+function matchesQuery(view: IndicatorViewModel, query: string): boolean {
+  if (!query) return true;
+  const haystack = [
+    view.indicator.label,
+    view.indicator.shortLabel,
+    view.indicator.description,
+    view.zone.label,
+  ].join(" ").toLowerCase();
+  return query.split(/\s+/).every((token) => haystack.includes(token));
+}
+
+/** Stacked mode keeps only what fits; the split has a whole column to work with. */
+function buildColumns(width: number, stacked: boolean): Column[] {
+  const withTrend = stacked && width >= 100;
+  // 25 for value/zone/rich, 8 more for trend, then gutters between the columns.
+  const trailing = 25 + (withTrend ? 8 : 0);
+  const name = Math.max(11, width - trailing - 6);
   return [
     { id: "name", label: "INDICATOR", width: name, align: "left" },
     { id: "value", label: "VALUE", width: 8, align: "right" },
     { id: "zone", label: "ZONE", width: 11, align: "right" },
-    ...(wide ? [{ id: "percentile" as const, label: "RICH", width: 6, align: "right" as const }] : []),
-    { id: "sigma", label: "TREND", width: 8, align: "right" },
+    { id: "percentile", label: "RICH", width: 6, align: "right" },
+    ...(withTrend
+      ? [{ id: "sigma" as const, label: "TREND", width: 8, align: "right" as const }]
+      : []),
   ];
 }
 
@@ -73,8 +97,8 @@ function cellsFor(view: IndicatorViewModel): Record<ColumnId, DataTableCell> {
     name: { text: view.indicator.shortLabel, color: colors.textBright },
     value: { text: view.indicator.formatValue(view.current.ratio), color: view.zone.color },
     zone: { text: shortZoneLabel(view.zone.id), color: view.zone.color },
-    // Both restated so a high number always means expensive, whichever way the
-    // underlying measure runs, otherwise the columns cannot be read down.
+    // Restated so a high number always means expensive, whichever way the
+    // underlying measure runs, otherwise the column cannot be read down.
     percentile: { text: formatNumber(view.richPercentile, 0), color: colors.text },
     sigma: { text: formatSigma(view.richSigma), color: colors.textMuted },
   };
@@ -88,6 +112,10 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const [range, setRange] = usePaneSettingValue<ValuationRangeId>("range", VALUATION_DEFAULTS.range);
   const [state, setState] = useState<LoadState>(initialLoadState);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const [query, setQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searchFocusToken, setSearchFocusToken] = useState(0);
+  const searchInputRef = useRef<InputRenderable | null>(null);
   const generation = useRef(0);
 
   const load = useCallback(async () => {
@@ -110,14 +138,33 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => { void load(); }, [load]);
   const refresh = useCallback(() => { void load(); }, [load]);
-  const reload = refresh;
   useAutoRefresh(lastUpdated, refresh);
 
+  const focusSearch = useCallback(() => {
+    setSearchFocused(true);
+    setSearchFocusToken((current) => current + 1);
+  }, []);
+  const blurSearch = useCallback(() => setSearchFocused(false), []);
+
+  const handlePaneKey = useCallback((event: DataTableKeyEvent): boolean => {
+    if (isPlainKey(event, "/")) {
+      stopSearchFocusNavigation(event);
+      focusSearch();
+      return true;
+    }
+    if (isPlainKey(event, "r")) {
+      stopSearchFocusNavigation(event);
+      refresh();
+      return true;
+    }
+    return false;
+  }, [focusSearch, refresh]);
+
   useShortcut((event) => {
-    if (!focused || event.name !== "r" || state.status === "loading") return;
+    if (!focused || searchFocused || event.name !== "r") return;
     event.preventDefault?.();
     event.stopPropagation?.();
-    reload();
+    refresh();
   });
 
   const bundle = bundleOf(state);
@@ -125,6 +172,13 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     () => (bundle ? selectValuationViews(bundle, range) : []),
     [bundle, range],
   );
+  const normalizedQuery = query.trim().toLowerCase();
+  const visible = useMemo(
+    () => views.filter((view) => matchesQuery(view, normalizedQuery)),
+    [normalizedQuery, views],
+  );
+  // Filtering narrows the list, but the detail keeps showing the chosen indicator
+  // until the user picks another, so typing never blanks the chart.
   const selected = views.find((view) => view.indicator.id === indicatorId) ?? views[0] ?? null;
 
   const error = state.status === "error" ? state.message : bundle?.errors[0] ?? null;
@@ -137,8 +191,11 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     if (selected.observationStale) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
+    if (normalizedQuery) {
+      info.push({ id: "filter", parts: [{ text: `filter: ${normalizedQuery}`, tone: "value" }] });
+    }
     return info;
-  }, [selected]);
+  }, [normalizedQuery, selected]);
 
   usePaneStatusFooter({
     registrationId: "market-valuation",
@@ -163,51 +220,84 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     );
   }
 
-  const columns = buildColumns(width);
-  const tableHeight = Math.min(views.length + 1, Math.max(2, height - 12));
+  const split = width >= SPLIT_MIN_WIDTH;
+  const listWidth = split ? Math.min(LIST_WIDTH, Math.floor(width * 0.4)) : width;
+  const detailWidth = split ? width - listWidth : width;
+  const columns = buildColumns(listWidth, !split);
+  // Header plus every row, and one more line for the horizontal scrollbar.
+  const tableHeight = split
+    ? Math.max(3, height - 2)
+    : Math.min(visible.length + 2, Math.max(3, height - 12));
 
-  const rangeControl = (
-    <Box flexDirection="row" height={1} paddingX={1} overflow="hidden" justifyContent="flex-end">
-      <SegmentedControl
-        options={RANGE_OPTIONS}
-        value={range}
-        onChange={(value) => setRange(value as ValuationRangeId)}
+  const list = (
+    <Box flexDirection="column" width={listWidth} flexShrink={0}>
+      <InputSearchBar
+        value={query}
+        focused={focused}
+        active={searchFocused}
+        width={listWidth}
+        focusToken={searchFocusToken}
+        inputRef={searchInputRef}
+        placeholder="filter indicators"
+        debounceMs={80}
+        onFocus={focusSearch}
+        onBlur={blurSearch}
+        onQueryChange={setQuery}
       />
+      <Box flexDirection="column" width={listWidth} height={tableHeight} flexShrink={0} overflow="hidden">
+        <DataTableView<IndicatorViewModel, Column>
+          focused={focused && !searchFocused}
+          rootWidth={listWidth}
+          rootHeight={tableHeight}
+          columns={columns}
+          items={visible}
+          sortColumnId={null}
+          sortDirection="asc"
+          selection={{
+            kind: "id",
+            selectedId: selected.indicator.id,
+            getId: (view) => view.indicator.id,
+            onChange: (id) => setIndicatorId(String(id)),
+          }}
+          onCursorChange={(view) => setIndicatorId(view.indicator.id)}
+          onHeaderClick={() => {}}
+          onRootKeyDown={handlePaneKey}
+          getItemKey={(view) => view.indicator.id}
+          renderCell={(view, column) => cellsFor(view)[column.id]}
+          emptyStateTitle={normalizedQuery ? "No indicator matches." : error ?? "No indicators."}
+        />
+      </Box>
+    </Box>
+  );
+
+  const detail = (
+    <Box flexDirection="column" flexGrow={1} width={detailWidth} overflow="hidden">
+      <Box flexDirection="row" height={1} paddingX={1} overflow="hidden" justifyContent="flex-end">
+        <SegmentedControl
+          options={RANGE_OPTIONS}
+          value={range}
+          onChange={(value) => setRange(value as ValuationRangeId)}
+        />
+      </Box>
+      <ScrollBox flexGrow={1} scrollY focusable={false}>
+        <Box flexDirection="column" paddingBottom={1}>
+          <IndicatorDetail
+            view={selected}
+            width={detailWidth}
+            height={Math.max(12, height - (split ? 3 : tableHeight + 3))}
+            focused={focused && !searchFocused}
+          />
+        </Box>
+      </ScrollBox>
     </Box>
   );
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {rangeControl}
-      {/* Desktop pane chrome makes the table frame flex-grow and ignore rootHeight,
-          so pin the summary rows here and leave the rest to the detail. */}
-      <Box flexDirection="column" width={width} height={tableHeight} flexShrink={0} overflow="hidden">
-      <DataTableView<IndicatorViewModel, Column>
-        focused={focused}
-        rootWidth={width}
-        rootHeight={tableHeight}
-        columns={columns}
-        items={views}
-        sortColumnId={null}
-        sortDirection="asc"
-        selection={{
-          kind: "id",
-          selectedId: selected.indicator.id,
-          getId: (view) => view.indicator.id,
-          onChange: (id) => setIndicatorId(String(id)),
-        }}
-        onCursorChange={(view) => setIndicatorId(view.indicator.id)}
-        onHeaderClick={() => {}}
-        getItemKey={(view) => view.indicator.id}
-        renderCell={(view, column) => cellsFor(view)[column.id]}
-        emptyStateTitle={error ?? "No valuation indicators."}
-      />
+      <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden">
+        {list}
+        {detail}
       </Box>
-      <ScrollBox flexGrow={1} scrollY focusable={false}>
-        <Box flexDirection="column" paddingBottom={1}>
-          <IndicatorDetail view={selected} width={width} height={Math.max(12, height - tableHeight - 2)} />
-        </Box>
-      </ScrollBox>
       {error ? (
         <Box height={1} paddingX={1} overflow="hidden">
           <Text fg={colors.warning}>{error}</Text>

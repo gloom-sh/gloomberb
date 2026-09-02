@@ -86,6 +86,8 @@ export interface IndicatorDef {
   /** Multiplies the raw value: 100 renders a quotient as a percent. */
   ratioScale: number;
   formatValue: (value: number) => string;
+  /** Drives the chart's own axis and cursor formatting. "" leaves a bare number. */
+  axisUnit: "%" | "";
   zones: readonly ZoneBand[];
   zoneScale: {
     min: number;
