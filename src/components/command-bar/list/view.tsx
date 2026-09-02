@@ -13,9 +13,9 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { CommandBarResultLineSegment } from "../../../types/plugin";
 import { truncateTextSegments } from "../../../utils/format";
 import {
+  BADGE_COLUMN_WIDTH,
   BADGE_GAP,
   badgeConsumesRight,
-  resolveBadgeColumnWidth,
   resolveRowBadge,
 } from "./badge";
 import {
@@ -34,6 +34,9 @@ export type CommandBarListScrollEvent = {
   scroll?: { direction?: string; delta?: number };
 };
 
+/** Columns every row gives up to the badge column, badge or not. */
+const BADGE_INDENT = BADGE_COLUMN_WIDTH + BADGE_GAP;
+
 interface CommandBarListItemRowProps {
   item: ResultItem;
   globalIdx: number;
@@ -42,8 +45,6 @@ interface CommandBarListItemRowProps {
   listKind: ListScreenState["kind"];
   listTitle: string;
   listQuery: string;
-  /** Shared by every row of the list so labels line up; 0 when no row has a badge. */
-  badgeColumnWidth: number;
   contentPadding: number;
   labelWidth: number;
   trailingWidth: number;
@@ -71,7 +72,6 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   listKind,
   listTitle,
   listQuery,
-  badgeColumnWidth,
   contentPadding,
   labelWidth,
   trailingWidth,
@@ -94,8 +94,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   const badge = resolveRowBadge(item);
   // The badge column and its gap come out of the label, so the right column
   // stays where it is for rows with and without a badge alike.
-  const badgeIndent = badgeColumnWidth > 0 ? badgeColumnWidth + BADGE_GAP : 0;
-  const labelColumnWidth = Math.max(1, labelWidth - badgeIndent);
+  const labelColumnWidth = Math.max(1, labelWidth - BADGE_INDENT);
   // A long title stops one cell short of the right column, so its ellipsis
   // never runs into the date or shortcut sitting there.
   const label = truncateText(presentation.label, Math.max(1, labelColumnWidth - (trailingWidth > 0 ? 1 : 0)));
@@ -168,17 +167,9 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
       style={nativePaneChrome ? { borderRadius: 6 } : undefined}
     >
       <Box flexDirection="row" height={1}>
-        {badgeIndent > 0 && (
-          <Box width={badgeIndent} flexDirection="row">
-            {badge && (
-              <CommandBarRowBadge
-                text={badge.text}
-                tone={badge.tone}
-                width={badgeColumnWidth}
-              />
-            )}
-          </Box>
-        )}
+        <Box width={BADGE_INDENT} flexDirection="row">
+          {badge && <CommandBarRowBadge text={badge.text} tone={badge.tone} width={BADGE_COLUMN_WIDTH} />}
+        </Box>
         <Box width={labelColumnWidth}>
           <Text fg={isSelected ? paletteSelectedText : presentation.primaryMuted ? paletteSubtleText : paletteText}>
             {label}
@@ -202,7 +193,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
           flexDirection="row"
           height={1}
           width={lineWidth}
-          marginLeft={badgeIndent}
+          marginLeft={BADGE_INDENT}
           overflow="hidden"
         >
           {segments.map((segment, segmentIndex) => (
@@ -313,17 +304,10 @@ export const CommandBarListBody = memo(function CommandBarListBody({
   onListScroll,
   onRowMouseDown,
 }: CommandBarListBodyProps) {
-  const badgeColumnWidth = useMemo(
-    () => resolveBadgeColumnWidth(
-      nativeListRows.flatMap((row) => (row.kind === "item" ? [row.item] : [])),
-    ),
-    [nativeListRows],
-  );
   // Headings, messages and the spinner sit on the label edge: the badge column
   // is a gutter for the rows, not an indent for everything else.
-  const badgeIndent = badgeColumnWidth > 0 ? badgeColumnWidth + BADGE_GAP : 0;
-  const labelEdgePadding = contentPadding + badgeIndent;
-  const labelEdgeWidth = Math.max(1, queryDisplayWidth - badgeIndent);
+  const labelEdgePadding = contentPadding + BADGE_INDENT;
+  const labelEdgeWidth = Math.max(1, queryDisplayWidth - BADGE_INDENT);
   const visibleRows = useMemo(() => {
     const rows = nativeListRows;
     if (nativePaneChrome) return rows;
@@ -384,7 +368,6 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             listKind={visibleListState.kind}
             listTitle={visibleListState.title}
             listQuery={visibleListState.query}
-            badgeColumnWidth={badgeColumnWidth}
             contentPadding={contentPadding}
             labelWidth={labelWidth}
             trailingWidth={trailingWidth}

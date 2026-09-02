@@ -3,7 +3,7 @@ import { testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
-import { StatusBar, resolveStatusBarRightFit } from "./status-bar";
+import { StatusBar } from "./status-bar";
 import { VERSION } from "../../version";
 import { getDockedPaneIds } from "../../plugins/pane-manager";
 import { setSharedRegistryForTests } from "../../plugins/registry";
@@ -78,66 +78,6 @@ describe("StatusBar", () => {
     await testSetup.renderOnce();
 
     expect(openedVersion).toBe(VERSION);
-  });
-
-  describe("resolveStatusBarRightFit", () => {
-    const widths = {
-      baseCurrencyWidth: 4,
-      marketCountdownWidth: 8,
-      marketStateWidth: 11,
-      spyWidth: 23,
-      versionWidth: 9,
-    };
-
-    test("drops the fixed version chip before any live value", () => {
-      expect(resolveStatusBarRightFit({ available: 55, ...widths })).toMatchObject({
-        showSpy: true,
-        showMarketState: true,
-        showBaseCurrency: true,
-        showMarketCountdown: true,
-        showVersion: true,
-      });
-      expect(resolveStatusBarRightFit({ available: 50, ...widths })).toMatchObject({
-        showSpy: true,
-        showMarketState: true,
-        showBaseCurrency: true,
-        showMarketCountdown: true,
-        showVersion: false,
-      });
-    });
-
-    test("sheds the countdown, then the currency, then the market label, keeping SPY longest", () => {
-      expect(resolveStatusBarRightFit({ available: 42, ...widths })).toMatchObject({
-        showSpy: true,
-        showMarketState: true,
-        showBaseCurrency: true,
-        showMarketCountdown: false,
-        showVersion: false,
-      });
-      expect(resolveStatusBarRightFit({ available: 36, ...widths })).toMatchObject({
-        showSpy: true,
-        showMarketState: true,
-        showBaseCurrency: false,
-        showMarketCountdown: false,
-      });
-      expect(resolveStatusBarRightFit({ available: 30, ...widths })).toMatchObject({
-        showSpy: true,
-        showMarketState: false,
-        showBaseCurrency: true,
-      });
-      expect(resolveStatusBarRightFit({ available: 6, ...widths })).toMatchObject({
-        showSpy: false,
-        showMarketState: false,
-        showBaseCurrency: true,
-        showVersion: false,
-      });
-    });
-
-    test("never shows a countdown without the market label it extends", () => {
-      const fit = resolveStatusBarRightFit({ ...widths, available: 30, marketStateWidth: 0 });
-      expect(fit.showMarketState).toBe(false);
-      expect(fit.showMarketCountdown).toBe(false);
-    });
   });
 
   test("shows a transient focus layout tab without replacing saved layouts", async () => {

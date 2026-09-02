@@ -16,14 +16,12 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { t } from "../../../i18n";
 import type { ListScreenState } from "../list/model";
 import { CommandBarPanelBody } from "./body";
+import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { publishCommandBarPrompt } from "./prompt-binding";
 import type { CommandBarPanelProps } from "./types";
 
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
 const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
-const NATIVE_COMMAND_BAR_PADDING_X_PX = 14;
-const NATIVE_COMMAND_BAR_PADDING_Y_PX = 14;
-const NATIVE_COMMAND_BAR_SHADOW = "0 10px 18px color-mix(in srgb, var(--gloom-bg) 34%, transparent)";
 
 function resolvePromptPlaceholder(listState: ListScreenState): string {
   if (listState.kind === "root") return t("Command or plain English…");
@@ -165,12 +163,14 @@ export function CommandBarPanel({
         }}
         data-gloom-role="command-bar-panel"
         style={nativePaneChrome ? {
-          // A sheet hanging off the header: square where it meets the header,
-          // rounded only along its free bottom edge.
-          borderRadius: "0 0 8px 8px",
-          boxShadow: NATIVE_COMMAND_BAR_SHADOW,
+          // The lower half of the control the header input opens: rounded and
+          // bordered along its three free edges, open where the input sits.
+          border: `1px solid ${nativeCommandSurfaceBorder(colors)}`,
+          borderTopWidth: 0,
+          borderRadius: `0 0 ${NATIVE_COMMAND_SURFACE.radiusPx}px ${NATIVE_COMMAND_SURFACE.radiusPx}px`,
+          boxShadow: NATIVE_COMMAND_SURFACE.shadow,
           overflow: "hidden",
-          padding: `${NATIVE_COMMAND_BAR_PADDING_Y_PX}px ${NATIVE_COMMAND_BAR_PADDING_X_PX}px`,
+          padding: `${NATIVE_COMMAND_SURFACE.paddingYPx}px ${NATIVE_COMMAND_SURFACE.paddingXPx}px`,
         } : undefined}
       >
         <CommandBarPanelBody

@@ -13,11 +13,12 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import {
   blendHex,
   commandBarBg,
-  commandBarInputBg,
+  commandBarPanelBg,
   commandBarSubtleText,
   commandBarText,
 } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
+import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "../command-bar/panel/native-surface";
 import {
   useCommandBarPromptBinding,
   type CommandBarPromptBinding,
@@ -34,7 +35,7 @@ import { useViewport } from "../../react/input";
 import { t, tf } from "../../i18n";
 import { truncateToDisplayWidth } from "../../utils/format";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
-import { getTitlebarLeadingInset } from "./titlebar-overlay";
+import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 
@@ -65,6 +66,32 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
 }
 
 const PROMPT_CARET = "> ";
+
+/**
+ * Desktop chrome for the prompt. Closed it is a self-contained pill. Open it is
+ * the top half of the command surface: same fill, same border and same shadow
+ * as the sheet, rounded only where it is not touching it, and stretched to the
+ * header's full height so the two meet with no gap. Both boxes take their left
+ * edge and width from `resolveHeaderPromptGeometry`, so the seam is invisible
+ * rather than nearly invisible.
+ */
+function nativePromptSurfaceStyle(colors: ReturnType<typeof useThemeColors>, open: boolean) {
+  if (!open) {
+    return {
+      border: `1px solid ${blendHex(colors.border, colors.headerText, 0.24)}`,
+      borderRadius: 5,
+    };
+  }
+  const { radiusPx, shadow } = NATIVE_COMMAND_SURFACE;
+  return {
+    alignSelf: "stretch",
+    height: "100%",
+    border: `1px solid ${nativeCommandSurfaceBorder(colors)}`,
+    borderBottomWidth: 0,
+    borderRadius: `${radiusPx}px ${radiusPx}px 0 0`,
+    boxShadow: shadow,
+  };
+}
 
 /**
  * The command bar's input while the bar is open. Gloomberb's panes are driven
@@ -144,7 +171,7 @@ function HeaderCommandPrompt({
   // Open, the prompt takes the sheet's own surface so the two read as one
   // control: the sheet is the prompt, expanded.
   const backgroundColor = open
-    ? (nativePaneChrome ? commandBarInputBg(colors) : commandBarBg(colors))
+    ? (nativePaneChrome ? commandBarPanelBg(colors) : commandBarBg(colors))
     : idleBg;
   const caretColor = open
     ? commandBarText(colors)
@@ -174,12 +201,7 @@ function HeaderCommandPrompt({
       }}
       style={{
         cursor: open ? undefined : "pointer",
-        ...(nativePaneChrome
-          ? {
-            border: `1px solid ${blendHex(colors.border, colors.headerText, 0.24)}`,
-            borderRadius: 5,
-          }
-          : {}),
+        ...(nativePaneChrome ? nativePromptSurfaceStyle(colors, open) : {}),
       }}
     >
       <Text fg={caretColor} attributes={TextAttributes.BOLD}>{PROMPT_CARET}</Text>
@@ -276,6 +298,47 @@ function UpdateStatus() {
   return null;
 }
 
+/**
+ * Market state, SPY and the base currency at the header's right edge. It fits
+ * itself into the columns the prompt geometry reserved rather than into
+ * whatever this row has left over, so the cluster and the prompt can never
+ * both claim the same space.
+ */
+function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: boolean; width: number }) {
+  const colors = useThemeColors();
+  const summary = useMarketSummary();
+  const fit = resolveMarketSummaryFit({
+    available: width,
+    baseCurrencyWidth: summary.baseCurrency.length + 1,
+    countdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
+    spyWidth: summary.spyText.length + 1,
+    stateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
+  });
+  const marketLabel = fit.showCountdown ? summary.marketLabel : summary.marketLabelShort;
+
+  return (
+    <>
+      {fit.showState && marketLabel ? (
+        <Box paddingRight={1} flexShrink={0}>
+          <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
+            {marketLabel}
+          </Text>
+        </Box>
+      ) : null}
+      {fit.showSpy ? (
+        <Box paddingRight={1} flexShrink={0}>
+          <Text fg={summary.spyColor}>{summary.spyText}</Text>
+        </Box>
+      ) : null}
+      {fit.showBaseCurrency ? (
+        <Box paddingRight={1} flexShrink={0}>
+          <Text fg={blendHex(colors.headerText, colors.header, 0.42)}>{summary.baseCurrency}</Text>
+        </Box>
+      ) : null}
+    </>
+  );
+}
+
 export function Header({
   onOpenHelp,
 }: {
@@ -289,7 +352,6 @@ export function Header({
   const uiKind = useUiHost().kind;
   const { nativePaneChrome = false, titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
-  const titlebarLeadingInset = titleBarOverlay && nativeWindowChrome ? getTitlebarLeadingInset() : 0;
   const prompt = resolveHeaderPromptGeometry({
     nativePaneChrome,
     nativeWindowChrome,
@@ -328,6 +390,9 @@ export function Header({
       width={prompt.width}
     />
   );
+  const marketSummary = prompt.marketColumns > 0
+    ? <HeaderMarketSummary nativePaneChrome={nativePaneChrome} width={prompt.marketColumns} />
+    : null;
 
   if (titleBarOverlay) {
     return (
@@ -345,12 +410,7 @@ export function Header({
           position: "relative",
         }}
       >
-        <Box
-          width={prompt.left}
-          paddingLeft={titlebarLeadingInset + 1}
-          flexDirection="row"
-          alignItems="center"
-        />
+        <Box width={prompt.left} />
         {commandPrompt}
         <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
           <UpdateStatus />
@@ -384,6 +444,7 @@ export function Header({
             <Text fg={blendHex(colors.headerText, colors.header, 0.38)} style={{ marginLeft: 6, fontSize: 10 }}>?</Text>
           </Box>
         ) : null}
+        {marketSummary}
         {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
         {showWindowControls ? <WindowControls /> : null}
       </Box>
@@ -399,11 +460,12 @@ export function Header({
       data-titlebar-overlay={titleBarOverlay ? "true" : undefined}
       onMouseDown={startWindowDrag}
     >
-      <Box width={prompt.left} paddingLeft={1} flexDirection="row" />
+      <Box width={prompt.left} />
       {commandPrompt}
       <Box flexGrow={1} minWidth={0} paddingLeft={2}>
         <UpdateStatus />
       </Box>
+      {marketSummary}
       {showWindowControls ? <WindowControls /> : null}
     </Box>
   );

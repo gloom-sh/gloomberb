@@ -24,7 +24,6 @@ import type { LayoutConfig } from "../../types/config";
 import { VERSION } from "../../version";
 import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Tabs } from "../ui/tabs";
-import { useMarketSummary } from "./market-summary";
 import { useTransientLayout } from "./transient-layout";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
@@ -35,43 +34,6 @@ type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) 
 const TIDY_WINDOWS_COLUMNS = 15;
 /** Space held back for the `status:widget` plugin slot, which sizes itself. */
 const STATUS_WIDGET_COLUMNS = 20;
-
-export interface StatusBarRightFit {
-  showBaseCurrency: boolean;
-  showMarketCountdown: boolean;
-  showMarketState: boolean;
-  showSpy: boolean;
-  showVersion: boolean;
-}
-
-/**
- * Picks which right-hand items survive at a given width. Order is by how much
- * an item can still change: SPY first, then the market-state label, then the
- * base currency, then the countdown suffix that widens the label, and last the
- * version chip — the only fixed value here, so it is the first thing dropped.
- * `marketCountdownWidth` is the extra width the suffix adds to the label.
- */
-export function resolveStatusBarRightFit(options: {
-  available: number;
-  baseCurrencyWidth: number;
-  marketCountdownWidth: number;
-  marketStateWidth: number;
-  spyWidth: number;
-  versionWidth: number;
-}): StatusBarRightFit {
-  let remaining = options.available;
-  const take = (width: number): boolean => {
-    if (width <= 0 || width > remaining) return false;
-    remaining -= width;
-    return true;
-  };
-  const showSpy = take(options.spyWidth);
-  const showMarketState = take(options.marketStateWidth);
-  const showBaseCurrency = take(options.baseCurrencyWidth);
-  const showMarketCountdown = showMarketState && take(options.marketCountdownWidth);
-  const showVersion = take(options.versionWidth);
-  return { showBaseCurrency, showMarketCountdown, showMarketState, showSpy, showVersion };
-}
 
 type LayoutTabItem = {
   label: string;
@@ -437,9 +399,9 @@ function StatusBarLayoutControl({
 }
 
 /**
- * Market state, SPY, base currency and the version chip. Everything here except
- * the version chip is live status; the chip is the one fixed value the status
- * bar carries, and it is the first thing dropped when the row runs out of room.
+ * The version chip, dropped when the row runs out of room. Live market status
+ * lives at the header's right edge, not here, so nothing in the status bar
+ * repeats it.
  */
 function StatusBarSummary({
   hoveredControl,
@@ -451,48 +413,16 @@ function StatusBarSummary({
   StatusBarViewProps,
   "hoveredControl" | "openChangelog" | "rightAvailableWidth" | "setHoveredControl"
 > & { nativePaneChrome: boolean }) {
-  const colors = useThemeColors();
-  const summary = useMarketSummary();
   const versionLabel = `v${VERSION}`;
-  const fit = resolveStatusBarRightFit({
-    available: rightAvailableWidth,
-    baseCurrencyWidth: summary.baseCurrency.length + 1,
-    marketCountdownWidth: summary.marketLabel.length - summary.marketLabelShort.length,
-    marketStateWidth: summary.marketLabelShort ? summary.marketLabelShort.length + 1 : 0,
-    spyWidth: summary.spyText.length + 1,
-    versionWidth: versionLabel.length + 1,
-  });
-  const marketLabel = fit.showMarketCountdown ? summary.marketLabel : summary.marketLabelShort;
-
+  if (rightAvailableWidth < versionLabel.length + 1) return null;
   return (
-    <>
-      {fit.showMarketState && marketLabel ? (
-        <Box paddingRight={1} flexShrink={0}>
-          <Text fg={summary.marketColor} {...(nativePaneChrome ? { attributes: TextAttributes.BOLD } : {})}>
-            {marketLabel}
-          </Text>
-        </Box>
-      ) : null}
-      {fit.showSpy ? (
-        <Box paddingRight={1} flexShrink={0}>
-          <Text fg={summary.spyColor}>{summary.spyText}</Text>
-        </Box>
-      ) : null}
-      {fit.showBaseCurrency ? (
-        <Box paddingRight={1} flexShrink={0}>
-          <Text fg={colors.textDim}>{summary.baseCurrency}</Text>
-        </Box>
-      ) : null}
-      {fit.showVersion ? (
-        <VersionChip
-          hoveredControl={hoveredControl}
-          label={versionLabel}
-          nativePaneChrome={nativePaneChrome}
-          openChangelog={openChangelog}
-          setHoveredControl={setHoveredControl}
-        />
-      ) : null}
-    </>
+    <VersionChip
+      hoveredControl={hoveredControl}
+      label={versionLabel}
+      nativePaneChrome={nativePaneChrome}
+      openChangelog={openChangelog}
+      setHoveredControl={setHoveredControl}
+    />
   );
 }
 

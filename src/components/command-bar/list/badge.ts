@@ -6,9 +6,21 @@ export interface CommandBarRowBadge {
   tone: CommandBarBadgeTone;
 }
 
-const BADGE_COLUMN_MIN = 4;
-const BADGE_COLUMN_MAX = 6;
-/** Column reserved for the badge plus the gap before the label. */
+/**
+ * Width of the badge column, shared by every row of every list.
+ *
+ * Sized to the widest badge the bar can show, which is a six-character command
+ * prefix; the class and document tags in play (EQ, ETF, DERIV, SYM, NEWS,
+ * CALL, DOCS, RSCH, 10-K, 10-Q, 8-K) all fit inside it. Fixed rather than
+ * measured, because the sections arrive at different times: instruments and
+ * documents land after the local rows, and their badges are wider, so a
+ * measured column would widen mid-query and shift every label above it
+ * sideways. Reserving the minimum would not be enough either, since a badge
+ * wider than the minimum still widens the column. The cost is one indent on a
+ * list that happens to show no badge at all.
+ */
+export const BADGE_COLUMN_WIDTH = 6;
+/** Gap between the badge column and the label. */
 export const BADGE_GAP = 1;
 
 /**
@@ -48,17 +60,3 @@ export function badgeConsumesRight(item: BadgeSource): boolean {
   return !item.badge && resolveRowBadge(item) !== null;
 }
 
-/**
- * Width of the badge column shared by every row in a list, or 0 when no row
- * has one. Padded to the widest badge so labels line up, within a band that
- * keeps a lone "T" from looking lost and "FILING" from pushing labels out.
- */
-export function resolveBadgeColumnWidth(items: readonly BadgeSource[]): number {
-  let widest = 0;
-  for (const item of items) {
-    const badge = resolveRowBadge(item);
-    if (badge) widest = Math.max(widest, badge.text.length);
-  }
-  if (widest === 0) return 0;
-  return Math.min(BADGE_COLUMN_MAX, Math.max(BADGE_COLUMN_MIN, widest));
-}

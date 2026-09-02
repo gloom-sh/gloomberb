@@ -1,6 +1,7 @@
 import type { LayoutBounds } from "../../../plugins/pane-manager";
 import { resolveAppHeaderHeightCells, resolveHeaderPromptGeometry } from "../../layout/shell/chrome";
 import { estimateWorkflowBodyRows } from "../workflow/fields";
+import { NATIVE_COMMAND_SURFACE } from "./native-surface";
 import type { CommandBarRoute } from "../workflow/types";
 
 const BODY_MIN_ROWS = 9;
@@ -68,10 +69,10 @@ export function resolveCommandBarPanelLayout({
   const barWidth = prompt.width;
   const contentPadding = nativePaneChrome ? 1 : 3;
   const nativePanelPaddingColumns = nativePaneChrome
-    ? Math.ceil((14 * 2) / Math.max(1, cellWidthPx))
+    ? Math.ceil((NATIVE_COMMAND_SURFACE.paddingXPx * 2) / Math.max(1, cellWidthPx))
     : 0;
   const nativePanelPaddingRows = nativePaneChrome
-    ? Math.ceil((14 * 2) / Math.max(1, cellHeightPx))
+    ? Math.ceil((NATIVE_COMMAND_SURFACE.paddingYPx * 2) / Math.max(1, cellHeightPx))
     : 0;
   // A nested screen shows its back link; the root shows shortcut feedback when
   // there is any. Otherwise the list starts right under the padding row.

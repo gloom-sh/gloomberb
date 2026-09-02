@@ -29,11 +29,18 @@ describe("command bar sheet geometry", () => {
    * The sheet is the header prompt expanding downward: same left edge, same
    * width, top edge on the header's bottom edge. Any drift between the two
    * reads as a banner, or a floating window, hanging near the prompt.
+   *
+   * The widths are pinned because the header now spends columns on the market
+   * cluster as well as the update status, and the sheet pays for them: a
+   * change there silently narrows every result row.
    */
   test("shares the prompt's left edge and width on every window size", () => {
+    const expectedWidths: Record<number, number> = { 46: 40, 80: 49, 120: 63, 200: 96 };
     for (const termWidth of [46, 80, 120, 200]) {
       const layout = resolveCommandBarPanelLayout({ ...BASE, termHeight: 40, termWidth });
       const prompt = resolveHeaderPromptGeometry({ termWidth });
+      expect(prompt.width).toBe(expectedWidths[termWidth]!);
+      expect(prompt.left + prompt.width + prompt.marketColumns).toBeLessThanOrEqual(termWidth);
       expect(layout.panelBounds).toEqual({
         x: prompt.left,
         y: resolveAppHeaderHeightCells({}),

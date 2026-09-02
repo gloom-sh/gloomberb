@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { badgeConsumesRight, resolveBadgeColumnWidth, resolveRowBadge } from "./badge";
+import { BADGE_COLUMN_WIDTH, badgeConsumesRight, resolveRowBadge } from "./badge";
 
 describe("command bar row badges", () => {
   test("lifts a shortcut out of the right column and leaves descriptions there", () => {
@@ -39,9 +39,16 @@ describe("command bar row badges", () => {
     expect(resolveRowBadge({ kind: "plugin", right: "EQ" })).toBeNull();
   });
 
-  test("pads the column to the widest badge within four to six cells", () => {
-    expect(resolveBadgeColumnWidth([{ kind: "command", right: "Long description" }])).toBe(0);
-    expect(resolveBadgeColumnWidth([{ kind: "command", right: "T" }])).toBe(4);
-    expect(resolveBadgeColumnWidth([{ kind: "command", right: "T" }, { kind: "action", badge: "FILING" }])).toBe(6);
+  /**
+   * Sections land at different times and their badges are not the same width,
+   * so a column measured from the rows on screen would widen when instruments
+   * or documents arrive and shift every label above them sideways.
+   */
+  test("holds a column wide enough for any badge the bar can show", () => {
+    for (const badge of ["EQ", "ETF", "DERIV", "SYM", "NEWS", "CALL", "DOCS", "RSCH", "10-K", "8-K", "ABCDEF"]) {
+      expect(resolveRowBadge({ kind: "action", badge })?.text.length).toBeLessThanOrEqual(BADGE_COLUMN_WIDTH);
+    }
+    // Six characters is what the shortcut pattern admits; a seventh is prose.
+    expect(resolveRowBadge({ kind: "command", right: "ABCDEFG" })).toBeNull();
   });
 });

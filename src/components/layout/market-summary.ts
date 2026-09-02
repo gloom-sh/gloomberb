@@ -18,10 +18,44 @@ export interface MarketSummary {
   marketColor: string;
   /** Market state with its countdown, when the state has one. */
   marketLabel: string;
-  /** Market state alone, for status bars too narrow for the countdown. */
+  /** Market state alone, for a header too narrow for the countdown. */
   marketLabelShort: string;
   spyColor: string;
   spyText: string;
+}
+
+export interface MarketSummaryFit {
+  showBaseCurrency: boolean;
+  showCountdown: boolean;
+  showState: boolean;
+  showSpy: boolean;
+}
+
+/**
+ * Picks which parts of the cluster survive at a given width, ordered by how
+ * much each can still change: SPY first, then the market-state label, then the
+ * base currency, then the countdown suffix that widens the label. A narrowing
+ * header therefore sheds the countdown, then the currency, then the state, and
+ * keeps SPY longest. `countdownWidth` is what the suffix adds to the label.
+ */
+export function resolveMarketSummaryFit(options: {
+  available: number;
+  baseCurrencyWidth: number;
+  countdownWidth: number;
+  spyWidth: number;
+  stateWidth: number;
+}): MarketSummaryFit {
+  let remaining = options.available;
+  const take = (width: number): boolean => {
+    if (width <= 0 || width > remaining) return false;
+    remaining -= width;
+    return true;
+  };
+  const showSpy = take(options.spyWidth);
+  const showState = take(options.stateWidth);
+  const showBaseCurrency = take(options.baseCurrencyWidth);
+  const showCountdown = showState && take(options.countdownWidth);
+  return { showBaseCurrency, showCountdown, showState, showSpy };
 }
 
 export function useMarketSummary(): MarketSummary {

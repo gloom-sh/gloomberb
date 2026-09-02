@@ -120,7 +120,8 @@ describe("CommandBar AI assist", () => {
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
       />,
-      { width: 100, height: 20 },
+      // Wide enough for the answer's label and its title to share one row.
+      { width: 120, height: 20 },
     );
 
     await testSetup.renderOnce();
@@ -164,7 +165,8 @@ describe("CommandBar AI assist", () => {
         query="new chat pane"
         configurePluginRegistry={configureEarningsRegistry(created)}
       />,
-      { width: 100, height: 20 },
+      // Wide enough for the answers' labels and titles to share one row.
+      { width: 120, height: 20 },
     );
 
     await testSetup.renderOnce();
