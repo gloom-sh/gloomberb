@@ -1,4 +1,5 @@
 import type { ProjectedChartPoint } from "../core/data";
+import type { ResolvedChartPalette } from "../core/palette";
 import type {
   ChartColors,
   ChartIndicatorOverlays,

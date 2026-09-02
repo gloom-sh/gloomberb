@@ -4,9 +4,9 @@ import {
   SegmentedControl,
   Spinner,
   StaticChartSurface,
-  resolveChartPalette,
   type PaneFooterSegment,
 } from "../../../components";
+import { resolveChartPalette } from "../../../components/chart/core/renderer";
 import { ExternalLinkText } from "../../../components/ui";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";

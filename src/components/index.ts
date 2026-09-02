@@ -1,7 +1,6 @@
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static/chart/surface";
-export { resolveChartPalette } from "./chart/core/renderer";
 export {
   buildMetricTreemapNavigationTiles,
   findMetricTreemapNeighbor,
