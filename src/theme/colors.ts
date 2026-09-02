@@ -145,7 +145,6 @@ export function commandBarInputBg(palette: ThemeColors = colors): string {
   return blendHex(commandBarPanelBg(palette), palette.bg, 0.22);
 }
 
-
 export function commandBarSelectedBg(palette: ThemeColors = colors): string {
   const base = commandBarBg(palette);
   const accent = higherContrast(palette.selectedText, palette.textBright, palette.selected);

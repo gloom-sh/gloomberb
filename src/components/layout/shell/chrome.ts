@@ -48,7 +48,6 @@ function headerMarketColumns(termWidth: number, left: number, updateColumns: num
   return HEADER_MARKET_TIERS.find((tier) => tier <= spare) ?? 0;
 }
 
-
 export function resolveAppHeaderHeightCells(options: { titleBarOverlay?: boolean; cellHeightPx?: number }): number {
   if (!options.titleBarOverlay || !options.cellHeightPx || options.cellHeightPx <= 0) return DEFAULT_HEADER_HEIGHT;
   return TITLEBAR_OVERLAY_HEIGHT_PX / options.cellHeightPx;
