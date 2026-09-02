@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { handleRequest, SECURITY_HEADERS, type WorkerEnv } from "./worker";
+import { REGISTRY_ORIGIN } from "../../plugins/builtin/plugin-marketplace/feed";
 
 function fixture() {
   const requests: Request[] = [];
@@ -132,5 +133,23 @@ describe("static Cloudflare host", () => {
     }), env);
     expect(response.status).toBe(405);
     expect(requests).toHaveLength(0);
+  });
+});
+
+/**
+ * The hosted build can only reach origins listed in `connect-src`. A blocked
+ * fetch is not an error the user can act on: the plugin marketplace just shows
+ * an empty catalog. This shipped that way once, because the pane was verified
+ * on the terminal and desktop but not on the web build, so the two values are
+ * pinned to each other here.
+ */
+describe("content security policy", () => {
+  test("allows the plugin registry the marketplace fetches", () => {
+    const connectSrc = SECURITY_HEADERS["content-security-policy"]
+      .split(";")
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith("connect-src"));
+
+    expect(connectSrc).toContain(REGISTRY_ORIGIN);
   });
 });

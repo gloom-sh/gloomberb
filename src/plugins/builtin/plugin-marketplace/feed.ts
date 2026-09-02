@@ -2,14 +2,13 @@ import { createThrottledFetch } from "../../../utils/throttled-fetch";
 import type { RegistryFeed, RegistryPlugin } from "./model";
 
 /**
- * The custom domain is canonical. The workers.dev origin is the same Worker and
- * is tried only if the first request fails, which covers a DNS or certificate
- * problem on the custom hostname without taking the marketplace down.
+ * Exported so the hosted build's CSP can be checked against it. The browser
+ * renderer can only reach origins listed in `connect-src`, and a blocked fetch
+ * shows up as an empty catalog rather than an error, so the two are pinned
+ * together by a test.
  */
-const REGISTRY_URLS = [
-  "https://plugins.gloom.sh/registry.json",
-  "https://gloomberb-plugins.lyser.workers.dev/registry.json",
-] as const;
+export const REGISTRY_ORIGIN = "https://plugins.gloom.sh";
+const REGISTRY_URL = `${REGISTRY_ORIGIN}/registry.json`;
 const FRESH_MS = 15 * 60_000;
 
 const registryFetch = createThrottledFetch({
@@ -55,17 +54,9 @@ export async function loadRegistry(options: { force?: boolean } = {}): Promise<F
 
   if (!inFlight) {
     inFlight = (async () => {
-      let lastError: unknown = new Error("No registry endpoint configured");
-      for (const url of REGISTRY_URLS) {
-        try {
-          const response = await registryFetch.fetch(url);
-          if (!response.ok) throw new Error(`Registry request failed (${response.status})`);
-          return parseFeed(await response.json());
-        } catch (error) {
-          lastError = error;
-        }
-      }
-      throw lastError;
+      const response = await registryFetch.fetch(REGISTRY_URL);
+      if (!response.ok) throw new Error(`Registry request failed (${response.status})`);
+      return parseFeed(await response.json());
     })().finally(() => {
       inFlight = null;
     });
