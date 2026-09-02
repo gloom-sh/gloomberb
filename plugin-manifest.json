@@ -120,11 +120,14 @@
           "econ-calendar",
           "ipo-calendar",
           "macro-tv",
+          "market-valuation",
           "treasury-auctions",
           "volatility-term-structure",
           "yield-curve"
         ],
-        "capabilities": [],
+        "capabilities": [
+          "market-valuation"
+        ],
         "broker": false
       }
     },
