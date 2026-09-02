@@ -95,6 +95,7 @@ export function useTickerSearchRouteResults(options: {
           dataProvider,
           searchContext: {
             preferBroker: true,
+            interactive: true,
             brokerId: brokerId ?? undefined,
             brokerInstanceId: brokerInstanceId ?? undefined,
           },

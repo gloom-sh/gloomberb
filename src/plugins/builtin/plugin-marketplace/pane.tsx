@@ -130,19 +130,20 @@ function EntryDetail({ entry, width }: { entry: MarketplaceEntry; width: number 
 
       <Box paddingTop={1} flexDirection="column">
         {contributes.length > 0 ? <DetailRow label="Adds" value={contributes.join(", ")} /> : null}
-        {/* Shown before install, because it is the one thing a user should weigh. */}
-        <DetailRow
-          label="Network"
-          value={entry.hosts.length > 0 ? entry.hosts.join(", ") : "no third-party requests"}
-        />
+        {/*
+          * Declared by the plugin author and not enforced: plugins are not
+          * sandboxed, so this is a hint about intent, not a limit. Labelled
+          * "Declares" rather than "Network" so it does not read as a guarantee.
+          */}
+        {entry.hosts.length > 0 ? <DetailRow label="Declares" value={entry.hosts.join(", ")} /> : null}
         {entry.repo ? <DetailRow label="Source" value={`github.com/${entry.repo}`} /> : null}
         {entry.loadError ? <DetailRow label="Error" value={entry.loadError} /> : null}
       </Box>
 
-      {!entry.installed && !entry.bundled ? (
+      {!entry.installed && !entry.bundled && entry.repo ? (
         <Box paddingTop={1} flexDirection="column">
-          <Text fg={colors.textDim}>Install with</Text>
-          <Text fg={colors.textBright}>{`gloomberb install ${entry.id}`}</Text>
+          <Text fg={colors.textDim}>Runs with your full permissions. Read the source first.</Text>
+          <Text fg={colors.textBright}>{`gloomberb install ${entry.repo}`}</Text>
         </Box>
       ) : null}
     </ScrollBox>
@@ -219,10 +220,14 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const install = getPluginInstaller();
     if (!selected || !isInstallable(selected) || !install || installing) return;
     if (installedNow.includes(selected.id)) return;
+    // Installs address the repository, not the plugin id: there is no central
+    // name resolution, so owner/repo is the only unambiguous reference.
+    const repo = selected.repo;
+    if (!repo) return;
     const target = selected.id;
     setInstalling(target);
     setInstallError(null);
-    void install(target).then((result) => {
+    void install(repo).then((result) => {
       setInstalling(null);
       if (result.ok) {
         setInstalledNow((current) => [...current, target]);

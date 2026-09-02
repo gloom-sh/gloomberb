@@ -22,6 +22,11 @@ jobs:
       - name: Typecheck production runtimes
         run: bun run typecheck
 
+      # Fails when a built-in plugin changes without regenerating the published
+      # manifest, which is what the plugin directory renders for built-ins.
+      - name: Check the built-in plugin manifest
+        run: bun run plugins:manifest:check
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:

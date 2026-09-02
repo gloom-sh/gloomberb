@@ -117,6 +117,7 @@ export async function searchTickerCandidates({
   localLimit = 6,
   totalLimit = 8,
   includeOptionContracts = true,
+  onPartial,
 }: {
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
@@ -125,15 +126,23 @@ export async function searchTickerCandidates({
   localLimit?: number;
   totalLimit?: number;
   includeOptionContracts?: boolean;
+  /** Called when a slower, richer source improves results already returned. */
+  onPartial?: (candidates: TickerSearchCandidate[]) => void;
 }): Promise<TickerSearchCandidate[]> {
-  return buildTickerSearchCandidates({
+  const assemble = (providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
     query,
     tickers,
-    providerResults: await searchProviderResults(dataProvider, query, searchContext),
+    providerResults,
     localLimit,
     totalLimit,
     includeOptionContracts,
   });
+  return assemble(await searchProviderResults(
+    dataProvider,
+    query,
+    searchContext,
+    onPartial ? (results) => onPartial(assemble(results)) : undefined,
+  ));
 }
 
 export function buildTickerSearchCandidates({
@@ -233,27 +242,43 @@ async function searchProviderResults(
   dataProvider: DataProvider,
   query: string,
   searchContext?: SearchRequestContext,
+  onPartial?: (results: InstrumentSearchResult[]) => void,
 ): Promise<InstrumentSearchResult[]> {
-  const merged: InstrumentSearchResult[] = [];
-  const seen = new Set<string>();
-
-  for (const searchQuery of buildProviderSearchQueries(query)) {
-    let results: InstrumentSearchResult[] = [];
-    try {
-      results = await dataProvider.search(searchQuery, searchContext);
-    } catch {
-      results = [];
-    }
-
+  // A Map rather than a list plus a seen set, because a later source can send
+  // back a richer version of a symbol already recorded. Overwriting a key keeps
+  // its original position, so an upgrade does not reorder the list.
+  const byKey = new Map<string, InstrumentSearchResult>();
+  const add = (results: InstrumentSearchResult[], upgrade = false) => {
     for (const result of results) {
       const key = buildProviderSearchResultKey(result);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(result);
+      if (!upgrade && byKey.has(key)) continue;
+      byKey.set(key, result);
     }
-  }
+  };
 
-  return merged;
+  // The variants are independent lookups of the same words, so they run
+  // together. Awaited in turn they multiplied every per-source timeout by the
+  // number of spellings tried.
+  await Promise.all(buildProviderSearchQueries(query).map(async (searchQuery) => {
+    try {
+      const results = await dataProvider.search(searchQuery, {
+        ...searchContext,
+        ...(onPartial
+          ? {
+            onPartial: (upgraded: InstrumentSearchResult[]) => {
+              add(upgraded, true);
+              onPartial([...byKey.values()]);
+            },
+          }
+          : {}),
+      });
+      add(results);
+    } catch {
+      // One spelling failing must not lose the others.
+    }
+  }));
+
+  return [...byKey.values()];
 }
 
 function buildProviderSearchQueries(query: string): string[] {

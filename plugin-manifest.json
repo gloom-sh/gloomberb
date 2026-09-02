@@ -1,0 +1,340 @@
+{
+  "version": 1,
+  "plugins": [
+    {
+      "id": "ai",
+      "name": "AI",
+      "description": "Use AI providers with your financial data.",
+      "categories": [
+        "ai"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "alerts",
+      "name": "Alerts",
+      "description": "Price trigger alerts with desktop notifications",
+      "categories": [
+        "alerts"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "application",
+      "name": "Application",
+      "description": "Core layout, help, and release information.",
+      "categories": [
+        "core"
+      ],
+      "toggleable": false,
+      "contributes": {
+        "panes": [
+          "changelog",
+          "connections",
+          "help",
+          "layout-marketplace",
+          "plugin-marketplace"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "broker",
+      "name": "Broker",
+      "description": "Broker profiles, account sync, and connection status.",
+      "categories": [
+        "broker"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "brokers"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "debug",
+      "name": "Debug",
+      "description": "View and export debug logs",
+      "categories": [
+        "developer"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "gloomberb-cloud",
+      "name": "Gloom Cloud",
+      "description": "Free market, macro, and chat services. Chat requires signup.",
+      "categories": [
+        "data",
+        "cloud"
+      ],
+      "toggleable": true,
+      "featured": true,
+      "contributes": {
+        "panes": [
+          "account-management",
+          "buildout",
+          "chat",
+          "congress-trades"
+        ],
+        "capabilities": [
+          "asset-data.gloomberb-cloud",
+          "news.gloomberb-cloud"
+        ],
+        "broker": false
+      }
+    },
+    {
+      "id": "macro",
+      "name": "Macro",
+      "description": "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, IPOs, and live financial TV.",
+      "categories": [
+        "macro"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "cds",
+          "credit-conditions",
+          "earnings-calendar",
+          "earnings-calls",
+          "econ-calendar",
+          "ipo-calendar",
+          "macro-tv",
+          "treasury-auctions",
+          "volatility-term-structure",
+          "yield-curve"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "market-overview",
+      "name": "Market Overview",
+      "description": "Global indices, movers, scanners, sectors, FX, futures, sentiment, and correlations.",
+      "categories": [
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "correlation",
+          "fear-greed",
+          "futures",
+          "fx-matrix",
+          "market-halts",
+          "market-heatmap",
+          "market-movers",
+          "relationship-graph",
+          "scanner-flow",
+          "scanner-hilo",
+          "sectors",
+          "world-indices",
+          "world-venue-map"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "news",
+      "name": "News",
+      "description": "View latest news for each ticker",
+      "categories": [
+        "news"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "news-breaking",
+          "news-feed",
+          "news-industry",
+          "news-top",
+          "ticker-news"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "notes",
+      "name": "Notes",
+      "description": "Add markdown notes to your tickers.",
+      "categories": [
+        "productivity"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "polls",
+      "name": "Polls",
+      "description": "Political polls from VoteHub (CC BY 4.0)",
+      "categories": [
+        "data"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "polls"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "portfolio",
+      "name": "Portfolio",
+      "description": "Portfolio and watchlist management, analytics, and position sizing.",
+      "categories": [
+        "portfolio"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "analytics",
+          "kelly-sizer",
+          "portfolio-list"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "prediction-markets",
+      "name": "Prediction Markets",
+      "description": "Browse prediction markets (Polymarket and Kalshi).",
+      "categories": [
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "prediction-markets"
+        ],
+        "capabilities": [
+          "prediction-markets.series"
+        ],
+        "broker": false
+      }
+    },
+    {
+      "id": "public",
+      "name": "Public",
+      "description": "Read-only account and position sync for Public.",
+      "categories": [
+        "broker"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": true
+      }
+    },
+    {
+      "id": "robinhood",
+      "name": "Robinhood",
+      "description": "Read-only account and position sync through Robinhood Trading MCP.",
+      "categories": [
+        "broker"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": true
+      }
+    },
+    {
+      "id": "simplefin",
+      "name": "SimpleFIN",
+      "description": "Read-only investment position sync through SimpleFIN Bridge.",
+      "categories": [
+        "broker"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": true
+      }
+    },
+    {
+      "id": "ticker-research",
+      "name": "Ticker Research",
+      "description": "Company research workspace: overview, charts, financials, filings, ownership, options, analyst research, and events.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "analyst-research",
+          "chart-composer",
+          "corporate-actions",
+          "data-catalog",
+          "dividend-yield",
+          "earnings-estimates",
+          "equity-diagnostic",
+          "financial-analysis",
+          "historical-prices",
+          "holders",
+          "insider",
+          "options",
+          "options-calculator",
+          "provider-search-results",
+          "quote-monitor",
+          "relative-valuation",
+          "sec",
+          "short-interest",
+          "thirteenf-funds",
+          "ticker-research"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "yahoo",
+      "name": "Yahoo Fallback",
+      "description": "Built-in delayed fallback for quotes, fundamentals, charts, and unsupported cloud data.",
+      "categories": [
+        "data"
+      ],
+      "toggleable": false,
+      "contributes": {
+        "panes": [],
+        "capabilities": [
+          "asset-data.yahoo",
+          "news.yahoo"
+        ],
+        "broker": false
+      }
+    }
+  ]
+}
