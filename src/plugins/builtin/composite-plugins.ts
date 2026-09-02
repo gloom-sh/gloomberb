@@ -10,7 +10,7 @@ import { pluginMarketplaceModule } from "./plugin-marketplace";
 import { correlationModule } from "./correlation";
 import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
-import { buffettIndicatorModule } from "./buffett-indicator";
+import { marketValuationModule } from "./market-valuation";
 import { economicCalendarModule } from "./econ";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
@@ -103,7 +103,7 @@ export const macroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     volatilityModule,
     creditConditionsModule,
-    buffettIndicatorModule,
+    marketValuationModule,
     cdsModule,
     treasuryAuctionsModule,
     earningsModule,

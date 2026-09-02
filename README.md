@@ -288,7 +288,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 30-day/3-month implied-volatility curve |
 | `CRD` | Credit spreads |
-| `BUF` | US market cap to GDP with valuation zones |
+| `VAL` | Whole-market valuation ratios vs their own history |
 | `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's trades |
 | `ERN` | Earnings calendar |
 | `IPO` | Upcoming and recent IPOs |

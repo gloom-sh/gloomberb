@@ -1,10 +1,10 @@
-import { gdpVintageLabel, type RatioPoint, type RatioSeries } from "./align";
-import { projectChart, type BuffettChartProjection } from "./chart-projection";
+import { vintageLabel, type RatioPoint, type RatioSeries } from "./align";
+import { meanRatio, projectChart, type ValuationChartProjection } from "./chart-projection";
 import {
-  BUFFETT_STALE_AFTER_MS,
   RANGE_WINDOWS_MS,
   classifyZone,
-  type BuffettRangeId,
+  type IndicatorDef,
+  type ValuationRangeId,
   type ZoneHit,
 } from "./defs";
 import { sigmaVsTrend, trendAt, type TrendFit } from "./trend";
@@ -16,33 +16,33 @@ export interface Extreme {
   date: string;
 }
 
-export interface BuffettBuild {
+export interface IndicatorBuild {
+  indicator: IndicatorDef;
   series: RatioSeries;
   trend: TrendFit;
   cacheStale: boolean;
 }
 
-export interface BuffettBundle {
-  build: BuffettBuild;
-  stale: boolean;
+export interface ValuationBundle {
+  builds: IndicatorBuild[];
   errors: string[];
   fetchedAt: number;
 }
 
-export interface BuffettViewModel {
-  range: BuffettRangeId;
-  resolvedNumeratorId: string;
+export interface IndicatorViewModel {
+  indicator: IndicatorDef;
+  range: ValuationRangeId;
   current: RatioPoint;
   zone: ZoneHit;
   sigmaVsTrend: number;
   trendNow: number;
-  gdpVintageDate: string;
-  gdpVintageLabel: string;
+  mean: number;
+  denominatorVintageLabel: string;
   ratioOneYearAgo: number | null;
   allTimeHigh: Extreme;
   allTimeLow: Extreme;
   percentile: number;
-  chart: BuffettChartProjection;
+  chart: ValuationChartProjection;
   asOf: string;
   observationStale: boolean;
   cacheStale: boolean;
@@ -54,7 +54,7 @@ function parseDateMs(date: string): number {
 
 export function sliceByRange(
   points: readonly RatioPoint[],
-  range: BuffettRangeId,
+  range: ValuationRangeId,
   nowMs: number = Date.parse(points.at(-1)!.date),
 ): RatioPoint[] {
   const window = RANGE_WINDOWS_MS[range];
@@ -64,10 +64,7 @@ export function sliceByRange(
   return sliced.length >= 2 ? sliced : [...points];
 }
 
-function findExtreme(
-  points: readonly RatioPoint[],
-  pick: "high" | "low",
-): Extreme {
+function findExtreme(points: readonly RatioPoint[], pick: "high" | "low"): Extreme {
   let best = points[0]!;
   for (const p of points) {
     if (pick === "high" ? p.ratio > best.ratio : p.ratio < best.ratio) best = p;
@@ -85,42 +82,41 @@ function ratioOneYearAgo(points: readonly RatioPoint[], currentDate: string): nu
 }
 
 export function projectView(
-  build: BuffettBuild,
-  range: BuffettRangeId,
+  build: IndicatorBuild,
+  range: ValuationRangeId,
   opts: { nowMs?: number } = {},
-): BuffettViewModel {
-  const { series, trend, cacheStale } = build;
+): IndicatorViewModel {
+  const { indicator, series, trend, cacheStale } = build;
   const points = series.points;
   const current = points[points.length - 1]!;
   const nowMs = opts.nowMs ?? Date.now();
   const visible = sliceByRange(points, range);
-  const zone = classifyZone(current.ratio);
-  const observationAgeMs = nowMs - parseDateMs(current.date);
+  const mean = meanRatio(points);
   const atOrBelow = points.filter((p) => p.ratio <= current.ratio).length;
 
   return {
+    indicator,
     range,
-    resolvedNumeratorId: series.resolvedNumeratorId,
     current,
-    zone,
+    zone: classifyZone(indicator, current.ratio),
     sigmaVsTrend: sigmaVsTrend(trend, current.ratio, current.date),
     trendNow: trendAt(trend, current.date),
-    gdpVintageDate: series.gdpVintageDate,
-    gdpVintageLabel: gdpVintageLabel(series.gdpVintageDate),
+    mean,
+    denominatorVintageLabel: vintageLabel(indicator.denominatorLabel, series.denominatorVintageDate),
     ratioOneYearAgo: ratioOneYearAgo(points, current.date),
     allTimeHigh: findExtreme(points, "high"),
     allTimeLow: findExtreme(points, "low"),
     percentile: points.length === 0 ? 0 : (100 * atOrBelow) / points.length,
-    chart: projectChart(visible),
+    chart: projectChart(indicator, visible, mean),
     asOf: current.date,
-    observationStale: observationAgeMs > BUFFETT_STALE_AFTER_MS,
+    observationStale: nowMs - parseDateMs(current.date) > indicator.staleAfterMs,
     cacheStale,
   };
 }
 
-export function selectBuffettView(
-  bundle: BuffettBundle,
-  range: BuffettRangeId,
-): BuffettViewModel {
-  return projectView(bundle.build, range);
+export function selectValuationViews(
+  bundle: ValuationBundle,
+  range: ValuationRangeId,
+): IndicatorViewModel[] {
+  return bundle.builds.map((build) => projectView(build, range));
 }

@@ -7,9 +7,14 @@ import type { DatedObservation, DatedSeries } from "./series";
 
 const yahoo = new YahooHttpClient();
 
+/**
+ * FRED drops requests that claim to be a browser without sending a browser's
+ * other headers, so identify honestly. A `Name/Version` shaped agent is served;
+ * a spoofed `Mozilla/5.0 ...` string hangs until the request times out.
+ */
 const FRED_CSV_HEADERS = {
   Accept: "text/csv,text/plain,*/*",
-  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+  "User-Agent": "Gloomberb/1.0 (+https://gloom.sh)",
 };
 
 export function yahooSymbolFor(def: SeriesDef): string | undefined {
@@ -18,6 +23,19 @@ export function yahooSymbolFor(def: SeriesDef): string | undefined {
       return def.source.symbol;
     case "fred":
       return undefined;
+    default: {
+      const _exhaustive: never = def.source;
+      return _exhaustive;
+    }
+  }
+}
+
+export function provenanceFor(def: SeriesDef): DatedSeries["provenance"] {
+  switch (def.source.kind) {
+    case "yahoo-index":
+      return "yahoo";
+    case "fred":
+      return "fred";
     default: {
       const _exhaustive: never = def.source;
       return _exhaustive;
@@ -74,7 +92,7 @@ export async function loadFredGraphCsvSeries(seriesId: string): Promise<DatedSer
   const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(seriesId)}`;
   const response = await httpFetch(url, {
     headers: FRED_CSV_HEADERS,
-    signal: AbortSignal.timeout(8_000),
+    signal: AbortSignal.timeout(15_000),
   });
   const body = await response.text();
   if (!response.ok) {

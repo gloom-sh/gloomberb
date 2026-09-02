@@ -72,7 +72,7 @@ describe("browser plugin catalog", () => {
       "thirteenf",
       "sec",
       "insider",
-      "buffett-indicator",
+      "market-valuation",
     ]) {
       expect(paneIds).not.toContain(forbidden);
     }
