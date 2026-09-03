@@ -220,6 +220,7 @@ export function useCommandBarPanelRuntime({
     termHeight,
     termWidth,
     themePickerActive,
+    themePickerFilter,
     titleBarOverlay,
     updateTopRoute,
     visibleListStateRef,

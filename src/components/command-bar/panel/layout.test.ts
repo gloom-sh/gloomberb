@@ -12,6 +12,7 @@ const BASE = {
   nativePaneChrome: false,
   showCustomMultiSelectPicker: false,
   themePickerActive: false,
+  themePickerRowCount: 0,
   titleBarOverlay: undefined as boolean | undefined,
 };
 
@@ -102,6 +103,28 @@ describe("command bar sheet geometry", () => {
       expect(withChrome.panelBounds.height).toBe(withChrome.bodyHeight + 4);
       expect(withChrome.panelBounds.height).toBeLessThanOrEqual(plain.panelBounds.height);
     }
+  });
+
+  /**
+   * The theme picker keeps its own rows rather than a list state, so it has to
+   * hand the layout a count of its own. Without one it was excluded from the
+   * compact path entirely and the sheet opened at full height over a dozen
+   * themes.
+   */
+  test("sizes the desktop sheet to the theme picker's own rows", () => {
+    const picker = (themePickerRowCount: number) => resolveCommandBarPanelLayout({
+      ...DESKTOP,
+      hasVisibleListState: false,
+      termHeight: 60,
+      termWidth: 200,
+      themePickerActive: true,
+      themePickerRowCount,
+    });
+
+    expect(picker(4).bodyHeight).toBe(4);
+    expect(picker(1).bodyHeight).toBe(1);
+    // More themes than the sheet can hold falls back to the full budget and scrolls.
+    expect(picker(200).bodyHeight).toBe(picker(200).baseBodyHeight);
   });
 
   /** The bottom rows of a short terminal stay clear at every sheet height. */

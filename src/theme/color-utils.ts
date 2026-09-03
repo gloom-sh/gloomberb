@@ -10,7 +10,7 @@ export function blendHex(a: string, b: string, ratio: number): string {
   return `#${mix(ar, br)}${mix(ag, bg)}${mix(ab, bb)}`;
 }
 
-function relativeLuminance(hex: string): number {
+export function relativeLuminance(hex: string): number {
   const h = hex.replace("#", "");
   const toLinear = (value: string) => {
     const normalized = parseInt(value, 16) / 255;

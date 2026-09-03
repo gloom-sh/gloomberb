@@ -23,8 +23,14 @@ import type { CommandBarPanelProps } from "./types";
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
 const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
 
+/**
+ * The root screen keeps the closed prompt's own words. Opening the bar puts the
+ * caret in the same input the header was already showing, so changing the
+ * placeholder underneath it read as the control being swapped out. Nested
+ * screens are a different screen and say so.
+ */
 function resolvePromptPlaceholder(listState: ListScreenState): string {
-  if (listState.kind === "root") return t("Command or plain English…");
+  if (listState.kind === "root") return t("Search or run a command");
   if (listState.title === "Security Description") return t("Search tickers");
   return t("Filter");
 }

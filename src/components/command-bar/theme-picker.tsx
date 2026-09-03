@@ -13,14 +13,42 @@ import { Box, Text } from "../../ui";
 import { TextAttributes } from "../../ui";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
-import { getThemeIds, themes as themeRegistry } from "../../theme/themes";
+import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/themes";
 import { truncateText } from "./view-model";
 
 const THEME_PREVIEW_DEBOUNCE_MS = 120;
-const THEME_OPTIONS = getThemeIds().map((id) => ({
-  id,
-  name: themeRegistry[id]!.name,
-}));
+/**
+ * Marks the dark half of the list. The registry's own order groups themes by
+ * family, which only helps if you already know which family you want; sorted by
+ * name you can find one by reading, and the glyph carries the grouping the
+ * order used to.
+ */
+const DARK_THEME_GLYPH = "☾";
+/** The glyph plus the space that keeps names on one left edge, dark or light. */
+const GLYPH_GUTTER_WIDTH = 2;
+
+export interface ThemeOption {
+  id: string;
+  name: string;
+  dark: boolean;
+}
+
+const THEME_OPTIONS: ThemeOption[] = getThemeIds()
+  .map((id) => ({ id, name: themeRegistry[id]!.name, dark: isDarkTheme(id) }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+/**
+ * Shared with the panel layout, which sizes the sheet to whatever this returns
+ * so the picker never opens taller than the themes it can show.
+ */
+export function matchThemeOptions(filter: string): ThemeOption[] {
+  const normalized = filter.trim().toLowerCase();
+  if (!normalized) return THEME_OPTIONS;
+  return THEME_OPTIONS.filter((theme) => (
+    theme.name.toLowerCase().includes(normalized)
+    || theme.id.toLowerCase().includes(normalized)
+  ));
+}
 
 interface ThemePickerScrollEvent {
   stopPropagation: () => void;
@@ -83,13 +111,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   const onPreviewRef = useRef(onPreview);
   const onCommitRef = useRef(onCommit);
   const normalizedFilter = filter.trim().toLowerCase();
-  const themes = useMemo(() => {
-    if (!normalizedFilter) return THEME_OPTIONS;
-    return THEME_OPTIONS.filter((theme) => (
-      theme.name.toLowerCase().includes(normalizedFilter)
-      || theme.id.toLowerCase().includes(normalizedFilter)
-    ));
-  }, [normalizedFilter]);
+  const themes = useMemo(() => matchThemeOptions(normalizedFilter), [normalizedFilter]);
   const [selectedIndex, setSelectedIndex] = useState(() => (
     Math.max(0, themes.findIndex((theme) => theme.id === committedThemeId))
   ));
@@ -199,8 +221,9 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     onCommitRef.current(selected.id);
   }, [cancelPreview]);
 
+  const nameWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH);
   const renderRow = useCallback((item: ListViewItem, state: ListRowState) => {
-    const label = truncateText(item.label, labelWidth);
+    const label = truncateText(item.label, nameWidth);
     const trailing = item.current ? "current" : "";
     return (
       <Box
@@ -211,7 +234,12 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
         data-command-bar-row-selected={nativePaneChrome && state.selected ? "true" : undefined}
         style={nativePaneChrome ? { borderRadius: 6 } : undefined}
       >
-        <Box width={labelWidth}>
+        <Box width={GLYPH_GUTTER_WIDTH}>
+          <Text fg={state.selected ? paletteSelectedText : paletteSubtleText}>
+            {isDarkTheme(item.id) ? DARK_THEME_GLYPH : ""}
+          </Text>
+        </Box>
+        <Box width={nameWidth}>
           <Text
             fg={state.selected ? paletteSelectedText : paletteText}
             attributes={item.current ? TextAttributes.BOLD : undefined}
@@ -228,7 +256,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     );
   }, [
     contentPadding,
-    labelWidth,
+    nameWidth,
     nativePaneChrome,
     paletteSelectedText,
     paletteSubtleText,

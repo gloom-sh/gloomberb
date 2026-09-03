@@ -49,6 +49,7 @@ export function resolveCommandBarPanelLayout({
   termHeight,
   termWidth,
   themePickerActive,
+  themePickerRowCount,
   titleBarOverlay,
 }: {
   cellHeightPx: number;
@@ -63,6 +64,7 @@ export function resolveCommandBarPanelLayout({
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
+  themePickerRowCount: number;
   titleBarOverlay: boolean | undefined;
 }): CommandBarPanelLayout {
   const prompt = resolveHeaderPromptGeometry({ nativePaneChrome, nativeWindowChrome, termWidth, titleBarOverlay });
@@ -98,12 +100,15 @@ export function resolveCommandBarPanelLayout({
       Math.max(7, estimateWorkflowBodyRows(currentRoute)),
     )
     : baseBodyHeight;
+  // The theme picker keeps its own rows rather than a list state, so it reports
+  // a count of its own; without one the sheet used to open at full height over
+  // a dozen themes.
+  const compactRowCount = themePickerActive ? themePickerRowCount : nativeListRowCount;
   const shouldUseCompactListHeight = nativePaneChrome
-    && hasVisibleListState
-    && !themePickerActive
+    && (hasVisibleListState || themePickerActive)
     && !showCustomMultiSelectPicker;
   const listBodyHeight = shouldUseCompactListHeight
-    ? Math.min(baseBodyHeight, Math.max(1, nativeListRowCount))
+    ? Math.min(baseBodyHeight, Math.max(1, compactRowCount))
     : baseBodyHeight;
   const bodyHeight = currentRoute?.kind === "workflow"
     ? workflowBodyHeight

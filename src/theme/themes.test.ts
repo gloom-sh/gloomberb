@@ -1,4 +1,4 @@
-import { afterEach, describe, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   applyTheme,
   commandBarAccentText,
@@ -16,7 +16,7 @@ import {
   paneTitleText,
 } from "./colors";
 import { contrastRatio } from "./color-utils";
-import { DEFAULT_THEME, themes } from "./themes";
+import { DEFAULT_THEME, getThemeIds, isDarkTheme, themes } from "./themes";
 
 const BODY_TEXT_MIN = 4.5;
 const SUBTLE_TEXT_MIN = 3.6;
@@ -32,6 +32,19 @@ function assertMinContrast(themeId: string, label: string, fg: string, bg: strin
 
 afterEach(() => {
   applyTheme(DEFAULT_THEME);
+});
+
+/**
+ * The theme picker marks the dark half of its list with a moon, so a palette
+ * that lands on the wrong side of this shows the wrong glyph, and the whole
+ * gutter stops meaning anything. Pinning the light set catches a palette drifting
+ * across the line when someone retunes its colours.
+ */
+describe("theme appearance", () => {
+  test("reads every light theme as light and everything else as dark", () => {
+    const light = getThemeIds().filter((id) => !isDarkTheme(id)).sort();
+    expect(light).toEqual(["github-light", "gruvbox-light", "nord-light", "paper", "solarized-light"]);
+  });
 });
 
 describe("theme contrast", () => {
