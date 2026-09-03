@@ -50,6 +50,12 @@ type PendingCdpCall = {
   reject: (error: Error) => void;
 };
 
+const SHOT_MODE_CSS = [
+  "[data-gloom-role='composite-chart-toolbar']",
+  "[data-gloom-role='chart-series-quick-add']",
+  "[data-gloom-role='pane-close']",
+].join(", ") + " { display: none !important; }";
+
 const CHROME_POLL_ATTEMPTS = 80;
 const SHOT_READY_TIMEOUT_MS = 10_000;
 const CDP_CALL_TIMEOUT_MS = 10_000;
@@ -93,6 +99,13 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
     loadingText: "Rendering pane...",
     bootstrapScript: `
       window.__GLOOM_CLI_SHOT_PAYLOAD__ = ${payloadJson};
+      (() => {
+        // A screenshot cannot be interacted with, so drawing tools, the
+        // quick-add input and the close button only add noise to the image.
+        const style = document.createElement("style");
+        style.textContent = ${JSON.stringify(SHOT_MODE_CSS)};
+        document.head.appendChild(style);
+      })();
       window.addEventListener("error", (event) => {
         window.__GLOOM_CLI_SHOT_ERROR__ = event.error && event.error.stack ? event.error.stack : String(event.error || event.message);
       });

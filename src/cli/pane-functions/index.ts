@@ -98,6 +98,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         outputPath,
         width: parsed.width,
         height: parsed.height,
+        theme: parsed.theme,
         options: parsed.options,
       });
       if (parsed.requireBotSafe && !result.usable) {

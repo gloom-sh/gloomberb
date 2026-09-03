@@ -121,7 +121,7 @@ function createCoreCliCommands(
       aliases: ["screenshot"],
       description: "Render a desktop-style screenshot for a pane-backed market function",
       help: {
-        usage: ["shot <function-or-pane> [argument] [--output path] [--width px] [--height px] [--key value]"],
+        usage: ["shot <function-or-pane> [argument] [--output path] [--width px] [--height px] [--theme id] [--key value]"],
       },
       execute: async (args, ctx) => {
         await runPaneScreenshot(args, ctx);
