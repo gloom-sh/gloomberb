@@ -1,7 +1,7 @@
 import type { Portfolio, Watchlist } from "./ticker";
 import type { LanguagePreference } from "../i18n/languages";
 
-export const CURRENT_CONFIG_VERSION = 21;
+export const CURRENT_CONFIG_VERSION = 22;
 
 type ChartRendererPreference = "auto" | "kitty" | "braille";
 
@@ -457,6 +457,14 @@ function getDockedPaneIdsFromNode(node: DockLayoutNode | null, result: string[] 
   return result;
 }
 
+export function getPlacedPaneInstanceIds(layout: LayoutConfig): string[] {
+  return [...new Set([
+    ...getDockedPaneIdsFromNode(layout.dockRoot),
+    ...layout.floating.map((entry) => entry.instanceId),
+    ...(layout.detached ?? []).map((entry) => entry.instanceId),
+  ])];
+}
+
 export function createPaneInstanceId(paneId: string): string {
   nextPaneInstanceSeq += 1;
   return `${paneId}:${Date.now().toString(36)}${nextPaneInstanceSeq.toString(36)}`;
@@ -560,8 +568,24 @@ export function removePaneInstances(layout: LayoutConfig, instanceIds: Iterable<
   const removedIds = new Set(instanceIds);
   if (removedIds.size === 0) return layout;
 
-  const instances = layout.instances.filter((instance) => !removedIds.has(instance.instanceId));
-  const validInstanceIds = new Set(instances.map((instance) => instance.instanceId));
+  const retainedInstances = layout.instances.filter((instance) => !removedIds.has(instance.instanceId));
+  const validInstanceIds = new Set(retainedInstances.map((instance) => instance.instanceId));
+  const instances = retainedInstances
+    .map((instance) => {
+      const memory = clonePlacementMemory(instance.placementMemory);
+      if (!memory?.docked?.anchorInstanceId || validInstanceIds.has(memory.docked.anchorInstanceId)) {
+        return instance;
+      }
+      const docked = {
+        ...memory.docked,
+        anchorInstanceId: undefined,
+      };
+      const nextDocked = docked.path || docked.position ? docked : undefined;
+      const placementMemory = nextDocked || memory.floating || memory.detached
+        ? { ...memory, docked: nextDocked }
+        : undefined;
+      return { ...instance, placementMemory };
+    });
   const dockRoot = normalizeDockNode(layout.dockRoot, validInstanceIds, new Set<string>());
   const dockedPaneIds = new Set(getDockedPaneIdsFromNode(dockRoot));
   const detached = layout.detached ?? [];
@@ -572,6 +596,28 @@ export function removePaneInstances(layout: LayoutConfig, instanceIds: Iterable<
     floating: layout.floating.filter((entry) => !removedIds.has(entry.instanceId) && !dockedPaneIds.has(entry.instanceId)),
     detached: detached.filter((entry) => !removedIds.has(entry.instanceId) && !dockedPaneIds.has(entry.instanceId)),
   };
+}
+
+export function removeUnreachablePaneInstances(layout: LayoutConfig): LayoutConfig {
+  const instancesById = new Map(layout.instances.map((instance) => [instance.instanceId, instance] as const));
+  const reachableIds = new Set(getPlacedPaneInstanceIds(layout));
+  const pendingIds = [...reachableIds];
+
+  for (let index = 0; index < pendingIds.length; index += 1) {
+    const instance = instancesById.get(pendingIds[index]!);
+    if (instance?.binding?.kind !== "follow") continue;
+    const sourceId = instance.binding.sourceInstanceId;
+    if (!instancesById.has(sourceId) || reachableIds.has(sourceId)) continue;
+    reachableIds.add(sourceId);
+    pendingIds.push(sourceId);
+  }
+
+  return removePaneInstances(
+    layout,
+    layout.instances
+      .filter((instance) => !reachableIds.has(instance.instanceId))
+      .map((instance) => instance.instanceId),
+  );
 }
 
 export function normalizePaneLayout(

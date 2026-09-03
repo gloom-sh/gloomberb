@@ -1,7 +1,9 @@
 import {
-  getDockedPaneIds,
-} from "../plugins/pane-manager";
-import type { DockLayoutNode, LayoutConfig, PaneInstanceConfig } from "../types/config";
+  getPlacedPaneInstanceIds,
+  type DockLayoutNode,
+  type LayoutConfig,
+  type PaneInstanceConfig,
+} from "../types/config";
 
 export function requirePaneInstance(layout: LayoutConfig, paneId: string): PaneInstanceConfig {
   const instance = layout.instances.find((entry) => entry.instanceId === paneId)
@@ -27,11 +29,7 @@ export function buildGridDockRoot(paneIds: string[], columns?: number): DockLayo
 }
 
 export function visiblePaneIds(layout: LayoutConfig): string[] {
-  const ids = new Set<string>();
-  getDockedPaneIds(layout).forEach((id) => ids.add(id));
-  layout.floating.forEach((entry) => ids.add(entry.instanceId));
-  (layout.detached ?? []).forEach((entry) => ids.add(entry.instanceId));
-  return [...ids];
+  return getPlacedPaneInstanceIds(layout);
 }
 
 export function regionToDockPosition(region: string): "left" | "right" | "above" | "below" {

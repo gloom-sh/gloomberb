@@ -4,6 +4,7 @@ import {
   CURRENT_CONFIG_VERSION,
   DEFAULT_COLUMNS,
   DEFAULT_PORTFOLIO_COLUMN_IDS,
+  getPlacedPaneInstanceIds,
   type LayoutConfig,
 } from "../../../types/config";
 import {
@@ -24,6 +25,7 @@ const CLOUD_MACRO_SPLIT_CONFIG_VERSION = 15;
 const PORTFOLIO_DEFAULT_COLUMNS_CONFIG_VERSION = 17;
 const BUILTIN_OWNERSHIP_AND_CHART_CONFIG_VERSION = 20;
 const ONBOARDING_BACKFILL_CONFIG_VERSION = 21;
+const UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION = 22;
 
 const LEGACY_MAIN_PORTFOLIO_COLUMN_IDS = DEFAULT_COLUMNS.map((column) => column.id);
 const PRE_SPARKLINE_PORTFOLIO_COLUMN_IDS = [
@@ -85,6 +87,11 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
     toVersion: ONBOARDING_BACKFILL_CONFIG_VERSION,
     migrate: migrateOnboardingComplete,
   },
+  {
+    name: "prune-unreachable-pane-instances",
+    toVersion: UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION,
+    migrate: migrateUnreachablePaneInstances,
+  },
 ];
 
 export function migrateSavedConfig(saved: Record<string, unknown>, dataDir: string): ConfigMigrationResult {
@@ -136,6 +143,40 @@ function migrateOnboardingComplete(saved: Record<string, unknown>): Record<strin
     ...saved,
     onboardingComplete: true,
     onboardingProgress: undefined,
+  };
+}
+
+function migrateUnreachablePaneInstances(
+  saved: Record<string, unknown>,
+  dataDir: string,
+): Record<string, unknown> {
+  const defaults = createDefaultConfig(dataDir);
+  const layout = sanitizeLayout(saved.layout, defaults.layout);
+  const layouts = Array.isArray(saved.layouts)
+    ? saved.layouts.map((entry) => {
+      if (!isPlainRecord(entry) || typeof entry.name !== "string") return entry;
+      const entryLayout = sanitizeLayout(entry.layout, layout);
+      const instanceIds = new Set(entryLayout.instances.map((instance) => instance.instanceId));
+      const placedIds = new Set(getPlacedPaneInstanceIds(entryLayout));
+      const paneState = isPlainRecord(entry.paneState)
+        ? Object.fromEntries(Object.entries(entry.paneState).filter(([instanceId]) => instanceIds.has(instanceId)))
+        : entry.paneState;
+      const focusedPaneId = typeof entry.focusedPaneId === "string" && !placedIds.has(entry.focusedPaneId)
+        ? null
+        : entry.focusedPaneId;
+      return {
+        ...entry,
+        layout: entryLayout,
+        paneState,
+        focusedPaneId,
+      };
+    })
+    : saved.layouts;
+
+  return {
+    ...saved,
+    layout,
+    layouts,
   };
 }
 

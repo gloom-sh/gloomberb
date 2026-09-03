@@ -10,6 +10,7 @@ import {
   cloneLayout,
   createDefaultConfig,
   CURRENT_CONFIG_VERSION,
+  getPlacedPaneInstanceIds,
 } from "../../../types/config";
 import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { isLanguagePreference } from "../../../i18n/languages";
@@ -305,15 +306,16 @@ function sanitizeSavedLayouts(
     )
     .map((entry) => {
       const layout = sanitizeLayout(entry.layout, fallbackLayout);
+      const placedPaneIds = new Set(getPlacedPaneInstanceIds(layout));
       const paneState = sanitizeSavedPaneState((entry as { paneState?: unknown }).paneState, layout);
       return {
         id: typeof entry.id === "string" ? entry.id : undefined,
         name: entry.name,
         layout,
         paneState,
-        focusedPaneId: typeof entry.focusedPaneId === "string" || entry.focusedPaneId === null
-          ? entry.focusedPaneId
-          : undefined,
+        focusedPaneId: typeof entry.focusedPaneId === "string"
+          ? placedPaneIds.has(entry.focusedPaneId) ? entry.focusedPaneId : null
+          : entry.focusedPaneId === null ? null : undefined,
         activePanel: entry.activePanel === "right" || entry.activePanel === "left"
           ? entry.activePanel
           : undefined,

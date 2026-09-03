@@ -20,7 +20,6 @@ import {
 import { scheduleConfigSave } from "../../state/config-save-scheduler";
 import {
   createPaneInstance,
-  findPaneInstance,
   isTickerPaneId,
   normalizePaneId,
   normalizePaneLayout,
@@ -37,6 +36,7 @@ import type {
 import type { DialogApi } from "../../ui/dialog";
 import {
   resolvePanelForPane,
+  resolvePaneShowTarget,
   resolvePaneTarget as resolvePaneTargetInLayout,
   selectEdgeAnchor,
 } from "./layout-placement";
@@ -209,26 +209,23 @@ export function useAppPaneRuntime({
   ]);
 
   const showPane = useCallback((paneId: string) => {
-    const normalizedPaneId = normalizePaneId(paneId);
-    const paneDef = pluginRegistry.panes.get(normalizedPaneId);
+    const target = resolvePaneShowTarget(state.config.layout, paneId);
+    const paneDef = pluginRegistry.panes.get(target.paneType);
     if (!paneDef) return;
 
-    if (normalizedPaneId === TICKER_RESEARCH_PANE_ID) {
+    if (target.paneType === TICKER_RESEARCH_PANE_ID) {
       showTickerResearchPane();
       return;
     }
 
-    const existingInstanceId = resolvePaneTarget(normalizedPaneId);
-    if (existingInstanceId && isPaneInLayout(state.config.layout, existingInstanceId)) {
-      pluginRegistry.focusPaneFn(existingInstanceId);
+    if (target.instance && isPaneInLayout(state.config.layout, target.instance.instanceId)) {
+      pluginRegistry.focusPaneFn(target.instance.instanceId);
       return;
     }
 
-    const instance = existingInstanceId
-      ? findPaneInstance(state.config.layout, existingInstanceId)
-      : buildPaneInstance(normalizedPaneId);
+    const instance = target.instance ?? buildPaneInstance(target.paneType);
     if (!instance) {
-      if (isTickerPaneId(paneId)) {
+      if (isTickerPaneId(target.paneType)) {
         notify("Open a ticker or collection context first.");
       }
       return;
@@ -239,7 +236,6 @@ export function useAppPaneRuntime({
     notify,
     placePaneInstance,
     pluginRegistry,
-    resolvePaneTarget,
     showTickerResearchPane,
     state.config.layout,
   ]);

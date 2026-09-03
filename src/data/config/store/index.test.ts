@@ -49,6 +49,50 @@ async function writeConfigJson(dataDir: string, config: Record<string, unknown>)
 }
 
 describe("sanitizeLayout", () => {
+  test("preserves an intentionally blank layout", () => {
+    expect(sanitizeLayout({
+      dockRoot: null,
+      instances: [],
+      floating: [],
+      detached: [],
+    }, DEFAULT_LAYOUT)).toEqual({
+      dockRoot: null,
+      instances: [],
+      floating: [],
+      detached: [],
+    });
+  });
+
+  test("prunes abandoned panes while retaining a hidden follow source", () => {
+    const layout = sanitizeLayout({
+      dockRoot: { kind: "pane", instanceId: "ticker-research:visible" },
+      instances: [
+        {
+          instanceId: "portfolio-list:source",
+          paneId: "portfolio-list",
+          binding: { kind: "none" },
+        },
+        {
+          instanceId: "ticker-research:visible",
+          paneId: "ticker-research",
+          binding: { kind: "follow", sourceInstanceId: "portfolio-list:source" },
+        },
+        {
+          instanceId: "ticker-research:closed",
+          paneId: "ticker-research",
+          binding: { kind: "fixed", symbol: "NVDA" },
+        },
+      ],
+      floating: [],
+      detached: [],
+    }, DEFAULT_LAYOUT);
+
+    expect(layout.instances.map((instance) => instance.instanceId)).toEqual([
+      "portfolio-list:source",
+      "ticker-research:visible",
+    ]);
+  });
+
   test("ships a focused Home layout with portfolio, chat, and following research", () => {
     expect(DEFAULT_LAYOUT.instances.map((instance) => instance.instanceId)).toEqual([
       "portfolio-list:main",
@@ -318,6 +362,59 @@ describe("sanitizeLayout", () => {
 });
 
 describe("loadConfig", () => {
+  test("migrates unreachable pane instances and their saved state", async () => {
+    const dataDir = await createTempConfigDir();
+    const hiddenPaneId = "ticker-research:closed";
+    const legacyLayout = {
+      ...DEFAULT_LAYOUT,
+      instances: [
+        ...DEFAULT_LAYOUT.instances.map((instance) => instance.instanceId === "chat:main"
+          ? {
+            ...instance,
+            placementMemory: {
+              docked: {
+                anchorInstanceId: hiddenPaneId,
+                position: "right" as const,
+              },
+            },
+          }
+          : instance),
+        {
+          instanceId: hiddenPaneId,
+          paneId: "ticker-research",
+          binding: { kind: "fixed" as const, symbol: "NVDA" },
+          placementMemory: { floating: { x: 12, y: 4, width: 90, height: 30 } },
+        },
+      ],
+    };
+    await writeConfigJson(dataDir, createSavedConfig({
+      configVersion: 21,
+      layout: legacyLayout,
+      layouts: [{
+        name: "Default",
+        layout: legacyLayout,
+        paneState: {
+          "chat:main": { draft: "keep" },
+          [hiddenPaneId]: { activeTabId: "overview" },
+        },
+        focusedPaneId: hiddenPaneId,
+      }],
+    }));
+
+    const config = await loadConfig(dataDir);
+
+    expect(config.configVersion).toBe(CURRENT_CONFIG_VERSION);
+    expect(config.layout.instances.some((instance) => instance.instanceId === hiddenPaneId)).toBe(false);
+    expect(config.layouts[0]?.layout.instances.some((instance) => instance.instanceId === hiddenPaneId)).toBe(false);
+    expect(config.layouts[0]?.paneState).toEqual({ "chat:main": { draft: "keep" } });
+    expect(config.layouts[0]?.focusedPaneId).toBeNull();
+    expect(findPaneInstance(config.layout, "chat:main")?.placementMemory?.docked).toEqual({
+      anchorInstanceId: undefined,
+      path: undefined,
+      position: "right",
+    });
+  });
+
   test("folds saved graph plugin state into composer specs and removes only chart-owned state", async () => {
     const dataDir = await createTempConfigDir();
     const legacyLayout = {

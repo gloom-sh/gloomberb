@@ -10,8 +10,10 @@ import {
   cloneLayout,
   clonePaneSettings,
   createPaneInstanceId,
+  getPlacedPaneInstanceIds,
   normalizePaneLayout,
   normalizePaneId,
+  removeUnreachablePaneInstances,
 } from "../../types/config";
 import {
   migrateChartPaneSettings,
@@ -155,11 +157,14 @@ function sanitizePaneInstances(
         placementMemory: sanitizePlacementMemory(entry.placementMemory),
       };
     });
-  return instances.length > 0 ? instances : cloneLayout(fallback).instances;
+  return instances;
 }
 
-function getDefaultFollowSourceInstanceId(instances: PaneInstanceConfig[]): string | null {
-  return instances.find((instance) => instance.paneId === "portfolio-list")?.instanceId ?? null;
+function getDefaultFollowSourceInstanceId(layout: LayoutConfig): string | null {
+  const placedPaneIds = new Set(getPlacedPaneInstanceIds(layout));
+  return layout.instances.find((instance) => (
+    instance.paneId === "portfolio-list" && placedPaneIds.has(instance.instanceId)
+  ))?.instanceId ?? null;
 }
 
 function sanitizeFloatingEntries(value: unknown, validInstanceIds: Set<string>): LayoutConfig["floating"] {
@@ -219,7 +224,7 @@ export function sanitizeLayout(
   if (!Array.isArray((value as LayoutConfig & { instances?: unknown }).instances)) {
     const layout = cloneLayout(fallback);
     return normalizePaneLayout(layout, {
-      defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout.instances),
+      defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout),
       resolveOrphanSymbol: () => null,
     });
   }
@@ -241,8 +246,9 @@ export function sanitizeLayout(
     detached,
   };
 
-  return normalizePaneLayout(layout, {
-    defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout.instances),
+  const normalized = normalizePaneLayout(layout, {
+    defaultFollowSourceInstanceId: getDefaultFollowSourceInstanceId(layout),
     resolveOrphanSymbol: () => null,
   });
+  return removeUnreachablePaneInstances(normalized);
 }
