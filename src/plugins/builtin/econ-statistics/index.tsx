@@ -1,8 +1,11 @@
 import type { PluginModule } from "../plugin-module";
 import { statsCache } from "./cache";
 import { STAT_CATEGORIES } from "./defs";
+import { econStatisticsHeadless } from "./headless";
 import { EconStatisticsPane } from "./pane";
 import { resolveStatArg, STATS, DEFAULT_STAT_ID } from "./stats";
+
+export { econStatisticsHeadless } from "./headless";
 
 const ECON_STATISTICS_PANE_ID = "econ-statistics";
 
@@ -36,6 +39,7 @@ export const econStatisticsModule: PluginModule = {
       argKind: "text",
       argOptional: true,
     },
+    headless: econStatisticsHeadless,
     canCreate: () => true,
     createInstance: (_context, options) => ({
       settings: { stat: resolveStatArg(options?.arg)?.id ?? DEFAULT_STAT_ID },

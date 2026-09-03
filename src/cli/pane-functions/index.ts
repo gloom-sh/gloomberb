@@ -37,12 +37,13 @@ async function withPaneRuntime<T>(
     registry: PaneFunctionCatalog;
     resolved: ResolvedPaneFunction;
   }) => Promise<T>,
+  settings: { strictHeadlessOptions?: boolean } = {},
 ): Promise<T> {
   const parsed = parsePaneFunctionArgs(args);
   return withMarketData(ctx, async (context) => {
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
-      const resolved = await resolvePaneFunction(registry, context, parsed);
+      const resolved = await resolvePaneFunction(registry, context, parsed, settings);
       return await run({ parsed, context, registry, resolved });
     } finally {
       registry.destroy();
@@ -73,7 +74,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       ctx.printResult({ data: report.data }, {
         text: () => report.text,
       });
-    });
+    }, { strictHeadlessOptions: true });
   });
 }
 

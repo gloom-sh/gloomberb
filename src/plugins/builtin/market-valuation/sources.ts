@@ -105,17 +105,26 @@ export function createSourceLoader(deps: ValuationSourceDeps) {
   };
 }
 
-export const cloudSourceDeps: ValuationSourceDeps = {
-  loadFred: async (seriesId, limit) => {
-    const data = await apiClient.getCloudFredSeries(seriesId, { limit, sortOrder: "desc" });
-    return data.observations;
-  },
-  loadMarketHistory: async (symbol, exchange, startDate) => {
-    const response = await apiClient.getCloudHistory(symbol, exchange, {
-      interval: "1d",
-      startDate,
-    });
-    return historyToObservations(response.data ?? []);
-  },
-  loadShiller: () => apiClient.getCloudShiller(),
-};
+export type ValuationCloudClient = Pick<
+  typeof apiClient,
+  "getCloudFredSeries" | "getCloudHistory" | "getCloudShiller"
+>;
+
+export function createCloudSourceDeps(client: ValuationCloudClient): ValuationSourceDeps {
+  return {
+    loadFred: async (seriesId, limit) => {
+      const data = await client.getCloudFredSeries(seriesId, { limit, sortOrder: "desc" });
+      return data.observations;
+    },
+    loadMarketHistory: async (symbol, exchange, startDate) => {
+      const response = await client.getCloudHistory(symbol, exchange, {
+        interval: "1d",
+        startDate,
+      });
+      return historyToObservations(response.data ?? []);
+    },
+    loadShiller: () => client.getCloudShiller(),
+  };
+}
+
+export const cloudSourceDeps: ValuationSourceDeps = createCloudSourceDeps(apiClient);

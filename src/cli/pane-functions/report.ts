@@ -44,6 +44,7 @@ import {
   withShotPriceHistory,
 } from "./data";
 import type { ResolvedPaneFunction } from "./resolver";
+import { buildHeadlessFunctionReport } from "./headless";
 
 export interface PaneFunctionReportData {
   kind: string;
@@ -750,6 +751,9 @@ export async function buildFunctionReport(
   context: MarketContext,
   rawArg: string,
 ): Promise<PaneFunctionReport> {
+  if (resolved.headless) {
+    return buildHeadlessFunctionReport(resolved, context, rawArg);
+  }
   if (isFinancialAnalysisFunction(resolved)) {
     return buildFinancialStatementReport(resolved, context, rawArg);
   }

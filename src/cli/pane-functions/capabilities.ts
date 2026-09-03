@@ -1,31 +1,20 @@
 import { CHART_RESOLUTIONS } from "../../time-series/range";
-import type { PaneDef, PaneTemplateDef } from "../../types/plugin";
+import type {
+  HeadlessPaneArgumentDef,
+  HeadlessPaneDefinition,
+  HeadlessPaneOptionDef,
+  HeadlessPaneOptionType,
+  HeadlessPaneOptionValue,
+  PaneDef,
+  PaneTemplateDef,
+} from "../../types/plugin";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "unsupported";
 export type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
-export type PaneFunctionOptionType = "enum" | "integer" | "string" | "boolean";
+export type PaneFunctionOptionType = HeadlessPaneOptionType;
+export type PaneFunctionOptionValue = HeadlessPaneOptionValue;
+export type PaneFunctionOptionDef = HeadlessPaneOptionDef;
 export type NormalizedPaneFunctionOptions = Record<string, string | number | boolean>;
-
-export interface PaneFunctionOptionValue {
-  value: string;
-  aliases?: string[];
-}
-
-export interface PaneFunctionOptionDef {
-  key: string;
-  description: string;
-  type: PaneFunctionOptionType;
-  aliases?: string[];
-  values?: PaneFunctionOptionValue[];
-  defaultValue?: string | number | boolean;
-  minimum?: number;
-  maximum?: number;
-  settingKey?: string;
-  pluginState?: {
-    pluginId: string;
-    key?: string;
-  };
-}
 
 export interface PaneFunctionCapability {
   id: string;
@@ -411,11 +400,49 @@ function optionToken(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_.-]+/g, "");
 }
 
+function headlessTickerCardinality(argument: HeadlessPaneArgumentDef): PaneFunctionTickerCardinality {
+  switch (argument.kind) {
+    case "ticker":
+      return "one";
+    case "tickers":
+    case "symbol-list":
+      return (argument.minimum ?? 1) >= 2 ? "two-or-more" : "one-or-more";
+    case "none":
+    case "free-text":
+      return "none";
+    default: {
+      const _exhaustive: never = argument.kind;
+      return _exhaustive;
+    }
+  }
+}
+
+export function getHeadlessPaneDefinition(
+  template: PaneTemplateDef | undefined,
+  pane: PaneDef,
+): HeadlessPaneDefinition | undefined {
+  return template?.headless ?? pane.headless;
+}
+
 export function getPaneFunctionCapability(
   template: PaneTemplateDef | undefined,
-  _pane: PaneDef,
+  pane: PaneDef,
 ): PaneFunctionCapability {
-  return template ? CAPABILITIES[template.id] ?? UNSUPPORTED_CAPABILITY : UNSUPPORTED_CAPABILITY;
+  const existing = template ? CAPABILITIES[template.id] ?? UNSUPPORTED_CAPABILITY : UNSUPPORTED_CAPABILITY;
+  const headless = getHeadlessPaneDefinition(template, pane);
+  if (!headless) return existing;
+
+  const hasExistingCapability = existing !== UNSUPPORTED_CAPABILITY;
+  return {
+    ...(hasExistingCapability ? existing : UNSUPPORTED_CAPABILITY),
+    id: hasExistingCapability ? existing.id : template?.id ?? pane.id,
+    botSafe: true,
+    tickerCardinality: headlessTickerCardinality(headless.argument),
+    outputKind: headless.shape,
+    reportReadiness: "ready",
+    options: [...headless.options],
+    ...(hasExistingCapability ? {} : { limitations: [] }),
+  };
 }
 
 function resolveOptionDef(

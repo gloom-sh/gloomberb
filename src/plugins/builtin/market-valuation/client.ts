@@ -3,7 +3,12 @@ import { getCachedSeries, loadCachedSeries } from "./cache";
 import { indicatorSeries, type IndicatorDef, type SeriesDef } from "./defs";
 import { INDICATORS } from "./indicators";
 import type { DatedSeries } from "./series";
-import { cloudSourceDeps, createSourceLoader, provenanceFor } from "./sources";
+import {
+  cloudSourceDeps,
+  createSourceLoader,
+  provenanceFor,
+  type ValuationSourceDeps,
+} from "./sources";
 import { fitIndicatorTrend } from "./trend";
 import type { IndicatorBuild, ValuationBundle } from "./view";
 
@@ -22,14 +27,17 @@ export function requiredSeries(
   return [...seen.values()];
 }
 
-const cloudLoader = createSourceLoader(cloudSourceDeps);
-
 /** Cache-first around the cloud sources; exported so Bun-side tooling can reuse it. */
-export const defaultValuationSeriesLoader: ValuationSeriesLoader = async (def) => ({
-  seriesId: def.key,
-  observations: await loadCachedSeries(def.key, async () => (await cloudLoader(def)).observations),
-  provenance: provenanceFor(def),
-});
+export function createValuationSeriesLoader(deps: ValuationSourceDeps): ValuationSeriesLoader {
+  const cloudLoader = createSourceLoader(deps);
+  return async (def) => ({
+    seriesId: def.key,
+    observations: await loadCachedSeries(def.key, async () => (await cloudLoader(def)).observations),
+    provenance: provenanceFor(def),
+  });
+}
+
+export const defaultValuationSeriesLoader = createValuationSeriesLoader(cloudSourceDeps);
 
 /** Builds whatever the on-disk cache can already answer, for an instant first paint. */
 export function getCachedValuationBundle(

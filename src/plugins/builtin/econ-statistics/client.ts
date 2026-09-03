@@ -20,16 +20,20 @@ export interface StatsBundle {
   fetchedAt: number;
 }
 
-const cloudLoader: StatSeriesLoader = async (def) => {
-  const data = await apiClient.getCloudFredSeries(def.seriesId, {
-    limit: def.limit,
-    sortOrder: "desc",
-  });
-  return data.observations;
-};
+export type StatsCloudClient = Pick<typeof apiClient, "getCloudFredSeries">;
 
-export const defaultStatLoader: StatSeriesLoader = (def) =>
-  statsCache.load(def.seriesId, () => cloudLoader(def));
+export function createStatSeriesLoader(client: StatsCloudClient): StatSeriesLoader {
+  const cloudLoader: StatSeriesLoader = async (def) => {
+    const data = await client.getCloudFredSeries(def.seriesId, {
+      limit: def.limit,
+      sortOrder: "desc",
+    });
+    return data.observations;
+  };
+  return (def) => statsCache.load(def.seriesId, () => cloudLoader(def));
+}
+
+export const defaultStatLoader = createStatSeriesLoader(apiClient);
 
 function build(def: StatDef, observations: DatedObservation[]): StatBuild | null {
   const scale = def.scale ?? 1;

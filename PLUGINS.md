@@ -77,6 +77,112 @@ For external plugins, create a directory in `~/.gloomberb/plugins/`:
 
 Use `setup()` for interactive runtime registration, `capabilities` for reusable headless services, and `cliCommands` for root-level CLI commands that should be discoverable without rendering panes. Capability operations can still declare `cli` manifests (`summary`, input/output shape, formats, safety notes, side-effect level) for `gloomberb api list`.
 
+## Headless pane models
+
+A data pane should expose the renderer-neutral model that sits behind its component. Add a `headless` definition to the `PaneDef` and export the definition from the plugin module so server processes can invoke the same loader later. If one pane has multiple templates with different data contracts, put `headless` on each `PaneTemplateDef` instead. A template-level definition takes precedence over the pane-level definition.
+
+```typescript
+import type {
+  GloomPlugin,
+  HeadlessPaneDefinition,
+} from "gloomberb/types/plugin";
+
+export const statsHeadless = {
+  shape: "bundle",
+  argument: {
+    kind: "free-text",
+    placeholder: "statistic",
+    optional: true,
+    description: "Optional statistic id or label.",
+  },
+  options: [{
+    key: "range",
+    description: "History window.",
+    type: "enum",
+    values: [{ value: "5Y" }, { value: "20Y" }, { value: "ALL" }],
+    defaultValue: "20Y",
+  }],
+  describe: (args) => `Statistics | ${String(args.options.range)}`,
+  async load(args, ctx) {
+    const bundle = await loadStatsBundle(ctx.apiClient, ctx.signal);
+    return projectStatsView(bundle, args.argument, args.options.range);
+  },
+} satisfies HeadlessPaneDefinition<"bundle">;
+
+export default {
+  id: "stats",
+  name: "Statistics",
+  version: "1.0.0",
+  panes: [{
+    id: "stats",
+    name: "Statistics",
+    component: StatisticsPane,
+    defaultPosition: "right",
+    headless: statsHeadless,
+  }],
+} satisfies GloomPlugin;
+```
+
+A pane with `headless` automatically gets:
+
+- `gloomberb fn <TOKEN>` text output with shared aligned tables and section headings
+- `gloomberb fn <TOKEN> --json` through the normal `{ ok, data }` result envelope
+- `reportReadiness: "ready"` plus its declared options in `gloomberb catalog`
+- strict option validation for `fn`, including allowed enum values and numeric bounds
+
+If a pane still has an entry in the legacy pane capability map, `headless` wins for reports. Its old report builder and screenshot behavior stay available until they are migrated separately.
+
+### Definition contract
+
+```typescript
+interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape> {
+  shape: Shape;
+  argument: HeadlessPaneArgumentDef;
+  options: HeadlessPaneOptionDef[];
+  columns?: HeadlessPaneColumn[];
+  describe?: string | ((args: HeadlessPaneLoadArgs) => string);
+  load(
+    args: HeadlessPaneLoadArgs,
+    ctx: HeadlessPaneContext,
+  ): HeadlessPaneResultByShape[Shape] | Promise<HeadlessPaneResultByShape[Shape]>;
+}
+```
+
+`argument.kind` is one of `none`, `ticker`, `tickers`, `symbol-list`, or `free-text`. Use `optional`, `minimum`, and `maximum` to describe cardinality. The adapter normalizes ticker arguments and supplies both `args.argument` and `args.symbols`.
+
+Options use the existing pane-function schema: `key`, `type`, `description`, optional aliases, enum `values`, `defaultValue`, and optional integer bounds. Keep option names aligned with pane settings when possible so the same flag can drive a later screenshot model without translation.
+
+`ctx` contains:
+
+- `marketData`: the active plugin-aware market data provider
+- `apiClient`: the Gloom Cloud client
+- `config`: the loaded app configuration
+- `signal`: the abort signal for this invocation
+
+Headless loaders must stay isomorphic. Do not import React, DOM APIs, Electrobun, OpenTUI, or renderer state. Pass dependencies through `ctx` and keep fetching in `client.ts`.
+
+### Result shapes
+
+The four supported shapes cover the pane catalog:
+
+- `rows`: `{ columns?, rows }` for one table
+- `bundle`: `{ sections: [{ title, columns?, rows } | { title, entries }] }` for dashboards such as VAL and ECST
+- `series`: `{ series: [{ id, label, points }], stats? }` for charts and derived statistics
+- `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
+
+All shapes may include `errors` and `metadata`. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+
+### Migration checklist
+
+For a pane that currently fetches inside its component:
+
+1. Move API calls and cache access into `client.ts`. Accept injected clients or providers where practical.
+2. Move filtering, grouping, derived values, and row construction into pure functions in `view.ts` or `model.ts`.
+3. Make the React pane call those same client and projection functions.
+4. Export a typed `headless` definition and attach it to the pane registration, or to each template when one pane has multiple contracts.
+5. Declare every supported argument and option. Do not read pane or renderer state from `load`.
+6. Verify text, JSON, option errors, and catalog readiness with `gloomberb fn` and `gloomberb catalog`.
+
 ## Renderer-neutral UI
 
 Plugins should treat Gloomberb's UI APIs as the renderer contract. Official plugins may render panes, Ticker Research tabs, and slot widgets with React, but plugin UI should import shared Gloom APIs such as `gloomberb/ui`, `gloomberb/react`, or the plugin runtime hooks instead of importing OpenTUI, Electrobun, DOM, or terminal renderer packages directly. Renderer-specific details like terminal keyboard events, kitty images, DOM pointer behavior, dialogs, and notifications belong in the renderer adapters.

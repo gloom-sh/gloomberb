@@ -7,6 +7,7 @@ import {
 } from "./options";
 import {
   capabilityOptionSummary,
+  getHeadlessPaneDefinition,
   getPaneFunctionCapability,
   type PaneFunctionCapability,
 } from "./capabilities";
@@ -120,6 +121,7 @@ async function buildTemplateCatalogEntry(
     }
   }
 
+  const headless = getHeadlessPaneDefinition(template, pane);
   return {
     token: template.shortcut?.prefix ?? template.id,
     label: template.label,
@@ -128,8 +130,8 @@ async function buildTemplateCatalogEntry(
     paneName: pane.name,
     templateId: template.id,
     shortcut: template.shortcut?.prefix,
-    argKind: template.shortcut?.argKind,
-    argPlaceholder: template.shortcut?.argPlaceholder,
+    argKind: headless?.argument.kind ?? template.shortcut?.argKind,
+    argPlaceholder: headless?.argument.placeholder ?? template.shortcut?.argPlaceholder,
     keywords: template.keywords ?? [],
     defaultSettings,
     capability: getPaneFunctionCapability(template, pane),
@@ -158,6 +160,8 @@ export async function buildPaneCatalogEntries(
       description: `Open the ${pane.name} pane.`,
       paneId: pane.id,
       paneName: pane.name,
+      argKind: pane.headless?.argument.kind,
+      argPlaceholder: pane.headless?.argument.placeholder,
       keywords: [],
       defaultSettings: {},
       capability: getPaneFunctionCapability(undefined, pane),
@@ -251,7 +255,13 @@ export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: Parse
   }
 
   for (const entry of shown) {
-    const arg = entry.argPlaceholder ? `<${entry.argPlaceholder}>` : entry.argKind ? `<${entry.argKind}>` : "[argument]";
+    const arg = entry.argKind === "none"
+      ? ""
+      : entry.argPlaceholder
+        ? `<${entry.argPlaceholder}>`
+        : entry.argKind
+          ? `<${entry.argKind}>`
+          : "[argument]";
     lines.push(`${entry.token} | ${entry.label}`);
     lines.push(`  Description: ${entry.description}`);
     lines.push(`  Pane: ${entry.paneId} (${entry.paneName})`);
@@ -273,7 +283,9 @@ export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: Parse
       lines.push(`  Limitations: ${entry.capability.limitations.join(" ")}`);
     }
     lines.push(`  Defaults: ${formatCatalogSettings(entry.defaultSettings)}`);
-    lines.push(`  Examples: gloomberb fn ${entry.token} ${arg} | gloomberb shot ${entry.token} ${arg} --output /tmp/${entry.token.toLowerCase()}.png`);
+    const fnExample = `gloomberb fn ${entry.token}${arg ? ` ${arg}` : ""}`;
+    const shotExample = `gloomberb shot ${entry.token}${arg ? ` ${arg}` : ""} --output /tmp/${entry.token.toLowerCase()}.png`;
+    lines.push(`  Examples: ${fnExample} | ${shotExample}`);
     lines.push("");
   }
 

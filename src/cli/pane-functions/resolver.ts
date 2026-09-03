@@ -1,6 +1,11 @@
 import type { PaneInstanceConfig } from "../../types/config";
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
-import type { PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
+import type {
+  HeadlessPaneDefinition,
+  PaneDef,
+  PaneTemplateCreateOptions,
+  PaneTemplateDef,
+} from "../../types/plugin";
 import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart-composer/cli-options";
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
@@ -20,6 +25,7 @@ import {
 } from "./options";
 import {
   capabilityPaneSettings,
+  getHeadlessPaneDefinition,
   getPaneFunctionCapability,
   normalizeCapabilityOptions,
   type NormalizedPaneFunctionOptions,
@@ -33,6 +39,7 @@ export interface ResolvedPaneFunction {
   shortcut?: string;
   pane: PaneDef;
   template?: PaneTemplateDef;
+  headless?: HeadlessPaneDefinition;
   instance: PaneInstanceConfig;
   createOptions: PaneTemplateCreateOptions | undefined;
   optionSettings: Record<string, unknown>;
@@ -41,16 +48,24 @@ export interface ResolvedPaneFunction {
 }
 
 async function buildPaneInstance(
-  resolved: Pick<ResolvedPaneFunction, "pane" | "template" | "createOptions" | "optionSettings" | "capability" | "options">,
+  resolved: Pick<ResolvedPaneFunction, "pane" | "template" | "headless" | "createOptions" | "optionSettings" | "capability" | "options">,
   context: MarketContext,
   target: string,
 ): Promise<PaneInstanceConfig> {
-  // A text argument is a phrase, not a symbol: uppercasing it and binding it as
-  // a ticker makes the pane look for a provider for "HIGH GROWTH SOFTWARE".
-  const argKind = resolved.template?.shortcut?.argKind;
+  // Free text is a phrase, not a symbol. Treating it as a ticker makes the
+  // pane look for a provider for values such as "HIGH GROWTH SOFTWARE".
+  const shortcutArgKind = resolved.template?.shortcut?.argKind;
+  const headlessArgKind = resolved.headless?.argument.kind;
+  const fallbackSymbol = headlessArgKind === "free-text" || headlessArgKind === "none"
+    ? null
+    : headlessArgKind === "tickers" || headlessArgKind === "symbol-list"
+      ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\n]/)[0] ?? ""))
+      : shortcutArgKind === "text"
+        ? null
+        : normalizeTickerInput(null, cleanTickerInput(target));
   const primarySymbol = resolved.createOptions?.symbol
     ?? resolved.createOptions?.symbols?.[0]
-    ?? (argKind === "text" ? null : normalizeTickerInput(null, cleanTickerInput(target)));
+    ?? fallbackSymbol;
   const templateContext = buildTemplateContext(context, primarySymbol ?? null);
   const spec = await resolved.template?.createInstance?.(templateContext, resolved.createOptions) ?? {};
   const instanceId = `${resolved.pane.id}:cli-${slugifyName(target || resolved.pane.id, "pane")}`;
@@ -83,6 +98,7 @@ export async function resolvePaneFunction(
   registry: PaneFunctionCatalog,
   context: MarketContext,
   args: ParsedPaneFunctionArgs,
+  resolutionSettings: { strictHeadlessOptions?: boolean } = {},
 ): Promise<ResolvedPaneFunction> {
   if (!args.target) {
     throw new Error("Usage: gloomberb fn <function-or-pane> [argument] [--key value]");
@@ -106,9 +122,10 @@ export async function resolvePaneFunction(
     throw new Error(`Template "${template?.id}" points at missing pane "${template?.paneId}".`);
   }
   const createOptions = buildCreateOptions(template, args.arg);
+  const headless = getHeadlessPaneDefinition(template, pane);
   const capability = getPaneFunctionCapability(template, pane);
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
-    strict: args.requireBotSafe,
+    strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
   });
   const settings = capability.botSafe
     ? {
@@ -126,6 +143,7 @@ export async function resolvePaneFunction(
     shortcut: template?.shortcut?.prefix,
     pane,
     template,
+    ...(headless ? { headless } : {}),
     instance: {} as PaneInstanceConfig,
     createOptions,
     optionSettings: settings,

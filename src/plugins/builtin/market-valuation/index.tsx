@@ -1,8 +1,11 @@
 import type { PluginModule } from "../plugin-module";
 import { createValuationChartSeriesCapability } from "./chart-series";
 import { INDICATORS, resolveIndicatorArg } from "./indicators";
+import { marketValuationHeadless } from "./headless";
 import { MarketValuationPane } from "./pane";
 import { buildValuationSettingsDef, VALUATION_DEFAULTS } from "./settings";
+
+export { marketValuationHeadless } from "./headless";
 
 const MARKET_VALUATION_PANE_ID = "market-valuation";
 
@@ -47,6 +50,7 @@ export const marketValuationModule: PluginModule = {
       argKind: "text",
       argOptional: true,
     },
+    headless: marketValuationHeadless,
     // No wizard: VAL opens straight into the pane, where the summary rows swap
     // indicators with the cursor. The argument form stays for deep links.
     canCreate: () => true,

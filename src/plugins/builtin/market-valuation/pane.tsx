@@ -25,7 +25,12 @@ import { getCachedValuationBundle, loadValuationBundle } from "./client";
 import { shortZoneLabel, type ValuationRangeId } from "./defs";
 import { IndicatorDetail } from "./detail";
 import { RANGE_OPTIONS, VALUATION_DEFAULTS } from "./settings";
-import { selectValuationViews, type IndicatorViewModel, type ValuationBundle } from "./view";
+import {
+  formatSigma,
+  selectValuationViews,
+  type IndicatorViewModel,
+  type ValuationBundle,
+} from "./view";
 
 /** Below this the detail sits under the table instead of beside it. */
 const SPLIT_MIN_WIDTH = 108;
@@ -59,10 +64,6 @@ function bundleOf(state: LoadState): ValuationBundle | null {
 function initialLoadState(): LoadState {
   const cached = getCachedValuationBundle();
   return cached ? { status: "ready", bundle: cached } : { status: "idle" };
-}
-
-function formatSigma(sigma: number): string {
-  return `${sigma > 0 ? "+" : ""}${formatNumber(sigma, 1)}σ`;
 }
 
 function matchesQuery(view: IndicatorViewModel, query: string): boolean {
