@@ -150,7 +150,7 @@ export async function resolvePaneFunction(
     capability,
     options: normalizedOptions,
   };
-  resolved.instance = await buildPaneInstance(resolved, context, args.arg || pane.id);
+  resolved.instance = await buildPaneInstance(resolved, context, args.arg);
   return resolved;
 }
 

@@ -1,7 +1,6 @@
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { join } from "path";
-import { pathToFileURL } from "url";
+import { join, resolve, sep } from "path";
 import type { AppConfig } from "../types/config";
 import type { ResolvedSeries } from "../time-series/types";
 import type { OptionsChain, TickerFinancials } from "../types/financials";
@@ -36,8 +35,32 @@ export interface DesktopPaneShotPayload {
   paneState: Record<string, PaneRuntimeState>;
 }
 
+/** Kept in Bun memory and never serialized into the browser page or CLI result. */
+export interface DesktopPaneShotApiProxy {
+  baseUrl: string;
+  sessionToken: string | null;
+}
+
+export interface DesktopPaneShotRenderedCell {
+  columnId?: string;
+  columnLabel: string;
+  text: string;
+}
+
+export interface DesktopPaneShotRenderedRow {
+  tableIndex: number;
+  rowIndex: number;
+  key?: string;
+  selected: boolean;
+  cells: DesktopPaneShotRenderedCell[];
+}
+
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
+  rows: DesktopPaneShotRenderedRow[];
+  loadingStateDetected: boolean;
+  errorStateDetected: boolean;
+  errorStateMarkers: string[];
   emptyStateDetected: boolean;
   emptyStateMarkers: string[];
   semanticUi: RemoteUiNodeSnapshot[];
@@ -65,23 +88,28 @@ const SHOT_MODE_CSS = [
   + " pointer-events: none; z-index: 1000; }";
 
 const CHROME_POLL_ATTEMPTS = 80;
-const SHOT_READY_TIMEOUT_MS = 10_000;
+const SHOT_READY_TIMEOUT_MS = 45_000;
 const CDP_CALL_TIMEOUT_MS = 10_000;
 const DEFAULT_DEVICE_SCALE_FACTOR = 2;
+const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
+const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
 
 export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
   outputPath: string,
+  apiProxy: DesktopPaneShotApiProxy,
 ): Promise<DesktopPaneShotRenderResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
+  let server: ReturnType<typeof Bun.serve> | null = null;
   try {
     const outdir = join(tempDir, "assets");
     await mkdir(outdir, { recursive: true });
-    const htmlPath = await buildShotPage(outdir, payload);
+    await buildShotPage(outdir, payload);
+    server = serveShotPage(outdir, apiProxy);
     const chrome = await findChromeExecutable();
     return await capturePageScreenshot({
       chrome,
-      url: pathToFileURL(htmlPath).href,
+      url: new URL("/", server.url).href,
       outputPath,
       widthPx: payload.widthPx,
       heightPx: payload.heightPx,
@@ -89,6 +117,7 @@ export async function renderDesktopPaneScreenshot(
       userDataDir: join(tempDir, "chrome-profile"),
     });
   } finally {
+    server?.stop(true);
     await rm(tempDir, { recursive: true, force: true });
   }
 }
@@ -130,6 +159,116 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
       });
 `,
   });
+}
+
+function serveShotPage(
+  outdir: string,
+  apiProxy: DesktopPaneShotApiProxy,
+): ReturnType<typeof Bun.serve> {
+  const staticRoot = resolve(outdir);
+  return Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    idleTimeout: 60,
+    fetch(request) {
+      const url = new URL(request.url);
+      if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
+        return proxyShotApiRequest(request, url, apiProxy);
+      }
+      return serveShotAsset(url, staticRoot);
+    },
+  });
+}
+
+async function serveShotAsset(url: URL, staticRoot: string): Promise<Response> {
+  let pathname: string;
+  try {
+    pathname = decodeURIComponent(url.pathname);
+  } catch {
+    return new Response("Bad request", { status: 400 });
+  }
+  const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const filePath = resolve(staticRoot, relativePath);
+  if (filePath !== staticRoot && !filePath.startsWith(`${staticRoot}${sep}`)) {
+    return new Response("Not found", { status: 404 });
+  }
+  const file = Bun.file(filePath);
+  if (!(await file.exists())) return new Response("Not found", { status: 404 });
+  return new Response(file);
+}
+
+async function proxyShotApiRequest(
+  request: Request,
+  requestUrl: URL,
+  apiProxy: DesktopPaneShotApiProxy,
+): Promise<Response> {
+  const baseUrl = new URL(apiProxy.baseUrl);
+  const proxiedPath = requestUrl.pathname.slice(SHOT_API_PROXY_PREFIX.length) || "/";
+  const target = new URL(baseUrl);
+  const basePath = baseUrl.pathname.replace(/\/+$/, "");
+  target.pathname = `${basePath}${proxiedPath.startsWith("/") ? proxiedPath : `/${proxiedPath}`}`;
+  target.search = requestUrl.search;
+  target.hash = "";
+  const headers = new Headers(request.headers);
+  for (const name of [
+    "authorization",
+    "connection",
+    "content-length",
+    "cookie",
+    "host",
+    "origin",
+    "proxy-authorization",
+    "referer",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "x-forwarded-for",
+    "x-forwarded-host",
+    "x-forwarded-proto",
+  ]) {
+    headers.delete(name);
+  }
+  const browserOwnedHeaders: string[] = [];
+  headers.forEach((_value, name) => {
+    if (name.startsWith("sec-") || name === "accept-encoding") browserOwnedHeaders.push(name);
+  });
+  for (const name of browserOwnedHeaders) headers.delete(name);
+  headers.set("Origin", baseUrl.origin);
+  if (apiProxy.sessionToken) {
+    headers.set(
+      "Cookie",
+      SESSION_COOKIE_NAMES.map((name) => `${name}=${apiProxy.sessionToken}`).join("; "),
+    );
+  }
+
+  try {
+    const response = await fetch(target, {
+      method: request.method,
+      headers,
+      body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+      redirect: "follow",
+    });
+    const responseHeaders = new Headers(response.headers);
+    for (const name of [
+      "access-control-allow-credentials",
+      "access-control-allow-origin",
+      "content-encoding",
+      "content-length",
+      "set-cookie",
+      "transfer-encoding",
+    ]) {
+      responseHeaders.delete(name);
+    }
+    responseHeaders.set("Cache-Control", "no-store");
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: responseHeaders,
+    });
+  } catch {
+    return Response.json({ error: "Cloud API request failed." }, { status: 502 });
+  }
 }
 
 async function findChromeExecutable(): Promise<string> {
@@ -223,6 +362,21 @@ async function capturePageScreenshot({
   }
 }
 
+const LOADING_STATE_PATTERNS = [
+  /\bLoading(?: [^.]{0,80})?\.{3}/gi,
+  /\bRendering pane\.{3}/gi,
+];
+
+const ERROR_STATE_PATTERNS = [
+  /\b[^.]{1,100} unavailable\./gi,
+  /\bFailed to fetch\b/gi,
+  /\bCould not load\b/gi,
+  /\bSign in to\b/gi,
+  /\bVerify your email\b/gi,
+  /\bpart of Gloom Cloud Pro\b/gi,
+  /\bCloud API request failed\b/gi,
+];
+
 const EMPTY_STATE_PATTERNS = [
   /\bNo chart data\b/gi,
   /\bNo graph data\b/gi,
@@ -231,21 +385,94 @@ const EMPTY_STATE_PATTERNS = [
   /\bNo comparison tickers configured\b/gi,
   /\bNo relationship tickers configured\b/gi,
   /\bNo overlapping price history\b/gi,
-  /\bLoading chart\.{0,3}\b/gi,
-  /\bRendering pane\.{0,3}\b/gi,
-  /\bNo tickers selected\b/gi,
-  /\bMarket data unavailable\b/gi,
+  /\bNo tickers? selected\b/gi,
   /\bNo data(?: available)?\b/gi,
+  /\bNothing to show yet\b/gi,
+  /\bNo transcribed calls(?: for [^.]+)? yet\b/gi,
+  /\bNo short interest (?:data|found)\b/gi,
+  /\bNo (?:House PTR |insider )?(?:trades|members|transactions|filings)\b/gi,
 ];
+
+function stateMarkers(text: string, patterns: RegExp[]): string[] {
+  return [...new Set(patterns.flatMap((pattern) => (
+    [...text.matchAll(pattern)].map((match) => match[0])
+  )))];
+}
 
 async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneShotRenderResult> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const root = document.getElementById("root") || document.body;
+      const semanticUi = window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ || [];
+      const normalize = (value) => String(value || "").replace(/\\s+/g, " ").trim();
+      const isVisible = (element) => {
+        if (!(element instanceof HTMLElement)) return false;
+        const style = getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") return false;
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0
+          && rect.right > 0 && rect.bottom > 0
+          && rect.left < window.innerWidth && rect.top < window.innerHeight;
+      };
+      const semanticTables = semanticUi.filter((node) => node && node.role === "table");
+      const rows = [];
+      [...root.querySelectorAll('[data-gloom-role="data-table"]')]
+        .filter(isVisible)
+        .forEach((table, tableIndex) => {
+          const tableMetadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata || {};
+          const semanticColumns = Array.isArray(tableMetadata.columns) ? tableMetadata.columns : [];
+          const semanticRows = Array.isArray(tableMetadata.rows) ? tableMetadata.rows : [];
+          const headers = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')]
+            .map((cell) => normalize(cell.innerText || cell.textContent));
+          const rowElements = [...table.querySelectorAll(
+            '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"]',
+          )].filter(isVisible);
+          rowElements.forEach((row, rowIndex) => {
+            const cellElements = [...row.querySelectorAll('[data-gloom-role="data-table-cell"]')];
+            const values = cellElements.length > 0 ? cellElements : [row];
+            const semanticRow = semanticRows[rowIndex] || {};
+            const cells = values.map((cell, cellIndex) => {
+              const semanticColumn = semanticColumns[cellIndex] || {};
+              return {
+                ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
+                columnLabel: typeof semanticColumn.label === "string"
+                  ? semanticColumn.label
+                  : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
+                text: normalize(cell.innerText || cell.textContent),
+              };
+            }).filter((cell) => cell.text.length > 0);
+            if (cells.length === 0) return;
+            rows.push({
+              tableIndex,
+              rowIndex,
+              ...(typeof semanticRow.key === "string" ? { key: semanticRow.key } : {}),
+              selected: row.getAttribute("data-selected") === "true" || semanticRow.selected === true,
+              cells,
+            });
+          });
+        });
+      if (rows.length === 0) {
+        [...root.querySelectorAll('[data-gloom-role="desktop-list-row"]')]
+          .filter(isVisible)
+          .forEach((row, rowIndex) => {
+            const text = normalize(row.innerText || row.textContent);
+            if (!text) return;
+            rows.push({
+              tableIndex: 0,
+              rowIndex,
+              selected: row.getAttribute("data-selected") === "true",
+              cells: [{ columnLabel: "Row", text }],
+            });
+          });
+      }
       return {
         visibleText: root.innerText || root.textContent || "",
         error: window.__GLOOM_CLI_SHOT_ERROR__ || "",
-        semanticUi: window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ || [],
+        loadingStateDetected: root.querySelector('[data-gloom-status="loading"]') !== null,
+        errorStateDetected: root.querySelector('[data-gloom-status="error"]') !== null,
+        emptyStateDetected: root.querySelector('[data-gloom-status="empty"]') !== null,
+        rows,
+        semanticUi,
       };
     })()`,
     returnByValue: true,
@@ -254,6 +481,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
       value?: {
         visibleText?: string;
         error?: string;
+        loadingStateDetected?: boolean;
+        errorStateDetected?: boolean;
+        emptyStateDetected?: boolean;
+        rows?: DesktopPaneShotRenderedRow[];
         semanticUi?: RemoteUiNodeSnapshot[];
       };
     };
@@ -261,12 +492,16 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   const value = result.result?.value;
   if (value?.error) throw new Error(value.error);
   const visibleText = (value?.visibleText ?? "").replace(/\s+/g, " ").trim();
-  const emptyStateMarkers = [...new Set(EMPTY_STATE_PATTERNS.flatMap((pattern) => (
-    [...visibleText.matchAll(pattern)].map((match) => match[0])
-  )))];
+  const loadingStateMarkers = stateMarkers(visibleText, LOADING_STATE_PATTERNS);
+  const errorStateMarkers = stateMarkers(visibleText, ERROR_STATE_PATTERNS);
+  const emptyStateMarkers = stateMarkers(visibleText, EMPTY_STATE_PATTERNS);
   return {
     visibleText,
-    emptyStateDetected: emptyStateMarkers.length > 0,
+    rows: Array.isArray(value?.rows) ? value.rows : [],
+    loadingStateDetected: value?.loadingStateDetected === true || loadingStateMarkers.length > 0,
+    errorStateDetected: value?.errorStateDetected === true || errorStateMarkers.length > 0,
+    errorStateMarkers,
+    emptyStateDetected: value?.emptyStateDetected === true || emptyStateMarkers.length > 0,
     emptyStateMarkers,
     semanticUi: Array.isArray(value?.semanticUi) ? value.semanticUi : [],
   };

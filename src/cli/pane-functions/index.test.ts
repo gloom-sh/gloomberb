@@ -208,6 +208,15 @@ describe("pane function CLI args", () => {
     });
   });
 
+  test("enables live DOM screenshots without claiming report support for unmapped panes", () => {
+    expect(capabilityFor("new-api-pane")).toMatchObject({
+      id: "unverified-pane",
+      botSafe: false,
+      reportReadiness: "unsupported",
+      screenshotReadiness: "live-dom",
+    });
+  });
+
   test("rejects financial statement options on a price comparison", () => {
     const capability = capabilityFor("comparison-chart-pane");
     expect(() => normalizeCapabilityOptions(capability, {

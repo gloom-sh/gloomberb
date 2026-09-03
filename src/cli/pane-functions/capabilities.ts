@@ -10,6 +10,7 @@ import type {
 } from "../../types/plugin";
 
 export type PaneFunctionReadiness = "ready" | "partial" | "unsupported";
+export type PaneFunctionScreenshotReadiness = PaneFunctionReadiness | "live-dom";
 export type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
 export type PaneFunctionOptionType = HeadlessPaneOptionType;
 export type PaneFunctionOptionValue = HeadlessPaneOptionValue;
@@ -24,7 +25,7 @@ export interface PaneFunctionCapability {
   intents: string[];
   outputKind: string;
   reportReadiness: PaneFunctionReadiness;
-  screenshotReadiness: PaneFunctionReadiness;
+  screenshotReadiness: PaneFunctionScreenshotReadiness;
   dataRequirements: string[];
   limitations: string[];
   options: PaneFunctionOptionDef[];
@@ -390,9 +391,11 @@ const UNSUPPORTED_CAPABILITY: PaneFunctionCapability = {
   intents: [],
   outputKind: "pane",
   reportReadiness: "unsupported",
-  screenshotReadiness: "unsupported",
+  screenshotReadiness: "live-dom",
   dataRequirements: [],
-  limitations: ["This UI pane has not been verified as a deterministic CLI or bot capability."],
+  limitations: [
+    "Reports are not verified for automation. Screenshots render live and derive evidence from visible DOM rows.",
+  ],
   options: [],
 };
 

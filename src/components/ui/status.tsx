@@ -70,7 +70,7 @@ export function PaneStatusBody({
 }: PaneStatusBodyProps) {
   if (error) {
     return (
-      <Box paddingX={1} paddingY={1}>
+      <Box paddingX={1} paddingY={1} data-gloom-status="error">
         <EmptyState
           title={subject ? unavailableText(subject) : error}
           message={subject ? error : undefined}
@@ -89,7 +89,7 @@ export function PaneStatusBody({
   }
   if (empty) {
     return (
-      <Box paddingX={1} paddingY={1}>
+      <Box paddingX={1} paddingY={1} data-gloom-status="empty">
         <EmptyState
           title={emptyTitle ?? t("Nothing to show yet.")}
           message={emptyMessage}

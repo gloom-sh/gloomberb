@@ -3,12 +3,15 @@ import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   chartSeriesEvidenceWithinRange,
   chartEvidenceMismatchesFor,
+  isPaneScreenshotUsable,
   missingActiveTabSelections,
+  resolveDesktopShotApiProxy,
   shotDataEvidenceFor,
   shotExpectedText,
   shotPriceHistoryRange,
   shotSemanticRowCount,
   shotUnavailableSymbols,
+  stripDesktopShotCredentials,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
@@ -17,6 +20,79 @@ import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
+
+describe("pane screenshot rendered readiness", () => {
+  const rendered = {
+    rowCount: 2,
+    loadingStateDetected: false,
+    errorStateDetected: false,
+    emptyStateDetected: false,
+    complete: true,
+    semanticMismatch: false,
+    requiresStructuredDataEvidence: false,
+    hasStructuredDataEvidence: false,
+  };
+
+  test("requires rows without loading, error, or empty states", () => {
+    expect(isPaneScreenshotUsable(rendered)).toBe(true);
+    expect(isPaneScreenshotUsable({ ...rendered, rowCount: 0 })).toBe(false);
+    expect(isPaneScreenshotUsable({ ...rendered, loadingStateDetected: true })).toBe(false);
+    expect(isPaneScreenshotUsable({ ...rendered, errorStateDetected: true })).toBe(false);
+    expect(isPaneScreenshotUsable({ ...rendered, emptyStateDetected: true })).toBe(false);
+  });
+
+  test("preserves mapped capability completeness and evidence checks", () => {
+    expect(isPaneScreenshotUsable({ ...rendered, complete: false })).toBe(false);
+    expect(isPaneScreenshotUsable({ ...rendered, semanticMismatch: true })).toBe(false);
+    expect(isPaneScreenshotUsable({
+      ...rendered,
+      requiresStructuredDataEvidence: true,
+    })).toBe(false);
+    expect(isPaneScreenshotUsable({
+      ...rendered,
+      requiresStructuredDataEvidence: true,
+      hasStructuredDataEvidence: true,
+    })).toBe(true);
+  });
+});
+
+describe("pane screenshot payload credentials", () => {
+  test("keeps the restored session in the proxy and strips credential fields from page data", () => {
+    const sessionToken = "private-shot-session";
+    const proxy = resolveDesktopShotApiProxy({
+      persistence: {
+        pluginState: {
+          get: (_pluginId: string, key: string) => key === "resume:session"
+            ? { value: { sessionToken }, schemaVersion: 1, updatedAt: 1 }
+            : null,
+        },
+      },
+    } as any);
+    const payload = stripDesktopShotCredentials({
+      config: {
+        theme: "tokyo",
+        pluginConfig: {
+          service: { apiKey: "private-api-key", display: "compact" },
+        },
+        brokerInstances: [{ config: { password: "private-password", region: "US" } }],
+      },
+      paneState: {
+        pane: { pluginState: { service: { accessToken: "private-access", tab: "latest" } } },
+      },
+    });
+
+    expect(proxy.sessionToken).toBe(sessionToken);
+    expect(payload).toEqual({
+      config: {
+        theme: "tokyo",
+        pluginConfig: { service: { display: "compact" } },
+        brokerInstances: [{ config: { region: "US" } }],
+      },
+      paneState: { pane: { pluginState: { service: { tab: "latest" } } } },
+    });
+    expect(JSON.stringify(payload)).not.toContain("private-");
+  });
+});
 
 describe("pane screenshot active-state verification", () => {
   const expected: PaneScreenshotExpectedSelection[] = [

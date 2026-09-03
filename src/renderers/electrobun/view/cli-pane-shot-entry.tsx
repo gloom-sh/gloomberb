@@ -47,6 +47,8 @@ import type { DatedObservation } from "../../../plugins/builtin/market-valuation
 import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { chartSeriesSourceKey } from "../../../capabilities";
+import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
+import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 
 interface CliPaneShotPayload {
   config: AppConfig;
@@ -82,6 +84,7 @@ const SHOT_READY_STABLE_FRAMES = 10;
 // content contains the word "loading" (a changelog release note, a news
 // headline) wait forever and time out.
 const SHOT_LOADING_SELECTOR = "[data-gloom-status=\"loading\"]";
+const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
 const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
   "arrayBuffer",
   "blob",
@@ -144,6 +147,29 @@ function installShotFetchTracker(): void {
   window.fetch = ((...args: Parameters<typeof fetch>) => (
     trackShotWork(fetchOriginal(...args)).then(wrapTrackedResponse)
   )) as typeof fetch;
+}
+
+function installShotCloudApiTransport(): void {
+  apiClient.setCookieSessionMode(true);
+  setCloudApiFetchTransport((url, init = {}) => {
+    const upstream = new URL(url);
+    const proxyUrl = new URL(`${SHOT_API_PROXY_PREFIX}${upstream.pathname}`, window.location.origin);
+    proxyUrl.search = upstream.search;
+    const headers = new Headers(init.headers);
+    // Bun owns the real session cookie. The browser only talks to the local
+    // same-origin proxy and never receives or serializes the credential.
+    headers.delete("Cookie");
+    headers.delete("Origin");
+    return window.fetch(proxyUrl, {
+      ...init,
+      headers,
+      credentials: "same-origin",
+    });
+  });
+}
+
+async function restoreShotCloudSession(): Promise<void> {
+  await apiClient.getSession().catch(() => null);
 }
 
 function resolveShotWork<T>(value: T): Promise<T> {
@@ -254,7 +280,7 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
     return data;
   };
 
-  return {
+  const injectedProvider: DataProvider = {
     id: "cli-shot",
     name: "CLI screenshot data",
     getTickerFinancials(ticker, exchange) {
@@ -335,6 +361,19 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
       return () => {};
     },
   };
+
+  // Keep deterministic payload data for the mapped screenshot capabilities,
+  // then fall through to the authenticated cloud provider for operations such
+  // as SEC filings that live panes request through market-data hooks.
+  const cloudProvider = createGloomberbCloudProvider();
+  return new Proxy(injectedProvider, {
+    get(target, property, receiver) {
+      const local = Reflect.get(target, property, receiver);
+      if (local !== undefined) return local;
+      const cloud = Reflect.get(cloudProvider, property, cloudProvider);
+      return typeof cloud === "function" ? cloud.bind(cloudProvider) : cloud;
+    },
+  });
 }
 
 function installShotMarketData(payload: CliPaneShotPayload): void {
@@ -591,6 +630,7 @@ async function render() {
   if (!payload) throw new Error("Missing CLI pane screenshot payload.");
   revivePayloadDates(payload);
   installShotFetchTracker();
+  installShotCloudApiTransport();
   hydrateFredSeries(payload.fredSeries ?? []);
   hydrateValuationSeries(payload.valuationSeries ?? []);
   statsCache.hydrate(payload.statSeries ?? []);
@@ -598,6 +638,9 @@ async function render() {
   // Panes contributed from an async setup() only exist once every plugin has
   // finished registering, so the tree cannot mount before that resolves.
   await installShotPluginRegistry(payload);
+  // Plugin setup hydrates its in-memory persistence and may reset apiClient.
+  // Restore the proxied cloud session only after registration is complete.
+  await restoreShotCloudSession();
 
   const rootElement = document.getElementById("root");
   if (!rootElement) throw new Error("Missing root element.");
