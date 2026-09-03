@@ -504,6 +504,10 @@ export interface CloudEarningsCallPayload {
 
 export interface CloudEarningsCallListPayload {
   calls: CloudEarningsCallPayload[];
+  /** Set when asking about a company started a search that is still running. */
+  pending?: boolean;
+  /** Set when the requested symbol is not one the SEC knows. */
+  unknownTicker?: boolean;
 }
 
 export interface CloudTranscriptTurnPayload {

@@ -33,6 +33,32 @@ export interface EarningsCallsResult {
   refreshError?: string;
   /** HTTP status when the request failed, used to pick the right gate. */
   errorStatus?: number;
+  /** The server has just started looking for this company's calls. */
+  pending?: boolean;
+  /** The symbol is not one the SEC knows, so there is nothing to look for. */
+  unknownTicker?: boolean;
+}
+
+/** A call that has been found but whose transcript is not produced yet. */
+export function isShelved(call: CloudEarningsCallPayload): boolean {
+  return !call.hasTranscript;
+}
+
+/** Short label for the state of a call without a transcript. */
+export function callStatusLabel(call: CloudEarningsCallPayload): string {
+  switch (call.status) {
+    case "available":
+      return "on request";
+    case "capturing":
+    case "transcribing":
+    case "enriching":
+      return "in progress";
+    case "discovered":
+    case "failed":
+      return "queued";
+    default:
+      return "";
+  }
 }
 
 let persistence: PluginPersistence | null = null;
@@ -82,12 +108,23 @@ export async function loadEarningsCalls(
     })
     .then((payload) => {
       const calls = payload.calls ?? [];
-      persistence?.setResource(LIST_KIND, key, calls, {
-        sourceKey: CACHE_SOURCE,
-        schemaVersion: CACHE_SCHEMA_VERSION,
-        cachePolicy: LIST_CACHE_POLICY,
-      });
-      return { calls, fetchedAt: Date.now(), stale: false };
+      // A list with calls still being produced changes by the minute, so it
+      // is not worth keeping; a list of finished transcripts is.
+      const settled = calls.every((call) => call.hasTranscript);
+      if (settled) {
+        persistence?.setResource(LIST_KIND, key, calls, {
+          sourceKey: CACHE_SOURCE,
+          schemaVersion: CACHE_SCHEMA_VERSION,
+          cachePolicy: LIST_CACHE_POLICY,
+        });
+      }
+      return {
+        calls,
+        fetchedAt: Date.now(),
+        stale: false,
+        pending: payload.pending === true,
+        unknownTicker: payload.unknownTicker === true,
+      };
     })
     .catch((error: unknown) => {
       const refreshError = error instanceof Error ? error.message : String(error);
