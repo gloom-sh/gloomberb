@@ -99,6 +99,8 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         width: parsed.width,
         height: parsed.height,
         theme: parsed.theme,
+        scale: parsed.scale,
+        watermark: parsed.watermark,
         options: parsed.options,
       });
       if (parsed.requireBotSafe && !result.usable) {

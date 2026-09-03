@@ -22,6 +22,10 @@ export interface DesktopPaneShotPayload {
   heightCells: number;
   widthPx: number;
   heightPx: number;
+  /** Chrome device scale factor; 2 keeps text crisp, higher values zoom the layout. */
+  deviceScaleFactor?: number;
+  /** Label drawn at the right edge of the pane title bar; null draws nothing. */
+  watermark?: string | null;
   tickers: TickerRecord[];
   financials: Array<[string, TickerFinancials]>;
   optionsChains: Array<[string, OptionsChain]>;
@@ -54,12 +58,16 @@ const SHOT_MODE_CSS = [
   "[data-gloom-role='composite-chart-toolbar']",
   "[data-gloom-role='chart-series-quick-add']",
   "[data-gloom-role='pane-close']",
-].join(", ") + " { display: none !important; }";
+].join(", ") + " { display: none !important; }\n"
+  // Sits where the hidden close button was: one cell high, right-aligned in the title bar.
+  + "[data-gloom-role='shot-watermark'] { position: fixed; top: 1px; right: 10px; height: var(--cell-h);"
+  + " line-height: var(--cell-h); font-size: 12px; letter-spacing: 0.02em; color: var(--gloom-text-dim, #888);"
+  + " pointer-events: none; z-index: 1000; }";
 
 const CHROME_POLL_ATTEMPTS = 80;
 const SHOT_READY_TIMEOUT_MS = 10_000;
 const CDP_CALL_TIMEOUT_MS = 10_000;
-const SHOT_DEVICE_SCALE_FACTOR = 2;
+const DEFAULT_DEVICE_SCALE_FACTOR = 2;
 
 export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
@@ -77,6 +85,7 @@ export async function renderDesktopPaneScreenshot(
       outputPath,
       widthPx: payload.widthPx,
       heightPx: payload.heightPx,
+      deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
       userDataDir: join(tempDir, "chrome-profile"),
     });
   } finally {
@@ -105,6 +114,13 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
         const style = document.createElement("style");
         style.textContent = ${JSON.stringify(SHOT_MODE_CSS)};
         document.head.appendChild(style);
+        const watermark = ${JSON.stringify(payload.watermark ?? null)};
+        if (watermark) {
+          const mark = document.createElement("div");
+          mark.setAttribute("data-gloom-role", "shot-watermark");
+          mark.textContent = watermark;
+          document.addEventListener("DOMContentLoaded", () => document.body.appendChild(mark));
+        }
       })();
       window.addEventListener("error", (event) => {
         window.__GLOOM_CLI_SHOT_ERROR__ = event.error && event.error.stack ? event.error.stack : String(event.error || event.message);
@@ -139,6 +155,7 @@ async function capturePageScreenshot({
   outputPath,
   widthPx,
   heightPx,
+  deviceScaleFactor,
   userDataDir,
 }: {
   chrome: string;
@@ -146,6 +163,7 @@ async function capturePageScreenshot({
   outputPath: string;
   widthPx: number;
   heightPx: number;
+  deviceScaleFactor: number;
   userDataDir: string;
 }): Promise<DesktopPaneShotRenderResult> {
   await mkdir(userDataDir, { recursive: true });
@@ -182,7 +200,7 @@ async function capturePageScreenshot({
     await session.send("Emulation.setDeviceMetricsOverride", {
       width: widthPx,
       height: heightPx,
-      deviceScaleFactor: SHOT_DEVICE_SCALE_FACTOR,
+      deviceScaleFactor,
       mobile: false,
     });
     await waitForShotReady(session);
