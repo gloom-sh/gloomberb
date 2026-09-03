@@ -57,6 +57,20 @@ export function formatPrimaryShortcut(
   return [getPrimaryShortcutModifier(platform, mode), ...keyParts].join("+");
 }
 
+/**
+ * The single binding a host advertises for the command bar. Ctrl+P is the
+ * terminal's canonical binding; desktop hosts show the platform modifier with
+ * K, which the global shortcut accepts everywhere. Every surface that names the
+ * binding goes through here, so the header prompt and the empty-state hint can
+ * never quote two different keys at the same user.
+ */
+export function formatCommandBarShortcut(
+  mode: ShortcutDisplayMode = "platform",
+  platform: ShortcutPlatform = detectShortcutPlatform(),
+): string {
+  return mode === "terminal" ? "Ctrl+P" : formatPrimaryShortcut("K", platform, "platform");
+}
+
 export function formatPlatformShortcutLabel(
   label: string,
   platform: ShortcutPlatform = detectShortcutPlatform(),

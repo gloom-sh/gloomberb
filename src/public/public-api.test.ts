@@ -43,6 +43,7 @@ const PUBLIC_API: Record<string, readonly string[]> = {
     "editableTextContextMenuItems",
     "linkContextMenuItems",
     "tickerContextMenuItems",
+    "useCommandBarShortcut",
     "useContextMenu",
     "useNativeRenderer",
     "useRendererHost",

@@ -25,8 +25,18 @@ function currentDesktopPlatform(): string {
   ].filter(Boolean).join(" ");
 }
 
+/**
+ * A platform string worth trusting. The DOM host is shared by Electrobun, which
+ * passes a real `process.platform`, and the browser build, which passes the
+ * sentinel `"browser"` because a web page has no OS of its own. Only the former
+ * answers the question we are asking, so anything that does not name an OS
+ * falls through to sniffing the navigator.
+ */
+const OS_PLATFORM = /(darwin|mac|iphone|ipad|ipod|win|linux|android|freebsd|openbsd|netbsd|aix|sunos|cros|x11)/i;
+
 function isMacDesktopPlatform(desktopPlatform?: string): boolean {
-  const raw = desktopPlatform?.trim() || currentDesktopPlatform();
+  const hint = desktopPlatform?.trim();
+  const raw = hint && OS_PLATFORM.test(hint) ? hint : currentDesktopPlatform();
   return /(darwin|mac|iphone|ipad|ipod)/i.test(raw);
 }
 

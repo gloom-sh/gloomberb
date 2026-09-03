@@ -1,7 +1,7 @@
-import { Box, Text, TextAttributes, type TextareaRenderable } from "../../../../ui";
+import { Box, Text, TextAttributes, useCommandBarShortcut, type TextareaRenderable } from "../../../../ui";
 import { getMessageComposerBlockHeight, MessageComposer } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
-import { t } from "../../../../i18n";
+import { t, tf } from "../../../../i18n";
 import { truncateToDisplayWidth } from "../../../../utils/format";
 import type { ChatMessage } from "../../../../api-client";
 import { InlineAuthActions } from "../../cloud/auth-actions";
@@ -130,8 +130,10 @@ export function ChatComposerArea({
   onMentionSelect,
   user,
 }: ChatComposerAreaProps) {
+  const commandBarShortcut = useCommandBarShortcut();
   if (!canSend) {
-    const fitLine = (value: string) => truncateToDisplayWidth(t(value), contentWidth);
+    const fitText = (value: string) => truncateToDisplayWidth(value, contentWidth);
+    const fitLine = (value: string) => fitText(t(value));
     return (
       <Box width={contentWidth} height={2} flexDirection="column">
         {!user && !hasSavedSession ? (
@@ -147,7 +149,9 @@ export function ChatComposerArea({
         ) : (
           <>
             <Text fg={colors.positive}>{fitLine("Verify your email to send messages.")}</Text>
-            <Text fg={colors.textDim}>{fitLine("Ctrl+P, then Resend Verification Email")}</Text>
+            <Text fg={colors.textDim}>
+              {fitText(tf("{shortcut}, then Resend Verification Email", { shortcut: commandBarShortcut }))}
+            </Text>
           </>
         )}
       </Box>

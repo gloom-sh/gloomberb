@@ -34,7 +34,7 @@ import {
 import { useViewport } from "../../react/input";
 import { t, tf } from "../../i18n";
 import { truncateToDisplayWidth } from "../../utils/format";
-import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
+import { formatCommandBarShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
@@ -68,28 +68,31 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
 const PROMPT_CARET = "> ";
 
 /**
- * The topbar's own fill. The prompt used to be the only thing wearing it, which
- * left the bar reading as a pale input pasted onto a darker strip; in the
- * terminal the whole row carries it and the prompt paints nothing of its own.
- * Desktop keeps the pill, where the fill is one part of real chrome — it has a
- * border and a radius too — rather than a stray band.
+ * The topbar's own fill in the terminal. The prompt used to be the only thing
+ * wearing it, which left the bar reading as a pale input pasted onto a darker
+ * strip; now the whole row carries it and the prompt paints nothing of its own.
+ * Desktop has real chrome to sit on and uses the header colour directly.
  */
 function headerSurface(colors: ReturnType<typeof useThemeColors>): string {
   return blendHex(colors.header, colors.bg, 0.55);
 }
 
 /**
- * Desktop chrome for the prompt. Closed it is a self-contained pill. Open it is
- * the top half of the command surface: same fill, same border and same shadow
- * as the sheet, rounded only where it is not touching it, and stretched to the
- * header's full height so the two meet with no gap. Both boxes take their left
- * edge and width from `resolveHeaderPromptGeometry`, so the seam is invisible
- * rather than nearly invisible.
+ * Desktop chrome for the prompt. Closed it draws nothing: no fill and no edge,
+ * so the caret and its placeholder sit straight on the header instead of in a
+ * pale box pasted onto it. The hover fill is the whole affordance, and the
+ * border stays in the box model as a transparent hairline so opening the bar
+ * cannot shift the text by a pixel. Open it is the top half of the command
+ * surface: same fill, same border and same shadow as the sheet, rounded only
+ * where it is not touching it, and stretched to the header's full height so the
+ * two meet with no gap. Both boxes take their left edge and width from
+ * `resolveHeaderPromptGeometry`, so the seam is invisible rather than nearly
+ * invisible.
  */
 function nativePromptSurfaceStyle(colors: ReturnType<typeof useThemeColors>, open: boolean) {
   if (!open) {
     return {
-      border: `1px solid ${blendHex(colors.border, colors.headerText, 0.24)}`,
+      border: "1px solid transparent",
       borderRadius: 5,
     };
   }
@@ -180,11 +183,12 @@ function HeaderCommandPrompt({
   const { placeholder, shortcut } = resolveHeaderPromptContent(width, shortcutLabel);
   const idleBg = headerSurface(colors);
   // Open, the prompt takes the sheet's own surface so the two read as one
-  // control: the sheet is the prompt, expanded. Closed, only the desktop pill
-  // fills itself; the terminal row is already this colour end to end.
+  // control: the sheet is the prompt, expanded. Closed it fills nothing on
+  // either host; the terminal row is already this colour end to end, and on
+  // desktop the header is.
   const backgroundColor = open
     ? (nativePaneChrome ? commandBarPanelBg(colors) : commandBarBg(colors))
-    : (nativePaneChrome ? idleBg : undefined);
+    : undefined;
   const caretColor = open
     ? commandBarText(colors)
     : blendHex(colors.headerText, colors.header, 0.15);
@@ -192,6 +196,12 @@ function HeaderCommandPrompt({
   // Dimmer than the placeholder it trails: the label is what names the control,
   // the binding is a footnote to it.
   const shortcutColor = blendHex(colors.headerText, colors.header, 0.62);
+  // Desktop hover lifts the prompt off the header itself, which is the only
+  // thing telling the pointer this text is a control. The terminal has no
+  // chrome, so it lifts off the strip fill the whole row already wears.
+  const hoverBg = nativePaneChrome
+    ? blendHex(colors.header, colors.headerText, 0.14)
+    : blendHex(idleBg, colors.headerText, 0.16);
   const inputWidth = Math.max(1, width - 2 - PROMPT_CARET.length);
 
   return (
@@ -203,7 +213,7 @@ function HeaderCommandPrompt({
       paddingLeft={1}
       paddingRight={1}
       backgroundColor={backgroundColor}
-      hoverBackgroundColor={open ? undefined : blendHex(idleBg, colors.headerText, 0.16)}
+      hoverBackgroundColor={open ? undefined : hoverBg}
       data-gloom-role="header-command-prompt"
       data-gloom-interactive={open ? undefined : "true"}
       role={open ? undefined : "button"}
@@ -373,13 +383,9 @@ export function Header({
     termWidth,
     titleBarOverlay,
   });
-  // Ctrl+P is the terminal's canonical binding; desktop hosts get the platform
-  // modifier with K, which the global shortcut accepts everywhere.
-  const shortcutLabel = getShortcutDisplayMode(uiKind) === "terminal"
-    ? "Ctrl+P"
-    : formatPrimaryShortcut("K", detectShortcutPlatform(), "platform");
-  // Desktop draws a pill on the bar; the terminal has no chrome to hang one off,
-  // so the bar itself wears the prompt's fill and reads as a single strip.
+  const shortcutLabel = formatCommandBarShortcut(getShortcutDisplayMode(uiKind));
+  // Desktop has its own window chrome to sit on; the terminal has none, so the
+  // bar itself wears the prompt's fill and reads as a single strip.
   const headerBg = nativePaneChrome ? colors.header : headerSurface(colors);
 
   const startWindowDrag = useCallback(() => {

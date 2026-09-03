@@ -2,6 +2,7 @@ import { createContext, useContext, type ComponentType, type ReactNode, type Ref
 import type { ContextMenuItem } from "../types/context-menu";
 import type { AppNotificationRequest } from "../types/plugin";
 import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../types/media";
+import { formatCommandBarShortcut, getShortcutDisplayMode } from "../utils/shortcut-labels";
 import type { AsciiFontName } from "./ascii-font";
 
 export const TextAttributes = {
@@ -449,6 +450,15 @@ export function useUiHost(): UiHost {
 
 export function useUiCapabilities(): NonNullable<UiHost["capabilities"]> {
   return useUiHost().capabilities ?? {};
+}
+
+/**
+ * The binding this host advertises for the command bar, for any copy that has
+ * to name it. Read from the host rather than hardcoded so a hint never quotes a
+ * key the header does not.
+ */
+export function useCommandBarShortcut(): string {
+  return formatCommandBarShortcut(getShortcutDisplayMode(useUiHost().kind));
 }
 
 export function useRendererHost(): RendererHost {

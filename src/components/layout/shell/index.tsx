@@ -30,9 +30,10 @@ import {
   selectStatusBarVisible,
 } from "../../../state/selectors-ui";
 import { useThemeColors } from "../../../theme/theme-context";
+import { tf } from "../../../i18n";
 import { getPaneDisplayTitle } from "../pane/title";
 import type { PaneHeaderQuickSetting } from "../pane/header";
-import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
+import { formatCommandBarShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import {
   actionMenuWidth,
   menuForPane,
@@ -637,7 +638,9 @@ export function Shell({
         <Box flexDirection="column" alignItems="center">
           <AsciiText text="Gloomberb" font="wordmark" color={colors.textMuted} />
           <Box height={1} />
-          <Text fg={colors.textDim}>Ctrl+P to get started.</Text>
+          <Text fg={colors.textDim}>
+            {tf("{shortcut} to get started.", { shortcut: formatCommandBarShortcut(shortcutDisplayMode) })}
+          </Text>
         </Box>
       </Box>
 
