@@ -12,6 +12,10 @@ import type {
 } from "../types/plugin";
 
 const MAX_LAYOUT_BYTES = 128 * 1024;
+// Pane runtime state doubles as a cache (news panes keep six figures of bytes of
+// article backlog), so bulky fields drop out of the share rather than failing
+// the whole publish.
+const MAX_PANE_STATE_FIELD_BYTES = 16 * 1024;
 const MAX_INSTANCES = 40;
 const MAX_DOCK_DEPTH = 20;
 const MAX_ID_LENGTH = 160;
@@ -493,14 +497,45 @@ function publishableLayout(
       height,
     })),
   };
-  const parsed = parseMarketplaceLayoutPayload({
-    schemaVersion: 2,
-    sourceConfigVersion: CURRENT_CONFIG_VERSION,
-    layout: projected,
-    paneState: projectedState,
-  });
+  let publishableState = Object.fromEntries(
+    Object.entries(projectedState).flatMap(([id, state]) => {
+      const trimmed = withoutCacheFields(state);
+      return Object.keys(trimmed).length > 0 ? [[id, trimmed] as const] : [];
+    }),
+  );
+  let parsed = parsePublishablePayload(projected, publishableState);
+  while (!parsed && Object.keys(publishableState).length > 0) {
+    publishableState = withoutLargestState(publishableState);
+    parsed = parsePublishablePayload(projected, publishableState);
+  }
   if (!parsed) throw new Error("This layout cannot be published safely.");
   return parsed;
+}
+
+function parsePublishablePayload(
+  layout: LayoutConfig,
+  paneState: Record<string, PaneRuntimeState>,
+): LayoutMarketplacePayload | null {
+  return parseMarketplaceLayoutPayload({
+    schemaVersion: 2,
+    sourceConfigVersion: CURRENT_CONFIG_VERSION,
+    layout,
+    paneState,
+  });
+}
+
+function withoutCacheFields(state: PaneRuntimeState): PaneRuntimeState {
+  return Object.fromEntries(
+    Object.entries(state).filter(([, value]) => encodedSize(value) <= MAX_PANE_STATE_FIELD_BYTES),
+  ) as PaneRuntimeState;
+}
+
+function withoutLargestState(
+  paneState: Record<string, PaneRuntimeState>,
+): Record<string, PaneRuntimeState> {
+  const largest = Object.entries(paneState)
+    .reduce((worst, entry) => (encodedSize(entry[1]) > encodedSize(worst[1]) ? entry : worst));
+  return Object.fromEntries(Object.entries(paneState).filter(([id]) => id !== largest[0]));
 }
 
 export function publishableMarketplaceLayout(

@@ -109,6 +109,7 @@ export const openTuiUiHost: UiHost = {
   kind: "opentui",
   capabilities: {
     nativeCharts: true,
+    publicSharing: true,
   },
   Box: OpenTuiBox as UiHost["Box"],
   Text: OpenTuiText as UiHost["Text"],

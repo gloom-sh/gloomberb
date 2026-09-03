@@ -157,6 +157,23 @@ describe("layout marketplace payloads", () => {
     expect(JSON.stringify(pane)).not.toContain("secret");
   });
 
+  test("drops cache-sized pane state instead of failing the share", () => {
+    const pane = publishableMarketplacePane({
+      instanceId: "news-top:main",
+      paneId: "prediction-markets",
+      binding: { kind: "none" },
+    }, {
+      sort: { columnId: "time", direction: "desc" },
+      "news-top:articles": Array.from({ length: 400 }, (_, index) => ({
+        id: `article-${index}`,
+        title: "x".repeat(200),
+        publishedAt: "2026-08-26T00:00:00.000Z",
+      })),
+    }, panes);
+
+    expect(pane.paneState.p1).toEqual({ sort: { columnId: "time", direction: "desc" } });
+  });
+
   test("shares portable pane setup and state while redacting private data", () => {
     const fixture = portableFixture();
     const payload = publishableMarketplaceLayout(fixture.layout, fixture.paneState, panes);
