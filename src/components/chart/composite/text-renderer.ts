@@ -1,4 +1,4 @@
-import { compositeAxisTicks } from "./format";
+import { compositeAxisTicks, type CompositeAxisValueFormatter } from "./format";
 import type { CompositeViewportRange } from "./interactions";
 import { resolveCompositeObservationWidth } from "./rasterizer";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
@@ -274,10 +274,11 @@ export function renderCompositeAxisText(
   height: number,
   width: number,
   side: "left" | "right",
+  format?: CompositeAxisValueFormatter,
 ): string[] {
   const rows = Array.from({ length: Math.max(1, height) }, () => " ".repeat(Math.max(0, width)));
   if (!domain || width <= 0) return rows;
-  for (const tick of compositeAxisTicks(domain)) {
+  for (const tick of compositeAxisTicks(domain, 3, format)) {
     const row = clamp(Math.round(tick.ratio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
     const label = tick.label.length > width ? tick.label.slice(0, width) : tick.label;
     rows[row] = side === "left" ? label.padStart(width) : label.padEnd(width);

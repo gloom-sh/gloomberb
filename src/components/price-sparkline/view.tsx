@@ -130,7 +130,7 @@ function TerminalPriceSparkline({
 
   return (
     <ChartSurface width={width} height={height} flexDirection="column" bitmaps={bitmap ? [bitmap] : null}>
-      {fallback ? <Text content={fallback} /> : null}
+      {fallback ? <Text fg={color}>{fallback}</Text> : null}
     </ChartSurface>
   );
 }

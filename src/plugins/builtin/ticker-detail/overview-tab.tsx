@@ -20,7 +20,7 @@ import {
   pricePointsToResolvedSeries,
 } from "../../../components/chart/composite";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
-import { appendLiveQuotePoint } from "../../../components/chart/core/data";
+import { appendLiveQuotePoint } from "../../../time-series/chart-data";
 import { PriceReturnStrip } from "../../../components/price-performance";
 import {
   appendQuoteToPriceReturnHistory,

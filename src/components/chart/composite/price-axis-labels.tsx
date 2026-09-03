@@ -1,9 +1,14 @@
 import { useMemo } from "react";
-import { Box, Text, useUiCapabilities } from "../../ui";
-import { colors } from "../../theme/colors";
-import { formatAxisCell } from "./core/renderer";
+import { Box, Text, useUiCapabilities } from "../../../ui";
+import { colors } from "../../../theme/colors";
 
-export interface PriceAxisMarker {
+function formatAxisCell(label: string | null, width: number): string {
+  if (width <= 0) return "";
+  if (!label) return " ".repeat(width);
+  return label.length >= width ? label.slice(0, width) : label.padStart(width);
+}
+
+interface PriceAxisMarker {
   row: number;
   pixelY: number;
   label: string;

@@ -231,7 +231,7 @@ describe("projectChart", () => {
     const mean = meanRatio(points);
     const chart = projectChart(BUFFETT_INDICATOR, points, mean);
     expect(chart.markers.map((marker) => marker.label)).toEqual(["parity", "mean"]);
-    expect(chart.overlays.referenceLines!.map((line) => line.value)).toEqual([100, mean]);
+    expect(chart.referenceLines.map((line) => line.value)).toEqual([100, mean]);
     expect(mean).not.toBeCloseTo(100, 6);
   });
 

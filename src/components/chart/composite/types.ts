@@ -111,6 +111,23 @@ export interface BuildCompositeChartSceneOptions {
   timelineSeries?: ResolvedSeries[];
 }
 
+export interface CompositeChartXMarker {
+  id: string;
+  xRatio: number;
+  label?: string;
+  color?: string;
+  lineChar?: string;
+}
+
+/** Replaces the date axis for charts whose x is not time: a fraction, a tenor, a return. */
+export interface CompositeChartXAxis {
+  /** Evenly spread labels drawn instead of date ticks. */
+  labels?: readonly string[];
+  /** Vertical guide lines through the plot, captioned below the axis. */
+  markers?: readonly CompositeChartXMarker[];
+  formatCursor?: (xRatio: number) => string;
+}
+
 export interface CompositeChartProps {
   series: ResolvedSeries[];
   /** Optional legend model; can include hidden series that are not plotted. */
@@ -122,6 +139,13 @@ export interface CompositeChartProps {
   height: number;
   focused?: boolean;
   interactive?: boolean;
+  /** False keeps the hover cursor but removes pan, zoom, tools, and navigation keys. */
+  navigable?: boolean;
+  /** Overrides the unit-derived tick and cursor labels on both value axes. */
+  formatAxisValue?: (value: number, domain: CompositeAxisDomain) => string;
+  xAxis?: CompositeChartXAxis;
+  /** Tagged onto the plot's semantic node so remote clients can find this chart. */
+  remoteKind?: string;
   /** Permit panning into an older unloaded window so the owner can backfill it. */
   allowHistoricalBackfill?: boolean;
   cursorDate?: Date | null;
@@ -148,7 +172,7 @@ export interface CompositeChartProps {
   /** Reports a user-created viewport, or null when the user resets to the authored viewport. */
   onViewportChange?: (
     viewport: { start: Date; end: Date } | null,
-    interaction: "pan" | "reset" | "sync" | "zoom",
+    interaction: "pan" | "reset" | "zoom",
   ) => void;
   onActivate?: () => void;
   onToggleSeries?: (seriesId: string) => void;

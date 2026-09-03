@@ -78,14 +78,20 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   return formatCompositeAxisValue(value, domain);
 }
 
-export function compositeAxisTicks(domain: CompositeAxisDomain, count = 3): Array<{ ratio: number; value: number; label: string }> {
+export type CompositeAxisValueFormatter = (value: number, domain: CompositeAxisDomain) => string;
+
+export function compositeAxisTicks(
+  domain: CompositeAxisDomain,
+  count = 3,
+  format: CompositeAxisValueFormatter = formatCompositeAxisValue,
+): Array<{ ratio: number; value: number; label: string }> {
   const tickCount = Math.max(2, Math.floor(count));
   return Array.from({ length: tickCount }, (_, index) => {
     const ratio = index / (tickCount - 1);
     const value = domain.scale === "log"
       ? Math.exp(Math.log(domain.max) + (Math.log(domain.min) - Math.log(domain.max)) * ratio)
       : domain.max + (domain.min - domain.max) * ratio;
-    return { ratio, value, label: formatCompositeAxisValue(value, domain) };
+    return { ratio, value, label: format(value, domain) };
   });
 }
 

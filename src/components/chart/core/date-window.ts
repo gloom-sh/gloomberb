@@ -1,5 +1,11 @@
 import type { PricePoint } from "../../../types/financials";
-import type { TimeRange, VisibleWindow } from "./types";
+import type { TimeRange } from "./types";
+
+export interface VisibleWindow {
+  points: PricePoint[];
+  startIdx: number;
+  endIdx: number;
+}
 import type { DateWindowRange } from "../../../time-series/date-window";
 import { subtractTimeRange } from "../../../time-series/date-window";
 

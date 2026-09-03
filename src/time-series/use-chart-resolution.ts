@@ -35,6 +35,7 @@ export interface UseChartResolutionOptions {
   autoViewport?: ChartResolveOptions["autoViewport"];
   requestViewport?: ChartResolveOptions["requestViewport"];
   targetPointCount?: number;
+  currentResolution?: ChartResolveOptions["currentResolution"];
 }
 
 const DEFAULT_QUOTE_POLL_INTERVAL_MS = 60_000;
@@ -146,10 +147,14 @@ export function useChartResolution(
     ? { start: new Date(requestViewportStart), end: new Date(requestViewportEnd) }
     : null;
   const adaptiveTargetPointCount = validAutoViewport ? options.targetPointCount : undefined;
+  // Read at resolve time only: hysteresis breaks ties when the viewport moves,
+  // and echoing the chosen resolution back must not trigger another resolve.
+  const currentResolution = validAutoViewport ? options.currentResolution ?? null : null;
   const resolveOptions: ChartResolveOptions = {
     autoViewport: validAutoViewport,
     requestViewport: validRequestViewport,
     targetPointCount: adaptiveTargetPointCount,
+    currentResolution,
   };
   const latestRequestRef = useRef({ spec, sources, options: resolveOptions });
   latestRequestRef.current = { spec, sources, options: resolveOptions };

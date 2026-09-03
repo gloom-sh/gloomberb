@@ -34,6 +34,9 @@ export interface ChartMouseEvent {
   scroll?: {
     direction: "up" | "down" | "left" | "right";
     delta: number;
+    /** Signed pixel travel on hosts that report it; terminals report notches only. */
+    deltaX?: number;
+    deltaY?: number;
   };
 }
 

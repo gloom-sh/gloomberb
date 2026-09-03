@@ -1,6 +1,6 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
 import type { TimeRange } from "../../../../components/chart/core/types";
-import type { ScatterChartPoint } from "../../../../components/chart/scatter-chart-renderer";
+import type { ScatterChartPoint } from "../../../../components/chart/static";
 import type { PaneSettingsDef, PaneTemplateCreateOptions } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { formatTickerListInput, parseTickerListInput } from "../../../../tickers/list";

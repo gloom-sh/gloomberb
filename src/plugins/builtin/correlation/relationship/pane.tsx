@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Text } from "../../../../ui";
 import { Button, usePaneFooter } from "../../../../components";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
-import { StaticMultiLineChartSurface } from "../../../../components/chart/static/multi-line-chart-surface";
-import { StaticScatterChartSurface } from "../../../../components/chart/static/scatter-chart-surface";
-import { resolveChartPalette } from "../../../../components/chart/core/renderer";
+import { StaticMultiLineChartSurface, StaticScatterChartSurface } from "../../../../components/chart/static";
+import { resolveChartPalette } from "../../../../components/chart/core/palette";
 import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
 import { usePaneInstance } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
@@ -285,7 +284,6 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
         series={priceSeries}
         width={chartWidth}
         height={priceHeight}
-        dates={alignedDates}
         cursorDate={cursorDate}
         showTimeAxis
         timeAxisColor={colors.textDim}
@@ -299,7 +297,6 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
         series={ratioSeries}
         width={chartWidth}
         height={ratioHeight}
-        dates={alignedDates}
         cursorDate={cursorDate}
         showTimeAxis
         timeAxisColor={colors.textDim}
@@ -314,7 +311,6 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
           series={correlationSeries}
           width={chartWidth}
           height={correlationHeight}
-          dates={alignedDates}
           cursorDate={cursorDate}
           showTimeAxis
           timeAxisColor={colors.textDim}

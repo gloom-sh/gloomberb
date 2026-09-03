@@ -12,7 +12,7 @@ import {
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { ListView } from "../../../components/ui/list-view";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import type { PluginModule } from "../plugin-module";

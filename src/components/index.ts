@@ -1,6 +1,6 @@
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
-export { StaticChartSurface } from "./chart/static/chart/surface";
+export { StaticChartSurface } from "./chart/static";
 export {
   buildMetricTreemapNavigationTiles,
   findMetricTreemapNeighbor,

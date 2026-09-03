@@ -1,13 +1,9 @@
-export { appendLiveQuotePoint } from "../../../time-series/chart-data";
-export type { AppendLiveQuotePointOptions } from "../../../time-series/chart-data";
-export {
-  bucketOhlcSeries,
-  projectChartData,
-  resolveRenderMode,
-  resolveStableOhlcProjectionOptions,
-} from "./projection";
-export type {
-  ChartProjection,
-  ProjectChartDataOptions,
-  ProjectedChartPoint,
-} from "./projection";
+/** One observation of a simple, non-navigable chart: a value with optional bar extremes. */
+export interface ProjectedChartPoint {
+  date: Date;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}

@@ -1,19 +1,14 @@
-import { Box, Text, useUiCapabilities, useUiHost } from "../../../../ui";
+import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
+import type { CompositeChartXMarker } from "./types";
 
-export interface StaticChartXMarker {
-  id: string;
-  xRatio: number;
-  label?: string;
-  color?: string;
-  lineChar?: string;
-}
+export type StaticChartXMarker = CompositeChartXMarker;
 
 export interface StaticChartXAxisLabel {
   label: string;
   ratio: number;
 }
 
-export function clampRatio(value: number): number {
+function clampRatio(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(0, Math.min(1, value));
 }
@@ -222,7 +217,7 @@ export function StaticXMarkerOverlay({
   height,
   fallbackColor,
 }: {
-  markers: StaticChartXMarker[];
+  markers: readonly StaticChartXMarker[];
   width: number;
   height: number;
   fallbackColor?: string;
@@ -288,7 +283,7 @@ export function StaticXMarkerLabels({
   width,
   fallbackColor,
 }: {
-  markers: StaticChartXMarker[];
+  markers: readonly StaticChartXMarker[];
   width: number;
   fallbackColor?: string;
 }) {

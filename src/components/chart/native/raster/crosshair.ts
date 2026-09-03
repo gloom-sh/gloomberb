@@ -7,9 +7,9 @@ interface CrosshairMarker {
 }
 
 export interface CrosshairStripsOptions {
-  /** Cursor position in plot pixels. */
+  /** Cursor position in plot pixels; a null level draws only the column. */
   pixelX: number;
-  pixelY: number;
+  pixelY: number | null;
   /** Plot size in pixels and cells. */
   pixelWidth: number;
   pixelHeight: number;
@@ -45,7 +45,7 @@ export function renderCrosshairStrips(options: CrosshairStripsOptions): Crosshai
   if (cols <= 0 || rows <= 0 || cellWidth <= 0 || cellHeight <= 0) return [];
 
   const x = clamp(options.pixelX, 0, Math.max(pixelWidth - 1, 0));
-  const y = clamp(options.pixelY, 0, Math.max(pixelHeight - 1, 0));
+  const y = options.pixelY === null ? null : clamp(options.pixelY, 0, Math.max(pixelHeight - 1, 0));
   const lineColor = parseHex(options.color, 0.78);
   const focusColor = parseHex(options.color, 0.32);
   const strips: CrosshairStrip[] = [];
@@ -61,12 +61,13 @@ export function renderCrosshairStrips(options: CrosshairStripsOptions): Crosshai
     const markerY = clamp(marker.pixelY, 0, Math.max(pixelHeight - 1, 0));
     drawCircle(vertical.pixels, vertical.width, vertical.height, localX, markerY, 2.6, parseHex(marker.color));
   }
-  drawCircle(vertical.pixels, vertical.width, vertical.height, localX, y, 2.1, focusColor);
+  if (y !== null) drawCircle(vertical.pixels, vertical.width, vertical.height, localX, y, 2.1, focusColor);
   strips.push({
     rect: { x: verticalStart, y: 0, width: verticalCols, height: rows },
     bitmap: vertical,
-    key: `v:${verticalStart}:${localX.toFixed(2)}:${y.toFixed(2)}`,
+    key: `v:${verticalStart}:${localX.toFixed(2)}:${y === null ? "-" : y.toFixed(2)}`,
   });
+  if (y === null) return strips;
 
   // Horizontal strip: a single cell row carrying the level line.
   const horizontalStart = clamp(Math.floor(y / cellHeight), 0, rows - 1);

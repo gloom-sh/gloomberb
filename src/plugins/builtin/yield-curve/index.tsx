@@ -5,7 +5,7 @@ import { Button, EmptyState, Spinner, StaticChartSurface, type PaneFooterSegment
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import {
   curveAsOf,

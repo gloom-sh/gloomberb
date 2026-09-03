@@ -2,8 +2,27 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { CompositeTimeScale } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
+const QUARTER_HOUR_MS = 15 * 60 * 1_000;
 const MINIMUM_SLOT_FRACTION = 0.25;
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+// Session dates are looked up once per quarter hour, not once per bar: a day
+// of one-minute bars asks the same question hundreds of times.
+const sessionDateBuckets = new Map<string, Map<number, string>>();
+const SESSION_DATE_BUCKET_LIMIT = 200_000;
+
+type MarketAnchors = Extract<CompositeTimeScale, { kind: "market" }>["anchors"];
+
+interface CachedMarketAnchors {
+  points: readonly ResolvedSeries["points"][number][];
+  pointCount: number;
+  lastTimestamp: number | null;
+  timeZone: string;
+  configuredCadence: number | undefined;
+  cadenceMs: number;
+  anchors: MarketAnchors;
+}
+
+const anchorCache = new WeakMap<ResolvedSeries, CachedMarketAnchors>();
 
 function finiteTimestamp(value: Date): number | null {
   const timestamp = value.getTime();
@@ -31,7 +50,7 @@ function formatterFor(timeZone: string): Intl.DateTimeFormat {
   return formatter;
 }
 
-function sessionDate(timestamp: number, timeZone: string): string {
+function formatSessionDate(timestamp: number, timeZone: string): string {
   try {
     const parts = formatterFor(timeZone).formatToParts(new Date(timestamp));
     const year = parts.find((part) => part.type === "year")?.value;
@@ -42,6 +61,23 @@ function sessionDate(timestamp: number, timeZone: string): string {
     // Invalid or unsupported IANA zones fall back to UTC below.
   }
   return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function sessionDate(timestamp: number, timeZone: string): string {
+  // Every IANA offset is a multiple of fifteen minutes, so local midnight
+  // always lands on a bucket edge and one bucket never spans two sessions.
+  let buckets = sessionDateBuckets.get(timeZone);
+  if (!buckets) {
+    buckets = new Map();
+    sessionDateBuckets.set(timeZone, buckets);
+  }
+  const bucket = Math.floor(timestamp / QUARTER_HOUR_MS);
+  const cached = buckets.get(bucket);
+  if (cached !== undefined) return cached;
+  const date = formatSessionDate(timestamp, timeZone);
+  if (buckets.size >= SESSION_DATE_BUCKET_LIMIT) buckets.clear();
+  buckets.set(bucket, date);
+  return date;
 }
 
 function median(values: readonly number[]): number | null {
@@ -55,7 +91,7 @@ function median(values: readonly number[]): number | null {
 }
 
 function lowerBoundAnchor(
-  anchors: Extract<CompositeTimeScale, { kind: "market" }>["anchors"],
+  anchors: MarketAnchors,
   timestamp: number,
 ): number {
   let low = 0;
@@ -69,7 +105,7 @@ function lowerBoundAnchor(
 }
 
 function positionForTimestamp(
-  scale: Extract<CompositeTimeScale, { kind: "market" }>,
+  scale: Pick<Extract<CompositeTimeScale, { kind: "market" }>, "anchors" | "cadenceMs">,
   timestamp: number,
 ): number {
   const { anchors, cadenceMs } = scale;
@@ -90,67 +126,132 @@ function positionForTimestamp(
     + (next.position - previous.position) * ((timestamp - previous.timestamp) / elapsed);
 }
 
-export function buildCompositeTimeScale(
-  timelineSeries: readonly ResolvedSeries[],
-  startTime: number,
-  endTime: number,
-): CompositeTimeScale {
-  const anchorSeries = timelineSeries.find((series) => series.timeBasis?.kind === "market");
-  const anchorTimestamps = anchorSeries ? uniqueSeriesTimestamps(anchorSeries) : [];
-  if (!anchorSeries?.timeBasis || anchorTimestamps.length === 0) {
-    return { kind: "calendar", startTime, endTime };
-  }
-
-  const { timeZone } = anchorSeries.timeBasis;
+function buildMarketAnchors(series: ResolvedSeries, timeZone: string): {
+  cadenceMs: number;
+  anchors: MarketAnchors;
+} {
+  const anchorTimestamps = uniqueSeriesTimestamps(series);
+  const sessionDates = anchorTimestamps.map((timestamp) => sessionDate(timestamp, timeZone));
   const sameSessionGaps: number[] = [];
   const allGaps: number[] = [];
   for (let index = 1; index < anchorTimestamps.length; index += 1) {
-    const previous = anchorTimestamps[index - 1]!;
-    const next = anchorTimestamps[index]!;
-    const gap = next - previous;
+    const gap = anchorTimestamps[index]! - anchorTimestamps[index - 1]!;
     if (gap <= 0) continue;
     allGaps.push(gap);
-    if (sessionDate(previous, timeZone) === sessionDate(next, timeZone)) {
-      sameSessionGaps.push(gap);
-    }
+    if (sessionDates[index - 1] === sessionDates[index]) sameSessionGaps.push(gap);
   }
-  const configuredCadence = anchorSeries.timeBasis.cadenceMs;
+  const configuredCadence = series.timeBasis?.cadenceMs;
   const cadenceMs = typeof configuredCadence === "number"
     && Number.isFinite(configuredCadence)
     && configuredCadence > 0
     ? configuredCadence
     : median(sameSessionGaps) ?? median(allGaps) ?? DAY_MS;
 
-  const anchors: Extract<CompositeTimeScale, { kind: "market" }>["anchors"] = [];
+  const anchors: MarketAnchors = [];
   let position = 0;
   anchorTimestamps.forEach((timestamp, index) => {
     if (index > 0) {
       const previous = anchorTimestamps[index - 1]!;
-      const sameSession = sessionDate(previous, timeZone) === sessionDate(timestamp, timeZone);
-      position += sameSession
+      position += sessionDates[index - 1] === sessionDates[index]
         ? Math.max((timestamp - previous) / cadenceMs, MINIMUM_SLOT_FRACTION)
         : 1;
     }
     anchors.push({ timestamp, position });
   });
+  return { cadenceMs, anchors };
+}
 
-  const provisional: Extract<CompositeTimeScale, { kind: "market" }> = {
+/**
+ * Anchor slots for a market series, cached on the series object. Live ticks
+ * mutate the last point in place, so the cache also keys on the point count
+ * and the last timestamp.
+ */
+function resolveMarketAnchors(
+  series: ResolvedSeries,
+): { cadenceMs: number; anchors: MarketAnchors; timeZone: string } | null {
+  if (!series.timeBasis || series.timeBasis.kind !== "market") return null;
+  const { timeZone, cadenceMs: configuredCadence } = series.timeBasis;
+  const lastTimestamp = series.points.length > 0
+    ? finiteTimestamp(series.points[series.points.length - 1]!.date)
+    : null;
+  const cached = anchorCache.get(series);
+  if (
+    cached
+    && cached.points === series.points
+    && cached.pointCount === series.points.length
+    && cached.lastTimestamp === lastTimestamp
+    && cached.timeZone === timeZone
+    && cached.configuredCadence === configuredCadence
+  ) {
+    return { cadenceMs: cached.cadenceMs, anchors: cached.anchors, timeZone };
+  }
+  const built = buildMarketAnchors(series, timeZone);
+  anchorCache.set(series, {
+    points: series.points,
+    pointCount: series.points.length,
+    lastTimestamp,
+    timeZone,
+    configuredCadence,
+    cadenceMs: built.cadenceMs,
+    anchors: built.anchors,
+  });
+  return { ...built, timeZone };
+}
+
+export function buildCompositeTimeScale(
+  timelineSeries: readonly ResolvedSeries[],
+  startTime: number,
+  endTime: number,
+): CompositeTimeScale {
+  const anchorSeries = timelineSeries.find((series) => series.timeBasis?.kind === "market");
+  const resolved = anchorSeries ? resolveMarketAnchors(anchorSeries) : null;
+  if (!anchorSeries || !resolved || resolved.anchors.length === 0) {
+    return { kind: "calendar", startTime, endTime };
+  }
+  const { cadenceMs, anchors } = resolved;
+  const startPosition = positionForTimestamp({ anchors, cadenceMs }, startTime);
+  const endPosition = positionForTimestamp({ anchors, cadenceMs }, endTime);
+  return {
     kind: "market",
     startTime,
     endTime,
     anchorSeriesId: anchorSeries.id,
     cadenceMs,
     anchors,
-    startPosition: 0,
-    endPosition: 1,
-  };
-  const startPosition = positionForTimestamp(provisional, startTime);
-  const endPosition = positionForTimestamp(provisional, endTime);
-  return {
-    ...provisional,
     startPosition,
     endPosition: endPosition > startPosition ? endPosition : startPosition + 1,
   };
+}
+
+/** Slot position of a timestamp on a market scale, or wall-clock time on a calendar scale. */
+export function compositeTimePosition(scale: CompositeTimeScale, timestamp: number): number {
+  return scale.kind === "calendar" ? timestamp : positionForTimestamp(scale, timestamp);
+}
+
+/** Inverse of `compositeTimePosition`. */
+export function compositeTimeAtPosition(scale: CompositeTimeScale, position: number): number {
+  if (scale.kind === "calendar") return position;
+  const anchors = scale.anchors;
+  let low = 0;
+  let high = anchors.length;
+  while (low < high) {
+    const middle = low + Math.floor((high - low) / 2);
+    if (anchors[middle]!.position < position) low = middle + 1;
+    else high = middle;
+  }
+  const next = anchors[low];
+  const previous = anchors[low - 1];
+  if (!previous) {
+    return anchors[0]!.timestamp + (position - anchors[0]!.position) * scale.cadenceMs;
+  }
+  if (!next) {
+    const last = anchors.at(-1)!;
+    return last.timestamp + (position - last.position) * scale.cadenceMs;
+  }
+  const positionSpan = next.position - previous.position;
+  if (positionSpan <= 0) return previous.timestamp;
+  return previous.timestamp
+    + (next.timestamp - previous.timestamp) * ((position - previous.position) / positionSpan);
 }
 
 export function projectCompositeTimestamp(
@@ -190,28 +291,8 @@ export function unprojectCompositeTimestamp(
   if (scale.kind === "calendar") {
     return scale.startTime + (scale.endTime - scale.startTime) * safeRatio;
   }
-  const targetPosition = scale.startPosition
-    + (scale.endPosition - scale.startPosition) * safeRatio;
-  const anchors = scale.anchors;
-  let low = 0;
-  let high = anchors.length;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    if (anchors[middle]!.position < targetPosition) low = middle + 1;
-    else high = middle;
-  }
-  const next = anchors[low];
-  const previous = anchors[low - 1];
-  if (!previous) {
-    return anchors[0]!.timestamp + (targetPosition - anchors[0]!.position) * scale.cadenceMs;
-  }
-  if (!next) {
-    const last = anchors.at(-1)!;
-    return last.timestamp + (targetPosition - last.position) * scale.cadenceMs;
-  }
-  const positionSpan = next.position - previous.position;
-  if (positionSpan <= 0) return previous.timestamp;
-  return previous.timestamp
-    + (next.timestamp - previous.timestamp)
-      * ((targetPosition - previous.position) / positionSpan);
+  return compositeTimeAtPosition(
+    scale,
+    scale.startPosition + (scale.endPosition - scale.startPosition) * safeRatio,
+  );
 }

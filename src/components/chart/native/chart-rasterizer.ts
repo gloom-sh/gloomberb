@@ -1,5 +1,4 @@
 export { renderCrosshairStrips } from "./raster/crosshair";
-export { renderNativeChartBase } from "./raster/price-chart";
 
 export {
   computeBitmapSize,

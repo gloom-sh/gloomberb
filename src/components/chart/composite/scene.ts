@@ -49,12 +49,31 @@ function pointTimestampForScale(
     : timestamp;
 }
 
-function normalizedSourcePoints(series: ResolvedSeries, timeScale?: CompositeTimeScale): Array<{
+interface NormalizedSourcePoint {
   point: TimeSeriesPoint;
   timestamp: number;
   value: number | null;
-}> {
-  const bySourceTimestamp = new Map<number, { point: TimeSeriesPoint; timestamp: number; value: number | null }>();
+}
+
+interface NormalizedPointsCache {
+  points: readonly TimeSeriesPoint[];
+  pointCount: number;
+  last: TimeSeriesPoint | undefined;
+  lastTimestamp: number | null;
+  lastValue: number | null;
+  byPlacement: Map<boolean, NormalizedSourcePoint[]>;
+}
+
+// Every scene build normalises each series several times over; a viewport
+// change must not re-sort thousands of unchanged points. Live ticks mutate
+// the last point in place, so the cache also keys on its time and value.
+const normalizedPointsCache = new WeakMap<ResolvedSeries, NormalizedPointsCache>();
+
+function computeNormalizedSourcePoints(
+  series: ResolvedSeries,
+  timeScale?: CompositeTimeScale,
+): NormalizedSourcePoint[] {
+  const bySourceTimestamp = new Map<number, NormalizedSourcePoint>();
   for (const point of series.points) {
     const sourceTimestamp = pointTime(point);
     const timestamp = pointTimestampForScale(series, point, timeScale);
@@ -69,6 +88,41 @@ function normalizedSourcePoints(series: ResolvedSeries, timeScale?: CompositeTim
     left.timestamp - right.timestamp
     || left.point.date.getTime() - right.point.date.getTime()
   ));
+}
+
+function normalizedSourcePoints(
+  series: ResolvedSeries,
+  timeScale?: CompositeTimeScale,
+): NormalizedSourcePoint[] {
+  const effectiveTimes = timeScale?.kind === "market" && !series.timeBasis;
+  const last = series.points[series.points.length - 1];
+  const lastTimestamp = last ? pointTime(last) : null;
+  const lastValue = last ? resolveTimeSeriesPointValue(last) : null;
+  let cached = normalizedPointsCache.get(series);
+  if (
+    !cached
+    || cached.points !== series.points
+    || cached.pointCount !== series.points.length
+    || cached.last !== last
+    || cached.lastTimestamp !== lastTimestamp
+    || cached.lastValue !== lastValue
+  ) {
+    cached = {
+      points: series.points,
+      pointCount: series.points.length,
+      last,
+      lastTimestamp,
+      lastValue,
+      byPlacement: new Map(),
+    };
+    normalizedPointsCache.set(series, cached);
+  }
+  let normalized = cached.byPlacement.get(effectiveTimes);
+  if (!normalized) {
+    normalized = computeNormalizedSourcePoints(series, timeScale);
+    cached.byPlacement.set(effectiveTimes, normalized);
+  }
+  return normalized;
 }
 
 function normalizedPoints(series: ResolvedSeries): Array<{

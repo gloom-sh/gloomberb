@@ -27,16 +27,30 @@ export function cancelWebFrame(id: number): void {
   clearTimeout(id as unknown as ReturnType<typeof setTimeout>);
 }
 
+// Line and page deltas come from wheel mice; trackpads report pixels.
+const WHEEL_LINE_PIXELS = 16;
+const WHEEL_PAGE_PIXELS = 400;
+
+function wheelPixels(delta: number, deltaMode: number): number {
+  if (deltaMode === 1) return delta * WHEEL_LINE_PIXELS;
+  if (deltaMode === 2) return delta * WHEEL_PAGE_PIXELS;
+  return delta;
+}
+
 function resolveScroll(event: MouseLikeEvent) {
   if (!("deltaX" in event) && !("deltaY" in event)) return undefined;
   const wheel = event as WheelEvent;
-  const useHorizontal = Math.abs(wheel.deltaX) > Math.abs(wheel.deltaY);
-  const delta = useHorizontal ? wheel.deltaX : wheel.deltaY;
+  const deltaX = wheelPixels(wheel.deltaX, wheel.deltaMode);
+  const deltaY = wheelPixels(wheel.deltaY, wheel.deltaMode);
+  const useHorizontal = Math.abs(deltaX) > Math.abs(deltaY);
+  const delta = useHorizontal ? deltaX : deltaY;
   return {
     direction: useHorizontal
       ? (delta > 0 ? "right" : "left")
       : (delta > 0 ? "down" : "up"),
     delta: Math.abs(delta),
+    deltaX,
+    deltaY,
   };
 }
 

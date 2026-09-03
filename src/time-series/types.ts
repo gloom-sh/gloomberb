@@ -1,5 +1,5 @@
 import type { ChartResolution, TimeRange } from "./range";
-import type { ChartResolutionSupport } from "./resolution";
+import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
 
 export const CHART_SPEC_VERSION = 2 as const;
@@ -175,4 +175,6 @@ export interface ChartResolutionResult {
   warnings: string[];
   /** Effective inclusive bounds used to clip the resolved chart data. */
   viewport?: { start: Date; end: Date };
+  /** Bar resolution the loaded market history was fetched at. */
+  resolution?: ManualChartResolution;
 }

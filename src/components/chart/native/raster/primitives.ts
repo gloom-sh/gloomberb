@@ -147,26 +147,3 @@ export function drawCircle(
     }
   }
 }
-
-export function drawAreaFill(
-  data: Uint8Array,
-  width: number,
-  height: number,
-  yByColumn: Float32Array,
-  bottom: number,
-  color: RgbaColor,
-) {
-  for (let x = 0; x < yByColumn.length; x++) {
-    const yTop = yByColumn[x]!;
-    if (!Number.isFinite(yTop)) continue;
-    const distance = Math.max(bottom - yTop, 1);
-    for (let y = Math.max(Math.floor(yTop), 0); y <= Math.min(Math.ceil(bottom), height - 1); y++) {
-      const fade = 1 - (y - yTop) / distance;
-      blendPixel(data, width, height, x, y, color, 0.08 + fade * 0.32);
-    }
-  }
-}
-
-export function lerp(a: number, b: number, t: number): number {
-  return a + (b - a) * t;
-}

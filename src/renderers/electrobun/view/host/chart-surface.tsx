@@ -145,9 +145,11 @@ function ChartCrosshair({
 }) {
   if (!bitmap || !crosshair) return null;
   const x = bitmap.width <= 1 ? 0 : (crosshair.pixelX / (bitmap.width - 1)) * 100;
-  const y = bitmap.height <= 1 ? 0 : (crosshair.pixelY / (bitmap.height - 1)) * 100;
+  const y = crosshair.pixelY === null
+    ? null
+    : bitmap.height <= 1 ? 0 : (crosshair.pixelY / (bitmap.height - 1)) * 100;
   const clampedX = Math.max(0, Math.min(100, x));
-  const clampedY = Math.max(0, Math.min(100, y));
+  const clampedY = y === null ? null : Math.max(0, Math.min(100, y));
   return (
     <>
       <div
@@ -164,36 +166,40 @@ function ChartCrosshair({
           zIndex: 10,
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          top: `${clampedY}%`,
-          height: 1,
-          backgroundColor: crosshair.color,
-          opacity: 0.78,
-          transform: "translateY(-0.5px)",
-          pointerEvents: "none",
-          zIndex: 10,
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: `${clampedX}%`,
-          top: `${clampedY}%`,
-          width: 7,
-          height: 7,
-          borderRadius: 7,
-          border: `1px solid ${crosshair.color}`,
-          backgroundColor: `color-mix(in srgb, ${crosshair.color} 16%, transparent)`,
-          boxSizing: "border-box",
-          transform: "translate(-50%, -50%)",
-          pointerEvents: "none",
-          zIndex: 11,
-        }}
-      />
+      {clampedY === null ? null : (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: `${clampedY}%`,
+              height: 1,
+              backgroundColor: crosshair.color,
+              opacity: 0.78,
+              transform: "translateY(-0.5px)",
+              pointerEvents: "none",
+              zIndex: 10,
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: `${clampedX}%`,
+              top: `${clampedY}%`,
+              width: 7,
+              height: 7,
+              borderRadius: 7,
+              border: `1px solid ${crosshair.color}`,
+              backgroundColor: `color-mix(in srgb, ${crosshair.color} 16%, transparent)`,
+              boxSizing: "border-box",
+              transform: "translate(-50%, -50%)",
+              pointerEvents: "none",
+              zIndex: 11,
+            }}
+          />
+        </>
+      )}
     </>
   );
 }

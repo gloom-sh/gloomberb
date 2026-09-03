@@ -5,7 +5,7 @@ import {
   loadingText,
   unavailableText,
 } from "../../../components";
-import type { StaticChartSurfaceProps } from "../../../components/chart/static/chart/surface";
+import type { StaticChartSurfaceProps } from "../../../components/chart/static";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";

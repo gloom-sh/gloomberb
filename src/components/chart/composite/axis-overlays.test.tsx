@@ -4,9 +4,9 @@ import {
   UiHostProvider,
   type RendererHost,
   type UiHost,
-} from "../../../../ui";
-import { WebBox } from "../../../../renderers/electrobun/view/host/box";
-import { WebText } from "../../../../renderers/electrobun/view/host/text";
+} from "../../../ui";
+import { WebBox } from "../../../renderers/electrobun/view/host/box";
+import { WebText } from "../../../renderers/electrobun/view/host/text";
 import { StaticXAxisLabels } from "./axis-overlays";
 
 const renderer: RendererHost = {

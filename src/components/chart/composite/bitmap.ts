@@ -1,9 +1,9 @@
 import { useMemo } from "react";
-import { useNativeRenderer, useUiCapabilities } from "../../../../ui";
-import { useOptionalAppSelector } from "../../../../state/app/context";
-import type { ChartRendererPreference } from "../../core/types";
-import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../../native/bitmap-support";
-import { useResolvedChartRendererState } from "../../native/renderer-selection";
+import { useNativeRenderer, useUiCapabilities } from "../../../ui";
+import { useOptionalAppSelector } from "../../../state/app/context";
+import type { ChartRendererPreference } from "../core/types";
+import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../native/bitmap-support";
+import { useResolvedChartRendererState } from "../native/renderer-selection";
 
 export interface StaticChartBitmapSize {
   pixelWidth: number;

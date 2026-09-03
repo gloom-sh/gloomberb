@@ -14,7 +14,10 @@ import { CompositeChart } from "../../../components/chart/composite";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import type { ChartSpec, ResolvedSeries } from "../../../time-series/types";
-import { getSupportedChartResolutionsForViewport } from "../../../time-series/resolution";
+import {
+  getSupportedChartResolutionsForViewport,
+  type ManualChartResolution,
+} from "../../../time-series/resolution";
 import { useResolvedChartSpec } from "../../../time-series/hooks";
 import { chartSeriesSourceKey } from "../../../capabilities";
 import { useShortcut } from "../../../react/input";
@@ -68,6 +71,9 @@ import { isPlainKey } from "../../../utils/keyboard";
 
 const RANGE_TABS = RANGES.map((range, index) => ({ label: `${index + 1}:${range}`, value: range }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
+/** Bar pitch AUTO aims for; the coarser neighbour wins ties so bars stay readable. */
+const AUTO_RESOLUTION_BAR_PIXELS = 7;
+const MINIMUM_AUTO_RESOLUTION_POINTS = 60;
 
 interface RuntimeChartViewport {
   start: Date;
@@ -137,7 +143,7 @@ function ChartComposerSurface({
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
-  const { publicSharing } = useUiCapabilities();
+  const { publicSharing, cellWidthPx = 8 } = useUiCapabilities();
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -179,15 +185,24 @@ function ChartComposerSurface({
   const activeRuntimeViewport = runtimeViewportState?.key === authoredViewportKey
     ? runtimeViewportState
     : null;
-  const targetPointCount = Math.max(60, Math.floor(width * 1.25));
+  const targetPointCount = Math.max(
+    MINIMUM_AUTO_RESOLUTION_POINTS,
+    Math.round((width * cellWidthPx) / AUTO_RESOLUTION_BAR_PIXELS),
+  );
+  // The loaded resolution is the tie-breaker for the next AUTO pick, so a
+  // small zoom keeps the bars it already has. Read from the previous render:
+  // the resolver only consults it when the viewport moves.
+  const currentResolutionRef = useRef<ManualChartResolution | null>(null);
   const resolution = useResolvedChartSpec(spec, {
     autoViewport: spec.viewport.resolution === "auto"
       ? activeRuntimeViewport?.adaptiveViewport
       : null,
     requestViewport: activeRuntimeViewport?.requestViewport,
     targetPointCount,
+    currentResolution: currentResolutionRef.current,
     liveStreaming: liveStreaming && (liveWhenUnfocused || focused),
   });
+  currentResolutionRef.current = resolution.resolution ?? currentResolutionRef.current;
   const availableResolutions = useMemo<ChartResolution[]>(() => {
     if (!resolution.resolutionSupport) {
       if (!resolution.loading) return RESOLUTIONS;
@@ -320,9 +335,8 @@ function ChartComposerSurface({
   }, [authoredViewportKey, persistedInteractionViewport, setStoredInteractionViewport]);
   const handleChartViewportChange = useCallback((
     next: { start: Date; end: Date } | null,
-    interaction: "pan" | "reset" | "sync" | "zoom",
+    _interaction: "pan" | "reset" | "zoom",
   ) => {
-    if (interaction === "sync") return;
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);
       runtimeViewportTimerRef.current = null;
@@ -339,9 +353,9 @@ function ChartComposerSurface({
     if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return;
     const viewport = { start: new Date(start), end: new Date(end) };
     requestViewportRef.current = viewport;
-    if (interaction === "zoom" && spec.viewport.resolution === "auto") {
-      adaptiveViewportRef.current = viewport;
-    }
+    // A pan can leave the window a provider serves at the current resolution
+    // just as a zoom can, so both re-pick.
+    if (spec.viewport.resolution === "auto") adaptiveViewportRef.current = viewport;
     runtimeViewportTimerRef.current = globalThis.setTimeout(() => {
       runtimeViewportTimerRef.current = null;
       const requestViewport = requestViewportRef.current;

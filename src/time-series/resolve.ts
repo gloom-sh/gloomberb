@@ -98,6 +98,8 @@ export interface ChartResolveOptions {
   requestViewport?: { start: Date; end: Date } | null;
   /** Approximate number of horizontal observations the current surface can use. */
   targetPointCount?: number;
+  /** Resolution currently on screen, kept through small Auto zooms. */
+  currentResolution?: ManualChartResolution | null;
 }
 
 /** Raw source data retained while live quotes recompute the chart tail. */
@@ -290,6 +292,7 @@ function requestResolution(
         { start: new Date(runtimeBounds.start), end: new Date(runtimeBounds.end) },
         sharedSupport,
         options.targetPointCount ?? 120,
+        options.currentResolution,
       )
     : null;
   const preferred = adaptive
@@ -388,6 +391,9 @@ export function seedChartResolutionResult(
     loading: false,
     errors: [],
     warnings: [],
+    resolution: spec.viewport.resolution === "auto"
+      ? getPresetResolution(spec.viewport.range)
+      : spec.viewport.resolution,
   };
 }
 
@@ -1224,5 +1230,6 @@ export async function resolveChartSpecData(
     errors,
     warnings: [...new Set([...priorityWarnings, ...warnings])],
     viewport,
+    resolution,
   };
 }

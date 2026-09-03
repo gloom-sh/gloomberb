@@ -1,7 +1,7 @@
 import { Box, Text, TextAttributes } from "../../../ui";
 import { StaticChartSurface } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
-import type { StaticChartXMarker } from "../../../components/chart/static/chart/surface";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
+import type { StaticChartXMarker } from "../../../components/chart/static";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
@@ -97,7 +97,6 @@ export function KellyCurveSection({
           width={Math.max(10, width - 2)}
           height={height}
           mode="line"
-          axisMode="percent"
           colors={resolveChartPalette(colors, "positive")}
           yAxisLabel="Expected log growth"
           yAxisColor={colors.textDim}

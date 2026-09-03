@@ -1,5 +1,4 @@
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import type { ChartIndicatorOverlays } from "../../../components/chart/core/types";
 import { blendHex, colors } from "../../../theme/colors";
 import type { RatioPoint } from "./align";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
@@ -16,11 +15,16 @@ export interface ChartMarkerLine {
   label: string;
 }
 
+interface ChartReferenceLine {
+  value: number;
+  color: string;
+}
+
 export interface ValuationChartProjection {
   points: ProjectedChartPoint[];
   /** The ratio points behind the projection, for the interactive chart. */
   sourcePoints: RatioPoint[];
-  overlays: ChartIndicatorOverlays;
+  referenceLines: ChartReferenceLine[];
   yDomain: { min: number; max: number };
   yearLabels: string[];
   lineColors: string[];
@@ -84,7 +88,7 @@ export function projectChart(
   yMin = Math.min(yMin, mean);
 
   const markers: ChartMarkerLine[] = [];
-  const referenceLines = [];
+  const referenceLines: ChartReferenceLine[] = [];
   if (indicator.reference) {
     referenceLines.push({ value: indicator.reference.value, color: colors.textDim });
     markers.push({ value: indicator.reference.value, label: indicator.reference.label });
@@ -94,19 +98,10 @@ export function projectChart(
     markers.push({ value: mean, label: "mean" });
   }
 
-  const overlays: ChartIndicatorOverlays = {
-    smaLines: [],
-    emaLines: [],
-    bollinger: null,
-    rsi: null,
-    macd: null,
-    referenceLines,
-  };
-
   return {
     points,
     sourcePoints: [...visible],
-    overlays,
+    referenceLines,
     yDomain: niceDomain(yMin, yMax, indicator.chartGridStep),
     yearLabels: chartYearLabels(points),
     lineColors: visible.map((point) => classifyZone(indicator, point.ratio).color),

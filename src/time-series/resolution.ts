@@ -256,15 +256,42 @@ export function isRangePresetSupported(
   return maxRange !== null && isTimeRangeAtOrBelow(range, maxRange);
 }
 
+const INTRADAY_TRADING_DAY_RATIO = 5 / 7;
+/** Bars packed tighter than the target cost more than bars spread wider. */
+const DENSE_SCORE_PENALTY = 1.5;
+/** Score margin a candidate must win by before the active resolution changes. */
+const RESOLUTION_SWITCH_HYSTERESIS = 0.35;
+
+function estimateVisiblePointCount(resolution: ManualChartResolution, spanMs: number): number {
+  const calendarDays = Math.max(spanMs / CHART_RESOLUTION_STEP_MS["1d"], 1 / 24);
+  // Intraday bars only exist on trading days, so a multi-day window holds
+  // about five sessions a week. Anything up to a day is one session.
+  const days = isIntradayResolution(resolution) && calendarDays > 1
+    ? Math.max(calendarDays * INTRADAY_TRADING_DAY_RATIO, 1)
+    : calendarDays;
+  return Math.max(days * CHART_RESOLUTION_POINTS_PER_DAY[resolution], 1);
+}
+
+function resolutionFitScore(estimatedPointCount: number, targetPointCount: number): number {
+  const ratio = estimatedPointCount / targetPointCount;
+  return ratio > 1 ? Math.log(ratio) * DENSE_SCORE_PENALTY : -Math.log(ratio);
+}
+
+/**
+ * Picks the supported resolution whose bar count sits closest to the target
+ * on a log scale, leaning toward fewer bars. A current resolution is kept
+ * until another candidate is clearly better, so a small zoom does not swap
+ * the whole data set.
+ */
 export function getBestSupportedResolutionForVisibleWindow(
   window: { start: Date | null; end: Date | null } | null,
   support: readonly ChartResolutionSupport[] | ReadonlyMap<ManualChartResolution, TimeRange>,
   targetPointCount: number,
+  currentResolution?: ManualChartResolution | null,
 ): ManualChartResolution | null {
   if (!window?.start || !window.end) return null;
 
   const spanMs = Math.max(window.end.getTime() - window.start.getTime(), 0);
-  const dayCount = Math.max(spanMs / CHART_RESOLUTION_STEP_MS["1d"], 1 / 24);
   const supportedResolutions = sortChartResolutions(
     CHART_RESOLUTION_ORDER
       .filter((resolution): resolution is ManualChartResolution => resolution !== "auto")
@@ -273,16 +300,20 @@ export function getBestSupportedResolutionForVisibleWindow(
         return maxRange !== null && isDateWindowWithinTimeRange(window.start!, window.end!, maxRange);
       }),
   );
-
   if (supportedResolutions.length === 0) return null;
 
-  const minimumPointTarget = Math.max(targetPointCount, 1);
-  for (const resolution of [...supportedResolutions].reverse()) {
-    const estimatedPointCount = Math.max(dayCount * CHART_RESOLUTION_POINTS_PER_DAY[resolution], 1);
-    if (estimatedPointCount >= minimumPointTarget) {
-      return resolution;
-    }
+  const target = Math.max(targetPointCount, 1);
+  const scores = new Map(supportedResolutions.map((resolution) => [
+    resolution,
+    resolutionFitScore(estimateVisiblePointCount(resolution, spanMs), target),
+  ] as const));
+  let best = supportedResolutions[0]!;
+  for (const resolution of supportedResolutions) {
+    if (scores.get(resolution)! <= scores.get(best)!) best = resolution;
   }
-
-  return supportedResolutions[0] ?? null;
+  if (currentResolution && scores.has(currentResolution)) {
+    const currentScore = scores.get(currentResolution)!;
+    if (currentScore <= scores.get(best)! + RESOLUTION_SWITCH_HYSTERESIS) return currentResolution;
+  }
+  return best;
 }

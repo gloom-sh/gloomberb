@@ -1,9 +1,8 @@
 import { useMemo } from "react";
 import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
-import { StaticChartSurface } from "../../../components";
+import { StaticChartSurface, type StaticChartOverlay } from "../../../components/chart/static";
 import { colors, blendHex } from "../../../theme/colors";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
-import type { ChartIndicatorOverlays } from "../../../components/chart/core/types";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type {
   FearGreedData,
   FearGreedIndicator,
@@ -82,19 +81,9 @@ export function PreviousScoreGrid({ data, width, layout = "grid" }: { data: Fear
   );
 }
 
-function chartOverlay(indicator: FearGreedIndicator): ChartIndicatorOverlays | null {
-  if (indicator.secondaryPoints.length === 0) return null;
-  return {
-    smaLines: [{
-      period: 0,
-      points: indicator.secondaryPoints,
-      color: colors.warning,
-    }],
-    emaLines: [],
-    bollinger: null,
-    rsi: null,
-    macd: null,
-  };
+function chartOverlay(indicator: FearGreedIndicator): StaticChartOverlay[] | undefined {
+  if (indicator.secondaryPoints.length === 0) return undefined;
+  return [{ id: "secondary", color: colors.warning, points: indicator.secondaryPoints }];
 }
 
 function SentimentChart({
@@ -120,7 +109,7 @@ function SentimentChart({
   primaryLabel: string;
   secondaryLabel?: string;
   secondaryValue?: number | null;
-  overlays?: ChartIndicatorOverlays | null;
+  overlays?: StaticChartOverlay[];
 }) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const stackMeta = width < CHART_META_STACK_WIDTH;
@@ -183,7 +172,7 @@ function SentimentChart({
             height={chartHeight}
             mode="line"
             colors={palette}
-            indicators={overlays}
+            overlays={overlays}
             showTimeAxis
             timeAxisColor={colors.textDim}
             yAxisColor={colors.textDim}

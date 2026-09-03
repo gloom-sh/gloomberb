@@ -9,7 +9,7 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";

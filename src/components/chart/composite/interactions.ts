@@ -1,8 +1,9 @@
 import type { ResolvedSeries } from "../../../time-series/types";
+import type { CompositeTimeScale } from "./types";
 import {
   buildCompositeTimeScale,
-  projectCompositeTimestamp,
-  unprojectCompositeTimestamp,
+  compositeTimeAtPosition,
+  compositeTimePosition,
 } from "./time-scale";
 
 export interface CompositeViewportRange {
@@ -28,31 +29,48 @@ export type CompositeChartInteraction =
 
 export const COMPOSITE_ZOOM_STEP_FACTOR = 1.2;
 export const COMPOSITE_KEYBOARD_PAN_RATIO = 0.02;
+/** Pixels of trackpad or wheel travel that zoom the viewport by a factor of e. */
+const WHEEL_ZOOM_PIXELS_PER_E = 160;
+/** Bound on one wheel event so a coarse mouse notch cannot zoom by more than this. */
+const WHEEL_ZOOM_STEP_LIMIT = 1.5;
 
-const FALLBACK_SINGLE_POINT_SPAN_MS = 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const FALLBACK_SINGLE_POINT_SPAN_MS = DAY_MS;
+/** Bars that stay in view at the deepest zoom. */
+const MINIMUM_VISIBLE_BARS = 2;
 const WHEEL_PAN_RATIO_PER_DELTA = 0.005;
 const MAX_WHEEL_DELTA_MAGNITUDE = 8;
+const WHEEL_ZOOM_RATIO_PER_DELTA = 0.04;
 const SOURCE_VIEWPORT_RESET_RATIO = 0.01;
 const SOURCE_VIEWPORT_RESET_FLOOR_MS = 60_000;
+
+/**
+ * The space every navigation gesture works in. Market charts collapse closed
+ * sessions, so a position is a bar slot there; calendar charts use wall-clock
+ * milliseconds. Data refreshes build a new frame; an in-flight gesture keeps
+ * the one it started with, so a refresh can never move the view under the
+ * pointer.
+ */
+export interface CompositeNavigationFrame {
+  scale: CompositeTimeScale;
+  dataStart: number;
+  dataEnd: number;
+  dataStartPosition: number;
+  dataEndPosition: number;
+  minimumSpanPositions: number;
+  /** Wall-clock equivalent of `minimumSpanPositions`, for tools that select time ranges. */
+  minimumSpanMs: number;
+  /** Fraction of the visible span the viewport may extend before the first observation. */
+  historicalPaddingRatio: number;
+}
 
 function finiteTime(value: Date | undefined): number | null {
   const time = value?.getTime();
   return typeof time === "number" && Number.isFinite(time) ? time : null;
 }
 
-function normalizeViewport(
-  viewport: CompositeViewportRange | null | undefined,
-): CompositeViewportRange | null {
-  const start = finiteTime(viewport?.start);
-  const end = finiteTime(viewport?.end);
-  if (start === null || end === null || start > end) return null;
-  if (start < end) {
-    return { start: new Date(start), end: new Date(end) };
-  }
-  return {
-    start: new Date(start - FALLBACK_SINGLE_POINT_SPAN_MS / 2),
-    end: new Date(end + FALLBACK_SINGLE_POINT_SPAN_MS / 2),
-  };
+function clamp(value: number, minimum: number, maximum: number): number {
+  return Math.max(minimum, Math.min(maximum, value));
 }
 
 function hasRenderableValue(point: ResolvedSeries["points"][number]): boolean {
@@ -62,170 +80,140 @@ function hasRenderableValue(point: ResolvedSeries["points"][number]): boolean {
   );
 }
 
-function pointTimestamps(series: ResolvedSeries[]): number[] {
+function dataExtent(series: readonly ResolvedSeries[]): { start: number; end: number } | null {
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  for (const entry of series) {
+    for (const point of entry.points) {
+      if (!hasRenderableValue(point)) continue;
+      const timestamp = point.date.getTime();
+      if (!Number.isFinite(timestamp)) continue;
+      if (timestamp < start) start = timestamp;
+      if (timestamp > end) end = timestamp;
+    }
+  }
+  return start <= end ? { start, end } : null;
+}
+
+function medianStepMs(series: readonly ResolvedSeries[]): number | null {
   const timestamps = new Set<number>();
   for (const entry of series) {
     for (const point of entry.points) {
       if (!hasRenderableValue(point)) continue;
-      const timestamp = point.date instanceof Date
-        ? point.date.getTime()
-        : new Date(point.date).getTime();
+      const timestamp = point.date.getTime();
       if (Number.isFinite(timestamp)) timestamps.add(timestamp);
     }
   }
-  return [...timestamps].sort((left, right) => left - right);
-}
-
-function viewportHasTimestamps(
-  timestamps: readonly number[],
-  viewport: CompositeViewportRange,
-  minimumCount: number,
-): boolean {
-  const start = finiteTime(viewport.start);
-  const end = finiteTime(viewport.end);
-  if (start === null || end === null || start > end) return false;
-  const required = Math.max(1, Math.floor(minimumCount));
-  let count = 0;
-  for (const timestamp of timestamps) {
-    if (timestamp < start) continue;
-    if (timestamp > end) break;
-    count += 1;
-    if (count >= required) return true;
-  }
-  return false;
-}
-
-export function compositeViewportHasObservations(
-  series: ResolvedSeries[],
-  viewport: CompositeViewportRange,
-  minimumCount = 2,
-): boolean {
-  return viewportHasTimestamps(pointTimestamps(series), viewport, minimumCount);
-}
-
-export function resolveCompositeNavigationBounds(
-  series: ResolvedSeries[],
-  requestedViewport?: CompositeViewportRange | null,
-  options: { historicalPaddingRatio?: number } = {},
-): CompositeViewportRange | null {
-  const requested = normalizeViewport(requestedViewport);
-  const timestamps = pointTimestamps(series);
-  if (timestamps.length === 0) return requested;
-  const data = normalizeViewport({
-    start: new Date(timestamps[0]!),
-    end: new Date(timestamps.at(-1)!),
-  });
-  if (!requested) return data;
-  if (!data) return requested;
-  const overlapsData = requested.end.getTime() >= data.start.getTime()
-    && requested.start.getTime() <= data.end.getTime();
-  // Loaded series can include a buffer outside the authored viewport. Use the
-  // complete real-data extent when the two ranges overlap. A disjoint request
-  // keeps its own window, unioned with the data so navigation can always get
-  // back: bounds equal to an observation-free window strand pan and zoom.
-  if (!overlapsData) {
-    return {
-      start: new Date(Math.min(data.start.getTime(), requested.start.getTime())),
-      end: new Date(Math.max(data.end.getTime(), requested.end.getTime())),
-    };
-  }
-  const paddingRatio = Math.max(options.historicalPaddingRatio ?? 0, 0);
-  if (paddingRatio === 0) return data;
-  const requestedSpan = Math.max(requested.end.getTime() - requested.start.getTime(), 1);
-  return {
-    start: new Date(Math.min(data.start.getTime(), requested.start.getTime()) - requestedSpan * paddingRatio),
-    end: data.end,
-  };
-}
-
-export function resolveCompositeMinimumSpanMs(
-  series: ResolvedSeries[],
-  bounds: CompositeViewportRange,
-): number {
-  const start = bounds.start.getTime();
-  const end = bounds.end.getTime();
-  const timestamps = pointTimestamps(series).filter((timestamp) => timestamp >= start && timestamp <= end);
+  const sorted = [...timestamps].sort((left, right) => left - right);
   const steps: number[] = [];
-  for (let index = 1; index < timestamps.length; index += 1) {
-    const step = timestamps[index]! - timestamps[index - 1]!;
+  for (let index = 1; index < sorted.length; index += 1) {
+    const step = sorted[index]! - sorted[index - 1]!;
     if (step > 0) steps.push(step);
   }
-  const boundsSpan = Math.max(end - start, 1);
+  if (steps.length === 0) return null;
   steps.sort((left, right) => left - right);
-  // Use an observed upper median rather than the absolute minimum. This keeps
-  // one near-duplicate live observation from lowering a daily chart's floor.
-  const representativeStep = steps[Math.floor(steps.length / 2)];
-  return representativeStep !== undefined
-    ? Math.min(Math.max(representativeStep, 1), boundsSpan)
-    : Math.max(Math.min(boundsSpan, FALLBACK_SINGLE_POINT_SPAN_MS), 1);
+  // An upper median keeps one near-duplicate live observation from lowering
+  // a daily chart's zoom floor.
+  return steps[Math.floor(steps.length / 2)]!;
 }
 
-function clamp(value: number, minimum: number, maximum: number): number {
-  return Math.max(minimum, Math.min(maximum, value));
+export function buildCompositeNavigationFrame(
+  series: readonly ResolvedSeries[],
+  timelineSeries: readonly ResolvedSeries[],
+  options: { historicalPaddingRatio?: number } = {},
+): CompositeNavigationFrame | null {
+  const extent = dataExtent(series);
+  if (!extent) return null;
+  const scale = buildCompositeTimeScale(timelineSeries, extent.start, extent.end);
+  const dataStartPosition = compositeTimePosition(scale, extent.start);
+  const dataEndPosition = compositeTimePosition(scale, extent.end);
+  const minimumSpanMs = scale.kind === "market"
+    ? scale.cadenceMs * MINIMUM_VISIBLE_BARS
+    : (medianStepMs(series) ?? FALLBACK_SINGLE_POINT_SPAN_MS) * MINIMUM_VISIBLE_BARS;
+  const minimumSpanPositions = scale.kind === "market" ? MINIMUM_VISIBLE_BARS : minimumSpanMs;
+  return {
+    scale,
+    dataStart: extent.start,
+    dataEnd: extent.end,
+    dataStartPosition,
+    dataEndPosition,
+    minimumSpanPositions: Math.max(minimumSpanPositions, Number.EPSILON),
+    minimumSpanMs: Math.max(minimumSpanMs, 1),
+    historicalPaddingRatio: Math.max(options.historicalPaddingRatio ?? 0, 0),
+  };
 }
 
-function marketViewportProjection(
-  viewport: CompositeViewportRange,
-  bounds: CompositeViewportRange,
-  series: ResolvedSeries[] | undefined,
-): {
-  scale: Extract<ReturnType<typeof buildCompositeTimeScale>, { kind: "market" }>;
-  startRatio: number;
-  endRatio: number;
-} | null {
-  if (!series?.some((entry) => entry.timeBasis?.kind === "market")) return null;
-  const scale = buildCompositeTimeScale(
-    series,
-    bounds.start.getTime(),
-    bounds.end.getTime(),
-  );
-  if (scale.kind !== "market") return null;
-  const startRatio = projectCompositeTimestamp(scale, viewport.start.getTime())?.ratio;
-  const endRatio = projectCompositeTimestamp(scale, viewport.end.getTime())?.ratio;
-  if (
-    typeof startRatio !== "number"
-    || !Number.isFinite(startRatio)
-    || typeof endRatio !== "number"
-    || !Number.isFinite(endRatio)
-    || startRatio >= endRatio
-  ) {
-    return null;
+export function compositeNavigationDataViewport(frame: CompositeNavigationFrame): CompositeViewportRange {
+  if (frame.dataStart < frame.dataEnd) {
+    return { start: new Date(frame.dataStart), end: new Date(frame.dataEnd) };
   }
-  return { scale, startRatio, endRatio };
-}
-
-function viewportFromMarketRatios(
-  scale: Extract<ReturnType<typeof buildCompositeTimeScale>, { kind: "market" }>,
-  startRatio: number,
-  endRatio: number,
-): CompositeViewportRange {
   return {
-    start: new Date(unprojectCompositeTimestamp(scale, startRatio)),
-    end: new Date(unprojectCompositeTimestamp(scale, endRatio)),
+    start: new Date(frame.dataStart - FALLBACK_SINGLE_POINT_SPAN_MS / 2),
+    end: new Date(frame.dataEnd + FALLBACK_SINGLE_POINT_SPAN_MS / 2),
   };
 }
 
-export function clampCompositeViewport(
+interface PositionRange {
+  start: number;
+  end: number;
+}
+
+export function compositeViewportPositions(
+  frame: CompositeNavigationFrame,
   viewport: CompositeViewportRange,
-  bounds: CompositeViewportRange,
-): CompositeViewportRange {
-  const boundsStart = bounds.start.getTime();
-  const boundsEnd = bounds.end.getTime();
-  const boundsSpan = Math.max(boundsEnd - boundsStart, 1);
-  const rawRequestedStart = viewport.start.getTime();
-  const rawRequestedEnd = viewport.end.getTime();
-  const hasValidViewport = Number.isFinite(rawRequestedStart)
-    && Number.isFinite(rawRequestedEnd)
-    && rawRequestedStart <= rawRequestedEnd;
-  const requestedStart = hasValidViewport ? rawRequestedStart : boundsStart;
-  const requestedEnd = hasValidViewport ? rawRequestedEnd : boundsEnd;
-  const requestedSpan = Math.max(requestedEnd - requestedStart, 1);
-  const span = Math.min(requestedSpan, boundsSpan);
-  const start = clamp(requestedStart, boundsStart, boundsEnd - span);
+): PositionRange | null {
+  const startTime = finiteTime(viewport.start);
+  const endTime = finiteTime(viewport.end);
+  if (startTime === null || endTime === null || startTime > endTime) return null;
+  const start = compositeTimePosition(frame.scale, startTime);
+  const end = compositeTimePosition(frame.scale, endTime);
+  return { start, end: Math.max(end, start) };
+}
+
+function viewportFromPositions(frame: CompositeNavigationFrame, range: PositionRange): CompositeViewportRange {
   return {
-    start: new Date(start),
-    end: new Date(start + span),
+    start: new Date(Math.round(compositeTimeAtPosition(frame.scale, range.start))),
+    end: new Date(Math.round(compositeTimeAtPosition(frame.scale, range.end))),
   };
+}
+
+function clampPositions(
+  frame: CompositeNavigationFrame,
+  range: PositionRange,
+  paddingRatio: number,
+): PositionRange {
+  const dataSpan = Math.max(frame.dataEndPosition - frame.dataStartPosition, 0);
+  const maximumSpan = Math.max(dataSpan * (1 + paddingRatio), frame.minimumSpanPositions);
+  const span = clamp(range.end - range.start, frame.minimumSpanPositions, maximumSpan);
+  let start = Math.max(range.start, frame.dataStartPosition - span * paddingRatio);
+  // The newest observation is the hard edge: nothing lies beyond it yet.
+  start = Math.min(start, frame.dataEndPosition - span);
+  return { start, end: start + span };
+}
+
+/**
+ * Fits an authored viewport to the loaded data, keeping its wall-clock span:
+ * a one-day window that ends after the close still shows one session. One
+ * that misses the data entirely is left alone so the time axis still says
+ * where the chart is and navigation can bring it back.
+ */
+export function clampCompositeViewport(
+  frame: CompositeNavigationFrame,
+  viewport: CompositeViewportRange,
+): CompositeViewportRange {
+  const data = compositeNavigationDataViewport(frame);
+  const startTime = finiteTime(viewport.start);
+  const endTime = finiteTime(viewport.end);
+  if (startTime === null || endTime === null || startTime > endTime) return data;
+  const overlapsData = endTime >= frame.dataStart && startTime <= frame.dataEnd;
+  if (!overlapsData) return viewport;
+  const dataStart = data.start.getTime();
+  const dataEnd = data.end.getTime();
+  const span = Math.min(endTime - startTime, dataEnd - dataStart);
+  const start = clamp(startTime, dataStart, dataEnd - span);
+  return start === startTime && start + span === endTime
+    ? viewport
+    : { start: new Date(start), end: new Date(start + span) };
 }
 
 export function sameCompositeViewport(
@@ -237,136 +225,98 @@ export function sameCompositeViewport(
     && left.end.getTime() === right.end.getTime();
 }
 
-export function zoomCompositeViewport(
-  viewport: CompositeViewportRange,
-  bounds: CompositeViewportRange,
-  zoomFactor: number,
-  anchorRatio: number,
-  minimumSpanMs: number,
-  series?: ResolvedSeries[],
-): CompositeViewportRange {
-  const current = clampCompositeViewport(viewport, bounds);
-  if (!Number.isFinite(zoomFactor) || zoomFactor <= 0) return current;
-
-  const start = current.start.getTime();
-  const end = current.end.getTime();
-  const boundsSpan = Math.max(bounds.end.getTime() - bounds.start.getTime(), 1);
-  const currentSpan = Math.max(end - start, 1);
-  const ratio = clamp(anchorRatio, 0, 1);
-  const marketProjection = marketViewportProjection(current, bounds, series);
-  const candidate = marketProjection
-    ? (() => {
-        const {
-          scale,
-          startRatio,
-          endRatio,
-        } = marketProjection;
-        const currentMarketSpan = endRatio - startRatio;
-        const totalMarketPositions = Math.max(
-          scale.endPosition - scale.startPosition,
-          Number.EPSILON,
-        );
-        const minimumMarketSpan = clamp(
-          Math.max(minimumSpanMs, 1) / scale.cadenceMs / totalMarketPositions,
-          Number.EPSILON,
-          1,
-        );
-        const nextMarketSpan = clamp(
-          currentMarketSpan / zoomFactor,
-          minimumMarketSpan,
-          1,
-        );
-        const anchor = startRatio + currentMarketSpan * ratio;
-        const candidateStart = clamp(
-          anchor - nextMarketSpan * ratio,
-          0,
-          1 - nextMarketSpan,
-        );
-        return viewportFromMarketRatios(
-          scale,
-          candidateStart,
-          candidateStart + nextMarketSpan,
-        );
-      })()
-    : (() => {
-        const nextSpan = clamp(
-          currentSpan / zoomFactor,
-          Math.min(Math.max(minimumSpanMs, 1), boundsSpan),
-          boundsSpan,
-        );
-        const anchor = start + currentSpan * ratio;
-        return clampCompositeViewport({
-          start: new Date(anchor - nextSpan * ratio),
-          end: new Date(anchor + nextSpan * (1 - ratio)),
-        }, bounds);
-      })();
-  if (!series) return candidate;
-
-  const timestamps = pointTimestamps(series)
-    .filter((timestamp) => timestamp >= bounds.start.getTime() && timestamp <= bounds.end.getTime());
-  if (timestamps.length < 2 || viewportHasTimestamps(timestamps, candidate, 2)) {
-    return candidate;
-  }
-
-  const currentHasObservations = viewportHasTimestamps(timestamps, current, 2);
-  const candidateSpan = candidate.end.getTime() - candidate.start.getTime();
-  // An adaptive response can invalidate an existing viewport. Let zoom-out
-  // keep expanding from that state until observations re-enter the window.
-  if (!currentHasObservations && candidateSpan > currentSpan) return candidate;
-  return current;
-}
-
 /**
- * Positive ratios move toward older observations, matching the legacy chart:
+ * Positive deltas move toward older observations, matching the legacy chart:
  * dragging right or scrolling up/left reveals earlier dates.
  */
 export function panCompositeViewport(
+  frame: CompositeNavigationFrame,
   viewport: CompositeViewportRange,
-  bounds: CompositeViewportRange,
-  shiftRatio: number,
-  series?: ResolvedSeries[],
-  allowEmpty = false,
+  deltaPositions: number,
 ): CompositeViewportRange {
-  const current = clampCompositeViewport(viewport, bounds);
-  if (!Number.isFinite(shiftRatio) || shiftRatio === 0) return current;
-  const marketProjection = marketViewportProjection(current, bounds, series);
-  // Market scales collapse overnight and weekend gaps, so a wall-clock shift
-  // changes how many slots stay visible and the plot accordions instead of
-  // translating. Shift in slot space so the visible span is preserved.
-  const candidate = marketProjection
-    ? (() => {
-        const { scale, startRatio, endRatio } = marketProjection;
-        const marketSpan = endRatio - startRatio;
-        const nextStart = clamp(startRatio - marketSpan * shiftRatio, 0, 1 - marketSpan);
-        return clampCompositeViewport(
-          viewportFromMarketRatios(scale, nextStart, nextStart + marketSpan),
-          bounds,
-        );
-      })()
-    : (() => {
-        const shift = Math.max(current.end.getTime() - current.start.getTime(), 1) * shiftRatio;
-        return clampCompositeViewport({
-          start: new Date(current.start.getTime() - shift),
-          end: new Date(current.end.getTime() - shift),
-        }, bounds);
-      })();
-  if (!series || allowEmpty) return candidate;
-
-  const timestamps = pointTimestamps(series)
-    .filter((timestamp) => timestamp >= bounds.start.getTime() && timestamp <= bounds.end.getTime());
-  return timestamps.length < 2 || viewportHasTimestamps(timestamps, candidate, 2)
-    ? candidate
-    : current;
+  const positions = compositeViewportPositions(frame, viewport);
+  if (!positions) return compositeNavigationDataViewport(frame);
+  const shift = Number.isFinite(deltaPositions) ? deltaPositions : 0;
+  const clamped = clampPositions(
+    frame,
+    { start: positions.start - shift, end: positions.end - shift },
+    frame.historicalPaddingRatio,
+  );
+  return viewportFromPositions(frame, clamped);
 }
 
-export function resolveCompositeWheelPanRatio(
-  direction: "up" | "down" | "left" | "right",
-  delta: number | undefined,
+export function zoomCompositeViewport(
+  frame: CompositeNavigationFrame,
+  viewport: CompositeViewportRange,
+  zoomFactor: number,
+  anchorRatio: number,
+): CompositeViewportRange {
+  const positions = compositeViewportPositions(frame, viewport);
+  if (!positions) return compositeNavigationDataViewport(frame);
+  if (!Number.isFinite(zoomFactor) || zoomFactor <= 0) return viewport;
+  const span = Math.max(positions.end - positions.start, frame.minimumSpanPositions);
+  const ratio = clamp(anchorRatio, 0, 1);
+  const anchor = positions.start + span * ratio;
+  const nextSpan = span / zoomFactor;
+  const clamped = clampPositions(
+    frame,
+    { start: anchor - nextSpan * ratio, end: anchor + nextSpan * (1 - ratio) },
+    frame.historicalPaddingRatio,
+  );
+  return viewportFromPositions(frame, clamped);
+}
+
+export function fitCompositeViewport(
+  frame: CompositeNavigationFrame,
+  viewport: CompositeViewportRange,
+): CompositeViewportRange {
+  const positions = compositeViewportPositions(frame, viewport);
+  if (!positions) return compositeNavigationDataViewport(frame);
+  return viewportFromPositions(frame, clampPositions(frame, positions, frame.historicalPaddingRatio));
+}
+
+export interface CompositeWheelGesture {
+  direction: "up" | "down" | "left" | "right";
+  delta?: number;
+  /** Signed pixel deltas when the host reports them; terminals report notches only. */
+  deltaX?: number;
+  deltaY?: number;
+}
+
+/**
+ * Pan distance for one wheel event as a fraction of the visible span. Pixel
+ * hosts move the plot exactly as far as the fingers travelled, so the sum of
+ * both axes pans and a diagonal swipe never flickers between them. Notch hosts
+ * step a bounded fraction per event.
+ */
+export function resolveCompositeWheelPan(
+  gesture: CompositeWheelGesture,
+  plotPixelWidth: number,
 ): number {
-  const rawMagnitude = Math.abs(delta ?? 1);
+  if (typeof gesture.deltaX === "number" && typeof gesture.deltaY === "number") {
+    const travel = gesture.deltaX + gesture.deltaY;
+    if (!Number.isFinite(travel) || plotPixelWidth <= 0) return 0;
+    return -travel / plotPixelWidth;
+  }
+  const rawMagnitude = Math.abs(gesture.delta ?? 1);
   const magnitude = clamp(rawMagnitude > 0 ? rawMagnitude : 1, 1, MAX_WHEEL_DELTA_MAGNITUDE);
-  const directionSign = direction === "up" || direction === "left" ? 1 : -1;
+  const directionSign = gesture.direction === "up" || gesture.direction === "left" ? 1 : -1;
   return directionSign * magnitude * WHEEL_PAN_RATIO_PER_DELTA;
+}
+
+/** Zoom factor for one modifier-wheel or pinch event; greater than one zooms in. */
+export function resolveCompositeWheelZoom(gesture: CompositeWheelGesture): number {
+  if (typeof gesture.deltaY === "number") {
+    if (!Number.isFinite(gesture.deltaY) || gesture.deltaY === 0) return 1;
+    return clamp(
+      Math.exp(-gesture.deltaY / WHEEL_ZOOM_PIXELS_PER_E),
+      1 / WHEEL_ZOOM_STEP_LIMIT,
+      WHEEL_ZOOM_STEP_LIMIT,
+    );
+  }
+  const magnitude = clamp(Math.abs(gesture.delta ?? 1), 1, MAX_WHEEL_DELTA_MAGNITUDE);
+  const step = 1 + magnitude * WHEEL_ZOOM_RATIO_PER_DELTA;
+  return gesture.direction === "up" ? step : 1 / step;
 }
 
 export function shouldResetCompositeViewport(

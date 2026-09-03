@@ -11,7 +11,7 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { colors, blendHex } from "../../../theme/colors";
 import { useShortcut } from "../../../react/input";

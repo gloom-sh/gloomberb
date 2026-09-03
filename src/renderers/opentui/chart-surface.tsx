@@ -200,7 +200,9 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
     const size = computeBitmapSize(rect, renderer.resolution, renderer.terminalWidth, renderer.terminalHeight);
     const strips = renderCrosshairStrips({
       pixelX: scaleLocalPixelCoordinate(nativeCrosshair.pixelX, nativeBitmap.width, size.pixelWidth) ?? 0,
-      pixelY: scaleLocalPixelCoordinate(nativeCrosshair.pixelY, nativeBitmap.height, size.pixelHeight) ?? 0,
+      pixelY: nativeCrosshair.pixelY === null
+        ? null
+        : scaleLocalPixelCoordinate(nativeCrosshair.pixelY, nativeBitmap.height, size.pixelHeight) ?? 0,
       pixelWidth: size.pixelWidth,
       pixelHeight: size.pixelHeight,
       cols: rect.width,
@@ -218,6 +220,8 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
       return;
     }
 
+    // A column-only cursor has no level strip; drop the stale one if it existed.
+    for (const id of crosshairSurfaceIds.slice(strips.length)) nativeSurfaceManager.removeSurface(id);
     strips.forEach((strip, index) => {
       const id = crosshairSurfaceIds[index];
       if (!id) return;

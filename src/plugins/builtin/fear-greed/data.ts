@@ -1,5 +1,4 @@
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import type { OverlayPoint } from "../../../components/chart/indicators/types";
 
 const CNN_FEAR_GREED_GRAPH_URL = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata";
 const CNN_REFERER = "https://www.cnn.com/markets/fear-and-greed";
@@ -67,6 +66,12 @@ interface FearGreedIndicatorDefinition {
   secondaryKey?: CnnGraphKey;
   secondaryLabel?: string;
   valueFormat: FearGreedValueFormat;
+}
+
+/** A secondary reading aligned to the primary series by observation index. */
+interface OverlayPoint {
+  index: number;
+  value: number;
 }
 
 export interface FearGreedIndicator {

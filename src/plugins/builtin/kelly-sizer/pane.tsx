@@ -54,7 +54,7 @@ import {
   buildModeFields,
   type InlineField,
 } from "./fields";
-import type { StaticChartXMarker } from "../../../components/chart/static/chart/surface";
+import type { StaticChartXMarker } from "../../../components/chart/static";
 import {
   KellyCurveSection,
   KellyResultMetrics,

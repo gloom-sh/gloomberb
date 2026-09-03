@@ -1,28 +1,21 @@
-import { useCallback, useMemo, useRef } from "react";
-import { Box, ChartSurface, Text, type BoxRenderable, type ChartSurfaceProps } from "../../../ui";
+import { useCallback, useMemo } from "react";
+import { Box, Text } from "../../../ui";
 import { colors } from "../../../theme/colors";
-import { computeGridLines, formatAxisCell } from "../core/renderer";
-import type { NativeChartBitmap } from "../native/chart-rasterizer";
-import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
-import { useStaticChartBitmapSize } from "./chart/bitmap";
-import {
-  buildMultiLineChartScene,
-  renderMultiLineChart,
-  renderMultiLineTimeAxis,
-  renderNativeMultiLineChart,
-  resolveMultiLineCursorDate,
-  valueToPixelY,
-  type MultiLineChartColors,
-  type MultiLineChartSeries,
-} from "../multi-line/renderer";
+import { CompositeChart } from "../composite/composite-chart";
+import { scalarPoint, staticSeries } from "./series";
 
-interface ChartMouseEventLike {
-  x: number;
-  y: number;
-  preciseX?: number;
-  preciseY?: number;
-  preventDefault?: () => void;
-  stopPropagation?: () => void;
+export interface MultiLineChartSeries {
+  id: string;
+  label: string;
+  color: string;
+  points: Array<{ date: Date; value: number | null }>;
+}
+
+interface MultiLineChartColors {
+  bgColor: string;
+  gridColor: string;
+  axisColor: string;
+  crosshairColor: string;
 }
 
 export interface StaticMultiLineChartSurfaceProps {
@@ -30,9 +23,7 @@ export interface StaticMultiLineChartSurfaceProps {
   width: number;
   height: number;
   colors?: MultiLineChartColors;
-  dates?: Date[];
   cursorDate?: Date | null;
-  yDomain?: { min: number; max: number } | null;
   showTimeAxis?: boolean;
   timeAxisColor?: string;
   yAxisLabel?: string;
@@ -41,19 +32,7 @@ export interface StaticMultiLineChartSurfaceProps {
   onCursorDateChange?: (date: Date) => void;
 }
 
-function localCellXForMouseEvent(event: ChartMouseEventLike, renderable: BoxRenderable | null): number | null {
-  if (!renderable) return null;
-  const originX = typeof renderable.x === "number"
-    ? renderable.x
-    : typeof renderable.absoluteX === "number"
-      ? renderable.absoluteX
-      : 0;
-  const rawX = typeof event.preciseX === "number" ? event.preciseX : event.x;
-  const localX = rawX - originX;
-  const width = typeof renderable.width === "number" ? renderable.width : 0;
-  if (!Number.isFinite(localX) || width <= 0 || localX < 0 || localX >= width) return null;
-  return localX;
-}
+const PANELS = [{ id: "main" }];
 
 export function StaticMultiLineChartSurface({
   series,
@@ -65,9 +44,7 @@ export function StaticMultiLineChartSurface({
     axisColor: colors.textDim,
     crosshairColor: colors.borderFocused,
   },
-  dates,
   cursorDate = null,
-  yDomain = null,
   showTimeAxis = false,
   timeAxisColor = colors.textDim,
   yAxisLabel,
@@ -75,142 +52,50 @@ export function StaticMultiLineChartSurface({
   formatYAxisValue,
   onCursorDateChange,
 }: StaticMultiLineChartSurfaceProps) {
-  const plotRef = useRef<BoxRenderable | null>(null);
-  const timeAxisRows = showTimeAxis ? 1 : 0;
-  const labelRows = yAxisLabel ? 1 : 0;
   const totalWidth = Math.max(1, Math.floor(width));
   const totalHeight = Math.max(1, Math.floor(height));
-  const plotHeight = Math.max(1, totalHeight - timeAxisRows - labelRows);
-  const axisSourceScene = useMemo(() => buildMultiLineChartScene(series, {
-    width: totalWidth,
-    height: plotHeight,
-    colors: chartColors,
-    dates,
-    cursorDate,
-    yDomain,
-  }), [chartColors, cursorDate, dates, plotHeight, series, totalWidth, yDomain]);
-  const customAxisLabels = useMemo(() => {
-    if (!axisSourceScene || !formatYAxisValue) return null;
-    return computeGridLines(axisSourceScene.min, axisSourceScene.max, 0, axisSourceScene.height - 1, 3)
-      .map((line) => ({
-        row: Math.max(0, Math.min(axisSourceScene.height - 1, Math.round(line.y))),
-        label: formatYAxisValue(line.price),
-      }));
-  }, [axisSourceScene, formatYAxisValue]);
-  const axisLabels = customAxisLabels ?? [];
-  const axisWidth = axisLabels.length > 0
-    ? Math.min(Math.max(...axisLabels.map((entry) => entry.label.length), 5), 12)
-    : 0;
-  const axisGap = axisWidth > 0 ? 1 : 0;
-  const plotWidth = Math.max(1, totalWidth - axisWidth - axisGap);
-  const plotOptions = useMemo(() => ({
-    width: plotWidth,
-    height: plotHeight,
-    colors: chartColors,
-    dates,
-    cursorDate: null as Date | null,
-    yDomain,
-  }), [chartColors, dates, plotHeight, plotWidth, yDomain]);
-  const scene = useMemo(
-    () => buildMultiLineChartScene(series, plotOptions),
-    [plotOptions, series],
+  const labelRows = yAxisLabel ? 1 : 0;
+  const resolved = useMemo(() => series.map((entry) => staticSeries(
+    entry.points.map((point) => scalarPoint(point.date, point.value)),
+    { id: entry.id, label: entry.label, color: entry.color },
+  )), [series]);
+  const compositeColors = useMemo(() => ({
+    background: chartColors.bgColor,
+    grid: chartColors.gridColor,
+    crosshair: chartColors.crosshairColor,
+    text: chartColors.axisColor,
+    textDim: yAxisColor ?? timeAxisColor ?? chartColors.axisColor,
+    negative: colors.negative,
+  }), [chartColors, timeAxisColor, yAxisColor]);
+  const formatAxisValue = useMemo(
+    () => formatYAxisValue ? (value: number) => formatYAxisValue(value) : undefined,
+    [formatYAxisValue],
   );
-  const cursorScene = useMemo(
-    () => cursorDate == null ? scene : buildMultiLineChartScene(series, { ...plotOptions, cursorDate }),
-    [cursorDate, plotOptions, scene, series],
-  );
-  const showTextFallback = useShowChartTextFallback();
-  const textLines = useMemo(() => {
-    if (!showTextFallback) return [];
-    return cursorScene ? renderMultiLineChart(cursorScene) : [];
-  }, [cursorScene, showTextFallback]);
-  const timeLabels = useMemo(() => scene ? renderMultiLineTimeAxis(scene) : "", [scene]);
-  const effectiveAxisLabelsByRow = useMemo(() => {
-    return new Map(axisLabels.map((entry) => [entry.row, entry.label] as const));
-  }, [axisLabels]);
-  const bitmapSize = useStaticChartBitmapSize(plotWidth, plotHeight);
-  const bitmap = useMemo<NativeChartBitmap | null>(() => {
-    if (!scene || !bitmapSize) return null;
-    return renderNativeMultiLineChart(scene, bitmapSize.pixelWidth, bitmapSize.pixelHeight);
-  }, [bitmapSize, scene]);
-  const canvasCrosshair = useMemo<ChartSurfaceProps["crosshair"]>(() => {
-    if (!bitmap || !cursorScene || cursorScene.cursorX === null) return null;
-    const pixelX = (cursorScene.cursorX / Math.max(cursorScene.width - 1, 1)) * Math.max(bitmap.width - 1, 0);
-    const cursorIndex = cursorScene.cursorIndex;
-    const markers = cursorIndex === null
-      ? []
-      : cursorScene.series.flatMap((item) => {
-        const point = item.points[cursorIndex];
-        if (!point) return [];
-        return [{
-          pixelY: valueToPixelY(point.value, cursorScene.min, cursorScene.max, bitmap.height),
-          color: item.color,
-        }];
-      });
-    return {
-      pixelX,
-      pixelY: markers[0]?.pixelY ?? bitmap.height / 2,
-      color: chartColors.crosshairColor,
-      markers: markers.length > 0 ? markers : undefined,
-    };
-  }, [bitmap, chartColors.crosshairColor, cursorScene]);
-
-  const handleCursorEvent = useCallback((event: ChartMouseEventLike) => {
-    if (!scene || !onCursorDateChange) return;
-    const localX = localCellXForMouseEvent(event, plotRef.current);
-    if (localX === null) return;
-    const date = resolveMultiLineCursorDate(scene, localX);
-    if (!date) return;
-    event.preventDefault?.();
-    onCursorDateChange(date);
-  }, [onCursorDateChange, scene]);
-
-  if (!scene) {
-    return (
-      <Box width={totalWidth} height={totalHeight}>
-        <Text fg={colors.textDim}>No chart data</Text>
-      </Box>
-    );
-  }
+  const handleCursorDateChange = useCallback((date: Date | null) => {
+    if (date) onCursorDateChange?.(date);
+  }, [onCursorDateChange]);
 
   return (
-    <Box flexDirection="column" width={totalWidth} height={plotHeight + timeAxisRows + labelRows}>
+    <Box flexDirection="column" width={totalWidth} height={totalHeight}>
       {yAxisLabel ? (
         <Box height={1}>
           <Text fg={yAxisColor}>{yAxisLabel}</Text>
         </Box>
       ) : null}
-      <Box flexDirection="row" height={plotHeight}>
-        <ChartSurface
-          ref={plotRef}
-          width={plotWidth}
-          height={plotHeight}
-          flexDirection="column"
-          bitmaps={bitmap ? [bitmap] : null}
-          crosshair={canvasCrosshair}
-          onMouseMove={handleCursorEvent}
-          onMouseDown={handleCursorEvent}
-        >
-          {textLines.map((line, index) => (
-            <Text key={index} fg={colors.text}>{line}</Text>
-          ))}
-        </ChartSurface>
-        {axisWidth > 0 ? (
-          <>
-            <Box width={axisGap} />
-            <Box width={axisWidth} height={plotHeight} flexDirection="column">
-              {Array.from({ length: plotHeight }, (_, row) => (
-                <Text key={row} fg={yAxisColor}>
-                  {formatAxisCell(effectiveAxisLabelsByRow.get(row) ?? null, axisWidth)}
-                </Text>
-              ))}
-            </Box>
-          </>
-        ) : null}
-      </Box>
-      {showTimeAxis ? (
-        <Text fg={timeAxisColor}>{timeLabels}</Text>
-      ) : null}
+      <CompositeChart
+        series={resolved}
+        panels={PANELS}
+        width={totalWidth}
+        height={Math.max(1, totalHeight - labelRows)}
+        colors={compositeColors}
+        cursorDate={cursorDate}
+        onCursorDateChange={handleCursorDateChange}
+        navigable={false}
+        showLegend={false}
+        showTimeAxis={showTimeAxis}
+        formatAxisValue={formatAxisValue}
+        emptyMessage="No chart data"
+      />
     </Box>
   );
 }

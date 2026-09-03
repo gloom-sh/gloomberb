@@ -44,7 +44,7 @@ describe("chart-resolution", () => {
     expect(sortChartResolutions(["1wk", "auto", "15m", "1d"])).toEqual(["auto", "15m", "1d", "1wk"]);
   });
 
-  test("picks a denser supported resolution as the visible window narrows", () => {
+  test("picks the supported resolution whose bar count sits nearest the target", () => {
     const support = [
       { resolution: "1m", maxRange: "1D" },
       { resolution: "5m", maxRange: "1W" },
@@ -53,31 +53,30 @@ describe("chart-resolution", () => {
       { resolution: "1d", maxRange: "5Y" },
       { resolution: "1wk", maxRange: "ALL" },
     ] as const;
+    const pick = (start: string, end: string, current?: "5m" | "15m") => (
+      getBestSupportedResolutionForVisibleWindow(
+        { start: new Date(start), end: new Date(end) },
+        support,
+        230,
+        current,
+      )
+    );
 
-    expect(getBestSupportedResolutionForVisibleWindow({
-      start: new Date("2021-01-01T00:00:00Z"),
-      end: new Date("2026-01-01T00:00:00Z"),
-    }, support, 100)).toBe("1wk");
+    expect(pick("2021-01-01T00:00:00Z", "2026-01-01T00:00:00Z")).toBe("1wk");
+    expect(pick("2025-01-01T00:00:00Z", "2026-01-01T00:00:00Z")).toBe("1d");
+    // Five months of daily bars beat 1h bars packed three to a pixel.
+    expect(pick("2025-08-01T00:00:00Z", "2026-01-01T00:00:00Z")).toBe("1d");
+    expect(pick("2025-12-01T00:00:00Z", "2026-01-01T00:00:00Z")).toBe("1h");
+    // Two weeks hold ten sessions: 15m bars, not the 780 5m bars of a
+    // calendar-day estimate.
+    expect(pick("2025-12-18T00:00:00Z", "2026-01-01T00:00:00Z")).toBe("15m");
+    expect(pick("2025-12-29T00:00:00Z", "2026-01-01T00:00:00Z")).toBe("5m");
+    expect(pick("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z")).toBe("1m");
 
-    expect(getBestSupportedResolutionForVisibleWindow({
-      start: new Date("2025-01-01T00:00:00Z"),
-      end: new Date("2026-01-01T00:00:00Z"),
-    }, support, 100)).toBe("1d");
-
-    expect(getBestSupportedResolutionForVisibleWindow({
-      start: new Date("2025-12-01T00:00:00Z"),
-      end: new Date("2026-01-01T00:00:00Z"),
-    }, support, 100)).toBe("1h");
-
-    expect(getBestSupportedResolutionForVisibleWindow({
-      start: new Date("2025-12-25T00:00:00Z"),
-      end: new Date("2026-01-01T00:00:00Z"),
-    }, support, 100)).toBe("15m");
-
-    expect(getBestSupportedResolutionForVisibleWindow({
-      start: new Date("2026-01-01T00:00:00Z"),
-      end: new Date("2026-01-02T00:00:00Z"),
-    }, support, 100)).toBe("1m");
+    // A modest zoom keeps the resolution on screen; a large one still switches.
+    expect(pick("2025-12-26T09:36:00Z", "2026-01-01T00:00:00Z", "15m")).toBe("15m");
+    expect(pick("2025-12-29T00:00:00Z", "2026-01-01T00:00:00Z", "15m")).toBe("5m");
+    expect(pick("2025-12-15T00:00:00Z", "2026-01-01T00:00:00Z", "5m")).toBe("15m");
 
     expect(CHART_RESOLUTION_STEP_MS["1h"]).toBe(60 * 60_000);
   });

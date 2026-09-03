@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { StaticChartSurface } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/renderer";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { colors } from "../../../theme/colors";
 import { apiClient, type CloudFredObservationPayload } from "../../../api-client";
@@ -263,7 +263,6 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
                 height={chartHeight}
                 mode="area"
                 colors={palette}
-                timeAxisDates={chartPoints.map((p) => p.date)}
                 showTimeAxis
                 timeAxisColor={colors.textDim}
                 yAxisLabel={units ? `Value (${units})` : "Value"}

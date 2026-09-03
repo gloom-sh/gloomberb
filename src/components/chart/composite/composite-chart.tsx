@@ -32,9 +32,14 @@ import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
 import {
   useStaticChartBitmapSize,
   type StaticChartBitmapSize,
-} from "../static/chart/bitmap";
-import { StaticXAxisLabels } from "../static/chart/axis-overlays";
-import { PriceAxisLabels } from "../price-axis-labels";
+} from "./bitmap";
+import {
+  StaticXAxisLabels,
+  StaticXMarkerLabels,
+  StaticXMarkerOverlay,
+  type StaticChartXMarker,
+} from "./axis-overlays";
+import { PriceAxisLabels } from "./price-axis-labels";
 import {
   compositeAxisTicks,
   formatCompositeAxisValue,
@@ -43,19 +48,24 @@ import {
   formatCompositePointDetails,
   formatCompositeSeriesValue,
   formatCompositeTimeAxisDate,
+  type CompositeAxisValueFormatter,
 } from "./format";
 import {
   COMPOSITE_KEYBOARD_PAN_RATIO,
   COMPOSITE_ZOOM_STEP_FACTOR,
+  buildCompositeNavigationFrame,
   clampCompositeViewport,
+  compositeNavigationDataViewport,
+  compositeViewportPositions,
+  fitCompositeViewport,
   panCompositeViewport,
   resolveCompositeChartInteraction,
-  resolveCompositeMinimumSpanMs,
-  resolveCompositeNavigationBounds,
-  resolveCompositeWheelPanRatio,
+  resolveCompositeWheelPan,
+  resolveCompositeWheelZoom,
   sameCompositeViewport,
   shouldResetCompositeViewport,
   zoomCompositeViewport,
+  type CompositeNavigationFrame,
   type CompositeViewportRange,
 } from "./interactions";
 import { buildCompositeColumnLayout, type CompositeColumnLayout } from "./column-layout";
@@ -112,12 +122,52 @@ import type {
 // live-data paints or depending on a foreground animation frame.
 const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 const LEGEND_WHEEL_DELTA_PER_CELL = 8;
+/** How far past the first loaded observation a backfilling chart may pan, as a fraction of the view. */
+const HISTORICAL_PADDING_RATIO = 0.5;
 
 function isVerticalWheelDirection(
   direction: "up" | "down" | "left" | "right",
 ): direction is "up" | "down" {
   return direction === "up" || direction === "down";
 }
+
+interface PanGesture {
+  kind: "pan";
+  startGlobalX: number;
+  frame: CompositeNavigationFrame;
+  startViewport: CompositeViewportRange;
+  positionsPerCell: number;
+}
+
+/** A drag pans in the frame it started in; see `CompositeNavigationFrame`. */
+function startPanGesture(
+  frame: CompositeNavigationFrame,
+  viewport: CompositeViewportRange,
+  plotWidth: number,
+  globalX: number,
+): PanGesture {
+  const positions = compositeViewportPositions(frame, viewport);
+  const span = positions ? Math.max(positions.end - positions.start, Number.EPSILON) : 1;
+  return {
+    kind: "pan",
+    startGlobalX: globalX,
+    frame,
+    startViewport: viewport,
+    positionsPerCell: span / Math.max(plotWidth, 1),
+  };
+}
+
+interface PendingWheel {
+  /** Fraction of the visible span, positive toward older observations. */
+  panRatio: number;
+  zoomLog: number;
+  anchorRatio: number;
+}
+
+const webFrame = globalThis as typeof globalThis & {
+  requestAnimationFrame?: (callback: () => void) => number;
+  cancelAnimationFrame?: (handle: number) => void;
+};
 
 function renderPanelBitmap(
   panel: CompositePanelScene,
@@ -255,7 +305,7 @@ function resolvePanelCrosshair(
   cursorYRatio: number | null,
   color: string,
 ): ChartSurfaceProps["crosshair"] {
-  if (!bitmap || cursorXRatio === null || cursorYRatio === null) return null;
+  if (!bitmap || cursorXRatio === null) return null;
   const markers = panel.series.flatMap((series) => {
     // Column cohorts are drawn at their group center, not each observation's
     // own timestamp, so match the position the bar actually occupies.
@@ -274,7 +324,7 @@ function resolvePanelCrosshair(
   });
   return {
     pixelX: cursorXRatio * Math.max(bitmap.width - 1, 0),
-    pixelY: cursorYRatio * Math.max(bitmap.height - 1, 0),
+    pixelY: cursorYRatio === null ? null : cursorYRatio * Math.max(bitmap.height - 1, 0),
     color,
     markers,
   };
@@ -291,11 +341,13 @@ function cursorAxisLabel(
   panel: CompositePanelScene,
   side: "left" | "right",
   cursorYRatio: number | null,
+  format?: CompositeAxisValueFormatter,
 ): string | null {
   const domain = panel.axes[side];
   if (!domain || cursorYRatio === null) return null;
   const value = unprojectCompositeValue(cursorYRatio, domain);
-  return value === null ? null : formatCompositeCursorValue(value, domain);
+  if (value === null) return null;
+  return format ? format(value, domain) : formatCompositeCursorValue(value, domain);
 }
 
 const MINIMUM_AXIS_LABEL_WIDTH = 3;
@@ -304,10 +356,13 @@ const MINIMUM_AXIS_LABEL_WIDTH = 3;
  * Cells the gutter needs for its own labels. Ticks cover the axis itself, and a
  * mid-domain sample covers the wider cursor readout that lands between them.
  */
-function compositeAxisLabelWidth(domain: CompositeAxisDomain | undefined): number {
+function compositeAxisLabelWidth(
+  domain: CompositeAxisDomain | undefined,
+  format: CompositeAxisValueFormatter = formatCompositeAxisValue,
+): number {
   if (!domain) return 0;
-  const labels = compositeAxisTicks(domain).map((tick) => tick.label);
-  labels.push(formatCompositeAxisValue((domain.min + domain.max) / 2, domain));
+  const labels = compositeAxisTicks(domain, 3, format).map((tick) => tick.label);
+  labels.push(format((domain.min + domain.max) / 2, domain));
   return labels.reduce((widest, label) => Math.max(widest, [...label].length), 0);
 }
 
@@ -604,8 +659,12 @@ interface CompositePanelSurfaceProps {
   axisGap: number;
   colors: CompositeChartColors;
   interactive: boolean;
+  /** False keeps the hover cursor but removes pan, zoom, and the tools. */
+  navigable: boolean;
+  formatAxisValue?: CompositeAxisValueFormatter;
+  remoteKind?: string;
   viewport: CompositeViewportRange;
-  minimumViewportSpanMs: number;
+  frame: CompositeNavigationFrame;
   armedTool: ChartToolKind | null;
   drawings: readonly ChartDrawing[];
   selectedDrawingId: string | null;
@@ -615,7 +674,11 @@ interface CompositePanelSurfaceProps {
   onSelectDrawing: (id: string | null) => void;
   onActivate?: () => void;
   onCursorDateChange: (date: Date | null) => void;
-  onPanViewport: (shiftRatio: number, fromViewport?: CompositeViewportRange) => void;
+  /** Positive positions move toward older observations. A gesture supplies the frame and origin it started from. */
+  onPanViewport: (
+    deltaPositions: number,
+    gesture?: { frame: CompositeNavigationFrame; from: CompositeViewportRange },
+  ) => void;
   onZoomViewport: (zoomFactor: number, anchorRatio: number) => void;
   onSetViewport: (range: CompositeViewportRange) => void;
   onToolSpanChange: (span: ChartToolSpan | null) => void;
@@ -631,8 +694,11 @@ function CompositePanelSurface({
   axisGap,
   colors,
   interactive,
+  navigable,
+  formatAxisValue,
+  remoteKind,
   viewport,
-  minimumViewportSpanMs,
+  frame,
   armedTool,
   drawings,
   selectedDrawingId,
@@ -661,7 +727,7 @@ function CompositePanelSurface({
     ? null
     : cursorYRatio ?? seriesCursorYRatio;
   const dragRef = useRef<
-    | { kind: "pan"; startGlobalX: number; startViewport: CompositeViewportRange }
+    | PanGesture
     | {
       kind: "edit";
       drawingId: string;
@@ -677,9 +743,12 @@ function CompositePanelSurface({
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
+  // The level line follows the pointer only. A keyboard or shared cursor knows
+  // its column, and the series markers and axis readout already say the value.
+  const pointerCursorYRatio = scene.cursorXRatio === null ? null : cursorYRatio;
   const crosshair = useMemo(
-    () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, activeCursorYRatio, colors.crosshair),
-    [activeCursorYRatio, bitmap, colors.crosshair, columnLayout, panel, scene.cursorXRatio],
+    () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, pointerCursorYRatio, colors.crosshair),
+    [bitmap, colors.crosshair, columnLayout, panel, pointerCursorYRatio, scene.cursorXRatio],
   );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
   const toolReadout = useMemo(() => {
@@ -799,20 +868,20 @@ function CompositePanelSurface({
   const textLines = useMemo(
     () => isDesktopWeb || !showTextFallback
       ? []
-      : renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, activeCursorYRatio),
-    [activeCursorYRatio, isDesktopWeb, panel, plotWidth, scene.cursorXRatio, showTextFallback],
+      : renderCompositePanelText(panel, plotWidth, scene.cursorXRatio, pointerCursorYRatio),
+    [isDesktopWeb, panel, plotWidth, pointerCursorYRatio, scene.cursorXRatio, showTextFallback],
   );
   const leftAxisLabels = useMemo(
     () => axisLabelRows(
-      renderCompositeAxisText(panel.axes.left, panel.height, leftAxisWidth, "left"),
+      renderCompositeAxisText(panel.axes.left, panel.height, leftAxisWidth, "left", formatAxisValue),
     ),
-    [leftAxisWidth, panel],
+    [formatAxisValue, leftAxisWidth, panel],
   );
   const rightAxisLabels = useMemo(
     () => axisLabelRows(
-      renderCompositeAxisText(panel.axes.right, panel.height, rightAxisWidth, "right"),
+      renderCompositeAxisText(panel.axes.right, panel.height, rightAxisWidth, "right", formatAxisValue),
     ),
-    [panel, rightAxisWidth],
+    [formatAxisValue, panel, rightAxisWidth],
   );
   const cursorRow = activeCursorYRatio === null
     ? null
@@ -820,8 +889,8 @@ function CompositePanelSurface({
   const cursorPixelY = activeCursorYRatio === null
     ? null
     : activeCursorYRatio * Math.max(panel.height * cellHeightPx - 1, 0);
-  const leftCursorLabel = cursorAxisLabel(panel, "left", activeCursorYRatio);
-  const rightCursorLabel = cursorAxisLabel(panel, "right", activeCursorYRatio);
+  const leftCursorLabel = cursorAxisLabel(panel, "left", activeCursorYRatio, formatAxisValue);
+  const rightCursorLabel = cursorAxisLabel(panel, "right", activeCursorYRatio, formatAxisValue);
   const measureReadout = useMemo(() => {
     if (!toolDrag || !toolReadout?.summary) return null;
     const text = toolReadout.summary;
@@ -944,24 +1013,26 @@ function CompositePanelSurface({
       return;
     }
     if (!updateCursor(event)) return;
-    dragRef.current = {
-      kind: "pan",
-      startGlobalX: getGlobalMouseX(event, renderer),
-      startViewport: viewport,
-    };
+    dragRef.current = startPanGesture(frame, viewport, plotWidth, getGlobalMouseX(event, renderer));
   }, [
     armedTool,
     drawings,
+    frame,
     onActivate,
     onSelectDrawing,
     panel,
     plotAspect,
+    plotWidth,
     pointerRatios,
     renderer,
     scene,
     updateCursor,
     viewport,
   ]);
+  const pressCursor = useCallback((event: ChartMouseEvent) => {
+    onActivate?.();
+    updateCursor(event);
+  }, [onActivate, updateCursor]);
   const dragViewport = useCallback((event: ChartMouseEvent) => {
     const drag = dragRef.current;
     if (!drag) return;
@@ -992,9 +1063,18 @@ function CompositePanelSurface({
       setToolDrag({ ...drag, path: [...drag.path] });
       return;
     }
-    const deltaCells = getGlobalMouseX(event, renderer) - drag.startGlobalX;
-    onPanViewport(deltaCells / Math.max(plotWidth, 1), drag.startViewport);
+    const globalX = getGlobalMouseX(event, renderer);
+    if (drag.frame !== frame) {
+      // Data refreshed mid-drag. The new frame maps positions differently, so
+      // continue from where the plot is now instead of replaying the drag.
+      Object.assign(drag, startPanGesture(frame, viewport, plotWidth, globalX));
+    }
+    onPanViewport(
+      (globalX - drag.startGlobalX) * drag.positionsPerCell,
+      { frame: drag.frame, from: drag.startViewport },
+    );
   }, [
+    frame,
     onEditDrawing,
     onPanViewport,
     panel,
@@ -1003,6 +1083,7 @@ function CompositePanelSurface({
     renderer,
     scene,
     updateCursor,
+    viewport,
   ]);
   const finishToolDrag = useCallback(() => {
     const drag = dragRef.current;
@@ -1016,9 +1097,9 @@ function CompositePanelSurface({
       return;
     }
     if (drag.kind !== "zoom") return;
-    const range = resolveZoomBoxRange(scene, drag, minimumViewportSpanMs);
+    const range = resolveZoomBoxRange(scene, drag, frame.minimumSpanMs);
     if (range) onSetViewport(range);
-  }, [drawColor, minimumViewportSpanMs, onDraw, onSetViewport, panel, scene]);
+  }, [drawColor, frame.minimumSpanMs, onDraw, onSetViewport, panel, scene]);
   const resetDrag = useCallback(() => {
     if (dragRef.current?.kind === "pan") {
       dragRef.current = null;
@@ -1032,27 +1113,58 @@ function CompositePanelSurface({
     finishToolDrag();
     updateCursor(event);
   }, [finishToolDrag, updateCursor]);
+  // Trackpads fire wheel events faster than the plot can paint, so one frame
+  // absorbs every event that arrived since the last one.
+  const pendingWheelRef = useRef<PendingWheel | null>(null);
+  const wheelFrameRef = useRef<number | null>(null);
+  const latestWheelStateRef = useRef({ frame, viewport, onPanViewport, onZoomViewport });
+  latestWheelStateRef.current = { frame, viewport, onPanViewport, onZoomViewport };
+  const flushWheel = useCallback(() => {
+    wheelFrameRef.current = null;
+    const pending = pendingWheelRef.current;
+    pendingWheelRef.current = null;
+    if (!pending) return;
+    const latest = latestWheelStateRef.current;
+    if (pending.panRatio !== 0) {
+      const positions = compositeViewportPositions(latest.frame, latest.viewport);
+      const span = positions ? Math.max(positions.end - positions.start, Number.EPSILON) : 0;
+      latest.onPanViewport(pending.panRatio * span);
+    }
+    if (pending.zoomLog !== 0) {
+      latest.onZoomViewport(Math.exp(pending.zoomLog), pending.anchorRatio);
+    }
+  }, []);
+  useEffect(() => () => {
+    pendingWheelRef.current = null;
+    if (wheelFrameRef.current !== null) {
+      webFrame.cancelAnimationFrame?.(wheelFrameRef.current);
+      wheelFrameRef.current = null;
+    }
+  }, []);
   const panFromWheel = useCallback((event: ChartMouseEvent) => {
-    const direction = event.scroll?.direction;
-    if (!direction) return;
+    const scroll = event.scroll;
+    if (!scroll) return;
     onActivate?.();
     consumeChartMouseEvent(event);
     const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
     const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
-    if (event.modifiers.ctrl && pointer && isVerticalWheelDirection(direction)) {
-      const zoomIn = direction === "up";
-      const magnitude = Math.min(Math.max(Math.abs(event.scroll?.delta ?? 1), 1), 8);
-      const pointerRatio = pointer.cellX / Math.max(plotWidth - 1, 1);
-      onZoomViewport(
-        zoomIn ? 1 + magnitude * 0.04 : 1 / (1 + magnitude * 0.04),
-        pointerRatio,
-      );
-      updateCursor(event);
+    updateCursor(event);
+    const pending = pendingWheelRef.current ?? { panRatio: 0, zoomLog: 0, anchorRatio: 0.5 };
+    if (event.modifiers.ctrl && pointer && isVerticalWheelDirection(scroll.direction)) {
+      pending.zoomLog += Math.log(resolveCompositeWheelZoom(scroll));
+      pending.anchorRatio = pointer.cellX / Math.max(plotWidth - 1, 1);
+    } else {
+      pending.panRatio += resolveCompositeWheelPan(scroll, plotWidth * cellWidthPx);
+    }
+    pendingWheelRef.current = pending;
+    if (!isDesktopWeb || typeof webFrame.requestAnimationFrame !== "function") {
+      flushWheel();
       return;
     }
-    updateCursor(event);
-    onPanViewport(resolveCompositeWheelPanRatio(direction, event.scroll?.delta));
-  }, [onActivate, onPanViewport, onZoomViewport, plotWidth, renderer, updateCursor]);
+    if (wheelFrameRef.current === null) {
+      wheelFrameRef.current = webFrame.requestAnimationFrame(flushWheel);
+    }
+  }, [cellWidthPx, flushWheel, isDesktopWeb, onActivate, plotWidth, renderer, updateCursor]);
 
   return (
     <Box
@@ -1111,15 +1223,16 @@ function CompositePanelSurface({
         crosshair={crosshair}
         vectors={vectors}
         onMouseMove={interactive ? handleMouseMove : undefined}
-        onMouseDown={interactive ? startDrag : undefined}
-        onMouseDrag={interactive ? dragViewport : undefined}
-        onMouseUp={interactive ? resetDrag : undefined}
-        onMouseDragEnd={interactive ? resetDrag : undefined}
-        onMouseScroll={interactive ? panFromWheel : undefined}
+        onMouseDown={interactive ? navigable ? startDrag : pressCursor : undefined}
+        onMouseDrag={interactive && navigable ? dragViewport : undefined}
+        onMouseUp={interactive && navigable ? resetDrag : undefined}
+        onMouseDragEnd={interactive && navigable ? resetDrag : undefined}
+        onMouseScroll={interactive && navigable ? panFromWheel : undefined}
         onMouseOut={interactive ? clearCursor : undefined}
-        cursor={interactive ? toolDrag ? "crosshair" : "grab" : undefined}
+        cursor={interactive ? toolDrag || !navigable ? "crosshair" : "grab" : undefined}
         data-gloom-interactive={interactive ? "true" : undefined}
         data-gloom-role={COMPOSITE_PANEL_ROLE}
+        data-gloom-remote-kind={remoteKind}
         data-gloom-label={panel.label ?? panel.id}
       >
         {textLines.map((line, index) => <Text key={index} fg={colors.text}>{line}</Text>)}
@@ -1375,6 +1488,7 @@ function CompositeLegend({
 }
 
 const NO_DRAWINGS: readonly ChartDrawing[] = [];
+const NO_X_MARKERS: readonly StaticChartXMarker[] = [];
 /** Coalesces a drag into one write instead of one per pointer move. */
 const DRAWING_PERSIST_DELAY_MS = 400;
 
@@ -1432,6 +1546,10 @@ export function CompositeChart({
   viewportResetKey,
   colors,
   interactive = true,
+  navigable = true,
+  formatAxisValue,
+  xAxis,
+  remoteKind,
   allowHistoricalBackfill = false,
   axisWidth = 9,
   showLegend = true,
@@ -1519,7 +1637,9 @@ export function CompositeChart({
   }, [visibleLegendSeries.length]);
   const previousAuthoredViewportRef = useRef<CompositeViewportRange | null>(viewport ?? null);
   const previousViewportResetKeyRef = useRef(viewportResetKey);
-  const [interactionViewport, setInteractionViewport] = useState<CompositeViewportRange | null>(null);
+  // The user owns this once they navigate. Data refreshes never rewrite it;
+  // only the authored viewport changing or an explicit reset clears it.
+  const [userViewport, setUserViewport] = useState<CompositeViewportRange | null>(null);
   const hasViewportResetKey = viewportResetKey !== undefined
     || previousViewportResetKeyRef.current !== undefined;
   const authoredViewportChanged = hasViewportResetKey
@@ -1528,52 +1648,29 @@ export function CompositeChart({
         previousAuthoredViewportRef.current,
         viewport ?? null,
       );
-  const navigationAnchorViewport = authoredViewportChanged
-    ? viewport
-    : interactionViewport ?? viewport;
-  const navigationBounds = useMemo(
-    () => resolveCompositeNavigationBounds(
-      visibleSeries,
-      navigationAnchorViewport,
-      { historicalPaddingRatio: allowHistoricalBackfill ? 1 : 0 },
-    ),
-    [allowHistoricalBackfill, navigationAnchorViewport, visibleSeries],
+  const navigationFrame = useMemo(
+    () => buildCompositeNavigationFrame(visibleSeries, marketTimelineSeries, {
+      historicalPaddingRatio: allowHistoricalBackfill ? HISTORICAL_PADDING_RATIO : 0,
+    }),
+    [allowHistoricalBackfill, marketTimelineSeries, visibleSeries],
   );
-  const initialViewport = useMemo(() => (
-    navigationBounds
-      ? viewport
-        ? clampCompositeViewport(viewport, navigationBounds)
-        : navigationBounds
-      : null
-  ), [navigationBounds, viewport]);
-  const viewportSeriesKey = visibleLegendSeries
-    .map((entry) => `${entry.id}:${entry.label}`)
-    .join("|");
-  const clampedInteractionViewport = interactionViewport && navigationBounds
-    ? clampCompositeViewport(interactionViewport, navigationBounds)
-    : interactionViewport;
-  const interactionViewportNeedsSync = !!interactionViewport
-    && !!clampedInteractionViewport
-    && !sameCompositeViewport(interactionViewport, clampedInteractionViewport);
-  const currentInteractionViewport = authoredViewportChanged
-    ? null
-    : clampedInteractionViewport;
-  const effectiveViewport = navigationBounds
-    ? currentInteractionViewport
-      ? clampCompositeViewport(currentInteractionViewport, navigationBounds)
-      : initialViewport
-    : null;
-  const interactionViewportStart = currentInteractionViewport?.start.getTime() ?? null;
-  const interactionViewportEnd = currentInteractionViewport?.end.getTime() ?? null;
+  const authoredViewport = useMemo(() => {
+    if (!navigationFrame) return viewport ?? null;
+    return viewport
+      ? clampCompositeViewport(navigationFrame, viewport)
+      : compositeNavigationDataViewport(navigationFrame);
+  }, [navigationFrame, viewport]);
+  const activeUserViewport = authoredViewportChanged ? null : userViewport;
+  const effectiveViewport = activeUserViewport ?? authoredViewport;
+  const userViewportStart = activeUserViewport?.start.getTime() ?? null;
+  const userViewportEnd = activeUserViewport?.end.getTime() ?? null;
   const lastReportedViewportRef = useRef<string | null>(null);
-  const viewportInteractionRef = useRef<"pan" | "reset" | "sync" | "zoom">("reset");
+  const viewportInteractionRef = useRef<"pan" | "reset" | "zoom">("reset");
   useEffect(() => {
     if (!onViewportChange) return;
-    if (interactionViewportNeedsSync) return;
-    const interactionKey = interactionViewportStart === null || interactionViewportEnd === null
+    const key = userViewportStart === null || userViewportEnd === null
       ? "none"
-      : `${interactionViewportStart}:${interactionViewportEnd}`;
-    const key = `${viewportSeriesKey}|${interactionKey}`;
+      : `${userViewportStart}:${userViewportEnd}`;
     // The callback drives adaptive data loading. Seed it from the authored
     // viewport without echoing that controlled value back into the loader.
     if (lastReportedViewportRef.current === null) {
@@ -1583,99 +1680,62 @@ export function CompositeChart({
     if (lastReportedViewportRef.current === key) return;
     lastReportedViewportRef.current = key;
     onViewportChange(
-      interactionViewportStart === null || interactionViewportEnd === null
+      userViewportStart === null || userViewportEnd === null
         ? null
-        : {
-            start: new Date(interactionViewportStart),
-            end: new Date(interactionViewportEnd),
-          },
+        : { start: new Date(userViewportStart), end: new Date(userViewportEnd) },
       viewportInteractionRef.current,
     );
-  }, [
-    interactionViewportEnd,
-    interactionViewportNeedsSync,
-    interactionViewportStart,
-    onViewportChange,
-    viewportSeriesKey,
-  ]);
-  const minimumViewportSpanMs = useMemo(
-    () => navigationBounds ? resolveCompositeMinimumSpanMs(visibleSeries, navigationBounds) : 1,
-    [navigationBounds, visibleSeries],
-  );
+  }, [onViewportChange, userViewportEnd, userViewportStart]);
 
   useEffect(() => {
     previousAuthoredViewportRef.current = viewport ?? null;
     previousViewportResetKeyRef.current = viewportResetKey;
-    if (
-      authoredViewportChanged
-      || (interactionViewport && !navigationBounds)
-    ) {
+    if (authoredViewportChanged && userViewport) {
       viewportInteractionRef.current = "reset";
-      setInteractionViewport(null);
-      return;
+      setUserViewport(null);
     }
-    if (interactionViewportNeedsSync && clampedInteractionViewport) {
-      viewportInteractionRef.current = "sync";
-      setInteractionViewport(clampedInteractionViewport);
-    }
-  }, [
-    authoredViewportChanged,
-    clampedInteractionViewport,
-    interactionViewport,
-    interactionViewportNeedsSync,
-    navigationBounds,
-    viewport,
-    viewportResetKey,
-  ]);
+  }, [authoredViewportChanged, userViewport, viewport, viewportResetKey]);
 
-  const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
-    if (!navigationBounds || !initialViewport) return;
-    viewportInteractionRef.current = "zoom";
-    setInteractionViewport((current) => {
-      const base = current ?? initialViewport;
-      const next = zoomCompositeViewport(
-        base,
-        navigationBounds,
-        zoomFactor,
-        anchorRatio,
-        minimumViewportSpanMs,
-        marketTimelineSeries,
-      );
-      if (sameCompositeViewport(next, base)) return current;
-      return sameCompositeViewport(next, initialViewport) ? null : next;
-    });
-  }, [initialViewport, marketTimelineSeries, minimumViewportSpanMs, navigationBounds]);
-  const panViewport = useCallback((
-    shiftRatio: number,
-    fromViewport?: CompositeViewportRange,
+  const navigate = useCallback((
+    kind: "pan" | "zoom",
+    compute: (base: CompositeViewportRange, frame: CompositeNavigationFrame) => CompositeViewportRange,
+    gesture?: { frame: CompositeNavigationFrame; from: CompositeViewportRange },
   ) => {
-    if (!navigationBounds || !initialViewport) return;
-    viewportInteractionRef.current = "pan";
-    setInteractionViewport((current) => {
-      const base = fromViewport ?? current ?? initialViewport;
-      const next = panCompositeViewport(
-        base,
-        navigationBounds,
-        shiftRatio,
-        marketTimelineSeries,
-        allowHistoricalBackfill,
-      );
-      if (sameCompositeViewport(next, base)) {
-        if (!fromViewport) return current;
-        return sameCompositeViewport(base, initialViewport) ? null : base;
-      }
-      return sameCompositeViewport(next, initialViewport) ? null : next;
+    const frame = gesture?.frame ?? navigationFrame;
+    if (!frame) return;
+    viewportInteractionRef.current = kind;
+    setUserViewport((current) => {
+      const base = gesture?.from ?? current ?? authoredViewport;
+      if (!base) return current;
+      const next = compute(base, frame);
+      // Once navigated, the window is the user's until they reset it, even if
+      // a gesture happens to land back on the authored range: the owner may
+      // echo a navigated range back as the authored one, and dropping to null
+      // there would reload the original range under the pointer.
+      return sameCompositeViewport(next, current ?? base) ? current : next;
     });
-  }, [allowHistoricalBackfill, initialViewport, marketTimelineSeries, navigationBounds]);
+  }, [authoredViewport, navigationFrame]);
+  const panViewport = useCallback((
+    deltaPositions: number,
+    gesture?: { frame: CompositeNavigationFrame; from: CompositeViewportRange },
+  ) => {
+    navigate("pan", (base, frame) => panCompositeViewport(frame, base, deltaPositions), gesture);
+  }, [navigate]);
+  const panViewportByRatio = useCallback((shiftRatio: number) => {
+    if (!navigationFrame || !effectiveViewport) return;
+    const positions = compositeViewportPositions(navigationFrame, effectiveViewport);
+    if (!positions) return;
+    panViewport(shiftRatio * Math.max(positions.end - positions.start, Number.EPSILON));
+  }, [effectiveViewport, navigationFrame, panViewport]);
+  const zoomViewport = useCallback((zoomFactor: number, anchorRatio = 1) => {
+    navigate("zoom", (base, frame) => zoomCompositeViewport(frame, base, zoomFactor, anchorRatio));
+  }, [navigate]);
   const setViewportRange = useCallback((range: CompositeViewportRange) => {
-    if (!navigationBounds || !initialViewport) return;
-    viewportInteractionRef.current = "zoom";
-    const next = clampCompositeViewport(range, navigationBounds);
-    setInteractionViewport(sameCompositeViewport(next, initialViewport) ? null : next);
-  }, [initialViewport, navigationBounds]);
+    navigate("zoom", (_base, frame) => fitCompositeViewport(frame, range));
+  }, [navigate]);
   const resetViewport = useCallback(() => {
     viewportInteractionRef.current = "reset";
-    setInteractionViewport(null);
+    setUserViewport(null);
   }, []);
   // Sticky while armed: the toolbar chip shows which tool owns the drag, and a
   // one-shot tool would blink off before the user could see it.
@@ -1687,13 +1747,15 @@ export function CompositeChart({
     ? 1
     : 0;
   const timeAxisRows = showTimeAxis ? 1 : 0;
+  const xMarkers = xAxis?.markers ?? NO_X_MARKERS;
+  const xMarkerRows = xMarkers.some((marker) => marker.label) ? 1 : 0;
   const panelCount = new Set(visibleSeries.map((entry) => entry.panelId)).size;
   const lastTickKey = visibleSeries.map((entry) => {
     const last = entry.points.at(-1);
     if (!last) return entry.id;
     return `${entry.id}:${last.date.getTime()}:${last.close ?? ""}:${last.value ?? ""}:${entry.latestChangePercent ?? ""}`;
   }).join("|");
-  const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows);
+  const plotHeight = Math.max(panelCount, totalHeight - legendRows - timeAxisRows - xMarkerRows);
   const resolvedColors = useMemo<CompositeChartColors>(() => ({
     background: colors?.background ?? activeThemeColors.bg,
     grid: colors?.grid ?? activeThemeColors.border,
@@ -1730,11 +1792,11 @@ export function CompositeChart({
     Math.max(
       MINIMUM_AXIS_LABEL_WIDTH,
       ...(projectedScene?.panels ?? []).flatMap((panel) => [
-        compositeAxisLabelWidth(panel.axes.left),
-        compositeAxisLabelWidth(panel.axes.right),
+        compositeAxisLabelWidth(panel.axes.left, formatAxisValue),
+        compositeAxisLabelWidth(panel.axes.right, formatAxisValue),
       ]),
     ),
-  ), [maximumAxisWidth, projectedScene]);
+  ), [formatAxisValue, maximumAxisWidth, projectedScene]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
@@ -1783,26 +1845,27 @@ export function CompositeChart({
       : null
   ), [baseScene, normalizedCursorTimestamp]);
   const handleEmptyMouseScroll = useCallback((event: ChartMouseEvent) => {
-    const direction = event.scroll?.direction;
-    if (!interactive || !navigationBounds || !direction) return;
+    const scroll = event.scroll;
+    if (!interactive || !navigationFrame || !scroll) return;
     onActivate?.();
     consumeChartMouseEvent(event);
-    if (event.modifiers.ctrl && isVerticalWheelDirection(direction)) {
-      const zoomIn = direction === "up";
-      if (!zoomIn) {
+    if (event.modifiers.ctrl && isVerticalWheelDirection(scroll.direction)) {
+      const factor = resolveCompositeWheelZoom(scroll);
+      if (factor < 1) {
         resetViewport();
         return;
       }
-      const magnitude = Math.min(Math.max(Math.abs(event.scroll?.delta ?? 1), 1), 8);
-      zoomViewport(1 + magnitude * 0.04, 0.5);
+      zoomViewport(factor, 0.5);
       return;
     }
-    panViewport(resolveCompositeWheelPanRatio(direction, event.scroll?.delta));
+    panViewportByRatio(resolveCompositeWheelPan(scroll, plotWidth * cellWidthPx));
   }, [
+    cellWidthPx,
     interactive,
-    navigationBounds,
+    navigationFrame,
     onActivate,
-    panViewport,
+    panViewportByRatio,
+    plotWidth,
     resetViewport,
     zoomViewport,
   ]);
@@ -1825,7 +1888,7 @@ export function CompositeChart({
   }, [cursorDate, onCursorDateChange]);
 
   useShortcut((event) => {
-    if (!focused || !interactive) return;
+    if (!focused || !interactive || !navigable) return;
     if (isPlainKey(event, "[", "]") && visibleLegendSeries.length > 0) {
       event.preventDefault();
       event.stopPropagation();
@@ -1874,7 +1937,7 @@ export function CompositeChart({
       || ((interaction === "zoom-in"
         || interaction === "zoom-out"
         || interaction === "pan-left"
-        || interaction === "pan-right") && !navigationBounds)
+        || interaction === "pan-right") && !navigationFrame)
     ) {
       return;
     }
@@ -1910,10 +1973,10 @@ export function CompositeChart({
         return;
       }
       case "pan-left":
-        panViewport(COMPOSITE_KEYBOARD_PAN_RATIO);
+        panViewportByRatio(COMPOSITE_KEYBOARD_PAN_RATIO);
         return;
       case "pan-right":
-        panViewport(-COMPOSITE_KEYBOARD_PAN_RATIO);
+        panViewportByRatio(-COMPOSITE_KEYBOARD_PAN_RATIO);
         return;
       case "reset":
         resetViewport();
@@ -1924,7 +1987,7 @@ export function CompositeChart({
       case "zoom-out":
         zoomViewport(1 / COMPOSITE_ZOOM_STEP_FACTOR);
     }
-  }, { enabled: focused && interactive });
+  }, { enabled: focused && interactive && navigable });
 
   const leftPadding = leftAxisWidth + (leftAxisWidth ? axisGap : 0);
   const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0);
@@ -1936,7 +1999,7 @@ export function CompositeChart({
     : null;
 
   if (!scene) {
-    const emptyPlotHeight = Math.max(0, totalHeight - legendRows - timeAxisRows);
+    const emptyPlotHeight = Math.max(0, totalHeight - legendRows - timeAxisRows - xMarkerRows);
     return (
       <Box
         flexDirection="column"
@@ -1969,9 +2032,9 @@ export function CompositeChart({
               height={emptyPlotHeight}
               alignItems="center"
               justifyContent="center"
-              onMouseScroll={interactive && navigationBounds ? handleEmptyMouseScroll : undefined}
-              cursor={interactive && navigationBounds ? "grab" : undefined}
-              data-gloom-interactive={interactive && navigationBounds ? "true" : undefined}
+              onMouseScroll={interactive && navigable && navigationFrame ? handleEmptyMouseScroll : undefined}
+              cursor={interactive && navigable && navigationFrame ? "grab" : undefined}
+              data-gloom-interactive={interactive && navigable && navigationFrame ? "true" : undefined}
               data-gloom-role="composite-chart-empty"
               data-gloom-label={emptyMessage}
             >
@@ -2002,9 +2065,11 @@ export function CompositeChart({
   const timeAxisCursorPixelX = timeAxisCursorColumn === null
     ? null
     : timeAxisCursorColumn * cellWidthPx;
-  const timeAxisCursorLabel = scene.cursorDate
-    ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime)
-    : null;
+  const timeAxisCursorLabel = xAxis?.formatCursor && scene.cursorXRatio !== null
+    ? xAxis.formatCursor(scene.cursorXRatio)
+    : scene.cursorDate
+      ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime)
+      : null;
   // The crosshair labels the moving end, so the axis only adds the anchor.
   const timeAxisMarkers = toolSpan
     ? [{
@@ -2043,7 +2108,7 @@ export function CompositeChart({
           keyboardIndex={legendKeyboardIndex}
         />
       ) : null}
-      {interactive && plotWidth > CHART_TOOLBAR_WIDTH + 4 ? (
+      {interactive && navigable && plotWidth > CHART_TOOLBAR_WIDTH + 4 ? (
         <ChartToolbar
           armedTool={armedTool}
           isDesktopWeb={isDesktopWeb}
@@ -2079,8 +2144,11 @@ export function CompositeChart({
           axisGap={axisGap}
           colors={resolvedColors}
           interactive={interactive}
+          navigable={navigable}
+          formatAxisValue={formatAxisValue}
+          remoteKind={remoteKind}
           viewport={effectiveViewport!}
-          minimumViewportSpanMs={minimumViewportSpanMs}
+          frame={navigationFrame!}
           armedTool={armedTool}
           drawings={drawings}
           selectedDrawingId={selectedDrawingId}
@@ -2097,12 +2165,30 @@ export function CompositeChart({
           showTextFallback={showTextFallback}
         />
       ))}
+      {xMarkers.length > 0 ? (
+        <Box
+          position="absolute"
+          left={leftPadding}
+          top={legendRows}
+          width={plotWidth}
+          height={plotHeight}
+          zIndex={12}
+          style={isDesktopWeb ? { pointerEvents: "none" } : undefined}
+        >
+          <StaticXMarkerOverlay
+            markers={xMarkers}
+            width={plotWidth}
+            height={plotHeight}
+            fallbackColor={resolvedColors.textDim}
+          />
+        </Box>
+      ) : null}
       {timeAxisLayout ? (
         <Box flexDirection="row" width={totalWidth} height={1}>
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXAxisLabels
-            labels={[timeAxisLayout.text]}
-            positionedLabels={timeAxisLayout.ticks}
+            labels={xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
+            positionedLabels={xAxis?.labels ? undefined : timeAxisLayout.ticks}
             width={plotWidth}
             color={resolvedColors.textDim}
             cursorColumn={timeAxisCursorColumn}
@@ -2111,6 +2197,17 @@ export function CompositeChart({
             cursorColor={resolvedColors.crosshair}
             cursorBackgroundColor={resolvedColors.background}
             extraMarkers={timeAxisMarkers}
+          />
+          {rightPadding > 0 ? <Box width={rightPadding} /> : null}
+        </Box>
+      ) : null}
+      {xMarkerRows > 0 ? (
+        <Box flexDirection="row" width={totalWidth} height={1}>
+          {leftPadding > 0 ? <Box width={leftPadding} /> : null}
+          <StaticXMarkerLabels
+            markers={xMarkers}
+            width={plotWidth}
+            fallbackColor={resolvedColors.textDim}
           />
           {rightPadding > 0 ? <Box width={rightPadding} /> : null}
         </Box>

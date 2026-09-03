@@ -1,6 +1,6 @@
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
-import type { MultiLineChartSeries } from "../../../../components/chart/multi-line/renderer";
-import type { ScatterChartPoint } from "../../../../components/chart/scatter-chart-renderer";
+import type { MultiLineChartSeries } from "../../../../components/chart/static";
+import type { ScatterChartPoint } from "../../../../components/chart/static";
 import { colors } from "../../../../theme/colors";
 import { formatNumber } from "../../../../utils/format";
 import type {
