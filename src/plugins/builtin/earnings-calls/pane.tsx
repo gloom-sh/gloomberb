@@ -15,7 +15,13 @@ import { useShortcut } from "../../../react/input";
 import { CloudAuthNotice } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { colors } from "../../../theme/colors";
-import { Box, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import {
+  Box,
+  Text,
+  useRendererHost,
+  type InputRenderable,
+  type ScrollBoxRenderable,
+} from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
@@ -32,7 +38,7 @@ import {
   statusOf,
 } from "./data";
 import { callTitle, formatCallDate, formatDuration, formatPeriod, formatSentiment } from "./format";
-import { TranscriptView } from "./transcript-view";
+import { TranscriptView, type ReaderTab } from "./transcript-view";
 
 export const EARNINGS_CALLS_PANE_ID = "earnings-calls";
 
@@ -166,7 +172,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     message: string;
     status?: number;
   } | null>(null);
-  const [qaOnly, setQaOnly] = useState(false);
+  const [readerTab, setReaderTab] = useState<ReaderTab>("summary");
   const [sort, setSort] = useState<CallSort>(DEFAULT_SORT);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -386,7 +392,17 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   useEffect(() => {
     const scrollBox = transcriptScrollRef.current;
     if (scrollBox) scrollBox.scrollTop = 0;
-  }, [selectedId, detailOpen, qaOnly, searchQuery]);
+  }, [selectedId, detailOpen, readerTab, searchQuery]);
+
+  // The find field filters turns, so typing in it moves off the summary.
+  useEffect(() => {
+    if (detailOpen && searchQuery.trim() && readerTab === "summary") setReaderTab("transcript");
+  }, [detailOpen, searchQuery, readerTab]);
+
+  const rendererHost = useRendererHost();
+  const openSource = useCallback(() => {
+    if (selected?.webcastUrl) void rendererHost.openExternal(selected.webcastUrl);
+  }, [rendererHost, selected]);
 
   const signInRequired = !access.signedIn || listError?.status === 401;
   const verificationRequired =
@@ -429,7 +445,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     (event) => {
       if (!isPlainKey(event, "q")) return;
       stopSearchFocusNavigation(event);
-      setQaOnly((current) => !current);
+      setReaderTab("qa");
     },
     {
       enabled: focused && detailOpen && !searchFocused,
@@ -443,6 +459,21 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (isPlainKey(event, "/")) {
         stopSearchFocusNavigation(event);
         focusSearch();
+        return true;
+      }
+      if (isPlainKey(event, "s")) {
+        stopSearchFocusNavigation(event);
+        setReaderTab("summary");
+        return true;
+      }
+      if (isPlainKey(event, "t")) {
+        stopSearchFocusNavigation(event);
+        setReaderTab("transcript");
+        return true;
+      }
+      if (isPlainKey(event, "o")) {
+        stopSearchFocusNavigation(event);
+        openSource();
         return true;
       }
       if (isPlainKey(event, "j", "down")) {
@@ -462,7 +493,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       }
       return false;
     },
-    [focusSearch, scrollTranscriptBy],
+    [focusSearch, scrollTranscriptBy, openSource],
   );
 
   usePaneFooter(
@@ -498,9 +529,6 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (proRequired || transcriptProRequired) {
         info.push({ id: "pro", parts: [{ text: "pro required", tone: "warning" }] });
       }
-      if (detailOpen && qaOnly) {
-        info.push({ id: "qa", parts: [{ text: "Q&A only", tone: "muted" }] });
-      }
       if (searchQuery.trim()) {
         info.push({
           id: "filter",
@@ -510,7 +538,9 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
 
       const hints = detailOpen
         ? [
-            { id: "qa", key: "q", label: "&A only", onPress: () => setQaOnly((v) => !v) },
+            ...(selected?.webcastUrl
+              ? [{ id: "open", key: "o", label: "pen source", onPress: openSource }]
+              : []),
             { id: "find", key: "/", label: "find", onPress: focusSearch },
           ]
         : [{ id: "search", key: "/", label: "search", onPress: focusSearch }];
@@ -529,9 +559,10 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       proRequired,
       transcriptProRequired,
       detailOpen,
-      qaOnly,
+      selected,
       searchQuery,
       focusSearch,
+      openSource,
       fetchCalls,
     ],
   );
@@ -639,7 +670,9 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         transcript={transcript}
         loading={transcriptLoading}
         error={transcriptError?.message ?? null}
-        qaOnly={qaOnly}
+        tab={readerTab}
+        onTabChange={setReaderTab}
+        tabsFocused={focused && detailOpen && !searchFocused}
         query={searchQuery}
         width={width}
         scrollRef={transcriptScrollRef}
@@ -653,7 +686,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       detailOpen={detailOpen && !!selected}
       onBack={() => {
         setDetailOpen(false);
-        setQaOnly(false);
+        setReaderTab("summary");
         setSearchQuery("");
         blurSearch();
       }}
@@ -689,7 +722,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         setDetailOpen(true);
       }}
       rootWidth={width}
-      rootHeight={Math.max(1, height - 1)}
+      // The search bar sits inside the frame, so the frame takes the full height.
+      rootHeight={Math.max(2, height)}
       columns={columns}
       items={rows}
       sortColumnId={sort.columnId}

@@ -500,6 +500,8 @@ export interface CloudEarningsCallPayload {
   wordCount: number | null;
   hasTranscript: boolean;
   sentiment: number | null;
+  /** The replay or event page the transcript came from. */
+  webcastUrl?: string | null;
 }
 
 export interface CloudEarningsCallListPayload {
