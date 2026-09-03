@@ -11,10 +11,11 @@ import {
   type DataTableRootKeyContext,
   type PaneFooterSegment,
 } from "../../../components";
+import { useShortcut } from "../../../react/input";
 import { CloudAuthNotice } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { colors } from "../../../theme/colors";
-import { Box, Text, type InputRenderable } from "../../../ui";
+import { Box, Text, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
@@ -148,6 +149,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const searchInputRef = useRef<InputRenderable | null>(null);
+  const transcriptScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const focusSearch = useCallback(() => {
     setSearchFocused(true);
@@ -243,6 +245,19 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     };
   }, [detailOpen, selected]);
 
+  const scrollTranscriptBy = useCallback((delta: number) => {
+    const scrollBox = transcriptScrollRef.current;
+    if (!scrollBox?.viewport) return;
+    const maxScrollTop = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
+    scrollBox.scrollTop = Math.max(0, Math.min(maxScrollTop, scrollBox.scrollTop + delta));
+  }, []);
+
+  // A new call or a narrowed transcript should start at the top.
+  useEffect(() => {
+    const scrollBox = transcriptScrollRef.current;
+    if (scrollBox) scrollBox.scrollTop = 0;
+  }, [selectedId, detailOpen, qaOnly, searchQuery]);
+
   const signInRequired = !access.signedIn || listError?.status === 401;
   const verificationRequired =
     !signInRequired && (!access.emailVerified || listError?.status === 403);
@@ -277,21 +292,47 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     [fetchCalls, focusSearch],
   );
 
+  // `q` is the app's quit key, handled ahead of pane handlers. The reader
+  // claims it first while it is open, the same way other panes take keys
+  // that clash with global ones.
+  useShortcut(
+    (event) => {
+      if (!isPlainKey(event, "q")) return;
+      stopSearchFocusNavigation(event);
+      setQaOnly((current) => !current);
+    },
+    {
+      enabled: focused && detailOpen && !searchFocused,
+      phase: "before",
+      scope: "earnings-calls:reader",
+    },
+  );
+
   const handleDetailKey = useCallback(
     (event: DataTableKeyEvent) => {
-      if (isPlainKey(event, "q")) {
-        stopSearchFocusNavigation(event);
-        setQaOnly((current) => !current);
-        return true;
-      }
       if (isPlainKey(event, "/")) {
         stopSearchFocusNavigation(event);
         focusSearch();
         return true;
       }
+      if (isPlainKey(event, "j", "down")) {
+        stopSearchFocusNavigation(event);
+        scrollTranscriptBy(1);
+        return true;
+      }
+      if (isPlainArrowUp(event) || isPlainKey(event, "k")) {
+        stopSearchFocusNavigation(event);
+        // Like the list: pressing up at the top moves into the search field.
+        if ((transcriptScrollRef.current?.scrollTop ?? 0) <= 0 && isPlainArrowUp(event)) {
+          focusSearch();
+          return true;
+        }
+        scrollTranscriptBy(-1);
+        return true;
+      }
       return false;
     },
-    [focusSearch],
+    [focusSearch, scrollTranscriptBy],
   );
 
   usePaneFooter(
@@ -420,7 +461,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   ) : (
     // The reader gets its own search bar: a transcript runs to thousands of
     // words, so finding a topic matters as much as filtering the call list.
-    <Box flexDirection="column" flexGrow={1}>
+    <Box flexDirection="column" flexGrow={1} flexShrink={1} flexBasis={0} minHeight={0} overflow="hidden">
       <InputSearchBar
         value={searchQuery}
         focused={focused && detailOpen}
@@ -442,6 +483,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         qaOnly={qaOnly}
         query={searchQuery}
         width={width}
+        scrollRef={transcriptScrollRef}
       />
     </Box>
   );
