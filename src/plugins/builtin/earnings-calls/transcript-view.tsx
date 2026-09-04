@@ -159,7 +159,10 @@ function TurnView({
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box height={1} flexDirection="row" gap={1} overflow="hidden">
-        <Text fg={colors.textDim}>{formatTimestamp(turn.startSeconds)}</Text>
+        {/* A transcript the company published as a document has no timings. */}
+        {turn.startSeconds !== null && (
+          <Text fg={colors.textDim}>{formatTimestamp(turn.startSeconds)}</Text>
+        )}
         <Text fg={speakerColor(turn)} attributes={TextAttributes.BOLD}>
           {turn.speaker}
         </Text>
@@ -305,7 +308,7 @@ export function TranscriptView({
             <>
               {turns.map((turn, index) => (
                 <TurnView
-                  key={`${turn.startSeconds}-${index}`}
+                  key={`${turn.startSeconds ?? "doc"}-${index}`}
                   turn={turn}
                   width={proseWidth}
                   nativePaneChrome={isNative}

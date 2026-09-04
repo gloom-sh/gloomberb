@@ -518,7 +518,8 @@ export interface CloudTranscriptTurnPayload {
   company?: string;
   text: string;
   isQa: boolean;
-  startSeconds: number;
+  /** Offset into the recording; null when the company published the transcript as a document. */
+  startSeconds: number | null;
 }
 
 export interface CloudTranscriptParticipantPayload {
