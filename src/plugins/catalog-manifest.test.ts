@@ -34,6 +34,21 @@ describe("built-in plugin manifest", () => {
     expect(featured.map((plugin) => plugin.id)).toEqual(["gloomberb-cloud"]);
   });
 
+  test("every declared icon exists in the repo", async () => {
+    // The directory resolves these against this repo's HEAD, so a wrong path
+    // is a broken image in the plugin grid rather than a missing file here.
+    const icons = buildBuiltinManifest()
+      .plugins.map((plugin) => plugin.icon)
+      .filter((icon): icon is string => !!icon);
+
+    expect(icons.length).toBeGreaterThan(0);
+
+    for (const icon of icons) {
+      const file = Bun.file(new URL(`../../${icon}`, import.meta.url));
+      expect(await file.exists()).toBe(true);
+    }
+  });
+
   test("describes what each plugin contributes, which is what the directory renders", () => {
     const cloud = buildBuiltinManifest().plugins.find((plugin) => plugin.id === "gloomberb-cloud");
 

@@ -20,6 +20,27 @@ if (manifest.uncategorised.length > 0) {
   process.exit(1);
 }
 
+// A declared icon that is not in the repo resolves to a 404 in the directory,
+// which renders as a broken tile rather than falling back to a glyph.
+const missingIcons = await Promise.all(
+  manifest.plugins
+    .map((plugin) => plugin.icon)
+    .filter((icon): icon is string => !!icon)
+    .map(async (icon) => ({
+      icon,
+      exists: await Bun.file(new URL(`../${icon}`, import.meta.url)).exists(),
+    })),
+).then((results) => results.filter((result) => !result.exists));
+
+if (missingIcons.length > 0) {
+  console.error(
+    `Plugin icons declared in EDITORIAL but missing from the repo: ${missingIcons
+      .map((result) => result.icon)
+      .join(", ")}`,
+  );
+  process.exit(1);
+}
+
 const { uncategorised: _drop, ...published } = manifest;
 const next = `${JSON.stringify(published, null, 2)}\n`;
 

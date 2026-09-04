@@ -18,6 +18,8 @@ export interface BuiltinPluginManifestEntry {
   categories: string[];
   toggleable: boolean;
   featured?: true;
+  /** Path to artwork in this repo, resolved by the directory against HEAD. */
+  icon?: string;
   contributes: {
     panes: string[];
     capabilities: string[];
@@ -30,8 +32,15 @@ export interface BuiltinPluginManifestEntry {
  * is reported by `generate-plugin-manifest.ts` rather than silently defaulted,
  * so a new built-in cannot slip into the directory uncategorised.
  */
-const EDITORIAL: Record<string, { categories: string[]; featured?: true }> = {
-  "gloomberb-cloud": { categories: ["data", "cloud"], featured: true },
+const EDITORIAL: Record<
+  string,
+  { categories: string[]; featured?: true; icon?: string }
+> = {
+  "gloomberb-cloud": {
+    categories: ["data", "cloud"],
+    featured: true,
+    icon: "plugin-icons/gloomberb-cloud.svg",
+  },
   ai: { categories: ["ai"] },
   alerts: { categories: ["alerts"] },
   application: { categories: ["core"] },
@@ -74,6 +83,7 @@ export function buildBuiltinManifest(): BuiltinManifest {
         categories: editorial?.categories ?? [],
         toggleable: plugin.toggleable === true,
         ...(editorial?.featured ? { featured: true as const } : {}),
+        ...(editorial?.icon ? { icon: editorial.icon } : {}),
         contributes: {
           panes: (plugin.panes ?? []).map((pane) => pane.id).sort(),
           capabilities: (plugin.capabilities ?? [])

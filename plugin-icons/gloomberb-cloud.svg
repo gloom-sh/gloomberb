@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Gloom Cloud">
+  <rect width="64" height="64" fill="#0B0B0B"/>
+  <rect x="0.75" y="0.75" width="62.5" height="62.5" fill="none" stroke="#2E2E2E" stroke-width="1.5"/>
+  <path d="M20 44 h24 a9 9 0 0 0 1-18 a13 13 0 0 0-24-5 a9.5 9.5 0 0 0-1 23 z" fill="#FFFFFF"/>
+  <rect x="24" y="30" width="3" height="10" fill="#0B0B0B"/>
+  <rect x="30.5" y="25" width="3" height="15" fill="#0B0B0B"/>
+  <rect x="37" y="33" width="3" height="7" fill="#0B0B0B"/>
+</svg>
