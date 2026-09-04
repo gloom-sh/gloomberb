@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneDefinition } from "../../../../types/headless";
 import { marketValuationHeadless } from "../../market-valuation/headless";
 import {
+  ASKG_PROTOCOL_VERSION,
   TOOL_NAME_PATTERN,
+  type ASKGSessionStartRequest,
+  type ASKGSessionStartResponse,
   type ASKGSseEvent,
   type ToolManifest,
   type ToolResultPayload,
@@ -33,7 +36,7 @@ function projectHeadlessDefinition(
 }
 
 describe("ASKG protocol", () => {
-  test("round-trips a manifest, every event, and a tool result", () => {
+  test("round-trips session negotiation, a manifest, every event, and a tool result", () => {
     const manifest: ToolManifest = {
       name: "layout.place_pane",
       source: "remote-op",
@@ -51,6 +54,38 @@ describe("ASKG protocol", () => {
       },
       confirm: "never",
       timeoutMs: 10_000,
+    };
+    const sessionRequest: ASKGSessionStartRequest = {
+      protocolVersion: ASKG_PROTOCOL_VERSION,
+      client: { kind: "tui", version: "0.8.0" },
+      context: {
+        query: "Compare NVDA valuation",
+        symbol: "NVDA",
+        paneId: "ticker:main",
+        layout: { id: "layout-1" },
+      },
+      tools: [manifest],
+      manifestHash: "sha256:manifest-1",
+    };
+    const sessionResponse: ASKGSessionStartResponse = {
+      protocolVersion: ASKG_PROTOCOL_VERSION,
+      sessionId: "session-1",
+      manifestHash: sessionRequest.manifestHash,
+      serverTools: [],
+      acceptedTools: [manifest.name],
+      rejectedTools: [{ name: "invalid.tool", reason: "Unknown source" }],
+      limits: {
+        requestsPerMinute: 20,
+        turnsPerDay: 300,
+        turnsRemainingToday: 299,
+        maxToolCallsPerTurn: 25,
+        turnWallClockMs: 90_000,
+        clientToolTimeoutMs: 10_000,
+      },
+      tier: "pro",
+      model: "gpt-5.6-luna",
+      promptVersion: "2026-09-04",
+      expiresAt: "2026-09-04T21:30:00.000Z",
     };
     const events: ASKGSseEvent[] = [
       {
@@ -126,6 +161,8 @@ describe("ASKG protocol", () => {
 
     expect(new RegExp(TOOL_NAME_PATTERN).test(manifest.name)).toBe(true);
     expect(jsonRoundTrip(manifest)).toEqual(manifest);
+    expect(jsonRoundTrip(sessionRequest)).toEqual(sessionRequest);
+    expect(jsonRoundTrip(sessionResponse)).toEqual(sessionResponse);
     expect(events.map(jsonRoundTrip)).toEqual(events);
     expect(jsonRoundTrip(result)).toEqual(result);
   });
