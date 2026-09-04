@@ -94,7 +94,6 @@
   "dependencies": {
     "@earendil-works/pi-agent-core": "0.81.1",
     "@earendil-works/pi-ai": "0.81.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
     "@opentui/core": "^0.3.2",
     "@opentui/react": "^0.3.2",
     "@stoqey/ib": "^1.5.6",

@@ -248,20 +248,6 @@
       }
     },
     {
-      "id": "public",
-      "name": "Public",
-      "description": "Read-only account and position sync for Public.",
-      "categories": [
-        "broker"
-      ],
-      "toggleable": true,
-      "contributes": {
-        "panes": [],
-        "capabilities": [],
-        "broker": true
-      }
-    },
-    {
       "id": "research-search",
       "name": "Research Search",
       "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",
@@ -276,34 +262,6 @@
         ],
         "capabilities": [],
         "broker": false
-      }
-    },
-    {
-      "id": "robinhood",
-      "name": "Robinhood",
-      "description": "Read-only account and position sync through Robinhood Trading MCP.",
-      "categories": [
-        "broker"
-      ],
-      "toggleable": true,
-      "contributes": {
-        "panes": [],
-        "capabilities": [],
-        "broker": true
-      }
-    },
-    {
-      "id": "simplefin",
-      "name": "SimpleFIN",
-      "description": "Read-only investment position sync through SimpleFIN Bridge.",
-      "categories": [
-        "broker"
-      ],
-      "toggleable": true,
-      "contributes": {
-        "panes": [],
-        "capabilities": [],
-        "broker": true
       }
     },
     {

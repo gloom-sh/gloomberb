@@ -19,6 +19,9 @@ export const EXTRACTED_PLUGINS = [
   { id: "substack", repo: "gloom-sh/gloomberb-substack", directory: "gloomberb-substack" },
   { id: "ibkr", repo: "gloom-sh/gloomberb-ibkr", directory: "gloomberb-ibkr" },
   { id: "ibkr-gateway", repo: "gloom-sh/gloomberb-ibkr-gateway", directory: "gloomberb-ibkr-gateway" },
+  { id: "public", repo: "gloom-sh/gloomberb-public", directory: "gloomberb-public" },
+  { id: "robinhood", repo: "gloom-sh/gloomberb-robinhood", directory: "gloomberb-robinhood" },
+  { id: "simplefin", repo: "gloom-sh/gloomberb-simplefin", directory: "gloomberb-simplefin" },
 ] as const;
 
 export interface SeedResult {
