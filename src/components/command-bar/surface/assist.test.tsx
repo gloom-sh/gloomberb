@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
@@ -11,6 +11,18 @@ import {
 } from "./test-harness";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
+const originalWebSocket = globalThis.WebSocket;
+
+beforeEach(() => {
+  apiClient.dispose();
+  // The header subscribes to SPY. A real socket rejects this test's fake token
+  // and can mark the account unverified before the assist debounce completes.
+  globalThis.WebSocket = class {
+    static readonly OPEN = 1;
+    readyState = 0;
+    close() { this.readyState = 3; }
+  } as unknown as typeof WebSocket;
+});
 
 afterEach(() => {
   setCloudApiFetchTransport(null);
@@ -19,6 +31,8 @@ afterEach(() => {
     testSetup.renderer.destroy();
     testSetup = undefined;
   }
+  apiClient.dispose();
+  globalThis.WebSocket = originalWebSocket;
 });
 
 const { waitForFrameToContain } = createCommandBarTestControls(() => testSetup!);
