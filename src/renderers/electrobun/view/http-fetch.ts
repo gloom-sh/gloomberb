@@ -1,4 +1,5 @@
 import { setCloudApiFetchTransport } from "../../../api-client";
+import { createProxyResponseHeaders } from "../../../utils/http-proxy-response";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import type { DesktopHttpFetchResponse } from "../shared/protocol";
 import { backendRequest } from "./backend-rpc";
@@ -55,7 +56,7 @@ async function electrobunHttpFetch(url: string, init?: RequestInit): Promise<Res
   const requestPromise = requestBackendHttpFetch(url, init);
 
   const response = await withAbort(requestPromise, init?.signal);
-  const headers = createResponseHeaders(response.headers, response.setCookie);
+  const headers = createProxyResponseHeaders(response.headers, response.setCookie);
   const fetchResponse = new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -86,18 +87,6 @@ async function requestBackendHttpFetch(
   });
 }
 
-function createResponseHeaders(headers: Record<string, string>, setCookie: string[] = []): Headers {
-  const responseHeaders = new Headers(headers);
-  if (setCookie.length === 0) return responseHeaders;
-
-  const originalGet = responseHeaders.get.bind(responseHeaders);
-  responseHeaders.get = ((name: string) => (
-    name.toLowerCase() === "set-cookie" ? setCookie[0] ?? null : originalGet(name)
-  )) as Headers["get"];
-  (responseHeaders as Headers & { getSetCookie?: () => string[] }).getSetCookie = () => [...setCookie];
-  return responseHeaders;
-}
-
 async function electrobunCloudApiFetch(url: string, init?: RequestInit): Promise<Response> {
   if (init?.signal?.aborted) {
     throw createAbortError();
@@ -111,7 +100,7 @@ async function electrobunCloudApiFetch(url: string, init?: RequestInit): Promise
     ok: response.status >= 200 && response.status < 300,
     status: response.status,
     statusText: response.statusText,
-    headers: createResponseHeaders(response.headers, response.setCookie),
+    headers: createProxyResponseHeaders(response.headers, response.setCookie),
     text: async () => response.body,
   } as Response;
 }

@@ -1,5 +1,6 @@
 import { apiClient, setCloudApiFetchTransport } from "../../api-client";
 import { setHttpFetchTransport } from "../../utils/http-transport";
+import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
 
 const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
 
@@ -32,7 +33,9 @@ export function browserCredentialedFetch(url: string, init: RequestInit = {}): P
 export function installBrowserFetchTransports(): void {
   apiClient.setCookieSessionMode(true);
   setCloudApiFetchTransport(browserCredentialedFetch);
-  setHttpFetchTransport((url, init) => fetch(url, init));
+  // Cross-origin plugin requests go through the worker, which can set the
+  // headers a browser will not and reach APIs that send no CORS headers.
+  setHttpFetchTransport(createBrowserHttpProxyTransport());
 }
 
 export async function restoreBrowserCloudSession(budgetMs = 5_000): Promise<void> {
