@@ -1188,6 +1188,9 @@ function Seed-DesktopConfig {
   Write-JsonFile $DataConfigPath @{
     dataDir = $DataDir
     onboardingComplete = $true
+    # This fixture covers window behavior. Plugin restoration has separate tests
+    # and must not add network installs to the desktop screenshot check.
+    seededPlugins = @((& bun -e 'import { EXTRACTED_PLUGINS } from "./src/plugins/seed"; console.log(JSON.stringify(EXTRACTED_PLUGINS.map(plugin => plugin.id)))') | ConvertFrom-Json)
     layout = $Layout
     layouts = @(
       @{

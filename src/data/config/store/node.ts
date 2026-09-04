@@ -4,6 +4,7 @@ import { dirname, join } from "path";
 import type { AppConfig } from "../../../types/config";
 import { createDefaultConfig } from "../../../types/config";
 import { debugLog } from "../../../utils/debug-log";
+import { EXTRACTED_PLUGINS } from "../../../plugins/seed";
 import {
   normalizeConfigForSave,
   normalizeLoadedConfig,
@@ -54,7 +55,12 @@ async function loadConfigState(dataDir: string): Promise<{ config: AppConfig; ne
     const saved = JSON.parse(raw) as Record<string, unknown>;
     return normalizeLoadedConfig(saved, dataDir);
   } catch {
-    return { config: createDefaultConfig(dataDir), needsSave: true };
+    // Fresh installs have no former built-in plugins to restore. Record the
+    // current baseline so onboarding never waits for plugin network installs.
+    return {
+      config: { ...createDefaultConfig(dataDir), seededPlugins: EXTRACTED_PLUGINS.map((plugin) => plugin.id) },
+      needsSave: true,
+    };
   }
 }
 

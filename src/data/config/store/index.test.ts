@@ -11,6 +11,7 @@ import {
   findPaneInstance,
 } from "../../../types/config";
 import { getDockedPaneIds } from "../../../plugins/pane-manager";
+import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "../../../plugins/seed";
 
 const tempDirs: string[] = [];
 
@@ -47,6 +48,28 @@ function createSavedConfig(overrides: Record<string, unknown> = {}): Record<stri
 async function writeConfigJson(dataDir: string, config: Record<string, unknown>): Promise<void> {
   await writeFile(join(dataDir, "config.json"), JSON.stringify(config), "utf-8");
 }
+
+test("fresh installs skip plugin restoration across config reloads", async () => {
+  const dataDir = await createTempConfigDir();
+  const fresh = await loadConfig(dataDir);
+  await saveConfig(fresh);
+  const reloaded = await loadConfig(dataDir);
+  const installed: string[] = [];
+  await seedExtractedPlugins(reloaded, async (ref) => { installed.push(ref); }, dataDir);
+  expect(installed).toEqual([]);
+  expect(reloaded.seededPlugins).toEqual(EXTRACTED_PLUGINS.map((plugin) => plugin.id));
+});
+
+test("existing users retain pending and completed plugin migrations", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig());
+  expect((await loadConfig(dataDir)).seededPlugins).toEqual([]);
+  await writeConfigJson(dataDir, createSavedConfig({ seededPlugins: ["substack", "substack", 42] }));
+  const loaded = await loadConfig(dataDir);
+  expect(loaded.seededPlugins).toEqual(["substack"]);
+  await saveConfig(loaded);
+  expect((await loadConfig(dataDir)).seededPlugins).toEqual(["substack"]);
+});
 
 describe("sanitizeLayout", () => {
   test("preserves an intentionally blank layout", () => {
