@@ -9,6 +9,10 @@ import {
   unprojectCompositeValue,
 } from "./scene";
 import { buildCompositeColumnLayout } from "./column-layout";
+import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
+
+/** Ratio the newest observation lands on once the right offset is reserved. */
+const NEWEST_X_RATIO = 1 / (1 + COMPOSITE_RIGHT_OFFSET_RATIO);
 
 function point(date: string, value: number): TimeSeriesPoint {
   const observedAt = new Date(`${date}T00:00:00.000Z`);
@@ -278,8 +282,83 @@ describe("composite chart scene", () => {
     );
 
     expect(scene).not.toBeNull();
-    expect(scene?.panels[0]?.series[0]?.points.map(({ xRatio }) => xRatio)).toEqual([0, 1]);
+    const stepPoints = scene?.panels[0]?.series[0]?.points ?? [];
+    expect(stepPoints).toHaveLength(2);
+    expect(stepPoints[0]?.xRatio).toBe(0);
+    // The level runs to the viewport end and stops: the reserved right offset
+    // never carries a projected value.
+    expect(stepPoints[1]?.xRatio).toBeCloseTo(NEWEST_X_RATIO, 10);
     expect(scene?.cursorValues[0]?.value).toBe(90);
+  });
+
+  test("reserves empty space after the newest observation on both time scales", () => {
+    const calendar = series({
+      id: "calendar",
+      points: [point("2025-01-01", 10), point("2025-01-11", 20), point("2025-01-21", 30)],
+    });
+    const market = series({
+      ...calendar,
+      id: "market",
+      timeBasis: { kind: "market", timeZone: "America/New_York" },
+    });
+
+    for (const entry of [calendar, market]) {
+      const scene = buildCompositeChartScene([entry], [{ id: "main" }], { width: 101, height: 10 })!;
+      const points = scene.panels[0]!.series[0]!.points;
+
+      expect(points.at(-1)?.xRatio).toBeCloseTo(NEWEST_X_RATIO, 10);
+      // The empty tail is the plot's, not the viewport's: navigation still ends
+      // on the newest observation.
+      expect(scene.endTime).toBe(new Date("2025-01-21T00:00:00.000Z").getTime());
+      // A pointer over the reserved space still reads the newest bar.
+      expect(resolveCompositeCursorDate(scene, 100)?.toISOString())
+        .toBe("2025-01-21T00:00:00.000Z");
+    }
+  });
+
+  test("marks the newest close of the primary price series, skipping studies and volume", () => {
+    const timeBasis = { kind: "market", timeZone: "America/New_York" } as const;
+    const price = series({
+      id: "price",
+      unitGroup: "price:USD",
+      dataShape: "ohlcv",
+      style: "candles",
+      timeBasis,
+      points: ["2025-01-02", "2025-01-03"].map((date, index) => ({
+        ...point(date, 100 + index),
+        open: 90 + index,
+        high: 110 + index,
+        low: 80 + index,
+        close: 101 + index,
+      })),
+    });
+    const average = series({
+      id: "sma",
+      unitGroup: "price:USD",
+      timeBasis,
+      points: [point("2025-01-02", 40), point("2025-01-03", 41)],
+    });
+    const volume = series({
+      id: "volume",
+      unitGroup: "volume",
+      style: "columns",
+      panelId: "volume",
+      timeBasis,
+      points: [point("2025-01-02", 5_000), point("2025-01-03", 6_000)],
+    });
+    const scene = buildCompositeChartScene(
+      [price, average, volume],
+      [{ id: "main" }, { id: "volume" }],
+      { width: 101, height: 12 },
+    )!;
+    const [main, volumePanel] = scene.panels;
+
+    expect(main?.lastPrice?.seriesId).toBe("price");
+    expect(main?.lastPrice?.value).toBe(102);
+    expect(main?.lastPrice?.color).toBe(price.color);
+    expect(main?.lastPrice?.yRatio)
+      .toBe(projectCompositeValue(102, main!.axes.left!));
+    expect(volumePanel?.lastPrice).toBeUndefined();
   });
 
   test("uses as-of values across mixed-frequency dates without looking ahead", () => {
@@ -473,7 +552,11 @@ describe("composite chart scene", () => {
     );
 
     expect(scene?.timeScale).toMatchObject({ kind: "market", anchorSeriesId: "price" });
-    expect(scene?.panels[0]?.series[0]?.points.map(({ xRatio }) => xRatio)).toEqual([0, 0.5, 1]);
+    const ratios = scene?.panels[0]?.series[0]?.points.map(({ xRatio }) => xRatio) ?? [];
+    expect(ratios).toHaveLength(3);
+    expect(ratios[0]).toBe(0);
+    expect(ratios[1]).toBeCloseTo(0.5 * NEWEST_X_RATIO, 10);
+    expect(ratios[2]).toBeCloseTo(NEWEST_X_RATIO, 10);
   });
 
   test("retains the authored primary market scale when its plotted series is hidden", () => {

@@ -31,6 +31,7 @@ import {
   buildCompositeNavigationFrame,
   zoomCompositeViewport,
 } from "./interactions";
+import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 import { getThemeColors, syncTheme } from "../../../theme/colors";
 import { ThemeProvider } from "../../../theme/theme-context";
 import { DEFAULT_THEME } from "../../../theme/themes";
@@ -1493,7 +1494,9 @@ describe("CompositeChart", () => {
       frame,
       viewport,
       1 + 4 * 0.04,
-      pointerX / Math.max(plotWidth - 1, 1),
+      // The pointer reads in plot space, which is wider than the viewport by
+      // the reserved right offset.
+      pointerX / Math.max(plotWidth - 1, 1) * (1 + COMPOSITE_RIGHT_OFFSET_RATIO),
     );
 
     await act(async () => {

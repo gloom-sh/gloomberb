@@ -92,7 +92,11 @@ import {
   type ChartToolDrag,
   type ChartToolKind,
 } from "./tools";
-import { unprojectCompositeTimestamp } from "./time-scale";
+import {
+  COMPOSITE_RIGHT_OFFSET_RATIO,
+  compositeRightOffsetRatio,
+  unprojectCompositeTimestamp,
+} from "./time-scale";
 import {
   allocateCompositePanelHeights,
   applyCompositeChartCursor,
@@ -139,12 +143,17 @@ interface PanGesture {
   positionsPerCell: number;
 }
 
-/** A drag pans in the frame it started in; see `CompositeNavigationFrame`. */
+/**
+ * A drag pans in the frame it started in; see `CompositeNavigationFrame`. The
+ * plot covers the viewport plus its reserved right offset, so a cell is worth
+ * that much time and the bars keep pace with the pointer.
+ */
 function startPanGesture(
   frame: CompositeNavigationFrame,
   viewport: CompositeViewportRange,
   plotWidth: number,
   globalX: number,
+  plotSpanFactor: number,
 ): PanGesture {
   const positions = compositeViewportPositions(frame, viewport);
   const span = positions ? Math.max(positions.end - positions.start, Number.EPSILON) : 1;
@@ -153,7 +162,7 @@ function startPanGesture(
     startGlobalX: globalX,
     frame,
     startViewport: viewport,
-    positionsPerCell: span / Math.max(plotWidth, 1),
+    positionsPerCell: span * plotSpanFactor / Math.max(plotWidth, 1),
   };
 }
 
@@ -740,6 +749,9 @@ function CompositePanelSurface({
   >(null);
   const [toolDrag, setToolDrag] = useState<ChartToolDrag | null>(null);
   const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
+  // The plot is wider than the viewport by the reserved right offset. Gestures
+  // read the pointer in plot space, so they convert through this.
+  const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
   const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
@@ -924,20 +936,37 @@ function CompositePanelSurface({
     // anchor the drag started from.
     if (!toolDrag || toolDrag.kind === "zoom" || !toolReadout?.startValueLabel) return null;
     return {
+      side: null,
       yRatio: toolDrag.startYRatio,
       label: toolReadout.startValueLabel,
       color: toolReadout.direction === "down" ? colors.negative : themeColors.positive,
     };
   }, [colors.negative, toolDrag, toolReadout]);
+  const lastPriceMarker = useMemo(() => {
+    const marker = panel.lastPrice;
+    const domain = marker ? panel.axes[marker.axis] : undefined;
+    if (!marker || !domain) return null;
+    return {
+      side: marker.axis,
+      yRatio: marker.yRatio,
+      label: formatAxisValue
+        ? formatAxisValue(marker.value, domain)
+        : formatCompositeCursorValue(marker.value, domain),
+      color: marker.color,
+    };
+  }, [formatAxisValue, panel]);
   const buildAxisMarkers = (side: "left" | "right") => {
-    if (!axisMarkers || !panel.axes[side]) return undefined;
-    const row = Math.round(axisMarkers.yRatio * Math.max(panel.height - 1, 0));
-    return [{
-      row,
-      pixelY: axisMarkers.yRatio * Math.max(panel.height * cellHeightPx - 1, 0),
-      label: axisMarkers.label,
-      color: axisMarkers.color,
-    }];
+    if (!panel.axes[side]) return undefined;
+    const markers = [lastPriceMarker, axisMarkers].flatMap((marker) => (
+      marker && (marker.side === null || marker.side === side) ? [marker] : []
+    ));
+    if (markers.length === 0) return undefined;
+    return markers.map((marker) => ({
+      row: Math.round(marker.yRatio * Math.max(panel.height - 1, 0)),
+      pixelY: marker.yRatio * Math.max(panel.height * cellHeightPx - 1, 0),
+      label: marker.label,
+      color: marker.color,
+    }));
   };
   const leftAxisMarkers = buildAxisMarkers("left");
   const rightAxisMarkers = buildAxisMarkers("right");
@@ -1013,7 +1042,13 @@ function CompositePanelSurface({
       return;
     }
     if (!updateCursor(event)) return;
-    dragRef.current = startPanGesture(frame, viewport, plotWidth, getGlobalMouseX(event, renderer));
+    dragRef.current = startPanGesture(
+      frame,
+      viewport,
+      plotWidth,
+      getGlobalMouseX(event, renderer),
+      plotSpanFactor,
+    );
   }, [
     armedTool,
     drawings,
@@ -1022,6 +1057,7 @@ function CompositePanelSurface({
     onSelectDrawing,
     panel,
     plotAspect,
+    plotSpanFactor,
     plotWidth,
     pointerRatios,
     renderer,
@@ -1067,7 +1103,7 @@ function CompositePanelSurface({
     if (drag.frame !== frame) {
       // Data refreshed mid-drag. The new frame maps positions differently, so
       // continue from where the plot is now instead of replaying the drag.
-      Object.assign(drag, startPanGesture(frame, viewport, plotWidth, globalX));
+      Object.assign(drag, startPanGesture(frame, viewport, plotWidth, globalX, plotSpanFactor));
     }
     onPanViewport(
       (globalX - drag.startGlobalX) * drag.positionsPerCell,
@@ -1078,6 +1114,7 @@ function CompositePanelSurface({
     onEditDrawing,
     onPanViewport,
     panel,
+    plotSpanFactor,
     plotWidth,
     pointerRatios,
     renderer,
@@ -1117,8 +1154,8 @@ function CompositePanelSurface({
   // absorbs every event that arrived since the last one.
   const pendingWheelRef = useRef<PendingWheel | null>(null);
   const wheelFrameRef = useRef<number | null>(null);
-  const latestWheelStateRef = useRef({ frame, viewport, onPanViewport, onZoomViewport });
-  latestWheelStateRef.current = { frame, viewport, onPanViewport, onZoomViewport };
+  const latestWheelStateRef = useRef({ frame, viewport, onPanViewport, onZoomViewport, plotSpanFactor });
+  latestWheelStateRef.current = { frame, viewport, onPanViewport, onZoomViewport, plotSpanFactor };
   const flushWheel = useCallback(() => {
     wheelFrameRef.current = null;
     const pending = pendingWheelRef.current;
@@ -1128,7 +1165,7 @@ function CompositePanelSurface({
     if (pending.panRatio !== 0) {
       const positions = compositeViewportPositions(latest.frame, latest.viewport);
       const span = positions ? Math.max(positions.end - positions.start, Number.EPSILON) : 0;
-      latest.onPanViewport(pending.panRatio * span);
+      latest.onPanViewport(pending.panRatio * span * latest.plotSpanFactor);
     }
     if (pending.zoomLog !== 0) {
       latest.onZoomViewport(Math.exp(pending.zoomLog), pending.anchorRatio);
@@ -1152,7 +1189,12 @@ function CompositePanelSurface({
     const pending = pendingWheelRef.current ?? { panRatio: 0, zoomLog: 0, anchorRatio: 0.5 };
     if (event.modifiers.ctrl && pointer && isVerticalWheelDirection(scroll.direction)) {
       pending.zoomLog += Math.log(resolveCompositeWheelZoom(scroll));
-      pending.anchorRatio = pointer.cellX / Math.max(plotWidth - 1, 1);
+      // The anchor is a fraction of the viewport, so a pointer over the empty
+      // right offset anchors on the newest observation instead of past it.
+      pending.anchorRatio = Math.min(
+        1,
+        pointer.cellX / Math.max(plotWidth - 1, 1) * plotSpanFactor,
+      );
     } else {
       pending.panRatio += resolveCompositeWheelPan(scroll, plotWidth * cellWidthPx);
     }
@@ -1164,7 +1206,16 @@ function CompositePanelSurface({
     if (wheelFrameRef.current === null) {
       wheelFrameRef.current = webFrame.requestAnimationFrame(flushWheel);
     }
-  }, [cellWidthPx, flushWheel, isDesktopWeb, onActivate, plotWidth, renderer, updateCursor]);
+  }, [
+    cellWidthPx,
+    flushWheel,
+    isDesktopWeb,
+    onActivate,
+    plotSpanFactor,
+    plotWidth,
+    renderer,
+    updateCursor,
+  ]);
 
   return (
     <Box
@@ -1767,6 +1818,9 @@ export function CompositeChart({
     textDim: colors?.textDim ?? activeThemeColors.textDim,
     negative: colors?.negative ?? activeThemeColors.negative,
   }), [activeThemeColors, colors]);
+  // A custom x axis means x is not time: a tenor, a fraction, a return. Its
+  // last observation belongs at the right edge, under its own label.
+  const rightOffsetRatio = xAxis ? 0 : COMPOSITE_RIGHT_OFFSET_RATIO;
   const projectedScene = useMemo(() => {
     // lastTickKey busts this memo when a live tick mutates series identity in place.
     void lastTickKey;
@@ -1775,8 +1829,17 @@ export function CompositeChart({
       height: Math.max(panelCount, 1),
       viewport: effectiveViewport ?? undefined,
       timelineSeries: marketTimelineSeries,
+      rightOffsetRatio,
     });
-  }, [effectiveViewport, lastTickKey, marketTimelineSeries, panelCount, panelSeries, panels]);
+  }, [
+    effectiveViewport,
+    lastTickKey,
+    marketTimelineSeries,
+    panelCount,
+    panelSeries,
+    panels,
+    rightOffsetRatio,
+  ]);
   // Gutters follow the axes the scene actually built. Reading the series list
   // instead drops a gutter the moment its series has no observation in view,
   // which is exactly what a zoom does, taking the axis labels with it.

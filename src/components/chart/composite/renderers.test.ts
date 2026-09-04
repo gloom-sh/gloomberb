@@ -71,8 +71,8 @@ describe("composite chart renderers", () => {
 
     const rows = renderCompositePanelText(scene.panels[0]!, scene.width, null, null);
     expect(rows[7]!.slice(0, 2)).toBe("██");
-    expect(rows[7]!.slice(15, 17)).toBe("██");
-    expect(rows[7]!.slice(-2)).toBe("██");
+    expect(rows[7]!.slice(14, 16)).toBe("██");
+    expect(rows[7]!.slice(28, 30)).toBe("██");
   });
 
   test("rasterizes same-date columns as separate colored bars", () => {
@@ -401,7 +401,7 @@ describe("composite chart renderers", () => {
     const rows = renderCompositePanelText(scene.panels[0]!, scene.width, null, null);
     const occupied = [...rows[7]!]
       .flatMap((cell, index) => cell === "█" ? [index] : []);
-    expect(occupied).toEqual([0, 15, 30]);
+    expect(occupied).toEqual([0, 14, 28]);
   });
 
   test("does not group columns across independent axes or panels", () => {
@@ -732,10 +732,57 @@ describe("composite chart renderers", () => {
       else runs.push([x]);
     }
 
+    const widths = runs.map((run) => run.length);
     expect(runs).toHaveLength(3);
-    expect(runs.map((run) => run.length)).toEqual([13, 13, 13]);
+    expect(Math.min(...widths)).toBeGreaterThanOrEqual(13);
+    // Fractional centers cost a body at most one pixel of rounding.
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
     expect(runs[0]?.[0]).toBe(0);
+    // Three bars leave less reserved space than half a body, so the clamp is
+    // still what keeps the newest one whole.
     expect(runs.at(-1)?.at(-1)).toBe(bitmap.width - 1);
+  });
+
+  test("leaves the reserved right offset empty after the newest candle", () => {
+    const candles = series("price", "candles", [], "left", "#00ff66");
+    candles.points = Array.from({ length: 40 }, (_, index) => ({
+      ...point(`2025-02-${String(index + 1).padStart(2, "0")}`, 10),
+      open: 8,
+      high: 13,
+      low: 7,
+      close: 10,
+    }));
+    const scene = buildCompositeChartScene(
+      [candles],
+      [{ id: "main" }],
+      { width: 81, height: 9 },
+    )!;
+    const panel = scene.panels[0]!;
+    const bitmap = renderCompositePanelBitmap(panel, {
+      pixelWidth: 400,
+      pixelHeight: 51,
+      colors: {
+        background: "#000000",
+        grid: "#202020",
+        crosshair: "#ffffff",
+        text: "#eeeeee",
+        textDim: "#999999",
+        negative: "#ff0000",
+      },
+    });
+    const domain = panel.axes.left!;
+    const bodyY = Math.round(
+      (projectCompositeValue(8, domain)! + projectCompositeValue(10, domain)!) / 2
+      * (bitmap.height - 1),
+    );
+    const painted = Array.from({ length: bitmap.width }, (_, x) => x).filter((x) => {
+      const offset = (bodyY * bitmap.width + x) * 4;
+      return bitmap.pixels[offset + 1]! > 220;
+    });
+    const slotWidth = (bitmap.width - 1) / 40;
+
+    // The newest body ends short of the axis, with whole bar slots of air.
+    expect(bitmap.width - 1 - painted.at(-1)!).toBeGreaterThan(slotWidth);
   });
 
   test("marks a standalone line observation without extending it through time", () => {

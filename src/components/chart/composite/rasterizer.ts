@@ -29,6 +29,11 @@ interface RenderCompositePanelBitmapOptions {
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 
+/** Dash geometry of the last price level, in bitmap pixels. */
+const LAST_PRICE_DASH_PIXELS = 6;
+const LAST_PRICE_GAP_PIXELS = 5;
+const LAST_PRICE_OPACITY = 0.9;
+
 function pixelPoint(point: CompositeProjectedPoint, width: number, height: number): { x: number; y: number } {
   return {
     x: clamp(point.xRatio * Math.max(width - 1, 0), 0, Math.max(width - 1, 0)),
@@ -288,6 +293,30 @@ function drawOhlc(
   }
 }
 
+function drawLastPriceLevel(
+  data: Uint8Array,
+  width: number,
+  height: number,
+  yRatio: number,
+  color: RgbaColor,
+): void {
+  const y = Math.round(clamp(yRatio * Math.max(height - 1, 0), 0, Math.max(height - 1, 0)));
+  const period = LAST_PRICE_DASH_PIXELS + LAST_PRICE_GAP_PIXELS;
+  for (let x = 0; x < width; x += period) {
+    fillRect(
+      data,
+      width,
+      height,
+      x,
+      y,
+      Math.min(x + LAST_PRICE_DASH_PIXELS - 1, width - 1),
+      y,
+      color,
+      LAST_PRICE_OPACITY,
+    );
+  }
+}
+
 export function renderCompositePanelBitmap(
   panel: CompositePanelScene,
   options: RenderCompositePanelBitmapOptions,
@@ -360,6 +389,10 @@ export function renderCompositePanelBitmap(
         drawConnectedSeries(data, width, height, series, domain, color, false);
         break;
     }
+  }
+
+  if (panel.lastPrice) {
+    drawLastPriceLevel(data, width, height, panel.lastPrice.yRatio, parseHex(panel.lastPrice.color));
   }
 
   return { width, height, pixels: data };

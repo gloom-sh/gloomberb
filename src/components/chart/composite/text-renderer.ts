@@ -251,6 +251,19 @@ export function renderCompositePanelText(
     }
   }
 
+  // Blank cells only, so the dashed level reads as if it ran under the marks.
+  if (panel.lastPrice) {
+    const row = clamp(
+      Math.round(panel.lastPrice.yRatio * Math.max(height - 1, 0)),
+      0,
+      Math.max(height - 1, 0),
+    );
+    for (let x = 0; x < plotWidth; x += 1) {
+      const current = rows[row]?.[x];
+      if (current === " " || current === "·") setCell(rows, x, row, "╌");
+    }
+  }
+
   if (cursorXRatio !== null) {
     const cursorX = clamp(Math.round(cursorXRatio * Math.max(plotWidth - 1, 0)), 0, Math.max(plotWidth - 1, 0));
     for (let y = 0; y < height; y += 1) {

@@ -43,6 +43,12 @@ export interface CompositeCalendarTimeScale {
   kind: "calendar";
   startTime: number;
   endTime: number;
+  /**
+   * Empty space reserved after `endTime`, as a fraction of the visible span.
+   * The 0..1 projection covers `startTime` to `endTime` plus that space, so
+   * the newest observation is drawn whole with air after it. Absent means none.
+   */
+  rightOffsetRatio?: number;
 }
 
 export interface CompositeMarketTimeScale {
@@ -56,7 +62,10 @@ export interface CompositeMarketTimeScale {
     position: number;
   }>;
   startPosition: number;
+  /** Slot of `endTime`; the reserved right offset extends past it. */
   endPosition: number;
+  /** Empty slots reserved after `endPosition`, as a fraction of the visible span. */
+  rightOffsetRatio?: number;
 }
 
 export type CompositeTimeScale = CompositeCalendarTimeScale | CompositeMarketTimeScale;
@@ -66,6 +75,15 @@ export interface CompositeProjectedSeries {
   points: CompositeProjectedPoint[];
 }
 
+/** Level line at the newest close of the chart's primary price series. */
+export interface CompositeLastPriceMarker {
+  seriesId: string;
+  color: string;
+  axis: CompositeAxisSide;
+  value: number;
+  yRatio: number;
+}
+
 export interface CompositePanelScene {
   id: string;
   label?: string;
@@ -73,6 +91,8 @@ export interface CompositePanelScene {
   scale: PanelScale;
   axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>>;
   series: CompositeProjectedSeries[];
+  /** Present only on the panel that holds the primary price series. */
+  lastPrice?: CompositeLastPriceMarker;
 }
 
 export interface CompositeCursorValue {
@@ -109,6 +129,12 @@ export interface BuildCompositeChartSceneOptions {
   };
   /** Authored series order retained even when the primary anchor is hidden. */
   timelineSeries?: ResolvedSeries[];
+  /**
+   * Empty space kept after the newest observation, as a fraction of the visible
+   * span. Defaults to `COMPOSITE_RIGHT_OFFSET_RATIO`; pass 0 for charts whose x
+   * is not time, where the last observation belongs at the right edge.
+   */
+  rightOffsetRatio?: number;
 }
 
 export interface CompositeChartXMarker {

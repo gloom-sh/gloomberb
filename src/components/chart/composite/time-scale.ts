@@ -3,6 +3,14 @@ import type { CompositeTimeScale } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const QUARTER_HOUR_MS = 15 * 60 * 1_000;
+/**
+ * Empty space kept after the newest observation, as a fraction of the visible
+ * span, so the last bar is drawn whole with air after it instead of hugging the
+ * value axis. Six percent is three to five bar slots on the windows these
+ * charts show, and because it scales with the plot it reads the same in a
+ * narrow terminal pane and at desktop pixel widths.
+ */
+export const COMPOSITE_RIGHT_OFFSET_RATIO = 0.06;
 const MINIMUM_SLOT_FRACTION = 0.25;
 const dateFormatters = new Map<string, Intl.DateTimeFormat>();
 // Session dates are looked up once per quarter hour, not once per bar: a day
@@ -202,11 +210,13 @@ export function buildCompositeTimeScale(
   timelineSeries: readonly ResolvedSeries[],
   startTime: number,
   endTime: number,
+  rightOffsetRatio = 0,
 ): CompositeTimeScale {
+  const offset = Number.isFinite(rightOffsetRatio) && rightOffsetRatio > 0 ? rightOffsetRatio : 0;
   const anchorSeries = timelineSeries.find((series) => series.timeBasis?.kind === "market");
   const resolved = anchorSeries ? resolveMarketAnchors(anchorSeries) : null;
   if (!anchorSeries || !resolved || resolved.anchors.length === 0) {
-    return { kind: "calendar", startTime, endTime };
+    return { kind: "calendar", startTime, endTime, rightOffsetRatio: offset };
   }
   const { cadenceMs, anchors } = resolved;
   const startPosition = positionForTimestamp({ anchors, cadenceMs }, startTime);
@@ -220,7 +230,22 @@ export function buildCompositeTimeScale(
     anchors,
     startPosition,
     endPosition: endPosition > startPosition ? endPosition : startPosition + 1,
+    rightOffsetRatio: offset,
   };
+}
+
+/** Fraction of the visible span held empty after the newest observation. */
+export function compositeRightOffsetRatio(scale: CompositeTimeScale): number {
+  const ratio = scale.rightOffsetRatio ?? 0;
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : 0;
+}
+
+/** Span the plot's full width covers, viewport plus reserved right offset. */
+function projectionSpan(scale: CompositeTimeScale): number {
+  const viewportSpan = scale.kind === "calendar"
+    ? Math.max(scale.endTime - scale.startTime, 1)
+    : Math.max(scale.endPosition - scale.startPosition, Number.EPSILON);
+  return viewportSpan * (1 + compositeRightOffsetRatio(scale));
 }
 
 /** Slot position of a timestamp on a market scale, or wall-clock time on a calendar scale. */
@@ -261,8 +286,7 @@ export function projectCompositeTimestamp(
 ): { ratio: number; xSlot?: number } | null {
   if (!Number.isFinite(timestamp)) return null;
   if (scale.kind === "calendar") {
-    const span = Math.max(scale.endTime - scale.startTime, 1);
-    return { ratio: (timestamp - scale.startTime) / span };
+    return { ratio: (timestamp - scale.startTime) / projectionSpan(scale) };
   }
 
   let position: number;
@@ -279,8 +303,7 @@ export function projectCompositeTimestamp(
     position = positionForTimestamp(scale, timestamp);
     if (exact?.timestamp === timestamp) xSlot = index;
   }
-  const span = Math.max(scale.endPosition - scale.startPosition, Number.EPSILON);
-  return { ratio: (position - scale.startPosition) / span, xSlot };
+  return { ratio: (position - scale.startPosition) / projectionSpan(scale), xSlot };
 }
 
 export function unprojectCompositeTimestamp(
@@ -289,10 +312,7 @@ export function unprojectCompositeTimestamp(
 ): number {
   const safeRatio = Math.max(0, Math.min(1, ratio));
   if (scale.kind === "calendar") {
-    return scale.startTime + (scale.endTime - scale.startTime) * safeRatio;
+    return scale.startTime + projectionSpan(scale) * safeRatio;
   }
-  return compositeTimeAtPosition(
-    scale,
-    scale.startPosition + (scale.endPosition - scale.startPosition) * safeRatio,
-  );
+  return compositeTimeAtPosition(scale, scale.startPosition + projectionSpan(scale) * safeRatio);
 }

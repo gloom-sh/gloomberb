@@ -16,9 +16,11 @@ import type {
 } from "./types";
 import {
   buildCompositeTimeScale,
+  COMPOSITE_RIGHT_OFFSET_RATIO,
   projectCompositeTimestamp,
+  unprojectCompositeTimestamp,
 } from "./time-scale";
-import type { CompositeTimeScale } from "./types";
+import type { CompositeLastPriceMarker, CompositeTimeScale } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -331,7 +333,8 @@ function projectSeries(
   series: ResolvedSeries,
   domain: CompositeAxisDomain,
   startTime: number,
-  endTime: number,
+  /** Where a step series holds its last level to, never past the newest bar. */
+  stepEndTime: number,
   timeScale: CompositeTimeScale,
 ): CompositeProjectedPoint[] {
   const projected: CompositeProjectedPoint[] = [];
@@ -372,14 +375,72 @@ function projectSeries(
   if (stepSeries && projected.length > 0) {
     const last = projected.at(-1)!;
     const trailingGap = normalizedSourcePoints(series, timeScale).some(({ timestamp, value }) => (
-      timestamp > last.timestamp && timestamp <= endTime
+      timestamp > last.timestamp && timestamp <= stepEndTime
       && (value === null || projectCompositeValue(value, domain) === null)
     ));
-    if (last.timestamp < endTime && !trailingGap) {
-      projected.push({ ...last, timestamp: endTime, xRatio: 1, breakBefore: false });
+    // The synthetic tail is a level, not an observation, so it lands on its own
+    // timestamp rather than snapping forward to the next trading slot.
+    const trailingRatio = projectCompositeTimestamp(timeScale, stepEndTime)?.ratio;
+    if (last.timestamp < stepEndTime && !trailingGap && trailingRatio !== undefined) {
+      projected.push({
+        ...last,
+        timestamp: stepEndTime,
+        xRatio: Math.min(trailingRatio, 1),
+        xSlot: undefined,
+        breakBefore: false,
+      });
     }
   }
   return projected;
+}
+
+/**
+ * Unit groups a price can wear, raw or transformed. Volume, oscillators and
+ * other derived study outputs are deliberately absent: a level line there
+ * would mark a quantity that has no last price to read.
+ */
+const PRICE_UNIT_GROUPS = /^(?:price|currency|percent|index|log)(?::|$)/;
+
+/**
+ * The chart's primary price series: the first exchange-traded price, in
+ * authored order. Study outputs are appended after the series they derive
+ * from, so an overlay indicator never wins over the price it follows.
+ */
+function primaryPriceSeries(series: readonly ResolvedSeries[]): ResolvedSeries | null {
+  return series.find((entry) => (
+    entry.timeBasis?.kind === "market"
+    && PRICE_UNIT_GROUPS.test(entry.unitGroup.toLowerCase())
+  )) ?? null;
+}
+
+function lastCloseOf(points: readonly CompositeProjectedPoint[]): number | null {
+  const last = points.at(-1);
+  if (!last) return null;
+  return finiteNumber(last.point.close) ? last.point.close : last.value;
+}
+
+/** Marks the newest close of the primary price series on the panel that draws it. */
+function attachLastPriceMarker(
+  panels: CompositePanelScene[],
+  series: readonly ResolvedSeries[],
+): void {
+  const primary = primaryPriceSeries(series);
+  if (!primary) return;
+  const panel = panels.find((entry) => entry.id === primary.panelId);
+  const projected = panel?.series.find((entry) => entry.source.id === primary.id);
+  const domain = panel?.axes[primary.axis];
+  if (!panel || !projected || !domain) return;
+  const value = lastCloseOf(projected.points);
+  if (value === null) return;
+  const yRatio = projectCompositeValue(value, domain);
+  if (yRatio === null) return;
+  panel.lastPrice = {
+    seriesId: primary.id,
+    color: primary.color,
+    axis: primary.axis,
+    value,
+    yRatio,
+  };
 }
 
 function nearestDate(dates: Date[], requested: Date): Date | null {
@@ -483,7 +544,16 @@ export function buildCompositeChartScene(
     timelineSeries,
     startTime,
     endTime,
+    options.rightOffsetRatio ?? COMPOSITE_RIGHT_OFFSET_RATIO,
   );
+  // The plot reaches past the viewport by the reserved right offset. Panned
+  // back into history that space holds real observations, so navigation and
+  // the cursor follow the drawn edge rather than the viewport end.
+  const plotEndTime = Math.max(endTime, unprojectCompositeTimestamp(timeScale, 1));
+  // A step holds its level to the newest observation and no further: the space
+  // reserved after it stays empty. With data still ahead of the window, the
+  // level runs to the drawn edge instead.
+  const stepTrailingTime = Math.min(plotEndTime, Math.max(lastTime, endTime));
   const scopedSeries = viewport
     ? dataSeries.flatMap((entry) => scopeSeriesToViewport(entry, startTime, endTime, timeScale) ?? [])
     : dataSeries;
@@ -493,11 +563,11 @@ export function buildCompositeChartScene(
   const usableSeries = emptyRange
     ? dataSeries.map((entry) => ({ ...entry, points: [] }))
     : scopedSeries;
-  const visibleTimes = uniqueTimes.filter((time) => time >= startTime && time <= endTime);
+  const visibleTimes = uniqueTimes.filter((time) => time >= startTime && time <= plotEndTime);
   const marketTimes = timeScale.kind === "market"
     ? timeScale.anchors
       .map(({ timestamp }) => timestamp)
-      .filter((time) => time >= startTime && time <= endTime)
+      .filter((time) => time >= startTime && time <= plotEndTime)
     : [];
   const cursorTimes = timeScale.kind === "market" ? marketTimes : visibleTimes;
   const dates = (cursorTimes.length > 0
@@ -540,11 +610,15 @@ export function buildCompositeChartScene(
       series: panelSeries.flatMap((entry) => {
         const domain = axes[entry.axis];
         return domain
-          ? [{ source: entry, points: projectSeries(entry, domain, startTime, endTime, timeScale) }]
+          ? [{
+            source: entry,
+            points: projectSeries(entry, domain, startTime, stepTrailingTime, timeScale),
+          }]
           : [];
       }),
     };
   });
+  attachLastPriceMarker(panelScenes, usableSeries);
 
   return {
     width: Math.max(1, Math.floor(options.width)),
