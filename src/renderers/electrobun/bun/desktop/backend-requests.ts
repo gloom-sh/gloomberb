@@ -1,5 +1,5 @@
 import { createAppServices, type AppServices } from "../../../../core/app-services";
-import { getDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
+import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
 import type { AppSessionSnapshot } from "../../../../core/state/session-persistence";
 import {
   exportConfig,
@@ -63,7 +63,7 @@ async function importDesktopConfig({
   setCurrentConfig(await importConfig(payload.dataDir, payload.srcPath));
   setServices(createAppServices({
     config: getConfig(),
-    plugins: getDesktopBackendPlugins(),
+    plugins: await loadDesktopBackendPlugins(),
   }));
   syncConfigAccessors();
   registerCoreCapabilities();

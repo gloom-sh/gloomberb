@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
-import { getDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
+import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
 import type { AppSessionSnapshot } from "../../../../core/state/session-persistence";
 import {
   getDataDir,
@@ -139,7 +139,7 @@ export async function initializeDesktopBackend<TRpc>(
 
   const services = createAppServices({
     config,
-    plugins: getDesktopBackendPlugins(),
+    plugins: await loadDesktopBackendPlugins(),
   });
   options.setServices(services);
   await services.ready;
