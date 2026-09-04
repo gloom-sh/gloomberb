@@ -58,18 +58,32 @@ export async function settleFrame(
   });
 }
 
+/**
+ * Turns a poll count into a wall-clock budget.
+ *
+ * Counting attempts assumes every attempt costs about `delayMs`, which is only
+ * true on an idle machine: on a loaded CI runner each render can cost more than
+ * the sleep, so a caller asking for 40 attempts got its 2s budget spent well
+ * before the app had a chance to answer. The count is kept as the caller's
+ * unit, then floored so a slow machine waits longer rather than failing.
+ */
+function waitBudgetMs(attempts: number, delayMs: number): number {
+  return Math.max(attempts * delayMs, 10_000);
+}
+
 export function createCommandBarTestControls(
   getRenderer: () => Awaited<ReturnType<typeof testRender>>,
 ) {
   const waitForFrameToContain = async (text: string, attempts = 12, delayMs = 50): Promise<string> => {
     const renderer = getRenderer();
-    for (let attempt = 0; attempt < attempts; attempt++) {
+    const deadline = Date.now() + waitBudgetMs(attempts, delayMs);
+    do {
       const frame = renderer.captureCharFrame();
       if (frame.includes(text)) {
         return frame;
       }
       await settleFrame(renderer, delayMs);
-    }
+    } while (Date.now() < deadline);
     throw new Error(`Timed out waiting for frame to contain "${text}".`);
   };
 

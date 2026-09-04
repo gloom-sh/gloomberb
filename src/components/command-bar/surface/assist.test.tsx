@@ -81,21 +81,29 @@ function configureEarningsRegistry(
 
 /** Wide enough to cover the ask debounce plus the round trip. */
 const ASSIST_WAIT_ATTEMPTS = 40;
+/**
+ * A budget, not a poll count. The ask waits out a 600ms debounce before it even
+ * reaches the transport, and on a loaded CI runner the renders in between cost
+ * far more than the sleeps, which is what made these tests fail in batches.
+ */
+const ASSIST_WAIT_MS = 10_000;
 
 async function waitForRequest(requests: string[]): Promise<void> {
-  for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
+  const deadline = Date.now() + ASSIST_WAIT_MS;
+  do {
     if (requests.length > 0) return;
     await settleFrame(testSetup!);
-  }
+  } while (Date.now() < deadline);
   throw new Error("Timed out waiting for the assist request.");
 }
 
 async function waitForFrameWithout(text: string): Promise<string> {
-  for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
+  const deadline = Date.now() + ASSIST_WAIT_MS;
+  do {
     const frame = testSetup!.captureCharFrame();
     if (!frame.includes(text)) return frame;
     await settleFrame(testSetup!);
-  }
+  } while (Date.now() < deadline);
   throw new Error(`Timed out waiting for "${text}" to disappear.`);
 }
 
@@ -234,7 +242,8 @@ describe("CommandBar AI assist", () => {
     expect(created).toEqual([]);
 
     releaseResponse();
-    for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS && created.length === 0; attempt++) {
+    const deadline = Date.now() + ASSIST_WAIT_MS;
+    while (created.length === 0 && Date.now() < deadline) {
       await settleFrame(testSetup);
     }
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
