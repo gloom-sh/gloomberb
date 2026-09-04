@@ -17,6 +17,7 @@ import {
   CONGRESS_TRADES_PANE_ID,
   CongressTradesPane,
 } from "../congress-trades/pane";
+import { congressHeadless } from "../congress-trades/headless";
 import { registerTwitterFeedFeature } from "../cloud-tweets/registration";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { registerCloudAuthCommands } from "./auth-commands";
@@ -181,6 +182,7 @@ const congressTradesModule: PluginModule = {
     description: "Track newly disclosed House periodic transaction reports.",
     keywords: ["congress", "house", "trades", "ptr", "stock", "disclosures"],
     shortcut: { prefix: "CG" },
+    headless: congressHeadless,
     createInstance: () => ({ placement: "floating" }),
     publicShare: createPublicPaneShare("Congress Trades"),
   }],

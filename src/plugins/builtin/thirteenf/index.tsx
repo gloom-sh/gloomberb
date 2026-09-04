@@ -11,6 +11,9 @@ import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
 } from "./api";
+import { thirteenFHeadless } from "./headless";
+
+export { thirteenFHeadless } from "./headless";
 
 function queryFromOptions(options?: PaneTemplateCreateOptions): string {
   return (options?.arg ?? options?.values?.query ?? "").trim();
@@ -55,6 +58,7 @@ export const thirteenFModule: PluginModule = {
         argKind: "text",
         argOptional: true,
       },
+      headless: thirteenFHeadless,
       createInstance(_context: PaneTemplateContext, options?: PaneTemplateCreateOptions) {
         const query = queryFromOptions(options);
         const browserMode = inferBrowserTabFromQuery(query);

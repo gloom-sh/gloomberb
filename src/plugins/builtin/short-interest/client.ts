@@ -110,9 +110,12 @@ function normalizeCloudRecords(payload: CloudShortInterestPayload): ShortInteres
  * Yahoo carries the current and prior settlement plus percent of float, so it
  * stays as the fallback when the cloud route is unavailable.
  */
-export async function fetchShortInterest(symbol: string): Promise<ShortInterestRecord[]> {
+export async function fetchShortInterest(
+  symbol: string,
+  cloudClient: Pick<typeof apiClient, "getCloudShortInterest"> = apiClient,
+): Promise<ShortInterestRecord[]> {
   try {
-    const response = await apiClient.getCloudShortInterest(symbol);
+    const response = await cloudClient.getCloudShortInterest(symbol);
     const records = response.status === "success" && response.data
       ? normalizeCloudRecords(response.data)
       : [];

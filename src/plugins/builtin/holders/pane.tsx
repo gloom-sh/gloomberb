@@ -31,6 +31,7 @@ import {
   sortRows,
   VIEW_TABS,
 } from "./table-model";
+import { loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import type { HolderColumn, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
@@ -77,7 +78,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     setError(null);
 
     try {
-      const nextData = await dataProvider.getHolders(symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
+      const nextData = await loadHolderData(
+        dataProvider,
+        symbol,
+        exchange,
+        forceRefresh ? { cacheMode: "refresh" } : undefined,
+      );
       if (fetchGenRef.current !== gen) return;
       setData(nextData);
       setSelectedId(null);

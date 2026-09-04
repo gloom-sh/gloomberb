@@ -15,7 +15,6 @@ import type {
   CloudCongressMemberPayload,
   CloudCongressTradePayload,
 } from "../../../api-client";
-import { apiClient } from "../../../api-client";
 import {
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_MEMBER_TRADE_LIMIT,
@@ -34,6 +33,7 @@ import {
   type TradeColumnId,
 } from "./model";
 import { renderCongressTradeCell } from "./table";
+import { loadCongressHouse } from "./client";
 
 function DetailLine({
   label,
@@ -133,7 +133,7 @@ export function MemberTradesDetail({
     const gen = fetchGenRef.current;
     setStatus("loading");
     setError(null);
-    apiClient.getCloudCongressHouse({
+    loadCongressHouse({
       member: member.memberName,
       limit: CONGRESS_MEMBER_TRADE_LIMIT,
       filingLimit: Math.max(CONGRESS_MEMBER_FILING_LIMIT, filingLimit),
@@ -162,7 +162,7 @@ export function MemberTradesDetail({
     if (!nextRequest) return;
     const gen = fetchGenRef.current;
     setLoadingMore(true);
-    apiClient.getCloudCongressHouse({
+    loadCongressHouse({
       ...nextRequest,
       member: member.memberName,
       limit: CONGRESS_MEMBER_TRADE_LIMIT,

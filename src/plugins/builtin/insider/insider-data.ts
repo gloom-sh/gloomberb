@@ -45,6 +45,6 @@ export function transactionTypeLabel(type: InsiderTransaction["transactionType"]
     case "S": return "SELL";
     case "A": return "AWARD";
     case "D": return "DISPOSE";
-    default: return "—";
+    default: return "-";
   }
 }

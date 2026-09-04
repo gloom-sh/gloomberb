@@ -12,6 +12,7 @@ import {
   formatShares,
   formatShortDate,
 } from "./format";
+import { positionType } from "./model";
 import type {
   FilingPositionColumn,
   FilingPositionRow,
@@ -82,7 +83,7 @@ export function renderHoldingCell(
         attributes: TextAttributes.BOLD,
       };
     case "type":
-      return { text: formatPositionType(row), color: selectedColor ?? colors.textDim };
+      return { text: positionType(row), color: selectedColor ?? colors.textDim };
     case "issuer":
       return { text: row.issuer, color: selectedColor ?? colors.text };
     case "value":
@@ -136,7 +137,7 @@ export function renderFilingPositionCell(
         attributes: TextAttributes.BOLD,
       };
     case "type":
-      return { text: formatPositionType(row), color: selectedColor ?? colors.textDim };
+      return { text: positionType(row), color: selectedColor ?? colors.textDim };
     case "issuer":
       return { text: row.issuer, color: selectedColor ?? colors.text };
     case "value":
@@ -183,19 +184,6 @@ export function renderTimelineCell(
         color: selectedColor ?? (row.isAmendment ? colors.warning : colors.textDim),
       };
   }
-}
-
-function formatPositionType(row: {
-  putCall: string;
-  titleOfClass: string;
-  shareType: string;
-}): string {
-  const putCall = row.putCall.trim().toUpperCase();
-  if (putCall === "PUT" || putCall === "CALL") return putCall;
-  const title = row.titleOfClass.trim().toUpperCase();
-  if (title) return title;
-  const shareType = row.shareType.trim().toUpperCase();
-  return shareType || "--";
 }
 
 function actionColor(action: FundHoldingRow["action"]): string {

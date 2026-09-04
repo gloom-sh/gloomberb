@@ -10,7 +10,6 @@ import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
-  apiClient,
   type CloudCongressHousePayload,
   type CloudCongressMemberPayload,
   type CloudCongressTradePayload,
@@ -46,6 +45,7 @@ import {
   renderCongressMemberCell,
   renderCongressTradeCell,
 } from "./table";
+import { loadCongressHouse } from "./client";
 
 export { CONGRESS_TRADES_PANE_ID } from "./model";
 
@@ -77,7 +77,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     setStatus((current) => (current === "loaded" && !refresh ? "loaded" : "loading"));
     setError(null);
     setLoadingMore(false);
-    apiClient.getCloudCongressHouse({
+    loadCongressHouse({
       limit: CONGRESS_TRADE_LIMIT,
       filingLimit: CONGRESS_FILING_LIMIT,
       refresh,
@@ -103,7 +103,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     if (!nextRequest) return;
     const gen = fetchGenRef.current;
     setLoadingMore(true);
-    apiClient.getCloudCongressHouse({
+    loadCongressHouse({
       ...nextRequest,
       limit: CONGRESS_TRADE_LIMIT,
       filingLimit: CONGRESS_FILING_LIMIT,

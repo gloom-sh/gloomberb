@@ -5,10 +5,13 @@ import { AnalystResearchView } from "./analyst-pane";
 import { CorporateActionsView } from "./corporate-actions-pane";
 import { EquityDiagnosticView } from "./equity-diagnostic-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
+import { analystResearchHeadless } from "./analyst-headless";
 import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
 
+export { analystResearchHeadless } from "./analyst-headless";
 export { eventsHeadless } from "./events-headless";
+export { earningsEstimatesHeadless } from "./headless";
 
 function EarningsEstimatesPane(props: { focused: boolean; width: number; height: number }) {
   return (
@@ -99,15 +102,18 @@ export const researchModule: PluginModule = {
   ],
 
   paneTemplates: [
-    createTickerSurfacePaneTemplate({
-      id: "analyst-research-pane",
-      paneId: "analyst-research",
-      label: "Analyst Research",
-      description: "Price targets, recommendations, and recent analyst actions.",
-      keywords: ["analyst", "research", "ratings", "target", "anr"],
-      shortcut: "ANR",
-      publicShare: true,
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "analyst-research-pane",
+        paneId: "analyst-research",
+        label: "Analyst Research",
+        description: "Price targets, recommendations, and recent analyst actions.",
+        keywords: ["analyst", "research", "ratings", "target", "anr"],
+        shortcut: "ANR",
+        publicShare: true,
+      }),
+      headless: analystResearchHeadless,
+    },
     createTickerSurfacePaneTemplate({
       id: "equity-diagnostic-pane",
       paneId: "equity-diagnostic",

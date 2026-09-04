@@ -45,35 +45,37 @@ export async function loadBrowserRows(
   tab: ThirteenFBrowserTab,
   query: string,
   signal?: AbortSignal,
-  options: { forceRefresh?: boolean; offset?: number } = {},
+  options: { forceRefresh?: boolean; offset?: number; limit?: number } = {},
 ): Promise<BrowserLoadResult> {
   const now = new Date();
   const from = dateYearsAgo(2, now);
   const to = todayIso(now);
   const quarter = latestLikely13FQuarter(now);
   const offset = Math.max(0, options.offset ?? 0);
+  const browserLimit = Math.max(1, options.limit ?? BROWSER_PAGE_LIMIT);
+  const latestLimit = Math.max(1, options.limit ?? LATEST_FILINGS_PAGE_LIMIT);
   const apiOptions = { forceRefresh: options.forceRefresh };
   const pageApiOptions = { forceRefresh: options.forceRefresh, offset };
 
   if (tab === "performance") {
-    const topFunds = await listTopThirteenFFunds(quarter, BROWSER_PAGE_LIMIT, signal, pageApiOptions);
+    const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions);
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
-    const forms = await loadLatestFormsForFunds(funds.slice(0, FORM_ENRICHMENT_LIMIT), { from, to, signal, concurrency: 5, forceRefresh: options.forceRefresh });
+    const forms = await loadLatestFormsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), { from, to, signal, concurrency: 5, forceRefresh: options.forceRefresh });
     return {
       rows: buildBrowserRows({ topFunds, forms, source: "performance" }),
       quarter,
       period: topFunds[0]?.periodOfReport,
-      hasMore: topFunds.length >= BROWSER_PAGE_LIMIT,
+      hasMore: topFunds.length >= browserLimit,
       nextOffset: offset + topFunds.length,
     };
   }
 
   if (tab === "latest") {
-    const filings = await listThirteenFFilings(recentIso(21, now), to, LATEST_FILINGS_PAGE_LIMIT, signal, pageApiOptions);
+    const filings = await listThirteenFFilings(recentIso(21, now), to, latestLimit, signal, pageApiOptions);
     return {
       rows: buildBrowserRows({ latestFilings: filings, source: "latest" }),
       period: filings[0]?.periodOfReport,
-      hasMore: filings.length >= LATEST_FILINGS_PAGE_LIMIT,
+      hasMore: filings.length >= latestLimit,
       nextOffset: offset + filings.length,
     };
   }
@@ -97,7 +99,7 @@ export async function loadBrowserRows(
     try {
       const holders = await lookupThirteenFHoldersByCusip(cusip, periodOfReport, signal, apiOptions);
       const forms = new Map<string, ThirteenFFormSummary>();
-      const pageCiks = holders.ciks.slice(offset, offset + BROWSER_PAGE_LIMIT);
+      const pageCiks = holders.ciks.slice(offset, offset + browserLimit);
       const funds = await Promise.all(pageCiks.map(async (cik): Promise<ThirteenFFund> => {
         const fundForms = await listThirteenFForms(cik, from, to, 1, signal, apiOptions);
         if (fundForms[0]) forms.set(cik, fundForms[0]);
@@ -136,10 +138,10 @@ export async function loadBrowserRows(
       nextOffset: offset + 1,
     };
   }
-  const funds = await searchThirteenFFunds(trimmed, BROWSER_PAGE_LIMIT, signal, pageApiOptions);
+  const funds = await searchThirteenFFunds(trimmed, browserLimit, signal, pageApiOptions);
   const [forms, topFunds] = await Promise.all([
-    loadLatestFormsForFunds(funds.slice(0, FORM_ENRICHMENT_LIMIT), { from, to, signal, concurrency: 5, forceRefresh: options.forceRefresh }),
-    listTopThirteenFFunds(quarter, BROWSER_PAGE_LIMIT, signal, { forceRefresh: options.forceRefresh }).catch(() => []),
+    loadLatestFormsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), { from, to, signal, concurrency: 5, forceRefresh: options.forceRefresh }),
+    listTopThirteenFFunds(quarter, browserLimit, signal, { forceRefresh: options.forceRefresh }).catch(() => []),
   ]);
   const topByCik = new Map(topFunds.map((fund) => [fund.cik, fund]));
   const matchedTopFunds = funds
@@ -153,7 +155,7 @@ export async function loadBrowserRows(
       source: "funds",
     }),
     quarter,
-    hasMore: funds.length >= BROWSER_PAGE_LIMIT,
+    hasMore: funds.length >= browserLimit,
     nextOffset: offset + funds.length,
   };
 }

@@ -5,7 +5,10 @@ import {
   resetShortInterestHealth,
   YAHOO_SHORT_INTEREST_CONNECTION_ID,
 } from "./client";
+import { shortInterestHeadless } from "./headless";
 import { ShortInterestView } from "./pane";
+
+export { shortInterestHeadless } from "./headless";
 
 let disposeConnection: (() => void) | null = null;
 
@@ -50,14 +53,17 @@ export const shortInterestModule: PluginModule = {
   ],
 
   paneTemplates: [
-    createTickerSurfacePaneTemplate({
-      id: "short-interest-pane",
-      paneId: "short-interest",
-      label: "Short Interest",
-      // Yahoo's key-statistics module only carries the current and prior settlement dates.
-      description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume.",
-      keywords: ["short", "interest", "si", "shorts", "borrow", "days", "cover"],
-      shortcut: "SI",
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "short-interest-pane",
+        paneId: "short-interest",
+        label: "Short Interest",
+        // Yahoo's key-statistics module only carries the current and prior settlement dates.
+        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume.",
+        keywords: ["short", "interest", "si", "shorts", "borrow", "days", "cover"],
+        shortcut: "SI",
+      }),
+      headless: shortInterestHeadless,
+    },
   ],
 };

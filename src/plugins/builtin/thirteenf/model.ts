@@ -615,6 +615,19 @@ export function selectedIndexById<T extends { id: string }>(rows: T[], selectedI
   return index >= 0 ? index : rows.length > 0 ? 0 : -1;
 }
 
+export function positionType(row: {
+  putCall: string;
+  titleOfClass: string;
+  shareType: string;
+}): string {
+  const putCall = row.putCall.trim().toUpperCase();
+  if (putCall === "PUT" || putCall === "CALL") return putCall;
+  const title = row.titleOfClass.trim().toUpperCase();
+  if (title) return title;
+  const shareType = row.shareType.trim().toUpperCase();
+  return shareType || "--";
+}
+
 export function isCikQuery(query: string): boolean {
   return CIK_RE.test(query.trim());
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PluginModule } from "../plugin-module";
-import type { SecFilingItem } from "../../../types/data-provider";
 import {
   useResolvedEntryValue,
   useSecFilingsQuery,
@@ -11,9 +10,8 @@ import type { ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { isUsEquityTicker } from "../../../utils/sec";
-import { formatCompact, formatCurrency } from "../../../utils/format";
 import { truncateWithEllipsis as truncateText } from "../../../utils/text-wrap";
-import { parseForm4Xml, type InsiderTransaction } from "./insider-data";
+import { parseForm4Xml } from "./insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   buildInsiderTransactionDetailBody,
@@ -23,48 +21,18 @@ import {
   renderFilingNotice,
 } from "../sec/filing-display";
 import { useSecFilingContentCache } from "../sec/filing-content";
+import {
+  buildInsiderSummary,
+  type ParsedInsiderFiling as ParsedFiling,
+} from "./model";
+import { insiderHeadless } from "./headless";
+
+export { insiderHeadless } from "./headless";
 
 const FORM4_PAGE_SIZE = 20;
 // Recent EDGAR dumps cap at 1,000 mixed forms. Older archives are fetched
 // until this many filings or company history ends.
 const SEC_FILING_SCAN_LIMIT = 20_000;
-const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
-
-interface ParsedFiling {
-  filing: SecFilingItem;
-  transaction: InsiderTransaction | null;
-  isLoading: boolean;
-}
-
-/** Null while filings are still parsing, so the pane never claims "no activity" early. */
-function buildSummary(parsed: ParsedFiling[]): string | null {
-  if (parsed.some(({ isLoading }) => isLoading)) return null;
-  const cutoff = new Date(Date.now() - NINETY_DAYS_MS);
-  let buyShares = 0;
-  let sellShares = 0;
-  let buyValue = 0;
-  let sellValue = 0;
-
-  for (const { transaction } of parsed) {
-    if (!transaction) continue;
-    const txDate = transaction.filingDate instanceof Date ? transaction.filingDate : new Date(transaction.filingDate);
-    if (isNaN(txDate.getTime()) || txDate < cutoff) continue;
-    if (transaction.transactionType === "P") {
-      buyShares += transaction.shares;
-      buyValue += transaction.totalValue ?? 0;
-    } else if (transaction.transactionType === "S") {
-      sellShares += transaction.shares;
-      sellValue += transaction.totalValue ?? 0;
-    }
-  }
-
-  if (buyShares === 0 && sellShares === 0) return "No buy/sell activity in last 90 days.";
-
-  const parts: string[] = [];
-  if (buyShares > 0) parts.push(`Bought ${formatCompact(buyShares)} shares (${formatCurrency(buyValue)})`);
-  if (sellShares > 0) parts.push(`Sold ${formatCompact(sellShares)} shares (${formatCurrency(sellValue)})`);
-  return parts.join("  |  ");
-}
 
 function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
   return parsed.map(({ filing, transaction, isLoading }) => {
@@ -165,7 +133,7 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       : allParsed
   ), [allParsed, nameFilter]);
   const feedItems = useMemo(() => toFeedItems(parsed), [parsed]);
-  const summary = useMemo(() => buildSummary(allParsed), [allParsed]);
+  const summary = useMemo(() => buildInsiderSummary(allParsed), [allParsed]);
   const selectedTransaction = parsed[selectedIdx]?.transaction ?? null;
   const openFiling = openItemId
     ? parsed.find(({ filing }) => filing.accessionNumber === openItemId)?.filing ?? null
@@ -271,15 +239,18 @@ export const insiderModule: PluginModule = {
   ],
 
   paneTemplates: [
-    createTickerSurfacePaneTemplate({
-      id: "insider-pane",
-      paneId: "insider",
-      label: "Insider",
-      description: "Insider transaction activity for the selected ticker.",
-      keywords: ["insider", "form 4", "ownership", "transactions", "ins"],
-      shortcut: "INS",
-      canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "insider-pane",
+        paneId: "insider",
+        label: "Insider",
+        description: "Insider transaction activity for the selected ticker.",
+        keywords: ["insider", "form 4", "ownership", "transactions", "ins"],
+        shortcut: "INS",
+        canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
+      }),
+      headless: insiderHeadless,
+    },
   ],
 
   setup(ctx) {

@@ -27,53 +27,18 @@ import {
   useSecFilingContentCache,
 } from "./filing-content";
 import { usePaneStatusLinkFooter } from "../shared/pane-footer";
+import { secHeadless } from "./headless";
+import {
+  getFilingDisplayTitle,
+  getFormDescription,
+  getMeaningfulPrimaryDescription,
+} from "./model";
+
+export { secHeadless } from "./headless";
 
 const SEC_FILING_FETCH_LIMIT = 20_000;
 const SEC_FILING_PAGE_SIZE = 50;
 const OWNERSHIP_FORMS = new Set(["3", "4", "5"]);
-
-function getDisplayFormLabel(form: string): string {
-  const trimmed = form.trim();
-  return /^\d+(?:\/[A-Z])?$/i.test(trimmed)
-    ? `FORM ${trimmed}`
-    : trimmed;
-}
-
-function normalizeComparableText(value: string): string {
-  return value
-    .toUpperCase()
-    .replace(/\bFORM\b/g, "")
-    .replace(/[^A-Z0-9]+/g, "");
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function stripRedundantFormPrefix(form: string, description: string): string {
-  const pattern = escapeRegExp(form.trim()).replace(/\s+/g, "\\s+");
-  return description
-    .trim()
-    .replace(new RegExp(`^(?:FORM\\s+)?${pattern}(?:\\s*[:|-]\\s*|\\s+)`, "i"), "")
-    .trim();
-}
-
-function getMeaningfulPrimaryDescription(filing: SecFilingItem): string | undefined {
-  const description = filing.primaryDocDescription?.trim();
-  if (!description) return undefined;
-  if (normalizeComparableText(description) === normalizeComparableText(filing.form)) return undefined;
-
-  const stripped = stripRedundantFormPrefix(filing.form, description);
-  if (!stripped) return undefined;
-  if (normalizeComparableText(stripped) === normalizeComparableText(filing.form)) return undefined;
-  return stripped;
-}
-
-function getFilingDisplayTitle(filing: SecFilingItem): string {
-  const description = getMeaningfulPrimaryDescription(filing);
-  const formLabel = getDisplayFormLabel(filing.form);
-  return description ? `${formLabel} | ${description}` : formLabel;
-}
 
 function formatFiledAt(filing: SecFilingItem): string {
   return formatFilingMetaDate(filing.filingDate);
@@ -159,29 +124,6 @@ function buildForm4Detail(content: string | null, filing: SecFilingItem): string
   if (tx.totalValue != null) lines.push(`Total Value: ${formatCurrency(tx.totalValue)}`);
   if (tx.sharesOwned != null) lines.push(`Shares Owned After: ${formatCompact(tx.sharesOwned)}`);
   return lines.join("\n");
-}
-
-function getFormDescription(form: string): string {
-  const f = form.trim().toUpperCase();
-  switch (f) {
-    case "10-K": return "Annual Report";
-    case "10-K/A": return "Annual Report (Amended)";
-    case "10-Q": return "Quarterly Report";
-    case "10-Q/A": return "Quarterly Report (Amended)";
-    case "8-K": return "Current Report";
-    case "8-K/A": return "Current Report (Amended)";
-    case "4": return "Insider Transaction";
-    case "3": return "Initial Insider Ownership";
-    case "5": return "Annual Insider Ownership";
-    case "SC 13G": return "Beneficial Ownership (Passive)";
-    case "SC 13G/A": return "Beneficial Ownership (Amended)";
-    case "SC 13D": return "Beneficial Ownership (Active)";
-    case "SC 13D/A": return "Beneficial Ownership (Amended)";
-    case "DEF 14A": return "Proxy Statement";
-    case "S-1": return "Registration Statement";
-    case "20-F": return "Annual Report (Foreign)";
-    default: return "";
-  }
 }
 
 function toFeedItems(
@@ -360,15 +302,18 @@ export const secModule: PluginModule = {
   ],
 
   paneTemplates: [
-    createTickerSurfacePaneTemplate({
-      id: "sec-pane",
-      paneId: "sec",
-      label: "SEC",
-      description: "Recent SEC filings for the selected ticker.",
-      keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
-      shortcut: "SEC",
-      canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "sec-pane",
+        paneId: "sec",
+        label: "SEC",
+        description: "Recent SEC filings for the selected ticker.",
+        keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
+        shortcut: "SEC",
+        canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
+      }),
+      headless: secHeadless,
+    },
   ],
 
   setup(ctx) {

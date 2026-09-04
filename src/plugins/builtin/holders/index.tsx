@@ -1,6 +1,9 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import { holdersHeadless } from "./headless";
 import { HoldersView } from "./pane";
+
+export { holdersHeadless } from "./headless";
 
 export const holdersModule: PluginModule = {
   setup(ctx) {
@@ -27,13 +30,16 @@ export const holdersModule: PluginModule = {
   ],
 
   paneTemplates: [
-    createTickerSurfacePaneTemplate({
-      id: "holders-pane",
-      paneId: "holders",
-      label: "Holders",
-      description: "Institutional holders for the selected ticker.",
-      keywords: ["holders", "ownership", "institutional", "owners", "hds"],
-      shortcut: "HDS",
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "holders-pane",
+        paneId: "holders",
+        label: "Holders",
+        description: "Institutional holders for the selected ticker.",
+        keywords: ["holders", "ownership", "institutional", "owners", "hds"],
+        shortcut: "HDS",
+      }),
+      headless: holdersHeadless,
+    },
   ],
 };
