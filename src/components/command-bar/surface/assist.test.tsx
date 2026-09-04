@@ -80,7 +80,10 @@ function configureEarningsRegistry(
 }
 
 /** Wide enough to cover the ask debounce plus the round trip. */
-const ASSIST_WAIT_ATTEMPTS = 40;
+// Frames, not milliseconds: every wait loop below exits as soon as its
+// condition holds, so a generous budget costs nothing locally and stops the
+// assist tests from timing out on a loaded CI machine.
+const ASSIST_WAIT_ATTEMPTS = 200;
 
 async function waitForRequest(requests: string[]): Promise<void> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
