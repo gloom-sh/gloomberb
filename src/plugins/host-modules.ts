@@ -24,6 +24,10 @@ export async function installPluginHostModules(): Promise<void> {
     capabilities,
     utils,
     pluginReact,
+    broker,
+    dialog,
+    marketData,
+    timeSeries,
   ] = await Promise.all([
     import("react"),
     import("react/jsx-runtime"),
@@ -37,6 +41,10 @@ export async function installPluginHostModules(): Promise<void> {
     import("../capabilities"),
     import("../public/utils"),
     import("../public/react"),
+    import("../public/broker"),
+    import("../ui/dialog"),
+    import("../public/market-data"),
+    import("../public/time-series"),
   ]);
 
   const registry: Record<string, unknown> = {
@@ -51,6 +59,10 @@ export async function installPluginHostModules(): Promise<void> {
     "gloomberb/capabilities": capabilities,
     "gloomberb/utils": utils,
     "gloomberb/react": pluginReact,
+    "gloomberb/broker": broker,
+    "gloomberb/dialog": dialog,
+    "gloomberb/market-data": marketData,
+    "gloomberb/time-series": timeSeries,
   };
 
   for (const specifier of SHARED_SPECIFIERS) {

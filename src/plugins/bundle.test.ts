@@ -22,7 +22,13 @@ function scratchPlugin(source: string): string {
 }
 
 const fakeExports = async (specifier: string) => (
-  specifier === "gloomberb/ui" ? ["Box", "Text"] : specifier === "react" ? ["useState"] : []
+  specifier === "gloomberb/ui"
+    ? ["Box", "Text"]
+    : specifier === "react"
+      ? ["useState"]
+      : specifier === "gloomberb/broker"
+        ? ["PRESERVED_PASSWORD_HINT", "getBrokerRemoteClient"]
+        : []
 );
 
 describe("buildSharedModuleSource", () => {
@@ -92,6 +98,26 @@ describe("bundleExternalPlugin", () => {
     try {
       await expect(bundleExternalPlugin(dir, join(dir, "out"), { exportNamesFor: fakeExports }))
         .rejects.toThrow();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("shares gloomberb/broker rather than bundling the host's copy", async () => {
+    // That module owns the remote broker client the desktop view installs at
+    // startup. A plugin carrying its own copy reads an empty one and reports
+    // that the broker host is unavailable, which looks like a broken broker
+    // rather than a bundling mistake.
+    const dir = scratchPlugin(`
+      import { PRESERVED_PASSWORD_HINT } from "gloomberb/broker";
+      export default { id: "scratch", name: "Scratch", version: "1.0.0", hint: PRESERVED_PASSWORD_HINT };
+    `);
+    try {
+      const result = await bundleExternalPlugin(dir, join(dir, "out"), { exportNamesFor: fakeExports });
+      const code = await Bun.file(result.outputPath).text();
+
+      expect(result.shared).toEqual(["gloomberb/broker"]);
+      expect(code).toContain(PLUGIN_HOST_GLOBAL);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
