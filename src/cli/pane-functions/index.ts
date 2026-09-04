@@ -25,6 +25,7 @@ import {
 import {
   capabilityPluginState,
   getPaneFunctionCapability,
+  isDataPaneForDomFallback,
   normalizeCapabilityOptions,
 } from "./capabilities";
 
@@ -178,6 +179,7 @@ export const paneFunctionTestInternals = {
   filterPaneCatalogEntries,
   renderPaneCatalogReport,
   getPaneFunctionCapability,
+  isDataPaneForDomFallback,
   normalizeCapabilityOptions,
   capabilityPluginState,
 };

@@ -45,9 +45,19 @@ import {
 } from "./data";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildHeadlessFunctionReport } from "./headless";
+import {
+  appendDomReportFooter,
+  buildDomFunctionReport,
+} from "./dom";
+
+export type PaneFunctionReportSource = "headless" | "report" | "dom";
 
 export interface PaneFunctionReportData {
   kind: string;
+  /** Added by buildFunctionReport after the selected loader completes. */
+  source?: PaneFunctionReportSource;
+  /** Added by buildFunctionReport for every successful report. */
+  elapsedMs?: number;
   target: string;
   capabilityId: string;
   symbols: string[];
@@ -746,14 +756,40 @@ async function buildRelationshipReport(
   };
 }
 
-export async function buildFunctionReport(
+const LEGACY_REPORT_CAPABILITY_IDS = new Set([
+  "chart-composer",
+  "financial-statements",
+  "fundamental-series",
+  "historical-prices",
+  "intraday-price-chart",
+  "price-chart",
+  "price-comparison",
+  "quote-comparison",
+  "relative-valuation",
+  "return-correlation",
+  "security-relationship",
+  "valuation-series",
+]);
+
+export function resolvePaneFunctionReportSource(
+  resolved: Pick<ResolvedPaneFunction, "headless" | "capability" | "pane" | "template" | "instance">,
+): PaneFunctionReportSource | null {
+  if (resolved.headless) return "headless";
+  if (
+    isFinancialAnalysisFunction(resolved as ResolvedPaneFunction)
+    || LEGACY_REPORT_CAPABILITY_IDS.has(resolved.capability.id)
+  ) {
+    return "report";
+  }
+  if (resolved.capability.reportReadiness === "live-dom") return "dom";
+  return null;
+}
+
+async function buildLegacyFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
 ): Promise<PaneFunctionReport> {
-  if (resolved.headless) {
-    return buildHeadlessFunctionReport(resolved, context, rawArg);
-  }
   if (isFinancialAnalysisFunction(resolved)) {
     return buildFinancialStatementReport(resolved, context, rawArg);
   }
@@ -785,12 +821,37 @@ export async function buildFunctionReport(
       return buildCorrelationReport(resolved, context);
     case "security-relationship":
       return buildRelationshipReport(resolved, context);
+    default:
+      throw new Error(`No structured report builder is registered for ${resolved.token}.`);
+  }
+}
+
+export async function buildFunctionReport(
+  resolved: ResolvedPaneFunction,
+  context: MarketContext,
+  rawArg: string,
+): Promise<PaneFunctionReport> {
+  const startedAt = performance.now();
+  const source = resolvePaneFunctionReportSource(resolved);
+  if (!source) {
+    throw new Error(`${resolved.token} is an interactive pane and does not expose a data report.`);
   }
 
-  if (resolved.capability.reportReadiness === "unsupported") {
-    return buildLegacyPaneReport(resolved, context, rawArg);
+  const report = source === "headless"
+    ? await buildHeadlessFunctionReport(resolved, context, rawArg)
+    : source === "report"
+      ? await buildLegacyFunctionReport(resolved, context, rawArg)
+      : await buildDomFunctionReport(resolved, context, rawArg);
+  const elapsedMs = Math.max(0, Math.round(performance.now() - startedAt));
+  report.data = { ...report.data, source, elapsedMs };
+  if (source === "dom") {
+    report.text = appendDomReportFooter(
+      report.text,
+      elapsedMs,
+      report.data.truncated === true,
+    );
   }
-  throw new Error(`No structured report builder is registered for ${resolved.token}.`);
+  return report;
 }
 
 async function buildLegacyPaneReport(

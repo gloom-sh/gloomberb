@@ -9,8 +9,8 @@ import type {
   PaneTemplateDef,
 } from "../../types/plugin";
 
-export type PaneFunctionReadiness = "ready" | "partial" | "unsupported";
-export type PaneFunctionScreenshotReadiness = PaneFunctionReadiness | "live-dom";
+export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
+export type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
 export type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
 export type PaneFunctionOptionType = HeadlessPaneOptionType;
 export type PaneFunctionOptionValue = HeadlessPaneOptionValue;
@@ -405,21 +405,51 @@ const CAPABILITIES: Record<string, PaneFunctionCapability> = {
   },
 };
 
-const UNSUPPORTED_CAPABILITY: PaneFunctionCapability = {
-  id: "unverified-pane",
-  botSafe: false,
-  tickerCardinality: "none",
-  aliases: [],
-  intents: [],
-  outputKind: "pane",
-  reportReadiness: "unsupported",
-  screenshotReadiness: "live-dom",
-  dataRequirements: [],
-  limitations: [
-    "Reports are not verified for automation. Screenshots render live and derive evidence from visible DOM rows.",
-  ],
-  options: [],
-};
+const NON_DATA_PANE_IDS = new Set([
+  "account-management",
+  "brokers",
+  "changelog",
+  "chat",
+  "connections",
+  "data-catalog",
+  "debug",
+  "help",
+  "ibkr-trading",
+  "layout-marketplace",
+  "local-agent-workspace",
+  "macro-tv",
+  "plugin-marketplace",
+  "world-venue-map",
+]);
+
+const RENDERED_VIEW_LIMITATION =
+  "Reports contain only values exposed by the rendered view and may omit clipped or off-screen data.";
+
+function fallbackCapability(
+  template: PaneTemplateDef | undefined,
+  pane: PaneDef,
+): PaneFunctionCapability {
+  const dataPane = isDataPaneForDomFallback(pane);
+  return {
+    id: template?.id ?? pane.id,
+    botSafe: false,
+    tickerCardinality: "none",
+    aliases: [],
+    intents: [],
+    outputKind: dataPane ? "rendered-view" : "pane",
+    reportReadiness: dataPane ? "live-dom" : "unsupported",
+    screenshotReadiness: "live-dom",
+    dataRequirements: [],
+    limitations: [dataPane
+      ? RENDERED_VIEW_LIMITATION
+      : "This pane is an interactive surface and does not expose a data report."],
+    options: [],
+  };
+}
+
+export function isDataPaneForDomFallback(pane: Pick<PaneDef, "id">): boolean {
+  return !NON_DATA_PANE_IDS.has(pane.id);
+}
 
 function optionToken(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_.-]+/g, "");
@@ -453,13 +483,14 @@ export function getPaneFunctionCapability(
   template: PaneTemplateDef | undefined,
   pane: PaneDef,
 ): PaneFunctionCapability {
-  const existing = template ? CAPABILITIES[template.id] ?? UNSUPPORTED_CAPABILITY : UNSUPPORTED_CAPABILITY;
+  const fallback = fallbackCapability(template, pane);
+  const existing = template ? CAPABILITIES[template.id] ?? fallback : fallback;
   const headless = getHeadlessPaneDefinition(template, pane);
   if (!headless) return existing;
 
-  const hasExistingCapability = existing !== UNSUPPORTED_CAPABILITY;
+  const hasExistingCapability = existing !== fallback;
   return {
-    ...(hasExistingCapability ? existing : UNSUPPORTED_CAPABILITY),
+    ...(hasExistingCapability ? existing : fallback),
     id: hasExistingCapability ? existing.id : template?.id ?? pane.id,
     botSafe: true,
     tickerCardinality: headlessTickerCardinality(headless.argument),

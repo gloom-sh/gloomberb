@@ -602,6 +602,7 @@ export async function renderDesktopShot({
   scale,
   watermark,
   options,
+  captureImage = true,
 }: {
   resolved: ResolvedPaneFunction;
   context: MarketContext;
@@ -613,8 +614,9 @@ export async function renderDesktopShot({
   scale?: number;
   watermark?: string | null;
   options: Record<string, string | true>;
+  captureImage?: boolean;
 }): Promise<PaneScreenshotResult> {
-  await mkdir(dirname(outputPath), { recursive: true });
+  if (captureImage) await mkdir(dirname(outputPath), { recursive: true });
   const apiProxy = resolveDesktopShotApiProxy(context);
   const previousSessionToken = apiClient.getSessionToken();
   let payload: DesktopPaneShotPayload;
@@ -632,7 +634,7 @@ export async function renderDesktopShot({
       scale ?? 1,
       watermark ?? null,
     );
-    render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy);
+    render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, { captureImage });
   } finally {
     apiClient.setSessionToken(previousSessionToken);
   }

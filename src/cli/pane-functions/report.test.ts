@@ -3,7 +3,10 @@ import { createDefaultConfig } from "../../types/config";
 import { CHART_SPEC_VERSION, type ChartSpec } from "../../time-series/types";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { setSharedRegistryForTests } from "../../plugins/registry";
-import { buildFunctionReport } from "./report";
+import {
+  buildFunctionReport,
+  resolvePaneFunctionReportSource,
+} from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
 
@@ -24,6 +27,31 @@ const spec: ChartSpec = {
 };
 
 afterEach(() => setSharedRegistryForTests(undefined));
+
+test("selects headless before legacy reports and rendered DOM fallback", () => {
+  const base = {
+    pane: { id: "market-data", name: "Market Data" },
+    template: undefined,
+    instance: {},
+    capability: { id: "market-data", reportReadiness: "live-dom" },
+  } as unknown as ResolvedPaneFunction;
+
+  expect(resolvePaneFunctionReportSource(base)).toBe("dom");
+  expect(resolvePaneFunctionReportSource({
+    ...base,
+    capability: { ...base.capability, id: "quote-comparison" },
+  })).toBe("report");
+  expect(resolvePaneFunctionReportSource({
+    ...base,
+    capability: { ...base.capability, id: "quote-comparison" },
+    headless: {
+      shape: "rows",
+      argument: { kind: "none" },
+      options: [],
+      load: () => ({ rows: [] }),
+    },
+  })).toBe("headless");
+});
 
 test("chart composer reports accept capability-backed series", async () => {
   const date = new Date(Date.now() - 24 * 60 * 60 * 1_000);

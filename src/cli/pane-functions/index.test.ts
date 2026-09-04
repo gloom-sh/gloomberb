@@ -10,6 +10,7 @@ const {
   filterPaneCatalogEntries,
   renderPaneCatalogReport,
   getPaneFunctionCapability,
+  isDataPaneForDomFallback,
   normalizeCapabilityOptions,
   capabilityPluginState,
 } = paneFunctionTestInternals;
@@ -208,13 +209,23 @@ describe("pane function CLI args", () => {
     });
   });
 
-  test("enables live DOM screenshots without claiming report support for unmapped panes", () => {
+  test("maps data panes to rendered reports and keeps interactive panes unsupported", () => {
     expect(capabilityFor("new-api-pane")).toMatchObject({
-      id: "unverified-pane",
+      id: "new-api-pane",
       botSafe: false,
+      outputKind: "rendered-view",
+      reportReadiness: "live-dom",
+      screenshotReadiness: "live-dom",
+    });
+
+    const helpPane = { ...dummyPane, id: "help" };
+    expect(getPaneFunctionCapability(undefined, helpPane)).toMatchObject({
+      id: "help",
       reportReadiness: "unsupported",
       screenshotReadiness: "live-dom",
     });
+    expect(isDataPaneForDomFallback(dummyPane)).toBe(true);
+    expect(isDataPaneForDomFallback(helpPane)).toBe(false);
   });
 
   test("rejects financial statement options on a price comparison", () => {

@@ -73,6 +73,8 @@ export interface DesktopPaneShotRenderedRow {
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
   rows: DesktopPaneShotRenderedRow[];
+  truncated: boolean;
+  truncationReasons: string[];
   loadingStateDetected: boolean;
   errorStateDetected: boolean;
   errorStateMarkers: string[];
@@ -113,6 +115,7 @@ export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
   outputPath: string,
   apiProxy: DesktopPaneShotApiProxy,
+  options: { captureImage?: boolean } = {},
 ): Promise<DesktopPaneShotRenderResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
   let server: ReturnType<typeof Bun.serve> | null = null;
@@ -130,6 +133,7 @@ export async function renderDesktopPaneScreenshot(
       heightPx: payload.heightPx,
       deviceScaleFactor: payload.deviceScaleFactor ?? DEFAULT_DEVICE_SCALE_FACTOR,
       userDataDir: join(tempDir, "chrome-profile"),
+      captureImage: options.captureImage !== false,
     });
   } finally {
     server?.stop(true);
@@ -311,6 +315,7 @@ async function capturePageScreenshot({
   heightPx,
   deviceScaleFactor,
   userDataDir,
+  captureImage,
 }: {
   chrome: string;
   url: string;
@@ -319,6 +324,7 @@ async function capturePageScreenshot({
   heightPx: number;
   deviceScaleFactor: number;
   userDataDir: string;
+  captureImage: boolean;
 }): Promise<DesktopPaneShotRenderResult> {
   await mkdir(userDataDir, { recursive: true });
   const port = 43000 + Math.floor(Math.random() * 10000);
@@ -359,13 +365,15 @@ async function capturePageScreenshot({
     });
     await waitForShotReady(session);
     const rendered = await readRenderedPaneState(session);
-    const screenshot = await session.send("Page.captureScreenshot", {
-      format: "png",
-      fromSurface: true,
-      captureBeyondViewport: false,
-    }) as { data?: string };
-    if (!screenshot.data) throw new Error("Chrome did not return screenshot data.");
-    await writeFile(outputPath, Uint8Array.from(Buffer.from(screenshot.data, "base64")));
+    if (captureImage) {
+      const screenshot = await session.send("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: false,
+      }) as { data?: string };
+      if (!screenshot.data) throw new Error("Chrome did not return screenshot data.");
+      await writeFile(outputPath, Uint8Array.from(Buffer.from(screenshot.data, "base64")));
+    }
     return rendered;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -388,6 +396,7 @@ const ERROR_STATE_PATTERNS = [
   /\bCould not load\b/gi,
   /\bSign in to\b/gi,
   /\bVerify your email\b/gi,
+  /\brequires signup and email verification\b/gi,
   /\bpart of Gloom Cloud Pro\b/gi,
   /\bCloud API request failed\b/gi,
 ];
@@ -431,6 +440,25 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
       };
       const semanticTables = semanticUi.filter((node) => node && node.role === "table");
       const rows = [];
+      const truncationReasons = new Set();
+      const markScrollTruncation = (element) => {
+        if (!(element instanceof HTMLElement) || !isVisible(element)) return;
+        if (
+          element.getAttribute("data-gloom-scrollbar-y") === "visible"
+          || element.scrollHeight > element.clientHeight + 1
+        ) {
+          truncationReasons.add("rows extend below the rendered viewport");
+        }
+        if (
+          element.getAttribute("data-gloom-scrollbar-x") === "visible"
+          || element.scrollWidth > element.clientWidth + 1
+        ) {
+          truncationReasons.add("columns extend beyond the rendered viewport");
+        }
+      };
+      [...root.querySelectorAll(
+        '[data-gloom-scrollbar-x="visible"], [data-gloom-scrollbar-y="visible"], [data-gloom-role="data-table-body-scroll"]',
+      )].forEach(markScrollTruncation);
       [...root.querySelectorAll('[data-gloom-role="data-table"]')]
         .filter(isVisible)
         .forEach((table, tableIndex) => {
@@ -448,12 +476,24 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
             const semanticRow = semanticRows[rowIndex] || {};
             const cells = values.map((cell, cellIndex) => {
               const semanticColumn = semanticColumns[cellIndex] || {};
+              const text = normalize(cell.innerText || cell.textContent);
+              const textNodes = [cell, ...cell.querySelectorAll('*')];
+              if (
+                /\\u2026|\\.\\.\\./.test(text)
+                || textNodes.some((node) => (
+                  node instanceof HTMLElement
+                  && isVisible(node)
+                  && node.scrollWidth > node.clientWidth + 1
+                ))
+              ) {
+                truncationReasons.add("one or more cells are visibly clipped");
+              }
               return {
                 ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
                 columnLabel: typeof semanticColumn.label === "string"
                   ? semanticColumn.label
                   : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
-                text: normalize(cell.innerText || cell.textContent),
+                text,
               };
             }).filter((cell) => cell.text.length > 0);
             if (cells.length === 0) return;
@@ -487,6 +527,8 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         errorStateDetected: root.querySelector('[data-gloom-status="error"]') !== null,
         emptyStateDetected: root.querySelector('[data-gloom-status="empty"]') !== null,
         rows,
+        truncated: truncationReasons.size > 0,
+        truncationReasons: [...truncationReasons],
         semanticUi,
       };
     })()`,
@@ -500,6 +542,8 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         errorStateDetected?: boolean;
         emptyStateDetected?: boolean;
         rows?: DesktopPaneShotRenderedRow[];
+        truncated?: boolean;
+        truncationReasons?: string[];
         semanticUi?: RemoteUiNodeSnapshot[];
       };
     };
@@ -510,9 +554,19 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   const loadingStateMarkers = stateMarkers(visibleText, LOADING_STATE_PATTERNS);
   const errorStateMarkers = stateMarkers(visibleText, ERROR_STATE_PATTERNS);
   const emptyStateMarkers = stateMarkers(visibleText, EMPTY_STATE_PATTERNS);
+  const rows = Array.isArray(value?.rows) ? value.rows : [];
+  const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
+  const truncationReasons = Array.isArray(value?.truncationReasons)
+    ? value.truncationReasons.filter((reason): reason is string => typeof reason === "string")
+    : [];
+  if (textShowsEllipsis && !truncationReasons.includes("one or more cells are visibly clipped")) {
+    truncationReasons.push("one or more cells are visibly clipped");
+  }
   return {
     visibleText,
-    rows: Array.isArray(value?.rows) ? value.rows : [],
+    rows,
+    truncated: value?.truncated === true || textShowsEllipsis,
+    truncationReasons,
     loadingStateDetected: value?.loadingStateDetected === true || loadingStateMarkers.length > 0,
     errorStateDetected: value?.errorStateDetected === true || errorStateMarkers.length > 0,
     errorStateMarkers,
