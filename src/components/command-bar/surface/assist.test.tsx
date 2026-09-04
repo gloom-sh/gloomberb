@@ -7,6 +7,7 @@ import {
   CommandBarHarness,
   createCommandBarTestControls,
   emitKeypress,
+  settleFrame,
 } from "./test-harness";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -84,8 +85,7 @@ const ASSIST_WAIT_ATTEMPTS = 40;
 async function waitForRequest(requests: string[]): Promise<void> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
     if (requests.length > 0) return;
-    await Bun.sleep(50);
-    await testSetup!.renderOnce();
+    await settleFrame(testSetup!);
   }
   throw new Error("Timed out waiting for the assist request.");
 }
@@ -94,8 +94,7 @@ async function waitForFrameWithout(text: string): Promise<string> {
   for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS; attempt++) {
     const frame = testSetup!.captureCharFrame();
     if (!frame.includes(text)) return frame;
-    await Bun.sleep(50);
-    await testSetup!.renderOnce();
+    await settleFrame(testSetup!);
   }
   throw new Error(`Timed out waiting for "${text}" to disappear.`);
 }
@@ -236,8 +235,7 @@ describe("CommandBar AI assist", () => {
 
     releaseResponse();
     for (let attempt = 0; attempt < ASSIST_WAIT_ATTEMPTS && created.length === 0; attempt++) {
-      await Bun.sleep(50);
-      await testSetup.renderOnce();
+      await settleFrame(testSetup);
     }
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     expect(requests).toHaveLength(1);
@@ -275,8 +273,7 @@ describe("CommandBar AI assist", () => {
     await testSetup.renderOnce();
     expect(testSetup.captureCharFrame()).toContain("Ask AI — sign up to enable");
 
-    await Bun.sleep(700);
-    await testSetup.renderOnce();
+    await settleFrame(testSetup, 700);
     expect(requests).toEqual([]);
 
     // The offer sits under the list and never takes the Enter that belongs to

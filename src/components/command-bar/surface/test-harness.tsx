@@ -41,6 +41,23 @@ export async function emitKeypress(
   });
 }
 
+/**
+ * Advances one polling step: sleeps, then renders. Both happen inside `act` so
+ * that anything a resolving promise queued during the sleep is flushed before
+ * the next frame is captured. Polling outside `act` leaves the update to
+ * React's scheduler, which is why a loaded CI box could time out waiting for a
+ * frame the app had already produced.
+ */
+export async function settleFrame(
+  renderer: Awaited<ReturnType<typeof testRender>>,
+  delayMs = 50,
+): Promise<void> {
+  await act(async () => {
+    await Bun.sleep(delayMs);
+    await renderer.renderOnce();
+  });
+}
+
 export function createCommandBarTestControls(
   getRenderer: () => Awaited<ReturnType<typeof testRender>>,
 ) {
@@ -51,8 +68,7 @@ export function createCommandBarTestControls(
       if (frame.includes(text)) {
         return frame;
       }
-      await Bun.sleep(delayMs);
-      await renderer.renderOnce();
+      await settleFrame(renderer, delayMs);
     }
     throw new Error(`Timed out waiting for frame to contain "${text}".`);
   };
@@ -76,7 +92,9 @@ export function createCommandBarTestControls(
   const renderFrames = async (count = 2): Promise<void> => {
     const renderer = getRenderer();
     for (let index = 0; index < count; index += 1) {
-      await renderer.renderOnce();
+      await act(async () => {
+        await renderer.renderOnce();
+      });
     }
   };
 
