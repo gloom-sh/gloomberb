@@ -262,7 +262,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   useEffect(() => {
     if (stage !== "research" || !progress.tickerSymbol || researchOpenedRef.current === progress.tickerSymbol) return;
     researchOpenedRef.current = progress.tickerSymbol;
-    pluginRegistry.pinTicker(progress.tickerSymbol, { floating: false });
+    pluginRegistry.navigateTicker(progress.tickerSymbol, { sourcePaneId: "ticker-detail:main" });
     recordResearchActivity("ticker_saved");
   }, [stage, progress.tickerSymbol, pluginRegistry]);
 
@@ -449,7 +449,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     // The QR panel owns enter (retry after a denial); approval advances itself.
     if (account.accountSub === "qr") return;
     if (account.accountSub === "signed-in") {
-      saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
+      saveProgressInBackground({ stage: apiClient.getCurrentUser()?.emailVerified ? "upgrade" : "verify", accountStatus: "signed-in" });
       return;
     }
     if (account.accountSubmitError?.kind === "switch-to-login") {

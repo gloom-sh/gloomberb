@@ -63,7 +63,7 @@ function createPluginRegistry(options: {
     tickerRepository: options.tickerRepository ?? createTickerRepository(),
     persistence: { resources: undefined },
     openCommandBar: () => {},
-    pinTicker: () => {},
+    navigateTicker: () => {},
   } as unknown as PluginRegistry;
 }
 
