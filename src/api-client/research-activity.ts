@@ -16,10 +16,17 @@ export function initializeBrowserResearchActivity(): void {
     const stored = localStorage.getItem("gloomberb.web.anonymous-id");
     anonymousId = [incoming, stored].find((value) => value && /^[a-f0-9-]{36}$/.test(value)) ?? crypto.randomUUID();
     localStorage.setItem("gloomberb.web.anonymous-id", anonymousId);
-    attribution = JSON.parse(localStorage.getItem("gloomberb.web.attribution") ?? "{}");
-    for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "twclid"]) {
-      const value = url.searchParams.get(key);
-      if (value) attribution[key] = value.slice(0, 300);
+    const keys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "twclid"];
+    const saved = JSON.parse(localStorage.getItem("gloomberb.web.attribution") ?? "{}");
+    const age = Date.now() - Date.parse(saved?.last_touch_at ?? "");
+    attribution = Number.isFinite(age) && age >= 0 && age < 30 * 24 * 60 * 60 * 1000 ? saved : {};
+    if (keys.some((key) => url.searchParams.has(key))) {
+      // A new campaign replaces the old click id instead of inheriting it.
+      attribution = { last_touch_at: new Date().toISOString() };
+      for (const key of keys) {
+        const value = url.searchParams.get(key);
+        if (value) attribution[key] = value.slice(0, 300);
+      }
     }
     localStorage.setItem("gloomberb.web.attribution", JSON.stringify(attribution));
     url.searchParams.delete("_gloom");
