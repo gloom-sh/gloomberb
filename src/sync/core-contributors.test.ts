@@ -129,6 +129,99 @@ describe("core sync contributors", () => {
     }
   });
 
+  test("preserves local broker identity when applying sanitized portfolios", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
+    config.portfolios = [{
+      id: "broker:demo-live:ACCOUNT-1",
+      name: "Primary",
+      currency: "USD",
+      brokerId: "demo",
+      brokerInstanceId: "demo-live",
+      brokerAccountId: "ACCOUNT-1",
+      lastSyncedAt: 100,
+    }];
+
+    const collected = __syncContributorInternalsForTests.collectCoreConfigPayload(config) as {
+      portfolios: Array<Record<string, unknown>>;
+    };
+    expect(collected.portfolios[0]).not.toHaveProperty("brokerInstanceId");
+    expect(collected.portfolios[0]).not.toHaveProperty("brokerAccountId");
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
+      portfolios: [{
+        id: "broker:demo-live:ACCOUNT-1",
+        name: "Primary",
+        currency: "USD",
+        brokerId: "demo",
+        lastSyncedAt: 200,
+      }],
+    });
+
+    expect(merged?.portfolios).toEqual([{
+      id: "broker:demo-live:ACCOUNT-1",
+      name: "Primary",
+      currency: "USD",
+      brokerId: "demo",
+      brokerInstanceId: "demo-live",
+      brokerAccountId: "ACCOUNT-1",
+      lastSyncedAt: 200,
+    }]);
+  });
+
+  test("does not reintroduce older unlinked broker portfolios from cloud", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-broker-identity-test");
+    config.portfolios = [
+      {
+        id: "main",
+        name: "Main",
+        currency: "USD",
+      },
+      {
+        id: "broker:demo-live:ACCOUNT-1",
+        name: "Primary",
+        currency: "USD",
+        brokerId: "demo",
+        brokerInstanceId: "demo-live",
+        brokerAccountId: "ACCOUNT-1",
+        lastSyncedAt: 200,
+      },
+      {
+        id: "broker:demo-live:ACCOUNT-2",
+        name: "Secondary",
+        currency: "USD",
+        brokerId: "demo",
+        brokerInstanceId: "demo-live",
+        brokerAccountId: "ACCOUNT-2",
+        lastSyncedAt: 200,
+      },
+    ];
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
+      portfolios: [
+        { id: "main", name: "Main", currency: "USD" },
+        { id: "broker:demo-live:ACCOUNT-1", name: "Primary", currency: "USD", brokerId: "demo", lastSyncedAt: 200 },
+        { id: "broker:demo-live:ACCOUNT-2", name: "Secondary", currency: "USD", brokerId: "demo", lastSyncedAt: 200 },
+        { id: "broker:demo-old:ACCOUNT-1", name: "Primary", currency: "USD", brokerId: "demo", lastSyncedAt: 100 },
+        { id: "broker:demo-old:ACCOUNT-2", name: "Secondary", currency: "USD", brokerId: "demo", lastSyncedAt: 100 },
+        { id: "broker:demo-old:REMOVED", name: "Removed", currency: "USD", brokerId: "demo", lastSyncedAt: 100 },
+        { id: "broker:demo-other:ACCOUNT-3", name: "Remote", currency: "USD", brokerId: "demo", lastSyncedAt: 300 },
+      ],
+    });
+
+    expect(merged?.portfolios).toEqual([
+      config.portfolios[0],
+      config.portfolios[1],
+      config.portfolios[2],
+      {
+        id: "broker:demo-other:ACCOUNT-3",
+        name: "Remote",
+        currency: "USD",
+        brokerId: "demo",
+        lastSyncedAt: 300,
+      },
+    ]);
+  });
+
   test("keeps resumable onboarding local until the guide is complete", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.onboardingComplete = false;
@@ -258,6 +351,24 @@ describe("core sync contributors", () => {
     expect((payload as any).tickers[0].quote.weekReferencePrice).toBe(125);
     expect((payload as any).tickers[0].quote.weekChangePercent).toBe(20);
     expect((payload as any).analyticsByPortfolio.main.oneYearReturn).toBe(0.42);
+
+    const saved: TickerRecord[] = [];
+    const sanitizedTickerPayload = { tickers: (payload as any).tickers };
+    await coreCollectionsSyncContributor.apply?.(sanitizedTickerPayload, {
+      baselinePayload: sanitizedTickerPayload,
+      baselineState: state,
+      state,
+      getState: () => state,
+      isCurrent: () => true,
+      dispatch: () => {},
+      tickerRepository: { saveTicker: async (record: TickerRecord) => { saved.push(record); } },
+    } as unknown as Parameters<NonNullable<typeof coreCollectionsSyncContributor.apply>>[1]);
+
+    expect(saved[0]?.metadata.positions[0]).toMatchObject({
+      brokerInstanceId: "broker-id",
+      brokerAccountId: "account-id",
+      brokerContractId: 42,
+    });
   });
 
   test("keeps a position written while the app was closed", async () => {
