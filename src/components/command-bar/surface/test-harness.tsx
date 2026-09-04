@@ -54,8 +54,9 @@ export async function settleFrame(
 ): Promise<void> {
   await act(async () => {
     await Bun.sleep(delayMs);
-    await renderer.renderOnce();
   });
+  // Paint after React has committed the updates collected by act.
+  await renderer.renderOnce();
 }
 
 export function createCommandBarTestControls(
@@ -70,7 +71,7 @@ export function createCommandBarTestControls(
       }
       await settleFrame(renderer, delayMs);
     }
-    throw new Error(`Timed out waiting for frame to contain "${text}".`);
+    throw new Error(`Timed out waiting for frame to contain "${text}".\n${renderer.captureCharFrame()}`);
   };
 
   const clickFrameText = async (text: string): Promise<void> => {
