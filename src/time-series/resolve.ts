@@ -384,10 +384,16 @@ export function seedChartResolutionResult(
     if (resolved?.points.length) series.push(resolved);
   });
   if (series.length === 0) return null;
+  // Studies ride along with the seed. Without them the chart briefly drops to
+  // base series alone whenever it falls back here, and every panel a study
+  // owns loses its rows until the first real resolve lands.
+  const seeded = spec.studies.length > 0
+    ? [...series, ...resolveStudies(series, spec.studies).series]
+    : series;
   return {
-    series,
-    legendSeries: series,
-    bufferedSeries: series,
+    series: seeded,
+    legendSeries: seeded,
+    bufferedSeries: seeded,
     loading: false,
     errors: [],
     warnings: [],
@@ -805,13 +811,6 @@ function prepareBaseSeriesForStudies(
   );
 }
 
-function rawCalculationSeries(series: ResolvedSeries, bounds: DateBounds): ResolvedSeries {
-  if (bounds.start !== null && bounds.end !== null) {
-    return clipSeriesToWindow(series, new Date(bounds.start), new Date(bounds.end));
-  }
-  return { ...series, points: filterPoints(series.points, bounds) };
-}
-
 function scalarBaseline(series: ResolvedSeries, bounds: DateBounds): number | null {
   const points = filterPoints(series.points, bounds);
   for (const point of points) {
@@ -1148,15 +1147,14 @@ export async function resolveChartSpecData(
     ? requestVisibleBounds
     : followLatestMarketObservation(initialVisibleBounds, rawSeries);
   const resolution = initialResolution;
-  const studyBounds = bounds.end !== null
-      && initialCalculationBounds.end !== null
-      && bounds.end > initialCalculationBounds.end
-    ? { ...initialCalculationBounds, end: bounds.end }
-    : initialCalculationBounds;
   const baseSeries = rawSeries
     .filter((entry) => visibleSeriesIds.has(entry.id))
     .map((entry) => prepareBaseSeriesForStudies(entry, bounds, false, requestVisibleBounds));
-  const calculationSeries = rawSeries.map((entry) => rawCalculationSeries(entry, studyBounds));
+  // Studies run over the same loaded history their base series carries. Clipping
+  // them to the requested window instead left a study with no observations
+  // wherever the accumulated buffer had already been panned past, so a study's
+  // panel emptied out mid-pan and only refilled once the next fetch landed.
+  const calculationSeries = rawSeries;
   let resolved = baseSeries;
 
   // Study outputs are appended by the pure engine before the final viewport clip.

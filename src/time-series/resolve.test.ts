@@ -3,7 +3,12 @@ import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
-import { ChartResolveCache, mergePriceHistoryWindows, resolveChartSpecData } from "./resolve";
+import {
+  ChartResolveCache,
+  mergePriceHistoryWindows,
+  resolveChartSpecData,
+  seedChartResolutionResult,
+} from "./resolve";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities";
 import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
@@ -26,6 +31,118 @@ const fredLoad = (
 });
 
 describe("resolveChartSpecData", () => {
+  test("seeds study series so their panels survive the wait for real data", async () => {
+    const date = new Date("2026-01-05T00:00:00.000Z");
+    const seeded = seedChartResolutionResult(
+      {
+        version: CHART_SPEC_VERSION,
+        viewport: { range: "1M", resolution: "auto" },
+        panels: [{ id: "main" }, { id: "volume" }],
+        series: [{
+          id: "price",
+          source: {
+            kind: "security",
+            instrument: { symbol: "TEST", exchange: "NASDAQ" },
+            fieldId: "market.ohlcv",
+          },
+          style: "candles",
+          transform: "raw",
+          axis: "left",
+          panelId: "main",
+          interpolation: "none",
+        }],
+        studies: [{
+          id: "volume",
+          kind: "volume",
+          inputSeriesIds: ["price"],
+          parameters: {},
+          panelId: "volume",
+          axis: "left",
+        }],
+      },
+      new Map([[
+        chartQuoteOverrideKeyForSource({
+          kind: "security",
+          instrument: { symbol: "TEST", exchange: "NASDAQ" },
+          fieldId: "market.ohlcv",
+        }),
+        [{ date, open: 10, high: 12, low: 9, close: 11, volume: 5_000 }],
+      ]]),
+    );
+
+    const volume = seeded?.series.find((entry) => entry.panelId === "volume");
+    expect(volume?.points.map((point) => point.value)).toEqual([5_000]);
+    expect(seeded?.bufferedSeries).toBe(seeded?.series);
+  });
+
+  test("keeps study output over the whole buffered history its base series carries", async () => {
+    const history = Array.from({ length: 900 }, (_, day) => {
+      const date = new Date(Date.UTC(2024, 0, 1) + day * 86_400_000);
+      return date.getUTCDay() === 0 || date.getUTCDay() === 6
+        ? null
+        : { date, open: 100, high: 101, low: 99, close: 100 + (day % 7), volume: 1_000 + day };
+    }).filter((point): point is NonNullable<typeof point> => point !== null);
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "ALL" }],
+      getPriceHistoryForResolution: async () => history,
+      getDetailedPriceHistory: async () => history,
+    });
+    const spec: ChartSpec = {
+      version: CHART_SPEC_VERSION,
+      viewport: { range: "1Y", resolution: "1d" },
+      panels: [{ id: "main" }, { id: "volume", label: "Volume", height: 0.24 }],
+      series: [{
+        id: "price",
+        source: {
+          kind: "security",
+          instrument: { symbol: "TEST", exchange: "NASDAQ" },
+          fieldId: "market.close",
+        },
+        style: "line",
+        transform: "raw",
+        axis: "left",
+        panelId: "main",
+        interpolation: "none",
+      }],
+      studies: [{
+        id: "volume",
+        kind: "volume",
+        inputSeriesIds: ["price"],
+        parameters: {},
+        panelId: "volume",
+        axis: "left",
+      }],
+    };
+    const sources = {
+      dataProvider: provider,
+      now: new Date("2026-06-15T00:00:00.000Z"),
+      loadFredSeries: async () => fredLoad(),
+    };
+    const cache = new ChartResolveCache();
+
+    await resolveChartSpecData(spec, sources, cache);
+    // Panning back accumulates older bars into the buffer. The study has to
+    // follow, or it empties out wherever the base series has already been.
+    const panned = await resolveChartSpecData(spec, sources, cache, {
+      requestViewport: {
+        start: new Date("2024-02-01T00:00:00.000Z"),
+        end: new Date("2024-08-01T00:00:00.000Z"),
+      },
+    });
+
+    const span = (id: string) => {
+      const entry = panned.bufferedSeries?.find((candidate) => candidate.id === id);
+      return entry && entry.points.length > 0
+        ? {
+            first: entry.points[0]!.date.toISOString(),
+            last: entry.points.at(-1)!.date.toISOString(),
+          }
+        : null;
+    };
+    expect(span("volume")).toEqual(span("price"));
+  });
+
   test("routes futures and Treasury aliases through the existing market and FRED pipelines", async () => {
     const marketRequests: string[] = [];
     const fredRequests: string[] = [];

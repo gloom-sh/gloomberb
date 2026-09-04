@@ -37,6 +37,49 @@ function series(overrides: Partial<ResolvedSeries> & Pick<ResolvedSeries, "id" |
 }
 
 describe("composite chart scene", () => {
+  test("keeps a panel and its height while its series has no observations in view", () => {
+    const price = series({
+      id: "price",
+      points: [point("2025-01-01", 90), point("2025-01-02", 95), point("2025-01-03", 110)],
+    });
+    const volume = series({
+      id: "volume",
+      panelId: "volume",
+      style: "columns",
+      unit: "shares",
+      unitGroup: "volume",
+      points: [point("2025-01-01", 1_000), point("2025-01-02", 1_200), point("2025-01-03", 1_400)],
+    });
+    const panels = [{ id: "main" }, { id: "volume", height: 0.25 }];
+    const options = { width: 10, height: 8 };
+
+    const loaded = buildCompositeChartScene([price, volume], panels, {
+      ...options,
+      viewport: { start: new Date("2025-01-01T00:00:00.000Z"), end: new Date("2025-01-03T00:00:00.000Z") },
+    });
+    // The same window, with the lower panel's data not yet loaded.
+    const loading = buildCompositeChartScene([price, { ...volume, points: [] }], panels, {
+      ...options,
+      viewport: { start: new Date("2025-01-01T00:00:00.000Z"), end: new Date("2025-01-03T00:00:00.000Z") },
+    });
+    // A window the upper panel covers and the lower panel has no bars in.
+    const partial = buildCompositeChartScene([price, {
+      ...volume,
+      points: [point("2025-01-01", 1_000)],
+    }], panels, {
+      ...options,
+      viewport: { start: new Date("2025-01-02T00:00:00.000Z"), end: new Date("2025-01-03T00:00:00.000Z") },
+    });
+
+    const layout = (scene: typeof loaded) => scene?.panels.map((panel) => [panel.id, panel.height]);
+    expect(layout(loaded)).toEqual([["main", 6], ["volume", 2]]);
+    expect(layout(loading)).toEqual(layout(loaded));
+    expect(layout(partial)).toEqual(layout(loaded));
+    expect(loading?.panels[1]?.series).toEqual([]);
+    // The axis still reads the loaded history, so the gutter does not jump either.
+    expect(partial?.panels[1]?.axes.left?.max).toBeGreaterThan(0);
+  });
+
   test("keeps panels synchronized while preserving independent dual-axis domains", () => {
     const price = series({
       id: "price",

@@ -514,22 +514,24 @@ export function buildCompositeChartScene(
   const cursorXRatio = cursorDate
     ? projectCompositeTimestamp(timeScale, cursorDate.getTime())?.ratio ?? null
     : null;
-  const orderedPanels = panelSpecsForSeries(usableSeries, panels);
+  // Panels belong to the authored series, not to whichever of them happen to
+  // hold observations right now. A panel that disappears while its data loads
+  // reflows every other panel, and the chart jumps again when it comes back.
+  const orderedPanels = panelSpecsForSeries(series, panels);
   const panelHeights = allocateCompositePanelHeights(orderedPanels, options.height);
 
-  const panelScenes: CompositePanelScene[] = orderedPanels.flatMap((panel) => {
+  const panelScenes: CompositePanelScene[] = orderedPanels.map((panel) => {
     const panelSeries = usableSeries.filter((entry) => entry.panelId === panel.id);
-    if (panelSeries.length === 0) return [];
     const scale = panel.scale ?? "linear";
-    // An empty range has no in-view values, so scale its axes to the loaded
-    // history rather than the meaningless 0..1 fallback.
-    const domainSeries = emptyRange
+    // With no in-view values, scale the axes to the loaded history rather than
+    // the meaningless 0..1 fallback, so the panel keeps its gutter and grid.
+    const domainSeries = emptyRange || panelSeries.length === 0
       ? dataSeries.filter((entry) => entry.panelId === panel.id)
       : panelSeries;
     const left = buildAxisDomain("left", domainSeries, scale);
     const right = buildAxisDomain("right", domainSeries, scale);
     const axes: Partial<Record<CompositeAxisSide, CompositeAxisDomain>> = { left, right };
-    return [{
+    return {
       id: panel.id,
       label: panel.label,
       height: panelHeights.get(panel.id) ?? 1,
@@ -541,7 +543,7 @@ export function buildCompositeChartScene(
           ? [{ source: entry, points: projectSeries(entry, domain, startTime, endTime, timeScale) }]
           : [];
       }),
-    }];
+    };
   });
 
   return {

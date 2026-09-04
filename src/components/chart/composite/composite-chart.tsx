@@ -1611,6 +1611,9 @@ export function CompositeChart({
   const stableSeries = reuseResolvedSeriesList(seriesIdentityRef.current, series);
   seriesIdentityRef.current = stableSeries;
   const visibleSeries = useMemo(() => stableSeries.filter((entry) => entry.points.length > 0), [stableSeries]);
+  // Panel layout follows the authored series so a panel keeps its height while
+  // its data loads; only the marks inside it wait for observations.
+  const panelSeries = useMemo(() => stableSeries.filter((entry) => !entry.hidden), [stableSeries]);
   const marketTimelineSeries = useMemo(() => {
     const supplied = timelineSeries?.filter((entry) => entry.points.length > 0) ?? [];
     return supplied.some((entry) => entry.timeBasis?.kind === "market")
@@ -1749,7 +1752,7 @@ export function CompositeChart({
   const timeAxisRows = showTimeAxis ? 1 : 0;
   const xMarkers = xAxis?.markers ?? NO_X_MARKERS;
   const xMarkerRows = xMarkers.some((marker) => marker.label) ? 1 : 0;
-  const panelCount = new Set(visibleSeries.map((entry) => entry.panelId)).size;
+  const panelCount = new Set(panelSeries.map((entry) => entry.panelId)).size;
   const lastTickKey = visibleSeries.map((entry) => {
     const last = entry.points.at(-1);
     if (!last) return entry.id;
@@ -1767,13 +1770,13 @@ export function CompositeChart({
   const projectedScene = useMemo(() => {
     // lastTickKey busts this memo when a live tick mutates series identity in place.
     void lastTickKey;
-    return buildCompositeChartScene(visibleSeries, panels, {
+    return buildCompositeChartScene(panelSeries, panels, {
       width: 1,
       height: Math.max(panelCount, 1),
       viewport: effectiveViewport ?? undefined,
       timelineSeries: marketTimelineSeries,
     });
-  }, [effectiveViewport, lastTickKey, marketTimelineSeries, panelCount, panels, visibleSeries]);
+  }, [effectiveViewport, lastTickKey, marketTimelineSeries, panelCount, panelSeries, panels]);
   // Gutters follow the axes the scene actually built. Reading the series list
   // instead drops a gutter the moment its series has no observation in view,
   // which is exactly what a zoom does, taking the axis labels with it.

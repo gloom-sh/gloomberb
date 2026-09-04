@@ -304,6 +304,70 @@ describe("CompositeChart", () => {
     expect(testSetup.captureCharFrame()).toContain("ACME Price $110 +10.65%");
   });
 
+  test("holds a lower panel's rows while its series has no observations in view", async () => {
+    const price: ResolvedSeries = {
+      ...series("price", "main", "left", "USD", []),
+      points: [
+        point("2025-01-01", 100),
+        point("2025-01-02", 103),
+        point("2025-01-03", 101),
+        point("2025-01-04", 104),
+        point("2025-01-05", 102),
+      ],
+    };
+    const volume: ResolvedSeries = {
+      ...series("volume", "volume", "left", "shares", []),
+      label: "Volume",
+      unitGroup: "volume",
+      style: "columns",
+      points: [point("2025-01-01", 4_000), point("2025-01-02", 6_000)],
+    };
+    const panels = [{ id: "main", height: 3 }, { id: "volume", height: 1 }];
+    const renderChart = async (
+      volumeSeries: ResolvedSeries,
+      viewport?: { start: Date; end: Date },
+    ) => {
+      testSetup = await testRender(
+        <CompositeChart
+          width={78}
+          height={18}
+          series={[price, volumeSeries]}
+          panels={panels}
+          viewport={viewport}
+        />,
+        { width: 80, height: 20 },
+      );
+      await act(async () => {
+        await testSetup!.renderOnce();
+        await testSetup!.renderOnce();
+      });
+      const frame = testSetup!.captureCharFrame();
+      await act(async () => testSetup!.renderer.destroy());
+      testSetup = undefined;
+      return frame;
+    };
+    // The lowest price-axis label sits on the boundary between the two panels,
+    // so it moves down the moment the lower panel gives up its rows.
+    const priceAxisFloor = (frame: string) => frame
+      .split("\n")
+      .reduce((row, line, index) => line.includes("$") ? index : row, -1);
+
+    const loaded = await renderChart(volume);
+    // Panned to a window the upper panel covers and the lower panel has no bars in.
+    const panned = await renderChart(volume, {
+      start: new Date("2025-01-03T00:00:00.000Z"),
+      end: new Date("2025-01-05T00:00:00.000Z"),
+    });
+    // The same chart before the lower panel's data has loaded at all.
+    const loading = await renderChart({ ...volume, points: [] });
+
+    expect(priceAxisFloor(loaded)).toBeGreaterThan(0);
+    expect(priceAxisFloor(panned)).toBe(priceAxisFloor(loaded));
+    expect(priceAxisFloor(loading)).toBe(priceAxisFloor(loaded));
+    // A panel with loaded history keeps its axis while the window holds no bars.
+    expect(panned).toMatch(/\dK/);
+  });
+
   test("lays out mixed panels with one shared legend and time axis", async () => {
     testSetup = await testRender(
       <CompositeChart
