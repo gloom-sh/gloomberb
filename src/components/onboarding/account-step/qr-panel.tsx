@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
-import { t } from "../../../i18n";
+import { Box } from "../../../ui";
 import { useAppLanguage } from "../../../i18n/react";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -56,13 +54,7 @@ export function AccountQrPanel({
 
   return (
     <Box flexDirection="column" paddingX={2}>
-      <Box height={1}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {t("Continue in your browser or scan the code")}
-        </Text>
-      </Box>
-      <Box height={1} />
-      <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, height - 2)} />
+      <DeviceSignInPanel snapshot={snapshot} height={height} />
     </Box>
   );
 }

@@ -75,10 +75,11 @@ export function DeviceSignInPanel({
     void renderer.openExternal(snapshot.verificationUri).catch(() => {});
   }, { scope: "device-signin:browser", phase: "before" });
 
-  // Minimal QR layout: the code grid, one code row, and the status row.
-  const showQr = qrLines.length > 0 && height >= qrLines.length + 2;
-  const spacious = showQr && height >= qrLines.length + 8;
-  const showUrl = !!snapshot.verificationUri && (!showQr || height >= qrLines.length + 4);
+  // Reserve the browser button before fitting the QR, code, and status.
+  const contentHeight = height - (snapshot.verificationUri ? 2 : 0);
+  const showQr = qrLines.length > 0 && contentHeight >= qrLines.length + 2;
+  const spacious = showQr && contentHeight >= qrLines.length + 8;
+  const showUrl = !!snapshot.verificationUri && (!showQr || contentHeight >= qrLines.length + 4);
 
   return (
     <Box flexDirection="column" alignItems="center">
@@ -140,7 +141,7 @@ export function DeviceSignInPanel({
           {spacious && <Box height={1} />}
           <Box height={1}>
             <Text fg={colors.textMuted}>
-              {tf("No app? {url}", { url: snapshot.verificationUri ?? "" })}
+              {snapshot.verificationUri ?? ""}
             </Text>
           </Box>
         </>
