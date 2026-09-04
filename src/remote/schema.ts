@@ -379,12 +379,18 @@ export function writeTierForSideEffectLevel(
 
 export function remoteOperationDescriptors(): RemoteOperationDescriptor[] {
   return REMOTE_OPERATIONS.map(({ id, title, description, writeTier, inputSchema }) => ({
-    name: id,
+    name: remoteOperationToolName(id),
     title,
     description,
     writeTier,
     inputSchema,
   }));
+}
+
+export function remoteOperationToolName(id: string): string {
+  return id
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase();
 }
 
 function operationTitle(id: string): string {

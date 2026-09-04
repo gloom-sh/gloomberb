@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { TOOL_NAME_PATTERN } from "../plugins/builtin/cloud/askg/protocol";
 import {
   REMOTE_OPERATIONS,
   remoteOperationDescriptors,
+  remoteOperationToolName,
   writeTierForSideEffectLevel,
 } from "./schema";
 
@@ -47,8 +49,13 @@ describe("remote operation schema", () => {
 
     expect(jsonRoundTrip(descriptors)).toEqual(descriptors);
     expect(descriptors).toHaveLength(REMOTE_OPERATIONS.length);
+    expect(new Set(descriptors.map(({ name }) => name)).size).toBe(descriptors.length);
+    expect(descriptors.every(({ name }) => new RegExp(TOOL_NAME_PATTERN).test(name)))
+      .toBe(true);
+    expect(remoteOperationToolName("commandBar.activateResult"))
+      .toBe("command_bar.activate_result");
     expect(descriptors[0]).toEqual({
-      name: REMOTE_OPERATIONS[0]!.id,
+      name: remoteOperationToolName(REMOTE_OPERATIONS[0]!.id),
       title: REMOTE_OPERATIONS[0]!.title,
       description: REMOTE_OPERATIONS[0]!.description,
       writeTier: REMOTE_OPERATIONS[0]!.writeTier,
