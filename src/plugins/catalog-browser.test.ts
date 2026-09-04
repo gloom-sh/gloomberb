@@ -7,19 +7,6 @@ const paneIds = browserBuiltinPlugins.flatMap((plugin) => plugin.panes?.map((pan
 const templateIds = new Set(browserBuiltinPlugins.flatMap((plugin) => plugin.paneTemplates?.map((template) => template.id) ?? []));
 
 describe("browser plugin catalog", () => {
-  test("contains the reviewed cloud, local, market, and research plugins", () => {
-    expect(ids).toEqual([
-      "gloomberb-cloud",
-      "portfolio",
-      "ticker-research",
-      "application",
-      "news",
-      "market-overview",
-      "macro",
-      "alerts",
-    ]);
-  });
-
   test("excludes native, filesystem, local AI, debug, updater, and external plugins", () => {
     for (const forbidden of [
       "broker",

@@ -8,9 +8,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { AuthUser } from "../../../api-client";
 import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
-import { useViewport } from "../../../react/input";
+import { useShortcut, useViewport } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
+import { Box, Text, TextAttributes, useUiHost, useRendererHost } from "../../../ui";
+import { Button } from "../../../components/ui/button";
 import { renderAsciiText } from "../../../ui/ascii-font";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
 import { renderQrLines, renderQrSvgDataUri } from "../../../ui/qr";
@@ -55,6 +56,7 @@ export function DeviceSignInPanel({
   height: number;
 }) {
   useAppLanguage();
+  const renderer = useRendererHost();
   const desktop = useUiHost().kind === "desktop-web";
   // Cell lines still drive layout on desktop: they give the code its row/column
   // footprint, but the pixels come from the SVG below.
@@ -67,6 +69,11 @@ export function DeviceSignInPanel({
     [desktop, snapshot.verificationUri],
   );
   const status = deviceSignInStatus(snapshot);
+  useShortcut((event) => {
+    if (!isPlainKey(event, "b") || !snapshot.verificationUri) return;
+    event.preventDefault(); event.stopPropagation();
+    void renderer.openExternal(snapshot.verificationUri).catch(() => {});
+  }, { scope: "device-signin:browser", phase: "before" });
 
   // Minimal QR layout: the code grid, one code row, and the status row.
   const showQr = qrLines.length > 0 && height >= qrLines.length + 2;
@@ -75,6 +82,11 @@ export function DeviceSignInPanel({
 
   return (
     <Box flexDirection="column" alignItems="center">
+      {snapshot.verificationUri && <Box height={2}>
+        <Button label="Continue in browser" shortcut="b" variant="primary" onPress={() => {
+          void renderer.openExternal(snapshot.verificationUri!).catch(() => {});
+        }} />
+      </Box>}
       {showQr && (qrImage
         ? (
           <Box
@@ -184,7 +196,7 @@ export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser 
     <Box flexDirection="column" alignItems="center">
       <Box height={1}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {t("Scan with the Gloom app to sign in")}
+          {t("Sign in through your browser or scan the code")}
         </Text>
       </Box>
       <Box height={1} />

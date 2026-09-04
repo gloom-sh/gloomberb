@@ -63,6 +63,7 @@ function createPluginRegistry(options: {
     tickerRepository: options.tickerRepository ?? createTickerRepository(),
     persistence: { resources: undefined },
     openCommandBar: () => {},
+    pinTicker: () => {},
   } as unknown as PluginRegistry;
 }
 
@@ -265,7 +266,7 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.onboardingProgress?.stage).toBe("add-ticker");
   });
 
-  test("advances directly to Cloud after the expected AP save", async () => {
+  test("opens research before Cloud after the expected AP save", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-actions-"));
     const pluginRegistry = createPluginRegistry();
     const config = {
@@ -300,12 +301,12 @@ describe("OnboardingWizard", () => {
       await Bun.sleep(0);
       await testSetup!.renderOnce();
     });
-    const frame = await waitForFrame("Sign up free");
-    expect(frame).toContain("Sign up free");
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+    const frame = await waitForFrame("Connect free Cloud");
+    expect(frame).toContain("Connect free Cloud");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
   });
 
-  test("imports a broker portfolio before moving to Cloud", async () => {
+  test("imports a broker portfolio before opening research", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-"));
     const tickerRepository = createTickerRepository();
     const broker: BrokerAdapter = {
@@ -348,10 +349,10 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Connect Demo Broker");
     await emitKeypress({ name: "return", sequence: "\r" });
 
-    const frame = await waitForFrame("Sign up free");
-    expect(frame).toContain("Sign up free");
+    const frame = await waitForFrame("Connect free Cloud");
+    expect(frame).toContain("Connect free Cloud");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
-      stage: "account",
+      stage: "research",
       path: "broker",
       tickerSymbol: "AAPL",
       brokerName: "Demo Broker",
@@ -511,9 +512,9 @@ describe("OnboardingWizard", () => {
       await testSetup!.renderOnce();
     });
 
-    await waitForFrame("Sign up free");
+    await waitForFrame("Connect free Cloud");
     expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT"]);
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
   });
 
   test("keeps Skip locked until broker onboarding finalization completes", async () => {
@@ -590,9 +591,34 @@ describe("OnboardingWizard", () => {
       await testSetup!.renderOnce();
     });
 
-    await waitForFrame("Sign up free");
+    await waitForFrame("Connect free Cloud");
     expect(completionCount).toBe(0);
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+    expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
+  });
+
+  test("waits for email verification before offering Pro", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-verify-"));
+    const originalGetSession = apiClient.getSession;
+    let resolveSession!: (user: Awaited<ReturnType<typeof apiClient.getSession>>) => void;
+    apiClient.getSession = () => new Promise((resolve) => { resolveSession = resolve; });
+    try {
+      testSetup = await testRender(<WizardHarness config={{
+        ...createDefaultConfig(tempDataDir),
+        onboardingProgress: { version: 1, stage: "verify", accountStatus: "signed-in" },
+      }} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 30 });
+      await testSetup.renderOnce();
+      expect(testSetup.captureCharFrame()).toContain("Check your email");
+      expect(capturedConfig?.onboardingProgress?.stage).toBe("verify");
+      apiClient.setSessionToken("verification-test-session");
+      apiClient.restoreCachedUser({ id: "verified-user", email: "research@example.com", emailVerified: true, plan: "free" });
+      await act(async () => {
+        resolveSession(apiClient.getCurrentUser());
+        await Bun.sleep(0);
+        await testSetup!.renderOnce();
+      });
+      await waitForFrame("Start 7-day free trial");
+      expect(capturedConfig?.onboardingProgress?.stage).toBe("upgrade");
+    } finally { apiClient.getSession = originalGetSession; }
   });
 
   test("loads the current Cloud price on the Pro step", async () => {

@@ -1,3 +1,4 @@
+import { recordResearchActivity } from "../../../api-client/research-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
@@ -416,6 +417,9 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   // Search is free and uncapped, so nothing is gated up front: the upsell only
   // appears if the server itself refuses the query.
   const proRequired = failure?.status === 402;
+  useEffect(() => {
+    if (focused && status === "loaded") recordResearchActivity("research_viewed", "search");
+  }, [focused, status]);
   const signInRequired = !access.signedIn || failure?.status === 401 || savedFailure?.status === 401;
   const verificationRequired = !signInRequired
     && (!access.emailVerified || failure?.status === 403);

@@ -130,6 +130,8 @@ const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([
   "welcome",
   "portfolio",
   "add-ticker",
+  "research",
+  "verify",
   "account",
   "upgrade",
   "ready",

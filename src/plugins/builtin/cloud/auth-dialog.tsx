@@ -12,6 +12,7 @@ import { useAppLanguage } from "../../../i18n/react";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { AuthForm, authFormTitle } from "./auth-form";
 import type { AccountMode } from "./auth-model";
+import { CloudVerificationPanel } from "./verification-panel";
 
 export function AuthDialog({
   initialMode,
@@ -20,13 +21,18 @@ export function AuthDialog({
 }: PromptContext<AuthUser | undefined> & { initialMode: AccountMode }) {
   useAppLanguage();
   const [mode, setMode] = useState<AccountMode>(initialMode);
+  const [verifyingUser, setVerifyingUser] = useState<AuthUser | null>(null);
+
+  if (verifyingUser) return <DialogFrame title={`Confirm ${verifyingUser.email}`}>
+    <CloudVerificationPanel onVerified={resolve} onContinueFree={() => resolve(verifyingUser)} />
+  </DialogFrame>;
 
   return (
     <DialogFrame title={authFormTitle(mode)}>
       <AuthForm
         initialMode={initialMode}
         onModeChange={setMode}
-        onSignedIn={resolve}
+        onSignedIn={(user) => user.emailVerified ? resolve(user) : setVerifyingUser(user)}
         onEscape={dismiss}
       />
     </DialogFrame>

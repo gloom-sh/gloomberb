@@ -362,8 +362,16 @@ class GloomApiClient {
   }
 
   /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
-  async createCloudCheckout(): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({}) });
+  async createCloudCheckout(returnTo?: string): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo }) });
+  }
+
+  async recordResearchActivity(payload: {
+    event: import("./research-activity").ResearchActivity; eventId: string;
+    surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
+    attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
+  }): Promise<void> {
+    await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }
 
   /** Stores a verified user's public terminal snapshot or pane handoff. */

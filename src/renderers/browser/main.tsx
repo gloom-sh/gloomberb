@@ -21,6 +21,7 @@ import {
 import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
+import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -36,8 +37,10 @@ root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
 async function boot(): Promise<void> {
   installBrowserConfigStore();
   installBrowserFetchTransports();
+  initializeBrowserResearchActivity();
   installFocusScopeRelease();
   await restoreBrowserCloudSession();
+  recordResearchActivity("workspace_opened");
   const config = await loadConfig(BROWSER_DATA_DIR);
   applyLanguageFromConfig(config);
   const deepLinkBridge = createBrowserDeepLinkBridge();
@@ -53,7 +56,6 @@ async function boot(): Promise<void> {
                 plugins={getBrowserBuiltinPlugins()}
                 desktopDeepLinkBridge={deepLinkBridge}
                 updatesEnabled={false}
-                requireSignIn
               />
             </WebDialogHostProvider>
           </WebToastHostProvider>

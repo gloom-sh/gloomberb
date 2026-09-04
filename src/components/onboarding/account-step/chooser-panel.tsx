@@ -19,8 +19,8 @@ export function AccountChooserPanel({
   const choices = useMemo<ListViewItem[]>(() => [
     {
       id: "qr",
-      label: t("Scan QR with the mobile app"),
-      description: t("Approve from your phone, no typing"),
+      label: t("Continue in browser"),
+      description: t("Sign in securely, or scan with your phone"),
     },
     {
       id: "signup",

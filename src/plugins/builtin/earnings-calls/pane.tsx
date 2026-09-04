@@ -1,3 +1,4 @@
+import { recordResearchActivity } from "../../../api-client/research-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
@@ -167,6 +168,9 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [transcript, setTranscript] = useState<CloudEarningsTranscriptPayload | null>(null);
+  useEffect(() => {
+    if (focused && transcript && detailOpen) recordResearchActivity("pro_feature_used", "transcripts");
+  }, [focused, transcript, detailOpen]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
   const [transcriptError, setTranscriptError] = useState<{
     message: string;

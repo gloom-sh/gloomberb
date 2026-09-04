@@ -1,4 +1,6 @@
 import { Box } from "../../../ui";
+import { getCurrentPluginTarget } from "../../current-target";
+import { recordResearchActivity } from "../../../api-client/research-activity";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { PaneProps, TickerResearchTabDef } from "../../../types/plugin";
 import { t, tf } from "../../../i18n";
@@ -98,7 +100,19 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     TICKER_RESEARCH_TAB_COMMIT_DELAY_MS,
     { commitPendingOnUnmount: true },
   );
+  useEffect(() => {
+    if (!focused || !ticker || getCurrentPluginTarget() !== "web") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("ticker", ticker.metadata.ticker);
+    url.searchParams.set("tab", activeTabId);
+    window.history.replaceState(window.history.state, "", url.href);
+  }, [focused, ticker?.metadata.ticker, activeTabId]);
   const [pluginCaptured, setPluginCaptured] = useState(false);
+  useEffect(() => {
+    if (focused && Number.isFinite(financials?.quote?.price) && (financials?.quote?.price ?? 0) > 0) {
+      recordResearchActivity("research_viewed", "research");
+    }
+  }, [focused, financials?.quote?.price]);
   const [mountedTabIds, setMountedTabIds] = useState<Set<string>>(() => new Set());
   const paneSettings = getTickerResearchPaneSettings(paneInstance?.settings);
   const hasOptionsChain = !!resolveOptionsTarget(ticker)?.effectiveTicker;

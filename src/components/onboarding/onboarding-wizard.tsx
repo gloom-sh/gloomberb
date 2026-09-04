@@ -5,6 +5,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { CloudVerificationPanel } from "../../plugins/builtin/cloud/verification-panel";
+import { recordResearchActivity } from "../../api-client/research-activity";
 import { apiClient, type CloudPricing } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
@@ -72,6 +74,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const stage = progress.stage;
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
   const [isFinishing, setIsFinishing] = useState(false);
+  const researchOpenedRef = useRef<string | null>(null);
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
 
   const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("choose");
@@ -92,7 +95,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const portfolioChoices = useMemo<ListViewItem[]>(() => [
     {
       id: "manual",
-      label: t("Create a manual portfolio"),
+      label: t("Research a company"),
       description: t("Add one company with the command bar"),
       detail: t("Recommended"),
     },
@@ -148,7 +151,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   const account = useOnboardingAccount({
     nextStep: () => {
-      saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
+      saveProgressInBackground({ stage: apiClient.getCurrentUser()?.emailVerified ? "upgrade" : "verify", accountStatus: "signed-in" });
     },
     setEditingField,
   });
@@ -163,7 +166,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       ?? result.updatedTickers[0]?.metadata.ticker;
     const brokerName = brokerOptions.find((option) => option.id === selectedBrokerId)?.name;
     const nextConfig = withOnboardingProgress(syncedConfig, {
-      stage: tickerSymbol ? "account" : "add-ticker",
+      stage: tickerSymbol ? "research" : "add-ticker",
       path: "broker",
       portfolioId: tickerSymbol ? (result.portfolioIds[0] ?? "main") : "main",
       tickerSymbol,
@@ -248,13 +251,20 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       const current = getOnboardingProgress(stateRef.current.config);
       if (current.stage !== "add-ticker" || portfolioId !== current.portfolioId) return;
       saveProgressInBackground({
-        stage: "account",
+        stage: "research",
         path: current.path,
         portfolioId,
         tickerSymbol: symbol,
       });
     },
   ), [pluginRegistry.events, saveProgressInBackground, stateRef]);
+
+  useEffect(() => {
+    if (stage !== "research" || !progress.tickerSymbol || researchOpenedRef.current === progress.tickerSymbol) return;
+    researchOpenedRef.current = progress.tickerSymbol;
+    pluginRegistry.pinTicker(progress.tickerSymbol, { floating: false });
+    recordResearchActivity("ticker_saved");
+  }, [stage, progress.tickerSymbol, pluginRegistry]);
 
   useEffect(() => {
     if (stage !== "upgrade" || pricing) return;
@@ -584,6 +594,11 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       }
       return;
     }
+    if (stage === "research" && enter) {
+      consume();
+      saveProgressInBackground({ stage: "account" });
+      return;
+    }
     if (stage === "account") {
       if (enter) {
         consume();
@@ -630,6 +645,26 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     return null;
   }
 
+  if (stage === "research") {
+    return <OnboardingCoach step={t("YOUR FIRST RESEARCH WORKSPACE")}
+      title={tf("Explore {ticker}", { ticker: progress.tickerSymbol ?? "your company" })}
+      actions={<><OnboardingButton label="Keep exploring" variant="ghost" onPress={() => { void finish(); }} />
+        <OnboardingButton label="Connect free Cloud" variant="primary" onPress={() => saveProgressInBackground({ stage: "account" })} /></>}>
+      <Text fg={colors.textDim} wrapText>{t("Your company is saved. Explore the chart and financials now. Connect Cloud when you're ready for synced layouts, news and Pro research.")}</Text>
+    </OnboardingCoach>;
+  }
+
+  if (stage === "verify") {
+    return <OnboardingModal width={66} height={14}>
+      <OnboardingTitle step={t("CONNECT CLOUD")} title={t("Check your email")}
+        description={apiClient.getCurrentUser()?.email ?? account.accountEmail} />
+      <CloudVerificationPanel onVerified={() => {
+        void chatController.refreshSession();
+        saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
+      }} onContinueFree={() => { void finish(); }} />
+    </OnboardingModal>;
+  }
+
   if (stage === "add-ticker") {
     return (
       <OnboardingCoach
@@ -664,7 +699,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         <OnboardingTitle
           step={t("WELCOME")}
           title={t("Make Gloomberb yours")}
-          description={t("Build a real portfolio in the workspace, add one company you follow, then choose whether to connect Gloom Cloud.")}
+          description={t("Pick a company. Explore its chart and financials. Keep your workspace free, or add Pro research when you need it.")}
         />
         {persistenceError ? (
           <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
@@ -673,7 +708,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         ) : null}
         <OnboardingActions>
           <OnboardingButton
-            label="Start with my portfolio"
+            label="Research my first company"
             variant="primary"
             onPress={() => saveProgressInBackground({ stage: "portfolio" })}
           />
@@ -887,7 +922,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           ) : undefined}
           description={planAccess.hasProAccess
             ? t("This account already has real-time Cloud data.")
-            : t("Limited founding offer. Start a free 7-day trial.")}
+            : t("7 days free, then the price above. Card required. Cancel anytime.")}
         />
         <Box flexDirection="column" style={desktop ? { marginTop: 14, gap: 8 } : undefined}>
           <OnboardingFeature
@@ -899,8 +934,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             description={t("Free: 12h delayed. Pro: real-time.")}
           />
           <OnboardingFeature
-            title={t("Pro research tools")}
-            description={t("More tools for company, market and portfolio research.")}
+            title={t("Earnings transcripts and instant search")}
+            description={t("Read calls. Search transcripts, news and filings. Ask Gloomberb AI coming soon.")}
           />
         </Box>
         {persistenceError ? (

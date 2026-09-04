@@ -1,3 +1,4 @@
+import { getCurrentPluginTarget } from "../plugins/current-target";
 import { ApiRequestError, isHardSessionInvalidMessage } from "./errors";
 import type {
   AccountProfile,
@@ -151,7 +152,7 @@ export class CloudAuthApi {
   async sendVerification(): Promise<CloudVerificationResponse> {
     return this.options.request<CloudVerificationResponse>("/cloud/auth/send-verification", {
       method: "POST",
-      body: JSON.stringify({}),
+      body: JSON.stringify({ returnTo: getCurrentPluginTarget() === "web" ? location.href : undefined }),
     });
   }
 

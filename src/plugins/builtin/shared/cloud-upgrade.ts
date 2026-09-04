@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { apiClient } from "../../../api-client";
+import { recordResearchActivity, researchUpgradeUrl } from "../../../api-client/research-activity";
+import { getCurrentPluginTarget } from "../../current-target";
 import type { PaneFooterSegment } from "../../../components";
 import { tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
@@ -25,10 +27,12 @@ let cloudUpgradeOpener: (() => void) | null = null;
  * already hold. Both URLs are account-bound, so no session handoff is needed.
  */
 export async function resolveCloudUpgradeUrl(): Promise<string> {
-  if (!apiClient.isSignedIn()) return CLOUD_UPGRADE_URL;
+  recordResearchActivity("upgrade_intent");
+  const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
+  if (!apiClient.isSignedIn() || !apiClient.getCurrentUser()?.emailVerified) return researchUpgradeUrl(returnTo);
   const { url } = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
     ? await apiClient.createBillingPortal()
-    : await apiClient.createCloudCheckout();
+    : await apiClient.createCloudCheckout(returnTo);
   return url;
 }
 
@@ -142,8 +146,8 @@ export function useCloudAccessFooter({
       onPress: openUpgrade,
       parts: [{
         text: shortcutScope
-          ? tf("{delay} delayed · u upgrade", { delay: delayLabel })
-          : tf("{delay} delayed · upgrade", { delay: delayLabel }),
+          ? tf("{delay} delayed · u try Pro live", { delay: delayLabel })
+          : tf("{delay} delayed · try Pro live", { delay: delayLabel }),
         tone: "warning",
       }],
     };

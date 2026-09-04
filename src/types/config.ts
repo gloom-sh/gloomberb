@@ -120,6 +120,8 @@ export type OnboardingStage =
   | "welcome"
   | "portfolio"
   | "add-ticker"
+  | "research"
+  | "verify"
   | "account"
   | "upgrade"
   | "ready";

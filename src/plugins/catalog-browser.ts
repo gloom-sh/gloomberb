@@ -4,6 +4,8 @@ import {
 } from "../data/fred-series";
 import type { GloomPlugin } from "../types/plugin";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
+import { earningsCallsModule } from "./builtin/earnings-calls";
+import { researchSearchPlugin } from "./builtin/research-search";
 import { alertsPlugin } from "./builtin/alerts";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
@@ -68,6 +70,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     optionsModule,
     optionsCalculatorModule,
     researchModule,
+    earningsCallsModule,
   ],
 });
 
@@ -141,6 +144,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserMarketOverviewPlugin,
   browserMacroPlugin,
   alertsPlugin,
+  researchSearchPlugin,
 ];
 
 export function getBrowserBuiltinPlugins(): readonly GloomPlugin[] {
