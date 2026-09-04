@@ -806,14 +806,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       : account.accountSub === "login"
         ? t("Log in")
         : account.accountSub === "qr"
-          ? t("Scan with the Gloom app")
+          ? t("Continue in browser")
           : account.accountSub === "signed-in"
             ? t("Connected")
             : t("Sync across apps");
     const accountDescription = account.accountSub === "choose"
-      ? t("Adds quotes, financials, options, research, news, chat and AI commands.")
+      ? t("Sync your layouts. Search calls, news and filings.")
       : account.accountSub === "qr"
-        ? t("Open the Gloom app on your phone and approve this workspace.")
+        ? t("Open the sign-in link, or scan the code with your phone.")
         : account.accountSub === "signup"
         ? t("Create the free account now. Cloud features unlock after you verify your email.")
         : account.accountSub === "login"
@@ -826,7 +826,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     // The QR grid is the tallest thing this wizard ever shows; DeviceSignInPanel
     // degrades to the code plus URL when the terminal cannot give it these rows.
     const accountModalHeight = account.accountSub === "choose"
-      ? 17
+      ? 21
       : account.accountSub === "qr"
         ? 32
         : account.accountSub === "signed-in"
