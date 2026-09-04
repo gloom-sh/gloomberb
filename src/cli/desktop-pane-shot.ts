@@ -3,7 +3,8 @@ import { tmpdir } from "os";
 import { join, resolve, sep } from "path";
 import type { AppConfig } from "../types/config";
 import type { ResolvedSeries } from "../time-series/types";
-import type { OptionsChain, TickerFinancials } from "../types/financials";
+import type { OptionsChain, PricePoint, TickerFinancials } from "../types/financials";
+import type { ManualChartResolution } from "../time-series/resolution";
 import type { TickerRecord } from "../types/ticker";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
@@ -13,6 +14,19 @@ import {
   electrobunViewPath,
   writeElectrobunViewPage,
 } from "../renderers/electrobun/view/build-assets";
+
+export interface DesktopPaneShotIntradayHistory {
+  symbol: string;
+  exchange: string;
+  rangePreset: "1D" | "1W";
+  resolution: ManualChartResolution;
+  requestedSession: string | null;
+  sessionDates: string[];
+  points: PricePoint[];
+  start: string | null;
+  end: string | null;
+  unavailableReason: string | null;
+}
 
 export interface DesktopPaneShotPayload {
   config: AppConfig;
@@ -27,6 +41,7 @@ export interface DesktopPaneShotPayload {
   watermark?: string | null;
   tickers: TickerRecord[];
   financials: Array<[string, TickerFinancials]>;
+  intradayHistories: DesktopPaneShotIntradayHistory[];
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
   valuationSeries: Array<[string, DatedObservation[]]>;

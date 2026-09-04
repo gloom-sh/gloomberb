@@ -11,6 +11,7 @@ const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
 import {
   renderDesktopPaneScreenshot,
   type DesktopPaneShotApiProxy,
+  type DesktopPaneShotIntradayHistory,
   type DesktopPaneShotPayload,
   type DesktopPaneShotRenderResult,
 } from "../desktop-pane-shot";
@@ -65,6 +66,10 @@ import {
   isFinancialAnalysisFunction,
   withShotPriceHistory,
 } from "./data";
+import {
+  loadShotIntradayWindow,
+  resolveShotIntradayRequest,
+} from "./intraday-shot";
 
 const DESKTOP_CELL_WIDTH_PX = 8;
 const DESKTOP_CELL_HEIGHT_PX = 18;
@@ -289,6 +294,8 @@ export interface PaneScreenshotPriceSeriesEvidence {
   pointCount: number;
   first: PaneScreenshotChartPointEvidence;
   last: PaneScreenshotChartPointEvidence;
+  resolution?: string;
+  sessionDates?: string[];
 }
 
 export interface PaneScreenshotFundamentalSeriesEvidence {
@@ -362,6 +369,7 @@ export interface PaneScreenshotResult {
   unavailableSymbols: string[];
   semanticMismatch: boolean;
   usable: boolean;
+  unusableReason: string | null;
   dataEvidence: PaneScreenshotDataEvidence | null;
   outputPath: string;
   render: DesktopPaneShotRenderResult & {
@@ -379,7 +387,7 @@ export function defaultScreenshotPath(resolved: ResolvedPaneFunction, rawArg: st
   return resolve(process.cwd(), `gloomberb-${suffix}.png`);
 }
 
-async function buildDesktopShotPayload(
+export async function buildDesktopShotPayload(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
@@ -414,9 +422,10 @@ async function buildDesktopShotPayload(
   const paneState = stripDesktopShotCredentials<Record<string, PaneRuntimeState>>({
     [resolved.instance.instanceId]: initialPaneState,
   });
+  let shotInstance = stripDesktopShotCredentials<typeof resolved.instance>(resolved.instance);
   const layout = {
     dockRoot: null,
-    instances: [resolved.instance],
+    instances: [shotInstance],
     floating: [{
       instanceId: resolved.instance.instanceId,
       x: 0,
@@ -444,6 +453,7 @@ async function buildDesktopShotPayload(
 
   const tickers: TickerRecord[] = [];
   const financials: Array<[string, TickerFinancials]> = [];
+  const intradayHistories: DesktopPaneShotIntradayHistory[] = [];
   const optionsChains: Array<[string, OptionsChain]> = [];
   const [fredSeries, capabilitySeries, valuationSeries, statSeries] = await Promise.all([
     collectShotFredSeries(resolved),
@@ -452,16 +462,64 @@ async function buildDesktopShotPayload(
     collectShotStatSeries(resolved),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
+  const shotNow = new Date();
   for (const symbol of collectShotSymbols(resolved, rawArg)) {
     const entry = await fetchTickerFinancials(context, symbol);
     const requestedRange = shotPriceHistoryRange(resolved);
     let data = entry.financials;
-    if (requestedRange) {
-      const exchange = entry.instrument.exchange
-        ?? entry.tickerFile?.metadata.exchange
-        ?? data.quote?.listingExchangeName
-        ?? data.quote?.exchangeName
-        ?? "";
+    const exchange = entry.instrument.exchange
+      ?? entry.tickerFile?.metadata.exchange
+      ?? data.quote?.listingExchangeName
+      ?? data.quote?.exchangeName
+      ?? "";
+    if (resolved.capability.id === "intraday-price-chart") {
+      const request = resolveShotIntradayRequest(resolved.options);
+      const intraday = await loadShotIntradayWindow({
+        provider: context.dataProvider,
+        symbol: entry.instrument.symbol,
+        exchange,
+        request,
+        now: shotNow,
+      });
+      data = { ...data, priceHistory: intraday.points };
+      intradayHistories.push({
+        symbol: entry.instrument.symbol,
+        exchange,
+        rangePreset: request.rangePreset,
+        resolution: request.resolution,
+        requestedSession: request.session,
+        sessionDates: intraday.sessionDates,
+        points: intraday.points,
+        start: intraday.start?.toISOString() ?? null,
+        end: intraday.end?.toISOString() ?? null,
+        unavailableReason: intraday.unavailableReason,
+      });
+      const presetStart = subtractTimeRange(shotNow, request.rangePreset);
+      const needsExplicitWindow = request.session !== null
+        || (intraday.start !== null && intraday.start.getTime() < presetStart.getTime())
+        || (intraday.end !== null && intraday.end.getTime() > shotNow.getTime());
+      if (needsExplicitWindow && intraday.start && intraday.end) {
+        const chartSpec = parseChartSpec(shotInstance.settings?.chartSpec);
+        if (chartSpec) {
+          shotInstance = {
+            ...shotInstance,
+            settings: {
+              ...shotInstance.settings,
+              chartSpec: {
+                ...chartSpec,
+                viewport: {
+                  ...chartSpec.viewport,
+                  dateWindow: {
+                    start: intraday.start.toISOString(),
+                    end: intraday.end.toISOString(),
+                  },
+                },
+              },
+            },
+          };
+        }
+      }
+    } else if (requestedRange) {
       try {
         const priceHistory = await context.dataProvider.getPriceHistory(entry.instrument.symbol, exchange, requestedRange);
         data = { ...data, priceHistory: clipPriceHistoryToRange(priceHistory, requestedRange) };
@@ -472,15 +530,13 @@ async function buildDesktopShotPayload(
     tickers.push(entry.tickerFile ?? createFallbackTicker(symbol, data, context));
     financials.push([symbol, data]);
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
-      const exchange = entry.instrument.exchange
-        ?? entry.tickerFile?.metadata.exchange
-        ?? data.quote?.listingExchangeName
-        ?? data.quote?.exchangeName
-        ?? "";
       const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange);
       optionsChains.push([symbol, chain]);
     }
   }
+  layout.instances[0] = shotInstance;
+  config.layout.instances[0] = shotInstance;
+  if (config.layouts[0]) config.layouts[0].layout.instances[0] = shotInstance;
 
   return {
     config,
@@ -493,6 +549,7 @@ async function buildDesktopShotPayload(
     watermark,
     tickers,
     financials,
+    intradayHistories,
     optionsChains,
     fredSeries,
     valuationSeries,
@@ -525,7 +582,7 @@ export function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange
     case "return-correlation":
       return (resolved.options.rangePreset ?? "1Y") as TimeRange;
     case "intraday-price-chart":
-      return "1D";
+      return (resolved.options.rangePreset ?? "1D") as TimeRange;
     case "historical-prices":
     case "security-relationship":
       return (resolved.options.range ?? "1Y") as TimeRange;
@@ -598,9 +655,10 @@ export async function renderDesktopShot({
   );
   const expectedChart = shotExpectedChart(resolved, payload);
   const dataEvidence = shotDataEvidenceFor(resolved, payload);
-  const chartEvidenceMismatches = expectedChart
-    ? chartEvidenceMismatchesFor(render.semanticUi, expectedChart)
-    : [];
+  const chartEvidenceMismatches = [
+    ...(expectedChart ? chartEvidenceMismatchesFor(render.semanticUi, expectedChart) : []),
+    ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
+  ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
     || chartEvidenceMismatches.length > 0;
@@ -619,6 +677,9 @@ export async function renderDesktopShot({
     requiresStructuredDataEvidence: requiresStructuredDataEvidence(resolved),
     hasStructuredDataEvidence: dataEvidence !== null,
   });
+  const unusableReason = usable
+    ? null
+    : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
   return {
     kind: "pane-screenshot",
     target: resolved.token,
@@ -637,6 +698,7 @@ export async function renderDesktopShot({
     unavailableSymbols,
     semanticMismatch,
     usable,
+    unusableReason,
     dataEvidence,
     outputPath,
     render: {
@@ -652,8 +714,37 @@ export async function renderDesktopShot({
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {
-  return ["price-chart", "price-comparison", "fundamental-series", "financial-statements"]
-    .includes(resolved.capability.id);
+  return [
+    "price-chart",
+    "intraday-price-chart",
+    "price-comparison",
+    "fundamental-series",
+    "financial-statements",
+  ].includes(resolved.capability.id);
+}
+
+export function shotUnusableReasonFor(
+  resolved: ResolvedPaneFunction,
+  payload: DesktopPaneShotPayload,
+  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected">,
+  unavailableSymbols: string[],
+  semanticMismatch: boolean,
+): string {
+  if (resolved.capability.id === "intraday-price-chart") {
+    const intraday = payload.intradayHistories[0];
+    if (intraday?.unavailableReason) return intraday.unavailableReason;
+    if (intraday && intraday.points.length > 0) {
+      return `Intraday bars were loaded for ${intraday.symbol}, but the chart did not render them.`;
+    }
+    const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol ?? "the ticker";
+    return `No intraday price history is available for ${symbol} for the requested session window.`;
+  }
+  if (render.loadingStateDetected) return "The pane was still loading when the screenshot was captured.";
+  if (render.errorStateDetected) return "The pane rendered an error state.";
+  if (render.emptyStateDetected) return "The pane rendered an empty state.";
+  if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;
+  if (semanticMismatch) return "The rendered content did not match the requested capability.";
+  return "The pane did not produce verifiable screenshot evidence.";
 }
 
 const STATEMENT_EVIDENCE_KEYS: Record<string, ReadonlySet<string>> = {
@@ -685,6 +776,23 @@ export function shotDataEvidenceFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
 ): PaneScreenshotDataEvidence | null {
+  if (resolved.capability.id === "intraday-price-chart") {
+    const intraday = payload.intradayHistories[0];
+    if (!intraday || intraday.points.length === 0) return null;
+    const evidence = chartSeriesEvidence(intraday.symbol, intraday.points);
+    if (!evidence.first || !evidence.last) return null;
+    return {
+      kind: "price-series",
+      symbol: intraday.symbol,
+      range: intraday.rangePreset,
+      pointCount: evidence.pointCount,
+      first: evidence.first,
+      last: evidence.last,
+      resolution: intraday.resolution,
+      sessionDates: intraday.sessionDates,
+    };
+  }
+
   if (resolved.capability.id === "price-chart") {
     const range = String(resolved.options.rangePreset ?? "5Y") as TimeRange;
     const [symbol, financials] = payload.financials[0] ?? [];
@@ -1140,6 +1248,48 @@ export function chartEvidenceMismatchesFor(
   return mismatches;
 }
 
+export function intradayChartEvidenceMismatchesFor(
+  resolved: ResolvedPaneFunction,
+  payload: DesktopPaneShotPayload,
+  semanticUi: RemoteUiNodeSnapshot[],
+): string[] {
+  if (resolved.capability.id !== "intraday-price-chart") return [];
+  const intraday = payload.intradayHistories[0];
+  if (!intraday || intraday.points.length === 0) return [];
+  const metadata = semanticUi.find((node) => (
+    node.role === "chart-data" && node.metadata?.kind === "chart-composer"
+  ))?.metadata;
+  if (!metadata) return ["rendered intraday chart-data semantic evidence is missing"];
+  const baseSeries = Array.isArray(metadata.baseSeries) ? metadata.baseSeries : [];
+  const actual = baseSeries[0];
+  if (!isRecord(actual)) return ["rendered intraday base series is missing"];
+
+  const expected = chartSeriesEvidence(intraday.symbol, intraday.points);
+  const mismatches: string[] = [];
+  if (actual.pointCount !== expected.pointCount) {
+    mismatches.push("rendered intraday point count does not match");
+  }
+  if (metadata.projectedPointCount !== expected.pointCount) {
+    mismatches.push("rendered intraday projection point count does not match");
+  }
+  const pointMatches = (
+    actualPoint: unknown,
+    expectedPoint: PaneScreenshotChartPointEvidence | null,
+  ): boolean => {
+    if (!isRecord(actualPoint) || !expectedPoint) return false;
+    return actualPoint.date === expectedPoint.date
+      && typeof actualPoint.value === "number"
+      && closeEnough(actualPoint.value, expectedPoint.close);
+  };
+  if (!pointMatches(actual.first, expected.first)) {
+    mismatches.push("rendered intraday first bar does not match");
+  }
+  if (!pointMatches(actual.last, expected.last)) {
+    mismatches.push("rendered intraday last bar does not match");
+  }
+  return mismatches;
+}
+
 export function shotUnavailableSymbols(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
@@ -1162,6 +1312,16 @@ export function shotUnavailableSymbols(
       return [];
     });
   }
+  if (resolved.capability.id === "intraday-price-chart") {
+    const symbol = payload.intradayHistories[0]?.symbol ?? payload.financials[0]?.[0];
+    const metadata = semanticUi.find((node) => (
+      node.role === "chart-data" && node.metadata?.kind === "chart-composer"
+    ))?.metadata;
+    const renderedPoints = typeof metadata?.projectedPointCount === "number"
+      ? metadata.projectedPointCount
+      : 0;
+    return symbol && renderedPoints <= 0 ? [symbol] : [];
+  }
   const graphKind = shotGraphKind(resolved);
   if (graphKind) {
     const metric = resolved.options.metric as GraphMetricKey;
@@ -1174,7 +1334,7 @@ export function shotUnavailableSymbols(
       ).length === 0 ? [symbol] : []
     ));
   }
-  if (["price-chart", "intraday-price-chart", "historical-prices"].includes(resolved.capability.id)) {
+  if (["price-chart", "historical-prices"].includes(resolved.capability.id)) {
     return payload.financials.flatMap(([symbol, financials]) => financials.priceHistory.length > 0 ? [] : [symbol]);
   }
   if (["price-comparison", "return-correlation", "security-relationship"].includes(resolved.capability.id)) {
@@ -1211,6 +1371,14 @@ export function shotSemanticRowCount(
       count + (isRecord(entry) && typeof entry.pointCount === "number" ? Math.max(0, entry.pointCount) : 0)
     ), 0);
   }
+  if (resolved.capability.id === "intraday-price-chart") {
+    const metadata = semanticUi.find((node) => (
+      node.role === "chart-data" && node.metadata?.kind === "chart-composer"
+    ))?.metadata;
+    return typeof metadata?.projectedPointCount === "number"
+      ? Math.max(0, metadata.projectedPointCount)
+      : 0;
+  }
   const graphKind = shotGraphKind(resolved);
   if (graphKind) {
     const metric = resolved.options.metric as GraphMetricKey;
@@ -1223,7 +1391,7 @@ export function shotSemanticRowCount(
       ).length
     ), 0);
   }
-  if (["price-chart", "intraday-price-chart", "historical-prices"].includes(resolved.capability.id)) {
+  if (["price-chart", "historical-prices"].includes(resolved.capability.id)) {
     return payload.financials[0]?.[1].priceHistory.length ?? 0;
   }
   if (["price-comparison", "return-correlation", "security-relationship"].includes(resolved.capability.id)) {

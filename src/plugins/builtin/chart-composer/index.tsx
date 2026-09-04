@@ -279,7 +279,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     id: "graph-intraday-price-pane",
     prefix: "GIP",
     label: "Intraday Price Graph",
-    description: "Open a one-minute intraday price chart.",
+    description: "Open an intraday price chart for one or five sessions.",
     argKind: "ticker",
     minimumSymbols: 1,
     build: (symbols) => buildIntradayPriceChartPreset(symbols[0]!),

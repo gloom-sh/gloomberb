@@ -376,10 +376,32 @@ const CAPABILITIES: Record<string, PaneFunctionCapability> = {
     intents: ["chart intraday security prices"],
     outputKind: "price-history",
     reportReadiness: "ready",
-    screenshotReadiness: "partial",
+    screenshotReadiness: "ready",
     dataRequirements: ["intraday price history"],
-    limitations: ["Intraday availability depends on the selected market-data provider."],
-    options: [],
+    limitations: ["Intraday availability and historical retention depend on the selected market-data provider."],
+    options: [
+      {
+        key: "rangePreset",
+        description: "Session window. 1D selects the latest session and 1W selects the latest five sessions.",
+        type: "enum",
+        aliases: ["range"],
+        values: RANGE_VALUES.filter(({ value }) => value === "1D" || value === "1W"),
+        defaultValue: "1D",
+      },
+      {
+        key: "chartResolution",
+        description: "Intraday sampling interval. Auto uses 1m for 1D and 5m for 1W.",
+        type: "enum",
+        aliases: ["resolution"],
+        values: ["auto", "5m", "15m", "1h"].map((value) => ({ value })),
+        defaultValue: "auto",
+      },
+      {
+        key: "session",
+        description: "Specific exchange-local session in YYYY-MM-DD form. Overrides the session window.",
+        type: "string",
+      },
+    ],
   },
 };
 

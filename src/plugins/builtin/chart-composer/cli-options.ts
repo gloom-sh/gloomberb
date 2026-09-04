@@ -45,7 +45,10 @@ export function applyChartComposerCapabilityOptions(
   options: NormalizedPaneFunctionOptions,
 ): ChartSpec {
   let next = spec;
-  const range = chartRange(options);
+  const selectedRange = chartRange(options);
+  const range = capabilityId === "intraday-price-chart" && typeof options.session === "string"
+    ? "1D"
+    : selectedRange;
   const resolution = chartResolution(options);
   if (range || resolution) {
     next = {

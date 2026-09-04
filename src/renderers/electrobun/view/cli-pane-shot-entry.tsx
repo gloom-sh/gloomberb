@@ -26,6 +26,7 @@ import {
   getPresetResolution,
   normalizeChartResolutionSupport,
   TIME_RANGE_ORDER,
+  type ManualChartResolution,
 } from "../../../time-series/resolution";
 import type { TimeRange } from "../../../components/chart/core/types";
 import type { AppConfig } from "../../../types/config";
@@ -35,7 +36,7 @@ import type {
 } from "../../../core/app-service-ports";
 import type { CachedResourceRecord, ResourceCacheKey, SetResourceOptions } from "../../../data/resource-store";
 import type { CachedFinancialsTarget, DataProvider, QuoteSubscriptionTarget } from "../../../types/data-provider";
-import type { OptionsChain, TickerFinancials } from "../../../types/financials";
+import type { OptionsChain, PricePoint, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { AppState, PaneRuntimeState } from "../../../core/state/app/state";
 import type { PaneDef } from "../../../types/plugin";
@@ -50,6 +51,19 @@ import { chartSeriesSourceKey } from "../../../capabilities";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 
+interface CliPaneShotIntradayHistory {
+  symbol: string;
+  exchange: string;
+  rangePreset: "1D" | "1W";
+  resolution: ManualChartResolution;
+  requestedSession: string | null;
+  sessionDates: string[];
+  points: PricePoint[];
+  start: string | null;
+  end: string | null;
+  unavailableReason: string | null;
+}
+
 interface CliPaneShotPayload {
   config: AppConfig;
   paneId: string;
@@ -57,6 +71,7 @@ interface CliPaneShotPayload {
   heightCells: number;
   tickers: TickerRecord[];
   financials: Array<[string, TickerFinancials]>;
+  intradayHistories: CliPaneShotIntradayHistory[];
   optionsChains: Array<[string, OptionsChain]>;
   fredSeries: Array<[string, FredSeriesCacheEntry]>;
   valuationSeries: Array<[string, DatedObservation[]]>;
@@ -187,8 +202,11 @@ function isShotLoadingTextVisible(): boolean {
  * price presets passed.
  */
 function revivePayloadDates(payload: CliPaneShotPayload): void {
-  for (const [, data] of payload.financials) {
-    const history = data.priceHistory;
+  const histories = [
+    ...payload.financials.map(([, data]) => data.priceHistory),
+    ...(payload.intradayHistories ?? []).map((entry) => entry.points),
+  ];
+  for (const history of histories) {
     if (!Array.isArray(history)) continue;
     for (const point of history) {
       if (!(point.date instanceof Date)) point.date = new Date(point.date as unknown as string);
@@ -266,6 +284,16 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
     financials.set(canonicalTickerKey(instrument.symbol, instrument.exchange), data);
     if (!instrument.exchange) financials.set(normalizeSymbol(instrument.symbol), data);
   }
+  const intradayHistories = new Map<string, CliPaneShotIntradayHistory>();
+  for (const entry of payload.intradayHistories ?? []) {
+    intradayHistories.set(canonicalTickerKey(entry.symbol, entry.exchange), entry);
+    intradayHistories.set(normalizeSymbol(entry.symbol), entry);
+  }
+  const intradayHistory = (symbol: string, exchange?: string) => (
+    intradayHistories.get(canonicalTickerKey(symbol, exchange))
+      ?? intradayHistories.get(normalizeSymbol(symbol))
+  );
+
   const optionsChains = new Map<string, OptionsChain>();
   for (const [key, data] of payload.optionsChains ?? []) {
     const instrument = parsePublicTickerKey(key);
@@ -345,14 +373,39 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
       return resolveShotWork(null);
     },
     getPriceHistory(ticker, exchange, range) {
-      return trackShotWork(Promise.resolve().then(() => (
-        clipPriceHistoryToRange(getFinancials(ticker, exchange).priceHistory ?? [], range)
-      )));
+      return trackShotWork(Promise.resolve().then(() => {
+        const intraday = intradayHistory(ticker, exchange);
+        if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
+        return clipPriceHistoryToRange(
+          intraday ? intraday.points : getFinancials(ticker, exchange).priceHistory ?? [],
+          range,
+        );
+      }));
     },
-    getPriceHistoryForResolution(ticker, exchange, bufferRange) {
-      return trackShotWork(Promise.resolve().then(() => (
-        clipPriceHistoryToRange(getFinancials(ticker, exchange).priceHistory ?? [], bufferRange)
-      )));
+    getPriceHistoryForResolution(ticker, exchange, bufferRange, resolution) {
+      return trackShotWork(Promise.resolve().then(() => {
+        const intraday = intradayHistory(ticker, exchange);
+        if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
+        if (intraday && intraday.resolution !== resolution) return [];
+        return clipPriceHistoryToRange(
+          intraday ? intraday.points : getFinancials(ticker, exchange).priceHistory ?? [],
+          bufferRange,
+        );
+      }));
+    },
+    getDetailedPriceHistory(ticker, exchange, startDate, endDate, resolution) {
+      return trackShotWork(Promise.resolve().then(() => {
+        const intraday = intradayHistory(ticker, exchange);
+        if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
+        if (intraday && intraday.resolution !== resolution) return [];
+        const start = startDate.getTime();
+        const end = endDate.getTime();
+        const points = intraday?.points ?? getFinancials(ticker, exchange).priceHistory ?? [];
+        return points.filter((point) => {
+          const timestamp = point.date.getTime();
+          return timestamp >= start && timestamp < end;
+        });
+      }));
     },
     getChartResolutionSupport() {
       return resolveShotWork(SHOT_CHART_RESOLUTION_SUPPORT);

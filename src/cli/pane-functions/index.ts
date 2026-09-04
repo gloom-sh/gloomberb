@@ -106,16 +106,14 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
       });
       if (parsed.requireBotSafe && !result.usable) {
         throw new Error(
-          `${resolved.token} did not produce a usable bot-safe screenshot: `
-          + `${result.empty ? "empty render" : ""}${result.empty && !result.complete ? ", " : ""}`
-          + `${!result.complete ? `missing data for ${result.unavailableSymbols.join(", ")}` : ""}`
-          + `${result.semanticMismatch ? `${(result.empty || !result.complete) ? ", " : ""}rendered content did not match the requested capability` : ""}`,
+          `${resolved.token} did not produce a usable bot-safe screenshot: ${result.unusableReason ?? "unknown reason"}`,
         );
       }
       ctx.printResult({ data: result }, {
         text: (data) => [
           `Saved screenshot to ${data.outputPath}`,
           `Result: ${data.rowCount} semantic rows; empty=${data.empty}; complete=${data.complete}; mismatch=${data.semanticMismatch}; usable=${data.usable}`,
+          ...(data.unusableReason ? [`Unusable reason: ${data.unusableReason}`] : []),
           ...(data.unavailableSymbols.length > 0
             ? [`Unavailable symbols: ${data.unavailableSymbols.join(", ")}`]
             : []),
