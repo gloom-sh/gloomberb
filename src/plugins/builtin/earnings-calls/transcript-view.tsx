@@ -18,6 +18,7 @@ import type {
 } from "../../../api-client";
 import { formatCallDate, formatDuration, formatSentiment, formatTimestamp } from "./format";
 import { splitFigures, splitSentences } from "./prose";
+import { filterTranscriptTurns } from "./model";
 
 export type ReaderTab = "summary" | "transcript" | "qa";
 
@@ -200,15 +201,13 @@ export function TranscriptView({
   const { nativePaneChrome } = useUiCapabilities();
   const isNative = nativePaneChrome === true;
 
-  const turns = useMemo(() => {
-    const all = transcript?.turns ?? [];
-    const scoped = tab === "qa" ? all.filter((turn) => turn.isQa) : all;
-    const needle = (query ?? "").trim().toLowerCase();
-    if (!needle) return scoped;
-    return scoped.filter((turn) =>
-      `${turn.speaker} ${turn.company ?? ""} ${turn.text}`.toLowerCase().includes(needle),
-    );
-  }, [transcript, tab, query]);
+  const turns = useMemo(() => filterTranscriptTurns(
+    transcript?.turns ?? [],
+    {
+      section: tab === "qa" ? "qa" : "transcript",
+      search: query,
+    },
+  ), [transcript, tab, query]);
 
   if (loading && !transcript) {
     return (

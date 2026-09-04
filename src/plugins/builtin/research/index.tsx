@@ -6,6 +6,7 @@ import { CorporateActionsView } from "./corporate-actions-pane";
 import { EquityDiagnosticView } from "./equity-diagnostic-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
 import { eventsHeadless } from "./events-headless";
+import { earningsEstimatesHeadless } from "./headless";
 
 export { eventsHeadless } from "./events-headless";
 
@@ -125,15 +126,18 @@ export const researchModule: PluginModule = {
       shortcut: "EVT",
       publicShare: true,
     }),
-    createTickerSurfacePaneTemplate({
-      id: "earnings-estimates-pane",
-      paneId: "earnings-estimates",
-      label: "Earnings Estimates",
-      description: "EPS and revenue estimates with reported earnings.",
-      keywords: ["earnings", "estimates", "ee", "analyst", "eps", "revenue", "events"],
-      shortcut: "EE",
-      publicShare: true,
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "earnings-estimates-pane",
+        paneId: "earnings-estimates",
+        label: "Earnings Estimates",
+        description: "EPS and revenue estimates with reported earnings.",
+        keywords: ["earnings", "estimates", "ee", "analyst", "eps", "revenue", "events"],
+        shortcut: "EE",
+        publicShare: true,
+      }),
+      headless: earningsEstimatesHeadless,
+    },
     {
       id: "relative-valuation-pane",
       paneId: "relative-valuation",

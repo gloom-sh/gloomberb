@@ -19,6 +19,7 @@ import { optionPaneState } from "./options";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
 import { capabilityPluginState } from "./capabilities";
+import { resolvePersistedCloudSessionToken } from "./cloud-session";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   graphRowsForFinancials,
@@ -76,8 +77,6 @@ const DESKTOP_CELL_HEIGHT_PX = 18;
 const OPTIONS_PANE_ID = "options";
 const MARKET_VALUATION_PANE_ID = "market-valuation";
 const ECON_STATISTICS_PANE_ID = "econ-statistics";
-const CLOUD_PLUGIN_ID = "gloomberb-cloud";
-const CLOUD_SESSION_KEYS = ["resume:session", "session"] as const;
 const CREDENTIAL_FIELD_NAMES = new Set([
   "accesstoken",
   "accessurl",
@@ -95,10 +94,6 @@ const CREDENTIAL_FIELD_NAMES = new Set([
   "sessiontoken",
   "token",
 ]);
-
-interface PersistedShotCloudSession {
-  sessionToken?: unknown;
-}
 
 /**
  * The proxy receives the desktop session out of band. Keeping this separate
@@ -138,21 +133,9 @@ export function stripDesktopShotCredentials<T>(value: T): T {
 export function resolveDesktopShotApiProxy(
   context: Pick<MarketContext, "persistence">,
 ): DesktopPaneShotApiProxy {
-  let sessionToken: string | null = null;
-  for (const key of CLOUD_SESSION_KEYS) {
-    const value = context.persistence.pluginState.get<PersistedShotCloudSession>(
-      CLOUD_PLUGIN_ID,
-      key,
-      1,
-    )?.value;
-    if (typeof value?.sessionToken === "string" && value.sessionToken.length > 0) {
-      sessionToken = value.sessionToken;
-      break;
-    }
-  }
   return {
     baseUrl: getCloudApiBaseUrl(),
-    sessionToken,
+    sessionToken: resolvePersistedCloudSessionToken(context),
   };
 }
 

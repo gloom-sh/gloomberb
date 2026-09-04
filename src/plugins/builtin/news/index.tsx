@@ -17,6 +17,7 @@ import { useNewsArticleFooter } from "./wire/news/footer";
 import { usePersistedNewsArticles } from "./wire/persisted-articles";
 import { useNewsReadState } from "./wire/read-state";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import { tickerNewsHeadless } from "./headless";
 
 const NEWS_ITEM_LIMIT = 50;
 const DEFAULT_SORT: NewsSortPreference = { columnId: "time", direction: "desc" };
@@ -140,15 +141,18 @@ export const tickerNewsModule: PluginModule = {
   ],
 
   paneTemplates: [
-    createTickerSurfacePaneTemplate({
-      id: "ticker-news-pane",
-      paneId: "ticker-news",
-      label: "Ticker News",
-      description: "Company news for the selected ticker.",
-      keywords: ["company", "ticker", "news", "headlines", "cn"],
-      shortcut: "CN",
-      publicShare: true,
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "ticker-news-pane",
+        paneId: "ticker-news",
+        label: "Ticker News",
+        description: "Company news for the selected ticker.",
+        keywords: ["company", "ticker", "news", "headlines", "cn"],
+        shortcut: "CN",
+        publicShare: true,
+      }),
+      headless: tickerNewsHeadless,
+    },
   ],
 
   setup(ctx) {

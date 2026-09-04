@@ -4,7 +4,12 @@ import {
   type CloudEarningsTranscriptPayload,
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import type { PluginPersistence } from "../../../types/plugin";
+import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
+
+type EarningsCallsApiClient = Pick<
+  HeadlessPaneApiClient,
+  "getCloudEarningsCalls" | "getCloudEarningsTranscript"
+>;
 
 const LIST_KIND = "calls";
 const TRANSCRIPT_KIND = "transcript";
@@ -83,7 +88,8 @@ function listKey(ticker: string | null): string {
   return ticker ? ticker.toUpperCase() : "__all__";
 }
 
-export async function loadEarningsCalls(
+export async function loadEarningsCallsWithClient(
+  client: EarningsCallsApiClient,
   ticker: string | null,
   options?: { force?: boolean; limit?: number },
 ): Promise<EarningsCallsResult> {
@@ -101,7 +107,7 @@ export async function loadEarningsCalls(
   const active = activeListFetches.get(key);
   if (active && !force) return active;
 
-  const request = apiClient
+  const request = client
     .getCloudEarningsCalls({
       ticker: ticker ?? undefined,
       limit: options?.limit ?? 50,
@@ -155,6 +161,13 @@ export async function loadEarningsCalls(
   return request;
 }
 
+export function loadEarningsCalls(
+  ticker: string | null,
+  options?: { force?: boolean; limit?: number },
+): Promise<EarningsCallsResult> {
+  return loadEarningsCallsWithClient(apiClient, ticker, options);
+}
+
 /**
  * The server answers 202 with a pending marker when a call is known but not
  * transcribed yet, having just queued it. That is not a transcript and must
@@ -163,12 +176,13 @@ export async function loadEarningsCalls(
 export function isPendingTranscript(
   value: CloudEarningsTranscriptPayload | { status?: string } | null,
 ): boolean {
-  if (!value) return false
-  const record = value as { status?: string; turns?: unknown }
-  return record.status === "pending" || !Array.isArray(record.turns)
+  if (!value) return false;
+  const record = value as { status?: string; turns?: unknown };
+  return record.status === "pending" || !Array.isArray(record.turns);
 }
 
-export async function loadTranscript(
+export async function loadTranscriptWithClient(
+  client: EarningsCallsApiClient,
   callId: string,
   options?: { force?: boolean },
 ): Promise<CloudEarningsTranscriptPayload> {
@@ -184,7 +198,7 @@ export async function loadTranscript(
   const active = activeTranscriptFetches.get(callId);
   if (active && !force) return active;
 
-  const request = apiClient
+  const request = client
     .getCloudEarningsTranscript(callId)
     .then((transcript) => {
       if (isPendingTranscript(transcript)) return transcript;
@@ -220,4 +234,11 @@ export async function loadTranscript(
 
   activeTranscriptFetches.set(callId, request);
   return request;
+}
+
+export function loadTranscript(
+  callId: string,
+  options?: { force?: boolean },
+): Promise<CloudEarningsTranscriptPayload> {
+  return loadTranscriptWithClient(apiClient, callId, options);
 }

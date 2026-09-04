@@ -23,6 +23,7 @@ import {
   type EarningsDisplayRow,
   type EarningsEventDisplayRow,
 } from "./model";
+import { earningsCalendarHeadless } from "./headless";
 import {
   buildEarningsColumns,
   renderEarningsCell,
@@ -266,6 +267,7 @@ export const earningsModule: PluginModule = {
       description: "Upcoming earnings dates and estimates for your tickers.",
       keywords: ["earn", "earnings", "calendar", "eps", "revenue", "quarterly"],
       shortcut: { prefix: "ERN" },
+      headless: earningsCalendarHeadless,
       createInstance: (context) => ({
         settings: context.activeCollectionId
           ? { collectionId: context.activeCollectionId }

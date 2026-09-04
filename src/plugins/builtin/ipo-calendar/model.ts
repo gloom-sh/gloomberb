@@ -2,6 +2,7 @@ import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { IPORecord, IPOStatus } from "./types";
+import { formatIpoDate, matchesIpoRecord } from "./client";
 
 type IPOColumnId =
   | "ticker"
@@ -37,11 +38,7 @@ export function statusColor(status: IPOStatus): string {
   }
 }
 
-export function formatDate(date: Date): string {
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${date.getUTCFullYear()}-${month}-${day}`;
-}
+export const formatDate = formatIpoDate;
 
 export function formatOfferSize(value: number | null): string {
   if (value == null) return "—";
@@ -133,13 +130,4 @@ export function nextSortPreference(current: IPOSortPreference, columnId: string)
   return DEFAULT_SORT_PREFERENCE;
 }
 
-export function matchesSearch(record: IPORecord, query: string): boolean {
-  if (!query) return true;
-  const q = query.toLowerCase();
-  return (
-    record.ticker.toLowerCase().includes(q)
-    || record.companyName.toLowerCase().includes(q)
-    || (record.exchange?.toLowerCase().includes(q) ?? false)
-    || record.status.includes(q)
-  );
-}
+export const matchesSearch = matchesIpoRecord;

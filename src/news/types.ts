@@ -38,6 +38,7 @@ export interface NewsArticle {
   scores: NewsScores;
   isBreaking: boolean;
   isDeveloping: boolean;
+  sourceCount?: number;
   items?: NewsStoryItem[];
 
   // Compatibility aliases for RSS/Yahoo panes and existing table columns.

@@ -6,6 +6,7 @@ import {
 } from "./client";
 import { attachIpoCalendarPersistence, resetIpoCalendarPersistence } from "./cache";
 import { IPOCalendarPane } from "./pane";
+import { ipoCalendarHeadless } from "./headless";
 import { IPO_CALENDAR_PANE_ID } from "./types";
 
 let disposeConnection: (() => void) | null = null;
@@ -60,6 +61,7 @@ export const ipoCalendarModule: PluginModule = {
         "debut",
       ],
       shortcut: { prefix: "IPO" },
+      headless: ipoCalendarHeadless,
       createInstance: () => ({ placement: "floating" }),
     },
   ],

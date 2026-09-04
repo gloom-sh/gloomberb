@@ -256,6 +256,21 @@ async function fetchUpcomingIpos(): Promise<IPORecord[]> {
   return parseCalendarRecords(flat);
 }
 
+export function formatIpoDate(date: Date): string {
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${date.getUTCFullYear()}-${month}-${day}`;
+}
+
+export function matchesIpoRecord(record: IPORecord, query: string): boolean {
+  if (!query) return true;
+  const normalized = query.toLowerCase();
+  return record.ticker.toLowerCase().includes(normalized)
+    || record.companyName.toLowerCase().includes(normalized)
+    || (record.exchange?.toLowerCase().includes(normalized) ?? false)
+    || record.status.includes(normalized);
+}
+
 function dedupeAndSort(records: IPORecord[]): IPORecord[] {
   const byTicker = new Map<string, IPORecord>();
   const statusOrder: Record<IPOStatus, number> = { upcoming: 0, priced: 1, trading: 2 };

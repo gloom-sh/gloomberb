@@ -1,16 +1,12 @@
 import type { DataTableColumn } from "../../../components";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import type { DividendPayment } from "./types";
+import type { DividendRow } from "./view";
+
+export { toDividendRows } from "./view";
+export type { DividendRow } from "./view";
 
 export type DividendColumnId = "exDate" | "amount" | "currency";
 export type DividendColumn = DataTableColumn & { id: DividendColumnId };
-
-export interface DividendRow {
-  key: string;
-  exDate: string;
-  amount: number;
-  currency: string;
-}
 
 export interface DividendSortPreference {
   columnId: DividendColumnId | null;
@@ -66,18 +62,4 @@ export function nextSortPreference(
     return { columnId: typedColumnId, direction: "asc" };
   }
   return DEFAULT_SORT_PREFERENCE;
-}
-
-export function toDividendRows(payments: DividendPayment[]): DividendRow[] {
-  return payments.map((p, i) => ({
-    key: `${p.exDate.toISOString()}:${i}`,
-    exDate: formatDate(p.exDate),
-    amount: p.amount,
-    currency: p.currency,
-  }));
-}
-
-function formatDate(date: Date): string {
-  const iso = date.toISOString();
-  return iso.slice(0, 10);
 }

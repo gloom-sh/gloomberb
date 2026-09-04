@@ -5,6 +5,7 @@ import { PredictionMarketsPane } from "./pane";
 import { attachPredictionMarketsPersistence, resetPredictionMarketsPersistence } from "./services/fetch";
 import { predictionMarketsCliCommand } from "./cli";
 import { predictionChartSeriesCapability } from "./capability";
+import { predictionMarketsHeadless } from "./headless";
 import {
   buildPredictionMarketsPaneSettingsDef,
   createPredictionMarketsPaneSettings,
@@ -59,6 +60,7 @@ export const predictionMarketsPlugin: GloomPlugin = {
       description: "Open a new prediction markets browser pane",
       keywords: ["prediction", "markets", "polymarket", "kalshi", "events"],
       shortcut: { prefix: "PM", argPlaceholder: "query", argKind: "text" },
+      headless: predictionMarketsHeadless,
       createInstance: (_context, options) => {
         const parsed = parsePredictionSearchShortcut(options?.arg ?? "");
         return {

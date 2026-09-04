@@ -28,6 +28,7 @@ import {
   isDataPaneForDomFallback,
   normalizeCapabilityOptions,
 } from "./capabilities";
+import { withPersistedCloudSession } from "./cloud-session";
 
 async function withPaneRuntime<T>(
   ctx: CliCommandContext,
@@ -63,7 +64,10 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           + `Use "gloomberb catalog ${resolved.token}" to inspect readiness.`,
         );
       }
-      const report = await buildFunctionReport(resolved, context, parsed.arg);
+      const report = await withPersistedCloudSession(
+        context,
+        () => buildFunctionReport(resolved, context, parsed.arg),
+      );
       if (parsed.requireBotSafe && (report.data.empty || !report.data.complete)) {
         const unavailable = report.data.unavailableSymbols.length > 0
           ? ` Missing data for ${report.data.unavailableSymbols.join(", ")}.`

@@ -85,6 +85,7 @@ export function mapCloudNewsArticle(
     importance: scores.importance,
     isBreaking: !!item.flags?.breaking,
     isDeveloping: !!item.flags?.developing,
+    sourceCount: item.sourceCount,
     items: item.items?.map(mapCloudNewsStoryItem) ?? [],
   };
 }

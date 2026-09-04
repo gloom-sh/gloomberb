@@ -2,6 +2,12 @@ import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from "./data";
 import { EarningsCallsPane, EARNINGS_CALLS_PANE_ID } from "./pane";
+import {
+  earningsCallsHeadless,
+  earningsTranscriptHeadless,
+} from "./headless";
+
+export { earningsCallsHeadless, earningsTranscriptHeadless } from "./headless";
 
 const description =
   "Earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance.";
@@ -54,16 +60,20 @@ export const earningsCallsModule: PluginModule = {
         "qa",
       ],
       shortcut: { prefix: "CALLS" },
+      headless: earningsCallsHeadless,
       createInstance: () => ({ placement: "floating" }),
     },
-    createTickerSurfacePaneTemplate({
-      id: "earnings-call-transcripts-pane",
-      paneId: EARNINGS_CALLS_PANE_ID,
-      label: "Earnings Call Transcripts",
-      description,
-      keywords: ["earnings", "call", "transcript", "ect", "qa", "guidance"],
-      shortcut: "ECT",
-      publicShare: false,
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "earnings-call-transcripts-pane",
+        paneId: EARNINGS_CALLS_PANE_ID,
+        label: "Earnings Call Transcripts",
+        description,
+        keywords: ["earnings", "call", "transcript", "ect", "qa", "guidance"],
+        shortcut: "ECT",
+        publicShare: false,
+      }),
+      headless: earningsTranscriptHeadless,
+    },
   ],
 };
