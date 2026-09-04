@@ -100,17 +100,64 @@ export interface RemoteResourceSchema {
   patchable?: boolean;
 }
 
+export type RemoteSideEffectLevel =
+  | "none"
+  | "local-write"
+  | "network-write"
+  | "external-side-effect"
+  | "external-trade";
+
+export type RemoteWriteTier = "read" | "ui-write" | "user-data" | "broker";
+
+export type RemoteJsonSchemaType =
+  | "object"
+  | "array"
+  | "string"
+  | "number"
+  | "integer"
+  | "boolean"
+  | "null";
+
+/** Serializable subset of JSON Schema used for remote operation inputs. */
+export interface RemoteJsonSchema {
+  type?: RemoteJsonSchemaType | RemoteJsonSchemaType[];
+  description?: string;
+  properties?: Record<string, RemoteJsonSchema>;
+  required?: string[];
+  additionalProperties?: boolean;
+  items?: RemoteJsonSchema;
+  enum?: Array<string | number | boolean | null>;
+  minimum?: number;
+  maximum?: number;
+  minItems?: number;
+  maxItems?: number;
+  minLength?: number;
+  maxLength?: number;
+}
+
 export interface RemoteOperationSchema {
   id: string;
+  title: string;
   description: string;
-  inputShape?: string;
+  inputShape: string;
+  inputSchema: RemoteJsonSchema;
   outputShape?: string;
   returns?: string;
   recommendedNextReads?: string[];
   examples?: unknown[];
-  sideEffectLevel: "none" | "local-write" | "network-write" | "external-side-effect" | "external-trade";
+  sideEffectLevel: RemoteSideEffectLevel;
+  writeTier: RemoteWriteTier;
   requiresConfirmation?: boolean;
   dryRun?: boolean;
+}
+
+/** Stable operation metadata suitable for advertising outside the process. */
+export interface RemoteOperationDescriptor {
+  name: string;
+  title: string;
+  description: string;
+  writeTier: RemoteWriteTier;
+  inputSchema: RemoteJsonSchema;
 }
 
 export interface RemoteControlSchema {
