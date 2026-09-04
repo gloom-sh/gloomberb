@@ -1,5 +1,6 @@
 import { apiClient, setCloudApiFetchTransport } from "../../api-client";
 import { setHttpFetchTransport } from "../../utils/http-transport";
+import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
 
 const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
 
@@ -31,9 +32,13 @@ export function browserCredentialedFetch(url: string, init: RequestInit = {}): P
 
 export function installBrowserFetchTransports(): void {
   apiClient.setCookieSessionMode(true);
-  // Both are native fetch, so a response body can be read while it arrives.
+  // Native fetch, so a response body can be read while it arrives.
   setCloudApiFetchTransport(browserCredentialedFetch, { streaming: true });
-  setHttpFetchTransport((url, init) => fetch(url, init), { streaming: true });
+  // Plugin requests to a host on the proxy allowlist go through the worker,
+  // which can reach APIs that send no CORS headers. Those come back buffered,
+  // but nothing on the allowlist streams; every other host is a direct fetch
+  // exactly as before, and that path does.
+  setHttpFetchTransport(createBrowserHttpProxyTransport(), { streaming: true });
 }
 
 export async function restoreBrowserCloudSession(budgetMs = 5_000): Promise<void> {
