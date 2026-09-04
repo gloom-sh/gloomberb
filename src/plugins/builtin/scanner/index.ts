@@ -3,6 +3,9 @@ import type { PluginModule } from "../plugin-module";
 import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS } from "./flow-model";
 import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
+import { hiloHeadless } from "./headless";
+
+export { hiloHeadless } from "./headless";
 
 export const HILO_PANE_ID = "scanner-hilo";
 export const FLOW_PANE_ID = "scanner-flow";
@@ -96,6 +99,7 @@ export const scannerModule: PluginModule = {
       description: "Session new-high and new-low momentum with 30s/1m/5m counts.",
       keywords: ["hilo", "highs", "lows", "new", "momentum", "breakout", "scanner"],
       shortcut: { prefix: "HILO" },
+      headless: hiloHeadless,
       createInstance: () => ({ settings: { minPrice: "1", sort: "recent" } }),
     },
     {

@@ -5,6 +5,9 @@ import { AnalystResearchView } from "./analyst-pane";
 import { CorporateActionsView } from "./corporate-actions-pane";
 import { EquityDiagnosticView } from "./equity-diagnostic-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
+import { eventsHeadless } from "./events-headless";
+
+export { eventsHeadless } from "./events-headless";
 
 function EarningsEstimatesPane(props: { focused: boolean; width: number; height: number }) {
   return (
@@ -70,6 +73,7 @@ export const researchModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 24 },
       tableExport: true,
+      headless: eventsHeadless,
     },
     {
       id: "relative-valuation",

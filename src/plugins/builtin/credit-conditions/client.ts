@@ -19,7 +19,7 @@ export interface CreditConditionsLoadResult {
 
 const HISTORY_LIMIT = 45;
 
-type CreditSeriesLoader = (
+export type CreditSeriesLoader = (
   seriesId: CreditSeriesId,
   options: { limit: number; sortOrder: "desc" },
 ) => Promise<CloudFredSeriesPayload>;

@@ -41,6 +41,26 @@ describe("loadCdsActivity", () => {
     expect(activity.issuer).toBe("Oracle Corporation");
   });
 
+  test("prefers the primary US common stock when exchanges reuse a ticker", async () => {
+    const cedear = {
+      ...result("ORCL", "Oracle Corp. - CEDEAR"),
+      exchange: "BYMA",
+      primaryExchange: "BYMA",
+      type: "Depositary Receipt",
+      currency: "ARS",
+    };
+    const primary = {
+      ...result("ORCL", "Oracle Corporation"),
+      currency: "USD",
+      primaryExchange: "NYSE",
+    };
+    const calls = spy([cedear, primary]);
+
+    await loadCdsActivity("ORCL", calls.fetchCds, calls.searchInstruments);
+
+    expect(calls.requested).toEqual(["Oracle Corporation"]);
+  });
+
   test("falls back to the first result when no symbol matches exactly", async () => {
     const calls = spy([result("AVGO", "Broadcom Inc."), result("AVGOP", "Broadcom Preferred")]);
 

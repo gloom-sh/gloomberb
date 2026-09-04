@@ -16,11 +16,14 @@ import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import type { PluginModule } from "../plugin-module";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
+import { creditConditionsHeadless } from "./headless";
 import {
   CREDIT_SERIES,
   type CreditConditionRow,
   type CreditSeriesId,
 } from "./model";
+
+export { creditConditionsHeadless } from "./headless";
 
 type SortId = "label" | "oas" | "change";
 interface Column extends DataTableColumn { id: SortId }
@@ -204,5 +207,6 @@ export const creditConditionsModule: PluginModule = {
     description: "ICE BofA US corporate option-adjusted spreads from FRED.",
     keywords: ["credit", "spread", "oas", "corporate", "high yield", "investment grade", "macro"],
     shortcut: { prefix: "CRD" },
+    headless: creditConditionsHeadless,
   }],
 };

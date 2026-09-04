@@ -21,6 +21,11 @@ export interface VolatilityLoadResult {
 
 const HISTORY_LIMIT = 120;
 
+export type VolatilitySeriesLoader = (
+  seriesId: VolatilitySeriesId,
+  options: { limit?: number; sortOrder?: "asc" | "desc" },
+) => Promise<VolatilitySeriesInput>;
+
 function requestFor(seriesId: VolatilitySeriesId): FredSeriesRequest {
   return { seriesId, limit: HISTORY_LIMIT, sortOrder: "desc" };
 }
@@ -48,11 +53,12 @@ export function getCachedVolatilityData(): VolatilityLoadResult | null {
 async function loadSeries(
   seriesId: VolatilitySeriesId,
   force: boolean,
+  loader: VolatilitySeriesLoader,
 ): Promise<FredSeriesLoadResult> {
   const request = requestFor(seriesId);
   return loadCachedFredSeries(
     request,
-    async () => toInput({ data: await apiClient.getCloudFredSeries(seriesId, {
+    async () => toInput({ data: await loader(seriesId, {
       limit: request.limit,
       sortOrder: request.sortOrder,
     }) }),
@@ -60,9 +66,16 @@ async function loadSeries(
   );
 }
 
-export async function loadVolatilityData(force = false): Promise<VolatilityLoadResult> {
+const defaultSeriesLoader: VolatilitySeriesLoader = (seriesId, options) => (
+  apiClient.getCloudFredSeries(seriesId, options)
+);
+
+export async function loadVolatilityData(
+  force = false,
+  loader: VolatilitySeriesLoader = defaultSeriesLoader,
+): Promise<VolatilityLoadResult> {
   const settled = await Promise.allSettled(
-    VOLATILITY_SERIES.map(({ seriesId }) => loadSeries(seriesId, force)),
+    VOLATILITY_SERIES.map(({ seriesId }) => loadSeries(seriesId, force, loader)),
   );
   const inputs: Partial<Record<VolatilitySeriesId, VolatilitySeriesInput>> = {};
   const errors: string[] = [];

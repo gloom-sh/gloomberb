@@ -9,6 +9,7 @@ import { useQuoteBoard } from "../shared/use-quote-board";
 import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
 import { createPublicPaneShare } from "../shared/public-pane";
+import { worldIndicesHeadless } from "./headless";
 import {
   buildFlatRows,
   DEFAULT_SORT_PREFERENCE,
@@ -22,6 +23,8 @@ import {
   usesSessionText,
   type WorldIndexColumn,
 } from "./table";
+
+export { worldIndicesHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would remount the board every render. */
 const NO_SAVED_SYMBOLS: string[] = [];
@@ -160,6 +163,7 @@ export const worldIndicesModule: PluginModule = {
       description: "Monitor global equity indices grouped by region.",
       keywords: ["world", "indices", "global", "equity", "markets", "international"],
       shortcut: { prefix: "WEI" },
+      headless: worldIndicesHeadless,
       publicShare: createPublicPaneShare("World Equity Indices"),
     },
   ],

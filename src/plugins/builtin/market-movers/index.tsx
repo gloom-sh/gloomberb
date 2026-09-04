@@ -13,15 +13,12 @@ import { useAutoRefresh } from "../shared/auto-refresh";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import {
   attachMarketMoversPersistence,
-  fetchPreferredMarketMovers,
-  fetchTrending,
   MARKET_SUMMARY_SYMBOLS,
   resetMarketMoversPersistence,
   type ScreenerQuote,
   type MarketSummaryQuote,
 } from "./screener";
 import {
-  CATEGORY_MAP,
   DEFAULT_SORT_PREFERENCE,
   INDEX_SHORT,
   TABS,
@@ -29,7 +26,6 @@ import {
   nextSortPreference,
   resolveSummarySymbols,
   resolveTabs,
-  screenerQuoteFromQuote,
   sortRows,
   summaryQuoteFromQuote,
   type MarketMoverColumn,
@@ -37,6 +33,8 @@ import {
   type MarketMoverSortPreference,
   type TabId,
 } from "./model";
+import { loadMarketMoverTab } from "./client";
+import { marketMoversHeadless } from "./headless";
 import { buildMarketMoverColumns, renderMarketMoverCell } from "./table";
 import {
   LIVE_STREAMING_QUICK_SETTING,
@@ -48,6 +46,8 @@ import {
   overlayScreenerQuoteEntries,
   resolveScreenerQuoteFeedStatus,
 } from "../shared/screener-live-quotes";
+
+export { marketMoversHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would reload the board every render. */
 const NO_SAVED_SELECTION: string[] = [];
@@ -138,54 +138,13 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
     }
 
     try {
-      let data: ScreenerQuote[];
+      const result = await loadMarketMoverTab(tab, dataProvider, {
+        forceRefresh: options?.forceRefresh,
+      });
+      if (fetchGenRef.current !== gen) return;
 
-      if (tab === "trending") {
-        const trending = await fetchTrending(25, undefined, {
-          forceRefresh: options?.forceRefresh,
-        });
-        if (fetchGenRef.current !== gen) return;
-
-        const resolved: ScreenerQuote[] = [];
-
-        if (dataProvider) {
-          const targets = trending.slice(0, 25).map(({ symbol }) => ({ symbol, exchange: "" }));
-          if (dataProvider.getQuotesBatch) {
-            const batchResults = await dataProvider.getQuotesBatch(targets).catch(() => []);
-            for (const result of batchResults) {
-              if (fetchGenRef.current !== gen) return;
-              if (result.quote) {
-                resolved.push(screenerQuoteFromQuote(result.target.symbol, result.quote));
-              }
-            }
-          } else {
-            await Promise.allSettled(targets.map(async ({ symbol }) => {
-              try {
-                const q = await dataProvider.getQuote(symbol, "");
-                if (fetchGenRef.current !== gen) return;
-                if (q) {
-                  resolved.push(screenerQuoteFromQuote(symbol, q));
-                }
-              } catch { /* skip */ }
-            }));
-          }
-        }
-
-        if (fetchGenRef.current !== gen) return;
-        data = trending
-          .map((t) => resolved.find((r) => r.symbol === t.symbol))
-          .filter((r): r is ScreenerQuote => r !== undefined);
-        setMoversStale(false);
-      } else {
-        const result = await fetchPreferredMarketMovers(CATEGORY_MAP[tab], 25, {
-          forceRefresh: options?.forceRefresh,
-        });
-        if (fetchGenRef.current !== gen) return;
-        data = result.quotes;
-        setMoversStale(result.stale);
-      }
-
-      setQuotes(data);
+      setQuotes(result.quotes);
+      setMoversStale(result.stale);
       if (!options?.background) setSelectedSymbol(null);
       setLoadError(null);
       setLastLoadedAt(Date.now());
@@ -361,6 +320,7 @@ export const marketMoversModule: PluginModule = {
       description: "Top gainers, losers, most active, and trending tickers.",
       keywords: ["movers", "gainers", "losers", "active", "trending", "screener", "top"],
       shortcut: { prefix: "MOST" },
+      headless: marketMoversHeadless,
     },
   ],
 };

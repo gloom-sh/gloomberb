@@ -12,11 +12,15 @@ import {
   loadYieldCurve,
   parseYieldPoints,
   isInverted,
+  spreadBasisPoints,
   TREASURY_MATURITIES,
   type YieldPoint,
 } from "./treasury-data";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
+import { yieldCurveHeadless } from "./headless";
+
+export { yieldCurveHeadless } from "./headless";
 
 function formatYield(y: number | null): string {
   if (y == null) return "—";
@@ -25,13 +29,6 @@ function formatYield(y: number | null): string {
 
 function formatYieldAxis(value: number): string {
   return `${value.toFixed(2)}%`;
-}
-
-function spreadBp(points: YieldPoint[]): number | null {
-  const y2 = points.find((p) => p.maturity === "2Y")?.yield;
-  const y10 = points.find((p) => p.maturity === "10Y")?.yield;
-  if (y2 == null || y10 == null) return null;
-  return Math.round((y10 - y2) * 100);
 }
 
 function YieldCurvePane({ focused, width, height }: PaneProps) {
@@ -75,7 +72,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   });
 
   const inverted = isInverted(points);
-  const bp = spreadBp(points);
+  const bp = spreadBasisPoints(points);
   // Treasury series are daily closes, so which session the curve represents is
   // status the user needs; "updated Xm ago" only says when we last fetched it.
   const asOf = curveAsOf(points);
@@ -191,5 +188,6 @@ export const yieldCurveModule: PluginModule = {
     description: "US Treasury yield curve charted from FRED data.",
     keywords: ["yield", "curve", "treasury", "bonds", "rates", "gc", "interest"],
     shortcut: { prefix: "GC" },
+    headless: yieldCurveHeadless,
   }],
 };

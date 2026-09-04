@@ -4,6 +4,9 @@ import {
   resetFearGreedPersistence,
 } from "./cache";
 import { FearGreedPane } from "./pane";
+import { fearGreedHeadless } from "./headless";
+
+export { fearGreedHeadless } from "./headless";
 
 export const fearGreedModule: PluginModule = {
   setup(ctx) {
@@ -34,6 +37,7 @@ export const fearGreedModule: PluginModule = {
       description: "CNN Fear & Greed sentiment gauge with the seven indicator charts.",
       keywords: ["fear", "greed", "sentiment", "cnn", "market", "indicators", "gauge"],
       shortcut: { prefix: "FNG" },
+      headless: fearGreedHeadless,
     },
   ],
 };

@@ -2,6 +2,9 @@ import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { CDS_PANE_ID } from "./model";
 import { CdsPane } from "./pane";
+import { cdsHeadless } from "./headless";
+
+export { cdsHeadless } from "./headless";
 
 /** Only an explicit argument binds a ticker; bare `CDS` stays market-wide. */
 function explicitSymbol(options?: PaneTemplateCreateOptions): string | null {
@@ -26,6 +29,7 @@ export const cdsModule: PluginModule = {
     description: "Single-name corporate CDS trade activity from DTCC public dissemination.",
     keywords: ["cds", "credit", "default", "swap", "single name", "issuer", "dtcc", "protection"],
     shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+    headless: cdsHeadless,
     createInstance: (_context, options) => {
       const symbol = explicitSymbol(options);
       return symbol

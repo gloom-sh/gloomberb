@@ -18,6 +18,9 @@ import { colors } from "../../../theme/colors";
 import type { PluginModule } from "../plugin-module";
 import { getCachedVolatilityData, loadVolatilityData } from "./client";
 import type { TermState, VolatilityData } from "./model";
+import { volatilityHeadless } from "./headless";
+
+export { volatilityHeadless } from "./headless";
 
 function formatValue(value: number | null, suffix = ""): string {
   return value == null || !Number.isFinite(value) ? "--" : `${value.toFixed(2)}${suffix}`;
@@ -189,5 +192,6 @@ export const volatilityModule: PluginModule = {
     description: "Aligned daily 30-day and three-month VIX implied-volatility closes from FRED.",
     keywords: ["vix", "volatility", "implied volatility", "curve", "slope", "normal", "inverted", "macro"],
     shortcut: { prefix: "VIX" },
+    headless: volatilityHeadless,
   }],
 };

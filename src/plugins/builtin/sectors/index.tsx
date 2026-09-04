@@ -3,7 +3,6 @@ import { Box } from "../../../ui";
 import { DataTableView, Tabs, usePaneFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import type { PricePoint, Quote } from "../../../types/financials";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
@@ -22,11 +21,7 @@ import {
   DEFAULT_SORT_PREFERENCE,
   INITIAL_REFRESH_BY_COLLECTION,
   INITIAL_ROWS_BY_COLLECTION,
-  ONE_MONTH_DAYS,
-  ONE_YEAR_DAYS,
   buildSectorColumns,
-  computeTrailingReturn,
-  latestHistoryClose,
   nextSortPreference,
   normalizeRowsForCollection,
   sortRows,
@@ -37,6 +32,10 @@ import {
   type SectorRowsByCollection,
   type SectorSortPreference,
 } from "./sector-model";
+import { loadSectorRows } from "./client";
+import { sectorsHeadless } from "./headless";
+
+export { sectorsHeadless } from "./headless";
 
 /** Stable identity: a fresh literal here would refetch the board every render. */
 const NO_SAVED_ETFS: string[] = [];
@@ -105,52 +104,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       rows.map((row) => ({ ...row, loading: true }))
     )));
 
-    const loadQuotes = async (): Promise<Map<string, Quote | null>> => {
-      const quotes = new Map<string, Quote | null>();
-      if (dataProvider.getQuotesBatch) {
-        // A failed batch leaves every quote missing, which the row outcome below
-        // reports as unavailable instead of stamping the pane as fresh.
-        const results = await dataProvider.getQuotesBatch(
-          sectorDefs.map((sector) => ({ symbol: sector.etf, exchange: "" })),
-        ).catch(() => []);
-        for (const result of results) {
-          quotes.set(result.target.symbol, result.quote ?? null);
-        }
-        return quotes;
-      }
-
-      await Promise.all(sectorDefs.map(async (sector) => {
-        try {
-          quotes.set(sector.etf, await dataProvider.getQuote(sector.etf, ""));
-        } catch {
-          quotes.set(sector.etf, null);
-        }
-      }));
-      return quotes;
-    };
-
-    const loadRows = async (): Promise<Array<{ etf: string; row: Partial<SectorRow> | null }>> => {
-      const quotesByEtf = await loadQuotes();
-      return Promise.all(sectorDefs.map(async (sector) => {
-        const history: PricePoint[] = await dataProvider.getPriceHistory(sector.etf, "", "1Y")
-          .catch(() => []);
-        const quote = quotesByEtf.get(sector.etf) ?? null;
-        if (!quote && history.length === 0) return { etf: sector.etf, row: null };
-        const price = quote?.price ?? latestHistoryClose(history);
-        return {
-          etf: sector.etf,
-          row: {
-            price,
-            changePercent: quote?.changePercent ?? null,
-            return1M: computeTrailingReturn(history, ONE_MONTH_DAYS, price),
-            return1Y: computeTrailingReturn(history, ONE_YEAR_DAYS, price),
-            currency: quote?.currency ?? "USD",
-          },
-        };
-      }));
-    };
-
-    loadRows().then((outcomes) => {
+    loadSectorRows(sectorDefs, dataProvider).then((outcomes) => {
       if (fetchGenRef.current !== gen) return;
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
@@ -365,6 +319,7 @@ export const sectorsModule: PluginModule = {
       description: "S&P 500 sector and industry performance sorted by daily change.",
       keywords: ["sector", "sectors", "industry", "semis", "defense", "food", "leisure", "etf", "xlk", "xlv", "xlf", "performance", "spdr"],
       shortcut: { prefix: "BI" },
+      headless: sectorsHeadless,
     },
   ],
 };

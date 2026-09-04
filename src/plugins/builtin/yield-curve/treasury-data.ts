@@ -20,8 +20,12 @@ export const TREASURY_MATURITIES: Array<{ maturity: string; years: number; serie
   { maturity: "30Y", years: 30,    seriesId: "DGS30" },
 ];
 
-export async function loadYieldCurve(): Promise<YieldPoint[]> {
-  return apiClient.getCloudYieldCurve();
+export type YieldCurveLoader = () => Promise<YieldPoint[]>;
+
+export async function loadYieldCurve(
+  loader: YieldCurveLoader = () => apiClient.getCloudYieldCurve(),
+): Promise<YieldPoint[]> {
+  return loader();
 }
 
 export function parseYieldPoints(points: YieldPoint[]): YieldPoint[] {
@@ -45,8 +49,14 @@ export function curveAsOf(points: readonly YieldPoint[]): string | null {
   return latest;
 }
 
-export function isInverted(points: YieldPoint[]): boolean {
-  const y2 = points.find((p) => p.maturity === "2Y")?.yield;
-  const y10 = points.find((p) => p.maturity === "10Y")?.yield;
-  return y2 != null && y10 != null && y2 > y10;
+export function spreadBasisPoints(points: readonly YieldPoint[]): number | null {
+  const y2 = points.find((point) => point.maturity === "2Y")?.yield;
+  const y10 = points.find((point) => point.maturity === "10Y")?.yield;
+  if (y2 == null || y10 == null) return null;
+  return Math.round((y10 - y2) * 100);
+}
+
+export function isInverted(points: readonly YieldPoint[]): boolean {
+  const spread = spreadBasisPoints(points);
+  return spread != null && spread < 0;
 }
