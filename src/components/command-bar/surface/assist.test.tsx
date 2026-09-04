@@ -87,6 +87,12 @@ const ASSIST_WAIT_ATTEMPTS = 40;
  * far more than the sleeps, which is what made these tests fail in batches.
  */
 const ASSIST_WAIT_MS = 10_000;
+/**
+ * Above `ASSIST_WAIT_MS`, because Bun's own per-test timeout is 5s and a wait
+ * budget the runner kills first is not a budget. These tests sit out a 600ms
+ * debounce and a round trip, so they need the room on a slow machine.
+ */
+const ASSIST_TEST_TIMEOUT_MS = 20_000;
 
 async function waitForRequest(requests: string[]): Promise<void> {
   const deadline = Date.now() + ASSIST_WAIT_MS;
@@ -150,7 +156,7 @@ describe("CommandBar AI assist", () => {
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
-  });
+  }, ASSIST_TEST_TIMEOUT_MS);
 
   test("keeps the row the user picked when an answer lands above it", async () => {
     signInVerified();
@@ -187,7 +193,7 @@ describe("CommandBar AI assist", () => {
     // Enter still runs it rather than whatever now sits at its old index.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
-  });
+  }, ASSIST_TEST_TIMEOUT_MS);
 
   test("runs an argless prefix candidate that still carries an argument", async () => {
     signInVerified();
@@ -211,7 +217,7 @@ describe("CommandBar AI assist", () => {
 
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "earnings-calendar-pane", options: undefined }]);
-  });
+  }, ASSIST_TEST_TIMEOUT_MS);
 
   test("claims the answer still in flight when Enter lands on the thinking row", async () => {
     signInVerified();
@@ -248,7 +254,7 @@ describe("CommandBar AI assist", () => {
     }
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     expect(requests).toHaveLength(1);
-  });
+  }, ASSIST_TEST_TIMEOUT_MS);
 
   test("drops the section when a background ask fails", async () => {
     signInVerified();
@@ -265,7 +271,7 @@ describe("CommandBar AI assist", () => {
     const frame = await waitForFrameWithout("Ask AI");
     expect(requests).toHaveLength(1);
     expect(frame).not.toContain("unavailable");
-  });
+  }, ASSIST_TEST_TIMEOUT_MS);
 
   test("sends signed-out users to sign up instead of the endpoint", async () => {
     const requests = mockAssistTransport(() => jsonResponse({ candidates: [] }));
@@ -289,5 +295,5 @@ describe("CommandBar AI assist", () => {
     // the local match the user was already looking at.
     await emitKeypress(testSetup, { name: "return", sequence: "\r" });
     expect(created).toEqual([{ templateId: "new-chat-pane", options: undefined }]);
-  });
+  }, ASSIST_TEST_TIMEOUT_MS);
 });
