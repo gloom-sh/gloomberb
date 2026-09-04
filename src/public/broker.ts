@@ -7,6 +7,12 @@
  * from the view, since the renderer cannot open sockets itself.
  */
 export { getBrokerRemoteClient, setBrokerRemoteClient } from "../brokers/remote-broker-adapter";
+/**
+ * Placeholder a broker shows instead of a stored secret, so an edited profile
+ * can tell "unchanged" from "cleared". Broker plugins that persist a derived
+ * credential need the host's exact string for the round trip to work.
+ */
+export { PRESERVED_PASSWORD_HINT } from "../brokers/profile-form";
 export type { BrokerRemoteClient } from "../brokers/remote-broker-adapter";
 export type { ResourceStore } from "../data/resource-store";
 export { resolveTickerFinancialsForInstrument } from "../market-data/coordinator";

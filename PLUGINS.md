@@ -69,9 +69,42 @@ For external plugins, create a directory in `~/.gloomberb/plugins/`:
 
 ```
 ~/.gloomberb/plugins/my-plugin/
-  index.ts        # export default myPlugin
-  package.json    # optional, for dependencies
+  index.ts          # export default myPlugin
+  index.browser.ts  # optional, see below
+  package.json      # optional, for dependencies
+  icon.svg          # optional, 64x64, shown in the plugin directory
 ```
+
+### Plugins with a native half
+
+The terminal imports a plugin straight into Bun, so `node:net`, `node:dns`, and
+the filesystem are all available. The desktop view and the hosted browser app
+are browser contexts: their copy of the plugin is compiled with Bun's browser
+target, which **rejects `node:*` imports even behind a dynamic `import()`**. A
+plugin that opens a socket or resolves DNS therefore fails to compile for the
+view, and the marketplace shows it as broken.
+
+Ship a second, renderer-safe entry for that case:
+
+```json
+{
+  "main": "index.ts",
+  "browser": "index.browser.ts"
+}
+```
+
+The browser entry exports the same plugin identity, and the same broker
+`configSchema` and form conversions, but leaves out anything native. Nothing is
+lost on the desktop: the broker's network calls are executed by the Bun process
+and reach the view over RPC, so the renderer only needs the metadata and the UI.
+
+`index.browser.ts` is picked up automatically if the `browser` field is absent.
+A plugin with no browser entry falls back to `main`, which is correct for the
+majority that only use `fetch`.
+
+If a plugin genuinely cannot work on a renderer, declare `targets` instead
+(`["cli", "tui"]`, for example) so the marketplace explains why it is inert
+rather than reporting a compile error.
 
 ## What plugins can do
 

@@ -44,25 +44,51 @@ export function isPluginDirectory(name: string): boolean {
   return !name.startsWith(".");
 }
 
-/** Resolves a plugin directory's entry file the way `bun install` would. */
-export async function resolvePluginEntry(pluginDir: string): Promise<string | null> {
+async function readPluginPackageField(pluginDir: string, field: string): Promise<string | null> {
   const pkgPath = join(pluginDir, "package.json");
-  if (existsSync(pkgPath)) {
-    try {
-      const pkg = JSON.parse(await Bun.file(pkgPath).text());
-      if (pkg.main) {
-        const main = join(pluginDir, pkg.main);
-        if (existsSync(main)) return main;
-      }
-    } catch {
-      // Malformed package.json falls through to the index candidates.
-    }
+  if (!existsSync(pkgPath)) return null;
+  try {
+    const pkg = JSON.parse(await Bun.file(pkgPath).text());
+    const value = pkg[field];
+    if (typeof value !== "string" || !value) return null;
+    const resolved = join(pluginDir, value);
+    return existsSync(resolved) ? resolved : null;
+  } catch {
+    // Malformed package.json falls through to the index candidates.
+    return null;
   }
-  for (const candidate of ["index.ts", "index.tsx", "index.js"]) {
-    const path = join(pluginDir, candidate);
+}
+
+function resolveIndexCandidate(pluginDir: string, prefix: string): string | null {
+  for (const extension of ["ts", "tsx", "js"]) {
+    const path = join(pluginDir, `${prefix}.${extension}`);
     if (existsSync(path)) return path;
   }
   return null;
+}
+
+/** Resolves a plugin directory's entry file the way `bun install` would. */
+export async function resolvePluginEntry(pluginDir: string): Promise<string | null> {
+  return await readPluginPackageField(pluginDir, "main")
+    ?? resolveIndexCandidate(pluginDir, "index");
+}
+
+/**
+ * Resolves the entry to compile for a browser renderer, preferring the standard
+ * `browser` field and falling back to the native entry.
+ *
+ * A plugin that touches sockets, DNS, or the filesystem cannot be compiled for
+ * the desktop view: Bun's browser target rejects `node:*` imports even behind a
+ * dynamic import. The app solves this for its own build with private alias
+ * rules that swap in stubs, which a plugin in its own repository cannot reach.
+ * The `browser` field is that same escape hatch, published: ship a
+ * renderer-safe module with the same plugin metadata and let the native half
+ * run in the Bun process, where the desktop calls it over RPC anyway.
+ */
+export async function resolvePluginBrowserEntry(pluginDir: string): Promise<string | null> {
+  return await readPluginPackageField(pluginDir, "browser")
+    ?? resolveIndexCandidate(pluginDir, "index.browser")
+    ?? await resolvePluginEntry(pluginDir);
 }
 
 export function pluginSupportsTarget(plugin: GloomPlugin, target: PluginTarget): boolean {

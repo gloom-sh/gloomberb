@@ -1,7 +1,7 @@
 import { mkdir } from "fs/promises";
 import { join } from "path";
 
-import { resolvePluginEntry } from "./loader";
+import { resolvePluginBrowserEntry } from "./loader";
 import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-contract";
 
 /**
@@ -98,7 +98,9 @@ export async function bundleExternalPlugin(
   outDir: string,
   options: { exportNamesFor?: (specifier: string) => Promise<readonly string[]> } = {},
 ): Promise<BundlePluginResult> {
-  const entry = await resolvePluginEntry(pluginDir);
+  // The browser entry when the plugin ships one, so a plugin with a native
+  // half can still present its UI and metadata in the view.
+  const entry = await resolvePluginBrowserEntry(pluginDir);
   if (!entry) throw new Error(`No plugin entry file in ${pluginDir}`);
 
   await mkdir(outDir, { recursive: true });

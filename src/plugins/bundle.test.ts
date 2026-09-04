@@ -97,6 +97,37 @@ describe("bundleExternalPlugin", () => {
     }
   });
 
+  test("compiles the browser entry so a plugin with a native half still loads", async () => {
+    // Bun's browser target rejects `node:*` imports even behind a dynamic
+    // import, so without this a broker that opens a socket or resolves DNS
+    // could not ship to the desktop view at all.
+    const dir = mkdtempSync(join(tmpdir(), "gloom-bundle-browser-"));
+    writeFileSync(
+      join(dir, "package.json"),
+      JSON.stringify({ name: "scratch", main: "index.ts", browser: "index.browser.ts" }),
+    );
+    writeFileSync(join(dir, "native.ts"), `
+      import { Socket } from "node:net";
+      export const connect = () => new Socket();
+    `);
+    writeFileSync(join(dir, "index.ts"), `
+      export default { id: "scratch", name: "Scratch", version: "1.0.0", load: () => import("./native") };
+    `);
+    writeFileSync(join(dir, "index.browser.ts"), `
+      export default { id: "scratch", name: "Scratch", version: "1.0.0" };
+    `);
+    const out = join(dir, "out");
+    try {
+      const result = await bundleExternalPlugin(dir, out, { exportNamesFor: fakeExports });
+      const code = await Bun.file(result.outputPath).text();
+
+      expect(code).toContain("Scratch");
+      expect(code).not.toContain("node:net");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("rejects a directory with no entry file", async () => {
     const dir = mkdtempSync(join(tmpdir(), "gloom-bundle-empty-"));
     mkdirSync(join(dir, "src"), { recursive: true });
