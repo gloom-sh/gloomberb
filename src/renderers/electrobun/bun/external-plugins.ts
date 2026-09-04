@@ -1,11 +1,11 @@
-import { readdir, stat } from "fs/promises";
+import { readdir, rm, stat } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 
 import type { DesktopExternalPluginBundle } from "../shared/protocol";
 import { bundleExternalPlugin, pluginBundleCacheDir } from "../../../plugins/bundle";
 import { linkHostPackages } from "../../../plugins/host-link";
-import { getPluginsDir, resolvePluginEntry } from "../../../plugins/loader";
+import { getPluginCacheDir, getPluginsDir, isPluginDirectory, resolvePluginEntry } from "../../../plugins/loader";
 import type { GloomPlugin } from "../../../types/plugin";
 import { debugLog } from "../../../utils/debug-log";
 
@@ -60,15 +60,31 @@ async function readPluginMetadata(entryFile: string): Promise<GloomPlugin | null
   }
 }
 
+/**
+ * Bundles used to be cached inside the plugins folder, where the CLI listed
+ * `.cache` as an installed plugin and tried to `git pull` it. It is only a
+ * cache, so the old copy is dropped rather than migrated.
+ */
+async function removeLegacyBundleCache(pluginsDir: string): Promise<void> {
+  const legacy = join(pluginsDir, ".cache");
+  if (!existsSync(legacy)) return;
+  try {
+    await rm(legacy, { recursive: true, force: true });
+  } catch (error) {
+    log.error(`Could not remove the legacy bundle cache: ${error}`);
+  }
+}
+
 export async function collectExternalPluginBundles(): Promise<DesktopExternalPluginBundle[]> {
   const pluginsDir = getPluginsDir();
   if (!existsSync(pluginsDir)) return [];
 
-  const outDir = pluginBundleCacheDir(join(pluginsDir, ".cache"));
+  await removeLegacyBundleCache(pluginsDir);
+  const outDir = pluginBundleCacheDir(getPluginCacheDir());
   const bundles: DesktopExternalPluginBundle[] = [];
 
   for (const entry of await readdir(pluginsDir, { withFileTypes: true })) {
-    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    if (!entry.isDirectory() || !isPluginDirectory(entry.name)) continue;
     const pluginDir = join(pluginsDir, entry.name);
 
     const entryFile = await resolvePluginEntry(pluginDir);

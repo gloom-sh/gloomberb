@@ -1,7 +1,7 @@
 import { join } from "path";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync } from "fs";
 import { execFileSync } from "child_process";
-import { getPluginsDir } from "../../plugins/loader";
+import { getPluginsDir, isPluginDirectory } from "../../plugins/loader";
 import { linkHostPackages } from "../../plugins/host-link";
 import {
   cliStyles,
@@ -149,7 +149,7 @@ export async function updatePlugins(name?: string) {
   const dirs = name
     ? [validatePluginDirectoryName(name)]
     : readdirSync(PLUGINS_DIR, { withFileTypes: true })
-        .filter((entry) => entry.isDirectory())
+        .filter((entry) => entry.isDirectory() && isPluginDirectory(entry.name))
         .map((entry) => entry.name);
 
   if (dirs.length === 0) {
@@ -179,7 +179,8 @@ export async function updatePlugins(name?: string) {
 
 export function listPlugins() {
   ensurePluginsDir();
-  const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+  const entries = readdirSync(PLUGINS_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && isPluginDirectory(entry.name));
 
   if (entries.length === 0) {
     console.log(cliStyles.muted("No plugins installed."));

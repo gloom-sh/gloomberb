@@ -3,6 +3,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { createAppServices, type AppServices } from "../../../../core/app-services";
 import { loadDesktopBackendPlugins } from "../../../../plugins/catalog-backend";
+import { restoreExtractedPlugins } from "../../../../cli/restore-plugins";
 import type { AppSessionSnapshot } from "../../../../core/state/session-persistence";
 import {
   getDataDir,
@@ -133,7 +134,13 @@ export async function initializeDesktopBackend<TRpc>(
     });
   }
 
-  options.setCurrentConfig(await initDataDir(await resolveDesktopDataDir()));
+  const initialConfig = await initDataDir(await resolveDesktopDataDir());
+  // Restore plugins that moved into their own repositories before the catalog
+  // is read, the same as the terminal does at startup. Without it a
+  // desktop-only user silently loses a feature the day it is extracted, since
+  // nothing else installs it for them.
+  const seededPlugins = await restoreExtractedPlugins();
+  options.setCurrentConfig(seededPlugins ? { ...initialConfig, seededPlugins } : initialConfig);
   const config = options.getCurrentConfig();
   if (!config) throw new Error("Desktop config failed to initialize.");
 
