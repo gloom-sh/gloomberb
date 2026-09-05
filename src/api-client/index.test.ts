@@ -264,6 +264,40 @@ describe("apiClient auth cookies", () => {
     ]);
   });
 
+  test("ignores a stale response cookie after the session credential changes", async () => {
+    let releaseResponse: (() => void) | null = null;
+    let markRequestStarted: (() => void) | null = null;
+    const requestStarted = new Promise<void>((resolve) => {
+      markRequestStarted = resolve;
+    });
+
+    apiClient.setSessionToken("old-session.value");
+    setCloudApiFetchTransport(async () => {
+      markRequestStarted?.();
+      await new Promise<void>((resolve) => {
+        releaseResponse = resolve;
+      });
+      return createResponse({
+        channels: [],
+        onlineCount: 0,
+        channelStates: [],
+        notifications: [],
+      }, {
+        cookies: [
+          "__Secure-gloomberb.session_token=old-session.value; Path=/; HttpOnly; Secure; SameSite=None",
+        ],
+      });
+    });
+
+    const staleRequest = apiClient.getChatState();
+    await requestStarted;
+    apiClient.setSessionToken("new-session.value");
+    releaseResponse?.();
+    await staleRequest;
+
+    expect(apiClient.getSessionToken()).toBe("new-session.value");
+  });
+
   test("uses an installed cloud API fetch transport for auth cookie capture", async () => {
     const seenCookies: Array<string | null> = [];
     globalThis.fetch = mockFetch(async () => {

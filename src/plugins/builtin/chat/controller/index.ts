@@ -215,7 +215,7 @@ export class ChatController {
       ensureRealtimeSubscriptions: () => this.realtime.ensureRealtimeSubscriptions(),
       persistChannelState: (channelId) => this.storage.persistChannelState(channelId),
       persistSession: (sessionToken, user) => this.storage.persistSession(sessionToken, user),
-      refreshChatState: () => this.refreshChatState(),
+      refreshChatState: (isCurrent) => this.channelCatalog.refreshChatState(isCurrent),
       session: this.session,
       stopRealtimeSubscriptions: () => {
         this.realtime.stopRealtimeSubscriptions();

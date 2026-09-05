@@ -104,12 +104,13 @@ export class ChatControllerChannels {
     return request;
   }
 
-  async refreshChatState(): Promise<void> {
+  async refreshChatState(isCurrent: () => boolean = () => true): Promise<void> {
     if (!this.options.canLoadPrivateState()) {
       await this.refreshPresence();
       return;
     }
     const state = await apiClient.getChatState();
+    if (!isCurrent()) return;
     this.channels = normalizeChannels(state.channels);
     this.onlineCount = state.onlineCount;
     for (const entry of state.channelStates) {

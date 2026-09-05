@@ -141,6 +141,7 @@ export class CloudApiRequestTransport {
       headers.set("Content-Type", "application/json");
     }
     this.setSessionCookieHeader(headers);
+    const sessionTokenAtRequestStart = this.sessionToken;
     headers.set("Origin", this.baseUrl);
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
@@ -151,7 +152,9 @@ export class CloudApiRequestTransport {
         credentials: "include",
       });
       throwIfRequestAborted(options?.signal);
-      this.extractSessionCookie(res);
+      if (this.sessionToken === sessionTokenAtRequestStart) {
+        this.extractSessionCookie(res);
+      }
       const text = await res.text();
       throwIfRequestAborted(options?.signal);
 

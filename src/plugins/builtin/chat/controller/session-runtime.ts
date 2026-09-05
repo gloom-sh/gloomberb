@@ -1,4 +1,5 @@
 import { apiClient } from "../../../../api-client";
+import { ApiRequestError } from "../../../../api-client/errors";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
   type ChannelRuntimeState,
@@ -93,7 +94,7 @@ interface RefreshChatControllerSessionOptions {
   ensureRealtimeSubscriptions: () => void;
   persistChannelState: (channelId: string) => void;
   persistSession: (sessionToken: string | null, user: ChatSessionUser | null) => void;
-  refreshChatState: () => Promise<void>;
+  refreshChatState: (isCurrent?: () => boolean) => Promise<void>;
   session: ChatControllerSessionState;
   stopRealtimeSubscriptions: () => void;
   stopSafetyRefresh: () => void;
@@ -119,20 +120,83 @@ export async function refreshChatControllerSession({
   session.sessionToken = apiClient.getSessionToken();
   const apiSession = await apiClient.getSession();
   if (!apiSession) {
-    const persistedToken = apiClient.getSessionToken() || session.sessionToken;
-    // A 200 with no user is what /auth/get-session returns when no cookie
-    // reached the server. Desktop's backend process used to treat that as a
-    // real sign-out and persist a wiped token, so the next launch was logged
-    // out. Keep a captured native session; hard account-missing responses
-    // already clear the token inside getSession().
+    const persistedToken = apiClient.getSessionToken();
+    // A 200 with no user used to mean the desktop backend had not received the
+    // restored cookie yet, so do not discard a captured native session on that
+    // response alone. Probe another authenticated endpoint: success validates
+    // the token, a 401 proves it expired, and a transient failure keeps offline
+    // startup from signing the user out.
     if (persistedToken) {
       session.sessionToken = persistedToken;
       session.user = session.user ?? normalizeSessionUser(apiClient.getCurrentUser());
+      // getSession() clears the API client's cached user when the endpoint
+      // answers null. Keep both session views aligned while the protected
+      // request validates the preserved native credential.
+      apiClient.restoreCachedUser(session.user);
       session.sessionChecked = true;
       persistSession(session.sessionToken, session.user);
       emit();
+
+      const credentialIsCurrent = () =>
+        apiClient.getSessionToken() === persistedToken && session.sessionToken === persistedToken;
+      const handleValidationError = (error: unknown) => {
+        if (!(error instanceof ApiRequestError) || !credentialIsCurrent()) return;
+        if (error.status === 401) {
+          apiClient.setSessionToken(null);
+          session.sessionToken = null;
+          applySignedOut();
+          return;
+        }
+        if (error.status === 403 && session.user) {
+          session.user = { ...session.user, emailVerified: false };
+          apiClient.restoreCachedUser(session.user);
+          persistSession(session.sessionToken, session.user);
+          emit();
+          syncVerificationPolling();
+          stopSafetyRefresh();
+          stopRealtimeSubscriptions();
+        }
+      };
+
+      if (!session.user?.emailVerified) {
+        try {
+          const profile = await apiClient.getAccountProfile();
+          if (!credentialIsCurrent()) return;
+          const persistedProfile = {
+            ...profile,
+            updatedAt: profile.updatedAt ?? undefined,
+          };
+          session.user = normalizeSessionUser(persistedProfile);
+          apiClient.restoreCachedUser(persistedProfile);
+          persistSession(session.sessionToken, session.user);
+          emit();
+        } catch (error) {
+          handleValidationError(error);
+          return;
+        }
+
+        if (!session.user?.emailVerified) {
+          syncVerificationPolling();
+          stopSafetyRefresh();
+          stopRealtimeSubscriptions();
+          return;
+        }
+      }
+
+      try {
+        await refreshChatState(credentialIsCurrent);
+      } catch (error) {
+        handleValidationError(error);
+        return;
+      }
+      if (!credentialIsCurrent()) return;
+
+      stopVerificationPolling();
+      ensureRealtimeSubscriptions();
+      ensureOpenChannelConnections();
       return;
     }
+    session.sessionToken = null;
     applySignedOut();
     return;
   }

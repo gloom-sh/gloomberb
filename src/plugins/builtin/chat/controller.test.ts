@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { AppNotificationRequest } from "../../../types/plugin";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
-import { apiClient, type ChatChannel, type ChatMessage, type ChatNotification } from "../../../api-client";
+import {
+  apiClient,
+  type ChatChannel,
+  type ChatMessage,
+  type ChatNotification,
+  type ChatStateResponse,
+} from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import { ChatController } from "./controller";
 
 const TRANSCRIPT_KIND = "channel-transcript";
@@ -14,6 +21,7 @@ const originalGetMessages = apiClient.getMessages.bind(apiClient);
 const originalGetChannels = apiClient.getChannels.bind(apiClient);
 const originalGetChatPresence = apiClient.getChatPresence.bind(apiClient);
 const originalGetChatState = apiClient.getChatState.bind(apiClient);
+const originalGetAccountProfile = apiClient.getAccountProfile.bind(apiClient);
 const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(apiClient);
 const originalMarkChatNotificationsDelivered = apiClient.markChatNotificationsDelivered.bind(apiClient);
 const originalSubscribeChatNotifications = apiClient.subscribeChatNotifications.bind(apiClient);
@@ -100,6 +108,7 @@ afterEach(() => {
   apiClient.getChannels = originalGetChannels;
   apiClient.getChatPresence = originalGetChatPresence;
   apiClient.getChatState = originalGetChatState;
+  apiClient.getAccountProfile = originalGetAccountProfile;
   apiClient.updateChatChannelState = originalUpdateChatChannelState;
   apiClient.markChatNotificationsDelivered = originalMarkChatNotificationsDelivered;
   apiClient.subscribeChatNotifications = originalSubscribeChatNotifications;
@@ -453,9 +462,15 @@ describe("ChatController", () => {
     }
   });
 
-  test("keeps a persisted native session when get-session returns no user", async () => {
+  test("validates a persisted native session through protected chat state", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
+    const directChannel: ChatChannel = {
+      id: "dm:u2",
+      name: "u2",
+      kind: "direct",
+      created_at: "2026-03-28T00:00:00.000Z",
+    };
 
     persistence.setState("session", {
       sessionToken: "token-123",
@@ -463,11 +478,22 @@ describe("ChatController", () => {
     }, { schemaVersion: 1 });
 
     controller.attachPersistence(persistence);
-    apiClient.getSession = async () => null;
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getChatState = async () => ({
+      channels: [...SERVER_CHAT_CHANNELS, directChannel],
+      onlineCount: 0,
+      channelStates: [],
+      notifications: [],
+    });
 
     await controller.refreshSession();
 
     expect(apiClient.getSessionToken()).toBe("token-123");
+    expect(apiClient.getCurrentUser()?.id).toBe("u1");
+    expect(controller.getChannels()).toContainEqual(directChannel);
     expect(persistence.getState<{
       sessionToken: string;
       user: { id: string; username: string; emailVerified: boolean };
@@ -480,6 +506,219 @@ describe("ChatController", () => {
       username: "vince",
       emailVerified: true,
     });
+    controller.dispose();
+  });
+
+  test("clears an expired persisted session when protected chat rejects it", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+
+    persistence.setState("session", {
+      sessionToken: "expired-token",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getChatState = async () => {
+      throw new ApiRequestError("Unauthorized", 401);
+    };
+
+    await controller.refreshSession();
+
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(apiClient.getCurrentUser()).toBeNull();
+    expect(controller.getSnapshot().user).toBeNull();
+    expect(persistence.getState("session", { schemaVersion: 1 })).toEqual({
+      sessionToken: null,
+      user: null,
+    });
+    controller.dispose();
+  });
+
+  test("clears an expired persisted session for an unverified user", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+    let profileRequests = 0;
+
+    persistence.setState("session", {
+      sessionToken: "expired-token",
+      user: { id: "u1", username: "vince", emailVerified: false },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getAccountProfile = async () => {
+      profileRequests += 1;
+      throw new ApiRequestError("Unauthorized", 401);
+    };
+
+    await controller.refreshSession();
+
+    expect(profileRequests).toBe(1);
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(apiClient.getCurrentUser()).toBeNull();
+    expect(controller.getSnapshot().user).toBeNull();
+    controller.dispose();
+  });
+
+  test("downgrades stale verification state when protected chat rejects it", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+
+    persistence.setState("session", {
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getChatState = async () => {
+      throw new ApiRequestError("Email verification required", 403);
+    };
+
+    await controller.refreshSession();
+
+    expect(apiClient.getSessionToken()).toBe("token-123");
+    expect(apiClient.getCurrentUser()?.emailVerified).toBe(false);
+    expect(controller.getSnapshot().user?.emailVerified).toBe(false);
+    expect(persistence.getState<{
+      sessionToken: string;
+      user: { id: string; username: string; emailVerified: boolean };
+    }>("session", { schemaVersion: 1 })?.user.emailVerified).toBe(false);
+    controller.dispose();
+  });
+
+  test("does not let a stale validation failure clear a replacement session", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+    let rejectProbe: ((error: Error) => void) | null = null;
+    let markProbeStarted: (() => void) | null = null;
+    const probeStarted = new Promise<void>((resolve) => {
+      markProbeStarted = resolve;
+    });
+
+    persistence.setState("session", {
+      sessionToken: "old-token",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getChatState = () => new Promise((_, reject) => {
+      rejectProbe = reject;
+      markProbeStarted?.();
+    });
+
+    const refresh = controller.refreshSession();
+    await probeStarted;
+    controller.adoptSession("new-token", {
+      id: "u2",
+      username: "mara",
+      emailVerified: true,
+    });
+    rejectProbe?.(new ApiRequestError("Unauthorized", 401));
+    await refresh;
+
+    expect(apiClient.getSessionToken()).toBe("new-token");
+    expect(apiClient.getCurrentUser()?.id).toBe("u2");
+    expect(controller.getSnapshot().user?.id).toBe("u2");
+    expect(persistence.getState<{
+      sessionToken: string;
+      user: { id: string };
+    }>("session", { schemaVersion: 1 })).toMatchObject({
+      sessionToken: "new-token",
+      user: { id: "u2" },
+    });
+    controller.dispose();
+  });
+
+  test("does not apply stale chat state after a replacement session", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+    let resolveProbe: ((state: ChatStateResponse) => void) | null = null;
+    let markProbeStarted: (() => void) | null = null;
+    const probeStarted = new Promise<void>((resolve) => {
+      markProbeStarted = resolve;
+    });
+    const oldDirectChannel: ChatChannel = {
+      id: "dm:old-account",
+      name: "old-account",
+      kind: "direct",
+      created_at: "2026-03-28T00:00:00.000Z",
+    };
+
+    persistence.setState("session", {
+      sessionToken: "old-token",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getChatState = () => new Promise<ChatStateResponse>((resolve) => {
+      resolveProbe = resolve;
+      markProbeStarted?.();
+    });
+
+    const refresh = controller.refreshSession();
+    await probeStarted;
+    controller.adoptSession("new-token", {
+      id: "u2",
+      username: "mara",
+      emailVerified: true,
+    });
+    resolveProbe?.({
+      channels: [...SERVER_CHAT_CHANNELS, oldDirectChannel],
+      onlineCount: 0,
+      channelStates: [],
+      notifications: [],
+    });
+    await refresh;
+
+    expect(apiClient.getSessionToken()).toBe("new-token");
+    expect(controller.getSnapshot().user?.id).toBe("u2");
+    expect(controller.getChannels()).not.toContainEqual(oldDirectChannel);
+    controller.dispose();
+  });
+
+  test("keeps a persisted session when the protected validation probe is offline", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = new ChatController();
+
+    persistence.setState("session", {
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    }, { schemaVersion: 1 });
+
+    controller.attachPersistence(persistence);
+    apiClient.getSession = async () => {
+      apiClient.restoreCachedUser(null);
+      return null;
+    };
+    apiClient.getChatState = async () => {
+      throw new Error("network down");
+    };
+
+    await controller.refreshSession();
+
+    expect(apiClient.getSessionToken()).toBe("token-123");
+    expect(apiClient.getCurrentUser()?.id).toBe("u1");
+    expect(controller.getSnapshot().user?.id).toBe("u1");
     controller.dispose();
   });
 
