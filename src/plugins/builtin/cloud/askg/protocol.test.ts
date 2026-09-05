@@ -7,6 +7,7 @@ import {
   type ASKGSessionStartRequest,
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
+  type ClientToolManifest,
   type ToolManifest,
   type ToolResultPayload,
 } from "./protocol";
@@ -17,7 +18,7 @@ function jsonRoundTrip<T>(value: T): T {
 
 function projectHeadlessDefinition(
   definition: HeadlessPaneDefinition,
-): ToolManifest {
+): ClientToolManifest {
   const options = definition.options.map(({ settingKey: _settingKey, pluginState: _pluginState, ...option }) => option);
   const columns = definition.columns?.map(({ format: _format, ...column }) => column);
   return {
@@ -37,7 +38,7 @@ function projectHeadlessDefinition(
 
 describe("ASKG protocol", () => {
   test("round-trips session negotiation, a manifest, every event, and a tool result", () => {
-    const manifest: ToolManifest = {
+    const manifest: ClientToolManifest = {
       name: "layout.place_pane",
       source: "remote-op",
       title: "Place pane",
