@@ -37,7 +37,16 @@ export type WriteTier = RemoteWriteTier;
 export type ASKGClientKind = "tui" | "desktop" | "web";
 
 /** Origin of an advertised client tool. */
-export type ToolManifestSource = "headless" | "remote-op";
+/**
+ * Origin of a tool. This client only ever advertises "headless" and
+ * "remote-op"; "server" describes the tools the platform runs itself and
+ * reports back in `serverTools`, so a session response can describe its whole
+ * tool surface.
+ */
+export type ToolManifestSource = "headless" | "remote-op" | "server";
+
+/** The subset this client is allowed to advertise at session start. */
+export type ClientToolManifestSource = Exclude<ToolManifestSource, "server">;
 
 /** Headless result shapes supported by the tool timeline. */
 export type ToolManifestShape = HeadlessPaneShape;
@@ -67,6 +76,8 @@ export type ToolInputSchemaType = RemoteJsonSchemaType;
 export type ToolInputSchema = RemoteJsonSchema;
 
 /** Client or server tool metadata negotiated when a session starts. */
+export type ClientToolManifest = ToolManifest & { source: ClientToolManifestSource };
+
 export interface ToolManifest {
   /** Lowercase stable identifier matching TOOL_NAME_PATTERN. */
   name: string;
@@ -102,7 +113,8 @@ export interface ASKGSessionStartRequest {
   protocolVersion: typeof ASKG_PROTOCOL_VERSION;
   client: ASKGClientDescriptor;
   context: ASKGSessionContext;
-  tools: ToolManifest[];
+  /** A client may only advertise tools it executes itself. */
+  tools: ClientToolManifest[];
   manifestHash: string;
 }
 
@@ -196,7 +208,7 @@ export interface ASKGToolExecutedEvent extends ASKGEventBase {
   turnId: string;
   toolCallId: string;
   name: string;
-  source: ToolManifestSource | "server";
+  source: ToolManifestSource;
   status: ToolResultStatus;
   summary: ToolExecutionSummary;
 }
