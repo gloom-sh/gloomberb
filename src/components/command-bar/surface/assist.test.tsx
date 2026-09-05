@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { act } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import type { PluginRegistry } from "../../../plugins/registry";
@@ -253,6 +254,48 @@ describe("CommandBar AI assist", () => {
     }
     expect(created).toEqual([{ templateId: "new-chat-pane", options: { arg: "#general" } }]);
     expect(requests).toHaveLength(1);
+  });
+
+  test("does not restart an ask when Enter repeats before loading renders", async () => {
+    signInVerified();
+    let releaseResponse = () => {};
+    const held = new Promise<void>((resolve) => { releaseResponse = resolve; });
+    const requests = mockAssistTransport(async () => {
+      await held;
+      return jsonResponse({
+        candidates: [{ input: "CHAT #general", title: "Open the general channel", prefix: "CHAT", confidence: 0.9 }],
+      });
+    });
+
+    testSetup = await testRender(
+      <CommandBarHarness query="new chat pane" />,
+      { width: 120, height: 20 },
+    );
+
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("Thinking…");
+
+    await act(async () => {
+      for (let press = 0; press < 2; press += 1) {
+        testSetup!.renderer.keyInput.emit("keypress", {
+          ctrl: false,
+          meta: false,
+          option: false,
+          shift: false,
+          eventType: "press",
+          name: "return",
+          sequence: "\r",
+          repeated: press > 0,
+          stopPropagation: () => {},
+          preventDefault: () => {},
+        } as any);
+      }
+      await testSetup!.renderOnce();
+    });
+
+    expect(requests).toHaveLength(1);
+    releaseResponse();
+    await waitForFrameToContain("#general · Open the general channel", ASSIST_WAIT_ATTEMPTS);
   });
 
   test("drops the section when a background ask fails", async () => {
