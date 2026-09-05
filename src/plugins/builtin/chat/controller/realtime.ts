@@ -1,6 +1,7 @@
 import { apiClient, type ChatNotification } from "../../../../api-client";
 import {
   SAFETY_REFRESH_MS,
+  SESSION_RETRY_MS,
   VERIFICATION_POLL_MS,
 } from "./state";
 
@@ -18,6 +19,7 @@ interface ChatControllerRealtimeOptions {
 
 export class ChatControllerRealtime {
   private verificationPollTimer: ReturnType<typeof setInterval> | null = null;
+  private sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private safetyRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private chatNotificationUnsubscribe: (() => void) | null = null;
   private chatPresenceUnsubscribe: (() => void) | null = null;
@@ -34,6 +36,27 @@ export class ChatControllerRealtime {
     this.verificationPollTimer = setInterval(() => {
       void this.options.refreshSession().catch(() => {});
     }, VERIFICATION_POLL_MS);
+  }
+
+  scheduleSessionRetry(): void {
+    if (
+      this.sessionRetryTimer
+      || !this.options.getAppActive()
+      || !this.options.hasSession()
+    ) {
+      return;
+    }
+    this.sessionRetryTimer = setTimeout(() => {
+      this.sessionRetryTimer = null;
+      void this.options.refreshSession().catch(() => {});
+    }, SESSION_RETRY_MS);
+    this.sessionRetryTimer.unref?.();
+  }
+
+  stopSessionRetry(): void {
+    if (!this.sessionRetryTimer) return;
+    clearTimeout(this.sessionRetryTimer);
+    this.sessionRetryTimer = null;
   }
 
   ensureRealtimeSubscriptions(): void {
@@ -85,6 +108,7 @@ export class ChatControllerRealtime {
 
   stopAll(): void {
     this.stopVerificationPolling();
+    this.stopSessionRetry();
     this.stopSafetyRefresh();
     this.stopRealtimeSubscriptions();
   }

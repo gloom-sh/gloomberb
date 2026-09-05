@@ -197,9 +197,15 @@ export class ChatController {
   /** Single-flight: every open chat pane calls this on mount. */
   async refreshSession(): Promise<void> {
     if (this.sessionRefreshPromise) return this.sessionRefreshPromise;
-    const request = this.runSessionRefresh().finally(() => {
-      this.sessionRefreshPromise = null;
-    });
+    this.realtime.stopSessionRetry();
+    const request = this.runSessionRefresh()
+      .catch((error) => {
+        this.realtime.scheduleSessionRetry();
+        throw error;
+      })
+      .finally(() => {
+        this.sessionRefreshPromise = null;
+      });
     this.sessionRefreshPromise = request;
     return request;
   }
@@ -216,6 +222,7 @@ export class ChatController {
       persistChannelState: (channelId) => this.storage.persistChannelState(channelId),
       persistSession: (sessionToken, user) => this.storage.persistSession(sessionToken, user),
       refreshChatState: (isCurrent) => this.channelCatalog.refreshChatState(isCurrent),
+      scheduleSessionRetry: () => this.realtime.scheduleSessionRetry(),
       session: this.session,
       stopRealtimeSubscriptions: () => {
         this.realtime.stopRealtimeSubscriptions();
@@ -337,11 +344,12 @@ export class ChatController {
     this.appActive = appActive;
     if (!appActive) {
       this.realtime.stopVerificationPolling();
+      this.realtime.stopSessionRetry();
       return;
     }
     this.markFocusedViewsViewed();
     this.realtime.syncVerificationPolling();
-    void this.refreshChatState()
+    void this.refreshSession()
       .then(() => this.markFocusedViewsViewed())
       .catch(() => {});
   }

@@ -95,6 +95,7 @@ interface RefreshChatControllerSessionOptions {
   persistChannelState: (channelId: string) => void;
   persistSession: (sessionToken: string | null, user: ChatSessionUser | null) => void;
   refreshChatState: (isCurrent?: () => boolean) => Promise<void>;
+  scheduleSessionRetry: () => void;
   session: ChatControllerSessionState;
   stopRealtimeSubscriptions: () => void;
   stopSafetyRefresh: () => void;
@@ -111,6 +112,7 @@ export async function refreshChatControllerSession({
   persistChannelState,
   persistSession,
   refreshChatState,
+  scheduleSessionRetry,
   session,
   stopRealtimeSubscriptions,
   stopSafetyRefresh,
@@ -140,14 +142,14 @@ export async function refreshChatControllerSession({
       const credentialIsCurrent = () =>
         apiClient.getSessionToken() === persistedToken && session.sessionToken === persistedToken;
       const handleValidationError = (error: unknown) => {
-        if (!(error instanceof ApiRequestError) || !credentialIsCurrent()) return;
-        if (error.status === 401) {
+        if (!credentialIsCurrent()) return;
+        if (error instanceof ApiRequestError && error.status === 401) {
           apiClient.setSessionToken(null);
           session.sessionToken = null;
           applySignedOut();
           return;
         }
-        if (error.status === 403 && session.user) {
+        if (error instanceof ApiRequestError && error.status === 403 && session.user) {
           session.user = { ...session.user, emailVerified: false };
           apiClient.restoreCachedUser(session.user);
           persistSession(session.sessionToken, session.user);
@@ -155,7 +157,9 @@ export async function refreshChatControllerSession({
           syncVerificationPolling();
           stopSafetyRefresh();
           stopRealtimeSubscriptions();
+          return;
         }
+        scheduleSessionRetry();
       };
 
       if (!session.user?.emailVerified) {
@@ -216,7 +220,7 @@ export async function refreshChatControllerSession({
   if (nextUser?.emailVerified) {
     stopVerificationPolling();
     ensureRealtimeSubscriptions();
-    await refreshChatState().catch(() => {});
+    await refreshChatState().catch(() => scheduleSessionRetry());
     ensureOpenChannelConnections();
     return;
   }

@@ -21,6 +21,7 @@ export const TRANSCRIPT_CACHE_POLICY = {
 };
 export const DRAFT_SYNC_DEBOUNCE_MS = 250;
 export const VERIFICATION_POLL_MS = 5_000;
+export const SESSION_RETRY_MS = 30_000;
 export const SAFETY_REFRESH_MS = 30_000;
 export const PENDING_RECONCILE_WINDOW_MS = 2 * 60_000;
 

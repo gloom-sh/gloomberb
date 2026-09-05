@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { AppNotificationRequest } from "../../../types/plugin";
 import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
 import {
@@ -10,6 +10,7 @@ import {
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { ChatController } from "./controller";
+import { SESSION_RETRY_MS } from "./controller/state";
 
 const TRANSCRIPT_KIND = "channel-transcript";
 const TRANSCRIPT_KEY = "everyone";
@@ -99,6 +100,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  jest.useRealTimers();
   apiClient.dispose();
   apiClient.setSessionToken(null);
   apiClient.setCookieSessionMode(false);
@@ -696,7 +698,8 @@ describe("ChatController", () => {
     controller.dispose();
   });
 
-  test("keeps a persisted session when the protected validation probe is offline", async () => {
+  test("revalidates a persisted session after an offline validation probe", async () => {
+    jest.useFakeTimers();
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
 
@@ -719,7 +722,19 @@ describe("ChatController", () => {
     expect(apiClient.getSessionToken()).toBe("token-123");
     expect(apiClient.getCurrentUser()?.id).toBe("u1");
     expect(controller.getSnapshot().user?.id).toBe("u1");
+    expect((controller as any).realtime.sessionRetryTimer).not.toBeNull();
+
+    apiClient.getChatState = async () => {
+      throw new ApiRequestError("Unauthorized", 401);
+    };
+    jest.advanceTimersByTime(SESSION_RETRY_MS);
+    await controller.refreshSession();
+
+    expect(apiClient.getSessionToken()).toBeNull();
+    expect(controller.getSnapshot().user).toBeNull();
+    expect((controller as any).realtime.sessionRetryTimer).toBeNull();
     controller.dispose();
+    jest.useRealTimers();
   });
 
   test("signs out when get-session returns no user and no token is stored", async () => {
@@ -769,6 +784,8 @@ describe("ChatController", () => {
       username: "vince",
       emailVerified: true,
     });
+    expect((controller as any).realtime.sessionRetryTimer).not.toBeNull();
+    controller.dispose();
   });
 
   test("refreshes the public transcript without requiring a session", async () => {
