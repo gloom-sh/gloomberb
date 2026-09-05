@@ -19,7 +19,7 @@ export const ASKG_PROTOCOL_VERSION = 1;
 export const MAX_TOOL_RESULT_BYTES = 262_144;
 
 /** Source form for valid tool names advertised to ASKG. */
-export const TOOL_NAME_PATTERN = "^[a-z][a-z0-9_.]{2,48}$";
+export const TOOL_NAME_PATTERN = "^[a-z0-9][a-z0-9_.]{0,47}$";
 
 /** JSON value accepted on the ASKG wire. */
 export type JsonValue =

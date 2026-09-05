@@ -132,15 +132,20 @@ describe("ASKG client manifest", () => {
 
   test("skips illegal and ambiguous names instead of rewriting them", () => {
     const catalog = registry([
+      // Short and digit leading tokens are legal: the terminal's own shortcuts
+      // include N, SI and 13F, and a tool the model cannot name is a tool the
+      // model cannot use.
       template("short", "pane-short", "N", { kind: "none" }),
+      template("numeric", "pane-numeric", "13F", { kind: "none" }),
       template("bad", "pane-bad", "BAD/TOKEN", { kind: "none" }),
       template("first", "pane-first", "VAL", { kind: "none" }),
       template("second", "pane-second", "val", { kind: "none" }),
     ]);
     const { tools, skipped } = buildASKGToolManifests(catalog);
 
-    expect(tools.filter(({ source }) => source === "headless")).toEqual([]);
-    expect(skipped.map(({ token }) => token)).toEqual(["BAD/TOKEN", "N", "VAL", "val"]);
+    expect(tools.filter(({ source }) => source === "headless").map(({ name }) => name))
+      .toEqual(["13f", "n"]);
+    expect(skipped.map(({ token }) => token)).toEqual(["BAD/TOKEN", "VAL", "val"]);
     expect(skipped.filter(({ token }) => token.toLowerCase() === "val").every(({ reason }) => (
       reason.includes("Duplicate tool name")
     ))).toBe(true);
