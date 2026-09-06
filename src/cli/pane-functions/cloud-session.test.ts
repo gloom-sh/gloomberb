@@ -52,3 +52,26 @@ describe("pane function Cloud session", () => {
     }
   });
 });
+
+describe("cloud session token from the environment", () => {
+  test("prefers GLOOMBERB_SESSION_TOKEN over persisted state so containers can authenticate", () => {
+    const context = {
+      persistence: {
+        pluginState: {
+          get: () => ({ value: { sessionToken: "persisted-token" } }),
+        },
+      },
+    } as unknown as Parameters<typeof resolvePersistedCloudSessionToken>[0];
+
+    const previous = process.env.GLOOMBERB_SESSION_TOKEN;
+    try {
+      process.env.GLOOMBERB_SESSION_TOKEN = "env-token";
+      expect(resolvePersistedCloudSessionToken(context)).toBe("env-token");
+      delete process.env.GLOOMBERB_SESSION_TOKEN;
+      expect(resolvePersistedCloudSessionToken(context)).toBe("persisted-token");
+    } finally {
+      if (previous === undefined) delete process.env.GLOOMBERB_SESSION_TOKEN;
+      else process.env.GLOOMBERB_SESSION_TOKEN = previous;
+    }
+  });
+});
