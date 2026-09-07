@@ -11,6 +11,7 @@ import {
   createDefaultConfig,
   TICKER_RESEARCH_PANE_ID,
   type AppConfig,
+  type DockLayoutNode,
   type LayoutConfig,
 } from "../../types/config";
 import { researchEntryFromSearch } from "./research-entry";
@@ -25,44 +26,57 @@ function browserReady(config: AppConfig): AppConfig {
 export const BROWSER_RESEARCH_PANE_ID = "ticker-detail:main";
 export const BROWSER_RESEARCH_CHART_ID = "chart-composer:research";
 export const BROWSER_RESEARCH_NEWS_ID = "ticker-news:research";
+export const BROWSER_WORLD_INDICES_ID = "world-indices:main";
+export const BROWSER_SECTORS_ID = "sectors:main";
+export const BROWSER_ECON_CALENDAR_ID = "econ-calendar:main";
+
+/** The browser ships the monochrome theme the website uses. */
+export const BROWSER_DEFAULT_THEME = "white";
+
+function column(first: string, second: string, ratio = 0.5): DockLayoutNode {
+  return {
+    kind: "split",
+    axis: "vertical",
+    ratio,
+    first: { kind: "pane", instanceId: first },
+    second: { kind: "pane", instanceId: second },
+  };
+}
 
 /**
- * The first-visit workspace: one company across three panes. The research
- * pane owns the symbol; the chart and news panes follow it, so typing a new
- * ticker while the research pane is focused swaps the whole screen.
+ * The first-visit workspace: six panes, with one company down the middle.
+ * The research pane owns the symbol; the news and chart panes follow it, so
+ * typing a new ticker while the research pane is focused swaps all three.
+ * The market panes on either side stay put.
  */
 export function createBrowserResearchLayout(symbol: string): LayoutConfig {
+  const follow = { kind: "follow" as const, sourceInstanceId: BROWSER_RESEARCH_PANE_ID };
   return {
     dockRoot: {
       kind: "split",
       axis: "horizontal",
-      ratio: 0.58,
-      first: { kind: "pane", instanceId: BROWSER_RESEARCH_PANE_ID },
+      ratio: 0.3,
+      first: column(BROWSER_WORLD_INDICES_ID, BROWSER_SECTORS_ID),
       second: {
         kind: "split",
-        axis: "vertical",
-        ratio: 0.52,
-        first: { kind: "pane", instanceId: BROWSER_RESEARCH_CHART_ID },
-        second: { kind: "pane", instanceId: BROWSER_RESEARCH_NEWS_ID },
+        axis: "horizontal",
+        ratio: 0.57,
+        first: column(BROWSER_RESEARCH_PANE_ID, BROWSER_RESEARCH_NEWS_ID),
+        second: column(BROWSER_RESEARCH_CHART_ID, BROWSER_ECON_CALENDAR_ID),
       },
     },
     instances: [
+      { instanceId: BROWSER_WORLD_INDICES_ID, paneId: "world-indices", binding: { kind: "none" } },
+      { instanceId: BROWSER_SECTORS_ID, paneId: "sectors", binding: { kind: "none" } },
       {
         instanceId: BROWSER_RESEARCH_PANE_ID,
         paneId: TICKER_RESEARCH_PANE_ID,
         binding: { kind: "fixed", symbol },
         settings: { hideTabs: false },
       },
-      {
-        instanceId: BROWSER_RESEARCH_CHART_ID,
-        paneId: CHART_COMPOSER_PANE_ID,
-        binding: { kind: "follow", sourceInstanceId: BROWSER_RESEARCH_PANE_ID },
-      },
-      {
-        instanceId: BROWSER_RESEARCH_NEWS_ID,
-        paneId: "ticker-news",
-        binding: { kind: "follow", sourceInstanceId: BROWSER_RESEARCH_PANE_ID },
-      },
+      { instanceId: BROWSER_RESEARCH_NEWS_ID, paneId: "ticker-news", binding: follow },
+      { instanceId: BROWSER_RESEARCH_CHART_ID, paneId: CHART_COMPOSER_PANE_ID, binding: follow },
+      { instanceId: BROWSER_ECON_CALENDAR_ID, paneId: "econ-calendar", binding: { kind: "none" } },
     ],
     floating: [],
     detached: [],
@@ -71,8 +85,9 @@ export function createBrowserResearchLayout(symbol: string): LayoutConfig {
 
 function createBrowserDefaultConfig(dataDir: string, search = ""): AppConfig {
   const config = createDefaultConfig(dataDir);
+  config.theme = BROWSER_DEFAULT_THEME;
   const entry = researchEntryFromSearch(search) ?? { symbol: "NVDA", tab: "overview" };
-  // A first visit starts with a research workspace for one company. Saved
+  // A first visit starts with a research workspace around one company. Saved
   // layouts retain their existing panes and bindings when a visitor returns.
   config.layouts[0] = {
     name: "Research",

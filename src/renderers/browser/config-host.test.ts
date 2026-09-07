@@ -1,9 +1,13 @@
 import { expect, test } from "bun:test";
 import { getDockedPaneIds } from "../../plugins/pane-manager/dock-tree";
 import {
+  BROWSER_DEFAULT_THEME,
+  BROWSER_ECON_CALENDAR_ID,
   BROWSER_RESEARCH_CHART_ID,
   BROWSER_RESEARCH_NEWS_ID,
   BROWSER_RESEARCH_PANE_ID,
+  BROWSER_SECTORS_ID,
+  BROWSER_WORLD_INDICES_ID,
   createBrowserConfigStore,
 } from "./config-host";
 import type { StorageLike } from "./storage";
@@ -17,15 +21,19 @@ function memoryStorage(): StorageLike {
   };
 }
 
-test("a first visit opens one company across research, chart, and news panes", async () => {
+test("a first visit opens six panes with one company down the middle", async () => {
   const store = createBrowserConfigStore(memoryStorage(), "?ticker=aapl&tab=financials");
   const config = await store.loadConfig("browser://local");
 
+  expect(config.theme).toBe(BROWSER_DEFAULT_THEME);
   expect(config.layouts[0]?.name).toBe("Research");
   expect(getDockedPaneIds(config.layout)).toEqual([
+    BROWSER_WORLD_INDICES_ID,
+    BROWSER_SECTORS_ID,
     BROWSER_RESEARCH_PANE_ID,
-    BROWSER_RESEARCH_CHART_ID,
     BROWSER_RESEARCH_NEWS_ID,
+    BROWSER_RESEARCH_CHART_ID,
+    BROWSER_ECON_CALENDAR_ID,
   ]);
 
   const byId = new Map(config.layout.instances.map((instance) => [instance.instanceId, instance]));
@@ -58,5 +66,5 @@ test("a returning visitor keeps the saved layout", async () => {
   const restored = await second.loadConfig("browser://local");
   const research = restored.layout.instances.find((instance) => instance.instanceId === BROWSER_RESEARCH_PANE_ID);
   expect(research?.binding).toEqual({ kind: "fixed", symbol: "NVDA" });
-  expect(getDockedPaneIds(restored.layout)).toHaveLength(3);
+  expect(getDockedPaneIds(restored.layout)).toHaveLength(6);
 });
