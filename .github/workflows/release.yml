@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -157,6 +158,7 @@ jobs:
       - build
       - desktop-macos
       - desktop-windows
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -165,6 +167,18 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Check release assets
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.exe dist/*.gz dist/*.json dist/*.zip dist/*.zst)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "No release artifacts were produced."
+            exit 1
+          fi
+          printf 'Uploading %s release artifacts:\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
 
       - name: Upload assets to GitHub release
         uses: softprops/action-gh-release@v2
@@ -193,6 +207,10 @@ jobs:
 
           VERSION="${GITHUB_REF_NAME#v}"
           ZIP_PATH="dist/stable-macos-arm64-Gloomberb.app.zip"
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "macOS desktop zip is missing; skipping Homebrew tap update."
+            exit 0
+          fi
           SHA256="$(sha256sum "$ZIP_PATH" | awk '{print $1}')"
           TAP_DIR="$RUNNER_TEMP/homebrew-tap"
 

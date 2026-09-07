@@ -82,6 +82,28 @@ function canRunTarget(os: string, arch: string): boolean {
   return hostOs === os && hostArch === arch;
 }
 
+function isRetryableCleanupError(error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) return false;
+  const code = String(error.code);
+  return code === "EBUSY" || code === "EPERM" || code === "ENOTEMPTY";
+}
+
+async function removeSmokeDir(smokeDir: string) {
+  const delaysMs = process.platform === "win32" ? [0, 100, 250, 500, 1000] : [0];
+  let lastError: unknown;
+  for (const delayMs of delaysMs) {
+    if (delayMs > 0) await Bun.sleep(delayMs);
+    try {
+      rmSync(smokeDir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableCleanupError(error)) throw error;
+    }
+  }
+  console.warn(`Could not remove smoke test directory ${smokeDir}:`, lastError);
+}
+
 async function smokeTestBinary(outfile: string, os: string, arch: string) {
   if (!canRunTarget(os, arch)) {
     console.log(`Skipping smoke test for ${os}-${arch} on ${process.platform}-${process.arch}`);
@@ -124,7 +146,7 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
       }
     }
   } finally {
-    rmSync(smokeDir, { recursive: true, force: true });
+    await removeSmokeDir(smokeDir);
   }
 
   if (failureMessage) {
