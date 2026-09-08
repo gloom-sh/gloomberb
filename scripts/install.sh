@@ -13,7 +13,7 @@ case "$OS" in
   Darwin) os="darwin" ;;
   Linux)  os="linux" ;;
   *)
-    echo "Unsupported OS: $OS"
+    echo "Unsupported OS: $OS" >&2
     exit 1
     ;;
 esac
@@ -22,7 +22,7 @@ case "$ARCH" in
   arm64|aarch64) arch="arm64" ;;
   x86_64|amd64)  arch="x64" ;;
   *)
-    echo "Unsupported architecture: $ARCH"
+    echo "Unsupported architecture: $ARCH" >&2
     exit 1
     ;;
 esac
@@ -35,7 +35,13 @@ if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
   if [ "$translated" = "1" ] || [ "$has_arm64" = "1" ]; then
     arch="arm64"
   else
-    echo "Intel Macs are not supported. Gloomberb currently ships Apple Silicon (arm64) only."
+    echo "Gloomberb does not support Intel Macs yet, so nothing was installed." >&2
+    echo "" >&2
+    echo "The macOS build is Apple Silicon (arm64) only. Installing it on this machine" >&2
+    echo "would fail at launch with 'Bad CPU type in executable'." >&2
+    echo "" >&2
+    echo "In the meantime you can run Gloomberb in the browser: https://term.gloom.sh" >&2
+    echo "Intel support is tracked at https://github.com/gloom-sh/gloomberb/issues/539" >&2
     exit 1
   fi
 fi
@@ -48,7 +54,7 @@ download_file() {
   elif command -v wget >/dev/null 2>&1; then
     wget -q --show-progress "$url" -O "$dest"
   else
-    echo "Error: curl or wget required"
+    echo "Error: curl or wget required" >&2
     exit 1
   fi
 }
@@ -106,7 +112,7 @@ install_macos_app() {
   fi
 
   if [ ! -d "$APP_PATH" ]; then
-    echo "Error: ${ASSET} did not contain Gloomberb.app"
+    echo "Error: ${ASSET} did not contain Gloomberb.app" >&2
     exit 1
   fi
 
@@ -123,7 +129,7 @@ install_macos_app() {
 
   APP_CLI="${DEST_APP}/Contents/Resources/gloomberb"
   if [ ! -x "$APP_CLI" ]; then
-    echo "Error: installed app is missing the gloomberb terminal shim"
+    echo "Error: installed app is missing the gloomberb terminal shim" >&2
     exit 1
   fi
 

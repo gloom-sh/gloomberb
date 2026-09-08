@@ -111,6 +111,7 @@ jobs:
 
           ruby -c "$tap_dir/Casks/gloomberb.rb"
           grep -q 'stable-macos-arm64-Gloomberb.app.zip' "$tap_dir/Casks/gloomberb.rb"
+          grep -q 'depends_on arch: :arm64' "$tap_dir/Casks/gloomberb.rb"
           grep -q 'binary "#{appdir}/Gloomberb.app/Contents/Resources/gloomberb", target: "gloomberb"' "$tap_dir/Casks/gloomberb.rb"
 
           cd "$tap_dir"

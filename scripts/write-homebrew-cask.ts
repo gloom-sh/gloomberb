@@ -66,6 +66,10 @@ function renderCask({ version, sha256 }: Pick<Options, "version" | "sha256">): s
 
   auto_updates true
 
+  # The published app bundle is Apple Silicon only. Without this, Homebrew
+  # installs an app on Intel Macs that dies with "Bad CPU type in executable".
+  depends_on arch: :arm64
+
   app "Gloomberb.app"
   binary "#{appdir}/Gloomberb.app/Contents/Resources/gloomberb", target: "gloomberb"
 
