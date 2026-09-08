@@ -98,7 +98,8 @@ export interface AuthUser {
   updatedAt: string;
 }
 
-export type PersistedAuthUser = Pick<AuthUser, "id" | "emailVerified"> & Partial<AuthUser>;
+export type PersistedAuthUser = Pick<AuthUser, "id" | "emailVerified"> &
+  Partial<AuthUser>;
 
 export interface AccountProfile {
   id: string;
@@ -524,6 +525,15 @@ export interface CloudTranscriptTurnPayload {
   startSeconds: number | null;
 }
 
+export interface CloudTranscriptKeyFigurePayload {
+  /** What the number is, e.g. "Q3 revenue guidance". */
+  label: string;
+  /** As management said it, e.g. "$108B ± 2%". */
+  value: string;
+  /** Comparison or qualifier, e.g. "vs $96B in Q2". */
+  note?: string;
+}
+
 export interface CloudTranscriptParticipantPayload {
   name: string;
   role?: string;
@@ -544,6 +554,8 @@ export interface CloudEarningsTranscriptPayload {
   fullText: string;
   turns: CloudTranscriptTurnPayload[];
   participants: CloudTranscriptParticipantPayload[];
+  /** The numbers management gave, picked for a card; empty on older transcripts. */
+  keyFigures?: CloudTranscriptKeyFigurePayload[];
   summary: string | null;
   guidance: string | null;
   riskFactors: string | null;
@@ -933,7 +945,8 @@ export interface CloudMarketScreenerPayload {
 /** Cache reuse policy for one Equity Diagnostic request. */
 export type CloudEquityDiagnosticMode = "cache-first" | "refresh";
 
-export type CloudEquityDiagnosticFindingKind = "red_flag" | "green_flag" | "anomaly";
+export type CloudEquityDiagnosticFindingKind =
+  "red_flag" | "green_flag" | "anomaly";
 
 /** 3 is the most severe. */
 export type CloudEquityDiagnosticSeverity = 1 | 2 | 3;
@@ -1000,8 +1013,7 @@ export interface CloudEquityDiagnosticResponse {
 }
 
 export type CloudEquityDiagnosticResult =
-  | CloudEquityDiagnosticPending
-  | CloudEquityDiagnosticResponse;
+  CloudEquityDiagnosticPending | CloudEquityDiagnosticResponse;
 
 export interface CloudVerificationResponse {
   sent: boolean;
@@ -1098,13 +1110,20 @@ export type ScannerPayload = ScannerHiloPayload | ScannerFlowPayload;
 
 /** What a scanner subscriber receives: data, or the entitlement refusal. */
 export type ScannerFeedEvent<T extends ScannerPayload = ScannerPayload> =
-  | { type: "data"; payload: T }
-  | { type: "denied"; reason: string };
+  { type: "data"; payload: T } | { type: "denied"; reason: string };
 
 export interface QuoteStreamTarget {
   symbol: string;
   exchange?: string;
-  surface?: "portfolio" | "watchlist" | "detail" | "monitor" | "inline" | "options" | "screener" | "unknown";
+  surface?:
+    | "portfolio"
+    | "watchlist"
+    | "detail"
+    | "monitor"
+    | "inline"
+    | "options"
+    | "screener"
+    | "unknown";
   visible?: boolean;
   selected?: boolean;
   weight?: number;

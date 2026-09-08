@@ -14,9 +14,15 @@ import {
 import { wrapTextLines } from "../../../utils/text-wrap";
 import type {
   CloudEarningsTranscriptPayload,
+  CloudTranscriptKeyFigurePayload,
   CloudTranscriptTurnPayload,
 } from "../../../api-client";
-import { formatCallDate, formatDuration, formatSentiment, formatTimestamp } from "./format";
+import {
+  formatCallDate,
+  formatDuration,
+  formatSentiment,
+  formatTimestamp,
+} from "./format";
 import { splitFigures, splitParagraphs, splitSentences } from "./prose";
 import { filterTranscriptTurns } from "./model";
 
@@ -72,6 +78,7 @@ function Prose({
   color,
   nativePaneChrome,
   prefix = "",
+  prefixColor = colors.textDim,
 }: {
   text: string;
   width: number;
@@ -79,12 +86,17 @@ function Prose({
   nativePaneChrome: boolean;
   /** Put before the first line; later lines are indented by its width. */
   prefix?: string;
+  prefixColor?: string;
 }) {
   if (!text.trim()) return null;
   if (nativePaneChrome) {
     return (
       <Box flexDirection="row" width="100%" style={NATIVE_STRETCH_STYLE}>
-        {prefix ? <Text fg={colors.textDim}>{prefix}</Text> : null}
+        {prefix ? (
+          <Text fg={prefixColor} attributes={TextAttributes.BOLD}>
+            {prefix}
+          </Text>
+        ) : null}
         <Text
           wrapText
           width="100%"
@@ -95,16 +107,22 @@ function Prose({
     );
   }
   const indent = " ".repeat(prefix.length);
-  return wrapTextLines(text, Math.max(8, width - prefix.length)).map((line, index) => (
-    <Box key={index} height={1} flexDirection="row">
-      {prefix ? (
-        <Text fg={colors.textDim} flexShrink={0}>
-          {index === 0 ? prefix : indent}
-        </Text>
-      ) : null}
-      <Text content={styledRuns(line, color)} />
-    </Box>
-  ));
+  return wrapTextLines(text, Math.max(8, width - prefix.length)).map(
+    (line, index) => (
+      <Box key={index} height={1} flexDirection="row">
+        {prefix ? (
+          <Text
+            fg={prefixColor}
+            attributes={TextAttributes.BOLD}
+            flexShrink={0}
+          >
+            {index === 0 ? prefix : indent}
+          </Text>
+        ) : null}
+        <Text content={styledRuns(line, color)} />
+      </Box>
+    ),
+  );
 }
 
 function SectionHeading({ title }: { title: string }) {
@@ -147,6 +165,49 @@ function Section({
   );
 }
 
+/**
+ * The numbers management gave, one per line with the value first so the
+ * column of figures is what the eye lands on.
+ */
+function KeyFigures({
+  figures,
+  width,
+  nativePaneChrome,
+}: {
+  figures: CloudTranscriptKeyFigurePayload[];
+  width: number;
+  nativePaneChrome: boolean;
+}) {
+  if (figures.length === 0) return null;
+  const valueWidth = Math.min(
+    18,
+    Math.max(...figures.map((figure) => figure.value.length)),
+  );
+  return (
+    <Box flexDirection="column">
+      <SectionHeading title="KEY FIGURES" />
+      {figures.map((figure) => {
+        const value =
+          figure.value.length > valueWidth
+            ? figure.value
+            : figure.value.padEnd(valueWidth);
+        const rest = [figure.label, figure.note].filter(Boolean).join(", ");
+        return (
+          <Prose
+            key={`${figure.label}-${figure.value}`}
+            text={rest}
+            width={width}
+            color={colors.textDim}
+            nativePaneChrome={nativePaneChrome}
+            prefix={`${value}  `}
+            prefixColor={colors.textBright}
+          />
+        );
+      })}
+    </Box>
+  );
+}
+
 function TurnView({
   turn,
   width,
@@ -160,7 +221,9 @@ function TurnView({
   // The server cuts paragraphs where the speaker paused on the recording.
   // A transcript from before that is one block, so it is cut here by length.
   const paragraphs =
-    turn.paragraphs && turn.paragraphs.length > 0 ? turn.paragraphs : splitParagraphs(turn.text);
+    turn.paragraphs && turn.paragraphs.length > 0
+      ? turn.paragraphs
+      : splitParagraphs(turn.text);
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box height={1} flexDirection="row" gap={1} overflow="hidden">
@@ -175,7 +238,12 @@ function TurnView({
       </Box>
       {paragraphs.map((paragraph, index) => (
         <Box key={index} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-          <Prose text={paragraph} width={width} color={colors.text} nativePaneChrome={nativePaneChrome} />
+          <Prose
+            text={paragraph}
+            width={width}
+            color={colors.text}
+            nativePaneChrome={nativePaneChrome}
+          />
         </Box>
       ))}
     </Box>
@@ -209,13 +277,14 @@ export function TranscriptView({
   const { nativePaneChrome } = useUiCapabilities();
   const isNative = nativePaneChrome === true;
 
-  const turns = useMemo(() => filterTranscriptTurns(
-    transcript?.turns ?? [],
-    {
-      section: tab === "qa" ? "qa" : "transcript",
-      search: query,
-    },
-  ), [transcript, tab, query]);
+  const turns = useMemo(
+    () =>
+      filterTranscriptTurns(transcript?.turns ?? [], {
+        section: tab === "qa" ? "qa" : "transcript",
+        search: query,
+      }),
+    [transcript, tab, query],
+  );
 
   if (loading && !transcript) {
     return (
@@ -239,8 +308,12 @@ export function TranscriptView({
   const meta = [
     formatCallDate(transcript.callAt),
     formatDuration(transcript.durationSeconds),
-    transcript.participants.length > 0 ? `${transcript.participants.length} speakers` : null,
-    transcript.sentiment !== null ? `sentiment ${formatSentiment(transcript.sentiment)}` : null,
+    transcript.participants.length > 0
+      ? `${transcript.participants.length} speakers`
+      : null,
+    transcript.sentiment !== null
+      ? `sentiment ${formatSentiment(transcript.sentiment)}`
+      : null,
   ]
     .filter(Boolean)
     .join("  ·  ");
@@ -288,19 +361,58 @@ export function TranscriptView({
         <Box flexDirection="column" width={contentWidth} style={contentStyle}>
           {tab === "summary" ? (
             <>
-              <Prose text={meta} width={proseWidth} color={colors.textDim} nativePaneChrome={isNative} />
-              <Section title="SUMMARY" body={transcript.summary ?? ""} width={proseWidth} nativePaneChrome={isNative} />
-              <Section title="WHAT STOOD OUT" body={transcript.notable ?? ""} width={proseWidth} nativePaneChrome={isNative} />
-              <Section title="ANALYSTS PRESSED ON" body={transcript.analystFocus ?? ""} width={proseWidth} nativePaneChrome={isNative} />
-              <Section title="GUIDANCE" body={transcript.guidance ?? ""} width={proseWidth} nativePaneChrome={isNative} />
-              <Section title="RISKS" body={transcript.riskFactors ?? ""} width={proseWidth} nativePaneChrome={isNative} />
+              <Prose
+                text={meta}
+                width={proseWidth}
+                color={colors.textDim}
+                nativePaneChrome={isNative}
+              />
+              <KeyFigures
+                figures={transcript.keyFigures ?? []}
+                width={proseWidth}
+                nativePaneChrome={isNative}
+              />
+              <Section
+                title="SUMMARY"
+                body={transcript.summary ?? ""}
+                width={proseWidth}
+                nativePaneChrome={isNative}
+              />
+              <Section
+                title="WHAT STOOD OUT"
+                body={transcript.notable ?? ""}
+                width={proseWidth}
+                nativePaneChrome={isNative}
+              />
+              <Section
+                title="ANALYSTS PRESSED ON"
+                body={transcript.analystFocus ?? ""}
+                width={proseWidth}
+                nativePaneChrome={isNative}
+              />
+              <Section
+                title="GUIDANCE"
+                body={transcript.guidance ?? ""}
+                width={proseWidth}
+                nativePaneChrome={isNative}
+              />
+              <Section
+                title="RISKS"
+                body={transcript.riskFactors ?? ""}
+                width={proseWidth}
+                nativePaneChrome={isNative}
+              />
               {transcript.participants.length > 0 && (
                 <Box flexDirection="column">
                   <SectionHeading title="PARTICIPANTS" />
                   {transcript.participants.map((participant) => (
                     <Prose
                       key={participant.name}
-                      text={[participant.name, participant.role, participant.company]
+                      text={[
+                        participant.name,
+                        participant.role,
+                        participant.company,
+                      ]
                         .filter(Boolean)
                         .join("  ·  ")}
                       width={proseWidth}
