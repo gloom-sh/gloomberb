@@ -31,8 +31,9 @@ export function browserCredentialedFetch(url: string, init: RequestInit = {}): P
 
 export function installBrowserFetchTransports(): void {
   apiClient.setCookieSessionMode(true);
-  setCloudApiFetchTransport(browserCredentialedFetch);
-  setHttpFetchTransport((url, init) => fetch(url, init));
+  // Both are native fetch, so a response body can be read while it arrives.
+  setCloudApiFetchTransport(browserCredentialedFetch, { streaming: true });
+  setHttpFetchTransport((url, init) => fetch(url, init), { streaming: true });
 }
 
 export async function restoreBrowserCloudSession(budgetMs = 5_000): Promise<void> {

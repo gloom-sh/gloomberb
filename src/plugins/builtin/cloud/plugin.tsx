@@ -20,6 +20,7 @@ import {
 import { congressHeadless } from "../congress-trades/headless";
 import { registerTwitterFeedFeature } from "../cloud-tweets/registration";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
+import { ASKG_PANE_ID, ASKGPane } from "./askg/pane";
 import { registerCloudAuthCommands } from "./auth-commands";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
@@ -164,6 +165,41 @@ const accountModule: PluginModule = {
   },
 };
 
+const askgModule: PluginModule = {
+  panes: [{
+    id: ASKG_PANE_ID,
+    name: "Ask Gloom",
+    icon: "K",
+    component: ASKGPane,
+    defaultPosition: "right",
+    defaultMode: "floating",
+    defaultFloatingSize: { width: 96, height: 32 },
+    portableShare: {
+      // A conversation and the panes it read are personal to the account.
+      private: { title: true, params: true, settings: true, state: true },
+    },
+  }],
+  paneTemplates: [{
+    id: "askg-pane",
+    paneId: ASKG_PANE_ID,
+    label: "Ask Gloom",
+    description: "Ask a question about your panes and watch the tools Gloom runs",
+    keywords: ["ask", "gloom", "assistant", "ai", "question", "askg"],
+    shortcut: { prefix: "ASKG", argPlaceholder: "question", argKind: "text" },
+    createInstance: (_context, options) => {
+      const question = options?.arg?.trim() ?? "";
+      return {
+        placement: "floating",
+        // One assistant: a second question focuses the open conversation and
+        // asks there instead of stacking another pane. `askedAt` keeps the
+        // same question asked twice a real change to the pane's params.
+        instanceId: "askg:main",
+        ...(question ? { params: { question, askedAt: String(Date.now()) } } : {}),
+      };
+    },
+  }],
+};
+
 const congressTradesModule: PluginModule = {
   panes: [{
     id: CONGRESS_TRADES_PANE_ID,
@@ -208,6 +244,7 @@ export function createGloomberbCloudPlugin({
       createCloudDataModule(),
       createChatModule(ChatPane, ChatStatusWidget),
       accountModule,
+      askgModule,
       ...extraModules,
       congressTradesModule,
       twitterModule,

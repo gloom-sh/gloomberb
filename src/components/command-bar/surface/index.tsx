@@ -7,6 +7,9 @@ import { usePlanAccess } from "../../../plugins/builtin/shared/plan-access";
 import { buildAssistCommandInventory } from "../assist/inventory";
 import { useCommandBarAssist } from "../assist/runtime";
 import { shouldAutoAskAssist, type AssistRowHandlers } from "../assist/model";
+
+/** Command-bar prefix of the assistant pane. */
+const ASKG_SHORTCUT_PREFIX = "ASKG";
 import {
   getAvailableCommandBarSearchProviders,
   useCommandBarSearchProviders,
@@ -243,6 +246,13 @@ export function CommandBar({
     }
     setRootQuery("Sign Up");
   }, [getAvailablePluginCommands, openPluginCommandWorkflow, setRootQuery]);
+  // The assistant pane ships with the cloud plugin, so the row only exists
+  // while that pane template is registered.
+  const askGloomTemplate = useMemo(() => (
+    getAvailablePaneTemplates(undefined, { includePromptableTickerTemplates: true })
+      .find((template) => template.shortcut?.prefix?.toUpperCase() === ASKG_SHORTCUT_PREFIX)
+      ?? null
+  ), [getAvailablePaneTemplates]);
   const assist = useMemo<AssistRowHandlers>(() => ({
     enabled: planAccess.emailVerified,
     auto: assistAutoAsk && assistActive,
@@ -253,7 +263,16 @@ export function CommandBar({
       input,
       prefix ? { fallbackPrefix: prefix } : undefined,
     ),
-  }), [askAssistNow, assistActive, assistAutoAsk, assistState, planAccess.emailVerified, startAssistSignUp]);
+    // Runs through the same submit path as typing the shortcut by hand.
+    ...(askGloomTemplate
+      ? {
+        onAskGloom: (question: string) => runRootQueryRef.current?.(
+          `${ASKG_SHORTCUT_PREFIX} ${question}`,
+          { fallbackPrefix: ASKG_SHORTCUT_PREFIX },
+        ),
+      }
+      : {}),
+  }), [askAssistNow, askGloomTemplate, assistActive, assistAutoAsk, assistState, planAccess.emailVerified, startAssistSignUp]);
 
   const searchProviders = useMemo(
     () => getAvailableCommandBarSearchProviders(pluginRegistry, state.config.disabledPlugins),

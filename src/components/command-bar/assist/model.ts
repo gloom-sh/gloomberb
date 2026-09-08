@@ -31,6 +31,53 @@ export interface AssistRowHandlers {
   onAsk: () => void;
   onSignUp: () => void;
   onRunCandidate: (input: string, prefix?: string) => void;
+  /**
+   * Opens the assistant pane with the typed question. Omitted when the ASKG
+   * pane is unavailable, which keeps the row out of the list entirely.
+   */
+  onAskGloom?: (query: string) => void;
+}
+
+/** Prefix the assistant pane is reached by, shown in the row's badge column. */
+const ASKG_PREFIX = "ASKG";
+
+const QUESTION_WORDS = new Set([
+  "what", "whats", "why", "how", "when", "where", "who", "which", "whose",
+  "is", "are", "was", "were", "do", "does", "did", "can", "could", "should",
+  "would", "will", "has", "have", "explain", "compare", "summarize", "summarise",
+]);
+
+/**
+ * Whether the text reads as a question rather than a command. A question mark
+ * settles it; otherwise a leading question word only counts in a phrase, so
+ * "is" on its own stays a prefix search.
+ */
+export function isQuestionLike(query: string): boolean {
+  const trimmed = query.trim();
+  if (!trimmed) return false;
+  if (trimmed.endsWith("?")) return true;
+  if (!/\s/.test(trimmed)) return false;
+  const first = trimmed.split(/\s+/)[0]?.toLowerCase().replace(/[^a-z]/g, "") ?? "";
+  return QUESTION_WORDS.has(first);
+}
+
+/**
+ * Whether the assistant pane is worth offering: the user asked a question, or
+ * the command translation came back without a command that fits.
+ */
+export function shouldOfferAskGloom({
+  query,
+  state,
+}: {
+  query: string;
+  state: AssistRequestState;
+}): boolean {
+  const trimmed = query.trim();
+  if (!trimmed) return false;
+  if (isQuestionLike(trimmed)) return true;
+  return state.status === "answered"
+    && state.query === trimmed
+    && state.candidates.length === 0;
 }
 
 /**
@@ -136,6 +183,7 @@ export function buildAssistResultItems({
   onAsk,
   onSignUp,
   onRunCandidate,
+  onAskGloom,
 }: AssistRowHandlers & { query: string }): ResultItem[] {
   const trimmed = query.trim();
   if (!trimmed) return [];
@@ -155,31 +203,55 @@ export function buildAssistResultItems({
   // A response only describes the query it was asked about.
   const active = state.status !== "idle" && state.query === trimmed ? state : null;
 
+  const askGloomRow = (defaultSelectable: boolean): ResultItem | null => (
+    onAskGloom && shouldOfferAskGloom({ query: trimmed, state })
+      ? assistRow({
+        id: "assist:ask-gloom",
+        label: `${trimmed} · ${t("Ask Gloom")}`,
+        badge: ASKG_PREFIX,
+        kind: "action",
+        action: () => onAskGloom(trimmed),
+        defaultSelectable,
+      })
+      : null
+  );
+
   if (!active) {
-    if (!auto) return [];
+    const askGloom = askGloomRow(false);
+    if (!auto) return askGloom ? [askGloom] : [];
     // Still inside the debounce window; activating the row skips the wait.
-    return [assistRow({ id: "assist:pending", label: t("Thinking…"), kind: "info", action: onAsk })];
+    const pending = assistRow({ id: "assist:pending", label: t("Thinking…"), kind: "info", action: onAsk });
+    return askGloom ? [pending, askGloom] : [pending];
   }
 
   if (active.status === "loading") {
     // Selectable so that Enter on it means something: it claims the answer
     // that is already on the wire.
-    return [assistRow({ id: "assist:loading", label: t("Thinking…"), kind: "info", action: onAsk })];
+    const loading = assistRow({ id: "assist:loading", label: t("Thinking…"), kind: "info", action: onAsk });
+    const askGloom = askGloomRow(false);
+    return askGloom ? [loading, askGloom] : [loading];
   }
 
   if (active.status === "error") {
+    // The assistant pane does not depend on the command translation, so a
+    // failed translation still leaves the question answerable.
+    const askGloom = askGloomRow(true);
     // A background failure is not worth a row the user never asked for.
-    if (active.source === "auto") return [];
-    return [assistRow({
+    if (active.source === "auto") return askGloom ? [askGloom] : [];
+    const error = assistRow({
       id: "assist:error",
       label: assistErrorLabel(active.kind),
       kind: "info",
       action: onAsk,
       defaultSelectable: false,
-    })];
+    });
+    return askGloom ? [error, askGloom] : [error];
   }
 
   if (active.candidates.length === 0) {
+    // Nothing local fits, so the assistant is the answer rather than a dead end.
+    const askGloom = askGloomRow(true);
+    if (askGloom) return [askGloom];
     return [assistRow({
       id: "assist:no-command",
       label: t("No command found — try HELP"),
@@ -190,11 +262,14 @@ export function buildAssistResultItems({
   // The prefix in the badge column and the argument leading the label: the
   // row doubles as a lesson in the prefix language, laid out like every
   // other row.
-  return active.candidates.map((candidate, index) => assistRow({
+  const candidateRows = active.candidates.map((candidate, index) => assistRow({
     id: `assist:candidate:${index}:${candidate.input}`,
     label: formatAssistCandidateLabel(candidate),
     badge: candidate.prefix.trim() || undefined,
     kind: "action",
     action: () => onRunCandidate(candidate.input, candidate.prefix),
   }));
+  // A resolved command is the faster answer, so it keeps the default selection.
+  const askGloom = askGloomRow(false);
+  return askGloom ? [...candidateRows, askGloom] : candidateRows;
 }

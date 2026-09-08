@@ -1,4 +1,4 @@
-import { httpFetch } from "../utils/http-transport";
+import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
 import { withDeadline } from "../utils/async-deadline";
 import { ApiRequestError, parseApiErrorMessage } from "./errors";
 import {
@@ -10,16 +10,48 @@ import {
 
 const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
+/** Local status for "this runtime cannot stream", never returned by the server. */
+export const STREAMING_UNSUPPORTED_STATUS = 0;
 const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
 
 type CloudApiResponse = Pick<Response, "ok" | "status" | "headers" | "text">;
 type CloudApiFetchTransport = (url: string, init?: RequestInit) => Promise<CloudApiResponse>;
+type CloudApiStreamFetch = (url: string, init?: RequestInit) => Promise<Response>;
 type SessionCookieName = (typeof SESSION_COOKIE_NAMES)[number];
 
-let cloudApiFetchTransport: CloudApiFetchTransport = httpFetch;
+export interface CloudApiFetchTransportOptions {
+  /**
+   * Whether the transport resolves once headers arrive and exposes a live
+   * `response.body`. The desktop transport proxies over RPC and returns the
+   * whole payload as a string, so it must stay false: a caller that waits for
+   * server-sent events on it would never see a first token.
+   */
+  streaming?: boolean;
+}
 
-export function setCloudApiFetchTransport(transport: CloudApiFetchTransport | null): void {
+let cloudApiFetchTransport: CloudApiFetchTransport = httpFetch;
+let cloudApiTransportInstalled = false;
+let cloudApiFetchStreaming = true;
+
+export function setCloudApiFetchTransport(
+  transport: CloudApiFetchTransport | null,
+  options: CloudApiFetchTransportOptions = {},
+): void {
   cloudApiFetchTransport = transport ?? httpFetch;
+  cloudApiTransportInstalled = !!transport;
+  cloudApiFetchStreaming = transport ? options.streaming ?? false : true;
+}
+
+/**
+ * The fetch to use for a response that must be read while it arrives, or null
+ * when the installed transport buffers whole responses.
+ */
+export function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
+  if (cloudApiTransportInstalled) {
+    // A transport that declares streaming returns a real Response.
+    return cloudApiFetchStreaming ? cloudApiFetchTransport as CloudApiStreamFetch : null;
+  }
+  return isHttpFetchStreaming() ? httpFetch : null;
 }
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
@@ -102,6 +134,48 @@ export class CloudApiRequestTransport {
     if (!this.websocketToken || !this.sessionToken) return false;
     this.websocketToken = null;
     return true;
+  }
+
+  /** False when this transport buffers whole responses, e.g. the desktop view. */
+  isStreamingSupported(): boolean {
+    return !this.fetchTransport && !!getCloudApiStreamFetch();
+  }
+
+  /**
+   * Opens a response that the caller reads incrementally. Unlike `request`,
+   * nothing is buffered or JSON-parsed here, so the body stays a live stream.
+   */
+  async openStream(path: string, options: RequestInit = {}): Promise<Response> {
+    throwIfRequestAborted(options.signal);
+    const streamFetch = this.fetchTransport ? null : getCloudApiStreamFetch();
+    if (!streamFetch) {
+      throw new ApiRequestError(
+        "This client cannot read streaming responses.",
+        STREAMING_UNSUPPORTED_STATUS,
+      );
+    }
+    const headers = new Headers(options.headers);
+    if (!headers.has("Content-Type") && options.method && options.method !== "GET") {
+      headers.set("Content-Type", "application/json");
+    }
+    if (!headers.has("Accept")) headers.set("Accept", "text/event-stream");
+    this.setSessionCookieHeader(headers);
+    headers.set("Origin", this.baseUrl);
+
+    const operation = `${options.method ?? "GET"} ${path.split("?")[0]}`;
+    return this.connectionHealth.track(GLOOM_CLOUD_HTTP_CONNECTION_ID, operation, async () => {
+      const response = await streamFetch(`${this.baseUrl}${path}`, {
+        ...options,
+        headers,
+        credentials: "include",
+      });
+      throwIfRequestAborted(options.signal);
+      if (!response.ok) {
+        const text = await response.text().catch(() => "");
+        throw new ApiRequestError(parseApiErrorMessage(text), response.status);
+      }
+      return response;
+    });
   }
 
   async request<T>(path: string, options?: RequestInit): Promise<T> {
