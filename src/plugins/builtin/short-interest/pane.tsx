@@ -71,7 +71,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
 
   const rows = useMemo(() => buildRows(records), [records]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildColumns(width), [width]);
+  const columns = useMemo(() => buildColumns(width, records), [records, width]);
   const chartPoints = useMemo(() => recordsToChartPoints(records), [records]);
 
   const boundedSelectedIdx = sortedRows.length > 0

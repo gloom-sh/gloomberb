@@ -97,17 +97,28 @@ export function nextSortPreference(
   return { columnId: columnId as ShortInterestColumnId, direction: "desc" };
 }
 
-export function buildColumns(width: number): ShortInterestColumn[] {
+/**
+ * FINRA settlement history carries no float, so percent of float is null for
+ * every row on that route. Keeping the column drew a header over a column of
+ * dashes, which reads as missing data rather than data the source never had.
+ */
+export function buildColumns(
+  width: number,
+  records: readonly ShortInterestRecord[] = [],
+): ShortInterestColumn[] {
+  const hasPercentFloat = records.some((record) => record.shortPercentFloat != null);
   const dateWidth = 12;
   const sharesWidth = 12;
   const ratioWidth = 12;
-  const advWidth = Math.max(12, width - 2 - dateWidth - sharesWidth - ratioWidth - 12);
-  const percentWidth = 10;
+  const percentWidth = hasPercentFloat ? 10 : 0;
+  const advWidth = Math.max(12, width - 2 - dateWidth - sharesWidth - ratioWidth - (hasPercentFloat ? 12 : 2));
   return [
     { id: "settlementDate", label: "DATE", width: dateWidth, align: "left" },
     { id: "sharesShort", label: "SHARES SHORT", width: sharesWidth, align: "right" },
     { id: "shortRatio", label: "DAYS TO COVER", width: ratioWidth, align: "right" },
     { id: "averageDailyVolume", label: "AVG DAILY VOL", width: advWidth, align: "right" },
-    { id: "shortPercentFloat", label: "% FLOAT", width: percentWidth, align: "right" },
+    ...(hasPercentFloat
+      ? [{ id: "shortPercentFloat" as const, label: "% FLOAT", width: percentWidth, align: "right" as const }]
+      : []),
   ];
 }

@@ -7,8 +7,11 @@ import { useAppSelector, usePaneInstance } from "../../../state/app/context";
 import { parseTickerListInput, formatTickerListInput } from "../../../tickers/list";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
-import type { PaneSettingsContext, PaneSettingsDef } from "../../../types/plugin";
-import { formatTickerListInput as formatTickers } from "../../../tickers/list";
+import type {
+  PaneSettingsContext,
+  PaneSettingsDef,
+  PaneTemplateCreateOptions,
+} from "../../../types/plugin";
 import {
   attachEarningsCalendarPersistence,
   loadEarningsCalendar,
@@ -188,6 +191,18 @@ function EarningsCalendarPane({ focused, width, height }: PaneProps) {
   );
 }
 
+/** Tickers named on the command bar or the CLI win over the active collection. */
+function earningsScopeSymbols(options: PaneTemplateCreateOptions | undefined): string[] {
+  if (options?.symbols && options.symbols.length > 0) return options.symbols;
+  const raw = options?.arg?.trim() ?? "";
+  if (!raw) return [];
+  try {
+    return parseTickerListInput(raw);
+  } catch {
+    return [];
+  }
+}
+
 /** The monitor's scope lives in pane settings, so it has to be editable there too. */
 function earningsSettings(context: PaneSettingsContext): PaneSettingsDef {
   const collections = [
@@ -197,7 +212,7 @@ function earningsSettings(context: PaneSettingsContext): PaneSettingsDef {
   const symbols = scopedSymbolsFromSettings(context.settings);
   return {
     title: "Earnings Scope",
-    values: { symbolsText: symbols.length > 0 ? formatTickers(symbols) : "" },
+    values: { symbolsText: symbols.length > 0 ? formatTickerListInput(symbols) : "" },
     fields: [
       {
         key: "symbolsText",
@@ -266,13 +281,22 @@ export const earningsModule: PluginModule = {
       label: "Earnings Calendar",
       description: "Upcoming earnings dates and estimates for your tickers.",
       keywords: ["earn", "earnings", "calendar", "eps", "revenue", "quarterly"],
-      shortcut: { prefix: "ERN" },
+      shortcut: { prefix: "ERN", argPlaceholder: "tickers", argKind: "ticker-list" },
       headless: earningsCalendarHeadless,
-      createInstance: (context) => ({
-        settings: context.activeCollectionId
-          ? { collectionId: context.activeCollectionId }
-          : undefined,
-      }),
+      // The shortcut takes tickers, so honor them the way the report does.
+      // Ignoring them left `ERN NKE` scoped to the active collection, which
+      // rendered "No tickers in scope" while the report listed NKE's earnings.
+      createInstance: (context, options) => {
+        const symbols = earningsScopeSymbols(options);
+        return {
+          title: symbols.length > 0 ? `ERN ${formatTickerListInput(symbols)}` : undefined,
+          settings: symbols.length > 0
+            ? { symbols, symbolsText: formatTickerListInput(symbols) }
+            : context.activeCollectionId
+              ? { collectionId: context.activeCollectionId }
+              : undefined,
+        };
+      },
     },
     {
       id: "earnings-monitor-pane",

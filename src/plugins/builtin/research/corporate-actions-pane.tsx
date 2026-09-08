@@ -34,7 +34,12 @@ import {
   buildInlineFilingContentTargets,
   useSecFilingContentCache,
 } from "../sec/filing-content";
-import { buildEventRows, type EventRow, type EventStatus } from "./event-model";
+import {
+  buildEventRows,
+  eventSourceNotice,
+  type EventRow,
+  type EventStatus,
+} from "./event-model";
 
 export { buildEventRows } from "./event-model";
 
@@ -284,6 +289,18 @@ export function CorporateActionsView({
       : allRows
   ), [allRows, variant]);
   const columns = useMemo(() => buildEventColumns(), []);
+  const sourceNotice = useMemo(() => (
+    actionsLoading || analystLoading
+      ? null
+      : eventSourceNotice({
+        variant,
+        symbol: symbol ?? "this ticker",
+        actions: actionsData,
+        actionsError,
+        estimates: analystData,
+        estimatesError: analystError,
+      })
+  ), [actionsData, actionsError, actionsLoading, analystData, analystError, analystLoading, symbol, variant]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
@@ -480,6 +497,15 @@ export function CorporateActionsView({
       }}
       onActivate={(row) => setOpenRowId(row.id)}
       onDetailKeyDown={handleDetailKeyDown}
+      rootBefore={sourceNotice && rows.length > 0 ? (
+        <Box
+          height={1}
+          paddingX={1}
+          {...(sourceNotice.failed ? { "data-gloom-status": "error" } : {})}
+        >
+          <Text fg={sourceNotice.failed ? colors.negative : colors.textDim}>{sourceNotice.text}</Text>
+        </Box>
+      ) : undefined}
       rootWidth={width}
       rootHeight={height}
       onRootKeyDown={handleKeyDown}
