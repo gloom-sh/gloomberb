@@ -62,7 +62,7 @@ curl -fsSL gloom.sh/install | bash
 
 Both install `Gloomberb.app` and a `gloomberb` command that runs the TUI through the app bundle, so the bundled runtime is stored once.
 
-macOS builds are Apple Silicon (arm64) only. Intel Macs are not supported: the install script and the Homebrew cask stop with an error instead of installing an app that cannot launch. Run [term.gloom.sh](https://term.gloom.sh) in the browser there, and follow [issue #539](https://github.com/gloom-sh/gloomberb/issues/539) for Intel support.
+`Gloomberb.app` is Apple Silicon (arm64) only. On an Intel Mac the install script installs the standalone `gloomberb` terminal app instead, and the Homebrew cask refuses to install rather than leaving an app that cannot launch.
 
 Prefer a direct download?
 

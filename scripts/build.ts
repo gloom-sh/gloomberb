@@ -19,6 +19,7 @@ interface BuildTarget {
 
 const targets: BuildTarget[] = [
   { os: "darwin", arch: "arm64", bunOs: "darwin", extension: "", nativePackageName: "@opentui/core-darwin-arm64" },
+  { os: "darwin", arch: "x64", bunOs: "darwin", extension: "", nativePackageName: "@opentui/core-darwin-x64" },
   { os: "linux", arch: "x64", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-x64" },
   { os: "linux", arch: "arm64", bunOs: "linux", extension: "", nativePackageName: "@opentui/core-linux-arm64" },
   { os: "windows", arch: "x64", bunOs: "windows", extension: ".exe", nativePackageName: "@opentui/core-win32-x64" },
