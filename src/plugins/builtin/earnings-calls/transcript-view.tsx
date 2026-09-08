@@ -17,7 +17,7 @@ import type {
   CloudTranscriptTurnPayload,
 } from "../../../api-client";
 import { formatCallDate, formatDuration, formatSentiment, formatTimestamp } from "./format";
-import { splitFigures, splitSentences } from "./prose";
+import { splitFigures, splitParagraphs, splitSentences } from "./prose";
 import { filterTranscriptTurns } from "./model";
 
 export type ReaderTab = "summary" | "transcript" | "qa";
@@ -157,6 +157,10 @@ function TurnView({
   nativePaneChrome: boolean;
 }) {
   const detail = turnDetail(turn);
+  // The server cuts paragraphs where the speaker paused on the recording.
+  // A transcript from before that is one block, so it is cut here by length.
+  const paragraphs =
+    turn.paragraphs && turn.paragraphs.length > 0 ? turn.paragraphs : splitParagraphs(turn.text);
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box height={1} flexDirection="row" gap={1} overflow="hidden">
@@ -169,7 +173,11 @@ function TurnView({
         </Text>
         {detail ? <Text fg={colors.textDim}>{detail}</Text> : null}
       </Box>
-      <Prose text={turn.text} width={width} color={colors.text} nativePaneChrome={nativePaneChrome} />
+      {paragraphs.map((paragraph, index) => (
+        <Box key={index} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
+          <Prose text={paragraph} width={width} color={colors.text} nativePaneChrome={nativePaneChrome} />
+        </Box>
+      ))}
     </Box>
   );
 }

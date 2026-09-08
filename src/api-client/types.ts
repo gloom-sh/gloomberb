@@ -517,6 +517,8 @@ export interface CloudTranscriptTurnPayload {
   role?: string;
   company?: string;
   text: string;
+  /** `text` cut where the speaker paused or changed topic; absent on older transcripts. */
+  paragraphs?: string[];
   isQa: boolean;
   /** Offset into the recording; null when the company published the transcript as a document. */
   startSeconds: number | null;
