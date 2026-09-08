@@ -93,6 +93,7 @@
       "contributes": {
         "panes": [
           "account-management",
+          "askg",
           "buildout",
           "chat",
           "congress-trades"
