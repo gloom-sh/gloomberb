@@ -25,7 +25,7 @@ afterEach(() => {
 
 function expectedAssetName(compressed = false): string {
   const os = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : "linux";
-  const arch = os === "darwin" || process.arch === "arm64" ? "arm64" : "x64";
+  const arch = process.arch === "arm64" ? "arm64" : "x64";
   const extension = os === "windows" ? ".exe" : "";
   return compressed ? `gloomberb-${os}-${arch}${extension}.gz` : `gloomberb-${os}-${arch}${extension}`;
 }
@@ -36,6 +36,22 @@ describe("getAssetBaseNameForRuntime", () => {
       platform: "win32",
       arch: "x64",
     })).toBe("gloomberb-windows-x64.exe");
+  });
+
+  test("keeps macOS arm64 runtimes on the arm64 asset", () => {
+    expect(getAssetBaseNameForRuntime({
+      platform: "darwin",
+      arch: "arm64",
+    })).toBe("gloomberb-darwin-arm64");
+  });
+
+  // An arm64 asset cannot run on an x64 macOS runtime, so it must never be
+  // offered as that runtime's update.
+  test("asks for an x64 asset on an x64 macOS runtime", () => {
+    expect(getAssetBaseNameForRuntime({
+      platform: "darwin",
+      arch: "x64",
+    })).toBe("gloomberb-darwin-x64");
   });
 });
 

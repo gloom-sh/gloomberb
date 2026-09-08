@@ -62,8 +62,10 @@ export function getAssetBaseNameForRuntime(
     : runtimeProcess?.platform === "win32"
       ? "windows"
       : "linux";
-  // macOS x64 uses arm64 binary (runs via Rosetta 2)
-  const arch = os === "darwin" || runtimeProcess?.arch === "arm64" ? "arm64" : "x64";
+  // Always update to the architecture the current runtime actually is. macOS
+  // only publishes arm64 today, so an x64 macOS runtime resolves no asset and
+  // reports that instead of overwriting itself with an unrunnable binary.
+  const arch = runtimeProcess?.arch === "arm64" ? "arm64" : "x64";
   const extension = os === "windows" ? ".exe" : "";
   return `gloomberb-${os}-${arch}${extension}`;
 }
