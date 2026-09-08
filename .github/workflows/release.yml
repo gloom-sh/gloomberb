@@ -17,6 +17,10 @@ jobs:
         include:
           - os: macos-latest
             asset: gloomberb-darwin-arm64
+          # Intel Macs only get the terminal build. GitHub retires this runner
+          # image in 2027; the desktop app stays Apple Silicon only.
+          - os: macos-15-intel
+            asset: gloomberb-darwin-x64
           - os: ubuntu-latest
             asset: gloomberb-linux-x64
           - os: ubuntu-24.04-arm

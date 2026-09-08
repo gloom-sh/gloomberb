@@ -27,22 +27,14 @@ case "$ARCH" in
     ;;
 esac
 
-# Apple Silicon shells under Rosetta report x86_64. Genuine Intel Macs cannot
-# run the arm64 app and must fail instead of downloading a bad binary.
+# Apple Silicon shells under Rosetta report x86_64, and they still want the
+# arm64 build. Genuine Intel Macs keep x64 and get the terminal app, because
+# the desktop app bundle is published for Apple Silicon only.
 if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
   translated="$(sysctl -n sysctl.proc_translated 2>/dev/null || true)"
   has_arm64="$(sysctl -n hw.optional.arm64 2>/dev/null || true)"
   if [ "$translated" = "1" ] || [ "$has_arm64" = "1" ]; then
     arch="arm64"
-  else
-    echo "Gloomberb does not support Intel Macs yet, so nothing was installed." >&2
-    echo "" >&2
-    echo "The macOS build is Apple Silicon (arm64) only. Installing it on this machine" >&2
-    echo "would fail at launch with 'Bad CPU type in executable'." >&2
-    echo "" >&2
-    echo "In the meantime you can run Gloomberb in the browser: https://term.gloom.sh" >&2
-    echo "Intel support is tracked at https://github.com/gloom-sh/gloomberb/issues/539" >&2
-    exit 1
   fi
 fi
 
@@ -150,7 +142,16 @@ install_standalone_cli() {
   # Download
   TMP="$(mktemp)"
   echo "Downloading ${ASSET}..."
-  download_file "$DOWNLOAD_URL" "$TMP"
+  if ! download_file "$DOWNLOAD_URL" "$TMP"; then
+    rm -f "$TMP"
+    echo "Error: ${ASSET} is not available in the latest release." >&2
+    if [ "$os" = "darwin" ] && [ "$arch" = "x64" ]; then
+      echo "Intel Macs need a release that ships ${ASSET}." >&2
+      echo "Run Gloomberb in the browser meanwhile: https://term.gloom.sh" >&2
+      echo "Intel support: https://github.com/gloom-sh/gloomberb/issues/539" >&2
+    fi
+    exit 1
+  fi
 
   # Decompress
   echo "Extracting..."
@@ -162,9 +163,13 @@ install_standalone_cli() {
   echo "Installed gloomberb to ${INSTALL_DIR}/gloomberb"
 }
 
-if [ "$os" = "darwin" ]; then
+if [ "$os" = "darwin" ] && [ "$arch" = "arm64" ]; then
   install_macos_app
 else
+  if [ "$os" = "darwin" ]; then
+    echo "Intel Mac detected. Gloomberb.app is Apple Silicon only, so this installs"
+    echo "the terminal app instead."
+  fi
   install_standalone_cli
 fi
 

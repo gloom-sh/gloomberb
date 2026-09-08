@@ -119,17 +119,26 @@ async function runInstall(machine: FakeMachine): Promise<InstallRun> {
 describe("install.sh architecture detection", () => {
   // https://github.com/gloom-sh/gloomberb/issues/539: an Intel Mac used to get
   // the arm64 app and only found out at launch, with "Bad CPU type in
-  // executable".
-  test("refuses to install anything on a genuine Intel Mac", async () => {
+  // executable". It now gets the x64 terminal build, never the app bundle.
+  test("installs the x64 terminal build on a genuine Intel Mac", async () => {
+    const run = await runInstall({
+      unameSystem: "Darwin",
+      unameMachine: "x86_64",
+    });
+
+    expect(run.downloadLog).toContain("gloomberb-darwin-x64.gz");
+    expect(run.downloadLog).not.toContain("stable-macos-arm64");
+  });
+
+  test("explains itself when a release ships no Intel asset", async () => {
     const run = await runInstall({
       unameSystem: "Darwin",
       unameMachine: "x86_64",
     });
 
     expect(run.exitCode).not.toBe(0);
-    expect(run.stderr).toContain("does not support Intel Macs");
+    expect(run.stderr).toContain("gloomberb-darwin-x64.gz is not available");
     expect(run.stderr).toContain("https://term.gloom.sh");
-    expect(run.downloadLog).toBe("");
   });
 
   test("installs the arm64 app from an x86_64 shell translated by Rosetta", async () => {
