@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 import type { Dispatch, ReactNode } from "react";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
@@ -8,6 +8,17 @@ import { useRemoteUiRegistry } from "./semantic-tree";
 import type { RemoteControlRequest, RemoteControlResponse } from "./types";
 
 export type RemoteControlHandler = (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
+
+const RemoteControlHandlerContext = createContext<RemoteControlHandler | null>(null);
+
+/**
+ * The in-process handler for app operations and resources, or null outside a
+ * remote control host. Panes use it to run the same operations a remote client
+ * would, instead of opening a second controller.
+ */
+export function useRemoteControlHandler(): RemoteControlHandler | null {
+  return useContext(RemoteControlHandlerContext);
+}
 
 export interface RemoteControlAdapter {
   startServer?(options: { dataDir: string; handle: RemoteControlHandler }): void | (() => void | Promise<void>);
@@ -75,5 +86,9 @@ export function RemoteControlHost({
     };
   }, [adapter, controller]);
 
-  return children;
+  return (
+    <RemoteControlHandlerContext value={controller.handle}>
+      {children}
+    </RemoteControlHandlerContext>
+  );
 }

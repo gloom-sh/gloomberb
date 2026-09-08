@@ -5,10 +5,25 @@ const HARD_SESSION_INVALID_PATTERNS = [
 ];
 
 export class ApiRequestError extends Error {
-  constructor(message: string, readonly status?: number) {
+  constructor(
+    message: string,
+    readonly status?: number,
+    /** `Retry-After` in milliseconds when the server sent one. */
+    readonly retryAfterMs?: number,
+  ) {
     super(message);
     this.name = "ApiRequestError";
   }
+}
+
+/** Reads `Retry-After` as milliseconds, accepting seconds or an HTTP date. */
+export function parseRetryAfterMs(header: string | null, now = Date.now()): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
+  const at = Date.parse(trimmed);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, at - now);
 }
 
 export function parseApiErrorMessage(body: string): string {

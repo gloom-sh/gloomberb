@@ -1,5 +1,6 @@
 import type { TickerFinancials } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
+import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
 import { CloudChatApi } from "./chat";
 import { CloudDataApi } from "./data";
@@ -95,6 +96,8 @@ import {
 
 export type * from "./types";
 export { setCloudApiFetchTransport } from "./request";
+export { ASKGTransportError } from "./askg";
+export type { ASKGTransport, ASKGToolResultOutcome } from "./askg";
 
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
@@ -113,6 +116,7 @@ class GloomApiClient {
   private readonly socket: CloudApiSocket;
   private readonly chat: CloudChatApi;
   private readonly data: CloudDataApi;
+  readonly askg: CloudASKGApi;
 
   constructor() {
     this.auth = new CloudAuthApi({
@@ -149,6 +153,11 @@ class GloomApiClient {
       socket: this.socket,
     });
     this.data = new CloudDataApi((path, options) => this.request(path, options));
+    this.askg = new CloudASKGApi({
+      request: (path, options) => this.request(path, options),
+      openStream: (path, options) => this.transport.openStream(path, options),
+      isStreamingSupported: () => this.transport.isStreamingSupported(),
+    });
   }
 
   getSessionToken(): string | null {
