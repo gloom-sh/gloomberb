@@ -9,6 +9,7 @@ import {
   type RatingSortPreference,
 } from "./analyst-pane";
 import { buildEventRows, matchEarningsSecFiling } from "./corporate-actions-pane";
+import { eventSourceNotice } from "./event-model";
 
 const ratings: AnalystRatingRecord[] = [
   {
@@ -360,5 +361,47 @@ describe("event rows", () => {
     ];
 
     expect(matchEarningsSecFiling(row, filings)?.accessionNumber).toBe("0000320193-26-000009");
+  });
+});
+
+describe("event source notice", () => {
+  const loaded = {
+    variant: "corporate-actions" as const,
+    symbol: "DBK",
+    actions: { symbol: "DBK", dividends: [{ exDate: "2026-05-29", amount: 1 }], splits: [], earnings: [] },
+    actionsError: null,
+    estimates: {
+      symbol: "DBK",
+      recommendations: [],
+      ratings: [],
+      earningsEstimates: [{ date: "2026-12-31", period: "current_year", average: 3.3, analysts: 10 }],
+      revenueEstimates: [],
+    } satisfies AnalystResearchData,
+    estimatesError: null,
+  };
+
+  test("stays quiet when both sources delivered", () => {
+    expect(eventSourceNotice(loaded)).toBeNull();
+  });
+
+  /**
+   * A failed corporate-actions request left the table showing only estimate and
+   * TTM rows, which reads as a working pane for a company with no events.
+   */
+  test("names a failed source and marks it as a failure", () => {
+    expect(eventSourceNotice({ ...loaded, actions: null, actionsError: "Cloud request failed" })).toEqual({
+      text: "Corporate actions unavailable: Cloud request failed",
+      failed: true,
+    });
+  });
+
+  test("reports genuinely empty data without calling it a failure", () => {
+    expect(eventSourceNotice({
+      ...loaded,
+      actions: { symbol: "DBK", dividends: [], splits: [], earnings: [] },
+    })).toEqual({
+      text: "No dividends, splits, or reported earnings for DBK",
+      failed: false,
+    });
   });
 });

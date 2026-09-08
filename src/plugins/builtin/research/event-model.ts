@@ -243,3 +243,59 @@ export function buildEventRows(
     || left.period.localeCompare(right.period)
   ));
 }
+
+export interface EventSourceState {
+  variant: "corporate-actions" | "earnings-estimates";
+  symbol: string;
+  actions: CorporateActionsData | null;
+  actionsError: string | null;
+  estimates: AnalystResearchData | null;
+  estimatesError: string | null;
+}
+
+export interface EventSourceNotice {
+  text: string;
+  /** True when a source failed, as opposed to a source that had nothing. */
+  failed: boolean;
+}
+
+/**
+ * The table can still show a TTM line built from statements while both event
+ * sources returned nothing, which used to read as a working pane that happens
+ * to be almost empty. This says which source is missing so a thin pane
+ * explains itself instead of looking broken.
+ */
+export function eventSourceNotice(state: EventSourceState): EventSourceNotice | null {
+  const actionsLabel = state.variant === "earnings-estimates"
+    ? "Reported earnings"
+    : "Corporate actions";
+  const notices: string[] = [];
+
+  if (state.actionsError) {
+    notices.push(`${actionsLabel} unavailable: ${state.actionsError}`);
+  } else if (state.actions && !hasCorporateActionRows(state.actions)) {
+    notices.push(state.variant === "earnings-estimates"
+      ? `No reported earnings for ${state.symbol}`
+      : `No dividends, splits, or reported earnings for ${state.symbol}`);
+  }
+
+  if (state.estimatesError) {
+    notices.push(`Analyst estimates unavailable: ${state.estimatesError}`);
+  } else if (state.estimates && !hasAnalystEstimates(state.estimates)) {
+    notices.push(`No analyst estimates for ${state.symbol}`);
+  }
+
+  if (notices.length === 0) return null;
+  return {
+    text: notices.join("   "),
+    failed: !!state.actionsError || !!state.estimatesError,
+  };
+}
+
+function hasCorporateActionRows(data: CorporateActionsData): boolean {
+  return data.dividends.length > 0 || data.splits.length > 0 || data.earnings.length > 0;
+}
+
+function hasAnalystEstimates(data: AnalystResearchData): boolean {
+  return data.earningsEstimates.length > 0 || data.revenueEstimates.length > 0;
+}

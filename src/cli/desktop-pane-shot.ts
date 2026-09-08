@@ -56,6 +56,33 @@ export interface DesktopPaneShotApiProxy {
   sessionToken: string | null;
 }
 
+/**
+ * The page renders panes that fetch their own data. Left alone it can only
+ * reach the cloud API, so a pane whose values come from a provider the router
+ * merges in (analyst price targets, Yahoo dividends) rendered thinner than the
+ * same pane in the terminal. The bridge lets the page ask the Bun process to
+ * run those requests through the real provider router instead.
+ */
+export interface DesktopPaneShotBridge {
+  marketData(operation: string, args: unknown[]): Promise<unknown>;
+  httpFetch(request: DesktopPaneShotHttpRequest): Promise<DesktopPaneShotHttpResponse>;
+}
+
+export interface DesktopPaneShotHttpRequest {
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export interface DesktopPaneShotHttpResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  setCookie: string[];
+  body: string;
+}
+
 export interface DesktopPaneShotRenderedCell {
   columnId?: string;
   columnLabel: string;
@@ -109,13 +136,15 @@ const SHOT_READY_TIMEOUT_MS = 45_000;
 const CDP_CALL_TIMEOUT_MS = 10_000;
 const DEFAULT_DEVICE_SCALE_FACTOR = 2;
 const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
+export const SHOT_MARKET_BRIDGE_PATH = "/__gloom_cli_market__";
+export const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
 const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
 
 export async function renderDesktopPaneScreenshot(
   payload: DesktopPaneShotPayload,
   outputPath: string,
   apiProxy: DesktopPaneShotApiProxy,
-  options: { captureImage?: boolean } = {},
+  options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge } = {},
 ): Promise<DesktopPaneShotRenderResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
   let server: ReturnType<typeof Bun.serve> | null = null;
@@ -123,7 +152,7 @@ export async function renderDesktopPaneScreenshot(
     const outdir = join(tempDir, "assets");
     await mkdir(outdir, { recursive: true });
     await buildShotPage(outdir, payload);
-    server = serveShotPage(outdir, apiProxy);
+    server = serveShotPage(outdir, apiProxy, options.bridge ?? null);
     const chrome = await findChromeExecutable();
     return await capturePageScreenshot({
       chrome,
@@ -183,6 +212,7 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
 function serveShotPage(
   outdir: string,
   apiProxy: DesktopPaneShotApiProxy,
+  bridge: DesktopPaneShotBridge | null,
 ): ReturnType<typeof Bun.serve> {
   const staticRoot = resolve(outdir);
   return Bun.serve({
@@ -194,9 +224,49 @@ function serveShotPage(
       if (url.pathname.startsWith(`${SHOT_API_PROXY_PREFIX}/`)) {
         return proxyShotApiRequest(request, url, apiProxy);
       }
+      if (url.pathname === SHOT_MARKET_BRIDGE_PATH) {
+        return runShotMarketBridge(request, bridge);
+      }
+      if (url.pathname === SHOT_HTTP_BRIDGE_PATH) {
+        return runShotHttpBridge(request, bridge);
+      }
       return serveShotAsset(url, staticRoot);
     },
   });
+}
+
+async function runShotMarketBridge(
+  request: Request,
+  bridge: DesktopPaneShotBridge | null,
+): Promise<Response> {
+  if (!bridge) return Response.json({ ok: false, error: "No market bridge" }, { status: 404 });
+  try {
+    const payload = await request.json() as { operation?: unknown; args?: unknown };
+    const operation = typeof payload.operation === "string" ? payload.operation : "";
+    const args = Array.isArray(payload.args) ? payload.args : [];
+    const data = await bridge.marketData(operation, args);
+    return Response.json({ ok: true, data });
+  } catch (error) {
+    return Response.json({ ok: false, error: errorMessage(error) });
+  }
+}
+
+async function runShotHttpBridge(
+  request: Request,
+  bridge: DesktopPaneShotBridge | null,
+): Promise<Response> {
+  if (!bridge) return Response.json({ ok: false, error: "No HTTP bridge" }, { status: 404 });
+  try {
+    const payload = await request.json() as DesktopPaneShotHttpRequest;
+    const data = await bridge.httpFetch(payload);
+    return Response.json({ ok: true, data });
+  } catch (error) {
+    return Response.json({ ok: false, error: errorMessage(error) });
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function serveShotAsset(url: URL, staticRoot: string): Promise<Response> {

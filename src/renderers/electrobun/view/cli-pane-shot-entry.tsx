@@ -35,8 +35,24 @@ import type {
   AppTickerRepositoryPort,
 } from "../../../core/app-service-ports";
 import type { CachedResourceRecord, ResourceCacheKey, SetResourceOptions } from "../../../data/resource-store";
-import type { CachedFinancialsTarget, DataProvider, QuoteSubscriptionTarget } from "../../../types/data-provider";
-import type { OptionsChain, PricePoint, TickerFinancials } from "../../../types/financials";
+import type {
+  CachedFinancialsTarget,
+  DataProvider,
+  EarningsEvent,
+  QuoteBatchResult,
+  QuoteSubscriptionTarget,
+  SecFilingItem,
+} from "../../../types/data-provider";
+import type {
+  AnalystResearchData,
+  CorporateActionsData,
+  HolderData,
+  OptionsChain,
+  PricePoint,
+  Quote,
+  TickerFinancials,
+} from "../../../types/financials";
+import { setHttpFetchTransport } from "../../../utils/http-transport";
 import type { TickerRecord } from "../../../types/ticker";
 import type { AppState, PaneRuntimeState } from "../../../core/state/app/state";
 import type { PaneDef } from "../../../types/plugin";
@@ -100,6 +116,9 @@ const SHOT_READY_STABLE_FRAMES = 10;
 // headline) wait forever and time out.
 const SHOT_LOADING_SELECTOR = "[data-gloom-status=\"loading\"]";
 const SHOT_API_PROXY_PREFIX = "/__gloom_cli_api__";
+// Served by the Bun process that owns this page, see src/cli/desktop-pane-shot.ts.
+const SHOT_MARKET_BRIDGE_PATH = "/__gloom_cli_market__";
+const SHOT_HTTP_BRIDGE_PATH = "/__gloom_cli_http__";
 const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
   "arrayBuffer",
   "blob",
@@ -183,12 +202,119 @@ function installShotCloudApiTransport(): void {
   });
 }
 
+/**
+ * Panes such as DVD and SI call a third-party API through httpFetch. A browser
+ * cannot do that cross-origin, so those requests died in CORS and the panes
+ * reported the ticker as having no data. The desktop renderer proxies the same
+ * calls through its native half; here the Bun process that serves this page
+ * runs them and returns the response, cookies included so the Yahoo crumb
+ * handshake still works.
+ */
+function installShotHttpFetchTransport(): void {
+  setHttpFetchTransport(async (url, init = {}) => {
+    const headers: Record<string, string> = {};
+    new Headers(init.headers).forEach((value, name) => {
+      headers[name] = value;
+    });
+    const response = await window.fetch(SHOT_HTTP_BRIDGE_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        url,
+        method: init.method,
+        headers,
+        body: typeof init.body === "string" ? init.body : undefined,
+      }),
+    });
+    const result = await response.json() as {
+      ok: boolean;
+      error?: string;
+      data?: {
+        status: number;
+        statusText: string;
+        headers: Record<string, string>;
+        setCookie: string[];
+        body: string;
+      };
+    };
+    if (!result.ok || !result.data) throw new Error(result.error ?? `Request failed: ${url}`);
+    return createShotHttpResponse(result.data);
+  });
+}
+
+function createShotHttpResponse(payload: {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  setCookie: string[];
+  body: string;
+}): Response {
+  // Yahoo's crumb handshake reads set-cookie, which fetch hides from a page.
+  const headers = new Headers(payload.headers);
+  const originalGet = headers.get.bind(headers);
+  headers.get = ((name: string) => (
+    name.toLowerCase() === "set-cookie" ? payload.setCookie[0] ?? null : originalGet(name)
+  )) as Headers["get"];
+  (headers as Headers & { getSetCookie?: () => string[] }).getSetCookie = () => [...payload.setCookie];
+  const response = new Response(payload.body, {
+    status: payload.status,
+    statusText: payload.statusText,
+  });
+  Object.defineProperty(response, "headers", { value: headers, configurable: true });
+  return response;
+}
+
 async function restoreShotCloudSession(): Promise<void> {
   await apiClient.getSession().catch(() => null);
 }
 
 function resolveShotWork<T>(value: T): Promise<T> {
   return trackShotWork(Promise.resolve(value));
+}
+
+/**
+ * Runs an asset-data request in the Bun process so the page sees exactly what
+ * `gloomberb fn` sees. The page can only reach the cloud API on its own, and
+ * the cloud is one source among several: analyst rating price targets and part
+ * of the corporate action history come from providers the router merges in.
+ */
+async function requestShotMarketData<T>(operation: string, args: unknown[]): Promise<T> {
+  const response = await window.fetch(SHOT_MARKET_BRIDGE_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operation, args }),
+  });
+  const result = await response.json() as { ok: boolean; data?: T; error?: string };
+  if (!result.ok) throw new Error(result.error ?? `Screenshot data request failed: ${operation}`);
+  return result.data as T;
+}
+
+/** JSON has no Date, so every bridged date arrives as a string. */
+function reviveDate(value: unknown): Date | undefined {
+  if (value instanceof Date) return value;
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function reviveSecFilings(filings: SecFilingItem[]): SecFilingItem[] {
+  return filings.map((filing) => ({
+    ...filing,
+    filingDate: reviveDate(filing.filingDate) ?? new Date(0),
+    ...(filing.acceptedAt ? { acceptedAt: reviveDate(filing.acceptedAt) } : {}),
+  }));
+}
+
+function revivePricePoints(points: PricePoint[]): PricePoint[] {
+  return points.map((point) => ({ ...point, date: reviveDate(point.date) ?? new Date(0) }));
+}
+
+function reviveEarningsEvents(events: EarningsEvent[]): EarningsEvent[] {
+  return events.map((event) => ({
+    ...event,
+    earningsDate: reviveDate(event.earningsDate) ?? new Date(0),
+    ...(event.earningsCallDate ? { earningsCallDate: reviveDate(event.earningsCallDate) ?? null } : {}),
+  }));
 }
 
 function isShotLoadingTextVisible(): boolean {
@@ -301,9 +427,13 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
     if (!instrument.exchange) optionsChains.set(normalizeSymbol(instrument.symbol), data);
   }
 
+  const findFinancials = (symbol: string, exchange?: string) => (
+    financials.get(canonicalTickerKey(symbol, exchange))
+      ?? financials.get(normalizeSymbol(symbol))
+  );
+
   const getFinancials = (symbol: string, exchange?: string) => {
-    const data = financials.get(canonicalTickerKey(symbol, exchange))
-      ?? financials.get(normalizeSymbol(symbol));
+    const data = findFinancials(symbol, exchange);
     if (!data) throw new Error(`No screenshot market data available for ${symbol}.`);
     return data;
   };
@@ -323,18 +453,26 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
       })));
     },
     getQuote(ticker, exchange) {
-      return trackShotWork(Promise.resolve().then(() => {
-        const quote = getFinancials(ticker, exchange).quote;
-        if (!quote) throw new Error(`No screenshot quote data available for ${ticker}.`);
-        return quote;
-      }));
+      const quote = findFinancials(ticker, exchange)?.quote;
+      if (quote) return resolveShotWork(quote);
+      return requestShotMarketData<Quote>("getQuote", [ticker, exchange]);
     },
+    // Board panes such as WEI, MOST, and BI quote symbols the shot payload was
+    // never built for, and returning null for those drew a full table of
+    // dashes. The payload still wins wherever it has the symbol, so mapped
+    // capabilities keep rendering exactly the data their evidence checks use.
     getQuotesBatch(targets: QuoteSubscriptionTarget[]) {
-      return resolveShotWork(targets.map((target) => ({
-        target,
-        quote: (financials.get(canonicalTickerKey(target.symbol, target.exchange))
-          ?? financials.get(normalizeSymbol(target.symbol)))?.quote ?? null,
-      })));
+      const resolved: QuoteBatchResult[] = [];
+      const missing: QuoteSubscriptionTarget[] = [];
+      for (const target of targets) {
+        const quote = findFinancials(target.symbol, target.exchange)?.quote;
+        if (quote) resolved.push({ target, quote });
+        else missing.push(target);
+      }
+      if (missing.length === 0) return resolveShotWork(resolved);
+      return requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [missing])
+        .then((results) => [...resolved, ...results])
+        .catch(() => [...resolved, ...missing.map((target) => ({ target, quote: null }))]);
     },
     getExchangeRate(fromCurrency: string) {
       // Returning 1 for every currency used to render the FX matrix as a grid
@@ -373,13 +511,18 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
       return resolveShotWork(null);
     },
     getPriceHistory(ticker, exchange, range) {
+      const intraday = intradayHistory(ticker, exchange);
+      const local = intraday ? intraday.points : findFinancials(ticker, exchange)?.priceHistory;
+      // Sector and board panes chart symbols the payload does not carry, and
+      // an empty series turned their trailing-return columns into dashes.
+      if (!intraday && !local) {
+        return requestShotMarketData<PricePoint[]>("getPriceHistory", [ticker, exchange, range])
+          .then(revivePricePoints)
+          .catch(() => []);
+      }
       return trackShotWork(Promise.resolve().then(() => {
-        const intraday = intradayHistory(ticker, exchange);
         if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
-        return clipPriceHistoryToRange(
-          intraday ? intraday.points : getFinancials(ticker, exchange).priceHistory ?? [],
-          range,
-        );
+        return clipPriceHistoryToRange(local ?? [], range);
       }));
     },
     getPriceHistoryForResolution(ticker, exchange, bufferRange, resolution) {
@@ -409,6 +552,23 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
     },
     getChartResolutionSupport() {
       return resolveShotWork(SHOT_CHART_RESOLUTION_SUPPORT);
+    },
+    getAnalystResearch(ticker, exchange) {
+      return requestShotMarketData<AnalystResearchData>("getAnalystResearch", [ticker, exchange]);
+    },
+    getCorporateActions(ticker, exchange) {
+      return requestShotMarketData<CorporateActionsData>("getCorporateActions", [ticker, exchange]);
+    },
+    getHolders(ticker, exchange) {
+      return requestShotMarketData<HolderData>("getHolders", [ticker, exchange]);
+    },
+    getSecFilings(ticker, count, exchange) {
+      return requestShotMarketData<SecFilingItem[]>("getSecFilings", [ticker, count, exchange])
+        .then(reviveSecFilings);
+    },
+    getEarningsCalendar(symbols) {
+      return requestShotMarketData<EarningsEvent[]>("getEarningsCalendar", [symbols])
+        .then(reviveEarningsEvents);
     },
     subscribeQuotes() {
       return () => {};
@@ -684,6 +844,7 @@ async function render() {
   revivePayloadDates(payload);
   installShotFetchTracker();
   installShotCloudApiTransport();
+  installShotHttpFetchTransport();
   hydrateFredSeries(payload.fredSeries ?? []);
   hydrateValuationSeries(payload.valuationSeries ?? []);
   statsCache.hydrate(payload.statSeries ?? []);

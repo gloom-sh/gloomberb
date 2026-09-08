@@ -11,6 +11,9 @@ const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
 import {
   renderDesktopPaneScreenshot,
   type DesktopPaneShotApiProxy,
+  type DesktopPaneShotBridge,
+  type DesktopPaneShotHttpRequest,
+  type DesktopPaneShotHttpResponse,
   type DesktopPaneShotIntradayHistory,
   type DesktopPaneShotPayload,
   type DesktopPaneShotRenderResult,
@@ -136,6 +139,82 @@ export function resolveDesktopShotApiProxy(
   return {
     baseUrl: getCloudApiBaseUrl(),
     sessionToken: resolvePersistedCloudSessionToken(context),
+  };
+}
+
+/**
+ * Data the page may request while it renders. The cloud API is only one of the
+ * router's sources, so calling it directly from the page dropped whatever
+ * another provider contributes: analyst rating price targets came back empty
+ * and corporate actions vanished whenever the cloud leg failed. Quotes are
+ * here for board panes that list symbols the payload was never built for.
+ * These run on the Bun side through the same router `gloomberb fn` uses.
+ */
+const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
+  "getAnalystResearch",
+  "getCorporateActions",
+  "getEarningsCalendar",
+  "getHolders",
+  "getPriceHistory",
+  "getQuote",
+  "getQuotesBatch",
+  "getSecFilings",
+]);
+
+const SHOT_BRIDGE_HTTP_TIMEOUT_MS = 20_000;
+
+export function createDesktopShotBridge(
+  context: Pick<MarketContext, "dataProvider">,
+): DesktopPaneShotBridge {
+  return {
+    async marketData(operation, args) {
+      if (!SHOT_BRIDGE_MARKET_OPERATIONS.has(operation)) {
+        throw new Error(`Screenshot market bridge does not serve "${operation}".`);
+      }
+      const provider = context.dataProvider as unknown as Record<string, unknown>;
+      const handler = provider[operation];
+      if (typeof handler !== "function") {
+        throw new Error(`No provider available for ${operation}.`);
+      }
+      return await (handler as (...values: unknown[]) => Promise<unknown>).apply(
+        context.dataProvider,
+        args,
+      );
+    },
+    httpFetch: (request) => runDesktopShotHttpFetch(request),
+  };
+}
+
+/**
+ * Panes such as DVD fetch a third-party API directly. A browser cannot: the
+ * request is cross-origin and dies in CORS, so the pane reported that the
+ * ticker pays no dividend. The desktop renderer already proxies these through
+ * its native half; the screenshot page gets the same treatment.
+ */
+async function runDesktopShotHttpFetch(
+  request: DesktopPaneShotHttpRequest,
+): Promise<DesktopPaneShotHttpResponse> {
+  const target = new URL(request.url);
+  if (target.protocol !== "http:" && target.protocol !== "https:") {
+    throw new Error(`Screenshot HTTP bridge refuses ${target.protocol} requests.`);
+  }
+  const response = await fetch(request.url, {
+    method: request.method ?? "GET",
+    headers: request.headers,
+    body: request.body,
+    redirect: "follow",
+    signal: AbortSignal.timeout(SHOT_BRIDGE_HTTP_TIMEOUT_MS),
+  });
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, name) => {
+    headers[name] = value;
+  });
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+    setCookie: response.headers.getSetCookie?.() ?? [],
+    body: await response.text(),
   };
 }
 
@@ -617,7 +696,10 @@ export async function renderDesktopShot({
       scale ?? 1,
       watermark ?? null,
     );
-    render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, { captureImage });
+    render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, {
+      captureImage,
+      bridge: createDesktopShotBridge(context),
+    });
   } finally {
     apiClient.setSessionToken(previousSessionToken);
   }

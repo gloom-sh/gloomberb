@@ -3,6 +3,7 @@ import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
   chartSeriesEvidenceWithinRange,
   chartEvidenceMismatchesFor,
+  createDesktopShotBridge,
   isPaneScreenshotUsable,
   missingActiveTabSelections,
   resolveDesktopShotApiProxy,
@@ -91,6 +92,32 @@ describe("pane screenshot payload credentials", () => {
       paneState: { pane: { pluginState: { service: { tab: "latest" } } } },
     });
     expect(JSON.stringify(payload)).not.toContain("private-");
+  });
+});
+
+describe("pane screenshot market bridge", () => {
+  /**
+   * The page can only reach the cloud API on its own, and the cloud carries no
+   * per-rating price targets. Serving research requests from the router is what
+   * keeps a screenshot showing the same values as `gloomberb fn`.
+   */
+  test("answers research requests from the routed provider and refuses anything else", async () => {
+    const calls: Array<[string, unknown[]]> = [];
+    const bridge = createDesktopShotBridge({
+      dataProvider: {
+        getAnalystResearch: (...args: unknown[]) => {
+          calls.push(["getAnalystResearch", args]);
+          return Promise.resolve({ symbol: "NKE", ratings: [{ currentPriceTarget: 42 }] });
+        },
+      } as any,
+    });
+
+    expect(await bridge.marketData("getAnalystResearch", ["NKE", "NYSE"])).toEqual({
+      symbol: "NKE",
+      ratings: [{ currentPriceTarget: 42 }],
+    });
+    expect(calls).toEqual([["getAnalystResearch", ["NKE", "NYSE"]]]);
+    await expect(bridge.marketData("getOptionsChain", ["NKE"])).rejects.toThrow(/does not serve/);
   });
 });
 
