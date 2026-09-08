@@ -1,6 +1,6 @@
 import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
 import { withDeadline } from "../utils/async-deadline";
-import { ApiRequestError, parseApiErrorMessage } from "./errors";
+import { ApiRequestError, parseApiErrorMessage, parseRetryAfterMs } from "./errors";
 import {
   connectionHealth,
   GLOOM_CLOUD_FRED_CONNECTION_ID,
@@ -172,7 +172,11 @@ export class CloudApiRequestTransport {
       throwIfRequestAborted(options.signal);
       if (!response.ok) {
         const text = await response.text().catch(() => "");
-        throw new ApiRequestError(parseApiErrorMessage(text), response.status);
+        throw new ApiRequestError(
+          parseApiErrorMessage(text),
+          response.status,
+          parseRetryAfterMs(response.headers.get("Retry-After")),
+        );
       }
       return response;
     });
@@ -234,7 +238,7 @@ export class CloudApiRequestTransport {
 
       if (!res.ok) {
         const msg = parseApiErrorMessage(text);
-        throw new ApiRequestError(msg, res.status);
+        throw new ApiRequestError(msg, res.status, parseRetryAfterMs(res.headers.get("Retry-After")));
       }
 
       if (!text) return undefined as T;

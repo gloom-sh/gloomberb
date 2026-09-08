@@ -149,6 +149,16 @@ export interface ASKGSessionStartResponse {
   expiresAt: string;
 }
 
+/** Request body for one turn on an open session. */
+export interface ASKGTurnRequest {
+  protocolVersion?: typeof ASKG_PROTOCOL_VERSION;
+  /** Client generated id, reused verbatim to re-attach to a running turn. */
+  turnId: string;
+  input: string;
+  context?: ASKGSessionContext;
+  history?: Array<{ role: "user" | "assistant"; text: string }>;
+}
+
 /** Shared fields carried by every turn stream event. */
 export interface ASKGEventBase {
   seq: number;
@@ -228,6 +238,7 @@ export type ASKGErrorCode =
   | "turn_timeout"
   | "model_usage_limit"
   | "model_unavailable"
+  | "turn_already_recorded"
   | "internal";
 
 /** Reports a recoverable or terminal session or turn failure. */

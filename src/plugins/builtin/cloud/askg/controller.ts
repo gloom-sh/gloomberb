@@ -1,5 +1,6 @@
 import {
   ASKGTransportError,
+  type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
 import type { ASKGToolExecutor } from "./executor";
@@ -21,9 +22,13 @@ import {
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
   type ASKGToolCallEvent,
+  type ASKGTurnRequest,
   type ClientToolManifest,
   type ToolResultPayload,
 } from "./protocol";
+
+/** Turns kept as context for the next question. */
+const MAX_HISTORY_TURNS = 8;
 
 /** Ceiling used until the server states its own turn budget. */
 const DEFAULT_TURN_WALL_CLOCK_MS = 120_000;
@@ -44,6 +49,32 @@ export interface ASKGControllerOptions {
   getContext?(): ASKGSessionContext;
   now?(): number;
   createId?(): string;
+}
+
+/**
+ * How a refused delivery reads in the timeline. A result that misses its window
+ * is a timed out tool, because the turn already continued with a synthetic
+ * timeout for it; the other refusals describe a call the turn cannot use.
+ */
+function refusedResult(
+  payload: ToolResultPayload,
+  outcome: ASKGToolResultOutcome,
+): ToolResultPayload | null {
+  switch (outcome) {
+    case "accepted":
+    case "already-recorded":
+      return null;
+    case "too-late":
+      return {
+        ...payload,
+        status: "timeout",
+        note: "Took too long, so Gloom answered without it.",
+      };
+    case "too-large":
+      return { ...payload, status: "error", note: "Result was too large to send." };
+    case "unknown-call":
+      return { ...payload, status: "error", note: "Gloom no longer has this tool call." };
+  }
 }
 
 function errorState(error: unknown): ASKGErrorState {
@@ -74,6 +105,8 @@ export class ASKGSessionController {
   private sessionRequest: Promise<ASKGSessionStartResponse> | null = null;
   private manifest: ASKGControllerManifest | null = null;
   private readonly confirmations = new Map<string, (approved: boolean) => void>();
+  /** Calls whose turn ended while they were still waiting to be approved. */
+  private readonly abandonedCalls = new Set<string>();
   private readonly toolTasks = new Set<Promise<void>>();
   private turnAbort: AbortController | null = null;
   private disposed = false;
@@ -126,6 +159,7 @@ export class ASKGSessionController {
         sessionId: session.sessionId,
         model: session.model,
         limits: session.limits,
+        acceptedTools: session.acceptedTools,
       });
       return session;
     })();
@@ -138,12 +172,26 @@ export class ASKGSessionController {
     }
   }
 
+  /** Prior questions and answers, oldest first, for the next turn's context. */
+  private history(): ASKGTurnRequest["history"] {
+    return this.state.turns
+      .filter((turn) => turn.answer.trim().length > 0)
+      .slice(-MAX_HISTORY_TURNS)
+      .flatMap((turn) => ([
+        { role: "user" as const, text: turn.prompt },
+        { role: "assistant" as const, text: turn.answer },
+      ]));
+  }
+
   /** Asks one question and streams the answer until the turn ends. */
   async ask(prompt: string): Promise<void> {
     const trimmed = prompt.trim();
     if (!trimmed || this.disposed || isTurnRunning(this.state)) return;
 
+    // The turn id is the client's: a reconnect reuses it verbatim and
+    // re-attaches to the same turn instead of asking again.
     const turnId = this.createId();
+    const history = this.history();
     this.dispatch({ type: "prompt", turnId, prompt: trimmed, at: this.now() });
 
     const abort = new AbortController();
@@ -165,13 +213,16 @@ export class ASKGSessionController {
             retryable: true,
           },
         });
-        this.rejectPendingConfirmations();
+        this.abandonPendingConfirmations();
         abort.abort();
       }, wallClockMs);
 
       await this.options.transport.streamTurn(session.sessionId, {
-        prompt: trimmed,
+        protocolVersion: ASKG_PROTOCOL_VERSION,
+        turnId,
+        input: trimmed,
         ...(this.options.getContext ? { context: this.options.getContext() } : {}),
+        ...(history && history.length > 0 ? { history } : {}),
       }, {
         signal: abort.signal,
         onEvent: (event) => this.handleEvent(event),
@@ -182,7 +233,7 @@ export class ASKGSessionController {
       if (!abort.signal.aborted) {
         this.dispatch({ type: "turn-failed", turnId, error: errorState(error) });
       }
-      this.rejectPendingConfirmations();
+      this.abandonPendingConfirmations();
     } finally {
       if (deadline) clearTimeout(deadline);
       if (this.turnAbort === abort) this.turnAbort = null;
@@ -204,6 +255,11 @@ export class ASKGSessionController {
 
   private handleEvent(event: ASKGSseEvent): void {
     this.dispatch({ type: "event", event });
+    if (event.type === "done") {
+      // Nothing is worth approving once the turn is over.
+      this.abandonPendingConfirmations();
+      return;
+    }
     if (event.type !== "tool-call") return;
     const task = this.runToolCall(event).finally(() => {
       this.toolTasks.delete(task);
@@ -223,6 +279,19 @@ export class ASKGSessionController {
       note,
     });
 
+    const accepted = this.state.acceptedTools;
+    if (accepted.length > 0 && !accepted.includes(call.name)) {
+      await this.deliver({
+        turnId: call.turnId,
+        toolCallId: call.toolCallId,
+        status: "denied",
+        truncated: false,
+        elapsedMs: 0,
+        note: `"${call.name}" was not accepted by this session.`,
+      });
+      return;
+    }
+
     try {
       let confirmed = false;
       if (requiresLocalConfirmation(call)) {
@@ -230,6 +299,7 @@ export class ASKGSessionController {
         confirmed = await new Promise<boolean>((resolve) => {
           this.confirmations.set(call.toolCallId, resolve);
         });
+        if (this.abandonedCalls.delete(call.toolCallId)) return;
         if (!confirmed) {
           await this.deliver({
             turnId: call.turnId,
@@ -271,11 +341,11 @@ export class ASKGSessionController {
     const sessionId = this.session?.sessionId;
     if (!sessionId) return;
     try {
-      await this.options.transport.postToolResult(sessionId, payload, {
-        // Same call, same key: a replayed tool call after a resume is a no-op.
-        idempotencyKey: `${sessionId}:${payload.toolCallId}`,
+      const outcome = await this.options.transport.postToolResult(sessionId, payload, {
         ...(this.turnAbort ? { signal: this.turnAbort.signal } : {}),
       });
+      const refused = refusedResult(payload, outcome);
+      if (refused) this.dispatch({ type: "tool-result", payload: refused });
     } catch (error) {
       const note = `${payload.note ? `${payload.note} ` : ""}Result could not be delivered: ${describeASKGError(errorState(error))}`;
       this.dispatch({ type: "tool-result", payload: { ...payload, note } });
@@ -295,6 +365,12 @@ export class ASKGSessionController {
       this.confirmations.delete(toolCallId);
       resolve(false);
     }
+  }
+
+  /** Drops confirmations whose answer can no longer reach the turn. */
+  private abandonPendingConfirmations(): void {
+    for (const toolCallId of this.confirmations.keys()) this.abandonedCalls.add(toolCallId);
+    this.rejectPendingConfirmations();
   }
 
   setExpanded(toolCallId: string, expanded: boolean): void {
@@ -343,7 +419,7 @@ export class ASKGSessionController {
   /** Stops the current turn locally and tells the server to stop too. */
   cancel(): void {
     const turn = activeTurn(this.state);
-    this.rejectPendingConfirmations();
+    this.abandonPendingConfirmations();
     this.turnAbort?.abort();
     this.turnAbort = null;
     if (turn) this.dispatch({ type: "turn-cancelled", turnId: turn.id });
@@ -356,7 +432,7 @@ export class ASKGSessionController {
 
   dispose(): void {
     this.disposed = true;
-    this.rejectPendingConfirmations();
+    this.abandonPendingConfirmations();
     this.turnAbort?.abort();
     this.turnAbort = null;
     this.listeners.clear();

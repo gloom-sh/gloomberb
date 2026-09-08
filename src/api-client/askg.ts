@@ -2,28 +2,34 @@ import {
   ASKG_PROTOCOL_VERSION,
   type ASKGDoneReason,
   type ASKGErrorCode,
-  type ASKGSessionContext,
   type ASKGSessionStartRequest,
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
+  type ASKGTurnRequest,
   type ToolResultPayload,
 } from "../plugins/builtin/cloud/askg/protocol";
 import { ApiRequestError } from "./errors";
 import { STREAMING_UNSUPPORTED_STATUS } from "./request";
 
-/** Turn body posted to `/askg/session/{id}/turn`; mirrored by the platform. */
-export interface ASKGTurnRequest {
-  prompt: string;
-  context?: ASKGSessionContext;
-}
-
 /** Client-side failure codes, layered on top of the wire error codes. */
 export type ASKGClientErrorCode =
   | ASKGErrorCode
   | "transport_unsupported"
+  | "tier_required"
   | "unauthorized"
   | "network"
   | "protocol";
+
+/**
+ * What the tool-result route made of a posted result. Only `too-late` changes
+ * what the user sees: the turn already continued with a synthetic timeout.
+ */
+export type ASKGToolResultOutcome =
+  | "accepted"
+  | "unknown-call"
+  | "too-late"
+  | "too-large"
+  | "already-recorded";
 
 export class ASKGTransportError extends Error {
   constructor(
@@ -65,8 +71,8 @@ export interface ASKGTransport {
   postToolResult(
     sessionId: string,
     payload: ToolResultPayload,
-    options: { idempotencyKey: string; signal?: AbortSignal },
-  ): Promise<void>;
+    options?: { signal?: AbortSignal },
+  ): Promise<ASKGToolResultOutcome>;
   cancelTurn(
     sessionId: string,
     turnId: string,
@@ -239,10 +245,9 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
 }
 
-function retryAfterMsFromError(error: ApiRequestError): number | undefined {
-  const match = error.message.match(/(\d+)\s*(seconds|second|s)\b/i);
-  if (!match?.[1]) return undefined;
-  return Number(match[1]) * 1000;
+/** A 429 covers both the per-minute limit and the daily cap. */
+function rateLimitCode(message: string): "rate_limited" | "daily_turn_cap" {
+  return /\bdaily\b|\bday\b|daily_turn_cap/i.test(message) ? "daily_turn_cap" : "rate_limited";
 }
 
 /** Maps an HTTP failure onto the same codes the stream itself reports. */
@@ -261,16 +266,29 @@ export function classifyASKGRequestError(error: unknown): ASKGTransportError {
       });
     }
     if (error.status === 429) {
-      return new ASKGTransportError("rate_limited", error.message || "Too many requests.", {
-        retryable: true,
-        retryAfterMs: retryAfterMsFromError(error),
-        status: error.status,
-      });
+      return new ASKGTransportError(
+        rateLimitCode(error.message),
+        error.message || "Too many requests.",
+        {
+          retryable: true,
+          ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+          status: error.status,
+        },
+      );
     }
     if (error.status === 402) {
-      return new ASKGTransportError("daily_turn_cap", error.message || "Daily limit reached.", {
-        status: error.status,
-      });
+      return new ASKGTransportError(
+        "tier_required",
+        error.message || "Ask Gloom is part of a paid plan.",
+        { status: error.status },
+      );
+    }
+    if (error.status === 426) {
+      return new ASKGTransportError(
+        "protocol",
+        `Ask Gloom no longer speaks protocol v${ASKG_PROTOCOL_VERSION}. Update Gloomberb.`,
+        { status: error.status },
+      );
     }
     if (error.status === 503) {
       return new ASKGTransportError("model_unavailable", error.message || "Ask Gloom is unavailable.", {
@@ -355,9 +373,9 @@ export class CloudASKGApi implements ASKGTransport {
   }
 
   /**
-   * Reads one turn. A stream that drops before `done` is reopened with
-   * `Last-Event-ID` set to the highest applied `seq`, so the answer continues
-   * instead of restarting.
+   * Reads one turn. A stream that drops before `done` is reopened with the same
+   * `turnId` and `Last-Event-ID` set to the highest applied `seq`, which
+   * re-attaches to the running turn instead of starting another one.
    */
   async streamTurn(
     sessionId: string,
@@ -380,7 +398,7 @@ export class CloudASKGApi implements ASKGTransport {
           `/askg/session/${encodeURIComponent(sessionId)}/turn`,
           {
             method: "POST",
-            body: JSON.stringify(request),
+            body: JSON.stringify({ protocolVersion: ASKG_PROTOCOL_VERSION, ...request }),
             signal: options.signal,
             headers: lastSeq > 0 ? { "Last-Event-ID": String(lastSeq) } : undefined,
           },
@@ -439,25 +457,37 @@ export class CloudASKGApi implements ASKGTransport {
   }
 
   /**
-   * Posts one client tool result. The key makes a redelivered result a no-op
-   * on the server after a resume replays the same tool call.
+   * Posts one client tool result. The idempotency key is the tool call id, so a
+   * result redelivered after a resume is recorded once. Refusals that describe
+   * the call rather than the connection are returned instead of thrown: the
+   * turn is still running and the timeline says what happened to the row.
    */
   async postToolResult(
     sessionId: string,
     payload: ToolResultPayload,
-    options: { idempotencyKey: string; signal?: AbortSignal },
-  ): Promise<void> {
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ASKGToolResultOutcome> {
     try {
       await this.options.request<void>(
         `/askg/session/${encodeURIComponent(sessionId)}/tool-result`,
         {
           method: "POST",
           body: JSON.stringify(payload),
-          headers: { "Idempotency-Key": options.idempotencyKey },
+          // The route requires the header and the body to name the same call.
+          headers: { "Idempotency-Key": payload.toolCallId },
           signal: options.signal,
         },
       );
+      // 200 and 202 both mean the turn has the result; the buffered request
+      // path does not surface which one answered.
+      return "accepted";
     } catch (error) {
+      if (error instanceof ApiRequestError) {
+        if (error.status === 404) return "unknown-call";
+        if (error.status === 410) return "too-late";
+        if (error.status === 413) return "too-large";
+        if (error.status === 409) return "already-recorded";
+      }
       throw classifyASKGRequestError(error);
     }
   }

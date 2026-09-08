@@ -32,7 +32,6 @@ import { useShortcut } from "../../../../react/input";
 import {
   useAppDispatch,
   useAppSelector,
-  usePaneInstance,
 } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
@@ -47,6 +46,7 @@ import {
   loadASKGClientManifest,
   resolveToolPaneTarget,
 } from "./host";
+import { subscribeASKGQuestions } from "./pending-question";
 import {
   activeTurn,
   describeASKGError,
@@ -357,6 +357,7 @@ function TurnView({
   onSelectTool,
   onToggleTool,
   onUndo,
+  onUpgrade,
 }: {
   turn: ASKGTurn;
   width: number;
@@ -367,6 +368,7 @@ function TurnView({
   onSelectTool: (toolCallId: string) => void;
   onToggleTool: (toolCallId: string) => void;
   onUndo: (toolCallId: string) => void;
+  onUpgrade: () => void;
 }) {
   return (
     <Box flexDirection="column" paddingTop={1}>
@@ -401,8 +403,13 @@ function TurnView({
         <Box paddingTop={1}><Spinner label="Gloom is thinking…" /></Box>
       ) : null}
       {turn.error ? (
-        <Box paddingTop={1}>
+        <Box flexDirection="column" paddingTop={1}>
           <Text fg={colors.negative}>{describeASKGError(turn.error)}</Text>
+          {turn.error.code === "tier_required" ? (
+            <Box paddingTop={1}>
+              <Button label="Upgrade to Pro" variant="primary" onPress={onUpgrade} />
+            </Box>
+          ) : null}
         </Box>
       ) : null}
     </Box>
@@ -412,7 +419,6 @@ function TurnView({
 export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const dispatch = useAppDispatch();
-  const paneInstance = usePaneInstance();
   const planAccess = usePlanAccess();
   const remoteHandler = useRemoteControlHandler();
   const config = useAppSelector((state) => state.config);
@@ -464,7 +470,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const [expandedToolCallId, setExpandedToolCallId] = useState<string | null>(null);
   const inputRef = useRef<TextareaRenderable | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const askedParamsRef = useRef<string | null>(null);
+  const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
 
   const running = isTurnRunning(state);
   const confirmation = pendingConfirmation(state);
@@ -502,19 +508,17 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
   }, [dispatch]);
 
-  // A question from the ASKG shortcut runs once, including when the shortcut
-  // reuses this pane for a second question.
-  const seededQuestion = typeof paneInstance?.params?.question === "string"
-    ? paneInstance.params.question.trim()
-    : "";
-  const seededAt = paneInstance?.params?.askedAt ?? "";
+  // A question typed at the command bar, either opening this pane or landing
+  // in the conversation already open here.
+  useEffect(() => subscribeASKGQuestions(setQueuedQuestion), []);
+
   useEffect(() => {
-    if (!seededQuestion) return;
-    const key = `${seededAt}:${seededQuestion}`;
-    if (askedParamsRef.current === key) return;
-    askedParamsRef.current = key;
-    if (planAccess.emailVerified) ask(seededQuestion);
-  }, [ask, planAccess.emailVerified, seededAt, seededQuestion]);
+    // The restored cloud session arrives after the first render, so a question
+    // that beat it waits instead of being dropped.
+    if (!queuedQuestion || !planAccess.emailVerified) return;
+    setQueuedQuestion(null);
+    ask(queuedQuestion);
+  }, [ask, planAccess.emailVerified, queuedQuestion]);
 
   useEffect(() => {
     const scroll = scrollRef.current;
@@ -561,12 +565,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     pinTicker(symbol, { floating: true });
   }, [pinTicker]);
 
+  // A write waiting on the user owns the keyboard, so the answer never gets
+  // typed into the composer instead.
+  useEffect(() => {
+    if (confirmation && inputFocused) blurInput();
+  }, [blurInput, confirmation, inputFocused]);
+
   useShortcut((event) => {
     if (!focused) return;
-    if (inputFocused) {
-      if (event.name === "escape") blurInput();
-      return;
-    }
     if (confirmation) {
       if (event.name === "y") {
         controller.resolveConfirmation(confirmation.toolCallId, true);
@@ -576,6 +582,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         controller.resolveConfirmation(confirmation.toolCallId, false);
         return;
       }
+    }
+    if (inputFocused) {
+      if (event.name === "escape") blurInput();
+      return;
     }
     if (event.name === "enter" || event.name === "return") {
       focusInput();
@@ -698,6 +708,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             onSelectTool={setSelectedToolCallId}
             onToggleTool={toggleExpanded}
             onUndo={(toolCallId) => void controller.undo(toolCallId)}
+            onUpgrade={() => openCommandBar("Upgrade to Pro")}
           />
         ))}
       </ScrollBox>

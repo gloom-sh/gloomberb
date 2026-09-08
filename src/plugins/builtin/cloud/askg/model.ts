@@ -1,5 +1,5 @@
+import type { ASKGClientErrorCode } from "../../../../api-client/askg";
 import type {
-  ASKGErrorCode,
   ASKGLimits,
   ASKGSseEvent,
   ASKGToolCallEvent,
@@ -55,7 +55,7 @@ export type ASKGTurnStatus =
   | "error";
 
 export interface ASKGErrorState {
-  code: ASKGErrorCode | "transport_unsupported" | "unauthorized" | "network" | "protocol";
+  code: ASKGClientErrorCode;
   message: string;
   retryable: boolean;
   retryAfterMs?: number;
@@ -77,6 +77,8 @@ export interface ASKGConversationState {
   sessionId: string | null;
   model: string | null;
   limits: ASKGLimits | null;
+  /** Tool names the session negotiated; anything else is refused locally. */
+  acceptedTools: string[];
   turns: ASKGTurn[];
   /** Highest applied `seq`, so a resumed stream skips replayed events. */
   lastSeq: number;
@@ -86,12 +88,19 @@ export const EMPTY_ASKG_CONVERSATION: ASKGConversationState = {
   sessionId: null,
   model: null,
   limits: null,
+  acceptedTools: [],
   turns: [],
   lastSeq: 0,
 };
 
 export type ASKGAction =
-  | { type: "session-started"; sessionId: string; model: string; limits: ASKGLimits }
+  | {
+    type: "session-started";
+    sessionId: string;
+    model: string;
+    limits: ASKGLimits;
+    acceptedTools: string[];
+  }
   | { type: "prompt"; turnId: string; prompt: string; at: number }
   | { type: "event"; event: ASKGSseEvent }
   | { type: "tool-awaiting-confirmation"; toolCallId: string }
@@ -309,6 +318,7 @@ export function askgReducer(
         sessionId: action.sessionId,
         model: action.model,
         limits: action.limits,
+        acceptedTools: action.acceptedTools,
       };
     case "prompt":
       return {
@@ -377,7 +387,13 @@ export function askgReducer(
         )),
       }));
     case "reset":
-      return { ...EMPTY_ASKG_CONVERSATION, sessionId: state.sessionId, model: state.model, limits: state.limits };
+      return {
+        ...EMPTY_ASKG_CONVERSATION,
+        sessionId: state.sessionId,
+        model: state.model,
+        limits: state.limits,
+        acceptedTools: state.acceptedTools,
+      };
   }
 }
 
@@ -552,14 +568,16 @@ export function formatCellValue(value: JsonValue | undefined): string {
   return JSON.stringify(value);
 }
 
-const ERROR_TITLES: Record<string, string> = {
+const ERROR_TITLES: Record<ASKGClientErrorCode, string> = {
   rate_limited: "Rate limited",
   daily_turn_cap: "Daily question limit reached",
   tool_budget_exhausted: "Tool budget used up",
   turn_timeout: "Answer timed out",
   model_usage_limit: "Model usage limit reached",
   model_unavailable: "Model unavailable",
+  turn_already_recorded: "Turn already answered",
   transport_unsupported: "Streaming unavailable",
+  tier_required: "Ask Gloom needs a paid plan",
   unauthorized: "Sign in required",
   network: "Connection lost",
   protocol: "Version mismatch",

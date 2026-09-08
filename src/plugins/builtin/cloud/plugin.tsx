@@ -21,6 +21,7 @@ import { congressHeadless } from "../congress-trades/headless";
 import { registerTwitterFeedFeature } from "../cloud-tweets/registration";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { ASKG_PANE_ID, ASKGPane } from "./askg/pane";
+import { askGloomQuestion } from "./askg/pending-question";
 import { registerCloudAuthCommands } from "./auth-commands";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
@@ -187,15 +188,12 @@ const askgModule: PluginModule = {
     keywords: ["ask", "gloom", "assistant", "ai", "question", "askg"],
     shortcut: { prefix: "ASKG", argPlaceholder: "question", argKind: "text" },
     createInstance: (_context, options) => {
-      const question = options?.arg?.trim() ?? "";
-      return {
-        placement: "floating",
-        // One assistant: a second question focuses the open conversation and
-        // asks there instead of stacking another pane. `askedAt` keeps the
-        // same question asked twice a real change to the pane's params.
-        instanceId: "askg:main",
-        ...(question ? { params: { question, askedAt: String(Date.now()) } } : {}),
-      };
+      // The question is handed to the pane directly, so it is never persisted
+      // with the layout and never replayed on the next launch.
+      askGloomQuestion(options?.arg ?? "");
+      // One assistant: a second question focuses the conversation already open
+      // and asks there instead of stacking another pane.
+      return { placement: "floating", instanceId: "askg:main" };
     },
   }],
 };

@@ -97,7 +97,7 @@ import {
 export type * from "./types";
 export { setCloudApiFetchTransport } from "./request";
 export { ASKGTransportError } from "./askg";
-export type { ASKGTransport, ASKGTurnRequest } from "./askg";
+export type { ASKGTransport, ASKGToolResultOutcome } from "./askg";
 
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;

@@ -7,11 +7,16 @@
  *   bun run scripts/mock-askg-server.ts &
  *   GLOOMBERB_API_URL=http://localhost:8792 bun run dev
  *
- * The reply depends on the prompt: "val" runs a headless pane tool, "layout"
- * asks for a user-data confirmation, "error" reports a rate limit, and "drop"
- * closes the stream mid answer so the client has to resume with Last-Event-ID.
+ * The reply depends on the input: "val" runs a headless pane tool, "layout"
+ * asks for a user-data confirmation, "error" reports a rate limit, "drop"
+ * closes the stream mid answer so the client has to resume with Last-Event-ID,
+ * and "late" refuses the tool result with 410 the way a lapsed window does.
+ *
+ * Pass --free to answer the session with 402, which is how the platform tells a
+ * free verified account that Ask Gloom needs a paid plan.
  */
 const PORT = Number(process.env.MOCK_ASKG_PORT ?? 8792);
+const FREE_TIER = process.argv.includes("--free");
 
 const USER = {
   id: "mock-user",
@@ -25,8 +30,10 @@ const USER = {
 };
 
 const toolResults = new Map<string, unknown>();
-let turnCounter = 0;
-let openTurnId = "turn-0";
+/** Tool calls whose result window has closed, answered with 410. */
+const lateToolCalls = new Set<string>();
+/** Streams already opened for a turn id, so a resume re-attaches. */
+const seenTurns = new Set<string>();
 
 function json(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), {
@@ -56,7 +63,14 @@ async function waitForToolResult(toolCallId: string, timeoutMs = 30_000): Promis
 interface TurnPlanStep {
   kind: "text" | "tool" | "server-tool" | "error" | "drop";
   text?: string;
-  tool?: { name: string; args: Record<string, unknown>; writeTier: string; preview?: unknown };
+  tool?: {
+    name: string;
+    args: Record<string, unknown>;
+    writeTier: string;
+    preview?: unknown;
+    /** Closes the result window immediately, so the post is answered with 410. */
+    late?: boolean;
+  };
   server?: { name: string; rowCount: number; note: string };
 }
 
@@ -86,6 +100,21 @@ function planFor(prompt: string): TurnPlanStep[] {
         },
       },
       { kind: "text", text: "Nothing else to do." },
+    ];
+  }
+  if (lower.includes("late")) {
+    return [
+      { kind: "text", text: "Reading the workspace, but not waiting for it.\n\n" },
+      {
+        kind: "tool",
+        tool: {
+          name: "app.get_resource",
+          args: { resource: "app://panes" },
+          writeTier: "read",
+          late: true,
+        },
+      },
+      { kind: "text", text: "Answered without the tool." },
     ];
   }
   if (lower.includes("drop") || lower.includes("resume")) {
@@ -143,6 +172,9 @@ function turnStream(
       };
 
       send({ type: "session", sessionId, turnId, model: "gloom-1", promptVersion: "2024-06-01" });
+      // The real stream pings every 15s; one up front proves the client's
+      // decoder ignores comment frames.
+      controller.enqueue(encoder.encode(": keep-alive\n\n"));
 
       for (const step of planFor(prompt)) {
         if (step.kind === "drop" && lastEventId === 0) {
@@ -190,6 +222,7 @@ function turnStream(
         }
         if (step.kind === "tool" && step.tool) {
           const toolCallId = `call-${seq + 1}`;
+          if (step.tool.late) lateToolCalls.add(toolCallId);
           send({
             type: "tool-call",
             turnId,
@@ -202,6 +235,19 @@ function turnStream(
             timeoutMs: 30_000,
             expiresAt: new Date(Date.now() + 30_000).toISOString(),
           });
+          if (step.tool.late) {
+            // The turn continues with the synthetic timeout the route records.
+            send({
+              type: "tool-executed",
+              turnId,
+              toolCallId,
+              name: step.tool.name,
+              source: "remote-op",
+              status: "timeout",
+              summary: { elapsedMs: 0, truncated: false, note: "No result inside the window." },
+            });
+            continue;
+          }
           const result = await waitForToolResult(toolCallId) as {
             status?: string;
             rowCount?: number;
@@ -264,6 +310,9 @@ Bun.serve({
     if (path === "/auth/sign-in" || path === "/auth/sign-up") return json({ user: USER });
 
     if (path === "/askg/session" && request.method === "POST") {
+      if (FREE_TIER) {
+        return json({ message: "Ask Gloom is included with Pro." }, { status: 402 });
+      }
       const body = await request.json() as { tools?: unknown[]; manifestHash?: string };
       const tools = body.tools ?? [];
       console.log(`[askg] session start: ${tools.length} tools, hash ${body.manifestHash}`);
@@ -301,27 +350,43 @@ Bun.serve({
 
     const turnMatch = path.match(/^\/askg\/session\/([^/]+)\/turn$/);
     if (turnMatch && request.method === "POST") {
-      const body = await request.json() as { prompt?: string };
+      const body = await request.json() as {
+        turnId?: string;
+        input?: string;
+        history?: Array<{ role: string; text: string }>;
+      };
       const lastEventId = Number(request.headers.get("Last-Event-ID") ?? "0") || 0;
-      // A resumed turn keeps the id it started with.
-      if (lastEventId === 0) openTurnId = `turn-${++turnCounter}`;
-      console.log(`[askg] turn: "${body.prompt}" lastEventId=${lastEventId} turn=${openTurnId}`);
-      return turnStream(body.prompt ?? "", turnMatch[1] ?? "mock-session", lastEventId, openTurnId);
+      const turnId = body.turnId ?? "turn-0";
+      const reattached = seenTurns.has(turnId);
+      seenTurns.add(turnId);
+      console.log(
+        `[askg] turn ${turnId}${reattached ? " (re-attach)" : ""}: "${body.input}" lastEventId=${lastEventId} history=${body.history?.length ?? 0}`,
+      );
+      return turnStream(body.input ?? "", turnMatch[1] ?? "mock-session", lastEventId, turnId);
     }
 
     const resultMatch = path.match(/^\/askg\/session\/([^/]+)\/tool-result$/);
     if (resultMatch && request.method === "POST") {
       const payload = await request.json() as { toolCallId: string; status: string; rowCount?: number };
+      const key = request.headers.get("Idempotency-Key");
       console.log(
-        `[askg] tool-result ${payload.toolCallId} ${payload.status} rows=${payload.rowCount ?? "-"} key=${request.headers.get("Idempotency-Key")}`,
+        `[askg] tool-result ${payload.toolCallId} ${payload.status} rows=${payload.rowCount ?? "-"} key=${key}`,
       );
+      if (key !== payload.toolCallId) {
+        return json({ error: "idempotency key must equal toolCallId" }, { status: 400 });
+      }
+      if (lateToolCalls.has(payload.toolCallId)) {
+        return json({ error: "result window closed" }, { status: 410 });
+      }
+      if (toolResults.has(payload.toolCallId)) return json({ status: "duplicate" }, { status: 202 });
       toolResults.set(payload.toolCallId, payload);
-      return json({ ok: true });
+      return json({ status: "accepted" });
     }
 
     if (/^\/askg\/session\/[^/]+\/cancel$/.test(path)) {
-      console.log("[askg] cancel");
-      return json({ ok: true });
+      const body = await request.json().catch(() => ({})) as { turnId?: string };
+      console.log(`[askg] cancel ${body.turnId ?? "-"}`);
+      return json({ status: "cancelling" }, { status: 202 });
     }
 
     return json({ error: "not found", path }, { status: 404 });
