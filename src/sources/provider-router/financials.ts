@@ -3,7 +3,7 @@ import type { AnalystResearchData, CorporateActionsData, FinancialStatement, Quo
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
-import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
+import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import {
   mergeQuoteContributionMaps,
   resolveCanonicalQuote,
@@ -82,11 +82,25 @@ function finitePositiveNumber(value: unknown): value is number {
 }
 
 const ACTIVE_PROVIDER_QUOTE_MAX_AGE_MS = 10 * 60_000;
-const ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS = 20 * 60_000;
-const ACTIVE_QUOTE_MARKET_STATES = new Set(["PRE", "REGULAR", "POST"]);
+// A delayed quote is built from the last completed one-minute bar fifteen
+// minutes back, so a fresh one is already sixteen minutes old; leave room for
+// the server cache on top of that before calling the provider stuck.
+const ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS = 30 * 60_000;
+
+/**
+ * PRE and POST are live sessions only where the exchange trades outside
+ * regular hours. Yahoo reports POST for Tokyo or Sydney for hours after the
+ * close, and that closing quote is exactly what a world board should show.
+ */
+function isQuoteInActiveSession(quote: Quote): boolean {
+  const state = quote.marketState ?? "";
+  if (state === "REGULAR") return true;
+  if (state === "PRE" || state === "POST") return isExtendedHoursExchange(quote);
+  return false;
+}
 
 function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now()): boolean {
-  if (!ACTIVE_QUOTE_MARKET_STATES.has(quote.marketState ?? "")) return false;
+  if (!isQuoteInActiveSession(quote)) return false;
   if (!Number.isFinite(quote.lastUpdated)) return false;
   const maxAge =
     quote.dataSource === "delayed"
