@@ -292,6 +292,10 @@ export function runDirectCommandAction(options: {
       setRootThemeBaseId(getState().config.theme);
       setRootQuery(arg ? `TH ${arg}` : "TH ");
       return;
+    case "colors":
+      setRootThemeBaseId(getState().config.theme);
+      setRootQuery(arg ? `CO ${arg}` : "CO ");
+      return;
     case "security-description":
       runSecurityDescriptionShortcut(arg);
       return;

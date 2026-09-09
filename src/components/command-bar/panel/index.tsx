@@ -72,8 +72,10 @@ export function CommandBarPanel({
   termHeight,
   termWidth,
   themePickerActive,
+  themePickerMode,
   themePickerFilter,
   themePickerRef,
+  committedStyleId,
   trailingWidth,
   visibleListState,
   workflowScrollRef,
@@ -216,7 +218,9 @@ export function CommandBarPanel({
             <ThemePicker
               ref={themePickerRef}
               filter={themePickerFilter}
+              mode={themePickerMode}
               committedThemeId={committedThemeId}
+              committedStyleId={committedStyleId}
               height={listBodyHeight}
               contentPadding={contentPadding}
               labelWidth={labelWidth}

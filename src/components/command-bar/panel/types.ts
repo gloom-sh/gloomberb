@@ -8,7 +8,8 @@ import type {
 import type { NativeSelectElement } from "../../ui/native-select";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";
-import type { ThemePickerHandle } from "../theme-picker";
+import type { ThemePickerHandle, ThemePickerMode } from "../theme-picker";
+import type { ThemeSelection } from "../theme-preview";
 import type {
   CommandBarFieldValue,
   CommandBarRoute,
@@ -47,8 +48,8 @@ export interface CommandBarPanelProps {
   onNativeSelectRef: (fieldId: string, element: NativeSelectElement | null) => void;
   onOverlayClose: () => void;
   onQueryChange: (query: string) => void;
-  onThemeCommit: (themeId: string) => void;
-  onThemePreview: (themeId: string | null) => void;
+  onThemeCommit: (selection: ThemeSelection) => void;
+  onThemePreview: (selection: ThemeSelection | null) => void;
   onWorkflowActiveTextareaSync: (route: CommandBarWorkflowRoute) => void;
   onWorkflowSubmit: (route: CommandBarWorkflowRoute) => void | Promise<void>;
   panelBounds: LayoutBounds;
@@ -64,7 +65,9 @@ export interface CommandBarPanelProps {
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
+  themePickerMode: ThemePickerMode;
   themePickerFilter: string;
+  committedStyleId: string;
   themePickerRef: RefObject<ThemePickerHandle | null>;
   trailingWidth: number;
   visibleListState: ListScreenState | null;

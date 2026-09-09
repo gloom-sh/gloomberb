@@ -161,11 +161,12 @@ export function buildImmediateRootSelection(options: RootSelectionCommandOptions
     };
   }
 
-  if (match.command.id === "theme") {
+  if (match.command.id === "theme" || match.command.id === "colors") {
+    const colorsOnly = match.command.id === "colors";
     return {
-      id: "theme-picker",
-      label: "Change Theme",
-      detail: "Preview and apply themes",
+      id: colorsOnly ? "color-picker" : "theme-picker",
+      label: colorsOnly ? "Change Colors" : "Change Theme",
+      detail: colorsOnly ? "Preview and apply color schemes" : "Preview and apply themes",
       category: "Themes",
       kind: "command",
       action: () => options.startThemePicker(match.arg),

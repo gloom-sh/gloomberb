@@ -9,16 +9,18 @@ import {
   useState,
 } from "react";
 import { t } from "../../i18n";
-import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/themes";
+import { getPresets, presetLabels } from "../../theme/presets";
+import { getScheme, getThemeIds, isDarkTheme } from "../../theme/schemes";
 import { Box, Text, TextAttributes } from "../../ui";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
 import { useCommandBarPalette } from "./panel/palette";
+import type { ThemeSelection } from "./theme-preview";
 import { truncateText } from "./view-model";
 
 const THEME_PREVIEW_DEBOUNCE_MS = 120;
 /**
- * Marks the dark half of the list. The registry's own order groups themes by
+ * Marks the dark half of the list. The registry's own order groups entries by
  * family, which only helps if you already know which family you want; sorted by
  * name you can find one by reading, and the glyph carries the grouping the
  * order used to.
@@ -26,28 +28,77 @@ const THEME_PREVIEW_DEBOUNCE_MS = 120;
 const DARK_THEME_GLYPH = "☾";
 /** The glyph plus the space that keeps names on one left edge, dark or light. */
 const GLYPH_GUTTER_WIDTH = 2;
+/** Widest style name plus two cells of air, so scheme names share a left edge. */
+const STYLE_COLUMN_WIDTH = 10;
+
+/** `theme` picks a whole theme; `colors` swaps the palette under the style. */
+export type ThemePickerMode = "theme" | "colors";
 
 export interface ThemeOption {
   id: string;
+  /** Structural half. Empty in `colors` mode, where the style does not change. */
+  styleId: string;
+  schemeId: string;
+  styleName: string;
+  schemeName: string;
   name: string;
   dark: boolean;
 }
 
-const THEME_OPTIONS: ThemeOption[] = getThemeIds()
-  .map((id) => ({ id, name: themeRegistry[id]!.name, dark: isDarkTheme(id) }))
-  .sort((a, b) => a.name.localeCompare(b.name));
+const PRESET_OPTIONS: ThemeOption[] = getPresets()
+  .map((preset) => {
+    const labels = presetLabels(preset);
+    return {
+      id: preset.id,
+      styleId: preset.styleId,
+      schemeId: preset.schemeId,
+      styleName: labels.style,
+      schemeName: labels.scheme,
+      name: labels.full,
+      dark: labels.dark,
+    };
+  })
+  .sort((a, b) => a.styleName.localeCompare(b.styleName) || a.schemeName.localeCompare(b.schemeName));
+
+const SCHEME_OPTIONS: ThemeOption[] = getThemeIds()
+  .map((id) => ({
+    id,
+    styleId: "",
+    schemeId: id,
+    styleName: "",
+    schemeName: getScheme(id).name,
+    name: getScheme(id).name,
+    dark: isDarkTheme(id),
+  }))
+  .sort((a, b) => a.schemeName.localeCompare(b.schemeName));
+
+function optionsFor(mode: ThemePickerMode): ThemeOption[] {
+  return mode === "colors" ? SCHEME_OPTIONS : PRESET_OPTIONS;
+}
 
 /**
  * Shared with the panel layout, which sizes the sheet to whatever this returns
- * so the picker never opens taller than the themes it can show.
+ * so the picker never opens taller than the entries it can show.
  */
-export function matchThemeOptions(filter: string): ThemeOption[] {
+export function matchThemeOptions(filter: string, mode: ThemePickerMode = "theme"): ThemeOption[] {
+  const options = optionsFor(mode);
   const normalized = filter.trim().toLowerCase();
-  if (!normalized) return THEME_OPTIONS;
-  return THEME_OPTIONS.filter((theme) => (
-    theme.name.toLowerCase().includes(normalized)
-    || theme.id.toLowerCase().includes(normalized)
+  if (!normalized) return options;
+  return options.filter((option) => (
+    option.name.toLowerCase().includes(normalized)
+    || option.id.toLowerCase().includes(normalized)
+    || option.schemeId.toLowerCase().includes(normalized)
+    || option.styleId.toLowerCase().includes(normalized)
   ));
+}
+
+function isCurrentOption(option: ThemeOption, committedThemeId: string, committedStyleId: string): boolean {
+  if (option.schemeId !== committedThemeId) return false;
+  return option.styleId === "" || option.styleId === committedStyleId;
+}
+
+function selectionOf(option: ThemeOption): ThemeSelection {
+  return option.styleId ? { themeId: option.schemeId, styleId: option.styleId } : { themeId: option.schemeId };
 }
 
 interface ThemePickerScrollEvent {
@@ -58,15 +109,17 @@ interface ThemePickerScrollEvent {
 
 interface ThemePickerProps {
   filter: string;
+  mode?: ThemePickerMode;
   committedThemeId: string;
+  committedStyleId: string;
   height: number;
   contentPadding: number;
   labelWidth: number;
   trailingWidth: number;
   queryDisplayWidth: number;
   nativePaneChrome: boolean;
-  onPreview: (themeId: string | null) => void;
-  onCommit: (themeId: string) => void;
+  onPreview: (selection: ThemeSelection | null) => void;
+  onCommit: (selection: ThemeSelection) => void;
 }
 
 export interface ThemePickerHandle {
@@ -81,7 +134,9 @@ function clampIndex(index: number, length: number): number {
 
 export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(function ThemePicker({
   filter,
+  mode = "theme",
   committedThemeId,
+  committedStyleId,
   height,
   contentPadding,
   labelWidth,
@@ -93,33 +148,33 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
 }: ThemePickerProps, ref) {
   const palette = useCommandBarPalette(nativePaneChrome);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingPreviewIdRef = useRef<string | null>(null);
-  const committedThemeIdRef = useRef(committedThemeId);
+  const pendingPreviewRef = useRef<ThemeOption | null>(null);
+  const committedRef = useRef({ themeId: committedThemeId, styleId: committedStyleId });
   const onPreviewRef = useRef(onPreview);
   const onCommitRef = useRef(onCommit);
   const normalizedFilter = filter.trim().toLowerCase();
-  const themes = useMemo(() => matchThemeOptions(normalizedFilter), [normalizedFilter]);
+  const themes = useMemo(() => matchThemeOptions(normalizedFilter, mode), [mode, normalizedFilter]);
   const [selectedIndex, setSelectedIndex] = useState(() => (
-    Math.max(0, themes.findIndex((theme) => theme.id === committedThemeId))
+    Math.max(0, themes.findIndex((theme) => isCurrentOption(theme, committedThemeId, committedStyleId)))
   ));
   const themesRef = useRef(themes);
   const selectedIndexRef = useRef(selectedIndex);
   const items = useMemo<ListViewItem[]>(() => themes.map((theme) => {
-    const current = theme.id === committedThemeId;
+    const current = isCurrentOption(theme, committedThemeId, committedStyleId);
     return {
       id: theme.id,
       label: theme.name,
       detail: current ? "current" : "",
-      category: "Themes",
+      category: mode === "colors" ? "Colors" : "Themes",
       kind: "theme",
       right: current ? "current" : "",
       current,
     };
-  }), [committedThemeId, themes]);
+  }), [committedStyleId, committedThemeId, mode, themes]);
 
   themesRef.current = themes;
   selectedIndexRef.current = selectedIndex;
-  committedThemeIdRef.current = committedThemeId;
+  committedRef.current = { themeId: committedThemeId, styleId: committedStyleId };
   onPreviewRef.current = onPreview;
   onCommitRef.current = onCommit;
 
@@ -128,20 +183,21 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
       clearTimeout(previewTimerRef.current);
       previewTimerRef.current = null;
     }
-    pendingPreviewIdRef.current = null;
+    pendingPreviewRef.current = null;
   }, []);
 
-  const requestPreview = useCallback((themeId: string) => {
-    pendingPreviewIdRef.current = themeId;
+  const requestPreview = useCallback((option: ThemeOption) => {
+    pendingPreviewRef.current = option;
     if (previewTimerRef.current) {
       clearTimeout(previewTimerRef.current);
     }
     previewTimerRef.current = setTimeout(() => {
       previewTimerRef.current = null;
-      const nextThemeId = pendingPreviewIdRef.current;
-      pendingPreviewIdRef.current = null;
-      if (!nextThemeId) return;
-      onPreviewRef.current(nextThemeId === committedThemeIdRef.current ? null : nextThemeId);
+      const next = pendingPreviewRef.current;
+      pendingPreviewRef.current = null;
+      if (!next) return;
+      const { themeId, styleId } = committedRef.current;
+      onPreviewRef.current(isCurrentOption(next, themeId, styleId) ? null : selectionOf(next));
     }, THEME_PREVIEW_DEBOUNCE_MS);
   }, []);
 
@@ -152,7 +208,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     if (nextIndex === selectedIndexRef.current) return false;
     selectedIndexRef.current = nextIndex;
     setSelectedIndex(nextIndex);
-    requestPreview(options[nextIndex]!.id);
+    requestPreview(options[nextIndex]!);
     return true;
   }, [requestPreview]);
 
@@ -160,7 +216,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     const selected = themesRef.current[selectedIndexRef.current];
     if (!selected) return false;
     cancelPreview();
-    onCommitRef.current(selected.id);
+    onCommitRef.current(selectionOf(selected));
     return true;
   }, [cancelPreview]);
 
@@ -171,11 +227,11 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   }), [cancelPreview, commit, move]);
 
   useEffect(() => {
-    const preferredIndex = themes.findIndex((theme) => theme.id === committedThemeId);
+    const preferredIndex = themes.findIndex((theme) => isCurrentOption(theme, committedThemeId, committedStyleId));
     const nextIndex = preferredIndex >= 0 ? preferredIndex : 0;
     selectedIndexRef.current = nextIndex;
     setSelectedIndex(nextIndex);
-  }, [committedThemeId, themes]);
+  }, [committedStyleId, committedThemeId, themes]);
 
   useEffect(() => cancelPreview, [cancelPreview]);
 
@@ -196,7 +252,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     if (!selected) return;
     selectedIndexRef.current = index;
     setSelectedIndex(index);
-    requestPreview(selected.id);
+    requestPreview(selected);
   }, [requestPreview]);
 
   const handleActivate = useCallback((item: ListViewItem, index: number) => {
@@ -205,12 +261,15 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     selectedIndexRef.current = index;
     setSelectedIndex(index);
     cancelPreview();
-    onCommitRef.current(selected.id);
+    onCommitRef.current(selectionOf(selected));
   }, [cancelPreview]);
 
+  const showStyleColumn = mode === "theme";
   const nameWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH);
+  const styleWidth = showStyleColumn ? Math.min(STYLE_COLUMN_WIDTH, Math.max(0, nameWidth - 6)) : 0;
+  const schemeWidth = Math.max(1, nameWidth - styleWidth);
   const renderRow = useCallback((item: ListViewItem, state: ListRowState) => {
-    const label = truncateText(item.label, nameWidth);
+    const option = themesRef.current.find((theme) => theme.id === item.id);
     const trailing = item.current ? "current" : "";
     return (
       <Box
@@ -219,19 +278,29 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
         paddingX={contentPadding}
         width="100%"
         data-command-bar-row-selected={nativePaneChrome && state.selected ? "true" : undefined}
-        style={nativePaneChrome ? { borderRadius: 6 } : undefined}
+        style={nativePaneChrome ? { borderRadius: "var(--gloom-radius-control, 6px)" } : undefined}
       >
         <Box width={GLYPH_GUTTER_WIDTH}>
           <Text fg={state.selected ? palette.selectedText : palette.subtle}>
-            {isDarkTheme(item.id) ? DARK_THEME_GLYPH : ""}
+            {option?.dark ? DARK_THEME_GLYPH : ""}
           </Text>
         </Box>
-        <Box width={nameWidth}>
+        {showStyleColumn && (
+          <Box width={styleWidth}>
+            <Text
+              fg={state.selected ? palette.selectedText : palette.subtle}
+              attributes={item.current ? TextAttributes.BOLD : undefined}
+            >
+              {truncateText(option?.styleName ?? "", styleWidth)}
+            </Text>
+          </Box>
+        )}
+        <Box width={schemeWidth}>
           <Text
             fg={state.selected ? palette.selectedText : palette.text}
             attributes={item.current ? TextAttributes.BOLD : undefined}
           >
-            {label}
+            {truncateText(option?.schemeName ?? item.label, schemeWidth)}
           </Text>
         </Box>
         <Box width={trailingWidth}>
@@ -243,9 +312,11 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     );
   }, [
     contentPadding,
-    nameWidth,
     nativePaneChrome,
     palette,
+    schemeWidth,
+    showStyleColumn,
+    styleWidth,
     trailingWidth,
   ]);
 
@@ -261,18 +332,18 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
       bgColor={nativePaneChrome ? palette.panelBg : palette.bg}
       selectedBgColor={palette.selectedBg}
       hoverBgColor={palette.hoverBg}
-      emptyMessage={truncateText(t("No themes match"), queryDisplayWidth)}
+      emptyMessage={truncateText(t(mode === "colors" ? "No colors match" : "No themes match"), queryDisplayWidth)}
       showSelectedDescription={false}
       onSelect={handleSelect}
       onActivate={handleActivate}
       onMouseScroll={!nativePaneChrome ? handleScroll : undefined}
       renderRow={renderRow}
-      remoteLabel="Theme picker"
+      remoteLabel={mode === "colors" ? "Color picker" : "Theme picker"}
       remoteScope="command-bar"
       remoteItemKind="theme"
-      remoteItemCategory="Themes"
+      remoteItemCategory={mode === "colors" ? "Colors" : "Themes"}
       remoteMetadata={{
-        surface: "theme-picker",
+        surface: mode === "colors" ? "color-picker" : "theme-picker",
         filter: normalizedFilter,
       }}
     />
