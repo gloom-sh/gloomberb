@@ -56,6 +56,8 @@ import type {
   CloudCongressHousePayload,
   CloudEarningsCallListPayload,
   CloudEarningsTranscriptPayload,
+  CloudProxyStatementListPayload,
+  CloudProxyStatementPayload,
   CloudNewsPayload,
   CloudSavedSearch,
   CloudSavedSearchInput,
@@ -108,7 +110,12 @@ class GloomApiClient {
   private currentUser: AuthUser | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
-  private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
+  private authTrace: Array<{
+    at: number;
+    event: string;
+    token: boolean;
+    user: string;
+  }> = [];
   private sessionRequest: Promise<AuthUser | null> | null = null;
   private readonly currentUserListeners = new Set<() => void>();
   private readonly transport = new CloudApiRequestTransport();
@@ -135,7 +142,8 @@ class GloomApiClient {
       hasSessionCredential: () => this.transport.hasSessionCredential(),
       hasVerifiedUser: () => this.currentUser?.emailVerified === true,
       isUsingWebSocketToken: () => !!this.transport.getWebSocketToken(),
-      clearWebSocketTokenForFallback: () => this.transport.clearWebSocketTokenForFallback(),
+      clearWebSocketTokenForFallback: () =>
+        this.transport.clearWebSocketTokenForFallback(),
       markCurrentUserUnverified: () => {
         if (this.currentUser) {
           this.currentUser = { ...this.currentUser, emailVerified: false };
@@ -152,7 +160,9 @@ class GloomApiClient {
       request: (path, options) => this.request(path, options),
       socket: this.socket,
     });
-    this.data = new CloudDataApi((path, options) => this.request(path, options));
+    this.data = new CloudDataApi((path, options) =>
+      this.request(path, options),
+    );
     this.askg = new CloudASKGApi({
       request: (path, options) => this.request(path, options),
       openStream: (path, options) => this.transport.openStream(path, options),
@@ -177,7 +187,9 @@ class GloomApiClient {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
-    this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
+    this.traceAuth(
+      changed ? "setSessionToken:changed" : "setSessionToken:same",
+    );
     if (!token) {
       this.currentUser = null;
       this.emitCurrentUserChange();
@@ -217,7 +229,9 @@ class GloomApiClient {
   }
 
   isVerified(): boolean {
-    return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
+    return (
+      this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified
+    );
   }
 
   /**
@@ -249,17 +263,20 @@ class GloomApiClient {
       trace: [...this.authTrace],
       currentUser: user
         ? {
-          id: user.id,
-          emailVerified: user.emailVerified === true,
-          plan: user.plan ?? null,
-          effectivePlan: user.effectivePlan ?? null,
-          trialEndsAt: user.trialEndsAt ?? null,
-        }
+            id: user.id,
+            emailVerified: user.emailVerified === true,
+            plan: user.plan ?? null,
+            effectivePlan: user.effectivePlan ?? null,
+            trialEndsAt: user.trialEndsAt ?? null,
+          }
         : null,
     };
   }
 
-  private traceAuth(event: string, user: AuthUser | null = this.currentUser): void {
+  private traceAuth(
+    event: string,
+    user: AuthUser | null = this.currentUser,
+  ): void {
     this.authTrace.push({
       at: Date.now(),
       event,
@@ -270,7 +287,9 @@ class GloomApiClient {
   }
 
   private setCurrentUser(user: AuthUser | null): void {
-    const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
+    const changed =
+      this.socketEntitlementKey(this.currentUser) !==
+      this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
     this.socket.syncAuthState({ reconnect: changed });
@@ -318,7 +337,12 @@ class GloomApiClient {
     return this.currentUser?.emailVerified ? this.currentUser : null;
   }
 
-  async signUp(email: string, username: string, name: string, password: string): Promise<AuthUser> {
+  async signUp(
+    email: string,
+    username: string,
+    name: string,
+    password: string,
+  ): Promise<AuthUser> {
     return this.auth.signUp(email, username, name, password);
   }
 
@@ -326,7 +350,10 @@ class GloomApiClient {
     return this.auth.signIn(email, password);
   }
 
-  async startDeviceSignIn(body: { clientName?: string; clientPlatform?: string }): Promise<DeviceAuthStartResponse> {
+  async startDeviceSignIn(body: {
+    clientName?: string;
+    clientPlatform?: string;
+  }): Promise<DeviceAuthStartResponse> {
     return this.auth.startDeviceSignIn(body);
   }
 
@@ -351,7 +378,9 @@ class GloomApiClient {
       this.traceAuth("getSession:done", user);
       return user;
     } catch (error) {
-      this.traceAuth(`getSession:error:${error instanceof Error ? error.message.slice(0, 60) : "unknown"}`);
+      this.traceAuth(
+        `getSession:error:${error instanceof Error ? error.message.slice(0, 60) : "unknown"}`,
+      );
       throw error;
     } finally {
       this.sessionRequest = null;
@@ -372,19 +401,30 @@ class GloomApiClient {
 
   /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
   async createCloudCheckout(returnTo?: string): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo }) });
+    return this.request<{ url: string }>("/stripe/checkout", {
+      method: "POST",
+      body: JSON.stringify({ returnTo }),
+    });
   }
 
   async recordResearchActivity(payload: {
-    event: import("./research-activity").ResearchActivity; eventId: string;
-    surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
-    attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
+    event: import("./research-activity").ResearchActivity;
+    eventId: string;
+    surface: "web" | "desktop" | "tui" | "cli";
+    anonymousId?: string;
+    attribution?: Record<string, string>;
+    feature?: import("./research-activity").ResearchFeature;
   }): Promise<void> {
-    await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
+    await this.request("/activity/research", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
 
   /** Stores a verified user's public terminal snapshot or pane handoff. */
-  async createTerminalShare(payload: unknown): Promise<{ id: string; expiresAt: string }> {
+  async createTerminalShare(
+    payload: unknown,
+  ): Promise<{ id: string; expiresAt: string }> {
     return this.request<{ id: string; expiresAt: string }>("/shares", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -393,7 +433,10 @@ class GloomApiClient {
 
   /** Stripe billing portal for an account that already has a subscription. */
   async createBillingPortal(): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });
+    return this.request<{ url: string }>("/stripe/portal", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
   }
 
   async getAccountProfile(): Promise<AccountProfile> {
@@ -412,15 +455,22 @@ class GloomApiClient {
     return this.auth.getBuildoutToken();
   }
 
-  async updateAccountProfile(update: AccountProfileUpdate): Promise<AccountProfile> {
+  async updateAccountProfile(
+    update: AccountProfileUpdate,
+  ): Promise<AccountProfile> {
     return this.auth.updateAccountProfile(update);
   }
 
   async getSyncSnapshot(): Promise<CloudSyncSnapshotResponse> {
-    return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });
+    return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", {
+      method: "GET",
+    });
   }
 
-  async putSyncSnapshot(snapshot: SyncSnapshot, options?: { baseRevision?: number | null }): Promise<CloudSyncPushResponse> {
+  async putSyncSnapshot(
+    snapshot: SyncSnapshot,
+    options?: { baseRevision?: number | null },
+  ): Promise<CloudSyncPushResponse> {
     return this.request<CloudSyncPushResponse>("/sync/snapshot", {
       method: "PUT",
       body: JSON.stringify({
@@ -436,22 +486,29 @@ class GloomApiClient {
   ): Promise<LayoutMarketplaceEntry | null> {
     if (!isMarketplaceLayoutId(id)) return null;
     try {
-      return parseMarketplaceLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
-        method: "GET",
-        signal: options?.signal,
-      }));
+      return parseMarketplaceLayoutEntry(
+        await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
+          method: "GET",
+          signal: options?.signal,
+        }),
+      );
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) return null;
       throw error;
     }
   }
 
-  async listMarketplaceLayouts(options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry[]> {
-    const items = parseMarketplaceLayoutList(await this.request<unknown>("/layouts", {
-      method: "GET",
-      signal: options?.signal,
-    }));
-    if (!items) throw new Error("The layout marketplace returned invalid data.");
+  async listMarketplaceLayouts(options?: {
+    signal?: AbortSignal;
+  }): Promise<LayoutMarketplaceEntry[]> {
+    const items = parseMarketplaceLayoutList(
+      await this.request<unknown>("/layouts", {
+        method: "GET",
+        signal: options?.signal,
+      }),
+    );
+    if (!items)
+      throw new Error("The layout marketplace returned invalid data.");
     return items;
   }
 
@@ -460,20 +517,27 @@ class GloomApiClient {
     payload: LayoutMarketplacePayload,
     options?: { signal?: AbortSignal },
   ): Promise<LayoutMarketplaceEntry> {
-    const item = parseMarketplaceLayoutEntry(await this.request<unknown>("/layouts", {
-      method: "POST",
-      body: JSON.stringify({ name: name.trim(), ...payload }),
-      signal: options?.signal,
-    }));
+    const item = parseMarketplaceLayoutEntry(
+      await this.request<unknown>("/layouts", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), ...payload }),
+        signal: options?.signal,
+      }),
+    );
     if (!item) throw new Error("The layout marketplace returned invalid data.");
     return item;
   }
 
-  async updateSyncSettings(update: Partial<SyncSettings>): Promise<SyncSettings> {
-    const result = await this.request<{ settings: SyncSettings }>("/sync/settings", {
-      method: "PATCH",
-      body: JSON.stringify(update),
-    });
+  async updateSyncSettings(
+    update: Partial<SyncSettings>,
+  ): Promise<SyncSettings> {
+    const result = await this.request<{ settings: SyncSettings }>(
+      "/sync/settings",
+      {
+        method: "PATCH",
+        body: JSON.stringify(update),
+      },
+    );
     if (this.currentUser) {
       this.currentUser = {
         ...this.currentUser,
@@ -481,21 +545,32 @@ class GloomApiClient {
         weeklyRoundupEnabled: result.settings.weeklyRoundupEnabled,
         positionAlertsEnabled: result.settings.positionAlertsEnabled,
         lastSyncAt: result.settings.lastSyncAt ?? this.currentUser.lastSyncAt,
-        lastRoundupEmailAt: result.settings.lastRoundupEmailAt ?? this.currentUser.lastRoundupEmailAt,
+        lastRoundupEmailAt:
+          result.settings.lastRoundupEmailAt ??
+          this.currentUser.lastRoundupEmailAt,
       };
     }
     return result.settings;
   }
 
   async getRoundupPreview(): Promise<CloudRoundupPreviewResponse> {
-    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/preview", { method: "POST", body: JSON.stringify({}) });
+    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/preview", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
   }
 
   async sendRoundupTestEmail(): Promise<CloudRoundupPreviewResponse> {
-    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/test-email", { method: "POST", body: JSON.stringify({}) });
+    return this.request<CloudRoundupPreviewResponse>(
+      "/sync/roundup/test-email",
+      { method: "POST", body: JSON.stringify({}) },
+    );
   }
 
-  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     return this.auth.changePassword(currentPassword, newPassword);
   }
 
@@ -562,15 +637,24 @@ class GloomApiClient {
     return this.chat.updateChannelState(channelId, body);
   }
 
-  async markChatNotificationsDelivered(notificationIds: string[]): Promise<{ delivered: number }> {
+  async markChatNotificationsDelivered(
+    notificationIds: string[],
+  ): Promise<{ delivered: number }> {
     return this.chat.markNotificationsDelivered(notificationIds);
   }
 
-  async openDirectChannel(target: { userId?: string; username?: string }): Promise<ChatChannel> {
+  async openDirectChannel(target: {
+    userId?: string;
+    username?: string;
+  }): Promise<ChatChannel> {
     return this.chat.openDirectChannel(target);
   }
 
-  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }): Promise<ChatChannel> {
+  async openGroupChannel(body: {
+    userIds?: string[];
+    usernames?: string[];
+    name?: string;
+  }): Promise<ChatChannel> {
     return this.chat.openGroupChannel(body);
   }
 
@@ -581,11 +665,25 @@ class GloomApiClient {
     return this.chat.getMessages(channelId, opts);
   }
 
-  async sendMessage(channelId: string, content: string, replyToId?: string, clientMessageId?: string): Promise<ChatMessage> {
-    return this.chat.sendMessage(channelId, content, replyToId, clientMessageId);
+  async sendMessage(
+    channelId: string,
+    content: string,
+    replyToId?: string,
+    clientMessageId?: string,
+  ): Promise<ChatMessage> {
+    return this.chat.sendMessage(
+      channelId,
+      content,
+      replyToId,
+      clientMessageId,
+    );
   }
 
-  async editMessage(channelId: string, messageId: string, content: string): Promise<ChatMessage> {
+  async editMessage(
+    channelId: string,
+    messageId: string,
+    content: string,
+  ): Promise<ChatMessage> {
     return this.chat.editMessage(channelId, messageId, content);
   }
 
@@ -593,11 +691,20 @@ class GloomApiClient {
     channelId: string,
     onMessage: (msg: ChatMessage) => void,
     onError?: (err: string) => void,
-  ): { send: (content: string, replyToId?: string, clientMessageId?: string) => Promise<ChatMessage>; close: () => void } {
+  ): {
+    send: (
+      content: string,
+      replyToId?: string,
+      clientMessageId?: string,
+    ) => Promise<ChatMessage>;
+    close: () => void;
+  } {
     return this.chat.connectChannel(channelId, onMessage, onError);
   }
 
-  subscribeChatNotifications(listener: (notification: ChatNotification) => void): () => void {
+  subscribeChatNotifications(
+    listener: (notification: ChatNotification) => void,
+  ): () => void {
     return this.chat.subscribeNotifications(listener);
   }
 
@@ -613,7 +720,10 @@ class GloomApiClient {
   }
 
   /** Subscribes to a shared scanner feed; all panes of one kind share one upstream subscription. */
-  subscribeScanner(scanner: ScannerKind, listener: (event: ScannerFeedEvent) => void): () => void {
+  subscribeScanner(
+    scanner: ScannerKind,
+    listener: (event: ScannerFeedEvent) => void,
+  ): () => void {
     return this.socket.subscribeScanner(scanner, listener);
   }
 
@@ -621,11 +731,17 @@ class GloomApiClient {
     this.socket.dispose();
   }
 
-  async searchInstruments(query: string, limit = 10): Promise<InstrumentSearchResult[]> {
+  async searchInstruments(
+    query: string,
+    limit = 10,
+  ): Promise<InstrumentSearchResult[]> {
     return this.data.searchInstruments(query, limit);
   }
 
-  async getCloudQuote(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudQuotePayload>> {
+  async getCloudQuote(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudQuotePayload>> {
     return this.data.getCloudQuote(symbol, exchange);
   }
 
@@ -636,7 +752,9 @@ class GloomApiClient {
     return this.data.getCloudQuotesBatch(targets, mode);
   }
 
-  async getCloudWorldVenues(): Promise<CloudMarketResponse<CloudWorldVenueMapPayload>> {
+  async getCloudWorldVenues(): Promise<
+    CloudMarketResponse<CloudWorldVenueMapPayload>
+  > {
     return this.data.getCloudWorldVenues();
   }
 
@@ -656,15 +774,24 @@ class GloomApiClient {
     return this.data.getCloudOptionsChain(symbol, exchange, expirationDate);
   }
 
-  async getCloudProfile(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudCompanyProfile>> {
+  async getCloudProfile(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudCompanyProfile>> {
     return this.data.getCloudProfile(symbol, exchange);
   }
 
-  async getCloudFundamentals(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudFundamentals>> {
+  async getCloudFundamentals(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudFundamentals>> {
     return this.data.getCloudFundamentals(symbol, exchange);
   }
 
-  async getCloudFinancials(symbol: string, exchange?: string): Promise<CloudMarketResponse<TickerFinancials>> {
+  async getCloudFinancials(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<TickerFinancials>> {
     return this.data.getCloudFinancials(symbol, exchange);
   }
 
@@ -675,19 +802,31 @@ class GloomApiClient {
     return this.data.getCloudFinancialsBatch(targets, mode);
   }
 
-  async getCloudHolders(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudHoldersPayload>> {
+  async getCloudHolders(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudHoldersPayload>> {
     return this.data.getCloudHolders(symbol, exchange);
   }
 
-  async getCloudShortInterest(symbol: string, years?: number): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
+  async getCloudShortInterest(
+    symbol: string,
+    years?: number,
+  ): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
     return this.data.getCloudShortInterest(symbol, years);
   }
 
-  async getCloudAnalystResearch(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
+  async getCloudAnalystResearch(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
     return this.data.getCloudAnalystResearch(symbol, exchange);
   }
 
-  async getCloudCorporateActions(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudCorporateActionsPayload>> {
+  async getCloudCorporateActions(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudCorporateActionsPayload>> {
     return this.data.getCloudCorporateActions(symbol, exchange);
   }
 
@@ -695,7 +834,11 @@ class GloomApiClient {
     symbol: string,
     exchange?: string,
     period: "annual" | "quarterly" | "both" = "both",
-  ): Promise<CloudMarketResponse<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>> {
+  ): Promise<
+    CloudMarketResponse<
+      Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">
+    >
+  > {
     return this.data.getCloudStatements(symbol, exchange, period);
   }
 
@@ -707,7 +850,9 @@ class GloomApiClient {
     return this.data.getCloudHistory(symbol, exchange, params);
   }
 
-  async getCloudExchangeRate(fromCurrency: string): Promise<CloudMarketResponse<{ rate: number }>> {
+  async getCloudExchangeRate(
+    fromCurrency: string,
+  ): Promise<CloudMarketResponse<{ rate: number }>> {
     return this.data.getCloudExchangeRate(fromCurrency);
   }
 
@@ -742,7 +887,9 @@ class GloomApiClient {
     return this.data.getCloudCds(params);
   }
 
-  async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {
+  async getCloudCongressHouse(
+    params: CloudCongressHouseParams = {},
+  ): Promise<CloudCongressHousePayload> {
     return this.data.getCloudCongressHouse(params);
   }
 
@@ -752,23 +899,47 @@ class GloomApiClient {
     return this.data.getCloudEarningsCalls(params);
   }
 
-  async getCloudEarningsTranscript(id: string): Promise<CloudEarningsTranscriptPayload> {
+  async getCloudEarningsTranscript(
+    id: string,
+  ): Promise<CloudEarningsTranscriptPayload> {
     return this.data.getCloudEarningsTranscript(id);
   }
 
-  async getCloudSecFilings(params: CloudSecFilingsParams): Promise<CloudSecFilingsResponse> {
+  async getProxyStatements(
+    ticker: string,
+  ): Promise<CloudProxyStatementListPayload> {
+    return this.data.getProxyStatements(ticker);
+  }
+
+  async getProxyStatement(
+    ticker: string,
+    year: number,
+  ): Promise<CloudProxyStatementPayload> {
+    return this.data.getProxyStatement(ticker, year);
+  }
+
+  async getCloudSecFilings(
+    params: CloudSecFilingsParams,
+  ): Promise<CloudSecFilingsResponse> {
     return this.data.getCloudSecFilings(params);
   }
 
-  async getCloudSecFilingDocuments(params: CloudSecFilingParams): Promise<CloudSecDocumentsResponse> {
+  async getCloudSecFilingDocuments(
+    params: CloudSecFilingParams,
+  ): Promise<CloudSecDocumentsResponse> {
     return this.data.getCloudSecFilingDocuments(params);
   }
 
-  async getCloudSecFilingContent(params: CloudSecFilingParams): Promise<CloudSecContentResponse> {
+  async getCloudSecFilingContent(
+    params: CloudSecFilingParams,
+  ): Promise<CloudSecContentResponse> {
     return this.data.getCloudSecFilingContent(params);
   }
 
-  async getCloudSec13F(path: string, params: Record<string, string | number | undefined> = {}): Promise<unknown> {
+  async getCloudSec13F(
+    path: string,
+    params: Record<string, string | number | undefined> = {},
+  ): Promise<unknown> {
     return this.data.getCloudSec13F(path, params);
   }
 
@@ -787,11 +958,15 @@ class GloomApiClient {
     return this.data.getCloudSearchDocument(docType, sourceId, options);
   }
 
-  async getCloudSavedSearches(options?: { signal?: AbortSignal }): Promise<CloudSavedSearch[]> {
+  async getCloudSavedSearches(options?: {
+    signal?: AbortSignal;
+  }): Promise<CloudSavedSearch[]> {
     return this.data.getCloudSavedSearches(options);
   }
 
-  async createCloudSavedSearch(input: CloudSavedSearchInput): Promise<CloudSavedSearch> {
+  async createCloudSavedSearch(
+    input: CloudSavedSearchInput,
+  ): Promise<CloudSavedSearch> {
     return this.data.createCloudSavedSearch(input);
   }
 
@@ -813,7 +988,9 @@ class GloomApiClient {
     return this.data.getCloudSavedSearchHits(id, options);
   }
 
-  async getCloudNews(params: CloudNewsParams = {}): Promise<CloudNewsListResponse> {
+  async getCloudNews(
+    params: CloudNewsParams = {},
+  ): Promise<CloudNewsListResponse> {
     return this.data.getCloudNews(params);
   }
 
@@ -821,11 +998,15 @@ class GloomApiClient {
     return this.data.getCloudNewsStory(storyId);
   }
 
-  async getCloudTickerTweets(params: CloudTickerTweetsParams): Promise<CloudTweetSearchResponse> {
+  async getCloudTickerTweets(
+    params: CloudTickerTweetsParams,
+  ): Promise<CloudTweetSearchResponse> {
     return this.data.getCloudTickerTweets(params);
   }
 
-  async searchCloudTweets(params: CloudTweetSearchParams): Promise<CloudTweetSearchResponse> {
+  async searchCloudTweets(
+    params: CloudTweetSearchParams,
+  ): Promise<CloudTweetSearchResponse> {
     return this.data.searchCloudTweets(params);
   }
 }

@@ -72,7 +72,7 @@ function styledRuns(text: string, color: string, attributes = 0): StyledText {
  * chrome wraps the styled paragraph itself. `indent` is applied to every
  * line after the first, for bullets.
  */
-function Prose({
+export function Prose({
   text,
   width,
   color,
@@ -125,7 +125,7 @@ function Prose({
   );
 }
 
-function SectionHeading({ title }: { title: string }) {
+export function SectionHeading({ title }: { title: string }) {
   return (
     <Box height={1} marginTop={1}>
       <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>

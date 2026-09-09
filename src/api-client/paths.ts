@@ -1,4 +1,8 @@
-import type { CloudSearchDocType, CloudSearchSort, CloudTweetQueryType } from "./types";
+import type {
+  CloudSearchDocType,
+  CloudSearchSort,
+  CloudTweetQueryType,
+} from "./types";
 import { normalizeSymbol, publicTickerKey } from "../utils/exchanges";
 
 export type CloudHistoryParams = {
@@ -82,13 +86,19 @@ const CRYPTO_QUOTE = /[-/](USD|USDT|USDC|EUR|GBP|BTC)$/;
 
 export type CloudLogoKind = "ticker" | "crypto";
 
-export function normalizeCloudLogoSymbol(kind: CloudLogoKind, symbol: string): string | null {
+export function normalizeCloudLogoSymbol(
+  kind: CloudLogoKind,
+  symbol: string,
+): string | null {
   let normalized = symbol.trim().toUpperCase();
   if (kind === "crypto") normalized = normalized.replace(CRYPTO_QUOTE, "");
   return LOGO_SYMBOL_RE.test(normalized) ? normalized : null;
 }
 
-export function cloudLogoPath(kind: CloudLogoKind, symbol: string): string | null {
+export function cloudLogoPath(
+  kind: CloudLogoKind,
+  symbol: string,
+): string | null {
   const normalized = normalizeCloudLogoSymbol(kind, symbol);
   if (!normalized) return null;
   return `/cloud/logos/${kind}/${encodeURIComponent(normalized)}`;
@@ -100,22 +110,34 @@ function appendQuery(path: string, search: URLSearchParams): string {
 }
 
 export function cloudMarketSearchPath(query: string, limit: number): string {
-  return appendQuery("/market/search", new URLSearchParams({
-    q: query,
-    limit: String(limit),
-  }));
+  return appendQuery(
+    "/market/search",
+    new URLSearchParams({
+      q: query,
+      limit: String(limit),
+    }),
+  );
 }
 
-export function cloudMarketSymbolPath(path: string, symbol: string, exchange?: string): string {
+export function cloudMarketSymbolPath(
+  path: string,
+  symbol: string,
+  exchange?: string,
+): string {
   const search = new URLSearchParams({ symbol });
   if (exchange) search.set("exchange", exchange);
   return appendQuery(path, search);
 }
 
-export function cloudOptionsChainPath(symbol: string, exchange?: string, expirationDate?: number): string {
+export function cloudOptionsChainPath(
+  symbol: string,
+  exchange?: string,
+  expirationDate?: number,
+): string {
   const search = new URLSearchParams({ symbol });
   if (exchange) search.set("exchange", exchange);
-  if (expirationDate != null) search.set("expirationDate", String(expirationDate));
+  if (expirationDate != null)
+    search.set("expirationDate", String(expirationDate));
   return appendQuery("/market/options", search);
 }
 
@@ -129,10 +151,15 @@ export function cloudStatementsPath(
   return appendQuery("/market/statements", search);
 }
 
-export function cloudHistoryPath(symbol: string, exchange: string, params: CloudHistoryParams = {}): string {
+export function cloudHistoryPath(
+  symbol: string,
+  exchange: string,
+  params: CloudHistoryParams = {},
+): string {
   const search = new URLSearchParams({ symbol, exchange });
   if (params.interval) search.set("interval", params.interval);
-  if (params.outputsize != null) search.set("outputsize", String(params.outputsize));
+  if (params.outputsize != null)
+    search.set("outputsize", String(params.outputsize));
   if (params.startDate) search.set("startDate", params.startDate);
   if (params.endDate) search.set("endDate", params.endDate);
   if (params.rangeKey) search.set("rangeKey", params.rangeKey);
@@ -144,16 +171,25 @@ export function cloudShillerPath(): string {
 }
 
 export function cloudExchangeRatePath(fromCurrency: string): string {
-  return appendQuery("/market/exchange-rate", new URLSearchParams({ fromCurrency }));
+  return appendQuery(
+    "/market/exchange-rate",
+    new URLSearchParams({ fromCurrency }),
+  );
 }
 
-export function cloudFredSeriesPath(seriesId: string, params: CloudFredSeriesParams = {}): string {
+export function cloudFredSeriesPath(
+  seriesId: string,
+  params: CloudFredSeriesParams = {},
+): string {
   const search = new URLSearchParams();
   if (params.startDate) search.set("startDate", params.startDate);
   if (params.endDate) search.set("endDate", params.endDate);
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.sortOrder) search.set("sortOrder", params.sortOrder);
-  return appendQuery(`/cloud/econ/series/${encodeURIComponent(seriesId)}`, search);
+  return appendQuery(
+    `/cloud/econ/series/${encodeURIComponent(seriesId)}`,
+    search,
+  );
 }
 
 export function cloudCdsPath(params: CloudCdsParams = {}): string {
@@ -180,20 +216,26 @@ export type CloudSecFilingParams = {
   filingUrl?: string;
 };
 
-export function cloudCongressHousePath(params: CloudCongressHouseParams = {}): string {
+export function cloudCongressHousePath(
+  params: CloudCongressHouseParams = {},
+): string {
   const search = new URLSearchParams();
   if (params.year != null) search.set("year", String(params.year));
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
-  if (params.filingLimit != null) search.set("filingLimit", String(params.filingLimit));
-  if (params.filingOffset != null) search.set("filingOffset", String(params.filingOffset));
+  if (params.filingLimit != null)
+    search.set("filingLimit", String(params.filingLimit));
+  if (params.filingOffset != null)
+    search.set("filingOffset", String(params.filingOffset));
   if (params.member) search.set("member", params.member);
   if (params.ticker) search.set("ticker", params.ticker);
   if (params.refresh != null) search.set("refresh", String(params.refresh));
   return appendQuery("/cloud/congress/house", search);
 }
 
-export function cloudEarningsCallsPath(params: CloudEarningsCallsParams = {}): string {
+export function cloudEarningsCallsPath(
+  params: CloudEarningsCallsParams = {},
+): string {
   const search = new URLSearchParams();
   if (params.ticker) search.set("ticker", params.ticker);
   if (params.limit != null) search.set("limit", String(params.limit));
@@ -206,6 +248,15 @@ export function cloudEarningsTranscriptPath(id: string): string {
   return `/cloud/transcripts/${encodeURIComponent(id)}`;
 }
 
+/** Executive compensation reads are open: no account, no plan. */
+export function publicProxyStatementsPath(ticker: string): string {
+  return `/public/proxies/${encodeURIComponent(ticker.toUpperCase())}`;
+}
+
+export function publicProxyStatementPath(ticker: string, year: number): string {
+  return `/public/proxies/${encodeURIComponent(ticker.toUpperCase())}/${year}`;
+}
+
 export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
   const search = new URLSearchParams({ ticker: params.ticker });
   if (params.limit != null) search.set("limit", String(params.limit));
@@ -213,28 +264,38 @@ export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
   return appendQuery("/cloud/sec/filings", search);
 }
 
-export function cloudSecFilingDocumentsPath(params: CloudSecFilingParams): string {
+export function cloudSecFilingDocumentsPath(
+  params: CloudSecFilingParams,
+): string {
   const search = new URLSearchParams();
   if (params.cik) search.set("cik", params.cik);
   if (params.accession) search.set("accession", params.accession);
   if (params.form) search.set("form", params.form);
-  if (params.primaryDocument) search.set("primaryDocument", params.primaryDocument);
+  if (params.primaryDocument)
+    search.set("primaryDocument", params.primaryDocument);
   if (params.filingUrl) search.set("filingUrl", params.filingUrl);
   return appendQuery("/cloud/sec/filing/documents", search);
 }
 
-export function cloudSecFilingContentPath(params: CloudSecFilingParams): string {
+export function cloudSecFilingContentPath(
+  params: CloudSecFilingParams,
+): string {
   const search = new URLSearchParams();
   if (params.cik) search.set("cik", params.cik);
   if (params.accession) search.set("accession", params.accession);
   if (params.form) search.set("form", params.form);
-  if (params.primaryDocument) search.set("primaryDocument", params.primaryDocument);
-  if (params.primaryDocumentUrl) search.set("primaryDocumentUrl", params.primaryDocumentUrl);
+  if (params.primaryDocument)
+    search.set("primaryDocument", params.primaryDocument);
+  if (params.primaryDocumentUrl)
+    search.set("primaryDocumentUrl", params.primaryDocumentUrl);
   if (params.filingUrl) search.set("filingUrl", params.filingUrl);
   return appendQuery("/cloud/sec/filing/content", search);
 }
 
-export function cloudSec13FPath(path: string, params: Record<string, string | number | undefined> = {}): string {
+export function cloudSec13FPath(
+  path: string,
+  params: Record<string, string | number | undefined> = {},
+): string {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) search.set(key, String(value));
@@ -262,7 +323,9 @@ export type CloudSearchParams = {
 
 function csvParam(values: readonly string[] | undefined): string | null {
   if (!values) return null;
-  const cleaned = values.map((value) => value.trim()).filter((value) => value.length > 0);
+  const cleaned = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
   return cleaned.length > 0 ? cleaned.join(",") : null;
 }
 
@@ -286,7 +349,10 @@ export function cloudSearchPath(params: CloudSearchParams): string {
   return appendQuery("/cloud/search", search);
 }
 
-export function cloudSearchDocumentPath(docType: CloudSearchDocType, sourceId: string): string {
+export function cloudSearchDocumentPath(
+  docType: CloudSearchDocType,
+  sourceId: string,
+): string {
   return `/cloud/search/documents/${encodeURIComponent(docType)}/${encodeURIComponent(sourceId)}`;
 }
 
@@ -312,16 +378,21 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
     search.set("tickers", tickerFilter);
   }
   if (params.tickerTier) search.set("tickerTier", params.tickerTier);
-  if (params.tickerRelations?.length) search.set("tickerRelations", params.tickerRelations.join(","));
+  if (params.tickerRelations?.length)
+    search.set("tickerRelations", params.tickerRelations.join(","));
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.topics?.length) search.set("topics", params.topics.join(","));
-  if (params.categories?.length) search.set("categories", params.categories.join(","));
+  if (params.categories?.length)
+    search.set("categories", params.categories.join(","));
   if (params.sectors?.length) search.set("sectors", params.sectors.join(","));
   if (params.sources?.length) search.set("sources", params.sources.join(","));
-  if (params.excludeSources?.length) search.set("excludeSources", params.excludeSources.join(","));
+  if (params.excludeSources?.length)
+    search.set("excludeSources", params.excludeSources.join(","));
   if (params.sentiment) search.set("sentiment", params.sentiment);
-  if (params.minImportance != null) search.set("minImportance", String(params.minImportance));
-  if (params.minUrgency != null) search.set("minUrgency", String(params.minUrgency));
+  if (params.minImportance != null)
+    search.set("minImportance", String(params.minImportance));
+  if (params.minUrgency != null)
+    search.set("minUrgency", String(params.minUrgency));
   if (params.breaking != null) search.set("breaking", String(params.breaking));
   if (params.since) search.set("since", params.since.toISOString());
   if (params.until) search.set("until", params.until.toISOString());
@@ -333,7 +404,8 @@ export function cloudTickerTweetsPath(params: CloudTickerTweetsParams): string {
   const search = new URLSearchParams({ ticker: params.ticker });
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.hours != null) search.set("hours", String(params.hours));
-  if (params.includeReplies != null) search.set("includeReplies", String(params.includeReplies));
+  if (params.includeReplies != null)
+    search.set("includeReplies", String(params.includeReplies));
   return appendQuery("/news/tweets", search);
 }
 

@@ -15,6 +15,7 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   holders: "ticker-research",
   insider: "ticker-research",
   "dividend-yield": "ticker-research",
+  executives: "ticker-research",
   "short-interest": "ticker-research",
   "kelly-sizer": "portfolio",
   "layout-manager": "application",
