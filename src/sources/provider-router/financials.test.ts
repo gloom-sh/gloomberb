@@ -36,6 +36,43 @@ describe("provider-router financial quote usability", () => {
     ).toBe(true);
   });
 
+  test("keeps a delayed quote the server cache has aged past twenty minutes", () => {
+    expect(isProviderQuoteUsableForCurrentSession(makeQuote({
+      dataSource: "delayed",
+      listingExchangeName: "NASDAQ",
+      marketState: "REGULAR",
+      lastUpdated: Date.now() - 25 * 60_000,
+    }), "NASDAQ")).toBe(true);
+  });
+
+  test("still rejects a delayed quote the provider stopped updating", () => {
+    expect(isProviderQuoteUsableForCurrentSession(makeQuote({
+      dataSource: "delayed",
+      listingExchangeName: "NASDAQ",
+      marketState: "REGULAR",
+      lastUpdated: Date.now() - 35 * 60_000,
+    }), "NASDAQ")).toBe(false);
+  });
+
+  test("keeps a closed Asian index that Yahoo still labels POST hours after the close", () => {
+    expect(isProviderQuoteUsableForCurrentSession(makeQuote({
+      symbol: "^N225",
+      dataSource: "delayed",
+      listingExchangeName: "OSAKA",
+      marketState: "POST",
+      lastUpdated: Date.now() - 6 * 60 * 60_000,
+    }), "OSAKA")).toBe(true);
+  });
+
+  test("still ages out a US after-hours quote the provider stopped updating", () => {
+    expect(isProviderQuoteUsableForCurrentSession(makeQuote({
+      listingExchangeName: "NASDAQ",
+      marketState: "POST",
+      postMarketPrice: 101,
+      lastUpdated: Date.now() - 15 * 60_000,
+    }), "NASDAQ")).toBe(false);
+  });
+
   test("rejects empty zero provider quotes", () => {
     expect(isProviderQuoteUsableForCurrentSession(makeQuote({
       price: 0,
