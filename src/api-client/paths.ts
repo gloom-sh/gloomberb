@@ -253,6 +253,15 @@ export function publicProxyStatementsPath(ticker: string): string {
   return `/public/proxies/${encodeURIComponent(ticker.toUpperCase())}`;
 }
 
+export function publicFilingEventsPath(ticker: string, limit?: number): string {
+  const search = new URLSearchParams();
+  if (limit != null) search.set("limit", String(limit));
+  return appendQuery(
+    `/public/events/${encodeURIComponent(ticker.toUpperCase())}`,
+    search,
+  );
+}
+
 export function publicRiskReportsPath(ticker: string): string {
   return `/public/risks/${encodeURIComponent(ticker.toUpperCase())}`;
 }
