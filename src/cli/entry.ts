@@ -1,6 +1,7 @@
 import { dispatchCli } from "./index";
 import { fail, inferCliErrorOptions, printCliError } from "./errors";
 import { loadExternalPlugins } from "../plugins/loader";
+import { restoreExtractedPlugins } from "./restore-plugins";
 import type { CliLaunchRequest } from "../types/plugin";
 import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
@@ -10,13 +11,14 @@ import {
 } from "./native-smoke";
 
 async function launchOpenTuiApp(options: {
-  externalPlugins: Awaited<ReturnType<typeof loadExternalPlugins>>;
   cliLaunchRequest?: CliLaunchRequest | null;
   cliArgs?: string[];
 }): Promise<void> {
   const { startOpenTuiApp } = await import("../renderers/opentui/start");
+  await restoreExtractedPlugins();
+  const externalPlugins = await loadExternalPlugins("tui");
   await startOpenTuiApp({
-    externalPlugins: options.externalPlugins,
+    externalPlugins,
     cliArgs: options.cliArgs ?? [],
     skipCliDispatch: true,
     cliLaunchRequest: options.cliLaunchRequest ?? null,
@@ -36,23 +38,21 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     process.exit(0);
   }
 
-  const externalPlugins = await loadExternalPlugins();
-
   if (!command) {
-    await launchOpenTuiApp({ externalPlugins });
+    await launchOpenTuiApp({});
     return;
   }
 
   if (command === "launch-ui" || command === "ui") {
-    await launchOpenTuiApp({ externalPlugins, cliArgs: rawArgs.slice(1) });
+    await launchOpenTuiApp({ cliArgs: rawArgs.slice(1) });
     return;
   }
 
+  const externalPlugins = await loadExternalPlugins();
   const dispatchResult = await dispatchCli(rawArgs, { externalPlugins });
   if (dispatchResult.kind === "handled") return;
   if (dispatchResult.kind === "launch-ui") {
     await launchOpenTuiApp({
-      externalPlugins,
       cliLaunchRequest: dispatchResult.request,
       cliArgs: [],
     });

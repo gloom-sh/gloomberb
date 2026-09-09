@@ -1,7 +1,8 @@
 import { Box, Text, useUiHost } from "../../ui";
 import { TextAttributes } from "../../ui";
-import { type ComponentType } from "react";
-import { colors } from "../../theme/colors";
+import { type ComponentType, type ReactNode } from "react";
+import type { ThemeColors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 
@@ -9,6 +10,10 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 export interface ButtonProps {
   label: string;
+  /** Short text or an icon; `label` remains the accessible action name. */
+  displayLabel?: string;
+  children?: ReactNode;
+  expanded?: boolean;
   onPress?: () => void;
   variant?: ButtonVariant;
   disabled?: boolean;
@@ -16,9 +21,12 @@ export interface ButtonProps {
   shortcut?: string;
   width?: number;
   height?: number | string;
+  compact?: boolean;
+  /** Keep an action inside a row from also activating that row. */
+  stopPropagation?: boolean;
 }
 
-function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean) {
+function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors) {
   if (disabled) {
     return { bg: colors.panel, fg: colors.textMuted };
   }
@@ -41,6 +49,9 @@ function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: 
 
 export function Button({
   label: rawLabel,
+  displayLabel,
+  children,
+  expanded,
   onPress,
   variant = "secondary",
   disabled = false,
@@ -48,7 +59,10 @@ export function Button({
   shortcut,
   width,
   height,
+  compact = false,
+  stopPropagation = false,
 }: ButtonProps) {
+  const colors = useThemeColors();
   const label = t(rawLabel);
   useRemoteUiNode({
     role: "button",
@@ -59,13 +73,15 @@ export function Button({
         if (!disabled) onPress?.();
       },
     },
-    metadata: { variant, active, shortcut },
+    metadata: { variant, active, shortcut, expanded },
   });
   const HostButton = useUiHost().Button as ComponentType<ButtonProps> | undefined;
   if (HostButton) {
     return (
       <HostButton
         label={label}
+        displayLabel={displayLabel}
+        expanded={expanded}
         onPress={onPress}
         variant={variant}
         disabled={disabled}
@@ -73,11 +89,13 @@ export function Button({
         shortcut={shortcut}
         width={width}
         height={height}
-      />
+        compact={compact}
+        stopPropagation={stopPropagation}
+      >{children}</HostButton>
     );
   }
 
-  const palette = resolveButtonColors(variant, active, disabled);
+  const palette = resolveButtonColors(variant, active, disabled, colors);
 
   return (
     <Box
@@ -85,13 +103,18 @@ export function Button({
       height={height ?? 1}
       flexDirection="row"
       backgroundColor={palette.bg}
-      onMouseDown={() => {
+      cursor={disabled ? "default" : "pointer"}
+      onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+        if (stopPropagation) {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+        }
         if (!disabled) onPress?.();
       }}
     >
-      <Text fg={palette.fg} attributes={active ? TextAttributes.BOLD : 0}>
-        {` ${label} `}
-      </Text>
+      {children ?? <Text fg={palette.fg} attributes={active ? TextAttributes.BOLD : 0}>
+        {compact ? displayLabel ?? label : ` ${displayLabel ?? label} `}
+      </Text>}
       {shortcut && (
         <Text fg={disabled ? colors.textMuted : colors.textDim}>
           {` ${shortcut}`}

@@ -850,11 +850,11 @@ ctx.createPaneFromTemplate("my-chart-new", { symbol: "AAPL" });
 
 ## Reusable components
 
-Import renderer-neutral primitives from `gloomberb/ui`, controls from `gloomberb/components`, hooks from `gloomberb/react`, colors from `gloomberb/theme`, and formatters from `gloomberb/utils`:
+Import basic UI from `gloomberb/components`, layout and specialized rendering primitives from `gloomberb/ui`, hooks from `gloomberb/react`, colors from `gloomberb/theme`, and formatters from `gloomberb/utils`:
 
 ```typescript
-import { Box, Text } from "gloomberb/ui";
-import { DataTableView, EmptyState, Spinner, usePaneFooter } from "gloomberb/components";
+import { Box } from "gloomberb/ui";
+import { Button, DataTableView, PaneStatusBody, Section, KeyValueRow, usePaneFooter } from "gloomberb/components";
 import { usePaneTicker, usePluginPaneState } from "gloomberb/react";
 import { colors, priceColor } from "gloomberb/theme";
 import { formatCurrency, formatNumber } from "gloomberb/utils";
@@ -869,11 +869,35 @@ Choose the existing control that owns the interaction you need:
 | Charts | `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
 | Navigation and choices | `Tabs`, `SegmentedControl`, `SelectButton`, `Checkbox` |
 | Actions and inputs | `Button`, `TextField`, `NumberField`, `InputSearchBar` |
-| Dialog content | `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
-| Loading and empty states | `Spinner`, `EmptyState`, `PaneStatusBody` |
+| Clickable/expandable summaries | `ActionRow` |
+| Selectable lists | `ListView` |
+| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
+| Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
+| Labeled values and badges | `KeyValueRow`, `Badge` |
+| Paragraphs and separators | `Prose`, `Divider` |
+| Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
+| External links | `ExternalLink`, `ExternalLinkText` |
 | Sidebar | `PaneSidebar`, `PaneSidebarRow`, `PaneSidebarAction` |
 
-[The component exports](src/components/index.ts) are the complete public surface. Compose `Box` and `Text` for other layouts; avoid importing renderer internals or unexported components.
+[The component exports](src/components/index.ts) are the complete public surface, including the entire basic UI kit. Built-in and external panes must use these components for basic UI. Shared components own appearance, theme updates, focus, keyboard/mouse behavior, disabled state, and automation semantics. A pane supplies its data and domain behavior.
+
+Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book visualizations, rich inline ticker content, and specialized editors can use lower-level primitives. Do not recreate a button with a clickable `Box`, a section heading with styled `Text`, or a field with raw `Input`. Add a missing repeated pattern to the kit and migrate the callers together. Keep domain calculations and formatting with the pane.
+
+`Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` chooses a native select or terminal dialog internally; a `SelectControl` ref can open it without knowing the renderer.
+
+`PaneStatusBody` replaces the body only when the caller passes a loading, error, or empty state. Preserve existing data during refresh by passing `loading={loading && !data}` and `error={!data ? error : null}`. Use `Notice` for inline refresh errors. It supports centered states, custom loading labels, and retry `actions`:
+
+```tsx
+<PaneStatusBody loading={loading && !data} error={!data ? error : null}
+  empty={!loading && !error && !data} subject="research" align="center"
+  actions={<Button label="Try again" onPress={reload} />}>
+  <Section title="Valuation">
+    <KeyValueRow label="P/E" value={formattedPE} />
+  </Section>
+</PaneStatusBody>
+```
+
+Use `usePaneSettingValue(key, fallback)` from `gloomberb/react` for persistent pane settings and `usePaneTitle(title)` for a content-derived pane title. They update the active saved layout without requiring direct app-config writes. Both accept an optional explicit pane ID.
 
 Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:
 
@@ -1018,9 +1042,9 @@ export default {
 
 ## UI guidelines for plugins
 
-- Prefer `ListView`, `Tabs`, `Button`, `SegmentedControl`, `TextField`, and `EmptyState` before custom rows.
+- Basic UI must use the shared components listed above. Extend the kit for a missing reusable pattern.
 - Support both mouse and keyboard for anything interactive.
-- Put pane status and non-obvious shortcuts in `usePaneFooter()` / `usePaneHints()` instead of ad hoc body rows.
+- Put changing pane status in `usePaneFooter()`. Keep keyboard hints on their shared controls; do not add fixed footer labels, row counts, or generic hints.
 - Use `colors` and the shared components instead of hard-coded palette values when possible.
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.
 

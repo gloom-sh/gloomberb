@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  EmptyState,
-  Spinner,
-  StaticChartSurface,
+  EmptyState, PaneStatusBody, StaticChartSurface,
   usePaneFooter,
   type PaneFooterSegment
 } from "../../../components";
@@ -108,15 +106,13 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
 
   if (!data && loading) {
     return (
-      <Box width={width} height={height} justifyContent="center" alignItems="center">
-        <Spinner label="Loading volatility data..." />
-      </Box>
+      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading volatility data..." />
     );
   }
   if (!data) {
     return (
       <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState title="Volatility data unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Volatility data unavailable." message={error ?? undefined} />
       </Box>
     );
   }

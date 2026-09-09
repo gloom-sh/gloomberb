@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { EmptyState, Spinner, StaticChartSurface, type PaneFooterSegment } from "../../../components";
+import { EmptyState, PaneStatusBody, StaticChartSurface, type PaneFooterSegment } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -70,9 +70,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   if (loading && points.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading yield curve..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading yield curve..." />
       </Box>
     );
   }
@@ -80,7 +78,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
   if (error && points.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height} padding={1} gap={1}>
-        <EmptyState title="Yield curve unavailable." message={error} />
+        <EmptyState status={error ? "error" : "empty"} title="Yield curve unavailable." message={error} />
       </Box>
     );
   }

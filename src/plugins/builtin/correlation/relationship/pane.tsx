@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, Text } from "../../../../ui";
-import { Button, usePaneFooter } from "../../../../components";
-import { useShortcut, type KeyEventLike } from "../../../../react/input";
-import { StaticMultiLineChartSurface, StaticScatterChartSurface } from "../../../../components/chart/static";
+import { Button, PaneStatusBody, usePaneFooter } from "../../../../components";
 import { resolveChartPalette } from "../../../../components/chart/core/palette";
-import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
+import { StaticMultiLineChartSurface, StaticScatterChartSurface } from "../../../../components/chart/static";
+import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { usePaneInstance } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
-import { formatNumber } from "../../../../utils/format";
 import { formatTickerListInput } from "../../../../tickers/list";
+import type { PaneProps, PaneTemplateDef } from "../../../../types/plugin";
+import { Box, Text } from "../../../../ui";
+import { formatNumber } from "../../../../utils/format";
 import { usePluginPaneState } from "../../../runtime";
 import { formatDateTime, useBoundTicker } from "../../shared/ticker-request";
 import { RelationshipMetricsTable, RelationshipToggle } from "./controls";
@@ -37,9 +37,8 @@ import {
 } from "./view-model";
 
 export {
-  buildRelationshipAnalysis,
-  buildRelationshipGraphSettingsDef,
-  RELATIONSHIP_GRAPH_PANE_ID,
+  RELATIONSHIP_GRAPH_PANE_ID, buildRelationshipAnalysis,
+  buildRelationshipGraphSettingsDef
 } from "./model";
 
 type RelationshipGraphShortcut = "range" | "window" | "correlation" | "regression";
@@ -242,19 +241,13 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
 
   if (!pair) {
     return (
-      <Box padding={1}>
-        <Text fg={colors.textDim}>No relationship tickers configured.</Text>
-      </Box>
+      <PaneStatusBody empty emptyTitle="No relationship tickers configured." />
     );
   }
 
   if (!analysis || analysis.aligned.length < 2) {
     return (
-      <Box padding={1} flexDirection="column" gap={1}>
-        <Text fg={error ? colors.warning : colors.textDim}>
-          {loading ? "Loading relationship history..." : error ?? "No overlapping price history."}
-        </Text>
-      </Box>
+      <PaneStatusBody loading={loading} error={loading ? null : error} subject="relationship history" empty emptyTitle="No overlapping price history." />
     );
   }
 

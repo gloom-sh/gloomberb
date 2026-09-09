@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, useRef, type Dispatch } from "react";
+import { act, useRef, useState, type Dispatch } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppProvider, PaneInstanceProvider, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneTicker, type AppAction } from "./index";
+import { AppProvider, PaneInstanceProvider, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneStateValue, usePaneTicker, usePaneTitle, type AppAction } from "./index";
 import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import { applyTheme } from "../../../theme/colors";
 import { useThemeId } from "../../../theme/theme-context";
@@ -110,6 +110,42 @@ describe("pane selectors", () => {
     capturedDispatch = null;
     capturedPaneSetting = null;
     applyTheme("amber");
+  });
+
+  test("pane settings and derived titles preserve the saved layout when pane scoping changes", async () => {
+    let useContextId: () => void = () => {};
+    let changeChannel: (value: string) => void = () => {};
+    let currentConfig = createTickerDetailConfig("AAPL");
+    function PaneModel() {
+      const [explicit, setExplicit] = useState(true);
+      useContextId = () => setExplicit(false);
+      const id = explicit ? TEST_PANE_ID : undefined;
+      const [channel, setChannel] = usePaneSettingValue("channel", "one", id);
+      const [position] = usePaneStateValue("position", 0, id);
+      changeChannel = setChannel;
+      usePaneTitle(`Feed: ${channel}`, id);
+      currentConfig = useAppSelector((state) => state.config);
+      return <text>{`${channel}:${position}`}</text>;
+    }
+    testSetup = await testRender(
+      <AppProvider config={currentConfig}>
+        <PaneInstanceProvider paneId={TEST_PANE_ID}><PaneModel /></PaneInstanceProvider>
+      </AppProvider>,
+      { width: 24, height: 4 },
+    );
+    await testSetup.renderOnce();
+    await act(useContextId);
+    await testSetup.renderOnce();
+    await act(() => changeChannel("two"));
+    await testSetup.renderOnce();
+    await testSetup.renderOnce();
+    const pane = currentConfig.layout.instances[0]!;
+    expect(pane).toMatchObject({
+      instanceId: TEST_PANE_ID, title: "Feed: two", settings: { channel: "two" },
+      binding: { kind: "fixed", symbol: "AAPL" },
+    });
+    expect(currentConfig.layouts[0]!.layout.instances[0]).toEqual(pane);
+    expect(testSetup.captureCharFrame()).toContain("two:0");
   });
 
   test("does not rerender usePaneTicker consumers for unrelated app state updates", async () => {

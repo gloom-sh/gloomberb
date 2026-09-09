@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
-  EmptyState,
-  Spinner,
-  usePaneFooter,
+  EmptyState, PaneStatusBody, usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type PaneFooterSegment
@@ -124,15 +122,13 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
 
   if (rows.length === 0 && loading) {
     return (
-      <Box width={width} height={height} justifyContent="center" alignItems="center">
-        <Spinner label="Loading credit spreads..." />
-      </Box>
+      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading credit spreads..." />
     );
   }
   if (rows.length === 0) {
     return (
       <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState title="Credit spreads unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Credit spreads unavailable." message={error ?? undefined} />
       </Box>
     );
   }

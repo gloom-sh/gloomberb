@@ -12,7 +12,7 @@ import {
 } from "react";
 import { editableTextContextMenuItems } from "../../../../ui/context-menu";
 import { useRendererHost, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../../../ui/host";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
+import { toKeyEventLike, WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
 import { cellHeight, cellWidth, cleanDomProps, commonStyle } from "./style";
 
 function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSSProperties {
@@ -254,6 +254,9 @@ export const WebInput = forwardRef<InputRenderable, Record<string, unknown>>(fun
   });
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const keyEvent = toKeyEventLike(event.nativeEvent);
+    if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
+    if (keyEvent.defaultPrevented) return;
     if ((event.key === "Escape" || event.key === "Esc") && typeof propsRef.current.onEscape === "function") {
       event.preventDefault();
       event.stopPropagation();
@@ -376,6 +379,9 @@ export const WebTextarea = forwardRef<TextareaRenderable, Record<string, unknown
   });
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const keyEvent = toKeyEventLike(event.nativeEvent);
+    if (typeof propsRef.current.onKeyDown === "function") propsRef.current.onKeyDown(keyEvent);
+    if (keyEvent.defaultPrevented) return;
     if (event.key === "Enter" && !event.shiftKey && typeof propsRef.current.onSubmit === "function") {
       event.preventDefault();
       (propsRef.current.onSubmit as (value: string) => void)(syncElementValue());

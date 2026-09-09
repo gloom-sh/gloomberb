@@ -103,8 +103,7 @@
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "typebox": "1.1.38",
-    "web-tree-sitter": "0.25.10",
-    "youtubei.js": "17.0.1"
+    "web-tree-sitter": "0.25.10"
   },
   "patchedDependencies": {
     "@opentui/core@0.3.2": "patches/@opentui%2Fcore@0.3.2.patch",

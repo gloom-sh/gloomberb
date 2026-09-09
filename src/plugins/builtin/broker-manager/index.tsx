@@ -1,28 +1,28 @@
-import { Box, Text, TextAttributes } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DataTableStackView } from "../../../components";
 import {
   getVisibleBrokerConfigFields,
   type BrokerProfileDraft,
 } from "../../../brokers/profile-form";
+import { DataTableStackView, Divider } from "../../../components";
+import { t, tf } from "../../../i18n";
+import { useAppLanguage } from "../../../i18n/react";
 import {
   useAppDispatch,
   useAppSelector,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { t, tf } from "../../../i18n";
-import { useAppLanguage } from "../../../i18n/react";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { PaneProps } from "../../../types/plugin";
-import type { PluginModule } from "../plugin-module";
+import { Box, Text } from "../../../ui";
 import { usePluginBrokerActions } from "../../runtime";
+import type { PluginModule } from "../plugin-module";
+import { BrokerDetailContent, type BrokerEditKey } from "./detail";
+import { useBrokerManagerFooter } from "./footer";
+import { useBrokerManagerKeyboard } from "./keyboard";
 import {
   buildBrokerProfileRows,
   type BrokerProfileRow,
 } from "./model";
-import { BrokerDetailContent, type BrokerEditKey } from "./detail";
-import { useBrokerManagerFooter } from "./footer";
-import { useBrokerManagerKeyboard } from "./keyboard";
 import { useBrokerManagerActions } from "./pane-actions";
 import {
   buildBrokerColumns,
@@ -260,9 +260,7 @@ export function BrokersPane({ focused, width, height }: PaneProps) {
           {message || t("Manage broker profiles, connection tests, and position syncs.")}
         </Text>
       </Box>
-      <Box height={1}>
-        <Text fg={colors.border}>{"─".repeat(Math.max(1, width - 2))}</Text>
-      </Box>
+      <Divider width={Math.max(1, width - 2)} />
 
       <Box height={bodyHeight} overflow="hidden">
         <DataTableStackView<BrokerProfileRow, BrokerColumn>

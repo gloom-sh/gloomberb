@@ -1,22 +1,22 @@
 import { useCallback, useMemo, useState } from "react";
-import { Box, TextAttributes } from "../../../ui";
+import type { ScannerHiloExtreme } from "../../../api-client";
 import {
   DataTableView,
+  PaneStatusBody,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../components";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { formatCompact, formatNumber } from "../../../utils/format";
-import type { PaneProps } from "../../../types/plugin";
-import type { ScannerHiloExtreme } from "../../../api-client";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, TextAttributes } from "../../../ui";
+import { formatCompact, formatNumber } from "../../../utils/format";
 import { usePluginPaneActions, usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useHiloFeed, useScannerStatusFooter } from "./feed";
 import { HiloBars } from "./hilo-bars";
-import { ScannerWaitingState } from "./waiting";
 import { filterHiloRows, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type Side = "lows" | "highs";
@@ -138,7 +138,7 @@ function HiloPane({ focused, width, height }: PaneProps) {
       getItemKey={rowKey}
       onActivate={(row) => pinTicker(row.symbol, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
       renderCell={(row, column, _index, rowState) => renderCell(side, row, column, rowState)}
-      emptyContent={feed.payload ? undefined : <ScannerWaitingState />}
+      emptyContent={feed.payload ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
       emptyStateTitle="Nothing above the price filter yet."
     />
   );

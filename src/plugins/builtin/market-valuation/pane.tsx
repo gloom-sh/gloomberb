@@ -2,21 +2,18 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar,
-  SegmentedControl,
-  Spinner,
-  type DataTableCell,
+  InputSearchBar, Notice, PaneStatusBody, SegmentedControl, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableSelectionChangeReason,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
@@ -195,16 +192,14 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
 
   if (!bundle && resource.error === null) {
     return (
-      <Box width={width} height={height} justifyContent="center" alignItems="center">
-        <Spinner label="Loading market valuation..." />
-      </Box>
+      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading market valuation..." />
     );
   }
 
   if (!selected) {
     return (
       <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState title="Market valuation unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Market valuation unavailable." message={error ?? undefined} />
       </Box>
     );
   }
@@ -288,7 +283,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
       </Box>
       {error ? (
         <Box height={1} paddingX={1} overflow="hidden">
-          <Text fg={colors.warning}>{error}</Text>
+          <Notice>{error}</Notice>
         </Box>
       ) : null}
     </Box>

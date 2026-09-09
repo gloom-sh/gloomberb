@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import {
-  DataTableStackView,
-  Spinner,
-  type DataTableCell,
-  type DataTableColumn,
-  usePaneFooter,
+  DataTableStackView, KeyValueRow, Spinner, usePaneFooter, type DataTableCell,
+  type DataTableColumn
 } from "../../../components";
-import { useConnectionHealth } from "../../runtime";
-import { useShortcut } from "../../../react/input";
-import type { PaneProps } from "../../../types/plugin";
 import type {
   ConnectionHealthState,
   ConnectionHealthStatus,
 } from "../../../core/connection-health";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { formatRelativeAge } from "../../../utils/relative-time";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
+import { formatRelativeAge } from "../../../utils/relative-time";
+import { useConnectionHealth } from "../../runtime";
 
 interface ConnectionColumn extends DataTableColumn {
   id: "service" | "status" | "request" | "latency" | "last";
@@ -68,42 +65,33 @@ function columnsForWidth(width: number): ConnectionColumn[] {
   ];
 }
 
-function DetailLine({ label, value, color = colors.text }: { label: string; value: string; color?: string }) {
-  return (
-    <Box height={1} flexDirection="row">
-      <Box width={16}><Text fg={colors.textDim}>{label}</Text></Box>
-      <Text fg={color}>{value}</Text>
-    </Box>
-  );
-}
-
 function ConnectionDetail({ source, width, now }: { source: ConnectionHealthState; width: number; now: number }) {
   const lineWidth = Math.max(24, width - 2);
   return (
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
-        <DetailLine label="Status" value={statusLabel(source.status)} color={statusColor(source.status)} />
-        <DetailLine label="Type" value={source.kind} color={colors.textDim} />
-        {source.ownerId ? <DetailLine label="Owner" value={source.ownerId} color={colors.textDim} /> : null}
-        {source.socketState ? <DetailLine label="Socket" value={source.socketState} color={statusColor(source.status)} /> : null}
+        <KeyValueRow labelWidth={16} emphasis={false} label="Status" value={statusLabel(source.status)} color={statusColor(source.status)} />
+        <KeyValueRow labelWidth={16} emphasis={false} label="Type" value={source.kind} color={colors.textDim} />
+        {source.ownerId ? <KeyValueRow labelWidth={16} emphasis={false} label="Owner" value={source.ownerId} color={colors.textDim} /> : null}
+        {source.socketState ? <KeyValueRow labelWidth={16} emphasis={false} label="Socket" value={source.socketState} color={statusColor(source.status)} /> : null}
         {source.lastTransitionAt ? (
-          <DetailLine label="Transition" value={formatRelativeAge(source.lastTransitionAt, now)} color={colors.textMuted} />
+          <KeyValueRow labelWidth={16} emphasis={false} label="Transition" value={formatRelativeAge(source.lastTransitionAt, now)} color={colors.textMuted} />
         ) : null}
-        <DetailLine label="Last request" value={source.lastRequestAt ? formatRelativeAge(source.lastRequestAt, now) : "never"} color={colors.textMuted} />
-        <DetailLine label="Operation" value={source.lastOperation ?? "-"} color={colors.textDim} />
-        <DetailLine label="Latency" value={formatLatency(source.lastLatencyMs)} color={colors.textMuted} />
+        <KeyValueRow labelWidth={16} emphasis={false} label="Last request" value={source.lastRequestAt ? formatRelativeAge(source.lastRequestAt, now) : "never"} color={colors.textMuted} />
+        <KeyValueRow labelWidth={16} emphasis={false} label="Operation" value={source.lastOperation ?? "-"} color={colors.textDim} />
+        <KeyValueRow labelWidth={16} emphasis={false} label="Latency" value={formatLatency(source.lastLatencyMs)} color={colors.textMuted} />
         {source.currentDetail ? (
-          <DetailLine label="Detail" value={truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
+          <KeyValueRow labelWidth={16} emphasis={false} label="Detail" value={truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
         ) : null}
         {source.lastSuccess ? (
-          <DetailLine
+          <KeyValueRow labelWidth={16} emphasis={false}
             label="Last success"
             value={`${formatRelativeAge(source.lastSuccess.at, now)} · ${formatLatency(source.lastSuccess.latencyMs)} · ${source.lastSuccess.operation}`}
             color={colors.positive}
           />
         ) : null}
         {source.lastError ? (
-          <DetailLine
+          <KeyValueRow labelWidth={16} emphasis={false}
             label="Last error"
             value={`${formatRelativeAge(source.lastError.at, now)} · ${source.lastError.error ?? source.lastError.operation}`}
             color={colors.negative}

@@ -20,6 +20,7 @@ import {
 } from "./multi-select";
 import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
 import { Tabs } from "./tabs";
+import { SelectButton, type SelectControl } from "./select-button";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setListSelection: ((index: number) => void) | null = null;
@@ -927,4 +928,31 @@ describe("shared UI kit", () => {
     const scrolledFrame = testSetup.captureCharFrame();
     expect(scrolledFrame).toContain(`Row ${scrollTop}`);
   });
+});
+
+
+test("a select opened through its handle skips disabled options and ignores results after disabling", async () => {
+  const handle = createRef<SelectControl>();
+  const changes: string[] = [];
+  let disable: (() => void) | undefined;
+  function Harness() {
+    const [disabled, setDisabled] = useState(false);
+    disable = () => setDisabled(true);
+    return <TestDialogProvider><SelectButton
+      controlRef={handle} label="Account" value="alpha" disabled={disabled}
+      options={[{ value: "alpha", label: "Alpha" }, { value: "blocked", label: "Blocked", disabled: true }, { value: "gamma", label: "Gamma" }]}
+      onChange={(value) => changes.push(value)}
+    /></TestDialogProvider>;
+  }
+  testSetup = await testRender(<Harness />, { width: 44, height: 12 });
+  await act(async () => { await testSetup!.renderOnce(); });
+  await act(async () => { handle.current!.open(); await testSetup!.renderOnce(); });
+  await emitKeypress({ name: "down" });
+  await emitKeypress({ name: "enter", sequence: "\r" });
+  expect(changes).toEqual(["gamma"]);
+  await act(async () => { handle.current?.open(); await testSetup!.renderOnce(); });
+  await emitKeypress({ name: "down" });
+  await act(async () => { disable?.(); await testSetup!.renderOnce(); });
+  await emitKeypress({ name: "enter", sequence: "\r" });
+  expect(changes).toEqual(["gamma"]);
 });

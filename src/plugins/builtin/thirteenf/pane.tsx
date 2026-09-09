@@ -1,33 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Box,
-  Text,
-  type InputRenderable,
-  type ScrollBoxRenderable,
-  useRendererHost,
-} from "../../../ui";
-import {
   DataTableStackView,
   DataTableView,
-  EmptyState,
-  useTableLoadMore,
-  InputSearchBar,
-  Spinner,
-  Tabs,
-  type PaneFooterSegment,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
+  EmptyState, InputSearchBar, PaneStatusBody, Tabs, useTableLoadMore, type DataTableKeyEvent,
+  type DataTableRootKeyContext, type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
+import {
+  Box,
+  Text,
+  useRendererHost,
+  type InputRenderable,
+  type ScrollBoxRenderable,
+} from "../../../ui";
 import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
 import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
 import {
   DEFAULT_BROWSER_SORT,
@@ -52,8 +47,8 @@ import {
   sortTimelineRows,
 } from "./model";
 import {
-  renderFilingPositionCell,
   renderBrowserCell,
+  renderFilingPositionCell,
   renderHoldingCell,
   renderTimelineCell,
 } from "./table";
@@ -61,22 +56,21 @@ import type {
   FilingPositionColumn,
   FilingPositionColumnId,
   FilingPositionRow,
-  FundBrowserColumnId,
   FundBrowserColumn,
+  FundBrowserColumnId,
   FundBrowserRow,
   FundDetailData,
-  FundHoldingColumnId,
   FundHoldingColumn,
+  FundHoldingColumnId,
   FundHoldingRow,
   FundSortPreference,
-  FundTimelineColumnId,
   FundTimelineColumn,
+  FundTimelineColumnId,
   FundTimelineRow,
   LoadStatus,
   ThirteenFDetailTab,
   ThirteenFHoldingRecord,
 } from "./types";
-import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
 
 interface FundSeed {
   cik: string;
@@ -546,9 +540,7 @@ function FundDetailView({
   if ((status === "loading" || status === "idle") && !data) {
     return (
       <Box flexDirection="column" width={width} flexGrow={1} overflow="hidden">
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading 13F filing..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading 13F filing..." />
       </Box>
     );
   }
@@ -557,7 +549,7 @@ function FundDetailView({
     return (
       <Box flexDirection="column" width={width} flexGrow={1} overflow="hidden">
         <Box padding={1}>
-          <EmptyState title="13F fund unavailable." message={error ?? "Failed to load fund."} />
+          <EmptyState status={error ? "error" : "empty"} title="13F fund unavailable." message={error ?? "Failed to load fund."} />
         </Box>
       </Box>
     );

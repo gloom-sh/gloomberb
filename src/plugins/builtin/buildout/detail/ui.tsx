@@ -1,12 +1,12 @@
-import type { ReactNode } from "react";
-import { Box, Text, TextAttributes } from "../../../../ui";
-import { Button, TickerBadgeList } from "../../../../components";
-import { ExternalLinkText } from "../../../../components/ui/external-link";
+import { SectionHeading, TickerBadgeList } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
-import { colors } from "../../../../theme/colors";
+import { Button } from "../../../../components/ui/button";
+import { ExternalLinkText } from "../../../../components/ui/external-link";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
-import type { BuildoutCompany, BuildoutRelatedCompany, BuildoutSource } from "../model/types";
+import { colors } from "../../../../theme/colors";
+import { Box, Text } from "../../../../ui";
 import { domainFromUrl, text, textOrNull, tickerSymbol, truncate } from "../format";
+import type { BuildoutCompany, BuildoutRelatedCompany, BuildoutSource } from "../model/types";
 
 export type InlineTickerCatalog = Record<string, InlineTickerCatalogEntry>;
 
@@ -48,17 +48,6 @@ export function DetailSpecGrid({ items, width, marginTop = 1 }: { items: DetailS
   );
 }
 
-export function MetaBadge({ label, tone = "neutral" }: { label?: string | null; tone?: "neutral" | "warning" }) {
-  const value = textOrNull(label);
-  if (!value) return null;
-  const accent = tone === "warning" ? colors.warning : colors.borderFocused;
-  return (
-    <Box backgroundColor={accent} paddingX={1} height={1}>
-      <Text fg={colors.bg} attributes={TextAttributes.BOLD}>{value.toUpperCase()}</Text>
-    </Box>
-  );
-}
-
 export function InlineSources({ domains, width }: { domains: readonly string[]; width: number }) {
   if (domains.length === 0) return null;
   const label = "Sources: ";
@@ -66,23 +55,6 @@ export function InlineSources({ domains, width }: { domains: readonly string[]; 
     <Box marginTop={1} flexDirection="row" width={width} height={1} overflow="hidden">
       <Text fg={colors.textMuted}>{label}</Text>
       <Text fg={colors.textDim}>{truncate(domains.join(", "), Math.max(0, width - label.length))}</Text>
-    </Box>
-  );
-}
-
-export function DetailSection({
-  title,
-  width,
-  children,
-}: {
-  title: string;
-  width: number;
-  children: ReactNode;
-}) {
-  return (
-    <Box marginTop={1} flexDirection="column" width={width}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{truncate(title, width)}</Text>
-      {children}
     </Box>
   );
 }
@@ -247,7 +219,6 @@ export function CompaniesUpgradeCta({
   if (hiddenCount <= 0) return null;
   const noun = hiddenCount === 1 ? "company" : "companies";
   const contentWidth = Math.max(20, width - 2);
-  const title = truncate(`${hiddenCount} more ${noun} available`, contentWidth).padEnd(contentWidth);
   const subtitle = truncate("Upgrade to unlock the full list and company profiles under $10B market cap.", contentWidth).padEnd(contentWidth);
   const note = (message ? truncate(message, contentWidth) : "").padEnd(contentWidth);
   return (
@@ -259,9 +230,7 @@ export function CompaniesUpgradeCta({
       backgroundColor={colors.panel}
       overflow="hidden"
     >
-      <Box height={1} width="100%" backgroundColor={colors.panel}>
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
-      </Box>
+      <SectionHeading title={`${hiddenCount} more ${noun} available`} width={contentWidth} />
       <Box height={1} width="100%" backgroundColor={colors.panel}>
         <Text fg={colors.textDim}>{subtitle}</Text>
       </Box>
@@ -306,33 +275,25 @@ export function FavoriteCell({
   starred,
   busy,
   selected,
-  interactive = false,
   onPress,
 }: {
   starred: boolean;
   busy: boolean;
   selected: boolean;
-  interactive?: boolean;
   onPress?: () => void;
 }) {
-  const color = selected
-    ? colors.selectedText
-    : busy ? colors.textMuted : starred ? colors.warning : colors.textMuted;
   return (
-    <Box
+    <Button
+      label={starred ? "Remove favorite" : "Add favorite"}
+      displayLabel={busy ? "*" : starred ? "★" : "☆"}
       width={2}
-      height={1}
-      style={{ cursor: interactive && !busy ? "pointer" : "default" }}
-      onMouseDown={onPress ? (event: any) => {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        if (!busy) onPress();
-      } : undefined}
-    >
-      <Text fg={color} attributes={starred ? TextAttributes.BOLD : TextAttributes.NONE} selectable={false}>
-        {busy ? "*" : starred ? "★" : "☆"}
-      </Text>
-    </Box>
+      compact
+      variant="ghost"
+      active={selected || starred}
+      disabled={busy || !onPress}
+      stopPropagation
+      onPress={onPress}
+    />
   );
 }
 

@@ -1,18 +1,12 @@
-import { Box, Text, TextAttributes } from "../../../ui";
-import { StaticChartSurface } from "../../../components";
+import { KeyValueRow, SectionHeading, StaticChartSurface } from "../../../components";
+import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { StaticChartXMarker } from "../../../components/chart/static";
 import { colors, priceColor } from "../../../theme/colors";
+import { Box, Text } from "../../../ui";
 import { formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import type { KellySizerDraft, KellySizingResult, SensitivityGrid } from "./model";
-import {
-  KellyCurveDecisionView,
-  MetricLine,
-  SensitivityGridView,
-  formatPct,
-  formatSignedPct,
-} from "./view";
+import { KellyCurveDecisionView, SensitivityGridView, formatPct, formatSignedPct } from "./view";
 
 export function KellyResultMetrics({
   result,
@@ -30,34 +24,34 @@ export function KellyResultMetrics({
   return (
     <Box flexDirection="row" paddingX={1}>
       <Box flexDirection="column" width={leftWidth}>
-        <MetricLine width={leftWidth} label="Full Kelly" value={formatPct(result.fullKellyFraction, 1)} />
-        <MetricLine width={leftWidth} label="Fractional" value={formatPct(result.fractionalKellyFraction, 1)} detail={formatPct(activeDraft.kellyFraction, 0)} />
-        <MetricLine
+        <KeyValueRow width={leftWidth} label="Full Kelly" value={formatPct(result.fullKellyFraction, 1)} />
+        <KeyValueRow width={leftWidth} label="Fractional" value={formatPct(result.fractionalKellyFraction, 1)} detail={formatPct(activeDraft.kellyFraction, 0)} />
+        <KeyValueRow
           width={leftWidth}
           label="Clipped"
           value={formatPct(result.clippedFraction, 2)}
           detail={result.clipReasons.length > 0 ? result.clipReasons.join(", ") : undefined}
           color={result.clipReasons.length > 0 ? colors.positive : colors.text}
         />
-        <MetricLine width={leftWidth} label="Target val" value={formatCurrency(result.targetValue, baseCurrency)} />
-        <MetricLine
+        <KeyValueRow width={leftWidth} label="Target val" value={formatCurrency(result.targetValue, baseCurrency)} />
+        <KeyValueRow
           width={leftWidth}
           label="Add / trim"
           value={formatCurrency(result.addTrimValue, baseCurrency)}
           color={priceColor(result.addTrimValue)}
         />
-        <MetricLine
+        <KeyValueRow
           width={leftWidth}
           label="Units"
           value={result.estimatedUnits == null ? "—" : formatNumber(result.estimatedUnits, 1)}
         />
       </Box>
       <Box flexDirection="column" width={rightWidth}>
-        <MetricLine width={rightWidth} label="Risk" value={formatCurrency(result.riskValue, baseCurrency)} detail={formatPct(result.riskFraction, 2)} color={colors.negative} />
-        <MetricLine width={rightWidth} label="Worst loss" value={formatPct(result.downsideLossFraction, 1)} />
-        <MetricLine width={rightWidth} label="Current %" value={formatPct(result.currentFraction, 1)} />
-        <MetricLine width={rightWidth} label="Exp return" value={formatSignedPct(result.expectedReturn)} color={priceColor(result.expectedReturn)} />
-        <MetricLine width={rightWidth} label="Log growth" value={formatCompact(result.expectedLogGrowth)} />
+        <KeyValueRow width={rightWidth} label="Risk" value={formatCurrency(result.riskValue, baseCurrency)} detail={formatPct(result.riskFraction, 2)} color={colors.negative} />
+        <KeyValueRow width={rightWidth} label="Worst loss" value={formatPct(result.downsideLossFraction, 1)} />
+        <KeyValueRow width={rightWidth} label="Current %" value={formatPct(result.currentFraction, 1)} />
+        <KeyValueRow width={rightWidth} label="Exp return" value={formatSignedPct(result.expectedReturn)} color={priceColor(result.expectedReturn)} />
+        <KeyValueRow width={rightWidth} label="Log growth" value={formatCompact(result.expectedLogGrowth)} />
       </Box>
     </Box>
   );
@@ -89,7 +83,7 @@ export function KellyCurveSection({
   return (
     <>
       <Box height={1} paddingX={1}>
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>Kelly Curve</Text>
+        <SectionHeading title="Kelly Curve" />
       </Box>
       <Box paddingX={1} height={height}>
         <StaticChartSurface
@@ -132,7 +126,7 @@ export function KellySensitivitySection({
   return (
     <>
       <Box height={1} paddingX={1} flexDirection="row">
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>Sensitivity</Text>
+        <SectionHeading title="Sensitivity" />
         <Text fg={colors.textDim}>{`  ${sensitivity.columnLabel}`}</Text>
       </Box>
       <SensitivityGridView width={Math.max(10, width - 2)} grid={sensitivity} />

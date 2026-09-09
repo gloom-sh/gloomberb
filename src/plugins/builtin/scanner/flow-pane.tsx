@@ -1,19 +1,19 @@
 import { useCallback, useMemo, useState } from "react";
-import { Box, TextAttributes } from "../../../ui";
+import type { ScannerFlowEvent } from "../../../api-client";
 import {
   DataTableView,
+  PaneStatusBody,
   SelectButton,
   type DataTableCell,
   type DataTableColumn,
   type SelectButtonOption,
 } from "../../../components";
-import { ScannerWaitingState } from "./waiting";
 import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { formatCompact, formatNumber } from "../../../utils/format";
-import type { PaneProps } from "../../../types/plugin";
-import type { ScannerFlowEvent } from "../../../api-client";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, TextAttributes } from "../../../ui";
+import { formatCompact, formatNumber } from "../../../utils/format";
 import { usePluginPaneActions, usePluginTickerActions } from "../../runtime";
 import { ScannerDeniedState } from "./denied";
 import { useFlowFeed, useScannerStatusFooter } from "./feed";
@@ -242,7 +242,7 @@ function FlowPane({ focused, width, height }: PaneProps) {
         getItemKey={(event) => event.id}
         onActivate={(event) => pinTicker(event.underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID })}
         renderCell={(event, column, _index, rowState) => renderCell(event, column, rowState)}
-        emptyContent={feed.payload ? undefined : <ScannerWaitingState />}
+        emptyContent={feed.payload ? undefined : <PaneStatusBody loading loadingLabel="Waiting for the scanner..." />}
         emptyStateTitle={emptyState.title}
         emptyStateHint={emptyState.hint}
       />

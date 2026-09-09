@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { Button, ChoiceDialog, ConfirmDialog, Tabs } from "../../../components";
+import { Button, ConfirmDialog, Tabs } from "../../../components";
 import { useAppSelector } from "../../../state/app/context";
 import { useChartQueries, useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
@@ -7,7 +7,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, Textarea, TextAttributes, type TextareaRenderable, useRendererHost, useUiHost } from "../../../ui";
 import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
-import { openNativeSelect, type NativeSelectElement } from "../../../components/ui/native-select";
+import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { CloudAuthNotice } from "../cloud/auth-actions";
@@ -33,7 +33,6 @@ import {
   getPortfolioPositionTickers,
   portfolioOptionIds,
   profileToDraft,
-  selectedPortfolioLabel,
   type AccountDraft,
   type AccountFieldKey,
   type PlanPriceDisplay,
@@ -377,7 +376,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   }), []);
   const syncStatus = useCloudSyncStatus();
   const bioRef = useRef<TextareaRenderable | null>(null);
-  const portfolioNativeSelectRef = useRef<NativeSelectElement | null>(null);
+  const portfolioSelectRef = useRef<SelectControl | null>(null);
   const refreshedSyncRevisionRef = useRef<number | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -659,32 +658,10 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }).catch(() => {});
   }, [busy, dialog]);
 
-  const openPortfolioDialog = useCallback(async () => {
-    setActiveField("sharedPortfolioId");
-    const currentPortfolioChoiceId = draftRef.current.sharedPortfolioId || NO_PORTFOLIO_VALUE;
-    const selected = await dialog.prompt<string>({
-      closeOnClickOutside: false,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog
-          {...context}
-          title={t("Public Stats")}
-          choices={portfolioChoices}
-          selectedChoiceId={currentPortfolioChoiceId}
-        />
-      ),
-    }).catch(() => "");
-    if (!selected) return;
-    setDraftValue("sharedPortfolioId", selected === NO_PORTFOLIO_VALUE ? "" : selected);
-  }, [dialog, portfolioChoices, setDraftValue]);
-
   const openPortfolioPicker = useCallback(async () => {
     setActiveField("sharedPortfolioId");
-    if (portfolioNativeSelectRef.current) {
-      openNativeSelect(portfolioNativeSelectRef.current);
-      return;
-    }
-    await openPortfolioDialog();
-  }, [openPortfolioDialog]);
+    portfolioSelectRef.current?.open();
+  }, []);
 
   const cycleField = useCallback((delta: number) => {
     setActiveField((current) => {
@@ -1014,20 +991,16 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 preview={publicAnalyticsPreview}
                 choices={portfolioChoices}
                 value={draft.sharedPortfolioId || NO_PORTFOLIO_VALUE}
-                label={selectedPortfolioLabel(portfolios, draft.sharedPortfolioId)}
                 detail={profileAnalyticsDetail}
                 active={activeField === "sharedPortfolioId"}
                 width={formWidth}
                 disclaimer={draft.sharedPortfolioId ? t("Only 1Y return and SPY Beta are shared. Positions are not shared.") : null}
-                selectRef={(element) => {
-                  portfolioNativeSelectRef.current = element;
-                }}
+                controlRef={portfolioSelectRef}
                 onFocus={() => setActiveField("sharedPortfolioId")}
                 onSelect={(selected) => {
                   setActiveField("sharedPortfolioId");
                   setDraftValue("sharedPortfolioId", selected === NO_PORTFOLIO_VALUE ? "" : selected);
                 }}
-                onOpen={() => { void openPortfolioPicker(); }}
               />
 
               <Box flexDirection="row" gap={1}>

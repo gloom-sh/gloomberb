@@ -39,21 +39,6 @@ export function RelationshipToggle({
   onPress: () => void;
 }) {
   return (
-    <Box
-      width={label.length + 6}
-      height={1}
-      onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
-        event.preventDefault?.();
-        event.stopPropagation?.();
-        onPress();
-      }}
-    >
-      <Checkbox
-        label={label}
-        checked={checked}
-        width={label.length + 6}
-        onChange={onPress}
-      />
-    </Box>
+    <Checkbox label={label} checked={checked} width={label.length + 6} onChange={onPress} />
   );
 }

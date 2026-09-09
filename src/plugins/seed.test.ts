@@ -17,10 +17,10 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
   return { disabledPlugins: [], seededPlugins: [], ...overrides } as AppConfig;
 }
 
-function withPluginsDir<T>(setup: (dir: string) => T): T {
+async function withPluginsDir<T>(setup: (dir: string) => Promise<T> | T): Promise<T> {
   const dir = mkdtempSync(join(tmpdir(), "gloom-seed-"));
   try {
-    return setup(dir);
+    return await setup(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -70,6 +70,17 @@ describe("seedExtractedPlugins", () => {
 
     expect(installs).not.toContain("gloom-sh/gloomberb-substack");
     expect(result.seeded).toContain("substack");
+  });
+
+  test("keeps TV disabled when its former Macro owner was disabled", async () => {
+    for (const owner of ["macro", "macro-tv", "tv"]) {
+      const installs: string[] = [];
+      const result = await withPluginsDir((dir) => seedExtractedPlugins(
+        config({ disabledPlugins: [owner] }), async (ref) => { installs.push(ref); }, dir,
+      ));
+      expect(installs).not.toContain("gloom-sh/gloomberb-tv");
+      expect(result.seeded).toContain("tv");
+    }
   });
 
   test("retries next launch instead of recording a failed install", async () => {

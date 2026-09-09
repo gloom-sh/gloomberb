@@ -7,6 +7,7 @@ import { blendHex, type ThemeColors } from "../../../../theme/colors";
 import { contrastRatio } from "../../../../theme/color-utils";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { isDetailBackNavigationKey } from "../../../../utils/back-navigation";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import type { ButtonProps } from "../../../../components/ui/button";
 import type { CheckboxProps } from "../../../../components/ui/checkbox";
 import type { TextFieldProps } from "../../../../components/ui/fields";
@@ -27,6 +28,9 @@ export { WebListView } from "./list-view";
 
 export function WebButton({
   label,
+  displayLabel,
+  children,
+  expanded,
   onPress,
   variant = "secondary",
   disabled = false,
@@ -34,50 +38,65 @@ export function WebButton({
   shortcut,
   width,
   height,
+  compact = false,
+  stopPropagation = false,
 }: ButtonProps) {
   const colors = useThemeColors();
   const palette = buttonPalette({ variant, active, disabled }, colors);
 
   return (
-    <Box
-      width={width}
-      height={height ?? 1}
-      flexDirection="row"
-      alignItems="center"
-      justifyContent="center"
-      backgroundColor={palette.bg}
-      onMouseDown={() => {
+    <button
+      type="button"
+      aria-label={label}
+      aria-expanded={expanded}
+      disabled={disabled}
+      onMouseDown={(event) => {
+        if (stopPropagation) event.stopPropagation();
+      }}
+      onMouseUp={(event) => {
+        if (stopPropagation) event.stopPropagation();
+      }}
+      onClick={(event) => {
+        if (stopPropagation) event.stopPropagation();
         if (!disabled) onPress?.();
+      }}
+      onKeyDown={(event) => {
+        if (disabled || (event.key !== "Enter" && event.key !== " ")) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) onPress?.();
       }}
       data-gloom-role="desktop-button"
       data-gloom-interactive={disabled ? undefined : "true"}
       style={{
+        display: "inline-flex",
+        flexShrink: 0,
+        alignItems: "center",
+        justifyContent: "center",
+        width: width === undefined ? undefined : width * WEB_CELL_WIDTH,
+        height: typeof height === "string" ? height : (height ?? 1) * WEB_CELL_HEIGHT,
+        minWidth: 0,
+        boxSizing: "border-box",
+        backgroundColor: palette.bg,
+        color: palette.fg,
+        font: "inherit",
+        fontWeight: active || variant === "primary" ? 700 : 600,
         border: `1px solid ${palette.border}`,
         borderRadius: CONTROL_RADIUS,
-        paddingLeft: 8,
-        paddingRight: 8,
+        padding: compact ? "0 2px" : "0 8px",
         boxShadow: controlShadow(active, colors),
         cursor: disabled ? "default" : "pointer",
       }}
     >
-      <Text
-        fg={palette.fg}
-        attributes={active ? TextAttributes.BOLD : 0}
-        style={{
-          fontWeight: active || variant === "primary" ? 700 : 600,
-        }}
-      >
-        {label}
-      </Text>
+      {children ?? displayLabel ?? label}
       {shortcut && (
-        <Text
-          fg={disabled ? colors.textMuted : colors.textDim}
-          style={{ marginLeft: 8, fontSize: "0.92em" }}
+        <span
+          style={{ color: disabled ? colors.textMuted : colors.textDim, marginLeft: 8, fontSize: "0.92em" }}
         >
           {shortcut}
-        </Text>
+        </span>
       )}
-    </Box>
+    </button>
   );
 }
 
@@ -222,6 +241,7 @@ export function WebTextField({
   textColor,
   placeholderColor,
   onMouseDown,
+  onKeyDown,
 }: TextFieldProps) {
   const colors = useThemeColors();
   const resolvedBackgroundColor = backgroundColor ?? colors.bg;
@@ -289,6 +309,7 @@ export function WebTextField({
             borderRadius: plain ? 0 : CONTROL_RADIUS,
           }}
           onInput={onChange}
+          onKeyDown={onKeyDown}
           onChange={onChange}
           onSubmit={(nextValue?: string) => onSubmit?.(
             typeof nextValue === "string" ? nextValue : resolvedInputRef.current?.editBuffer.getText() ?? value ?? "",
@@ -382,6 +403,9 @@ export function WebSegmentedControl({
   options,
   value,
   onChange,
+  focused,
+  width,
+  wrap = false,
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const enabled = options.filter((option) => !option.disabled);
@@ -394,10 +418,12 @@ export function WebSegmentedControl({
   return (
     <Box
       flexDirection="row"
+      flexWrap={wrap ? "wrap" : "nowrap"}
+      width={width}
       backgroundColor={panelFill(colors)}
       role="radiogroup"
       style={{
-        border: `1px solid ${panelBorder(colors)}`,
+        border: `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
         borderRadius: CONTROL_RADIUS,
         padding: 2,
       }}

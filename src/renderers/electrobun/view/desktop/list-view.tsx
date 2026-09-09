@@ -51,13 +51,13 @@ function DefaultDesktopRow({
   );
 }
 
-function listRowStyle(selected: boolean, colors: ThemeColors): CSSProperties {
+function listRowStyle(selected: boolean, disabled: boolean, colors: ThemeColors): CSSProperties {
   return {
     borderRadius: CONTROL_RADIUS,
     border: `1px solid ${selected ? colors.borderFocused : "transparent"}`,
     boxShadow: selected ? `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.06)}` : undefined,
     boxSizing: "border-box",
-    cursor: "pointer",
+    cursor: disabled ? "default" : "pointer",
     maxWidth: "100%",
     minWidth: 0,
     paddingInline: 10,
@@ -85,6 +85,8 @@ export function WebListView({
   scrollable = false,
   selectOnHover = false,
   autoScrollToIndex = true,
+  onMouseScroll,
+  remoteLabel,
 }: ListViewProps) {
   const colors = useThemeColors();
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -94,6 +96,9 @@ export function WebListView({
   const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
+  const rowStride = rowHeight + rowGap;
+  const tabStopIndex = selectedIndex >= 0 && items[selectedIndex] && !items[selectedIndex].disabled
+    ? selectedIndex : items.findIndex((item) => !item.disabled);
   const effectiveSurface = surface ?? (scrollable ? "framed" : "plain");
   const frameStyle = effectiveSurface === "plain"
     ? {
@@ -115,23 +120,23 @@ export function WebListView({
     if (!scrollBox) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
     const viewportHeight = Math.max(scrollBox.viewport?.height ?? 0, 1);
-    const rowTop = safeIndex * rowHeight;
+    const rowTop = safeIndex * rowStride;
     const rowBottom = rowTop + rowHeight;
     if (rowTop < scrollBox.scrollTop) {
       scrollBox.scrollTo(rowTop);
     } else if (rowBottom > scrollBox.scrollTop + viewportHeight) {
       scrollBox.scrollTo(rowBottom - viewportHeight);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, rowHeight, scrollable]);
+  }, [activeScrollIndex, autoScrollToIndex, items.length, rowHeight, rowStride, scrollable]);
 
   useEffect(() => {
     if (!scrollable) return;
     const scrollBox = scrollRef.current;
     if (!scrollBox) return;
     if (scrollBox.verticalScrollBar) {
-      scrollBox.verticalScrollBar.visible = items.length * rowHeight > (scrollBox.viewport?.height ?? 0);
+      scrollBox.verticalScrollBar.visible = items.length * rowStride - rowGap > (scrollBox.viewport?.height ?? 0);
     }
-  }, [items.length, height, flexGrow, rowHeight, scrollable]);
+  }, [items.length, height, flexGrow, rowGap, rowStride, scrollable]);
 
   const rows = items.length === 0
     ? (
@@ -166,7 +171,31 @@ export function WebListView({
             onActivate?.(item, index);
           }}
           data-gloom-role="desktop-list-row"
-          style={listRowStyle(selected, colors)}
+          role="option"
+          aria-selected={selected}
+          aria-disabled={disabled || undefined}
+          tabIndex={index === tabStopIndex ? 0 : -1}
+          onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
+            if (disabled) return;
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelect?.(index);
+              onActivate?.(item, index);
+              return;
+            }
+            const direction = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+            if (!direction) return;
+            event.preventDefault();
+            event.stopPropagation();
+            let nextIndex = index + direction;
+            while (items[nextIndex]?.disabled) nextIndex += direction;
+            if (!items[nextIndex]) return;
+            onSelect?.(nextIndex);
+            const rows = event.currentTarget.parentElement?.querySelectorAll<HTMLElement>('[role="option"]');
+            rows?.[nextIndex]?.focus();
+          }}
+          style={listRowStyle(selected, disabled, colors)}
         >
           {renderRow
             ? renderRow(item, state, index)
@@ -176,7 +205,7 @@ export function WebListView({
     });
 
   return (
-    <Box flexDirection="column" height={height} flexGrow={flexGrow} gap={1}>
+    <Box flexDirection="column" height={height} flexGrow={flexGrow} gap={1} role="listbox" aria-label={remoteLabel}>
       {scrollable ? (
         <ScrollBox
           ref={scrollRef}
@@ -184,6 +213,7 @@ export function WebListView({
           flexGrow={flexGrow}
           scrollY
           focusable={false}
+          onMouseScroll={onMouseScroll}
           style={frameStyle}
         >
           <Box flexDirection="column" gap={rowGap}>

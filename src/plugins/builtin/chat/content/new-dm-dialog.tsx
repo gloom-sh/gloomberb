@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ListView, TextField, type ListViewItem } from "../../../../components/ui";
+import { Button, ListView, SectionHeading, TextField, type ListViewItem } from "../../../../components/ui";
 import { useShortcut } from "../../../../react/input";
 import { colors, hoverBg } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
@@ -188,11 +188,9 @@ export function NewDmDialog({
       style={{ zIndex: 8 }}
     >
       <Box height={1} flexDirection="row">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t("New DM")}</Text>
+        <SectionHeading title="New DM" />
         <Box flexGrow={1} />
-        <Box width={3} height={1} backgroundColor={colors.panel} onMouseDown={onCancel} style={{ cursor: "pointer" }}>
-          <Text fg={colors.text}> x </Text>
-        </Box>
+        <Button label={t("Close")} displayLabel="×" width={3} compact stopPropagation onPress={onCancel} />
       </Box>
       <TextField
         inputRef={inputRef}
@@ -248,17 +246,14 @@ export function NewDmDialog({
           <Text fg={colors.textDim}>{selectedUsernames.length > 1 ? t("Group chat") : t("Direct message")}</Text>
         )}
         <Box flexGrow={1} />
-        <Box
+        <Button
+          label={submitting ? t("Starting") : t("Start")}
           width={submitting ? 10 : 7}
-          height={1}
-          backgroundColor={canSubmit ? colors.selected : colors.panel}
-          onMouseDown={() => { void submit(); }}
-          style={{ cursor: canSubmit ? "pointer" : "default" }}
-        >
-          <Text fg={canSubmit ? colors.selectedText : colors.textDim}>
-            {submitting ? ` ${t("Starting")} ` : ` ${t("Start")} `}
-          </Text>
-        </Box>
+          variant="primary"
+          disabled={!canSubmit}
+          stopPropagation
+          onPress={() => { void submit(); }}
+        />
       </Box>
     </Box>
   );

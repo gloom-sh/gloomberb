@@ -1,9 +1,9 @@
-import { Box, Text, TextAttributes, useUiHost } from "../../../../ui";
-import { colors, priceColor } from "../../../../theme/colors";
-import { displayWidth, formatNumber, padTo } from "../../../../utils/format";
-import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
 import { t } from "../../../../i18n";
+import { formatMarketPriceWithCurrency } from "../../../../market-data/market/format";
+import { colors, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
+import { Box, Text, useUiHost } from "../../../../ui";
+import { displayWidth, formatNumber, padTo } from "../../../../utils/format";
 import type { PositionTableRow, StatField } from "./types";
 
 const STAT_COLUMN_GAP = 2;
@@ -220,14 +220,6 @@ export function StatGrid({ fields, width }: { fields: StatField[]; width: number
           })}
         </Box>
       ))}
-    </Box>
-  );
-}
-
-export function SectionHeader({ title }: { title: string }) {
-  return (
-    <Box height={1}>
-      <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>{title}</Text>
     </Box>
   );
 }

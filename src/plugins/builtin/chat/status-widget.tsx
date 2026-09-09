@@ -1,6 +1,7 @@
+import { Button } from "../../../components/ui/button";
 import { useEffect, useState } from "react";
 import { useAppSelector } from "../../../state/app/context";
-import { colors, hoverBg } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { usePluginAppActions } from "../../runtime";
 import { InlineAuthActions } from "../cloud/auth-actions";
@@ -60,7 +61,6 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
   const [hasSavedSession, setHasSavedSession] = useState(initialSnapshot.hasSavedSession);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const unreadCount = getTotalUnreadCount(snapshot);
-  const [hovered, setHovered] = useState(false);
 
   const openChat = (event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     event?.preventDefault?.();
@@ -89,13 +89,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
           <InlineAuthActions showSignup={false} />
         </>
       ) : (
-        <Box
-          flexDirection="row"
-          backgroundColor={hovered ? hoverBg() : undefined}
-          onMouseOver={() => setHovered((current) => (current ? current : true))}
-          onMouseOut={() => setHovered((current) => (current ? false : current))}
-          onMouseDown={openChat}
-        >
+        <Button label={username ? `Open chat as ${username}` : "Open chat"} variant="ghost" compact stopPropagation onPress={openChat}>
           <Text fg={unreadCount > 0 ? colors.text : colors.textDim}>
             <Span fg={colors.positive}>@</Span>
             {username ? (
@@ -108,7 +102,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
           {unreadCount > 0 ? (
             <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{` [${unreadCount}]`}</Text>
           ) : null}
-        </Box>
+        </Button>
       )}
     </Box>
   );

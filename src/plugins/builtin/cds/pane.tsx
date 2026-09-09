@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState,
-  Spinner,
-  usePaneTicker,
+  EmptyState, PaneStatusBody, usePaneTicker,
   type DataTableCell,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
@@ -246,9 +244,7 @@ export function CdsPane({
 
   if (status === "loading" && !activity) {
     return (
-      <Box width={width} height={height} justifyContent="center" alignItems="center">
-        <Spinner label="Loading CDS activity..." />
-      </Box>
+      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading CDS activity..." />
     );
   }
   if (!activity) {

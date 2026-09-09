@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
-  EmptyState,
-  Spinner,
-  Tabs,
+  EmptyState, PaneStatusBody, Tabs,
   type DataTableCell,
-  type DataTableKeyEvent,
+  type DataTableKeyEvent
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -187,9 +185,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading trading halts..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading trading halts..." />
       </Box>
     );
   }
@@ -199,7 +195,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
         <Box padding={1}>
-          <EmptyState title="Trading halts unavailable." message={error ?? undefined} />
+          <EmptyState status={error ? "error" : "empty"} title="Trading halts unavailable." message={error ?? undefined} />
         </Box>
       </Box>
     );

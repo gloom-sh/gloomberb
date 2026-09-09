@@ -1,7 +1,6 @@
 import { createContext, useContext, type ComponentType, type ReactNode, type Ref } from "react";
 import type { ContextMenuItem } from "../types/context-menu";
 import type { AppNotificationRequest } from "../types/plugin";
-import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../types/media";
 import { formatCommandBarShortcut, getShortcutDisplayMode } from "../utils/shortcut-labels";
 import type { AsciiFontName } from "./ascii-font";
 
@@ -401,7 +400,6 @@ export interface RendererHost {
   playTerminalMedia?(url: string, title?: string, options?: { muted?: boolean }): Promise<void>;
   /** Stop terminal playback started by `playTerminalMedia`. */
   stopTerminalMedia?(): void;
-  resolveLiveStream?(request: LiveStreamResolveRequest): Promise<ResolvedLiveStream>;
 }
 
 interface UiHostContextValue {

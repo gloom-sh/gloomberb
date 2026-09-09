@@ -1,7 +1,9 @@
 /// <reference lib="dom" />
 
+import { useThemeColors } from "../../theme/theme-context";
+
 import { type CSSProperties } from "react";
-import { blendHex, colors } from "../../theme/colors";
+import { blendHex } from "../../theme/colors";
 import { WEB_CELL_HEIGHT } from "../../theme/font-scale";
 import { Box } from "../../ui";
 
@@ -15,6 +17,7 @@ interface NativeSelectOption {
 }
 
 export interface NativeSelectProps {
+  label?: string;
   value: string;
   disabled?: boolean;
   options: NativeSelectOption[];
@@ -46,6 +49,7 @@ export function openNativeSelect(element: NativeSelectElement | null | undefined
 }
 
 export function NativeSelect({
+  label,
   value,
   options,
   width,
@@ -57,6 +61,7 @@ export function NativeSelect({
   onFocus,
   onChange,
 }: NativeSelectProps) {
+  const colors = useThemeColors();
   const inline = variant === "inline";
   const hasCurrentValue = options.some((option) => option.value === value);
   const resolvedWidth = width ?? (inline ? "auto" : 184);
@@ -91,6 +96,7 @@ export function NativeSelect({
       }}
     >
       <select
+        aria-label={label}
         ref={selectRef}
         value={value}
         disabled={disabled}

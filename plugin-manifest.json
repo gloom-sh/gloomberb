@@ -108,7 +108,7 @@
     {
       "id": "macro",
       "name": "Macro",
-      "description": "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, IPOs, and live financial TV.",
+      "description": "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, and IPOs.",
       "categories": [
         "macro"
       ],
@@ -122,7 +122,6 @@
           "econ-calendar",
           "econ-statistics",
           "ipo-calendar",
-          "macro-tv",
           "market-valuation",
           "treasury-auctions",
           "volatility-term-structure",

@@ -1,15 +1,10 @@
-import { Box, Text } from "../../../../ui";
+import { Badge } from "../../../../components";
 import { RemoteImage } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
-import type { BuildoutRow } from "../model/types";
+import { Box, Text } from "../../../../ui";
 import { dateDetail, intelSourceDomains, tickerSymbol } from "../format";
-import {
-  InlineSources,
-  MarkdownBlock,
-  MetaBadge,
-  tickerBadges,
-  type InlineTickerCatalog,
-} from "./ui";
+import type { BuildoutRow } from "../model/types";
+import { InlineSources, MarkdownBlock, tickerBadges, type InlineTickerCatalog } from "./ui";
 
 type BuildoutIntel = Extract<BuildoutRow, { kind: "intel" }>["item"];
 
@@ -29,7 +24,7 @@ export function IntelDetail({
   return (
     <>
       <Box flexDirection="row" height={1} gap={1} overflow="hidden">
-        <MetaBadge label={item.type} />
+        {item.type?.trim() && <Badge label={item.type.trim().toUpperCase()} tone="accent" variant="solid" />}
         {item.publishedAt ? <Text fg={colors.textDim}>{dateDetail(item.publishedAt)}</Text> : null}
       </Box>
       {(item.companies?.length ?? 0) > 0 && (

@@ -154,13 +154,10 @@ describe("built-in composite plugin ownership", () => {
       "econ-calendar",
       "yield-curve",
       "earnings-calendar",
-      "macro-tv",
     ]));
-    expect(registry.getPaneTemplatePluginId("macro-tv-pane")).toBe("macro");
     expect(registry.getPanePluginId("analytics")).toBe("portfolio");
     expect(registry.getPanePluginId("help")).toBe("application");
     expect(registry.getPanePluginId("connections")).toBe("application");
-    expect(registry.getPanePluginId("macro-tv")).toBe("macro");
     expect(registry.getCommandPluginId("earnings-monitor-shortcut")).toBe("macro");
     expect(registry.getCommandPluginId("gridlock-all")).toBe("application");
     expect(registry.allPlugins.has("analytics")).toBe(false);

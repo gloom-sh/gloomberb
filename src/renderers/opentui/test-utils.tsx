@@ -132,7 +132,7 @@ export function testRender(
   node: ReactNode,
   options?: Parameters<typeof openTuiTestRender>[1],
 ): ReturnType<typeof openTuiTestRender> {
-  return openTuiTestRender(withOpenTuiTestProviders(node), options);
+  return openTuiTestRender(withOpenTuiTestProviders(node), options ?? {});
 }
 
 export function createOpenTuiTestRoot(

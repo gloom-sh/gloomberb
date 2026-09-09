@@ -1,26 +1,16 @@
-import { Box, ScrollBox, Text, useUiHost } from "../../../ui";
-import { TextAttributes } from "../../../ui";
 import { useState } from "react";
-import { Button, Tabs } from "../../../components";
+import { Button, Section, Tabs } from "../../../components";
 import { ExternalLinkText } from "../../../components/ui";
-import type { PaneProps } from "../../../types/plugin";
-import type { PluginModule } from "../plugin-module";
-import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
+import { colors } from "../../../theme/colors";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
+import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { usePluginAppActions } from "../../runtime";
-import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
-import {
-  HelpSection,
-  ShortcutGroup,
-  ShortcutRow,
-} from "./components";
-import {
-  groupShortcutEntries,
-  resolveCommandShortcuts,
-  resolvePluginShortcuts,
-  resolveWindowTemplates,
-} from "./shortcut-model";
+import type { PluginModule } from "../plugin-module";
+import { ShortcutGroup, ShortcutRow } from "./components";
+import { groupShortcutEntries, resolveCommandShortcuts, resolvePluginShortcuts, resolveWindowTemplates } from "./shortcut-model";
 
 const HELP_TABS = [
   { label: "Basics", value: "basics" },
@@ -76,7 +66,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <Button label="Manage Plugins" onPress={openPluginManager} />
             </Box>
 
-            <HelpSection title="Command Prefixes">
+            <Section title="Command Prefixes">
               {groupShortcutEntries(commandShortcuts).map((group) => (
                 <ShortcutGroup
                   key={group.title}
@@ -84,9 +74,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
                   entries={group.entries}
                 />
               ))}
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Window Templates">
+            <Section title="Window Templates">
               {windowTemplates.length > 0 ? groupShortcutEntries(windowTemplates).map((group) => (
                 <ShortcutGroup
                   key={group.title}
@@ -96,10 +86,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
               )) : (
                 <Text fg={colors.textDim}>{t("No shortcut window templates are currently registered.")}</Text>
               )}
-            </HelpSection>
+            </Section>
 
             {pluginShortcuts.length > 0 && (
-              <HelpSection title="Plugin Shortcuts">
+              <Section title="Plugin Shortcuts">
                 {groupShortcutEntries(pluginShortcuts).map((group) => (
                   <ShortcutGroup
                     key={group.title}
@@ -107,7 +97,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
                     entries={group.entries}
                   />
                 ))}
-              </HelpSection>
+              </Section>
             )}
           </>
         );
@@ -115,7 +105,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       case "shortcuts":
         return (
           <>
-            <HelpSection title="Navigation">
+            <Section title="Navigation">
               <ShortcutRow
                 badges={["Up/Down", "j/k"]}
                 description="Move through focused table and list rows."
@@ -132,9 +122,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["Esc", "Backspace"]}
                 description="Go back from detail views that support back navigation."
               />
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Scrolling">
+            <Section title="Scrolling">
               <ShortcutRow
                 badges={["PageUp/PageDown"]}
                 description="Scroll focused pane content by page."
@@ -143,9 +133,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["Home/End"]}
                 description="Scroll focused pane content to the start or end."
               />
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Charts">
+            <Section title="Charts">
               <ShortcutRow
                 badges={["Drag", "Scroll"]}
                 description="Pan the chart through time."
@@ -177,9 +167,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <Text fg={colors.textDim} wrapText>
                 {t("The tool icons sit over the top-left corner of the chart. Most terminals keep shift-drag and option-drag for their own text selection, so pick the tool there instead.")}
               </Text>
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Global Keys">
+            <Section title="Global Keys">
               <ShortcutRow
                 badges={["Tab", "Shift+Tab"]}
                 description="Move focus between panes and floating windows."
@@ -208,9 +198,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["u"]}
                 description="Install an available app update when one is shown."
               />
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Pane Management">
+            <Section title="Pane Management">
               <ShortcutRow
                 badges={[platformShortcut("W")]}
                 description="Close the focused pane, docked or floating."
@@ -267,9 +257,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["Esc", "Esc"]}
                 description="Close the focused pane when nothing is being dragged."
               />
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Window Mode">
+            <Section title="Window Mode">
               <ShortcutRow
                 badges={["m", "r"]}
                 description="Switch between move and resize."
@@ -294,7 +284,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["Enter", "Esc"]}
                 description="Commit pending changes or exit window mode."
               />
-            </HelpSection>
+            </Section>
           </>
         );
 
@@ -309,10 +299,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
               />
             </Box>
 
-            <HelpSection title="If There Is A Bug">
+            <Section title="If There Is A Bug">
               <Text fg={colors.text} wrapText>{t("Open Debug Log, then run Export Debug Log from the command bar.")}</Text>
               <Text fg={colors.text} wrapText>{t("The file lands in ~/Downloads. Include steps, ticker or layout, plugin, and a screenshot if it is visual.")}</Text>
-            </HelpSection>
+            </Section>
           </>
         );
 
@@ -332,7 +322,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <Button label="Layout Actions" onPress={openLayoutActions} />
             </Box>
 
-            <HelpSection title="Command Bar">
+            <Section title="Command Bar">
               <ShortcutRow
                 badges={commandBarBadges}
                 description="Open command mode for actions, pane commands, and typed prefixes."
@@ -389,13 +379,13 @@ function HelpPane({ focused, width, height }: PaneProps) {
                 badges={["Ctrl+S"]}
                 description="Submit multiline command forms."
               />
-            </HelpSection>
+            </Section>
 
-            <HelpSection title="Layout Basics">
+            <Section title="Layout Basics">
               <Text fg={colors.text}>{t("Docked panes stay in the saved layout.")}</Text>
               <Text fg={colors.text} wrapText>{t("Floating panes can be dragged by the title bar and resized from the lower-right corner.")}</Text>
               <Text fg={colors.text} wrapText>{t("Use Layout Actions for split, move, duplicate, close all floating panes, undo, redo, and layout presets.")}</Text>
-            </HelpSection>
+            </Section>
           </>
         );
     }

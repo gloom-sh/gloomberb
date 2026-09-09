@@ -110,7 +110,7 @@ On macOS and Windows, desktop updates replace the installed app in place and kee
 
 For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/)-compatible terminal such as Ghostty, Kitty, or WezTerm.
 
-Live TV in the terminal also requires `mpv` with Kitty video output. Gloomberb resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
+Install [TV](https://github.com/gloom-sh/gloomberb-tv) with `gloomberb install gloom-sh/gloomberb-tv`. Existing installations restore it once after upgrading. Live TV in the terminal also requires `mpv` with Kitty video output. Gloomberb resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
 
 ## Start
 
@@ -298,7 +298,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `ERN` | Earnings calendar |
 | `IPO` | Upcoming and recent IPOs |
 | `HALT` | US trading halts with reason and resumption times |
-| `TV` | Live Bloomberg, CNBC, and Yahoo Finance television |
+| `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloomberb-tv)) |
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge |

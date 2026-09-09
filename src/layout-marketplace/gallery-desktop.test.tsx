@@ -105,6 +105,8 @@ function pressButton(container: Element, label: string) {
   if (!button) throw new Error(`no button labelled ${label}`);
   return act(async () => {
     button.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, button: 0 }) as unknown as MouseEvent);
+    button.dispatchEvent(new testWindow.MouseEvent("mouseup", { bubbles: true, button: 0 }) as unknown as MouseEvent);
+    button.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, button: 0 }) as unknown as MouseEvent);
   });
 }
 

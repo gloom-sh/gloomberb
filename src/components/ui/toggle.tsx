@@ -1,8 +1,9 @@
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { type ComponentType } from "react";
-import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { useShortcut } from "../../react/input";
 import { isPlainKey } from "../../utils/keyboard";
+import { useRemoteUiNode } from "../../remote/semantic-tree";
 
 interface SegmentedControlOption {
   label: string;
@@ -29,8 +30,21 @@ export function SegmentedControl({
   width,
   wrap = false,
 }: SegmentedControlProps) {
+  const colors = useThemeColors();
   const ui = useUiHost();
   const HostSegmentedControl = ui.SegmentedControl as ComponentType<SegmentedControlProps> | undefined;
+  useRemoteUiNode({
+    role: "select",
+    label: "Segmented control",
+    actions: {
+      select: (input) => {
+        const next = typeof input === "string" ? input : (input as { value?: string } | null)?.value;
+        const option = options.find((option) => option.value === next && !option.disabled);
+        if (option && option.value !== value) onChange?.(option.value);
+      },
+    },
+    metadata: { value, options },
+  });
   useShortcut((event) => {
     const direction = isPlainKey(event, "left")
       ? -1
@@ -61,6 +75,9 @@ export function SegmentedControl({
         options={options}
         value={value}
         onChange={onChange}
+        focused={focused}
+        width={width}
+        wrap={wrap}
       />
     );
   }

@@ -1,4 +1,4 @@
-import { EmptyState, SpeedometerGauge, Spinner, usePaneFooter } from "../../../components";
+import { EmptyState, Notice, PaneStatusBody, SpeedometerGauge, Spinner, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
@@ -60,9 +60,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   if (loading && !data) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading Fear & Greed..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading Fear & Greed..." />
       </Box>
     );
   }
@@ -70,7 +68,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   if (!data) {
     return (
       <Box flexDirection="column" width={width} height={height} padding={1} gap={1}>
-        <EmptyState title="Fear & Greed unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Fear & Greed unavailable." message={error ?? undefined} />
       </Box>
     );
   }
@@ -118,7 +116,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
           ) : null}
           {error ? (
             <Box paddingX={1} marginTop={1}>
-              <Text fg={colors.warning}>{error}</Text>
+              <Notice>{error}</Notice>
             </Box>
           ) : null}
           <IndexHistoryChart data={data} width={width} />

@@ -1,8 +1,8 @@
-import { type ReactNode } from "react";
-import { Button, Checkbox, TextField, type ChoiceDialogChoice } from "../../../components";
-import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
+import { type ReactNode, type Ref } from "react";
+import { Checkbox, SelectButton, TextField, type ChoiceDialogChoice } from "../../../components";
+import { Box, Text, TextAttributes } from "../../../ui";
 import { colors } from "../../../theme/colors";
-import { NativeSelect, type NativeSelectElement } from "../../../components/ui/native-select";
+import type { SelectControl } from "../../../components/ui/select-button";
 import type { AccountFieldKey, ProfileAnalyticsPreview } from "./model";
 import { truncate } from "./model";
 import { t } from "../../../i18n";
@@ -102,55 +102,7 @@ export function CheckboxRow({
   onFocus: () => void;
   onChange: (checked: boolean) => void;
 }) {
-  const labelText = `${active ? "> " : "  "}${label}`;
-  const labelWidth = Math.min(
-    width - 9,
-    Math.max(accountFieldLabelWidth(width), Math.min(labelText.length, 34)),
-  );
-  const controlWidth = Math.max(8, width - labelWidth - 1);
-  return (
-    <Box
-      flexDirection="column"
-      width={width}
-      onMouseOver={onFocus}
-      onMouseDown={(event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
-        event?.preventDefault?.();
-        event?.stopPropagation?.();
-        onFocus();
-        onChange(!checked);
-      }}
-    >
-      <Box height={1} flexDirection="row" alignItems="center" gap={1}>
-        <Text
-          width={labelWidth}
-          fg={active ? colors.textBright : colors.textDim}
-          attributes={active ? TextAttributes.BOLD : 0}
-        >
-          {truncate(labelText, labelWidth)}
-        </Text>
-        <Checkbox
-          label={label}
-          displayLabel={checked ? t("On") : t("Off")}
-          checked={checked}
-          active={false}
-          width={controlWidth}
-          variant="desktop"
-          onChange={(nextChecked) => {
-            onFocus();
-            onChange(nextChecked);
-          }}
-        />
-      </Box>
-      {description ? (
-        <Box height={1} flexDirection="row" gap={1}>
-          <Box width={labelWidth} />
-          <Text fg={colors.textMuted} wrapText width={controlWidth}>
-            {description}
-          </Text>
-        </Box>
-      ) : null}
-    </Box>
-  );
+  return <Checkbox label={label} checked={checked} active={active} description={description} width={width} onChange={(next) => { onFocus(); onChange(next); }} />;
 }
 
 function metricColor(tone: ProfileAnalyticsPreview["metrics"][number]["tone"]): string {
@@ -164,39 +116,29 @@ export function PublicAnalyticsGroup({
   preview,
   choices,
   value,
-  label,
   detail,
   active,
   width,
   disclaimer,
-  selectRef,
+  controlRef,
   onFocus,
   onSelect,
-  onOpen,
 }: {
   preview: ProfileAnalyticsPreview;
   choices: ChoiceDialogChoice[];
   value: string;
-  label: string;
   detail?: string;
   active: boolean;
   width: number;
   disclaimer?: string | null;
-  selectRef?: (element: NativeSelectElement | null) => void;
+  controlRef?: Ref<SelectControl>;
   onFocus: () => void;
   onSelect: (value: string) => void;
-  onOpen: () => void;
 }) {
-  const isDesktop = useUiHost().kind === "desktop-web";
   const contentWidth = Math.max(1, width - 2);
   const labelText = active ? `> ${t("Public Stats:")}` : `  ${t("Public Stats:")}`;
   const labelWidth = Math.min(accountFieldLabelWidth(width), Math.max(1, contentWidth));
-  const nativeButtonWidth = Math.max(14, Math.min(24, Math.floor(contentWidth * 0.3)));
-  const terminalMaxButtonWidth = Math.max(8, Math.min(24, contentWidth - labelWidth - 1));
-  const buttonLabel = truncate(label, Math.max(1, terminalMaxButtonWidth - 4));
-  const buttonWidth = buttonLabel.length + 4;
-  const layoutButtonWidth = isDesktop ? nativeButtonWidth : buttonWidth;
-  const nativeSelectWidth = nativeButtonWidth * 8;
+  const buttonWidth = Math.max(8, Math.min(24, contentWidth - labelWidth - 1));
   const normalizedDetail = (detail ?? "").replace(/\.+$/, "");
   const displayPreview = (
     preview.metrics.length === 0
@@ -204,7 +146,7 @@ export function PublicAnalyticsGroup({
     && preview.subtitle.replace(/\.+$/, "") === normalizedDetail
   ) ? { ...preview, subtitle: "" } : preview;
   const metrics = displayPreview.metrics.slice(0, 2);
-  const metricAreaWidth = Math.max(0, contentWidth - labelWidth - layoutButtonWidth - 2);
+  const metricAreaWidth = Math.max(0, contentWidth - labelWidth - buttonWidth - 2);
   const metricWidth = metrics.length > 0 ? Math.max(8, Math.floor((metricAreaWidth - (metrics.length - 1)) / metrics.length)) : 0;
   const detailWidth = Math.max(0, metricAreaWidth);
   return (
@@ -213,36 +155,22 @@ export function PublicAnalyticsGroup({
       width={width}
       onMouseOver={onFocus}
     >
-      <Box height={isDesktop ? "24px" : 1} flexDirection="row" gap={1} alignItems="center">
+      <Box height={1} flexDirection="row" gap={1} alignItems="center">
         <Text fg={active ? colors.textBright : colors.textDim} attributes={active ? TextAttributes.BOLD : 0}>
           {truncate(labelText, labelWidth)}
         </Text>
-        {isDesktop ? (
-          <NativeSelect
-            value={value}
-            options={choices.map((choice) => ({
-              value: choice.id,
-              label: choice.label,
-              disabled: choice.disabled,
-            }))}
-            width={nativeSelectWidth}
-            height={22}
-            selectRef={selectRef}
-            onFocus={onFocus}
-            onChange={onSelect}
-          />
-        ) : (
-          <Button
-            label={`${buttonLabel} v`}
-            variant="secondary"
-            width={buttonWidth}
-            active={active}
-            onPress={() => {
-              onFocus();
-              onOpen();
-            }}
-          />
-        )}
+        <SelectButton
+          label={t("Public Stats")}
+          value={value}
+          options={choices.map((choice) => ({ value: choice.id, label: choice.label, description: choice.description, disabled: choice.disabled }))}
+          width={buttonWidth}
+          variant="field"
+          showLabel={false}
+          emphasized={active}
+          controlRef={controlRef}
+          onFocus={onFocus}
+          onChange={onSelect}
+        />
         {metrics.length > 0 ? metrics.map((metric) => {
           const labelTextWidth = Math.max(1, Math.min(metric.label.length, metricWidth - 2));
           const valueWidth = Math.max(1, metricWidth - labelTextWidth - 1);

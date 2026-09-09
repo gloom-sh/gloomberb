@@ -9,6 +9,7 @@ import {
   PaneSidebar,
   PaneSidebarAction,
   PaneSidebarRow,
+  SectionHeading,
   shouldShowPaneSidebar,
   Spinner,
   usePaneFooter,
@@ -111,7 +112,7 @@ function WorkspaceProviderChooser({
   const selectedProvider = providers[selectedIndex] ?? providers[0] ?? null;
   return (
     <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>Choose an AI provider</Text>
+      <SectionHeading title="Choose an AI provider" />
       <Text fg={colors.textDim}>Provider and model are fixed for this thread. Create another thread to switch.</Text>
       <Box height={1} />
       {statusMessage && <Text fg={colors.warning}>{statusMessage}</Text>}
@@ -139,7 +140,7 @@ function WorkspaceProviderChooser({
       />
       {selectedProvider && !isAiProviderReady(selectedProvider) && (
         <Box paddingTop={1}>
-          <Button
+          <Button stopPropagation
             label={`Configure ${selectedProvider.name}`}
             variant="primary"
             shortcut="s"
@@ -667,7 +668,7 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
         <Text fg={colors.warning}>No supported AI providers are available.</Text>
         <Text fg={colors.textDim}>Open pane settings to review AI provider configuration.</Text>
         <Box paddingTop={1}>
-          <Button label="Open AI settings" variant="primary" shortcut="s" onPress={openConfiguration} />
+          <Button stopPropagation label="Open AI settings" variant="primary" shortcut="s" onPress={openConfiguration} />
         </Box>
       </Box>
     );
@@ -779,12 +780,12 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
           {!showSidebar && (
             <>
               <Text fg={colors.textDim}> · </Text>
-              <Text fg={colors.textBright} onMouseDown={() => cycleThread(-1)} style={{ cursor: "pointer" }}>‹ </Text>
+              <Button stopPropagation label="Previous thread" displayLabel="‹" variant="ghost" compact onPress={() => cycleThread(-1)} />
               {/* Truncated so a long title cannot push the prev, next, and New
                   controls off the single header row. */}
               <Text fg={colors.text}>{truncateWithEllipsis(activeThread.title, narrowHeaderTitleWidth)}</Text>
-              <Text fg={colors.textBright} onMouseDown={() => cycleThread(1)} style={{ cursor: "pointer" }}> ›</Text>
-              <Text fg={colors.textBright} onMouseDown={() => { if (!busyRef.current) beginCreateThread(); }} style={{ cursor: "pointer" }}>  + New</Text>
+              <Button stopPropagation label="Next thread" displayLabel="›" variant="ghost" compact onPress={() => cycleThread(1)} />
+              <Button stopPropagation label="New thread" displayLabel="+ New" variant="ghost" compact disabled={!!runningMessageId} onPress={beginCreateThread} />
             </>
           )}
         </Box>
@@ -861,7 +862,7 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
                   <Box flexDirection="row">
                     <Text fg={colors.warning} attributes={TextAttributes.BOLD}>Attached: {attachment.label}</Text>
                     <Box flexGrow={1} />
-                    <Text fg={colors.textBright} onMouseDown={removeAttachments} style={{ cursor: "pointer" }}>Remove</Text>
+                    <Button stopPropagation label="Remove attachments" displayLabel="Remove" variant="ghost" compact onPress={removeAttachments} />
                   </Box>
                   <ScrollBox height={Math.min(8, Math.max(3, height - 12))} scrollY focusable={false}>
                     <Text fg={colors.textDim}>{attachment.content}</Text>
@@ -869,11 +870,9 @@ export function LocalAgentWorkspacePane({ paneId, focused, width, height }: Pane
                 </Box>
               ))}
               <Box height={1} flexDirection="row">
-                <Text fg={colors.textBright} onMouseDown={attachSelectedTicker} style={{ cursor: "pointer" }}>
-                  {attachments.length > 0 ? "Replace context" : `Attach ${previousSymbol ? previousSymbol : "selected ticker"}`}
-                </Text>
+                <Button stopPropagation label={attachments.length > 0 ? "Replace context" : `Attach ${previousSymbol || "selected ticker"}`} variant="ghost" compact onPress={attachSelectedTicker} />
                 {runningMessageId && (
-                  <Text fg={colors.warning} onMouseDown={cancelRun} style={{ cursor: "pointer" }}>  Cancel</Text>
+                  <Button stopPropagation label="Cancel" variant="danger" compact onPress={cancelRun} />
                 )}
               </Box>
             </Box>

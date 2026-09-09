@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar,
-  Spinner,
-  useExternalLinkFooter,
+  InputSearchBar, PaneStatusBody, useExternalLinkFooter,
   type DataTableCell,
   type DataTableKeyEvent
 } from "../../../components";
@@ -247,9 +245,7 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {rootBefore}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading IPO calendar..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading IPO calendar..." />
       </Box>
     );
   }
@@ -259,7 +255,7 @@ export function IPOCalendarPane({ focused, width, height }: PaneProps) {
       <Box flexDirection="column" width={width} height={height}>
         {rootBefore}
         <Box padding={1} flexDirection="column" gap={1}>
-          <EmptyState title="IPO calendar unavailable." message={error ?? undefined} />
+          <EmptyState status={error ? "error" : "empty"} title="IPO calendar unavailable." message={error ?? undefined} />
         </Box>
       </Box>
     );

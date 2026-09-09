@@ -1,3 +1,4 @@
+import { ActionRow } from "../../../components/ui/action-row";
 import { Box, ScrollBox, Text } from "../../../ui";
 import { useEffect, useMemo, useState } from "react";
 import { t } from "../../../i18n";
@@ -17,11 +18,6 @@ import {
   resolvePortfolioAccountState,
   type ResolvedPortfolioAccountState,
 } from "./summary";
-
-type CashDrawerPointerEvent = {
-  preventDefault(): void;
-  stopPropagation(): void;
-};
 
 export function shouldToggleCashMarginDrawer(key: string | undefined, showCashDrawer: boolean): boolean {
   return key === "c" && showCashDrawer;
@@ -112,25 +108,10 @@ export function PortfolioCashMarginDrawer({
 
   if (!expanded) {
     return (
-      <Box
-        width={width}
-        height={drawerHeight}
-        flexDirection="row"
-        backgroundColor={colors.bg}
-        onMouseDown={(event: CashDrawerPointerEvent) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onToggle();
-        }}
-        onMouseUp={(event: CashDrawerPointerEvent) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{`▸ ${t("Cash & Margin")}`}</Text>
+      <ActionRow label={t("Cash & Margin")} expanded={false} width={width} height={drawerHeight} onPress={onToggle}>
         <Box flexGrow={1} />
         <Text fg={colors.textDim}>{padTo(previewText, Math.max(0, width - 17), "right")}</Text>
-      </Box>
+      </ActionRow>
     );
   }
 
@@ -139,25 +120,10 @@ export function PortfolioCashMarginDrawer({
 
   return (
     <Box flexDirection="column" height={drawerHeight}>
-      <Box
-        width={width}
-        height={1}
-        flexDirection="row"
-        backgroundColor={colors.bg}
-        onMouseDown={(event: CashDrawerPointerEvent) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onToggle();
-        }}
-        onMouseUp={(event: CashDrawerPointerEvent) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-      >
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{`▾ ${t("Cash & Margin")}`}</Text>
+      <ActionRow label={t("Cash & Margin")} expanded width={width} onPress={onToggle}>
         <Box flexGrow={1} />
         <Text fg={colors.textDim}>{accountState.sourceLabel}</Text>
-      </Box>
+      </ActionRow>
       <Box height={1} overflow="hidden">
         {renderSummarySegments(metricSegments, width)}
       </Box>

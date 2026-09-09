@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Box, Text } from "../../ui";
 import { type PromptContext, useDialogKeyboard } from "../../ui/dialog";
-import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { isPlainKey } from "../../utils/keyboard";
 import { DialogFrame } from "./frame";
@@ -35,7 +35,7 @@ function getChoiceDescription(choice: ChoiceDialogChoice | undefined): string {
 }
 
 function getInitialChoiceIndex(choices: ChoiceDialogChoice[], selectedChoiceId: string | undefined): number {
-  if (!selectedChoiceId) return 0;
+  if (!selectedChoiceId) return choices.findIndex((choice) => !choice.disabled);
   const selectedIndex = choices.findIndex((choice) => choice.id === selectedChoiceId);
   return selectedIndex >= 0 ? selectedIndex : 0;
 }
@@ -55,8 +55,9 @@ export function ChoiceDialog({
   choices,
   selectedChoiceId,
   footer,
-  bgColor = colors.bg,
+  bgColor,
 }: ChoiceDialogProps) {
+  const colors = useThemeColors();
   const [index, setIndex] = useState(() =>
     clampChoiceIndex(getInitialChoiceIndex(choices, selectedChoiceId), choices.length)
   );
@@ -79,13 +80,21 @@ export function ChoiceDialog({
     if (!choice || choice.disabled) return;
     resolve(choice.id);
   };
+  const moveSelection = (direction: -1 | 1) => {
+    setIndex((current) => {
+      for (let next = current + direction; next >= 0 && next < choices.length; next += direction) {
+        if (!choices[next]?.disabled) return next;
+      }
+      return current;
+    });
+  };
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
     if (isPlainKey(event, "up", "k")) {
-      setIndex((current) => clampChoiceIndex(current - 1, choices.length));
+      moveSelection(-1);
     } else if (isPlainKey(event, "down", "j")) {
-      setIndex((current) => clampChoiceIndex(current + 1, choices.length));
+      moveSelection(1);
     } else if (event.name === "enter" || event.name === "return") {
       activateChoice(selectedChoice);
     } else if (event.name === "escape") {
@@ -99,7 +108,7 @@ export function ChoiceDialog({
         <ListView
           items={items}
           selectedIndex={selectedIndex}
-          bgColor={bgColor}
+          bgColor={bgColor ?? colors.bg}
           emptyMessage={t("No choices.")}
           rowGap={0}
           surface="framed"

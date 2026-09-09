@@ -3,25 +3,23 @@ import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload 
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar,
-  Spinner,
-  usePaneFooter,
+  InputSearchBar, PaneStatusBody, usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent,
+  type DataTableKeyEvent
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { WorldVenueMap } from "./map";
 import {
   filterWorldVenues,
   formatVenueCountdown,
   formatVenueLocalTime,
   venueRemainingSeconds,
 } from "./model";
-import { WorldVenueMap } from "./map";
 
 export const WORLD_VENUE_MAP_PANE_ID = "world-venue-map";
 
@@ -266,10 +264,10 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
   );
 
   if (!data && loading) {
-    return <Box width={width} height={height} alignItems="center" justifyContent="center"><Spinner label="Loading world venues..." /></Box>;
+    return <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading world venues..." />;
   }
   if (!data) {
-    return <EmptyState title="World venues unavailable." hint={error ?? "Try again."} />;
+    return <EmptyState status={error ? "error" : "empty"} title="World venues unavailable." hint={error ?? "Try again."} />;
   }
 
   const map = (

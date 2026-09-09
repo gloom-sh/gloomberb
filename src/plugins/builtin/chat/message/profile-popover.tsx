@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { Button } from "../../../../components/ui";
 import { Box, Text } from "../../../../ui";
 import { TextAttributes } from "../../../../ui";
-import { colors, hoverBg } from "../../../../theme/colors";
+import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
 import { formatNumber } from "../../../../utils/format";
 import { truncateChannelLabel } from "../channels";
@@ -137,7 +137,6 @@ export function UserProfilePopover({
   isOwnProfile?: boolean;
   onSetUpProfile?: () => void;
 }) {
-  const [setupHovered, setSetupHovered] = useState(false);
   const popoverWidth = Math.max(24, Math.min(38, width - 4));
   const meta = [user.title, user.company].filter(Boolean).join(" · ");
   const bio = user.bio?.trim();
@@ -187,26 +186,7 @@ export function UserProfilePopover({
         </Text>
       ) : null}
       {showSetupAction ? (
-        <Box
-          height={1}
-          width={headerWidth}
-          backgroundColor={setupHovered ? hoverBg() : undefined}
-          onMouseOver={() => setSetupHovered(true)}
-          onMouseOut={() => setSetupHovered(false)}
-          onMouseDown={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
-            event?.preventDefault?.();
-            event?.stopPropagation?.();
-            onSetUpProfile?.();
-          }}
-          style={{ cursor: "pointer" }}
-        >
-          <Text
-            fg={setupHovered ? colors.text : colors.textMuted}
-            attributes={setupHovered ? TextAttributes.BOLD : 0}
-          >
-            Set up profile
-          </Text>
-        </Box>
+        <Button label="Set up profile" width={headerWidth} variant="ghost" compact stopPropagation onPress={onSetUpProfile} />
       ) : null}
     </Box>
   );

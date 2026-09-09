@@ -1,6 +1,6 @@
-import { Box } from "../../../ui";
 import { Button, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
+import { Box } from "../../../ui";
 import { CloudAuthNotice } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 
@@ -21,11 +21,11 @@ export function ScannerDeniedState({ reason }: { reason: string | null }) {
       <EmptyState
         title="Options flow is part of Gloom Cloud Pro."
         message="Live sweeps, blocks, and large premium prints from the full OPRA feed."
+        actions={<>
+          <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
+          <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
+        </>}
       />
-      <Box flexDirection="row" marginTop={1} gap={1}>
-        <Button label={t("Upgrade to Pro")} onPress={openUpgrade} />
-        <Button label={t("Manage account")} variant="secondary" onPress={openPlan} />
-      </Box>
     </Box>
   );
 }

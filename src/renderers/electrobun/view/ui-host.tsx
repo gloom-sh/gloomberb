@@ -73,7 +73,4 @@ export const webRendererHost: RendererHost = {
     }).catch(() => {});
   },
   showContextMenu: showDesktopContextMenu,
-  resolveLiveStream(request) {
-    return backendRequest("media.resolveLiveStream", request);
-  },
 };

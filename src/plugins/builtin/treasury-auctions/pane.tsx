@@ -1,16 +1,16 @@
+import { KeyValueRow } from "../../../components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   EmptyState,
-  InputSearchBar,
-  Spinner,
-  Tabs,
+  InputSearchBar, PaneStatusBody, Tabs,
   usePaneFooter,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
+import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../../../ui";
@@ -19,18 +19,17 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference } from "../../../utils/sort-values";
-import { usePaneInstance } from "../../../state/app/context";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
 import {
   AUCTION_FILTERS,
-  auctionHistoryDays,
   AUCTION_SORT_COLUMN_IDS,
   DEFAULT_AUCTION_SORT,
+  auctionHistoryDays,
+  auctionSize,
   buildAuctionColumns,
   indirectPct,
   isPendingAuction,
-  auctionSize,
   nextAuctionSort,
   nextFilter,
   rateValue,
@@ -125,18 +124,6 @@ function renderAuctionCell(
   }
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <Box flexDirection="row" height={1} gap={2}>
-      <Box width={20}>
-        <Text fg={colors.textDim}>{label}</Text>
-      </Box>
-      <Box flexGrow={1}>
-        <Text fg={colors.textBright} wrapMode="ellipsis">{value}</Text>
-      </Box>
-    </Box>
-  );
-}
 
 function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; width: number }) {
   const total = auction.totalAccepted;
@@ -152,21 +139,21 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
           {isPendingAuction(auction) && <Text fg={colors.warning}>results pending</Text>}
         </Box>
         <Box height={1} />
-        <DetailRow label="High rate" value={formatRate(rateValue(auction))} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High rate" value={formatRate(rateValue(auction))} />
         {auction.avgMedYield != null && (
-          <DetailRow label="Median yield" value={formatRate(auction.avgMedYield)} />
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median yield" value={formatRate(auction.avgMedYield)} />
         )}
-        <DetailRow label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
         <Box height={1} />
-        <DetailRow label="High price" value={auction.highPrice?.toFixed(4) ?? "—"} />
-        <DetailRow label="Avg/median price" value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
-        <DetailRow label="Low price" value={auction.lowPrice?.toFixed(4) ?? "—"} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="High price" value={auction.highPrice?.toFixed(4) ?? "—"} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Avg/median price" value={auction.avgMedPrice?.toFixed(4) ?? "—"} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Low price" value={auction.lowPrice?.toFixed(4) ?? "—"} />
         <Box height={1} />
-        <DetailRow label="Offering" value={formatMoney(auction.offeringAmount)} />
-        <DetailRow label="Total accepted" value={formatMoney(auction.totalAccepted)} />
-        <DetailRow label="Competitive" value={share(auction.competitiveAccepted)} />
-        <DetailRow label="Indirect" value={share(auction.indirectAccepted)} />
-        <DetailRow label="Primary dealer" value={share(auction.primaryDealerAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Offering" value={formatMoney(auction.offeringAmount)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Total accepted" value={formatMoney(auction.totalAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Competitive" value={share(auction.competitiveAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect" value={share(auction.indirectAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Primary dealer" value={share(auction.primaryDealerAccepted)} />
       </Box>
     </ScrollBox>
   );
@@ -343,9 +330,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading Treasury auctions..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading Treasury auctions..." />
       </Box>
     );
   }
@@ -355,7 +340,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
         <Box padding={1}>
-          <EmptyState title="Treasury auctions unavailable." message={error} />
+          <EmptyState status={error ? "error" : "empty"} title="Treasury auctions unavailable." message={error} />
         </Box>
       </Box>
     );

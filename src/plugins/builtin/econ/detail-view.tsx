@@ -1,20 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { StaticChartSurface } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { colors } from "../../../theme/colors";
 import { apiClient, type CloudFredObservationPayload } from "../../../api-client";
-import { isPlainKey } from "../../../utils/keyboard";
-import { useShortcut } from "../../../react/input";
-import { usePluginTickerActions } from "../../runtime";
-import { resolveFredMapping } from "./fred-series-map";
+import { Divider, Notice, PaneStatusBody, SectionHeading, StaticChartSurface } from "../../../components";
+import type { ProjectedChartPoint } from "../../../components/chart/core/data";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { Button } from "../../../components/ui/button";
 import {
   getCachedFredSeries,
   loadCachedFredSeries,
   type FredSeriesData,
   type FredSeriesRequest,
 } from "../../../data/fred-series";
+import { useShortcut } from "../../../react/input";
+import { colors } from "../../../theme/colors";
+import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { isPlainKey } from "../../../utils/keyboard";
+import { usePluginTickerActions } from "../../runtime";
+import { resolveFredMapping } from "./fred-series-map";
 import type { EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -124,51 +125,21 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     }
   });
 
-  if (!mapping) {
+  if (!mapping || loading || error) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         <Box height={1} paddingX={1} flexDirection="row">
-          <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-            {event.event}
-          </Text>
-        </Box>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Text fg={colors.textMuted}>No historical data available for this indicator</Text>
-        </Box>
-      </Box>
-    );
-  }
-
-  if (loading) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        <Box height={1} paddingX={1} flexDirection="row">
-          <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-            {event.event}
-          </Text>
+          <SectionHeading title={event.event} />
           <Box flexGrow={1} />
-          <Text fg={colors.textDim}>{mapping.seriesId}</Text>
+          {mapping && <Text fg={colors.textDim}>{mapping.seriesId}</Text>}
         </Box>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Text fg={colors.textMuted}>Loading...</Text>
-        </Box>
-      </Box>
-    );
-  }
-
-  if (error) {
-    return (
-      <Box flexDirection="column" width={width} height={height}>
-        <Box height={1} paddingX={1} flexDirection="row">
-          <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-            {event.event}
-          </Text>
-          <Box flexGrow={1} />
-          <Text fg={colors.textDim}>{mapping.seriesId}</Text>
-        </Box>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Text fg={colors.negative}>{error}</Text>
-        </Box>
+        <PaneStatusBody
+          loading={!!mapping && loading}
+          error={mapping && !loading ? error : null}
+          empty={!mapping}
+          emptyTitle="No historical data available for this indicator"
+          align="center"
+        />
       </Box>
     );
   }
@@ -213,7 +184,6 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   };
   const dateColWidth = 14;
   const valueColWidth = Math.max(14, Math.floor((width - 4) * 0.3));
-  const separatorLine = "─".repeat(Math.max(0, width - 2));
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -231,7 +201,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
         {freshnessWarning ? (
           <>
             <Box flexGrow={1} />
-            <Text fg={colors.warning}>{freshnessWarning}</Text>
+            <Notice>{freshnessWarning}</Notice>
           </>
         ) : null}
       </Box>
@@ -277,7 +247,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           )}
 
           <Box paddingX={1} height={1} marginTop={1}>
-            <Text fg={colors.border}>{separatorLine}</Text>
+            <Divider width={Math.max(0, width - 2)} />
           </Box>
 
           <Box paddingX={1} height={1}>
@@ -304,7 +274,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
 
           {mapping.relatedTickers.length > 0 ? (
             <Box paddingX={1} height={1} marginTop={1}>
-              <Text fg={colors.border}>{separatorLine}</Text>
+              <Divider width={Math.max(0, width - 2)} />
             </Box>
           ) : null}
 
@@ -312,15 +282,7 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
             <Box paddingX={1} height={1} flexDirection="row">
               <Text fg={colors.textDim}>Related: </Text>
               {mapping.relatedTickers.map((ticker, i) => (
-                <Box
-                  key={ticker}
-                  marginLeft={i > 0 ? 2 : 0}
-                  onMouseDown={() => {
-                    navigateTicker(ticker);
-                  }}
-                >
-                  <Text fg={colors.textBright} attributes={TextAttributes.UNDERLINE}>{ticker}</Text>
-                </Box>
+                <Button stopPropagation key={ticker} label={ticker} variant="ghost" compact onPress={() => navigateTicker(ticker)} />
               ))}
             </Box>
           ) : null}

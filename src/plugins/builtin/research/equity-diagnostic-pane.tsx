@@ -1,9 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { Button, EmptyState, Spinner, usePaneFooter } from "../../../components";
-import { ExternalLinkText } from "../../../components/ui";
-import { CloudAuthNotice } from "../cloud/auth-actions";
-import { apiClient } from "../../../api-client";
 import type {
   CloudEquityDiagnosticCoverage,
   CloudEquityDiagnosticEvidence,
@@ -12,14 +7,19 @@ import type {
   CloudEquityDiagnosticMode,
   CloudEquityDiagnosticResponse,
 } from "../../../api-client";
+import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { colors } from "../../../theme/colors";
+import { Button, EmptyState, SectionHeading, Spinner, usePaneFooter } from "../../../components";
+import { ExternalLinkText } from "../../../components/ui";
 import { t, tf } from "../../../i18n";
 import { useShortcut } from "../../../react/input";
+import { colors } from "../../../theme/colors";
+import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatTimeAgo, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { usePlanAccess } from "../shared/plan-access";
+import { CloudAuthNotice } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { usePlanAccess } from "../shared/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
 
 const FOOTER_ID = "equity-diagnostic";
@@ -215,14 +215,6 @@ function Paragraph({ text: value, width, color, bold }: {
   );
 }
 
-function SectionHeading({ label }: { label: string }) {
-  return (
-    <Box height={1}>
-      <Text fg={colors.textMuted} attributes={TextAttributes.BOLD}>{t(label)}</Text>
-    </Box>
-  );
-}
-
 function DiagnosticLoading({ step }: { step: number }) {
   const visible = LOADING_STEPS.slice(0, Math.max(1, step));
   return (
@@ -309,7 +301,7 @@ function FindingSection({ heading, findings, evidenceById, width }: {
   if (findings.length === 0) return null;
   return (
     <Box flexDirection="column" width={width} gap={1}>
-      <SectionHeading label={heading} />
+      <SectionHeading title={heading} />
       {findings.map((finding) => (
         <FindingView key={finding.id} finding={finding} evidenceById={evidenceById} width={width} />
       ))}
@@ -326,7 +318,7 @@ function CoverageSection({ coverage, width }: {
 
   return (
     <Box flexDirection="column" width={width}>
-      <SectionHeading label="COVERAGE" />
+      <SectionHeading title="COVERAGE" />
       {coverage.map((entry) => {
         const detail = [
           coverageLabel(entry.status),
@@ -399,7 +391,7 @@ function ReportView({ report, width, failure, onRetry }: {
 
       {report.watchItems.length > 0 && (
         <Box flexDirection="column" width={width}>
-          <SectionHeading label="WATCH ITEMS" />
+          <SectionHeading title="WATCH ITEMS" />
           {report.watchItems.map((item, index) => (
             <Box key={`${index}:${item.slice(0, 24)}`} flexDirection="row" width={width}>
               <Box width={2} flexShrink={0}><Text fg={colors.textMuted}>{"· "}</Text></Box>
@@ -440,7 +432,7 @@ function PreviewReportView({ report, width, onUpgrade, onPlan }: {
         ? <FindingView finding={finding} evidenceById={evidenceById} width={width} />
         : <EmptyState title="No preview finding is available for this company yet." />}
       <Box flexDirection="column" width={width}>
-        <SectionHeading label="UNLOCK THE FULL DIAGNOSTIC" />
+        <SectionHeading title="UNLOCK THE FULL DIAGNOSTIC" />
         <Paragraph
           text={t("See the overall verdict, every red flag, anomaly, green flag, and watch item.")}
           width={width}

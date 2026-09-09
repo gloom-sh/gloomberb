@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef } from "react";
-import { Button, EmptyState, Spinner } from "../../../components";
+import type {
+  CloudSearchDocType,
+  CloudSearchDocument,
+  CloudSearchDocumentChunk,
+  CloudSearchHit,
+} from "../../../api-client";
+import { Button, PaneStatusBody } from "../../../components";
 import { openUrl } from "../../../components/ui/external-link";
 import { colors } from "../../../theme/colors";
 import {
@@ -12,12 +18,6 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { wrapTextLines } from "../../../utils/text-wrap";
-import type {
-  CloudSearchDocType,
-  CloudSearchDocument,
-  CloudSearchDocumentChunk,
-  CloudSearchHit,
-} from "../../../api-client";
 import { chunkAttribution, documentBodyWidth } from "./model";
 import { highlightTerms, snippetMatchTerms, type SnippetSegment } from "./snippet";
 import { SnippetText } from "./snippet-text";
@@ -202,33 +202,20 @@ export function SearchDocumentView({
 
   if (loading && !document) {
     return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <Spinner label="Loading document..." />
-      </Box>
+      <PaneStatusBody loading align="center" loadingLabel="Loading document..." />
     );
   }
   if (error && !document) {
     // A news hit names a story that is public at its source, so a server that
     // will not hand over the indexed copy is not a dead end: the whole point of
     // opening one is to read it, and the original always can be.
-    if (hit.url) {
-      return (
-        <Box flexDirection="column" paddingX={1}>
-          <EmptyState
-            title="Could not load the indexed copy."
-            message={error}
-          />
-          <Box flexDirection="row" marginTop={1}>
-            <Button
-              label="Open original"
-              variant="secondary"
-              onPress={() => openUrl(hit.url)}
-            />
-          </Box>
-        </Box>
-      );
-    }
-    return <EmptyState title="Could not load this document." message={error} />;
+    return (
+      <PaneStatusBody
+        error={error}
+        errorTitle={hit.url ? "Could not load the indexed copy." : "Could not load this document."}
+        actions={hit.url ? <Button label="Open original" variant="secondary" onPress={() => openUrl(hit.url)} /> : undefined}
+      />
+    );
   }
   if (!document || !layout) return null;
 

@@ -24,7 +24,7 @@ import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 // size (see theme/font-scale) without threading metrics through the tree.
 export { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 
-function toKeyEventLike(event: KeyboardEvent): KeyEventLike {
+export function toKeyEventLike(event: KeyboardEvent): KeyEventLike {
   const key = normalizeWebKeyName(event.key);
   let propagationStopped = false;
   return {
