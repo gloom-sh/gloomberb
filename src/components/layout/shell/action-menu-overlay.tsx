@@ -1,5 +1,5 @@
 import { Box, Text } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { colors, tokens } from "../../../theme/colors";
 import { MENU_Z_INDEX, truncateMenuText } from "./menu";
 import { t } from "../../../i18n";
 import { displayWidth, padTo } from "../../../utils/format";
@@ -34,7 +34,7 @@ export function ShellActionMenuOverlay({
       height={menuState.items.length + 2}
       backgroundColor={colors.panel}
       border
-      borderStyle="single"
+      borderStyle={tokens.pane.chrome.boxBorderStyle}
       borderColor={colors.borderFocused}
       zIndex={MENU_Z_INDEX}
       flexDirection="column"

@@ -6,7 +6,7 @@ import {
   higherContrast,
   relativeLuminance,
 } from "./color-utils";
-import { resolveGlyphs, type GlyphSet } from "./glyphs";
+import { openTuiBorderStyle, resolveGlyphs, type GlyphSet } from "./glyphs";
 import { DEFAULT_SCHEME, getScheme, type Theme } from "./schemes";
 import {
   DEFAULT_STYLE,
@@ -54,6 +54,8 @@ export interface TextTokens {
 
 export interface PaneChromeTokens {
   borderKind: PaneBorderKind;
+  /** The set a Box's `borderStyle` prop should use for this style. */
+  boxBorderStyle: "single" | "double" | "rounded" | "heavy";
   headerMode: PaneHeaderMode;
   focusMode: FocusMode;
   separators: SeparatorMode;
@@ -515,6 +517,7 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
     pane: {
       chrome: {
         borderKind: chrome.paneBorder,
+        boxBorderStyle: openTuiBorderStyle(chrome.paneBorder),
         headerMode: chrome.paneHeader,
         focusMode: chrome.focus,
         separators: chrome.separators,

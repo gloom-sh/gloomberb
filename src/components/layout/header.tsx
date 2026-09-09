@@ -96,13 +96,13 @@ function nativePromptSurfaceStyle(colors: ReturnType<typeof useThemeColors>, ope
       borderRadius: 5,
     };
   }
-  const { radiusPx, shadow } = NATIVE_COMMAND_SURFACE;
+  const { radius, shadow } = NATIVE_COMMAND_SURFACE;
   return {
     alignSelf: "stretch",
     height: "100%",
     border: `1px solid ${nativeCommandSurfaceBorder(colors)}`,
     borderBottomWidth: 0,
-    borderRadius: `${radiusPx}px ${radiusPx}px 0 0`,
+    borderRadius: `${radius} ${radius} 0 0`,
     boxShadow: shadow,
   };
 }

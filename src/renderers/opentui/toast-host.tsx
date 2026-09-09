@@ -1,7 +1,7 @@
 /** @jsxImportSource @opentui/react */
 import { useTerminalDimensions } from "@opentui/react";
 import { useSyncExternalStore } from "react";
-import { colors } from "../../theme/colors";
+import { colors, glyphs, tokens } from "../../theme/colors";
 import type { ToastHost, ToastOptions } from "../../ui/toast";
 
 type ToastTone = "success" | "error" | "info";
@@ -68,13 +68,13 @@ function getSnapshot(): ToastRecord[] {
 }
 
 function toneColor(tone: ToastTone): string {
-  if (tone === "success") return colors.positive;
-  if (tone === "error") return colors.negative;
-  return colors.neutral;
+  if (tone === "success") return tokens.toast.accent.success;
+  if (tone === "error") return tokens.toast.accent.error;
+  return tokens.toast.accent.info;
 }
 
 function toneIcon(tone: ToastTone): string {
-  if (tone === "success") return "✓";
+  if (tone === "success") return glyphs.check;
   if (tone === "error") return "!";
   return "i";
 }
@@ -107,15 +107,15 @@ function ToastViewport({ position = "bottom-right" }: { position?: string }) {
           key={toast.id}
           width="100%"
           border
-          borderStyle="single"
+          borderStyle={tokens.pane.chrome.boxBorderStyle}
           borderColor={toneColor(toast.tone)}
-          backgroundColor={colors.panel}
+          backgroundColor={tokens.toast.bg}
           paddingX={1}
           flexDirection="row"
           gap={1}
         >
           <text fg={toneColor(toast.tone)}>{toneIcon(toast.tone)}</text>
-          <text fg={colors.text} flexGrow={1} wrapMode="word">{toast.body}</text>
+          <text fg={tokens.toast.bodyText} flexGrow={1} wrapMode="word">{toast.body}</text>
           {toast.options?.action && (
             <text
               fg={colors.textBright}

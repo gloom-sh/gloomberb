@@ -1,6 +1,6 @@
 import { Box, useUiCapabilities } from "../../../ui";
 import type { ReactNode } from "react";
-import { paneBg } from "../../../theme/colors";
+import { useThemeTokens } from "../../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
@@ -50,7 +50,8 @@ export function PaneWrapper({
   children,
 }: PaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
-  const bg = paneBg(focused);
+  const { pane } = useThemeTokens();
+  const bg = pane.body.bg[focused ? "focused" : "idle"];
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = !!title && shouldReservePaneFooter(nativePaneChrome, showFooter);
   const renderFooter = !!title && (reserveFooter || showFooter);

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { useViewport } from "../../react/input";
-import { blendHex } from "../../theme/colors";
+import { blendHex, tokens } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { Button, ListView, type ListViewItem } from "../ui";
@@ -79,7 +79,7 @@ export function OnboardingModal({
         paddingX={2}
         paddingY={1}
         backgroundColor={colors.panel}
-        borderStyle="single"
+        borderStyle={tokens.pane.chrome.boxBorderStyle}
         borderColor={colors.borderFocused}
         data-gloom-role="onboarding-modal"
       >
@@ -162,7 +162,7 @@ export function OnboardingCoach({
       paddingX={1}
       paddingY={1}
       backgroundColor={colors.panel}
-      borderStyle="single"
+      borderStyle={tokens.pane.chrome.boxBorderStyle}
       borderColor={colors.borderFocused}
       data-gloom-role="onboarding-coach"
     >

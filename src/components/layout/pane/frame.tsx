@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Box } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { tokens } from "../../../theme/colors";
 
 export function getPaneWindowAttributes({
   enabled = true,
@@ -31,8 +31,11 @@ export function getPaneWindowAttributes({
     attributes["data-window-mode-selected"] = windowModeSelected ? "true" : "false";
   }
   if (showBorderColor) {
+    const { border } = tokens.pane;
     attributes.style = {
-      "--pane-border-color": focused || windowModeSelected ? colors.borderFocused : colors.border,
+      "--pane-border-color": windowModeSelected
+        ? border.selected
+        : focused ? border.focused : border.idle,
     };
   }
   return attributes;

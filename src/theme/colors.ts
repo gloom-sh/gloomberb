@@ -221,6 +221,8 @@ export function themeCssVariables(resolved: ResolvedTheme = currentResolved): Ar
     ["--gloom-heading-weight", `${style.typography.headingWeight}`],
     ["--gloom-letter-spacing", style.typography.letterSpacing],
     ["--gloom-row-h", `calc(var(--cell-h) * ${themeTokens.pane.chrome.rowHeight})`],
+    ["--gloom-pane-pad-x", `${themeTokens.pane.chrome.padding.x}`],
+    ["--gloom-pane-pad-y", `${themeTokens.pane.chrome.padding.y}`],
     ["--gloom-transition", style.effects.transitions ? "120ms cubic-bezier(0.23, 1, 0.32, 1)" : "0ms linear"],
     ["--gloom-pane-border-width", themeTokens.pane.chrome.drawsBorder ? "1px" : "0px"],
     ["--gloom-table-stripe", themeTokens.table.row.stripe ?? "transparent"],

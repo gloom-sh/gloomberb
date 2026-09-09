@@ -1,6 +1,7 @@
 import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import { useRef } from "react";
 import { colors, blendHex } from "../../../../theme/colors";
+import { useGlyphs, useThemeTokens } from "../../../../theme/theme-context";
 import { getShortcutHintWidth, ShortcutHint } from "../../../ui/shortcut-hint";
 import { useRemoteUiNode } from "../../../../remote/semantic-tree";
 import {
@@ -217,15 +218,13 @@ export function PaneFooterBar({
   showBorder?: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
+  const glyphs = useGlyphs();
+  const { pane } = useThemeTokens();
   const resolvedFooter = footer ?? EMPTY_FOOTER;
   const empty = !hasPaneFooterContent(resolvedFooter);
-  const borderColor = focused ? colors.borderFocused : colors.border;
-  const topBorderColor = colors.border;
-  const nativeBackgroundColor = empty
-    ? "transparent"
-    : focused
-      ? blendHex(colors.bg, colors.borderFocused, 0.06)
-      : blendHex(colors.panel, colors.border, 0.12);
+  const borderColor = focused ? pane.border.focused : pane.border.idle;
+  const topBorderColor = pane.border.idle;
+  const nativeBackgroundColor = empty ? "transparent" : pane.footer.bg[focused ? "focused" : "idle"];
   const reservedRight = Math.max(0, reserveRight);
   const rightPadding = reservedRight > 0 ? reservedRight : 1;
 
@@ -257,17 +256,20 @@ export function PaneFooterBar({
     );
   }
 
-  if (focused || showBorder) {
+  // Matches the header: a border-focus style boxes only the focused pane, and
+  // every other focus mode boxes them all so the frame stays closed.
+  if (pane.chrome.drawsBorder && (focused || showBorder || pane.chrome.focusMode !== "border")) {
     const contentWidth = Math.max(0, Math.floor(width) - 1 - reservedRight - (reservedRight > 0 ? 0 : 1));
+    const { bottomLeft, bottomRight, horizontal } = glyphs.border;
     return (
       <Box height={1} width={width} flexDirection="row" data-gloom-role="pane-footer" data-focused={focused ? "true" : "false"} data-empty={empty ? "true" : "false"}>
-        <Text fg={borderColor} selectable={false}>└</Text>
+        <Text fg={borderColor} selectable={false}>{bottomLeft}</Text>
         <Box width={contentWidth} height={1} overflow="hidden">
           {empty
-            ? <Text fg={borderColor} selectable={false}>{"─".repeat(contentWidth)}</Text>
+            ? <Text fg={borderColor} selectable={false}>{horizontal.repeat(contentWidth)}</Text>
             : <FooterContent footer={resolvedFooter} focused={focused} width={contentWidth} />}
         </Box>
-        {reservedRight === 0 && <Text fg={borderColor} selectable={false}>┘</Text>}
+        {reservedRight === 0 && <Text fg={borderColor} selectable={false}>{bottomRight}</Text>}
       </Box>
     );
   }

@@ -1,8 +1,7 @@
-import { useThemeColors } from "../../theme/theme-context";
+import { useThemeColors, useThemeTokens } from "../../theme/theme-context";
 import { Box, ScrollBox, Text, useUiHost } from "../../ui";
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
-import { hoverBg } from "../../theme/colors";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { resolveRemoteItemIndex } from "../../remote/semantic-helpers";
@@ -64,6 +63,7 @@ function DefaultRow({
   selected: boolean;
 }) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
   return (
     <Box flexDirection="row" justifyContent="space-between" width="100%">
       <Box flexDirection="row">
@@ -114,6 +114,7 @@ export function ListView({
   remoteMetadata,
 }: ListViewProps) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
   useRemoteUiNode({
     role: remoteRole,
     label: remoteLabel ?? emptyMessage,
@@ -187,8 +188,8 @@ export function ListView({
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const baseBg = bgColor ?? colors.bg;
-  const activeBg = selectedBgColor ?? colors.selected;
-  const rowHoverBg = hoverBgColor ?? hoverBg(colors);
+  const activeBg = selectedBgColor ?? tokens.list.selectedBg;
+  const rowHoverBg = hoverBgColor ?? tokens.list.hoverBg;
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
   const terminalRowHeight = rowHeight ?? 1;

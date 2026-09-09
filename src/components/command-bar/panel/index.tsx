@@ -161,7 +161,7 @@ export function CommandBarPanel({
           // bordered along its three free edges, open where the input sits.
           border: `1px solid ${nativeCommandSurfaceBorder(colors)}`,
           borderTopWidth: 0,
-          borderRadius: `0 0 ${NATIVE_COMMAND_SURFACE.radiusPx}px ${NATIVE_COMMAND_SURFACE.radiusPx}px`,
+          borderRadius: `0 0 ${NATIVE_COMMAND_SURFACE.radius} ${NATIVE_COMMAND_SURFACE.radius}`,
           boxShadow: NATIVE_COMMAND_SURFACE.shadow,
           overflow: "hidden",
           padding: `${NATIVE_COMMAND_SURFACE.paddingYPx}px ${NATIVE_COMMAND_SURFACE.paddingXPx}px`,

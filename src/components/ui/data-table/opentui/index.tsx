@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
-import { hoverBg } from "../../../../theme/colors";
-import { useThemeColors } from "../../../../theme/theme-context";
+import { useThemeColors, useThemeTokens } from "../../../../theme/theme-context";
 import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
@@ -53,6 +52,7 @@ function OpenTuiDataTableRowInner<
   C extends DataTableColumn,
 >({
   colors,
+  tokens,
   columnGap,
   contentWidth,
   displayColumns,
@@ -72,6 +72,7 @@ function OpenTuiDataTableRowInner<
   selected,
 }: {
   colors: ReturnType<typeof useThemeColors>;
+  tokens: ReturnType<typeof useThemeTokens>;
   columnGap: number;
   contentWidth: number;
   displayColumns: C[];
@@ -124,7 +125,7 @@ function OpenTuiDataTableRowInner<
   const rowState = { selected };
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
   const rowBg = selected ? colors.selected : rowBackgroundColor ?? colors.bg;
-  const rowHoverBg = selected ? undefined : hoverBg(colors);
+  const rowHoverBg = selected ? undefined : tokens.table.row.hover;
 
   return (
     <Box
@@ -229,6 +230,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
   const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const appViewport = useViewport();
@@ -537,6 +539,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                   <OpenTuiDataTableRow<T, C>
                     key={itemKey}
                     colors={colors}
+                    tokens={tokens}
                     columnGap={columnGap}
                     contentWidth={contentWidth}
                     displayColumns={displayColumns}
