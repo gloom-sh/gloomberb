@@ -1,13 +1,12 @@
-import { Box, Text, TextAttributes } from "../../../ui";
 import {
-  DataTableView,
-  StaticChartSurface,
+  DataTableView, KeyValueRow, Notice, SectionHeading, Spinner, StaticChartSurface,
   loadingText,
-  unavailableText,
+  unavailableText
 } from "../../../components";
-import type { StaticChartSurfaceProps } from "../../../components/chart/static";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
+import type { StaticChartSurfaceProps } from "../../../components/chart/static";
 import { colors, priceColor } from "../../../theme/colors";
+import { Box, Text } from "../../../ui";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatSignedCompact, formatWeight, renderBar } from "./display";
 import type {
@@ -35,39 +34,17 @@ export function AnalyticsMetricsPanel({
 }) {
   return (
     <Box flexDirection="column" height={height} paddingX={1} paddingTop={1}>
-      <Box height={1}>
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>
-          Summary
-        </Text>
-      </Box>
+      <SectionHeading title="Summary" />
       {summaryRows.map((row) => (
-        <MetricLine key={row.id} row={row} />
+        <KeyValueRow key={row.id} {...row} />
       ))}
 
       <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>
-          Risk / Return
-        </Text>
-      </Box>
+      <SectionHeading title="Risk / Return" />
       {riskRows.map((row) => (
-        <MetricLine key={row.id} row={row} />
+        <KeyValueRow key={row.id} {...row} />
       ))}
       <Box height={1} />
-    </Box>
-  );
-}
-
-function MetricLine({ row }: { row: AnalyticsMetricRow }) {
-  return (
-    <Box flexDirection="row" height={1}>
-      <Box width={14} flexShrink={0}>
-        <Text fg={colors.textDim}>{row.label}</Text>
-      </Box>
-      <Text fg={row.color ?? colors.text} attributes={TextAttributes.BOLD}>
-        {row.value}
-      </Text>
-      {row.detail && <Text fg={colors.textDim}>{`  ${row.detail}`}</Text>}
     </Box>
   );
 }
@@ -101,9 +78,7 @@ export function PortfolioHistorySection({
     return (
       <>
         <Box height={1} paddingX={1} flexDirection="row">
-          <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>
-            Portfolio History
-          </Text>
+          <SectionHeading title="Portfolio History" />
           <Text fg={colors.textDim}>
             {`  Flex ${period ?? ""}${stale ? " - cached" : ""}`}
           </Text>
@@ -127,15 +102,15 @@ export function PortfolioHistorySection({
   if (loading) {
     return (
       <Box height={1} paddingX={1}>
-        <Text fg={colors.textDim}>{loadingText("IBKR history")}</Text>
+        <Spinner label={loadingText("IBKR history")} />
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box height={1} paddingX={1} overflow="hidden">
-        <Text fg={colors.warning}>{`${unavailableText("IBKR history")} ${error}`}</Text>
+      <Box paddingX={1}>
+        <Notice>{`${unavailableText("IBKR history")} ${error}`}</Notice>
       </Box>
     );
   }

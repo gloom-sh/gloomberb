@@ -1,12 +1,15 @@
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, createRef, useEffect, useRef, useState } from "react";
-import { TestDialogProvider, testRender } from "../../renderers/opentui/test-utils";
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import { setLanguage } from "../../i18n";
+import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
+import { createDefaultConfig } from "../../types/config";
+import { DataTableView } from "../data-table/view";
 import { ChoiceDialog } from "./choice-dialog";
 import { DataTable, type DataTableColumn, type DataTableVisibleRange } from "./data-table";
 import { TextField } from "./fields";
 import { ListView } from "./list-view";
-import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
 import {
   getMultiSelectDisplayValues,
   moveMultiSelectDisplayValue,
@@ -15,11 +18,9 @@ import {
   toggleMultiSelectValue,
   toggleOrderedMultiSelectValue,
 } from "./multi-select";
+import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
 import { Tabs } from "./tabs";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
-import { createDefaultConfig } from "../../types/config";
-import { DataTableView } from "../data-table/view";
-import { setLanguage } from "../../i18n";
+import { SelectButton, type SelectControl } from "./select-button";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setListSelection: ((index: number) => void) | null = null;
@@ -264,25 +265,7 @@ function ChoiceDialogHarness({
   );
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; alt?: boolean }) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    } as any);
-    await Promise.resolve();
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
-  await testSetup!.renderOnce();
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { frames: 2, afterCommit: true });
 
 afterEach(async () => {
   if (testSetup) {
@@ -945,4 +928,31 @@ describe("shared UI kit", () => {
     const scrolledFrame = testSetup.captureCharFrame();
     expect(scrolledFrame).toContain(`Row ${scrollTop}`);
   });
+});
+
+
+test("a select opened through its handle skips disabled options and ignores results after disabling", async () => {
+  const handle = createRef<SelectControl>();
+  const changes: string[] = [];
+  let disable: (() => void) | undefined;
+  function Harness() {
+    const [disabled, setDisabled] = useState(false);
+    disable = () => setDisabled(true);
+    return <TestDialogProvider><SelectButton
+      controlRef={handle} label="Account" value="alpha" disabled={disabled}
+      options={[{ value: "alpha", label: "Alpha" }, { value: "blocked", label: "Blocked", disabled: true }, { value: "gamma", label: "Gamma" }]}
+      onChange={(value) => changes.push(value)}
+    /></TestDialogProvider>;
+  }
+  testSetup = await testRender(<Harness />, { width: 44, height: 12 });
+  await act(async () => { await testSetup!.renderOnce(); });
+  await act(async () => { handle.current!.open(); await testSetup!.renderOnce(); });
+  await emitKeypress({ name: "down" });
+  await emitKeypress({ name: "enter", sequence: "\r" });
+  expect(changes).toEqual(["gamma"]);
+  await act(async () => { handle.current?.open(); await testSetup!.renderOnce(); });
+  await emitKeypress({ name: "down" });
+  await act(async () => { disable?.(); await testSetup!.renderOnce(); });
+  await emitKeypress({ name: "enter", sequence: "\r" });
+  expect(changes).toEqual(["gamma"]);
 });

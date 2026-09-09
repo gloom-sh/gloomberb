@@ -5,23 +5,23 @@ import type { TickerFinancials } from "../../../types/financials";
 import type { PaneSettingField } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import {
+  executeCollectionCommandAction,
+  type CollectionCommandId,
+} from "../commands/collection";
+import {
   buildLayoutResultItems,
   buildWindowModeResultItems,
 } from "../layout-items";
 import type { ResultItem } from "../list/model";
 import {
-  executeCollectionCommandAction,
-  type CollectionCommandId,
-} from "../commands/collection";
-import {
   activatePaneSettingFieldAction,
   buildPaneSettingResultItems,
 } from "../pane-settings";
-import type { OpenInlineConfirm } from "./confirm";
 import type {
   CommandBarRoute,
   CommandBarWorkflowRoute,
 } from "../workflow/types";
+import type { OpenInlineConfirm } from "./confirm";
 
 type CloseAll = (options?: { revertThemePreview?: boolean }) => void;
 type Notify = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
@@ -207,7 +207,7 @@ export function useCommandBarRouteActions({
     const financials = activeFinancials;
     if (!ticker) return [];
 
-    return [...pluginRegistry.tickerActions.values()]
+    return pluginRegistry.getEnabledTickerActions()
       .filter((action) => !action.filter || action.filter(ticker))
       .map((action) => ({
         id: `ticker-action:${action.id}`,
@@ -220,7 +220,7 @@ export function useCommandBarRouteActions({
           closeAll({ revertThemePreview: false });
         },
       }));
-  }, [activeFinancials, activeTickerData, closeAll, pluginRegistry.tickerActions]);
+  }, [activeFinancials, activeTickerData, closeAll, pluginRegistry]);
 
   return {
     activatePaneSettingField,

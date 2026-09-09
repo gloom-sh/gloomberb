@@ -100,6 +100,8 @@ export interface TimeSeriesPoint {
   observedAt: Date;
   availableAt?: Date;
   value: number | null;
+  /** Original primary scalar before any presentation transform, including missing values. */
+  rawValue?: number | null;
   open?: number | null;
   high?: number | null;
   low?: number | null;
@@ -125,6 +127,8 @@ export interface ResolvedSeries {
   label: string;
   color: string;
   unit: string;
+  /** Unit of rawValue, retained when presentation transforms change unit. */
+  rawUnit?: string;
   unitGroup: string;
   nativeFrequency: SeriesPeriod;
   /** Authored time basis retained for layout and cursor semantics. */

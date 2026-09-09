@@ -1,31 +1,31 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar,
-  SegmentedControl,
-  Spinner,
-  type DataTableCell,
+  InputSearchBar, Notice, PaneStatusBody, SegmentedControl, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableSelectionChangeReason,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
-import { getCachedStatsBundle, loadStatsBundle, type StatsBundle } from "./client";
+import { getCachedStatsBundle, loadStatsBundle } from "./client";
 import { categoryLabel, changeColor, type StatCategoryId } from "./defs";
 import { StatDetail } from "./detail";
 import { DEFAULT_STAT_ID } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
+
+const loadBundle = () => loadStatsBundle();
 
 const SPLIT_MIN_WIDTH = 108;
 const LIST_WIDTH = 46;
@@ -35,12 +35,6 @@ const RANGE_OPTIONS = [
   { value: "20Y" as const, label: "20Y" },
   { value: "ALL" as const, label: "All" },
 ];
-
-type LoadState =
-  | { status: "idle" }
-  | { status: "loading"; previous: StatsBundle | null }
-  | { status: "ready"; bundle: StatsBundle }
-  | { status: "error"; message: string; previous: StatsBundle | null };
 
 type ColumnId = "name" | "latest" | "previous" | "percentile";
 interface Column extends DataTableColumn { id: ColumnId }
@@ -64,22 +58,6 @@ function withCategoryHeaders(views: readonly StatViewModel[]): Row[] {
     rows.push({ kind: "stat", id: view.stat.id, view });
   }
   return rows;
-}
-
-function bundleOf(state: LoadState): StatsBundle | null {
-  switch (state.status) {
-    case "idle":
-      return null;
-    case "loading":
-    case "error":
-      return state.previous;
-    case "ready":
-      return state.bundle;
-    default: {
-      const _exhaustive: never = state;
-      return _exhaustive;
-    }
-  }
 }
 
 function matchesQuery(view: StatViewModel, query: string): boolean {
@@ -148,37 +126,12 @@ export function shouldPersistStat({
 export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const [statId, setStatId] = usePaneSettingValue<string>("stat", DEFAULT_STAT_ID);
   const [range, setRange] = usePaneSettingValue<StatRangeId>("range", "20Y");
-  const [state, setState] = useState<LoadState>(() => {
-    const cached = getCachedStatsBundle();
-    return cached ? { status: "ready", bundle: cached } : { status: "idle" };
-  });
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const resource = useAsyncResource(loadBundle, { initialData: () => getCachedStatsBundle() });
+  const { data: bundle, load: refresh, updatedAt: lastUpdated } = resource;
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const searchInputRef = useRef<InputRenderable | null>(null);
-  const generation = useRef(0);
-
-  const load = useCallback(async () => {
-    const current = ++generation.current;
-    setState((previous) => ({ status: "loading", previous: bundleOf(previous) }));
-    try {
-      const next = await loadStatsBundle();
-      if (generation.current !== current) return;
-      setState({ status: "ready", bundle: next });
-      setLastUpdated(Date.now());
-    } catch (error) {
-      if (generation.current !== current) return;
-      setState((previous) => ({
-        status: "error",
-        message: error instanceof Error ? error.message : String(error),
-        previous: bundleOf(previous),
-      }));
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-  const refresh = useCallback(() => { void load(); }, [load]);
   useAutoRefresh(lastUpdated, refresh);
 
   const focusSearch = useCallback(() => {
@@ -208,7 +161,6 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     refresh();
   });
 
-  const bundle = bundleOf(state);
   const views = useMemo(
     () => (bundle ? selectStatViews(bundle.builds, range) : []),
     [bundle, range],
@@ -232,7 +184,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     setStatId(id);
   }, [selectionOnScreen, setStatId, views]);
 
-  const error = state.status === "error" ? state.message : bundle?.errors[0] ?? null;
+  const error = resource.error ?? bundle?.errors[0] ?? null;
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
     if (!selected) return [];
     const info: PaneFooterSegment[] = [
@@ -249,23 +201,21 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
 
   usePaneStatusFooter({
     registrationId: "econ-statistics",
-    loading: state.status === "loading",
+    loading: resource.loading,
     error,
     info: footerInfo,
   });
 
-  if (!bundle && state.status !== "error") {
+  if (!bundle && resource.error === null) {
     return (
-      <Box width={width} height={height} justifyContent="center" alignItems="center">
-        <Spinner label="Loading economic statistics..." />
-      </Box>
+      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading economic statistics..." />
     );
   }
 
   if (!selected) {
     return (
       <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState title="Economic statistics unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Economic statistics unavailable." message={error ?? undefined} />
       </Box>
     );
   }
@@ -348,7 +298,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
       </Box>
       {error ? (
         <Box height={1} paddingX={1} overflow="hidden">
-          <Text fg={colors.warning}>{error}</Text>
+          <Notice>{error}</Notice>
         </Box>
       ) : null}
     </Box>

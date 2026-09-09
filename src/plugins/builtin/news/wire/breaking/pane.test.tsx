@@ -5,14 +5,14 @@ import type { NewsService } from "../../../../../news/aggregator";
 import { setSharedNewsService } from "../../../../../news/hooks";
 import type { NewsArticle, NewsQueryState } from "../../../../../news/types";
 import { testRender } from "../../../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../../../state/app/context";
+import { createInitialState } from "../../../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../../../types/config";
 import { Box } from "../../../../../ui";
-import { PluginRenderProvider } from "../../../../runtime";
 import { setDetectedProviders } from "../../../ai/providers";
 import { setAiRunHost } from "../../../ai/runner";
 import { BreakingPane } from "./pane";
+import { TestPaneProvider } from "../../../../../test-support/pane";
 
 const PANE_ID = "news-breaking:test";
 
@@ -90,20 +90,16 @@ function createHarness() {
   state.focusedPaneId = PANE_ID;
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId={PANE_ID}>
-        <PluginRenderProvider pluginId="news" runtime={createStatefulTestPluginRuntime()}>
-          <PaneFooterProvider>
-            {(footer) => (
-              <Box flexDirection="column" width={90} height={18}>
-                <BreakingPane focused width={90} height={17} />
-                <PaneFooterBar footer={footer} focused width={90} />
-              </Box>
-            )}
-          </PaneFooterProvider>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId={PANE_ID} pluginId="news" runtime={createStatefulTestPluginRuntime()}>
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box flexDirection="column" width={90} height={18}>
+            <BreakingPane focused width={90} height={17} />
+            <PaneFooterBar footer={footer} focused width={90} />
+          </Box>
+        )}
+      </PaneFooterProvider>
+    </TestPaneProvider>
   );
 }
 

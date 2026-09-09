@@ -6,11 +6,8 @@ import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history
 import { QueryStore } from "../query-store";
 import {
   buildChartKey,
-  buildFundamentalsKey,
-  buildProfileKey,
   buildQuoteKey,
   buildSnapshotKey,
-  buildStatementsKey,
   toMarketDataContext,
 } from "../selectors";
 import { traceMarketData } from "../trace";
@@ -30,9 +27,6 @@ import {
 export interface FinancialCacheStores {
   quoteStore: QueryStore<Quote>;
   snapshotStore: QueryStore<TickerFinancials>;
-  profileStore: QueryStore<TickerFinancials["profile"]>;
-  fundamentalsStore: QueryStore<TickerFinancials["fundamentals"]>;
-  statementsStore: QueryStore<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>;
   chartStore: QueryStore<PricePoint[]>;
 }
 
@@ -56,9 +50,6 @@ export function primeFinancialsCache(
   const source = normalized.quote?.providerId ?? fallbackSource;
   const snapshotKey = buildSnapshotKey(instrument);
   const quoteKey = buildQuoteKey(instrument);
-  const profileKey = buildProfileKey(instrument);
-  const fundamentalsKey = buildFundamentalsKey(instrument);
-  const statementsKey = buildStatementsKey(instrument);
 
   if (hasCachedSnapshotData(normalized) && stores.snapshotStore.get(snapshotKey).phase === "idle") {
     stores.snapshotStore.set(
@@ -70,30 +61,6 @@ export function primeFinancialsCache(
     stores.quoteStore.set(
       quoteKey,
       readyEntry(stores.quoteStore.get(quoteKey), normalized.quote, normalized.quote.providerId ?? source, []),
-    );
-  }
-  if (stores.profileStore.get(profileKey).phase === "idle") {
-    stores.profileStore.set(
-      profileKey,
-      readyEntry(stores.profileStore.get(profileKey), normalized.profile ?? null, source, [], { keepLastGoodOnEmpty: true }),
-    );
-  }
-  if (stores.fundamentalsStore.get(fundamentalsKey).phase === "idle") {
-    stores.fundamentalsStore.set(
-      fundamentalsKey,
-      readyEntry(stores.fundamentalsStore.get(fundamentalsKey), normalized.fundamentals ?? null, source, [], { keepLastGoodOnEmpty: true }),
-    );
-  }
-  if (stores.statementsStore.get(statementsKey).phase === "idle") {
-    stores.statementsStore.set(
-      statementsKey,
-      readyEntry(
-        stores.statementsStore.get(statementsKey),
-        getFinancialStatements(normalized),
-        source,
-        [],
-        { keepLastGoodOnEmpty: true },
-      ),
     );
   }
   if (normalized.priceHistory.length > 0) {
@@ -127,24 +94,6 @@ function storeFinancialsSnapshot(
       readyEntry(stores.quoteStore.get(quoteKey), normalized.quote, normalized.quote.providerId ?? source, attempts),
     );
   }
-  stores.profileStore.set(
-    buildProfileKey(instrument),
-    readyEntry(stores.profileStore.get(buildProfileKey(instrument)), normalized.profile ?? null, source, attempts, { keepLastGoodOnEmpty: true }),
-  );
-  stores.fundamentalsStore.set(
-    buildFundamentalsKey(instrument),
-    readyEntry(stores.fundamentalsStore.get(buildFundamentalsKey(instrument)), normalized.fundamentals ?? null, source, attempts, { keepLastGoodOnEmpty: true }),
-  );
-  stores.statementsStore.set(
-    buildStatementsKey(instrument),
-    readyEntry(
-      stores.statementsStore.get(buildStatementsKey(instrument)),
-      getFinancialStatements(normalized),
-      source,
-      attempts,
-      { keepLastGoodOnEmpty: true },
-    ),
-  );
   if ((normalized.priceHistory ?? []).length > 0) {
     const chartRequest: ChartRequest = createBaselineChartRequest(instrument);
     stores.chartStore.set(
@@ -269,13 +218,4 @@ export async function loadFinancialsSnapshotBatch({
   }));
 
   return instruments.map((instrument) => results.get(buildSnapshotKey(instrument)) ?? stores.snapshotStore.get(buildSnapshotKey(instrument)));
-}
-
-function getFinancialStatements(
-  financials: TickerFinancials,
-): Pick<TickerFinancials, "annualStatements" | "quarterlyStatements"> {
-  return {
-    annualStatements: financials.annualStatements ?? [],
-    quarterlyStatements: financials.quarterlyStatements ?? [],
-  };
 }

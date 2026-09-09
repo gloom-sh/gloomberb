@@ -1,25 +1,10 @@
 /** @jsxImportSource react */
-import { Window } from "happy-dom";
-
-// The desktop host is the only renderer with a real DOM underneath it, so its
-// mouse contract needs a DOM to be tested against.
-const testWindow = new Window({ url: "http://localhost" });
-Object.assign(globalThis, {
-  window: testWindow,
-  document: testWindow.document,
-  navigator: testWindow.navigator,
-  MouseEvent: testWindow.MouseEvent,
-  Event: testWindow.Event,
-  HTMLElement: testWindow.HTMLElement,
-  Node: testWindow.Node,
-  requestAnimationFrame: (callback: (time: number) => void) => setTimeout(() => callback(Date.now()), 8),
-  cancelAnimationFrame: (id: number) => clearTimeout(id),
-});
-
 import { expect, test } from "bun:test";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { WebChartSurface } from "./chart-surface";
+import { createDomTestHarness } from "../test-utils";
+
+const { window: testWindow, render: renderDom } = createDomTestHarness({ withUi: false });
 
 async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 30));
@@ -28,27 +13,22 @@ async function settle() {
 test("reports a drag as a drag, never as a move, and keeps its modifiers", async () => {
   const seen: string[] = [];
   const modifiers: Array<{ shift: boolean; alt: boolean }> = [];
-  const container = testWindow.document.createElement("div");
-  testWindow.document.body.appendChild(container);
-  const root = createRoot(container as unknown as HTMLElement);
-  await act(async () => {
-    root.render(
-      <WebChartSurface
-        width={40}
-        height={10}
-        onMouseMove={() => seen.push("move")}
-        onMouseDown={(event: { modifiers: { shift: boolean; alt: boolean } }) => {
-          seen.push("down");
-          modifiers.push(event.modifiers);
-        }}
-        onMouseDrag={(event: { modifiers: { shift: boolean; alt: boolean } }) => {
-          seen.push("drag");
-          modifiers.push(event.modifiers);
-        }}
-        onMouseUp={() => seen.push("up")}
-      />,
-    );
-  });
+  const container = await renderDom(
+    <WebChartSurface
+      width={40}
+      height={10}
+      onMouseMove={() => seen.push("move")}
+      onMouseDown={(event: { modifiers: { shift: boolean; alt: boolean } }) => {
+        seen.push("down");
+        modifiers.push(event.modifiers);
+      }}
+      onMouseDrag={(event: { modifiers: { shift: boolean; alt: boolean } }) => {
+        seen.push("drag");
+        modifiers.push(event.modifiers);
+      }}
+      onMouseUp={() => seen.push("up")}
+    />,
+  );
   const surface = container.firstElementChild as unknown as HTMLElement;
   const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, clientX: number) => {
     target.dispatchEvent(new MouseEvent(type, { bubbles: true, button: 0, clientX, clientY: 24, shiftKey: true }));
@@ -73,21 +53,16 @@ test("reports a drag as a drag, never as a move, and keeps its modifiers", async
 
 test("chart surfaces consume browser pan and zoom gestures", async () => {
   const directions: string[] = [];
-  const container = testWindow.document.createElement("div");
-  testWindow.document.body.appendChild(container);
-  const root = createRoot(container as unknown as HTMLElement);
-  await act(async () => {
-    root.render(
-      <WebChartSurface
-        width={40}
-        height={10}
-        onMouseScroll={(event: { scroll?: { direction?: string }; preventDefault: () => void }) => {
-          directions.push(event.scroll?.direction ?? "");
-          event.preventDefault();
-        }}
-      />,
-    );
-  });
+  const container = await renderDom(
+    <WebChartSurface
+      width={40}
+      height={10}
+      onMouseScroll={(event: { scroll?: { direction?: string }; preventDefault: () => void }) => {
+        directions.push(event.scroll?.direction ?? "");
+        event.preventDefault();
+      }}
+    />,
+  );
 
   const surface = container.firstElementChild as unknown as HTMLElement;
   const wheel = new testWindow.WheelEvent("wheel", {
@@ -100,57 +75,44 @@ test("chart surfaces consume browser pan and zoom gestures", async () => {
   expect(directions).toEqual(["right"]);
   expect(surface.style.touchAction).toBe("none");
   expect(surface.style.overscrollBehavior).toBe("none");
-
-  await act(async () => root.unmount());
 });
 
 test("a tab bar occupies exactly the one row panes reserve for it", async () => {
   const { WebTabs } = await import("./tabs");
   const { WEB_CELL_HEIGHT } = await import("../input-host");
-  const container = testWindow.document.createElement("div");
-  testWindow.document.body.appendChild(container);
-  const root = createRoot(container as unknown as HTMLElement);
-  await act(async () => {
-    root.render(
-      <WebTabs
-        tabs={[{ label: "Overview", value: "overview" }, { label: "Chart", value: "chart" }]}
-        activeValue="chart"
-        onSelect={() => {}}
-        palette={{} as never}
-      />,
-    );
-  });
+  const container = await renderDom(
+    <WebTabs
+      tabs={[{ label: "Overview", value: "overview" }, { label: "Chart", value: "chart" }]}
+      activeValue="chart"
+      onSelect={() => {}}
+      palette={{} as never}
+    />,
+  );
   await settle();
   const list = container.querySelector('[data-gloom-role="tab-list"]') as unknown as HTMLElement;
   // Panes size their content as `height - 1` for the tab bar. Any extra pixel
   // here is a pixel the content is told it owns and the pane then clips.
   expect(list.style.height).toBe(`${WEB_CELL_HEIGHT}px`);
   expect(list.style.marginBottom === "" || list.style.marginBottom === "0px").toBe(true);
-  await act(async () => root.unmount());
 });
 
 test("desktop tabs reorder through mouse dragging", async () => {
   const { WebTabs } = await import("./tabs");
   const reordered: Array<[string, string]> = [];
   const selected: string[] = [];
-  const container = testWindow.document.createElement("div");
-  testWindow.document.body.appendChild(container);
-  const root = createRoot(container as unknown as HTMLElement);
-  await act(async () => {
-    root.render(
-      <WebTabs
-        tabs={[
-          { label: "Home", value: "home" },
-          { label: "Research", value: "research" },
-          { label: "News", value: "news" },
-        ]}
-        activeValue="home"
-        onSelect={(value) => selected.push(value)}
-        onReorder={(fromValue, toValue) => reordered.push([fromValue, toValue])}
-        palette={{} as never}
-      />,
-    );
-  });
+  const container = await renderDom(
+    <WebTabs
+      tabs={[
+        { label: "Home", value: "home" },
+        { label: "Research", value: "research" },
+        { label: "News", value: "news" },
+      ]}
+      activeValue="home"
+      onSelect={(value) => selected.push(value)}
+      onReorder={(fromValue, toValue) => reordered.push([fromValue, toValue])}
+      palette={{} as never}
+    />,
+  );
 
   const buttons = [...container.querySelectorAll('[data-gloom-role="tab-button"]')] as unknown as HTMLElement[];
   buttons.forEach((button, index) => {
@@ -206,5 +168,4 @@ test("desktop tabs reorder through mouse dragging", async () => {
   });
 
   expect(reordered).toEqual([["home", "news"]]);
-  await act(async () => root.unmount());
 });

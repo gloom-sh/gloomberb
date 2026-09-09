@@ -1,38 +1,11 @@
 /** @jsxImportSource react */
-import { Window } from "happy-dom";
-
-// The desktop/browser host is the only renderer with a real DOM underneath it,
-// so the keys the shared shortcut model depends on have to be proven here.
-const testWindow = new Window({ url: "http://localhost" });
-Object.assign(globalThis, {
-  window: testWindow,
-  document: testWindow.document,
-  navigator: testWindow.navigator,
-  KeyboardEvent: testWindow.KeyboardEvent,
-  Event: testWindow.Event,
-  HTMLElement: testWindow.HTMLElement,
-  Node: testWindow.Node,
-  requestAnimationFrame: (callback: (time: number) => void) => setTimeout(() => callback(Date.now()), 8),
-  cancelAnimationFrame: (id: number) => clearTimeout(id),
-});
-
-import { afterEach, expect, test } from "bun:test";
+import { expect, test } from "bun:test";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { useShortcut, type KeyEventLike } from "../../../react/input";
 import { WebInputHostProvider } from "./input-host";
+import { createDomTestHarness } from "./test-utils";
 
-let cleanup: (() => void) | null = null;
-
-afterEach(async () => {
-  const teardown = cleanup;
-  cleanup = null;
-  if (!teardown) return;
-  await act(async () => {
-    teardown();
-    await Promise.resolve();
-  });
-});
+const { window: testWindow, render: renderDom } = createDomTestHarness({ withUi: false });
 
 function Probe({ onKey }: { onKey: (event: KeyEventLike) => void }) {
   useShortcut(onKey, { phase: "before" });
@@ -41,23 +14,14 @@ function Probe({ onKey }: { onKey: (event: KeyEventLike) => void }) {
 
 async function mountProbe(onKey?: (event: KeyEventLike) => void): Promise<KeyEventLike[]> {
   const seen: KeyEventLike[] = [];
-  const container = testWindow.document.createElement("div");
-  testWindow.document.body.appendChild(container);
-  const root = createRoot(container as unknown as HTMLElement);
-  await act(async () => {
-    root.render(
-      <WebInputHostProvider>
-        <Probe onKey={(event) => {
-          seen.push(event);
-          onKey?.(event);
-        }} />
-      </WebInputHostProvider>,
-    );
-  });
-  cleanup = () => {
-    root.unmount();
-    container.remove();
-  };
+  await renderDom(
+    <WebInputHostProvider>
+      <Probe onKey={(event) => {
+        seen.push(event);
+        onKey?.(event);
+      }} />
+    </WebInputHostProvider>,
+  );
   return seen;
 }
 

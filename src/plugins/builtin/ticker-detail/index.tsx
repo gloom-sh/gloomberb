@@ -7,6 +7,7 @@ import { HistoricalPricesPane } from "./data-panes/historical-prices";
 import { TickerResearchPane } from "./pane";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
+import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless } from "./headless";
 import {
   buildQuoteMonitorSettingsDef,
   buildQuoteMonitorPaneTitle,
@@ -45,6 +46,7 @@ export const tickerDetailModule: PluginModule = {
       name: "Financials",
       icon: "F",
       component: FinancialAnalysisPane,
+      headless: financialStatementsHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 98, height: 30 },
@@ -55,6 +57,7 @@ export const tickerDetailModule: PluginModule = {
       name: "Quote Monitor",
       icon: "Q",
       component: QuoteMonitorPane,
+      headless: quoteComparisonHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 72, height: 10 },
@@ -66,6 +69,7 @@ export const tickerDetailModule: PluginModule = {
       name: "Historical Prices",
       icon: "H",
       component: HistoricalPricesPane,
+      headless: historicalPricesHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 92, height: 26 },
@@ -100,6 +104,7 @@ export const tickerDetailModule: PluginModule = {
     },
     {
       id: "quote-monitor-pane",
+      headless: quoteComparisonHeadless,
       paneId: "quote-monitor",
       label: "Quote Monitor",
       description: "Open a compact quote monitor for one or more tickers",
@@ -137,24 +142,30 @@ export const tickerDetailModule: PluginModule = {
           : null;
       },
     },
-    createTickerSurfacePaneTemplate({
-      id: "historical-prices-pane",
-      paneId: "historical-prices",
-      label: "Historical Prices",
-      description: "Open a historical OHLCV table for a ticker.",
-      keywords: ["historical", "prices", "hp", "ohlc", "volume"],
-      shortcut: "HP",
-      publicShare: true,
-    }),
-    createTickerSurfacePaneTemplate({
-      id: "financial-analysis-pane",
-      paneId: "financial-analysis",
-      label: "Financial Analysis",
-      description: "Open financial statements for a ticker.",
-      keywords: ["fa", "financial", "analysis", "statements"],
-      shortcut: "FA",
-      publicShare: true,
-      titlePrefix: "FA",
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "historical-prices-pane",
+        paneId: "historical-prices",
+        label: "Historical Prices",
+        description: "Open a historical OHLCV table for a ticker.",
+        keywords: ["historical", "prices", "hp", "ohlc", "volume"],
+        shortcut: "HP",
+        publicShare: true,
+      }),
+      headless: historicalPricesHeadless,
+    },
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "financial-analysis-pane",
+        paneId: "financial-analysis",
+        label: "Financial Analysis",
+        description: "Open financial statements for a ticker.",
+        keywords: ["fa", "financial", "analysis", "statements"],
+        shortcut: "FA",
+        publicShare: true,
+        titlePrefix: "FA",
+      }),
+      headless: financialStatementsHeadless,
+    },
   ],
 };

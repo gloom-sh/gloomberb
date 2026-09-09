@@ -2,25 +2,20 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useEffect, useReducer, useState } from "react";
 import { TestDialogProvider, testRender } from "../../../../renderers/opentui/test-utils";
 import { PaneFooterBar, PaneFooterProvider } from "../../../../components/layout/pane/footer";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  appReducer,
-  createInitialState,
-  type PaneRuntimeState,
-} from "../../../../state/app/context";
+import { appReducer, createInitialState, type PaneRuntimeState } from "../../../../state/app/context";
 import { createDefaultConfig } from "../../../../types/config";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import { createStatefulTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { Box } from "../../../../ui";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../runtime";
+import type { PluginRuntimeAccess } from "../../../runtime";
 import { getSharedMarketData, setSharedMarketDataForTests, setSharedRegistryForTests } from "../../../registry";
 import { AI_SCREENER_PANE_STATE_KEY, AiScreenerPane } from "./pane";
 import { createScreenerTab, EMPTY_PANE_STATE } from "./model";
 import { setDetectedProviders, type AiProvider } from "../providers";
 import { setAiRunHost, setAiRuntimeCatalog, type AiRunHost } from "../runner";
+import { TestPaneProvider, createTestTicker as makeTicker } from "../../../../test-support/pane";
 
 const PANE_ID = "ai-screener:test";
 
@@ -30,22 +25,6 @@ function makeRuntime(): PluginRuntimeAccess {
   return createStatefulTestPluginRuntime({
     getMarketData: () => getSharedMarketData() ?? null,
   });
-}
-
-function makeTicker(symbol: string, name: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
 }
 
 function makeFinancials(symbol: string, price: number, changePercent: number, marketCap: number): TickerFinancials {
@@ -147,22 +126,18 @@ function ScreenerHarness({
   }, [onPaneState, state.paneState]);
 
   return (
-    <AppContext value={{ state, dispatch }}>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ai" runtime={runtime}>
       <TestDialogProvider>
-        <PaneInstanceProvider paneId={PANE_ID}>
-          <PluginRenderProvider pluginId="ai" runtime={runtime}>
-            <PaneFooterProvider>
-              {(footer) => (
-                <Box flexDirection="column" width={96} height={18}>
-                  <AiScreenerPane paneId={PANE_ID} paneType="ai-screener" focused width={96} height={17} />
-                  <PaneFooterBar footer={footer} focused width={96} />
-                </Box>
-              )}
-            </PaneFooterProvider>
-          </PluginRenderProvider>
-        </PaneInstanceProvider>
+        <PaneFooterProvider>
+          {(footer) => (
+            <Box flexDirection="column" width={96} height={18}>
+              <AiScreenerPane paneId={PANE_ID} paneType="ai-screener" focused width={96} height={17} />
+              <PaneFooterBar footer={footer} focused width={96} />
+            </Box>
+          )}
+        </PaneFooterProvider>
       </TestDialogProvider>
-    </AppContext>
+    </TestPaneProvider>
   );
 }
 

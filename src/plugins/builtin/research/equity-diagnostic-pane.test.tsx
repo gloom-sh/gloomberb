@@ -4,13 +4,11 @@ import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import type { CloudEquityDiagnosticResponse } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
-import type { TickerRecord } from "../../../types/ticker";
 import { Box } from "../../../ui";
-import { PluginRenderProvider } from "../../runtime";
 import { EquityDiagnosticView } from "./equity-diagnostic-pane";
+import { TestPaneProvider, createTestTicker as makeTicker, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "equity-diagnostic:AAPL";
 const WIDTH = 96;
@@ -18,22 +16,6 @@ const WIDTH = 96;
 const HEIGHT = 44;
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-function makeTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
-}
 
 function signIn(plan: "free" | "pro"): void {
   apiClient.setSessionToken("equity-diagnostic-test-token");
@@ -131,38 +113,27 @@ function makeReport(overrides: Partial<CloudEquityDiagnosticResponse> = {}): Clo
 }
 
 function DiagnosticHarness() {
-  const config = createDefaultConfig("/tmp/gloomberb-equity-diagnostic-test");
-  config.layout = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "equity-diagnostic",
-      binding: { kind: "fixed", symbol: "AAPL" },
-    }],
-    floating: [],
-    detached: [],
-  };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
+  const config = createTestPaneConfig("/tmp/gloomberb-equity-diagnostic-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: "equity-diagnostic",
+    binding: { kind: "fixed", symbol: "AAPL" },
+  });
 
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;
   state.tickers = new Map([["AAPL", makeTicker("AAPL")]]);
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-          <PaneFooterProvider>
-            {(footer) => (
-              <Box flexDirection="column" width={WIDTH} height={HEIGHT}>
-                <EquityDiagnosticView width={WIDTH} height={HEIGHT - 1} focused />
-                <PaneFooterBar footer={footer} focused width={WIDTH} />
-              </Box>
-            )}
-          </PaneFooterProvider>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box flexDirection="column" width={WIDTH} height={HEIGHT}>
+            <EquityDiagnosticView width={WIDTH} height={HEIGHT - 1} focused />
+            <PaneFooterBar footer={footer} focused width={WIDTH} />
+          </Box>
+        )}
+      </PaneFooterProvider>
+    </TestPaneProvider>
   );
 }
 

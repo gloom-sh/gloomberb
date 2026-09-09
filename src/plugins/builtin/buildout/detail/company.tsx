@@ -1,30 +1,11 @@
 import type { ReactNode } from "react";
-import { Box, Text } from "../../../../ui";
+import { Section } from "../../../../components";
 import { colors } from "../../../../theme/colors";
+import { Box, Text } from "../../../../ui";
+import { activityLabel, criticalityColor, dateShort, metricColor, textOrNull, truncate } from "../format";
 import type { BuildoutCompany } from "../model/types";
-import {
-  activityLabel,
-  criticalityColor,
-  dateShort,
-  metricColor,
-  textOrNull,
-  truncate,
-} from "../format";
-import {
-  dateCell,
-  detailListValues,
-  recommendationColor,
-  valueWithOriginal,
-} from "./values";
-import {
-  DetailListLine,
-  DetailSection,
-  DetailSpecGrid,
-  MarkdownBlock,
-  RelatedCompaniesLine,
-  tickerBadges,
-  type InlineTickerCatalog,
-} from "./ui";
+import { DetailListLine, DetailSpecGrid, MarkdownBlock, RelatedCompaniesLine, tickerBadges, type InlineTickerCatalog } from "./ui";
+import { dateCell, detailListValues, recommendationColor, valueWithOriginal } from "./values";
 
 export function CompanyDetail({
   company,
@@ -81,22 +62,22 @@ export function CompanyDetail({
       <MarkdownBlock text={company.listReason} width={bodyWidth} catalog={catalog} openTicker={openTicker} />
       <MarkdownBlock text={company.longDescription ?? company.description} width={bodyWidth} catalog={catalog} openTicker={openTicker} />
       {hasCategories ? (
-        <DetailSection title="Categories" width={bodyWidth}>
+        <Section title="Categories" width={bodyWidth}>
           <DetailListLine label="Sectors" values={sectors} width={bodyWidth} />
           <DetailListLine label="Subsectors" values={subSectors} width={bodyWidth} />
           <DetailListLine label="Technologies" values={technologies} width={bodyWidth} />
           <DetailListLine label="Chain" values={valueChainStages} width={bodyWidth} />
-        </DetailSection>
+        </Section>
       ) : null}
       {hasSupplyChain ? (
-        <DetailSection title="Supply Chain" width={bodyWidth}>
+        <Section title="Supply Chain" width={bodyWidth}>
           <MarkdownBlock text={company.aiCriticalityJustification} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
           <RelatedCompaniesLine label="Suppliers" companies={supplyChain?.suppliers} width={bodyWidth} />
           <RelatedCompaniesLine label="Customers" companies={supplyChain?.customers} width={bodyWidth} />
           <RelatedCompaniesLine label="Competitors" companies={supplyChain?.competitors} width={bodyWidth} />
-        </DetailSection>
+        </Section>
       ) : null}
-      <DetailSection title="Valuation & Trading" width={bodyWidth}>
+      <Section title="Valuation & Trading" width={bodyWidth}>
         <DetailSpecGrid
           width={bodyWidth}
           marginTop={0}
@@ -114,8 +95,8 @@ export function CompanyDetail({
             { label: "52W Low", value: valueWithOriginal(company.low52w, company.low52wOriginal) },
           ]}
         />
-      </DetailSection>
-      <DetailSection title="Operating Metrics" width={bodyWidth}>
+      </Section>
+      <Section title="Operating Metrics" width={bodyWidth}>
         <DetailSpecGrid
           width={bodyWidth}
           marginTop={0}
@@ -131,8 +112,8 @@ export function CompanyDetail({
             { label: "ROA", value: company.returnOnAssets, color: metricColor(company.returnOnAssets) },
           ]}
         />
-      </DetailSection>
-      <DetailSection title="Cash & Balance" width={bodyWidth}>
+      </Section>
+      <Section title="Cash & Balance" width={bodyWidth}>
         <DetailSpecGrid
           width={bodyWidth}
           marginTop={0}
@@ -150,8 +131,8 @@ export function CompanyDetail({
             { label: "Earnings", value: dateCell(company.nextEarningsDate) },
           ]}
         />
-      </DetailSection>
-      <DetailSection title="Analyst & Ownership" width={bodyWidth}>
+      </Section>
+      <Section title="Analyst & Ownership" width={bodyWidth}>
         <DetailSpecGrid
           width={bodyWidth}
           marginTop={0}
@@ -174,9 +155,9 @@ export function CompanyDetail({
             { label: "Float", value: company.floatShares },
           ]}
         />
-      </DetailSection>
+      </Section>
       {(company.sites?.length ?? 0) > 0 ? (
-        <DetailSection title="Sites" width={bodyWidth}>
+        <Section title="Sites" width={bodyWidth}>
           {company.sites!.slice(0, 12).map((site, index) => {
             const activity = site.constructionActivity != null ? `construction ${activityLabel(site.constructionActivity)}` : null;
             const parts = [
@@ -197,22 +178,22 @@ export function CompanyDetail({
               </Box>
             );
           })}
-        </DetailSection>
+        </Section>
       ) : null}
       {(company.intelligence?.length ?? 0) > 0 ? (
-        <DetailSection title="Recent Intel" width={bodyWidth}>
+        <Section title="Recent Intel" width={bodyWidth}>
           {company.intelligence!.slice(0, 5).map((item, index) => (
             <Box key={`${item.headline ?? "intel"}:${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
               <Text fg={colors.textDim}>{truncate(`${dateShort(item.publishedAt)} ${item.headline ?? ""}`, bodyWidth)}</Text>
               <MarkdownBlock text={item.content} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
             </Box>
           ))}
-        </DetailSection>
+        </Section>
       ) : null}
       {company.researchReport ? (
-        <DetailSection title="Research" width={bodyWidth}>
+        <Section title="Research" width={bodyWidth}>
           <MarkdownBlock text={company.researchReport} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
-        </DetailSection>
+        </Section>
       ) : null}
     </>
   );

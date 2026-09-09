@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
@@ -61,9 +61,11 @@ const AUCTIONS: TreasuryAuction[] = [
 
 /** Fresh cache so the pane renders without touching the Treasury endpoint. */
 function seedCache(): void {
+  const record = { value: AUCTIONS, fetchedAt: Date.now(), stale: false,
+    staleAt: Date.now() + 60_000, expiresAt: Date.now() + 60_000 };
   attachTreasuryAuctionsPersistence({
-    getResource: () => ({ value: AUCTIONS, fetchedAt: Date.now(), stale: false }),
-    setResource: () => ({ value: AUCTIONS, fetchedAt: Date.now(), stale: false }),
+    getResource: () => record,
+    setResource: () => record,
   } as unknown as PluginPersistence);
 }
 
@@ -102,24 +104,7 @@ async function renderSettled() {
   });
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string }) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      defaultPrevented: false,
-      propagationStopped: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    } as never);
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
 
 describe("TreasuryAuctionsPane", () => {
   test("renders auction metrics and keeps one placeholder for unpublished results", async () => {

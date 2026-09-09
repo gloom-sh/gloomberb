@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { renderToStaticMarkup } from "react-dom/server";
+import { assetDataProvider } from "../../capabilities";
 import { AppPersistence } from "../../data/app-persistence";
 import { TickerRepository } from "../../data/ticker-repository";
 import { createDefaultConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type { GloomPlugin, GloomPluginContext } from "../../types/plugin";
-import { assetDataProvider } from "../../capabilities";
 import {
   applicationPlugin,
   macroPlugin,
   portfolioPlugin,
 } from "../builtin/composite-plugins";
+import { composeBuiltinPlugin } from "../builtin/plugin-module";
+import { useMarketData, usePluginAppActions } from "../runtime";
 import { PluginRegistry } from "./index";
 
 const dataProvider: DataProvider = {
@@ -151,13 +154,10 @@ describe("built-in composite plugin ownership", () => {
       "econ-calendar",
       "yield-curve",
       "earnings-calendar",
-      "macro-tv",
     ]));
-    expect(registry.getPaneTemplatePluginId("macro-tv-pane")).toBe("macro");
     expect(registry.getPanePluginId("analytics")).toBe("portfolio");
     expect(registry.getPanePluginId("help")).toBe("application");
     expect(registry.getPanePluginId("connections")).toBe("application");
-    expect(registry.getPanePluginId("macro-tv")).toBe("macro");
     expect(registry.getCommandPluginId("earnings-monitor-shortcut")).toBe("macro");
     expect(registry.getCommandPluginId("gridlock-all")).toBe("application");
     expect(registry.allPlugins.has("analytics")).toBe(false);
@@ -532,4 +532,37 @@ describe("PluginRegistry broker runtime", () => {
       "remove:demo-live",
     ]);
   });
+});
+
+test("composed slots receive plugin context and keep extracted actions bound", async () => {
+  const registry = createRegistry();
+  let notify: ReturnType<typeof usePluginAppActions>["notify"];
+  const widget = () => {
+    notify = usePluginAppActions().notify;
+    return useMarketData()!.id;
+  };
+  await registry.register(composeBuiltinPlugin({
+    id: "slot-probe", name: "Slot probe", version: "1",
+    modules: [{ slots: { "status:widget": widget } }, { slots: { "status:widget": widget } }],
+  }));
+  const delivered: string[] = [];
+  registry.notifyFn = ({ body }) => { delivered.push(body); };
+  expect(renderToStaticMarkup(registry.renderSlot("status:widget", {}))).toBe("test-providertest-provider");
+  notify!({ body: "Bound action" });
+  expect(delivered).toEqual(["Bound action"]);
+});
+
+test("ticker actions follow their owner's live enabled state and unregister cleanly", async () => {
+  const options = { disabledPlugins: [] as string[] };
+  const registry = createRegistry(options);
+  await registry.register(plugin("action-owner", (ctx) => ctx.registerTickerAction({
+    id: "action", label: "Action", keywords: [], execute: () => {},
+  })));
+  expect(registry.getEnabledTickerActions().map(({ id }) => id)).toEqual(["action"]);
+  options.disabledPlugins.push("action-owner");
+  expect(registry.getEnabledTickerActions()).toEqual([]);
+  options.disabledPlugins.length = 0;
+  expect(registry.getEnabledTickerActions()).toHaveLength(1);
+  registry.unregister("action-owner");
+  expect(registry.getEnabledTickerActions()).toEqual([]);
 });

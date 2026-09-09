@@ -1,5 +1,5 @@
-import { Box, Text, TextAttributes } from "../../../../ui";
-import { Tabs } from "../../../../components";
+import { Box, Text } from "../../../../ui";
+import { Button, Tabs } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import type {
   BuildoutList,
@@ -38,15 +38,7 @@ export function BuildoutPaneHeader({
       />
       {showCompanyListCrumb ? (
         <Box height={1} flexDirection="row" paddingX={1}>
-          <Box
-            style={{ cursor: "pointer" }}
-            onMouseDown={(event: any) => {
-              event.preventDefault();
-              onCloseCompanyList();
-            }}
-          >
-            <Text fg={colors.borderFocused} attributes={TextAttributes.BOLD}>{"< Lists"}</Text>
-          </Box>
+          <Button stopPropagation label="Lists" displayLabel="‹ Lists" variant="ghost" compact onPress={onCloseCompanyList} />
           <Text fg={colors.textMuted}>  /  </Text>
           <Text fg={colors.text}>{truncate(selectedList.name, Math.max(0, width - 14))}</Text>
         </Box>

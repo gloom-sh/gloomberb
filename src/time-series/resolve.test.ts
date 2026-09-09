@@ -1,17 +1,25 @@
 import { describe, expect, test } from "bun:test";
+import { chartSeriesSourceKey } from "../capabilities";
 import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
+import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { TickerFinancials } from "../types/financials";
-import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
+import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import {
   ChartResolveCache,
   mergePriceHistoryWindows,
   resolveChartSpecData,
   seedChartResolutionResult,
 } from "./resolve";
-import { chartQuoteOverrideKeyForSource } from "./live-quotes";
-import { chartSeriesSourceKey } from "../capabilities";
-import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
+import { CHART_SPEC_VERSION, type ChartSeriesSpec, type ChartSpec } from "./types";
+
+function chartSeries(input: Pick<ChartSeriesSpec, "source"> & Partial<ChartSeriesSpec>): ChartSeriesSpec {
+  return { id: "price", style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none", ...input };
+}
+
+function chartSpec(input: Pick<ChartSpec, "viewport" | "series"> & Partial<ChartSpec>): ChartSpec {
+  return { version: CHART_SPEC_VERSION, panels: [{ id: "main" }], studies: [], ...input };
+}
 
 const emptyFinancials = (): TickerFinancials => ({
   annualStatements: [],
@@ -34,23 +42,17 @@ describe("resolveChartSpecData", () => {
   test("seeds study series so their panels survive the wait for real data", async () => {
     const date = new Date("2026-01-05T00:00:00.000Z");
     const seeded = seedChartResolutionResult(
-      {
-        version: CHART_SPEC_VERSION,
+      chartSpec({
         viewport: { range: "1M", resolution: "auto" },
         panels: [{ id: "main" }, { id: "volume" }],
-        series: [{
-          id: "price",
+        series: [chartSeries({
           source: {
             kind: "security",
             instrument: { symbol: "TEST", exchange: "NASDAQ" },
             fieldId: "market.ohlcv",
           },
           style: "candles",
-          transform: "raw",
-          axis: "left",
-          panelId: "main",
-          interpolation: "none",
-        }],
+        })],
         studies: [{
           id: "volume",
           kind: "volume",
@@ -59,7 +61,7 @@ describe("resolveChartSpecData", () => {
           panelId: "volume",
           axis: "left",
         }],
-      },
+      }),
       new Map([[
         chartQuoteOverrideKeyForSource({
           kind: "security",
@@ -88,23 +90,16 @@ describe("resolveChartSpecData", () => {
       getPriceHistoryForResolution: async () => history,
       getDetailedPriceHistory: async () => history,
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
       panels: [{ id: "main" }, { id: "volume", label: "Volume", height: 0.24 }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
+      })],
       studies: [{
         id: "volume",
         kind: "volume",
@@ -113,7 +108,7 @@ describe("resolveChartSpecData", () => {
         panelId: "volume",
         axis: "left",
       }],
-    };
+    });
     const sources = {
       dataProvider: provider,
       now: new Date("2026-06-15T00:00:00.000Z"),
@@ -177,21 +172,15 @@ describe("resolveChartSpecData", () => {
   });
 
   test("keeps missing capability series visible with a useful error and resolves them through the injected boundary", async () => {
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1M", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
+      series: [chartSeries({
         id: "plugin-series",
         source: { kind: "capability", capabilityId: "charts.test", seriesId: "one" },
         style: "area",
-        transform: "raw",
         axis: "auto",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
     const sources = { dataProvider: null, loadFredSeries: async () => fredLoad(), now: new Date("2026-02-01") };
     const missing = await resolveChartSpecData(spec, sources);
     expect(missing.series).toHaveLength(1);
@@ -222,21 +211,13 @@ describe("resolveChartSpecData", () => {
   });
 
   test("resolves capability coverage for each effective panned viewport and caches by structured bounds", async () => {
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1M", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
+      series: [chartSeries({
         id: "plugin-series",
         source: { kind: "capability", capabilityId: "charts.test", seriesId: "provider/series" },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
     const requested: ChartSpec["viewport"][] = [];
     const cache = new ChartResolveCache();
     const sources = {
@@ -296,11 +277,9 @@ describe("resolveChartSpecData", () => {
           return [{ date: new Date("2025-01-07T16:00:00Z"), close: 100 }];
         },
       });
-      const spec: ChartSpec = {
-        version: CHART_SPEC_VERSION,
+      const spec: ChartSpec = chartSpec({
         viewport: { range: scenario.range, resolution: "auto" },
-        panels: [{ id: "main" }],
-        series: scenario.periods.map((period, index) => ({
+        series: scenario.periods.map((period, index) => (chartSeries({
           id: `price-${index}`,
           source: {
             kind: "security" as const,
@@ -311,11 +290,9 @@ describe("resolveChartSpecData", () => {
           style: "line" as const,
           transform: "raw" as const,
           axis: "left" as const,
-          panelId: "main",
           interpolation: "none" as const,
-        })),
-        studies: [],
-      };
+        }))),
+      });
 
       const result = await resolveChartSpecData(spec, {
         dataProvider: provider,
@@ -347,25 +324,17 @@ describe("resolveChartSpecData", () => {
         { date: new Date("2025-01-07T16:00:00Z"), close: 100 },
       ],
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "5Y", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.ohlcv",
         },
         style: "candles",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await Promise.race([
       resolveChartSpecData(spec, {
@@ -394,21 +363,12 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2025-01-07T16:00:00Z"), close: 100 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1W", resolution: "5m" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.close" },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -438,25 +398,16 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2026-07-30T15:00:00Z"), close: 100 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1M", resolution: "45m" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -506,10 +457,8 @@ describe("resolveChartSpecData", () => {
         }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1D", resolution: "5m" },
-      panels: [{ id: "main" }],
       series: [{
         id: "price",
         source,
@@ -519,8 +468,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         interpolation: "none",
       }],
-      studies: [],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -577,25 +525,16 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2026-07-30T15:20:00Z"), close: 1_240 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1D", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "SNDK" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(
       spec,
@@ -631,21 +570,12 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2025-01-07T16:00:00Z"), close: 100 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1W", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.close" },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -668,21 +598,12 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2025-01-07T16:00:00Z"), close: 100 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1W", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.close" },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -716,25 +637,16 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2025-01-15T16:00:00.000Z"), close: 100 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "3M", resolution: "auto" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(
       spec,
@@ -795,25 +707,16 @@ describe("resolveChartSpecData", () => {
         return historicalHistory;
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1h" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
     const sources = {
       dataProvider: provider,
       now: new Date("2026-07-30T16:00:00.000Z"),
@@ -871,25 +774,16 @@ describe("resolveChartSpecData", () => {
       getPriceHistoryForResolution: async () => currentHistory,
       getDetailedPriceHistory: async () => historicalHistory,
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
     const sources = {
       dataProvider: provider,
       now: new Date("2026-07-30T16:00:00.000Z"),
@@ -923,23 +817,16 @@ describe("resolveChartSpecData", () => {
         { date: new Date("2024-10-16T16:00:00.000Z"), close: 110 },
       ],
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "3M", resolution: "1d" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
         transform: "percent",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
+      })],
       studies: [{
         id: "sma",
         kind: "sma",
@@ -948,7 +835,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         axis: "left",
       }],
-    };
+    });
 
     const result = await resolveChartSpecData(
       spec,
@@ -996,21 +883,17 @@ describe("resolveChartSpecData", () => {
         ];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
       panels: [{ id: "main" }, { id: "macro", height: 0.4 }],
       series: [
-        {
+        chartSeries({
           id: "aapl-price",
           source: { kind: "security", instrument: { symbol: "AAPL" }, fieldId: "market.close" },
-          style: "line",
           transform: "percent",
           axis: "auto",
-          panelId: "main",
-          interpolation: "none",
-        },
-        {
+        }),
+        chartSeries({
           id: "msft-revenue",
           source: {
             kind: "security",
@@ -1020,23 +903,19 @@ describe("resolveChartSpecData", () => {
             timestampMode: "available-at",
           },
           style: "columns",
-          transform: "raw",
           axis: "auto",
-          panelId: "main",
           interpolation: "step-after",
-        },
-        {
+        }),
+        chartSeries({
           id: "cpi",
           source: { kind: "economic", provider: "fred", seriesId: "CPIAUCSL" },
           style: "step",
-          transform: "raw",
           axis: "auto",
           panelId: "macro",
           interpolation: "step-after",
-        },
+        }),
       ],
-      studies: [],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1101,23 +980,15 @@ describe("resolveChartSpecData", () => {
         ];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: {
         range: "1Y",
         resolution: "auto",
         dateWindow: { start: "2025-01-01", end: "2025-01-31" },
       },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.close" },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
+      })],
       studies: [{
         id: "sma",
         kind: "sma",
@@ -1126,7 +997,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         axis: "left",
       }],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1165,25 +1036,16 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date("2025-01-31T16:00:00Z"), close: 40 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: {
         range: "1D",
         resolution: "auto",
         dateWindow: { start: "2025-01-01", end: "2025-01-31" },
       },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.close" },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1209,15 +1071,13 @@ describe("resolveChartSpecData", () => {
         }],
       }),
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: {
         range: "1M",
         resolution: "auto",
         dateWindow: { start: "2025-01-01", end: "2025-01-31" },
       },
-      panels: [{ id: "main" }],
-      series: [{
+      series: [chartSeries({
         id: "revenue",
         source: {
           kind: "security",
@@ -1227,13 +1087,9 @@ describe("resolveChartSpecData", () => {
           timestampMode: "available-at",
         },
         style: "step",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
         interpolation: "step-after",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1282,7 +1138,7 @@ describe("resolveChartSpecData", () => {
           ],
       }),
     });
-    const fundamental = (id: string, symbol: string): ChartSpec["series"][number] => ({
+    const fundamental = (id: string, symbol: string): ChartSpec["series"][number] => (chartSeries({
       id,
       source: {
         kind: "security",
@@ -1294,13 +1150,8 @@ describe("resolveChartSpecData", () => {
       // The built-in fundamental comparison preset uses columns without
       // display interpolation; formula calculation still uses as-of values.
       style: "columns",
-      transform: "raw",
-      axis: "left",
-      panelId: "main",
-      interpolation: "none",
-    });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    }));
+    const spec: ChartSpec = chartSpec({
       viewport: {
         range: "1Y",
         resolution: "auto",
@@ -1326,7 +1177,7 @@ describe("resolveChartSpecData", () => {
           axis: "left",
         },
       ],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1373,16 +1224,14 @@ describe("resolveChartSpecData", () => {
         ],
       }),
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: {
         range: "ALL",
         resolution: "auto",
         dateWindow: { start: "2025-01-01", end: "2025-02-28" },
         maxPoints: 1,
       },
-      panels: [{ id: "main" }],
-      series: [{
+      series: [chartSeries({
         id: "revenue",
         source: {
           kind: "security",
@@ -1392,13 +1241,9 @@ describe("resolveChartSpecData", () => {
           timestampMode: "available-at",
         },
         style: "step",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
         interpolation: "step-after",
-      }],
-      studies: [],
-    };
+      })],
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1422,24 +1267,16 @@ describe("resolveChartSpecData", () => {
         { date: new Date("2025-01-03T16:00:00Z"), close: 30 },
       ],
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "TEST", exchange: "NASDAQ" },
           fieldId: "market.close",
         },
-        style: "line",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
         visible: false,
-      }],
+      })],
       studies: [{
         id: "sma",
         kind: "sma",
@@ -1448,7 +1285,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         axis: "left",
       }],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1491,10 +1328,8 @@ describe("resolveChartSpecData", () => {
         { date: new Date(now - 86_400_000), close: 110 },
       ],
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
-      panels: [{ id: "main" }],
       series: [{
         id: "price",
         source,
@@ -1512,7 +1347,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         axis: "left",
       }],
-    };
+    });
     const quoteOverrides = new Map([[
       chartQuoteOverrideKeyForSource(source),
       {
@@ -1568,23 +1403,16 @@ describe("resolveChartSpecData", () => {
         { date: new Date(now - 86_400_000), open: 100, high: 101, low: 99, close: 100 },
       ],
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "6M", resolution: "1d" },
-      panels: [{ id: "main" }],
-      series: [{
-        id: "price",
+      series: [chartSeries({
         source: {
           kind: "security",
           instrument: { symbol: "FRESH", exchange: "XNAS" },
           fieldId: "market.ohlcv",
         },
         style: "candles",
-        transform: "raw",
-        axis: "left",
-        panelId: "main",
-        interpolation: "none",
-      }],
+      })],
       studies: [{
         id: "sma",
         kind: "sma",
@@ -1593,7 +1421,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         axis: "left",
       }],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,
@@ -1651,10 +1479,8 @@ describe("resolveChartSpecData", () => {
         return [{ date: new Date(now - 86_400_000), close: 100 }];
       },
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
-      panels: [{ id: "main" }],
       series: [{
         id: "price",
         source,
@@ -1663,17 +1489,12 @@ describe("resolveChartSpecData", () => {
         axis: "left",
         panelId: "main",
         interpolation: "none",
-      }, {
+      }, chartSeries({
         id: "cpi",
         source: { kind: "economic", provider: "fred", seriesId: "CPIAUCSL" },
-        style: "line",
-        transform: "raw",
         axis: "right",
-        panelId: "main",
-        interpolation: "none",
-      }],
-      studies: [],
-    };
+      })],
+    });
     const loadFredSeries = async () => {
       fredCalls += 1;
       return fredLoad({
@@ -1799,7 +1620,7 @@ describe("resolveChartSpecData", () => {
       "evEbitda",
       "priceFcf",
     ] as const;
-    const makeSeries = (metric: typeof valuationFields[number]): ChartSpec["series"][number] => ({
+    const makeSeries = (metric: typeof valuationFields[number]): ChartSpec["series"][number] => (chartSeries({
       id: metric,
       source: {
         kind: "security",
@@ -1809,18 +1630,12 @@ describe("resolveChartSpecData", () => {
         timestampMode: "available-at",
       },
       style: "step",
-      transform: "raw",
-      axis: "left",
-      panelId: "main",
       interpolation: "step-after",
-    });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    }));
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
-      panels: [{ id: "main" }],
       series: valuationFields.map(makeSeries),
-      studies: [],
-    };
+    });
     const firstSource = spec.series[0]!.source;
     if (firstSource.kind !== "security") throw new Error("expected security source");
     const quoteOverrides = new Map([[
@@ -1881,7 +1696,7 @@ describe("resolveChartSpecData", () => {
         return [];
       },
     });
-    const makeSeries = (metric: "forwardPE" | "pegRatio"): ChartSpec["series"][number] => ({
+    const makeSeries = (metric: "forwardPE" | "pegRatio"): ChartSpec["series"][number] => (chartSeries({
       id: metric,
       source: {
         kind: "security",
@@ -1890,18 +1705,12 @@ describe("resolveChartSpecData", () => {
         timestampMode: "available-at",
       },
       style: "step",
-      transform: "raw",
-      axis: "left",
-      panelId: "main",
       interpolation: "step-after",
-    });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    }));
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
-      panels: [{ id: "main" }],
       series: [makeSeries("forwardPE"), makeSeries("pegRatio")],
-      studies: [],
-    };
+    });
     const firstSource = spec.series[0]!.source;
     if (firstSource.kind !== "security") throw new Error("expected security source");
     const quoteOverrides = new Map([[
@@ -1961,10 +1770,8 @@ describe("resolveChartSpecData", () => {
         },
       ],
     });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1D", resolution: "5m" },
-      panels: [{ id: "main" }],
       series: [{
         id: "price",
         source,
@@ -1974,8 +1781,7 @@ describe("resolveChartSpecData", () => {
         panelId: "main",
         interpolation: "none",
       }],
-      studies: [],
-    };
+    });
     const quoteOverrides = new Map([[
       chartQuoteOverrideKeyForSource(source),
       {
@@ -2022,17 +1828,12 @@ describe("resolveChartSpecData", () => {
           { date: new Date("2025-01-02T00:00:00Z"), close: 240, volume: 2_400 },
         ],
     });
-    const makeSeries = (id: string, symbol: string): ChartSpec["series"][number] => ({
+    const makeSeries = (id: string, symbol: string): ChartSpec["series"][number] => (chartSeries({
       id,
       source: { kind: "security", instrument: { symbol }, fieldId: "market.ohlcv" },
-      style: "line",
       transform: "percent",
-      axis: "left",
-      panelId: "main",
-      interpolation: "none",
-    });
-    const spec: ChartSpec = {
-      version: CHART_SPEC_VERSION,
+    }));
+    const spec: ChartSpec = chartSpec({
       viewport: { range: "1Y", resolution: "1d" },
       panels: [{ id: "main" }, { id: "formula" }, { id: "volume" }],
       series: [makeSeries("left", "LEFT"), makeSeries("right", "RIGHT")],
@@ -2062,7 +1863,7 @@ describe("resolveChartSpecData", () => {
           axis: "left",
         },
       ],
-    };
+    });
 
     const result = await resolveChartSpecData(spec, {
       dataProvider: provider,

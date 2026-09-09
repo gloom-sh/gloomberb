@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
+import { EmptyState, Notice, PaneStatusBody, SpeedometerGauge, Spinner, usePaneFooter } from "../../../components";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
-import { Button, EmptyState, Spinner, SpeedometerGauge, usePaneFooter } from "../../../components";
-import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
-import type { FearGreedData } from "./data";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
-import { getCachedFearGreedData, loadFearGreed } from "./cache";
-import { IndicatorChart, IndexHistoryChart, PreviousScoreGrid } from "./charts";
+import { getCachedFearGreedData, loadFearGreed, type FearGreedLoadResult } from "./cache";
+import { IndexHistoryChart, IndicatorChart, PreviousScoreGrid } from "./charts";
 import {
   FEAR_GREED_GAUGE_SEGMENTS,
   formatScore,
@@ -19,43 +18,12 @@ const DESKTOP_SUMMARY_STACK_WIDTH = 84;
 
 export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   const isDesktopWeb = useUiHost().kind === "desktop-web";
-  const [initialCache] = useState(() => getCachedFearGreedData());
-  const [data, setData] = useState<FearGreedData | null>(initialCache?.data ?? null);
-  const [loading, setLoading] = useState(!initialCache || initialCache.stale);
-  const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(initialCache?.stale ?? false);
-  const [lastRefreshed, setLastRefreshed] = useState<number | null>(initialCache?.fetchedAt ?? null);
-  const fetchGenRef = useRef(0);
-
-  const load = useCallback(async (force = false) => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await loadFearGreed(force);
-      if (fetchGenRef.current !== gen) return;
-      setData(result.data);
-      setStale(result.stale);
-      setError(result.refreshError ?? null);
-      setLastRefreshed(result.fetchedAt);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!initialCache || initialCache.stale) {
-      void load();
-    }
-  }, [initialCache, load]);
-
-  const refresh = useCallback(() => {
-    void load(true);
-  }, [load]);
+  const resource = useAsyncResource<FearGreedLoadResult>(loadFearGreed, { initialData: getCachedFearGreedData });
+  const { loading, reload: refresh } = resource;
+  const data = resource.data?.data ?? null;
+  const stale = resource.data?.stale ?? false;
+  const error = resource.error ?? resource.data?.refreshError ?? null;
+  const lastRefreshed = resource.data?.fetchedAt ?? null;
 
   const updatedAgo = useUpdatedAgo(lastRefreshed);
   useAutoRefresh(stale ? null : lastRefreshed, refresh);
@@ -92,9 +60,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   if (loading && !data) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading Fear & Greed..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading Fear & Greed..." />
       </Box>
     );
   }
@@ -102,7 +68,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
   if (!data) {
     return (
       <Box flexDirection="column" width={width} height={height} padding={1} gap={1}>
-        <EmptyState title="Fear & Greed unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Fear & Greed unavailable." message={error ?? undefined} />
       </Box>
     );
   }
@@ -150,7 +116,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
           ) : null}
           {error ? (
             <Box paddingX={1} marginTop={1}>
-              <Text fg={colors.warning}>{error}</Text>
+              <Notice>{error}</Notice>
             </Box>
           ) : null}
           <IndexHistoryChart data={data} width={width} />

@@ -119,4 +119,18 @@ describe("import boundaries", () => {
 
     expect(violations).toEqual([]);
   });
+
+  test("plugin fields use shared controls instead of raw host inputs", async () => {
+    const files = await collectSourceFiles(join(SOURCE_ROOT, "plugins"));
+    const violations: string[] = [];
+    for (const file of files) {
+      const source = await Bun.file(file).text();
+      // Layout/text remain valid for domain rendering; single-line fields have
+      // one owner for focus, keyboard events, masking and renderer differences.
+      if (/import\s*\{[^}]*\bInput\b[^}]*\}\s*from\s*["'][^"']*\/ui(?:\/index)?["']/.test(source)) {
+        violations.push(relative(process.cwd(), file));
+      }
+    }
+    expect(violations).toEqual([]);
+  });
 });

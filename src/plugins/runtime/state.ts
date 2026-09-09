@@ -10,63 +10,20 @@ import {
   useAppDispatch,
   useAppSelector,
   useAppStateRef,
-  usePaneInstanceId,
-  type PaneRuntimeState,
+  useOptionalPaneInstanceId,
 } from "../../state/app/context";
 import { usePluginRenderContext } from "./context";
 
 const DEFAULT_PLUGIN_PANE_STATE_COMMIT_DELAY_MS = 300;
 
-export function getPluginPaneStateValue<T>(
-  paneState: PaneRuntimeState | undefined,
-  pluginId: string,
-  key: string,
-  fallback: T,
-): T {
-  return (paneState?.pluginState?.[pluginId]?.[key] as T | undefined) ?? fallback;
-}
-
-export function setPluginPaneStateValue(
-  paneState: PaneRuntimeState | undefined,
-  pluginId: string,
-  key: string,
-  value: unknown,
-): Record<string, Record<string, unknown>> {
-  return {
-    ...(paneState?.pluginState ?? {}),
-    [pluginId]: {
-      ...(paneState?.pluginState?.[pluginId] ?? {}),
-      [key]: value,
-    },
-  };
-}
-
-export function deletePluginPaneStateValue(
-  paneState: PaneRuntimeState | undefined,
-  pluginId: string,
-  key: string,
-): Record<string, Record<string, unknown>> | undefined {
-  const pluginState = paneState?.pluginState?.[pluginId];
-  if (!pluginState || !(key in pluginState)) {
-    return paneState?.pluginState;
-  }
-
-  const nextPluginState = { ...pluginState };
-  delete nextPluginState[key];
-
-  const nextAllPluginState = { ...(paneState?.pluginState ?? {}) };
-  if (Object.keys(nextPluginState).length === 0) {
-    delete nextAllPluginState[pluginId];
-  } else {
-    nextAllPluginState[pluginId] = nextPluginState;
-  }
-
-  return Object.keys(nextAllPluginState).length > 0 ? nextAllPluginState : undefined;
-}
+import { getPluginPaneStateValue } from "../pane-state";
+export { deletePluginPaneStateValue, getPluginPaneStateValue, setPluginPaneStateValue } from "../pane-state";
 
 export function usePluginPaneState<T>(key: string, fallback: T, paneId?: string): [T, (value: SetStateAction<T>) => void] {
   const { pluginId } = usePluginRenderContext();
-  const scopedPaneId = paneId ?? usePaneInstanceId();
+  const contextPaneId = useOptionalPaneInstanceId();
+  const scopedPaneId = paneId ?? contextPaneId;
+  if (!scopedPaneId) throw new Error("usePluginPaneState requires a pane id or PaneInstanceProvider");
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const fallbackRef = useRef(fallback);

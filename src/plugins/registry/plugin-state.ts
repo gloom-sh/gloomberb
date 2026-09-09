@@ -1,7 +1,8 @@
-import type { LayoutConfig } from "../../types/config";
 import type { PaneRuntimeState } from "../../core/state/app/state";
-import type { PluginPaneSettingsState, PluginResumeState } from "../../types/plugin";
 import { deletePaneSetting, setPaneSetting } from "../../pane-settings";
+import type { LayoutConfig } from "../../types/config";
+import type { PluginPaneSettingsState, PluginResumeState } from "../../types/plugin";
+import { deletePluginPaneStateValue, setPluginPaneStateValue } from "../pane-state";
 
 export class RegistryResumeStateListeners {
   private listeners = new Map<string, Set<() => void>>();
@@ -67,13 +68,7 @@ export function createPluginResumeState({
     },
     setPaneState: (paneId, key, value) => {
       const currentPaneState = getPaneRuntimeState(paneId) ?? {};
-      const pluginState = {
-        ...(currentPaneState.pluginState ?? {}),
-        [pluginId]: {
-          ...(currentPaneState.pluginState?.[pluginId] ?? {}),
-          [key]: value,
-        },
-      };
+      const pluginState = setPluginPaneStateValue(currentPaneState, pluginId, key, value);
       updatePaneRuntimeState(paneId, { pluginState });
     },
     deletePaneState: (paneId, key) => {
@@ -81,18 +76,8 @@ export function createPluginResumeState({
       const currentPluginState = currentPaneState.pluginState?.[pluginId];
       if (!currentPluginState || !(key in currentPluginState)) return;
 
-      const nextPluginState = { ...currentPluginState };
-      delete nextPluginState[key];
-
-      const nextAllPluginState = { ...(currentPaneState.pluginState ?? {}) };
-      if (Object.keys(nextPluginState).length === 0) {
-        delete nextAllPluginState[pluginId];
-      } else {
-        nextAllPluginState[pluginId] = nextPluginState;
-      }
-
       updatePaneRuntimeState(paneId, {
-        pluginState: Object.keys(nextAllPluginState).length > 0 ? nextAllPluginState : undefined,
+        pluginState: deletePluginPaneStateValue(currentPaneState, pluginId, key),
       });
     },
   };

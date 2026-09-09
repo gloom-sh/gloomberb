@@ -1,13 +1,54 @@
-import { useMemo, type ReactNode } from "react";
-import { testRender as openTuiTestRender } from "@opentui/react/test-utils";
 import { createRoot as openTuiCreateRoot, useRenderer } from "@opentui/react";
+import { testRender as openTuiTestRender } from "@opentui/react/test-utils";
+import { act, useMemo, type ReactNode } from "react";
+import { colors } from "../../theme/colors";
 import { UiHostProvider, type NativeRendererHost, type RendererHost } from "../../ui";
 import { ToastHostProvider } from "../../ui/toast";
-import { colors } from "../../theme/colors";
-import { OpenTuiInputHostProvider } from "./input-host";
-import { openTuiUiHost } from "./ui-host";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
+import { OpenTuiInputHostProvider } from "./input-host";
 import { openTuiToastHost } from "./toast-host";
+import { openTuiUiHost } from "./ui-host";
+
+export interface TestKeyEvent {
+  name?: string;
+  sequence?: string;
+  ctrl?: boolean;
+  meta?: boolean;
+  super?: boolean;
+  shift?: boolean;
+  alt?: boolean;
+  option?: boolean;
+  defaultPrevented?: boolean;
+  propagationStopped?: boolean;
+}
+
+/** Batch keys in one React update; keep each suite's frame and propagation semantics. */
+export async function emitKeypress(
+  setup: Awaited<ReturnType<typeof testRender>>,
+  events: TestKeyEvent | TestKeyEvent[],
+  { frames = 1, afterCommit = false, trackPropagation = false } = {},
+) {
+  let lastEvent;
+  await act(async () => {
+    for (const event of Array.isArray(events) ? events : [events]) {
+      let defaultPrevented = event.defaultPrevented === true;
+      let propagationStopped = event.propagationStopped === true;
+      lastEvent = {
+        ctrl: false, alt: false, meta: false, option: false, shift: false,
+        eventType: "press", repeated: false,
+        ...event,
+        get defaultPrevented() { return defaultPrevented; },
+        get propagationStopped() { return propagationStopped; },
+        preventDefault() { if (trackPropagation) defaultPrevented = true; },
+        stopPropagation() { if (trackPropagation) propagationStopped = true; },
+      };
+      setup.renderer.keyInput.emit("keypress", lastEvent as any);
+    }
+    for (let index = 0; index < frames; index++) await setup.renderOnce();
+  });
+  if (afterCommit) await setup.renderOnce();
+  return lastEvent!;
+}
 
 let lastSavedTextFile: { name: string; text: string } | null = null;
 
@@ -91,7 +132,7 @@ export function testRender(
   node: ReactNode,
   options?: Parameters<typeof openTuiTestRender>[1],
 ): ReturnType<typeof openTuiTestRender> {
-  return openTuiTestRender(withOpenTuiTestProviders(node), options);
+  return openTuiTestRender(withOpenTuiTestProviders(node), options ?? {});
 }
 
 export function createOpenTuiTestRoot(
@@ -107,4 +148,68 @@ export function createOpenTuiTestRoot(
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
+}
+
+/**
+ * Advances one polling step: sleeps, then renders. Both happen inside `act` so
+ * that anything a resolving promise queued during the sleep is flushed before
+ * the next frame is captured. Polling outside `act` leaves the update to
+ * React's scheduler, which is why a loaded CI box could time out waiting for a
+ * frame the app had already produced.
+ */
+export async function settleFrame(
+  renderer: Awaited<ReturnType<typeof testRender>>,
+  delayMs = 50,
+): Promise<void> {
+  await act(async () => {
+    await Bun.sleep(delayMs);
+  });
+  // Paint after React has committed the updates collected by act.
+  await renderer.renderOnce();
+}
+
+export function createTestControls(
+  getRenderer: () => Awaited<ReturnType<typeof testRender>>,
+) {
+  const waitForFrameToContain = async (text: string, attempts = 12, delayMs = 50): Promise<string> => {
+    const renderer = getRenderer();
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const frame = renderer.captureCharFrame();
+      if (frame.includes(text)) {
+        return frame;
+      }
+      await settleFrame(renderer, delayMs);
+    }
+    throw new Error(`Timed out waiting for frame to contain "${text}".\n${renderer.captureCharFrame()}`);
+  };
+
+  const clickFrameText = async (text: string): Promise<void> => {
+    const renderer = getRenderer();
+    const frame = renderer.captureCharFrame();
+    const rows = frame.split("\n");
+    const row = rows.findIndex((line) => line.includes(text));
+    const col = row >= 0 ? rows[row]!.indexOf(text) : -1;
+
+    if (row < 0 || col < 0) throw new Error(`No frame text "${text}".\n${frame}`);
+
+    await act(async () => {
+      await renderer.mockMouse.click(col + 1, row);
+      await renderer.renderOnce();
+    });
+  };
+
+  const renderFrames = async (count = 2): Promise<void> => {
+    const renderer = getRenderer();
+    for (let index = 0; index < count; index += 1) {
+      await act(async () => {
+        await renderer.renderOnce();
+      });
+    }
+  };
+
+  return {
+    waitForFrameToContain,
+    clickFrameText,
+    renderFrames,
+  };
 }

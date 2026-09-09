@@ -1,6 +1,6 @@
+import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
-import type { PluginPersistence } from "../../../types/plugin";
 import { fetchEconCalendar } from "./calendar-source";
 import type { EconEvent, EconImpact } from "./types";
 
@@ -43,17 +43,12 @@ export type EconCalendarColumn = DataTableColumn & { id: EconCalendarColumnId };
 type PersistedEconEvent = Omit<EconEvent, "date"> & { date: string };
 export type EconCalendarCacheEntry = { data: EconEvent[]; fetchedAt: number; stale: boolean };
 
-let econCalendarPersistence: PluginPersistence | null = null;
-let activeFetch: Promise<EconCalendarLoadResult> | null = null;
-
-export function attachEconCalendarPersistence(persistence: PluginPersistence): void {
-  econCalendarPersistence = persistence;
-}
-
-export function resetEconCalendarPersistence(): void {
-  econCalendarPersistence = null;
-  activeFetch = null;
-}
+const cache = createPluginCache<EconEvent[], PersistedEconEvent[]>({
+  kind: CACHE_KIND, source: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, policy: CACHE_POLICY,
+  encode: serializeEvents, decode: deserializeEvents,
+});
+export const attachEconCalendarPersistence = cache.attach;
+export const resetEconCalendarPersistence = cache.reset;
 
 /** Words rather than dots: a three-wide column has no room for a legend. */
 export function impactIndicator(impact: EconImpact): { text: string; color: string } {
@@ -140,65 +135,19 @@ function deserializeEvents(events: PersistedEconEvent[]): EconEvent[] {
     .filter((event) => !Number.isNaN(event.date.getTime()));
 }
 
-function readPersistedCache(options?: { allowExpired?: boolean }): EconCalendarCacheEntry | null {
-  const record = econCalendarPersistence?.getResource<PersistedEconEvent[]>(CACHE_KIND, CACHE_KEY, {
-    sourceKey: CACHE_SOURCE,
-    schemaVersion: CACHE_SCHEMA_VERSION,
-    allowExpired: options?.allowExpired,
-  });
-  if (!record) return null;
-
-  const data = deserializeEvents(record.value);
-  return {
-    data,
-    fetchedAt: record.fetchedAt,
-    stale: !!record.stale,
-  };
-}
-
-function writeCache(events: EconEvent[]): void {
-  econCalendarPersistence?.setResource(CACHE_KIND, CACHE_KEY, serializeEvents(events), {
-    sourceKey: CACHE_SOURCE,
-    schemaVersion: CACHE_SCHEMA_VERSION,
-    cachePolicy: CACHE_POLICY,
-  });
-}
-
 export function getCalendarCache(options?: { allowExpired?: boolean }): EconCalendarCacheEntry | null {
-  return readPersistedCache(options);
+  return cache.get(CACHE_KEY, options);
 }
 
 export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
-  /** Set when the network failed and cached events were served instead. */
   refreshError?: string;
 }
 
-export async function loadCalendar(
+export function loadCalendar(
   force = false,
   loader: () => Promise<EconEvent[]> = fetchEconCalendar,
 ): Promise<EconCalendarLoadResult> {
-  const cached = getCalendarCache();
-  if (!force && cached && !cached.stale) return cached;
-  if (activeFetch) return activeFetch;
-
-  const fallback = cached ?? getCalendarCache({ allowExpired: true });
-  activeFetch = loader().then((data) => {
-    writeCache(data);
-    activeFetch = null;
-    return { data, fetchedAt: Date.now(), stale: false };
-  }).catch((err: unknown) => {
-    activeFetch = null;
-    // A failed refresh must not pass old events off as a fresh load.
-    if (fallback) {
-      return {
-        ...fallback,
-        stale: true,
-        refreshError: err instanceof Error ? err.message : String(err),
-      };
-    }
-    throw err;
-  });
-  return activeFetch;
+  return cache.load(CACHE_KEY, loader, { force });
 }
 
 function parseNumeric(value: string | null): number | null {

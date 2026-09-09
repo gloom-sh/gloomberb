@@ -1,14 +1,14 @@
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, sep } from "path";
+import { encodeRpcValue } from "../renderers/electrobun/view/rpc-codec";
 import type { AppConfig } from "../types/config";
-import type { ResolvedSeries } from "../time-series/types";
+import type { ChartResolutionResult } from "../time-series/types";
 import type { OptionsChain, PricePoint, TickerFinancials } from "../types/financials";
 import type { ManualChartResolution } from "../time-series/resolution";
 import type { TickerRecord } from "../types/ticker";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
-import type { FredSeriesCacheEntry } from "../data/fred-series";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
 import {
   electrobunViewPath,
@@ -43,10 +43,9 @@ export interface DesktopPaneShotPayload {
   financials: Array<[string, TickerFinancials]>;
   intradayHistories: DesktopPaneShotIntradayHistory[];
   optionsChains: Array<[string, OptionsChain]>;
-  fredSeries: Array<[string, FredSeriesCacheEntry]>;
   valuationSeries: Array<[string, DatedObservation[]]>;
   statSeries: Array<[string, DatedObservation[]]>;
-  capabilitySeries: Array<[string, ResolvedSeries]>;
+  chartModel?: ChartResolutionResult;
   paneState: Record<string, PaneRuntimeState>;
 }
 
@@ -171,7 +170,7 @@ export async function renderDesktopPaneScreenshot(
 }
 
 async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): Promise<string> {
-  const payloadJson = JSON.stringify(payload).replace(/</g, "\\u003c");
+  const payloadJson = JSON.stringify(encodeRpcValue(payload)).replace(/</g, "\\u003c");
   return writeElectrobunViewPage({
     entrypoint: electrobunViewPath("cli-pane-shot-entry.tsx"),
     outdir,

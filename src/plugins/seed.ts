@@ -16,6 +16,7 @@ const log = debugLog.createLogger("plugin-seed");
  * so it is never reinstalled — including when the user removes it deliberately.
  */
 export const EXTRACTED_PLUGINS = [
+  { id: "tv", repo: "gloom-sh/gloomberb-tv", directory: "gloomberb-tv", previousOwnerIds: ["macro", "macro-tv"] },
   { id: "substack", repo: "gloom-sh/gloomberb-substack", directory: "gloomberb-substack" },
   { id: "ibkr", repo: "gloom-sh/gloomberb-ibkr", directory: "gloomberb-ibkr" },
   { id: "ibkr-gateway", repo: "gloom-sh/gloomberb-ibkr-gateway", directory: "gloomberb-ibkr-gateway" },
@@ -63,7 +64,7 @@ export async function seedExtractedPlugins(
     }
 
     // Turned off before the move: restoring it would override that choice.
-    if (disabled.has(entry.id)) {
+    if (disabled.has(entry.id) || ("previousOwnerIds" in entry && entry.previousOwnerIds.some((id) => disabled.has(id)))) {
       result.seeded.push(entry.id);
       continue;
     }

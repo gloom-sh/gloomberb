@@ -7,7 +7,7 @@ import type { ReactElement } from "react";
 import { testRender } from "../../../../renderers/opentui/test-utils";
 import { AppPersistence } from "../../../../data/app-persistence";
 import { TickerRepository } from "../../../../data/ticker-repository";
-import { AppContext, appReducer, createInitialState, PaneInstanceProvider, type AppAction } from "../../../../state/app/context";
+import { appReducer, createInitialState, type AppAction } from "../../../../state/app/context";
 import { AssetDataRouter } from "../../../../sources/provider-router";
 import {
   cloneLayout,
@@ -23,11 +23,10 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../runtime";
+import type { PluginRuntimeAccess } from "../../../runtime";
 import { PluginRegistry, setSharedMarketDataForTests, setSharedRegistryForTests } from "../../../registry";
-import type { BrokerAdapter } from "../../../../types/broker";
-import { colors } from "../../../../theme/colors";
 import { portfolioListModule } from "..";
+import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../../test-support/pane";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
@@ -66,39 +65,30 @@ function createTempDbPath(name: string): string {
 }
 
 function makeTicker(overrides: Partial<TickerRecord["metadata"]> = {}): TickerRecord {
-  return {
-    metadata: {
-      ticker: "AAPL",
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: "Apple",
-      portfolios: ["broker:ibkr-flex:DU12345", "broker:ibkr-live:DU12345"],
-      watchlists: [],
-      positions: [
-        {
-          portfolio: "broker:ibkr-flex:DU12345",
-          shares: 10,
-          avgCost: 100,
-          currency: "USD",
-          broker: "ibkr",
-          brokerInstanceId: "ibkr-flex",
-          brokerAccountId: "DU12345",
-        },
-        {
-          portfolio: "broker:ibkr-live:DU12345",
-          shares: 10,
-          avgCost: 100,
-          currency: "USD",
-          broker: "ibkr",
-          brokerInstanceId: "ibkr-live",
-          brokerAccountId: "DU12345",
-        },
-      ],
-      custom: {},
-      tags: [],
-      ...overrides,
-    },
-  };
+  return createTestTicker("AAPL", "Apple", {
+    portfolios: ["broker:ibkr-flex:DU12345", "broker:ibkr-live:DU12345"],
+    positions: [
+      {
+        portfolio: "broker:ibkr-flex:DU12345",
+        shares: 10,
+        avgCost: 100,
+        currency: "USD",
+        broker: "ibkr",
+        brokerInstanceId: "ibkr-flex",
+        brokerAccountId: "DU12345",
+      },
+      {
+        portfolio: "broker:ibkr-live:DU12345",
+        shares: 10,
+        avgCost: 100,
+        currency: "USD",
+        broker: "ibkr",
+        brokerInstanceId: "ibkr-live",
+        brokerAccountId: "DU12345",
+      },
+    ],
+    ...overrides
+  });
 }
 
 function makeQuote(overrides: Partial<Quote> = {}): Quote {
@@ -121,18 +111,12 @@ function makeQuote(overrides: Partial<Quote> = {}): Quote {
 }
 
 function createPortfolioConfig(portfolioId: string, brokerInstances: BrokerInstanceConfig[] = []): AppConfig {
-  const config = createDefaultConfig("/tmp/gloomberb-portfolio-list");
-  const layout: LayoutConfig = {
-    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "portfolio-list",
-      binding: { kind: "none" as const },
-      params: { collectionId: portfolioId },
-    }],
-    floating: [],
-    detached: [],
-  };
+  const config = createTestPaneConfig("/tmp/gloomberb-portfolio-list", {
+    instanceId: TEST_PANE_ID,
+    paneId: "portfolio-list",
+    binding: { kind: "none" },
+    params: { collectionId: portfolioId },
+  });
 
   return {
     ...config,
@@ -148,8 +132,6 @@ function createPortfolioConfig(portfolioId: string, brokerInstances: BrokerInsta
         brokerAccountId: "DU12345",
       },
     ],
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
   };
 }
 
@@ -170,24 +152,12 @@ function createPortfolioConfigWithColumns(
 }
 
 function createManualCollectionConfig(collectionId: string): AppConfig {
-  const config = createDefaultConfig("/tmp/gloomberb-portfolio-list");
-  const layout: LayoutConfig = {
-    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "portfolio-list",
-      binding: { kind: "none" as const },
-      params: { collectionId },
-    }],
-    floating: [],
-    detached: [],
-  };
-
-  return {
-    ...config,
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-  };
+  return createTestPaneConfig("/tmp/gloomberb-portfolio-list", {
+    instanceId: TEST_PANE_ID,
+    paneId: "portfolio-list",
+    binding: { kind: "none" },
+    params: { collectionId },
+  });
 }
 
 function installQuickAddRegistry(provider: DataProvider): PluginRegistry {
@@ -305,19 +275,15 @@ function PortfolioHarness({
   harnessState = state;
 
   return (
-    <AppContext value={{ state, dispatch }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider pluginId="portfolio" runtime={runtime}>
-          <PortfolioPane
-            paneId={TEST_PANE_ID}
-            paneType="portfolio-list"
-            focused={paneFocused}
-            width={100}
-            height={paneHeight}
-          />
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="portfolio" runtime={runtime}>
+      <PortfolioPane
+        paneId={TEST_PANE_ID}
+        paneType="portfolio-list"
+        focused={paneFocused}
+        width={100}
+        height={paneHeight}
+      />
+    </TestPaneProvider>
   );
 }
 

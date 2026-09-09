@@ -1,24 +1,22 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
-import { useShortcut } from "../../../react/input";
+import { useMemo, useState } from "react";
 import {
-  Button,
-  EmptyState,
-  Spinner,
-  StaticChartSurface,
+  EmptyState, PaneStatusBody, StaticChartSurface,
   usePaneFooter,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import { ListView } from "../../../components/ui/list-view";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
-import type { PaneProps } from "../../../types/plugin";
+import { ListView } from "../../../components/ui/list-view";
+import { useAsyncResource } from "../../../react/async-resource";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, Text, TextAttributes } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import { getCachedVolatilityData, loadVolatilityData } from "./client";
-import type { TermState, VolatilityData } from "./model";
 import { volatilityHeadless } from "./headless";
+import type { TermState, VolatilityData } from "./model";
 
 export { volatilityHeadless } from "./headless";
 
@@ -71,38 +69,13 @@ function TermChart({ data, width, height }: { data: VolatilityData; width: numbe
 }
 
 export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
-  const [initial] = useState(getCachedVolatilityData);
-  const [data, setData] = useState<VolatilityData | null>(initial?.data ?? null);
-  const [loading, setLoading] = useState(!initial);
-  const [stale, setStale] = useState(initial?.stale ?? false);
-  const [error, setError] = useState<string | null>(null);
+  const resource = useAsyncResource(loadVolatilityData, { initialData: getCachedVolatilityData });
+  const { loading, load: refresh, reload } = resource;
+  const stale = resource.data?.stale ?? false;
+  const error = resource.error ?? resource.data?.errors[0] ?? null;
+  const lastUpdated = stale ? null : resource.updatedAt;
+  const data = resource.data?.data ?? null;
   const [selected, setSelected] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const generation = useRef(0);
-
-  const load = useCallback(async (force = false) => {
-    const current = ++generation.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await loadVolatilityData(force);
-      if (generation.current !== current) return;
-      setData(result.data);
-      setStale(result.stale);
-      if (!result.stale) setLastUpdated(Date.now());
-      setError(result.errors[0] ?? null);
-    } catch (loadError) {
-      if (generation.current !== current) return;
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
-    } finally {
-      if (generation.current === current) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void load(false); }, [load]);
-
-  const reload = useCallback(() => { void load(true); }, [load]);
-  const refresh = useCallback(() => { void load(false); }, [load]);
   // The shared FRED cache decides whether a tick reaches the network, so daily
   // closes follow the global cadence without refetching unchanged data.
   useAutoRefresh(lastUpdated, refresh);
@@ -133,15 +106,13 @@ export function VolatilityPane({ paneId, focused, width, height }: PaneProps) {
 
   if (!data && loading) {
     return (
-      <Box width={width} height={height} justifyContent="center" alignItems="center">
-        <Spinner label="Loading volatility data..." />
-      </Box>
+      <PaneStatusBody loading align="center" width={width} height={height} loadingLabel="Loading volatility data..." />
     );
   }
   if (!data) {
     return (
       <Box width={width} height={height} padding={1} flexDirection="column" gap={1}>
-        <EmptyState title="Volatility data unavailable." message={error ?? undefined} />
+        <EmptyState status={error ? "error" : "empty"} title="Volatility data unavailable." message={error ?? undefined} />
       </Box>
     );
   }

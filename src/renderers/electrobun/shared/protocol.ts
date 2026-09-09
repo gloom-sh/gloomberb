@@ -3,7 +3,6 @@ import type { PaneRuntimeState } from "../../../core/state/app/state";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState } from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig } from "../../../types/config";
-import type { LiveStreamResolveRequest, ResolvedLiveStream } from "../../../types/media";
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
 import type { CapabilityManifest } from "../../../capabilities";
@@ -108,7 +107,6 @@ export interface DesktopBackendRequestMap {
     response: ElectrobunBackendInit;
   };
   "http.fetch": { request: DesktopHttpFetchRequest; response: DesktopHttpFetchResponse };
-  "media.resolveLiveStream": { request: LiveStreamResolveRequest; response: ResolvedLiveStream };
   "remote.forward": { request: { request: RemoteControlRequest }; response: RemoteControlResponse };
   "capability.invoke": { request: DesktopCapabilityInvokeRequest; response: unknown };
   "capability.cancel": { request: { invocationId: string }; response: null };

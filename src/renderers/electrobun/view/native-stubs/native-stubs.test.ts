@@ -1,10 +1,8 @@
-import { describe, expect, test } from "bun:test";
 import { Glob } from "bun";
-import * as realSurfaceSync from "../../../../components/chart/native/surface/sync";
+import { describe, expect, test } from "bun:test";
 import * as realKittySupport from "../../../../components/chart/native/kitty/support";
-import { NativeSurfaceManager as StubNativeSurfaceManager } from "./chart/surface-manager";
-import * as stubSurfaceSync from "./chart/surface-sync";
 import * as stubKittySupport from "./chart/kitty-support";
+import { NativeSurfaceManager as StubNativeSurfaceManager } from "./chart/surface-manager";
 
 // The desktop view bundle aliases these modules to the stubs in this directory
 // (see build-assets.ts COMMON_ALIAS_RULES). A method the app calls but the stub
@@ -37,9 +35,6 @@ describe("desktop view native stubs", () => {
   });
 
   test("module stubs export every function of the modules they replace", () => {
-    expect(
-      exportedFunctions(realSurfaceSync).filter((name) => !exportedFunctions(stubSurfaceSync).includes(name)),
-    ).toEqual([]);
     expect(
       exportedFunctions(realKittySupport).filter((name) => !exportedFunctions(stubKittySupport).includes(name)),
     ).toEqual([]);

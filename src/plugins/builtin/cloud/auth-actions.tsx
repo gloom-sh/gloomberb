@@ -1,8 +1,7 @@
-import { useState } from "react";
 import { Box, Text } from "../../../ui";
 import { Button } from "../../../components";
 import { usePluginAppActions } from "../../runtime";
-import { colors, hoverBg } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { requestAuthDialog } from "./auth-dialog";
 import type { AccountMode } from "./auth-model";
@@ -10,10 +9,7 @@ import type { AccountMode } from "./auth-model";
 function openAuth(
   openCommandBar: (query?: string) => void,
   mode: AccountMode,
-  event?: { preventDefault?: () => void; stopPropagation?: () => void },
 ) {
-  event?.preventDefault?.();
-  event?.stopPropagation?.();
   if (!requestAuthDialog({ mode })) {
     openCommandBar(mode === "login" ? "Log In" : "Sign Up");
   }
@@ -21,31 +17,13 @@ function openAuth(
 
 export function InlineAuthActions({ showSignup = true }: { showSignup?: boolean }) {
   const { openCommandBar } = usePluginAppActions();
-  const [hoveredAction, setHoveredAction] = useState<"login" | "signup" | null>(null);
-
   return (
     <Box flexDirection="row">
-      <Box
-        backgroundColor={hoveredAction === "login" ? hoverBg() : undefined}
-        onMouseOver={() => setHoveredAction((current) => (current === "login" ? current : "login"))}
-        onMouseOut={() => setHoveredAction((current) => (current === "login" ? null : current))}
-        onMouseDown={(event: any) => openAuth(openCommandBar, "login", event)}
-      >
-        <Text fg={hoveredAction === "login" ? colors.text : colors.textDim}>{` ${t("Log In")} `}</Text>
-      </Box>
-      {showSignup && (
-        <>
-          <Text fg={colors.textDim}>/</Text>
-          <Box
-            backgroundColor={hoveredAction === "signup" ? hoverBg() : undefined}
-            onMouseOver={() => setHoveredAction((current) => (current === "signup" ? current : "signup"))}
-            onMouseOut={() => setHoveredAction((current) => (current === "signup" ? null : current))}
-            onMouseDown={(event: any) => openAuth(openCommandBar, "signup", event)}
-          >
-            <Text fg={hoveredAction === "signup" ? colors.text : colors.textDim}>{` ${t("Sign Up")} `}</Text>
-          </Box>
-        </>
-      )}
+      <Button label={t("Log In")} variant="ghost" compact stopPropagation onPress={() => openAuth(openCommandBar, "login")} />
+      {showSignup && <>
+        <Text fg={colors.textDim}> / </Text>
+        <Button label={t("Sign Up")} variant="ghost" compact stopPropagation onPress={() => openAuth(openCommandBar, "signup")} />
+      </>}
     </Box>
   );
 }

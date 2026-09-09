@@ -72,11 +72,12 @@ export function buildPaneFunctionLookup(registry: PaneFunctionCatalog): Map<stri
     registerResolverToken(lookup, pane.name, pane);
   }
 
-  const financialTemplate = registry.paneTemplates.get("financial-analysis-pane");
-  if (financialTemplate) {
-    lookup.set(normalizeLookupToken("financials"), financialTemplate);
-    lookup.set(normalizeLookupToken("financial-statements"), financialTemplate);
-    lookup.set(normalizeLookupToken("financial-statement"), financialTemplate);
+  for (const template of registry.paneTemplates.values()) {
+    const pane = registry.panes.get(template.paneId);
+    if (!pane) continue;
+    const discovery = getHeadlessPaneDefinition(template, pane)?.discovery;
+    registerResolverToken(lookup, discovery?.id, template);
+    for (const alias of discovery?.aliases ?? []) registerResolverToken(lookup, alias, template);
   }
 
   return lookup;

@@ -40,6 +40,7 @@ import {
   rowHeaderColor,
 } from "./matrix/model";
 import { SymbolLabelCell } from "./matrix/symbol-cell";
+import { correlationHeadless, relationshipHeadless } from "./headless";
 
 function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
   const pane = usePaneInstance();
@@ -264,6 +265,7 @@ export const correlationModule: PluginModule = {
       name: "Correlation Matrix",
       icon: "C",
       component: CorrelationMatrixPane,
+      headless: correlationHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 18 },
@@ -274,6 +276,7 @@ export const correlationModule: PluginModule = {
       name: "Relationship Graph",
       icon: "R",
       component: RelationshipGraphPane,
+      headless: relationshipHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 100, height: 30 },
@@ -284,6 +287,7 @@ export const correlationModule: PluginModule = {
   paneTemplates: [
     {
       id: "correlation-pane",
+      headless: correlationHeadless,
       paneId: "correlation",
       label: "Correlation Matrix",
       description: "Date-aligned Pearson correlation matrix for ticker returns.",
@@ -316,6 +320,6 @@ export const correlationModule: PluginModule = {
         };
       },
     },
-    createRelationshipPaneTemplate(),
+    { ...createRelationshipPaneTemplate(), headless: relationshipHeadless },
   ],
 };

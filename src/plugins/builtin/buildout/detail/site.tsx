@@ -1,30 +1,12 @@
 import type { ReactNode } from "react";
-import { Box, Text } from "../../../../ui";
+import { Section } from "../../../../components";
 import { colors } from "../../../../theme/colors";
+import { Box, Text } from "../../../../ui";
+import { activityColor, activityLabel, dateShort, sourceDomains, truncate } from "../format";
 import type { BuildoutSite } from "../model/types";
-import {
-  activityColor,
-  activityLabel,
-  dateShort,
-  sourceDomains,
-  truncate,
-} from "../format";
-import {
-  booleanText,
-  dateCell,
-  metadataSpecs,
-  reportSectionText,
-} from "./values";
-import {
-  DetailSection,
-  DetailSpecGrid,
-  InlineSources,
-  MarkdownBlock,
-  SourceDetailLines,
-  tickerBadges,
-  type InlineTickerCatalog,
-} from "./ui";
 import { SiteSatelliteImages } from "./satellite-images";
+import { DetailSpecGrid, InlineSources, MarkdownBlock, SourceDetailLines, tickerBadges, type InlineTickerCatalog } from "./ui";
+import { booleanText, dateCell, metadataSpecs, reportSectionText } from "./values";
 
 export function SiteDetail({
   site,
@@ -79,7 +61,7 @@ export function SiteDetail({
       <MarkdownBlock text={site.description} width={bodyWidth} catalog={catalog} openTicker={openTicker} />
       <SiteSatelliteImages site={site} width={bodyWidth} height={height} />
       {(site.observations?.length ?? 0) > 0 ? (
-        <DetailSection title="Recent Captures" width={bodyWidth}>
+        <Section title="Recent Captures" width={bodyWidth}>
           {site.observations!.slice(0, 8).map((observation, index) => {
             const bounds = observation.captureBounds?.minLat != null && observation.captureBounds?.minLng != null
               ? `${observation.captureBounds.minLat.toFixed(3)}, ${observation.captureBounds.minLng.toFixed(3)}`
@@ -95,30 +77,30 @@ export function SiteDetail({
               </Text>
             );
           })}
-        </DetailSection>
+        </Section>
       ) : null}
       {specs.length > 0 ? (
-        <DetailSection title="Specs" width={bodyWidth}>
+        <Section title="Specs" width={bodyWidth}>
           <DetailSpecGrid width={bodyWidth} marginTop={0} items={specs} />
-        </DetailSection>
+        </Section>
       ) : null}
       {(site.projectReportSections?.length ?? 0) > 0 ? (
-        <DetailSection title="Project Report" width={bodyWidth}>
+        <Section title="Project Report" width={bodyWidth}>
           {site.projectReportSections!.map((section, index) => (
             <Box key={`${section.title ?? "section"}:${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
               {section.title ? <Text fg={colors.textDim}>{section.title}</Text> : null}
               <MarkdownBlock text={reportSectionText(section)} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
             </Box>
           ))}
-        </DetailSection>
+        </Section>
       ) : null}
       {site.researchReport ? (
-        <DetailSection title="Research" width={bodyWidth}>
+        <Section title="Research" width={bodyWidth}>
           <MarkdownBlock text={site.researchReport} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
-        </DetailSection>
+        </Section>
       ) : null}
       {(site.builders?.length ?? 0) > 0 ? (
-        <DetailSection title="Involved Companies" width={bodyWidth}>
+        <Section title="Involved Companies" width={bodyWidth}>
           {site.builders!.slice(0, 12).map((builder, index) => (
             <Box key={`${builder.companyName}-${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
               <Box flexDirection="row" height={1}>
@@ -135,7 +117,7 @@ export function SiteDetail({
               <MarkdownBlock text={builder.summary} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
             </Box>
           ))}
-        </DetailSection>
+        </Section>
       ) : null}
     </>
   );

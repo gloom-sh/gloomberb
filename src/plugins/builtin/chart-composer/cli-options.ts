@@ -1,4 +1,4 @@
-import type { NormalizedPaneFunctionOptions } from "../../../cli/pane-functions/capabilities";
+import type { HeadlessPaneOptionValues } from "../../../types/headless";
 import {
   CHART_RESOLUTIONS,
   TIME_RANGES,
@@ -13,14 +13,14 @@ import type { ChartSeriesSpec, ChartSpec, SeriesPeriod } from "../../../time-ser
 
 const PRICE_CAPABILITIES = new Set(["price-chart", "intraday-price-chart", "price-comparison"]);
 
-function chartRange(options: NormalizedPaneFunctionOptions): TimeRange | null {
+function chartRange(options: HeadlessPaneOptionValues): TimeRange | null {
   const value = options.rangePreset ?? options.range;
   return typeof value === "string" && (TIME_RANGES as readonly string[]).includes(value)
     ? value as TimeRange
     : null;
 }
 
-function chartResolution(options: NormalizedPaneFunctionOptions): ChartResolution | null {
+function chartResolution(options: HeadlessPaneOptionValues): ChartResolution | null {
   const value = options.chartResolution ?? options.resolution;
   return typeof value === "string" && (CHART_RESOLUTIONS as readonly string[]).includes(value)
     ? value as ChartResolution
@@ -42,7 +42,7 @@ function mapSecuritySeries(
 export function applyChartComposerCapabilityOptions(
   spec: ChartSpec,
   capabilityId: string,
-  options: NormalizedPaneFunctionOptions,
+  options: HeadlessPaneOptionValues,
 ): ChartSpec {
   let next = spec;
   const selectedRange = chartRange(options);

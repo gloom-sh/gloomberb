@@ -10,7 +10,7 @@ import {
   BROWSER_WORLD_INDICES_ID,
   createBrowserConfigStore,
 } from "./config-host";
-import type { StorageLike } from "./storage";
+import type { StorageLike } from "../../data/json-storage";
 
 function memoryStorage(): StorageLike {
   const map = new Map<string, string>();

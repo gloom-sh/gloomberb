@@ -5,11 +5,10 @@ import type {
   CloudProxyStatementSummaryPayload,
 } from "../../../api-client";
 import {
-  EmptyState,
-  Spinner,
+  EmptyState, PaneStatusBody, Prose, SectionHeading, Spinner,
   Tabs,
   usePaneFooter,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors, getChartIndicatorColor } from "../../../theme/colors";
@@ -23,7 +22,6 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { Prose, SectionHeading } from "../earnings-calls/transcript-view";
 import { useBoundTicker } from "../shared/ticker-request";
 import { loadProxyStatement, loadProxyStatements } from "./data";
 import {
@@ -46,14 +44,12 @@ function FigureLine({
   note,
   width,
   valueWidth,
-  nativePaneChrome,
 }: {
   value: string;
   label: string;
   note?: string;
   width: number;
   valueWidth: number;
-  nativePaneChrome: boolean;
 }) {
   const text = [label, note].filter(Boolean).join(", ");
   return (
@@ -61,7 +57,6 @@ function FigureLine({
       text={text}
       width={width}
       color={colors.textDim}
-      nativePaneChrome={nativePaneChrome}
       prefix={`${value.padEnd(valueWidth)}  `}
       prefixColor={colors.textBright}
     />
@@ -135,11 +130,9 @@ function PayMixBar({
 function ExecutiveRows({
   rows,
   width,
-  nativePaneChrome,
 }: {
   rows: CloudExecutiveRowPayload[];
   width: number;
-  nativePaneChrome: boolean;
 }) {
   // Name, title, equity share, total. The title takes whatever is left.
   const totalWidth = 9;
@@ -361,9 +354,7 @@ export function ExecutivesPane({
     return <EmptyState title="Pick a ticker to see its executives." />;
   if (status === "loading" && !statement) {
     return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <Spinner label="Loading proxy statement..." />
-      </Box>
+      <PaneStatusBody loading align="center" loadingLabel="Loading proxy statement..." />
     );
   }
   if (status === "none") {
@@ -376,10 +367,7 @@ export function ExecutivesPane({
   }
   if (status === "error") {
     return (
-      <EmptyState
-        title="Could not load executive compensation."
-        message={error ?? ""}
-      />
+      <PaneStatusBody error={error ?? "Could not load executive compensation."} errorTitle="Could not load executive compensation." />
     );
   }
 
@@ -434,11 +422,10 @@ export function ExecutivesPane({
                 .join("  ·  ")}
               width={proseWidth}
               color={colors.textDim}
-              nativePaneChrome={nativePaneChrome}
             />
             {figures.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading title="KEY FIGURES" />
+                <SectionHeading marginTop={1} title="KEY FIGURES" />
                 {figures.map((figure) => (
                   <FigureLine
                     key={`${figure.label}-${figure.value}`}
@@ -447,14 +434,13 @@ export function ExecutivesPane({
                     note={figure.note}
                     width={proseWidth}
                     valueWidth={valueWidth}
-                    nativePaneChrome={nativePaneChrome}
                   />
                 ))}
               </Box>
             )}
             {statement.ceo && (
               <Box flexDirection="column">
-                <SectionHeading
+                <SectionHeading marginTop={1}
                   title={`HOW ${statement.ceo.name.split(" ").pop()?.toUpperCase() ?? "THE CEO"} WAS PAID`}
                 />
                 <PayMixBar row={statement.ceo} width={proseWidth} />
@@ -462,24 +448,22 @@ export function ExecutivesPane({
             )}
             {statement.namedExecutives.length > 0 && (
               <Box flexDirection="column">
-                <SectionHeading title="NAMED EXECUTIVE OFFICERS" />
+                <SectionHeading marginTop={1} title="NAMED EXECUTIVE OFFICERS" />
                 <ExecutiveRows
                   rows={statement.namedExecutives}
                   width={proseWidth}
-                  nativePaneChrome={nativePaneChrome}
                 />
               </Box>
             )}
             {statement.highlights && (
               <Box flexDirection="column">
-                <SectionHeading title="WHAT CHANGED" />
+                <SectionHeading marginTop={1} title="WHAT CHANGED" />
                 {statement.highlights.split("\n").map((point) => (
                   <Prose
                     key={point}
                     text={point}
                     width={proseWidth}
                     color={colors.text}
-                    nativePaneChrome={nativePaneChrome}
                     prefix="• "
                   />
                 ))}

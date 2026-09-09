@@ -5,7 +5,7 @@ import { t, tf } from "../../../../i18n";
 import { truncateToDisplayWidth } from "../../../../utils/format";
 import type { ChatMessage } from "../../../../api-client";
 import { InlineAuthActions } from "../../cloud/auth-actions";
-import { ChatActionChip } from "../message/action-chip";
+import { Button, ListView } from "../../../../components/ui";
 import { COMPOSER_ACTION_WIDTH } from "../layout";
 import type { ChatMentionSuggestion } from "./mentions";
 
@@ -45,60 +45,28 @@ interface ChatComposerAreaProps {
 
 function ChatMentionSuggestions({
   contentWidth,
-  nativePaneChrome,
   onSelect,
   selectedIndex,
   suggestions,
 }: {
   contentWidth: number;
-  nativePaneChrome: boolean | undefined;
   onSelect: (index?: number) => boolean;
   selectedIndex: number;
   suggestions: ChatMentionSuggestion[];
 }) {
   if (suggestions.length === 0) return null;
   const width = Math.max(18, Math.min(contentWidth, 44));
-  const menuStyle = nativePaneChrome
-    ? {
-      marginBottom: 4,
-      border: `1px solid ${colors.border}`,
-      borderRadius: 6,
-      overflow: "hidden",
-    }
-    : undefined;
-
   return (
-    <Box
-      width={width}
-      height={suggestions.length}
-      flexDirection="column"
-      backgroundColor={nativePaneChrome ? colors.panel : colors.bg}
-      style={menuStyle}
-    >
-      {suggestions.map((suggestion, index) => {
-        const selected = index === selectedIndex;
-        return (
-          <Box
-            key={suggestion.username}
-            height={1}
-            width={width}
-            flexDirection="row"
-            backgroundColor={selected ? colors.selected : "transparent"}
-            onMouseDown={() => { onSelect(index); }}
-            style={{
-              cursor: "pointer",
-              paddingInline: nativePaneChrome ? 8 : undefined,
-            }}
-          >
-            <Text
-              fg={selected ? colors.selectedText : colors.positive}
-              attributes={selected ? TextAttributes.BOLD : 0}
-            >
-              {`@${suggestion.username}`}
-            </Text>
-          </Box>
-        );
-      })}
+    <Box width={width}>
+      <ListView
+        items={suggestions.map((suggestion) => ({ id: suggestion.username, label: `@${suggestion.username}` }))}
+        selectedIndex={selectedIndex}
+        height={suggestions.length}
+        rowGap={0}
+        surface="framed"
+        bgColor={colors.panel}
+        onActivate={(_, index) => { onSelect(index); }}
+      />
     </Box>
   );
 }
@@ -176,7 +144,7 @@ export function ChatComposerArea({
           <Text fg={colors.textMuted}>{` ${t("editing")} `}</Text>
           <Text fg={colors.textDim}>{editingPreview ? `: ${editingPreview}` : ""}</Text>
           <Box flexGrow={1} />
-          <ChatActionChip
+          <Button stopPropagation
             label={t("Cancel")}
             width={COMPOSER_ACTION_WIDTH}
             onPress={cancelEditMessage}
@@ -190,7 +158,7 @@ export function ChatComposerArea({
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{`@${replyTo.user.username}`}</Text>
           <Text fg={colors.textDim}>{replyPreview ? `: ${replyPreview}` : ""}</Text>
           <Box flexGrow={1} />
-          <ChatActionChip
+          <Button stopPropagation
             label={t("Cancel")}
             width={COMPOSER_ACTION_WIDTH}
             onPress={clearReplyTarget}
@@ -200,7 +168,6 @@ export function ChatComposerArea({
 
       <ChatMentionSuggestions
         contentWidth={contentWidth}
-        nativePaneChrome={nativePaneChrome}
         onSelect={onMentionSelect}
         selectedIndex={mentionSelectedIndex}
         suggestions={mentionSuggestions}

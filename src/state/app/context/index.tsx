@@ -22,7 +22,7 @@ import {
   type PaneInstanceConfig,
 } from "../../../types/config";
 import type { DesktopSharedStateSnapshot, DesktopThemePreviewState, DesktopWindowBridge } from "../../../types/desktop-window";
-import { setPaneSetting } from "../../../pane-settings";
+import { setPaneSetting, updatePaneInstance } from "../../../pane-settings";
 import { useTickerFinancials } from "../../../market-data/hooks";
 import {
   APP_SESSION_ID,
@@ -273,7 +273,7 @@ export function usePaneStateValue<T>(key: string, fallback: T, paneId?: string):
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const fallbackRef = useRef(fallback);
-  const scopedPaneId = paneId ?? usePaneInstanceId();
+  const scopedPaneId = useScopedPaneId(paneId);
   const value = useAppSelector((state) => (
     (state.paneState[scopedPaneId]?.[key] as T | undefined) ?? fallback
   ));
@@ -298,9 +298,9 @@ export function usePaneSettingValue<T>(
   fallback: T,
   paneId?: string,
 ): [T, (value: SetStateAction<T>) => void] {
-  const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
-  const scopedPaneId = paneId ?? usePaneInstanceId();
+  const scopedPaneId = useScopedPaneId(paneId);
+  const updateLayout = useUpdatePaneLayout();
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, scopedPaneId) ?? null);
   const value = (instance?.settings?.[key] as T | undefined) ?? fallback;
 
@@ -311,18 +311,45 @@ export function usePaneSettingValue<T>(
       ? (nextValue as (previousValue: T) => T)(currentValue)
       : nextValue;
     if (Object.is(currentValue, resolved)) return;
-    const layout = setPaneSetting(currentState.config.layout, scopedPaneId, key, resolved);
-    const nextConfig = syncConfigActiveLayoutState(
-      { ...currentState.config, layout },
-      currentState.paneState,
-      currentState.focusedPaneId,
-      currentState.activePanel,
-    );
-    dispatch({ type: "SET_CONFIG", config: nextConfig });
-    scheduleConfigSave(nextConfig);
-  }, [dispatch, fallback, key, scopedPaneId, stateRef]);
+    updateLayout((layout) => setPaneSetting(layout, scopedPaneId, key, resolved));
+  }, [fallback, key, scopedPaneId, stateRef, updateLayout]);
 
   return [value, setValue];
+}
+
+function useScopedPaneId(paneId?: string): string {
+  const contextId = useOptionalPaneInstanceId();
+  const id = paneId ?? contextId;
+  if (!id) throw new Error("A pane ID or PaneInstanceProvider is required.");
+  return id;
+}
+
+function useUpdatePaneLayout() {
+  const dispatch = useAppDispatch();
+  const stateRef = useAppStateRef();
+  return useCallback((update: (layout: AppConfig["layout"]) => AppConfig["layout"]) => {
+    const state = stateRef.current;
+    const layout = update(state.config.layout);
+    if (layout === state.config.layout) return;
+    const config = syncConfigActiveLayoutState(
+      { ...state.config, layout }, state.paneState, state.focusedPaneId, state.activePanel,
+    );
+    dispatch({ type: "SET_CONFIG", config });
+    scheduleConfigSave(config);
+  }, [dispatch, stateRef]);
+}
+
+/** Keep a content-derived pane title in its saved layout, without exposing config writes. */
+export function usePaneTitle(title: string, paneId?: string): void {
+  const id = useScopedPaneId(paneId);
+  const updateLayout = useUpdatePaneLayout();
+  useEffect(() => {
+    updateLayout((layout) => {
+      const pane = findPaneInstance(layout, id);
+      return !pane || pane.title === title ? layout
+        : updatePaneInstance(layout, id, (instance) => ({ ...instance, title }));
+    });
+  }, [id, title, updateLayout]);
 }
 
 export function AppProvider({

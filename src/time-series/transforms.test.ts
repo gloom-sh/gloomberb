@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { alignTimeSeries, effectiveTimeSeriesPointTime } from "./alignment";
 import { extractPriceSeries } from "./market";
-import { applySeriesTransform } from "./transforms";
+import { applyResolvedSeriesTransform, applySeriesTransform } from "./transforms";
 import type { ResolvedSeries, TimeSeriesPoint } from "./types";
 
-function point(date: string, value: number, availableAt?: string): TimeSeriesPoint {
+function point(date: string, value: number | null, availableAt?: string): TimeSeriesPoint {
   const observedAt = new Date(`${date}T00:00:00Z`);
   return {
     date: observedAt,
@@ -38,6 +38,28 @@ describe("series transformations", () => {
     expect(applySeriesTransform(points, "percent").map(({ value }) => value)).toEqual([0, 50, 100]);
     expect(applySeriesTransform(points, "index100").map(({ value }) => value)).toEqual([100, 150, 200]);
     expect(points.map(({ value }) => value)).toEqual([10, 15, 20]);
+  });
+
+  test("retains original scalars and units through repeated transforms without changing negative-baseline arithmetic", () => {
+    const source = series("price", [
+      point("2024-01-01", -10),
+      point("2024-02-01", -5),
+      point("2024-03-01", null),
+      point("2024-04-01", 0),
+      { ...point("2024-05-01", null), close: 2 },
+    ], "none");
+    const original = structuredClone(source);
+    const percent = applyResolvedSeriesTransform(source, "percent");
+    const indexed = applyResolvedSeriesTransform(percent, "index100");
+
+    expect(percent.points.map(({ value }) => value)).toEqual([0, 50, null, 100, null]);
+    expect(percent.points.at(-1)?.close).toBe(120);
+    expect(indexed.points.map(({ value }) => value)).toEqual([0, 100, null, 200, null]);
+    expect(indexed.points.map(({ rawValue }) => rawValue)).toEqual([-10, -5, null, 0, 2]);
+    expect(percent).toMatchObject({ unit: "%", rawUnit: "value" });
+    expect(indexed).toMatchObject({ unit: "index", rawUnit: "value" });
+    expect(applySeriesTransform([{ ...point("2024-01-01", 10), rawValue: null }], "log")[0]?.rawValue).toBeNull();
+    expect(source).toEqual(original);
   });
 
   test("matches QoQ and YoY by observation calendar instead of adjacent array position", () => {

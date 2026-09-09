@@ -1,7 +1,8 @@
+import { useThemeColors } from "../../theme/theme-context";
 import { Box, ScrollBox, Text, useUiHost } from "../../ui";
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
-import { colors, hoverBg } from "../../theme/colors";
+import { hoverBg } from "../../theme/colors";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { resolveRemoteItemIndex } from "../../remote/semantic-helpers";
@@ -62,6 +63,7 @@ function DefaultRow({
   item: ListViewItem;
   selected: boolean;
 }) {
+  const colors = useThemeColors();
   return (
     <Box flexDirection="row" justifyContent="space-between" width="100%">
       <Box flexDirection="row">
@@ -111,6 +113,7 @@ export function ListView({
   remoteItemCategory,
   remoteMetadata,
 }: ListViewProps) {
+  const colors = useThemeColors();
   useRemoteUiNode({
     role: remoteRole,
     label: remoteLabel ?? emptyMessage,
@@ -185,9 +188,12 @@ export function ListView({
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const baseBg = bgColor ?? colors.bg;
   const activeBg = selectedBgColor ?? colors.selected;
-  const rowHoverBg = hoverBgColor ?? hoverBg();
+  const rowHoverBg = hoverBgColor ?? hoverBg(colors);
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
+  const terminalRowHeight = rowHeight ?? 1;
+  const terminalRowGap = rowGap ?? 0;
+  const rowStride = terminalRowHeight + terminalRowGap;
 
   useEffect(() => {
     if (!scrollable || !autoScrollToIndex || activeScrollIndex < 0) return;
@@ -195,21 +201,22 @@ export function ListView({
     if (!sb) return;
     const safeIndex = Math.min(activeScrollIndex, items.length - 1);
     const viewportH = Math.max(sb.viewport?.height ?? 1, 1);
-    if (safeIndex < sb.scrollTop) {
-      sb.scrollTo(safeIndex);
-    } else if (safeIndex >= sb.scrollTop + viewportH) {
-      sb.scrollTo(safeIndex - viewportH + 1);
+    const rowTop = safeIndex * rowStride;
+    if (rowTop < sb.scrollTop) {
+      sb.scrollTo(rowTop);
+    } else if (rowTop + terminalRowHeight > sb.scrollTop + viewportH) {
+      sb.scrollTo(rowTop + terminalRowHeight - viewportH);
     }
-  }, [activeScrollIndex, autoScrollToIndex, items.length, scrollable]);
+  }, [activeScrollIndex, autoScrollToIndex, items.length, rowStride, scrollable, terminalRowHeight]);
 
   useEffect(() => {
     if (!scrollable) return;
     const sb = scrollRef.current;
     if (!sb) return;
     if (sb.verticalScrollBar) {
-      sb.verticalScrollBar.visible = items.length > (sb.viewport?.height ?? 0);
+      sb.verticalScrollBar.visible = items.length * rowStride - terminalRowGap > (sb.viewport?.height ?? 0);
     }
-  }, [items.length, height, flexGrow, scrollable]);
+  }, [items.length, height, flexGrow, rowStride, scrollable, terminalRowGap]);
 
   if (items.length === 0) {
     return (
@@ -230,7 +237,8 @@ export function ListView({
     return (
       <Box
         key={item.id}
-        height={1}
+        height={terminalRowHeight}
+        cursor={disabled ? "default" : "pointer"}
         backgroundColor={rowBg}
         onMouseOver={() => {
           if (!disabled) {
@@ -263,9 +271,9 @@ export function ListView({
           focusable={false}
           {...(onMouseScroll ? { onMouseScroll } : {})}
         >
-          {rows}
+          <Box flexDirection="column" gap={terminalRowGap}>{rows}</Box>
         </ScrollBox>
-      ) : rows}
+      ) : <Box flexDirection="column" gap={terminalRowGap}>{rows}</Box>}
 
       {showSelectedDescription && selectedItem?.description && (
         <>

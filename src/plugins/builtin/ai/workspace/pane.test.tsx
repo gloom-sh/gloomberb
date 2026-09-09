@@ -2,15 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../../components/layout/pane/footer";
 import { testRender } from "../../../../renderers/opentui/test-utils";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  createInitialState,
-} from "../../../../state/app/context";
+import { createInitialState } from "../../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { createDefaultConfig, createPaneInstance } from "../../../../types/config";
 import { Box } from "../../../../ui";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../runtime";
+import type { PluginRuntimeAccess } from "../../../runtime";
 import { setAiRuntimeCatalog } from "../runner";
 import {
   LOCAL_AGENT_WORKSPACE_SCHEMA_VERSION,
@@ -22,6 +18,7 @@ import {
   EMPTY_LOCAL_AGENT_WORKSPACE,
   type LocalAgentWorkspaceState,
 } from "./model";
+import { TestPaneProvider } from "../../../../test-support/pane";
 
 const PANE_ID = "local-agent-workspace:test";
 
@@ -64,23 +61,19 @@ function AgentPaneHarness({
 
   return (
     <Box flexDirection="column" width={100} height={16}>
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <PaneInstanceProvider paneId={PANE_ID}>
-          <PluginRenderProvider pluginId="ai" runtime={runtime}>
-            <PaneFooterProvider>
-              {() => (
-                <LocalAgentWorkspacePane
-                  paneId={PANE_ID}
-                  paneType="local-agent-workspace"
-                  focused
-                  width={100}
-                  height={16}
-                />
-              )}
-            </PaneFooterProvider>
-          </PluginRenderProvider>
-        </PaneInstanceProvider>
-      </AppContext>
+      <TestPaneProvider state={state} paneId={PANE_ID} pluginId="ai" runtime={runtime}>
+        <PaneFooterProvider>
+          {() => (
+            <LocalAgentWorkspacePane
+              paneId={PANE_ID}
+              paneType="local-agent-workspace"
+              focused
+              width={100}
+              height={16}
+            />
+          )}
+        </PaneFooterProvider>
+      </TestPaneProvider>
     </Box>
   );
 }

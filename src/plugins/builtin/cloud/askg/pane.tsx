@@ -1,3 +1,4 @@
+import { ActionRow } from "../../../../components/ui/action-row";
 import {
   useCallback,
   useEffect,
@@ -144,18 +145,13 @@ function ToolTimelineRow({
 
   return (
     <Box flexDirection="column">
-      <Box
-        flexDirection="row"
-        height={1}
-        backgroundColor={selected ? colors.panel : undefined}
-        onMouseDown={() => {
-          onSelect();
-          onToggle();
-        }}
-        style={{ cursor: "pointer" }}
+      <ActionRow
+        label={row.name}
+        expanded={hasRows ? expanded : undefined}
+        active={selected}
+        width={width}
+        onPress={() => { onSelect(); onToggle(); }}
       >
-        <Text fg={selected ? colors.textBright : colors.textDim}>{`${marker} `}</Text>
-        <Text fg={colors.textBright}>{row.name}</Text>
         {row.argumentSummary ? (
           <Text fg={colors.textDim}>{`  ${truncateWithEllipsis(row.argumentSummary, summaryWidth)}`}</Text>
         ) : null}
@@ -167,18 +163,10 @@ function ToolTimelineRow({
           <Text fg={statusColor(row)}>{status}</Text>
         )}
         {row.origin === "server" ? <Text fg={colors.textMuted}> · Gloom</Text> : null}
-      </Box>
+      </ActionRow>
       {undoLabel ? (
         <Box flexDirection="row" height={1} paddingLeft={2}>
-          <Text
-            fg={row.undo?.status === "failed" ? colors.negative : colors.textBright}
-            onMouseDown={() => {
-              if (row.undo?.status === "available" || !row.undo) onUndo();
-            }}
-            style={{ cursor: "pointer" }}
-          >
-            {undoLabel}
-          </Text>
+          <Button label={undoLabel} variant={row.undo?.status === "failed" ? "danger" : "ghost"} compact disabled={!!row.undo && row.undo.status !== "available"} onPress={onUndo} />
           {row.undo?.note ? <Text fg={colors.textMuted}>{`  ${row.undo.note}`}</Text> : null}
         </Box>
       ) : null}
@@ -302,9 +290,7 @@ function ToolResultDetail({
         </Text>
         <Box flexGrow={1} />
         {paneTarget ? (
-          <Text fg={colors.textBright} onMouseDown={onOpenPane} style={{ cursor: "pointer" }}>
-            open pane
-          </Text>
+          <Button label="Open pane" variant="ghost" compact onPress={onOpenPane} />
         ) : null}
       </Box>
       {tables.length > 1 ? (

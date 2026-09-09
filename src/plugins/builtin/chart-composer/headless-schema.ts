@@ -1,0 +1,220 @@
+import type { HeadlessPaneDefinition } from "../../../types/headless";
+import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES } from "../shared/headless-options";
+
+type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
+
+export const paneSchemas = {
+  "chart-composer-pane": {
+    argument: { kind: "free-text", optional: true },
+    options: [
+      {
+        key: "rangePreset",
+        description: "Chart history window.",
+        type: "enum",
+        aliases: ["range"],
+        values: HISTORY_RANGE_VALUES,
+      },
+      {
+        key: "chartResolution",
+        description: "Market-price sampling resolution.",
+        type: "enum",
+        aliases: ["resolution"],
+        values: [
+          { value: "auto" },
+          { value: "1m" },
+          { value: "5m" },
+          { value: "15m" },
+          { value: "30m" },
+          { value: "45m" },
+          { value: "1h" },
+          { value: "1d" },
+          { value: "1wk" },
+          { value: "1mo" },
+        ],
+      },
+    ],
+    discovery: {
+      id: "chart-composer",
+      aliases: ["custom chart", "mixed series chart", "chart composer", "economic chart"],
+      limitations: ["FRED observations do not include historical vintage availability dates."],
+      screenshotReadiness: "ready",
+    },
+  },
+  "graph-price-pane": {
+    argument: { kind: "ticker" },
+    options: [
+      {
+        key: "rangePreset",
+        settingKey: "chartRangePreset",
+        description: "Chart history window.",
+        type: "enum",
+        aliases: ["range"],
+        values: HISTORY_RANGE_VALUES,
+        defaultValue: "5Y",
+      },
+    ],
+    discovery: {
+      id: "price-chart",
+      aliases: ["price chart", "stock chart", "historical chart"],
+      screenshotReadiness: "ready",
+    },
+  },
+  "graph-intraday-price-pane": {
+    argument: { kind: "ticker" },
+    options: [
+      {
+        key: "rangePreset",
+        description: "Session window. 1D selects the latest session and 1W selects the latest five sessions.",
+        type: "enum",
+        aliases: ["range"],
+        values: [{ value: "1D", aliases: ["day", "daily"] }, { value: "1W", aliases: ["week", "weekly"] }],
+        defaultValue: "1D",
+      },
+      {
+        key: "chartResolution",
+        description: "Intraday sampling interval. Auto uses 1m for 1D and 5m for 1W.",
+        type: "enum",
+        aliases: ["resolution"],
+        values: [{ value: "auto" }, { value: "5m" }, { value: "15m" }, { value: "1h" }],
+        defaultValue: "auto",
+      },
+      {
+        key: "session",
+        description: "Specific exchange-local session in YYYY-MM-DD form. Overrides the session window.",
+        type: "string",
+      },
+    ],
+    discovery: {
+      id: "intraday-price-chart",
+      aliases: ["intraday chart", "intraday price", "one day chart"],
+      limitations: ["Intraday availability and historical retention depend on the selected market-data provider."],
+      screenshotReadiness: "ready",
+    },
+  },
+  "comparison-chart-pane": {
+    argument: { kind: "tickers", minimum: 2 },
+    options: [
+      {
+        key: "rangePreset",
+        description: "Price-history window.",
+        type: "enum",
+        aliases: ["range"],
+        values: HISTORY_RANGE_VALUES,
+        defaultValue: "1Y",
+      },
+      {
+        key: "axisMode",
+        description: "Display raw price or normalized percentage performance.",
+        type: "enum",
+        values: [
+          { value: "percent", aliases: ["return", "returns", "performance"] },
+          { value: "price", aliases: ["prices"] },
+        ],
+        defaultValue: "percent",
+      },
+      {
+        key: "chartResolution",
+        description: "Price sampling resolution.",
+        type: "enum",
+        aliases: ["resolution"],
+        values: [
+          { value: "1m" },
+          { value: "5m" },
+          { value: "15m" },
+          { value: "30m" },
+          { value: "45m" },
+          { value: "1h" },
+          { value: "1d" },
+          { value: "1wk" },
+          { value: "1mo" },
+        ],
+        defaultValue: "1d",
+      },
+    ],
+    discovery: {
+      id: "price-comparison",
+      aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices"],
+      limitations: ["Compares market prices or percentage returns, never company financial statements."],
+      screenshotReadiness: "ready",
+    },
+  },
+  "fundamental-graph-pane": {
+    argument: { kind: "tickers" },
+    options: [
+      {
+        key: "metric",
+        description: "Fundamental metric to compare.",
+        type: "enum",
+        values: [
+          { value: "totalRevenue", aliases: ["revenue", "sales"] },
+          { value: "grossProfit", aliases: ["gross profit"] },
+          { value: "grossMargin", aliases: ["gross margin"] },
+          { value: "operatingIncome", aliases: ["operating income", "ebit"] },
+          { value: "operatingMargin", aliases: ["operating margin"] },
+          { value: "netIncome", aliases: ["net income", "profit", "earnings"] },
+          { value: "netMargin", aliases: ["net margin", "profit margin"] },
+          { value: "operatingCashFlow", aliases: ["operating cash flow", "cash flow", "ocf"] },
+          { value: "freeCashFlow", aliases: ["free cash flow", "fcf"] },
+          { value: "freeCashFlowMargin", aliases: ["free cash flow margin", "fcf margin"] },
+          { value: "totalAssets", aliases: ["assets", "total assets"] },
+          { value: "totalDebt", aliases: ["debt", "total debt"] },
+          { value: "totalEquity", aliases: ["equity", "book value"] },
+          { value: "eps", aliases: ["earnings per share"] },
+        ],
+        defaultValue: "totalRevenue",
+      },
+      FINANCIAL_PERIOD_OPTION,
+      FINANCIAL_PERIOD_COUNT_OPTION,
+    ],
+    discovery: {
+      id: "fundamental-series",
+      aliases: [
+        "fundamental comparison",
+        "financial metric comparison",
+        "cash flow comparison",
+        "revenue comparison",
+        "earnings comparison",
+        "operating cash flow",
+        "free cash flow",
+        "fcf",
+        "ocf",
+      ],
+      limitations: ["One metric per invocation; run twice when both operating and free cash flow are requested."],
+      screenshotReadiness: "ready",
+    },
+  },
+  "valuation-graph-pane": {
+    argument: { kind: "tickers" },
+    options: [
+      {
+        key: "metric",
+        description: "Valuation metric to compare.",
+        type: "enum",
+        values: [
+          { value: "trailingPE", aliases: ["pe", "p/e", "trailing pe"] },
+          { value: "forwardPE", aliases: ["forward pe", "forward p/e"] },
+          { value: "pegRatio", aliases: ["peg", "peg ratio"] },
+          { value: "priceSales", aliases: ["price sales", "price to sales", "p/s"] },
+          { value: "evSales", aliases: ["ev sales", "ev/sales"] },
+          { value: "evEbitda", aliases: ["ev ebitda", "ev/ebitda"] },
+          { value: "priceFcf", aliases: ["price fcf", "price to free cash flow", "p/fcf"] },
+        ],
+        defaultValue: "priceSales",
+      },
+      FINANCIAL_PERIOD_OPTION,
+      FINANCIAL_PERIOD_COUNT_OPTION,
+    ],
+    discovery: {
+      id: "valuation-series",
+      aliases: [
+        "valuation comparison",
+        "multiple comparison",
+        "pe comparison",
+        "price to sales comparison",
+        "ev ebitda",
+      ],
+      limitations: ["Historical multiples require usable prices and statement share counts."],
+      screenshotReadiness: "ready",
+    },
+  },
+} satisfies Record<string, PaneSchema>;

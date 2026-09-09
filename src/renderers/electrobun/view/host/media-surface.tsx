@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import Hls from "hls.js";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import { isYoutubeEmbedUrl } from "../../../../plugins/builtin/tv/youtube-embed";
 import type { MediaSurfaceHandle, MediaSurfaceProps } from "../../../../ui/host";
 import { cleanDomProps, commonStyle } from "./style";
 
@@ -40,7 +39,7 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
   const youtubePlayingRef = useRef(autoPlay);
   const [failed, setFailed] = useState(false);
   const mediaSrc = typeof src === "string" ? src.trim() : "";
-  const youtubeEmbed = isYoutubeEmbedUrl(mediaSrc);
+  const youtubeEmbed = /^https?:\/\/(?:www\.)?youtube(?:-nocookie)?\.com\/embed\//.test(mediaSrc);
   const baseStyle = commonStyle(props);
 
   useImperativeHandle(forwardedRef, () => videoRef.current as HTMLVideoElement, []);

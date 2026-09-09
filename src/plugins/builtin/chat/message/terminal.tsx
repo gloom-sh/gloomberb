@@ -1,7 +1,7 @@
 import { Box, Text } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { MESSAGE_ACTION_WIDTH, formatInlinePreview, getMessageBodyTokenLines } from "../layout";
-import { ChatActionChip } from "./action-chip";
+import { Button } from "../../../../components/ui";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
@@ -100,20 +100,20 @@ export function TerminalChatMessage({
               <Text fg={state.headerStatusColor}> </Text>
               {showInlineReplyAction && (
                 <Box width={MESSAGE_ACTION_WIDTH} height={1}>
-                  <ChatActionChip
+                  <Button stopPropagation
                     label={t("Reply")}
                     width={MESSAGE_ACTION_WIDTH}
-                    emphasized={state.isSelected}
+                    variant={state.isSelected ? "primary" : "secondary"}
                     onPress={() => beginReplyTo(index)}
                   />
                 </Box>
               )}
               {showInlineEditAction && (
                 <Box width={MESSAGE_ACTION_WIDTH} height={1}>
-                  <ChatActionChip
+                  <Button stopPropagation
                     label={t("Edit")}
                     width={MESSAGE_ACTION_WIDTH}
-                    emphasized={state.isSelected}
+                    variant={state.isSelected ? "primary" : "secondary"}
                     onPress={() => beginEditMessage(index)}
                   />
                 </Box>
@@ -146,18 +146,18 @@ export function TerminalChatMessage({
           {lineIndex === 0 && (showGroupedReplyAction || showGroupedEditAction) && (
             <Box position="absolute" top={0} right={0} width={groupedActionWidth} height={1} flexDirection="row">
               {showGroupedReplyAction && (
-                <ChatActionChip
+                <Button stopPropagation
                   label={t("Reply")}
                   width={MESSAGE_ACTION_WIDTH}
-                  emphasized={state.isSelected}
+                  variant={state.isSelected ? "primary" : "secondary"}
                   onPress={() => beginReplyTo(index)}
                 />
               )}
               {showGroupedEditAction && (
-                <ChatActionChip
+                <Button stopPropagation
                   label={t("Edit")}
                   width={MESSAGE_ACTION_WIDTH}
-                  emphasized={state.isSelected}
+                  variant={state.isSelected ? "primary" : "secondary"}
                   onPress={() => beginEditMessage(index)}
                 />
               )}

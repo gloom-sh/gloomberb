@@ -36,18 +36,6 @@ export function buildSnapshotKey(instrument: InstrumentRef): string {
   return `snapshot:${buildInstrumentKey(instrument)}`;
 }
 
-export function buildProfileKey(instrument: InstrumentRef): string {
-  return `profile:${buildInstrumentKey(instrument)}`;
-}
-
-export function buildFundamentalsKey(instrument: InstrumentRef): string {
-  return `fundamentals:${buildInstrumentKey(instrument)}`;
-}
-
-export function buildStatementsKey(instrument: InstrumentRef): string {
-  return `statements:${buildInstrumentKey(instrument)}`;
-}
-
 export function buildChartKey(request: ChartRequest): string {
   return [
     "chart",

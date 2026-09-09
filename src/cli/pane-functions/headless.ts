@@ -1,3 +1,5 @@
+import { getSharedRegistry } from "../../plugins/registry";
+import { parsePublicTickerKey } from "../../utils/exchanges";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
 import type {
@@ -138,11 +140,11 @@ export async function loadHeadlessPaneModel(
 
 /**
  * Loads the same renderer-neutral model used by `fn`.
- * A future screenshot payload can call this function instead of adding another fetch path.
+ * Both reports and screenshot payloads execute this loader.
  */
 export async function loadResolvedHeadlessPaneModel(
   resolved: ResolvedPaneFunction,
-  context: MarketContext,
+  context: Pick<MarketContext, "config" | "store"> & { dataProvider: HeadlessPaneContext["marketData"] },
   rawArgument: string,
   signal: AbortSignal = new AbortController().signal,
 ): Promise<LoadedHeadlessPaneModel> {
@@ -154,6 +156,14 @@ export async function loadResolvedHeadlessPaneModel(
     apiClient,
     config: context.config,
     signal,
+    settings: resolved.instance.settings,
+    capabilities: getSharedRegistry() ?? undefined,
+    async resolveInstrument(key) {
+      const parsed = parsePublicTickerKey(key);
+      const ticker = await context.store.loadTicker(key)
+        ?? (key !== parsed.symbol ? await context.store.loadTicker(parsed.symbol) : null);
+      return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
+    },
   };
   const result = await loadHeadlessPaneModel(definition, args, headlessContext);
   return { definition, args, result };
@@ -398,14 +408,15 @@ export async function buildHeadlessFunctionReport(
 ): Promise<PaneFunctionReport> {
   const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
   const rowCount = resultRowCount(loaded.definition, loaded.result);
-  const unavailableSymbols = rowCount === 0 ? loaded.args.symbols : [];
+  const symbols = loaded.result.symbols ?? loaded.args.symbols;
+  const unavailableSymbols = loaded.result.unavailableSymbols ?? (rowCount === 0 ? symbols : []);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
   return {
     data: {
       kind: loaded.definition.shape,
       target: resolved.token,
       capabilityId: resolved.capability.id,
-      symbols: loaded.args.symbols,
+      symbols,
       options: resolved.options,
       rowCount,
       empty: rowCount === 0,

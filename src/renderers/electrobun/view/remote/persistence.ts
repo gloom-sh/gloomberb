@@ -4,7 +4,7 @@ import {
   SESSION_SAVE_DEBOUNCE_MS,
 } from "../../../../state/persist-scheduler";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "../backend-rpc";
-import { DesktopMemoryResourceStore } from "../resource-store";
+import { MemoryResourceStore } from "../../../../data/memory-resource-store";
 
 const PLUGIN_STATE_BACKEND_FLUSH_DELAY_MS = 25;
 
@@ -156,7 +156,7 @@ class RemotePluginStateStore {
 
 export class RemotePersistence {
   readonly tickers = {};
-  readonly resources = new DesktopMemoryResourceStore();
+  readonly resources = new MemoryResourceStore();
   readonly pluginState = new RemotePluginStateStore(getElectrobunBackendInitSnapshot()?.pluginState ?? {});
   readonly sessions = new RemoteSessionStore();
 

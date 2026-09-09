@@ -1,5 +1,12 @@
-import type { TickerFinancials } from "../types/financials";
-import type { InstrumentSearchResult } from "../types/instrument";
+import {
+  isMarketplaceLayoutId,
+  parseMarketplaceLayoutEntry,
+  parseMarketplaceLayoutList,
+  type LayoutMarketplaceEntry,
+  type LayoutMarketplacePayload,
+} from "../layout-marketplace/payload";
+import type { SyncSettings, SyncSnapshot } from "../sync/types";
+import { withDeadline } from "../utils/async-deadline";
 import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
 import { CloudChatApi } from "./chat";
@@ -8,101 +15,19 @@ import { ApiRequestError } from "./errors";
 import { CloudApiRequestTransport } from "./request";
 import { CloudApiSocket } from "./socket";
 import type {
-  CloudCdsParams,
-  CloudCongressHouseParams,
-  CloudEarningsCallsParams,
-  CloudFredSeriesParams,
-  CloudSearchParams,
-  CloudSecFilingParams,
-  CloudSecFilingsParams,
-  CloudHistoryParams,
-  CloudNewsParams,
-  CloudTickerTweetsParams,
-  CloudTweetSearchParams,
-} from "./paths";
-import { withDeadline } from "../utils/async-deadline";
-import type {
   AssistCommandDescriptor,
   AssistCommandResponse,
-  ChatMessage,
-  ChatChannel,
-  ChatChannelState,
-  ChatNotification,
-  ChatStateResponse,
   AuthUser,
-  PersistedAuthUser,
-  AccountProfile,
-  BuildoutAccountResponse,
-  BuildoutTokenResponse,
-  CloudPricing,
-  AccountProfileUpdate,
-  CloudQuotePayload,
-  CloudOptionsChainPayload,
-  CloudCompanyProfile,
-  CloudFundamentals,
-  CloudHoldersPayload,
-  CloudAnalystResearchPayload,
-  CloudShortInterestPayload,
-  CloudBrowserHandoffResponse,
-  CloudCorporateActionsPayload,
-  CloudPricePointPayload,
-  CloudEconEventPayload,
-  CloudEquityDiagnosticMode,
-  CloudEquityDiagnosticResult,
-  CloudCdsResponse,
-  CloudFredSeriesPayload,
-  CloudShillerPayload,
-  CloudYieldPointPayload,
-  CloudCongressHousePayload,
-  CloudEarningsCallListPayload,
-  CloudEarningsTranscriptPayload,
-  CloudProxyStatementListPayload,
-  CloudProxyStatementPayload,
-  CloudFilingEventPayload,
-  CloudRiskReportListPayload,
-  CloudRiskReportPayload,
-  CloudNewsPayload,
-  CloudSavedSearch,
-  CloudSavedSearchInput,
-  CloudSearchDocType,
-  CloudSearchDocument,
-  CloudSearchDocumentResponse,
-  CloudSearchHit,
-  CloudSearchResponse,
-  CloudSecContentResponse,
-  CloudSecDocumentsResponse,
-  CloudSecFilingsResponse,
-  CloudNewsListResponse,
-  CloudTweetSearchResponse,
-  CloudMarketResponse,
-  CloudMarketBatchTarget,
-  CloudMarketBatchPayload,
-  CloudMarketScreenerCategory,
-  CloudMarketScreenerPayload,
-  CloudWorldVenueMapPayload,
-  CloudVerificationResponse,
-  DeviceAuthStartResponse,
-  DeviceAuthTokenResponse,
   CloudRoundupPreviewResponse,
   CloudSyncPushResponse,
   CloudSyncSnapshotResponse,
-  QuoteStreamTarget,
-  ScannerFeedEvent,
-  ScannerKind,
+  PersistedAuthUser
 } from "./types";
-import type { SyncSettings, SyncSnapshot } from "../sync/types";
-import {
-  isMarketplaceLayoutId,
-  parseMarketplaceLayoutEntry,
-  parseMarketplaceLayoutList,
-  type LayoutMarketplaceEntry,
-  type LayoutMarketplacePayload,
-} from "../layout-marketplace/payload";
 
-export type * from "./types";
-export { setCloudApiFetchTransport } from "./request";
 export { ASKGTransportError } from "./askg";
-export type { ASKGTransport, ASKGToolResultOutcome } from "./askg";
+export type { ASKGToolResultOutcome, ASKGTransport } from "./askg";
+export { setCloudApiFetchTransport } from "./request";
+export type * from "./types";
 
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
@@ -113,65 +38,49 @@ class GloomApiClient {
   private currentUser: AuthUser | null = null;
   private sessionChecked = false;
   /** Last few session transitions, content-free, for app://auth. */
-  private authTrace: Array<{
-    at: number;
-    event: string;
-    token: boolean;
-    user: string;
-  }> = [];
+  private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
   private sessionRequest: Promise<AuthUser | null> | null = null;
   private readonly currentUserListeners = new Set<() => void>();
   private readonly transport = new CloudApiRequestTransport();
-  private readonly auth: CloudAuthApi;
-  private readonly socket: CloudApiSocket;
-  private readonly chat: CloudChatApi;
-  private readonly data: CloudDataApi;
-  readonly askg: CloudASKGApi;
-
-  constructor() {
-    this.auth = new CloudAuthApi({
-      getCurrentUser: () => this.currentUser,
-      getSessionToken: () => this.transport.getSessionToken(),
-      hasSessionCredential: () => this.transport.hasSessionCredential(),
-      request: (path, options) => this.request(path, options),
-      requireCapturedSession: (message) => this.requireCapturedSession(message),
-      setCurrentUser: (user) => this.setCurrentUser(user),
-      setSessionToken: (token) => this.setSessionToken(token),
-      updateCurrentUser: (updater) => this.updateCurrentUser(updater),
-    });
-    this.socket = new CloudApiSocket({
-      getBaseUrl: () => this.transport.baseUrl,
-      getSocketAuthToken: () => this.getSocketAuthToken(),
-      hasSessionCredential: () => this.transport.hasSessionCredential(),
-      hasVerifiedUser: () => this.currentUser?.emailVerified === true,
-      isUsingWebSocketToken: () => !!this.transport.getWebSocketToken(),
-      clearWebSocketTokenForFallback: () =>
-        this.transport.clearWebSocketTokenForFallback(),
-      markCurrentUserUnverified: () => {
-        if (this.currentUser) {
-          this.currentUser = { ...this.currentUser, emailVerified: false };
-        }
-      },
-      updateCurrentUserFromSocket: (user) => {
-        this.updateCurrentUser((currentUser) => ({
-          ...currentUser,
-          ...user,
-        }));
-      },
-    });
-    this.chat = new CloudChatApi({
-      request: (path, options) => this.request(path, options),
-      socket: this.socket,
-    });
-    this.data = new CloudDataApi((path, options) =>
-      this.request(path, options),
-    );
-    this.askg = new CloudASKGApi({
-      request: (path, options) => this.request(path, options),
-      openStream: (path, options) => this.transport.openStream(path, options),
-      isStreamingSupported: () => this.transport.isStreamingSupported(),
-    });
-  }
+  private readonly auth: CloudAuthApi = new CloudAuthApi({
+    getCurrentUser: () => this.currentUser,
+    getSessionToken: () => this.transport.getSessionToken(),
+    hasSessionCredential: () => this.transport.hasSessionCredential(),
+    request: (path, options) => this.request(path, options),
+    requireCapturedSession: (message) => this.requireCapturedSession(message),
+    setCurrentUser: (user) => this.setCurrentUser(user),
+    setSessionToken: (token) => this.setSessionToken(token),
+    updateCurrentUser: (updater) => this.updateCurrentUser(updater),
+  });
+  private readonly socket: CloudApiSocket = new CloudApiSocket({
+    getBaseUrl: () => this.transport.baseUrl,
+    getSocketAuthToken: () => this.getSocketAuthToken(),
+    hasSessionCredential: () => this.transport.hasSessionCredential(),
+    hasVerifiedUser: () => this.currentUser?.emailVerified === true,
+    isUsingWebSocketToken: () => !!this.transport.getWebSocketToken(),
+    clearWebSocketTokenForFallback: () => this.transport.clearWebSocketTokenForFallback(),
+    markCurrentUserUnverified: () => {
+      if (this.currentUser) {
+        this.currentUser = { ...this.currentUser, emailVerified: false };
+      }
+    },
+    updateCurrentUserFromSocket: (user) => {
+      this.updateCurrentUser((currentUser) => ({
+        ...currentUser,
+        ...user,
+      }));
+    },
+  });
+  private readonly chat: CloudChatApi = new CloudChatApi({
+    request: (path, options) => this.request(path, options),
+    socket: this.socket,
+  });
+  private readonly data: CloudDataApi = new CloudDataApi((path, options) => this.request(path, options));
+  readonly askg: CloudASKGApi = new CloudASKGApi({
+    request: (path, options) => this.request(path, options),
+    openStream: (path, options) => this.transport.openStream(path, options),
+    isStreamingSupported: () => this.transport.isStreamingSupported(),
+  });
 
   getSessionToken(): string | null {
     return this.transport.getSessionToken();
@@ -190,9 +99,7 @@ class GloomApiClient {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
     this.transport.setSessionToken(token);
-    this.traceAuth(
-      changed ? "setSessionToken:changed" : "setSessionToken:same",
-    );
+    this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
       this.currentUser = null;
       this.emitCurrentUserChange();
@@ -232,9 +139,7 @@ class GloomApiClient {
   }
 
   isVerified(): boolean {
-    return (
-      this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified
-    );
+    return this.transport.hasSessionCredential() && !!this.currentUser?.emailVerified;
   }
 
   /**
@@ -266,20 +171,17 @@ class GloomApiClient {
       trace: [...this.authTrace],
       currentUser: user
         ? {
-            id: user.id,
-            emailVerified: user.emailVerified === true,
-            plan: user.plan ?? null,
-            effectivePlan: user.effectivePlan ?? null,
-            trialEndsAt: user.trialEndsAt ?? null,
-          }
+          id: user.id,
+          emailVerified: user.emailVerified === true,
+          plan: user.plan ?? null,
+          effectivePlan: user.effectivePlan ?? null,
+          trialEndsAt: user.trialEndsAt ?? null,
+        }
         : null,
     };
   }
 
-  private traceAuth(
-    event: string,
-    user: AuthUser | null = this.currentUser,
-  ): void {
+  private traceAuth(event: string, user: AuthUser | null = this.currentUser): void {
     this.authTrace.push({
       at: Date.now(),
       event,
@@ -290,9 +192,7 @@ class GloomApiClient {
   }
 
   private setCurrentUser(user: AuthUser | null): void {
-    const changed =
-      this.socketEntitlementKey(this.currentUser) !==
-      this.socketEntitlementKey(user);
+    const changed = this.socketEntitlementKey(this.currentUser) !== this.socketEntitlementKey(user);
     this.traceAuth("setCurrentUser", user);
     this.currentUser = user;
     this.socket.syncAuthState({ reconnect: changed });
@@ -340,33 +240,11 @@ class GloomApiClient {
     return this.currentUser?.emailVerified ? this.currentUser : null;
   }
 
-  async signUp(
-    email: string,
-    username: string,
-    name: string,
-    password: string,
-  ): Promise<AuthUser> {
-    return this.auth.signUp(email, username, name, password);
-  }
-
-  async signIn(email: string, password: string): Promise<AuthUser> {
-    return this.auth.signIn(email, password);
-  }
-
-  async startDeviceSignIn(body: {
-    clientName?: string;
-    clientPlatform?: string;
-  }): Promise<DeviceAuthStartResponse> {
-    return this.auth.startDeviceSignIn(body);
-  }
-
-  async pollDeviceSignIn(deviceCode: string): Promise<DeviceAuthTokenResponse> {
-    return this.auth.pollDeviceSignIn(deviceCode);
-  }
-
-  async signOut(): Promise<void> {
-    return this.auth.signOut();
-  }
+  signUp = this.auth.signUp.bind(this.auth);
+  signIn = this.auth.signIn.bind(this.auth);
+  startDeviceSignIn = this.auth.startDeviceSignIn.bind(this.auth);
+  pollDeviceSignIn = this.auth.pollDeviceSignIn.bind(this.auth);
+  signOut = this.auth.signOut.bind(this.auth);
 
   async getSession(): Promise<AuthUser | null> {
     if (this.sessionRequest) {
@@ -381,53 +259,32 @@ class GloomApiClient {
       this.traceAuth("getSession:done", user);
       return user;
     } catch (error) {
-      this.traceAuth(
-        `getSession:error:${error instanceof Error ? error.message.slice(0, 60) : "unknown"}`,
-      );
+      this.traceAuth(`getSession:error:${error instanceof Error ? error.message.slice(0, 60) : "unknown"}`);
       throw error;
     } finally {
       this.sessionRequest = null;
     }
   }
 
-  async sendVerification(): Promise<CloudVerificationResponse> {
-    return this.auth.sendVerification();
-  }
-
-  async requestPasswordReset(email: string): Promise<void> {
-    return this.auth.requestPasswordReset(email);
-  }
-
-  async createBrowserHandoff(): Promise<CloudBrowserHandoffResponse> {
-    return this.auth.createBrowserHandoff();
-  }
+  sendVerification = this.auth.sendVerification.bind(this.auth);
+  requestPasswordReset = this.auth.requestPasswordReset.bind(this.auth);
+  createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
   /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
   async createCloudCheckout(returnTo?: string): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", {
-      method: "POST",
-      body: JSON.stringify({ returnTo }),
-    });
+    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo }) });
   }
 
   async recordResearchActivity(payload: {
-    event: import("./research-activity").ResearchActivity;
-    eventId: string;
-    surface: "web" | "desktop" | "tui" | "cli";
-    anonymousId?: string;
-    attribution?: Record<string, string>;
-    feature?: import("./research-activity").ResearchFeature;
+    event: import("./research-activity").ResearchActivity; eventId: string;
+    surface: "web" | "desktop" | "tui" | "cli"; anonymousId?: string;
+    attribution?: Record<string, string>; feature?: import("./research-activity").ResearchFeature;
   }): Promise<void> {
-    await this.request("/activity/research", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+    await this.request("/activity/research", { method: "POST", body: JSON.stringify(payload) });
   }
 
   /** Stores a verified user's public terminal snapshot or pane handoff. */
-  async createTerminalShare(
-    payload: unknown,
-  ): Promise<{ id: string; expiresAt: string }> {
+  async createTerminalShare(payload: unknown): Promise<{ id: string; expiresAt: string }> {
     return this.request<{ id: string; expiresAt: string }>("/shares", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -436,44 +293,20 @@ class GloomApiClient {
 
   /** Stripe billing portal for an account that already has a subscription. */
   async createBillingPortal(): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/portal", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+    return this.request<{ url: string }>("/stripe/portal", { method: "POST", body: JSON.stringify({}) });
   }
 
-  async getAccountProfile(): Promise<AccountProfile> {
-    return this.auth.getAccountProfile();
-  }
-
-  async getCloudPricing(): Promise<CloudPricing> {
-    return this.auth.getCloudPricing();
-  }
-
-  async getBuildoutAccount(): Promise<BuildoutAccountResponse> {
-    return this.auth.getBuildoutAccount();
-  }
-
-  async getBuildoutToken(): Promise<BuildoutTokenResponse> {
-    return this.auth.getBuildoutToken();
-  }
-
-  async updateAccountProfile(
-    update: AccountProfileUpdate,
-  ): Promise<AccountProfile> {
-    return this.auth.updateAccountProfile(update);
-  }
+  getAccountProfile = this.auth.getAccountProfile.bind(this.auth);
+  getCloudPricing = this.auth.getCloudPricing.bind(this.auth);
+  getBuildoutAccount = this.auth.getBuildoutAccount.bind(this.auth);
+  getBuildoutToken = this.auth.getBuildoutToken.bind(this.auth);
+  updateAccountProfile = this.auth.updateAccountProfile.bind(this.auth);
 
   async getSyncSnapshot(): Promise<CloudSyncSnapshotResponse> {
-    return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", {
-      method: "GET",
-    });
+    return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });
   }
 
-  async putSyncSnapshot(
-    snapshot: SyncSnapshot,
-    options?: { baseRevision?: number | null },
-  ): Promise<CloudSyncPushResponse> {
+  async putSyncSnapshot(snapshot: SyncSnapshot, options?: { baseRevision?: number | null }): Promise<CloudSyncPushResponse> {
     return this.request<CloudSyncPushResponse>("/sync/snapshot", {
       method: "PUT",
       body: JSON.stringify({
@@ -489,29 +322,22 @@ class GloomApiClient {
   ): Promise<LayoutMarketplaceEntry | null> {
     if (!isMarketplaceLayoutId(id)) return null;
     try {
-      return parseMarketplaceLayoutEntry(
-        await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
-          method: "GET",
-          signal: options?.signal,
-        }),
-      );
+      return parseMarketplaceLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
+        method: "GET",
+        signal: options?.signal,
+      }));
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) return null;
       throw error;
     }
   }
 
-  async listMarketplaceLayouts(options?: {
-    signal?: AbortSignal;
-  }): Promise<LayoutMarketplaceEntry[]> {
-    const items = parseMarketplaceLayoutList(
-      await this.request<unknown>("/layouts", {
-        method: "GET",
-        signal: options?.signal,
-      }),
-    );
-    if (!items)
-      throw new Error("The layout marketplace returned invalid data.");
+  async listMarketplaceLayouts(options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry[]> {
+    const items = parseMarketplaceLayoutList(await this.request<unknown>("/layouts", {
+      method: "GET",
+      signal: options?.signal,
+    }));
+    if (!items) throw new Error("The layout marketplace returned invalid data.");
     return items;
   }
 
@@ -520,27 +346,20 @@ class GloomApiClient {
     payload: LayoutMarketplacePayload,
     options?: { signal?: AbortSignal },
   ): Promise<LayoutMarketplaceEntry> {
-    const item = parseMarketplaceLayoutEntry(
-      await this.request<unknown>("/layouts", {
-        method: "POST",
-        body: JSON.stringify({ name: name.trim(), ...payload }),
-        signal: options?.signal,
-      }),
-    );
+    const item = parseMarketplaceLayoutEntry(await this.request<unknown>("/layouts", {
+      method: "POST",
+      body: JSON.stringify({ name: name.trim(), ...payload }),
+      signal: options?.signal,
+    }));
     if (!item) throw new Error("The layout marketplace returned invalid data.");
     return item;
   }
 
-  async updateSyncSettings(
-    update: Partial<SyncSettings>,
-  ): Promise<SyncSettings> {
-    const result = await this.request<{ settings: SyncSettings }>(
-      "/sync/settings",
-      {
-        method: "PATCH",
-        body: JSON.stringify(update),
-      },
-    );
+  async updateSyncSettings(update: Partial<SyncSettings>): Promise<SyncSettings> {
+    const result = await this.request<{ settings: SyncSettings }>("/sync/settings", {
+      method: "PATCH",
+      body: JSON.stringify(update),
+    });
     if (this.currentUser) {
       this.currentUser = {
         ...this.currentUser,
@@ -548,38 +367,22 @@ class GloomApiClient {
         weeklyRoundupEnabled: result.settings.weeklyRoundupEnabled,
         positionAlertsEnabled: result.settings.positionAlertsEnabled,
         lastSyncAt: result.settings.lastSyncAt ?? this.currentUser.lastSyncAt,
-        lastRoundupEmailAt:
-          result.settings.lastRoundupEmailAt ??
-          this.currentUser.lastRoundupEmailAt,
+        lastRoundupEmailAt: result.settings.lastRoundupEmailAt ?? this.currentUser.lastRoundupEmailAt,
       };
     }
     return result.settings;
   }
 
   async getRoundupPreview(): Promise<CloudRoundupPreviewResponse> {
-    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/preview", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/preview", { method: "POST", body: JSON.stringify({}) });
   }
 
   async sendRoundupTestEmail(): Promise<CloudRoundupPreviewResponse> {
-    return this.request<CloudRoundupPreviewResponse>(
-      "/sync/roundup/test-email",
-      { method: "POST", body: JSON.stringify({}) },
-    );
+    return this.request<CloudRoundupPreviewResponse>("/sync/roundup/test-email", { method: "POST", body: JSON.stringify({}) });
   }
 
-  async changePassword(
-    currentPassword: string,
-    newPassword: string,
-  ): Promise<void> {
-    return this.auth.changePassword(currentPassword, newPassword);
-  }
-
-  async deleteAccount(): Promise<void> {
-    return this.auth.deleteAccount();
-  }
+  changePassword = this.auth.changePassword.bind(this.auth);
+  deleteAccount = this.auth.deleteAccount.bind(this.auth);
 
   /**
    * Resolves a natural-language command-bar query into runnable command-bar
@@ -621,415 +424,74 @@ class GloomApiClient {
     }
   }
 
-  async getChannels(): Promise<ChatChannel[]> {
-    return this.chat.getChannels();
-  }
-
-  async getChatPresence(): Promise<{ onlineCount: number }> {
-    return this.chat.getPresence();
-  }
-
-  async getChatState(): Promise<ChatStateResponse> {
-    return this.chat.getState();
-  }
-
-  async updateChatChannelState(
-    channelId: string,
-    body: { notificationsEnabled?: boolean; readThroughMessageId?: string },
-  ): Promise<ChatChannelState> {
-    return this.chat.updateChannelState(channelId, body);
-  }
-
-  async markChatNotificationsDelivered(
-    notificationIds: string[],
-  ): Promise<{ delivered: number }> {
-    return this.chat.markNotificationsDelivered(notificationIds);
-  }
-
-  async openDirectChannel(target: {
-    userId?: string;
-    username?: string;
-  }): Promise<ChatChannel> {
-    return this.chat.openDirectChannel(target);
-  }
-
-  async openGroupChannel(body: {
-    userIds?: string[];
-    usernames?: string[];
-    name?: string;
-  }): Promise<ChatChannel> {
-    return this.chat.openGroupChannel(body);
-  }
-
-  async getMessages(
-    channelId: string,
-    opts?: { after?: string; before?: string; limit?: number },
-  ): Promise<ChatMessage[]> {
-    return this.chat.getMessages(channelId, opts);
-  }
-
-  async sendMessage(
-    channelId: string,
-    content: string,
-    replyToId?: string,
-    clientMessageId?: string,
-  ): Promise<ChatMessage> {
-    return this.chat.sendMessage(
-      channelId,
-      content,
-      replyToId,
-      clientMessageId,
-    );
-  }
-
-  async editMessage(
-    channelId: string,
-    messageId: string,
-    content: string,
-  ): Promise<ChatMessage> {
-    return this.chat.editMessage(channelId, messageId, content);
-  }
-
-  connectChannel(
-    channelId: string,
-    onMessage: (msg: ChatMessage) => void,
-    onError?: (err: string) => void,
-  ): {
-    send: (
-      content: string,
-      replyToId?: string,
-      clientMessageId?: string,
-    ) => Promise<ChatMessage>;
-    close: () => void;
-  } {
-    return this.chat.connectChannel(channelId, onMessage, onError);
-  }
-
-  subscribeChatNotifications(
-    listener: (notification: ChatNotification) => void,
-  ): () => void {
-    return this.chat.subscribeNotifications(listener);
-  }
-
-  subscribeChatPresence(listener: (onlineCount: number) => void): () => void {
-    return this.chat.subscribePresence(listener);
-  }
-
-  subscribeQuotes(
-    targets: QuoteStreamTarget[],
-    onQuote: (target: QuoteStreamTarget, quote: CloudQuotePayload) => void,
-  ): () => void {
-    return this.socket.subscribeQuotes(targets, onQuote);
-  }
+  getChannels = this.chat.getChannels.bind(this.chat);
+  getChatPresence = this.chat.getPresence.bind(this.chat);
+  getChatState = this.chat.getState.bind(this.chat);
+  updateChatChannelState = this.chat.updateChannelState.bind(this.chat);
+  markChatNotificationsDelivered = this.chat.markNotificationsDelivered.bind(this.chat);
+  openDirectChannel = this.chat.openDirectChannel.bind(this.chat);
+  openGroupChannel = this.chat.openGroupChannel.bind(this.chat);
+  getMessages = this.chat.getMessages.bind(this.chat);
+  sendMessage = this.chat.sendMessage.bind(this.chat);
+  editMessage = this.chat.editMessage.bind(this.chat);
+  connectChannel = this.chat.connectChannel.bind(this.chat);
+  subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);
+  subscribeChatPresence = this.chat.subscribePresence.bind(this.chat);
+  subscribeQuotes = this.socket.subscribeQuotes.bind(this.socket);
 
   /** Subscribes to a shared scanner feed; all panes of one kind share one upstream subscription. */
-  subscribeScanner(
-    scanner: ScannerKind,
-    listener: (event: ScannerFeedEvent) => void,
-  ): () => void {
-    return this.socket.subscribeScanner(scanner, listener);
-  }
+  subscribeScanner = this.socket.subscribeScanner.bind(this.socket);
 
   dispose(): void {
     this.socket.dispose();
   }
 
-  async searchInstruments(
-    query: string,
-    limit = 10,
-  ): Promise<InstrumentSearchResult[]> {
-    return this.data.searchInstruments(query, limit);
-  }
-
-  async getCloudQuote(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudQuotePayload>> {
-    return this.data.getCloudQuote(symbol, exchange);
-  }
-
-  async getCloudQuotesBatch(
-    targets: CloudMarketBatchTarget[],
-    mode: "cache-first" | "refresh" = "cache-first",
-  ): Promise<CloudMarketResponse<CloudMarketBatchPayload<CloudQuotePayload>>> {
-    return this.data.getCloudQuotesBatch(targets, mode);
-  }
-
-  async getCloudWorldVenues(): Promise<
-    CloudMarketResponse<CloudWorldVenueMapPayload>
-  > {
-    return this.data.getCloudWorldVenues();
-  }
-
-  async getCloudMarketScreener(
-    category: CloudMarketScreenerCategory,
-    count = 25,
-    mode: "cache-first" | "refresh" = "cache-first",
-  ): Promise<CloudMarketResponse<CloudMarketScreenerPayload>> {
-    return this.data.getCloudMarketScreener(category, count, mode);
-  }
-
-  async getCloudOptionsChain(
-    symbol: string,
-    exchange?: string,
-    expirationDate?: number,
-  ): Promise<CloudMarketResponse<CloudOptionsChainPayload>> {
-    return this.data.getCloudOptionsChain(symbol, exchange, expirationDate);
-  }
-
-  async getCloudProfile(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudCompanyProfile>> {
-    return this.data.getCloudProfile(symbol, exchange);
-  }
-
-  async getCloudFundamentals(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudFundamentals>> {
-    return this.data.getCloudFundamentals(symbol, exchange);
-  }
-
-  async getCloudFinancials(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<TickerFinancials>> {
-    return this.data.getCloudFinancials(symbol, exchange);
-  }
-
-  async getCloudFinancialsBatch(
-    targets: CloudMarketBatchTarget[],
-    mode: "cache-first" | "refresh" = "cache-first",
-  ): Promise<CloudMarketResponse<CloudMarketBatchPayload<TickerFinancials>>> {
-    return this.data.getCloudFinancialsBatch(targets, mode);
-  }
-
-  async getCloudHolders(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudHoldersPayload>> {
-    return this.data.getCloudHolders(symbol, exchange);
-  }
-
-  async getCloudShortInterest(
-    symbol: string,
-    years?: number,
-  ): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
-    return this.data.getCloudShortInterest(symbol, years);
-  }
-
-  async getCloudAnalystResearch(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
-    return this.data.getCloudAnalystResearch(symbol, exchange);
-  }
-
-  async getCloudCorporateActions(
-    symbol: string,
-    exchange?: string,
-  ): Promise<CloudMarketResponse<CloudCorporateActionsPayload>> {
-    return this.data.getCloudCorporateActions(symbol, exchange);
-  }
-
-  async getCloudStatements(
-    symbol: string,
-    exchange?: string,
-    period: "annual" | "quarterly" | "both" = "both",
-  ): Promise<
-    CloudMarketResponse<
-      Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">
-    >
-  > {
-    return this.data.getCloudStatements(symbol, exchange, period);
-  }
-
-  async getCloudHistory(
-    symbol: string,
-    exchange: string,
-    params: CloudHistoryParams = {},
-  ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
-    return this.data.getCloudHistory(symbol, exchange, params);
-  }
-
-  async getCloudExchangeRate(
-    fromCurrency: string,
-  ): Promise<CloudMarketResponse<{ rate: number }>> {
-    return this.data.getCloudExchangeRate(fromCurrency);
-  }
-
-  async getCloudEconomicCalendar(): Promise<CloudEconEventPayload[]> {
-    return this.data.getCloudEconomicCalendar();
-  }
-
-  async getCloudEquityDiagnostic(
-    symbol: string,
-    exchange?: string,
-    mode: CloudEquityDiagnosticMode = "cache-first",
-  ): Promise<CloudEquityDiagnosticResult> {
-    return this.data.getCloudEquityDiagnostic(symbol, exchange, mode);
-  }
-
-  async getCloudFredSeries(
-    seriesId: string,
-    params: CloudFredSeriesParams = {},
-  ): Promise<CloudFredSeriesPayload> {
-    return this.data.getCloudFredSeries(seriesId, params);
-  }
-
-  async getCloudShiller(): Promise<CloudShillerPayload> {
-    return this.data.getCloudShiller();
-  }
-
-  async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
-    return this.data.getCloudYieldCurve();
-  }
-
-  async getCloudCds(params: CloudCdsParams = {}): Promise<CloudCdsResponse> {
-    return this.data.getCloudCds(params);
-  }
-
-  async getCloudCongressHouse(
-    params: CloudCongressHouseParams = {},
-  ): Promise<CloudCongressHousePayload> {
-    return this.data.getCloudCongressHouse(params);
-  }
-
-  async getCloudEarningsCalls(
-    params: CloudEarningsCallsParams = {},
-  ): Promise<CloudEarningsCallListPayload> {
-    return this.data.getCloudEarningsCalls(params);
-  }
-
-  async getCloudEarningsTranscript(
-    id: string,
-  ): Promise<CloudEarningsTranscriptPayload> {
-    return this.data.getCloudEarningsTranscript(id);
-  }
-
-  async getProxyStatements(
-    ticker: string,
-  ): Promise<CloudProxyStatementListPayload> {
-    return this.data.getProxyStatements(ticker);
-  }
-
-  async getProxyStatement(
-    ticker: string,
-    year: number,
-  ): Promise<CloudProxyStatementPayload> {
-    return this.data.getProxyStatement(ticker, year);
-  }
-
-  async getFilingEvents(
-    ticker: string,
-    limit?: number,
-  ): Promise<{ ticker: string; events: CloudFilingEventPayload[] }> {
-    return this.data.getFilingEvents(ticker, limit);
-  }
-
-  async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
-    return this.data.getRiskReports(ticker);
-  }
-
-  async getRiskReport(
-    ticker: string,
-    year: number,
-  ): Promise<CloudRiskReportPayload> {
-    return this.data.getRiskReport(ticker, year);
-  }
-
-  async getCloudSecFilings(
-    params: CloudSecFilingsParams,
-  ): Promise<CloudSecFilingsResponse> {
-    return this.data.getCloudSecFilings(params);
-  }
-
-  async getCloudSecFilingDocuments(
-    params: CloudSecFilingParams,
-  ): Promise<CloudSecDocumentsResponse> {
-    return this.data.getCloudSecFilingDocuments(params);
-  }
-
-  async getCloudSecFilingContent(
-    params: CloudSecFilingParams,
-  ): Promise<CloudSecContentResponse> {
-    return this.data.getCloudSecFilingContent(params);
-  }
-
-  async getCloudSec13F(
-    path: string,
-    params: Record<string, string | number | undefined> = {},
-  ): Promise<unknown> {
-    return this.data.getCloudSec13F(path, params);
-  }
-
-  async searchCloudDocuments(
-    params: CloudSearchParams,
-    options?: { signal?: AbortSignal },
-  ): Promise<CloudSearchResponse> {
-    return this.data.searchCloudDocuments(params, options);
-  }
-
-  async getCloudSearchDocument(
-    docType: CloudSearchDocType,
-    sourceId: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<CloudSearchDocument> {
-    return this.data.getCloudSearchDocument(docType, sourceId, options);
-  }
-
-  async getCloudSavedSearches(options?: {
-    signal?: AbortSignal;
-  }): Promise<CloudSavedSearch[]> {
-    return this.data.getCloudSavedSearches(options);
-  }
-
-  async createCloudSavedSearch(
-    input: CloudSavedSearchInput,
-  ): Promise<CloudSavedSearch> {
-    return this.data.createCloudSavedSearch(input);
-  }
-
-  async updateCloudSavedSearch(
-    id: string,
-    update: Partial<CloudSavedSearchInput>,
-  ): Promise<CloudSavedSearch> {
-    return this.data.updateCloudSavedSearch(id, update);
-  }
-
-  async deleteCloudSavedSearch(id: string): Promise<void> {
-    return this.data.deleteCloudSavedSearch(id);
-  }
-
-  async getCloudSavedSearchHits(
-    id: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<CloudSearchHit[]> {
-    return this.data.getCloudSavedSearchHits(id, options);
-  }
-
-  async getCloudNews(
-    params: CloudNewsParams = {},
-  ): Promise<CloudNewsListResponse> {
-    return this.data.getCloudNews(params);
-  }
-
-  async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {
-    return this.data.getCloudNewsStory(storyId);
-  }
-
-  async getCloudTickerTweets(
-    params: CloudTickerTweetsParams,
-  ): Promise<CloudTweetSearchResponse> {
-    return this.data.getCloudTickerTweets(params);
-  }
-
-  async searchCloudTweets(
-    params: CloudTweetSearchParams,
-  ): Promise<CloudTweetSearchResponse> {
-    return this.data.searchCloudTweets(params);
-  }
+  searchInstruments = this.data.searchInstruments.bind(this.data);
+  getCloudQuote = this.data.getCloudQuote.bind(this.data);
+  getCloudQuotesBatch = this.data.getCloudQuotesBatch.bind(this.data);
+  getCloudWorldVenues = this.data.getCloudWorldVenues.bind(this.data);
+  getCloudMarketScreener = this.data.getCloudMarketScreener.bind(this.data);
+  getCloudOptionsChain = this.data.getCloudOptionsChain.bind(this.data);
+  getCloudProfile = this.data.getCloudProfile.bind(this.data);
+  getCloudFundamentals = this.data.getCloudFundamentals.bind(this.data);
+  getCloudFinancials = this.data.getCloudFinancials.bind(this.data);
+  getCloudFinancialsBatch = this.data.getCloudFinancialsBatch.bind(this.data);
+  getCloudHolders = this.data.getCloudHolders.bind(this.data);
+  getCloudShortInterest = this.data.getCloudShortInterest.bind(this.data);
+  getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
+  getCloudCorporateActions = this.data.getCloudCorporateActions.bind(this.data);
+  getCloudStatements = this.data.getCloudStatements.bind(this.data);
+  getCloudHistory = this.data.getCloudHistory.bind(this.data);
+  getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
+  getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
+  getCloudEquityDiagnostic = this.data.getCloudEquityDiagnostic.bind(this.data);
+  getCloudFredSeries = this.data.getCloudFredSeries.bind(this.data);
+  getCloudShiller = this.data.getCloudShiller.bind(this.data);
+  getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
+  getCloudCds = this.data.getCloudCds.bind(this.data);
+  getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
+  getCloudEarningsCalls = this.data.getCloudEarningsCalls.bind(this.data);
+  getCloudEarningsTranscript = this.data.getCloudEarningsTranscript.bind(this.data);
+  getProxyStatements = this.data.getProxyStatements.bind(this.data);
+  getProxyStatement = this.data.getProxyStatement.bind(this.data);
+  getFilingEvents = this.data.getFilingEvents.bind(this.data);
+  getRiskReports = this.data.getRiskReports.bind(this.data);
+  getRiskReport = this.data.getRiskReport.bind(this.data);
+  getCloudSecFilings = this.data.getCloudSecFilings.bind(this.data);
+  getCloudSecFilingDocuments = this.data.getCloudSecFilingDocuments.bind(this.data);
+  getCloudSecFilingContent = this.data.getCloudSecFilingContent.bind(this.data);
+  getCloudSec13F = this.data.getCloudSec13F.bind(this.data);
+  searchCloudDocuments = this.data.searchCloudDocuments.bind(this.data);
+  getCloudSearchDocument = this.data.getCloudSearchDocument.bind(this.data);
+  getCloudSavedSearches = this.data.getCloudSavedSearches.bind(this.data);
+  createCloudSavedSearch = this.data.createCloudSavedSearch.bind(this.data);
+  updateCloudSavedSearch = this.data.updateCloudSavedSearch.bind(this.data);
+  deleteCloudSavedSearch = this.data.deleteCloudSavedSearch.bind(this.data);
+  getCloudSavedSearchHits = this.data.getCloudSavedSearchHits.bind(this.data);
+  getCloudNews = this.data.getCloudNews.bind(this.data);
+  getCloudNewsStory = this.data.getCloudNewsStory.bind(this.data);
+  getCloudTickerTweets = this.data.getCloudTickerTweets.bind(this.data);
+  searchCloudTweets = this.data.searchCloudTweets.bind(this.data);
 }
 
 export const apiClient = new GloomApiClient();

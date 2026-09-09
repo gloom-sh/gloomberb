@@ -64,14 +64,9 @@ export function renderBuildoutCell(
               starred={company.starred === true}
               busy={busy}
               selected={rowState.selected}
-              interactive
+              onPress={() => { void context.toggleFavorite(row); }}
             />
           ),
-          onMouseDown: (event) => {
-            event.preventDefault?.();
-            event.stopPropagation?.();
-            void context.toggleFavorite(row);
-          },
         };
       }
       case "company":
@@ -129,14 +124,9 @@ export function renderBuildoutCell(
               starred={site.starred === true}
               busy={busy}
               selected={rowState.selected}
-              interactive
+              onPress={() => { void context.toggleFavorite(row); }}
             />
           ),
-          onMouseDown: (event) => {
-            event.preventDefault?.();
-            event.stopPropagation?.();
-            void context.toggleFavorite(row);
-          },
         };
       }
       case "site":

@@ -1,40 +1,23 @@
-import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { TextAttributes } from "../../../ui";
-import { useViewport } from "../../../react/input";
-import { useFxRatesMap } from "../../../market-data/hooks";
+import { EmptyState, SectionHeading } from "../../../components";
+import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
+import { CompanyLogo } from "../../../components/company-logo";
+import { PriceReturnStrip } from "../../../components/price-performance";
 import { t } from "../../../i18n";
+import { useFxRatesMap } from "../../../market-data/hooks";
+import { formatMarketPriceWithCurrency, formatSignedMarketPrice } from "../../../market-data/market/format";
+import { exchangeShortName, marketStateColor, marketStateLabel } from "../../../market-data/market/status";
+import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
+import { useViewport } from "../../../react/input";
 import { useAppSelector } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
-import { convertCurrency, formatPercentRaw } from "../../../utils/format";
-import { formatMarketPriceWithCurrency, formatSignedMarketPrice } from "../../../market-data/market/format";
-import {
-  exchangeShortName,
-  marketStateColor,
-  marketStateLabel,
-} from "../../../market-data/market/status";
-import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
-import { EmptyState } from "../../../components";
-import { CompanyLogo } from "../../../components/company-logo";
-import {
-  CompositeChart,
-  pricePointsToResolvedSeries,
-} from "../../../components/chart/composite";
-import { resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { appendLiveQuotePoint } from "../../../time-series/chart-data";
-import { PriceReturnStrip } from "../../../components/price-performance";
-import {
-  appendQuoteToPriceReturnHistory,
-  buildPriceReturnFields,
-} from "../../../market-data/performance";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import {
-  CompactRangeBar,
-  PositionTable,
-  QuoteBook,
-  SectionHeader,
-  StatGrid,
-} from "./overview/components";
+import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
+import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { convertCurrency, formatPercentRaw } from "../../../utils/format";
+import { CompactRangeBar, PositionTable, QuoteBook, StatGrid } from "./overview/components";
 import { buildOverviewStats, buildPositionRows } from "./overview/model";
 
 export function OverviewTab({
@@ -252,21 +235,21 @@ export function OverviewTab({
 
         {hasPerformance && (
           <Box flexDirection="column">
-            <SectionHeader title={t("Price Return")} />
+            <SectionHeading title={t("Price Return")} />
             <PriceReturnStrip fields={performanceFields} width={contentWidth} />
           </Box>
         )}
 
         {stats.length > 0 && (
           <Box flexDirection="column">
-            <SectionHeader title={t("Fundamentals")} />
+            <SectionHeading title={t("Fundamentals")} />
             <StatGrid fields={stats} width={contentWidth} />
           </Box>
         )}
 
         {positionRows.length > 0 && (
           <Box flexDirection="column">
-            <SectionHeader title={t("Positions")} />
+            <SectionHeading title={t("Positions")} />
             <PositionTable rows={positionRows} width={contentWidth} />
           </Box>
         )}
@@ -306,7 +289,7 @@ export function OverviewTab({
         {/* Description — last, collapsed */}
         {description && (
           <Box flexDirection="column" width={contentWidth}>
-            <SectionHeader title={t("Description")} />
+            <SectionHeading title={t("Description")} />
             <Text fg={colors.text} width={contentWidth} wrapMode="word" wrapText>{description}</Text>
           </Box>
         )}

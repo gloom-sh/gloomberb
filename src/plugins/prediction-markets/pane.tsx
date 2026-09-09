@@ -1,7 +1,8 @@
-import { Box, Input, Text } from "../../ui";
+import { Box, Text } from "../../ui";
 import { useCallback, useMemo, useRef } from "react";
 import {
   DataTableStackView,
+  InputSearchBar,
   Spinner,
   Tabs,
   usePaneFooter,
@@ -135,43 +136,20 @@ export function PredictionMarketsPane({ focused, width, height }: PaneProps) {
       ) : null}
 
       <Box flexDirection="row" height={1} paddingX={1} gap={2}>
-        <Box
-          flexDirection="row"
-          onMouseDown={controller.actions.focusSearch}
+        <InputSearchBar
+          value={controller.searchQuery}
+          active={controller.searchFocused}
+          focused={focused}
           width={Math.max(18, Math.floor(width * 0.32))}
-        >
-          <Text fg={colors.textDim}>{controller.searchFocused ? "?" : "/"}</Text>
-          <Box width={1} />
-          {controller.searchFocused ? (
-            <Input
-              ref={controller.searchInputRef}
-              value={controller.searchQuery}
-              focused={focused}
-              placeholder="search markets"
-              placeholderColor={colors.textDim}
-              textColor={colors.text}
-              backgroundColor={colors.panel}
-              flexGrow={1}
-              onInput={controller.actions.setSearchQuery}
-              onChange={controller.actions.setSearchQuery}
-              onSubmit={controller.actions.blurSearch}
-            />
-          ) : (
-            <Box flexGrow={1}>
-              <Text
-                fg={
-                  controller.searchQuery.trim().length > 0
-                    ? colors.text
-                    : colors.textDim
-                }
-              >
-                {controller.searchQuery.trim().length > 0
-                  ? controller.searchQuery
-                  : "search markets"}
-              </Text>
-            </Box>
-          )}
-        </Box>
+          inputRef={controller.searchInputRef}
+          focusToken={0}
+          placeholder="search markets"
+          glyph={controller.searchFocused ? "?" : "/"}
+          debounceMs={0}
+          onFocus={controller.actions.focusSearch}
+          onBlur={controller.actions.blurSearch}
+          onQueryChange={controller.actions.setSearchQuery}
+        />
 
         <Box flexGrow={1}>
           <Tabs

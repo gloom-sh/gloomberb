@@ -26,7 +26,7 @@ export class RegistrySlots {
           {
             pluginId: plugin.id,
             runtime,
-            children: (renderer as any)(props),
+            children: createElement(renderer as (props: any) => ReactNode, props),
           },
         ),
       });

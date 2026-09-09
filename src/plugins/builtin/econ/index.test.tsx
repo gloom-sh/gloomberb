@@ -2,12 +2,13 @@ import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bu
 import { act } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { attachEconCalendarPersistence, resetEconCalendarPersistence } from "./calendar-model";
 import { economicCalendarModule } from "./index";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 const EconPane = economicCalendarModule.panes![0]!.component as (props: {
   paneId: string;
@@ -65,17 +66,13 @@ afterEach(async () => {
 async function renderPane(width: number) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-econ-test"));
   setup = await testRender(
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PluginRenderProvider runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
-        <PaneInstanceProvider paneId="econ-calendar">
-          <PaneFooterProvider>
-            {() => (
-              <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
-            )}
-          </PaneFooterProvider>
-        </PaneInstanceProvider>
-      </PluginRenderProvider>
-    </AppContext>,
+    <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
+      <PaneFooterProvider>
+        {() => (
+          <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
+        )}
+      </PaneFooterProvider>
+    </TestPaneProvider>,
     { width, height: 24 },
   );
   await act(async () => {

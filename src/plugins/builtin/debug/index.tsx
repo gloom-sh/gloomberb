@@ -3,9 +3,9 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useShortcut } from "../../../react/input";
 import { TextAttributes } from "../../../ui";
 import type { GloomPlugin, PaneProps } from "../../../types/plugin";
-import { usePaneFooter } from "../../../components";
+import { ListView, usePaneFooter } from "../../../components";
 import { usePluginAppActions } from "../../runtime";
-import { colors, hoverBg } from "../../../theme/colors";
+import { colors } from "../../../theme/colors";
 import { debugLog, type LogEntry, type LogLevel } from "../../../utils/debug-log";
 import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
@@ -255,45 +255,42 @@ function DebugPane({ focused, width, height }: PaneProps) {
           }
         }}
       >
-        {visibleEntries.length === 0 && (
-          <Box alignItems="center" justifyContent="center" flexGrow={1}>
-            <Text fg={colors.textDim}>No log entries{filterLevel || filterSource ? " matching filter" : ""}</Text>
-          </Box>
-        )}
-        {visibleEntries.map((entry, i) => {
-          const globalIdx = viewStart + i;
-          const isSelected = globalIdx === selectedIdx;
-          const bgColor = isSelected ? colors.selected : undefined;
-          const rowHoverBg = isSelected ? undefined : hoverBg();
-          const ts = formatTimestamp(entry.timestamp);
-          const lvl = LEVEL_LABELS[entry.level];
-          const sourceTag = entry.source;
-          // Floor of 1: at maxMsg 0 the old slice(0, -1) kept almost the whole
-          // message and only appended an ellipsis.
-          const maxMsg = Math.max(1, contentWidth - ts.length - lvl.length - sourceTag.length - 8);
-          const msg = entry.message.length > maxMsg
-            ? `${entry.message.slice(0, Math.max(0, maxMsg - 1))}…`
-            : entry.message;
+        <ListView
+          items={visibleEntries.map((entry) => ({ id: String(entry.id), label: entry.message }))}
+          selectedIndex={selectedIdx - viewStart}
+          height={visibleCount}
+          rowGap={0}
+          emptyMessage={`No log entries${filterLevel || filterSource ? " matching filter" : ""}`}
+          onSelect={(index) => { setSelectedIdx(viewStart + index); setAutoScroll(false); }}
+          renderRow={(_, { selected: isSelected }, i) => {
+            const entry = visibleEntries[i]!;
+            const ts = formatTimestamp(entry.timestamp);
+            const lvl = LEVEL_LABELS[entry.level];
+            const sourceTag = entry.source;
+            // Floor of 1: at maxMsg 0 the old slice(0, -1) kept almost the whole
+            // message and only appended an ellipsis.
+            const maxMsg = Math.max(1, contentWidth - ts.length - lvl.length - sourceTag.length - 8);
+            const msg = entry.message.length > maxMsg
+              ? `${entry.message.slice(0, Math.max(0, maxMsg - 1))}…`
+              : entry.message;
 
-          return (
-            <Box
-              key={entry.id}
-              height={1}
-              width={contentWidth}
-              flexDirection="row"
-              backgroundColor={bgColor}
-              hoverBackgroundColor={rowHoverBg}
-              onMouseDown={() => { setSelectedIdx(globalIdx); setAutoScroll(false); }}
-            >
-              <Text fg={colors.textMuted}> {ts} </Text>
-              <Text fg={levelColor(entry.level)} attributes={TextAttributes.BOLD}>{lvl}</Text>
-              <Text fg={colors.textDim}> [{sourceTag}] </Text>
-              <Text fg={isSelected ? colors.selectedText ?? colors.textBright : colors.text}>
-                {msg}
-              </Text>
-            </Box>
-          );
-        })}
+            return (
+              <Box
+                key={entry.id}
+                height={1}
+                width={contentWidth}
+                flexDirection="row"
+              >
+                <Text fg={colors.textMuted}> {ts} </Text>
+                <Text fg={levelColor(entry.level)} attributes={TextAttributes.BOLD}>{lvl}</Text>
+                <Text fg={colors.textDim}> [{sourceTag}] </Text>
+                <Text fg={isSelected ? colors.selectedText ?? colors.textBright : colors.text}>
+                  {msg}
+                </Text>
+              </Box>
+            );
+        }}
+        />
       </Box>
 
       {/* Detail panel */}

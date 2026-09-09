@@ -15,7 +15,7 @@ import {
   type LayoutConfig,
 } from "../../types/config";
 import { researchEntryFromSearch } from "./research-entry";
-import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./storage";
+import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
 
 export const BROWSER_DATA_DIR = "browser://local";
 

@@ -5,11 +5,10 @@ import type {
   CloudRiskReportSummaryPayload,
 } from "../../../api-client";
 import {
-  EmptyState,
-  Spinner,
+  EmptyState, PaneStatusBody, Prose, SectionHeading, Spinner,
   Tabs,
   usePaneFooter,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
@@ -22,7 +21,6 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { Prose, SectionHeading } from "../earnings-calls/transcript-view";
 import { useBoundTicker } from "../shared/ticker-request";
 import { loadRiskReport, loadRiskReports } from "./data";
 
@@ -44,14 +42,12 @@ function RiskLine({
   heading,
   note,
   width,
-  nativePaneChrome,
 }: {
   tag: string;
   group: string | null;
   heading: string;
   note?: string;
   width: number;
-  nativePaneChrome: boolean;
 }) {
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -63,14 +59,12 @@ function RiskLine({
         text={heading}
         width={width}
         color={colors.text}
-        nativePaneChrome={nativePaneChrome}
       />
       {note ? (
         <Prose
           text={note}
           width={width}
           color={colors.textDim}
-          nativePaneChrome={nativePaneChrome}
           prefix="  "
         />
       ) : null}
@@ -196,9 +190,7 @@ export function RiskFactorsPane({
     return <EmptyState title="Pick a ticker to see its risk factors." />;
   if (status === "loading" && !report) {
     return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <Spinner label="Loading risk factors..." />
-      </Box>
+      <PaneStatusBody loading align="center" loadingLabel="Loading risk factors..." />
     );
   }
   if (status === "none") {
@@ -211,7 +203,7 @@ export function RiskFactorsPane({
   }
   if (status === "error")
     return (
-      <EmptyState title="Could not load risk factors." message={error ?? ""} />
+      <PaneStatusBody error={error ?? "Could not load risk factors."} errorTitle="Could not load risk factors." />
     );
 
   const diff = report?.diff ?? null;
@@ -266,11 +258,10 @@ export function RiskFactorsPane({
               text={summaryLine}
               width={proseWidth}
               color={colors.textDim}
-              nativePaneChrome={nativePaneChrome}
             />
             {report.overview ? (
               <Box flexDirection="column">
-                <SectionHeading
+                <SectionHeading marginTop={1}
                   title={diff ? "WHAT THE CHANGES SAY" : "WHAT DOMINATES"}
                 />
                 {report.overview.split("\n").map((point) => (
@@ -279,7 +270,6 @@ export function RiskFactorsPane({
                     text={point}
                     width={proseWidth}
                     color={colors.text}
-                    nativePaneChrome={nativePaneChrome}
                     prefix="• "
                   />
                 ))}
@@ -287,7 +277,7 @@ export function RiskFactorsPane({
             ) : null}
             {diff ? (
               <Box flexDirection="column">
-                <SectionHeading title="WHAT CHANGED" />
+                <SectionHeading marginTop={1} title="WHAT CHANGED" />
                 {diff.added.length === 0 &&
                 diff.removed.length === 0 &&
                 diff.reworded.length === 0 ? (
@@ -295,7 +285,6 @@ export function RiskFactorsPane({
                     text="Every risk carried over with its text substantially unchanged."
                     width={proseWidth}
                     color={colors.textDim}
-                    nativePaneChrome={nativePaneChrome}
                   />
                 ) : null}
                 {diff.added.map((index) => (
@@ -306,7 +295,6 @@ export function RiskFactorsPane({
                     heading={report.risks[index]?.heading ?? ""}
                     note={noteFor(report.notes.added, index)}
                     width={proseWidth}
-                    nativePaneChrome={nativePaneChrome}
                   />
                 ))}
                 {diff.removed.map((risk, index) => (
@@ -317,7 +305,6 @@ export function RiskFactorsPane({
                     heading={risk.heading}
                     note={noteFor(report.notes.removed, index)}
                     width={proseWidth}
-                    nativePaneChrome={nativePaneChrome}
                   />
                 ))}
                 {diff.reworded.map((item) => (
@@ -328,13 +315,12 @@ export function RiskFactorsPane({
                     heading={report.risks[item.index]?.heading ?? ""}
                     note={noteFor(report.notes.reworded, item.index)}
                     width={proseWidth}
-                    nativePaneChrome={nativePaneChrome}
                   />
                 ))}
               </Box>
             ) : report.notes.top.length > 0 ? (
               <Box flexDirection="column">
-                <SectionHeading title="MOST SPECIFIC TO THE COMPANY" />
+                <SectionHeading marginTop={1} title="MOST SPECIFIC TO THE COMPANY" />
                 {report.notes.top.map((note) => (
                   <RiskLine
                     key={`top-${note.index}`}
@@ -343,20 +329,18 @@ export function RiskFactorsPane({
                     heading={report.risks[note.index]?.heading ?? ""}
                     note={note.text}
                     width={proseWidth}
-                    nativePaneChrome={nativePaneChrome}
                   />
                 ))}
               </Box>
             ) : null}
             <Box flexDirection="column">
-              <SectionHeading title={`ALL ${report.riskCount} RISK FACTORS`} />
+              <SectionHeading marginTop={1} title={`ALL ${report.riskCount} RISK FACTORS`} />
               {report.risks.map((risk, index) => (
                 <Prose
                   key={`${index}-${risk.heading}`}
                   text={risk.heading}
                   width={proseWidth}
                   color={colors.text}
-                  nativePaneChrome={nativePaneChrome}
                   prefix={`${String(index + 1).padStart(2, "0")} `}
                 />
               ))}

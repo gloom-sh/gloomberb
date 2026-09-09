@@ -1,6 +1,4 @@
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
-import type { AppNotificationRequest } from "../../../types/plugin";
-import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
 import {
   apiClient,
   type ChatChannel,
@@ -9,8 +7,21 @@ import {
   type ChatStateResponse,
 } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
+import { MemoryPluginPersistence as MemoryPersistence } from "../../../test-support/plugin-persistence";
+import type { AppNotificationRequest } from "../../../types/plugin";
 import { ChatController } from "./controller";
 import { SESSION_RETRY_MS } from "./controller/state";
+
+function persistSession(persistence: MemoryPersistence, user: Record<string, unknown> = {}) {
+  persistence.setState("session", {
+    sessionToken: "token-123",
+    user: { id: "u1", username: "vince", ...user },
+  }, { schemaVersion: 1 });
+}
+
+function chatMessage(input: Pick<ChatMessage, "id" | "content" | "createdAt"> & Partial<ChatMessage>): ChatMessage {
+  return { channelId: "everyone", replyToId: null, user: { id: "u1", username: "vince", displayName: "Vince" }, ...input };
+}
 
 const TRANSCRIPT_KIND = "channel-transcript";
 const TRANSCRIPT_KEY = "everyone";
@@ -122,19 +133,13 @@ describe("ChatController", () => {
   test("hydrates cached session, draft, and transcript from plugin persistence", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "hello",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince" },
-    }, { schemaVersion: 1 });
+    persistSession(persistence);
     persistence.setState("channel:everyone", {
       draft: "cached draft",
       replyToId: "m1",
@@ -221,10 +226,7 @@ describe("ChatController", () => {
     };
     let resolvePublicChannels: ((channels: ChatChannel[]) => void) | undefined;
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     apiClient.getChannels = () => new Promise((resolve) => {
       resolvePublicChannels = resolve;
     });
@@ -250,10 +252,7 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.attachPersistence(persistence);
 
@@ -294,10 +293,7 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince" },
-    }, { schemaVersion: 1 });
+    persistSession(persistence);
     persistence.setState("channel:everyone", {
       draft: "cached draft",
       replyToId: null,
@@ -407,10 +403,7 @@ describe("ChatController", () => {
     let getMessagesCalls = 0;
     const loadingSnapshots: boolean[] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     (globalThis as any).setInterval = (callback: () => void, timeout: number) => {
       expect(timeout).toBe(30_000);
@@ -474,10 +467,7 @@ describe("ChatController", () => {
       created_at: "2026-03-28T00:00:00.000Z",
     };
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.attachPersistence(persistence);
     apiClient.getSession = async () => {
@@ -574,10 +564,7 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.attachPersistence(persistence);
     apiClient.getSession = async () => {
@@ -703,10 +690,7 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.attachPersistence(persistence);
     apiClient.getSession = async () => {
@@ -760,10 +744,7 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.attachPersistence(persistence);
     apiClient.getSession = async () => {
@@ -791,14 +772,11 @@ describe("ChatController", () => {
   test("refreshes the public transcript without requiring a session", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "hello from the lobby",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
+    });
 
     controller.attachPersistence(persistence);
     apiClient.getMessages = async () => [message];
@@ -817,22 +795,18 @@ describe("ChatController", () => {
   test("keeps per-channel drafts and transcripts isolated", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const everyoneMessage: ChatMessage = {
+    const everyoneMessage: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "general",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
-    const optionsMessage: ChatMessage = {
+    });
+    const optionsMessage: ChatMessage = chatMessage({
       id: "m2",
       channelId: "options",
       content: "options note",
-      replyToId: null,
       createdAt: "2026-03-28T00:01:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
     persistence.setState("channel:everyone", {
       draft: "general draft",
@@ -869,22 +843,17 @@ describe("ChatController", () => {
   test("stores the latest message id as the incremental cursor", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const initial: ChatMessage = {
+    const initial: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "hello",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
-    const next: ChatMessage = {
+    });
+    const next: ChatMessage = chatMessage({
       id: "m2",
-      channelId: "everyone",
       content: "new message",
-      replyToId: null,
       createdAt: "2026-03-28T00:01:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
     persistence.setState("channel:everyone", {
       draft: "",
@@ -925,30 +894,23 @@ describe("ChatController", () => {
   test("recovers a message the cursor already moved past", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const asked: ChatMessage = {
+    const asked: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "why is the chart glitching",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
-    const missed: ChatMessage = {
+    });
+    const missed: ChatMessage = chatMessage({
       id: "m2",
-      channelId: "everyone",
       content: "charts open with GP",
       replyToId: "m1",
       createdAt: "2026-03-28T00:01:00.000Z",
       user: { id: "u2", username: "gloombot", displayName: "Gloombot" },
-    };
-    const acknowledged: ChatMessage = {
+    });
+    const acknowledged: ChatMessage = chatMessage({
       id: "m3",
-      channelId: "everyone",
       content: "got it",
-      replyToId: null,
       createdAt: "2026-03-28T00:02:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
+    });
 
     // The cursor already sits on m3, so an incremental fetch can never ask for
     // m2 again even though the server still has it.
@@ -981,19 +943,14 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const history: ChatMessage = {
+    const history: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "already seen",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     persistence.setState("channel:everyone", {
       draft: "",
       replyToId: null,
@@ -1028,22 +985,17 @@ describe("ChatController", () => {
   test("backfills from cached transcript when persisted cursor is ahead of the cache", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const cached: ChatMessage = {
+    const cached: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "cached",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
-    const fresh: ChatMessage = {
+    });
+    const fresh: ChatMessage = chatMessage({
       id: "m2",
-      channelId: "everyone",
       content: "fresh",
-      replyToId: null,
       createdAt: "2026-03-28T00:01:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
     persistence.setState("channel:everyone", {
       draft: "",
@@ -1084,28 +1036,21 @@ describe("ChatController", () => {
   test("shows a pending message immediately and replaces it when the send succeeds", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const replyTarget: ChatMessage = {
+    const replyTarget: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "first",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
-    const sentMessage: ChatMessage = {
+    });
+    const sentMessage: ChatMessage = chatMessage({
       id: "m2",
-      channelId: "everyone",
       content: "hello",
       replyToId: "m1",
       createdAt: "2026-03-28T00:01:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
       replyTo: { content: "first", user: { username: "bob" } },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     persistence.setState("channel:everyone", {
       draft: "hello",
       replyToId: "m1",
@@ -1157,10 +1102,7 @@ describe("ChatController", () => {
     const controller = new ChatController();
     const clientMessageIds: Array<string | undefined> = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.attachPersistence(persistence);
     apiClient.getMessages = async () => [];
@@ -1189,19 +1131,13 @@ describe("ChatController", () => {
   test("edits the latest message from the current user", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const original: ChatMessage = {
+    const original: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "helo",
-      replyToId: null,
       createdAt: recentChatTimestamp(),
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
       messages: [original],
     }, {
@@ -1232,19 +1168,13 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const original: ChatMessage = {
+    const original: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "old typo",
-      replyToId: null,
       createdAt: recentChatTimestamp(16 * 60_000),
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
       messages: [original],
     }, {
@@ -1269,28 +1199,19 @@ describe("ChatController", () => {
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
     const messages: ChatMessage[] = [
-      {
+      chatMessage({
         id: "m1",
-        channelId: "everyone",
         content: "older",
-        replyToId: null,
         createdAt: "2026-03-28T00:00:00.000Z",
-        user: { id: "u1", username: "vince", displayName: "Vince" },
-      },
-      {
+      }),
+      chatMessage({
         id: "m2",
-        channelId: "everyone",
         content: "newer",
-        replyToId: null,
         createdAt: "2026-03-28T00:01:00.000Z",
-        user: { id: "u1", username: "vince", displayName: "Vince" },
-      },
+      }),
     ];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
       messages,
     }, {
@@ -1315,10 +1236,7 @@ describe("ChatController", () => {
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
@@ -1349,19 +1267,14 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "hey @Vince can you take a look?",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
@@ -1384,10 +1297,7 @@ describe("ChatController", () => {
     const notifications: AppNotificationRequest[] = [];
     const deliveredIds: string[][] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
@@ -1426,10 +1336,7 @@ describe("ChatController", () => {
     let desktopAvailable = false;
     let presentationCount = 0;
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.setNotifier(() => {
       presentationCount += 1;
       return { toastVisible: false, desktopRequested: desktopAvailable };
@@ -1458,19 +1365,14 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "hey @vince",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
@@ -1497,10 +1399,7 @@ describe("ChatController", () => {
     const notifications: AppNotificationRequest[] = [];
     const deliveredIds: string[][] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
 
     controller.setNotifier((notification) => {
       notifications.push(notification);
@@ -1530,10 +1429,7 @@ describe("ChatController", () => {
     const notifications: AppNotificationRequest[] = [];
     const deliveredIds: string[][] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.setNotifier((notification) => {
       notifications.push(notification);
       return { toastVisible: true, desktopRequested: false };
@@ -1563,10 +1459,7 @@ describe("ChatController", () => {
     const notifications: AppNotificationRequest[] = [];
     const deliveredIds: string[][] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     apiClient.getSession = async () => ({
       id: "u1",
       name: "Vince",
@@ -1592,7 +1485,7 @@ describe("ChatController", () => {
         channelId: "options",
         messageId: "m2",
         createdAt: "2026-03-28T00:02:00.000Z",
-        message: {
+        message: chatMessage({
           id: "m2",
           channelId: "options",
           content: "answering you",
@@ -1600,7 +1493,7 @@ describe("ChatController", () => {
           createdAt: "2026-03-28T00:02:00.000Z",
           user: { id: "u2", username: "bob", displayName: "Bob" },
           replyTo: { content: "question", user: { id: "u1", username: "vince" } },
-        },
+        }),
       }],
     });
     apiClient.markChatNotificationsDelivered = async (ids) => {
@@ -1641,10 +1534,7 @@ describe("ChatController", () => {
     const controller = new ChatController();
     const connectedChannels: string[] = [];
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     apiClient.updateChatChannelState = async (channelId, body) => ({
       channelId,
       notificationsEnabled: body.notificationsEnabled === true,
@@ -1681,21 +1571,17 @@ describe("ChatController", () => {
       channelId: "everyone",
       messageId: "m2",
       createdAt: "2026-03-28T00:02:00.000Z",
-      message: {
+      message: chatMessage({
         id: "m2",
-        channelId: "everyone",
         content: "same reply",
         replyToId: "m1",
         createdAt: "2026-03-28T00:02:00.000Z",
         user: { id: "u2", username: "bob", displayName: "Bob" },
         replyTo: { content: "question", user: { id: "u1", username: "vince" } },
-      },
+      }),
     };
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.setNotifier((entry) => {
       notifications.push(entry);
       return { toastVisible: true, desktopRequested: false };
@@ -1713,19 +1599,15 @@ describe("ChatController", () => {
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
     const openedMessages: string[] = [];
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
       channelId: "options",
       content: "new option flow",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.setNotifier((entry) => {
       notifications.push(entry);
     }, (channelId, messageId) => {
@@ -1764,14 +1646,13 @@ describe("ChatController", () => {
       created_at: "2026-03-28T00:00:00.000Z",
       dmUser: { id: "u2", username: "bob", displayName: "Bob" },
     };
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
       channelId: directChannel.id,
       content: "ping",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
     apiClient.getChatState = async () => ({
       channels: [...SERVER_CHAT_CHANNELS, directChannel],
@@ -1784,10 +1665,7 @@ describe("ChatController", () => {
       })),
       notifications: [],
     });
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.setNotifier((entry) => {
       notifications.push(entry);
     });
@@ -1814,19 +1692,15 @@ describe("ChatController", () => {
   test("tracks unread channel messages and clears them when the channel opens", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m1",
       channelId: "options",
       content: "new option flow",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.attachPersistence(persistence);
 
     (controller as any).mergeMessages("options", [message]);
@@ -1847,7 +1721,7 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const notifications: AppNotificationRequest[] = [];
-    const message: ChatMessage = {
+    const message: ChatMessage = chatMessage({
       id: "m2",
       channelId: "options",
       content: "reply without channel notify",
@@ -1855,12 +1729,9 @@ describe("ChatController", () => {
       createdAt: "2026-03-28T00:00:00.000Z",
       user: { id: "u2", username: "bob", displayName: "Bob" },
       replyTo: { content: "question", user: { id: "u1", username: "vince" } },
-    };
+    });
 
-    persistence.setState("session", {
-      sessionToken: "token-123",
-      user: { id: "u1", username: "vince", emailVerified: true },
-    }, { schemaVersion: 1 });
+    persistSession(persistence, { emailVerified: true });
     controller.setNotifier((notification) => {
       notifications.push(notification);
     });
@@ -1886,24 +1757,19 @@ describe("ChatController", () => {
   test("recovers from a legacy timestamp cursor by falling back to a full transcript fetch", async () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
-    const cached: ChatMessage = {
+    const cached: ChatMessage = chatMessage({
       id: "m1",
-      channelId: "everyone",
       content: "cached",
-      replyToId: null,
       createdAt: "2026-03-28T00:00:00.000Z",
-      user: { id: "u1", username: "vince", displayName: "Vince" },
-    };
+    });
     const fullTranscript: ChatMessage[] = [
       cached,
-      {
+      chatMessage({
         id: "m2",
-        channelId: "everyone",
         content: "fresh",
-        replyToId: null,
         createdAt: "2026-03-28T00:01:00.000Z",
         user: { id: "u2", username: "bob", displayName: "Bob" },
-      },
+      }),
     ];
 
     persistence.setState("channel:everyone", {
@@ -1944,40 +1810,32 @@ describe("ChatController", () => {
     const persistence = new MemoryPersistence();
     const controller = new ChatController();
     const cached: ChatMessage[] = [
-      {
+      chatMessage({
         id: "m3",
-        channelId: "everyone",
         content: "cached older",
-        replyToId: null,
         createdAt: "2026-03-28T00:03:00.000Z",
         user: { id: "u3", username: "cara", displayName: "Cara" },
-      },
-      {
+      }),
+      chatMessage({
         id: "m4",
-        channelId: "everyone",
         content: "cached newer",
-        replyToId: null,
         createdAt: "2026-03-28T00:04:00.000Z",
         user: { id: "u4", username: "drew", displayName: "Drew" },
-      },
+      }),
     ];
     const older: ChatMessage[] = [
-      {
+      chatMessage({
         id: "m1",
-        channelId: "everyone",
         content: "oldest",
-        replyToId: null,
         createdAt: "2026-03-28T00:01:00.000Z",
         user: { id: "u1", username: "alice", displayName: "Alice" },
-      },
-      {
+      }),
+      chatMessage({
         id: "m2",
-        channelId: "everyone",
         content: "older",
-        replyToId: null,
         createdAt: "2026-03-28T00:02:00.000Z",
         user: { id: "u2", username: "bob", displayName: "Bob" },
-      },
+      }),
     ];
 
     persistence.setState("channel:everyone", {

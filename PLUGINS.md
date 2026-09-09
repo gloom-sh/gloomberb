@@ -180,7 +180,7 @@ A pane with `headless` automatically gets:
 - `reportReadiness: "ready"` plus its declared options in `gloomberb catalog`
 - strict option validation for `fn`, including allowed enum values and numeric bounds
 
-If a pane still has an entry in the legacy pane capability map, `headless` wins for reports. Its old report builder and screenshot behavior stay available until they are migrated separately.
+The definition is the only structured report contract. Optional `discovery` metadata supplies semantic aliases, a stable capability ID, limitations, and screenshot readiness; the catalog derives argument cardinality and options directly. No central pane capability map or report switch is needed.
 
 ### Definition contract
 
@@ -208,6 +208,9 @@ Options use the existing pane-function schema: `key`, `type`, `description`, opt
 - `apiClient`: the Gloom Cloud client
 - `config`: the loaded app configuration
 - `signal`: the abort signal for this invocation
+- `settings`: effective instance settings after template creation and option normalization
+- `resolveInstrument` (optional): resolves a symbol's remembered exchange without exposing storage
+- `capabilities` (optional): invokes registered plugin capabilities, including chart series
 
 Headless loaders must stay isomorphic. Do not import React, DOM APIs, Electrobun, OpenTUI, or renderer state. Pass dependencies through `ctx` and keep fetching in `client.ts`.
 
@@ -220,7 +223,13 @@ The four supported shapes cover the pane catalog:
 - `series`: `{ series: [{ id, label, points }], stats? }` for charts and derived statistics
 - `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
 
-All shapes may include `errors` and `metadata`. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+All shapes may include `errors`, `metadata`, and `unavailableSymbols`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+
+### Report and screenshot models
+
+Chart templates (`G`, `GP`, `GIP`, `CMP`, `GF`, `GE`) use the same chart resolution engine as the interactive pane. Screenshots render a scoped immutable copy of that resolved model, including transformations, studies, errors, and viewport data. Exporting a chart does not install another plugin capability handler or reload FRED in the webview.
+
+All declared headless `fn` results use `kind: rows | bundle | series | snapshot` and `source: headless`. Financial statements, quotes, historical prices, peer valuation, correlations, and relationships now follow that contract too. Consumers of the former command-specific JSON should read domain details from `rows`, `series`, `stats`, and `metadata`, and use `capabilityId` to identify the command. Chart series retain full OHLCV and observation timestamps in `points`; they are no longer reduced to date/value pairs. Transformed points also retain `rawValue` and the original `rawUnit`, with raw endpoint/return summaries in `metadata.summaries`. Financial series retain per-observation growth. Screenshot evidence keeps its own domain-specific shapes.
 
 ### Migration checklist
 
@@ -249,7 +258,7 @@ The `setup()` function receives a context object with these capabilities:
 | `ctx.registerCommand(cmd)` | Add a command to the command bar |
 | `ctx.registerCommandBarSearchProvider(provider)` | Add asynchronous result rows to the command bar (see [Command-bar search providers](#command-bar-search-providers)) |
 | `ctx.registerColumn(col)` | Add a custom column to the ticker list |
-| `ctx.registerPane(pane)` | Add a full pane (left/right/bottom) |
+| `ctx.registerPane(pane)` | Add a full pane (left/right) |
 | `ctx.registerPaneTemplate(template)` | Add a reusable pane template (see [Pane templates](#pane-templates)) |
 | `ctx.registerBroker(broker)` | Add a broker integration |
 | `ctx.registerCapability(capability)` | Add an asset-data, news, or plugin-service capability |
@@ -378,7 +387,7 @@ export const myPlugin: GloomPlugin = {
             },
           );
         } finally {
-          services.close();
+          services.destroy();
         }
       },
     },
@@ -489,20 +498,9 @@ export const myPlugin: GloomPlugin = {
 };
 ```
 
-### Plugin storage
-
-Persistent key-value storage scoped to your plugin (backed by SQLite). Use this for settings or small versioned blobs:
-
-```typescript
-ctx.storage.set("my-key", { count: 42 });
-const data = ctx.storage.get<{ count: number }>("my-key"); // { count: 42 }
-ctx.storage.delete("my-key");
-ctx.storage.keys(); // ["my-key"]
-```
-
 ### Plugin persistence
 
-For richer cached data, use the explicit persistence API. State stores versioned plugin-local data; resources add cache metadata and TTLs:
+Use `ctx.persistence` for local data and cached responses. State stores versioned plugin-local data; resources add cache metadata and TTLs:
 
 ```typescript
 ctx.persistence.setState("draft", { text: "hello" }, { schemaVersion: 1 });
@@ -541,7 +539,7 @@ ctx.resume.deletePaneState("my-pane:main", "selectedTab");
 
 ### Config state (persistent)
 
-Persistent configuration scoped to your plugin. Unlike `storage`, values are part of the app config system:
+Persistent configuration scoped to your plugin. Values are part of the app config system:
 
 ```typescript
 const apiKey = ctx.configState.get<string>("apiKey");
@@ -797,8 +795,8 @@ ctx.registerPane({
 });
 
 // Show/hide as floating window programmatically
-ctx.showWidget("my-pane");
-ctx.hideWidget("my-pane");
+ctx.showPane("my-pane");
+ctx.hidePane("my-pane");
 ```
 
 ### Pane templates
@@ -838,7 +836,7 @@ ctx.registerPaneTemplate({
     return {
       title: options?.symbol ?? "Chart",
       settings: { symbol: options?.symbol },
-      binding: options?.symbol ? { type: "ticker", ticker: options.symbol } : undefined,
+      binding: options?.symbol ? { kind: "fixed", symbol: options.symbol } : undefined,
     };
   },
 });
@@ -852,114 +850,64 @@ ctx.createPaneFromTemplate("my-chart-new", { symbol: "AAPL" });
 
 ## Reusable components
 
-Plugins can import renderer-neutral layout primitives from `gloomberb/ui` and shared controls from `gloomberb/components`. Prefer these public APIs over ad hoc rows, custom controls, or renderer internals so plugin screens feel native across hosts.
+Import basic UI from `gloomberb/components`, layout and specialized rendering primitives from `gloomberb/ui`, hooks from `gloomberb/react`, colors from `gloomberb/theme`, and formatters from `gloomberb/utils`:
 
 ```typescript
-import { Box, Text } from "gloomberb/ui";
-import {
-  StockChart,
-  Tabs,
-  TabBar,
-  ListView,
-  DataTable,
-  DataTableView,
-  DataTableStackView,
-  FeedDataTableStackView,
-  TickerListTable,
-  TickerListTableView,
-  ToggleList,
-  Button,
-  MultiSelectDialogButton,
-  MultiSelectDialogContent,
-  SegmentedControl,
-  TextField,
-  NumberField,
-  EmptyState,
-  DialogFrame,
-  ChoiceDialog,
-  ExternalLink,
-  ExternalLinkText,
-  openUrl,
-  PageStackView,
-  Spinner,
-  PriceSelectorDialog,
-  PaneFooterBar,
-  usePaneFooter,
-  usePaneHints,
-  useExternalLinkFooter,
-  colors,
-  priceColor,
-  hoverBg,
-} from "gloomberb/components";
-import {
-  useAppState,
-  useFocusedTicker,
-  usePaneSettingValue,
-  usePaneTicker,
-  useSelectedTicker,
-} from "gloomberb/components";
-import {
-  formatCurrency,
-  formatCompact,
-  formatPercent,
-  formatPercentRaw,
-  formatNumber,
-  padTo,
-} from "gloomberb/components";
+import { Box } from "gloomberb/ui";
+import { Button, DataTableView, PaneStatusBody, Section, KeyValueRow, usePaneFooter } from "gloomberb/components";
+import { usePaneTicker, usePluginPaneState } from "gloomberb/react";
+import { colors, priceColor } from "gloomberb/theme";
+import { formatCurrency, formatNumber } from "gloomberb/utils";
 ```
 
-Available components:
-- `Tabs` — horizontal tab navigation
-- `TabBar` — alias for `Tabs` used by older plugin code
-- `ListView` — shared selectable list primitive with mouse support
-- `DataTable` — low-level table primitive when a plugin owns table state
-- `DataTableView` — shared sortable table wrapper with keyboard navigation and synchronized scrolling
-- `DataTableStackView`, `FeedDataTableStackView` — stacked table views for dense list panes
-- `TickerListTable`, `TickerListTableView` — ticker table primitives used by market list panes
-- `StockChart` — interactive area, line, candlestick, and OHLC chart
-- `ToggleList` — checkbox list with selection
-- `Button` — clickable actions for dialogs and toolbars
-- `MultiSelectDialogButton`, `MultiSelectDialogContent` — multi-select dialog controls
-- `SegmentedControl` — compact option selector
-- `TextField`, `NumberField` — input controls
-- `EmptyState` — empty or unavailable-state feedback
-- `DialogFrame` — shared dialog framing
-- `ChoiceDialog` — shared single-choice dialog with keyboard and mouse selection
-- `ExternalLink`, `ExternalLinkText`, `openUrl` — renderer-neutral link helpers
-- `PageStackView` — stacked page navigation view
-- `Spinner` — loading indicator
-- `PriceSelectorDialog` — ticker price picker dialog
-- `PaneFooterBar` — shared pane footer renderer used by the shell
-- `usePaneFooter(registrationId, factory, deps)` — register pane footer info and action hints from a pane or Ticker Research tab
-- `usePaneHints(registrationId, factory, deps)` — register only footer hints
-- `useExternalLinkFooter(options)` — register footer help for an external link
-- `colors` — theme color palette
-- `priceColor(change)` — returns green/red/neutral color for a price change
-- `hoverBg` — standard hover background color
-- `useAppState()` — access full app state
-- `usePaneSettingValue()` — read and update the current pane's persisted settings
-- `usePaneTicker()` — get the ticker bound to the current pane
-- `useFocusedTicker()` — get the currently focused ticker
-- `useSelectedTicker()` — alias for `usePaneTicker()`
-- `formatCurrency`, `formatCompact`, `formatPercent`, `formatPercentRaw`, `formatNumber`, `padTo` — number formatting utilities
+Choose the existing control that owns the interaction you need:
 
-For layout that is not represented above, compose `Box` and `Text` from `gloomberb/ui` rather than importing renderer-specific primitives or unexported shared components.
+| Need | Components |
+|------|------------|
+| Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
+| Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView` |
+| Charts | `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
+| Navigation and choices | `Tabs`, `SegmentedControl`, `SelectButton`, `Checkbox` |
+| Actions and inputs | `Button`, `TextField`, `NumberField`, `InputSearchBar` |
+| Clickable/expandable summaries | `ActionRow` |
+| Selectable lists | `ListView` |
+| Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog`, `PriceSelectorDialog` |
+| Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
+| Labeled values and badges | `KeyValueRow`, `Badge` |
+| Paragraphs and separators | `Prose`, `Divider` |
+| Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
+| External links | `ExternalLink`, `ExternalLinkText` |
+| Sidebar | `PaneSidebar`, `PaneSidebarRow`, `PaneSidebarAction` |
 
-Pane footers are the shared place for pane status and non-obvious keyboard actions. Register informational segments on the left and hints on the right:
+[The component exports](src/components/index.ts) are the complete public surface, including the entire basic UI kit. Built-in and external panes must use these components for basic UI. Shared components own appearance, theme updates, focus, keyboard/mouse behavior, disabled state, and automation semantics. A pane supplies its data and domain behavior.
+
+Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book visualizations, rich inline ticker content, and specialized editors can use lower-level primitives. Do not recreate a button with a clickable `Box`, a section heading with styled `Text`, or a field with raw `Input`. Add a missing repeated pattern to the kit and migrate the callers together. Keep domain calculations and formatting with the pane.
+
+`Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` chooses a native select or terminal dialog internally; a `SelectControl` ref can open it without knowing the renderer.
+
+`PaneStatusBody` replaces the body only when the caller passes a loading, error, or empty state. Preserve existing data during refresh by passing `loading={loading && !data}` and `error={!data ? error : null}`. Use `Notice` for inline refresh errors. It supports centered states, custom loading labels, and retry `actions`:
+
+```tsx
+<PaneStatusBody loading={loading && !data} error={!data ? error : null}
+  empty={!loading && !error && !data} subject="research" align="center"
+  actions={<Button label="Try again" onPress={reload} />}>
+  <Section title="Valuation">
+    <KeyValueRow label="P/E" value={formattedPE} />
+  </Section>
+</PaneStatusBody>
+```
+
+Use `usePaneSettingValue(key, fallback)` from `gloomberb/react` for persistent pane settings and `usePaneTitle(title)` for a content-derived pane title. They update the active saved layout without requiring direct app-config writes. Both accept an optional explicit pane ID.
+
+Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:
 
 ```typescript
 usePaneFooter("my-pane", () => ({
-  info: [
-    { id: "status", parts: [{ text: "12 rows", tone: "muted" }] },
-  ],
-  hints: [
-    { id: "refresh", key: "r", label: "efresh", onPress: refresh },
-    { id: "filter", key: "f", label: "ilter", onPress: openFilter },
-  ],
-}), [refresh, openFilter]);
+  info: loading
+    ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" }] }]
+    : error ? [{ id: "error", parts: [{ text: error, tone: "warning" }] }] : [],
+}), [loading, error]);
 ```
-
-Do not register basic navigation hints. Pane hints must omit `Esc`, `Enter`, arrows, `up/down`, `left/right`, `j`, `k`, `j/k`, and tab-switching hints such as `h/l`. Keep only pane-specific actions such as `[r]efresh`, `[/]search`, `[f]ilter`, `[Ctrl+S]save`, `[Shift+R]force refresh`, or chart controls.
 
 ### Plugin runtime hooks
 
@@ -974,14 +922,14 @@ import {
   usePluginConfigState,
   usePluginTickerActions,
   usePluginAppActions,
-} from "gloomberb/plugins/plugin-runtime";
+} from "gloomberb/react";
 
 const marketData = useMarketData();
 const assetData = useAssetData();
 const { navigateTicker, pinTicker } = usePluginTickerActions();
-const { openCommandBar, showWidget, hideWidget, notify } = usePluginAppActions();
+const { openCommandBar, showPane, hidePane, notify } = usePluginAppActions();
 
-// Per-pane transient state (scoped to the current pane instance)
+// Per-pane layout state (scoped to the current pane instance)
 const [expanded, setExpanded] = usePluginPaneState("expanded", false);
 
 // Persistent plugin state (survives restarts)
@@ -1043,7 +991,8 @@ The simplest plugin type. This adds a new tab to the Ticker Research pane:
 import React from "react";
 import { Box, Text } from "gloomberb/ui";
 import type { GloomPlugin, TickerResearchTabProps } from "gloomberb/types/plugin";
-import { EmptyState, usePaneTicker, colors } from "gloomberb/components";
+import { EmptyState, usePaneTicker } from "gloomberb/components";
+import { colors } from "gloomberb/theme";
 
 function SentimentTab({ width, height, focused }: TickerResearchTabProps) {
   const { ticker } = usePaneTicker();
@@ -1093,9 +1042,9 @@ export default {
 
 ## UI guidelines for plugins
 
-- Prefer `ListView`, `Tabs`, `Button`, `SegmentedControl`, `TextField`, and `EmptyState` before custom rows.
+- Basic UI must use the shared components listed above. Extend the kit for a missing reusable pattern.
 - Support both mouse and keyboard for anything interactive.
-- Put pane status and non-obvious shortcuts in `usePaneFooter()` / `usePaneHints()` instead of ad hoc body rows.
+- Put changing pane status in `usePaneFooter()`. Keep keyboard hints on their shared controls; do not add fixed footer labels, row counts, or generic hints.
 - Use `colors` and the shared components instead of hard-coded palette values when possible.
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.
 
@@ -1225,41 +1174,17 @@ setup(ctx) {
 
 Ticker actions appear when pressing `a` with a ticker selected.
 
-## Slot renderers
+## Status widgets
 
-For advanced UI injection, plugins can provide slot renderers directly:
+`status:widget` renders in the status bar and receives the same plugin runtime context as panes and tabs. Its function can use runtime hooks:
 
 ```typescript
-import { Box, Text } from "gloomberb/ui";
-
-export const myPlugin: GloomPlugin = {
-  id: "my-plugin",
-  name: "My Plugin",
-  version: "1.0.0",
-  slots: {
-    "status:widget": () => <Text> LIVE</Text>,
-    "ticker-research:section": ({ ticker, financials }) => (
-      <Box>
-        <Text>Extra info for {ticker.metadata.ticker}</Text>
-      </Box>
-    ),
-  },
-};
+slots: {
+  "status:widget": StatusWidget,
+},
 ```
 
-Available slots:
-
-| Slot | Props | Where it renders |
-|------|-------|-----------------|
-| `ticker-research:tab` | `{ ticker, financials }` | Tab in the Ticker Research pane |
-| `ticker-research:section` | `{ ticker, financials }` | Section within the Ticker Research view |
-| `list:column` | `{ ticker, financials }` | Column in the ticker list |
-| `command:extra` | `{ query }` | Extra items in command bar |
-| `command:preset` | `{}` | Preset commands |
-| `status:widget` | `{}` | Status bar widget |
-| `config:section` | `{}` | Section in settings |
-| `data:post-refresh` | `{ ticker, financials }` | After data refresh |
-| `data:enricher` | `{ ticker }` | Enrich ticker data |
+Other historical `GloomSlots` names have no render sites. Use the explicit registration methods for ticker tabs, columns, commands, events, and capabilities.
 
 ## Tips
 
@@ -1267,6 +1192,6 @@ Available slots:
 - Use `order` on Ticker Research tabs to control position (core tabs use 10, 20, 30)
 - Toggleable plugins can be enabled/disabled by users from settings (`Ctrl+,`)
 - The terminal renderer is backed by [OpenTUI](https://opentui.com/) packages such as `@opentui/core` and `@opentui/react`; plugin UI should stay on `gloomberb/ui` and `gloomberb/components`
-- Use `ctx.storage` to persist data across app restarts
+- Use `ctx.persistence` for cached resources, `ctx.resume` for local resume state, and `ctx.configState` for configuration
 - Use `ctx.on()` to react to app events without polling
 - Use `ctx.notify()` for non-intrusive user feedback and desktop notifications

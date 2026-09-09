@@ -55,11 +55,7 @@ function composeSlots(modules: readonly PluginModule[]): GloomPlugin["slots"] {
     slots[slotName] = (props) => createElement(
       Fragment,
       null,
-      ...renderers.map((render, index) => createElement(
-        Fragment,
-        { key: index },
-        render(props),
-      )),
+      ...renderers.map((render, index) => createElement(render, { ...(props as object), key: index })),
     );
   }
 

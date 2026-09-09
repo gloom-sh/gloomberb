@@ -83,6 +83,8 @@ export interface ChartResolveSources {
   now?: Date;
   /** Latest streamed quote per security identity, layered over snapshot data. */
   quoteOverrides?: ReadonlyMap<string, Quote>;
+  /** Capture the resolved inputs, including the calculation buffer, for an export. */
+  onSecurityData?: (series: ChartSeriesSpec, data: TickerFinancials, includesHistory: boolean) => void;
   /** Provider-neutral boundary for plugin-owned chart series. */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,
@@ -1117,8 +1119,10 @@ export async function resolveChartSpecData(
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;
       if (!merged) throw new Error(`No financial data is available for ${instrumentLabel(source)}.`);
+      const resolvedSpec = resolvedSource === source ? seriesSpec : { ...seriesSpec, source: resolvedSource };
+      sources.onSecurityData?.(resolvedSpec, merged, history !== null);
       const result = baseSecuritySeries(
-        resolvedSource === source ? seriesSpec : { ...seriesSpec, source: resolvedSource },
+        resolvedSpec,
         merged,
         index,
         initialResolution,

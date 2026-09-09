@@ -1,15 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  appReducer,
-  createInitialState,
-  type AppState,
-} from "../../../state/app/context";
-import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
+import type { AppConfig } from "../../../types/config";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createConfigBackedTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
@@ -17,6 +11,7 @@ import { deserializeAlerts, serializeAlerts } from "./alert-engine";
 import { alertsPlugin } from "./index";
 import { AlertsPane } from "./pane";
 import type { AlertCondition, AlertRule, AlertStatus } from "./types";
+import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "alerts:test";
 
@@ -46,22 +41,14 @@ function makeAlert(
 }
 
 function createAlertsConfig(alerts: AlertRule[]): AppConfig {
-  const baseConfig = createDefaultConfig("/tmp/gloomberb-alerts");
-  const layout: AppConfig["layout"] = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "alerts",
-      binding: { kind: "none" },
-    }],
-    floating: [],
-    detached: [],
-  };
+  const baseConfig = createTestPaneConfig("/tmp/gloomberb-alerts", {
+    instanceId: TEST_PANE_ID,
+    paneId: "alerts",
+    binding: { kind: "none" },
+  });
 
   return {
     ...baseConfig,
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
     pluginConfig: {
       ...baseConfig.pluginConfig,
       alerts: {
@@ -96,26 +83,22 @@ function AlertsHarness({
   harnessDispatch = dispatch;
 
   return (
-    <AppContext value={{ state, dispatch }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider pluginId="alerts" runtime={runtime}>
-          <PaneFooterProvider>
-            {(footer) => (
-              <Box flexDirection="column" width={width} height={height}>
-                <AlertsPane
-                  paneId={TEST_PANE_ID}
-                  paneType="alerts"
-                  focused
-                  width={width}
-                  height={Math.max(1, height - 1)}
-                />
-                <PaneFooterBar footer={footer} focused width={width} />
-              </Box>
-            )}
-          </PaneFooterProvider>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="alerts" runtime={runtime}>
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box flexDirection="column" width={width} height={height}>
+            <AlertsPane
+              paneId={TEST_PANE_ID}
+              paneType="alerts"
+              focused
+              width={width}
+              height={Math.max(1, height - 1)}
+            />
+            <PaneFooterBar footer={footer} focused width={width} />
+          </Box>
+        )}
+      </PaneFooterProvider>
+    </TestPaneProvider>
   );
 }
 
@@ -377,4 +360,31 @@ describe("alertsPlugin command", () => {
       alertsPlugin.dispose?.();
     }
   });
+});
+
+test("disposing alerts ignores an in-flight quote and does not schedule another poll", async () => {
+  const quote = Promise.withResolvers<never>();
+  let writes = 0;
+  let notifications = 0;
+  let schedulingReads = 0;
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: {
+      get: () => serializeAlerts([makeAlert("pending", "AAPL", "above", 200)]),
+      set: () => { writes += 1; },
+    },
+    marketData: { getQuote: () => quote.promise },
+    paneSettings: { get: () => { schedulingReads += 1; return "15"; } },
+    notify: () => { notifications += 1; },
+    log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    alertsPlugin.dispose?.();
+    quote.reject(new Error("quote completed after disposal"));
+    await Bun.sleep(0);
+    expect({ writes, notifications, schedulingReads }).toEqual({ writes: 0, notifications: 0, schedulingReads: 0 });
+  } finally {
+    alertsPlugin.dispose?.();
+  }
 });

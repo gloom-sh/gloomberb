@@ -54,6 +54,8 @@ export {
   useInputCapture,
   usePaneCollection,
   usePaneInstanceId,
+  usePaneSettingValue,
+  usePaneTitle,
   usePaneTicker,
   useTickers,
 } from "./pane-hooks";

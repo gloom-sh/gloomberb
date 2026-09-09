@@ -9,7 +9,6 @@ import {
   resolveDesktopShotApiProxy,
   shotDataEvidenceFor,
   shotExpectedText,
-  shotPriceHistoryRange,
   shotSemanticRowCount,
   shotUnavailableSymbols,
   stripDesktopShotCredentials,
@@ -168,11 +167,6 @@ describe("pane screenshot chart-data verification", () => {
 
   test("accepts exact rendered comparison inputs and projection values", () => {
     expect(chartEvidenceMismatchesFor(renderedComparisonChart(), expected)).toEqual([]);
-  });
-
-  test("fetches the requested comparison range instead of a coarser five-year series", () => {
-    expect(shotPriceHistoryRange(resolved("price-comparison", { rangePreset: "1Y" })))
-      .toBe("1Y");
   });
 
   test("matches the exact chart window when the latest point is later in the day", () => {

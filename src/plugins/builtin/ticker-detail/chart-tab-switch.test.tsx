@@ -2,25 +2,19 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createTestRenderer } from "@opentui/core/testing";
 import { TestDialogProvider, createOpenTuiTestRoot as createRoot } from "../../../renderers/opentui/test-utils";
 import { act, useReducer, type ReactElement } from "react";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  appReducer,
-  createInitialState,
-  type AppAction,
-} from "../../../state/app/context";
-import { cloneLayout, createDefaultConfig, TICKER_RESEARCH_PANE_ID, type AppConfig } from "../../../types/config";
+import { appReducer, createInitialState, type AppAction } from "../../../state/app/context";
+import { TICKER_RESEARCH_PANE_ID, type AppConfig } from "../../../types/config";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerResearchTabDef } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
 import { getNativeSurfaceManager } from "../../../components/chart/native/surface/manager";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
-import { PluginRenderProvider } from "../../runtime";
 import { tickerDetailModule } from ".";
 import { chartComposerModule } from "../chart-composer";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { TestPaneProvider, createTestTicker as makeTicker, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "ticker-detail:test";
 const DetailPane = tickerDetailModule.panes![0]!.component as (props: {
@@ -41,22 +35,6 @@ const chartProvider = createTestDataProvider({
   getPriceHistory: async () => makeFinancials(48).priceHistory,
 });
 const runtime = createTestPluginRuntime({ getMarketData: () => chartProvider });
-
-function makeTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
-}
 
 function makeFinancials(length: number): TickerFinancials {
   return {
@@ -83,19 +61,12 @@ function makeFinancialsWithStatements(length: number): TickerFinancials {
 }
 
 function makeDetailConfig(symbol: string): AppConfig {
-  const config = createDefaultConfig("/tmp/gloomberb-test");
+  const config = createTestPaneConfig("/tmp/gloomberb-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: TICKER_RESEARCH_PANE_ID,
+    binding: { kind: "fixed", symbol },
+  });
   config.chartPreferences.renderer = "kitty";
-  config.layout = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: TICKER_RESEARCH_PANE_ID,
-      binding: { kind: "fixed", symbol },
-    }],
-    floating: [],
-    detached: [],
-  };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
   return config;
 }
 
@@ -133,19 +104,15 @@ function DetailHarness({
 
   return (
     <TestDialogProvider>
-      <AppContext value={{ state, dispatch }}>
-        <PaneInstanceProvider paneId={TEST_PANE_ID}>
-          <PluginRenderProvider pluginId="ticker-research" runtime={runtime}>
-            <DetailPane
-              paneId={TEST_PANE_ID}
-              paneType={TICKER_RESEARCH_PANE_ID}
-              focused
-              width={90}
-              height={28}
-            />
-          </PluginRenderProvider>
-        </PaneInstanceProvider>
-      </AppContext>
+      <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={runtime}>
+        <DetailPane
+          paneId={TEST_PANE_ID}
+          paneType={TICKER_RESEARCH_PANE_ID}
+          focused
+          width={90}
+          height={28}
+        />
+      </TestPaneProvider>
     </TestDialogProvider>
   );
 }

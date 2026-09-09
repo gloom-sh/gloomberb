@@ -1,4 +1,3 @@
-import { t } from "../../i18n";
 import {
   forwardRef,
   memo,
@@ -9,11 +8,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { Box, Text } from "../../ui";
-import { TextAttributes } from "../../ui";
+import { t } from "../../i18n";
+import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/themes";
+import { Box, Text, TextAttributes } from "../../ui";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
-import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/themes";
+import { useCommandBarPalette } from "./panel/palette";
 import { truncateText } from "./view-model";
 
 const THEME_PREVIEW_DEBOUNCE_MS = 120;
@@ -65,13 +65,6 @@ interface ThemePickerProps {
   trailingWidth: number;
   queryDisplayWidth: number;
   nativePaneChrome: boolean;
-  paletteBg: string;
-  paletteHoverBg: string;
-  paletteSelectedBg: string;
-  paletteSelectedText: string;
-  paletteSubtleText: string;
-  paletteText: string;
-  panelBg: string;
   onPreview: (themeId: string | null) => void;
   onCommit: (themeId: string) => void;
 }
@@ -95,16 +88,10 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   trailingWidth,
   queryDisplayWidth,
   nativePaneChrome,
-  paletteBg,
-  paletteHoverBg,
-  paletteSelectedBg,
-  paletteSelectedText,
-  paletteSubtleText,
-  paletteText,
-  panelBg,
   onPreview,
   onCommit,
 }: ThemePickerProps, ref) {
+  const palette = useCommandBarPalette(nativePaneChrome);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPreviewIdRef = useRef<string | null>(null);
   const committedThemeIdRef = useRef(committedThemeId);
@@ -235,20 +222,20 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
         style={nativePaneChrome ? { borderRadius: 6 } : undefined}
       >
         <Box width={GLYPH_GUTTER_WIDTH}>
-          <Text fg={state.selected ? paletteSelectedText : paletteSubtleText}>
+          <Text fg={state.selected ? palette.selectedText : palette.subtle}>
             {isDarkTheme(item.id) ? DARK_THEME_GLYPH : ""}
           </Text>
         </Box>
         <Box width={nameWidth}>
           <Text
-            fg={state.selected ? paletteSelectedText : paletteText}
+            fg={state.selected ? palette.selectedText : palette.text}
             attributes={item.current ? TextAttributes.BOLD : undefined}
           >
             {label}
           </Text>
         </Box>
         <Box width={trailingWidth}>
-          <Text fg={state.selected ? paletteSelectedText : paletteSubtleText}>
+          <Text fg={state.selected ? palette.selectedText : palette.subtle}>
             {truncateText(trailing, trailingWidth)}
           </Text>
         </Box>
@@ -258,9 +245,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     contentPadding,
     nameWidth,
     nativePaneChrome,
-    paletteSelectedText,
-    paletteSubtleText,
-    paletteText,
+    palette,
     trailingWidth,
   ]);
 
@@ -273,9 +258,9 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
       rowGap={0}
       rowHeight={1}
       surface="plain"
-      bgColor={nativePaneChrome ? panelBg : paletteBg}
-      selectedBgColor={paletteSelectedBg}
-      hoverBgColor={paletteHoverBg}
+      bgColor={nativePaneChrome ? palette.panelBg : palette.bg}
+      selectedBgColor={palette.selectedBg}
+      hoverBgColor={palette.hoverBg}
       emptyMessage={truncateText(t("No themes match"), queryDisplayWidth)}
       showSelectedDescription={false}
       onSelect={handleSelect}

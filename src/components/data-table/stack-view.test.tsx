@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -8,8 +8,8 @@ import {
 } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
-import { DataTableStackView } from "./stack-view";
 import type { DataTableCell, DataTableColumn } from "../ui";
+import { DataTableStackView } from "./stack-view";
 
 interface Row {
   id: string;
@@ -146,22 +146,7 @@ async function renderSettled() {
   });
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string }) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    } as any);
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
 
 describe("DataTableStackView", () => {
   test("owns table navigation, detail open, and back navigation", async () => {

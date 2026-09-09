@@ -1,28 +1,11 @@
-import type { GloomPlugin } from "../../../types/plugin";
 import type { AppConfig } from "../../../types/config";
+import type { GloomPlugin } from "../../../types/plugin";
+import { getPluginPaneStateValue } from "../../runtime";
+import {
+  LIVE_STREAMING_QUICK_SETTING,
+  withLiveStreamingSetting,
+} from "../shared/live-streaming";
 import { AskAiResearchTab } from "./ask-ai-detail-tab";
-import {
-  detectProviders,
-  resolveDefaultAiProviderId,
-  type AiProvider,
-} from "./providers";
-import {
-  AI_SCREENER_PANE_STATE_KEY,
-  AiScreenerPane,
-} from "./screener/pane";
-import { buildAiScreenerPaneSettingsDef, getAiScreenerPaneSettings } from "./settings";
-import {
-  LOCAL_AGENT_WORKSPACE_SCHEMA_VERSION,
-  LOCAL_AGENT_WORKSPACE_STATE_KEY,
-  LocalAgentWorkspacePane,
-} from "./workspace/pane";
-import {
-  buildAiRunnerWizard,
-  getSelectableAiRunners,
-  resolveAiRunnerWizardModel,
-  resolveReadyAiRunnerDefault,
-  supportsAiRunOutputMode,
-} from "./runner-selection";
 import {
   AI_DEFAULT_MODEL_SETTING_KEY,
   AI_DEFAULT_PROVIDER_SETTING_KEY,
@@ -34,26 +17,43 @@ import {
   type AiSharedDefaults,
 } from "./pane-settings";
 import {
+  detectProviders,
+  resolveDefaultAiProviderId,
+  type AiProvider,
+} from "./providers";
+import {
   connectAiRuntimeProvider,
   disconnectAiRuntimeProvider,
   getAiRuntimeCatalog,
   subscribeAiRuntimeCatalog,
 } from "./runner";
 import {
-  EMPTY_LOCAL_AGENT_WORKSPACE,
-  normalizeLocalAgentWorkspace,
-  type LocalAgentWorkspaceState,
-} from "./workspace/model";
+  buildAiRunnerWizard,
+  getSelectableAiRunners,
+  resolveAiRunnerWizardModel,
+  resolveReadyAiRunnerDefault,
+  supportsAiRunOutputMode,
+} from "./runner-selection";
 import {
   EMPTY_PANE_STATE,
   normalizeTabs,
   type PersistedAiScreenerPaneState,
 } from "./screener/model";
 import {
-  LIVE_STREAMING_QUICK_SETTING,
-  withLiveStreamingSetting,
-} from "../shared/live-streaming";
-import { getPluginPaneStateValue } from "../../runtime";
+  AI_SCREENER_PANE_STATE_KEY,
+  AiScreenerPane,
+} from "./screener/pane";
+import { buildAiScreenerPaneSettingsDef, getAiScreenerPaneSettings } from "./settings";
+import {
+  EMPTY_LOCAL_AGENT_WORKSPACE,
+  normalizeLocalAgentWorkspace,
+  type LocalAgentWorkspaceState,
+} from "./workspace/model";
+import {
+  LOCAL_AGENT_WORKSPACE_SCHEMA_VERSION,
+  LOCAL_AGENT_WORKSPACE_STATE_KEY,
+  LocalAgentWorkspacePane,
+} from "./workspace/pane";
 
 function settingOrFallback(
   settings: Record<string, unknown>,
@@ -188,6 +188,8 @@ function defaultsFromConfig(
   return resolveAiSharedDefaults(config.pluginConfig.ai, fallbackProviderId);
 }
 
+let disposeRuntimeCatalog: (() => void) | undefined;
+
 export const aiPlugin: GloomPlugin = {
   id: "ai",
   name: "AI",
@@ -256,7 +258,8 @@ export const aiPlugin: GloomPlugin = {
       })();
     }
     ctx.on("config:changed", ({ config }) => updateWizards(config));
-    subscribeAiRuntimeCatalog(() => updateWizards(ctx.getConfig()));
+    disposeRuntimeCatalog?.();
+    disposeRuntimeCatalog = subscribeAiRuntimeCatalog(() => updateWizards(ctx.getConfig()));
 
     ctx.registerTickerResearchTab({
       id: "ai-chat",
@@ -436,5 +439,9 @@ export const aiPlugin: GloomPlugin = {
         };
       },
     });
+  },
+  dispose() {
+    disposeRuntimeCatalog?.();
+    disposeRuntimeCatalog = undefined;
   },
 };

@@ -11,6 +11,12 @@ import type { TimeRange } from "../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../time-series/resolution";
 import type { BrokerContractRef, InstrumentSearchResult } from "./instrument";
 import type { CachePolicyMap } from "./persistence";
+import type { CachedQueryHandle } from "../data/cached-query";
+
+export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystResearch" | "getCorporateActions"
+  | "getOptionsChain" | "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
+export type CachedAssetArgs<K extends CachedAssetMethod> = Parameters<NonNullable<AssetDataProvider[K]>>;
+export type CachedAssetValue<K extends CachedAssetMethod> = Awaited<ReturnType<NonNullable<AssetDataProvider[K]>>>;
 
 export interface NewsItem {
   title: string;
@@ -134,6 +140,9 @@ export interface AssetDataProvider {
   readonly name: string;
   readonly priority?: number;
   readonly cachePolicy?: CachePolicyMap;
+
+  /** Optional shared query owner. Consumers observe its age and refreshes instead of caching its values again. */
+  getCachedQuery?<K extends CachedAssetMethod>(method: K, args: CachedAssetArgs<K>): CachedQueryHandle<CachedAssetValue<K>>;
 
   canProvide?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<boolean> | boolean;
   getCachedFinancialsForTargets?(targets: CachedFinancialsTarget[], options?: { allowExpired?: boolean; includeStaleQuotes?: boolean }): Map<string, TickerFinancials> | Promise<Map<string, TickerFinancials>>;

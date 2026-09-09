@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { createContext, useContext, useMemo } from "react";
 import { apiClient } from "../api-client";
 import { loadCachedFredSeries } from "../data/fred-series";
 import { instrumentFromTicker } from "../market-data/request-types";
@@ -7,12 +7,15 @@ import { createChartSeriesResolver } from "../capabilities";
 import { useAppSelector } from "../state/app/context";
 import type { FredSeriesRequest } from "../data/fred-series";
 import type { TickerRecord } from "../types/ticker";
-import type { ChartSpec } from "./types";
+import type { ChartResolutionResult, ChartSpec } from "./types";
 import {
   useChartResolution,
   type UseChartResolutionOptions,
   type UseChartResolutionResult,
 } from "./use-chart-resolution";
+
+/** A scoped, immutable model for exports that must render exactly the loaded data. */
+export const ChartSnapshotContext = createContext<ChartResolutionResult | null>(null);
 
 async function loadFred(request: FredSeriesRequest) {
   return loadCachedFredSeries(
@@ -56,6 +59,7 @@ export function useResolvedChartSpec(
   spec: ChartSpec,
   options: UseChartResolutionOptions = {},
 ): UseChartResolutionResult {
+  const snapshot = useContext(ChartSnapshotContext);
   const dataProvider = useAssetData();
   const capabilityInvoker = useCapabilityInvoker();
   const tickers = useAppSelector((state) => state.tickers);
@@ -68,5 +72,5 @@ export function useResolvedChartSpec(
     loadFredSeries: loadFred,
     resolveCapabilitySeries: createChartSeriesResolver(capabilityInvoker),
   }), [capabilityInvoker, dataProvider]);
-  return useChartResolution(hydratedSpec, sources, options);
+  return useChartResolution(hydratedSpec, sources, { ...options, snapshot });
 }

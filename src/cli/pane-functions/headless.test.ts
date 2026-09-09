@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
+import { createDefaultConfig } from "../../types/config";
+import type { MarketContext } from "../types";
+import type { ResolvedPaneFunction } from "./resolver";
 import type {
   HeadlessBundleResult,
   HeadlessPaneDefinition,
@@ -14,6 +17,7 @@ import type {
 import { getPaneFunctionCapability, normalizeCapabilityOptions } from "./capabilities";
 import {
   buildHeadlessPaneLoadArgs,
+  buildHeadlessFunctionReport,
   renderHeadlessPaneText,
   serializeHeadlessPaneResult,
 } from "./headless";
@@ -37,6 +41,22 @@ function jsonData(
 }
 
 describe("headless pane printer", () => {
+  test("empty reports mark model-resolved inputs unavailable when the argument contains no tickers", async () => {
+    const definition: HeadlessPaneDefinition<"series"> = {
+      shape: "series", argument: { kind: "none" }, options: [],
+      load: () => ({ symbols: ["SPY"], series: [] }),
+    };
+    const report = await buildHeadlessFunctionReport({
+      headless: definition, token: "benchmark", label: "Benchmark", options: {},
+      instance: {}, capability: { id: "benchmark" },
+    } as ResolvedPaneFunction, {
+      config: createDefaultConfig("/tmp/gloomberb-headless-symbols"),
+    } as MarketContext, "");
+    expect(report.data).toMatchObject({
+      symbols: ["SPY"], unavailableSymbols: ["SPY"], empty: true, complete: false,
+    });
+  });
+
   test("renders rows as aligned text and preserves raw values in JSON", () => {
     const definition: HeadlessPaneDefinition<"rows"> = {
       shape: "rows",

@@ -48,7 +48,6 @@ export function BuildoutDetail({
       starred={rowStarred(row)}
       busy={favoriteBusyKey === rowFavoriteKey}
       selected={false}
-      interactive
       onPress={() => onToggleFavorite(row)}
     />
   ) : null;

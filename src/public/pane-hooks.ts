@@ -35,7 +35,7 @@ export function useTickers(): AppState["tickers"] {
  * Prefer a named hook above: these expose the app store directly, so anything
  * built on them is coupled to its shape.
  */
-export { AppContext, PaneInstanceProvider, useAppDispatch, useAppSelector } from "../state/app/context";
+export { AppContext, PaneInstanceProvider, useAppDispatch, useAppSelector, usePaneSettingValue, usePaneTitle } from "../state/app/context";
 
 export const usePaneInstanceId = usePaneInstanceIdInternal;
 export const usePaneCollection = usePaneCollectionInternal;

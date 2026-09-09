@@ -1,6 +1,6 @@
 import { Box, Text } from "../../ui";
 import { TextAttributes } from "../../ui";
-import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { safeExternalUrl } from "../../utils/external-url";
 import { linkContextMenuItems, useContextMenu, useRendererHost, useUiCapabilities } from "../../ui";
 
@@ -37,13 +37,14 @@ function handleOpen(
 }
 
 export function ExternalLinkText(
-  { url, label, color = colors.textBright, onOpen = openUrl }: {
+  { url, label, color, onOpen = openUrl }: {
     url: string;
     label?: string;
     color?: string;
     onOpen?: (url: string) => void;
   },
 ) {
+  const colors = useThemeColors();
   const rendererHost = useRendererHost();
   const { showContextMenu } = useContextMenu();
   const { nativeContextMenu } = useUiCapabilities();
@@ -63,8 +64,15 @@ export function ExternalLinkText(
   );
   return (
     <Text
-      fg={color}
+      fg={color ?? colors.textBright}
       attributes={TextAttributes.UNDERLINE}
+      cursor="pointer"
+      role="link"
+      tabIndex={0}
+      wrapText
+      onKeyDown={(event: any) => {
+        if (event.key === "Enter" || event.name === "return") handleOpen(url, resolvedOpen, event);
+      }}
       data-gloom-context-menu-surface="true"
       onMouseDown={(event: any) => {
         if (event.button === 2) {

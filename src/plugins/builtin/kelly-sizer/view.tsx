@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
+import { Button, NumberField } from "../../../components/ui";
 import type { KeyEventLike } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { NumberField } from "../../../components/ui";
+import { Box, Text, type InputRenderable } from "../../../ui";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import type { SensitivityGrid } from "./model";
 import type { InlineField } from "./fields";
+import type { SensitivityGrid } from "./model";
 export type { InlineField } from "./fields";
 
 export function truncateText(value: string, maxWidth: number): string {
@@ -189,24 +189,17 @@ export function InlineFieldView({
 
   if (field.onPress && !field.onValue) {
     return (
-      <Box
+      <Button
+        label={field.label}
+        displayLabel={`${truncateText(field.label, labelWidth).padEnd(labelWidth)}${truncateText(field.valueText ?? "", Math.max(1, width - labelWidth))}`}
         width={width}
-        height={1}
-        flexDirection="row"
-        backgroundColor={active ? colors.selected : colors.panel}
-        data-gloom-field-id={field.id}
-        onMouseDown={() => {
+        active={active}
+        compact
+        onPress={() => {
           onFocus();
           field.onPress?.();
         }}
-      >
-        <Text fg={active ? colors.selectedText : colors.textDim}>
-          {truncateText(field.label, labelWidth).padEnd(labelWidth)}
-        </Text>
-        <Text fg={fg} attributes={active ? TextAttributes.BOLD : 0}>
-          {truncateText(field.valueText ?? "", Math.max(1, width - labelWidth))}
-        </Text>
-      </Box>
+      />
     );
   }
 
@@ -248,55 +241,22 @@ export function InlineFieldView({
           onBlur={handleBlur}
         />
       ) : (
-        <Box
+        <Button
+          label={`Edit ${field.label}`}
+          displayLabel={truncateText(displayValue, valueWidth)}
           width={valueWidth}
-          height={1}
-          backgroundColor={colors.bg}
-          onMouseDown={() => {
+          variant="ghost"
+          compact
+          onPress={() => {
             onFocus();
             focusInput();
           }}
-        >
-          <Text fg={fg}>{truncateText(displayValue, valueWidth)}</Text>
-        </Box>
+        />
       )}
       {suffixWidth > 0 && (
         <Text fg={active ? colors.selectedText : colors.textDim}>
           {field.suffix ?? (field.percent ? "%" : "")}
         </Text>
-      )}
-    </Box>
-  );
-}
-
-export function MetricLine({
-  label,
-  value,
-  detail,
-  color,
-  width,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  color?: string;
-  width: number;
-}) {
-  const labelWidth = Math.min(12, Math.max(8, Math.floor(width * 0.32)));
-  const valueWidth = Math.min(Math.max(8, width - labelWidth), Math.max(8, Math.floor(width * 0.42)));
-  const detailWidth = Math.max(0, width - labelWidth - valueWidth);
-  return (
-    <Box height={1} width={width} flexDirection="row" overflow="hidden">
-      <Box width={labelWidth} flexShrink={0}>
-        <Text fg={colors.textDim}>{label}</Text>
-      </Box>
-      <Box width={valueWidth} flexShrink={0}>
-        <Text fg={color ?? colors.text} attributes={TextAttributes.BOLD}>
-          {truncateText(value, valueWidth)}
-        </Text>
-      </Box>
-      {detail && detailWidth > 0 && (
-        <Text fg={colors.textDim}>{truncateText(detail, detailWidth)}</Text>
       )}
     </Box>
   );

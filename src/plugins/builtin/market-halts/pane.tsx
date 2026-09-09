@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
-  EmptyState,
-  Spinner,
-  Tabs,
+  EmptyState, PaneStatusBody, Tabs,
   type DataTableCell,
-  type DataTableKeyEvent,
+  type DataTableKeyEvent
 } from "../../../components";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -41,44 +40,21 @@ import {
 } from "./model";
 
 /** Halted rows flip to resumed on the clock alone, so the pane re-reads it. */
+const EMPTY_RECORDS: HaltRecord[] = [];
 const STATUS_TICK_MS = 15_000;
 
 export function MarketHaltsPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const connectionHealth = useConnectionHealth();
-  const [records, setRecords] = useState<HaltRecord[]>([]);
-  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
+  const request = useCallback(() => fetchMarketHalts(connectionHealth), [connectionHealth]);
+  const { data, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request);
+  const records = data ?? EMPTY_RECORDS;
   const [filter, setFilter] = useState<HaltFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<HaltSortPreference>(DEFAULT_HALT_SORT);
   const [now, setNow] = useState(() => Date.now());
-  const fetchGenRef = useRef(0);
-
-  const load = useCallback(() => {
-    fetchGenRef.current += 1;
-    const generation = fetchGenRef.current;
-    setStatus((current) => (current === "loaded" ? "loaded" : "loading"));
-    setError(null);
-    fetchMarketHalts(connectionHealth)
-      .then((next) => {
-        if (fetchGenRef.current !== generation) return;
-        setRecords(next);
-        setError(null);
-        setStatus("loaded");
-        setFetchedAt(Date.now());
-        setNow(Date.now());
-      })
-      .catch((loadError: unknown) => {
-        if (fetchGenRef.current !== generation) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
-      });
-  }, [connectionHealth]);
-
   useEffect(() => acquireMarketHaltsHealth(connectionHealth), [connectionHealth]);
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setNow(Date.now()); }, [fetchedAt]);
   useAutoRefresh(fetchedAt, load);
 
   useEffect(() => {
@@ -209,9 +185,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
     return (
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
-        <Box flexGrow={1} justifyContent="center" alignItems="center">
-          <Spinner label="Loading trading halts..." />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="Loading trading halts..." />
       </Box>
     );
   }
@@ -221,7 +195,7 @@ export function MarketHaltsPane({ focused, width, height }: PaneProps) {
       <Box flexDirection="column" width={width} height={height}>
         {tabs}
         <Box padding={1}>
-          <EmptyState title="Trading halts unavailable." message={error ?? undefined} />
+          <EmptyState status={error ? "error" : "empty"} title="Trading halts unavailable." message={error ?? undefined} />
         </Box>
       </Box>
     );

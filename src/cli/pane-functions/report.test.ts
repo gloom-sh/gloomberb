@@ -1,3 +1,4 @@
+import { chartHeadless } from "../../plugins/builtin/chart-composer/headless";
 import { afterEach, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import { CHART_SPEC_VERSION, type ChartSpec } from "../../time-series/types";
@@ -28,7 +29,7 @@ const spec: ChartSpec = {
 
 afterEach(() => setSharedRegistryForTests(undefined));
 
-test("selects headless before legacy reports and rendered DOM fallback", () => {
+test("selects declared headless models and rendered DOM fallback without special capability IDs", () => {
   const base = {
     pane: { id: "market-data", name: "Market Data" },
     template: undefined,
@@ -40,7 +41,7 @@ test("selects headless before legacy reports and rendered DOM fallback", () => {
   expect(resolvePaneFunctionReportSource({
     ...base,
     capability: { ...base.capability, id: "quote-comparison" },
-  })).toBe("report");
+  })).toBe("dom");
   expect(resolvePaneFunctionReportSource({
     ...base,
     capability: { ...base.capability, id: "quote-comparison" },
@@ -80,6 +81,8 @@ test("chart composer reports accept capability-backed series", async () => {
   } as any);
   const resolved = {
     token: "chart-composer",
+    headless: chartHeadless("chart-composer-pane"),
+    options: {},
     label: "Chart Composer",
     description: "",
     pane: { id: "chart-composer", name: "Chart Composer" },
@@ -94,7 +97,7 @@ test("chart composer reports accept capability-backed series", async () => {
 
   const report = await buildFunctionReport(resolved, context, "");
   expect(report.data).toMatchObject({
-    kind: "chart-composer",
+    kind: "series",
     complete: true,
     empty: false,
     unavailableSymbols: [],

@@ -5,7 +5,7 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
 import { MESSAGE_ACTION_WIDTH, normalizeInlinePreview } from "../layout";
-import { ChatActionChip } from "./action-chip";
+import { Button } from "../../../../components/ui";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
@@ -124,10 +124,10 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
                   height={1}
                   data-gloom-role="chat-message-reply-action"
                 >
-                  <ChatActionChip
+                  <Button stopPropagation
                     label={t("Reply")}
                     width={MESSAGE_ACTION_WIDTH}
-                    emphasized={state.isSelected}
+                    variant={state.isSelected ? "primary" : "secondary"}
                     onPress={() => beginReplyTo(index)}
                   />
                 </Box>
@@ -138,10 +138,10 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
                   height={1}
                   data-gloom-role="chat-message-reply-action"
                 >
-                  <ChatActionChip
+                  <Button stopPropagation
                     label={t("Edit")}
                     width={MESSAGE_ACTION_WIDTH}
-                    emphasized={state.isSelected}
+                    variant={state.isSelected ? "primary" : "secondary"}
                     onPress={() => beginEditMessage(index)}
                   />
                 </Box>
@@ -179,18 +179,18 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             data-gloom-role="chat-message-reply-action"
           >
             {showGroupedReplyAction && (
-              <ChatActionChip
+              <Button stopPropagation
                 label={t("Reply")}
                 width={MESSAGE_ACTION_WIDTH}
-                emphasized={state.isSelected}
+                variant={state.isSelected ? "primary" : "secondary"}
                 onPress={() => beginReplyTo(index)}
               />
             )}
             {showGroupedEditAction && (
-              <ChatActionChip
+              <Button stopPropagation
                 label={t("Edit")}
                 width={MESSAGE_ACTION_WIDTH}
-                emphasized={state.isSelected}
+                variant={state.isSelected ? "primary" : "secondary"}
                 onPress={() => beginEditMessage(index)}
               />
             )}

@@ -3,12 +3,12 @@ import { act } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
-import { PluginRenderProvider } from "../../runtime";
 import { ConnectionsPane } from "./pane";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -26,20 +26,16 @@ function harness() {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-connections-pane-test"));
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId="connections:test">
-        <PluginRenderProvider pluginId="application" runtime={runtime}>
-          <PaneFooterProvider>
-            {(footer) => (
-              <Box flexDirection="column" width={80} height={12}>
-                <ConnectionsPane paneId="connections:test" paneType="connections" focused width={80} height={11} />
-                <PaneFooterBar footer={footer} focused width={80} />
-              </Box>
-            )}
-          </PaneFooterProvider>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId="connections:test" pluginId="application" runtime={runtime}>
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box flexDirection="column" width={80} height={12}>
+            <ConnectionsPane paneId="connections:test" paneType="connections" focused width={80} height={11} />
+            <PaneFooterBar footer={footer} focused width={80} />
+          </Box>
+        )}
+      </PaneFooterProvider>
+    </TestPaneProvider>
   );
 }
 

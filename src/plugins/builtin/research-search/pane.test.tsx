@@ -2,16 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  appReducer,
-  createInitialState,
-} from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
-import { PluginRenderProvider } from "../../runtime";
 import { ResearchSearchPane } from "./pane";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 const PANE_ID = "research-search:test";
 
@@ -137,19 +132,15 @@ function Harness({ mode = "results" }: { mode?: "results" | "saved" }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   return (
-    <AppContext value={{ state, dispatch }}>
-      <PaneInstanceProvider paneId={PANE_ID}>
-        <PluginRenderProvider pluginId="research-search" runtime={createTestPluginRuntime()}>
-          <ResearchSearchPane
-            paneId={PANE_ID}
-            paneType="research-search"
-            focused
-            width={110}
-            height={20}
-          />
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="research-search" runtime={createTestPluginRuntime()}>
+      <ResearchSearchPane
+        paneId={PANE_ID}
+        paneType="research-search"
+        focused
+        width={110}
+        height={20}
+      />
+    </TestPaneProvider>
   );
 }
 

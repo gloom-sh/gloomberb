@@ -1,33 +1,41 @@
 import type { ReactNode } from "react";
-import { Box, Text } from "../../ui";
-import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
+import { useThemeColors } from "../../theme/theme-context";
+import { Box, Text } from "../../ui";
+import { Spinner } from "./loading";
 
 export interface EmptyStateProps {
   title: string;
   message?: string;
   hint?: string;
+  actions?: ReactNode;
+  status?: "empty" | "error";
 }
 
-export function EmptyState({ title, message, hint }: EmptyStateProps) {
-  // A fixed one-cell height clipped long text at the pane edge with no marker,
-  // so provider messages lost their tail. These rows own the pane body, so let
-  // them wrap instead.
+export function EmptyState({ title, message, hint, actions, status = "empty" }: EmptyStateProps) {
+  const colors = useThemeColors();
+  // Provider messages must wrap at narrow pane widths rather than lose their tail.
   return (
-    <Box flexDirection="column">
-      <Box>
-        <Text fg={colors.textDim}>{t(title)}</Text>
-      </Box>
-      {message && (
-        <Box>
-          <Text fg={colors.textMuted}>{t(message)}</Text>
-        </Box>
-      )}
-      {hint && (
-        <Box>
-          <Text fg={colors.textMuted}>{t(hint)}</Text>
-        </Box>
-      )}
+    <Box flexDirection="column" data-gloom-status={status} data-gloom-ui="empty-state">
+      <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(title)}</Text></Box>
+      {message && <Box><Text fg={colors.textMuted} wrapText>{t(message)}</Text></Box>}
+      {hint && <Box><Text fg={colors.textMuted} wrapText>{t(hint)}</Text></Box>}
+      {actions && <Box flexDirection="row" gap={1} marginTop={1}>{actions}</Box>}
+    </Box>
+  );
+}
+
+export interface NoticeProps {
+  children: ReactNode;
+  tone?: "muted" | "positive" | "warning" | "negative";
+}
+
+/** Inline feedback leaves existing content visible, including stale data after a refresh failure. */
+export function Notice({ children, tone = "warning" }: NoticeProps) {
+  const colors = useThemeColors();
+  return (
+    <Box data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice">
+      <Text fg={tone === "muted" ? colors.textDim : colors[tone]} wrapText>{children}</Text>
     </Box>
   );
 }
@@ -47,55 +55,56 @@ export interface PaneStatusBodyProps {
   error?: string | null;
   /** True when there is nothing to show and nothing is in flight. */
   empty?: boolean;
-  /** Names what is being loaded or what failed, e.g. "movers". */
   subject?: string;
+  loadingLabel?: string;
+  errorTitle?: string;
   emptyTitle?: string;
   emptyMessage?: string;
+  actions?: ReactNode;
+  align?: "start" | "center";
+  width?: number;
+  height?: number;
   children?: ReactNode;
 }
 
-/**
- * Standard loading/error/empty body for a pane. Returns `children` once there
- * is something to render, so a pane can wrap its content in one place instead
- * of hand-rolling three near-identical states.
- */
+/** State precedence remains explicit at the caller: pass loading/error only when replacing the body. */
 export function PaneStatusBody({
   loading = false,
   error,
   empty = false,
   subject,
+  loadingLabel,
+  errorTitle,
   emptyTitle,
   emptyMessage,
+  actions,
+  align = "start",
+  width,
+  height,
   children,
 }: PaneStatusBodyProps) {
-  if (error) {
-    return (
-      <Box paddingX={1} paddingY={1} data-gloom-status="error">
+  const status = error ? "error" : loading ? "loading" : empty ? "empty" : null;
+  if (!status) return <>{children}</>;
+  return (
+    <Box
+      width={width}
+      height={height}
+      flexGrow={align === "center" ? 1 : undefined}
+      paddingX={1}
+      paddingY={1}
+      alignItems={align === "center" ? "center" : undefined}
+      justifyContent={align === "center" ? "center" : undefined}
+      data-gloom-status={status}
+      data-gloom-ui="pane-status"
+    >
+      {status === "loading" ? <Spinner label={loadingLabel ?? loadingText(subject)} /> : (
         <EmptyState
-          title={subject ? unavailableText(subject) : error}
-          message={subject ? error : undefined}
+          status={status}
+          title={status === "error" ? errorTitle ?? (subject ? unavailableText(subject) : error!) : emptyTitle ?? t("Nothing to show yet.")}
+          message={status === "error" ? (errorTitle || subject ? error! : undefined) : emptyMessage}
+          actions={actions}
         />
-      </Box>
-    );
-  }
-  if (loading) {
-    // The screenshot renderer waits on this marker to know a pane is still
-    // fetching. It must be a real attribute, never a word match on body text.
-    return (
-      <Box paddingX={1} paddingY={1} data-gloom-status="loading">
-        <EmptyState title={loadingText(subject)} />
-      </Box>
-    );
-  }
-  if (empty) {
-    return (
-      <Box paddingX={1} paddingY={1} data-gloom-status="empty">
-        <EmptyState
-          title={emptyTitle ?? t("Nothing to show yet.")}
-          message={emptyMessage}
-        />
-      </Box>
-    );
-  }
-  return <>{children}</>;
+      )}
+    </Box>
+  );
 }

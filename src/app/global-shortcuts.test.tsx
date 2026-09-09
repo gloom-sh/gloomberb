@@ -1,10 +1,10 @@
-import { afterEach, describe, expect, test } from "bun:test";
 import { createTestRenderer } from "@opentui/core/testing";
+import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { createOpenTuiTestRoot as createRoot, TestDialogProvider } from "../renderers/opentui/test-utils";
-import { cloneLayout, createDefaultConfig } from "../types/config";
-import { createInitialState, type AppAction, type AppState } from "../state/app/context";
 import type { PluginRegistry } from "../plugins/registry";
+import { TestDialogProvider, createOpenTuiTestRoot as createRoot, emitKeypress as emitTuiKeypress, type TestKeyEvent } from "../renderers/opentui/test-utils";
+import { createInitialState, type AppAction, type AppState } from "../state/app/context";
+import { cloneLayout, createDefaultConfig } from "../types/config";
 import { useAppGlobalShortcuts } from "./global-shortcuts";
 
 let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
@@ -108,39 +108,7 @@ function focusEditor() {
   });
 }
 
-async function emitKeypress(event: {
-  name?: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  super?: boolean;
-  shift?: boolean;
-  alt?: boolean;
-}) {
-  const keyEvent = {
-    ctrl: false,
-    meta: false,
-    super: false,
-    option: false,
-    alt: false,
-    shift: false,
-    eventType: "press",
-    repeated: false,
-    defaultPrevented: false,
-    propagationStopped: false,
-    preventDefault() {
-      this.defaultPrevented = true;
-    },
-    stopPropagation() {
-      this.propagationStopped = true;
-    },
-    ...event,
-  };
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", keyEvent as any);
-    await testSetup!.renderOnce();
-  });
-  return keyEvent;
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
 
 describe("useAppGlobalShortcuts", () => {
   test("toggles the command bar with Ctrl-P", async () => {

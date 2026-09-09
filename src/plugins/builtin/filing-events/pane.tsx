@@ -3,17 +3,14 @@ import type { CloudFilingEventPayload } from "../../../api-client";
 import { apiClient } from "../../../api-client";
 import {
   DataTableStackView,
-  EmptyState,
-  Spinner,
-  usePaneFooter,
+  EmptyState, PaneStatusBody, Prose, SectionHeading, usePaneFooter,
   type DataTableCell,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { colors } from "../../../theme/colors";
-import { Box, Text, useRendererHost, useUiCapabilities } from "../../../ui";
+import { Box, Text, useRendererHost } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
-import { Prose, SectionHeading } from "../earnings-calls/transcript-view";
 import { useBoundTicker } from "../shared/ticker-request";
 
 export const FILING_EVENTS_PANE_ID = "filing-events";
@@ -89,7 +86,6 @@ export function FilingEventsPane({
 }) {
   const { symbol } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
-  const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
   const [events, setEvents] = useState<CloudFilingEventPayload[]>([]);
@@ -168,14 +164,12 @@ export function FilingEventsPane({
     return <EmptyState title="Pick a ticker to see its 8-K filings." />;
   if (status === "loading" && events.length === 0) {
     return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <Spinner label="Loading 8-Ks..." />
-      </Box>
+      <PaneStatusBody loading align="center" loadingLabel="Loading 8-Ks..." />
     );
   }
   if (status === "error")
     return (
-      <EmptyState title="Could not load 8-K filings." message={error ?? ""} />
+      <PaneStatusBody error={error ?? "Could not load 8-K filings."} errorTitle="Could not load 8-K filings." />
     );
   if (status === "loaded" && events.length === 0) {
     return (
@@ -195,7 +189,6 @@ export function FilingEventsPane({
         ].join("  ·  ")}
         width={proseWidth}
         color={colors.textDim}
-        nativePaneChrome={nativePaneChrome}
       />
       {selected.headline ? (
         <Box marginTop={1}>
@@ -203,7 +196,6 @@ export function FilingEventsPane({
             text={selected.headline}
             width={proseWidth}
             color={colors.textBright}
-            nativePaneChrome={nativePaneChrome}
           />
         </Box>
       ) : null}
@@ -215,7 +207,6 @@ export function FilingEventsPane({
               text={point}
               width={proseWidth}
               color={colors.text}
-              nativePaneChrome={nativePaneChrome}
               prefix="• "
             />
           ))}
@@ -223,7 +214,7 @@ export function FilingEventsPane({
       ) : null}
       {selected.people.length > 0 ? (
         <Box flexDirection="column">
-          <SectionHeading title="PEOPLE" />
+          <SectionHeading marginTop={1} title="PEOPLE" />
           {selected.people.map((person) => (
             <Prose
               key={`${person.name}-${person.action}`}
@@ -236,7 +227,6 @@ export function FilingEventsPane({
                 .join(", ")}
               width={proseWidth}
               color={colors.textDim}
-              nativePaneChrome={nativePaneChrome}
               prefix={`${person.name}  `}
               prefixColor={colors.textBright}
             />

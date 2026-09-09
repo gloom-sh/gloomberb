@@ -1,6 +1,7 @@
+import { useThemeColors } from "../../theme/theme-context";
 import { type ComponentType } from "react";
 import { Box, Text, TextAttributes, useUiHost, type HostCheckboxProps } from "../../ui";
-import { colors, hoverBg } from "../../theme/colors";
+import { hoverBg } from "../../theme/colors";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 
 export type CheckboxProps = HostCheckboxProps;
@@ -16,6 +17,7 @@ export function Checkbox({
   width,
   variant = "default",
 }: CheckboxProps) {
+  const colors = useThemeColors();
   useRemoteUiNode({
     role: "checkbox",
     label,
@@ -56,7 +58,8 @@ export function Checkbox({
     <Box
       flexDirection="column"
       width={width}
-      backgroundColor={active && !disabled ? hoverBg() : undefined}
+      backgroundColor={active && !disabled ? hoverBg(colors) : undefined}
+      cursor={disabled ? "default" : "pointer"}
       onMouseDown={(event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
         event?.preventDefault?.();
         event?.stopPropagation?.();

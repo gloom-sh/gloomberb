@@ -1,8 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
-import { Box } from "../../ui";
 import { t } from "../../i18n";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { PaneSettingField } from "../../types/plugin";
+import { Box } from "../../ui";
+import { fuzzyFilter } from "../../utils/fuzzy-search";
+import { ToggleList } from "../toggle-list";
 import { Button } from "../ui";
 import {
   moveMultiSelectValue,
@@ -10,9 +12,8 @@ import {
   toggleOrderedMultiSelectValue,
   type MultiSelectOption,
 } from "../ui/multi-select";
-import { ToggleList } from "../toggle-list";
-import { fuzzyFilter } from "../../utils/fuzzy-search";
 import { coerceFieldValues } from "./helpers";
+import { useCommandBarPalette } from "./panel/palette";
 import type {
   CommandBarFieldValue,
   CommandBarPickerOption,
@@ -161,8 +162,6 @@ export function CommandBarMultiSelectBody({
   onCommit,
   onSelect,
   onToggle,
-  paletteBg,
-  panelBg,
   route,
 }: {
   bodyHeight: number;
@@ -171,10 +170,9 @@ export function CommandBarMultiSelectBody({
   onCommit: () => void;
   onSelect: (index: number) => void;
   onToggle: (id: string) => void;
-  paletteBg: string;
-  panelBg: string;
   route: CommandBarMultiSelectPickerRoute;
 }) {
+  const palette = useCommandBarPalette(nativePaneChrome);
   const selectedValues = getMultiSelectPickerSelectedValues(route);
   const options = getVisibleMultiSelectPickerOptions(route);
   const items = options.map((option) => ({
@@ -197,7 +195,7 @@ export function CommandBarMultiSelectBody({
         showSelectedDescription={false}
         onSelect={onSelect}
         onToggle={onToggle}
-        bgColor={nativePaneChrome ? panelBg : paletteBg}
+        bgColor={nativePaneChrome ? palette.panelBg : palette.bg}
         remoteLabel={route.title}
         remoteScope="command-bar"
         remoteMetadata={{

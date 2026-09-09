@@ -1,7 +1,7 @@
 import { Box, Input, Span, Text, useUiHost } from "../../ui";
 import { useEffect, useRef, useState, type ComponentType, type RefObject } from "react";
 import { type InputRenderable } from "../../ui";
-import { colors } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { remoteStringValue } from "../../remote/semantic-helpers";
 
@@ -53,12 +53,16 @@ export function TextField({
   type = "text",
   autoComplete,
   variant = "default",
-  backgroundColor = colors.bg,
-  textColor = colors.text,
-  placeholderColor = colors.textDim,
+  backgroundColor,
+  textColor,
+  placeholderColor,
   onMouseDown,
   onKeyDown,
 }: TextFieldProps) {
+  const colors = useThemeColors();
+  backgroundColor ??= colors.bg;
+  textColor ??= colors.text;
+  placeholderColor ??= colors.textDim;
   useRemoteUiNode({
     role: "text-field",
     label: label ?? placeholder,
@@ -96,6 +100,7 @@ export function TextField({
         textColor={textColor}
         placeholderColor={placeholderColor}
         onMouseDown={onMouseDown}
+        onKeyDown={onKeyDown}
       />
     );
   }

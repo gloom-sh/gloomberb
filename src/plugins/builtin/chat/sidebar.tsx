@@ -1,3 +1,4 @@
+import { ActionRow } from "../../../components/ui/action-row";
 import { useMemo } from "react";
 import {
   getPaneSidebarWidth,
@@ -211,22 +212,8 @@ export function ChannelSidebar({
                     width={listWidth}
                     flexDirection="row"
                     backgroundColor={sidebarBg}
-                    aria-label={directExpanded ? "Collapse DMs" : "Expand DMs"}
-                    data-gloom-role="pane-sidebar-section"
-                    onMouseDown={(event: any) => {
-                      event?.preventDefault?.();
-                      event?.stopPropagation?.();
-                      onToggleDirectExpanded?.();
-                    }}
-                    style={{ cursor: "pointer" }}
                   >
-                    <Text
-                      fg={conversationUnread ? colors.text : colors.textDim}
-                      attributes={conversationUnread ? TextAttributes.BOLD : 0}
-                    >
-                      {` ${directExpanded ? "▾" : "▸"} DMs`}
-                    </Text>
-                    <Box flexGrow={1} />
+                    <ActionRow label="DMs" active={conversationUnread} expanded={directExpanded} width={Math.max(1, listWidth - (canCreateConversation ? 3 : 0))} onPress={onToggleDirectExpanded} />
                     {canCreateConversation ? (
                       <PaneSidebarAction
                         width={3}

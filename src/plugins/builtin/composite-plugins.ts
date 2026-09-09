@@ -25,7 +25,6 @@ import { layoutManagerModule } from "./layout-manager";
 import { marketHaltsModule } from "./market-halts";
 import { marketHeatmapModule } from "./market-heatmap";
 import { marketMoversModule } from "./market-movers";
-import { tvModule } from "./tv";
 import { volatilityModule } from "./volatility";
 import { composeBuiltinPlugin, type PluginModule } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
@@ -102,7 +101,7 @@ export const macroPlugin = composeBuiltinPlugin({
   id: "macro",
   name: "Macro",
   version: "1.0.0",
-  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, IPOs, and live financial TV.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, and IPOs.",
   toggleable: true,
   modules: [
     macroSharedResourcesModule,
@@ -117,6 +116,5 @@ export const macroPlugin = composeBuiltinPlugin({
     earningsModule,
     earningsCallsModule,
     ipoCalendarModule,
-    tvModule,
   ],
 });

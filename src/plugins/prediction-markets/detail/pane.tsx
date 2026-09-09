@@ -1,3 +1,4 @@
+import { Button } from "../../../components/ui/button";
 import { Box, ScrollBox, Text } from "../../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import type { RefObject } from "react";
@@ -26,7 +27,6 @@ import { PredictionMarketRulesView } from "./rules";
 import { truncatePredictionText } from "./shared";
 import { PredictionMarketTradesView } from "./trades";
 
-type RelatedMarketPointerEvent = { preventDefault(): void };
 
 interface MetricCell {
   label: string;
@@ -236,17 +236,14 @@ export function PredictionMarketDetailPane({
         <Box flexDirection="row" gap={1} height={1} paddingBottom={1}>
           <Text fg={colors.textDim}>Related:</Text>
           {relatedSiblings.map((sibling) => (
-            <Box
+            <Button stopPropagation
               key={sibling.key}
-              onMouseDown={(event: RelatedMarketPointerEvent) => {
-                event.preventDefault();
-                onSelectMarket(sibling.key);
-              }}
-            >
-              <Text fg={colors.text}>
-                {`${truncatePredictionText(sibling.label, 10)} ${formatPredictionProbability(sibling.yesPrice)}`}
-              </Text>
-            </Box>
+              label={sibling.label}
+              displayLabel={`${truncatePredictionText(sibling.label, 10)} ${formatPredictionProbability(sibling.yesPrice)}`}
+              variant="ghost"
+              compact
+              onPress={() => onSelectMarket(sibling.key)}
+            />
           ))}
         </Box>
       )}

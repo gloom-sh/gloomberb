@@ -3,12 +3,12 @@ import { act } from "react";
 import { Box } from "../../../ui";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig, type BrokerInstanceConfig } from "../../../types/config";
-import { PluginRenderProvider } from "../../runtime";
 import { testBroker } from "../../../brokers/test-broker";
 import { BrokersPane } from "./index";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -72,13 +72,9 @@ function Harness({
   });
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PluginRenderProvider pluginId="broker" runtime={runtime}>
-        <PaneInstanceProvider paneId="brokers:test">
-          <BrokersPane focused width={92} height={paneHeight} />
-        </PaneInstanceProvider>
-      </PluginRenderProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId="brokers:test" pluginId="broker" runtime={runtime}>
+      <BrokersPane focused width={92} height={paneHeight} />
+    </TestPaneProvider>
   );
 }
 

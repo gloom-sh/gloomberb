@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -8,8 +8,8 @@ import {
 } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { Box, Text } from "../../ui";
-import { DataTableView } from "./view";
 import type { DataTableCell, DataTableColumn } from "../ui";
+import { DataTableView } from "./view";
 
 type Row =
   | { type: "section"; id: string; title: string }
@@ -139,61 +139,9 @@ async function renderSettled() {
   });
 }
 
-async function emitKeypress(event: {
-  name?: string;
-  sequence?: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  shift?: boolean;
-  option?: boolean;
-  defaultPrevented?: boolean;
-  propagationStopped?: boolean;
-}) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      defaultPrevented: false,
-      propagationStopped: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    } as any);
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
 
-async function emitKeypressBatch(events: Array<{
-  name?: string;
-  sequence?: string;
-  ctrl?: boolean;
-  meta?: boolean;
-  shift?: boolean;
-  option?: boolean;
-}>) {
-  await act(async () => {
-    for (const event of events) {
-      testSetup!.renderer.keyInput.emit("keypress", {
-        ctrl: false,
-        meta: false,
-        option: false,
-        shift: false,
-        eventType: "press",
-        repeated: false,
-        defaultPrevented: false,
-        propagationStopped: false,
-        preventDefault: () => {},
-        stopPropagation: () => {},
-        ...event,
-      } as any);
-    }
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypressBatch = (events: TestKeyEvent[]) => emitTuiKeypress(testSetup!, events);
 
 describe("DataTableView", () => {
   test("owns row keyboard navigation and skips section headers", async () => {

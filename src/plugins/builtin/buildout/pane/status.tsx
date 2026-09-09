@@ -1,9 +1,4 @@
-import { Box } from "../../../../ui";
-import {
-  EmptyState,
-  Spinner,
-  type PaneFooterSegment,
-} from "../../../../components";
+import { PaneStatusBody, type PaneFooterSegment } from "../../../../components";
 import type {
   BuildoutList,
   BuildoutLoadState,
@@ -67,18 +62,8 @@ export function renderBuildoutPageStatus(
   const page = activeBuildoutPage(state, activeTab, selectedList);
   if (!page) return null;
   if (page.loadingMore && page.items.length === 0) {
-    return (
-      <Box width="100%" paddingX={1} paddingY={1}>
-        <Spinner label={`Loading ${selectedList?.name ?? activeTab}...`} />
-      </Box>
-    );
+    return <PaneStatusBody loading loadingLabel={`Loading ${selectedList?.name ?? activeTab}...`} />;
   }
-  if (page.error) {
-    return (
-      <Box width="100%" paddingX={1} paddingY={1}>
-        <EmptyState title="Could not load rows." message={page.error} />
-      </Box>
-    );
-  }
+  if (page.error) return <PaneStatusBody error={page.error} errorTitle="Could not load rows." />;
   return null;
 }

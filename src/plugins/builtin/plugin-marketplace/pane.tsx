@@ -1,15 +1,15 @@
+import { KeyValueRow } from "../../../components";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { PaneStatusBody } from "../../../components";
 
 import {
   DataTableStackView,
-  EmptyState,
   InputSearchBar,
-  Spinner,
   useExternalLinkFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
@@ -18,17 +18,16 @@ import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../.
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
-import { canInstallPlugins, getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
+import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { loadRegistry, registryPluginUrl } from "./feed";
 import {
-  collectCategories,
   filterEntries,
+  isInstallable,
   mergeCatalog,
   sortEntries,
   unsupportedLabel,
-  isInstallable,
   type MarketplaceEntry,
-  type RegistryPlugin,
+  type RegistryPlugin
 } from "./model";
 import { getMarketplaceHost, getPluginInstaller } from "./store";
 
@@ -95,14 +94,6 @@ function renderCell(
   }
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <Box flexDirection="row" height={1} gap={1}>
-      <Text fg={colors.textDim}>{`${label}:`}</Text>
-      <Text fg={colors.text}>{value}</Text>
-    </Box>
-  );
-}
 
 function EntryDetail({ entry, width }: { entry: MarketplaceEntry; width: number }) {
   const contributes: string[] = [];
@@ -129,15 +120,15 @@ function EntryDetail({ entry, width }: { entry: MarketplaceEntry; width: number 
       ) : null}
 
       <Box paddingTop={1} flexDirection="column">
-        {contributes.length > 0 ? <DetailRow label="Adds" value={contributes.join(", ")} /> : null}
+        {contributes.length > 0 ? <KeyValueRow labelWidth={10} width={Math.max(1, width - 2)} emphasis={false} label="Adds" value={contributes.join(", ")} /> : null}
         {/*
           * Declared by the plugin author and not enforced: plugins are not
           * sandboxed, so this is a hint about intent, not a limit. Labelled
           * "Declares" rather than "Network" so it does not read as a guarantee.
           */}
-        {entry.hosts.length > 0 ? <DetailRow label="Declares" value={entry.hosts.join(", ")} /> : null}
-        {entry.repo ? <DetailRow label="Source" value={`github.com/${entry.repo}`} /> : null}
-        {entry.loadError ? <DetailRow label="Error" value={entry.loadError} /> : null}
+        {entry.hosts.length > 0 ? <KeyValueRow labelWidth={10} width={Math.max(1, width - 2)} emphasis={false} label="Declares" value={entry.hosts.join(", ")} /> : null}
+        {entry.repo ? <KeyValueRow labelWidth={10} width={Math.max(1, width - 2)} emphasis={false} label="Source" value={`github.com/${entry.repo}`} /> : null}
+        {entry.loadError ? <KeyValueRow labelWidth={10} width={Math.max(1, width - 2)} emphasis={false} label="Error" value={entry.loadError} /> : null}
       </Box>
 
       {!entry.installed && !entry.bundled && entry.repo ? (
@@ -331,9 +322,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (status === "loading" && entries.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <Box flexGrow={1} alignItems="center" justifyContent="center">
-          <Spinner />
-        </Box>
+        <PaneStatusBody loading align="center" loadingLabel="" />
       </Box>
     );
   }

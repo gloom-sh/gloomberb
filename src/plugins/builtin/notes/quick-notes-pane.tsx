@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Box, Input, Text, type InputRenderable, type TextareaRenderable } from "../../../ui";
+import { Box, Text, type InputRenderable, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import type { PaneProps } from "../../../types/plugin";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
-import { ConfirmDialog, EmptyState, Tabs, usePaneFooter } from "../../../components";
+import { ConfirmDialog, EmptyState, Tabs, TextField, usePaneFooter } from "../../../components";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
 import { usePluginAppActions } from "../../runtime";
 import type { NotesFiles } from "./files";
@@ -335,14 +335,15 @@ export function createQuickNotesPane(notesFiles: NotesFiles) {
         {renaming && (
           <Box height={1} flexDirection="row" paddingLeft={1}>
             <Text fg={colors.textDim}>{"Rename: "}</Text>
-            <Input
-              ref={renameInputRef}
-              initialValue={renameValue}
+            <TextField
+              inputRef={renameInputRef}
+              value={renameValue}
               focused={renaming}
               textColor={colors.text}
               backgroundColor={colors.panel}
-              flexGrow={1}
-              onChange={(val: string) => setRenameValue(val)}
+              width={Math.max(1, width - 10)}
+              variant="plain"
+              onChange={setRenameValue}
             />
           </Box>
         )}

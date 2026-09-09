@@ -1,6 +1,5 @@
 import { useCallback } from "react";
 import { useOptionalPaneInstanceId } from "../../state/app/context";
-import type { AppNotificationRequest, PaneTemplateCreateOptions } from "../../types/plugin";
 import {
   usePluginRenderContext,
   type PluginRuntimeAccess,
@@ -9,7 +8,7 @@ import {
 export {
   PluginRenderProvider,
   wrapPaneDefWithRuntime,
-  wrapTickerResearchTabDefWithRuntime,
+  wrapTickerResearchTabDefWithRuntime
 } from "./context";
 export type { PluginRuntimeAccess } from "./context";
 
@@ -21,7 +20,7 @@ export {
   usePluginConfigState,
   usePluginPaneState,
   usePluginState,
-  useSetPluginConfigStates,
+  useSetPluginConfigStates
 } from "./state";
 
 export function usePluginTickerActions() {
@@ -38,59 +37,24 @@ export function usePluginTickerActions() {
 
 export function usePluginPaneActions() {
   const { runtime } = usePluginRenderContext();
-  const selectTicker = useCallback((symbol: string, paneId?: string) => {
-    runtime.selectTicker(symbol, paneId);
-  }, [runtime]);
-  const switchTab = useCallback((tabId: string, paneId?: string) => {
-    runtime.switchTab(tabId, paneId);
-  }, [runtime]);
-  const switchPanel = useCallback((panel: "left" | "right") => {
-    runtime.switchPanel(panel);
-  }, [runtime]);
-
   return {
-    selectTicker,
-    switchTab,
-    switchPanel,
+    selectTicker: runtime.selectTicker,
+    switchTab: runtime.switchTab,
+    switchPanel: runtime.switchPanel,
   };
 }
 
 export function usePluginAppActions() {
   const { runtime } = usePluginRenderContext();
-  const openCommandBar = useCallback((query?: string) => {
-    runtime.openCommandBar(query);
-  }, [runtime]);
-  const showPane = useCallback((paneId: string) => {
-    runtime.showPane(paneId);
-  }, [runtime]);
-  const createPaneFromTemplate = useCallback((templateId: string, options?: PaneTemplateCreateOptions) => {
-    runtime.createPaneFromTemplate(templateId, options);
-  }, [runtime]);
-  const hidePane = useCallback((paneId: string) => {
-    runtime.hidePane(paneId);
-  }, [runtime]);
-  const focusPane = useCallback((paneId: string) => {
-    runtime.focusPane(paneId);
-  }, [runtime]);
-  const openPaneSettings = useCallback((paneId?: string) => {
-    runtime.openPaneSettings(paneId);
-  }, [runtime]);
-  const openPluginCommandWorkflow = useCallback((commandId: string) => {
-    runtime.openPluginCommandWorkflow(commandId);
-  }, [runtime]);
-  const notify = useCallback((notification: AppNotificationRequest) => {
-    runtime.notify(notification);
-  }, [runtime]);
-
   return {
-    openCommandBar,
-    showPane,
-    createPaneFromTemplate,
-    hidePane,
-    focusPane,
-    openPaneSettings,
-    openPluginCommandWorkflow,
-    notify,
+    openCommandBar: runtime.openCommandBar,
+    showPane: runtime.showPane,
+    createPaneFromTemplate: runtime.createPaneFromTemplate,
+    hidePane: runtime.hidePane,
+    focusPane: runtime.focusPane,
+    openPaneSettings: runtime.openPaneSettings,
+    openPluginCommandWorkflow: runtime.openPluginCommandWorkflow,
+    notify: runtime.notify,
   };
 }
 

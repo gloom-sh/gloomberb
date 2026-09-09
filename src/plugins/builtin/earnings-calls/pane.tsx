@@ -1,20 +1,21 @@
-import { recordResearchActivity } from "../../../api-client/research-activity";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  CloudEarningsCallPayload,
+  CloudEarningsTranscriptPayload,
+} from "../../../api-client";
+import { recordResearchActivity } from "../../../api-client/research-activity";
 import {
   Button,
   DataTableStackView,
   EmptyState,
-  InputSearchBar,
-  Spinner,
+  InputSearchBar, PaneStatusBody, Spinner,
   usePaneFooter,
   type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { CloudAuthNotice } from "../cloud/auth-actions";
-import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { colors } from "../../../theme/colors";
 import {
   Box,
@@ -25,12 +26,10 @@ import {
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
+import { CloudAuthNotice } from "../cloud/auth-actions";
+import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../shared/plan-access";
-import type {
-  CloudEarningsCallPayload,
-  CloudEarningsTranscriptPayload,
-} from "../../../api-client";
+import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import {
   callStatusLabel,
   isPendingTranscript,
@@ -589,28 +588,24 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         <EmptyState
           title="Earnings call transcripts are part of Gloom Cloud Pro."
           message="Gloomberb transcribes the calls itself: full transcripts with speaker attribution, analyst Q&A, and extracted guidance, risks and tone."
+          actions={<>
+            <Button label="Upgrade to Pro" onPress={openUpgrade} />
+            <Button label="Manage account" variant="secondary" onPress={openPlan} />
+          </>}
         />
-        <Box flexDirection="row" marginTop={1} gap={1}>
-          <Button label="Upgrade to Pro" onPress={openUpgrade} />
-          <Button label="Manage account" variant="secondary" onPress={openPlan} />
-        </Box>
       </Box>
     );
   }
 
   if (listStatus === "loading" && calls.length === 0) {
     return (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <Spinner label="Loading calls..." />
-      </Box>
+      <PaneStatusBody loading align="center" loadingLabel="Loading calls..." />
     );
   }
 
   if (listStatus === "error" && calls.length === 0) {
     return (
-      <Box flexDirection="column" paddingX={1}>
-        <EmptyState title="Could not load earnings calls." message={listError?.message ?? ""} />
-      </Box>
+      <PaneStatusBody error={listError?.message ?? "Could not load earnings calls."} errorTitle="Could not load earnings calls." />
     );
   }
 
@@ -618,9 +613,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   // for the company, or it has nothing to search for.
   if (ticker && calls.length === 0) {
     return listPending ? (
-      <Box flexGrow={1} alignItems="center" justifyContent="center">
-        <Spinner label={`Looking for ${ticker}'s earnings calls...`} />
-      </Box>
+      <PaneStatusBody loading align="center" loadingLabel={`Looking for ${ticker}'s earnings calls...`} />
     ) : (
       <EmptyState
         title={`No earnings calls found for ${ticker}.`}
@@ -634,11 +627,11 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       <EmptyState
         title="Earnings call transcripts are part of Gloom Cloud Pro."
         message="Full transcripts with speaker attribution, analyst Q&A, guidance and risk extraction, transcribed from the call itself."
+        actions={<>
+          <Button label="Upgrade to Pro" onPress={openUpgrade} />
+          <Button label="Manage account" variant="secondary" onPress={openPlan} />
+        </>}
       />
-      <Box flexDirection="row" marginTop={1} gap={1}>
-        <Button label="Upgrade to Pro" onPress={openUpgrade} />
-        <Button label="Manage account" variant="secondary" onPress={openPlan} />
-      </Box>
     </Box>
   ) : selected && !transcript && (producing || (!selected.hasTranscript && !transcriptError)) ? (
     <Box flexDirection="column" flexGrow={1} paddingX={1} gap={1}>

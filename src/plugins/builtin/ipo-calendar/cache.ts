@@ -1,4 +1,4 @@
-import type { PluginPersistence } from "../../../types/plugin";
+import { createPluginCache } from "../../../data/plugin-cache";
 import { fetchIpoCalendar, type IpoCalendarFetchResult } from "./client";
 import type { IPORecord } from "./types";
 
@@ -26,76 +26,30 @@ export interface IpoCalendarResult {
   errors: string[];
 }
 
-let persistence: PluginPersistence | null = null;
-let activeFetch: Promise<IpoCalendarResult> | null = null;
-
-export function attachIpoCalendarPersistence(next: PluginPersistence): void {
-  persistence = next;
-}
-
-export function resetIpoCalendarPersistence(): void {
-  persistence = null;
-  activeFetch = null;
-}
-
-function readCache(options?: { allowExpired?: boolean }): IpoCalendarResult | null {
-  const record = persistence?.getResource<PersistedIPORecord[]>(CACHE_KIND, CACHE_KEY, {
-    sourceKey: CACHE_SOURCE,
-    schemaVersion: CACHE_SCHEMA_VERSION,
-    allowExpired: options?.allowExpired,
-  });
-  if (!record || !Array.isArray(record.value)) return null;
-  const records = record.value
-    .map((entry) => ({ ...entry, date: new Date(entry.date) }))
-    .filter((entry) => !Number.isNaN(entry.date.getTime()));
-  return { records, fetchedAt: record.fetchedAt, stale: !!record.stale, errors: [] };
-}
+const cache = createPluginCache<IpoCalendarFetchResult, PersistedIPORecord[]>({
+  kind: CACHE_KIND, source: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, policy: CACHE_POLICY,
+  encode: ({ records }) => records.map((record) => ({ ...record, date: record.date.toISOString() })),
+  decode: (records) => ({ records: records.map((record) => ({ ...record, date: new Date(record.date) }))
+    .filter((record) => !Number.isNaN(record.date.getTime())), errors: [] }),
+});
+export const attachIpoCalendarPersistence = cache.attach;
+export const resetIpoCalendarPersistence = cache.reset;
 
 export function getCachedIpoCalendar(): IpoCalendarResult | null {
-  return readCache({ allowExpired: true });
+  const result = cache.get(CACHE_KEY, { allowExpired: true });
+  return result ? { records: result.data.records, fetchedAt: result.fetchedAt, stale: result.stale, errors: [] } : null;
 }
 
-/**
- * Serves fresh cache without a request, shares one in-flight fetch across
- * panes, and falls back to whatever is cached when Stock Analysis is
- * unreachable. A partial scrape is cached but keeps its errors so the pane can
- * say so rather than presenting half a board as the whole one.
- */
 export async function loadIpoCalendar(
   force = false,
   loader: () => Promise<IpoCalendarFetchResult> = fetchIpoCalendar,
 ): Promise<IpoCalendarResult> {
-  const cached = readCache();
-  if (!force && cached && !cached.stale) return cached;
-  if (activeFetch) return activeFetch;
-
-  const fallback = cached ?? readCache({ allowExpired: true });
-  activeFetch = loader()
-    .then(({ records, errors }) => {
-      if (records.length === 0) {
-        if (fallback) return { ...fallback, stale: true, errors };
-        throw new Error(errors.join("; ") || "Stock Analysis returned no IPOs");
-      }
-      persistence?.setResource(
-        CACHE_KIND,
-        CACHE_KEY,
-        records.map((record) => ({ ...record, date: record.date.toISOString() })),
-        { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, cachePolicy: CACHE_POLICY },
-      );
-      return { records, fetchedAt: Date.now(), stale: false, errors };
-    })
-    .catch((error: unknown) => {
-      if (fallback) {
-        return {
-          ...fallback,
-          stale: true,
-          errors: [error instanceof Error ? error.message : String(error)],
-        };
-      }
-      throw error;
-    })
-    .finally(() => {
-      activeFetch = null;
-    });
-  return activeFetch;
+  const result = await cache.load(CACHE_KEY, async () => {
+    const fetched = await loader();
+    if (fetched.records.length === 0) throw Object.assign(new Error(fetched.errors.join("; ") || "Stock Analysis returned no IPOs"), { errors: fetched.errors });
+    return fetched;
+  }, { force });
+  return { records: result.data.records, fetchedAt: result.fetchedAt, stale: result.stale,
+    errors: result.error && typeof result.error === "object" && "errors" in result.error
+      ? result.error.errors as string[] : result.refreshError ? [result.refreshError] : result.data.errors };
 }

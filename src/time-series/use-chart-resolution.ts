@@ -29,6 +29,7 @@ export interface UseChartResolutionResult extends ChartResolutionResult {
 }
 
 export interface UseChartResolutionOptions {
+  snapshot?: ChartResolutionResult | null;
   liveRefreshIntervalMs?: number;
   liveStreaming?: boolean;
   quotePollingIntervalMs?: number;
@@ -98,11 +99,12 @@ export function useChartResolution(
   sources: ChartResolveSources,
   options: UseChartResolutionOptions = {},
 ): UseChartResolutionResult {
+  const snapshot = options.snapshot;
   const coordinator = getSharedMarketDataCoordinator();
   const [result, setResult] = useState<ChartResolutionResult>(
-    () => seedChartResolutionResult(spec, collectSeedHistory(spec)) ?? EMPTY_RESULT,
+    () => snapshot ?? seedChartResolutionResult(spec, collectSeedHistory(spec)) ?? EMPTY_RESULT,
   );
-  const needsSeed = !hasRenderableData(result);
+  const needsSeed = !snapshot && !hasRenderableData(result);
   const subscribeSeed = useCallback((listener: () => void) => {
     if (!needsSeed || !coordinator) return () => {};
     return coordinator.subscribe(listener);
@@ -161,6 +163,7 @@ export function useChartResolution(
   const reload = useCallback(() => setRevision((current) => current + 1), []);
 
   useEffect(() => {
+    if (snapshot) return;
     generationRef.current += 1;
     const generation = generationRef.current;
     const cacheIdentity = cacheIdentityRef.current;
@@ -201,6 +204,7 @@ export function useChartResolution(
       if (generationRef.current === generation) generationRef.current += 1;
     };
   }, [
+    snapshot,
     adaptiveTargetPointCount,
     autoViewportEnd,
     autoViewportStart,
@@ -217,7 +221,7 @@ export function useChartResolution(
   useEffect(() => {
     const subscriptionGeneration = ++liveSubscriptionGenerationRef.current;
     liveQuoteOverridesRef.current = new Map();
-    if (!liveStreaming) return;
+    if (snapshot || !liveStreaming) return;
     const dispose = subscribeToLiveChartQuotes({
       spec,
       dataProvider: sources.dataProvider,
@@ -267,17 +271,17 @@ export function useChartResolution(
         liveQuoteOverridesRef.current = new Map();
       }
     };
-  }, [liveRefreshIntervalMs, liveStreaming, liveTargetSignature, sources.dataProvider]);
+  }, [snapshot, liveRefreshIntervalMs, liveStreaming, liveTargetSignature, sources.dataProvider]);
 
   const quotePollingIntervalMs = options.quotePollingIntervalMs ?? DEFAULT_QUOTE_POLL_INTERVAL_MS;
   useEffect(() => {
-    if (liveStreaming || !liveTargetSignature) return;
+    if (snapshot || liveStreaming || !liveTargetSignature) return;
     setRevision((current) => current + 1);
     const intervalId = setInterval(() => {
       setRevision((current) => current + 1);
     }, quotePollingIntervalMs);
     return () => clearInterval(intervalId);
-  }, [liveStreaming, liveTargetSignature, quotePollingIntervalMs]);
+  }, [snapshot, liveStreaming, liveTargetSignature, quotePollingIntervalMs]);
 
-  return { ...displayed, reload };
+  return { ...(snapshot ?? displayed), reload };
 }

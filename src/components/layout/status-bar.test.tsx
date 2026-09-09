@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { act, useEffect, useState } from "react";
+import { getDockedPaneIds } from "../../plugins/pane-manager";
+import { setSharedRegistryForTests } from "../../plugins/registry";
 import { testRender } from "../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../state/app/context";
 import { cloneLayout, createDefaultConfig, createPaneInstance, type LayoutConfig } from "../../types/config";
 import type { AppNotificationRequest } from "../../types/plugin";
-import { StatusBar } from "./status-bar";
 import { VERSION } from "../../version";
-import { getDockedPaneIds } from "../../plugins/pane-manager";
-import { setSharedRegistryForTests } from "../../plugins/registry";
-import { act, useEffect, useState } from "react";
+import { StatusBar } from "./status-bar";
 import { TransientLayoutProvider, useTransientLayout } from "./transient-layout";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -220,7 +220,7 @@ describe("StatusBar", () => {
       getTermSizeFn: () => ({ width: 120, height: 40 }),
       updateLayoutFn: (layout: LayoutConfig) => { updatedLayout = layout; },
       notify: (notification: AppNotificationRequest) => { notifications.push(notification); },
-      Slot: () => null,
+      renderSlot: () => null,
     } as any);
 
     testSetup = await testRender(
@@ -280,7 +280,7 @@ describe("StatusBar", () => {
       getTermSizeFn: () => ({ width: 120, height: 40 }),
       updateLayoutFn: (layout: LayoutConfig) => { updatedLayout = layout; },
       notify: (notification: AppNotificationRequest) => { notifications.push(notification); },
-      Slot: () => null,
+      renderSlot: () => null,
     } as any);
 
     testSetup = await testRender(

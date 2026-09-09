@@ -1,8 +1,9 @@
 import { useMemo } from "react";
-import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
-import { StaticChartSurface, type StaticChartOverlay } from "../../../components/chart/static";
-import { colors, blendHex } from "../../../theme/colors";
+import { Badge } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { StaticChartSurface, type StaticChartOverlay } from "../../../components/chart/static";
+import { blendHex, colors } from "../../../theme/colors";
+import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
 import type {
   FearGreedData,
   FearGreedIndicator,
@@ -20,15 +21,6 @@ import {
 } from "./format";
 
 const CHART_META_STACK_WIDTH = 84;
-
-function SentimentBadge({ rating }: { rating: FearGreedRating }) {
-  const color = ratingColor(rating);
-  return (
-    <Box height={1} paddingX={1} backgroundColor={blendHex(colors.bg, color, 0.28)}>
-      <Text fg={color} attributes={TextAttributes.BOLD}>{ratingLabel(rating)}</Text>
-    </Box>
-  );
-}
 
 export function PreviousScoreGrid({ data, width, layout = "grid" }: { data: FearGreedData; width: number; layout?: "grid" | "rail" }) {
   const items = [
@@ -132,7 +124,7 @@ function SentimentChart({
       <Box flexDirection="row" height={1}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title.toUpperCase()}</Text>
         <Box flexGrow={1} />
-        <SentimentBadge rating={rating} />
+        <Badge label={ratingLabel(rating)} color={ratingColor(rating)} />
       </Box>
       {stackMeta ? (
         <>

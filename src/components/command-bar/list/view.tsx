@@ -1,4 +1,9 @@
 import { memo, useMemo, type RefObject } from "react";
+import { t } from "../../../i18n";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { commandBarBadgeText, type CommandBarBadgeTone } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
+import type { CommandBarResultLineSegment } from "../../../types/plugin";
 import {
   Box,
   ScrollBox,
@@ -6,12 +11,10 @@ import {
   TextAttributes,
   type ScrollBoxRenderable,
 } from "../../../ui";
-import { Spinner } from "../../ui";
-import { t } from "../../../i18n";
-import { commandBarBadgeText, type CommandBarBadgeTone } from "../../../theme/colors";
-import { useThemeColors } from "../../../theme/theme-context";
-import type { CommandBarResultLineSegment } from "../../../types/plugin";
 import { truncateTextSegments } from "../../../utils/format";
+import { Spinner } from "../../ui";
+import { useCommandBarPalette } from "../panel/palette";
+import { getRowPresentation, truncateText } from "../view-model";
 import {
   BADGE_COLUMN_WIDTH,
   BADGE_GAP,
@@ -25,8 +28,6 @@ import {
   type ListScreenState,
   type ResultItem,
 } from "./model";
-import { getRowPresentation, truncateText } from "../view-model";
-import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 export type CommandBarListScrollEvent = {
   stopPropagation: () => void;
@@ -49,16 +50,6 @@ interface CommandBarListItemRowProps {
   labelWidth: number;
   trailingWidth: number;
   nativePaneChrome: boolean;
-  paletteAccentText: string;
-  paletteBg: string;
-  paletteHeadingText: string;
-  paletteHoverBg: string;
-  paletteMatchText: string;
-  paletteSelectedBg: string;
-  paletteSelectedText: string;
-  paletteSubtleText: string;
-  paletteText: string;
-  panelBg: string;
   onHoverIndex: (index: number | null) => void;
   onListScroll: (event: CommandBarListScrollEvent) => void;
   onRowMouseDown: (event: any, item: ResultItem, globalIdx: number) => void;
@@ -76,20 +67,11 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
   labelWidth,
   trailingWidth,
   nativePaneChrome,
-  paletteAccentText,
-  paletteBg,
-  paletteHeadingText,
-  paletteHoverBg,
-  paletteMatchText,
-  paletteSelectedBg,
-  paletteSelectedText,
-  paletteSubtleText,
-  paletteText,
-  panelBg,
   onHoverIndex,
   onListScroll,
   onRowMouseDown,
 }: CommandBarListItemRowProps) {
+  const palette = useCommandBarPalette(nativePaneChrome);
   const presentation = getRowPresentation(item, isSelected, trailingWidth > 0);
   const badge = resolveRowBadge(item);
   // The badge column and its gap come out of the label, so the right column
@@ -155,10 +137,10 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
       height={1 + lines.length}
       paddingX={contentPadding}
       backgroundColor={isSelected
-        ? paletteSelectedBg
+        ? palette.selectedBg
         : isHovered
-          ? paletteHoverBg
-          : (nativePaneChrome ? panelBg : paletteBg)}
+          ? palette.hoverBg
+          : (nativePaneChrome ? palette.panelBg : palette.bg)}
       onMouseOver={() => onHoverIndex(globalIdx)}
       onMouseOut={() => onHoverIndex(null)}
       {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}
@@ -171,17 +153,17 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
           {badge && <CommandBarRowBadge text={badge.text} tone={badge.tone} width={BADGE_COLUMN_WIDTH} />}
         </Box>
         <Box width={labelColumnWidth}>
-          <Text fg={isSelected ? paletteSelectedText : presentation.primaryMuted ? paletteSubtleText : paletteText}>
+          <Text fg={isSelected ? palette.selectedText : presentation.primaryMuted ? palette.subtle : palette.text}>
             {label}
           </Text>
         </Box>
         <Box width={trailingWidth}>
           <Text
             fg={isSelected
-              ? paletteSelectedText
+              ? palette.selectedText
               : presentation.trailingAccent
-                ? paletteAccentText
-                : paletteSubtleText}
+                ? palette.accent
+                : palette.subtle}
           >
             {trailing}
           </Text>
@@ -199,13 +181,7 @@ const CommandBarListItemRow = memo(function CommandBarListItemRow({
           {segments.map((segment, segmentIndex) => (
             <Text
               key={segmentIndex}
-              fg={resolveLineSegmentColor(segment, {
-                isSelected,
-                paletteHeadingText,
-                paletteMatchText,
-                paletteSelectedText,
-                paletteSubtleText,
-              })}
+              fg={resolveLineSegmentColor(segment, palette, isSelected)}
               attributes={segment.emphasis === "match" ? TextAttributes.BOLD : TextAttributes.NONE}
             >
               {segment.text}
@@ -242,17 +218,12 @@ function CommandBarRowBadge({ text, tone, width }: { text: string; tone: Command
  */
 function resolveLineSegmentColor(
   segment: CommandBarResultLineSegment,
-  palette: {
-    isSelected: boolean;
-    paletteHeadingText: string;
-    paletteMatchText: string;
-    paletteSelectedText: string;
-    paletteSubtleText: string;
-  },
+  palette: ReturnType<typeof useCommandBarPalette>,
+  isSelected: boolean,
 ): string {
-  if (segment.emphasis === "match") return palette.paletteMatchText;
-  if (palette.isSelected) return palette.paletteSelectedText;
-  return segment.emphasis === "muted" ? palette.paletteHeadingText : palette.paletteSubtleText;
+  if (segment.emphasis === "match") return palette.match;
+  if (isSelected) return palette.selectedText;
+  return segment.emphasis === "muted" ? palette.heading : palette.subtle;
 }
 
 interface CommandBarListBodyProps {
@@ -263,16 +234,6 @@ interface CommandBarListBodyProps {
   labelWidth: number;
   nativePaneChrome: boolean;
   nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
-  paletteAccentText: string;
-  paletteBg: string;
-  paletteHeadingText: string;
-  paletteHoverBg: string;
-  paletteMatchText: string;
-  paletteSelectedBg: string;
-  paletteSelectedText: string;
-  paletteSubtleText: string;
-  paletteText: string;
-  panelBg: string;
   queryDisplayWidth: number;
   trailingWidth: number;
   onHoverIndex: (index: number | null) => void;
@@ -288,22 +249,13 @@ export const CommandBarListBody = memo(function CommandBarListBody({
   labelWidth,
   nativePaneChrome,
   nativeListScrollRef,
-  paletteAccentText,
-  paletteBg,
-  paletteHeadingText,
-  paletteHoverBg,
-  paletteMatchText,
-  paletteSelectedBg,
-  paletteSelectedText,
-  paletteSubtleText,
-  paletteText,
-  panelBg,
   queryDisplayWidth,
   trailingWidth,
   onHoverIndex,
   onListScroll,
   onRowMouseDown,
 }: CommandBarListBodyProps) {
+  const palette = useCommandBarPalette(nativePaneChrome);
   // Headings, messages and the spinner sit on the label edge: the badge column
   // is a gutter for the rows, not an indent for everything else.
   const labelEdgePadding = contentPadding + BADGE_INDENT;
@@ -341,14 +293,14 @@ export const CommandBarListBody = memo(function CommandBarListBody({
         if (row.kind === "message") {
           return (
             <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text fg={paletteText}>{truncateText(t(row.label), labelEdgeWidth)}</Text>
+              <Text fg={palette.text}>{truncateText(t(row.label), labelEdgeWidth)}</Text>
             </Box>
           );
         }
         if (row.kind === "heading") {
           return (
             <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text attributes={TextAttributes.BOLD} fg={row.accent ? paletteAccentText : paletteHeadingText}>
+              <Text attributes={TextAttributes.BOLD} fg={row.accent ? palette.accent : palette.heading}>
                 {truncateText(t(row.label), labelEdgeWidth)}
               </Text>
             </Box>
@@ -372,16 +324,6 @@ export const CommandBarListBody = memo(function CommandBarListBody({
             labelWidth={labelWidth}
             trailingWidth={trailingWidth}
             nativePaneChrome={nativePaneChrome}
-            paletteAccentText={paletteAccentText}
-            paletteBg={paletteBg}
-            paletteHeadingText={paletteHeadingText}
-            paletteHoverBg={paletteHoverBg}
-            paletteMatchText={paletteMatchText}
-            paletteSelectedBg={paletteSelectedBg}
-            paletteSelectedText={paletteSelectedText}
-            paletteSubtleText={paletteSubtleText}
-            paletteText={paletteText}
-            panelBg={panelBg}
             onHoverIndex={onHoverIndex}
             onListScroll={onListScroll}
             onRowMouseDown={onRowMouseDown}

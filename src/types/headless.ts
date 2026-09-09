@@ -1,5 +1,6 @@
 import type { AppConfig } from "./config";
 import type { DataProvider } from "./data-provider";
+import type { CapabilityInvoker } from "../capabilities/types";
 
 type GloomApiClientInstance = typeof import("../api-client").apiClient;
 
@@ -64,6 +65,11 @@ export interface HeadlessPaneContext {
   apiClient: HeadlessPaneApiClient;
   config: AppConfig;
   signal: AbortSignal;
+  /** Effective instance settings, after template creation and option normalization. */
+  settings?: Record<string, unknown>;
+  capabilities?: CapabilityInvoker;
+  /** Resolve locally remembered exchange identities without coupling plugins to storage. */
+  resolveInstrument?: (symbol: string) => Promise<{ symbol: string; exchange?: string }>;
 }
 
 export type HeadlessPaneRow = Record<string, unknown>;
@@ -86,6 +92,10 @@ export interface HeadlessPaneEntry {
 }
 
 interface HeadlessPaneResultBase {
+  /** Resolved inputs, including implicit peers or symbols parsed from an expression. */
+  symbols?: string[];
+  /** Missing inputs must remain visible even when other inputs returned rows. */
+  unavailableSymbols?: string[];
   errors?: string[];
   metadata?: Record<string, unknown>;
 }
@@ -148,6 +158,15 @@ export interface HeadlessPaneResultByShape {
 
 export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = HeadlessPaneShape> {
   shape: Shape;
+  /** Optional discovery information; executors derive the rest from the definition. */
+  discovery?: {
+    id?: string;
+    aliases?: string[];
+    intents?: string[];
+    dataRequirements?: string[];
+    limitations?: string[];
+    screenshotReadiness?: "ready" | "partial" | "live-dom" | "unsupported";
+  };
   argument: HeadlessPaneArgumentDef;
   options: HeadlessPaneOptionDef[];
   columns?: HeadlessPaneColumn[];

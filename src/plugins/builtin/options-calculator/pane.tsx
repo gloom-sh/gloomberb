@@ -1,23 +1,15 @@
 import { useCallback, useMemo, useState } from "react";
-import { SegmentedControl, usePaneFooter } from "../../../components";
+import { KeyValueRow, SegmentedControl, usePaneFooter } from "../../../components";
+import { useShortcut } from "../../../react/input";
 import { usePaneInstance, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { useShortcut } from "../../../react/input";
 import type { InlineField } from "../kelly-sizer/fields";
-import { InlineFieldView, MetricLine, truncateText } from "../kelly-sizer/view";
-import {
-  OPTIONS_CALCULATOR_PANE_ID,
-  describeDraftProblem,
-  draftFromParams,
-  solveImpliedVolatility,
-  valueOption,
-  type OptionCalcDraft,
-  type OptionSide,
-} from "./model";
+import { InlineFieldView, truncateText } from "../kelly-sizer/view";
+import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, solveImpliedVolatility, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
 
 const SIDE_OPTIONS = [
   { label: "Call", value: "call" },
@@ -173,14 +165,14 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       <Box height={1} />
 
       <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
-        <MetricLine
+        <KeyValueRow
           label="Fair value"
           value={formatNumber(valuation.price, 4)}
           detail={draft.side === "call" ? "call" : "put"}
           color={colors.textBright}
           width={metricWidth}
         />
-        <MetricLine
+        <KeyValueRow
           label="Implied IV"
           value={implied.volatility != null ? `${formatNumber(implied.volatility * 100, 2)}%` : "—"}
           detail={implied.volatility != null ? "from market" : undefined}
@@ -192,14 +184,14 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       {showGreeks ? (
         <Box flexDirection="column" paddingX={1}>
           <Box flexDirection={pairMetrics ? "row" : "column"}>
-            <MetricLine label="Delta" value={formatSigned(valuation.delta, 4)} width={metricWidth} />
-            <MetricLine label="Gamma" value={formatNumber(valuation.gamma, 4)} width={trailingMetricWidth} />
+            <KeyValueRow label="Delta" value={formatSigned(valuation.delta, 4)} width={metricWidth} />
+            <KeyValueRow label="Gamma" value={formatNumber(valuation.gamma, 4)} width={trailingMetricWidth} />
           </Box>
           <Box flexDirection={pairMetrics ? "row" : "column"}>
-            <MetricLine label="Theta" value={formatSigned(valuation.thetaPerDay, 4)} detail="per day" width={metricWidth} />
-            <MetricLine label="Vega" value={formatNumber(valuation.vegaPerPoint, 4)} detail="per vol pt" width={trailingMetricWidth} />
+            <KeyValueRow label="Theta" value={formatSigned(valuation.thetaPerDay, 4)} detail="per day" width={metricWidth} />
+            <KeyValueRow label="Vega" value={formatNumber(valuation.vegaPerPoint, 4)} detail="per vol pt" width={trailingMetricWidth} />
           </Box>
-          <MetricLine label="Rho" value={formatSigned(valuation.rhoPerPoint, 4)} detail="per rate pt" width={metricWidth} />
+          <KeyValueRow label="Rho" value={formatSigned(valuation.rhoPerPoint, 4)} detail="per rate pt" width={metricWidth} />
         </Box>
       ) : null}
 

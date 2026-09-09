@@ -4,16 +4,15 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatExpDate } from "../../../utils/options";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { PluginRenderProvider } from "../../runtime";
 import { OptionsView } from "./view";
+import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
 
@@ -21,20 +20,9 @@ let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setOptionsQuotePrice: ((price: number) => void) | null = null;
 
 function makeTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      assetCategory: "STK",
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, {
+    assetCategory: "STK"
+  });
 }
 
 function makeContract(strike: number, side: "C" | "P", atmStrike = 101): OptionContract {
@@ -89,25 +77,18 @@ function OptionsHarness({
   ticker,
   quotePrice,
   width = 122,
-  onCapture = () => {},
+  onCapture = () => { },
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
   width?: number;
   onCapture?: (capturing: boolean) => void;
 }) {
-  const config = createDefaultConfig("/tmp/gloomberb-options-test");
-  config.layout = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "ticker-detail",
-      binding: { kind: "fixed", symbol: ticker.metadata.ticker },
-    }],
-    floating: [],
-    detached: [],
-  };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
+  const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: "ticker-detail",
+    binding: { kind: "fixed", symbol: ticker.metadata.ticker },
+  });
 
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;
@@ -117,13 +98,9 @@ function OptionsHarness({
   }
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-          <OptionsView width={width} height={14} focused onCapture={onCapture} />
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+      <OptionsView width={width} height={14} focused onCapture={onCapture} />
+    </TestPaneProvider>
   );
 }
 

@@ -104,7 +104,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
 
         {quickAddActive && quickAddQuery.trim() && (
           quickAddItems.length > 0 ? (
-            <Box width={contentWidth} overflow="hidden" onMouseDown={() => beginQuickAdd()}>
+            <Box width={contentWidth} overflow="hidden">
               <ListView
                 items={quickAddItems}
                 selectedIndex={quickAddSelection}
@@ -114,7 +114,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                 rowGap={isDesktop ? 0 : undefined}
                 selectOnHover
                 onSelect={setQuickAddSelection}
-                onActivate={(_, index) => addCatalogSuggestion(quickAddSuggestions[index])}
+                onActivate={(_, index) => { beginQuickAdd(); addCatalogSuggestion(quickAddSuggestions[index]); }}
               />
             </Box>
           ) : (
@@ -128,9 +128,6 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
           <Box
             width={contentWidth}
             overflow="hidden"
-            onMouseDown={() => {
-              if (!isDesktop) focusKeyboardTarget("series");
-            }}
           >
             <ListView
               items={items}
@@ -144,7 +141,7 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
                 : undefined}
               scrollable={items.length > (isDesktop ? 5 : 7)}
               rowGap={isDesktop ? 0 : undefined}
-              onSelect={setSelectedIndex}
+              onSelect={(index) => { if (!isDesktop) focusKeyboardTarget("series"); setSelectedIndex(index); }}
               onActivate={(_, index) => setSelectedIndex(index)}
             />
           </Box>

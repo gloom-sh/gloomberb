@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { splitFigures, splitParagraphs, splitSentences } from "./prose";
+import { splitFigures } from "../../../components/ui/prose";
+import { splitParagraphs, splitSentences } from "./prose";
 
 describe("splitFigures", () => {
   test("picks out money, percentages and quantities, leaves years and labels", () => {

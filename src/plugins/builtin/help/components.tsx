@@ -1,23 +1,13 @@
-import type { ReactNode } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { Badge, Section } from "../../../components";
 import { t } from "../../../i18n";
+import { colors } from "../../../theme/colors";
+import { Box, Text } from "../../../ui";
 
 export interface HelpShortcutEntry {
   id: string;
   badges: string[];
   description: string;
   category: string;
-}
-
-function ShortcutBadge({ label }: { label: string }) {
-  return (
-    <Box backgroundColor={colors.selected}>
-      <Text fg={colors.selectedText} attributes={TextAttributes.BOLD}>
-        {` ${label} `}
-      </Text>
-    </Box>
-  );
 }
 
 export function ShortcutRow({
@@ -30,7 +20,7 @@ export function ShortcutRow({
   return (
     <Box flexDirection="row" gap={1}>
       <Box flexDirection="row" gap={1} flexShrink={0}>
-        {badges.map((badge, index) => <ShortcutBadge key={`${badge}:${index}`} label={badge} />)}
+        {badges.map((badge, index) => <Badge variant="solid" key={`${badge}:${index}`} label={badge} />)}
       </Box>
       <Box flexGrow={1}>
         <Text fg={colors.text} wrapText>{t(description)}</Text>
@@ -39,19 +29,9 @@ export function ShortcutRow({
   );
 }
 
-export function HelpSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{t(title)}</Text>
-      {children}
-    </Box>
-  );
-}
-
 export function ShortcutGroup({ title, entries }: { title: string; entries: HelpShortcutEntry[] }) {
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{t(title)}</Text>
+    <Section title={title}>
       {entries.map((entry) => (
         <ShortcutRow
           key={entry.id}
@@ -59,6 +39,6 @@ export function ShortcutGroup({ title, entries }: { title: string; entries: Help
           description={entry.description}
         />
       ))}
-    </Box>
+    </Section>
   );
 }

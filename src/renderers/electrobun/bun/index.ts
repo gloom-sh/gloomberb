@@ -52,7 +52,6 @@ import { DesktopDetachedWindowManager } from "./desktop/detached-windows";
 import { handleDesktopHostRequest } from "./desktop/host-requests";
 import { handleDesktopWorkspaceRequest } from "./desktop/workspace/requests";
 import { handleDesktopBackendRequest } from "./desktop/backend-requests";
-import { resolveDesktopLiveStream } from "./desktop/media";
 import { initializeDesktopBackend } from "./desktop/initialization";
 import { applyWindowsCustomChrome } from "./desktop/windows-custom-chrome";
 import { applyWindowsWindowIcon } from "./desktop/windows-icons";
@@ -435,8 +434,6 @@ async function handleBackendRequest(
       return initialize(rpc, request.payload);
     case "http.fetch":
       return handleHttpFetch(request.payload);
-    case "media.resolveLiveStream":
-      return resolveDesktopLiveStream(request.payload);
     case "remote.forward":
       return forwardRemoteControlRequest(request.payload.request);
     case "capability.invoke":

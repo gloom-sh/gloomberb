@@ -1,3 +1,4 @@
+import { Button } from "../../../components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
@@ -429,7 +430,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
               }}
             />
           ) : (
-            <Box height={1} flexDirection="row" onMouseDown={focusTickerSearch}>
+            <Button label="Change ticker" variant="ghost" compact stopPropagation onPress={focusTickerSearch}>
               <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
                 {truncateText(summaryLine, Math.max(8, width - 2))}
               </Text>
@@ -438,7 +439,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
                   {truncateText(`  ${tickerSearchStatus}`, Math.max(0, width - summaryLine.length - 18))}
                 </Text>
               ) : null}
-            </Box>
+            </Button>
           )}
         </Box>
         {price != null && (
