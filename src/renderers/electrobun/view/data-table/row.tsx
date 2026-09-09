@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { memo, type CSSProperties } from "react";
+import { glyphs } from "../../../../theme/colors";
 import { TextAttributes } from "../../../../ui/host";
 import type {
   DataTableCell,
@@ -28,7 +29,7 @@ function renderHeaderLabel<C extends DataTableColumn>(
   sortDirection: "asc" | "desc",
 ) {
   const isSorted = sortColumnId === column.id;
-  const indicator = isSorted ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
+  const indicator = isSorted ? ` ${sortDirection === "asc" ? glyphs.triangle.up : glyphs.triangle.down}` : "";
   return {
     isSorted,
     text: column.label + indicator,

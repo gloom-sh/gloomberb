@@ -646,8 +646,8 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   pointer-events: none;
   background: repeating-linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--gloom-bg) 34%, transparent) 0px,
-    color-mix(in srgb, var(--gloom-bg) 34%, transparent) 1px,
+    color-mix(in srgb, var(--gloom-bg) 22%, transparent) 0px,
+    color-mix(in srgb, var(--gloom-bg) 22%, transparent) 1px,
     transparent 1px,
     transparent 3px
   );
