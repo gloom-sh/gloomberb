@@ -106,6 +106,23 @@ If a plugin genuinely cannot work on a renderer, declare `targets` instead
 (`["cli", "tui"]`, for example) so the marketplace explains why it is inert
 rather than reporting a compile error.
 
+### Where plugins run
+
+Plugins run in the terminal and in the desktop app. The hosted web app at
+term.gloom.sh ships only the built-ins compiled into it (`catalog-browser.ts`)
+and does not load plugins from outside the build.
+
+That is a product decision rather than a gap. Third-party code on the web
+would run on the origin that holds the user's session, and there is no
+sandbox that can contain a plugin written as a React component sharing the
+host's module registry. The desktop app and the terminal run on the user's own
+machine, where installing a plugin is an explicit choice with a bounded blast
+radius.
+
+The marketplace still lists every plugin on the web, labelled with where it
+runs, so the web app works as a storefront. Listing `"web"` in `targets` is
+harmless but has no effect today.
+
 ## What plugins can do
 
 Use `setup()` for interactive runtime registration, `capabilities` for reusable headless services, and `cliCommands` for root-level CLI commands that should be discoverable without rendering panes. Capability operations can still declare `cli` manifests (`summary`, input/output shape, formats, safety notes, side-effect level) for `gloomberb api list`.

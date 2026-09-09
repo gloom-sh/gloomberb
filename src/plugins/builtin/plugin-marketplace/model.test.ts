@@ -90,18 +90,50 @@ describe("mergeCatalog", () => {
 
     expect(entry?.installed).toBe(true);
     expect(entry?.unsupportedHere).toBe(true);
-    expect(unsupportedLabel(entry!)).toBe("Desktop only");
+    expect(unsupportedLabel(entry!)).toBe("Desktop and terminal");
+  });
+
+  test("names the one renderer a plugin is limited to", () => {
+    const [desktopOnly, terminalOnly] = mergeCatalog({
+      registry: [
+        registryPlugin({ id: "native-charts", targets: ["desktop"] }),
+        registryPlugin({ id: "ibkr-gateway", targets: ["cli", "tui"] }),
+      ],
+      installed: [],
+      target: "web",
+    });
+
+    expect(unsupportedLabel(desktopOnly!)).toBe("Desktop only");
+    expect(unsupportedLabel(terminalOnly!)).toBe("Terminal only");
   });
 
   test("does not flag a plugin that supports the current renderer", () => {
     const [entry] = mergeCatalog({
       registry: [registryPlugin({ id: "hackernews" })],
       installed: [],
-      target: "web",
+      target: "desktop",
     });
 
     expect(entry?.unsupportedHere).toBe(false);
     expect(unsupportedLabel(entry!)).toBeNull();
+  });
+
+  test("flags every external plugin on the web, whatever it declares", () => {
+    // term.gloom.sh loads only the built-ins compiled into it. A plugin that
+    // lists "web" in its targets is describing where its code could run, not
+    // where the web app will load it from, so it must not look installable.
+    const [external, bundled] = mergeCatalog({
+      registry: [
+        registryPlugin({ id: "hackernews", targets: ["cli", "tui", "desktop", "web"] }),
+        registryPlugin({ id: "portfolio", bundled: true, targets: ["cli", "tui", "desktop", "web"] }),
+      ],
+      installed: [],
+      target: "web",
+    });
+
+    expect(external?.unsupportedHere).toBe(true);
+    expect(unsupportedLabel(external!)).toBe("Desktop and terminal");
+    expect(bundled?.unsupportedHere).toBe(false);
   });
 
   test("surfaces a load error so a broken install is visible rather than missing", () => {

@@ -1,4 +1,5 @@
 import type { PluginTarget } from "../../../types/plugin";
+import { runsExternalPlugins } from "../../current-target";
 
 export type PluginTier = "official" | "verified" | "community";
 
@@ -121,7 +122,12 @@ export function mergeCatalog(options: {
       availableVersion: plugin.ref,
       contributes: plugin.contributes,
       loadError: local?.loadError,
-      unsupportedHere: !plugin.targets.includes(target),
+      // A bundled plugin is part of the build and runs wherever the build
+      // does. Anything else needs a renderer that loads external code, which
+      // the web app does not, whatever the plugin declares.
+      unsupportedHere: plugin.bundled
+        ? !plugin.targets.includes(target)
+        : !runsExternalPlugins(target) || !plugin.targets.includes(target),
     });
   }
 
@@ -200,5 +206,8 @@ export function isInstallable(entry: MarketplaceEntry): boolean {
 export function unsupportedLabel(entry: MarketplaceEntry): string | null {
   if (!entry.unsupportedHere) return null;
   if (entry.targets.length === 0) return "Unavailable here";
-  return entry.targets.includes("desktop") ? "Desktop only" : "Terminal only";
+  const desktop = entry.targets.includes("desktop");
+  const terminal = entry.targets.includes("cli") || entry.targets.includes("tui");
+  if (desktop && terminal) return "Desktop and terminal";
+  return desktop ? "Desktop only" : "Terminal only";
 }
