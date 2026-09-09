@@ -16,18 +16,25 @@ import { normalizeTimestamp } from "../utils/timestamp";
  * Both shapes are accepted so a server-side envelope change cannot silently
  * hand the pane an object with no `id`.
  */
-export function normalizeSavedSearchResponse(response: unknown): CloudSavedSearch {
-  const envelope = response as { search?: CloudSavedSearch } | CloudSavedSearch | null;
-  const search = envelope && "search" in envelope && envelope.search
-    ? envelope.search
-    : envelope as CloudSavedSearch | null;
-  if (!search?.id) throw new Error("The saved search response was missing a record.");
+export function normalizeSavedSearchResponse(
+  response: unknown,
+): CloudSavedSearch {
+  const envelope = response as
+    { search?: CloudSavedSearch } | CloudSavedSearch | null;
+  const search =
+    envelope && "search" in envelope && envelope.search
+      ? envelope.search
+      : (envelope as CloudSavedSearch | null);
+  if (!search?.id)
+    throw new Error("The saved search response was missing a record.");
   return search;
 }
 
 export function normalizeSavedSearchHits(response: unknown): CloudSearchHit[] {
   const hits = (response as { hits?: unknown } | null)?.hits;
-  return Array.isArray(hits) ? (hits as CloudSearchHit[]).map(normalizeSearchHit) : [];
+  return Array.isArray(hits)
+    ? (hits as CloudSearchHit[]).map(normalizeSearchHit)
+    : [];
 }
 
 /**
@@ -41,7 +48,9 @@ export function normalizeSearchHit(hit: CloudSearchHit): CloudSearchHit {
   return hit.ticker ? hit : { ...hit, ticker: "" };
 }
 
-export function normalizeSearchResponse(response: CloudSearchResponse): CloudSearchResponse {
+export function normalizeSearchResponse(
+  response: CloudSearchResponse,
+): CloudSearchResponse {
   const hits = response.hits;
   if (!Array.isArray(hits)) return { ...response, hits: [] };
   return { ...response, hits: hits.map(normalizeSearchHit) };
@@ -51,7 +60,9 @@ export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   return {
     ...message,
     createdAt: normalizeTimestamp(message.createdAt),
-    ...(message.editedAt ? { editedAt: normalizeTimestamp(message.editedAt) } : {}),
+    ...(message.editedAt
+      ? { editedAt: normalizeTimestamp(message.editedAt) }
+      : {}),
   };
 }
 
@@ -59,7 +70,9 @@ export function normalizeChatMessages(messages: ChatMessage[]): ChatMessage[] {
   return messages.map((message) => normalizeChatMessage(message));
 }
 
-export function normalizeChatNotification(notification: ChatNotification): ChatNotification {
+export function normalizeChatNotification(
+  notification: ChatNotification,
+): ChatNotification {
   return {
     ...notification,
     createdAt: normalizeTimestamp(notification.createdAt),
@@ -67,7 +80,10 @@ export function normalizeChatNotification(notification: ChatNotification): ChatN
   };
 }
 
-export function normalizeChatChannel(channel: ChatChannel, fallbackKind: ChatChannel["kind"] = "public"): ChatChannel {
+export function normalizeChatChannel(
+  channel: ChatChannel,
+  fallbackKind: ChatChannel["kind"] = "public",
+): ChatChannel {
   return {
     ...channel,
     kind: channel.kind ?? fallbackKind,
@@ -75,7 +91,9 @@ export function normalizeChatChannel(channel: ChatChannel, fallbackKind: ChatCha
   };
 }
 
-export function normalizeChatState(response: ChatStateResponse): ChatStateResponse {
+export function normalizeChatState(
+  response: ChatStateResponse,
+): ChatStateResponse {
   return {
     ...response,
     channels: response.channels.map((channel) => normalizeChatChannel(channel)),
@@ -90,7 +108,9 @@ function normalizeTweet(tweet: CloudTweetPayload): CloudTweetPayload {
   };
 }
 
-export function normalizeTweetSearchResponse(response: CloudTweetSearchResponse): CloudTweetSearchResponse {
+export function normalizeTweetSearchResponse(
+  response: CloudTweetSearchResponse,
+): CloudTweetSearchResponse {
   return {
     ...response,
     since: normalizeTimestamp(response.since),

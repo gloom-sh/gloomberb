@@ -10,7 +10,8 @@ function waitForStatus(
   health: ConnectionHealthRegistry,
   status: ConnectionHealthStatus,
 ): Promise<void> {
-  if (health.getSnapshot().sources[0]?.status === status) return Promise.resolve();
+  if (health.getSnapshot().sources[0]?.status === status)
+    return Promise.resolve();
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       unsubscribe();
@@ -32,7 +33,9 @@ describe("CloudApiSocket connection health", () => {
       hostname: "127.0.0.1",
       port: 0,
       fetch(request, server) {
-        return server.upgrade(request) ? undefined : new Response("Upgrade required", { status: 426 });
+        return server.upgrade(request)
+          ? undefined
+          : new Response("Upgrade required", { status: 426 });
       },
       websocket: {
         open(socket) {
@@ -47,16 +50,19 @@ describe("CloudApiSocket connection health", () => {
       name: "Gloom Cloud Stream",
       kind: "websocket",
     });
-    const socket = new CloudApiSocket({
-      getBaseUrl: () => `http://127.0.0.1:${server.port}`,
-      getSocketAuthToken: () => null,
-      hasSessionCredential: () => false,
-      hasVerifiedUser: () => false,
-      isUsingWebSocketToken: () => false,
-      clearWebSocketTokenForFallback: () => false,
-      markCurrentUserUnverified: () => {},
-      updateCurrentUserFromSocket: () => {},
-    }, health);
+    const socket = new CloudApiSocket(
+      {
+        getBaseUrl: () => `http://127.0.0.1:${server.port}`,
+        getSocketAuthToken: () => null,
+        hasSessionCredential: () => false,
+        hasVerifiedUser: () => false,
+        isUsingWebSocketToken: () => false,
+        clearWebSocketTokenForFallback: () => false,
+        markCurrentUserUnverified: () => {},
+        updateCurrentUserFromSocket: () => {},
+      },
+      health,
+    );
 
     try {
       socket.subscribeQuotes([{ symbol: "AAPL" }], () => {});

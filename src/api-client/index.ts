@@ -58,6 +58,8 @@ import type {
   CloudEarningsTranscriptPayload,
   CloudProxyStatementListPayload,
   CloudProxyStatementPayload,
+  CloudRiskReportListPayload,
+  CloudRiskReportPayload,
   CloudNewsPayload,
   CloudSavedSearch,
   CloudSavedSearchInput,
@@ -916,6 +918,17 @@ class GloomApiClient {
     year: number,
   ): Promise<CloudProxyStatementPayload> {
     return this.data.getProxyStatement(ticker, year);
+  }
+
+  async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
+    return this.data.getRiskReports(ticker);
+  }
+
+  async getRiskReport(
+    ticker: string,
+    year: number,
+  ): Promise<CloudRiskReportPayload> {
+    return this.data.getRiskReport(ticker, year);
   }
 
   async getCloudSecFilings(

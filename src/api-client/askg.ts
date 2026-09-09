@@ -25,17 +25,17 @@ export type ASKGClientErrorCode =
  * what the user sees: the turn already continued with a synthetic timeout.
  */
 export type ASKGToolResultOutcome =
-  | "accepted"
-  | "unknown-call"
-  | "too-late"
-  | "too-large"
-  | "already-recorded";
+  "accepted" | "unknown-call" | "too-late" | "too-large" | "already-recorded";
 
 export class ASKGTransportError extends Error {
   constructor(
     readonly code: ASKGClientErrorCode,
     message: string,
-    readonly options: { retryable?: boolean; retryAfterMs?: number; status?: number } = {},
+    readonly options: {
+      retryable?: boolean;
+      retryAfterMs?: number;
+      status?: number;
+    } = {},
   ) {
     super(message);
     this.name = "ASKGTransportError";
@@ -102,7 +102,8 @@ export function createSseDecoder(): {
   let event: string | undefined;
 
   const takeFrame = (): SseFrame | null => {
-    if (dataLines.length === 0 && event === undefined && id === undefined) return null;
+    if (dataLines.length === 0 && event === undefined && id === undefined)
+      return null;
     const frame: SseFrame = {
       data: dataLines.join("\n"),
       ...(id !== undefined ? { id } : {}),
@@ -161,7 +162,9 @@ export function createSseDecoder(): {
 function isAskgEvent(value: unknown): value is ASKGSseEvent {
   if (value == null || typeof value !== "object") return false;
   const candidate = value as { type?: unknown; seq?: unknown };
-  return typeof candidate.type === "string" && typeof candidate.seq === "number";
+  return (
+    typeof candidate.type === "string" && typeof candidate.seq === "number"
+  );
 }
 
 /** Parses one frame payload, ignoring keep-alives and unknown shapes. */
@@ -242,12 +245,17 @@ const MAX_STREAM_RESUMES = 2;
 const RESUME_BACKOFF_MS = 250;
 
 function isAbortError(error: unknown): boolean {
-  return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
+  return (
+    error instanceof Error &&
+    (error.name === "AbortError" || error.name === "TimeoutError")
+  );
 }
 
 /** A 429 covers both the per-minute limit and the daily cap. */
 function rateLimitCode(message: string): "rate_limited" | "daily_turn_cap" {
-  return /\bdaily\b|\bday\b|daily_turn_cap/i.test(message) ? "daily_turn_cap" : "rate_limited";
+  return /\bdaily\b|\bday\b|daily_turn_cap/i.test(message)
+    ? "daily_turn_cap"
+    : "rate_limited";
 }
 
 /** Maps an HTTP failure onto the same codes the stream itself reports. */
@@ -261,9 +269,13 @@ export function classifyASKGRequestError(error: unknown): ASKGTransportError {
       );
     }
     if (error.status === 401 || error.status === 403) {
-      return new ASKGTransportError("unauthorized", "Sign in to Gloom Cloud to ask Gloom.", {
-        status: error.status,
-      });
+      return new ASKGTransportError(
+        "unauthorized",
+        "Sign in to Gloom Cloud to ask Gloom.",
+        {
+          status: error.status,
+        },
+      );
     }
     if (error.status === 429) {
       return new ASKGTransportError(
@@ -271,7 +283,9 @@ export function classifyASKGRequestError(error: unknown): ASKGTransportError {
         error.message || "Too many requests.",
         {
           retryable: true,
-          ...(error.retryAfterMs !== undefined ? { retryAfterMs: error.retryAfterMs } : {}),
+          ...(error.retryAfterMs !== undefined
+            ? { retryAfterMs: error.retryAfterMs }
+            : {}),
           status: error.status,
         },
       );
@@ -291,21 +305,31 @@ export function classifyASKGRequestError(error: unknown): ASKGTransportError {
       );
     }
     if (error.status === 503) {
-      return new ASKGTransportError("model_unavailable", error.message || "Ask Gloom is unavailable.", {
-        retryable: true,
-        status: error.status,
-      });
+      return new ASKGTransportError(
+        "model_unavailable",
+        error.message || "Ask Gloom is unavailable.",
+        {
+          retryable: true,
+          status: error.status,
+        },
+      );
     }
-    return new ASKGTransportError("internal", error.message || "Ask Gloom failed.", {
-      status: error.status,
-    });
+    return new ASKGTransportError(
+      "internal",
+      error.message || "Ask Gloom failed.",
+      {
+        status: error.status,
+      },
+    );
   }
   if (isAbortError(error)) {
     return new ASKGTransportError("network", "Ask Gloom was cancelled.");
   }
   return new ASKGTransportError(
     "network",
-    error instanceof Error ? error.message : "Ask Gloom could not reach the server.",
+    error instanceof Error
+      ? error.message
+      : "Ask Gloom could not reach the server.",
     { retryable: true },
   );
 }
@@ -355,11 +379,14 @@ export class CloudASKGApi implements ASKGTransport {
     options: { signal?: AbortSignal } = {},
   ): Promise<ASKGSessionStartResponse> {
     try {
-      const response = await this.options.request<ASKGSessionStartResponse>("/askg/session", {
-        method: "POST",
-        body: JSON.stringify(request),
-        signal: options.signal,
-      });
+      const response = await this.options.request<ASKGSessionStartResponse>(
+        "/askg/session",
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+          signal: options.signal,
+        },
+      );
       if (response?.protocolVersion !== ASKG_PROTOCOL_VERSION) {
         throw new ASKGTransportError(
           "protocol",
@@ -398,19 +425,23 @@ export class CloudASKGApi implements ASKGTransport {
           `/askg/session/${encodeURIComponent(sessionId)}/turn`,
           {
             method: "POST",
-            body: JSON.stringify({ protocolVersion: ASKG_PROTOCOL_VERSION, ...request }),
+            body: JSON.stringify({
+              protocolVersion: ASKG_PROTOCOL_VERSION,
+              ...request,
+            }),
             signal: options.signal,
-            headers: lastSeq > 0 ? { "Last-Event-ID": String(lastSeq) } : undefined,
+            headers:
+              lastSeq > 0 ? { "Last-Event-ID": String(lastSeq) } : undefined,
           },
         );
       } catch (error) {
         const transportError = classifyASKGRequestError(error);
         // Only a dropped connection is worth reopening; a refusal is final.
         if (
-          transportError.code !== "network"
-          || attempt >= MAX_STREAM_RESUMES
-          || options.signal?.aborted
-          || lastSeq === 0
+          transportError.code !== "network" ||
+          attempt >= MAX_STREAM_RESUMES ||
+          options.signal?.aborted ||
+          lastSeq === 0
         ) {
           throw transportError;
         }

@@ -6,6 +6,7 @@ import type { GloomPlugin } from "../types/plugin";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
 import { earningsCallsModule } from "./builtin/earnings-calls";
 import { executivesModule } from "./builtin/executives";
+import { riskFactorsModule } from "./builtin/risk-factors";
 import { researchSearchPlugin } from "./builtin/research-search";
 import { alertsPlugin } from "./builtin/alerts";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
@@ -73,6 +74,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     researchModule,
     earningsCallsModule,
     executivesModule,
+    riskFactorsModule,
   ],
 });
 
