@@ -27,7 +27,7 @@ describe("createSseDecoder", () => {
     const decoder = createSseDecoder();
     expect(decoder.push("id: 1\nevent: text-delta\nda")).toEqual([]);
     expect(decoder.push('ta: {"a":1}\n')).toEqual([]);
-    const frames = decoder.push("\n: keep-alive\n\nid: 2\ndata: {\"b\":2}\n\n");
+    const frames = decoder.push('\n: keep-alive\n\nid: 2\ndata: {"b":2}\n\n');
     expect(frames).toEqual([
       { id: "1", event: "text-delta", data: '{"a":1}' },
       { id: "2", data: '{"b":2}' },
@@ -36,7 +36,9 @@ describe("createSseDecoder", () => {
 
   test("keeps multi-line data and \\r\\n line endings", () => {
     const decoder = createSseDecoder();
-    expect(decoder.push("data: one\r\ndata: two\r\n\r\n")).toEqual([{ data: "one\ntwo" }]);
+    expect(decoder.push("data: one\r\ndata: two\r\n\r\n")).toEqual([
+      { data: "one\ntwo" },
+    ]);
   });
 });
 
@@ -52,7 +54,11 @@ describe("readASKGEventStream", () => {
       { onEvent: (event) => events.push(event) },
     );
 
-    expect(events.map((event) => event.type)).toEqual(["text-delta", "text-delta", "done"]);
+    expect(events.map((event) => event.type)).toEqual([
+      "text-delta",
+      "text-delta",
+      "done",
+    ]);
     expect(outcome).toEqual({ lastSeq: 3, done: "complete" });
   });
 
@@ -78,7 +84,16 @@ describe("readASKGEventStream", () => {
   test("ignores frames that are not protocol events", async () => {
     const events: ASKGSseEvent[] = [];
     await readASKGEventStream(
-      streamOf(["data: not json\n\n", 'data: {"hello":true}\n\n', frame({ seq: 4, type: "tool-result-ack", turnId: "t1", toolCallId: "c1" })]),
+      streamOf([
+        "data: not json\n\n",
+        'data: {"hello":true}\n\n',
+        frame({
+          seq: 4,
+          type: "tool-result-ack",
+          turnId: "t1",
+          toolCallId: "c1",
+        }),
+      ]),
       { onEvent: (event) => events.push(event) },
     );
     expect(events).toHaveLength(1);
@@ -86,10 +101,12 @@ describe("readASKGEventStream", () => {
   });
 });
 
-function transportFor(open: (init: RequestInit | undefined) => Promise<Response>) {
+function transportFor(
+  open: (init: RequestInit | undefined) => Promise<Response>,
+) {
   const requests: Array<{ path: string; init?: RequestInit }> = [];
   const api = new CloudASKGApi({
-    request: async <T,>(path: string, init?: RequestInit) => {
+    request: async <T>(path: string, init?: RequestInit) => {
       requests.push({ path, init });
       return undefined as T;
     },
@@ -108,37 +125,81 @@ describe("CloudASKGApi.streamTurn", () => {
     let attempt = 0;
     const { api, requests } = transportFor(async () => {
       attempt += 1;
-      return new Response(streamOf(attempt === 1
-        ? [frame({ seq: 1, type: "text-delta", turnId: "t1", delta: "half " })]
-        : [
-          frame({ seq: 1, type: "text-delta", turnId: "t1", delta: "half " }),
-          frame({ seq: 2, type: "text-delta", turnId: "t1", delta: "answer" }),
-          frame({ seq: 3, type: "done", turnId: "t1", reason: "complete" }),
-        ]));
+      return new Response(
+        streamOf(
+          attempt === 1
+            ? [
+                frame({
+                  seq: 1,
+                  type: "text-delta",
+                  turnId: "t1",
+                  delta: "half ",
+                }),
+              ]
+            : [
+                frame({
+                  seq: 1,
+                  type: "text-delta",
+                  turnId: "t1",
+                  delta: "half ",
+                }),
+                frame({
+                  seq: 2,
+                  type: "text-delta",
+                  turnId: "t1",
+                  delta: "answer",
+                }),
+                frame({
+                  seq: 3,
+                  type: "done",
+                  turnId: "t1",
+                  reason: "complete",
+                }),
+              ],
+        ),
+      );
     });
 
     const deltas: string[] = [];
-    const reason = await api.streamTurn("s1", { turnId: "t1", input: "hi" }, {
-      onEvent: (event) => {
-        if (event.type === "text-delta") deltas.push(event.delta);
+    const reason = await api.streamTurn(
+      "s1",
+      { turnId: "t1", input: "hi" },
+      {
+        onEvent: (event) => {
+          if (event.type === "text-delta") deltas.push(event.delta);
+        },
       },
-    });
+    );
 
     expect(reason).toBe("complete");
     // The replayed first event is dropped, so the answer is not doubled.
     expect(deltas.join("")).toBe("half answer");
-    expect(new Headers(requests[0]?.init?.headers).get("Last-Event-ID")).toBeNull();
-    expect(new Headers(requests[1]?.init?.headers).get("Last-Event-ID")).toBe("1");
+    expect(
+      new Headers(requests[0]?.init?.headers).get("Last-Event-ID"),
+    ).toBeNull();
+    expect(new Headers(requests[1]?.init?.headers).get("Last-Event-ID")).toBe(
+      "1",
+    );
     // The same turn id re-attaches instead of asking again.
     expect(JSON.parse(String(requests[1]?.init?.body)).turnId).toBe("t1");
   });
 
   test("gives up with a retryable network error when the stream keeps dropping", async () => {
-    const { api } = transportFor(async () => (
-      new Response(streamOf([frame({ seq: 1, type: "text-delta", turnId: "t1", delta: "x" })]))
-    ));
-    await expect(api.streamTurn("s1", { turnId: "t1", input: "hi" }, { onEvent: () => {} }))
-      .rejects.toMatchObject({ code: "network", retryable: true });
+    const { api } = transportFor(
+      async () =>
+        new Response(
+          streamOf([
+            frame({ seq: 1, type: "text-delta", turnId: "t1", delta: "x" }),
+          ]),
+        ),
+    );
+    await expect(
+      api.streamTurn(
+        "s1",
+        { turnId: "t1", input: "hi" },
+        { onEvent: () => {} },
+      ),
+    ).rejects.toMatchObject({ code: "network", retryable: true });
   });
 });
 
@@ -154,7 +215,9 @@ describe("CloudASKGApi.postToolResult", () => {
   test("sends the tool call id as the idempotency key", async () => {
     const { api, requests } = transportFor(async () => new Response(""));
     expect(await api.postToolResult("s1", payload)).toBe("accepted");
-    expect(new Headers(requests[0]?.init?.headers).get("Idempotency-Key")).toBe("call-1");
+    expect(new Headers(requests[0]?.init?.headers).get("Idempotency-Key")).toBe(
+      "call-1",
+    );
   });
 
   test("reports a closed result window instead of failing the turn", async () => {
@@ -171,16 +234,23 @@ describe("CloudASKGApi.postToolResult", () => {
 
 describe("classifyASKGRequestError", () => {
   test("maps the documented statuses onto handled codes", () => {
-    expect(classifyASKGRequestError(new ApiRequestError("pro required", 402)).code)
-      .toBe("tier_required");
-    expect(classifyASKGRequestError(new ApiRequestError("old protocol", 426)).code)
-      .toBe("protocol");
-    expect(classifyASKGRequestError(new ApiRequestError("disabled", 503)).code)
-      .toBe("model_unavailable");
-    const limited = classifyASKGRequestError(new ApiRequestError("too many", 429, 42_000));
+    expect(
+      classifyASKGRequestError(new ApiRequestError("pro required", 402)).code,
+    ).toBe("tier_required");
+    expect(
+      classifyASKGRequestError(new ApiRequestError("old protocol", 426)).code,
+    ).toBe("protocol");
+    expect(
+      classifyASKGRequestError(new ApiRequestError("disabled", 503)).code,
+    ).toBe("model_unavailable");
+    const limited = classifyASKGRequestError(
+      new ApiRequestError("too many", 429, 42_000),
+    );
     expect(limited.code).toBe("rate_limited");
     expect(limited.retryAfterMs).toBe(42_000);
-    expect(classifyASKGRequestError(new ApiRequestError("daily cap reached", 429)).code)
-      .toBe("daily_turn_cap");
+    expect(
+      classifyASKGRequestError(new ApiRequestError("daily cap reached", 429))
+        .code,
+    ).toBe("daily_turn_cap");
   });
 });

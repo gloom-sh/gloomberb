@@ -253,6 +253,14 @@ export function publicProxyStatementsPath(ticker: string): string {
   return `/public/proxies/${encodeURIComponent(ticker.toUpperCase())}`;
 }
 
+export function publicRiskReportsPath(ticker: string): string {
+  return `/public/risks/${encodeURIComponent(ticker.toUpperCase())}`;
+}
+
+export function publicRiskReportPath(ticker: string, year: number): string {
+  return `/public/risks/${encodeURIComponent(ticker.toUpperCase())}/${year}`;
+}
+
 export function publicProxyStatementPath(ticker: string, year: number): string {
   return `/public/proxies/${encodeURIComponent(ticker.toUpperCase())}/${year}`;
 }

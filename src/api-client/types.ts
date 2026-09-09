@@ -561,6 +561,76 @@ export interface CloudProxyStatementPayload extends CloudProxyStatementSummaryPa
   otherYears: CloudProxyStatementSummaryPayload[];
 }
 
+export interface CloudRiskFactorPayload {
+  heading: string;
+  group: string | null;
+  excerpt: string;
+  words: number;
+}
+
+export interface CloudRiskNotePayload {
+  /** Position of the risk in `risks` (or in the prior year's list, for removed). */
+  index: number;
+  text: string;
+}
+
+export interface CloudRiskReportSummaryPayload {
+  id: string;
+  ticker: string;
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  /** Year of the filing date: "the 2026 10-K". */
+  reportYear: number;
+  filedAt: string;
+  updatedAt: string;
+  riskCount: number;
+  groupCount: number;
+  wordCount: number;
+  addedCount: number | null;
+  removedCount: number | null;
+  rewordedCount: number | null;
+  overview: string | null;
+}
+
+export interface CloudRiskReportPayload extends CloudRiskReportSummaryPayload {
+  docUrl: string;
+  groups: string[];
+  risks: CloudRiskFactorPayload[];
+  diff: {
+    added: number[];
+    removed: Array<{ heading: string; group: string | null; excerpt: string }>;
+    reworded: Array<{
+      index: number;
+      similarity: number;
+      headingChanged: boolean;
+      priorHeading: string | null;
+    }>;
+    matched: number;
+    priorRiskCount: number;
+  } | null;
+  notes: {
+    added: CloudRiskNotePayload[];
+    removed: CloudRiskNotePayload[];
+    reworded: CloudRiskNotePayload[];
+    top: CloudRiskNotePayload[];
+  };
+  otherYears: CloudRiskReportSummaryPayload[];
+}
+
+export interface CloudRiskReportListPayload {
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  reports: CloudRiskReportSummaryPayload[];
+}
+
 export interface CloudProxyStatementListPayload {
   company: {
     ticker: string;

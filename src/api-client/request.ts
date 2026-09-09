@@ -1,6 +1,10 @@
 import { httpFetch, isHttpFetchStreaming } from "../utils/http-transport";
 import { withDeadline } from "../utils/async-deadline";
-import { ApiRequestError, parseApiErrorMessage, parseRetryAfterMs } from "./errors";
+import {
+  ApiRequestError,
+  parseApiErrorMessage,
+  parseRetryAfterMs,
+} from "./errors";
 import {
   connectionHealth,
   GLOOM_CLOUD_FRED_CONNECTION_ID,
@@ -12,11 +16,20 @@ const DEFAULT_API_URL = "https://api.gloom.sh";
 const DEFAULT_MARKET_REQUEST_TIMEOUT_MS = 10_000;
 /** Local status for "this runtime cannot stream", never returned by the server. */
 export const STREAMING_UNSUPPORTED_STATUS = 0;
-const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"] as const;
+const SESSION_COOKIE_NAMES = [
+  "__Secure-gloomberb.session_token",
+  "gloomberb.session_token",
+] as const;
 
 type CloudApiResponse = Pick<Response, "ok" | "status" | "headers" | "text">;
-type CloudApiFetchTransport = (url: string, init?: RequestInit) => Promise<CloudApiResponse>;
-type CloudApiStreamFetch = (url: string, init?: RequestInit) => Promise<Response>;
+type CloudApiFetchTransport = (
+  url: string,
+  init?: RequestInit,
+) => Promise<CloudApiResponse>;
+type CloudApiStreamFetch = (
+  url: string,
+  init?: RequestInit,
+) => Promise<Response>;
 type SessionCookieName = (typeof SESSION_COOKIE_NAMES)[number];
 
 export interface CloudApiFetchTransportOptions {
@@ -39,7 +52,7 @@ export function setCloudApiFetchTransport(
 ): void {
   cloudApiFetchTransport = transport ?? httpFetch;
   cloudApiTransportInstalled = !!transport;
-  cloudApiFetchStreaming = transport ? options.streaming ?? false : true;
+  cloudApiFetchStreaming = transport ? (options.streaming ?? false) : true;
 }
 
 /**
@@ -49,7 +62,9 @@ export function setCloudApiFetchTransport(
 export function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
   if (cloudApiTransportInstalled) {
     // A transport that declares streaming returns a real Response.
-    return cloudApiFetchStreaming ? cloudApiFetchTransport as CloudApiStreamFetch : null;
+    return cloudApiFetchStreaming
+      ? (cloudApiFetchTransport as CloudApiStreamFetch)
+      : null;
   }
   return isHttpFetchStreaming() ? httpFetch : null;
 }
@@ -58,7 +73,8 @@ declare const __GLOOMBERB_API_URL__: string | undefined;
 
 export function getCloudApiBaseUrl(): string {
   // Browser bundles have no `process`; the build replaces this with a literal.
-  const bundled = typeof __GLOOMBERB_API_URL__ === "string" ? __GLOOMBERB_API_URL__ : "";
+  const bundled =
+    typeof __GLOOMBERB_API_URL__ === "string" ? __GLOOMBERB_API_URL__ : "";
   if (bundled) {
     return typeof location !== "undefined" && bundled === location.origin
       ? `${bundled}/api`
@@ -72,7 +88,10 @@ export function getCloudApiBaseUrl(): string {
 
 function throwIfRequestAborted(signal: AbortSignal | null | undefined): void {
   if (!signal?.aborted) return;
-  throw signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
+  throw (
+    signal.reason ??
+    new DOMException("The operation was aborted.", "AbortError")
+  );
 }
 
 export class CloudApiRequestTransport {
@@ -86,13 +105,16 @@ export class CloudApiRequestTransport {
 
   readonly baseUrl = getCloudApiBaseUrl();
 
-  constructor(options: {
-    fetchTransport?: CloudApiFetchTransport;
-    marketRequestTimeoutMs?: number;
-    connectionHealth?: ConnectionHealthRegistry;
-  } = {}) {
+  constructor(
+    options: {
+      fetchTransport?: CloudApiFetchTransport;
+      marketRequestTimeoutMs?: number;
+      connectionHealth?: ConnectionHealthRegistry;
+    } = {},
+  ) {
     this.fetchTransport = options.fetchTransport ?? null;
-    this.marketRequestTimeoutMs = options.marketRequestTimeoutMs ?? DEFAULT_MARKET_REQUEST_TIMEOUT_MS;
+    this.marketRequestTimeoutMs =
+      options.marketRequestTimeoutMs ?? DEFAULT_MARKET_REQUEST_TIMEOUT_MS;
     this.connectionHealth = options.connectionHealth ?? connectionHealth;
   }
 
@@ -155,7 +177,11 @@ export class CloudApiRequestTransport {
       );
     }
     const headers = new Headers(options.headers);
-    if (!headers.has("Content-Type") && options.method && options.method !== "GET") {
+    if (
+      !headers.has("Content-Type") &&
+      options.method &&
+      options.method !== "GET"
+    ) {
       headers.set("Content-Type", "application/json");
     }
     if (!headers.has("Accept")) headers.set("Accept", "text/event-stream");
@@ -163,23 +189,27 @@ export class CloudApiRequestTransport {
     headers.set("Origin", this.baseUrl);
 
     const operation = `${options.method ?? "GET"} ${path.split("?")[0]}`;
-    return this.connectionHealth.track(GLOOM_CLOUD_HTTP_CONNECTION_ID, operation, async () => {
-      const response = await streamFetch(`${this.baseUrl}${path}`, {
-        ...options,
-        headers,
-        credentials: "include",
-      });
-      throwIfRequestAborted(options.signal);
-      if (!response.ok) {
-        const text = await response.text().catch(() => "");
-        throw new ApiRequestError(
-          parseApiErrorMessage(text),
-          response.status,
-          parseRetryAfterMs(response.headers.get("Retry-After")),
-        );
-      }
-      return response;
-    });
+    return this.connectionHealth.track(
+      GLOOM_CLOUD_HTTP_CONNECTION_ID,
+      operation,
+      async () => {
+        const response = await streamFetch(`${this.baseUrl}${path}`, {
+          ...options,
+          headers,
+          credentials: "include",
+        });
+        throwIfRequestAborted(options.signal);
+        if (!response.ok) {
+          const text = await response.text().catch(() => "");
+          throw new ApiRequestError(
+            parseApiErrorMessage(text),
+            response.status,
+            parseRetryAfterMs(response.headers.get("Retry-After")),
+          );
+        }
+        return response;
+      },
+    );
   }
 
   async request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -212,10 +242,17 @@ export class CloudApiRequestTransport {
     }
   }
 
-  private async performRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  private async performRequest<T>(
+    path: string,
+    options?: RequestInit,
+  ): Promise<T> {
     throwIfRequestAborted(options?.signal);
     const headers = new Headers(options?.headers);
-    if (!headers.has("Content-Type") && options?.method && options.method !== "GET") {
+    if (
+      !headers.has("Content-Type") &&
+      options?.method &&
+      options.method !== "GET"
+    ) {
       headers.set("Content-Type", "application/json");
     }
     this.setSessionCookieHeader(headers);
@@ -224,11 +261,14 @@ export class CloudApiRequestTransport {
 
     const operation = `${options?.method ?? "GET"} ${path.split("?")[0]}`;
     const request = async () => {
-      const res = await (this.fetchTransport ?? cloudApiFetchTransport)(`${this.baseUrl}${path}`, {
-        ...options,
-        headers,
-        credentials: "include",
-      });
+      const res = await (this.fetchTransport ?? cloudApiFetchTransport)(
+        `${this.baseUrl}${path}`,
+        {
+          ...options,
+          headers,
+          credentials: "include",
+        },
+      );
       throwIfRequestAborted(options?.signal);
       if (this.sessionToken === sessionTokenAtRequestStart) {
         this.extractSessionCookie(res);
@@ -238,7 +278,11 @@ export class CloudApiRequestTransport {
 
       if (!res.ok) {
         const msg = parseApiErrorMessage(text);
-        throw new ApiRequestError(msg, res.status, parseRetryAfterMs(res.headers.get("Retry-After")));
+        throw new ApiRequestError(
+          msg,
+          res.status,
+          parseRetryAfterMs(res.headers.get("Retry-After")),
+        );
       }
 
       if (!text) return undefined as T;
@@ -251,9 +295,14 @@ export class CloudApiRequestTransport {
     return this.connectionHealth.track(
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,
-      () => path.startsWith("/cloud/econ/series/")
-        ? this.connectionHealth.track(GLOOM_CLOUD_FRED_CONNECTION_ID, operation, request)
-        : request(),
+      () =>
+        path.startsWith("/cloud/econ/series/")
+          ? this.connectionHealth.track(
+              GLOOM_CLOUD_FRED_CONNECTION_ID,
+              operation,
+              request,
+            )
+          : request(),
     );
   }
 
@@ -265,7 +314,10 @@ export class CloudApiRequestTransport {
     }
     for (const cookie of setCookie) {
       for (const cookieName of SESSION_COOKIE_NAMES) {
-        const escapedCookieName = cookieName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const escapedCookieName = cookieName.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
         const match = cookie.match(new RegExp(`${escapedCookieName}=([^;]+)`));
         if (!match) continue;
         this.sessionToken = match[1] ?? null;
@@ -277,8 +329,12 @@ export class CloudApiRequestTransport {
 
   private buildSessionCookieHeader(): string | null {
     if (!this.sessionToken) return null;
-    const cookieNames = this.sessionCookieName ? [this.sessionCookieName] : SESSION_COOKIE_NAMES;
-    return cookieNames.map((cookieName) => `${cookieName}=${this.sessionToken}`).join("; ");
+    const cookieNames = this.sessionCookieName
+      ? [this.sessionCookieName]
+      : SESSION_COOKIE_NAMES;
+    return cookieNames
+      .map((cookieName) => `${cookieName}=${this.sessionToken}`)
+      .join("; ");
   }
 
   private setSessionCookieHeader(headers: Headers): void {

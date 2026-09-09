@@ -12,6 +12,8 @@ import {
   cloudEarningsCallsPath,
   cloudEarningsTranscriptPath,
   publicProxyStatementPath,
+  publicRiskReportPath,
+  publicRiskReportsPath,
   publicProxyStatementsPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
@@ -55,6 +57,8 @@ import type {
   CloudEarningsTranscriptPayload,
   CloudProxyStatementListPayload,
   CloudProxyStatementPayload,
+  CloudRiskReportListPayload,
+  CloudRiskReportPayload,
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
@@ -357,6 +361,21 @@ export class CloudDataApi {
   ): Promise<CloudProxyStatementPayload> {
     return this.request<CloudProxyStatementPayload>(
       publicProxyStatementPath(ticker, year),
+    );
+  }
+
+  async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
+    return this.request<CloudRiskReportListPayload>(
+      publicRiskReportsPath(ticker),
+    );
+  }
+
+  async getRiskReport(
+    ticker: string,
+    year: number,
+  ): Promise<CloudRiskReportPayload> {
+    return this.request<CloudRiskReportPayload>(
+      publicRiskReportPath(ticker, year),
     );
   }
 
