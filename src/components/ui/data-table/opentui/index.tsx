@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
-import { useThemeColors, useThemeTokens } from "../../../../theme/theme-context";
+import { useGlyphs, useThemeColors, useThemeTokens } from "../../../../theme/theme-context";
 import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
@@ -231,6 +231,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
 }: DataTableProps<T, C>) {
   const colors = useThemeColors();
   const tokens = useThemeTokens();
+  const glyphs = useGlyphs();
   const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const appViewport = useViewport();
@@ -466,14 +467,12 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           height={1}
           {...tableContentWidthProps(contentWidth)}
           paddingX={horizontalPadding}
-          backgroundColor={colors.panel}
+          backgroundColor={tokens.table.headerBg}
         >
           {displayColumns.map((column, columnIndex) => {
             const isSorted = sortColumnId === column.id;
             const indicator = isSorted
-              ? sortDirection === "asc"
-                ? " ▲"
-                : " ▼"
+              ? ` ${sortDirection === "asc" ? glyphs.triangle.up : glyphs.triangle.down}`
               : "";
             const labelText = fitTableHeaderText(
               column.label + indicator,

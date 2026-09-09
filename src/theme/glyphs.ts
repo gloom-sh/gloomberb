@@ -31,6 +31,8 @@ export interface GlyphSet {
   /** True when the style asked for no pane border at all. */
   borderless: boolean;
   arrow: { up: string; down: string; left: string; right: string };
+  /** Solid triangles, for a sort indicator in a column header. */
+  triangle: { up: string; down: string };
   /** Disclosure triangles for expandable rows. */
   caret: { collapsed: string; expanded: string };
   bullet: string;
@@ -52,6 +54,8 @@ export interface GlyphSet {
   spinner: readonly string[];
   /** Resize affordance in the bottom-right corner of a floating pane. */
   resizeGrip: string;
+  /** Marks a pane whose subject follows another pane. */
+  link: string;
   ellipsis: string;
 }
 
@@ -94,6 +98,7 @@ const OPENTUI_BORDER_STYLE: Record<PaneBorderKind, "single" | "double" | "rounde
 
 const UNICODE_MARKS = {
   arrow: { up: "↑", down: "↓", left: "←", right: "→" },
+  triangle: { up: "▲", down: "▼" },
   caret: { collapsed: "▸", expanded: "▾" },
   bullet: "•",
   dot: "·",
@@ -109,11 +114,14 @@ const UNICODE_MARKS = {
   bar: { full: "█", half: "▌", halfRight: "▐" },
   spinner: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const,
   resizeGrip: "◢",
+  // Not the emoji link, which renders double-width in a terminal.
+  link: "⧉",
   ellipsis: "...",
 } as const;
 
 const ASCII_MARKS = {
   arrow: { up: "^", down: "v", left: "<", right: ">" },
+  triangle: { up: "^", down: "v" },
   caret: { collapsed: ">", expanded: "v" },
   bullet: "*",
   dot: ".",
@@ -129,6 +137,7 @@ const ASCII_MARKS = {
   bar: { full: "#", half: "=", halfRight: "=" },
   spinner: ["|", "/", "-", "\\"] as const,
   resizeGrip: "/",
+  link: "=",
   ellipsis: "...",
 } as const;
 
@@ -155,6 +164,8 @@ const NERD_MARKS = {
   checkbox: { checked: "\uf046", unchecked: "\uf096" },
   // nf-fa-bolt, which unlike the emoji bolt is a single cell
   bolt: "\uf0e7",
+  // nf-fa-link
+  link: "\uf0c1",
 } as const;
 
 const MARKS: Record<GlyphMode, typeof UNICODE_MARKS> = {

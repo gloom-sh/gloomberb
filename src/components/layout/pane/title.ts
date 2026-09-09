@@ -1,5 +1,6 @@
 import { resolveCollectionForPane, resolveTickerForPane, type AppState } from "../../../state/app/context";
 import { t, tf } from "../../../i18n";
+import { glyphs } from "../../../theme/colors";
 import {
   findPaneInstance,
   TICKER_RESEARCH_PANE_ID,
@@ -7,8 +8,7 @@ import {
 } from "../../../types/config";
 import type { PaneDef } from "../../../types/plugin";
 
-/** Single-cell link glyph: emoji link icons render double-width in terminals. */
-const LINK_GLYPH = "\u29c9";
+
 
 function getBasePaneDisplayTitle(
   state: Pick<AppState, "config" | "paneState">,
@@ -67,5 +67,5 @@ export function getPaneDisplayTitle(
   const sourceDef = source ? panes.get(source.paneId) : null;
   if (!source || !sourceDef) return title;
   const sourceTitle = getBasePaneDisplayTitle(state, source, sourceDef);
-  return `${title}  ${LINK_GLYPH} ${tf("Linked to {source}", { source: sourceTitle })}`;
+  return `${title}  ${glyphs.link} ${tf("Linked to {source}", { source: sourceTitle })}`;
 }
