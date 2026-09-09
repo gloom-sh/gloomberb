@@ -17,7 +17,10 @@ export class ApiRequestError extends Error {
 }
 
 /** Reads `Retry-After` as milliseconds, accepting seconds or an HTTP date. */
-export function parseRetryAfterMs(header: string | null, now = Date.now()): number | undefined {
+export function parseRetryAfterMs(
+  header: string | null,
+  now = Date.now(),
+): number | undefined {
   if (!header) return undefined;
   const trimmed = header.trim();
   if (/^\d+$/.test(trimmed)) return Number(trimmed) * 1000;
@@ -29,8 +32,15 @@ export function parseRetryAfterMs(header: string | null, now = Date.now()): numb
 export function parseApiErrorMessage(body: string): string {
   try {
     const parsed = JSON.parse(body) as Record<string, unknown>;
-    const parts = [parsed.message, parsed.error, parsed.code, parsed.reason]
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    const parts = [
+      parsed.message,
+      parsed.error,
+      parsed.code,
+      parsed.reason,
+    ].filter(
+      (value): value is string =>
+        typeof value === "string" && value.trim().length > 0,
+    );
     return parts.join(" ") || body;
   } catch {
     return body;
@@ -39,5 +49,7 @@ export function parseApiErrorMessage(body: string): string {
 
 export function isHardSessionInvalidMessage(message: string): boolean {
   const normalized = message.replace(/[_-]+/g, " ");
-  return HARD_SESSION_INVALID_PATTERNS.some((pattern) => pattern.test(normalized));
+  return HARD_SESSION_INVALID_PATTERNS.some((pattern) =>
+    pattern.test(normalized),
+  );
 }

@@ -11,6 +11,11 @@ import {
   cloudCongressHousePath,
   cloudEarningsCallsPath,
   cloudEarningsTranscriptPath,
+  publicProxyStatementPath,
+  publicFilingEventsPath,
+  publicRiskReportPath,
+  publicRiskReportsPath,
+  publicProxyStatementsPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
   cloudSecFilingContentPath,
@@ -51,6 +56,11 @@ import type {
   CloudCongressHousePayload,
   CloudEarningsCallListPayload,
   CloudEarningsTranscriptPayload,
+  CloudProxyStatementListPayload,
+  CloudProxyStatementPayload,
+  CloudFilingEventPayload,
+  CloudRiskReportListPayload,
+  CloudRiskReportPayload,
   CloudCorporateActionsPayload,
   CloudEconEventPayload,
   CloudEquityDiagnosticMode,
@@ -90,8 +100,14 @@ type CloudApiRequest = <T>(path: string, options?: RequestInit) => Promise<T>;
 export class CloudDataApi {
   constructor(private readonly request: CloudApiRequest) {}
 
-  private requestMarketSymbol<T>(path: string, symbol: string, exchange?: string): Promise<CloudMarketResponse<T>> {
-    return this.request<CloudMarketResponse<T>>(cloudMarketSymbolPath(path, symbol, exchange));
+  private requestMarketSymbol<T>(
+    path: string,
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<T>> {
+    return this.request<CloudMarketResponse<T>>(
+      cloudMarketSymbolPath(path, symbol, exchange),
+    );
   }
 
   private postMarketBatch<T>(
@@ -105,12 +121,20 @@ export class CloudDataApi {
     });
   }
 
-  async searchInstruments(query: string, limit = 10): Promise<InstrumentSearchResult[]> {
-    const response = await this.request<CloudMarketResponse<InstrumentSearchResult[]>>(cloudMarketSearchPath(query, limit));
+  async searchInstruments(
+    query: string,
+    limit = 10,
+  ): Promise<InstrumentSearchResult[]> {
+    const response = await this.request<
+      CloudMarketResponse<InstrumentSearchResult[]>
+    >(cloudMarketSearchPath(query, limit));
     return response.data ?? [];
   }
 
-  async getCloudQuote(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudQuotePayload>> {
+  async getCloudQuote(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudQuotePayload>> {
     return this.requestMarketSymbol("/market/quote", symbol, exchange);
   }
 
@@ -121,8 +145,12 @@ export class CloudDataApi {
     return this.postMarketBatch("/market/quotes/batch", targets, mode);
   }
 
-  async getCloudWorldVenues(): Promise<CloudMarketResponse<CloudWorldVenueMapPayload>> {
-    return this.request<CloudMarketResponse<CloudWorldVenueMapPayload>>("/market/venues");
+  async getCloudWorldVenues(): Promise<
+    CloudMarketResponse<CloudWorldVenueMapPayload>
+  > {
+    return this.request<CloudMarketResponse<CloudWorldVenueMapPayload>>(
+      "/market/venues",
+    );
   }
 
   async getCloudMarketScreener(
@@ -146,18 +174,29 @@ export class CloudDataApi {
     exchange?: string,
     expirationDate?: number,
   ): Promise<CloudMarketResponse<CloudOptionsChainPayload>> {
-    return this.request<CloudMarketResponse<CloudOptionsChainPayload>>(cloudOptionsChainPath(symbol, exchange, expirationDate));
+    return this.request<CloudMarketResponse<CloudOptionsChainPayload>>(
+      cloudOptionsChainPath(symbol, exchange, expirationDate),
+    );
   }
 
-  async getCloudProfile(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudCompanyProfile>> {
+  async getCloudProfile(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudCompanyProfile>> {
     return this.requestMarketSymbol("/market/profile", symbol, exchange);
   }
 
-  async getCloudFundamentals(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudFundamentals>> {
+  async getCloudFundamentals(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudFundamentals>> {
     return this.requestMarketSymbol("/market/fundamentals", symbol, exchange);
   }
 
-  async getCloudFinancials(symbol: string, exchange?: string): Promise<CloudMarketResponse<TickerFinancials>> {
+  async getCloudFinancials(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<TickerFinancials>> {
     return this.requestMarketSymbol("/market/financials", symbol, exchange);
   }
 
@@ -168,32 +207,56 @@ export class CloudDataApi {
     return this.postMarketBatch("/market/financials/batch", targets, mode);
   }
 
-  async getCloudHolders(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudHoldersPayload>> {
+  async getCloudHolders(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudHoldersPayload>> {
     return this.requestMarketSymbol("/market/holders", symbol, exchange);
   }
 
-  async getCloudAnalystResearch(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
+  async getCloudAnalystResearch(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudAnalystResearchPayload>> {
     return this.requestMarketSymbol("/market/analyst", symbol, exchange);
   }
 
-  async getCloudShortInterest(symbol: string, years?: number): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
+  async getCloudShortInterest(
+    symbol: string,
+    years?: number,
+  ): Promise<CloudMarketResponse<CloudShortInterestPayload>> {
     const params = new URLSearchParams({ symbol: symbol.toUpperCase() });
     if (years != null) params.set("years", String(years));
-    return this.request<CloudMarketResponse<CloudShortInterestPayload>>(`/market/short-interest?${params}`);
+    return this.request<CloudMarketResponse<CloudShortInterestPayload>>(
+      `/market/short-interest?${params}`,
+    );
   }
 
-  async getCloudCorporateActions(symbol: string, exchange?: string): Promise<CloudMarketResponse<CloudCorporateActionsPayload>> {
-    return this.requestMarketSymbol("/market/corporate-actions", symbol, exchange);
+  async getCloudCorporateActions(
+    symbol: string,
+    exchange?: string,
+  ): Promise<CloudMarketResponse<CloudCorporateActionsPayload>> {
+    return this.requestMarketSymbol(
+      "/market/corporate-actions",
+      symbol,
+      exchange,
+    );
   }
 
   async getCloudStatements(
     symbol: string,
     exchange?: string,
     period: "annual" | "quarterly" | "both" = "both",
-  ): Promise<CloudMarketResponse<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>> {
-    return this.request<CloudMarketResponse<Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">>>(
-      cloudStatementsPath(symbol, exchange, period),
-    );
+  ): Promise<
+    CloudMarketResponse<
+      Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">
+    >
+  > {
+    return this.request<
+      CloudMarketResponse<
+        Pick<TickerFinancials, "annualStatements" | "quarterlyStatements">
+      >
+    >(cloudStatementsPath(symbol, exchange, period));
   }
 
   async getCloudHistory(
@@ -201,11 +264,17 @@ export class CloudDataApi {
     exchange: string,
     params: CloudHistoryParams = {},
   ): Promise<CloudMarketResponse<CloudPricePointPayload[]>> {
-    return this.request<CloudMarketResponse<CloudPricePointPayload[]>>(cloudHistoryPath(symbol, exchange, params));
+    return this.request<CloudMarketResponse<CloudPricePointPayload[]>>(
+      cloudHistoryPath(symbol, exchange, params),
+    );
   }
 
-  async getCloudExchangeRate(fromCurrency: string): Promise<CloudMarketResponse<{ rate: number }>> {
-    return this.request<CloudMarketResponse<{ rate: number }>>(cloudExchangeRatePath(fromCurrency));
+  async getCloudExchangeRate(
+    fromCurrency: string,
+  ): Promise<CloudMarketResponse<{ rate: number }>> {
+    return this.request<CloudMarketResponse<{ rate: number }>>(
+      cloudExchangeRatePath(fromCurrency),
+    );
   }
 
   /**
@@ -218,14 +287,17 @@ export class CloudDataApi {
     exchange?: string,
     mode: CloudEquityDiagnosticMode = "cache-first",
   ): Promise<CloudEquityDiagnosticResult> {
-    return this.request<CloudEquityDiagnosticResult>("/research/equity-diagnostic", {
-      method: "POST",
-      body: JSON.stringify({
-        symbol: symbol.trim().toUpperCase(),
-        ...(exchange ? { exchange } : {}),
-        mode,
-      }),
-    });
+    return this.request<CloudEquityDiagnosticResult>(
+      "/research/equity-diagnostic",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          symbol: symbol.trim().toUpperCase(),
+          ...(exchange ? { exchange } : {}),
+          mode,
+        }),
+      },
+    );
   }
 
   async getCloudEconomicCalendar(): Promise<CloudEconEventPayload[]> {
@@ -236,7 +308,9 @@ export class CloudDataApi {
     seriesId: string,
     params: CloudFredSeriesParams = {},
   ): Promise<CloudFredSeriesPayload> {
-    return this.request<CloudFredSeriesPayload>(cloudFredSeriesPath(seriesId, params));
+    return this.request<CloudFredSeriesPayload>(
+      cloudFredSeriesPath(seriesId, params),
+    );
   }
 
   async getCloudShiller(): Promise<CloudShillerPayload> {
@@ -251,33 +325,97 @@ export class CloudDataApi {
     return this.request<CloudCdsResponse>(cloudCdsPath(params));
   }
 
-  async getCloudCongressHouse(params: CloudCongressHouseParams = {}): Promise<CloudCongressHousePayload> {
-    return this.request<CloudCongressHousePayload>(cloudCongressHousePath(params));
+  async getCloudCongressHouse(
+    params: CloudCongressHouseParams = {},
+  ): Promise<CloudCongressHousePayload> {
+    return this.request<CloudCongressHousePayload>(
+      cloudCongressHousePath(params),
+    );
   }
 
   async getCloudEarningsCalls(
     params: CloudEarningsCallsParams = {},
   ): Promise<CloudEarningsCallListPayload> {
-    return this.request<CloudEarningsCallListPayload>(cloudEarningsCallsPath(params));
+    return this.request<CloudEarningsCallListPayload>(
+      cloudEarningsCallsPath(params),
+    );
   }
 
-  async getCloudEarningsTranscript(id: string): Promise<CloudEarningsTranscriptPayload> {
-    return this.request<CloudEarningsTranscriptPayload>(cloudEarningsTranscriptPath(id));
+  async getCloudEarningsTranscript(
+    id: string,
+  ): Promise<CloudEarningsTranscriptPayload> {
+    return this.request<CloudEarningsTranscriptPayload>(
+      cloudEarningsTranscriptPath(id),
+    );
   }
 
-  async getCloudSecFilings(params: CloudSecFilingsParams): Promise<CloudSecFilingsResponse> {
+  async getProxyStatements(
+    ticker: string,
+  ): Promise<CloudProxyStatementListPayload> {
+    return this.request<CloudProxyStatementListPayload>(
+      publicProxyStatementsPath(ticker),
+    );
+  }
+
+  async getProxyStatement(
+    ticker: string,
+    year: number,
+  ): Promise<CloudProxyStatementPayload> {
+    return this.request<CloudProxyStatementPayload>(
+      publicProxyStatementPath(ticker, year),
+    );
+  }
+
+  async getFilingEvents(
+    ticker: string,
+    limit?: number,
+  ): Promise<{ ticker: string; events: CloudFilingEventPayload[] }> {
+    return this.request<{ ticker: string; events: CloudFilingEventPayload[] }>(
+      publicFilingEventsPath(ticker, limit),
+    );
+  }
+
+  async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
+    return this.request<CloudRiskReportListPayload>(
+      publicRiskReportsPath(ticker),
+    );
+  }
+
+  async getRiskReport(
+    ticker: string,
+    year: number,
+  ): Promise<CloudRiskReportPayload> {
+    return this.request<CloudRiskReportPayload>(
+      publicRiskReportPath(ticker, year),
+    );
+  }
+
+  async getCloudSecFilings(
+    params: CloudSecFilingsParams,
+  ): Promise<CloudSecFilingsResponse> {
     return this.request<CloudSecFilingsResponse>(cloudSecFilingsPath(params));
   }
 
-  async getCloudSecFilingDocuments(params: CloudSecFilingParams): Promise<CloudSecDocumentsResponse> {
-    return this.request<CloudSecDocumentsResponse>(cloudSecFilingDocumentsPath(params));
+  async getCloudSecFilingDocuments(
+    params: CloudSecFilingParams,
+  ): Promise<CloudSecDocumentsResponse> {
+    return this.request<CloudSecDocumentsResponse>(
+      cloudSecFilingDocumentsPath(params),
+    );
   }
 
-  async getCloudSecFilingContent(params: CloudSecFilingParams): Promise<CloudSecContentResponse> {
-    return this.request<CloudSecContentResponse>(cloudSecFilingContentPath(params));
+  async getCloudSecFilingContent(
+    params: CloudSecFilingParams,
+  ): Promise<CloudSecContentResponse> {
+    return this.request<CloudSecContentResponse>(
+      cloudSecFilingContentPath(params),
+    );
   }
 
-  async getCloudSec13F(path: string, params: Record<string, string | number | undefined> = {}): Promise<unknown> {
+  async getCloudSec13F(
+    path: string,
+    params: Record<string, string | number | undefined> = {},
+  ): Promise<unknown> {
     return this.request<unknown>(cloudSec13FPath(path, params));
   }
 
@@ -290,7 +428,9 @@ export class CloudDataApi {
     options?: { signal?: AbortSignal },
   ): Promise<CloudSearchResponse> {
     return normalizeSearchResponse(
-      await this.request<CloudSearchResponse>(cloudSearchPath(params), { signal: options?.signal }),
+      await this.request<CloudSearchResponse>(cloudSearchPath(params), {
+        signal: options?.signal,
+      }),
     );
   }
 
@@ -306,28 +446,39 @@ export class CloudDataApi {
     return response.document;
   }
 
-  async getCloudSavedSearches(options?: { signal?: AbortSignal }): Promise<CloudSavedSearch[]> {
-    const response = await this.request<CloudSavedSearchListResponse>(cloudSavedSearchesPath(), {
-      signal: options?.signal,
-    });
+  async getCloudSavedSearches(options?: {
+    signal?: AbortSignal;
+  }): Promise<CloudSavedSearch[]> {
+    const response = await this.request<CloudSavedSearchListResponse>(
+      cloudSavedSearchesPath(),
+      {
+        signal: options?.signal,
+      },
+    );
     return response.searches ?? [];
   }
 
-  async createCloudSavedSearch(input: CloudSavedSearchInput): Promise<CloudSavedSearch> {
-    return normalizeSavedSearchResponse(await this.request<unknown>(cloudSavedSearchesPath(), {
-      method: "POST",
-      body: JSON.stringify(input),
-    }));
+  async createCloudSavedSearch(
+    input: CloudSavedSearchInput,
+  ): Promise<CloudSavedSearch> {
+    return normalizeSavedSearchResponse(
+      await this.request<unknown>(cloudSavedSearchesPath(), {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    );
   }
 
   async updateCloudSavedSearch(
     id: string,
     update: Partial<CloudSavedSearchInput>,
   ): Promise<CloudSavedSearch> {
-    return normalizeSavedSearchResponse(await this.request<unknown>(cloudSavedSearchPath(id), {
-      method: "PATCH",
-      body: JSON.stringify(update),
-    }));
+    return normalizeSavedSearchResponse(
+      await this.request<unknown>(cloudSavedSearchPath(id), {
+        method: "PATCH",
+        body: JSON.stringify(update),
+      }),
+    );
   }
 
   async deleteCloudSavedSearch(id: string): Promise<void> {
@@ -338,26 +489,40 @@ export class CloudDataApi {
     id: string,
     options?: { signal?: AbortSignal },
   ): Promise<CloudSearchHit[]> {
-    return normalizeSavedSearchHits(await this.request<unknown>(cloudSavedSearchHitsPath(id), {
-      signal: options?.signal,
-    }));
+    return normalizeSavedSearchHits(
+      await this.request<unknown>(cloudSavedSearchHitsPath(id), {
+        signal: options?.signal,
+      }),
+    );
   }
 
-  async getCloudNews(params: CloudNewsParams = {}): Promise<CloudNewsListResponse> {
+  async getCloudNews(
+    params: CloudNewsParams = {},
+  ): Promise<CloudNewsListResponse> {
     return this.request<CloudNewsListResponse>(cloudNewsPath(params));
   }
 
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {
-    return this.request<CloudNewsPayload>(`/news/${encodeURIComponent(storyId)}`);
+    return this.request<CloudNewsPayload>(
+      `/news/${encodeURIComponent(storyId)}`,
+    );
   }
 
-  async getCloudTickerTweets(params: CloudTickerTweetsParams): Promise<CloudTweetSearchResponse> {
-    const response = await this.request<CloudTweetSearchResponse>(cloudTickerTweetsPath(params));
+  async getCloudTickerTweets(
+    params: CloudTickerTweetsParams,
+  ): Promise<CloudTweetSearchResponse> {
+    const response = await this.request<CloudTweetSearchResponse>(
+      cloudTickerTweetsPath(params),
+    );
     return normalizeTweetSearchResponse(response);
   }
 
-  async searchCloudTweets(params: CloudTweetSearchParams): Promise<CloudTweetSearchResponse> {
-    const response = await this.request<CloudTweetSearchResponse>(cloudTweetSearchPath(params));
+  async searchCloudTweets(
+    params: CloudTweetSearchParams,
+  ): Promise<CloudTweetSearchResponse> {
+    const response = await this.request<CloudTweetSearchResponse>(
+      cloudTweetSearchPath(params),
+    );
     return normalizeTweetSearchResponse(response);
   }
 }

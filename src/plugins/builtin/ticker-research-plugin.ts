@@ -1,11 +1,14 @@
 import { chartComposerModule } from "./chart-composer";
 import { dividendYieldModule } from "./dividend-yield";
+import { executivesModule } from "./executives";
+import { filingEventsModule } from "./filing-events";
 import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { optionsModule } from "./options";
 import { optionsCalculatorModule } from "./options-calculator";
 import { composeBuiltinPlugin } from "./plugin-module";
 import { researchModule } from "./research";
+import { riskFactorsModule } from "./risk-factors";
 import { secModule } from "./sec";
 import { shortInterestModule } from "./short-interest";
 import { thirteenFModule } from "./thirteenf";
@@ -29,5 +32,8 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     thirteenFModule,
     secModule,
     insiderModule,
+    executivesModule,
+    riskFactorsModule,
+    filingEventsModule,
   ],
 });

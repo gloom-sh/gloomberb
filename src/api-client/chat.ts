@@ -26,7 +26,8 @@ export class CloudChatApi {
   constructor(private readonly options: CloudChatApiOptions) {}
 
   async getChannels(): Promise<ChatChannel[]> {
-    const channels = await this.options.request<ChatChannel[]>("/chat/channels");
+    const channels =
+      await this.options.request<ChatChannel[]>("/chat/channels");
     return channels.map((channel) => normalizeChatChannel(channel));
   }
 
@@ -43,20 +44,31 @@ export class CloudChatApi {
     channelId: string,
     body: { notificationsEnabled?: boolean; readThroughMessageId?: string },
   ): Promise<ChatChannelState> {
-    return this.options.request<ChatChannelState>(`/chat/channels/${channelId}/state`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
+    return this.options.request<ChatChannelState>(
+      `/chat/channels/${channelId}/state`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      },
+    );
   }
 
-  async markNotificationsDelivered(notificationIds: string[]): Promise<{ delivered: number }> {
-    return this.options.request<{ delivered: number }>("/chat/notifications/delivered", {
-      method: "POST",
-      body: JSON.stringify({ notificationIds }),
-    });
+  async markNotificationsDelivered(
+    notificationIds: string[],
+  ): Promise<{ delivered: number }> {
+    return this.options.request<{ delivered: number }>(
+      "/chat/notifications/delivered",
+      {
+        method: "POST",
+        body: JSON.stringify({ notificationIds }),
+      },
+    );
   }
 
-  async openDirectChannel(target: { userId?: string; username?: string }): Promise<ChatChannel> {
+  async openDirectChannel(target: {
+    userId?: string;
+    username?: string;
+  }): Promise<ChatChannel> {
     const channel = await this.options.request<ChatChannel>("/chat/direct", {
       method: "POST",
       body: JSON.stringify(target),
@@ -64,7 +76,11 @@ export class CloudChatApi {
     return normalizeChatChannel(channel, "direct");
   }
 
-  async openGroupChannel(body: { userIds?: string[]; usernames?: string[]; name?: string }): Promise<ChatChannel> {
+  async openGroupChannel(body: {
+    userIds?: string[];
+    usernames?: string[];
+    name?: string;
+  }): Promise<ChatChannel> {
     const channel = await this.options.request<ChatChannel>("/chat/groups", {
       method: "POST",
       body: JSON.stringify(body),
@@ -81,23 +97,40 @@ export class CloudChatApi {
     if (opts?.before) params.set("before", opts.before);
     if (opts?.limit) params.set("limit", String(opts.limit));
     const qs = params.toString();
-    const messages = await this.options.request<ChatMessage[]>(`/chat/channels/${channelId}/messages${qs ? `?${qs}` : ""}`);
+    const messages = await this.options.request<ChatMessage[]>(
+      `/chat/channels/${channelId}/messages${qs ? `?${qs}` : ""}`,
+    );
     return normalizeChatMessages(messages);
   }
 
-  async sendMessage(channelId: string, content: string, replyToId?: string, clientMessageId?: string): Promise<ChatMessage> {
-    const message = await this.options.request<ChatMessage>(`/chat/channels/${channelId}/messages`, {
-      method: "POST",
-      body: JSON.stringify({ content, replyToId, clientMessageId }),
-    });
+  async sendMessage(
+    channelId: string,
+    content: string,
+    replyToId?: string,
+    clientMessageId?: string,
+  ): Promise<ChatMessage> {
+    const message = await this.options.request<ChatMessage>(
+      `/chat/channels/${channelId}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({ content, replyToId, clientMessageId }),
+      },
+    );
     return normalizeChatMessage(message);
   }
 
-  async editMessage(channelId: string, messageId: string, content: string): Promise<ChatMessage> {
-    const message = await this.options.request<ChatMessage>(`/chat/channels/${channelId}/messages/${messageId}`, {
-      method: "PATCH",
-      body: JSON.stringify({ content }),
-    });
+  async editMessage(
+    channelId: string,
+    messageId: string,
+    content: string,
+  ): Promise<ChatMessage> {
+    const message = await this.options.request<ChatMessage>(
+      `/chat/channels/${channelId}/messages/${messageId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ content }),
+      },
+    );
     return normalizeChatMessage(message);
   }
 
@@ -110,7 +143,8 @@ export class CloudChatApi {
       channelId,
       onMessage,
       onError,
-      (content, replyToId, clientMessageId) => this.sendMessage(channelId, content, replyToId, clientMessageId),
+      (content, replyToId, clientMessageId) =>
+        this.sendMessage(channelId, content, replyToId, clientMessageId),
     );
   }
 

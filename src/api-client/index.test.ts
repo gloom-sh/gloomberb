@@ -19,7 +19,10 @@ const verifiedUser: AuthUser = {
   updatedAt: "2026-03-30T00:00:00.000Z",
 };
 
-function createResponse(body: unknown, options: { status?: number; cookies?: string[] } = {}): Response {
+function createResponse(
+  body: unknown,
+  options: { status?: number; cookies?: string[] } = {},
+): Response {
   const headers = {
     getSetCookie: () => options.cookies ?? [],
     get: (name: string) => {
@@ -36,7 +39,12 @@ function createResponse(body: unknown, options: { status?: number; cookies?: str
   } as Response;
 }
 
-function mockFetch(handler: (input: Request | string | URL, init?: RequestInit) => Response | Promise<Response>): typeof fetch {
+function mockFetch(
+  handler: (
+    input: Request | string | URL,
+    init?: RequestInit,
+  ) => Response | Promise<Response>,
+): typeof fetch {
   return handler as unknown as typeof fetch;
 }
 
@@ -114,12 +122,17 @@ afterEach(() => {
 describe("apiClient layout marketplace", () => {
   test("lists and publishes validated layouts through authenticated transport", async () => {
     const config = createDefaultConfig("/tmp/api-layout-marketplace-test");
-    const panes = new Map(config.layout.instances.map((instance) => [instance.paneId, {
-      id: instance.paneId,
-      name: instance.paneId,
-      component: () => null,
-      defaultPosition: "right" as const,
-    } satisfies PaneDef]));
+    const panes = new Map(
+      config.layout.instances.map((instance) => [
+        instance.paneId,
+        {
+          id: instance.paneId,
+          name: instance.paneId,
+          component: () => null,
+          defaultPosition: "right" as const,
+        } satisfies PaneDef,
+      ]),
+    );
     const payload = publishableMarketplaceLayout(config.layout, {}, panes);
     const entry = {
       id: "0123456789abcdef0123456789abcdef",
@@ -134,40 +147,60 @@ describe("apiClient layout marketplace", () => {
       calls.push({
         url,
         method: init?.method ?? "GET",
-        ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
+        ...(typeof init?.body === "string"
+          ? { body: JSON.parse(init.body) }
+          : {}),
       });
       const path = new URL(url).pathname;
-      return createResponse(path === `/layouts/${entry.id}` || init?.method === "POST"
-        ? entry
-        : { items: [entry] });
+      return createResponse(
+        path === `/layouts/${entry.id}` || init?.method === "POST"
+          ? entry
+          : { items: [entry] },
+      );
     });
 
     await expect(apiClient.listMarketplaceLayouts()).resolves.toEqual([entry]);
-    await expect(apiClient.getMarketplaceLayout(entry.id)).resolves.toEqual(entry);
-    await expect(apiClient.publishMarketplaceLayout(entry.name, payload)).resolves.toEqual(entry);
+    await expect(apiClient.getMarketplaceLayout(entry.id)).resolves.toEqual(
+      entry,
+    );
+    await expect(
+      apiClient.publishMarketplaceLayout(entry.name, payload),
+    ).resolves.toEqual(entry);
 
-    expect(calls.map((call) => [new URL(call.url).pathname, call.method])).toEqual([
+    expect(
+      calls.map((call) => [new URL(call.url).pathname, call.method]),
+    ).toEqual([
       ["/layouts", "GET"],
       [`/layouts/${entry.id}`, "GET"],
       ["/layouts", "POST"],
     ]);
-    expect(calls[2]?.body).toMatchObject({ name: "Research Desk", schemaVersion: 2, paneState: {} });
+    expect(calls[2]?.body).toMatchObject({
+      name: "Research Desk",
+      schemaVersion: 2,
+      paneState: {},
+    });
   });
 });
 
 describe("apiClient auth cookies", () => {
   test("accepts a browser-managed api.gloom.sh cookie without exposing its value", async () => {
     apiClient.setCookieSessionMode(true);
-    setCloudApiFetchTransport(mockFetch(() => createResponse({ user: verifiedUser })));
+    setCloudApiFetchTransport(
+      mockFetch(() => createResponse({ user: verifiedUser })),
+    );
 
-    await expect(apiClient.signIn("test@example.com", "password")).resolves.toEqual(verifiedUser);
+    await expect(
+      apiClient.signIn("test@example.com", "password"),
+    ).resolves.toEqual(verifiedUser);
     expect(apiClient.getSessionToken()).toBeNull();
     expect(apiClient.isVerified()).toBe(true);
   });
 
   test("reports signed-in from the restored user when the cookie hides the raw token", async () => {
     apiClient.setCookieSessionMode(true);
-    setCloudApiFetchTransport(mockFetch(() => createResponse({ user: verifiedUser })));
+    setCloudApiFetchTransport(
+      mockFetch(() => createResponse({ user: verifiedUser })),
+    );
 
     expect(apiClient.isSignedIn()).toBe(false);
     await apiClient.signIn("test@example.com", "password");
@@ -181,7 +214,9 @@ describe("apiClient auth cookies", () => {
     let finishRequest!: () => void;
     setCloudApiFetchTransport(async () => {
       requests += 1;
-      await new Promise<void>((resolve) => { finishRequest = resolve; });
+      await new Promise<void>((resolve) => {
+        finishRequest = resolve;
+      });
       return createResponse({ user: null });
     });
 
@@ -211,7 +246,9 @@ describe("apiClient auth cookies", () => {
       const cookie = new Headers(init?.headers).get("cookie");
       seen.push(cookie);
       if (seen.length === 1) {
-        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        await new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
         return createResponse({ user: null });
       }
       return createResponse({ user: verifiedUser });
@@ -239,19 +276,25 @@ describe("apiClient auth cookies", () => {
   test("captures secure session cookies after login and reuses them on session refresh", async () => {
     const seenCookies: Array<string | null> = [];
 
-    globalThis.fetch = mockFetch(async (_input: Request | string | URL, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      seenCookies.push(headers.get("Cookie"));
+    globalThis.fetch = mockFetch(
+      async (_input: Request | string | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        seenCookies.push(headers.get("Cookie"));
 
-      if (seenCookies.length === 1) {
-        return createResponse(
-          { token: "ws-token", user: verifiedUser },
-          { cookies: ["__Secure-gloomberb.session_token=signed-token.value; Path=/; HttpOnly; Secure; SameSite=Lax"] },
-        );
-      }
+        if (seenCookies.length === 1) {
+          return createResponse(
+            { token: "ws-token", user: verifiedUser },
+            {
+              cookies: [
+                "__Secure-gloomberb.session_token=signed-token.value; Path=/; HttpOnly; Secure; SameSite=Lax",
+              ],
+            },
+          );
+        }
 
-      return createResponse({ user: verifiedUser });
-    });
+        return createResponse({ user: verifiedUser });
+      },
+    );
 
     await apiClient.signIn("test@example.com", "password");
     await apiClient.getSession();
@@ -277,16 +320,19 @@ describe("apiClient auth cookies", () => {
       await new Promise<void>((resolve) => {
         releaseResponse = resolve;
       });
-      return createResponse({
-        channels: [],
-        onlineCount: 0,
-        channelStates: [],
-        notifications: [],
-      }, {
-        cookies: [
-          "__Secure-gloomberb.session_token=old-session.value; Path=/; HttpOnly; Secure; SameSite=None",
-        ],
-      });
+      return createResponse(
+        {
+          channels: [],
+          onlineCount: 0,
+          channelStates: [],
+          notifications: [],
+        },
+        {
+          cookies: [
+            "__Secure-gloomberb.session_token=old-session.value; Path=/; HttpOnly; Secure; SameSite=None",
+          ],
+        },
+      );
     });
 
     const staleRequest = apiClient.getChatState();
@@ -308,7 +354,11 @@ describe("apiClient auth cookies", () => {
       seenCookies.push(headers.get("Cookie"));
       return createResponse(
         { token: "ws-token", user: verifiedUser },
-        { cookies: ["gloomberb.session_token=signed-token.value; Path=/; HttpOnly; SameSite=Lax"] },
+        {
+          cookies: [
+            "gloomberb.session_token=signed-token.value; Path=/; HttpOnly; SameSite=Lax",
+          ],
+        },
       );
     });
 
@@ -320,11 +370,13 @@ describe("apiClient auth cookies", () => {
   });
 
   test("rejects login success without a captured session cookie", async () => {
-    globalThis.fetch = mockFetch(async () => createResponse({ token: "raw-session-token", user: verifiedUser }));
-
-    await expect(apiClient.signIn("test@example.com", "password")).rejects.toThrow(
-      "could not save the login session",
+    globalThis.fetch = mockFetch(async () =>
+      createResponse({ token: "raw-session-token", user: verifiedUser }),
     );
+
+    await expect(
+      apiClient.signIn("test@example.com", "password"),
+    ).rejects.toThrow("could not save the login session");
     expect(apiClient.getSessionToken()).toBeNull();
     expect(apiClient.getWebSocketToken()).toBeNull();
     expect(apiClient.getCurrentUser()).toBeNull();
@@ -334,11 +386,13 @@ describe("apiClient auth cookies", () => {
     const seenCookies: Array<string | null> = [];
     apiClient.setSessionToken("persisted-token.value");
 
-    globalThis.fetch = mockFetch(async (_input: Request | string | URL, init?: RequestInit) => {
-      const headers = new Headers(init?.headers);
-      seenCookies.push(headers.get("Cookie"));
-      return createResponse({ user: verifiedUser });
-    });
+    globalThis.fetch = mockFetch(
+      async (_input: Request | string | URL, init?: RequestInit) => {
+        const headers = new Headers(init?.headers);
+        seenCookies.push(headers.get("Cookie"));
+        return createResponse({ user: verifiedUser });
+      },
+    );
 
     await apiClient.getSession();
 
@@ -351,13 +405,15 @@ describe("apiClient auth cookies", () => {
     let requestedUrl = "";
     let requestedCookie: string | null = null;
     apiClient.setSessionToken("desktop-session-token");
-    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
-      requestedUrl = String(input);
-      requestedCookie = new Headers(init?.headers).get("Cookie");
-      return createResponse({
-        url: "https://api.gloom.sh/cloud/auth/browser-handoff?token=opaque-one-time-token",
-      });
-    });
+    globalThis.fetch = mockFetch(
+      async (input: Request | string | URL, init?: RequestInit) => {
+        requestedUrl = String(input);
+        requestedCookie = new Headers(init?.headers).get("Cookie");
+        return createResponse({
+          url: "https://api.gloom.sh/cloud/auth/browser-handoff?token=opaque-one-time-token",
+        });
+      },
+    );
 
     const handoff = await apiClient.createBrowserHandoff();
 
@@ -373,7 +429,9 @@ describe("apiClient auth cookies", () => {
     apiClient.setSessionToken("persisted-token.value");
     apiClient.restoreCachedUser(verifiedUser);
 
-    globalThis.fetch = mockFetch(async () => createResponse({ message: "Unauthorized" }, { status: 401 }));
+    globalThis.fetch = mockFetch(async () =>
+      createResponse({ message: "Unauthorized" }, { status: 401 }),
+    );
 
     await expect(apiClient.getSession()).rejects.toThrow("Unauthorized");
     expect(apiClient.getSessionToken()).toBe("persisted-token.value");
@@ -389,7 +447,9 @@ describe("apiClient auth cookies", () => {
     apiClient.setWebSocketToken("ws-token");
     apiClient.restoreCachedUser(verifiedUser);
 
-    globalThis.fetch = mockFetch(async () => createResponse({ code: "USER_NOT_FOUND" }, { status: 403 }));
+    globalThis.fetch = mockFetch(async () =>
+      createResponse({ code: "USER_NOT_FOUND" }, { status: 403 }),
+    );
 
     await expect(apiClient.getSession()).resolves.toBeNull();
     expect(apiClient.getSessionToken()).toBeNull();
@@ -402,7 +462,9 @@ describe("apiClient auth cookies", () => {
     apiClient.setWebSocketToken("ws-token");
     apiClient.restoreCachedUser(verifiedUser);
 
-    globalThis.fetch = mockFetch(async () => createResponse({ message: "server unavailable" }, { status: 503 }));
+    globalThis.fetch = mockFetch(async () =>
+      createResponse({ message: "server unavailable" }, { status: 503 }),
+    );
 
     await expect(apiClient.signOut()).rejects.toThrow("server unavailable");
     expect(apiClient.getSessionToken()).toBeNull();
@@ -418,7 +480,10 @@ describe("apiClient quote socket", () => {
     apiClient.setWebSocketToken("stale-ws-token");
     apiClient.restoreCachedUser(verifiedUser);
 
-    const unsubscribe = apiClient.subscribeQuotes([{ symbol: "AAPL" }], () => {});
+    const unsubscribe = apiClient.subscribeQuotes(
+      [{ symbol: "AAPL" }],
+      () => {},
+    );
 
     expect(sockets).toHaveLength(1);
     expect(sockets[0]!.url).toContain("token=stale-ws-token");
@@ -434,28 +499,35 @@ describe("apiClient quote socket", () => {
   test("opens an anonymous market websocket and sends quote priority hints", () => {
     const sockets = installTestWebSocket();
 
-    const unsubscribe = apiClient.subscribeQuotes([{
-      symbol: "AAPL",
-      exchange: "NASDAQ",
-      surface: "portfolio",
-      visible: true,
-      selected: true,
-      weight: 100,
-    }], () => {});
+    const unsubscribe = apiClient.subscribeQuotes(
+      [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "portfolio",
+          visible: true,
+          selected: true,
+          weight: 100,
+        },
+      ],
+      () => {},
+    );
     sockets[0]!.open();
 
     expect(sockets).toHaveLength(1);
     expect(sockets[0]!.url).toBe("wss://api.gloom.sh/cloud/ws");
     expect(sockets[0]!.sent).toContainEqual({
       type: "market.subscribe",
-      symbols: [{
-        symbol: "AAPL",
-        exchange: "NASDAQ",
-        surface: "portfolio",
-        visible: true,
-        selected: true,
-        weight: 100,
-      }],
+      symbols: [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "portfolio",
+          visible: true,
+          selected: true,
+          weight: 100,
+        },
+      ],
     });
 
     unsubscribe();
@@ -584,7 +656,10 @@ describe("apiClient quote socket", () => {
   test("does not invent quote priority hints when opening a socket", () => {
     const sockets = installTestWebSocket();
 
-    const unsubscribe = apiClient.subscribeQuotes([{ symbol: "AAPL", exchange: "NASDAQ" }], () => {});
+    const unsubscribe = apiClient.subscribeQuotes(
+      [{ symbol: "AAPL", exchange: "NASDAQ" }],
+      () => {},
+    );
     sockets[0]!.open();
 
     expect(sockets[0]!.sent).toContainEqual({
@@ -599,41 +674,53 @@ describe("apiClient quote socket", () => {
     jest.useFakeTimers();
     const sockets = installTestWebSocket();
     const deliveredSurfaces: string[] = [];
-    const unsubscribeInline = apiClient.subscribeQuotes([{
-      symbol: "AAPL",
-      exchange: "NASDAQ",
-      surface: "inline",
-      weight: 1,
-    }], (target) => {
-      deliveredSurfaces.push(target.surface ?? "unknown");
-    });
+    const unsubscribeInline = apiClient.subscribeQuotes(
+      [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "inline",
+          weight: 1,
+        },
+      ],
+      (target) => {
+        deliveredSurfaces.push(target.surface ?? "unknown");
+      },
+    );
     const socket = sockets[0]!;
     socket.open();
     flushQuoteSubscriptionUpdates();
     socket.sent.length = 0;
 
-    const unsubscribeDetail = apiClient.subscribeQuotes([{
-      symbol: "AAPL",
-      exchange: "NASDAQ",
-      surface: "detail",
-      visible: true,
-      selected: true,
-      weight: 50,
-    }], (target) => {
-      deliveredSurfaces.push(target.surface ?? "unknown");
-    });
+    const unsubscribeDetail = apiClient.subscribeQuotes(
+      [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "detail",
+          visible: true,
+          selected: true,
+          weight: 50,
+        },
+      ],
+      (target) => {
+        deliveredSurfaces.push(target.surface ?? "unknown");
+      },
+    );
     flushQuoteSubscriptionUpdates();
 
     expect(socket.sent.at(-1)).toEqual({
       type: "market.subscribe",
-      symbols: [{
-        symbol: "AAPL",
-        exchange: "NASDAQ",
-        surface: "detail",
-        visible: true,
-        selected: true,
-        weight: 50,
-      }],
+      symbols: [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "detail",
+          visible: true,
+          selected: true,
+          weight: 50,
+        },
+      ],
     });
 
     socket.receive({
@@ -648,12 +735,14 @@ describe("apiClient quote socket", () => {
     flushQuoteSubscriptionUpdates();
     expect(socket.sent.at(-1)).toEqual({
       type: "market.subscribe",
-      symbols: [{
-        symbol: "AAPL",
-        exchange: "NASDAQ",
-        surface: "inline",
-        weight: 1,
-      }],
+      symbols: [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "inline",
+          weight: 1,
+        },
+      ],
     });
 
     unsubscribeInline();
@@ -662,40 +751,59 @@ describe("apiClient quote socket", () => {
   test("unsubscribes a server-side quote when queued priority updates are removed", () => {
     jest.useFakeTimers();
     const sockets = installTestWebSocket();
-    const unsubscribeMsft = apiClient.subscribeQuotes([{ symbol: "MSFT", exchange: "NASDAQ" }], () => {});
+    const unsubscribeMsft = apiClient.subscribeQuotes(
+      [{ symbol: "MSFT", exchange: "NASDAQ" }],
+      () => {},
+    );
     const socket = sockets[0]!;
     socket.open();
     flushQuoteSubscriptionUpdates();
 
-    const unsubscribeInline = apiClient.subscribeQuotes([{
-      symbol: "AAPL",
-      exchange: "NASDAQ",
-      surface: "inline",
-      weight: 1,
-    }], () => {});
+    const unsubscribeInline = apiClient.subscribeQuotes(
+      [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "inline",
+          weight: 1,
+        },
+      ],
+      () => {},
+    );
     flushQuoteSubscriptionUpdates();
     expect(socket.sent.at(-1)).toEqual({
       type: "market.subscribe",
-      symbols: [{ symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 }],
+      symbols: [
+        { symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 },
+      ],
     });
 
     socket.sent.length = 0;
-    const unsubscribeDetail = apiClient.subscribeQuotes([{
-      symbol: "AAPL",
-      exchange: "NASDAQ",
-      surface: "detail",
-      visible: true,
-      selected: true,
-      weight: 50,
-    }], () => {});
+    const unsubscribeDetail = apiClient.subscribeQuotes(
+      [
+        {
+          symbol: "AAPL",
+          exchange: "NASDAQ",
+          surface: "detail",
+          visible: true,
+          selected: true,
+          weight: 50,
+        },
+      ],
+      () => {},
+    );
     unsubscribeDetail();
     unsubscribeInline();
     flushQuoteSubscriptionUpdates();
 
-    expect(socket.sent).toEqual([{
-      type: "market.unsubscribe",
-      symbols: [{ symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 }],
-    }]);
+    expect(socket.sent).toEqual([
+      {
+        type: "market.unsubscribe",
+        symbols: [
+          { symbol: "AAPL", exchange: "NASDAQ", surface: "inline", weight: 1 },
+        ],
+      },
+    ]);
     unsubscribeMsft();
   });
 
@@ -720,10 +828,9 @@ describe("apiClient quote socket", () => {
     unsubscribeOld();
     flushQuoteSubscriptionUpdates();
 
-    expect(socket.sent.map((message) => (message as { type: string }).type)).toEqual([
-      "market.unsubscribe",
-      "market.subscribe",
-    ]);
+    expect(
+      socket.sent.map((message) => (message as { type: string }).type),
+    ).toEqual(["market.unsubscribe", "market.subscribe"]);
     expect(socket.sent[0]).toMatchObject({
       symbols: [{ symbol: "OPT0" }, { symbol: "OPT1" }],
     });
@@ -738,9 +845,12 @@ describe("apiClient quote socket", () => {
     const seenPrices: number[] = [];
     const sockets = installTestWebSocket();
 
-    const unsubscribe = apiClient.subscribeQuotes([{ symbol: "AAPL" }], (_target, quote) => {
-      seenPrices.push(quote.price);
-    });
+    const unsubscribe = apiClient.subscribeQuotes(
+      [{ symbol: "AAPL" }],
+      (_target, quote) => {
+        seenPrices.push(quote.price);
+      },
+    );
     const socket = sockets[0]!;
     socket.open();
     socket.receive({ type: "auth.unverified" });
@@ -773,15 +883,24 @@ describe("apiClient scanner subscriptions", () => {
     const first: unknown[] = [];
     const second: unknown[] = [];
 
-    const unsubscribeFirst = apiClient.subscribeScanner("hilo", (event) => first.push(event));
+    const unsubscribeFirst = apiClient.subscribeScanner("hilo", (event) =>
+      first.push(event),
+    );
     const socket = sockets[0]!;
     socket.open();
-    expect(socket.sent).toContainEqual({ type: "scanner.subscribe", scanner: "hilo" });
+    expect(socket.sent).toContainEqual({
+      type: "scanner.subscribe",
+      scanner: "hilo",
+    });
 
     const payload = {
       status: "live",
       asOf: 1,
-      windows: { s30: { highs: 1, lows: 0 }, m1: { highs: 2, lows: 1 }, m5: { highs: 3, lows: 2 } },
+      windows: {
+        s30: { highs: 1, lows: 0 },
+        m1: { highs: 2, lows: 1 },
+        m5: { highs: 3, lows: 2 },
+      },
       highs: [],
       lows: [],
     };
@@ -789,9 +908,13 @@ describe("apiClient scanner subscriptions", () => {
 
     // A second pane must not open a second upstream subscription, and must not
     // wait a tick for its first frame.
-    const subscribeCount = () => socket.sent.filter((message: any) => message.type === "scanner.subscribe").length;
+    const subscribeCount = () =>
+      socket.sent.filter((message: any) => message.type === "scanner.subscribe")
+        .length;
     const before = subscribeCount();
-    const unsubscribeSecond = apiClient.subscribeScanner("hilo", (event) => second.push(event));
+    const unsubscribeSecond = apiClient.subscribeScanner("hilo", (event) =>
+      second.push(event),
+    );
     expect(subscribeCount()).toBe(before);
     expect(second).toEqual([{ type: "data", payload }]);
 
@@ -800,19 +923,31 @@ describe("apiClient scanner subscriptions", () => {
     expect(second).toHaveLength(2);
 
     unsubscribeFirst();
-    expect(socket.sent).not.toContainEqual({ type: "scanner.unsubscribe", scanner: "hilo" });
+    expect(socket.sent).not.toContainEqual({
+      type: "scanner.unsubscribe",
+      scanner: "hilo",
+    });
     unsubscribeSecond();
-    expect(socket.sent).toContainEqual({ type: "scanner.unsubscribe", scanner: "hilo" });
+    expect(socket.sent).toContainEqual({
+      type: "scanner.unsubscribe",
+      scanner: "hilo",
+    });
   });
 
   test("replays scanner subscriptions after a reconnect and surfaces denials", () => {
     const sockets = installTestWebSocket();
     const seen: unknown[] = [];
-    const unsubscribe = apiClient.subscribeScanner("flow", (event) => seen.push(event));
+    const unsubscribe = apiClient.subscribeScanner("flow", (event) =>
+      seen.push(event),
+    );
 
     const socket = sockets[0]!;
     socket.open();
-    socket.receive({ type: "scanner.denied", scanner: "flow", reason: "pro_required" });
+    socket.receive({
+      type: "scanner.denied",
+      scanner: "flow",
+      reason: "pro_required",
+    });
     expect(seen).toEqual([{ type: "denied", reason: "pro_required" }]);
 
     jest.useFakeTimers();
@@ -820,7 +955,10 @@ describe("apiClient scanner subscriptions", () => {
     jest.runAllTimers();
     const reconnected = sockets[1]!;
     reconnected.open();
-    expect(reconnected.sent).toContainEqual({ type: "scanner.subscribe", scanner: "flow" });
+    expect(reconnected.sent).toContainEqual({
+      type: "scanner.subscribe",
+      scanner: "flow",
+    });
 
     unsubscribe();
   });
@@ -844,15 +982,17 @@ describe("apiClient chat timestamps", () => {
 
   test("normalizes transcript and send-response timestamps to UTC ISO strings", async () => {
     const responses = [
-      createResponse([{
-        id: "m1",
-        channelId: "everyone",
-        content: "older",
-        replyToId: null,
-        createdAt: "2026-04-08 07:28:27.625",
-        user: { id: "u1", username: "alice", displayName: "Alice" },
-        replyTo: null,
-      }]),
+      createResponse([
+        {
+          id: "m1",
+          channelId: "everyone",
+          content: "older",
+          replyToId: null,
+          createdAt: "2026-04-08 07:28:27.625",
+          user: { id: "u1", username: "alice", displayName: "Alice" },
+          replyTo: null,
+        },
+      ]),
       createResponse({
         id: "m2",
         channelId: "everyone",
@@ -875,31 +1015,39 @@ describe("apiClient chat timestamps", () => {
 
   test("edits a chat message and normalizes the edit timestamp", async () => {
     const requests: Array<{ path: string; method: string; body: unknown }> = [];
-    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
-      requests.push({
-        path: new URL(String(input)).pathname,
-        method: init?.method ?? "GET",
-        body: init?.body ? JSON.parse(String(init.body)) : null,
-      });
-      return createResponse({
-        id: "m2",
-        channelId: "everyone",
-        content: "hello edited",
-        replyToId: null,
-        createdAt: "2026-04-08 07:29:27.625",
-        editedAt: "2026-04-08 07:30:27.625",
-        user: { id: "u1", username: "alice", displayName: "Alice" },
-        replyTo: null,
-      });
-    });
+    globalThis.fetch = mockFetch(
+      async (input: Request | string | URL, init?: RequestInit) => {
+        requests.push({
+          path: new URL(String(input)).pathname,
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return createResponse({
+          id: "m2",
+          channelId: "everyone",
+          content: "hello edited",
+          replyToId: null,
+          createdAt: "2026-04-08 07:29:27.625",
+          editedAt: "2026-04-08 07:30:27.625",
+          user: { id: "u1", username: "alice", displayName: "Alice" },
+          replyTo: null,
+        });
+      },
+    );
 
-    const editedMessage = await apiClient.editMessage("everyone", "m2", "hello edited");
+    const editedMessage = await apiClient.editMessage(
+      "everyone",
+      "m2",
+      "hello edited",
+    );
 
-    expect(requests).toEqual([{
-      path: "/chat/channels/everyone/messages/m2",
-      method: "PATCH",
-      body: { content: "hello edited" },
-    }]);
+    expect(requests).toEqual([
+      {
+        path: "/chat/channels/everyone/messages/m2",
+        method: "PATCH",
+        body: { content: "hello edited" },
+      },
+    ]);
     expect(editedMessage.editedAt).toBe("2026-04-08T07:30:27.625Z");
   });
 
@@ -909,19 +1057,21 @@ describe("apiClient chat timestamps", () => {
       seenCreatedAts.push(message.createdAt);
     });
 
-    await (apiClient as any).socket.handleSocketMessage(JSON.stringify({
-      type: "chat.message",
-      channelId: "everyone",
-      data: {
-        id: "m1",
+    await (apiClient as any).socket.handleSocketMessage(
+      JSON.stringify({
+        type: "chat.message",
         channelId: "everyone",
-        content: "hello",
-        replyToId: null,
-        createdAt: "2026-04-08 07:28:27.625",
-        user: { id: "u1", username: "alice", displayName: "Alice" },
-        replyTo: null,
-      },
-    }));
+        data: {
+          id: "m1",
+          channelId: "everyone",
+          content: "hello",
+          replyToId: null,
+          createdAt: "2026-04-08 07:28:27.625",
+          user: { id: "u1", username: "alice", displayName: "Alice" },
+          replyTo: null,
+        },
+      }),
+    );
 
     expect(seenCreatedAts).toEqual(["2026-04-08T07:28:27.625Z"]);
     channel.close();
@@ -932,30 +1082,43 @@ describe("apiClient chat timestamps", () => {
     globalThis.fetch = mockFetch(async (input: Request | string | URL) => {
       requestedUrl = String(input);
       return createResponse({
-        channels: [{ id: "everyone", name: "everyone", created_at: "2026-04-08T07:00:00.000Z" }],
-        onlineCount: 2,
-        channelStates: [{
-          channelId: "everyone",
-          notificationsEnabled: true,
-          lastReadMessageId: "m1",
-          unreadCount: 1,
-        }],
-        notifications: [{
-          id: "n1",
-          type: "reply",
-          channelId: "everyone",
-          messageId: "m2",
-          createdAt: "2026-04-08 07:30:00.000",
-          message: {
-            id: "m2",
-            channelId: "everyone",
-            content: "reply",
-            replyToId: "m1",
-            createdAt: "2026-04-08 07:29:00.000",
-            user: { id: "u2", username: "bob", displayName: "Bob" },
-            replyTo: { content: "parent", user: { id: "u1", username: "vince" } },
+        channels: [
+          {
+            id: "everyone",
+            name: "everyone",
+            created_at: "2026-04-08T07:00:00.000Z",
           },
-        }],
+        ],
+        onlineCount: 2,
+        channelStates: [
+          {
+            channelId: "everyone",
+            notificationsEnabled: true,
+            lastReadMessageId: "m1",
+            unreadCount: 1,
+          },
+        ],
+        notifications: [
+          {
+            id: "n1",
+            type: "reply",
+            channelId: "everyone",
+            messageId: "m2",
+            createdAt: "2026-04-08 07:30:00.000",
+            message: {
+              id: "m2",
+              channelId: "everyone",
+              content: "reply",
+              replyToId: "m1",
+              createdAt: "2026-04-08 07:29:00.000",
+              user: { id: "u2", username: "bob", displayName: "Bob" },
+              replyTo: {
+                content: "parent",
+                user: { id: "u1", username: "vince" },
+              },
+            },
+          },
+        ],
       });
     });
 
@@ -964,7 +1127,9 @@ describe("apiClient chat timestamps", () => {
     expect(new URL(requestedUrl).pathname).toBe("/chat/state");
     expect(state.onlineCount).toBe(2);
     expect(state.notifications[0]?.createdAt).toBe("2026-04-08T07:30:00.000Z");
-    expect(state.notifications[0]?.message.createdAt).toBe("2026-04-08T07:29:00.000Z");
+    expect(state.notifications[0]?.message.createdAt).toBe(
+      "2026-04-08T07:29:00.000Z",
+    );
   });
 
   test("updates chat channel state and marks notifications delivered", async () => {
@@ -979,14 +1144,16 @@ describe("apiClient chat timestamps", () => {
       createResponse({ delivered: 2 }),
       createResponse({ onlineCount: 4 }),
     ];
-    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
-      requests.push({
-        path: new URL(String(input)).pathname,
-        method: init?.method ?? "GET",
-        body: init?.body ? JSON.parse(String(init.body)) : null,
-      });
-      return responses.shift() as Response;
-    });
+    globalThis.fetch = mockFetch(
+      async (input: Request | string | URL, init?: RequestInit) => {
+        requests.push({
+          path: new URL(String(input)).pathname,
+          method: init?.method ?? "GET",
+          body: init?.body ? JSON.parse(String(init.body)) : null,
+        });
+        return responses.shift() as Response;
+      },
+    );
 
     await apiClient.updateChatChannelState("everyone", {
       notificationsEnabled: true,
@@ -1018,36 +1185,49 @@ describe("apiClient chat timestamps", () => {
   test("emits websocket chat presence and notification events", async () => {
     const seenPresence: number[] = [];
     const seenNotifications: string[] = [];
-    const unsubscribePresence = apiClient.subscribeChatPresence((onlineCount) => {
-      seenPresence.push(onlineCount);
-    });
-    const unsubscribeNotifications = apiClient.subscribeChatNotifications((notification) => {
-      seenNotifications.push(`${notification.id}:${notification.message.createdAt}`);
-    });
-
-    await (apiClient as any).socket.handleSocketMessage(JSON.stringify({
-      type: "chat.presence",
-      onlineCount: 5,
-    }));
-    await (apiClient as any).socket.handleSocketMessage(JSON.stringify({
-      type: "chat.notification",
-      data: {
-        id: "n1",
-        type: "reply",
-        channelId: "everyone",
-        messageId: "m2",
-        createdAt: "2026-04-08 07:30:00.000",
-        message: {
-          id: "m2",
-          channelId: "everyone",
-          content: "reply",
-          replyToId: "m1",
-          createdAt: "2026-04-08 07:29:00.000",
-          user: { id: "u2", username: "bob", displayName: "Bob" },
-          replyTo: { content: "parent", user: { id: "u1", username: "vince" } },
-        },
+    const unsubscribePresence = apiClient.subscribeChatPresence(
+      (onlineCount) => {
+        seenPresence.push(onlineCount);
       },
-    }));
+    );
+    const unsubscribeNotifications = apiClient.subscribeChatNotifications(
+      (notification) => {
+        seenNotifications.push(
+          `${notification.id}:${notification.message.createdAt}`,
+        );
+      },
+    );
+
+    await (apiClient as any).socket.handleSocketMessage(
+      JSON.stringify({
+        type: "chat.presence",
+        onlineCount: 5,
+      }),
+    );
+    await (apiClient as any).socket.handleSocketMessage(
+      JSON.stringify({
+        type: "chat.notification",
+        data: {
+          id: "n1",
+          type: "reply",
+          channelId: "everyone",
+          messageId: "m2",
+          createdAt: "2026-04-08 07:30:00.000",
+          message: {
+            id: "m2",
+            channelId: "everyone",
+            content: "reply",
+            replyToId: "m1",
+            createdAt: "2026-04-08 07:29:00.000",
+            user: { id: "u2", username: "bob", displayName: "Bob" },
+            replyTo: {
+              content: "parent",
+              user: { id: "u1", username: "vince" },
+            },
+          },
+        },
+      }),
+    );
 
     expect(seenPresence).toEqual([5]);
     expect(seenNotifications).toEqual(["n1:2026-04-08T07:29:00.000Z"]);
@@ -1062,30 +1242,32 @@ describe("apiClient account profile", () => {
     let requestedBody = "";
     apiClient.setSessionToken("session-token");
     apiClient.restoreCachedUser(verifiedUser);
-    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
-      requestedUrl = String(input);
-      requestedBody = String(init?.body ?? "");
-      return createResponse({
-        profile: {
-          id: verifiedUser.id,
-          email: verifiedUser.email,
-          emailVerified: true,
-          plan: "pro",
-          username: "renamed",
-          name: "Renamed User",
-          company: "Gloomberb",
-          title: "Founder",
-          bio: "Markets.",
-          profilePublic: true,
-          publicEmail: "public@example.com",
-          xAccount: "vincelwt",
-          sharedPortfolioId: "main",
-          acceptUnknownDms: true,
-          chatEmailNotificationsEnabled: false,
-          updatedAt: "2026-04-01T00:00:00.000Z",
-        },
-      });
-    });
+    globalThis.fetch = mockFetch(
+      async (input: Request | string | URL, init?: RequestInit) => {
+        requestedUrl = String(input);
+        requestedBody = String(init?.body ?? "");
+        return createResponse({
+          profile: {
+            id: verifiedUser.id,
+            email: verifiedUser.email,
+            emailVerified: true,
+            plan: "pro",
+            username: "renamed",
+            name: "Renamed User",
+            company: "Gloomberb",
+            title: "Founder",
+            bio: "Markets.",
+            profilePublic: true,
+            publicEmail: "public@example.com",
+            xAccount: "vincelwt",
+            sharedPortfolioId: "main",
+            acceptUnknownDms: true,
+            chatEmailNotificationsEnabled: false,
+            updatedAt: "2026-04-01T00:00:00.000Z",
+          },
+        });
+      },
+    );
 
     const profile = await apiClient.updateAccountProfile({
       username: "renamed",
@@ -1108,18 +1290,22 @@ describe("apiClient account profile", () => {
     expect(profile.username).toBe("renamed");
     expect(apiClient.getCurrentUser()?.username).toBe("renamed");
     expect(apiClient.getCurrentUser()?.plan).toBe("pro");
-    expect(apiClient.getCurrentUser()?.chatEmailNotificationsEnabled).toBe(false);
+    expect(apiClient.getCurrentUser()?.chatEmailNotificationsEnabled).toBe(
+      false,
+    );
   });
 
   test("changes password through Better Auth", async () => {
     let requestedUrl = "";
     let requestedBody = "";
     apiClient.setSessionToken("session-token");
-    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
-      requestedUrl = String(input);
-      requestedBody = String(init?.body ?? "");
-      return createResponse({ status: true });
-    });
+    globalThis.fetch = mockFetch(
+      async (input: Request | string | URL, init?: RequestInit) => {
+        requestedUrl = String(input);
+        requestedBody = String(init?.body ?? "");
+        return createResponse({ status: true });
+      },
+    );
 
     await apiClient.changePassword("old-password", "new-password");
 
@@ -1206,11 +1392,13 @@ describe("apiClient equity diagnostic", () => {
   test("posts the symbol, exchange, and cache mode to the research route", async () => {
     let seenUrl = "";
     let seenInit: RequestInit | undefined;
-    globalThis.fetch = mockFetch(async (input: Request | string | URL, init?: RequestInit) => {
-      seenUrl = String(input);
-      seenInit = init;
-      return createResponse({ symbol: "AAPL", status: "complete" });
-    });
+    globalThis.fetch = mockFetch(
+      async (input: Request | string | URL, init?: RequestInit) => {
+        seenUrl = String(input);
+        seenInit = init;
+        return createResponse({ symbol: "AAPL", status: "complete" });
+      },
+    );
 
     await apiClient.getCloudEquityDiagnostic(" aapl ", "NASDAQ", "refresh");
 
@@ -1225,14 +1413,19 @@ describe("apiClient equity diagnostic", () => {
 
   test("omits an unknown exchange and defaults to the cached answer", async () => {
     let seenInit: RequestInit | undefined;
-    globalThis.fetch = mockFetch(async (_input: Request | string | URL, init?: RequestInit) => {
-      seenInit = init;
-      return createResponse({ symbol: "AAPL", status: "complete" });
-    });
+    globalThis.fetch = mockFetch(
+      async (_input: Request | string | URL, init?: RequestInit) => {
+        seenInit = init;
+        return createResponse({ symbol: "AAPL", status: "complete" });
+      },
+    );
 
     await apiClient.getCloudEquityDiagnostic("AAPL");
 
-    expect(JSON.parse(String(seenInit?.body))).toEqual({ symbol: "AAPL", mode: "cache-first" });
+    expect(JSON.parse(String(seenInit?.body))).toEqual({
+      symbol: "AAPL",
+      mode: "cache-first",
+    });
   });
 });
 
@@ -1277,7 +1470,11 @@ describe("apiClient document search", () => {
     // Counting is the server default, so only opting out travels.
     expect(url.searchParams.has("count")).toBe(false);
 
-    await apiClient.searchCloudDocuments({ query: "margin", limit: 3, count: false });
+    await apiClient.searchCloudDocuments({
+      query: "margin",
+      limit: 3,
+      count: false,
+    });
     expect(new URL(seenUrl).searchParams.get("count")).toBe("false");
   });
 
@@ -1288,7 +1485,10 @@ describe("apiClient document search", () => {
       return createResponse({ document: { chunks: [] } });
     });
 
-    await apiClient.getCloudSearchDocument("filing", "0000320193-26-000042/a b");
+    await apiClient.getCloudSearchDocument(
+      "filing",
+      "0000320193-26-000042/a b",
+    );
 
     expect(new URL(seenUrl).pathname).toBe(
       "/cloud/search/documents/filing/0000320193-26-000042%2Fa%20b",
@@ -1309,18 +1509,30 @@ describe("apiClient document search", () => {
       createdAt: "2026-05-01T00:00:00.000Z",
     };
 
-    globalThis.fetch = mockFetch(async () => createResponse({ search: record }));
-    expect((await apiClient.createCloudSavedSearch({
-      name: record.name,
-      query: record.query,
-    })).id).toBe("saved-1");
+    globalThis.fetch = mockFetch(async () =>
+      createResponse({ search: record }),
+    );
+    expect(
+      (
+        await apiClient.createCloudSavedSearch({
+          name: record.name,
+          query: record.query,
+        })
+      ).id,
+    ).toBe("saved-1");
 
     globalThis.fetch = mockFetch(async () => createResponse(record));
-    expect((await apiClient.updateCloudSavedSearch("saved-1", { alertEnabled: false })).id)
-      .toBe("saved-1");
+    expect(
+      (
+        await apiClient.updateCloudSavedSearch("saved-1", {
+          alertEnabled: false,
+        })
+      ).id,
+    ).toBe("saved-1");
 
     globalThis.fetch = mockFetch(async () => createResponse({}));
-    await expect(apiClient.updateCloudSavedSearch("saved-1", { alertEnabled: false }))
-      .rejects.toThrow("missing a record");
+    await expect(
+      apiClient.updateCloudSavedSearch("saved-1", { alertEnabled: false }),
+    ).rejects.toThrow("missing a record");
   });
 });
