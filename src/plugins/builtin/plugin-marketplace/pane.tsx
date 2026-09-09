@@ -18,7 +18,7 @@ import { Box, ScrollBox, Text, TextAttributes, type InputRenderable } from "../.
 import { formatCompact } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
-import { canInstallPlugins, getCurrentPluginTarget } from "../../current-target";
+import { canInstallPlugins, getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { loadRegistry, registryPluginUrl } from "./feed";
 import {
   collectCategories,
@@ -141,10 +141,19 @@ function EntryDetail({ entry, width }: { entry: MarketplaceEntry; width: number 
       </Box>
 
       {!entry.installed && !entry.bundled && entry.repo ? (
-        <Box paddingTop={1} flexDirection="column">
-          <Text fg={colors.textDim}>Runs with your full permissions. Read the source first.</Text>
-          <Text fg={colors.textBright}>{`gloomberb install ${entry.repo}`}</Text>
-        </Box>
+        runsExternalPlugins() ? (
+          <Box paddingTop={1} flexDirection="column">
+            <Text fg={colors.textDim}>Runs with your full permissions. Read the source first.</Text>
+            <Text fg={colors.textBright}>{`gloomberb install ${entry.repo}`}</Text>
+          </Box>
+        ) : (
+          // No shell here, so the install command would be a dead end. Say
+          // where plugins run instead: the web app is the storefront.
+          <Box paddingTop={1} flexDirection="column">
+            <Text fg={colors.textDim}>Plugins run in the desktop app and the terminal.</Text>
+            <Text fg={colors.textBright}>gloom.sh</Text>
+          </Box>
+        )
       ) : null}
     </ScrollBox>
   );

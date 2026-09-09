@@ -26,3 +26,16 @@ export function getCurrentPluginTarget(): PluginTarget {
 export function canInstallPlugins(): boolean {
   return currentTarget === "cli" || currentTarget === "tui";
 }
+
+/**
+ * Whether this renderer runs plugins from outside the build at all.
+ *
+ * term.gloom.sh ships only the curated built-ins in `catalog-browser.ts`.
+ * Third-party code there would run on the origin that holds the session, so
+ * it is a product decision, not a missing feature: plugins live in the desktop
+ * app and the terminal. The marketplace still lists them on the web so it
+ * works as a storefront, but it says where they run instead of how to install.
+ */
+export function runsExternalPlugins(target: PluginTarget = currentTarget): boolean {
+  return target !== "web";
+}
