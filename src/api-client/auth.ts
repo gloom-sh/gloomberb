@@ -37,32 +37,47 @@ export class CloudAuthApi {
     }
     this.options.setCurrentUser({
       id: user.id,
-      name: typeof user.name === "string" && user.name.length > 0
-        ? user.name
-        : user.username ?? "User",
+      name:
+        typeof user.name === "string" && user.name.length > 0
+          ? user.name
+          : (user.username ?? "User"),
       email: typeof user.email === "string" ? user.email : "",
       username: typeof user.username === "string" ? user.username : null,
       emailVerified: user.emailVerified === true,
       image: typeof user.image === "string" ? user.image : null,
       plan: user.plan,
-      trialEndsAt: typeof user.trialEndsAt === "string" ? user.trialEndsAt : null,
+      trialEndsAt:
+        typeof user.trialEndsAt === "string" ? user.trialEndsAt : null,
       effectivePlan: user.effectivePlan,
       syncEnabled: user.syncEnabled === false ? false : true,
       weeklyRoundupEnabled: user.weeklyRoundupEnabled === false ? false : true,
-      positionAlertsEnabled: user.positionAlertsEnabled === false ? false : true,
-      chatEmailNotificationsEnabled: user.chatEmailNotificationsEnabled === false ? false : true,
+      positionAlertsEnabled:
+        user.positionAlertsEnabled === false ? false : true,
+      chatEmailNotificationsEnabled:
+        user.chatEmailNotificationsEnabled === false ? false : true,
       lastSyncAt: typeof user.lastSyncAt === "string" ? user.lastSyncAt : null,
-      lastRoundupEmailAt: typeof user.lastRoundupEmailAt === "string" ? user.lastRoundupEmailAt : null,
+      lastRoundupEmailAt:
+        typeof user.lastRoundupEmailAt === "string"
+          ? user.lastRoundupEmailAt
+          : null,
       createdAt: typeof user.createdAt === "string" ? user.createdAt : "",
       updatedAt: typeof user.updatedAt === "string" ? user.updatedAt : "",
     });
   }
 
-  async signUp(email: string, username: string, name: string, password: string): Promise<AuthUser> {
-    const result = await this.options.request<{ user: AuthUser }>("/auth/sign-up/email", {
-      method: "POST",
-      body: JSON.stringify({ email, username, name, password }),
-    });
+  async signUp(
+    email: string,
+    username: string,
+    name: string,
+    password: string,
+  ): Promise<AuthUser> {
+    const result = await this.options.request<{ user: AuthUser }>(
+      "/auth/sign-up/email",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, username, name, password }),
+      },
+    );
     this.options.requireCapturedSession(
       "Account created, but Gloomberb could not save the login session. Please try logging in again.",
     );
@@ -71,10 +86,13 @@ export class CloudAuthApi {
   }
 
   async signIn(email: string, password: string): Promise<AuthUser> {
-    const result = await this.options.request<{ user: AuthUser }>("/auth/sign-in/email", {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
+    const result = await this.options.request<{ user: AuthUser }>(
+      "/auth/sign-in/email",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      },
+    );
     this.options.requireCapturedSession(
       "Logged in, but Gloomberb could not save the login session. Please try again.",
     );
@@ -83,7 +101,10 @@ export class CloudAuthApi {
   }
 
   /** Starts a QR / device sign-in; the mobile app approves the returned user code. */
-  async startDeviceSignIn(body: { clientName?: string; clientPlatform?: string }): Promise<DeviceAuthStartResponse> {
+  async startDeviceSignIn(body: {
+    clientName?: string;
+    clientPlatform?: string;
+  }): Promise<DeviceAuthStartResponse> {
     return this.options.request<DeviceAuthStartResponse>("/auth/device/start", {
       method: "POST",
       body: JSON.stringify(body),
@@ -118,18 +139,25 @@ export class CloudAuthApi {
     // credential that exists now instead of trusting an answer about one that
     // no longer does.
     const credential = this.options.getSessionToken();
-    const credentialChanged = () => this.options.getSessionToken() !== credential;
+    const credentialChanged = () =>
+      this.options.getSessionToken() !== credential;
     try {
-      const result = await this.options.request<{ user: AuthUser }>("/auth/get-session", {
-        method: "GET",
-      });
+      const result = await this.options.request<{ user: AuthUser }>(
+        "/auth/get-session",
+        {
+          method: "GET",
+        },
+      );
       if (credentialChanged()) return this.getSession();
       const user = result?.user ?? null;
       this.options.setCurrentUser(user);
       return user;
     } catch (error) {
       if (credentialChanged()) return this.getSession();
-      if (error instanceof ApiRequestError && isHardSessionInvalidMessage(error.message)) {
+      if (
+        error instanceof ApiRequestError &&
+        isHardSessionInvalidMessage(error.message)
+      ) {
         this.options.setSessionToken(null);
         return null;
       }
@@ -150,10 +178,16 @@ export class CloudAuthApi {
   }
 
   async sendVerification(): Promise<CloudVerificationResponse> {
-    return this.options.request<CloudVerificationResponse>("/cloud/auth/send-verification", {
-      method: "POST",
-      body: JSON.stringify({ returnTo: getCurrentPluginTarget() === "web" ? location.href : undefined }),
-    });
+    return this.options.request<CloudVerificationResponse>(
+      "/cloud/auth/send-verification",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          returnTo:
+            getCurrentPluginTarget() === "web" ? location.href : undefined,
+        }),
+      },
+    );
   }
 
   /**
@@ -161,16 +195,22 @@ export class CloudAuthApi {
    * The server deliberately returns an opaque one-time URL, never the session cookie.
    */
   async createBrowserHandoff(): Promise<CloudBrowserHandoffResponse> {
-    return this.options.request<CloudBrowserHandoffResponse>("/cloud/auth/browser-handoff", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+    return this.options.request<CloudBrowserHandoffResponse>(
+      "/cloud/auth/browser-handoff",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
   }
 
   async getAccountProfile(): Promise<AccountProfile> {
-    const result = await this.options.request<{ profile: AccountProfile }>("/account/profile", {
-      method: "GET",
-    });
+    const result = await this.options.request<{ profile: AccountProfile }>(
+      "/account/profile",
+      {
+        method: "GET",
+      },
+    );
     return result.profile;
   }
 
@@ -186,17 +226,25 @@ export class CloudAuthApi {
   }
 
   async getBuildoutToken(): Promise<BuildoutTokenResponse> {
-    return this.options.request<BuildoutTokenResponse>("/account/buildout/token", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
+    return this.options.request<BuildoutTokenResponse>(
+      "/account/buildout/token",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+      },
+    );
   }
 
-  async updateAccountProfile(update: AccountProfileUpdate): Promise<AccountProfile> {
-    const result = await this.options.request<{ profile: AccountProfile }>("/account/profile", {
-      method: "PATCH",
-      body: JSON.stringify(update),
-    });
+  async updateAccountProfile(
+    update: AccountProfileUpdate,
+  ): Promise<AccountProfile> {
+    const result = await this.options.request<{ profile: AccountProfile }>(
+      "/account/profile",
+      {
+        method: "PATCH",
+        body: JSON.stringify(update),
+      },
+    );
     const profile = result.profile;
     if (this.options.getCurrentUser()?.id === profile.id) {
       this.options.updateCurrentUser((currentUser) => ({
@@ -225,7 +273,10 @@ export class CloudAuthApi {
     return profile;
   }
 
-  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+  async changePassword(
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
     await this.options.request("/auth/change-password", {
       method: "POST",
       body: JSON.stringify({

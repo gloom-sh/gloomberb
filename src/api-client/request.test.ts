@@ -20,19 +20,34 @@ describe("CloudApiRequestTransport connection reporting", () => {
     const dispose = registerGloomCloudConnectionSources(health);
     const transport = new CloudApiRequestTransport({
       connectionHealth: health,
-      fetchTransport: async () => responseWithBody(async () => JSON.stringify({ observations: [], info: null })),
+      fetchTransport: async () =>
+        responseWithBody(async () =>
+          JSON.stringify({ observations: [], info: null }),
+        ),
     });
 
-    await transport.request("/cloud/econ/series/VIXCLS?limit=120&sortOrder=desc");
+    await transport.request(
+      "/cloud/econ/series/VIXCLS?limit=120&sortOrder=desc",
+    );
 
-    expect(health.getSnapshot().sources.map((source) => ({
-      id: source.id,
-      status: source.status,
-      operation: source.lastOperation,
-    }))).toEqual([
-      { id: "gloom-cloud-http", status: "connected", operation: "GET /cloud/econ/series/VIXCLS" },
+    expect(
+      health.getSnapshot().sources.map((source) => ({
+        id: source.id,
+        status: source.status,
+        operation: source.lastOperation,
+      })),
+    ).toEqual([
+      {
+        id: "gloom-cloud-http",
+        status: "connected",
+        operation: "GET /cloud/econ/series/VIXCLS",
+      },
       { id: "gloom-cloud-socket", status: "idle", operation: null },
-      { id: "gloom-cloud-fred", status: "connected", operation: "GET /cloud/econ/series/VIXCLS" },
+      {
+        id: "gloom-cloud-fred",
+        status: "connected",
+        operation: "GET /cloud/econ/series/VIXCLS",
+      },
     ]);
 
     dispose();
@@ -51,9 +66,9 @@ describe("CloudApiRequestTransport market deadlines", () => {
       },
     });
 
-    await expect(transport.request("/market/quote?symbol=AAPL")).rejects.toThrow(
-      "Cloud market request timed out after 10ms",
-    );
+    await expect(
+      transport.request("/market/quote?symbol=AAPL"),
+    ).rejects.toThrow("Cloud market request timed out after 10ms");
     expect(signal?.aborted).toBe(true);
   });
 
@@ -67,9 +82,9 @@ describe("CloudApiRequestTransport market deadlines", () => {
       },
     });
 
-    await expect(transport.request("/market/history?symbol=AAPL")).rejects.toThrow(
-      "Cloud market request timed out after 10ms",
-    );
+    await expect(
+      transport.request("/market/history?symbol=AAPL"),
+    ).rejects.toThrow("Cloud market request timed out after 10ms");
     expect(signal?.aborted).toBe(true);
   });
 
@@ -85,9 +100,11 @@ describe("CloudApiRequestTransport market deadlines", () => {
       },
     });
 
-    await expect(transport.request("/market/quote?symbol=AAPL", {
-      signal: controller.signal,
-    })).rejects.toThrow("cancelled by caller");
+    await expect(
+      transport.request("/market/quote?symbol=AAPL", {
+        signal: controller.signal,
+      }),
+    ).rejects.toThrow("cancelled by caller");
     expect(fetchCalls).toBe(0);
   });
 });

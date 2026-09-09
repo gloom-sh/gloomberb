@@ -513,6 +513,164 @@ export interface CloudEarningsCallListPayload {
   unknownTicker?: boolean;
 }
 
+/** One row of a proxy statement's Summary Compensation Table, in dollars. */
+export interface CloudExecutiveRowPayload {
+  name: string;
+  title: string;
+  salary: number | null;
+  bonus: number | null;
+  stockAwards: number | null;
+  optionAwards: number | null;
+  nonEquityIncentive: number | null;
+  pensionAndDeferred: number | null;
+  allOther: number | null;
+  total: number | null;
+}
+
+export interface CloudProxyStatementSummaryPayload {
+  id: string;
+  ticker: string;
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  /** Year of the filing date: what people call "the 2026 proxy". */
+  proxyYear: number;
+  fiscalYear: number | null;
+  fiscalYearLabel: string | null;
+  filedAt: string;
+  meetingDate: string | null;
+  updatedAt: string;
+  ceoName: string | null;
+  ceoTitle: string | null;
+  ceoTotal: number | null;
+  ceoPriorYearTotal: number | null;
+  payRatio: number | null;
+  medianEmployeePay: number | null;
+}
+
+export interface CloudProxyStatementPayload extends CloudProxyStatementSummaryPayload {
+  docUrl: string;
+  ceo: (CloudExecutiveRowPayload & { priorYearTotal: number | null }) | null;
+  namedExecutives: CloudExecutiveRowPayload[];
+  sayOnPayPriorSupport: number | null;
+  highlights: string | null;
+  keyFigures: CloudTranscriptKeyFigurePayload[];
+  otherYears: CloudProxyStatementSummaryPayload[];
+}
+
+export interface CloudRiskFactorPayload {
+  heading: string;
+  group: string | null;
+  excerpt: string;
+  words: number;
+}
+
+export interface CloudRiskNotePayload {
+  /** Position of the risk in `risks` (or in the prior year's list, for removed). */
+  index: number;
+  text: string;
+}
+
+export interface CloudRiskReportSummaryPayload {
+  id: string;
+  ticker: string;
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  /** Year of the filing date: "the 2026 10-K". */
+  reportYear: number;
+  filedAt: string;
+  updatedAt: string;
+  riskCount: number;
+  groupCount: number;
+  wordCount: number;
+  addedCount: number | null;
+  removedCount: number | null;
+  rewordedCount: number | null;
+  overview: string | null;
+}
+
+export interface CloudRiskReportPayload extends CloudRiskReportSummaryPayload {
+  docUrl: string;
+  groups: string[];
+  risks: CloudRiskFactorPayload[];
+  diff: {
+    added: number[];
+    removed: Array<{ heading: string; group: string | null; excerpt: string }>;
+    reworded: Array<{
+      index: number;
+      similarity: number;
+      headingChanged: boolean;
+      priorHeading: string | null;
+    }>;
+    matched: number;
+    priorRiskCount: number;
+  } | null;
+  notes: {
+    added: CloudRiskNotePayload[];
+    removed: CloudRiskNotePayload[];
+    reworded: CloudRiskNotePayload[];
+    top: CloudRiskNotePayload[];
+  };
+  otherYears: CloudRiskReportSummaryPayload[];
+}
+
+export interface CloudRiskReportListPayload {
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  reports: CloudRiskReportSummaryPayload[];
+}
+
+export interface CloudFilingPersonPayload {
+  name: string;
+  role: string;
+  action: string;
+  effective: string | null;
+}
+
+/** An 8-K, classified by its items and, when it carried news, read. */
+export interface CloudFilingEventPayload {
+  id: string;
+  ticker: string;
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  filedAt: string;
+  docUrl: string;
+  items: string[];
+  labels: string[];
+  kinds: string[];
+  material: boolean;
+  headline: string | null;
+  summary: string | null;
+  people: CloudFilingPersonPayload[];
+  /** True when the headline and points are the model's reading rather than the item labels. */
+  read: boolean;
+}
+
+export interface CloudProxyStatementListPayload {
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  proxies: CloudProxyStatementSummaryPayload[];
+}
+
 export interface CloudTranscriptTurnPayload {
   speaker: string;
   role?: string;

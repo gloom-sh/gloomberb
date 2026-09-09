@@ -472,6 +472,11 @@ class GloomApiClient {
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
   getCloudEarningsCalls = this.data.getCloudEarningsCalls.bind(this.data);
   getCloudEarningsTranscript = this.data.getCloudEarningsTranscript.bind(this.data);
+  getProxyStatements = this.data.getProxyStatements.bind(this.data);
+  getProxyStatement = this.data.getProxyStatement.bind(this.data);
+  getFilingEvents = this.data.getFilingEvents.bind(this.data);
+  getRiskReports = this.data.getRiskReports.bind(this.data);
+  getRiskReport = this.data.getRiskReport.bind(this.data);
   getCloudSecFilings = this.data.getCloudSecFilings.bind(this.data);
   getCloudSecFilingDocuments = this.data.getCloudSecFilingDocuments.bind(this.data);
   getCloudSecFilingContent = this.data.getCloudSecFilingContent.bind(this.data);
