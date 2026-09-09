@@ -1,4 +1,4 @@
-import { colors } from "../../theme/colors";
+import { colors, glyphs } from "../../theme/colors";
 import { formatCompact, formatNumber, formatTimeAgo } from "../../utils/format";
 import { compareSortValues } from "../../utils/sort-values";
 import type {
@@ -252,7 +252,7 @@ export function getPredictionColumnValue(
   switch (column.id) {
     case "watch":
       return {
-        text: watchlisted ? "★" : "·",
+        text: watchlisted ? glyphs.star.filled : glyphs.dot,
         color: watchlisted ? colors.positive : colors.textDim,
       };
     case "market":

@@ -62,3 +62,18 @@ export {
 
 // Keyboard handling for plugin panes; the renderer decides how events arrive.
 export { useShortcut } from "../react/input";
+
+/**
+ * The active theme, resolved. A pane that draws its own domain content reads
+ * these rather than recombining palette entries, so it follows a style change
+ * the same way the shared kit does.
+ */
+export {
+  useGlyphs,
+  useResolvedTheme,
+  useThemeColors,
+  useThemeId,
+  useThemeStyle,
+  useThemeStyleId,
+  useThemeTokens,
+} from "../theme/theme-context";

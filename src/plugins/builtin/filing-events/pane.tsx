@@ -8,7 +8,7 @@ import {
   type DataTableKeyEvent,
   type PaneFooterSegment
 } from "../../../components";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import { Box, Text, useRendererHost } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useBoundTicker } from "../shared/ticker-request";
@@ -207,7 +207,7 @@ export function FilingEventsPane({
               text={point}
               width={proseWidth}
               color={colors.text}
-              prefix="• "
+              prefix={`${glyphs.bullet} `}
             />
           ))}
         </Box>

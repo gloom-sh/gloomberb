@@ -384,6 +384,37 @@ describe("sanitizeLayout", () => {
   });
 });
 
+describe("loadConfig theme selection", () => {
+  async function loadWithTheme(saved: Record<string, unknown>): Promise<{ theme: string; themeStyle?: string }> {
+    const dataDir = await createTempConfigDir();
+    await writeConfigJson(dataDir, createSavedConfig(saved));
+    const config = await loadConfig(dataDir);
+    return { theme: config.theme, themeStyle: config.themeStyle };
+  }
+
+  test("a config written before styles existed keeps its scheme under the terminal style", async () => {
+    expect(await loadWithTheme({ theme: "nord", themeStyle: undefined }))
+      .toEqual({ theme: "nord", themeStyle: "terminal" });
+  });
+
+  test("reads a scheme and a style independently", async () => {
+    expect(await loadWithTheme({ theme: "catppuccin", themeStyle: "modern" }))
+      .toEqual({ theme: "catppuccin", themeStyle: "modern" });
+  });
+
+  test("a theme naming a style is read as the style, keeping the default scheme", async () => {
+    expect(await loadWithTheme({ theme: "phosphor" }))
+      .toEqual({ theme: "amber", themeStyle: "phosphor" });
+  });
+
+  test("falls back for an unknown scheme or style rather than rendering nothing", async () => {
+    expect(await loadWithTheme({ theme: "not-a-scheme", themeStyle: "not-a-style" }))
+      .toEqual({ theme: "amber", themeStyle: "terminal" });
+    expect(await loadWithTheme({ theme: 7, themeStyle: [] }))
+      .toEqual({ theme: "amber", themeStyle: "terminal" });
+  });
+});
+
 describe("loadConfig", () => {
   test("migrates unreachable pane instances and their saved state", async () => {
     const dataDir = await createTempConfigDir();

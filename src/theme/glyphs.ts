@@ -133,20 +133,28 @@ const ASCII_MARKS = {
 } as const;
 
 /**
- * Nerd fonts add private-use marks, not a different grid. Only the handful
- * where a patched glyph reads better than the plain one is overridden; the
- * rest deliberately falls through to unicode so a partial font never leaves a
- * hole in the layout.
+ * Nerd fonts add private-use marks, not a different grid, so only the handful
+ * where a patched glyph reads better than the plain one is overridden and the
+ * rest falls through to unicode. A partial font then leaves a tofu box rather
+ * than a hole in the layout, because every one of these is a single cell.
+ *
+ * Written as escapes on purpose: private-use code points do not survive every
+ * editor and pipeline that touches this file, and a silently emptied glyph
+ * would collapse a column.
  */
 const NERD_MARKS = {
   ...UNICODE_MARKS,
-  caret: { collapsed: "", expanded: "" },
-  bullet: "",
-  check: "",
-  cross: "",
-  checkbox: { checked: "", unchecked: "" },
-  bolt: "",
-  spinner: ["", "", "", "", "", "", "", "", "", ""] as const,
+  // nf-fa-angle_right / angle_down
+  caret: { collapsed: "\uf105", expanded: "\uf107" },
+  // nf-oct-dot_fill
+  bullet: "\uf444",
+  // nf-fa-check / nf-fa-times
+  check: "\uf00c",
+  cross: "\uf00d",
+  // nf-fa-check_square_o / nf-fa-square_o
+  checkbox: { checked: "\uf046", unchecked: "\uf096" },
+  // nf-fa-bolt, which unlike the emoji bolt is a single cell
+  bolt: "\uf0e7",
 } as const;
 
 const MARKS: Record<GlyphMode, typeof UNICODE_MARKS> = {

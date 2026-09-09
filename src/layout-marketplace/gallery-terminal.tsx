@@ -1,3 +1,4 @@
+import { tokens } from "../theme/colors";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, TextAttributes, type InputRenderable } from "../ui";
 import { InputSearchBar, usePaneFooter } from "../components";
@@ -319,7 +320,7 @@ export function LayoutGalleryTerminal({
           flexDirection="column"
           paddingX={1}
           border
-          borderStyle="single"
+          borderStyle={tokens.pane.chrome.boxBorderStyle}
           borderColor={colors.border}
         >
           {selectedEntry ? (

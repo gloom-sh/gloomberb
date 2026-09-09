@@ -9,7 +9,7 @@ import {
   type DataTableKeyEvent
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -199,7 +199,7 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
     switch (column.id) {
       case "status":
         return {
-          text: venue.isOpen ? "●" : "○",
+          text: venue.isOpen ? glyphs.circle.filled : glyphs.circle.hollow,
           color: selectedColor ?? (venue.isOpen ? colors.positive : colors.textDim),
         };
       case "mic":

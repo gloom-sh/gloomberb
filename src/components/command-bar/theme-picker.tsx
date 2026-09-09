@@ -11,6 +11,7 @@ import {
 import { t } from "../../i18n";
 import { getPresets, presetLabels } from "../../theme/presets";
 import { getScheme, getThemeIds, isDarkTheme } from "../../theme/schemes";
+import { useGlyphs } from "../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../ui";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
@@ -19,14 +20,7 @@ import type { ThemeSelection } from "./theme-preview";
 import { truncateText } from "./view-model";
 
 const THEME_PREVIEW_DEBOUNCE_MS = 120;
-/**
- * Marks the dark half of the list. The registry's own order groups entries by
- * family, which only helps if you already know which family you want; sorted by
- * name you can find one by reading, and the glyph carries the grouping the
- * order used to.
- */
-const DARK_THEME_GLYPH = "☾";
-/** The glyph plus the space that keeps names on one left edge, dark or light. */
+/** The dark marker plus the space that keeps names on one left edge, dark or light. */
 const GLYPH_GUTTER_WIDTH = 2;
 /** Widest style name plus two cells of air, so scheme names share a left edge. */
 const STYLE_COLUMN_WIDTH = 10;
@@ -147,6 +141,9 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
   onCommit,
 }: ThemePickerProps, ref) {
   const palette = useCommandBarPalette(nativePaneChrome);
+  // The picker previews the theme it is about to apply, so its own marker has
+  // to come from the live glyph table rather than a literal.
+  const glyphs = useGlyphs();
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPreviewRef = useRef<ThemeOption | null>(null);
   const committedRef = useRef({ themeId: committedThemeId, styleId: committedStyleId });
@@ -282,7 +279,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
       >
         <Box width={GLYPH_GUTTER_WIDTH}>
           <Text fg={state.selected ? palette.selectedText : palette.subtle}>
-            {option?.dark ? DARK_THEME_GLYPH : ""}
+            {option?.dark ? glyphs.moon : ""}
           </Text>
         </Box>
         {showStyleColumn && (
@@ -312,6 +309,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     );
   }, [
     contentPadding,
+    glyphs,
     nativePaneChrome,
     palette,
     schemeWidth,

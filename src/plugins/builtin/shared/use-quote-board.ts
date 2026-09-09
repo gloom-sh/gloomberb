@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PaneFooterSegment } from "../../../components";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import type { MarketState, Quote } from "../../../types/financials";
 import { useAssetData } from "../../runtime";
 
@@ -183,13 +183,13 @@ export function quoteBoardFooterInfo(status: QuoteBoardStatus): PaneFooterSegmen
 export function marketStatusDot(state: MarketState | undefined): { char: string; color: string } {
   switch (state) {
     case "REGULAR":
-      return { char: "●", color: colors.positive };
+      return { char: glyphs.circle.filled, color: colors.positive };
     case "PRE":
     case "POST":
     case "PREPRE":
     case "POSTPOST":
-      return { char: "●", color: colors.warning };
+      return { char: glyphs.circle.filled, color: colors.warning };
     default:
-      return { char: "●", color: colors.negative };
+      return { char: glyphs.circle.filled, color: colors.negative };
   }
 }

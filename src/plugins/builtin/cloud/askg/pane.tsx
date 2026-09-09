@@ -36,7 +36,7 @@ import {
 } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
 import { useRemoteControlHandler } from "../../../../remote/app-host";
-import { colors } from "../../../../theme/colors";
+import { colors, glyphs } from "../../../../theme/colors";
 import type { PaneProps } from "../../../../types/plugin";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
@@ -125,7 +125,7 @@ function ToolTimelineRow({
   onUndo: () => void;
 }) {
   const hasRows = row.result !== undefined;
-  const marker = hasRows ? (expanded ? "▾" : "▸") : "·";
+  const marker = hasRows ? (expanded ? glyphs.caret.expanded : glyphs.caret.collapsed) : glyphs.dot;
   const tier = tierLabel(row);
   const status = describeToolStatus(row);
   const undoLabel = row.undo?.status === "running"

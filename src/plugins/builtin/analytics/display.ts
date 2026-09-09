@@ -1,4 +1,4 @@
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import { formatCompact } from "../../../utils/format";
 
 export function sharpeColor(sharpe: number): string {
@@ -40,5 +40,5 @@ export function formatReturn(value: number): string {
 
 export function renderBar(weight: number, maxWidth: number): string {
   const filled = Math.round(weight * maxWidth);
-  return "█".repeat(Math.min(filled, maxWidth));
+  return glyphs.bar.full.repeat(Math.min(filled, maxWidth));
 }

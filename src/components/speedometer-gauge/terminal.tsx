@@ -4,7 +4,7 @@ import type { NativeChartBitmap } from "../chart/native/chart-rasterizer";
 import { resolveNativeBitmapSize, shouldRenderNativeBitmap } from "../chart/native/bitmap-support";
 import { drawCircle, drawLine, parseHex } from "../chart/native/raster/primitives";
 import { useThemeColors } from "../../theme/theme-context";
-import type { ThemeColors } from "../../theme/colors";
+import { glyphs, type ThemeColors } from "../../theme/colors";
 import {
   compactSegmentLabel,
   formatGaugeValue,
@@ -104,7 +104,7 @@ function renderArcRows(
     const x = Math.round(centerX + Math.cos(angle) * radiusX);
     const y = Math.round(centerY - Math.sin(angle) * radiusY);
     if (dial[y]?.[x]) {
-      dial[y]![x] = { char: "●", color: segmentColorForScore(score, segments) };
+      dial[y]![x] = { char: glyphs.circle.filled, color: segmentColorForScore(score, segments) };
     }
   }
 
@@ -113,13 +113,13 @@ function renderArcRows(
     const x = Math.round(centerX + Math.cos(angle) * radiusX);
     const y = Math.round(centerY - Math.sin(angle) * radiusY);
     if (dial[y]?.[x]) {
-      dial[y]![x] = { char: "│", color: colors.textDim };
+      dial[y]![x] = { char: glyphs.border.vertical, color: colors.textDim };
     }
   }
 
   const pointerAngle = valueToAngle(value, min, max);
   const pointerChar = Math.abs(Math.cos(pointerAngle)) < 0.22
-    ? "│"
+    ? glyphs.border.vertical
     : Math.cos(pointerAngle) > 0
       ? "/"
       : "\\";

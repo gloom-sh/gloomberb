@@ -1,5 +1,5 @@
 import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import type { ScannerHiloPayload } from "../../../api-client";
 import { buildHiloBarRows, terminalBarCells, type HiloBarRow } from "./hilo-model";
 
@@ -53,8 +53,8 @@ function TerminalHiloBars({ rows, halfWidth, width }: { rows: HiloBarRow[]; half
       {rows.map((row) => {
         const low = terminalBarCells(row.lowRatio, halfWidth);
         const high = terminalBarCells(row.highRatio, halfWidth);
-        const lowBar = `${low.half ? "▐" : ""}${"█".repeat(low.full)}`;
-        const highBar = `${"█".repeat(high.full)}${high.half ? "▌" : ""}`;
+        const lowBar = `${low.half ? glyphs.bar.halfRight : ""}${glyphs.bar.full.repeat(low.full)}`;
+        const highBar = `${glyphs.bar.full.repeat(high.full)}${high.half ? glyphs.bar.half : ""}`;
         return (
           <Box key={row.key} flexDirection="row" height={1} paddingX={1}>
             <Box width={halfWidth} flexShrink={0} justifyContent="flex-end">
