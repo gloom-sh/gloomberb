@@ -631,6 +631,36 @@ export interface CloudRiskReportListPayload {
   reports: CloudRiskReportSummaryPayload[];
 }
 
+export interface CloudFilingPersonPayload {
+  name: string;
+  role: string;
+  action: string;
+  effective: string | null;
+}
+
+/** An 8-K, classified by its items and, when it carried news, read. */
+export interface CloudFilingEventPayload {
+  id: string;
+  ticker: string;
+  company: {
+    ticker: string;
+    cik: string | null;
+    name: string;
+    shortName: string;
+  };
+  filedAt: string;
+  docUrl: string;
+  items: string[];
+  labels: string[];
+  kinds: string[];
+  material: boolean;
+  headline: string | null;
+  summary: string | null;
+  people: CloudFilingPersonPayload[];
+  /** True when the headline and points are the model's reading rather than the item labels. */
+  read: boolean;
+}
+
 export interface CloudProxyStatementListPayload {
   company: {
     ticker: string;

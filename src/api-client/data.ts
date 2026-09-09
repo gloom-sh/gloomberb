@@ -12,6 +12,7 @@ import {
   cloudEarningsCallsPath,
   cloudEarningsTranscriptPath,
   publicProxyStatementPath,
+  publicFilingEventsPath,
   publicRiskReportPath,
   publicRiskReportsPath,
   publicProxyStatementsPath,
@@ -57,6 +58,7 @@ import type {
   CloudEarningsTranscriptPayload,
   CloudProxyStatementListPayload,
   CloudProxyStatementPayload,
+  CloudFilingEventPayload,
   CloudRiskReportListPayload,
   CloudRiskReportPayload,
   CloudCorporateActionsPayload,
@@ -361,6 +363,15 @@ export class CloudDataApi {
   ): Promise<CloudProxyStatementPayload> {
     return this.request<CloudProxyStatementPayload>(
       publicProxyStatementPath(ticker, year),
+    );
+  }
+
+  async getFilingEvents(
+    ticker: string,
+    limit?: number,
+  ): Promise<{ ticker: string; events: CloudFilingEventPayload[] }> {
+    return this.request<{ ticker: string; events: CloudFilingEventPayload[] }>(
+      publicFilingEventsPath(ticker, limit),
     );
   }
 
