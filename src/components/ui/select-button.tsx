@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import { Box, Text, TextAttributes, useUiHost } from "../../ui";
-import { type PromptContext, useDialog } from "../../ui/dialog";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { colors } from "../../theme/colors";
+import { Box, Text, TextAttributes, useUiHost } from "../../ui";
+import { type PromptContext, useDialog } from "../../ui/dialog";
 import { ChoiceDialog } from "./choice-dialog";
 import { NativeSelect } from "./native-select";
 
@@ -55,9 +55,9 @@ export function SelectButton<T extends string = string>({
   const selectValue = useCallback((next: unknown) => {
     const candidate = typeof next === "string" ? next : (next as { value?: string })?.value;
     const match = options.find((option) => option.value === candidate);
-    if (!match || match.disabled || match.value === value) return;
+    if (disabled || !match || match.disabled || match.value === value) return;
     onChange(match.value);
-  }, [onChange, options, value]);
+  }, [disabled, onChange, options, value]);
 
   // Same parity as Button and Tabs: the control has to be drivable without a
   // mouse for remote control and UI automation.
@@ -110,9 +110,8 @@ export function SelectButton<T extends string = string>({
             label: option.label,
             disabled: option.disabled,
           }))}
-          onChange={(next) => {
-            if (next !== value) onChange(next as T);
-          }}
+          disabled={disabled}
+          onChange={selectValue}
         />
       </Box>
     );

@@ -1,22 +1,17 @@
 import { useLayoutEffect } from "react";
-import { Box } from "../../../ui";
-import {
-  commandBarAccentText,
-  commandBarBg,
-  commandBarHeadingText,
-  commandBarHoverBg,
-  commandBarInputBg,
-  commandBarPanelBg,
-  commandBarSelectedBg,
-  commandBarSelectedText,
-  commandBarSubtleText,
-  commandBarText,
-} from "../../../theme/colors";
-import { useThemeColors } from "../../../theme/theme-context";
 import { t } from "../../../i18n";
+import { useThemeColors } from "../../../theme/theme-context";
+import { Box, Text, TextAttributes } from "../../../ui";
+import { Button, Spinner } from "../../ui";
 import type { ListScreenState } from "../list/model";
-import { CommandBarPanelBody } from "./body";
+import { CommandBarListBody } from "../list/view";
+import { CommandBarMultiSelectBody, isMultiSelectPickerRoute } from "../multi-select-picker";
+import { ThemePicker } from "../theme-picker";
+import { truncateText } from "../view-model";
+import { CommandBarWorkflowBody } from "../workflow/body";
+import type { CommandBarConfirmRoute, CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
+import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
 import type { CommandBarPanelProps } from "./types";
 
@@ -84,16 +79,7 @@ export function CommandBarPanel({
   workflowScrollRef,
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
-  const paletteAccentText = commandBarAccentText(colors);
-  const paletteBg = commandBarBg(colors);
-  const paletteHeadingText = commandBarHeadingText(colors);
-  const paletteHoverBg = commandBarHoverBg(colors);
-  const paletteSelectedBg = commandBarSelectedBg(colors);
-  const paletteSelectedText = commandBarSelectedText(colors);
-  const paletteText = commandBarText(colors);
-  const paletteSubtleText = commandBarSubtleText(colors);
-  const panelBg = nativePaneChrome ? commandBarPanelBg(colors) : paletteBg;
-  const inputBg = nativePaneChrome ? commandBarInputBg(colors) : paletteBg;
+  const palette = useCommandBarPalette(nativePaneChrome);
 
   useLayoutEffect(() => {
     const scrollBox = nativeListScrollRef.current;
@@ -162,7 +148,7 @@ export function CommandBarPanel({
         width={panelBounds.width}
         height={panelBounds.height}
         flexDirection="column"
-        backgroundColor={panelBg}
+        backgroundColor={palette.panelBg}
         zIndex={nativePaneChrome ? COMMAND_BAR_PANEL_Z_INDEX : 101}
         onMouseDown={(event: any) => {
           event.stopPropagation?.();
@@ -179,56 +165,183 @@ export function CommandBarPanel({
           padding: `${NATIVE_COMMAND_SURFACE.paddingYPx}px ${NATIVE_COMMAND_SURFACE.paddingXPx}px`,
         } : undefined}
       >
-        <CommandBarPanelBody
-          bodyHeight={bodyHeight}
-          bodySlotKey={bodySlotKey}
-          committedThemeId={committedThemeId}
-          contentPadding={contentPadding}
-          currentRoute={currentRoute}
-          getWorkflowInputRef={getWorkflowInputRef}
-          hasChromeRow={hasChromeRow}
-          labelWidth={labelWidth}
-          listBodyHeight={listBodyHeight}
-          nativeListRows={nativeListRows}
-          nativeListScrollRef={nativeListScrollRef}
-          nativePaneChrome={nativePaneChrome}
-          onBack={onBack}
-          onConfirmRoute={onConfirmRoute}
-          onFieldFocus={onFieldFocus}
-          onFieldPickerOpen={onFieldPickerOpen}
-          onFieldValueChange={onFieldValueChange}
-          onListHoverIndex={onListHoverIndex}
-          onListRowMouseDown={onListRowMouseDown}
-          onListScroll={onListScroll}
-          onMoveFieldFocus={onMoveFieldFocus}
-          onMultiSelectCommit={onMultiSelectCommit}
-          onMultiSelectSelect={onMultiSelectSelect}
-          onMultiSelectToggle={onMultiSelectToggle}
-          onNativeSelectRef={onNativeSelectRef}
-          onThemeCommit={onThemeCommit}
-          onThemePreview={onThemePreview}
-          onWorkflowActiveTextareaSync={onWorkflowActiveTextareaSync}
-          onWorkflowSubmit={onWorkflowSubmit}
-          palette={{
-            inputBg,
-            paletteAccentText,
-            paletteBg,
-            paletteHeadingText,
-            paletteHoverBg,
-            paletteSelectedBg,
-            paletteSelectedText,
-            paletteSubtleText,
-            paletteText,
-            panelBg,
-          }}
-          queryDisplayWidth={queryDisplayWidth}
-          rootShortcutFeedback={rootShortcutFeedback}
-          themePickerActive={themePickerActive}
-          themePickerFilter={themePickerFilter}
-          themePickerRef={themePickerRef}
-          trailingWidth={trailingWidth}
-          visibleListState={visibleListState}
-          workflowScrollRef={workflowScrollRef}
+        {/* The desktop sheet pads itself in CSS; the terminal spends a row. */}
+        {!nativePaneChrome && <Box height={1} />}
+
+        {/* Rows stop at the results column, so a selection bar on a wide window
+          does not run on past the text into empty sheet. */}
+        <Box
+          key={bodySlotKey}
+          flexDirection="column"
+          flexGrow={1}
+          width={queryDisplayWidth + contentPadding * 2}
+          backgroundColor={palette.panelBg}
+        >
+          {/* The query itself is typed in the header prompt. This row only exists
+            when it has something to say: the way back from a nested screen, or
+            what a typed prefix resolved to. Its height is reserved in
+            panel/layout.ts, which is why the render is keyed on the same flag. */}
+          {hasChromeRow && (
+            <>
+              <Box height={1} paddingX={contentPadding} flexDirection="row">
+                {currentRoute ? (
+                  <>
+                    <Text
+                      fg={palette.subtle}
+                      onMouseDown={(event: any) => {
+                        event.stopPropagation?.();
+                        event.preventDefault?.();
+                        onBack();
+                      }}
+                      data-gloom-interactive="true"
+                    >
+                      {`\u2190 ${t("Back")}`}
+                    </Text>
+                    <Box width={2} />
+                    <Text fg={palette.text} attributes={TextAttributes.BOLD}>
+                      {truncateText(t(getCommandBarPanelTitle(currentRoute)), Math.max(1, queryDisplayWidth - 8))}
+                    </Text>
+                  </>
+                ) : rootShortcutFeedback ? (
+                  <Text fg={palette.subtle}>
+                    {truncateText(rootShortcutFeedback, queryDisplayWidth)}
+                  </Text>
+                ) : null}
+              </Box>
+              <Box height={1} />
+            </>
+          )}
+
+          {themePickerActive && (
+            <ThemePicker
+              ref={themePickerRef}
+              filter={themePickerFilter}
+              committedThemeId={committedThemeId}
+              height={listBodyHeight}
+              contentPadding={contentPadding}
+              labelWidth={labelWidth}
+              trailingWidth={trailingWidth}
+              queryDisplayWidth={queryDisplayWidth}
+              nativePaneChrome={nativePaneChrome}
+              onPreview={onThemePreview}
+              onCommit={onThemeCommit}
+            />
+          )}
+
+          {visibleListState && !themePickerActive && !isMultiSelectPickerRoute(currentRoute) && (
+            <CommandBarListBody
+              visibleListState={visibleListState}
+              nativeListRows={nativeListRows}
+              listBodyHeight={listBodyHeight}
+              contentPadding={contentPadding}
+              labelWidth={labelWidth}
+              nativePaneChrome={nativePaneChrome}
+              nativeListScrollRef={nativeListScrollRef}
+              queryDisplayWidth={queryDisplayWidth}
+              trailingWidth={trailingWidth}
+              onHoverIndex={onListHoverIndex}
+              onListScroll={onListScroll}
+              onRowMouseDown={onListRowMouseDown}
+            />
+          )}
+          {currentRoute?.kind === "workflow" && (
+            <CommandBarWorkflowBody
+              route={currentRoute}
+              bodyHeight={bodyHeight}
+              contentPadding={contentPadding}
+              nativePaneChrome={nativePaneChrome}
+              queryDisplayWidth={queryDisplayWidth}
+              workflowScrollRef={workflowScrollRef}
+              getWorkflowInputRef={getWorkflowInputRef}
+              onActiveTextareaSync={onWorkflowActiveTextareaSync}
+              onFieldFocus={onFieldFocus}
+              onFieldPickerOpen={onFieldPickerOpen}
+              onFieldValueChange={onFieldValueChange}
+              onMoveFieldFocus={onMoveFieldFocus}
+              onNativeSelectRef={onNativeSelectRef}
+              onSubmit={onWorkflowSubmit}
+            />
+          )}
+          {currentRoute?.kind === "confirm" && (
+            <CommandBarConfirmBody
+              route={currentRoute}
+              bodyHeight={bodyHeight}
+              contentPadding={contentPadding}
+              queryDisplayWidth={queryDisplayWidth}
+              onConfirm={onConfirmRoute}
+            />
+          )}
+          {isMultiSelectPickerRoute(currentRoute) && (
+            <CommandBarMultiSelectBody
+              route={currentRoute}
+              bodyHeight={bodyHeight}
+              contentPadding={contentPadding}
+              nativePaneChrome={nativePaneChrome}
+              onCommit={onMultiSelectCommit}
+              onSelect={onMultiSelectSelect}
+              onToggle={onMultiSelectToggle}
+            />
+          )}
+        </Box>
+
+        {!nativePaneChrome && <Box height={1} />}
+      </Box>
+    </Box>
+  );
+}
+
+
+function getCommandBarPanelTitle(route: CommandBarRoute): string {
+  if (route.kind === "mode") {
+    if (route.screen === "layout") return "Layout Actions";
+    return "Security Description";
+  }
+  if (route.kind === "picker") return route.title;
+  if (route.kind === "pane-settings") return "Pane Settings";
+  if (route.kind === "workflow") return route.title;
+  return route.title;
+}
+
+function CommandBarConfirmBody({
+  route,
+  bodyHeight,
+  contentPadding,
+  queryDisplayWidth,
+  onConfirm,
+}: {
+  route: CommandBarConfirmRoute;
+  bodyHeight: number;
+  contentPadding: number;
+  queryDisplayWidth: number;
+  onConfirm: () => void;
+}) {
+  const themeColors = useThemeColors();
+  const palette = useCommandBarPalette(false);
+  return (
+    <Box flexDirection="column" height={bodyHeight} paddingX={contentPadding}>
+      {route.body.map((line, index) => (
+        <Box key={`confirm:${index}`} height={1}>
+          <Text fg={palette.text}>{truncateText(t(line), queryDisplayWidth)}</Text>
+        </Box>
+      ))}
+      <Box height={1} />
+      {route.error && (
+        <Box height={1}>
+          <Text fg={themeColors.negative}>{truncateText(route.error, queryDisplayWidth)}</Text>
+        </Box>
+      )}
+      {route.pending && (
+        <Box height={1}>
+          <Spinner label={t("Working…")} />
+        </Box>
+      )}
+      <Box flexGrow={1} />
+      <Box flexDirection="row" gap={1}>
+        <Button
+          label={t(route.confirmLabel)}
+          variant={route.tone === "danger" ? "danger" : "primary"}
+          onPress={onConfirm}
+          disabled={route.pending}
         />
       </Box>
     </Box>

@@ -1,110 +1,27 @@
 import { expect } from "bun:test";
-import { act, useReducer } from "react";
-import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
-import { CommandBar } from "./index";
+import { useReducer } from "react";
+import type { PluginRegistry } from "../../../plugins/registry";
+import { useShortcut } from "../../../react/input";
+import { TestDialogProvider } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
-  type AppAction,
-  type AppState,
   appReducer,
   createInitialState,
   getEffectiveThemeId,
+  type AppAction,
+  type AppState,
 } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { ThemeProvider, useThemeId } from "../../../theme/theme-context";
-import { cloneLayout, createDefaultConfig, TICKER_RESEARCH_PANE_ID, type AppConfig } from "../../../types/config";
+import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
 import type { DataProvider } from "../../../types/data-provider";
-import type { TickerRecord } from "../../../types/ticker";
-import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneSettingField } from "../../../types/plugin";
-import { useShortcut } from "../../../react/input";
+import type { TickerRecord } from "../../../types/ticker";
 import { Box, Text } from "../../../ui";
 import { Header } from "../../layout/header";
+import { CommandBar } from "./index";
 
-export async function emitKeypress(
-  renderer: Awaited<ReturnType<typeof testRender>>,
-  event: { name?: string; sequence?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; option?: boolean },
-): Promise<void> {
-  await act(async () => {
-    renderer.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      stopPropagation: () => {},
-      preventDefault: () => {},
-      ...event,
-    } as any);
-    await renderer.renderOnce();
-  });
-}
-
-/**
- * Advances one polling step: sleeps, then renders. Both happen inside `act` so
- * that anything a resolving promise queued during the sleep is flushed before
- * the next frame is captured. Polling outside `act` leaves the update to
- * React's scheduler, which is why a loaded CI box could time out waiting for a
- * frame the app had already produced.
- */
-export async function settleFrame(
-  renderer: Awaited<ReturnType<typeof testRender>>,
-  delayMs = 50,
-): Promise<void> {
-  await act(async () => {
-    await Bun.sleep(delayMs);
-  });
-  // Paint after React has committed the updates collected by act.
-  await renderer.renderOnce();
-}
-
-export function createCommandBarTestControls(
-  getRenderer: () => Awaited<ReturnType<typeof testRender>>,
-) {
-  const waitForFrameToContain = async (text: string, attempts = 12, delayMs = 50): Promise<string> => {
-    const renderer = getRenderer();
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      const frame = renderer.captureCharFrame();
-      if (frame.includes(text)) {
-        return frame;
-      }
-      await settleFrame(renderer, delayMs);
-    }
-    throw new Error(`Timed out waiting for frame to contain "${text}".\n${renderer.captureCharFrame()}`);
-  };
-
-  const clickFrameText = async (text: string): Promise<void> => {
-    const renderer = getRenderer();
-    const frame = renderer.captureCharFrame();
-    const rows = frame.split("\n");
-    const row = rows.findIndex((line) => line.includes(text));
-    const col = row >= 0 ? rows[row]!.indexOf(text) : -1;
-
-    expect(row).toBeGreaterThanOrEqual(0);
-    expect(col).toBeGreaterThanOrEqual(0);
-
-    await act(async () => {
-      await renderer.mockMouse.click(col + 1, row);
-      await renderer.renderOnce();
-    });
-  };
-
-  const renderFrames = async (count = 2): Promise<void> => {
-    const renderer = getRenderer();
-    for (let index = 0; index < count; index += 1) {
-      await act(async () => {
-        await renderer.renderOnce();
-      });
-    }
-  };
-
-  return {
-    waitForFrameToContain,
-    clickFrameText,
-    renderFrames,
-  };
-}
+export { createTestControls as createCommandBarTestControls, emitKeypress, settleFrame } from "../../../renderers/opentui/test-utils";
 
 export function expectSingleBackControl(frame: string): void {
   expect(frame.match(/\bBack\b/g)?.length ?? 0).toBe(1);
@@ -235,6 +152,7 @@ function makePluginRegistry(hasPaneSettings: (paneId: string) => boolean = () =>
     ]),
     commandBarSearchProviders: new Map<string, any>(),
     getCommandBarSearchProviderPluginId: () => undefined,
+    getEnabledTickerActions() { return [...this.tickerActions.values()]; },
     tickerActions: new Map<string, any>([
       ["pin", {
         id: "pin",

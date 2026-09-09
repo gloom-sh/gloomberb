@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback } from "react";
+import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneTicker } from "../../../state/app/context";
-
-export type LoadState<T> = {
-  data: T | null;
-  loading: boolean;
-  error: string | null;
-};
 
 export function useBoundTicker() {
   const { symbol, ticker } = usePaneTicker();
@@ -22,46 +17,9 @@ export function useTickerRequest<T>(
   symbol: string | null,
   exchange: string,
 ) {
-  const [state, setState] = useState<LoadState<T>>({
-    data: null,
-    loading: false,
-    error: null,
-  });
-  const fetchGenRef = useRef(0);
-
-  const load = useCallback((forceRefresh = false) => {
-    if (!symbol) {
-      setState({ data: null, loading: false, error: "No ticker selected" });
-      return;
-    }
-
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setState((current) => ({ ...current, loading: true, error: null }));
-
-    Promise.resolve()
-      .then(() => loader(symbol, exchange, forceRefresh))
-      .then((data) => {
-        if (fetchGenRef.current !== gen) return;
-        setState({ data, loading: false, error: null });
-      })
-      .catch((error) => {
-        if (fetchGenRef.current !== gen) return;
-        setState({
-          data: null,
-          loading: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      });
-  }, [exchange, loader, symbol]);
-
-  useEffect(() => {
-    load(false);
-  }, [load]);
-
-  const reload = useCallback(() => load(true), [load]);
-
-  return { ...state, reload };
+  const request = useCallback((force: boolean) => loader(symbol!, exchange, force), [exchange, loader, symbol]);
+  const { data, loading, error, reload } = useAsyncResource(symbol ? request : null, { clearOnError: true });
+  return { data, loading, error: symbol ? error : "No ticker selected", reload };
 }
 
 export function formatDateTime(date: Date): string {

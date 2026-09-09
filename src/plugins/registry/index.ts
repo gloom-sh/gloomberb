@@ -1,18 +1,28 @@
 import type { ReactNode } from "react";
-import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
-import type { LayoutMarketplacePayload } from "../../layout-marketplace/payload";
-import {
-  connectionHealth as sharedConnectionHealth,
-  type ConnectionHealthRegistry,
-} from "../../core/connection-health";
-import type { BrokerAdapter } from "../../types/broker";
 import {
   CapabilityRegistry,
   type CapabilityManifest,
   type NewsCapability,
   type PluginCapability,
 } from "../../capabilities";
+import type { AppPersistencePort, AppTickerRepositoryPort } from "../../core/app-service-ports";
+import {
+  connectionHealth as sharedConnectionHealth,
+  type ConnectionHealthRegistry,
+} from "../../core/connection-health";
+import type { PaneRuntimeState } from "../../core/state/app/state";
+import type { LayoutMarketplacePayload } from "../../layout-marketplace/payload";
+import { cloudSyncController } from "../../sync/controller";
+import type {
+  RegisteredSyncContributor,
+  RegisteredSyncTransport,
+  SyncContributor,
+  SyncTransport,
+} from "../../sync/types";
+import type { BrokerAdapter } from "../../types/broker";
 import type { BrokerInstanceConfig, LayoutConfig } from "../../types/config";
+import { resolvePaneInstance } from "../../types/config";
+import type { ContextMenuContext, ContextMenuItem } from "../../types/context-menu";
 import type { DataProvider } from "../../types/data-provider";
 import type { TickerFinancials } from "../../types/financials";
 import type {
@@ -23,6 +33,7 @@ import type {
   CommandDef,
   CustomColumnDef,
   GloomPlugin,
+  GloomPluginContext,
   GloomSlots,
   KeyboardShortcut,
   PaneDef,
@@ -32,40 +43,30 @@ import type {
   TickerAction,
   TickerResearchTabDef,
 } from "../../types/plugin";
-import type { ContextMenuContext, ContextMenuItem } from "../../types/context-menu";
 import type { TickerRecord } from "../../types/ticker";
-import type {
-  RegisteredSyncContributor,
-  RegisteredSyncTransport,
-  SyncContributor,
-  SyncTransport,
-} from "../../sync/types";
-import { EventBus } from "../event-bus";
-import { resolvePaneInstance } from "../../types/config";
 import { debugLog } from "../../utils/debug-log";
+import { EventBus } from "../event-bus";
+import { isReservedBuiltinPluginId } from "../ownership";
+import { createPluginPersistence } from "../plugin-persistence";
 import {
-  wrapTickerResearchTabDefWithRuntime,
   wrapPaneDefWithRuntime,
+  wrapTickerResearchTabDefWithRuntime,
   type PluginRuntimeAccess,
 } from "../runtime";
-import type { PaneRuntimeState } from "../../core/state/app/state";
+import { resolveRegistryContextMenuItems } from "./context-menu";
+import { RegistryContributions, type PluginItems } from "./contributions";
 import {
   resolveRegistryPaneQuickSettings,
   resolveRegistryPaneSettings,
   type ResolvedRegistryPaneQuickSetting,
   type ResolvedRegistryPaneSettings,
 } from "./pane-settings";
-import { RegistrySlots } from "./slots";
-import { RegistryContributions, type PluginItems } from "./contributions";
-import { createRegistryPluginContext } from "./context";
-import { resolveRegistryContextMenuItems } from "./context-menu";
+import { RegistryResumeStateListeners, createPluginPaneSettingsState, createPluginResumeState } from "./plugin-state";
 import {
   bindSharedRegistry,
   releaseSharedRegistry,
 } from "./shared";
-import { RegistryResumeStateListeners } from "./plugin-state";
-import { cloudSyncController } from "../../sync/controller";
-import { isReservedBuiltinPluginId } from "../ownership";
+import { RegistrySlots } from "./slots";
 
 interface PluginRegistryOptions {
   enableCapabilityHandlers?: boolean;
@@ -85,7 +86,7 @@ export {
   getSharedMarketData,
   getSharedRegistry,
   setSharedMarketDataForTests,
-  setSharedRegistryForTests,
+  setSharedRegistryForTests
 } from "./shared";
 
 export class PluginRegistry implements PluginRuntimeAccess {
@@ -219,8 +220,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
   setPluginConfigValuesFn: ((pluginId: string, values: Record<string, unknown>) => Promise<void>) = async () => {};
   deletePluginConfigValueFn: ((pluginId: string, key: string) => Promise<void>) = async () => {};
 
-  readonly Slot;
-
   constructor(
     marketData: DataProvider,
     tickerRepository: AppTickerRepositoryPort,
@@ -251,9 +250,6 @@ export class PluginRegistry implements PluginRuntimeAccess {
       },
       connectionHealth: this.connectionHealth,
     });
-    this.Slot = ({ name, ...props }: { name: keyof GloomSlots } & Record<string, unknown>) => (
-      this.renderSlot(name, props as any)
-    );
   }
 
   get panes(): ReadonlyMap<string, PaneDef> { return this.contributions.panesMap; }
@@ -316,16 +312,21 @@ export class PluginRegistry implements PluginRuntimeAccess {
   }
 
   getPluginPaneIds(pluginId: string): string[] {
-    return this.contributions.pluginItems.get(pluginId)?.panes ?? [];
+    return this.contributions.panesMap.ids(pluginId);
   }
 
   getPluginPaneTemplateIds(pluginId: string): string[] {
-    return this.contributions.pluginItems.get(pluginId)?.paneTemplates ?? [];
+    return this.contributions.paneTemplatesMap.ids(pluginId);
   }
 
-  notify(notification: AppNotificationRequest): AppNotificationDelivery | void {
-    return this.notifyFn(notification);
+  getEnabledTickerActions(): TickerAction[] {
+    const disabled = this.getConfigFn().disabledPlugins;
+    return [...this.contributions.tickerActionsMap].filter(([id]) => (
+      !disabled.includes(this.contributions.tickerActionsMap.owners.get(id)!)
+    )).map(([, action]) => action);
   }
+
+  notify = (notification: AppNotificationRequest): AppNotificationDelivery | void => this.notifyFn(notification);
 
   renderSlot<K extends keyof GloomSlots>(name: K, props: GloomSlots[K]): ReactNode {
     return this.slots.render(name, props);
@@ -342,7 +343,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       },
     };
     const disposeCapability = this.capabilities.register(pluginId, ownedCapability);
-    this.contributions.registerCapability(pluginId, capability.id, items);
+    this.contributions.registerCapability(pluginId, capability.id);
     items.capabilityDisposers.push(disposeCapability);
     if (ownedCapability.kind === "asset-data" || ownedCapability.kind === "news") {
       items.capabilityDisposers.push(this.connectionHealth.registerSource({
@@ -410,7 +411,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       getPaneRuntimeState: this.getPaneRuntimeStateFn,
       layout: this.getLayoutFn(),
       paneDefs: this.contributions.panesMap,
-      paneOwners: this.contributions.paneOwners,
+      paneOwners: this.contributions.panesMap.owners,
       resolvePaneTarget: (targetPaneId) => this.resolvePaneTarget(targetPaneId),
       requestedPaneId: paneId,
     });
@@ -431,27 +432,27 @@ export class PluginRegistry implements PluginRuntimeAccess {
   }
 
   getCommandPluginId(commandId: string): string | undefined {
-    return this.contributions.commandOwners.get(commandId);
+    return this.contributions.commandsMap.owners.get(commandId);
   }
 
   getCommandBarSearchProviderPluginId(providerId: string): string | undefined {
-    return this.contributions.commandBarSearchProviderOwners.get(providerId);
+    return this.contributions.commandBarSearchProvidersMap.owners.get(providerId);
   }
 
   getPanePluginId(paneId: string): string | undefined {
-    return this.contributions.paneOwners.get(paneId);
+    return this.contributions.panesMap.owners.get(paneId);
   }
 
   getPaneTemplatePluginId(templateId: string): string | undefined {
-    return this.contributions.paneTemplateOwners.get(templateId);
+    return this.contributions.paneTemplatesMap.owners.get(templateId);
   }
 
   getShortcutPluginId(shortcutId: string): string | undefined {
-    return this.contributions.shortcutOwners.get(shortcutId);
+    return this.contributions.shortcutsMap.owners.get(shortcutId);
   }
 
   getTickerResearchTabPluginId(tabId: string): string | undefined {
-    return this.contributions.tickerResearchTabOwners.get(tabId);
+    return this.contributions.tickerResearchTabsMap.owners.get(tabId);
   }
 
   isPaneFloating(paneId: string): boolean {
@@ -463,54 +464,89 @@ export class PluginRegistry implements PluginRuntimeAccess {
     }
   }
 
-  private createContext(pluginId: string) {
-    const items = this.contributions.getOrCreatePluginItems(pluginId);
-    return createRegistryPluginContext({
-      pluginId,
-      items,
-      contributions: this.contributions,
-      enableCapabilityHandlers: this.enableCapabilityHandlers,
-      marketData: this.marketData,
-      connectionHealth: this.connectionHealth,
-      tickerRepository: this.tickerRepository,
-      persistence: this.persistence,
-      getLayout: () => this.getLayoutFn(),
-      updateLayout: (layout) => this.updateLayoutFn(layout),
-      resolvePaneTarget: (paneId) => this.resolvePaneTarget(paneId),
-      registerCapabilityForPlugin: (targetPluginId, capability, pluginItems) => this.registerCapabilityForPlugin(targetPluginId, capability, pluginItems),
-      registerSyncContributorForPlugin: (targetPluginId, contributor) => this.registerSyncContributorForPlugin(targetPluginId, contributor),
-      registerSyncTransportForPlugin: (targetPluginId, transport) => this.registerSyncTransportForPlugin(targetPluginId, transport),
-      watchNewsQuery: (query, listener) => this.watchNewsQueryFn(query, listener),
+  private createContext(pluginId: string): GloomPluginContext {
+    const contributions = this.contributions;
+    const items = contributions.getOrCreatePluginItems(pluginId);
+    return {
+      registerPane: (pane) => contributions.registerPane(pluginId, pane),
+      registerPaneTemplate: (template) => contributions.registerPaneTemplate(pluginId, template),
+      registerCommand: (command) => contributions.registerCommand(pluginId, command),
+      registerCommandBarSearchProvider: (provider) => contributions.registerCommandBarSearchProvider(pluginId, provider),
+      registerColumn: (column) => contributions.registerColumn(pluginId, column),
+      registerBroker: (broker) => contributions.registerBroker(pluginId, broker),
+      registerCapability: (capability) => {
+        if (this.enableCapabilityHandlers) this.registerCapabilityForPlugin(pluginId, capability, items);
+      },
+      registerTickerResearchTab: (tab) => contributions.registerTickerResearchTab(pluginId, tab),
+      registerShortcut: (shortcut) => contributions.registerShortcut(pluginId, shortcut),
+      registerTickerAction: (action) => contributions.registerTickerAction(pluginId, action),
+      registerContextMenuProvider: (provider) => contributions.registerContextMenuProvider(pluginId, provider),
+      registerSyncContributor: (contributor) => {
+        const dispose = this.registerSyncContributorForPlugin(pluginId, contributor);
+        items.eventDisposers.push(dispose);
+        return dispose;
+      },
+      registerSyncTransport: (transport) => {
+        const dispose = this.registerSyncTransportForPlugin(pluginId, transport);
+        items.eventDisposers.push(dispose);
+        return dispose;
+      },
+      watchNewsQuery: (query, listener) => {
+        const dispose = this.watchNewsQueryFn(query, listener);
+        items.newsQueryWatchDisposers.push(dispose);
+        return dispose;
+      },
       getData: (ticker) => this.getDataFn(ticker),
       getTicker: (symbol) => this.getTickerFn(symbol),
       getConfig: () => this.getConfigFn(),
-      getResumeState: (key, schemaVersion) => this.getResumeState(pluginId, key, schemaVersion),
-      setResumeState: (key, value, schemaVersion) => this.setResumeState(pluginId, key, value, schemaVersion),
-      deleteResumeState: (key) => this.deleteResumeState(pluginId, key),
-      getPaneRuntimeState: (paneId) => this.getPaneRuntimeStateFn(paneId),
-      updatePaneRuntimeState: (paneId, patch) => this.updatePaneRuntimeStateFn(paneId, patch),
-      getConfigState: (key) => this.getConfigState(pluginId, key),
-      setConfigState: (key, value) => this.setConfigState(pluginId, key, value),
-      deleteConfigState: (key) => this.deleteConfigState(pluginId, key),
-      getConfigStateKeys: () => this.getConfigStateKeys(pluginId),
+      getPaneDef: (paneId) => contributions.panesMap.get(paneId),
+      marketData: this.marketData,
+      connectionHealth: this.connectionHealth,
+      tickerRepository: this.tickerRepository,
+      persistence: createPluginPersistence(this.persistence.pluginState, this.persistence.resources, `plugin:${pluginId}`, pluginId),
+      log: debugLog.createLogger(pluginId),
+      resume: createPluginResumeState({
+        pluginId,
+        getResumeState: (key, version) => this.getResumeState(pluginId, key, version),
+        setResumeState: (key, value, version) => this.setResumeState(pluginId, key, value, version),
+        deleteResumeState: (key) => this.deleteResumeState(pluginId, key),
+        getPaneRuntimeState: (paneId) => this.getPaneRuntimeStateFn(paneId),
+        updatePaneRuntimeState: (paneId, patch) => this.updatePaneRuntimeStateFn(paneId, patch),
+      }),
+      paneSettings: createPluginPaneSettingsState({
+        getLayout: () => this.getLayoutFn(),
+        updateLayout: (layout) => this.updateLayoutFn(layout),
+        resolvePaneTarget: (paneId) => this.resolvePaneTarget(paneId),
+      }),
+      configState: {
+        get: (key) => this.getConfigState(pluginId, key),
+        set: (key, value) => this.setConfigState(pluginId, key, value),
+        delete: (key) => this.deleteConfigState(pluginId, key),
+        keys: () => this.getConfigStateKeys(pluginId),
+      },
       createBrokerInstance: (brokerType, label, values) => this.createBrokerInstanceFn(brokerType, label, values),
-      updateBrokerInstance: (instanceId, values, options) => this.updateBrokerInstanceFn(instanceId, values, options),
-      syncBrokerInstance: (instanceId) => this.syncBrokerInstanceFn(instanceId),
-      removeBrokerInstance: (instanceId) => this.removeBrokerInstanceFn(instanceId),
-      selectTicker: (symbol, paneId) => this.selectTicker(symbol, paneId),
-      switchPanel: (panel) => this.switchPanel(panel),
-      switchTab: (tabId, paneId) => this.switchTab(tabId, paneId),
-      openCommandBar: (query) => this.openCommandBar(query),
-      showPane: (paneId) => this.showPane(paneId),
-      createPaneFromTemplate: (templateId, options) => this.createPaneFromTemplate(templateId, options),
-      hidePane: (paneId) => this.hidePane(paneId),
-      focusPane: (paneId) => this.focusPaneFn(paneId),
-      pinTicker: (symbol, options) => this.pinTicker(symbol, options),
-      navigateTicker: (symbol, options) => this.navigateTicker(symbol, options),
-      openPaneSettings: (paneId) => this.openPaneSettings(paneId),
-      events: this.events,
+      updateBrokerInstance: this.updateBrokerInstance,
+      syncBrokerInstance: this.syncBrokerInstance,
+      removeBrokerInstance: this.removeBrokerInstance,
+      selectTicker: this.selectTicker,
+      switchPanel: this.switchPanel,
+      switchTab: this.switchTab,
+      openCommandBar: this.openCommandBar,
+      showPane: this.showPane,
+      createPaneFromTemplate: this.createPaneFromTemplate,
+      hidePane: this.hidePane,
+      focusPane: this.focusPane,
+      pinTicker: this.pinTicker,
+      navigateTicker: this.navigateTicker,
+      openPaneSettings: this.openPaneSettings,
+      on: (event, handler) => {
+        const dispose = this.events.on(event, handler);
+        items.eventDisposers.push(dispose);
+        return dispose;
+      },
+      emit: (event, payload) => this.events.emit(event, payload),
       notify: (notification) => this.notifyFn(notification),
-    });
+    };
   }
 
   private registryLog = debugLog.createLogger("registry");
@@ -526,18 +562,18 @@ export class PluginRegistry implements PluginRuntimeAccess {
       const items = this.contributions.getOrCreatePluginItems(plugin.id);
       if (plugin.panes) {
         for (const pane of plugin.panes) {
-          this.contributions.registerPane(plugin.id, pane, items);
+          this.contributions.registerPane(plugin.id, pane);
         }
       }
 
       if (plugin.paneTemplates) {
         for (const template of plugin.paneTemplates) {
-          this.contributions.registerPaneTemplate(plugin.id, template, items);
+          this.contributions.registerPaneTemplate(plugin.id, template);
         }
       }
 
       if (plugin.broker) {
-        this.contributions.registerBroker(plugin.id, plugin.broker, items);
+        this.contributions.registerBroker(plugin.id, plugin.broker);
       }
 
       if (this.enableCapabilityHandlers && plugin.capabilities) {

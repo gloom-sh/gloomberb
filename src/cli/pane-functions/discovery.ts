@@ -1,6 +1,8 @@
 import { ConnectionHealthRegistry } from "../../core/connection-health";
+import type { TickerRepository } from "../../data/ticker-repository";
 import type { AppConfig } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
+import type { PersistedResourceValue } from "../../types/persistence";
 import type {
   GloomPlugin,
   GloomPluginContext,
@@ -8,8 +10,6 @@ import type {
   PaneTemplateDef,
   PluginPersistence,
 } from "../../types/plugin";
-import type { PersistedResourceValue } from "../../types/persistence";
-import type { TickerRepository } from "../../data/ticker-repository";
 import type { MarketContext } from "../types";
 import type { PaneFunctionCatalog } from "./catalog";
 
@@ -152,24 +152,28 @@ export async function createPaneCatalog(context: MarketContext, plugins: GloomPl
     tickerRepository: context.store,
   });
 
-  for (const plugin of plugins) {
-    for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
-    for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
-    if (plugin.setup) {
-      setupPlugins.push(plugin);
-      await plugin.setup(discoveryContext);
+  const destroy = () => {
+    let failure: unknown;
+    for (const plugin of setupPlugins.splice(0).reverse()) {
+      try { plugin.dispose?.(); } catch (error) { failure ??= error; }
     }
-  }
-
-  return {
-    panes,
-    paneTemplates,
-    destroy() {
-      for (const plugin of setupPlugins.reverse()) {
-        plugin.dispose?.();
-      }
-    },
+    if (failure) throw failure;
   };
+
+  try {
+    for (const plugin of plugins) {
+      for (const pane of plugin.panes ?? []) panes.set(pane.id, pane);
+      for (const template of plugin.paneTemplates ?? []) paneTemplates.set(template.id, template);
+      if (plugin.setup) {
+        setupPlugins.push(plugin);
+        await plugin.setup(discoveryContext);
+      }
+    }
+  } catch (error) {
+    try { destroy(); } catch { /* Preserve the setup error after attempting every disposer. */ }
+    throw error;
+  }
+  return { panes, paneTemplates, destroy };
 }
 
 function createDiscoveryPluginPersistence(): PluginPersistence {

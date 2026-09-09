@@ -1,10 +1,11 @@
 import type { RefObject } from "react";
 import { t } from "../../../i18n";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import {
   Box,
   Text,
-  Textarea,
   TextAttributes,
+  Textarea,
   type InputRenderable,
   type TextareaRenderable,
 } from "../../../ui";
@@ -16,29 +17,20 @@ import {
   isWorkflowTextField,
   summarizeWorkflowFieldValue,
 } from "../helpers";
-import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { useCommandBarPalette } from "../panel/palette";
+import { truncateText } from "../view-model";
 import type {
   CommandBarFieldValue,
   CommandBarWorkflowField,
   CommandBarWorkflowRoute,
 } from "./types";
-import { truncateText } from "../view-model";
 
 interface CommandBarWorkflowFieldRowProps {
   route: CommandBarWorkflowRoute;
   field: CommandBarWorkflowField;
   isLastField: boolean;
-  inputBg: string;
   nativePaneChrome: boolean;
-  paletteBg: string;
-  paletteSelectedBg: string;
-  paletteSubtleText: string;
-  paletteText: string;
-  panelBg: string;
   queryDisplayWidth: number;
-  themeBorder: string;
-  themeBorderFocused: string;
-  themePanel: string;
   getWorkflowInputRef: (fieldId: string) => RefObject<InputRenderable | TextareaRenderable | null>;
   onActiveTextareaSync: (route: CommandBarWorkflowRoute) => void;
   onFieldFocus: (fieldId: string) => void;
@@ -53,17 +45,8 @@ export function CommandBarWorkflowFieldRow({
   route,
   field,
   isLastField,
-  inputBg,
   nativePaneChrome,
-  paletteBg,
-  paletteSelectedBg,
-  paletteSubtleText,
-  paletteText,
-  panelBg,
   queryDisplayWidth,
-  themeBorder,
-  themeBorderFocused,
-  themePanel,
   getWorkflowInputRef,
   onActiveTextareaSync,
   onFieldFocus,
@@ -73,10 +56,11 @@ export function CommandBarWorkflowFieldRow({
   onNativeSelectRef,
   onSubmit,
 }: CommandBarWorkflowFieldRowProps) {
+  const palette = useCommandBarPalette(nativePaneChrome);
   const active = field.id === route.activeFieldId;
   const value = route.values[field.id];
-  const borderColor = active ? paletteSelectedBg : paletteBg;
-  const fieldBg = nativePaneChrome ? "transparent" : active ? inputBg : panelBg;
+  const borderColor = active ? palette.selectedBg : palette.bg;
+  const fieldBg = nativePaneChrome ? "transparent" : active ? palette.inputBg : palette.panelBg;
   const useNativeSelect = nativePaneChrome && field.type === "select";
   const fieldDescription = getWorkflowFieldDescription(field, active);
   const fieldLabel = t(field.label);
@@ -133,7 +117,7 @@ export function CommandBarWorkflowFieldRow({
       } : undefined}
     >
       <Box height={1}>
-        <Text fg={active ? paletteText : paletteSubtleText} attributes={active ? TextAttributes.BOLD : 0}>
+        <Text fg={active ? palette.text : palette.subtle} attributes={active ? TextAttributes.BOLD : 0}>
           {fieldLabel}
         </Text>
       </Box>
@@ -145,7 +129,7 @@ export function CommandBarWorkflowFieldRow({
             placeholder={field.placeholder ? t(field.placeholder) : undefined}
             focused={active && !route.pending}
             variant="default"
-            backgroundColor={nativePaneChrome ? inputBg : fieldBg}
+            backgroundColor={nativePaneChrome ? palette.inputBg : fieldBg}
             onChange={(nextValue) => onFieldValueChange(field.id, nextValue)}
             onSubmit={submitOrMoveNext}
           />
@@ -154,10 +138,10 @@ export function CommandBarWorkflowFieldRow({
             minHeight={6}
             height={6}
             border={!nativePaneChrome}
-            borderColor={active ? paletteSelectedBg : paletteBg}
-            backgroundColor={nativePaneChrome ? inputBg : fieldBg}
+            borderColor={active ? palette.selectedBg : palette.bg}
+            backgroundColor={nativePaneChrome ? palette.inputBg : fieldBg}
             style={nativePaneChrome ? {
-              border: `1px solid ${active ? themeBorderFocused : themeBorder}`,
+              border: `1px solid ${active ? palette.borderFocused : palette.border}`,
               borderRadius: 6,
               overflow: "hidden",
             } : undefined}
@@ -169,9 +153,9 @@ export function CommandBarWorkflowFieldRow({
                 initialValue={coerceFieldString(value)}
                 placeholder={field.placeholder ? t(field.placeholder) : ""}
                 focused={!route.pending}
-                textColor={paletteText}
-                placeholderColor={paletteSubtleText}
-                backgroundColor={nativePaneChrome ? inputBg : themePanel}
+                textColor={palette.text}
+                placeholderColor={palette.subtle}
+                backgroundColor={nativePaneChrome ? palette.inputBg : palette.panel}
                 flexGrow={1}
                 wrapText
               />
@@ -179,7 +163,7 @@ export function CommandBarWorkflowFieldRow({
               <Box flexDirection="column" paddingX={1} paddingY={0}>
                 {buildTextareaPreviewLines(coerceFieldString(value), field.placeholder ? t(field.placeholder) : undefined, queryDisplayWidth).map((line, index) => (
                   <Box key={`${field.id}:preview:${index}`} height={1}>
-                    <Text fg={coerceFieldString(value).trim() ? paletteText : paletteSubtleText}>{line || " "}</Text>
+                    <Text fg={coerceFieldString(value).trim() ? palette.text : palette.subtle}>{line || " "}</Text>
                   </Box>
                 ))}
               </Box>
@@ -193,13 +177,14 @@ export function CommandBarWorkflowFieldRow({
             placeholder={field.placeholder ? t(field.placeholder) : undefined}
             focused={active && !route.pending}
             variant="default"
-            backgroundColor={nativePaneChrome ? inputBg : fieldBg}
+            backgroundColor={nativePaneChrome ? palette.inputBg : fieldBg}
             onChange={(nextValue) => onFieldValueChange(field.id, nextValue)}
             onSubmit={submitOrMoveNext}
           />
         )
       ) : useNativeSelect ? (
         <NativeSelect
+          disabled={route.pending}
           value={coerceFieldString(value)}
           options={field.options.map((option) => ({
             ...option,
@@ -221,14 +206,14 @@ export function CommandBarWorkflowFieldRow({
           }}
           style={nativePaneChrome ? { borderRadius: 4 } : undefined}
         >
-          <Text fg={active ? paletteText : paletteSubtleText}>
+          <Text fg={active ? palette.text : palette.subtle}>
             {truncateText(t(summarizeWorkflowFieldValue(field, value)), queryDisplayWidth)}
           </Text>
         </Box>
       )}
       {translatedFieldDescription && (
         <Box height={1}>
-          <Text fg={paletteSubtleText}>
+          <Text fg={palette.subtle}>
             {truncateText(translatedFieldDescription, queryDisplayWidth)}
           </Text>
         </Box>

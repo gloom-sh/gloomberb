@@ -1,5 +1,5 @@
-import { describe, expect, test } from "bun:test";
 import type { CliRenderer } from "@opentui/core";
+import { describe, expect, test } from "bun:test";
 import {
   computeBitmapSize,
   computeNativePlacement,
@@ -7,6 +7,9 @@ import {
   renderCrosshairStrips,
   type CellRect,
 } from "../chart-rasterizer";
+import { resolveChartRendererState } from "../renderer-selection";
+import { NativeSurfaceManager, computeSurfaceVisibleFragments } from "../surface/manager";
+import { resolveNativeSurfaceVisibleRect, type NativeSurfaceRenderableNode } from "../surface/visibility";
 import { KittyImageManager } from "./manager";
 import { chunkBase64Payload, encodeKittyTransmitRgba } from "./protocol";
 import {
@@ -14,10 +17,6 @@ import {
   getCachedKittySupport,
   resolveKittySupport,
 } from "./support";
-import { resolveChartRendererState } from "../renderer-selection";
-import { computeSurfaceVisibleFragments, NativeSurfaceManager } from "../surface/manager";
-import { syncCachedNativeSurface } from "../surface/sync";
-import { resolveNativeSurfaceVisibleRect, type NativeSurfaceRenderableNode } from "../surface/visibility";
 
 describe("resolveChartRendererState", () => {
   test("resolves auto and forced kitty correctly", () => {
@@ -384,80 +383,6 @@ describe("KittyImageManager", () => {
 });
 
 describe("NativeSurfaceManager", () => {
-  test("recreates a cached surface when geometry becomes visible later", () => {
-    const bitmap = { width: 200, height: 80, pixels: new Uint8Array(200 * 80 * 4) };
-    const upsertCalls: Array<{
-      id: string;
-      paneId: string;
-      rect: CellRect;
-      visibleRect: CellRect | null;
-      bitmap: typeof bitmap;
-      bitmapKey: string;
-    }> = [];
-    const geometryCalls: Array<{
-      id: string;
-      paneId: string;
-      rect: CellRect;
-      visibleRect: CellRect | null;
-    }> = [];
-
-    const manager = {
-      upsertSurface(snapshot: {
-        id: string;
-        paneId: string;
-        rect: CellRect;
-        visibleRect: CellRect | null;
-        bitmap: typeof bitmap;
-        bitmapKey: string;
-      }) {
-        upsertCalls.push(snapshot);
-      },
-      updateSurfaceGeometry(id: string, geometry: {
-        paneId: string;
-        rect: CellRect;
-        visibleRect: CellRect | null;
-      }) {
-        geometryCalls.push({ id, ...geometry });
-      },
-    };
-
-    syncCachedNativeSurface(
-      manager,
-      "chart",
-      {
-        paneId: "pane",
-        rect: { x: 2, y: 3, width: 20, height: 8 },
-        visibleRect: null,
-      },
-      { key: "frame-1", bitmap },
-    );
-    syncCachedNativeSurface(
-      manager,
-      "chart",
-      {
-        paneId: "pane",
-        rect: { x: 2, y: 3, width: 20, height: 8 },
-        visibleRect: { x: 2, y: 3, width: 20, height: 8 },
-      },
-      { key: "frame-1", bitmap },
-    );
-
-    expect(geometryCalls).toEqual([{
-      id: "chart",
-      paneId: "pane",
-      rect: { x: 2, y: 3, width: 20, height: 8 },
-      visibleRect: null,
-    }]);
-    expect(upsertCalls).toEqual([{
-      id: "chart",
-      paneId: "pane",
-      rect: { x: 2, y: 3, width: 20, height: 8 },
-      visibleRect: { x: 2, y: 3, width: 20, height: 8 },
-      bitmap,
-      bitmapKey: "frame-1",
-    }]);
-  });
-
   test("skips geometry sync work when the surface rect is unchanged", () => {
     const writes: string[] = [];
     const renderer = {

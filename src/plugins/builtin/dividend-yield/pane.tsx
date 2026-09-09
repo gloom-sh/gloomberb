@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
 import {
   DataTableView,
   StaticChartSurface,
@@ -10,13 +9,15 @@ import {
 } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
+import { Box, Text, TextAttributes } from "../../../ui";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
-import { fetchDividendData, type DividendData } from "./client";
+import { fetchDividendData } from "./client";
 import {
-  buildDividendColumns,
   DEFAULT_SORT_PREFERENCE,
+  buildDividendColumns,
   nextSortPreference,
   sortRows,
   toDividendRows,
@@ -200,50 +201,16 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
   const exchange = ticker?.metadata.exchange ?? "";
   const quotePrice = financials?.quote?.price ?? null;
 
-  const [data, setData] = useState<DividendData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<DividendSortPreference>(DEFAULT_SORT_PREFERENCE);
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const fetchGenRef = useRef(0);
-
-  const load = useCallback(async (sym: string, price: number | null, listingExchange = "") => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await fetchDividendData(sym, price, listingExchange);
-      if (fetchGenRef.current !== gen) return;
-      setData(result);
-      setSelectedIdx(0);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      setError(err instanceof Error ? err.message : String(err));
-      setData(null);
-    } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
-    }
-  }, []);
-
   // Ten years of history must not be refetched on every live price tick, so the
   // quote is read through a ref instead of being an effect dependency.
   const quotePriceRef = useRef(quotePrice);
   quotePriceRef.current = quotePrice;
 
-  useEffect(() => {
-    if (!symbol) {
-      setData(null);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-    void load(symbol, quotePriceRef.current, exchange);
-  }, [exchange, load, symbol]);
-
-  const refresh = useCallback(() => {
-    if (symbol) void load(symbol, quotePriceRef.current, exchange);
-  }, [exchange, load, symbol]);
+  const request = useCallback(() => fetchDividendData(symbol!, quotePriceRef.current, exchange), [exchange, symbol]);
+  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null, { clearOnError: true });
+  useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
   usePaneFooter("dividend-yield", () => ({
     info: loadingErrorFooterInfo(loading, error),

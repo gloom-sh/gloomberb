@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
-import { t } from "../../../i18n";
 import { useEffect } from "react";
+import { t } from "../../../i18n";
 import {
   Box,
   ScrollBox,
@@ -14,30 +14,21 @@ import type { NativeSelectElement } from "../../ui/native-select";
 import {
   getVisibleWorkflowFields,
 } from "../helpers";
+import { useCommandBarPalette } from "../panel/palette";
+import { truncateText } from "../view-model";
+import { CommandBarWorkflowFieldRow } from "./field-row";
 import type {
   CommandBarFieldValue,
   CommandBarWorkflowField,
   CommandBarWorkflowRoute,
 } from "./types";
-import { truncateText } from "../view-model";
-import { CommandBarWorkflowFieldRow } from "./field-row";
 
 interface CommandBarWorkflowBodyProps {
   route: CommandBarWorkflowRoute;
   bodyHeight: number;
   contentPadding: number;
-  inputBg: string;
   nativePaneChrome: boolean;
-  paletteBg: string;
-  paletteSelectedBg: string;
-  paletteSubtleText: string;
-  paletteText: string;
-  panelBg: string;
   queryDisplayWidth: number;
-  themeBorder: string;
-  themeBorderFocused: string;
-  themeNegative: string;
-  themePanel: string;
   workflowScrollRef: RefObject<ScrollBoxRenderable | null>;
   getWorkflowInputRef: (fieldId: string) => RefObject<InputRenderable | TextareaRenderable | null>;
   onActiveTextareaSync: (route: CommandBarWorkflowRoute) => void;
@@ -53,18 +44,8 @@ export function CommandBarWorkflowBody({
   route,
   bodyHeight,
   contentPadding,
-  inputBg,
   nativePaneChrome,
-  paletteBg,
-  paletteSelectedBg,
-  paletteSubtleText,
-  paletteText,
-  panelBg,
   queryDisplayWidth,
-  themeBorder,
-  themeBorderFocused,
-  themeNegative,
-  themePanel,
   workflowScrollRef,
   getWorkflowInputRef,
   onActiveTextareaSync,
@@ -75,6 +56,7 @@ export function CommandBarWorkflowBody({
   onNativeSelectRef,
   onSubmit,
 }: CommandBarWorkflowBodyProps) {
+  const palette = useCommandBarPalette(nativePaneChrome);
   const visibleFields = getVisibleWorkflowFields(route.fields, route.values);
 
   useEffect(() => {
@@ -99,12 +81,12 @@ export function CommandBarWorkflowBody({
     <>
       {route.subtitle && (
         <Box height={1}>
-          <Text fg={paletteSubtleText}>{truncateText(t(route.subtitle), queryDisplayWidth)}</Text>
+          <Text fg={palette.subtle}>{truncateText(t(route.subtitle), queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.description?.map((line, index) => (
         <Box key={`workflow-desc:${index}`} height={1}>
-          <Text fg={paletteSubtleText}>{truncateText(t(line), queryDisplayWidth)}</Text>
+          <Text fg={palette.subtle}>{truncateText(t(line), queryDisplayWidth)}</Text>
         </Box>
       ))}
       {route.subtitle || (route.description?.length ?? 0) > 0 ? <Box height={1} /> : null}
@@ -115,17 +97,8 @@ export function CommandBarWorkflowBody({
             route={route}
             field={field}
             isLastField={fieldIndex === visibleFields.length - 1}
-            inputBg={inputBg}
             nativePaneChrome={nativePaneChrome}
-            paletteBg={paletteBg}
-            paletteSelectedBg={paletteSelectedBg}
-            paletteSubtleText={paletteSubtleText}
-            paletteText={paletteText}
-            panelBg={panelBg}
             queryDisplayWidth={queryDisplayWidth}
-            themeBorder={themeBorder}
-            themeBorderFocused={themeBorderFocused}
-            themePanel={themePanel}
             getWorkflowInputRef={getWorkflowInputRef}
             onActiveTextareaSync={onActiveTextareaSync}
             onFieldFocus={onFieldFocus}
@@ -139,7 +112,7 @@ export function CommandBarWorkflowBody({
       })}
       {route.error && (
         <Box height={1}>
-          <Text fg={themeNegative}>{truncateText(route.error, queryDisplayWidth)}</Text>
+          <Text fg={palette.negative}>{truncateText(route.error, queryDisplayWidth)}</Text>
         </Box>
       )}
       {route.pendingLabel && route.pending && (

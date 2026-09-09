@@ -1,20 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, TextAttributes } from "../../../ui";
-import { useShortcut } from "../../../react/input";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Button,
   DataTableView,
   EmptyState,
   Spinner,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
-  type PaneFooterSegment,
+  type PaneFooterSegment
 } from "../../../components";
-import { useAutoRefresh } from "../shared/auto-refresh";
-import type { PaneProps } from "../../../types/plugin";
+import { useAsyncResource } from "../../../react/async-resource";
+import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, Text, TextAttributes } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
 import { creditConditionsHeadless } from "./headless";
 import {
@@ -24,6 +24,8 @@ import {
 } from "./model";
 
 export { creditConditionsHeadless } from "./headless";
+
+const EMPTY_ROWS: CreditConditionRow[] = [];
 
 type SortId = "label" | "oas" | "change";
 interface Column extends DataTableColumn { id: SortId }
@@ -72,38 +74,17 @@ function renderCell(
 }
 
 export function CreditConditionsPane({ paneId, focused, width, height }: PaneProps) {
-  const [initial] = useState(getCachedCreditConditions);
-  const [rows, setRows] = useState(initial?.rows ?? []);
-  const [selectedId, setSelectedId] = useState<CreditSeriesId | null>(initial?.rows[0]?.seriesId ?? null);
+  const resource = useAsyncResource(loadCreditConditions, { initialData: getCachedCreditConditions });
+  const { loading, load: refresh, reload } = resource;
+  const stale = resource.data?.stale ?? false;
+  const error = resource.error ?? resource.data?.errors[0] ?? null;
+  const lastUpdated = stale ? null : resource.updatedAt;
+  const rows = resource.data?.rows ?? EMPTY_ROWS;
+  const [selectedId, setSelectedId] = useState<CreditSeriesId | null>(rows[0]?.seriesId ?? null);
   const [sort, setSort] = useState<{ id: SortId; descending: boolean }>({ id: "label", descending: false });
-  const [loading, setLoading] = useState(!initial);
-  const [stale, setStale] = useState(initial?.stale ?? false);
-  const [error, setError] = useState<string | null>(initial?.errors[0] ?? null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const generation = useRef(0);
-
-  const load = useCallback(async (force = false) => {
-    const current = ++generation.current;
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await loadCreditConditions(force);
-      if (generation.current !== current) return;
-      setRows(result.rows);
-      setSelectedId((id) => id && result.rows.some((row) => row.seriesId === id) ? id : result.rows[0]?.seriesId ?? null);
-      setStale(result.stale);
-      if (!result.stale) setLastUpdated(Date.now());
-      setError(result.errors[0] ?? null);
-    } catch (loadError) {
-      if (generation.current !== current) return;
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
-    } finally {
-      if (generation.current === current) setLoading(false);
-    }
-  }, []);
-  useEffect(() => { void load(false); }, [load]);
-  const reload = useCallback(() => { void load(true); }, [load]);
-  const refresh = useCallback(() => { void load(false); }, [load]);
+  useEffect(() => {
+    setSelectedId((id) => id && rows.some((row) => row.seriesId === id) ? id : rows[0]?.seriesId ?? null);
+  }, [rows]);
   // The shared FRED cache decides whether a tick actually hits the network, so
   // the pane can follow the global cadence without refetching daily data.
   useAutoRefresh(lastUpdated, refresh);

@@ -4,24 +4,24 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { act } from "react";
 import { apiClient } from "../../api-client";
-import { type AppBrokerImportRuntime, useBrokerImportRuntime } from "../../app/runtime/broker-import";
+import { useBrokerImportRuntime, type AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
-import { testRender } from "../../renderers/opentui/test-utils";
+import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
+import { EventBus } from "../../plugins/event-bus";
+import type { PluginRegistry } from "../../plugins/registry";
+import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppProvider,
   useAppDispatch,
   useAppSelector,
   useAppStateRef,
 } from "../../state/app/context";
+import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
 import {
   createDefaultConfig,
   type AppConfig,
 } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
-import { EventBus } from "../../plugins/event-bus";
-import type { PluginRegistry } from "../../plugins/registry";
-import type { BrokerAdapter, BrokerPosition } from "../../types/broker";
-import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
 import { OnboardingWizard } from "./onboarding-wizard";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
@@ -157,20 +157,7 @@ function RuntimeWizardHarness({
   );
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string }) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      ...event,
-    } as any);
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
 
 async function waitForFrame(text: string, attempts = 40): Promise<string> {
   for (let index = 0; index < attempts; index += 1) {

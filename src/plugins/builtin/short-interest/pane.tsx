@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   DataTableView,
   EmptyState,
@@ -11,27 +10,31 @@ import {
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
-import { colors, blendHex } from "../../../theme/colors";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
-import { isPlainKey } from "../../../utils/keyboard";
-import { formatCompact } from "../../../utils/format";
-import { usePluginPaneState } from "../../runtime";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { blendHex, colors } from "../../../theme/colors";
 import type { TickerRecord } from "../../../types/ticker";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { formatCompact } from "../../../utils/format";
+import { isPlainKey } from "../../../utils/keyboard";
+import { isUsEquityTicker } from "../../../utils/sec";
+import { usePluginPaneState } from "../../runtime";
 import { fetchShortInterest } from "./client";
 import {
+  DEFAULT_SORT,
   buildColumns,
   buildRows,
-  DEFAULT_SORT,
   nextSortPreference,
   sortRows,
   type ShortInterestColumn,
   type ShortInterestRow,
   type SortPreference,
 } from "./model";
-import type { LoadStatus, ShortInterestRecord } from "./types";
+import type { ShortInterestRecord } from "./types";
+
+const EMPTY_RECORDS: ShortInterestRecord[] = [];
 
 function hasClassifiableUsEquityMetadata(ticker: TickerRecord): boolean {
   const contract = ticker.metadata.broker_contracts?.[0];
@@ -59,15 +62,18 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const { ticker } = usePaneTicker();
   const symbol = ticker?.metadata.ticker ?? null;
 
-  const [records, setRecords] = useState<ShortInterestRecord[]>([]);
-  const [status, setStatus] = useState<LoadStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const skipNonUs = !!(ticker && hasClassifiableUsEquityMetadata(ticker) && !isUsEquityTicker(ticker));
+  const request = useCallback(() => fetchShortInterest(symbol!), [symbol]);
+  const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
+  const { error, updatedAt, reload: refresh } = resource;
+  const records = resource.data ?? EMPTY_RECORDS;
+  const status = skipNonUs ? "loaded" : resource.status;
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>(
     "short-interest:sort",
     DEFAULT_SORT,
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const fetchGenRef = useRef(0);
+  useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
   const rows = useMemo(() => buildRows(records), [records]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
@@ -77,49 +83,6 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const boundedSelectedIdx = sortedRows.length > 0
     ? Math.min(selectedIdx, sortedRows.length - 1)
     : -1;
-
-  const skipNonUs = !!(ticker && hasClassifiableUsEquityMetadata(ticker) && !isUsEquityTicker(ticker));
-
-  const loadData = useCallback(async () => {
-    if (!symbol) {
-      setRecords([]);
-      setStatus("idle");
-      setError(null);
-      return;
-    }
-    if (skipNonUs) {
-      setRecords([]);
-      setStatus("loaded");
-      setError(null);
-      return;
-    }
-
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setStatus((current) => (current === "loaded" ? current : "loading"));
-    setError(null);
-
-    try {
-      const data = await fetchShortInterest(symbol);
-      if (fetchGenRef.current !== gen) return;
-      setRecords(data);
-      setStatus("loaded");
-      setSelectedIdx(0);
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      setError(err instanceof Error ? err.message : String(err));
-      setRecords([]);
-      setStatus("error");
-    }
-  }, [skipNonUs, symbol]);
-
-  useEffect(() => {
-    void loadData();
-  }, [loadData]);
-
-  const refresh = useCallback(() => {
-    void loadData();
-  }, [loadData]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextSortPreference(current, columnId));

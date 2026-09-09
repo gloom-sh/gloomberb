@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 
 import { type CSSProperties } from "react";
-import { Box } from "../../ui";
 import { blendHex, colors } from "../../theme/colors";
 import { WEB_CELL_HEIGHT } from "../../theme/font-scale";
+import { Box } from "../../ui";
 
 export type NativeSelectElement = HTMLSelectElement & { showPicker?: () => void };
 
@@ -16,6 +16,7 @@ interface NativeSelectOption {
 
 export interface NativeSelectProps {
   value: string;
+  disabled?: boolean;
   options: NativeSelectOption[];
   width?: number | string;
   height?: number;
@@ -31,7 +32,7 @@ export interface NativeSelectProps {
 }
 
 export function openNativeSelect(element: NativeSelectElement | null | undefined) {
-  if (!element) return;
+  if (!element || element.disabled) return;
   element.focus();
   try {
     if (element.showPicker) {
@@ -51,6 +52,7 @@ export function NativeSelect({
   height,
   variant = "field",
   includeUnsetOption = false,
+  disabled = false,
   selectRef,
   onFocus,
   onChange,
@@ -62,13 +64,13 @@ export function NativeSelect({
   const style: CSSProperties = {
     width: resolvedWidth,
     height: resolvedHeight,
-    color: colors.text,
+    color: disabled ? colors.textMuted : colors.text,
     backgroundColor: inline ? "transparent" : blendHex(colors.panel, colors.textBright, 0.06),
     border: inline ? "none" : `1px solid ${colors.border}`,
     borderRadius: inline ? 0 : 6,
     padding: inline ? 0 : "0 8px",
     boxShadow: inline ? "none" : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
-    cursor: "pointer",
+    cursor: disabled ? "default" : "pointer",
     font: "inherit",
     letterSpacing: 0,
     outline: "none",
@@ -91,6 +93,7 @@ export function NativeSelect({
       <select
         ref={selectRef}
         value={value}
+        disabled={disabled}
         data-gloom-interactive="true"
         onFocus={onFocus}
         onMouseDown={(event) => {

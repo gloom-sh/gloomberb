@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
-import { openTuiUiHost } from "../../../renderers/opentui/ui-host";
 import type { ReactNode } from "react";
 import { act, useReducer, useState } from "react";
+import type { PluginRegistry } from "../../../plugins/registry";
+import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { openTuiUiHost } from "../../../renderers/opentui/ui-host";
 import {
   AppContext,
   appReducer,
@@ -10,18 +11,17 @@ import {
   resolveTickerForPane,
   usePaneTicker,
 } from "../../../state/app/context";
-import { cloneLayout, createDefaultConfig, TICKER_RESEARCH_PANE_ID, type LayoutConfig } from "../../../types/config";
-import type { PluginRegistry } from "../../../plugins/registry";
+import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Textarea } from "../../../ui";
-import {
-  buildNativeWindowState,
-  resolvePaneManagementShortcut,
-  resolveAppHeaderHeightCells,
-  Shell,
-} from "./index";
-import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { TransientLayoutProvider, useTransientLayout, type TransientLayoutState } from "../transient-layout";
+import { resolvePaneFocusSourceLayout } from "./fullscreen";
+import {
+  Shell,
+  buildNativeWindowState,
+  resolveAppHeaderHeightCells,
+  resolvePaneManagementShortcut,
+} from "./index";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -54,6 +54,7 @@ function createShellPluginRegistry(options?: {
     ]),
     paneTemplates: new Map(),
     commands: new Map(),
+    getEnabledTickerActions() { return [...this.tickerActions.values()]; },
     tickerActions: new Map(),
     brokers: new Map(),
     allPlugins: new Map(),
@@ -70,31 +71,7 @@ function createShellPluginRegistry(options?: {
   } as unknown as PluginRegistry;
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string; ctrl?: boolean; meta?: boolean; super?: boolean; shift?: boolean; alt?: boolean }) {
-  await act(async () => {
-    const keyEvent = {
-      ctrl: false,
-      alt: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      defaultPrevented: false,
-      propagationStopped: false,
-      preventDefault() {
-        this.defaultPrevented = true;
-      },
-      stopPropagation() {
-        this.propagationStopped = true;
-      },
-      ...event,
-    };
-    testSetup!.renderer.keyInput.emit("keypress", keyEvent as any);
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true, frames: 2 });
 
 type ShellTestAction = { type: string; [key: string]: any };
 

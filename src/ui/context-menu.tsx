@@ -1,9 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { t, tf } from "../i18n";
 import { getSharedRegistry, type PluginRegistry } from "../plugins/registry";
-import type { TickerFinancials } from "../types/financials";
 import { TICKER_RESEARCH_PANE_ID } from "../types/config";
-import type { TickerRecord } from "../types/ticker";
 import {
   contextMenuDivider,
   hasRunnableContextMenuItem,
@@ -11,6 +9,8 @@ import {
   type ContextMenuDividerItem,
   type ContextMenuItem,
 } from "../types/context-menu";
+import type { TickerFinancials } from "../types/financials";
+import type { TickerRecord } from "../types/ticker";
 import { useRendererHost, useUiCapabilities } from "./host";
 
 interface ContextMenuEventLike {
@@ -269,7 +269,7 @@ export function tickerContextMenuItems({
   }
 
   const tickerActions = registry
-    ? [...registry.tickerActions.values()].filter((action) => !action.filter || action.filter(ticker))
+    ? registry.getEnabledTickerActions().filter((action) => !action.filter || action.filter(ticker))
     : [];
   if (tickerActions.length > 0) {
     items.push(contextMenuDivider("ticker:actions-divider"));

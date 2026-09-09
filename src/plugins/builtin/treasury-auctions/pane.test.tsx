@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
+import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
@@ -102,24 +102,7 @@ async function renderSettled() {
   });
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string }) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      defaultPrevented: false,
-      propagationStopped: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    } as never);
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
 
 describe("TreasuryAuctionsPane", () => {
   test("renders auction metrics and keeps one placeholder for unpublished results", async () => {

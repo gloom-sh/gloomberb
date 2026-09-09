@@ -55,7 +55,8 @@ describe("context menu item builders", () => {
 
   test("ticker menu includes plugin ticker actions and hides remove actions without memberships", () => {
     const registry = {
-      tickerActions: new Map([
+      getEnabledTickerActions() { return [...this.tickerActions.values()]; },
+    tickerActions: new Map([
         ["alert", {
           id: "alert",
           label: "Set Alert",

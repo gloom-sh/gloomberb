@@ -1,26 +1,30 @@
-import { Box, ScrollBox, Text } from "../../../ui";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useShortcut } from "../../../react/input";
-import { Button, EmptyState, Spinner, StaticChartSurface, type PaneFooterSegment } from "../../../components";
-import type { PaneProps } from "../../../types/plugin";
-import type { PluginModule } from "../plugin-module";
-import { colors } from "../../../theme/colors";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { useMemo } from "react";
+import { EmptyState, Spinner, StaticChartSurface, type PaneFooterSegment } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { useAsyncResource } from "../../../react/async-resource";
+import { useShortcut } from "../../../react/input";
+import { colors } from "../../../theme/colors";
+import type { PaneProps } from "../../../types/plugin";
+import { Box, ScrollBox, Text } from "../../../ui";
+import type { PluginModule } from "../plugin-module";
+import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
+import { usePaneStatusFooter } from "../shared/pane-footer";
+import { yieldCurveHeadless } from "./headless";
 import {
+  TREASURY_MATURITIES,
   curveAsOf,
+  isInverted,
   loadYieldCurve,
   parseYieldPoints,
-  isInverted,
   spreadBasisPoints,
-  TREASURY_MATURITIES,
   type YieldPoint,
 } from "./treasury-data";
-import { usePaneStatusFooter } from "../shared/pane-footer";
-import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
-import { yieldCurveHeadless } from "./headless";
 
 export { yieldCurveHeadless } from "./headless";
+
+const loadCurve = () => loadYieldCurve();
+const EMPTY_POINTS: YieldPoint[] = [];
 
 function formatYield(y: number | null): string {
   if (y == null) return "—";
@@ -32,35 +36,8 @@ function formatYieldAxis(value: number): string {
 }
 
 function YieldCurvePane({ focused, width, height }: PaneProps) {
-  const [points, setPoints] = useState<YieldPoint[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-
-  const fetchGenRef = useRef(0);
-
-  const load = useCallback(async () => {
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
-    setLoading(true);
-    setError(null);
-
-    try {
-      const data = await loadYieldCurve();
-      if (fetchGenRef.current !== gen) return;
-      setPoints(data);
-      setLastUpdated(Date.now());
-    } catch (err) {
-      if (fetchGenRef.current !== gen) return;
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      if (fetchGenRef.current === gen) setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const { data, loading, error, updatedAt: lastUpdated, load } = useAsyncResource(loadCurve);
+  const points = data ?? EMPTY_POINTS;
   useAutoRefresh(lastUpdated, load);
   const updatedAgo = useUpdatedAgo(lastUpdated);
 

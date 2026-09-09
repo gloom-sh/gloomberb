@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -62,73 +62,9 @@ async function renderFrames(count = 4) {
   }
 }
 
-async function emitKeypress(event: {
-  name?: string;
-  sequence?: string;
-  defaultPrevented?: boolean;
-  propagationStopped?: boolean;
-}) {
-  await act(async () => {
-    let defaultPrevented = event.defaultPrevented === true;
-    let propagationStopped = event.propagationStopped === true;
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      ...event,
-      get defaultPrevented() {
-        return defaultPrevented;
-      },
-      get propagationStopped() {
-        return propagationStopped;
-      },
-      preventDefault: () => {
-        defaultPrevented = true;
-      },
-      stopPropagation: () => {
-        propagationStopped = true;
-      },
-    } as any);
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { trackPropagation: true });
 
-async function emitKeypressBatch(events: Array<{
-  name?: string;
-  sequence?: string;
-}>) {
-  await act(async () => {
-    for (const event of events) {
-      let defaultPrevented = false;
-      let propagationStopped = false;
-      testSetup!.renderer.keyInput.emit("keypress", {
-        ctrl: false,
-        meta: false,
-        option: false,
-        shift: false,
-        eventType: "press",
-        repeated: false,
-        ...event,
-        get defaultPrevented() {
-          return defaultPrevented;
-        },
-        get propagationStopped() {
-          return propagationStopped;
-        },
-        preventDefault: () => {
-          defaultPrevented = true;
-        },
-        stopPropagation: () => {
-          propagationStopped = true;
-        },
-      } as any);
-    }
-    await testSetup!.renderOnce();
-  });
-}
+const emitKeypressBatch = (events: TestKeyEvent[]) => emitTuiKeypress(testSetup!, events, { trackPropagation: true });
 
 function installAlpha13FTransport() {
   setHttpFetchTransport(async (url) => {

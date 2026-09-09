@@ -9,6 +9,7 @@ import {
   type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
+import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes } from "../../../ui";
@@ -16,25 +17,25 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
-import { loadCdsActivity, type CdsActivity, type CdsActivityLoader } from "./client";
+import { loadCdsActivity, type CdsActivityLoader } from "./client";
 import {
-  buildIssuerColumns,
-  buildTradeColumns,
   DEFAULT_ISSUER_SORT,
   DEFAULT_TRADE_SORT,
+  ISSUER_SORT_COLUMN_IDS,
+  TRADE_SORT_COLUMN_IDS,
+  buildIssuerColumns,
+  buildTradeColumns,
   formatAsOf,
   formatBp,
   formatEventTime,
   formatMaturity,
   formatNotional,
   formatUpfront,
-  ISSUER_SORT_COLUMN_IDS,
   nextSort,
   resolveIssuerQuery,
   sortIssuers,
   sortTrades,
   summarizeIssuers,
-  TRADE_SORT_COLUMN_IDS,
   tradesForIssuer,
   type CdsIssuerSummary,
   type CdsTrade,
@@ -163,40 +164,17 @@ export function CdsPane({
   const { symbol, ticker } = usePaneTicker();
   const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
 
-  const [activity, setActivity] = useState<CdsActivity | null>(null);
-  const [status, setStatus] = useState<"loading" | "loaded" | "error">("loading");
-  const [error, setError] = useState<string | null>(null);
-  const [fetchedAt, setFetchedAt] = useState<number | null>(null);
   const [issuerSort, setIssuerSort] = useState<IssuerSortPreference>(DEFAULT_ISSUER_SORT);
   const [tradeSort, setTradeSort] = useState<TradeSortPreference>(DEFAULT_TRADE_SORT);
   const [selectedIssuerKey, setSelectedIssuerKey] = useState<string | null>(null);
   const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const generation = useRef(0);
   // Held in a ref so an inline loader prop cannot turn every render into a fetch.
   const loadActivityRef = useRef(loadActivity);
   loadActivityRef.current = loadActivity;
 
-  const load = useCallback(() => {
-    generation.current += 1;
-    const current = generation.current;
-    setStatus((previous) => (previous === "loaded" ? "loaded" : "loading"));
-    setError(null);
-    loadActivityRef.current(issuerQuery)
-      .then((next) => {
-        if (generation.current !== current) return;
-        setActivity(next);
-        setStatus("loaded");
-        setFetchedAt(Date.now());
-      })
-      .catch((loadError: unknown) => {
-        if (generation.current !== current) return;
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
-      });
-  }, [issuerQuery]);
-
-  useEffect(() => { load(); }, [load]);
+  const request = useCallback(() => loadActivityRef.current(issuerQuery), [issuerQuery]);
+  const { data: activity, status, error, updatedAt: fetchedAt, load } = useAsyncResource(request);
   useAutoRefresh(fetchedAt, load);
 
   const trades = activity?.trades ?? NO_TRADES;

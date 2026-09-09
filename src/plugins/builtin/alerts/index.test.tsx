@@ -378,3 +378,30 @@ describe("alertsPlugin command", () => {
     }
   });
 });
+
+test("disposing alerts ignores an in-flight quote and does not schedule another poll", async () => {
+  const quote = Promise.withResolvers<never>();
+  let writes = 0;
+  let notifications = 0;
+  let schedulingReads = 0;
+  const ctx = {
+    registerCommand() {}, registerPane() {}, registerPaneTemplate() {},
+    configState: {
+      get: () => serializeAlerts([makeAlert("pending", "AAPL", "above", 200)]),
+      set: () => { writes += 1; },
+    },
+    marketData: { getQuote: () => quote.promise },
+    paneSettings: { get: () => { schedulingReads += 1; return "15"; } },
+    notify: () => { notifications += 1; },
+    log: { info() {}, warn() {} },
+  };
+  try {
+    await alertsPlugin.setup?.(ctx as any);
+    alertsPlugin.dispose?.();
+    quote.reject(new Error("quote completed after disposal"));
+    await Bun.sleep(0);
+    expect({ writes, notifications, schedulingReads }).toEqual({ writes: 0, notifications: 0, schedulingReads: 0 });
+  } finally {
+    alertsPlugin.dispose?.();
+  }
+});

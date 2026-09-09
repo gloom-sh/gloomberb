@@ -1,10 +1,10 @@
 import type { RefObject } from "react";
+import type { LayoutBounds } from "../../../plugins/pane-manager";
 import type {
   InputRenderable,
   ScrollBoxRenderable,
   TextareaRenderable,
 } from "../../../ui";
-import type { LayoutBounds } from "../../../plugins/pane-manager";
 import type { NativeSelectElement } from "../../ui/native-select";
 import type { CommandBarListRow, ListScreenState, ResultItem } from "../list/model";
 import type { CommandBarListScrollEvent } from "../list/view";
@@ -15,19 +15,6 @@ import type {
   CommandBarWorkflowField,
   CommandBarWorkflowRoute,
 } from "../workflow/types";
-
-export interface CommandBarPanelPalette {
-  inputBg: string;
-  paletteAccentText: string;
-  paletteBg: string;
-  paletteHeadingText: string;
-  paletteHoverBg: string;
-  paletteSelectedBg: string;
-  paletteSelectedText: string;
-  paletteSubtleText: string;
-  paletteText: string;
-  panelBg: string;
-}
 
 export interface CommandBarPanelProps {
   bodyHeight: number;

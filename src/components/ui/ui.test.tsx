@@ -1,12 +1,15 @@
+import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, createRef, useEffect, useRef, useState } from "react";
-import { TestDialogProvider, testRender } from "../../renderers/opentui/test-utils";
-import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core";
+import { setLanguage } from "../../i18n";
+import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
+import { createDefaultConfig } from "../../types/config";
+import { DataTableView } from "../data-table/view";
 import { ChoiceDialog } from "./choice-dialog";
 import { DataTable, type DataTableColumn, type DataTableVisibleRange } from "./data-table";
 import { TextField } from "./fields";
 import { ListView } from "./list-view";
-import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
 import {
   getMultiSelectDisplayValues,
   moveMultiSelectDisplayValue,
@@ -15,11 +18,8 @@ import {
   toggleMultiSelectValue,
   toggleOrderedMultiSelectValue,
 } from "./multi-select";
+import { MultiSelectDialogButton, type MultiSelectDialogButtonHandle } from "./multi-select/dialog";
 import { Tabs } from "./tabs";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
-import { createDefaultConfig } from "../../types/config";
-import { DataTableView } from "../data-table/view";
-import { setLanguage } from "../../i18n";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let setListSelection: ((index: number) => void) | null = null;
@@ -264,25 +264,7 @@ function ChoiceDialogHarness({
   );
 }
 
-async function emitKeypress(event: { name?: string; sequence?: string; ctrl?: boolean; meta?: boolean; shift?: boolean; alt?: boolean }) {
-  await act(async () => {
-    testSetup!.renderer.keyInput.emit("keypress", {
-      ctrl: false,
-      meta: false,
-      option: false,
-      shift: false,
-      eventType: "press",
-      repeated: false,
-      preventDefault: () => {},
-      stopPropagation: () => {},
-      ...event,
-    } as any);
-    await Promise.resolve();
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
-  await testSetup!.renderOnce();
-}
+const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event, { frames: 2, afterCommit: true });
 
 afterEach(async () => {
   if (testSetup) {

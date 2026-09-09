@@ -1,32 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import {
-  BUFFETT_INDICATOR,
-  EXCESS_CAPE_YIELD,
-  INDICATORS,
-  SHILLER_CAPE,
-  SP500_DIVIDEND_YIELD,
-  TOBINS_Q,
-  alignToDenominator,
-  buildValuationSeries,
-  chartYearLabels,
-  classifyZone,
-  fitTrend,
-  meanRatio,
-  niceDomain,
-  projectChart,
-  projectView,
-  resolveIndicatorArg,
-  sigmaVsTrend,
-  sliceByRange,
-  trendAt,
-  zoneScaleBands,
-  zoneScaleFraction,
-  zoneScaleValueAt,
-  type DatedSeries,
-  type IndicatorBuild,
-  type RatioPoint,
-  type ScaledObs,
-} from "./model";
+import { alignToDenominator, buildValuationSeries, type RatioPoint, type ScaledObs } from "./align";
+import { chartYearLabels, meanRatio, niceDomain, projectChart } from "./chart-projection";
+import { classifyZone, zoneScaleBands, zoneScaleFraction, zoneScaleValueAt } from "./defs";
+import { BUFFETT_INDICATOR, EXCESS_CAPE_YIELD, INDICATORS, SHILLER_CAPE, SP500_DIVIDEND_YIELD, TOBINS_Q, resolveIndicatorArg } from "./indicators";
+import { type DatedSeries } from "./series";
+import { fitTrend, sigmaVsTrend, trendAt } from "./trend";
+import { projectView, sliceByRange, type IndicatorBuild } from "./view";
 
 function scaled(date: string, value: number): ScaledObs {
   return { date, value };

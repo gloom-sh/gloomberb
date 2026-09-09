@@ -1,6 +1,6 @@
-import type { GloomPlugin } from "../../../types/plugin";
-import type { Quote } from "../../../types/financials";
 import { formatMarketPrice } from "../../../market-data/market/format";
+import type { Quote } from "../../../types/financials";
+import type { GloomPlugin } from "../../../types/plugin";
 import {
   createAlert,
   evaluateAlert,
@@ -23,6 +23,7 @@ import {
   saveAlerts,
 } from "./storage";
 
+let pollGeneration = 0;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const alertsPlugin: GloomPlugin = {
@@ -33,6 +34,7 @@ export const alertsPlugin: GloomPlugin = {
   toggleable: true,
 
   setup(ctx) {
+    const generation = ++pollGeneration;
     ctx.registerCommand({
       id: "set-alert",
       label: "Add Alert",
@@ -112,6 +114,7 @@ export const alertsPlugin: GloomPlugin = {
           return [key, createQuoteErrorMessage(symbol ?? "", err)];
         }
       }));
+      if (generation !== pollGeneration) return;
       const quotes = new Map<string, Quote | string>(results);
 
       let changed = false;
@@ -153,6 +156,7 @@ export const alertsPlugin: GloomPlugin = {
     // Re-armed each cycle so a change to the pane's Check interval setting takes
     // effect on the next tick without a restart.
     const scheduleNextPoll = () => {
+      if (generation !== pollGeneration) return;
       const seconds = Number(ctx.paneSettings?.get<string>("alerts", POLL_SECONDS_KEY));
       const delay = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : POLL_INTERVAL_MS;
       pollTimer = setTimeout(() => {
@@ -200,6 +204,7 @@ export const alertsPlugin: GloomPlugin = {
   },
 
   dispose() {
+    pollGeneration += 1;
     if (pollTimer) {
       clearTimeout(pollTimer);
       pollTimer = null;

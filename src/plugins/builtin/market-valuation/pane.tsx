@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   EmptyState,
@@ -11,6 +11,7 @@ import {
   type DataTableSelectionChangeReason,
   type PaneFooterSegment,
 } from "../../../components";
+import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -28,43 +29,17 @@ import { RANGE_OPTIONS, VALUATION_DEFAULTS } from "./settings";
 import {
   formatSigma,
   selectValuationViews,
-  type IndicatorViewModel,
-  type ValuationBundle,
+  type IndicatorViewModel
 } from "./view";
 
 /** Below this the detail sits under the table instead of beside it. */
+const loadBundle = () => loadValuationBundle();
+
 const SPLIT_MIN_WIDTH = 108;
 const LIST_WIDTH = 46;
 
-type LoadState =
-  | { status: "idle" }
-  | { status: "loading"; previous: ValuationBundle | null }
-  | { status: "ready"; bundle: ValuationBundle }
-  | { status: "error"; message: string; previous: ValuationBundle | null };
-
 type ColumnId = "name" | "value" | "zone" | "percentile" | "sigma";
 interface Column extends DataTableColumn { id: ColumnId }
-
-function bundleOf(state: LoadState): ValuationBundle | null {
-  switch (state.status) {
-    case "idle":
-      return null;
-    case "loading":
-    case "error":
-      return state.previous;
-    case "ready":
-      return state.bundle;
-    default: {
-      const _exhaustive: never = state;
-      return _exhaustive;
-    }
-  }
-}
-
-function initialLoadState(): LoadState {
-  const cached = getCachedValuationBundle();
-  return cached ? { status: "ready", bundle: cached } : { status: "idle" };
-}
 
 function matchesQuery(view: IndicatorViewModel, query: string): boolean {
   if (!query) return true;
@@ -133,34 +108,12 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     VALUATION_DEFAULTS.indicator,
   );
   const [range, setRange] = usePaneSettingValue<ValuationRangeId>("range", VALUATION_DEFAULTS.range);
-  const [state, setState] = useState<LoadState>(initialLoadState);
-  const [lastUpdated, setLastUpdated] = useState<number | null>(null);
+  const resource = useAsyncResource(loadBundle, { initialData: () => getCachedValuationBundle() });
+  const { data: bundle, load: refresh, updatedAt: lastUpdated } = resource;
   const [query, setQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const searchInputRef = useRef<InputRenderable | null>(null);
-  const generation = useRef(0);
-
-  const load = useCallback(async () => {
-    const current = ++generation.current;
-    setState((previous) => ({ status: "loading", previous: bundleOf(previous) }));
-    try {
-      const next = await loadValuationBundle();
-      if (generation.current !== current) return;
-      setState({ status: "ready", bundle: next });
-      setLastUpdated(Date.now());
-    } catch (error) {
-      if (generation.current !== current) return;
-      setState((previous) => ({
-        status: "error",
-        message: error instanceof Error ? error.message : String(error),
-        previous: bundleOf(previous),
-      }));
-    }
-  }, []);
-
-  useEffect(() => { void load(); }, [load]);
-  const refresh = useCallback(() => { void load(); }, [load]);
   useAutoRefresh(lastUpdated, refresh);
 
   const focusSearch = useCallback(() => {
@@ -190,7 +143,6 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     refresh();
   });
 
-  const bundle = bundleOf(state);
   const views = useMemo(
     () => (bundle ? selectValuationViews(bundle, range) : []),
     [bundle, range],
@@ -218,7 +170,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     setIndicatorId(id);
   }, [selectionOnScreen, setIndicatorId, views]);
 
-  const error = state.status === "error" ? state.message : bundle?.errors[0] ?? null;
+  const error = resource.error ?? bundle?.errors[0] ?? null;
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
     if (!selected) return [];
     const info: PaneFooterSegment[] = [
@@ -236,12 +188,12 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
 
   usePaneStatusFooter({
     registrationId: "market-valuation",
-    loading: state.status === "loading",
+    loading: resource.loading,
     error,
     info: footerInfo,
   });
 
-  if (!bundle && state.status !== "error") {
+  if (!bundle && resource.error === null) {
     return (
       <Box width={width} height={height} justifyContent="center" alignItems="center">
         <Spinner label="Loading market valuation..." />
