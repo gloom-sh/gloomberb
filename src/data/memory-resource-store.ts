@@ -4,7 +4,7 @@ import type {
   ListResourceOptions,
   ResourceCacheKey,
   SetResourceOptions,
-} from "../../../data/resource-store";
+} from "./resource-store";
 
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 
@@ -34,7 +34,7 @@ function isStale(record: CachedResourceRecord): boolean {
   return record.staleAt < Date.now();
 }
 
-export class DesktopMemoryResourceStore {
+export class MemoryResourceStore {
   private readonly records = new Map<string, CachedResourceRecord>();
 
   get<T>(key: ResourceCacheKey, options: GetResourceOptions = {}): CachedResourceRecord<T> | null {

@@ -24,9 +24,7 @@ export function bindSharedRegistry(registry: PluginRegistry, marketData: DataPro
 export function releaseSharedRegistry(registry: PluginRegistry, marketData: DataProvider): void {
   if (sharedRegistry === registry) {
     sharedRegistry = undefined;
-  }
-  if (sharedMarketData === marketData) {
-    sharedMarketData = undefined;
+    if (sharedMarketData === marketData) sharedMarketData = undefined;
   }
   if ((globalThis as any).__gloomRegistry === registry) {
     delete (globalThis as any).__gloomRegistry;

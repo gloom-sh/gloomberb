@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { PinTickerOptions, QuoteBatchResult } from "../../../types/plugin";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { futuresModule } from "./index";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 const FuturesPane = futuresModule.panes![0]!.component as (props: {
   paneId: string;
@@ -89,13 +90,9 @@ function makeRuntime(): PluginRuntimeAccess {
 function Harness() {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-futures-pane-test"));
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PluginRenderProvider runtime={makeRuntime()} pluginId="market-overview">
-        <PaneInstanceProvider paneId="futures">
-          <FuturesPane paneId="futures" paneType="futures" focused width={80} height={24} />
-        </PaneInstanceProvider>
-      </PluginRenderProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId="futures" runtime={makeRuntime()} pluginId="market-overview">
+      <FuturesPane paneId="futures" paneType="futures" focused width={80} height={24} />
+    </TestPaneProvider>
   );
 }
 

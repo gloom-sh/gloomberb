@@ -1,0 +1,118 @@
+import { describe, expect, test } from "bun:test";
+import { AppPersistence } from "../../data/app-persistence";
+import { MarketDataCoordinator } from "../../market-data/coordinator";
+import { createTestDataProvider } from "../../test-support/data-provider";
+import type { BrokerAdapter } from "../../types/broker";
+import { AssetDataRouter } from "./index";
+import { attachTestRegistry, brokerInstance, createBrokerConfig } from "./test-support";
+
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe("shared cached market queries", () => {
+  test("preserves stale FX age, shares refreshes, notifies consumers, and unsubscribes on destroy", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const pending = deferred<number>();
+    let calls = 0;
+    const provider = createTestDataProvider({ id: "fx", getExchangeRate: () => { calls += 1; return pending.promise; } });
+    const fetchedAt = Date.now() - 2 * 60 * 60_000;
+    persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:fx" }, { rate: 1.08 }, {
+      fetchedAt, cachePolicy: { staleMs: 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
+    });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    const first = new MarketDataCoordinator(router);
+    const second = new MarketDataCoordinator(router);
+    let notifications = 0;
+    second.subscribeKeys(["fx:EUR"], () => { notifications += 1; });
+    try {
+      const before = await first.loadFxRate("EUR");
+      expect(before).toMatchObject({ data: 1.08, fetchedAt, source: "fx", phase: "refreshing" });
+      expect(before.staleAt).toBeLessThan(Date.now());
+      await second.loadFxRate("EUR");
+      expect(calls).toBe(1);
+      first.destroy();
+      pending.resolve(1.12);
+      await tick();
+      await tick();
+      expect(second.getFxEntry("EUR")).toMatchObject({ data: 1.12, source: "fx", phase: "ready", error: null });
+      expect(second.getFxEntry("EUR").fetchedAt).toBeGreaterThan(fetchedAt);
+      expect(first.getFxEntry("EUR").data).toBe(1.08);
+      expect(notifications).toBeGreaterThan(0);
+      expect((await second.loadFxRate("EUR")).data).toBe(1.12);
+      expect(calls).toBe(1);
+    } finally { first.destroy(); second.destroy(); persistence.close(); }
+  });
+
+  test("shares cold loads with direct provider calls and keeps errors attached to stale fallback", async () => {
+    let calls = 0;
+    const pending = deferred<number>();
+    const provider = createTestDataProvider({ id: "fx", getExchangeRate: () => {
+      calls += 1;
+      return calls === 1 ? pending.promise : Promise.reject(new Error("offline"));
+    } });
+    const router = new AssetDataRouter(provider);
+    const coordinator = new MarketDataCoordinator(router);
+    try {
+      const first = coordinator.loadFxRate("EUR");
+      const direct = router.getExchangeRate("EUR");
+      await tick();
+      expect(calls).toBe(1);
+      pending.resolve(1.12);
+      const entry = await first;
+      expect(await direct).toBe(1.12);
+      const query = router.getCachedQuery("getExchangeRate", ["EUR"]);
+      await query.load({ force: true });
+      expect(coordinator.getFxEntry("EUR")).toMatchObject({ data: 1.12, fetchedAt: entry.fetchedAt, phase: "ready" });
+      expect(coordinator.getFxEntry("EUR").error?.message).toBe("No exchange rate provider available for EUR");
+      expect(calls).toBe(2);
+    } finally { coordinator.destroy(); }
+  });
+
+  test("keeps broker account options separate and explicit refresh bypasses fresh queries", async () => {
+    const calls: string[] = [];
+    const broker: BrokerAdapter = {
+      id: "ibkr", name: "IBKR", configSchema: [], validate: async () => true, importPositions: async () => [],
+      getOptionsChain: async (_ticker, instance) => {
+        calls.push(instance.id);
+        return { underlyingSymbol: "AAPL", expirationDates: [calls.length], calls: [], puts: [] };
+      },
+    };
+    const router = new AssetDataRouter(createTestDataProvider());
+    attachTestRegistry(router, { brokers: [["ibkr", broker]] });
+    const config = createBrokerConfig([brokerInstance({ id: "one" }), brokerInstance({ id: "two" })]);
+    router.setConfigAccessor(() => config);
+    const one = { brokerId: "ibkr", brokerInstanceId: "one" };
+    const two = { brokerId: "ibkr", brokerInstanceId: "two" };
+    expect((await router.getOptionsChain("AAPL", "NASDAQ", undefined, one)).expirationDates).toEqual([1]);
+    expect((await router.getOptionsChain("AAPL", "NASDAQ", undefined, two)).expirationDates).toEqual([2]);
+    expect((await router.getOptionsChain("AAPL", "NASDAQ", undefined, one)).expirationDates).toEqual([1]);
+    expect((await router.getOptionsChain("AAPL", "NASDAQ", undefined, { ...one, cacheMode: "refresh" })).expirationDates).toEqual([3]);
+    expect(calls).toEqual(["one", "two", "one"]);
+  });
+  test("refresh forwards cache mode to providers and rejects malformed cached exchange rates", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const modes: Array<string | undefined> = [];
+    const provider = createTestDataProvider({ id: "provider",
+      getOptionsChain: async (_symbol, _exchange, _expiration, context) => {
+        modes.push(context?.cacheMode);
+        return { underlyingSymbol: "AAPL", expirationDates: [1], calls: [], puts: [] };
+      },
+      getExchangeRate: async () => 1.15,
+    });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    try {
+      await router.getOptionsChain("AAPL");
+      await router.getOptionsChain("AAPL", undefined, undefined, { cacheMode: "refresh" });
+      expect(modes).toEqual([undefined, "refresh"]);
+      persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:provider" },
+        { rate: 0 }, { cachePolicy: { staleMs: 60_000, expireMs: 120_000 } });
+      expect(await router.getExchangeRate("EUR")).toBe(1.15);
+    } finally { persistence.close(); }
+  });
+
+});

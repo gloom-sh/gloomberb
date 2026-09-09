@@ -5,6 +5,7 @@ import { AnalystResearchView } from "./analyst-pane";
 import { CorporateActionsView } from "./corporate-actions-pane";
 import { EquityDiagnosticView } from "./equity-diagnostic-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
+import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { analystResearchHeadless } from "./analyst-headless";
 import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
@@ -84,6 +85,7 @@ export const researchModule: PluginModule = {
       name: "Relative Valuation",
       icon: "R",
       component: RelativeValuationPane,
+      headless: relativeValuationHeadless,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 104, height: 24 },
@@ -146,6 +148,7 @@ export const researchModule: PluginModule = {
     },
     {
       id: "relative-valuation-pane",
+      headless: relativeValuationHeadless,
       paneId: "relative-valuation",
       label: "Relative Valuation",
       description: "Compare valuation and operating metrics across peers.",

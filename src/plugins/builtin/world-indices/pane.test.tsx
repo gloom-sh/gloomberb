@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useMemo, useState } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import type { QuoteBatchResult } from "../../../types/data-provider";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { worldIndicesModule } from "./index";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 const WorldIndicesPane = worldIndicesModule.panes![0]!.component as (props: {
   paneId: string;
@@ -53,19 +54,15 @@ function Harness() {
   }, [mode]);
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PluginRenderProvider runtime={runtime} pluginId="market-overview">
-        <PaneInstanceProvider paneId="world-indices">
-          <WorldIndicesPane
-            paneId="world-indices"
-            paneType="world-indices"
-            focused
-            width={80}
-            height={24}
-          />
-        </PaneInstanceProvider>
-      </PluginRenderProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId="world-indices" runtime={runtime} pluginId="market-overview">
+      <WorldIndicesPane
+        paneId="world-indices"
+        paneType="world-indices"
+        focused
+        width={80}
+        height={24}
+      />
+    </TestPaneProvider>
   );
 }
 

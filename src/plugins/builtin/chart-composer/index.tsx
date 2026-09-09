@@ -1,3 +1,4 @@
+import { chartHeadless } from "./headless";
 import type {
   PaneTemplateContext,
   PaneTemplateCreateOptions,
@@ -123,7 +124,7 @@ function securityTemplate({
   minimumSymbols,
   build,
 }: {
-  id: string;
+  id: Parameters<typeof chartHeadless>[0];
   prefix: "GP" | "GIP" | "CMP" | "GF" | "GE";
   label: string;
   description: string;
@@ -134,6 +135,7 @@ function securityTemplate({
   return {
     id,
     paneId: CHART_COMPOSER_PANE_ID,
+    headless: chartHeadless(id),
     label,
     description,
     keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" ")],
@@ -160,6 +162,7 @@ function securityTemplate({
 const chartComposerTemplates: PaneTemplateDef[] = [
   {
     id: CHART_COMPOSER_TEMPLATE_ID,
+    headless: chartHeadless("chart-composer-pane"),
     paneId: CHART_COMPOSER_PANE_ID,
     label: "Custom Chart",
     description: "Chart arbitrary market, fundamental, valuation, and FRED series together.",

@@ -38,7 +38,8 @@ function fakePersistence(seed?: { value: TreasuryAuction[]; stale: boolean; expi
     getResource: (_kind: string, _key: string, options?: { allowExpired?: boolean }) => {
       if (!stored) return null;
       if (stored.expired && !options?.allowExpired) return null;
-      return { value: stored.value, fetchedAt: stored.fetchedAt, stale: stored.stale };
+      return { value: stored.value, fetchedAt: stored.fetchedAt, stale: stored.stale,
+        staleAt: stored.stale ? 0 : Date.now() + 60_000, expiresAt: stored.expired ? 0 : Date.now() + 60_000 };
     },
     setResource: (_kind: string, _key: string, value: TreasuryAuction[]) => {
       writes.push(value);

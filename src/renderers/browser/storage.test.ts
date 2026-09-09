@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import { createBrowserConfigStore, BROWSER_DATA_DIR } from "./config-host";
-import { BrowserPersistence } from "./persistence";
-import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./storage";
-import { BrowserTickerRepository } from "./ticker-repository";
+import { JsonPersistence } from "../../data/json-persistence";
+import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
+import { JsonTickerRepository } from "../../data/json-ticker-repository";
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();
@@ -41,7 +41,7 @@ describe("browser local persistence", () => {
     await configStore.saveConfig(config);
     expect((await configStore.loadConfig(BROWSER_DATA_DIR)).baseCurrency).toBe("EUR");
 
-    const tickers = new BrowserTickerRepository(storage);
+    const tickers = new JsonTickerRepository(storage);
     await tickers.createTicker({
       ticker: "AAPL",
       exchange: "NASDAQ",
@@ -53,12 +53,12 @@ describe("browser local persistence", () => {
       custom: {},
       tags: [],
     });
-    expect((await new BrowserTickerRepository(storage).loadTicker("aapl"))?.metadata.ticker).toBe("AAPL");
+    expect((await new JsonTickerRepository(storage).loadTicker("aapl"))?.metadata.ticker).toBe("AAPL");
 
-    const persistence = new BrowserPersistence(storage);
+    const persistence = new JsonPersistence(storage);
     persistence.pluginState.set("alerts", "draft", { enabled: true }, 2);
     persistence.sessions.set("app", { focusedPaneId: "portfolio-list:main" }, 1);
-    const restored = new BrowserPersistence(storage);
+    const restored = new JsonPersistence(storage);
     expect(restored.pluginState.get("alerts", "draft", 2)?.value).toEqual({ enabled: true });
     expect(restored.pluginState.get("alerts", "draft", 1)).toBeNull();
     expect(restored.sessions.get("app", 1)?.value).toEqual({ focusedPaneId: "portfolio-list:main" });

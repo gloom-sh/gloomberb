@@ -3,38 +3,16 @@ import { act, useReducer, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  appReducer,
-  createInitialState,
-} from "../../../state/app/context";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
-import type { TickerRecord } from "../../../types/ticker";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { Box, Text } from "../../../ui";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { createNotesTab } from "./ticker-notes-tab";
 import type { NotesFiles } from "./files";
+import { TestPaneProvider, createTestTicker as makeTicker, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "ticker-detail:notes-test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
-
-function makeTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
-}
 
 function createMockNotesFiles(options?: {
   loadDelayMs?: number;
@@ -68,23 +46,11 @@ function createMockNotesFiles(options?: {
 }
 
 function createNotesHarnessConfig(symbol: string) {
-  const config = createDefaultConfig("/tmp/gloomberb-notes-tab");
-  const layout = {
-    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "ticker-detail",
-      binding: { kind: "fixed" as const, symbol },
-    }],
-    floating: [],
-    detached: [],
-  };
-
-  return {
-    ...config,
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-  };
+  return createTestPaneConfig("/tmp/gloomberb-notes-tab", {
+    instanceId: TEST_PANE_ID,
+    paneId: "ticker-detail",
+    binding: { kind: "fixed", symbol },
+  });
 }
 
 function NotesTabHarness({
@@ -124,26 +90,22 @@ function NotesTabHarness({
   return (
     <TestDialogProvider>
       <Box flexDirection="column" width={80} height={24}>
-        <AppContext value={{ state, dispatch }}>
-          <PaneInstanceProvider paneId={TEST_PANE_ID}>
-            <PluginRenderProvider pluginId="notes" runtime={runtime}>
-              <PaneFooterProvider>
-                {() => (
-                  <>
-                    <NotesTab
-                      width={78}
-                      height={20}
-                      focused={focused}
-                      onCapture={() => {}}
-                    />
-                    <Text onMouseDown={() => setFocused(false)}>blur-tab</Text>
-                    <Text onMouseDown={() => switchSymbol("MSFT")}>switch-msft</Text>
-                  </>
-                )}
-              </PaneFooterProvider>
-            </PluginRenderProvider>
-          </PaneInstanceProvider>
-        </AppContext>
+        <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="notes" runtime={runtime}>
+          <PaneFooterProvider>
+            {() => (
+              <>
+                <NotesTab
+                  width={78}
+                  height={20}
+                  focused={focused}
+                  onCapture={() => { }}
+                />
+                <Text onMouseDown={() => setFocused(false)}>blur-tab</Text>
+                <Text onMouseDown={() => switchSymbol("MSFT")}>switch-msft</Text>
+              </>
+            )}
+          </PaneFooterProvider>
+        </TestPaneProvider>
       </Box>
     </TestDialogProvider>
   );

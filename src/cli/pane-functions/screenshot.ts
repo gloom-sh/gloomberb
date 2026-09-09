@@ -1,3 +1,6 @@
+import { apiClient } from "../../api-client";
+import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
+import { loadResolvedHeadlessPaneModel } from "./headless";
 import { dirname, resolve } from "path";
 import { mkdir } from "fs/promises";
 import type { PaneRuntimeState } from "../../core/state/app/state";
@@ -41,7 +44,6 @@ import type {
 } from "../../time-series/reporting";
 import type { TimeRange } from "../../time-series/range";
 import { appendLiveQuotePoint } from "../../time-series/chart-data";
-import { applyResolvedSeriesTransform } from "../../time-series/transforms";
 import { subtractTimeRange } from "../../time-series/date-window";
 import {
   buildPresetDateWindow,
@@ -55,13 +57,9 @@ import {
 import type { DatedObservation } from "../../plugins/builtin/market-valuation/series";
 import { defaultStatLoader } from "../../plugins/builtin/econ-statistics/client";
 import { STATS } from "../../plugins/builtin/econ-statistics/stats";
-import { publicTickerKey } from "../../utils/exchanges";
-import { apiClient } from "../../api-client";
+import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { getCloudApiBaseUrl } from "../../api-client/request";
-import type { FredSeriesCacheEntry } from "../../data/fred-series";
 import type { ResolvedSeries } from "../../time-series/types";
-import { chartSeriesSourceKey, createChartSeriesResolver } from "../../capabilities";
-import { getSharedRegistry } from "../../plugins/registry";
 import {
   collectShotSymbols,
   clipPriceHistoryToRange,
@@ -70,10 +68,6 @@ import {
   isFinancialAnalysisFunction,
   withShotPriceHistory,
 } from "./data";
-import {
-  loadShotIntradayWindow,
-  resolveShotIntradayRequest,
-} from "./intraday-shot";
 
 const DESKTOP_CELL_WIDTH_PX = 8;
 const DESKTOP_CELL_HEIGHT_PX = 18;
@@ -233,29 +227,6 @@ async function collectShotStatSeries(
   return loaded.filter((entry): entry is [string, DatedObservation[]] => !!entry);
 }
 
-async function collectShotFredSeries(
-  resolved: ResolvedPaneFunction,
-): Promise<Array<[string, FredSeriesCacheEntry]>> {
-  if (resolved.pane.id !== CHART_COMPOSER_PANE_ID) return [];
-  const spec = parseChartSpec(resolved.instance.settings?.chartSpec);
-  if (!spec) return [];
-  const seriesIds = [...new Set(spec.series.flatMap((series) => (
-    series.source.kind === "economic" ? [series.source.seriesId.trim().toUpperCase()] : []
-  )))];
-  const loaded = await Promise.all(seriesIds.map(async (seriesId) => {
-    try {
-      const data = await apiClient.getCloudFredSeries(seriesId, {
-        startDate: "1900-01-01",
-        sortOrder: "asc",
-      });
-      return [seriesId, { data, fetchedAt: Date.now(), stale: false }] as [string, FredSeriesCacheEntry];
-    } catch {
-      return null;
-    }
-  }));
-  return loaded.filter((entry): entry is [string, FredSeriesCacheEntry] => !!entry);
-}
-
 /**
  * The pane reads its legs from a client cache the shot renderer cannot fill itself,
  * so fetch them here on the Bun side and hand them over with the payload.
@@ -273,23 +244,6 @@ async function collectShotValuationSeries(
     }
   }));
   return loaded.filter((entry): entry is [string, DatedObservation[]] => !!entry);
-}
-
-async function collectShotCapabilitySeries(
-  resolved: ResolvedPaneFunction,
-): Promise<Array<[string, ResolvedSeries]>> {
-  if (resolved.pane.id !== CHART_COMPOSER_PANE_ID) return [];
-  const spec = parseChartSpec(resolved.instance.settings?.chartSpec);
-  const invoker = getSharedRegistry();
-  if (!spec || !invoker) return [];
-  const resolveSeries = createChartSeriesResolver(invoker);
-  return (await Promise.all(spec.series.flatMap((series) => {
-    if (series.source.kind !== "capability") return [];
-    const source = series.source;
-    return [resolveSeries(source, spec.viewport, series)
-      .then((value) => [chartSeriesSourceKey(source), value] as [string, ResolvedSeries])
-      .catch(() => null)];
-  }))).filter((entry): entry is [string, ResolvedSeries] => entry !== null);
 }
 
 export interface PaneScreenshotExpectedSelection {
@@ -517,15 +471,36 @@ export async function buildDesktopShotPayload(
   const financials: Array<[string, TickerFinancials]> = [];
   const intradayHistories: DesktopPaneShotIntradayHistory[] = [];
   const optionsChains: Array<[string, OptionsChain]> = [];
-  const [fredSeries, capabilitySeries, valuationSeries, statSeries] = await Promise.all([
-    collectShotFredSeries(resolved),
-    collectShotCapabilitySeries(resolved),
+  const [valuationSeries, statSeries] = await Promise.all([
     collectShotValuationSeries(resolved),
     collectShotStatSeries(resolved),
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
-  const shotNow = new Date();
-  for (const symbol of collectShotSymbols(resolved, rawArg)) {
+  let chartModel: ChartPaneModel | undefined;
+  if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
+    const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
+    chartModel = loaded.result as ChartPaneModel;
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, chartSpec: chartModel.spec } };
+    const authored = parseChartSpec(resolved.instance.settings?.chartSpec);
+    const captured = new Map(chartModel.snapshot.financials);
+    const identities = new Map(chartModel.spec.series.flatMap((series) => {
+      if (series.source.kind !== "security") return [];
+      const key = publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange);
+      const original = authored?.series.find(({ id }) => id === series.id)?.source;
+      const label = original?.kind === "security" ? publicTickerKey(original.instrument.symbol, original.instrument.exchange) : key;
+      return [[key, label] as const];
+    }));
+    for (const [key, label] of identities) {
+      const data = captured.get(key) ?? { annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+      financials.push([label, data]);
+      const { symbol } = parsePublicTickerKey(key);
+      const ticker = await context.store.loadTicker(key) ?? await context.store.loadTicker(symbol);
+      tickers.push(ticker ?? createFallbackTicker(key, data, context));
+    }
+    intradayHistories.push(...chartModel.snapshot.intradayHistories.map((history) => ({
+      ...history, start: history.start?.toISOString() ?? null, end: history.end?.toISOString() ?? null,
+    })));
+  } else for (const symbol of collectShotSymbols(resolved, rawArg)) {
     const entry = await fetchTickerFinancials(context, symbol);
     const requestedRange = shotPriceHistoryRange(resolved);
     let data = entry.financials;
@@ -534,54 +509,7 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
-    if (resolved.capability.id === "intraday-price-chart") {
-      const request = resolveShotIntradayRequest(resolved.options);
-      const intraday = await loadShotIntradayWindow({
-        provider: context.dataProvider,
-        symbol: entry.instrument.symbol,
-        exchange,
-        request,
-        now: shotNow,
-      });
-      data = { ...data, priceHistory: intraday.points };
-      intradayHistories.push({
-        symbol: entry.instrument.symbol,
-        exchange,
-        rangePreset: request.rangePreset,
-        resolution: request.resolution,
-        requestedSession: request.session,
-        sessionDates: intraday.sessionDates,
-        points: intraday.points,
-        start: intraday.start?.toISOString() ?? null,
-        end: intraday.end?.toISOString() ?? null,
-        unavailableReason: intraday.unavailableReason,
-      });
-      const presetStart = subtractTimeRange(shotNow, request.rangePreset);
-      const needsExplicitWindow = request.session !== null
-        || (intraday.start !== null && intraday.start.getTime() < presetStart.getTime())
-        || (intraday.end !== null && intraday.end.getTime() > shotNow.getTime());
-      if (needsExplicitWindow && intraday.start && intraday.end) {
-        const chartSpec = parseChartSpec(shotInstance.settings?.chartSpec);
-        if (chartSpec) {
-          shotInstance = {
-            ...shotInstance,
-            settings: {
-              ...shotInstance.settings,
-              chartSpec: {
-                ...chartSpec,
-                viewport: {
-                  ...chartSpec.viewport,
-                  dateWindow: {
-                    start: intraday.start.toISOString(),
-                    end: intraday.end.toISOString(),
-                  },
-                },
-              },
-            },
-          };
-        }
-      }
-    } else if (requestedRange) {
+    if (requestedRange) {
       try {
         const priceHistory = await context.dataProvider.getPriceHistory(entry.instrument.symbol, exchange, requestedRange);
         data = { ...data, priceHistory: clipPriceHistoryToRange(priceHistory, requestedRange) };
@@ -600,7 +528,7 @@ export async function buildDesktopShotPayload(
   config.layout.instances[0] = shotInstance;
   if (config.layouts[0]) config.layouts[0].layout.instances[0] = shotInstance;
 
-  return {
+  const payload: DesktopPaneShotPayload = {
     config,
     paneId: resolved.instance.instanceId,
     widthCells,
@@ -613,12 +541,12 @@ export async function buildDesktopShotPayload(
     financials,
     intradayHistories,
     optionsChains,
-    fredSeries,
     valuationSeries,
     statSeries,
-    capabilitySeries,
     paneState,
   };
+  if (chartModel) payload.chartModel = chartModel.chart;
+  return payload;
 }
 
 function resolveShotTheme(requested: string): string {
@@ -632,19 +560,10 @@ function resolveShotTheme(requested: string): string {
   return match;
 }
 
-export function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null {
+function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null {
   switch (resolved.capability.id) {
-    case "chart-composer":
-      return parseChartSpec(resolved.instance.settings?.chartSpec)?.viewport.range ?? null;
-    case "valuation-series":
-      return "ALL";
-    case "price-chart":
-      return (resolved.options.rangePreset ?? "5Y") as TimeRange;
-    case "price-comparison":
     case "return-correlation":
       return (resolved.options.rangePreset ?? "1Y") as TimeRange;
-    case "intraday-price-chart":
-      return (resolved.options.rangePreset ?? "1D") as TimeRange;
     case "historical-prices":
     case "security-relationship":
       return (resolved.options.range ?? "1Y") as TimeRange;
@@ -703,6 +622,8 @@ export async function renderDesktopShot({
   } finally {
     apiClient.setSessionToken(previousSessionToken);
   }
+  const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
+  if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const symbols = payload.financials.map(([symbol]) => symbol);
   const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom";
   const rowCount = usesLiveDomEvidence
@@ -843,6 +764,18 @@ export function shotDataEvidenceFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
 ): PaneScreenshotDataEvidence | null {
+  const spec = payload.chartModel ? parseChartSpec(payload.config.layout.instances.find((instance) => instance.instanceId === payload.paneId)?.settings?.chartSpec) : null;
+  const visibleSeries = payload.chartModel && spec ? spec.series.flatMap((entry) => {
+    if (entry.source.kind !== "security" || entry.visible === false) return [];
+    const output = payload.chartModel!.series.find((series) => series.id === entry.id);
+    return [{
+      symbol: publicTickerKey(entry.source.instrument.symbol, entry.source.instrument.exchange),
+      points: (output?.points ?? []).flatMap((point) => {
+        const close = point.rawValue === undefined ? point.value ?? point.close : point.rawValue;
+        return typeof close === "number" && Number.isFinite(close) ? [{ date: point.date, close }] : [];
+      }),
+    }];
+  }) : null;
   if (resolved.capability.id === "intraday-price-chart") {
     const intraday = payload.intradayHistories[0];
     if (!intraday || intraday.points.length === 0) return null;
@@ -863,22 +796,16 @@ export function shotDataEvidenceFor(
   if (resolved.capability.id === "price-chart") {
     const range = String(resolved.options.rangePreset ?? "5Y") as TimeRange;
     const [symbol, financials] = payload.financials[0] ?? [];
-    if (!symbol || !financials) return null;
-    const { evidence } = normalizeChartSeries(symbol, financials, range);
-    if (!evidence.first || !evidence.last || evidence.pointCount <= 0) return null;
-    return {
-      kind: "price-series",
-      symbol,
-      range,
-      pointCount: evidence.pointCount,
-      first: evidence.first,
-      last: evidence.last,
-    };
+    const captured = visibleSeries?.[0];
+    const evidence = captured ? chartSeriesEvidence(captured.symbol, captured.points)
+      : visibleSeries === null && symbol && financials ? normalizeChartSeries(symbol, financials, range).evidence : null;
+    if (!evidence?.first || !evidence.last || evidence.pointCount <= 0) return null;
+    return { kind: "price-series", range, ...evidence, first: evidence.first, last: evidence.last };
   }
 
   if (resolved.capability.id === "price-comparison") {
     const range = String(resolved.options.rangePreset ?? "1Y") as TimeRange;
-    const normalizedSeries = payload.financials.map(([symbol, financials]) => ({
+    const normalizedSeries = visibleSeries ?? payload.financials.map(([symbol, financials]) => ({
       symbol,
       points: normalizeChartSeries(symbol, financials, range).points,
     }));
@@ -888,7 +815,7 @@ export function shotDataEvidenceFor(
     if (!Number.isFinite(latestTimestamp)) return null;
     const projectionStart = subtractTimeRange(new Date(latestTimestamp), range).getTime();
     const series = normalizedSeries.flatMap(({ symbol, points }) => {
-      const projectionPoints = points.filter(({ date }) => date.getTime() >= projectionStart);
+      const projectionPoints = visibleSeries ? points : points.filter(({ date }) => date.getTime() >= projectionStart);
       const base = projectionPoints[0];
       const latest = projectionPoints.at(-1);
       if (!base || !latest || !Number.isFinite(base.close) || !Number.isFinite(latest.close) || base.close === 0) {
@@ -918,7 +845,9 @@ export function shotDataEvidenceFor(
       periodCount ?? (period === "annual" ? 6 : 8),
       period === "annual" ? 6 : 8,
     );
-    const series = payload.financials.map(([symbol, financials]) => ({
+    const series = visibleSeries?.map(({ symbol, points }) => ({
+      symbol, rows: points.slice(-evidencePeriodCount).map(({ date, close }) => ({ date: date.toISOString().slice(0, 10), value: close })),
+    })) ?? payload.financials.map(([symbol, financials]) => ({
       symbol,
       rows: limitGraphRowsBySymbol(
         graphRowsForFinancials(financials, "fundamental", metric, period, symbol),
@@ -1033,7 +962,6 @@ function shotExpectedChart(
   if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
     const spec = parseChartSpec(resolved.instance.settings?.chartSpec);
     if (!spec) return null;
-    const capabilitySeries = new Map(payload.capabilitySeries);
     const capabilityPoint = (point: ResolvedSeries["points"][number] | undefined) => point
       ? {
           date: point.date.toISOString(),
@@ -1060,8 +988,7 @@ function shotExpectedChart(
           : series.source.kind === "economic"
             ? { economicSeriesId: series.source.seriesId }
             : (() => {
-                const loaded = capabilitySeries.get(chartSeriesSourceKey(series.source));
-                const resolvedSeries = loaded ? applyResolvedSeriesTransform(loaded, series.transform) : undefined;
+                const resolvedSeries = payload.chartModel?.series.find((entry) => entry.id === series.id);
                 return {
                   capabilityId: series.source.capabilityId,
                   providerSeriesId: series.source.seriesId,

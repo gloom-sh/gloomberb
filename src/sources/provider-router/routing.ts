@@ -1,6 +1,5 @@
-import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
-import { shouldLogProviderError } from "../provider-errors";
-import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
+import type { MarketDataRequestContext } from "../../types/data-provider";
+import type { ProviderRouterCoreDeps } from "./route-types";
 import { buildVariantKey } from "./cache";
 
 export interface RouterRequestIdentity {
@@ -41,31 +40,4 @@ export function scheduleRouterRevalidation(
       inFlight.delete(key);
     });
   inFlight.set(key, promise);
-}
-
-export async function firstProviderResult<T>(
-  deps: Pick<ProviderRouterCoreDeps, "providersInPriorityOrder" | "providerSourceKey" | "logProviderError">,
-  fn: (provider: DataProvider) => Promise<T | null | undefined>,
-): Promise<SourceResult<T> | null> {
-  for (const provider of deps.providersInPriorityOrder()) {
-    try {
-      const result = await fn(provider);
-      if (result != null) return { sourceKey: deps.providerSourceKey(provider), value: result };
-    } catch (err) {
-      if (shouldLogProviderError(err)) {
-        deps.logProviderError(`${provider.id} failed: ${err}`);
-      }
-    }
-  }
-  return null;
-}
-
-export function resolveProviderBySourceKey(
-  deps: Pick<ProviderRouterCoreDeps, "providersInPriorityOrder" | "providerSourceKey">,
-  sourceKey: string,
-): DataProvider | null {
-  for (const provider of deps.providersInPriorityOrder()) {
-    if (deps.providerSourceKey(provider) === sourceKey) return provider;
-  }
-  return null;
 }

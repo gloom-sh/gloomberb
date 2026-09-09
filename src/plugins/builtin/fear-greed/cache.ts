@@ -1,8 +1,8 @@
+import { createPluginCache } from "../../../data/plugin-cache";
 import {
   fetchFearGreedData,
   type FearGreedData,
 } from "./data";
-import type { PluginPersistence } from "../../../types/plugin";
 
 const CACHE_KIND = "cnn-fear-greed";
 const CACHE_KEY = "graphdata";
@@ -37,17 +37,12 @@ export interface FearGreedLoadResult extends FearGreedCacheEntry {
   refreshError?: string;
 }
 
-let fearGreedPersistence: PluginPersistence | null = null;
-let activeFetch: Promise<FearGreedLoadResult> | null = null;
-
-export function attachFearGreedPersistence(persistence: PluginPersistence): void {
-  fearGreedPersistence = persistence;
-}
-
-export function resetFearGreedPersistence(): void {
-  fearGreedPersistence = null;
-  activeFetch = null;
-}
+const cache = createPluginCache<FearGreedData, PersistedFearGreedData>({
+  kind: CACHE_KIND, source: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION, policy: CACHE_POLICY,
+  encode: serializeData, decode: deserializeData,
+});
+export const attachFearGreedPersistence = cache.attach;
+export const resetFearGreedPersistence = cache.reset;
 
 function serializePoint(point: FearGreedData["overall"]["history"][number]): PersistedChartPoint {
   return {
@@ -93,62 +88,13 @@ function deserializeData(data: PersistedFearGreedData): FearGreedData {
   };
 }
 
-function readPersistedCache(options?: { allowExpired?: boolean }): FearGreedCacheEntry | null {
-  const record = fearGreedPersistence?.getResource<PersistedFearGreedData>(CACHE_KIND, CACHE_KEY, {
-    sourceKey: CACHE_SOURCE,
-    schemaVersion: CACHE_SCHEMA_VERSION,
-    allowExpired: options?.allowExpired,
-  });
-  if (!record) return null;
-
-  return {
-    data: deserializeData(record.value),
-    fetchedAt: record.fetchedAt,
-    stale: !!record.stale,
-  };
-}
-
-function writeCache(data: FearGreedData): void {
-  fearGreedPersistence?.setResource(CACHE_KIND, CACHE_KEY, serializeData(data), {
-    sourceKey: CACHE_SOURCE,
-    schemaVersion: CACHE_SCHEMA_VERSION,
-    cachePolicy: CACHE_POLICY,
-  });
-}
-
 export function getCachedFearGreedData(options?: { allowExpired?: boolean }): FearGreedCacheEntry | null {
-  return readPersistedCache(options);
+  return cache.get(CACHE_KEY, options);
 }
 
-export async function loadFearGreed(
+export function loadFearGreed(
   force = false,
   loader: () => Promise<FearGreedData> = fetchFearGreedData,
 ): Promise<FearGreedLoadResult> {
-  const cached = getCachedFearGreedData();
-  if (!force && cached && !cached.stale) {
-    return cached;
-  }
-  if (activeFetch) return activeFetch;
-
-  const fallback = cached ?? getCachedFearGreedData({ allowExpired: true });
-  activeFetch = loader()
-    .then((data) => {
-      writeCache(data);
-      return { data, fetchedAt: Date.now(), stale: false };
-    })
-    .catch((error: unknown) => {
-      // A failed refresh must not be reported as a fresh load.
-      if (fallback) {
-        return {
-          ...fallback,
-          stale: true,
-          refreshError: error instanceof Error ? error.message : String(error),
-        };
-      }
-      throw error;
-    })
-    .finally(() => {
-      activeFetch = null;
-    });
-  return activeFetch;
+  return cache.load(CACHE_KEY, loader, { force });
 }

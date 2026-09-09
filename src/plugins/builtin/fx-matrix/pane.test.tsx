@@ -6,10 +6,11 @@ import {
   setSharedMarketDataCoordinator,
 } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { fxMatrixModule } from "./index";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 const FxMatrixPane = fxMatrixModule.panes![0]!.component as (props: {
   paneId: string;
@@ -65,13 +66,9 @@ function Harness() {
   const runtime = { getMarketData: () => ({}) } as unknown as PluginRuntimeAccess;
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PluginRenderProvider runtime={runtime} pluginId="market-overview">
-        <PaneInstanceProvider paneId="fx-matrix">
-          <FxMatrixPane paneId="fx-matrix" paneType="fx-matrix" focused width={100} height={14} />
-        </PaneInstanceProvider>
-      </PluginRenderProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId="fx-matrix" runtime={runtime} pluginId="market-overview">
+      <FxMatrixPane paneId="fx-matrix" paneType="fx-matrix" focused width={100} height={14} />
+    </TestPaneProvider>
   );
 }
 

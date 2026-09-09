@@ -1,8 +1,8 @@
-import type { AppPersistencePort } from "../../core/app-service-ports";
-import type { PluginStateRecord } from "../../data/plugin-state-store";
-import type { SessionSnapshotRecord } from "../../data/session-store";
-import { DesktopMemoryResourceStore } from "../electrobun/view/resource-store";
-import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./storage";
+import type { AppPersistencePort } from "../core/app-service-ports";
+import type { PluginStateRecord } from "./plugin-state-store";
+import type { SessionSnapshotRecord } from "./session-store";
+import { MemoryResourceStore } from "./memory-resource-store";
+import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
 
 type PluginState = Record<string, Record<string, PluginStateRecord>>;
 type Sessions = Record<string, SessionSnapshotRecord>;
@@ -11,12 +11,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-export class BrowserPersistence implements AppPersistencePort {
-  readonly resources = new DesktopMemoryResourceStore();
+export class JsonPersistence implements AppPersistencePort {
+  readonly resources = new MemoryResourceStore();
   private readonly pluginStateData: SafeJsonStorage<PluginState>;
   private readonly sessionData: SafeJsonStorage<Sessions>;
 
-  constructor(storage: StorageLike) {
+  constructor(storage?: StorageLike) {
     this.pluginStateData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.pluginState, {}, (value): value is PluginState => isRecord(value));
     this.sessionData = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.session, {}, (value): value is Sessions => isRecord(value));
   }

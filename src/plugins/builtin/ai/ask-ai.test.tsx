@@ -2,11 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
-import { PluginRenderProvider } from "../../runtime";
 import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../registry";
 import {
   AskAiResearchTab as AskAiTab,
@@ -15,32 +14,16 @@ import {
 } from "./ask-ai-detail-tab";
 import { setDetectedProviders, type AiProvider } from "./providers";
 import { setAiRunHost, setAiRuntimeCatalog, type AiRunHost } from "./runner";
-import type { TickerRecord } from "../../../types/ticker";
+import { TestPaneProvider, createTestTicker as makeTicker } from "../../../test-support/pane";
 
 const PANE_ID = "ticker-detail:main";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
-function makeTicker(symbol: string, name = symbol): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
-}
-
 function createAskAiHarness(
   width = 60,
   height = 12,
-  onCapture: (capturing: boolean) => void = () => {},
+  onCapture: (capturing: boolean) => void = () => { },
 ) {
   const config = createDefaultConfig("/tmp/gloomberb-ai");
   config.layout.instances = config.layout.instances.map((instance) => (
@@ -67,20 +50,16 @@ function createAskAiHarness(
   }]]);
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId={PANE_ID}>
-        <PluginRenderProvider pluginId="ai" runtime={createStatefulTestPluginRuntime()}>
-          <PaneFooterProvider>
-            {(footer) => (
-              <Box flexDirection="column" width={width} height={height}>
-                <AskAiTab width={width} height={Math.max(1, height - 1)} focused onCapture={onCapture} />
-                <PaneFooterBar footer={footer} focused width={width} />
-              </Box>
-            )}
-          </PaneFooterProvider>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId={PANE_ID} pluginId="ai" runtime={createStatefulTestPluginRuntime()}>
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box flexDirection="column" width={width} height={height}>
+            <AskAiTab width={width} height={Math.max(1, height - 1)} focused onCapture={onCapture} />
+            <PaneFooterBar footer={footer} focused width={width} />
+          </Box>
+        )}
+      </PaneFooterProvider>
+    </TestPaneProvider>
   );
 }
 
@@ -322,20 +301,16 @@ describe("AskAiTab", () => {
       };
 
       return (
-        <AppContext value={{ state, dispatch }}>
-          <PaneInstanceProvider paneId={PANE_ID}>
-            <PluginRenderProvider pluginId="ai" runtime={runtime}>
-              <PaneFooterProvider>
-                {(footer) => (
-                  <Box flexDirection="column" width={60} height={12}>
-                    <AskAiTab width={60} height={11} focused onCapture={() => {}} />
-                    <PaneFooterBar footer={footer} focused width={60} />
-                  </Box>
-                )}
-              </PaneFooterProvider>
-            </PluginRenderProvider>
-          </PaneInstanceProvider>
-        </AppContext>
+        <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ai" runtime={runtime}>
+          <PaneFooterProvider>
+            {(footer) => (
+              <Box flexDirection="column" width={60} height={12}>
+                <AskAiTab width={60} height={11} focused onCapture={() => { }} />
+                <PaneFooterBar footer={footer} focused width={60} />
+              </Box>
+            )}
+          </PaneFooterProvider>
+        </TestPaneProvider>
       );
     }
 

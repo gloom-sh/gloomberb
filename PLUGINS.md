@@ -180,7 +180,7 @@ A pane with `headless` automatically gets:
 - `reportReadiness: "ready"` plus its declared options in `gloomberb catalog`
 - strict option validation for `fn`, including allowed enum values and numeric bounds
 
-If a pane still has an entry in the legacy pane capability map, `headless` wins for reports. Its old report builder and screenshot behavior stay available until they are migrated separately.
+The definition is the only structured report contract. Optional `discovery` metadata supplies semantic aliases, a stable capability ID, limitations, and screenshot readiness; the catalog derives argument cardinality and options directly. No central pane capability map or report switch is needed.
 
 ### Definition contract
 
@@ -208,6 +208,9 @@ Options use the existing pane-function schema: `key`, `type`, `description`, opt
 - `apiClient`: the Gloom Cloud client
 - `config`: the loaded app configuration
 - `signal`: the abort signal for this invocation
+- `settings`: effective instance settings after template creation and option normalization
+- `resolveInstrument` (optional): resolves a symbol's remembered exchange without exposing storage
+- `capabilities` (optional): invokes registered plugin capabilities, including chart series
 
 Headless loaders must stay isomorphic. Do not import React, DOM APIs, Electrobun, OpenTUI, or renderer state. Pass dependencies through `ctx` and keep fetching in `client.ts`.
 
@@ -220,7 +223,13 @@ The four supported shapes cover the pane catalog:
 - `series`: `{ series: [{ id, label, points }], stats? }` for charts and derived statistics
 - `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
 
-All shapes may include `errors` and `metadata`. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+All shapes may include `errors`, `metadata`, and `unavailableSymbols`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+
+### Report and screenshot models
+
+Chart templates (`G`, `GP`, `GIP`, `CMP`, `GF`, `GE`) use the same chart resolution engine as the interactive pane. Screenshots render a scoped immutable copy of that resolved model, including transformations, studies, errors, and viewport data. Exporting a chart does not install another plugin capability handler or reload FRED in the webview.
+
+All declared headless `fn` results use `kind: rows | bundle | series | snapshot` and `source: headless`. Financial statements, quotes, historical prices, peer valuation, correlations, and relationships now follow that contract too. Consumers of the former command-specific JSON should read domain details from `rows`, `series`, `stats`, and `metadata`, and use `capabilityId` to identify the command. Chart series retain full OHLCV and observation timestamps in `points`; they are no longer reduced to date/value pairs. Transformed points also retain `rawValue` and the original `rawUnit`, with raw endpoint/return summaries in `metadata.summaries`. Financial series retain per-observation growth. Screenshot evidence keeps its own domain-specific shapes.
 
 ### Migration checklist
 

@@ -1,20 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act, useReducer, type ReactElement } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import {
-  AppContext,
-  appReducer,
-  createInitialState,
-  PaneInstanceProvider,
-} from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../types/config";
+import type { AppConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { portfolioAnalyticsModule } from "./index";
+import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "analytics:test";
 const BROKER_PORTFOLIO_ID = "broker:ibkr-flex:DU12345";
@@ -32,18 +28,12 @@ const AnalyticsPane = portfolioAnalyticsModule.panes![0]!.component as (props: {
 }) => ReactElement;
 
 function createAnalyticsConfig(initialPortfolioId: string): AppConfig {
-  const baseConfig = createDefaultConfig("/tmp/gloomberb-analytics");
-  const layout: AppConfig["layout"] = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "analytics",
-      binding: { kind: "none" },
-      params: { portfolioId: initialPortfolioId },
-    }],
-    floating: [],
-    detached: [],
-  };
+  const baseConfig = createTestPaneConfig("/tmp/gloomberb-analytics", {
+    instanceId: TEST_PANE_ID,
+    paneId: "analytics",
+    binding: { kind: "none" },
+    params: { portfolioId: initialPortfolioId },
+  });
 
   return {
     ...baseConfig,
@@ -58,8 +48,6 @@ function createAnalyticsConfig(initialPortfolioId: string): AppConfig {
         brokerAccountId: "DU12345",
       },
     ],
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
   };
 }
 
@@ -173,19 +161,15 @@ function AnalyticsHarness({
   harnessState = state;
 
   return (
-    <AppContext value={{ state, dispatch }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider pluginId="portfolio" runtime={runtime}>
-          <AnalyticsPane
-            paneId={TEST_PANE_ID}
-            paneType="analytics"
-            focused
-            width={100}
-            height={24}
-          />
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="portfolio" runtime={runtime}>
+      <AnalyticsPane
+        paneId={TEST_PANE_ID}
+        paneType="analytics"
+        focused
+        width={100}
+        height={24}
+      />
+    </TestPaneProvider>
   );
 }
 

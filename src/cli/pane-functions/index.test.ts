@@ -1,3 +1,8 @@
+import { paneSchemas as chartSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
+import { paneSchemas as tickerSchemas } from "../../plugins/builtin/ticker-detail/headless-schema";
+import { paneSchemas as correlationSchemas } from "../../plugins/builtin/correlation/headless-schema";
+import { paneSchemas as researchSchemas } from "../../plugins/builtin/research/headless-schema";
+import type { HeadlessPaneDefinition } from "../../types/headless";
 import { describe, expect, test } from "bun:test";
 import { paneFunctionTestInternals } from "./index";
 
@@ -23,8 +28,13 @@ const dummyPane = {
 };
 
 function capabilityFor(templateId: string) {
+  const schemas: Record<string, Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">> = {
+    ...chartSchemas, ...tickerSchemas, ...correlationSchemas, ...researchSchemas,
+  };
+  const schema = schemas[templateId];
   return getPaneFunctionCapability({
     id: templateId,
+    ...(schema ? { headless: { ...schema, shape: "rows" as const, load: () => ({ rows: [] }) } } : {}),
     paneId: dummyPane.id,
     label: "Test",
     description: "Test",

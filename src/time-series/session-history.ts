@@ -1,24 +1,24 @@
-import type { DataProvider } from "../../types/data-provider";
-import type { PricePoint } from "../../types/financials";
-import type { TimeRange } from "../../time-series/range";
+import type { DataProvider } from "../types/data-provider";
+import type { PricePoint } from "../types/financials";
+import type { TimeRange } from "./range";
 import {
   getPresetResolution,
   isIntradayResolution,
   type ManualChartResolution,
-} from "../../time-series/resolution";
-import { resolveExchangeTimeZone } from "../../utils/exchanges";
-import { getPricePointTimestamp } from "../../utils/price-history";
-import { zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
+} from "./resolution";
+import { resolveExchangeTimeZone } from "../utils/exchanges";
+import { getPricePointTimestamp } from "../utils/price-history";
+import { zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 
-export type ShotIntradayRangePreset = "1D" | "1W";
+export type IntradayRangePreset = "1D" | "1W";
 
-export interface ShotIntradayRequest {
-  rangePreset: ShotIntradayRangePreset;
+export interface IntradayRequest {
+  rangePreset: IntradayRangePreset;
   resolution: ManualChartResolution;
   session: string | null;
 }
 
-export interface ShotIntradayWindow {
+export interface IntradayWindow {
   points: PricePoint[];
   sessionDates: string[];
   start: Date | null;
@@ -48,7 +48,7 @@ function sessionDate(timestamp: number, timeZone: string): string {
   return `${parts.get("year")}-${parts.get("month")}-${parts.get("day")}`;
 }
 
-export function parseShotSessionDate(value: string): {
+export function parseSessionDate(value: string): {
   year: number;
   month: number;
   day: number;
@@ -69,11 +69,11 @@ export function parseShotSessionDate(value: string): {
   return { year, month, day };
 }
 
-export function shotSessionUtcBounds(value: string, timeZone: string): {
+export function sessionUtcBounds(value: string, timeZone: string): {
   start: Date;
   end: Date;
 } {
-  const parsed = parseShotSessionDate(value);
+  const parsed = parseSessionDate(value);
   const next = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day + 1));
   return {
     start: new Date(zonedWallClockToUtcMs(
@@ -112,14 +112,18 @@ function normalizedPoints(points: readonly PricePoint[]): PricePoint[] {
   );
 }
 
-export function resolveShotIntradaySessionWindow(
+export function intradaySessionDates(points: readonly PricePoint[], timeZone: string): string[] {
+  return [...new Set(normalizedPoints(points).map((point) => sessionDate(getPricePointTimestamp(point), timeZone)))];
+}
+
+export function resolveIntradaySessionWindow(
   points: readonly PricePoint[],
   options: {
-    rangePreset: ShotIntradayRangePreset;
+    rangePreset: IntradayRangePreset;
     session?: string | null;
     timeZone?: string | null;
   },
-): ShotIntradayWindow {
+): IntradayWindow {
   const timeZone = options.timeZone || "UTC";
   const normalized = normalizedPoints(points);
   const bySession = new Map<string, PricePoint[]>();
@@ -131,7 +135,7 @@ export function resolveShotIntradaySessionWindow(
   }
 
   const requestedSession = options.session?.trim() || null;
-  if (requestedSession) parseShotSessionDate(requestedSession);
+  if (requestedSession) parseSessionDate(requestedSession);
   const availableSessions = [...bySession.keys()].sort();
   const selectedSessions = requestedSession
     ? availableSessions.filter((date) => date === requestedSession)
@@ -149,7 +153,7 @@ export function resolveShotIntradaySessionWindow(
   };
 }
 
-export function hasIntradayBars(window: ShotIntradayWindow, timeZone = "UTC"): boolean {
+export function hasIntradayBars(window: IntradayWindow, timeZone = "UTC"): boolean {
   if (window.points.length < 2) return false;
   const pointsBySession = new Map<string, number[]>();
   for (const point of window.points) {
@@ -165,15 +169,15 @@ export function hasIntradayBars(window: ShotIntradayWindow, timeZone = "UTC"): b
   ));
 }
 
-export function resolveShotIntradayRequest(options: {
+export function resolveIntradayRequest(options: {
   rangePreset?: unknown;
   chartResolution?: unknown;
   session?: unknown;
-}): ShotIntradayRequest {
+}): IntradayRequest {
   const session = typeof options.session === "string" && options.session.trim()
     ? options.session.trim()
     : null;
-  if (session) parseShotSessionDate(session);
+  if (session) parseSessionDate(session);
   const rangePreset = session
     ? "1D"
     : options.rangePreset === "1W" ? "1W" : "1D";
@@ -189,7 +193,7 @@ export function resolveShotIntradayRequest(options: {
   return { rangePreset, resolution, session };
 }
 
-function unavailableReason(symbol: string, request: ShotIntradayRequest, kind: "empty" | "not-intraday"): string {
+function unavailableReason(symbol: string, request: IntradayRequest, kind: "empty" | "not-intraday"): string {
   const window = request.session
     ? `session ${request.session}`
     : request.rangePreset === "1W" ? "the latest five sessions" : "the latest session";
@@ -202,7 +206,7 @@ async function loadTrailingHistory(
   provider: DataProvider,
   symbol: string,
   exchange: string,
-  request: ShotIntradayRequest,
+  request: IntradayRequest,
 ): Promise<PricePoint[]> {
   if (!provider.getPriceHistoryForResolution) return [];
   const fetchRange: TimeRange = request.rangePreset === "1W" && request.resolution !== "1m"
@@ -224,13 +228,13 @@ async function loadHistoricalFallback(
   provider: DataProvider,
   symbol: string,
   exchange: string,
-  request: ShotIntradayRequest,
+  request: IntradayRequest,
   now: Date,
 ): Promise<PricePoint[]> {
   if (!provider.getDetailedPriceHistory) return [];
   if (request.session) {
     const timeZone = resolveExchangeTimeZone(exchange) ?? "UTC";
-    const bounds = shotSessionUtcBounds(request.session, timeZone);
+    const bounds = sessionUtcBounds(request.session, timeZone);
     return provider.getDetailedPriceHistory(
       symbol,
       exchange,
@@ -251,13 +255,13 @@ async function loadHistoricalFallback(
   ).catch(() => []);
 }
 
-export async function loadShotIntradayWindow(options: {
+export async function loadIntradayWindow(options: {
   provider: DataProvider;
   symbol: string;
   exchange: string;
-  request: ShotIntradayRequest;
+  request: IntradayRequest;
   now?: Date;
-}): Promise<ShotIntradayWindow & { unavailableReason: string | null }> {
+}): Promise<IntradayWindow & { bufferedPoints: PricePoint[]; unavailableReason: string | null }> {
   const timeZone = resolveExchangeTimeZone(options.exchange) ?? "UTC";
   let raw = options.request.session
     ? await loadHistoricalFallback(
@@ -273,7 +277,7 @@ export async function loadShotIntradayWindow(options: {
         options.exchange,
         options.request,
       );
-  let window = resolveShotIntradaySessionWindow(raw, {
+  let window = resolveIntradaySessionWindow(raw, {
     rangePreset: options.request.rangePreset,
     session: options.request.session,
     timeZone,
@@ -295,7 +299,7 @@ export async function loadShotIntradayWindow(options: {
           options.request,
           options.now ?? new Date(),
         );
-    window = resolveShotIntradaySessionWindow(raw, {
+    window = resolveIntradaySessionWindow(raw, {
       rangePreset: options.request.rangePreset,
       session: options.request.session,
       timeZone,
@@ -305,10 +309,11 @@ export async function loadShotIntradayWindow(options: {
 
   if (window.points.length === 0) {
     const requestedWindow = options.request.session
-      ? shotSessionUtcBounds(options.request.session, timeZone)
+      ? sessionUtcBounds(options.request.session, timeZone)
       : null;
     return {
       ...window,
+      bufferedPoints: [],
       start: requestedWindow?.start ?? window.start,
       end: requestedWindow?.end ?? window.end,
       unavailableReason: unavailableReason(
@@ -320,15 +325,16 @@ export async function loadShotIntradayWindow(options: {
   }
   if (!hasIntradayBars(window, timeZone)) {
     const requestedWindow = options.request.session
-      ? shotSessionUtcBounds(options.request.session, timeZone)
+      ? sessionUtcBounds(options.request.session, timeZone)
       : null;
     return {
       points: [],
+      bufferedPoints: [],
       sessionDates: window.sessionDates,
       start: requestedWindow?.start ?? null,
       end: requestedWindow?.end ?? null,
       unavailableReason: unavailableReason(options.symbol, options.request, "not-intraday"),
     };
   }
-  return { ...window, unavailableReason: null };
+  return { ...window, bufferedPoints: normalizedPoints(raw), unavailableReason: null };
 }

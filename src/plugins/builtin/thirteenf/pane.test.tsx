@@ -1,18 +1,12 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
-import {
-  AppContext,
-  PaneInstanceProvider,
-  appReducer,
-  createInitialState,
-  type AppState,
-} from "../../../state/app/context";
+import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
-import { PluginRenderProvider } from "../../runtime";
 import { ThirteenFPane } from "./pane";
+import { TestPaneProvider } from "../../../test-support/pane";
 
 const PANE_ID = "thirteenf-pane-test";
 
@@ -37,19 +31,15 @@ function Harness() {
   latestState = state;
 
   return (
-    <AppContext value={{ state, dispatch }}>
-      <PaneInstanceProvider paneId={PANE_ID}>
-        <PluginRenderProvider pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-          <ThirteenFPane
-            paneId={PANE_ID}
-            paneType="thirteenf-funds"
-            focused
-            width={96}
-            height={18}
-          />
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+      <ThirteenFPane
+        paneId={PANE_ID}
+        paneType="thirteenf-funds"
+        focused
+        width={96}
+        height={18}
+      />
+    </TestPaneProvider>
   );
 }
 

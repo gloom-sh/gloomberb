@@ -1,7 +1,7 @@
-import type { AppTickerRepositoryPort } from "../../core/app-service-ports";
-import { hydrateTickerMetadata } from "../../tickers/metadata";
-import type { TickerMetadata, TickerRecord } from "../../types/ticker";
-import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./storage";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
+import { hydrateTickerMetadata } from "../tickers/metadata";
+import type { TickerMetadata, TickerRecord } from "../types/ticker";
+import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "./json-storage";
 
 type StoredTickers = Record<string, TickerMetadata>;
 
@@ -21,11 +21,11 @@ function hydrate(metadata: TickerMetadata): TickerRecord | null {
   }
 }
 
-export class BrowserTickerRepository implements AppTickerRepositoryPort {
+export class JsonTickerRepository implements AppTickerRepositoryPort {
   private readonly data: SafeJsonStorage<StoredTickers>;
 
-  constructor(storage: StorageLike) {
-    this.data = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.tickers, {}, (value): value is StoredTickers => isRecord(value));
+  constructor(storage?: StorageLike, tickers: readonly TickerRecord[] = []) {
+    this.data = new SafeJsonStorage(storage, BROWSER_STORAGE_KEYS.tickers, Object.fromEntries(tickers.map((ticker) => [normalizeSymbol(ticker.metadata.ticker), ticker.metadata])), (value): value is StoredTickers => isRecord(value));
   }
 
   async loadAllTickers(): Promise<TickerRecord[]> {

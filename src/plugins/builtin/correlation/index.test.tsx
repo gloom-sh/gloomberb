@@ -2,58 +2,34 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, type ReactElement } from "react";
 import { Box } from "../../../ui";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import {
-  AppContext,
-  createInitialState,
-  PaneInstanceProvider,
-} from "../../../state/app/context";
-import { cloneLayout, createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../types/config";
+import { createInitialState } from "../../../state/app/context";
+import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { TickerRecord } from "../../../types/ticker";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
+import type { PluginRuntimeAccess } from "../../runtime";
 import { correlationModule } from ".";
+import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "correlation:test";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
 function makeTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      broker_contracts: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, {
+    broker_contracts: []
+  });
 }
 
 function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
-  const layout = {
-    dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "correlation",
-      settings: {
-        rangePreset: "1Y",
-        symbols: ["AAPL", "MSFT"],
-        symbolsText: "AAPL, MSFT",
-      },
-    }],
-    floating: [],
-    detached: [],
-  };
-  const config = {
-    ...createDefaultConfig("/tmp/gloomberb-correlation-test"),
-    layout,
-    layouts: [{ name: "Default", layout: cloneLayout(layout) }],
-  };
+  const config = createTestPaneConfig("/tmp/gloomberb-correlation-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: "correlation",
+    settings: {
+      rangePreset: "1Y",
+      symbols: ["AAPL", "MSFT"],
+      symbolsText: "AAPL, MSFT",
+    },
+  });
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;
   state.tickers = new Map([
@@ -70,21 +46,17 @@ function CorrelationHarness({ runtime }: { runtime: PluginRuntimeAccess }) {
   }) => ReactElement;
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider pluginId="market-overview" runtime={runtime}>
-          <Box width={60} height={8}>
-            <CorrelationPane
-              paneId={TEST_PANE_ID}
-              paneType="correlation"
-              focused
-              width={60}
-              height={8}
-            />
-          </Box>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="market-overview" runtime={runtime}>
+      <Box width={60} height={8}>
+        <CorrelationPane
+          paneId={TEST_PANE_ID}
+          paneType="correlation"
+          focused
+          width={60}
+          height={8}
+        />
+      </Box>
+    </TestPaneProvider>
   );
 }
 

@@ -9,21 +9,21 @@ export class SafeJsonStorage<T> {
   private value: T;
 
   constructor(
-    private readonly storage: StorageLike,
+    private readonly storage: StorageLike | undefined,
     readonly key: string,
     fallback: T,
     validate: (value: unknown) => value is T = (_value): _value is T => true,
   ) {
     this.value = fallback;
     try {
-      const raw = storage.getItem(key);
+      const raw = storage?.getItem(key) ?? null;
       if (raw !== null) {
         const parsed: unknown = JSON.parse(raw);
         if (!validate(parsed)) throw new Error("Invalid stored value");
         this.value = parsed;
       }
     } catch {
-      try { storage.removeItem(key); } catch {}
+      try { storage?.removeItem(key); } catch {}
     }
   }
 
@@ -33,12 +33,12 @@ export class SafeJsonStorage<T> {
 
   set(value: T): void {
     this.value = value;
-    try { this.storage.setItem(this.key, JSON.stringify(value)); } catch {}
+    try { this.storage?.setItem(this.key, JSON.stringify(value)); } catch {}
   }
 
   clear(fallback: T): void {
     this.value = fallback;
-    try { this.storage.removeItem(this.key); } catch {}
+    try { this.storage?.removeItem(this.key); } catch {}
   }
 }
 

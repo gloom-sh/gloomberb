@@ -106,6 +106,7 @@ function mapNumericFields(
   mapper: (value: number | null | undefined, field: typeof NUMERIC_POINT_FIELDS[number]) => number | null,
 ): TimeSeriesPoint {
   const transformed = clonePoint(point);
+  transformed.rawValue = point.rawValue === undefined ? primaryValue(point) : point.rawValue;
   for (const field of NUMERIC_POINT_FIELDS) {
     const value = point[field];
     if (field !== "value" && value === undefined) continue;
@@ -172,6 +173,7 @@ export function applyResolvedSeriesTransform(
   return {
     ...series,
     transform,
+    rawUnit: series.rawUnit ?? series.unit,
     unit: percent ? "%" : transform === "index100" ? "index" : "log",
     unitGroup: percent ? "percent" : transform === "index100" ? "index" : "log",
     dataShape: "scalar",

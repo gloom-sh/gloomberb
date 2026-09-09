@@ -7,7 +7,6 @@ import {
   type DataTableColumn,
   type DataTableKeyEvent,
 } from "../../../components";
-import type { TickerFinancials } from "../../../types/financials";
 import type { PaneProps } from "../../../types/plugin";
 import { usePaneInstance } from "../../../state/app/context";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
@@ -17,12 +16,12 @@ import { formatCompact, formatCurrency, formatNumber, formatPercent, formatPerce
 import { usePluginTickerActions } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../shared/table-pane";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
+import { relativeValuationValues } from "./relative-valuation-model";
 
-type RelativeColumnId = "symbol" | "price" | "change" | "marketCap" | "pe" | "forwardPe" | "evSales" | "fcfYield" | "revenueGrowth" | "margin";
+type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency">;
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
-type RelativeRow = {
+type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
-  financials: TickerFinancials | null;
   error?: string;
 };
 
@@ -43,14 +42,14 @@ function buildRelativeColumns(width: number): RelativeColumn[] {
   return [
     { id: "symbol", label: "TICKER", width: symbolWidth, align: "left" },
     { id: "price", label: "LAST", width: priceWidth, align: "right" },
-    { id: "change", label: "CHG%", width: pctWidth, align: "right" },
+    { id: "changePercent", label: "CHG%", width: pctWidth, align: "right" },
     { id: "marketCap", label: "MCAP", width: capWidth, align: "right" },
-    { id: "pe", label: "P/E", width: metricWidth, align: "right" },
-    { id: "forwardPe", label: "FWD", width: metricWidth, align: "right" },
+    { id: "trailingPE", label: "P/E", width: metricWidth, align: "right" },
+    { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
     { id: "fcfYield", label: "FCF%", width: metricWidth, align: "right" },
     { id: "revenueGrowth", label: "REV%", width: metricWidth, align: "right" },
-    { id: "margin", label: "OP%", width: Math.max(metricWidth, width - symbolWidth - priceWidth - pctWidth - capWidth - metricWidth * 5 - 10), align: "right" },
+    { id: "operatingMargin", label: "OP%", width: Math.max(metricWidth, width - symbolWidth - priceWidth - pctWidth - capWidth - metricWidth * 5 - 10), align: "right" },
   ];
 }
 
@@ -61,43 +60,8 @@ interface RelativeSortPreference {
 
 const DEFAULT_RELATIVE_SORT: RelativeSortPreference = { columnId: "marketCap", direction: "desc" };
 
-function evSales(financials: TickerFinancials | null): number | undefined {
-  const ev = financials?.fundamentals?.enterpriseValue;
-  const revenue = financials?.fundamentals?.revenue;
-  return ev != null && revenue ? ev / revenue : undefined;
-}
-
-function fcfYield(financials: TickerFinancials | null): number | undefined {
-  const fcf = financials?.fundamentals?.freeCashFlow;
-  const marketCap = financials?.quote?.marketCap;
-  return fcf != null && marketCap ? fcf / marketCap : undefined;
-}
-
 function relativeSortValue(row: RelativeRow, columnId: RelativeColumnId): string | number | null {
-  const quote = row.financials?.quote;
-  const fundamentals = row.financials?.fundamentals;
-  switch (columnId) {
-    case "symbol":
-      return row.symbol.toLocaleLowerCase();
-    case "price":
-      return quote?.price ?? null;
-    case "change":
-      return quote?.changePercent ?? null;
-    case "marketCap":
-      return quote?.marketCap ?? null;
-    case "pe":
-      return fundamentals?.trailingPE ?? null;
-    case "forwardPe":
-      return fundamentals?.forwardPE ?? null;
-    case "evSales":
-      return evSales(row.financials) ?? null;
-    case "fcfYield":
-      return fcfYield(row.financials) ?? null;
-    case "revenueGrowth":
-      return fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null;
-    case "margin":
-      return fundamentals?.operatingMargin ?? null;
-  }
+  return columnId === "symbol" ? row.symbol.toLocaleLowerCase() : row[columnId];
 }
 
 function sortRelativeRows(
@@ -156,7 +120,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
           const entry = entries[index];
           return {
             symbol: peer,
-            financials: entry?.data ?? entry?.lastGoodData ?? null,
+            ...relativeValuationValues(entry?.data ?? entry?.lastGoodData ?? null),
             error: entry?.error?.message,
           };
         }));
@@ -180,29 +144,27 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   const renderCell = useCallback((row: RelativeRow, column: RelativeColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
-    const quote = row.financials?.quote;
-    const fundamentals = row.financials?.fundamentals;
     switch (column.id) {
       case "symbol":
         return { text: row.symbol, color: selectedColor ?? (row.error ? colors.warning : colors.textBright), attributes: TextAttributes.BOLD };
       case "price":
-        return { text: quote?.price != null ? formatCurrency(quote.price, quote.currency) : "-", color: selectedColor ?? colors.text };
-      case "change":
-        return { text: quote?.changePercent != null ? formatPercentRaw(quote.changePercent) : "-", color: selectedColor ?? priceColor(quote?.changePercent ?? 0) };
+        return { text: row.price != null ? formatCurrency(row.price, row.currency ?? "USD") : "-", color: selectedColor ?? colors.text };
+      case "changePercent":
+        return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: selectedColor ?? priceColor(row.changePercent ?? 0) };
       case "marketCap":
-        return { text: formatCompact(quote?.marketCap), color: selectedColor ?? colors.textDim };
-      case "pe":
-        return { text: formatNumber(fundamentals?.trailingPE, 1), color: selectedColor ?? colors.text };
-      case "forwardPe":
-        return { text: formatNumber(fundamentals?.forwardPE, 1), color: selectedColor ?? colors.text };
+        return { text: formatCompact(row.marketCap ?? undefined), color: selectedColor ?? colors.textDim };
+      case "trailingPE":
+        return { text: formatNumber(row.trailingPE ?? undefined, 1), color: selectedColor ?? colors.text };
+      case "forwardPE":
+        return { text: formatNumber(row.forwardPE ?? undefined, 1), color: selectedColor ?? colors.text };
       case "evSales":
-        return { text: formatNumber(evSales(row.financials), 1), color: selectedColor ?? colors.text };
+        return { text: formatNumber(row.evSales ?? undefined, 1), color: selectedColor ?? colors.text };
       case "fcfYield":
-        return { text: formatPercent(fcfYield(row.financials)), color: selectedColor ?? priceColor(fcfYield(row.financials) ?? 0) };
+        return { text: formatPercent(row.fcfYield ?? undefined), color: selectedColor ?? priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth":
-        return { text: formatPercent(fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth), color: selectedColor ?? priceColor(fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? 0) };
-      case "margin":
-        return { text: formatPercent(fundamentals?.operatingMargin), color: selectedColor ?? colors.text };
+        return { text: formatPercent(row.revenueGrowth ?? undefined), color: selectedColor ?? priceColor(row.revenueGrowth ?? 0) };
+      case "operatingMargin":
+        return { text: formatPercent(row.operatingMargin ?? undefined), color: selectedColor ?? colors.text };
     }
   }, []);
 

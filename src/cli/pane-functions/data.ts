@@ -51,12 +51,6 @@ export async function withShotPriceHistory(
   }
 }
 
-export function requireSymbol(resolved: ResolvedPaneFunction, rawArg: string): string {
-  const symbol = resolved.createOptions?.symbol ?? normalizeTickerInput(null, cleanTickerInput(rawArg));
-  if (!symbol) throw new Error(`Usage: gloomberb fn ${resolved.token} <symbol>`);
-  return symbol;
-}
-
 export function isFinancialAnalysisFunction(resolved: ResolvedPaneFunction): boolean {
   if (resolved.pane.id === FINANCIAL_ANALYSIS_PANE_ID) return true;
   if (resolved.template?.id === FINANCIAL_ANALYSIS_TEMPLATE_ID) return true;

@@ -61,9 +61,11 @@ const AUCTIONS: TreasuryAuction[] = [
 
 /** Fresh cache so the pane renders without touching the Treasury endpoint. */
 function seedCache(): void {
+  const record = { value: AUCTIONS, fetchedAt: Date.now(), stale: false,
+    staleAt: Date.now() + 60_000, expiresAt: Date.now() + 60_000 };
   attachTreasuryAuctionsPersistence({
-    getResource: () => ({ value: AUCTIONS, fetchedAt: Date.now(), stale: false }),
-    setResource: () => ({ value: AUCTIONS, fetchedAt: Date.now(), stale: false }),
+    getResource: () => record,
+    setResource: () => record,
   } as unknown as PluginPersistence);
 }
 

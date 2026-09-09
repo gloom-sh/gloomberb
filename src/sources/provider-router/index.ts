@@ -5,6 +5,8 @@ import type { BrokerAdapter } from "../../types/broker";
 import type { AppConfig } from "../../types/config";
 import { createDefaultConfig } from "../../types/config";
 import type {
+  CachedAssetArgs,
+  CachedAssetMethod,
   CachedFinancialsTarget,
   DataProvider,
   MarketDataRequestContext,
@@ -23,7 +25,7 @@ import type { TimeRange } from "../../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../../time-series/resolution";
 import { debugLog } from "../../utils/debug-log";
 import { ProviderRouterBatchRoutes } from "./batches";
-import { ProviderRouterDocumentRoutes } from "./document-routes";
+import { ProviderRouterCachedRoutes } from "./cached-routes";
 import { ProviderRouterFinancialRoutes } from "./financial-routes";
 import { ProviderRouterHistoryRoutes } from "./history";
 import { ProviderRouterNewsRoutes } from "./news";
@@ -70,7 +72,7 @@ export class AssetDataRouter implements DataProvider {
   private readonly streamingRoutes: ProviderRouterStreamingRoutes;
   private readonly supplementalRoutes: ProviderRouterSupplementalRoutes;
   private readonly financialRoutes: ProviderRouterFinancialRoutes;
-  private readonly documentRoutes: ProviderRouterDocumentRoutes;
+  private readonly cachedRoutes: ProviderRouterCachedRoutes;
   private readonly healthyProviders = new WeakMap<DataProvider, DataProvider>();
 
   constructor(
@@ -87,7 +89,7 @@ export class AssetDataRouter implements DataProvider {
       ...routeDeps,
       primaryRoutes: this.primaryRoutes,
     });
-    this.documentRoutes = new ProviderRouterDocumentRoutes(routeDeps);
+    this.cachedRoutes = new ProviderRouterCachedRoutes(routeDeps);
     this.batchRoutes = new ProviderRouterBatchRoutes({
       ...routeDeps,
       readCachedMergedFinancialsSelection: (ticker, exchange, context, allowExpired) => (
@@ -170,7 +172,7 @@ export class AssetDataRouter implements DataProvider {
   }
 
   getCachedExchangeRates(currencies: string[], options: { allowExpired?: boolean } = {}): Map<string, number> {
-    return this.supplementalRoutes.getCachedExchangeRates(currencies, options);
+    return this.cachedRoutes.getCachedExchangeRates(currencies, options);
   }
 
   async getQuotesBatch(
@@ -196,7 +198,7 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getExchangeRate(fromCurrency: string): Promise<number> {
-    return this.supplementalRoutes.getExchangeRate(fromCurrency);
+    return (await this.getCachedQuery("getExchangeRate", [fromCurrency]).load({ force: false, background: true })).value;
   }
 
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
@@ -208,15 +210,15 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getHolders(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData> {
-    return this.supplementalRoutes.getHolders(ticker, exchange, context);
+    return (await this.getCachedQuery("getHolders", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
   }
 
   async getAnalystResearch(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<AnalystResearchData> {
-    return this.supplementalRoutes.getAnalystResearch(ticker, exchange, context);
+    return (await this.getCachedQuery("getAnalystResearch", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
   }
 
   async getCorporateActions(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData> {
-    return this.supplementalRoutes.getCorporateActions(ticker, exchange, context);
+    return (await this.getCachedQuery("getCorporateActions", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
   }
 
   async getEarningsCalendar(symbols: string[], context?: MarketDataRequestContext) {
@@ -224,19 +226,19 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
-    return this.documentRoutes.getSecFilings(ticker, count, exchange, context);
+    return (await this.getCachedQuery("getSecFilings", [ticker, count, exchange, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
   }
 
   async getSecFilingDocuments(filing: SecFilingItem) {
-    return this.documentRoutes.getSecFilingDocuments(filing);
+    return (await this.getCachedQuery("getSecFilingDocuments", [filing]).load({ force: false, background: true })).value;
   }
 
   async getSecFilingContent(filing: SecFilingItem): Promise<string | null> {
-    return this.documentRoutes.getSecFilingContent(filing);
+    return (await this.getCachedQuery("getSecFilingContent", [filing]).load({ force: false, background: true })).value;
   }
 
   async getArticleSummary(url: string): Promise<string | null> {
-    return this.documentRoutes.getArticleSummary(url);
+    return (await this.getCachedQuery("getArticleSummary", [url]).load({ force: false, background: true })).value;
   }
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]> {
@@ -281,7 +283,11 @@ export class AssetDataRouter implements DataProvider {
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, context?: MarketDataRequestContext): Promise<OptionsChain> {
-    return this.supplementalRoutes.getOptionsChain(ticker, exchange, expirationDate, context);
+    return (await this.getCachedQuery("getOptionsChain", [ticker, exchange, expirationDate, context]).load({ force: context?.cacheMode === "refresh", background: true })).value;
+  }
+
+  getCachedQuery<K extends CachedAssetMethod>(method: K, args: CachedAssetArgs<K>) {
+    return this.cachedRoutes.get(method, args);
   }
 
   private getEntityKey(ticker: string, instrument?: BrokerContractRef | null): string {

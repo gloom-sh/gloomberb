@@ -3,7 +3,13 @@ import { createRoot } from "react-dom/client";
 import { useEffect, type ReactNode } from "react";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
-import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { ChartSnapshotContext } from "../../../time-series/hooks";
+import { decodeRpcValue } from "./rpc-codec";
+import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
+import { createAppRuntime } from "../../../core/app-runtime";
+import { JsonPersistence } from "../../../data/json-persistence";
+import { JsonTickerRepository } from "../../../data/json-ticker-repository";
+import type { DesktopPaneShotPayload } from "../../../cli/desktop-pane-shot";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { UiHostProvider, type RendererHost } from "../../../ui/host";
 import { WebInputHostProvider } from "./input-host";
@@ -12,7 +18,7 @@ import { webNativeRenderer } from "./native-renderer";
 import { WebToastHostProvider } from "./toast-host";
 import { webUiHost } from "./ui-host";
 import { getLoadablePlugins } from "../../../plugins/catalog";
-import { PluginRegistry, setSharedMarketDataForTests } from "../../../plugins/registry";
+import type { PluginRegistry } from "../../../plugins/registry";
 import {
   RemoteUiRegistryProvider,
   useRemoteUiRegistry,
@@ -22,83 +28,30 @@ import { FloatingPaneWrapper } from "../../../components/layout/floating-pane";
 import { PaneContent } from "../../../components/layout/pane/content";
 import { resolvePaneBodyFrame } from "../../../components/layout/pane/sizing";
 import { getPaneDisplayTitle } from "../../../components/layout/pane/title";
-import {
-  getPresetResolution,
-  normalizeChartResolutionSupport,
-  TIME_RANGE_ORDER,
-  type ManualChartResolution,
-} from "../../../time-series/resolution";
-import type { TimeRange } from "../../../components/chart/core/types";
-import type { AppConfig } from "../../../types/config";
 import type {
-  AppPersistencePort,
-  AppTickerRepositoryPort,
-} from "../../../core/app-service-ports";
-import type { CachedResourceRecord, ResourceCacheKey, SetResourceOptions } from "../../../data/resource-store";
-import type {
-  CachedFinancialsTarget,
   DataProvider,
   EarningsEvent,
   QuoteBatchResult,
-  QuoteSubscriptionTarget,
   SecFilingItem,
 } from "../../../types/data-provider";
 import type {
   AnalystResearchData,
   CorporateActionsData,
   HolderData,
-  OptionsChain,
   PricePoint,
   Quote,
-  TickerFinancials,
 } from "../../../types/financials";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
-import type { TickerRecord } from "../../../types/ticker";
-import type { AppState, PaneRuntimeState } from "../../../core/state/app/state";
-import type { PaneDef } from "../../../types/plugin";
+import type { AppState } from "../../../core/state/app/state";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
-import { hydrateFredSeries, type FredSeriesCacheEntry } from "../../../data/fred-series";
 import { hydrateValuationSeries } from "../../../plugins/builtin/market-valuation/cache";
 import { statsCache } from "../../../plugins/builtin/econ-statistics/cache";
-import type { DatedObservation } from "../../../plugins/builtin/market-valuation/series";
-import { clipPriceHistoryToRange } from "../../../time-series/history-window";
-import type { ResolvedSeries } from "../../../time-series/types";
-import { chartSeriesSourceKey } from "../../../capabilities";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
 import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 
-interface CliPaneShotIntradayHistory {
-  symbol: string;
-  exchange: string;
-  rangePreset: "1D" | "1W";
-  resolution: ManualChartResolution;
-  requestedSession: string | null;
-  sessionDates: string[];
-  points: PricePoint[];
-  start: string | null;
-  end: string | null;
-  unavailableReason: string | null;
-}
-
-interface CliPaneShotPayload {
-  config: AppConfig;
-  paneId: string;
-  widthCells: number;
-  heightCells: number;
-  tickers: TickerRecord[];
-  financials: Array<[string, TickerFinancials]>;
-  intradayHistories: CliPaneShotIntradayHistory[];
-  optionsChains: Array<[string, OptionsChain]>;
-  fredSeries: Array<[string, FredSeriesCacheEntry]>;
-  valuationSeries: Array<[string, DatedObservation[]]>;
-  statSeries: Array<[string, DatedObservation[]]>;
-  capabilitySeries: Array<[string, ResolvedSeries]>;
-  paneState: Record<string, PaneRuntimeState>;
-}
-
 declare global {
   interface Window {
-    __GLOOM_CLI_SHOT_PAYLOAD__?: CliPaneShotPayload;
+    __GLOOM_CLI_SHOT_PAYLOAD__?: DesktopPaneShotPayload;
     __GLOOM_CLI_SHOT_READY__?: boolean;
     __GLOOM_CLI_SHOT_PENDING__?: number;
     __GLOOM_CLI_SHOT_ERROR__?: string;
@@ -129,15 +82,6 @@ const TRACKED_RESPONSE_METHODS = new Set<PropertyKey>([
 
 let pendingShotWork = 0;
 let didInstallShotFetchTracker = false;
-let shotDataProvider: DataProvider | null = null;
-let shotRegistry: PluginRegistry | null = null;
-const SHOT_CHART_RESOLUTION_SUPPORT = normalizeChartResolutionSupport(
-  TIME_RANGE_ORDER.map((maxRange) => ({
-    resolution: getPresetResolution(maxRange),
-    maxRange,
-  })),
-);
-
 const rendererHost: RendererHost = {
   requestExit() {},
   async openExternal() {},
@@ -268,10 +212,6 @@ async function restoreShotCloudSession(): Promise<void> {
   await apiClient.getSession().catch(() => null);
 }
 
-function resolveShotWork<T>(value: T): Promise<T> {
-  return trackShotWork(Promise.resolve(value));
-}
-
 /**
  * Runs an asset-data request in the Bun process so the page sees exactly what
  * `gloomberb fn` sees. The page can only reach the cloud API on its own, and
@@ -319,25 +259,6 @@ function reviveEarningsEvents(events: EarningsEvent[]): EarningsEvent[] {
 
 function isShotLoadingTextVisible(): boolean {
   return document.querySelector(SHOT_LOADING_SELECTOR) !== null;
-}
-
-/**
- * The payload crosses into the webview as JSON, so every `Date` arrives as a
- * string while the types still claim `Date`. Anything calling `date.getTime()`
- * then throws, which is what made the valuation graph preset fail while the
- * price presets passed.
- */
-function revivePayloadDates(payload: CliPaneShotPayload): void {
-  const histories = [
-    ...payload.financials.map(([, data]) => data.priceHistory),
-    ...(payload.intradayHistories ?? []).map((entry) => entry.points),
-  ];
-  for (const history of histories) {
-    if (!Array.isArray(history)) continue;
-    for (const point of history) {
-      if (!(point.date instanceof Date)) point.date = new Date(point.date as unknown as string);
-    }
-  }
 }
 
 function hasUnresolvedChartData(): boolean {
@@ -403,100 +324,22 @@ function waitForShotReadiness(): () => void {
   };
 }
 
-function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
-  const financials = new Map<string, TickerFinancials>();
-  for (const [key, data] of payload.financials) {
-    const instrument = parsePublicTickerKey(key);
-    financials.set(canonicalTickerKey(instrument.symbol, instrument.exchange), data);
-    if (!instrument.exchange) financials.set(normalizeSymbol(instrument.symbol), data);
-  }
-  const intradayHistories = new Map<string, CliPaneShotIntradayHistory>();
-  for (const entry of payload.intradayHistories ?? []) {
-    intradayHistories.set(canonicalTickerKey(entry.symbol, entry.exchange), entry);
-    intradayHistories.set(normalizeSymbol(entry.symbol), entry);
-  }
-  const intradayHistory = (symbol: string, exchange?: string) => (
-    intradayHistories.get(canonicalTickerKey(symbol, exchange))
-      ?? intradayHistories.get(normalizeSymbol(symbol))
-  );
-
-  const optionsChains = new Map<string, OptionsChain>();
-  for (const [key, data] of payload.optionsChains ?? []) {
-    const instrument = parsePublicTickerKey(key);
-    optionsChains.set(canonicalTickerKey(instrument.symbol, instrument.exchange), data);
-    if (!instrument.exchange) optionsChains.set(normalizeSymbol(instrument.symbol), data);
-  }
-
-  const findFinancials = (symbol: string, exchange?: string) => (
-    financials.get(canonicalTickerKey(symbol, exchange))
-      ?? financials.get(normalizeSymbol(symbol))
-  );
-
-  const getFinancials = (symbol: string, exchange?: string) => {
-    const data = findFinancials(symbol, exchange);
-    if (!data) throw new Error(`No screenshot market data available for ${symbol}.`);
-    return data;
-  };
-
-  const injectedProvider: DataProvider = {
-    id: "cli-shot",
-    name: "CLI screenshot data",
-    getTickerFinancials(ticker, exchange) {
-      return trackShotWork(Promise.resolve().then(() => getFinancials(ticker, exchange)));
+function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
+  const cloudProvider = createGloomberbCloudProvider();
+  const bridge: Partial<DataProvider> = {
+    getQuote: (symbol, exchange) => requestShotMarketData<Quote>("getQuote", [symbol, exchange]),
+    getQuotesBatch: (targets) => requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [targets])
+      .catch(() => targets.map((target) => ({ target, quote: null }))),
+    getPriceHistory: (symbol, exchange, range) => requestShotMarketData<PricePoint[]>("getPriceHistory", [symbol, exchange, range])
+      .then(revivePricePoints).catch(() => []),
+    async getExchangeRate(fromCurrency) {
+      // Only identity FX is known offline; don't invent a parity rate.
+      if (normalizeSymbol(fromCurrency) === normalizeSymbol(payload.config.baseCurrency)) return 1;
+      throw new Error(`No screenshot exchange rate available for ${fromCurrency}.`);
     },
-    getTickerFinancialsBatch(targets: CachedFinancialsTarget[]) {
-      return resolveShotWork(targets.map((target) => ({
-        target,
-        financials: financials.get(canonicalTickerKey(target.symbol, target.exchange))
-          ?? financials.get(normalizeSymbol(target.symbol))
-          ?? null,
-      })));
-    },
-    getQuote(ticker, exchange) {
-      const quote = findFinancials(ticker, exchange)?.quote;
-      if (quote) return resolveShotWork(quote);
-      return requestShotMarketData<Quote>("getQuote", [ticker, exchange]);
-    },
-    // Board panes such as WEI, MOST, and BI quote symbols the shot payload was
-    // never built for, and returning null for those drew a full table of
-    // dashes. The payload still wins wherever it has the symbol, so mapped
-    // capabilities keep rendering exactly the data their evidence checks use.
-    getQuotesBatch(targets: QuoteSubscriptionTarget[]) {
-      const resolved: QuoteBatchResult[] = [];
-      const missing: QuoteSubscriptionTarget[] = [];
-      for (const target of targets) {
-        const quote = findFinancials(target.symbol, target.exchange)?.quote;
-        if (quote) resolved.push({ target, quote });
-        else missing.push(target);
-      }
-      if (missing.length === 0) return resolveShotWork(resolved);
-      return requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [missing])
-        .then((results) => [...resolved, ...results])
-        .catch(() => [...resolved, ...missing.map((target) => ({ target, quote: null }))]);
-    },
-    getExchangeRate(fromCurrency: string) {
-      // Returning 1 for every currency used to render the FX matrix as a grid
-      // of 1.0000, which reads as real data. Only the identity conversion is
-      // known offline; anything else has to fail so the pane reports it as
-      // unavailable instead of inventing a parity rate.
-      if (normalizeSymbol(fromCurrency) === normalizeSymbol(payload.config.baseCurrency)) {
-        return resolveShotWork(1);
-      }
-      return trackShotWork(Promise.reject(
-        new Error(`No screenshot exchange rate available for ${fromCurrency}.`),
-      ));
-    },
-    getOptionsChain(ticker, exchange) {
-      return trackShotWork(Promise.resolve().then(() => {
-        const chain = optionsChains.get(canonicalTickerKey(ticker, exchange))
-          ?? optionsChains.get(normalizeSymbol(ticker));
-        if (!chain) throw new Error(`No screenshot options data available for ${ticker}.`);
-        return chain;
-      }));
-    },
-    search(query) {
+    async search(query) {
       const normalized = normalizeSymbol(query);
-      return resolveShotWork(payload.tickers
+      return payload.tickers
         .filter((ticker) => ticker.metadata.ticker.includes(normalized) || (ticker.metadata.name ?? "").toUpperCase().includes(normalized))
         .map((ticker) => ({
           providerId: "cli-shot",
@@ -505,257 +348,71 @@ function createShotDataProvider(payload: CliPaneShotPayload): DataProvider {
           exchange: ticker.metadata.exchange ?? "",
           currency: ticker.metadata.currency,
           type: "equity",
-        })));
+        }));
     },
-    getArticleSummary() {
-      return resolveShotWork(null);
-    },
-    getPriceHistory(ticker, exchange, range) {
-      const intraday = intradayHistory(ticker, exchange);
-      const local = intraday ? intraday.points : findFinancials(ticker, exchange)?.priceHistory;
-      // Sector and board panes chart symbols the payload does not carry, and
-      // an empty series turned their trailing-return columns into dashes.
-      if (!intraday && !local) {
-        return requestShotMarketData<PricePoint[]>("getPriceHistory", [ticker, exchange, range])
-          .then(revivePricePoints)
-          .catch(() => []);
-      }
-      return trackShotWork(Promise.resolve().then(() => {
-        if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
-        return clipPriceHistoryToRange(local ?? [], range);
-      }));
-    },
-    getPriceHistoryForResolution(ticker, exchange, bufferRange, resolution) {
-      return trackShotWork(Promise.resolve().then(() => {
-        const intraday = intradayHistory(ticker, exchange);
-        if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
-        if (intraday && intraday.resolution !== resolution) return [];
-        return clipPriceHistoryToRange(
-          intraday ? intraday.points : getFinancials(ticker, exchange).priceHistory ?? [],
-          bufferRange,
-        );
-      }));
-    },
-    getDetailedPriceHistory(ticker, exchange, startDate, endDate, resolution) {
-      return trackShotWork(Promise.resolve().then(() => {
-        const intraday = intradayHistory(ticker, exchange);
-        if (intraday?.unavailableReason) throw new Error(intraday.unavailableReason);
-        if (intraday && intraday.resolution !== resolution) return [];
-        const start = startDate.getTime();
-        const end = endDate.getTime();
-        const points = intraday?.points ?? getFinancials(ticker, exchange).priceHistory ?? [];
-        return points.filter((point) => {
-          const timestamp = point.date.getTime();
-          return timestamp >= start && timestamp < end;
-        });
-      }));
-    },
-    getChartResolutionSupport() {
-      return resolveShotWork(SHOT_CHART_RESOLUTION_SUPPORT);
-    },
-    getAnalystResearch(ticker, exchange) {
-      return requestShotMarketData<AnalystResearchData>("getAnalystResearch", [ticker, exchange]);
-    },
-    getCorporateActions(ticker, exchange) {
-      return requestShotMarketData<CorporateActionsData>("getCorporateActions", [ticker, exchange]);
-    },
-    getHolders(ticker, exchange) {
-      return requestShotMarketData<HolderData>("getHolders", [ticker, exchange]);
-    },
-    getSecFilings(ticker, count, exchange) {
-      return requestShotMarketData<SecFilingItem[]>("getSecFilings", [ticker, count, exchange])
-        .then(reviveSecFilings);
-    },
-    getEarningsCalendar(symbols) {
-      return requestShotMarketData<EarningsEvent[]>("getEarningsCalendar", [symbols])
-        .then(reviveEarningsEvents);
-    },
-    subscribeQuotes() {
-      return () => {};
-    },
+    getArticleSummary: async () => null,
+    getAnalystResearch: (symbol, exchange) => requestShotMarketData<AnalystResearchData>("getAnalystResearch", [symbol, exchange]),
+    getCorporateActions: (symbol, exchange) => requestShotMarketData<CorporateActionsData>("getCorporateActions", [symbol, exchange]),
+    getHolders: (symbol, exchange) => requestShotMarketData<HolderData>("getHolders", [symbol, exchange]),
+    getSecFilings: (symbol, count, exchange) => requestShotMarketData<SecFilingItem[]>("getSecFilings", [symbol, count, exchange]).then(reviveSecFilings),
+    getEarningsCalendar: (symbols) => requestShotMarketData<EarningsEvent[]>("getEarningsCalendar", [symbols]).then(reviveEarningsEvents),
+    subscribeQuotes: () => () => {},
   };
-
-  // Keep deterministic payload data for the mapped screenshot capabilities,
-  // then fall through to the authenticated cloud provider for operations such
-  // as SEC filings that live panes request through market-data hooks.
-  const cloudProvider = createGloomberbCloudProvider();
-  return new Proxy(injectedProvider, {
-    get(target, property, receiver) {
-      const local = Reflect.get(target, property, receiver);
-      if (local !== undefined) return local;
-      const cloud = Reflect.get(cloudProvider, property, cloudProvider);
-      return typeof cloud === "function" ? cloud.bind(cloudProvider) : cloud;
+  const fallback = new Proxy(cloudProvider, {
+    get(target, property) {
+      const value = Reflect.get(bridge, property) ?? Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const provider = createSnapshotDataProvider(payload, fallback);
+  return new Proxy(provider, {
+    get(target, property) {
+      const value = Reflect.get(target, property, target);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const result = value.apply(target, args);
+        return result instanceof Promise ? trackShotWork(result) : result;
+      };
     },
   });
 }
 
-function installShotMarketData(payload: CliPaneShotPayload): void {
-  const provider = createShotDataProvider(payload);
-  shotDataProvider = provider;
-  const coordinator = new MarketDataCoordinator(provider);
-  coordinator.primeCachedFinancials(payload.tickers.flatMap((ticker) => {
-    const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker);
-    const instrumentKey = instrument
-      ? canonicalTickerKey(instrument.symbol, instrument.exchange)
-      : normalizeSymbol(ticker.metadata.ticker);
-    const financials = payload.financials.find(([key]) => {
-      const candidate = parsePublicTickerKey(key);
-      return canonicalTickerKey(candidate.symbol, candidate.exchange) === instrumentKey;
-    })?.[1];
-    return instrument && financials ? [{ instrument, financials }] : [];
-  }));
-  setSharedMarketDataForTests(provider);
-  setSharedMarketDataCoordinator(coordinator);
-}
-
-/**
- * The screenshot renderer has no database and no Electrobun backend. Plugins
- * still need somewhere to read and write state while the render runs, so state
- * lives in memory for the lifetime of the page and the resource cache always
- * reports a miss instead of pretending something was persisted.
- */
-function createShotPersistence(): AppPersistencePort {
-  const pluginState = new Map<string, { value: unknown; schemaVersion: number; updatedAt: number }>();
-  const stateKey = (pluginId: string, key: string) => `${pluginId}:${key}`;
-  return {
-    pluginState: {
-      get: <T,>(pluginId: string, key: string, schemaVersion = 1) => {
-        const record = pluginState.get(stateKey(pluginId, key));
-        if (!record || record.schemaVersion !== schemaVersion) return null;
-        return { value: record.value as T, schemaVersion: record.schemaVersion, updatedAt: record.updatedAt };
-      },
-      set: (pluginId: string, key: string, value: unknown, schemaVersion = 1) => {
-        pluginState.set(stateKey(pluginId, key), { value, schemaVersion, updatedAt: Date.now() });
-      },
-      delete: (pluginId: string, key: string) => {
-        pluginState.delete(stateKey(pluginId, key));
-      },
-      keys: (pluginId: string) => [...pluginState.keys()]
-        .filter((entry) => entry.startsWith(`${pluginId}:`))
-        .map((entry) => entry.slice(pluginId.length + 1))
-        .sort(),
-      clear: (pluginId: string) => {
-        for (const entry of [...pluginState.keys()]) {
-          if (entry.startsWith(`${pluginId}:`)) pluginState.delete(entry);
-        }
-      },
-    },
-    resources: {
-      get: () => null,
-      list: () => [],
-      set: <T,>(key: ResourceCacheKey, value: T, options: SetResourceOptions): CachedResourceRecord<T> => {
-        const fetchedAt = options.fetchedAt ?? Date.now();
-        return {
-          namespace: key.namespace,
-          kind: key.kind,
-          entityKey: key.entityKey,
-          variantKey: key.variantKey ?? "",
-          sourceKey: key.sourceKey ?? "",
-          value,
-          fetchedAt,
-          staleAt: fetchedAt + options.cachePolicy.staleMs,
-          expiresAt: fetchedAt + options.cachePolicy.expireMs,
-          schemaVersion: options.schemaVersion ?? 1,
-          provenance: options.provenance ?? null,
-          lastAccessedAt: fetchedAt,
-          sizeBytes: 0,
-        };
-      },
-      delete: () => {},
-    },
-    sessions: {
-      get: () => null,
-      set: () => {},
-      delete: () => {},
-    },
-    close() {},
-  };
-}
-
-function createShotTickerRepository(tickers: TickerRecord[]): AppTickerRepositoryPort {
-  const bySymbol = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
-  return {
-    loadAllTickers: async () => [...bySymbol.values()],
-    loadTicker: async (symbol) => bySymbol.get(normalizeSymbol(symbol)) ?? bySymbol.get(symbol) ?? null,
-    saveTicker: async () => {},
-    createTicker: async (metadata) => ({ metadata }),
-    deleteTicker: async () => {},
-  };
-}
-
-/**
- * Screenshots render the same tree the desktop app renders, so they need the
- * same registry: plugin-contributed tabs, slots, shortcuts, context menus and
- * setup-registered panes all resolve through it. Only the capability surface is
- * replaced, because the offline render can answer chart series from the payload
- * but cannot reach a backend.
- */
-async function installShotPluginRegistry(payload: CliPaneShotPayload): Promise<PluginRegistry> {
-  const capabilitySeries = new Map(payload.capabilitySeries ?? []);
-  const capabilityIds = [...new Set(payload.config.layout.instances.flatMap((instance) => {
-    const chartSpec = instance.settings?.chartSpec;
-    if (!chartSpec || typeof chartSpec !== "object" || !Array.isArray((chartSpec as any).series)) return [];
-    return (chartSpec as any).series.flatMap((series: any) => (
-      series?.source?.kind === "capability" && typeof series.source.capabilityId === "string"
-        ? [series.source.capabilityId]
-        : []
-    ));
-  }))];
-
-  const registry = new PluginRegistry(
-    shotDataProvider!,
-    createShotTickerRepository(payload.tickers),
-    createShotPersistence(),
-    {
+function createShotAppServices(payload: DesktopPaneShotPayload) {
+  const dataProvider = createShotDataProvider(payload);
+  return createAppRuntime({
+    config: payload.config,
+    plugins: getLoadablePlugins(),
+    dataProvider,
+    persistence: new JsonPersistence(),
+    tickerRepository: new JsonTickerRepository(undefined, payload.tickers),
+    registryOptions: {
       enableCapabilityHandlers: false,
       connectionHealth: createCliPaneShotConnectionHealth(),
-      remoteCapabilityManifests: () => capabilityIds.map((id) => ({
-        id,
-        kind: "chart-series",
-        name: id,
-        operations: [{ id: "resolve", kind: "query", rendererSafe: true }],
-      })),
-      remoteCapabilityInvoke: async <T,>(capabilityId: string, operationId: string, input: unknown) => {
-        if (operationId !== "resolve" || !input || typeof input !== "object") {
-          throw new Error(`Screenshot capability operation ${capabilityId}.${operationId} is unavailable.`);
-        }
-        const request = input as { seriesId?: string };
-        const value = capabilitySeries.get(chartSeriesSourceKey({
-          kind: "capability",
-          capabilityId,
-          seriesId: request.seriesId ?? "",
-        }));
-        if (!value) throw new Error(`No screenshot chart series data is available for ${request.seriesId ?? capabilityId}.`);
-        return value as T;
-      },
     },
-  );
-  registry.getConfigFn = () => payload.config;
-  registry.getLayoutFn = () => payload.config.layout;
-  registry.getPaneRuntimeStateFn = (paneId) => payload.paneState[paneId] ?? null;
-
-  for (const plugin of getLoadablePlugins()) {
-    try {
-      await registry.register(plugin);
-    } catch (error) {
-      // One failing plugin must not cost the screenshot every other pane.
-      console.error(`[shot] Plugin ${plugin.id} failed to register:`, error);
-    }
-  }
-  shotRegistry = registry;
-  return registry;
-}
-
-function findPaneDef(paneId: string): { pluginId: string; pane: PaneDef } | null {
-  const pane = shotRegistry?.panes.get(paneId);
-  return pane ? { pluginId: shotRegistry?.getPanePluginId(paneId) ?? "", pane } : null;
+    configure({ pluginRegistry, marketData }) {
+      pluginRegistry.getPaneRuntimeStateFn = (paneId) => payload.paneState[paneId] ?? null;
+      marketData.primeCachedFinancials(payload.tickers.flatMap((ticker) => {
+        const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker);
+        const instrumentKey = instrument
+          ? canonicalTickerKey(instrument.symbol, instrument.exchange)
+          : normalizeSymbol(ticker.metadata.ticker);
+        const financials = payload.financials.find(([key]) => {
+          const candidate = parsePublicTickerKey(key);
+          return canonicalTickerKey(candidate.symbol, candidate.exchange) === instrumentKey;
+        })?.[1];
+        return instrument && financials ? [{ instrument, financials }] : [];
+      }));
+    },
+    // One failing plugin must not cost the screenshot every other pane.
+    onPluginError: (error, plugin) => console.error(`[shot] Plugin ${plugin.id} failed to register:`, error),
+  });
 }
 
 function HydratePayload({
   payload,
   children,
 }: {
-  payload: CliPaneShotPayload;
+  payload: DesktopPaneShotPayload;
   children: ReactNode;
 }) {
   const dispatch = useAppDispatch();
@@ -790,20 +447,19 @@ function CaptureShotSemanticUi() {
   return null;
 }
 
-function ShotPane({ payload }: { payload: CliPaneShotPayload }) {
+function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; registry: PluginRegistry }) {
   const instance = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId);
   if (!instance) throw new Error(`Pane instance ${payload.paneId} is missing from the screenshot layout.`);
 
-  const found = findPaneDef(instance.paneId);
-  if (!found) throw new Error(`Pane ${instance.paneId} is not registered in the desktop renderer.`);
+  const pane = registry.panes.get(instance.paneId);
+  if (!pane) throw new Error(`Pane ${instance.paneId} is not registered in the desktop renderer.`);
 
   // The registry already bound its runtime to this pane component.
-  const pane = found.pane;
   const titleState = {
     config: payload.config,
     paneState: payload.paneState,
   } as Pick<AppState, "config" | "paneState">;
-  const title = getPaneDisplayTitle(titleState, instance, pane, shotRegistry?.panes);
+  const title = getPaneDisplayTitle(titleState, instance, pane, registry.panes);
   const width = payload.widthCells;
   const height = payload.heightCells;
   const bodyFrame = resolvePaneBodyFrame({
@@ -839,25 +495,23 @@ function ShotPane({ payload }: { payload: CliPaneShotPayload }) {
 }
 
 async function render() {
-  const payload = window.__GLOOM_CLI_SHOT_PAYLOAD__;
+  const payload = decodeRpcValue<DesktopPaneShotPayload | undefined>(window.__GLOOM_CLI_SHOT_PAYLOAD__);
   if (!payload) throw new Error("Missing CLI pane screenshot payload.");
-  revivePayloadDates(payload);
+  const rootElement = document.getElementById("root");
+  if (!rootElement) throw new Error("Missing root element.");
   installShotFetchTracker();
   installShotCloudApiTransport();
   installShotHttpFetchTransport();
-  hydrateFredSeries(payload.fredSeries ?? []);
   hydrateValuationSeries(payload.valuationSeries ?? []);
   statsCache.hydrate(payload.statSeries ?? []);
-  installShotMarketData(payload);
+  const services = createShotAppServices(payload);
+  window.addEventListener("pagehide", () => services.destroy(), { once: true });
   // Panes contributed from an async setup() only exist once every plugin has
   // finished registering, so the tree cannot mount before that resolves.
-  await installShotPluginRegistry(payload);
+  await services.ready;
   // Plugin setup hydrates its in-memory persistence and may reset apiClient.
   // Restore the proxied cloud session only after registration is complete.
   await restoreShotCloudSession();
-
-  const rootElement = document.getElementById("root");
-  if (!rootElement) throw new Error("Missing root element.");
 
   createRoot(rootElement).render(
     <RemoteUiRegistryProvider>
@@ -874,7 +528,9 @@ async function render() {
                 statusBarVisible: false,
               }}>
                 <HydratePayload payload={payload}>
-                  <ShotPane payload={payload} />
+                  <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
+                    <ShotPane payload={payload} registry={services.pluginRegistry} />
+                  </ChartSnapshotContext.Provider>
                 </HydratePayload>
               </AppProvider>
             </WebDialogHostProvider>

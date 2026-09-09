@@ -4,12 +4,12 @@ import { testRender } from "../../../../renderers/opentui/test-utils";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import { createTestDataProvider } from "../../../../test-support/data-provider";
 import type { PricePoint, TickerFinancials } from "../../../../types/financials";
-import type { TickerRecord } from "../../../../types/ticker";
 import { createDefaultConfig, TICKER_RESEARCH_PANE_ID } from "../../../../types/config";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../../state/app/context";
+import { createInitialState } from "../../../../state/app/context";
 import { QuoteMonitorPane } from "./index";
-import { PluginRenderProvider, type PluginRuntimeAccess } from "../../../runtime";
+import type { PluginRuntimeAccess } from "../../../runtime";
 import type { PinTickerOptions } from "../../../../types/plugin";
+import { TestPaneProvider, createTestTicker as makeTicker } from "../../../../test-support/pane";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
@@ -65,22 +65,6 @@ function makeRuntime(options: {
     setConfigStates: async () => {},
     deleteConfigState: async () => {},
     getConfigStateKeys: () => [],
-  };
-}
-
-function makeTicker(symbol: string, name: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NASDAQ",
-      currency: "USD",
-      name,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
   };
 }
 
@@ -150,16 +134,12 @@ function createQuoteMonitorHarness(options: {
   ]);
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId="quote-monitor:test">
-        <PluginRenderProvider pluginId="ticker-research" runtime={makeRuntime({
-          pinCalls: options.pinCalls,
-          settingsCalls: options.settingsCalls,
-        })}>
-          <QuoteMonitorPane paneId="quote-monitor:test" paneType="quote-monitor" focused width={72} height={7} />
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId="quote-monitor:test" pluginId="ticker-research" runtime={makeRuntime({
+      pinCalls: options.pinCalls,
+      settingsCalls: options.settingsCalls,
+    })}>
+      <QuoteMonitorPane paneId="quote-monitor:test" paneType="quote-monitor" focused width={72} height={7} />
+    </TestPaneProvider>
   );
 }
 

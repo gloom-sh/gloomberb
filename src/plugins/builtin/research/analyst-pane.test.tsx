@@ -1,15 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import type { AnalystResearchData } from "../../../types/financials";
 import type { DataProvider } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box } from "../../../ui";
-import { PluginRenderProvider } from "../../runtime";
 import { AnalystResearchView } from "./analyst-pane";
+import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 
 const TEST_PANE_ID = "analyst-research:NKE";
 const WIDTH = 96;
@@ -54,52 +53,28 @@ const research: AnalystResearchData = {
 };
 
 function makeTicker(symbol: string): TickerRecord {
-  return {
-    metadata: {
-      ticker: symbol,
-      exchange: "NYSE",
-      currency: "USD",
-      name: symbol,
-      portfolios: [],
-      watchlists: [],
-      positions: [],
-      custom: {},
-      tags: [],
-    },
-  };
+  return createTestTicker(symbol, symbol, {
+    exchange: "NYSE"
+  });
 }
 
 function AnalystHarness({ provider }: { provider: DataProvider }) {
-  const config = createDefaultConfig("/tmp/gloomberb-analyst-pane-test");
-  config.layout = {
-    dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
-    instances: [{
-      instanceId: TEST_PANE_ID,
-      paneId: "analyst-research",
-      binding: { kind: "fixed", symbol: "NKE" },
-    }],
-    floating: [],
-    detached: [],
-  };
-  config.layouts = [{ name: "Default", layout: cloneLayout(config.layout) }];
+  const config = createTestPaneConfig("/tmp/gloomberb-analyst-pane-test", {
+    instanceId: TEST_PANE_ID,
+    paneId: "analyst-research",
+    binding: { kind: "fixed", symbol: "NKE" },
+  });
 
   const state = createInitialState(config);
   state.focusedPaneId = TEST_PANE_ID;
   state.tickers = new Map([["NKE", makeTicker("NKE")]]);
 
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PluginRenderProvider
-          pluginId="ticker-research"
-          runtime={createTestPluginRuntime({ getMarketData: () => provider })}
-        >
-          <Box flexDirection="column" width={WIDTH} height={HEIGHT}>
-            <AnalystResearchView width={WIDTH} height={HEIGHT} focused />
-          </Box>
-        </PluginRenderProvider>
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime({ getMarketData: () => provider })}>
+      <Box flexDirection="column" width={WIDTH} height={HEIGHT}>
+        <AnalystResearchView width={WIDTH} height={HEIGHT} focused />
+      </Box>
+    </TestPaneProvider>
   );
 }
 

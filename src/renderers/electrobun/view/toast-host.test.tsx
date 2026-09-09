@@ -1,21 +1,11 @@
 /** @jsxImportSource react */
-import { Window } from "happy-dom";
-
-const testWindow = new Window({ url: "http://localhost" });
-Object.assign(globalThis, {
-  IS_REACT_ACT_ENVIRONMENT: true,
-  window: testWindow,
-  document: testWindow.document,
-  navigator: testWindow.navigator,
-  HTMLElement: testWindow.HTMLElement,
-  MouseEvent: testWindow.MouseEvent,
-});
-
 import { expect, test } from "bun:test";
 import { act } from "react";
-import { createRoot } from "react-dom/client";
 import { useToastHost, type ToastHost } from "../../../ui/toast";
 import { WebToastHostProvider } from "./toast-host";
+import { createDomTestHarness } from "./test-utils";
+
+const { render: renderDom } = createDomTestHarness({ withUi: false });
 
 let toastHost: ToastHost | null = null;
 
@@ -27,18 +17,13 @@ function ToastViewport() {
 }
 
 test("DOM notifications show context and open from the whole card", async () => {
-  const container = testWindow.document.createElement("div");
-  testWindow.document.body.appendChild(container);
-  const root = createRoot(container as unknown as HTMLElement);
   let opened = 0;
 
-  await act(async () => {
-    root.render(
-      <WebToastHostProvider>
-        <ToastViewport />
-      </WebToastHostProvider>,
-    );
-  });
+  const container = await renderDom(
+    <WebToastHostProvider>
+      <ToastViewport />
+    </WebToastHostProvider>,
+  );
   await act(async () => {
     toastHost?.info("@bob mentioned you", {
       title: "Gloomberb chat",
@@ -72,7 +57,5 @@ test("DOM notifications show context and open from the whole card", async () => 
   expect(opened).toBe(1);
   expect(container.querySelector(".gloom-toast")).toBeNull();
 
-  await act(async () => root.unmount());
-  container.remove();
   toastHost = null;
 });
