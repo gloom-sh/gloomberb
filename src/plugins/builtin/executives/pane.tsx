@@ -12,7 +12,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { colors } from "../../../theme/colors";
+import { colors, getChartIndicatorColor } from "../../../theme/colors";
 import {
   Box,
   ScrollBox,
@@ -65,6 +65,70 @@ function FigureLine({
       prefix={`${value.padEnd(valueWidth)}  `}
       prefixColor={colors.textBright}
     />
+  );
+}
+
+const PAY_PARTS: Array<{ key: keyof CloudExecutiveRowPayload; label: string }> =
+  [
+    { key: "salary", label: "Salary" },
+    { key: "bonus", label: "Bonus" },
+    { key: "stockAwards", label: "Stock" },
+    { key: "optionAwards", label: "Options" },
+    { key: "nonEquityIncentive", label: "Incentive" },
+    { key: "pensionAndDeferred", label: "Pension" },
+    { key: "allOther", label: "Other" },
+  ];
+
+/**
+ * How the chief executive's pay was made up, as one bar of blocks. Salary
+ * is usually a sliver and equity most of it; seeing that beats the table.
+ * Every piece gets at least one cell so a small one still shows.
+ */
+function PayMixBar({
+  row,
+  width,
+}: {
+  row: CloudExecutiveRowPayload;
+  width: number;
+}) {
+  const parts = PAY_PARTS.map((part, index) => ({
+    ...part,
+    value: (row[part.key] as number | null) ?? 0,
+    color: getChartIndicatorColor(index),
+  })).filter((part) => part.value > 0);
+  const sum = parts.reduce((total, part) => total + part.value, 0);
+  if (sum <= 0) return null;
+  const barWidth = Math.max(10, Math.min(width, 60));
+  let cells = parts.map((part) =>
+    Math.max(1, Math.round((part.value / sum) * barWidth)),
+  );
+  // Rounding and the one-cell floor can overshoot; trim the largest piece.
+  while (cells.reduce((a, b) => a + b, 0) > barWidth) {
+    const largest = cells.indexOf(Math.max(...cells));
+    cells[largest] = cells[largest]! - 1;
+  }
+  cells = cells.map((count) => Math.max(1, count));
+  return (
+    <Box flexDirection="column">
+      <Box height={1} flexDirection="row">
+        {parts.map((part, index) => (
+          <Text key={part.key} fg={part.color}>
+            {"█".repeat(cells[index]!)}
+          </Text>
+        ))}
+      </Box>
+      <Box flexDirection="row" flexWrap="wrap">
+        {parts.map((part) => (
+          <Box key={part.key} flexDirection="row" marginRight={2}>
+            <Text fg={part.color}>■ </Text>
+            <Text fg={colors.textDim}>{part.label} </Text>
+            <Text fg={colors.text}>
+              {Math.round((part.value / sum) * 100)}%
+            </Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
   );
 }
 
@@ -386,6 +450,14 @@ export function ExecutivesPane({
                     nativePaneChrome={nativePaneChrome}
                   />
                 ))}
+              </Box>
+            )}
+            {statement.ceo && (
+              <Box flexDirection="column">
+                <SectionHeading
+                  title={`HOW ${statement.ceo.name.split(" ").pop()?.toUpperCase() ?? "THE CEO"} WAS PAID`}
+                />
+                <PayMixBar row={statement.ceo} width={proseWidth} />
               </Box>
             )}
             {statement.namedExecutives.length > 0 && (
