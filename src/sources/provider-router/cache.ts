@@ -7,7 +7,7 @@ import { canonicalExchange } from "../../utils/exchanges";
 import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 
 const MARKET_NAMESPACE = "market";
-const FINANCIALS_SCHEMA_VERSION = 2;
+const FINANCIALS_SCHEMA_VERSION = 3;
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -146,11 +146,13 @@ export function listCachedResources<T>(
     allowExpired,
   }).filter((record) => {
     if (kind !== "financials" || record.schemaVersion >= FINANCIALS_SCHEMA_VERSION) return true;
-    // Legacy SEC-supplemented annuals mixed quarter facts and fallback
-    // concepts. Their period durations cannot be reconstructed from cache.
-    // Refresh those records; unrelated quote/history/company caches remain usable.
+    // Earlier merges could date unknown fields from a partial availability map,
+    // in addition to the older SEC annual/concept errors. Cached dates cannot
+    // distinguish inferred metadata from source evidence; refresh dated rows.
+    // Unrelated quote/history/company and undated financial caches remain usable.
     const value = record.value as TickerFinancials;
-    return !value.annualStatements?.some((row) => row.availableAt || Object.keys(row.fieldAvailability ?? {}).length > 0);
+    return ![...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
+      .some((row) => row.availableAt || Object.keys(row.fieldAvailability ?? {}).length > 0);
   });
   if (records.length === 0) return [];
 

@@ -5,6 +5,20 @@ export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include
 const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
+/** An explicit field map is authoritative: omitted fields have unknown availability. */
+export function statementFieldAvailability(row: FinancialStatement | undefined, field: string): string | undefined {
+  const value = row?.fieldAvailability !== undefined ? row.fieldAvailability?.[field] : row?.availableAt;
+  return value && Number.isFinite(Date.parse(value)) ? value : undefined;
+}
+
+/** A derived value is dated only when every input's availability is known. */
+export function completeAvailability(values: readonly (string | null | undefined)[]): string | undefined {
+  if (values.length === 0 || values.some((value) => !value || !Number.isFinite(Date.parse(value)))) return undefined;
+  return values.reduce<string | undefined>((latest, value) => (
+    !latest || Date.parse(value!) > Date.parse(latest) ? value! : latest
+  ), undefined);
+}
+
 function metricKeys(...rows: Array<FinancialStatement | undefined>): string[] {
   return [...new Set(rows.flatMap((row) => Object.keys(row ?? {})))]
     .filter((key) => !STATEMENT_METADATA_KEYS.has(key));
@@ -145,29 +159,24 @@ export function mergeFinancialStatementRows(
       }
 
       if (primaryHasValue) {
-        const primaryAvailability = row.fieldAvailability?.[key] ?? row.availableAt;
+        const primaryAvailability = statementFieldAvailability(row, key);
         const valuesMatch = fallbackHasValue && Object.is(metricValue(row, key), metricValue(fallback, key));
         const availability = primaryAvailability
-          ?? (valuesMatch ? fallback?.fieldAvailability?.[key] ?? fallback?.availableAt : undefined);
+          ?? (valuesMatch ? statementFieldAvailability(fallback, key) : undefined);
         if (availability) fieldAvailability[key] = availability;
       } else if (fallbackHasValue) {
-        const availability = fallback?.fieldAvailability?.[key] ?? fallback?.availableAt;
+        const availability = statementFieldAvailability(fallback, key);
         if (availability) fieldAvailability[key] = availability;
       }
     }
 
     // A fallback row-level date cannot safely date a different primary value.
     // Retained fallback fields still carry their own per-field provenance.
-    const primaryHasMetrics = keys.some((key) => hasMetricValue(row, key));
     const retainedMetricKeys = keys.filter((key) => hasMetricValue(merged, key));
-    const completeFieldAvailability = retainedMetricKeys.length > 0
-      && retainedMetricKeys.every((key) => !!fieldAvailability[key]);
-    const availableAt = completeFieldAvailability
-      ? Object.values(fieldAvailability).sort().at(-1)
-      : row.availableAt ?? (!primaryHasMetrics ? fallback?.availableAt : undefined);
+    const availableAt = completeAvailability(retainedMetricKeys.map((key) => fieldAvailability[key]));
     if (availableAt) merged.availableAt = availableAt;
     else delete merged.availableAt;
-    if (Object.keys(fieldAvailability).length > 0) merged.fieldAvailability = fieldAvailability;
+    if (Object.keys(fieldAvailability).length > 0 || row.fieldAvailability !== undefined || fallback?.fieldAvailability !== undefined) merged.fieldAvailability = fieldAvailability;
     else delete merged.fieldAvailability;
     return merged;
   });
