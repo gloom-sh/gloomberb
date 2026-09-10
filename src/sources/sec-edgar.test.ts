@@ -133,6 +133,57 @@ describe("parseFilingDocuments", () => {
 });
 
 describe("parseCompanyFactsFinancialStatements", () => {
+  test("keeps preferred income concept and its restatements separate from consolidated fallback income", () => {
+    const period = { start: "2017-09-04", end: "2018-09-02", form: "10-K", fp: "FY" };
+    const statements = parseCompanyFactsFinancialStatements({ facts: { "us-gaap": {
+      NetIncomeLoss: { units: { USD: [
+        { ...period, val: 3_134_000_000, filed: "2018-10-26" },
+        { ...period, val: 3_134_000_000, filed: "2019-10-11" },
+        { ...period, val: 3_140_000_000, filed: "2020-10-07" },
+      ] } },
+      ProfitLoss: { units: { USD: [
+        { ...period, val: 3_179_000_000, filed: "2018-10-26" },
+        { ...period, val: 3_179_000_000, filed: "2021-10-06" },
+        { ...period, start: "2016-08-29", end: "2017-09-03", val: 2_714_000_000, filed: "2018-10-26" },
+      ] } },
+    } } });
+    expect(statements.annualStatements.map(({ date, netIncome, fieldAvailability }) => ({ date, netIncome, availableAt: fieldAvailability?.netIncome }))).toEqual([
+      { date: "2017-09-03", netIncome: 2_714_000_000, availableAt: "2018-10-26" },
+      { date: "2018-09-02", netIncome: 3_140_000_000, availableAt: "2020-10-07" },
+    ]);
+  });
+
+  test("separates annual facts from quarter disclosures in the same 10-K and fiscal-year label", () => {
+    const fact = (rows: unknown[]) => ({ units: { USD: rows } });
+    const filing = { form: "10-K", fp: "FY", fy: 2017, filed: "2017-10-18" };
+    const statements = parseCompanyFactsFinancialStatements({ facts: { "us-gaap": {
+      NetIncomeLoss: fact([
+        { ...filing, start: "2016-08-29", end: "2017-09-03", val: 2_679_000_000 },
+        { ...filing, start: "2017-05-08", end: "2017-09-03", val: 919_000_000, frame: "CY2017Q3" },
+        { ...filing, start: "2016-11-21", end: "2017-02-12", val: 521_000_000, frame: "CY2017Q1" },
+        // A later quarterly comparative must not overwrite the annual amount.
+        { ...filing, filed: "2018-10-26", start: "2017-05-08", end: "2017-09-03", val: 919_000_000, frame: "CY2017Q3" },
+        // Filing fp can be Q4 even when the fact itself spans the full year.
+        { ...filing, filed: "2018-10-26", fp: "Q4", start: "2017-09-04", end: "2018-09-02", val: 3_179_000_000 },
+      ]),
+      Assets: fact([
+        { ...filing, end: "2017-09-03", val: 36_347_000_000 },
+        { ...filing, end: "2017-02-12", val: 33_000_000_000, frame: "CY2017Q1I" },
+      ]),
+      GrossProfit: fact([
+        { ...filing, end: "2017-09-03", val: 1 }, // Unknown duration stays unknown.
+        { ...filing, start: "2017-01-01", end: "2017-09-03", val: 2 }, // YTD, not annual.
+      ]),
+    } } });
+    expect(statements.annualStatements.map(({ date, netIncome, totalAssets, grossProfit }) => ({ date, netIncome, totalAssets, grossProfit }))).toEqual([
+      { date: "2017-09-03", netIncome: 2_679_000_000, totalAssets: 36_347_000_000, grossProfit: undefined },
+      { date: "2018-09-02", netIncome: 3_179_000_000, totalAssets: undefined, grossProfit: undefined },
+    ]);
+    expect(statements.quarterlyStatements.find((row) => row.date === "2017-09-03")?.netIncome).toBe(919_000_000);
+    expect(statements.quarterlyStatements.find((row) => row.date === "2017-02-12")).toMatchObject({ netIncome: 521_000_000, totalAssets: 33_000_000_000 });
+    expect(statements.annualStatements[0]?.fieldAvailability?.netIncome).toBe("2017-10-18");
+  });
+
   test("maps SEC company facts into deeper annual and quarterly statement rows", () => {
     const fact = (tag: string, unit: string, rows: unknown[]) => ({
       [tag]: {
