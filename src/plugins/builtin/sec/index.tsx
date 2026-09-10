@@ -5,8 +5,8 @@ import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState } from "../../runtime";
 import { usePaneTicker } from "../../../state/app/context";
-import type { ScrollBoxRenderable } from "../../../ui";
-import { EmptyState, FeedDataTableStackView, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
+import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { EmptyState, FeedDataTableStackView, Prose, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -22,6 +22,7 @@ import {
   formatCompactDocumentLabel,
   isDefaultVisibleFilingDocument,
   isInlineExhibitDocument,
+  filingPreviewTruncated,
 } from "./filing-documents";
 import {
   buildInlineFilingContentTargets,
@@ -33,6 +34,10 @@ import {
   getFilingDisplayTitle,
   getFormDescription,
   getMeaningfulPrimaryDescription,
+  secFilingIssuers,
+  secIssuerLabel,
+  secReportedAcceptance,
+  SEC_ACCEPTANCE_NOTE,
 } from "./model";
 
 export { secHeadless } from "./headless";
@@ -137,6 +142,7 @@ function toFeedItems(
 ): FeedDataTableItem[] {
   return filings.map((filing) => {
     const displayTitle = getFilingDisplayTitle(filing);
+    const acceptedAt = secReportedAcceptance(filing);
     const formDesc = getFormDescription(filing.form);
     const hasFetchedContent = contentCache.has(filing.accessionNumber);
     const fetchedContent = contentCache.get(filing.accessionNumber);
@@ -177,9 +183,13 @@ function toFeedItems(
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
       detailMeta: [
+        secIssuerLabel(filing),
         `Filed ${formatFiledAt(filing)}`,
+        ...(acceptedAt ? [`SEC-reported acceptance ${acceptedAt}`, SEC_ACCEPTANCE_NOTE] : []),
         `Accession ${filing.accessionNumber}`,
         ...(filing.items ? [`Items ${filing.items}`] : []),
+        ...(filingPreviewTruncated(filing, selected ? selectedDocuments : [], contentCache)
+          ? ["Preview truncated. Open the SEC filing for the complete documents and terms."] : []),
       ],
       detailBody,
     };
@@ -279,6 +289,9 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       selectedIdx={selectedIdx}
       onSelect={setSelectedIdx}
       onOpenItemIdChange={setOpenItemId}
+      rootBefore={<Box flexDirection="column" paddingX={1}>
+        {secFilingIssuers(filings).map((issuer) => <Prose key={issuer.cik} text={secIssuerLabel(issuer)} width={Math.max(width - 2, 12)} />)}
+      </Box>}
       sourceLabel="Form"
       titleLabel="Filing"
       emptyStateTitle="No SEC filings."

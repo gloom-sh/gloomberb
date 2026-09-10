@@ -843,3 +843,17 @@ describe("SecEdgarClient", () => {
     expect(documents[1]?.description).toBe("Investor presentation");
   });
 });
+
+
+test("SEC acceptance timestamps preserve source values without inferring missing timezones", () => {
+  const values = ["2026-09-09T20:54:25.000Z", "2025-03-20T16:05:00-04:00", "2025-03-20T16:05:00", "20250320200500"];
+  const rows = parseRecentFilings({ cik: "1048911", filings: { recent: {
+    accessionNumber: values.map((_, i) => `0001048911-26-00000${i}`),
+    form: values.map(() => "8-K"), filingDate: values.map(() => "2025-03-20"),
+    acceptanceDateTime: values,
+  } } }, 4);
+  expect(rows.map((row) => row.acceptedAtRaw)).toEqual(values);
+  expect(rows.map((row) => row.acceptedAt?.toISOString())).toEqual([
+    "2026-09-09T20:54:25.000Z", "2025-03-20T20:05:00.000Z", undefined, undefined,
+  ]);
+});

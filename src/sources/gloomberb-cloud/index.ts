@@ -73,6 +73,8 @@ function mapCloudSecFiling(item: {
   form: string;
   filingDate: string;
   acceptedAt?: string;
+  /** Unmodified SEC acceptanceDateTime; a missing timezone is not inferred. */
+  acceptedAtRaw?: string;
   primaryDocument?: string;
   primaryDocDescription?: string;
   items?: string;
@@ -85,7 +87,9 @@ function mapCloudSecFiling(item: {
     accessionNumber: item.accessionNumber,
     form: item.form,
     filingDate: new Date(`${item.filingDate}T00:00:00Z`),
-    acceptedAt: item.acceptedAt ? new Date(item.acceptedAt) : undefined,
+    acceptedAt: item.acceptedAt && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(item.acceptedAt)
+      ? new Date(item.acceptedAt) : undefined,
+    acceptedAtRaw: item.acceptedAtRaw ?? item.acceptedAt,
     primaryDocument: item.primaryDocument,
     primaryDocDescription: item.primaryDocDescription,
     items: item.items,

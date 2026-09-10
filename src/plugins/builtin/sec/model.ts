@@ -52,6 +52,9 @@ export function getFormDescription(form: string): string {
     case "10-Q/A": return "Quarterly Report (Amended)";
     case "8-K": return "Current Report";
     case "8-K/A": return "Current Report (Amended)";
+    case "8-K12B": return "Successor Issuer Current Report";
+    case "S-4": return "Business Combination or Exchange Offer Registration";
+    case "S-4/A": return "Business Combination or Exchange Offer Registration (Amended)";
     case "4": return "Insider Transaction";
     case "3": return "Initial Insider Ownership";
     case "5": return "Annual Insider Ownership";
@@ -74,16 +77,51 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       filedAt: filing.filingDate instanceof Date
         ? filing.filingDate.toISOString()
         : String(filing.filingDate),
-      acceptedAt: filing.acceptedAt instanceof Date
-        ? filing.acceptedAt.toISOString()
-        : filing.acceptedAt ? String(filing.acceptedAt) : null,
+      acceptedAt: secAcceptanceTimestamp(filing.acceptedAt),
+      acceptedAtRaw: filing.acceptedAtRaw ?? null,
+      acceptanceReported: secReportedAcceptance(filing),
       form: filing.form,
       filing: formDescription ? `${displayTitle} | ${formDescription}` : displayTitle,
       items: filing.items ?? null,
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument ?? null,
       cik: filing.cik,
+      companyName: filing.companyName ?? null,
       url: filing.filingUrl,
     };
   });
 }
+
+export function secFilingIssuers(filings: readonly SecFilingItem[]) {
+  const issuers = new Map<string, { cik: string; companyName: string | null }>();
+  for (const filing of filings) {
+    const previous = issuers.get(filing.cik);
+    if (!previous || (!previous.companyName && filing.companyName)) {
+      issuers.set(filing.cik, { cik: filing.cik, companyName: filing.companyName ?? null });
+    }
+  }
+  return [...issuers.values()];
+}
+
+export function secIssuerLabel(issuer: { cik: string; companyName?: string | null }): string {
+  return `${issuer.companyName || "Issuer name unavailable"} · CIK ${issuer.cik}`;
+}
+
+/** Persistence may return timestamps as strings even when the network model uses Date. */
+export function secAcceptanceTimestamp(value: unknown): string | null {
+  if (!(value instanceof Date) && typeof value !== "string") return null;
+  if (typeof value === "string" && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+export function secReportedAcceptance(filing: SecFilingItem): string | null {
+  const persistedValue: unknown = filing.acceptedAt;
+  const raw = filing.acceptedAtRaw?.trim() || (typeof persistedValue === "string" ? persistedValue.trim() : undefined);
+  if (raw) return /^\d{14}$/.test(raw) || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw)
+    ? `${raw} (timezone unspecified)`
+    : raw;
+  return secAcceptanceTimestamp(filing.acceptedAt);
+}
+
+export const SEC_ACCEPTANCE_NOTE = "SEC-reported acceptance is not verified public availability or an announcement time. Source timestamps without a timezone remain unconverted.";

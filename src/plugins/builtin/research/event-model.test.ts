@@ -75,3 +75,13 @@ test("missing or ambiguous fiscal periods and announcements cannot borrow a prev
     expect(buildEventRows(actions, null, { quarterlyStatements: statements }, "USD").every((row) => row.qRevenue == null)).toBe(true);
   }
 });
+
+test("spinoff adjustment factors are not presented as verified share splits", () => {
+  const [row] = buildEventRows({ symbol: "GE", earnings: [], dividends: [],
+    splits: [{ date: "2024-04-02", fromFactor: 1000, toFactor: 1253, description: "1253:1000 split" }],
+  }, null, null, "USD");
+  expect(row).toMatchObject({ status: "Factor", value: "1253:1000", adjustmentFactor: 1.253,
+    detail: "Provider split/adjustment", providerDescription: "1253:1000 split" });
+  expect(row?.qEps).toBeUndefined();
+
+});

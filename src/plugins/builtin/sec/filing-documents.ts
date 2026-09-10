@@ -53,3 +53,13 @@ export function isDefaultVisibleFilingDocument(document: SecFilingDocument): boo
   if (isInlineExhibitDocument(document)) return true;
   return !SEC_SUPPORT_DOCUMENT_TYPE_RE.test(document.type.trim());
 }
+
+/** A primary preview or a rendered exhibit can independently hit the extraction limit. */
+export function filingPreviewTruncated(
+  filing: SecFilingItem,
+  documents: readonly SecFilingDocument[],
+  contentCache: ReadonlyMap<string, string | null>,
+): boolean {
+  const keys = [filing.accessionNumber, ...documents.filter(isInlineExhibitDocument).map((document) => documentContentKey(filing, document))];
+  return keys.some((key) => contentCache.get(key)?.trimEnd().endsWith("[truncated]"));
+}

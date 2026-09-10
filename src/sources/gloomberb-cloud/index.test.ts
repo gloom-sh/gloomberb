@@ -17,6 +17,7 @@ const verifiedUser: AuthUser = {
 };
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
+const originalGetCloudSecFilings = apiClient.getCloudSecFilings.bind(apiClient);
 const originalGetCloudHistory = apiClient.getCloudHistory.bind(apiClient);
 const originalGetCloudQuote = apiClient.getCloudQuote.bind(apiClient);
 const originalGetCloudFinancials = apiClient.getCloudFinancials.bind(apiClient);
@@ -102,6 +103,7 @@ function makeCloudNewsPayload(overrides: Partial<CloudNewsPayload> = {}): CloudN
 
 afterEach(() => {
   apiClient.ensureVerifiedSession = originalEnsureVerifiedSession;
+  apiClient.getCloudSecFilings = originalGetCloudSecFilings;
   apiClient.getCloudHistory = originalGetCloudHistory;
   apiClient.getCloudQuote = originalGetCloudQuote;
   apiClient.getCloudFinancials = originalGetCloudFinancials;
@@ -902,4 +904,16 @@ describe("GloomberbCloudProvider", () => {
     expect(story?.items?.map((item) => item.id)).toEqual(["item-2", "item-1"]);
     expect(story?.items?.[0]?.publishedAt).toEqual(new Date("2026-04-01T10:05:00.000Z"));
   });
+});
+
+test("cloud SEC acceptance keeps timezone-free source values without using the machine timezone", async () => {
+  apiClient.ensureVerifiedSession = async () => verifiedUser;
+  const values = ["2025-03-20T20:10:11.000Z", "2025-03-20T16:10:11", "20250320161011"];
+  apiClient.getCloudSecFilings = async () => ({ filings: values.map((acceptedAt, index) => ({
+    accessionNumber: String(index), form: "8-K", filingDate: "2025-03-20", acceptedAt,
+    cik: "0001048911", filingUrl: "https://www.sec.gov/filing",
+  })) });
+  const rows = await new GloomberbCloudProvider().getSecFilings("FDX");
+  expect(rows.map((row) => row.acceptedAtRaw)).toEqual(values);
+  expect(rows.map((row) => row.acceptedAt?.toISOString())).toEqual([values[0], undefined, undefined]);
 });

@@ -14,7 +14,9 @@ import {
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
 
-export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Split";
+export const CORPORATE_ACTION_COVERAGE = "Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered.";
+
+export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" | "Factor";
 
 export interface EventRow {
   id: string;
@@ -25,6 +27,9 @@ export interface EventRow {
   detail: string;
   epsCurrency?: string;
   revenueCurrency?: string;
+  /** Raw provider split-feed description; does not verify a legal share split. */
+  providerDescription?: string;
+  adjustmentFactor?: number;
   qEps?: number;
   qRevenue?: number;
   earningsState?: "pending" | "reported";
@@ -174,7 +179,7 @@ function eventSortRank(status: EventStatus): number {
     case "Earnings": return 2;
     case "TTM": return 3;
     case "Dividend": return 4;
-    case "Split": return 5;
+    case "Factor": return 5;
   }
 }
 
@@ -255,9 +260,11 @@ export function buildEventRows(
     rows.push({
       id: `split:${split.date}:${split.description ?? ""}`,
       date: split.date,
-      status: "Split",
+      status: "Factor",
       period: "-",
-      detail: split.description ?? "Split",
+      detail: "Provider split/adjustment",
+      providerDescription: split.description,
+      adjustmentFactor: split.fromFactor && split.toFactor ? split.toFactor / split.fromFactor : split.ratio,
       value: split.fromFactor && split.toFactor
         ? `${split.toFactor}:${split.fromFactor}`
         : formatNumber(split.ratio, 4),
