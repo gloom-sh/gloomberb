@@ -8,7 +8,7 @@ import {
   sortRatingRows,
   type RatingSortPreference,
 } from "./analyst-pane";
-import { buildEventRows, matchEarningsSecFiling } from "./corporate-actions-pane";
+import { buildEventDetailBody, buildEventRows, matchEarningsSecFiling } from "./corporate-actions-pane";
 import { eventSourceNotice } from "./event-model";
 
 const ratings: AnalystRatingRecord[] = [
@@ -260,7 +260,7 @@ describe("event rows", () => {
       dividends: [],
       splits: [],
       earnings: [
-        { date: "2026-05-01", epsActual: 1.24, surprisePercent: 4.2 },
+        { date: "2026-03-31", dateType: "fiscal-period-end" as const, epsActual: 1.24, surprisePercent: 4.2 },
       ],
     };
     const financials = {
@@ -273,7 +273,7 @@ describe("event rows", () => {
     };
     const rows = buildEventRows(actions, null, financials, "USD");
 
-    const earnings = rows.find((row) => row.id === "earn:2026-05-01");
+    const earnings = rows.find((row) => row.id === "earn:2026-03-31");
     const ttm = rows.find((row) => row.status === "TTM");
 
     expect(earnings).toMatchObject({
@@ -363,6 +363,15 @@ describe("event rows", () => {
 
     expect(matchEarningsSecFiling(row, filings)?.accessionNumber).toBe("0000320193-26-000009");
     expect(matchEarningsSecFiling({ ...row!, dateType: "fiscal-period-end" }, filings)).toBeNull();
+    const periodRow = { ...row!, dateType: "fiscal-period-end" as const,
+      dateEvidence: { accessionNumber: "0000320193-26-000010", filed: "2026-02-04", startDate: "2025-10-01" } };
+    expect(matchEarningsSecFiling(periodRow, filings)?.form).toBe("10-Q");
+    const detail = buildEventDetailBody({ row: periodRow, secFilingsLoading: false,
+      filing: filings[0]!, documents: [], documentsLoading: false, inlineContent: new Map(),
+      primaryContent: "Fiscal statement content", primaryContentLoading: false });
+    expect(detail).toContain("not an announcement date");
+    expect(detail).toContain("Fiscal statement content");
+    expect(detail).toContain("accounting basis");
   });
 });
 

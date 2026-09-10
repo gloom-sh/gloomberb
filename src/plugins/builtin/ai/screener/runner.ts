@@ -40,8 +40,10 @@ export function useAiScreenerRunner({
 }: UseAiScreenerRunnerOptions) {
   const [runState, setRunState] = useState<RunState | null>(null);
   const runRef = useRef<AiRunController | null>(null);
+  const requestRef = useRef(0);
 
   const cancelRun = useCallback(() => {
+    requestRef.current += 1;
     runRef.current?.cancel();
     runRef.current = null;
     setRunState(null);
@@ -51,6 +53,11 @@ export function useAiScreenerRunner({
     const tab = tabs.find((entry) => entry.id === tabId);
     if (!tab) return;
     const selection = resolveSelection(tab);
+    const requestId = ++requestRef.current;
+    const isCurrent = () => requestRef.current === requestId;
+    runRef.current?.cancel();
+    runRef.current = null;
+    setRunState(null);
 
     const provider = getAiProvider(selection.providerId, providers);
     if (!provider) {
@@ -67,6 +74,7 @@ export function useAiScreenerRunner({
 
     try {
       const providerStatus = await checkAiProviderStatus(provider);
+      if (!isCurrent()) return;
       if (!providerStatus.available || (!providerStatus.authenticated && !providerStatus.inconclusive)) {
         upsertTab(tab.id, (current) => ({
           ...current,
@@ -75,6 +83,7 @@ export function useAiScreenerRunner({
         return;
       }
     } catch (error) {
+      if (!isCurrent()) return;
       upsertTab(tab.id, (current) => ({
         ...current,
         lastError: error instanceof Error ? error.message : `${provider.name} status check failed.`,
@@ -82,7 +91,6 @@ export function useAiScreenerRunner({
       return;
     }
 
-    runRef.current?.cancel();
     const startedAt = Date.now();
     const prompt = buildScreenerPrompt({
       currentDate: new Date(startedAt).toISOString().slice(0, 10),
@@ -106,6 +114,7 @@ export function useAiScreenerRunner({
         modelId: selection.modelId ?? undefined,
         outputMode: "screener",
         onChunk: (output) => {
+          if (!isCurrent()) return;
           setRunState((current) => (
             current?.tabId === tab.id
               ? { ...current, output }
@@ -115,9 +124,11 @@ export function useAiScreenerRunner({
       });
       runRef.current = run;
       rawOutput = await run.done;
+      if (!isCurrent()) return;
 
       const parsed = parseScreenerResponse(rawOutput);
       const validated = await validateScreenerResults(parsed.tickers, tickers, dispatch, dataProvider);
+      if (!isCurrent()) return;
 
       upsertTab(tab.id, (current) => ({
         ...current,
@@ -126,7 +137,7 @@ export function useAiScreenerRunner({
         results: validated.results,
         lastSuccessAt: startedAt,
         lastRunPromptSignature: getScreenerPromptSignature(
-          current.prompt,
+          tab.prompt,
           selection.providerId,
           selection.modelId,
         ),
@@ -135,7 +146,7 @@ export function useAiScreenerRunner({
         debugOutput: null,
       }));
     } catch (error: unknown) {
-      if (isAiRunCancelled(error)) return;
+      if (!isCurrent() || isAiRunCancelled(error)) return;
       upsertTab(tab.id, (current) => ({
         ...current,
         lastError: error instanceof Error ? error.message : "AI screener failed.",
@@ -153,6 +164,7 @@ export function useAiScreenerRunner({
   }, [dataProvider, dispatch, providers, resolveSelection, tabs, tickers, upsertTab]);
 
   useEffect(() => () => {
+    requestRef.current += 1;
     runRef.current?.cancel();
   }, []);
 

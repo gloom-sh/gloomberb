@@ -3,7 +3,7 @@ import { buildEventRows, eventSourceNotice, formatEventMetric } from "./event-mo
 
 test("ADR reported EPS and company revenue keep their distinct currencies", () => {
   const rows = buildEventRows({ symbol: "TSM", currency: "USD", dividends: [], splits: [],
-    earnings: [{ date: "2026-01-15", epsActual: 2.5, currency: "USD" }],
+    earnings: [{ date: "2025-12-31", dateType: "fiscal-period-end", epsActual: 2.5, currency: "USD" }],
   }, null, { financialCurrency: "TWD", quarterlyStatements: [
     { date: "2025-12-31", currency: "TWD", totalRevenue: 1000000000000, eps: 15 },
   ] }, "USD");
@@ -52,4 +52,26 @@ test("partial and stale corporate data are not described as an empty event histo
     actions: { symbol: "RIVN", dividends: [], splits: [], earnings: [], coverage: { earnings: "unavailable", dividends: "available" }, stale: true },
   });
   expect(notice).toEqual({ text: "Unavailable: earnings   Corporate actions stale", failed: true });
+});
+
+test("period aliases retain exact filing provenance and raw surprise inputs", () => {
+  const evidence = { accessionNumber: "0000909832-26-000051", filed: "2026-06-03", startDate: "2026-02-16" };
+  const [row] = buildEventRows({ symbol: "COST", providerId: "yahoo", dividends: [], splits: [], earnings: [
+    { date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, epsEstimate: 4.9231, difference: 0.0069, surprisePercent: 0.14 },
+  ] }, null, { quarterlyStatements: [{ date: "2026-05-10", providerDate: "2026-05-31", dateSource: "sec", dateEvidence: evidence, totalRevenue: 70_527_000_000, currency: "USD" }] }, "USD");
+  expect(row).toMatchObject({ date: "2026-05-10", providerPeriodDate: "2026-05-31", fiscalPeriodEnd: "2026-05-10", period: "Q26-05-10", dateEvidence: evidence,
+    qRevenue: 70_527_000_000, epsEstimate: 4.9231, epsActual: 4.93, epsDifference: 0.0069, surprisePercent: 0.14, epsBasis: "provider-unspecified" });
+});
+
+test("missing or ambiguous fiscal periods and announcements cannot borrow a previous quarter's revenue", () => {
+  const actions = { symbol: "TEST", dividends: [], splits: [], earnings: [
+    { date: "2026-06-30", dateType: "fiscal-period-end" as const, epsActual: 2 },
+    { date: "2026-08-01", dateType: "announcement" as const, epsActual: 2 },
+  ] };
+  for (const statements of [
+    [{ date: "2026-03-31", totalRevenue: 100 }],
+    [{ date: "2026-06-28", providerDate: "2026-06-30", totalRevenue: 100 }, { date: "2026-06-30", totalRevenue: 200 }],
+  ]) {
+    expect(buildEventRows(actions, null, { quarterlyStatements: statements }, "USD").every((row) => row.qRevenue == null)).toBe(true);
+  }
 });

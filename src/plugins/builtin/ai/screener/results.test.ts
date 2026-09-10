@@ -54,3 +54,27 @@ test("AI screener refuses a wrong-exchange ADR and distinguishes saved listings 
     new Map([["VOD:XLON", saved!]]), () => {}, createTestDataProvider({ search: async () => { throw new Error("Should use saved listing"); } }));
   expect(reused.results[0]?.symbol).toBe("VOD:XLON");
 });
+
+test("an unqualified dual listing cannot silently select the first search result", async () => {
+  const repository = setup();
+  const provider = createTestDataProvider({ search: async () => [result("ASML", "NASDAQ"), result("ASML", "AMS")] });
+  const ambiguous = await validateScreenerResults([{ symbol: "ASML", exchange: "", reason: "Technology" }], new Map(), () => {}, provider);
+  expect(ambiguous.results).toEqual([]);
+  expect(await repository.loadAllTickers()).toEqual([]);
+  const qualified = await validateScreenerResults([{ symbol: "ASML.AS", exchange: "AMS", reason: "EUR listing" }], new Map(), () => {}, provider);
+  expect(qualified.results[0]?.exchange).toBe("AMS");
+});
+
+test("a failed lookup retains other resolved candidates and identifies incomplete coverage", async () => {
+  setup();
+  const provider = createTestDataProvider({ search: async (symbol) => {
+    if (symbol === "FAIL") throw new Error("upstream unavailable");
+    return [result("MSFT", "NASDAQ")];
+  } });
+  const validated = await validateScreenerResults([
+    { symbol: "FAIL", exchange: "NYSE", reason: "Unverified" },
+    { symbol: "MSFT", exchange: "NASDAQ", reason: "Candidate" },
+  ], new Map(), () => {}, provider);
+  expect(validated.results.map((entry) => entry.symbol)).toEqual(["MSFT"]);
+  expect(validated.warning).toContain("Lookup failed for 1: FAIL");
+});

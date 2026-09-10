@@ -27,6 +27,18 @@ export interface EventRow {
   revenueCurrency?: string;
   qEps?: number;
   qRevenue?: number;
+  earningsState?: "pending" | "reported";
+  epsActual?: number;
+  epsEstimate?: number;
+  epsDifference?: number;
+  surprisePercent?: number;
+  epsBasis?: "provider-unspecified";
+  providerId?: string;
+  fetchedAt?: string;
+  fiscalPeriodEnd?: string;
+  periodDateSource?: FinancialStatement["dateSource"];
+  providerPeriodDate?: string;
+  dateEvidence?: FinancialStatement["dateEvidence"];
   annualEps?: number;
   annualRevenue?: number;
   value: string;
@@ -65,23 +77,15 @@ function quarterLabel(statement: FinancialStatement | undefined): string {
   return statement?.date ? `Q${statement.date.slice(2)}` : "-";
 }
 
-function daysBetween(leftDate: string, rightDate: string): number {
-  const left = new Date(`${leftDate}T00:00:00Z`).getTime();
-  const right = new Date(`${rightDate}T00:00:00Z`).getTime();
-  if (!Number.isFinite(left) || !Number.isFinite(right)) return Number.POSITIVE_INFINITY;
-  return Math.abs(left - right) / 86_400_000;
-}
-
 function statementForEarningsDate(
   quarterlyStatements: readonly FinancialStatement[],
-  earningsDate: string,
+  earning: CorporateActionsData["earnings"][number],
 ): FinancialStatement | undefined {
-  let best: FinancialStatement | undefined;
-  for (const statement of quarterlyStatements) {
-    if (statement.date > earningsDate) continue;
-    if (!best || statement.date > best.date) best = statement;
-  }
-  return best && daysBetween(best.date, earningsDate) <= 140 ? best : undefined;
+  // Announcement proximity cannot establish which quarter a result describes.
+  // Vendor period aliases are usable only when the statement retains that identity.
+  if (earning.dateType !== "fiscal-period-end") return undefined;
+  const matches = quarterlyStatements.filter((statement) => statement.date === earning.date || statement.providerDate === earning.date);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function estimateKey(estimate: AnalystEstimateRecord): string {
@@ -187,10 +191,10 @@ export function buildEventRows(
 
   for (const earning of data?.earnings ?? []) {
     // A pending announcement must never inherit the previous report's actuals.
-    const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning.date);
+    const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
     rows.push({
       id: `earn:${earning.date}`,
-      date: earning.date,
+      date: statement?.date ?? earning.date,
       dateType: earning.dateType,
       status: "Earnings",
       period: statement ? quarterLabel(statement) : earning.time?.trim() || "-",
@@ -199,8 +203,20 @@ export function buildEventRows(
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
       qEps: earning.epsActual ?? earning.epsEstimate,
       qRevenue: statement?.totalRevenue,
-      value: earning.surprisePercent != null ? formatPercentRaw(earning.surprisePercent) : "-",
-      tone: earning.surprisePercent == null ? "muted" : earning.surprisePercent >= 0 ? "positive" : "negative",
+      earningsState: earning.epsActual == null ? "pending" : "reported",
+      epsActual: earning.epsActual,
+      epsEstimate: earning.epsEstimate,
+      epsDifference: earning.epsActual == null ? undefined : earning.difference,
+      surprisePercent: earning.epsActual == null ? undefined : earning.surprisePercent,
+      epsBasis: "provider-unspecified",
+      providerId: data?.providerId,
+      fetchedAt: data?.fetchedAt,
+      fiscalPeriodEnd: statement?.date,
+      periodDateSource: statement?.dateSource,
+      providerPeriodDate: earning.dateType === "fiscal-period-end" ? earning.date : undefined,
+      dateEvidence: statement?.dateEvidence,
+      value: earning.epsActual != null && earning.surprisePercent != null ? formatPercentRaw(earning.surprisePercent) : "-",
+      tone: earning.epsActual == null || earning.surprisePercent == null ? "muted" : earning.surprisePercent >= 0 ? "positive" : "negative",
     });
   }
 

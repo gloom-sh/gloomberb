@@ -93,6 +93,8 @@ export function buildScreenerPrompt({
     "- Return at most 25 unique ticker candidates.",
     "- Use uppercase symbols.",
     "- `reason` must be concise and specific.",
+    "- Include the exchange. For financial criteria, give the fiscal period, reporting currency, metric values and source in `reason`.",
+    "- Do not treat unavailable data as a match or invent sources. State any unverified coverage in the summary.",
     "- Omit any company you cannot validate with confidence.",
   );
 
@@ -109,6 +111,10 @@ export function parseScreenerResponse(raw: string): ParsedScreenerResponse {
   const tickersRaw = Array.isArray(payload.tickers) ? payload.tickers : null;
   if (!tickersRaw) {
     throw new Error("AI screener JSON did not include a `tickers` array.");
+  }
+  if (tickersRaw.some((entry) => !entry || typeof entry !== "object"
+    || !normalizeString((entry as Record<string, unknown>).symbol))) {
+    throw new Error("AI screener returned malformed ticker candidates. Previous results are retained; retry the screen.");
   }
 
   const tickers = tickersRaw

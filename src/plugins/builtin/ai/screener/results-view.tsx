@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Box, Text } from "../../../../ui";
-import { EmptyState, Spinner, TickerListTableView, type DataTableKeyEvent } from "../../../../components";
+import { EmptyState, Prose, Spinner, TickerListTableView, type DataTableKeyEvent } from "../../../../components";
 import type { ColumnConfig } from "../../../../types/config";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
@@ -16,7 +16,6 @@ export function AiScreenerResultsView({
   activeTab,
   columnContext,
   columns,
-  contentHeight,
   cursorSymbol,
   financialsMap,
   focused,
@@ -34,7 +33,6 @@ export function AiScreenerResultsView({
   activeTab: AiScreenerTab | null;
   columnContext: ColumnContext;
   columns: ColumnConfig[];
-  contentHeight: number;
   cursorSymbol: string | null;
   financialsMap: Map<string, TickerFinancials>;
   focused: boolean;
@@ -95,8 +93,13 @@ export function AiScreenerResultsView({
           ))}
         </Box>
       )}
+      {activeTab && activeTab.results.length > 0 && (
+        <Box paddingX={1} flexDirection="column">
+          <Prose width={detailTextWidth} color={colors.textDim} text={t("AI rationale; listing identity checked. Verify financial criteria in company research.")} />
+        </Box>
+      )}
 
-      <Box flexGrow={1} minHeight={contentHeight}>
+      <Box flexGrow={1} minHeight={0}>
         {!activeTab ? (
           <Box padding={1} flexGrow={1}>
             <EmptyState title={t("No AI screeners yet.")} hint={t("Click + to create one.")} />
@@ -132,10 +135,10 @@ export function AiScreenerResultsView({
             onRootKeyDown={onRootKeyDown}
             resetScrollKey={activeTab.id}
             onRowActivate={onRowActivate}
-            emptyTitle="No matches yet."
+            emptyTitle={activeTab.lastSuccessAt ? "No resolved matches in this run." : "No matches yet."}
             emptyHint={promptDirty && !isRunningActiveTab
               ? "Prompt changed. Refresh to rerun."
-              : "Run this screener. Use PS to customize columns."}
+              : activeTab.lastSuccessAt ? "Review the summary and lookup warnings, or refine the prompt." : "Run this screener. Use PS to customize columns."}
           />
         )}
       </Box>
