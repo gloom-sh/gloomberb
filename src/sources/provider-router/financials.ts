@@ -179,6 +179,7 @@ export function hasShallowStatementHistory(data: TickerFinancials | null | undef
 export function mergeMissingStatementArrays(primary: TickerFinancials, fallback: TickerFinancials): TickerFinancials {
   return excludeNonCompanyFinancials({
     ...primary,
+    statementHistory: fallback.statementHistory?.status === "available" ? fallback.statementHistory : primary.statementHistory ?? fallback.statementHistory,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
@@ -259,6 +260,7 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
   return excludeNonCompanyFinancials({
     ...fallback,
     ...primary,
+    statementHistory: primary.statementHistory ?? fallback.statementHistory,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     quote: resolvedQuote,
     quoteContributions,

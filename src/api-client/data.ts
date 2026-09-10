@@ -196,8 +196,10 @@ export class CloudDataApi {
   async getCloudFinancials(
     symbol: string,
     exchange?: string,
+    statementHistory?: "extended",
   ): Promise<CloudMarketResponse<TickerFinancials>> {
-    return this.requestMarketSymbol("/market/financials", symbol, exchange);
+    const path = cloudMarketSymbolPath("/market/financials", symbol, exchange);
+    return this.request(statementHistory === "extended" ? `${path}&statementHistory=extended` : path);
   }
 
   async getCloudFinancialsBatch(

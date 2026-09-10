@@ -69,33 +69,43 @@ export class YahooFinanceClient implements DataProvider {
 
   private shouldSupplementSecStatements(ticker: string, exchange: string, financials: TickerFinancials): boolean {
     if (!/^[A-Z0-9.-]+$/i.test(ticker.trim())) return false;
-    if (ticker.includes(".")) return false;
+    if (ticker.includes(".") && !/^[A-Z]+\.[AB]$/i.test(ticker)) return false;
     const normalizedExchange = exchange.trim().toUpperCase();
     return SEC_STATEMENT_SUPPLEMENT_EXCHANGES.has(normalizedExchange)
-      && (financials.quote?.currency ?? "USD").toUpperCase() === "USD";
+      && (financials.quote?.currency ?? "USD").toUpperCase() === "USD"
+      && ![financials.financialCurrency, ...financials.annualStatements.map((row) => row.currency), ...financials.quarterlyStatements.map((row) => row.currency)].some((currency) => currency != null && currency.toUpperCase() !== "USD");
   }
 
   private async supplementSecStatements(
     ticker: string,
     exchange: string,
     financials: TickerFinancials,
+    extended = false,
   ): Promise<TickerFinancials> {
-    if (!this.shouldSupplementSecStatements(ticker, exchange, financials)) return financials;
+    const stamp = (status: "available" | "unsupported" | "retryable-failure") => extended
+      ? { mode: "extended" as const, source: "sec" as const, status, fetchedAt: new Date().toISOString() } : undefined;
+    if (!this.shouldSupplementSecStatements(ticker, exchange, financials)) return { ...financials, statementHistory: stamp("unsupported") };
     try {
       const secStatements = await this.secClient.getFinancialStatements(ticker);
       if (
         !secStatements
         || (secStatements.annualStatements.length === 0 && secStatements.quarterlyStatements.length === 0)
       ) {
-        return financials;
+        return { ...financials, statementHistory: stamp("unsupported") };
       }
       return {
         ...financials,
-        annualStatements: mergeFinancialStatementRows(financials.annualStatements, secStatements.annualStatements),
-        quarterlyStatements: mergeFinancialStatementRows(financials.quarterlyStatements, secStatements.quarterlyStatements),
+        financialCurrency: financials.financialCurrency ?? "USD",
+        statementHistory: stamp("available"),
+        annualStatements: extended
+          ? mergeFinancialStatementRows(secStatements.annualStatements, financials.annualStatements)
+          : mergeFinancialStatementRows(financials.annualStatements, secStatements.annualStatements),
+        quarterlyStatements: extended
+          ? mergeFinancialStatementRows(secStatements.quarterlyStatements, financials.quarterlyStatements)
+          : mergeFinancialStatementRows(financials.quarterlyStatements, secStatements.quarterlyStatements),
       };
     } catch {
-      return financials;
+      return { ...financials, statementHistory: stamp("retryable-failure") };
     }
   }
 
@@ -128,7 +138,7 @@ export class YahooFinanceClient implements DataProvider {
   }
 
   /** Fetch full financials for a ticker */
-  async getTickerFinancials(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<TickerFinancials> {
+  async getTickerFinancials(ticker: string, exchange = "", context?: MarketDataRequestContext): Promise<TickerFinancials> {
     const symbolsToTry = getYahooSymbolsToTry(ticker, exchange);
     let lastError: any;
 
@@ -145,7 +155,7 @@ export class YahooFinanceClient implements DataProvider {
           fetchTimeseries: (targetSymbol, types, period1) => this.fetchTimeseries(targetSymbol, types, period1),
           providerId: this.id,
         });
-        return await this.supplementSecStatements(ticker, exchange, result);
+        return await this.supplementSecStatements(ticker, exchange, result, context?.statementHistory === "extended");
       } catch (err) {
         lastError = err;
       }

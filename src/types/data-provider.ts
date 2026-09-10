@@ -87,9 +87,11 @@ export interface MarketDataRequestContext {
   brokerInstanceId?: string;
   instrument?: BrokerContractRef | null;
   cacheMode?: "default" | "refresh";
+  statementHistory?: "extended";
 }
 
 export interface CachedFinancialsTarget {
+  statementHistory?: "extended";
   symbol: string;
   exchange?: string;
   brokerId?: string;

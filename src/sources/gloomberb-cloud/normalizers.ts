@@ -203,6 +203,7 @@ export function mapCloudFinancials(
     profile: financials.profile,
     fundamentals: financials.fundamentals,
     financialCurrency: financials.financialCurrency,
+    statementHistory: financials.statementHistory,
     annualStatements: financials.annualStatements ?? [],
     quarterlyStatements: financials.quarterlyStatements ?? [],
     priceHistory: (financials.priceHistory ?? []).map((point) =>

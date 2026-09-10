@@ -127,7 +127,7 @@ export class ProviderRouterBatchRoutes {
     targets.forEach((target, index) => {
       const context = this.deps.contextFromCachedTarget(target);
       const cached = this.deps.readCachedMergedFinancialsSelection(target.symbol, target.exchange, context, true);
-      if (cached.value && !forceRefresh) {
+      if (cached.value && !forceRefresh && target.statementHistory !== "extended") {
         results[index] = { target, financials: cached.value };
         return;
       }
@@ -135,7 +135,7 @@ export class ProviderRouterBatchRoutes {
     });
 
     const batchProvider = this.deps.providersInPriorityOrder().find((provider) => provider.getTickerFinancialsBatch);
-    const providerMisses = misses.filter(({ target }) => !this.deps.hasCachedTargetBrokerContext(target));
+    const providerMisses = misses.filter(({ target }) => target.statementHistory !== "extended" && !this.deps.hasCachedTargetBrokerContext(target));
     const providerIndexes = new Map<string, Array<{ index: number; target: CachedFinancialsTarget }>>();
     if (batchProvider && providerMisses.length > 0) {
       for (const entry of providerMisses) {

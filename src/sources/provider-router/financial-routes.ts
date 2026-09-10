@@ -1,3 +1,4 @@
+import { financialHistoryVariants, hasReusableExtendedHistory } from "./statement-history";
 import type {
   CachedFinancialsTarget,
   MarketDataRequestContext,
@@ -65,6 +66,7 @@ export class ProviderRouterFinancialRoutes {
     const results = new Map<string, TickerFinancials>();
     for (const target of targets) {
       const cached = this.readCachedMergedFinancials(target.symbol, target.exchange, {
+        statementHistory: target.statementHistory,
         brokerId: target.brokerId,
         brokerInstanceId: target.brokerInstanceId,
         instrument: target.instrument ?? undefined,
@@ -93,15 +95,16 @@ export class ProviderRouterFinancialRoutes {
       quarterlyStatements: base?.quarterlyStatements ?? [],
       priceHistory: base?.priceHistory ?? [],
     });
-    const cached = this.readCachedMergedFinancialsSelection(ticker, exchange, context, false, {
+    const cached = this.readCachedMergedFinancialsSelection(ticker, exchange, context, context?.statementHistory === "extended", {
       includeSymbolProviderFallback: true,
     });
     const forceRefresh = context?.cacheMode === "refresh";
-    if (cached.value && !forceRefresh) {
+    if (cached.value && !forceRefresh && (context?.statementHistory !== "extended" || hasReusableExtendedHistory(cached.value))) {
+      if (context?.statementHistory === "extended" && !cached.stale) return cached.value;
       if (isOptionTicker && !cached.value.quote) {
         return quoteOnlyFinancials(cached.value);
       }
-      if (!cached.stale && hasMeaningfulProfile(cached.value) && hasShallowStatementHistory(cached.value)) {
+      if (context?.statementHistory !== "extended" && !cached.stale && hasMeaningfulProfile(cached.value) && hasShallowStatementHistory(cached.value)) {
         const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
         return mergeFinancials(cached.value, providerResult?.value ?? null) ?? cached.value;
       }
@@ -119,7 +122,9 @@ export class ProviderRouterFinancialRoutes {
       const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
       const merged = mergeFinancials(
         brokerResult?.value ?? cached.brokerRecord?.value ?? null,
-        providerResult?.value ?? cached.providerValue ?? null,
+        context?.statementHistory === "extended"
+          ? mergeFinancials(providerResult?.value ?? null, cached.providerValue)
+          : providerResult?.value ?? cached.providerValue ?? null,
       );
       if (isOptionTicker && !merged?.quote) {
         return quoteOnlyFinancials(merged ?? cached.value);
@@ -232,10 +237,11 @@ export class ProviderRouterFinancialRoutes {
     options: CachedFinancialsReadOptions = {},
   ): CachedFinancialsSelection {
     const entityKey = this.deps.getEntityKey(ticker, context?.instrument);
-    const variantKeys = this.deps.getTickerVariantCandidates(exchange);
+    const quoteVariantKeys = this.deps.getTickerVariantCandidates(exchange);
+    const variantKeys = financialHistoryVariants(quoteVariantKeys, context);
     const brokerSourceKeys = this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate));
     const brokerRecord = brokerSourceKeys.length > 0
-      ? selectCachedResource<TickerFinancials>(this.deps.resources, "financials", entityKey, variantKeys, brokerSourceKeys, allowExpired)
+      ? selectCachedResource<TickerFinancials>(this.deps.resources, "financials", entityKey, quoteVariantKeys, brokerSourceKeys, allowExpired)
       : null;
     const sanitizedBrokerRecord = brokerRecord
       ? { ...brokerRecord, value: sanitizeCachedFinancials(brokerRecord.value, options) }
@@ -267,11 +273,11 @@ export class ProviderRouterFinancialRoutes {
         this.deps.resources,
         "quote",
         quoteEntityKey,
-        variantKeys,
+        quoteVariantKeys,
         quoteSourceKeys,
         allowExpired,
       )),
-      variantKeys,
+      quoteVariantKeys,
       quoteSourceKeys,
     );
     const quoteSelection = selectCachedQuoteRecord(quoteRecords, exchange, options);
