@@ -90,6 +90,18 @@ export interface FundDetailData {
   previousForm: ThirteenFFormSummary | null;
   latestHoldings: ThirteenFHoldingRecord[];
   previousHoldings: ThirteenFHoldingRecord[];
+  latestReport?: ThirteenFPeriodReport;
+  previousReport?: ThirteenFPeriodReport;
+  warnings?: string[];
+}
+
+/** The public report for one period, after applying known amendment types. */
+export interface ThirteenFPeriodReport {
+  periodOfReport: string;
+  filings: ThirteenFFormSummary[];
+  complete: boolean;
+  tableValueTotal: number | null;
+  tableEntryTotal: number | null;
 }
 
 export type HoldingAction = "held" | "new" | "add" | "trim" | "exit" | "unknown";

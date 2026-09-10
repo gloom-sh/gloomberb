@@ -22,6 +22,7 @@ import type {
   ThirteenFFund,
   ThirteenFHoldingRecord,
   ThirteenFTopFund,
+  ThirteenFPeriodReport,
 } from "./types";
 
 export const THIRTEENF_PANE_ID = "thirteenf-funds";
@@ -151,36 +152,37 @@ export function dedupeLatestForms(forms: ThirteenFFormSummary[]): ThirteenFFormS
   return [...byCik.values()].sort((left, right) => compareFormRecency(right, left));
 }
 
-export function selectLatestFormsByPeriod(forms: ThirteenFFormSummary[]): ThirteenFFormSummary[] {
-  const byPeriod = new Map<string, ThirteenFFormSummary>();
-  for (const form of forms) {
-    const current = byPeriod.get(form.periodOfReport);
-    if (!current || shouldReplacePeriodForm(current, form)) {
-      byPeriod.set(form.periodOfReport, form);
+/** SEC Form 13F special instruction 3: restatements replace the report;
+ * NEW HOLDINGS filings add entries to the existing public report. Row counts
+ * cannot establish which kind of amendment a filer submitted. */
+export function buildPeriodReports(forms: ThirteenFFormSummary[]): ThirteenFPeriodReport[] {
+  const byPeriod = new Map<string, ThirteenFPeriodReport>();
+  const unique = [...new Map(forms.map((form) => [form.accessionNumber, form])).values()];
+  for (const form of unique.sort(compareFormRecency)) {
+    let report = byPeriod.get(form.periodOfReport);
+    const amendmentType = form.amendmentType?.trim().toUpperCase();
+    if (!form.isAmendment || amendmentType === "RESTATEMENT") {
+      report = { periodOfReport: form.periodOfReport, filings: [form], complete: true,
+        tableValueTotal: form.tableValueTotal, tableEntryTotal: form.tableEntryTotal };
+    } else if (amendmentType === "NEW HOLDINGS") {
+      report = report ?? { periodOfReport: form.periodOfReport, filings: [], complete: false,
+        tableValueTotal: null, tableEntryTotal: null };
+      report.filings.push(form);
+      report.tableValueTotal = addKnown(report.tableValueTotal, form.tableValueTotal);
+      report.tableEntryTotal = addKnown(report.tableEntryTotal, form.tableEntryTotal);
+    } else {
+      // An untyped amendment could replace or supplement the report. Display
+      // its disclosed entries without inventing a reconciled full portfolio.
+      report = { periodOfReport: form.periodOfReport, filings: [form], complete: false,
+        tableValueTotal: null, tableEntryTotal: null };
     }
+    byPeriod.set(form.periodOfReport, report);
   }
-  return [...byPeriod.values()].sort((left, right) => compareFormPeriod(right, left));
+  return [...byPeriod.values()].sort((left, right) => right.periodOfReport.localeCompare(left.periodOfReport));
 }
 
-function isSupplementalAmendment(form: ThirteenFFormSummary): boolean {
-  if (!form.isAmendment) return false;
-  const amendmentType = form.amendmentType?.toUpperCase() ?? "";
-  return amendmentType.length > 0 && amendmentType !== "RESTATEMENT";
-}
-
-function shouldReplacePeriodForm(current: ThirteenFFormSummary, candidate: ThirteenFFormSummary): boolean {
-  if (isSupplementalAmendment(candidate) && !isSupplementalAmendment(current)) return false;
-  if (!isSupplementalAmendment(candidate) && isSupplementalAmendment(current)) return true;
-  if (candidate.isAmendment && !current.isAmendment) {
-    const candidateRows = candidate.tableEntryTotal ?? 0;
-    const currentRows = current.tableEntryTotal ?? 0;
-    if (currentRows > 0 && candidateRows < currentRows * 0.75) return false;
-  }
-  return compareFormRecency(candidate, current) > 0;
-}
-
-function compareFormPeriod(left: ThirteenFFormSummary, right: ThirteenFFormSummary): number {
-  return left.periodOfReport.localeCompare(right.periodOfReport);
+function addKnown(left: number | null, right: number | null): number | null {
+  return left != null && right != null ? left + right : null;
 }
 
 function compareFormRecency(left: ThirteenFFormSummary, right: ThirteenFFormSummary): number {
@@ -199,8 +201,8 @@ interface HoldingAggregate {
   titleOfClass: string;
   putCall: string;
   shareType: string;
-  value: number;
-  shares: number;
+  value: number | null;
+  shares: number | null;
   accessionNumber: string;
 }
 
@@ -217,11 +219,11 @@ function aggregateHoldings(holdings: ThirteenFHoldingRecord[]): Map<string, Hold
   for (const holding of holdings) {
     const id = holdingKey(holding);
     const current = aggregates.get(id);
-    const value = holding.value ?? 0;
-    const shares = holding.shares ?? 0;
+    const value = holding.value;
+    const shares = holding.shares;
     if (current) {
-      current.value += value;
-      current.shares += shares;
+      current.value = addKnown(current.value, value);
+      current.shares = addKnown(current.shares, shares);
       if (!current.ticker && holding.ticker) current.ticker = holding.ticker;
       continue;
     }
@@ -245,6 +247,7 @@ function resolveAction(current: HoldingAggregate | undefined, previous: HoldingA
   if (current && !previous) return "new";
   if (!current && previous) return "exit";
   if (!current || !previous) return "held";
+  if (current.shares == null || previous.shares == null) return "unknown";
   const delta = current.shares - previous.shares;
   if (delta > 0) return "add";
   if (delta < 0) return "trim";
@@ -259,8 +262,8 @@ function estimateHoldingPnl(
   // A 13F option value is underlying notional. Its change cannot price the
   // option, and the filing does not identify strike, expiry or premium.
   if (current.putCall || previous.putCall) return null;
-  if (current.value <= 0 || previous.value <= 0) return null;
-  if (current.shares <= 0 || previous.shares <= 0) return null;
+  if (current.value == null || previous.value == null || current.value <= 0 || previous.value <= 0) return null;
+  if (current.shares == null || previous.shares == null || current.shares <= 0 || previous.shares <= 0) return null;
 
   const currentPrice = current.value / current.shares;
   const previousPrice = previous.value / previous.shares;
@@ -269,8 +272,13 @@ function estimateHoldingPnl(
 }
 
 export function hasComparable13FQuarter(data: FundDetailData): boolean {
+  if (data.latestReport?.complete === false || data.previousReport?.complete === false) return false;
   const current = data.latestForm?.periodOfReport;
   const previous = data.previousForm?.periodOfReport;
+  return adjacentQuarterPeriods(current, previous);
+}
+
+function adjacentQuarterPeriods(current: string | undefined, previous: string | undefined): boolean {
   if (!current || !previous) return false;
   const date = new Date(`${current}T00:00:00Z`);
   if (!Number.isFinite(date.getTime())) return false;
@@ -284,8 +292,9 @@ export function buildFundHoldingRows(data: FundDetailData | null): FundHoldingRo
   const comparable = hasComparable13FQuarter(data);
   const previous = aggregateHoldings(comparable ? data.previousHoldings : []);
   const allKeys = new Set([...current.keys(), ...previous.keys()]);
-  const totalValue = data.latestForm.tableValueTotal
-    ?? [...current.values()].reduce((sum, item) => sum + item.value, 0);
+  const totalValue = data.latestReport
+    ? data.latestReport.complete ? data.latestReport.tableValueTotal : null
+    : data.latestForm.tableValueTotal;
 
   return [...allKeys].map((id) => {
     const currentHolding = current.get(id);
@@ -295,10 +304,10 @@ export function buildFundHoldingRows(data: FundDetailData | null): FundHoldingRo
     const shares = currentHolding?.shares ?? null;
     const previousValue = previousHolding?.value ?? null;
     const previousShares = previousHolding?.shares ?? null;
-    const valueChange = comparable && (value != null || previousValue != null)
+    const valueChange = comparable && (!currentHolding || value != null) && (!previousHolding || previousValue != null)
       ? (value ?? 0) - (previousValue ?? 0)
       : null;
-    const sharesChange = comparable && (shares != null || previousShares != null)
+    const sharesChange = comparable && (!currentHolding || shares != null) && (!previousHolding || previousShares != null)
       ? (shares ?? 0) - (previousShares ?? 0)
       : null;
     const sharesChangePercent = sharesChange != null && previousShares && previousShares !== 0
@@ -331,8 +340,8 @@ export function buildFilingPositionRows(
   holdings: ThirteenFHoldingRecord[],
   reportedTotalValue?: number | null,
 ): FilingPositionRow[] {
-  const computedTotalValue = holdings.reduce((sum, holding) => sum + (holding.value ?? 0), 0);
-  const totalValue = reportedTotalValue ?? computedTotalValue;
+  // Filing details are paginated; the loaded page cannot supply a full-report denominator.
+  const totalValue = reportedTotalValue;
   return holdings.map((holding, index) => ({
     id: [
       holding.accessionNumber,
@@ -361,12 +370,20 @@ export function buildFilingPositionRows(
 }
 
 export function buildTimelineRows(forms: ThirteenFFormSummary[]): FundTimelineRow[] {
-  const selected = selectLatestFormsByPeriod(forms);
-  return selected.map((form, index) => {
-    const previous = selected[index + 1];
-    const valueChangePercent = form.tableValueTotal != null
-      && previous?.tableValueTotal != null
-      && previous.tableValueTotal !== 0
+  const reports = buildPeriodReports(forms);
+  const selected = [...new Map(forms.map((form) => [form.accessionNumber, form])).values()]
+    .sort((left, right) => compareFormRecency(right, left));
+  return selected.map((form) => {
+    const index = reports.findIndex((report) => report.periodOfReport === form.periodOfReport);
+    const report = reports[index];
+    const previous = reports[index + 1];
+    // A single filing's value is not the combined value of an amended period.
+    // Keep every source filing visible, and compare only full adjacent reports.
+    const comparable = report?.complete && report.filings.length === 1
+      && report.filings[0]?.accessionNumber === form.accessionNumber
+      && previous?.complete && adjacentQuarterPeriods(form.periodOfReport, previous.periodOfReport);
+    const valueChangePercent = comparable && form.tableValueTotal != null
+      && previous.tableValueTotal != null && previous.tableValueTotal !== 0
       ? (form.tableValueTotal - previous.tableValueTotal) / previous.tableValueTotal
       : null;
     return {

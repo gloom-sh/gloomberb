@@ -80,6 +80,21 @@ function args(view: string, limit = 50): HeadlessPaneLoadArgs {
 }
 
 describe("13F headless model", () => {
+  test("retains prior-quarter positions omitted from the current disclosed report", async () => {
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({ ...detail, previousHoldings: [
+        ...detail.previousHoldings,
+        { ...detail.previousHoldings[0]!, cusip: "21036P108", ticker: "STZ", shares: 632890, value: 94933500 },
+      ] }),
+    });
+    const result = await headless.load(args("holdings"), context());
+    expect(result.rows.find((row) => row.ticker === "STZ")).toMatchObject({
+      action: "exit", previousShares: 632890, sharesChange: -632890,
+      shares: null, value: null, estimatedPnl: null,
+    });
+  });
+
   test("requires an unambiguous manager even when the requested output has only one row", async () => {
     const lookups: number[] = [];
     let loaded = false;

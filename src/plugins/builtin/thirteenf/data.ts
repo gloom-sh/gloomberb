@@ -15,7 +15,7 @@ import {
   dateYearsAgo,
   latestLikely13FQuarter,
   recentIso,
-  selectLatestFormsByPeriod,
+  buildPeriodReports,
   todayIso,
 } from "./model";
 import type {
@@ -26,6 +26,7 @@ import type {
   ThirteenFFund,
   ThirteenFHoldingRecord,
   ThirteenFTopFund,
+  ThirteenFPeriodReport,
 } from "./types";
 
 const BROWSER_PAGE_LIMIT = 75;
@@ -169,19 +170,39 @@ export async function loadFundDetail(
   const now = new Date();
   const apiOptions = { forceRefresh: options.forceRefresh };
 
-  const forms = selectLatestFormsByPeriod(await listThirteenFForms(
+  const forms = await listThirteenFForms(
     cik,
     dateYearsAgo(4, now),
     todayIso(now),
-    20,
+    100,
     signal,
     apiOptions,
-  ));
-  const latestForm = forms[0] ?? null;
-  const previousForm = forms[1] ?? null;
+  );
+  const reports = buildPeriodReports(forms);
+  const latestReport = reports[0];
+  const previousReport = reports[1];
+  const latestForm = latestReport?.filings.at(-1) ?? null;
+  const previousForm = previousReport?.filings.at(-1) ?? null;
+  const warnings: string[] = [];
+  async function loadReport(report: ThirteenFPeriodReport | undefined): Promise<ThirteenFHoldingRecord[]> {
+    if (!report) return [];
+    const holdings: ThirteenFHoldingRecord[] = [];
+    for (const form of report.filings) {
+      const rows = await listThirteenFFormHoldings(cik, form.accessionNumber, signal, apiOptions);
+      holdings.push(...rows);
+      if (form.tableEntryTotal != null && rows.length !== form.tableEntryTotal) {
+        report.complete = false;
+        warnings.push(`${report.periodOfReport}: loaded ${rows.length} of ${form.tableEntryTotal} disclosed entries for ${form.accessionNumber}.`);
+      }
+    }
+    if (!report.complete && !warnings.some((warning) => warning.startsWith(report.periodOfReport))) {
+      warnings.push(`${report.periodOfReport}: amendment type or original report unavailable; disclosed entries cannot be reconciled into a full report.`);
+    }
+    return holdings;
+  }
   const [latestHoldings, previousHoldings] = await Promise.all([
-    latestForm ? listThirteenFFormHoldings(cik, latestForm.accessionNumber, signal, apiOptions) : Promise.resolve([]),
-    previousForm ? listThirteenFFormHoldings(cik, previousForm.accessionNumber, signal, apiOptions) : Promise.resolve([]),
+    loadReport(latestReport),
+    loadReport(previousReport),
   ]);
   return {
     cik: normalizeCik(cik),
@@ -191,6 +212,9 @@ export async function loadFundDetail(
     previousForm,
     latestHoldings,
     previousHoldings,
+    latestReport,
+    previousReport,
+    warnings,
   };
 }
 

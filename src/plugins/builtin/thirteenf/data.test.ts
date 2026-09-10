@@ -5,7 +5,8 @@ import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
 } from "./api";
-import { loadBrowserRows } from "./data";
+import { loadBrowserRows, loadFundDetail } from "./data";
+import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
 
 afterEach(() => {
   setHttpFetchTransport(null);
@@ -13,6 +14,38 @@ afterEach(() => {
 });
 
 describe("13F data cache", () => {
+  test("loads all additive filings, uses their combined denominator, and detects truncated holdings", async () => {
+    const fetched: string[] = [];
+    const forms = [
+      { accession_number: "base", period_of_report: "2026-06-30", table_value_total: 100,
+        table_entry_total: 1, filed_as_of_date: "2026-08-14", submission_type: "13F-HR" },
+      { accession_number: "addition", period_of_report: "2026-06-30", table_value_total: 50,
+        table_entry_total: 1, filed_as_of_date: "2026-08-20", submission_type: "13F-HR/A", amendment_type: "NEW HOLDINGS" },
+      { accession_number: "previous", period_of_report: "2026-03-31", table_value_total: 120,
+        table_entry_total: 1, filed_as_of_date: "2026-05-14", submission_type: "13F-HR" },
+    ];
+    setHttpFetchTransport(async (url) => {
+      const parsed = new URL(String(url));
+      if (parsed.pathname.endsWith("/forms")) return json(forms.map((form) => ({ ...form, cik: "1067983" })));
+      const accession = parsed.searchParams.get("accession_number")!;
+      fetched.push(accession);
+      return json([{ accession_number: accession, cik: "1067983", cusip: accession === "addition" ? "222222222" : "111111111",
+        ticker: accession === "addition" ? "NEW" : "OLD", value: accession === "addition" ? 50 : 100, ssh_prnamt: 10 }]);
+    });
+    const detail = await loadFundDetail("1067983", "Fund");
+    expect(fetched.sort()).toEqual(["addition", "base", "previous"]);
+    expect(detail.forms).toHaveLength(3);
+    expect(detail.latestReport).toMatchObject({ complete: true, tableValueTotal: 150 });
+    expect(hasComparable13FQuarter(detail)).toBe(true);
+    expect(buildFundHoldingRows(detail).find((row) => row.ticker === "NEW"))
+      .toMatchObject({ weight: 1 / 3, value: 50, action: "new" });
+    forms[0]!.table_entry_total = 2;
+    const partial = await loadFundDetail("1067983", "Fund", undefined, { forceRefresh: true });
+    expect(partial.warnings?.[0]).toContain("loaded 1 of 2");
+    expect(hasComparable13FQuarter(partial)).toBe(false);
+    expect(buildFundHoldingRows(partial).every((row) => row.action === "unknown" && row.weight === null)).toBe(true);
+  });
+
   test("reuses the built-in plugin resource cache across browser row loads", async () => {
     attachThirteenFApiPersistence(new MemoryPluginPersistence());
     let requestCount = 0;
