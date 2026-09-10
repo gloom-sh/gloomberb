@@ -27,6 +27,8 @@ export interface Quote {
   change: number;
   changePercent: number;
   previousClose?: number;
+  /** Provider's exchange-local session date for the daily quote reference. */
+  changeSessionDate?: string;
   high52w?: number;
   low52w?: number;
   marketCap?: number;

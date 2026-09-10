@@ -5,7 +5,7 @@ import type {
   CloudNewsStoryItemPayload,
 } from "../../api-client";
 import type { CloudNewsParams } from "../../api-client/paths";
-import { publicExchange } from "../../utils/exchanges";
+import { parsePublicTickerKey, publicExchange } from "../../utils/exchanges";
 
 function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -92,10 +92,11 @@ export function mapCloudNewsArticle(
 
 export function cloudNewsParams(query: NewsQuery): CloudNewsParams {
   const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
+  const ticker = query.ticker ? parsePublicTickerKey(query.ticker) : undefined;
   return {
     feed,
-    ticker: feed === "ticker" ? query.ticker : undefined,
-    exchange: feed === "ticker" ? publicExchange(query.exchange) : undefined,
+    ticker: feed === "ticker" ? ticker?.symbol : undefined,
+    exchange: feed === "ticker" ? publicExchange(ticker?.exchange ?? query.exchange) : undefined,
     tickerTier:
       feed === "ticker" ? query.tickerTier ?? "primary" : query.tickerTier,
     tickerRelations: query.tickerRelations,

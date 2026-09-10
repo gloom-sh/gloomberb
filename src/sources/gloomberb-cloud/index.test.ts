@@ -18,6 +18,9 @@ const verifiedUser: AuthUser = {
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
 const originalGetCloudHistory = apiClient.getCloudHistory.bind(apiClient);
 const originalGetCloudQuote = apiClient.getCloudQuote.bind(apiClient);
+const originalGetCloudFinancials = apiClient.getCloudFinancials.bind(apiClient);
+const originalGetCloudQuotesBatch = apiClient.getCloudQuotesBatch.bind(apiClient);
+const originalGetCloudFinancialsBatch = apiClient.getCloudFinancialsBatch.bind(apiClient);
 const originalGetCloudExchangeRate = apiClient.getCloudExchangeRate.bind(apiClient);
 const originalGetCloudHolders = apiClient.getCloudHolders.bind(apiClient);
 const originalGetCloudAnalystResearch = apiClient.getCloudAnalystResearch.bind(apiClient);
@@ -89,6 +92,9 @@ afterEach(() => {
   apiClient.ensureVerifiedSession = originalEnsureVerifiedSession;
   apiClient.getCloudHistory = originalGetCloudHistory;
   apiClient.getCloudQuote = originalGetCloudQuote;
+  apiClient.getCloudFinancials = originalGetCloudFinancials;
+  apiClient.getCloudQuotesBatch = originalGetCloudQuotesBatch;
+  apiClient.getCloudFinancialsBatch = originalGetCloudFinancialsBatch;
   apiClient.getCloudExchangeRate = originalGetCloudExchangeRate;
   apiClient.getCloudHolders = originalGetCloudHolders;
   apiClient.getCloudAnalystResearch = originalGetCloudAnalystResearch;
@@ -100,6 +106,74 @@ afterEach(() => {
 });
 
 describe("GloomberbCloudProvider", () => {
+  test("splits saved listing keys for cloud requests while preserving returned ticker identity", async () => {
+    const calls: Array<[string, string, string | undefined]> = [];
+    const quote = { symbol: "VOD", price: 118, currency: "GBp", change: 1, changePercent: 0.85, lastUpdated: 1 };
+    apiClient.getCloudQuote = async (symbol, exchange) => {
+      calls.push(["quote", symbol, exchange]);
+      return { status: "success", data: quote };
+    };
+    apiClient.getCloudFinancials = async (symbol, exchange) => {
+      calls.push(["financials", symbol, exchange]);
+      return { status: "success", data: { quote, annualStatements: [{ date: "2025-03-31", currency: "EUR", totalRevenue: 10 }], quarterlyStatements: [], priceHistory: [] } };
+    };
+    apiClient.getCloudHistory = async (symbol, exchange) => {
+      calls.push(["history", symbol, exchange]);
+      return { status: "success", currency: "GBp", data: [{ date: "2026-09-10 10:00:00", close: 118 }] };
+    };
+    const provider = new GloomberbCloudProvider();
+    expect(await provider.getQuote("VOD:XLON", "NASDAQ")).toMatchObject({ symbol: "VOD:XLON", currency: "GBP", price: 1.18 });
+    const financials = await provider.getTickerFinancials("VOD:XLON", "NASDAQ");
+    expect(financials.quote?.symbol).toBe("VOD:XLON");
+    expect(financials.annualStatements).toHaveLength(1);
+    const history = await provider.getPriceHistory("VOD:XLON", "NASDAQ", "1M");
+    expect(history[0]?.close).toBe(1.18);
+    expect(history[0]?.date.toISOString()).toBe("2026-09-10T09:00:00.000Z");
+    await provider.getPriceHistoryForResolution("VOD:XLON", "NASDAQ", "1M", "1d");
+    await provider.getDetailedPriceHistory("VOD:XLON", "NASDAQ", new Date("2026-09-01"), new Date("2026-09-10"), "1d");
+    expect(calls).toEqual(["quote", "financials", "history", "history", "history"].map((kind) => [kind, "VOD", "LSE"]));
+  });
+
+  test("keeps US and UK saved listings distinct through reordered cloud batches and quote streams", async () => {
+    const targets = [{ symbol: "VOD", exchange: "NASDAQ" }, { symbol: "VOD:XLON", exchange: "LSE" }];
+    const quote = { symbol: "VOD", price: 118, currency: "GBp", change: 1, changePercent: 0.85, lastUpdated: 1 };
+    const expectedRequests = [{ symbol: "VOD", exchange: "NASDAQ" }, { symbol: "VOD", exchange: "LSE" }];
+    apiClient.getCloudQuotesBatch = async (requests) => {
+      expect(requests).toEqual(expectedRequests);
+      return { status: "success", data: { items: [
+        { symbol: "VOD", exchange: "LSE", status: "success", data: quote },
+        { symbol: "VOD", exchange: "NASDAQ", status: "success", data: { ...quote, price: 15, currency: "USD" } },
+      ] } };
+    };
+    apiClient.getCloudFinancialsBatch = async (requests) => {
+      expect(requests).toEqual(expectedRequests);
+      return { status: "success", data: { items: [{ symbol: "VOD", exchange: "LSE", status: "success", data: { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] } }] } };
+    };
+    apiClient.ensureVerifiedSession = async () => verifiedUser;
+    apiClient.subscribeQuotes = (requests, onQuote) => {
+      expect(requests.map(({ symbol, exchange }) => ({ symbol, exchange }))).toEqual(expectedRequests);
+      onQuote({ symbol: "VOD", exchange: "LSE" }, quote);
+      return () => {};
+    };
+    const provider = new GloomberbCloudProvider();
+    const quotes = await provider.getQuotesBatch(targets);
+    expect(quotes[0]?.target).toBe(targets[1]!);
+    expect(quotes[0]?.quote).toMatchObject({ symbol: "VOD:XLON", currency: "GBP", price: 1.18 });
+    expect(quotes[1]?.target).toBe(targets[0]!);
+    expect(quotes[1]?.quote).toMatchObject({ symbol: "VOD", currency: "USD", price: 15 });
+    const financials = await provider.getTickerFinancialsBatch(targets);
+    expect(financials[0]?.target).toBe(targets[1]!);
+    expect(financials[0]?.financials?.quote?.symbol).toBe("VOD:XLON");
+    const seen: string[] = [];
+    const unsubscribe = provider.subscribeQuotes(targets, (target, streamed) => {
+      expect(target).toBe(targets[1]!);
+      expect(streamed.symbol).toBe("VOD:XLON");
+      seen.push(target.symbol);
+    });
+    expect(seen).toEqual(["VOD:XLON"]);
+    unsubscribe();
+  });
+
   test("uses public delayed market routes anonymously but keeps research protected", async () => {
     let sessionChecks = 0;
     apiClient.ensureVerifiedSession = async () => {

@@ -21,6 +21,7 @@ Browser interactions included search/command submission, equity overview and fin
 
 - An explicit `VOD.L` query could select the punctuation-stripped `VODL` stock. Qualified queries now match the requested listing and retain exchange suffixes through provider routing.
 - Opening a second exchange listing of a saved symbol could change the original holding's exchange/currency. The second listing now gets a distinct, stable identifier. Public/canonical ticker keys remain idempotent through persistence and lookup.
+- The browser collision check also verifies cloud requests: saved `VOD:XLON` must request provider symbol `VOD` on `LSE`, while retaining the distinct saved key when results return.
 - Futures and FX punctuation was rejected by chart composition. The chart parser now accepts `ES=F`, `6J=F`, `JPY=X`, `EURUSD=X` and slash-form FX pairs.
 - The browser command resolver independently changed `GP ES=F` into an `ESF` equity. Market punctuation is now identity-sensitive throughout search; when a catalogue omits an explicit market symbol, only a matching, valid quote can establish the target. FX metadata retains the quote leg's currency.
 - Space-separated comparison lists and inline CLI options could lose symbols. Both comma and whitespace lists work; `--range=1M` no longer consumes the following ticker.
@@ -32,6 +33,7 @@ Browser interactions included search/command submission, equity overview and fin
 - A subsequent production check found that the final minute could omit a closing auction. The official previous-close snapshot now takes precedence for the matching session.
 - Stale extended-session prices could override a newer regular session. Session selection now follows valid timestamps; premarket changes use the previous regular close.
 - Provider changes could shift UK and South African prices by 100×. Quote/history normalization and Twelve streaming ticks resolve units from the appropriate source; uncertain streaming units do not overwrite a valid quote.
+- Live NVDA trades could move below a lagging daily bar's low. Quote handling reconciles observed extrema within a regular session and guards against carrying them across dates, units or extended-hours sessions.
 - History presets previously used observation counts as calendar periods. Bounds now represent calendar weeks/months/years, with exchange-local daily labels and inclusive explicit end dates.
 - Missing FX silently became parity. Invalid conversions now remain unavailable, affected totals/risk sizing are guarded, and formatters show an em dash instead of a fabricated amount or `NaN`.
 - World index levels now use index points, including structured output. Inverse-yen FX pairs retain enough precision to be useful.

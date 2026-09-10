@@ -15,6 +15,7 @@ import {
 import { normalizePriceValueByDivisor, resolveCurrencyUnit } from "../../utils/currency-units";
 import { resolveExchangeTimeZone } from "../../utils/exchanges";
 import { createProviderMiss } from "../provider-errors";
+import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -38,7 +39,7 @@ export function mapQuote(
     quote.fullExchangeName ??
     listingExchangeName;
   const internalProviderId = cloudInternalProviderId(providerMeta);
-  return {
+  return reconcileQuoteDayRange({
     ...quote,
     currency: currency || quote.currency,
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
@@ -97,7 +98,7 @@ export function mapQuote(
           },
         }
       : quote.provenance,
-  };
+  });
 }
 
 const LOCAL_DATE_TIME_PATTERN =
