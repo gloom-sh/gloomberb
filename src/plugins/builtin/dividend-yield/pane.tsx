@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
+  Notice,
   StaticChartSurface,
   usePaneFooter,
   usePaneTicker,
@@ -71,7 +72,7 @@ function buildMetricRows(metrics: DividendMetrics, currency: string): MetricRow[
     { label: "1Y Cash Growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
     { label: "3Y Cash CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
     { label: "Earnings Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
-    { label: "Frequency", value: formatFrequency(metrics.paymentFrequency) },
+    { label: "Recent Cadence", value: formatFrequency(metrics.paymentFrequency) },
     { label: "Ex-Dividend", value: formatDate(metrics.exDividendDate) },
     { label: "Next Pay", value: formatDate(metrics.nextPayDate) },
   ];
@@ -100,11 +101,17 @@ function DividendSummary({
   currency,
   width,
   chartPoints,
+  hasHistory,
+  notes,
+  warnings,
 }: {
   metrics: DividendMetrics;
   currency: string;
   width: number;
   chartPoints: ProjectedChartPoint[];
+  hasHistory: boolean;
+  notes: string[];
+  warnings: string[];
 }) {
   const metricRows = buildMetricRows(metrics, currency);
   // Two 18-cell blocks overflow anything narrower than 38 cells, so collapse.
@@ -128,6 +135,11 @@ function DividendSummary({
           );
         })}
       </Box>
+      {hasHistory && metrics.trailingRate === 0 ? (
+        <Box paddingX={1}><Notice>No cash distributions reported in the past 12 months.</Notice></Box>
+      ) : null}
+      {warnings.map((warning) => <Box key={warning} paddingX={1}><Notice>{warning}</Notice></Box>)}
+      {notes.map((note) => <Box key={note} paddingX={1}><Notice tone="muted">{note}</Notice></Box>)}
       {chartPoints.length >= 2 && (
         <Box flexDirection="column" paddingX={1} height={chartHeight}>
           <StaticChartSurface
@@ -167,7 +179,9 @@ function renderCell(
   }
 }
 
-export function DividendYieldPane({ focused, width, height }: { focused: boolean; width: number; height: number }) {
+export function DividendYieldPane({ focused, width, height, loadData = fetchDividendData }: {
+  focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData;
+}) {
   const { symbol, ticker, financials } = usePaneTicker();
   const quoteCurrency = financials?.quote?.currency;
   const exchange = ticker?.metadata.exchange ?? "";
@@ -180,17 +194,28 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
   const quoteRef = useRef({ price: quotePrice, currency: quoteCurrency });
   quoteRef.current = { price: quotePrice, currency: quoteCurrency };
 
-  const request = useCallback(() => fetchDividendData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, symbol]);
+  const request = useCallback(() => loadData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, symbol]);
   const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null, { clearOnError: true });
   useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
   usePaneFooter("dividend-yield", () => ({
-    info: loadingErrorFooterInfo(loading, error),
-  }), [error, loading]);
+    info: [
+      ...loadingErrorFooterInfo(loading, error),
+      ...(data?.fetchedAt ? [{ id: "history-as-of", parts: [{
+        text: `History fetched ${data.fetchedAt}`, tone: "muted" as const,
+      }] }] : []),
+    ],
+  }), [data?.fetchedAt, error, loading]);
 
   const payments = data?.payments ?? [];
   const currency = data?.currency ?? payments[0]?.currency ?? resolveCurrencyUnit(ticker?.metadata.currency).currency;
-  const currentPrice = dividendReferencePrice(quotePrice, quoteCurrency, currency) ?? data?.price ?? null;
+  const paneReferencePrice = dividendReferencePrice(quotePrice, quoteCurrency, currency);
+  const currentPrice = paneReferencePrice ?? data?.price ?? null;
+  const referencePriceStale = paneReferencePrice != null ? financials?.quote?.stale : data?.priceStale;
+  const sourceWarnings = [
+    ...(data?.stale ? ["Stale cash history; recent distributions may be missing."] : []),
+    ...(referencePriceStale ? ["Stale reference price; cash yield may be out of date."] : []),
+  ];
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
@@ -232,6 +257,9 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
           currency={currency}
           width={width}
           chartPoints={chartPoints}
+          hasHistory={payments.length > 0}
+          notes={data?.notes ?? []}
+          warnings={sourceWarnings}
         />
       ) : undefined}
       columns={columns}

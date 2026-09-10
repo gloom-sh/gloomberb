@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mergeFinancialStatementRows } from "./financial-statements";
+import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "./financial-statements";
+import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 
 describe("mergeFinancialStatementRows", () => {
   test("preserves per-field availability across providers", () => {
@@ -143,4 +144,28 @@ test("does not fill a reporting-currency row from differently denominated statem
     [{ date: "2025-12-31", currency: "TWD", totalRevenue: 3_800_000_000_000 }],
     [{ date: "2025-12-31", currency: "USD", totalRevenue: 120_000_000_000, netIncome: 60_000_000_000 }],
   )).toEqual([{ date: "2025-12-31", currency: "TWD", totalRevenue: 3_800_000_000_000 }]);
+});
+
+test("filing-backed fiscal dates coalesce proven month-end aliases, including older cached duplicates", () => {
+  const provider = { date: "2026-05-31", currency: "USD", totalRevenue: 70_527_000_000, netIncome: 2_192_000_000, operatingIncome: 2_815_000_000 };
+  const fiscal = { date: "2026-05-10", totalRevenue: provider.totalRevenue, netIncome: provider.netIncome, operatingIncome: provider.operatingIncome, availableAt: "2026-06-04" };
+  const [merged] = coalesceFinancialPeriodAliases([provider, fiscal]);
+  expect(merged).toMatchObject({ date: "2026-05-10", currency: "USD", availableAt: "2026-06-04" });
+  expect(coalesceFinancialPeriodAliases([fiscal, provider])).toEqual([merged!]);
+  expect(coalesceFinancialPeriodAliases([merged!, provider, fiscal])).toEqual([merged!]);
+  const quarters = coalesceFinancialPeriodAliases([
+    { date: "2025-08-31", currency: "USD", totalRevenue: 86_156_000_000 },
+    { date: "2025-11-23", currency: "USD", totalRevenue: 67_307_000_000 },
+    { date: "2026-02-15", currency: "USD", totalRevenue: 69_597_000_000 },
+    provider, fiscal,
+  ]);
+  expect(computeTTM(quarters)?.totalRevenue).toBe(293_587_000_000);
+  for (const distinct of [
+    { ...fiscal, netIncome: fiscal.netIncome + 1 },
+    { ...fiscal, currency: "CAD" },
+    { ...fiscal, date: "2026-06-10" },
+    { ...fiscal, availableAt: undefined },
+  ]) {
+    expect(coalesceFinancialPeriodAliases([provider, distinct])).toHaveLength(2);
+  }
 });

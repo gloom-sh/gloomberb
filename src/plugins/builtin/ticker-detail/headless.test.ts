@@ -14,7 +14,10 @@ test("financial statements keep raw values, dated growth cells, and formatted co
       async getTickerFinancials(symbol, exchange) {
         requested.push(`${symbol}:${exchange}`);
         return {
-          annualStatements: [{ date: "2024-12-31", totalRevenue: 100 }, { date: "2025-12-31", totalRevenue: 150 }],
+          annualStatements: [
+            { date: "2024-12-31", totalRevenue: 100, dilutedShares: 10 },
+            { date: "2025-12-31", totalRevenue: 150, dilutedShares: 12 },
+          ],
           quarterlyStatements: [], priceHistory: [],
         };
       },
@@ -30,6 +33,10 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   const column = result.columns!.find((column) => column.key === "2025-12-31")!;
   expect(column.format!(150, revenue)).toContain(cells[0]!.formatted);
   expect(column.format!(150, revenue)).toContain("50");
+  // Exports have no expansion controls: nested dilution data must remain accessible.
+  const shares = result.rows.find((row) => String(row.id) === "dilutedShares:1")!;
+  expect(shares["2025-12-31"]).toBe(12);
+  expect((shares.cells as Array<{ growth: number }>)[0]!.growth).toBeCloseTo(0.2);
 });
 
 test("quote comparison retains successful exchange-qualified inputs when a peer fails", async () => {

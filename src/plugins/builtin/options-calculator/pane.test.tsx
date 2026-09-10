@@ -113,6 +113,15 @@ test("shows the remaining fraction of a day for a live near-expiry contract", as
   expect(frame).toMatch(/Implied IV\s+—/);
 });
 
+test("displays fractional strikes and spot prices without rounding them to whole dollars", async () => {
+  await render({ spot: "217.987", strike: "217.5", marketPrice: "100.125", marketPriceSource: "mid" });
+  const frame = testSetup!.captureCharFrame();
+  expect(frame).toMatch(/Spot\s+217\.987/);
+  expect(frame).toMatch(/Strike\s+217\.5/);
+  expect(frame).toMatch(/Mid\s+100\.125/);
+  expect(frame).toContain("per unit");
+});
+
 test("tabs into fields and edits them from the keyboard", async () => {
   await render();
 

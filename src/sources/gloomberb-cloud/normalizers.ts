@@ -53,6 +53,7 @@ export function mapQuote(
     high: normalizePriceValueByDivisor(quote.high, divisor),
     low: normalizePriceValueByDivisor(quote.low, divisor),
     mark: normalizePriceValueByDivisor(quote.mark, divisor),
+    lastTradePrice: normalizePriceValueByDivisor(quote.lastTradePrice, divisor),
     preMarketPrice: normalizePriceValueByDivisor(quote.preMarketPrice, divisor),
     preMarketChange: normalizePriceValueByDivisor(
       quote.preMarketChange,

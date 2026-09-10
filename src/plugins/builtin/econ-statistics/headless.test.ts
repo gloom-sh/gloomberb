@@ -44,7 +44,7 @@ describe("economic statistics headless model", () => {
 
     const result = await econStatisticsHeadless.load(args, context);
 
-    expect(requested).toEqual(["CPIAUCSL"]);
+    expect(requested).toEqual(["CPIAUCNS"]);
     expect(result.sections.map(({ title }) => title)).toEqual(["Inflation", "CPI"]);
     expect(result.sections[0]).toMatchObject({
       rows: [{ id: "cpi-yoy", indicator: "CPI y/y" }],

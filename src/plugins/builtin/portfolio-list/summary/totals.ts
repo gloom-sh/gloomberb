@@ -6,11 +6,13 @@ import {
   getPortfolioPositionMetrics,
   resolveBrokerFallbackMarketValue,
   resolveBrokerFallbackPnl,
-  signedQuoteUnrealizedPnl,
 } from "../position-metrics";
 
 export interface PortfolioSummaryTotals {
   totalMktValue: number;
+  netMktValue?: number;
+  hasShorts?: boolean;
+  unavailableSymbols?: string[];
   dailyPnl: number;
   dailyPnlPct: number;
   totalCostBasis: number;
@@ -32,6 +34,9 @@ export function calculatePortfolioSummaryTotals(
   collectionId: string | null,
 ): PortfolioSummaryTotals {
   let totalMktValue = 0;
+  let netMktValue = 0;
+  let hasShorts = false;
+  const unavailableSymbols = new Set<string>();
   let totalPrevValue = 0;
   let totalCostBasis = 0;
   let signedDailyPnl = 0;
@@ -60,31 +65,35 @@ export function calculatePortfolioSummaryTotals(
       continue;
     }
 
-    const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency);
-    const { positionCurrency, totalPriceUnits, totalCost } = positionMetrics;
+    const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency, {
+      currency: baseCurrency, convert: toBase,
+    });
+    const { totalPriceUnits, grossPriceUnits, totalCost, signedCost } = positionMetrics;
+    if (positionMetrics.positionCount === 0) continue;
+    hasPositions = true;
+    hasShorts ||= positionMetrics.hasShorts;
+    totalCostBasis += totalCost;
     const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
     const toBaseQuote = (value: number) => toBase(value, quoteCurrency);
-    const toBasePosition = (value: number) => toBase(value, positionCurrency);
 
-    if (quote && activeQuote && totalPriceUnits !== 0) {
-      hasPositions = true;
-      const marketValue = Math.abs(totalPriceUnits) * activeQuote.price;
-      const previousClose = quote.previousClose || (activeQuote.price - activeQuote.change);
-      const previousValue = Math.abs(totalPriceUnits) * previousClose;
-      const convertedMarket = toBaseQuote(marketValue);
-      const convertedCost = toBasePosition(totalCost);
-      totalMktValue += convertedMarket;
-      totalPrevValue += toBaseQuote(previousValue);
-      totalCostBasis += convertedCost;
+    if (quote && activeQuote) {
+      const previousClose = quote.previousClose ?? (activeQuote.price - activeQuote.change);
+      totalMktValue += toBaseQuote(grossPriceUnits * activeQuote.price);
+      netMktValue += toBaseQuote(totalPriceUnits * activeQuote.price);
+      totalPrevValue += toBaseQuote(grossPriceUnits * previousClose);
       signedDailyPnl += toBaseQuote(totalPriceUnits * (activeQuote.price - previousClose));
-      signedUnrealizedPnl += signedQuoteUnrealizedPnl(convertedMarket, convertedCost, totalPriceUnits);
+      signedUnrealizedPnl += toBaseQuote(totalPriceUnits * activeQuote.price) - signedCost;
     } else if (brokerFallbackMktValue != null) {
-      hasPositions = true;
-      totalMktValue += toBasePosition(brokerFallbackMktValue);
-      totalCostBasis += toBasePosition(totalCost);
-      totalPrevValue += toBasePosition(brokerFallbackMktValue);
-      const brokerPnl = resolveBrokerFallbackPnl(positionMetrics, brokerFallbackMktValue);
-      if (brokerPnl != null) signedUnrealizedPnl += toBasePosition(brokerPnl);
+      totalMktValue += brokerFallbackMktValue;
+      netMktValue += positionMetrics.brokerNetMktValue;
+      // A broker mark is not evidence of an unchanged day.
+      signedDailyPnl = Number.NaN;
+      totalPrevValue = Number.NaN;
+      const brokerPnl = resolveBrokerFallbackPnl(positionMetrics);
+      signedUnrealizedPnl += brokerPnl ?? Number.NaN;
+    } else {
+      unavailableSymbols.add(ticker.metadata.ticker);
+      totalMktValue = netMktValue = totalPrevValue = signedDailyPnl = signedUnrealizedPnl = Number.NaN;
     }
   }
 
@@ -96,6 +105,9 @@ export function calculatePortfolioSummaryTotals(
 
   return {
     totalMktValue,
+    netMktValue,
+    hasShorts,
+    ...(unavailableSymbols.size ? { unavailableSymbols: [...unavailableSymbols].sort() } : {}),
     dailyPnl,
     dailyPnlPct,
     totalCostBasis,

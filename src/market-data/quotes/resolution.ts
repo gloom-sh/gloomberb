@@ -69,6 +69,7 @@ const DESCRIPTIVE_FIELD_KEYS = [
   "marketCap",
   "volume",
   "name",
+  "instrumentType",
 ] as const;
 
 function isBrokerProvider(providerId?: string): boolean {
@@ -378,6 +379,10 @@ export function resolveCanonicalQuote(
     if (field === "price") continue;
     pickField(resolved, provenance, field, acceptedPriceCandidates);
   }
+  if (priceProvider && typeof priceProvider.lastTradePrice === "number" && Number.isFinite(priceProvider.lastTradePrice)) {
+    assignField(resolved, provenance, "lastTradePrice", priceProvider);
+    if (finitePositiveNumber(priceProvider.lastTradeTime)) assignField(resolved, provenance, "lastTradeTime", priceProvider);
+  }
   assignDailyChangeFields(resolved, provenance, priceProvider, acceptedPriceCandidates);
   provenance.price = toProvenance(priceProvider);
 
@@ -443,6 +448,7 @@ export function resolveCanonicalQuote(
     marketCap: resolved.marketCap as Quote["marketCap"],
     volume: resolved.volume as Quote["volume"],
     name: resolved.name as Quote["name"],
+    instrumentType: resolved.instrumentType as Quote["instrumentType"],
     lastUpdated: Number(resolved.lastUpdated ?? priceProvider?.lastUpdated ?? sessionProvider?.lastUpdated ?? now),
     receivedAt: resolved.receivedAt as Quote["receivedAt"],
     delivery: resolved.delivery as Quote["delivery"],
@@ -469,6 +475,8 @@ export function resolveCanonicalQuote(
     high: resolved.high as Quote["high"],
     low: resolved.low as Quote["low"],
     mark: resolved.mark as Quote["mark"],
+    lastTradePrice: resolved.lastTradePrice as Quote["lastTradePrice"],
+    lastTradeTime: resolved.lastTradeTime as Quote["lastTradeTime"],
     dataSource: (resolved.dataSource as QuoteDataSource | undefined) ?? priceProvider?.dataSource,
     provenance,
   }, {

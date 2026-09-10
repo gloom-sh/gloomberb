@@ -15,6 +15,9 @@ const CACHE_POLICY = {
 export interface FredSeriesData {
   observations: CloudFredObservationPayload[];
   info: CloudFredSeriesInfoPayload | null;
+  fetchedAt?: string;
+  stale?: boolean;
+  coverage?: { observations: "available"; info: "available" | "unavailable" };
 }
 
 export interface FredSeriesRequest {
@@ -69,7 +72,17 @@ export function getCachedFredSeries(
   request: FredSeriesRequest,
   options?: { allowExpired?: boolean },
 ): FredSeriesCacheEntry | null {
-  return cache.get(cacheKey(request), options);
+  const entry = cache.get(cacheKey(request), options);
+  return entry ? withFredSourceFreshness(entry) : null;
+}
+
+export function withFredSourceFreshness<T extends FredSeriesCacheEntry>(entry: T): T {
+  const sourceTime = entry.data.fetchedAt ? Date.parse(entry.data.fetchedAt) : NaN;
+  return {
+    ...entry,
+    fetchedAt: Number.isFinite(sourceTime) ? Math.min(sourceTime, entry.fetchedAt) : entry.fetchedAt,
+    stale: entry.stale || entry.data.stale === true,
+  };
 }
 
 export async function loadCachedFredSeries(
@@ -80,6 +93,6 @@ export async function loadCachedFredSeries(
   const cached = getCachedFredSeries(request);
   if (!options?.force && cached && !cached.stale) return { ...cached, source: "cache" };
   const hydrated = hydratedSeries.get(seriesKey(request.seriesId));
-  if (!options?.force && hydrated) return { ...hydrated, source: "cache" };
-  return cache.load(cacheKey(request), loader, options);
+  if (!options?.force && hydrated) return { ...withFredSourceFreshness(hydrated), source: "cache" };
+  return withFredSourceFreshness(await cache.load(cacheKey(request), loader, options));
 }

@@ -5,6 +5,7 @@ import {
 import type { GloomPlugin } from "../types/plugin";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
 import { earningsCallsModule } from "./builtin/earnings-calls";
+import { browserDividendYieldModule } from "./builtin/dividend-yield/browser";
 import { executivesModule } from "./builtin/executives";
 import { filingEventsModule } from "./builtin/filing-events";
 import { riskFactorsModule } from "./builtin/risk-factors";
@@ -73,6 +74,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     optionsModule,
     optionsCalculatorModule,
     researchModule,
+    browserDividendYieldModule,
     earningsCallsModule,
     executivesModule,
     riskFactorsModule,

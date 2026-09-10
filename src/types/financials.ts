@@ -21,6 +21,8 @@ export interface QuoteProvenance {
 
 export interface Quote {
   symbol: string;
+  /** Provider-reported security type, independent of the company profile. */
+  instrumentType?: string;
   providerId?: string;
   price: number;
   currency: string;
@@ -60,6 +62,10 @@ export interface Quote {
   high?: number;
   low?: number;
   mark?: number;
+  /** Executed trade, separate from a midpoint or indicative mark. */
+  lastTradePrice?: number;
+  /** Timestamp of that trade in milliseconds. */
+  lastTradeTime?: number;
   provenance?: QuoteProvenance;
   /** Freshness class for the quote data. Provider identity lives in providerId/provenance. */
   dataSource?: QuoteDataSource;
@@ -72,6 +78,9 @@ export interface QuoteContribution extends Quote {
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
 export interface Fundamentals {
+  source?: "twelvedata" | "yahoo";
+  fetchedAt?: string;
+  stale?: boolean;
   /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
   financialCurrency?: string;
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */

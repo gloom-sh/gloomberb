@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiClient, type CloudFredObservationPayload } from "../../../api-client";
+import { apiClient } from "../../../api-client";
 import { Divider, Notice, PaneStatusBody, SectionHeading, StaticChartSurface } from "../../../components";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
@@ -15,7 +15,7 @@ import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginTickerActions } from "../../runtime";
-import { resolveFredMapping } from "./fred-series-map";
+import { resolveFredMapping, projectFredHistory, fredHistoryUnits } from "./fred-series-map";
 import type { EconEvent } from "./types";
 
 interface EconDetailViewProps {
@@ -149,8 +149,9 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
   const { observations, info } = data;
   const chartWidth = Math.max(10, width - 2);
   const chartHeight = Math.min(18, Math.max(9, Math.floor(height * 0.38)));
-  const chartPoints: ProjectedChartPoint[] = observations
-    .filter((obs): obs is CloudFredObservationPayload & { value: number } => obs.value != null)
+  const projected = projectFredHistory(observations, mapping);
+  const units = fredHistoryUnits(mapping, info?.units ?? "");
+  const chartPoints: ProjectedChartPoint[] = projected
     .map((obs) => ({
       date: new Date(obs.date),
       open: obs.value,
@@ -161,21 +162,12 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
     }));
 
   const palette = resolveChartPalette(colors, "positive");
-  const descObs = [...observations].reverse();
-  const ascObs = observations;
-  const tableRows = descObs.slice(0, 12).map((obs) => {
-    if (mapping.displayMode !== "change" || obs.value == null) {
-      return { date: obs.date, display: obs.value != null ? obs.value.toLocaleString("en-US", { maximumFractionDigits: 1 }) : "—" };
-    }
-    const ascIdx = ascObs.findIndex((o) => o.date === obs.date);
-    if (ascIdx > 0 && ascObs[ascIdx - 1]!.value != null) {
-      const prior = ascObs[ascIdx - 1]!.value!;
-      const pct = ((obs.value - prior) / Math.abs(prior)) * 100;
-      return { date: obs.date, display: `${pct >= 0 ? "+" : ""}${pct.toFixed(1)}%` };
-    }
-    return { date: obs.date, display: obs.value.toLocaleString("en-US", { maximumFractionDigits: 1 }) };
-  });
-  const units = info?.units ?? "";
+  const tableRows = [...projected].reverse().slice(0, 12).map((obs) => ({
+    date: obs.date,
+    display: units.toLowerCase().includes("percent")
+      ? `${obs.value.toFixed(2)}%`
+      : obs.value.toLocaleString("en-US", { maximumFractionDigits: 1 }),
+  }));
   const title = info?.title ?? event.event;
   const valueColor = (display: string): string => {
     if (display.startsWith("+")) return colors.positive;
@@ -251,11 +243,11 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           </Box>
 
           <Box paddingX={1} height={1}>
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>HISTORICAL READINGS</Text>
+            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>REVISED HISTORY · REFERENCE PERIODS</Text>
           </Box>
           <Box paddingX={1} flexDirection="row" height={1}>
             <Box width={dateColWidth}>
-              <Text fg={colors.textDim}>DATE</Text>
+              <Text fg={colors.textDim}>PERIOD</Text>
             </Box>
             <Box width={valueColWidth} justifyContent="flex-end">
               <Text fg={colors.textDim}>VALUE</Text>

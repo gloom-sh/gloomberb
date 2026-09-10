@@ -253,6 +253,8 @@ test("streams live quotes without resetting manual scroll", async () => {
       providerId: "gloomberb-cloud",
       price: 99.9,
       mark: 99.99,
+      lastTradePrice: 99.9,
+      lastTradeTime: Date.now(),
       bid: 99.98,
       ask: 100,
       currency: "USD",
@@ -274,7 +276,7 @@ test("streams live quotes without resetting manual scroll", async () => {
       exchange: "OPTIONS",
     }).data?.mark,
   ).toBe(99.99);
-  expect(testSetup!.captureCharFrame()).toContain("99.99");
+  expect(testSetup!.captureCharFrame()).toContain("99.9");
 
   const bodyScroll = testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable;
   await act(async () => {
@@ -410,4 +412,33 @@ test("clicking the option table focuses expiration tabs for arrow navigation", a
   await renderSettled();
 
   expect(requestedExpirations).toContain(expirationDates[1]);
+});
+
+test("keeps the selected chain visible when its refresh fails", async () => {
+  let failRefresh = false;
+  const provider = createTestDataProvider({
+    getOptionsChain: async () => {
+      if (failRefresh) throw new Error("Options provider unavailable");
+      return makeChain([100, 101], 101);
+    },
+  });
+  const coordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(coordinator);
+  await act(async () => {
+    testSetup = await testRender(
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} />,
+      { width: 124, height: 16 },
+    );
+  });
+  await renderSettled();
+  failRefresh = true;
+  await act(async () => {
+    const entry = await coordinator.loadOptions({ instrument: { symbol: "AAPL", exchange: "NASDAQ" }, expirationDate: 1_782_345_600 }, { forceRefresh: true });
+    expect(entry.error?.message).toContain("Options provider unavailable");
+  });
+  await renderSettled();
+  const frame = testSetup!.captureCharFrame();
+  expect(frame).toContain("C LAST");
+  expect(frame).toContain("101");
+  expect(frame).not.toContain("Options chain unavailable.");
 });

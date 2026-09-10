@@ -124,3 +124,21 @@ test("growth is unavailable across missing years or a reporting currency change"
   ], quarterlyStatements: [] });
   expect(table?.rows.find((row) => row.summaryKey === "totalRevenue")?.cells.map((cell) => cell.growth)).toEqual([undefined, undefined, undefined]);
 });
+
+test("annual balance sheets show the latest dated snapshot with comparable year-on-year growth", () => {
+  const financials = {
+    annualStatements: [{ date: "2025-12-31", currency: "USD", totalAssets: 200 }],
+    quarterlyStatements: [
+      { date: "2025-06-30", currency: "USD", totalAssets: 160 },
+      { date: "2026-06-30", currency: "USD", totalAssets: 240 },
+    ],
+  };
+  const table = buildFinancialTableModel(financials, { period: "annual", statement: "balance" })!;
+  expect(table.statements.map(({ date }) => date)).toEqual(["2026-06-30", "2025-12-31"]);
+  expect(table.rows.find(({ summaryKey }) => summaryKey === "totalAssets")?.cells[0]).toMatchObject({ value: 240, growth: 0.5 });
+  financials.quarterlyStatements[0]!.currency = "EUR";
+  const changedCurrency = buildFinancialTableModel(financials, { period: "annual", statement: "balance" })!;
+  expect(changedCurrency.rows.find(({ summaryKey }) => summaryKey === "totalAssets")?.cells[0]?.growth).toBeUndefined();
+  financials.quarterlyStatements = [{ date: "2025-12-31", currency: "USD", totalAssets: 200 }];
+  expect(buildFinancialTableModel(financials, { period: "annual", statement: "balance" })?.statements.map(({ date }) => date)).toEqual(["2025-12-31"]);
+});

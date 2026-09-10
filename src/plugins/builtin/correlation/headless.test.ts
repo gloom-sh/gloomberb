@@ -40,6 +40,17 @@ test("relationship supplies the default benchmark, ratio history, rolling correl
   expect(result.unavailableSymbols).toEqual([]);
 });
 
+test("one usable pair cannot make a matrix with disjoint histories look complete", async () => {
+  const result = await correlationHeadless.load(args(["ABC", "DEF", "SPY"]), context("", true));
+  expect(result.rows[0]!.correlation).toBeCloseTo(1);
+  expect(result.rows.slice(1).every((row) => row.correlation == null)).toBe(true);
+  expect(result.errors).toHaveLength(2);
+  expect(result.metadata?.unavailablePairs).toEqual([
+    { left: "ABC", right: "SPY", sampleSize: 0, reason: "Insufficient shared return observations" },
+    { left: "DEF", right: "SPY", sampleSize: 0, reason: "Insufficient shared return observations" },
+  ]);
+});
+
 test("relationship identifies just the missing benchmark, and both inputs when dates do not overlap", async () => {
   const partial = await relationshipHeadless.load(args(["ABC"]), context("SPY"));
   expect(partial.unavailableSymbols).toEqual(["SPY"]);

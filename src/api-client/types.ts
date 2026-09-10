@@ -340,11 +340,15 @@ export interface CloudFredSeriesInfoPayload {
   seasonalAdjustment: string;
   source: string;
   notes: string;
+  lastUpdated?: string;
 }
 
 export interface CloudFredSeriesPayload {
   observations: CloudFredObservationPayload[];
   info: CloudFredSeriesInfoPayload | null;
+  fetchedAt?: string;
+  stale?: boolean;
+  coverage?: { observations: "available"; info: "available" | "unavailable" };
 }
 
 /**
@@ -425,6 +429,8 @@ export interface CloudYieldPointPayload {
   yield: number | null;
   /** FRED observation date. Absent on servers older than the field. */
   asOf?: string | null;
+  fetchedAt?: string;
+  stale?: boolean;
 }
 
 type CloudCongressTradeSide = "BUY" | "SELL" | "EXCHANGE" | "OTHER";

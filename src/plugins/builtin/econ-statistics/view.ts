@@ -59,7 +59,15 @@ export function projectStat(
   const latest = points[points.length - 1]!;
   const nowMs = opts.nowMs ?? Date.now();
   const perYear = periodsPerYear(points.map((point) => ({ date: point.date, value: point.value })));
-  const yearAgo = points[points.length - 1 - perYear] ?? null;
+  const yearEarlier = new Date(latest.date);
+  yearEarlier.setUTCFullYear(yearEarlier.getUTCFullYear() - 1);
+  const target = yearEarlier.toISOString().slice(0, 10);
+  // Monthly/quarterly releases are calendar periods. Daily series can use the
+  // nearest preceding business day, but never an arbitrary row count.
+  const yearAgo = perYear <= 12
+    ? points.find((point) => point.date.slice(0, 7) === target.slice(0, 7)) ?? null
+    : [...points].reverse().find((point) => point.date <= target &&
+      Date.parse(target) - Date.parse(point.date) <= (perYear === 52 ? 7 : 4) * 86_400_000) ?? null;
   const previous = points[points.length - 2] ?? null;
   const atOrBelow = points.filter((point) => point.value <= latest.value).length;
 

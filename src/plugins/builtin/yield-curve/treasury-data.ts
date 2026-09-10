@@ -5,6 +5,8 @@ export interface YieldPoint {
   maturityYears: number; // 0.083, 0.25, 0.5, 1, 2, 5, 7, 10, 20, 30
   yield: number | null;  // percent, e.g., 4.29
   asOf?: string | null;  // FRED observation date, absent on older servers
+  stale?: boolean;
+  fetchedAt?: string;
 }
 
 export const TREASURY_MATURITIES: Array<{ maturity: string; years: number; seriesId: string }> = [
@@ -30,33 +32,28 @@ export async function loadYieldCurve(
 
 export function parseYieldPoints(points: YieldPoint[]): YieldPoint[] {
   return points
-    .filter((p) => p.yield !== null)
+    .filter((p) => p.yield != null && Number.isFinite(p.yield))
     .sort((a, b) => a.maturityYears - b.maturityYears);
 }
 
 /**
- * The newest observation date across the curve. Treasury series publish
- * together, but a single stale series must not date the whole curve forward,
- * so this reports the latest date actually present.
+ * A curve has one as-of date only when all its available tenors agree.
  */
 export function curveAsOf(points: readonly YieldPoint[]): string | null {
-  let latest: string | null = null;
-  for (const point of points) {
-    const asOf = point.asOf;
-    if (!asOf) continue;
-    if (!latest || asOf > latest) latest = asOf;
-  }
-  return latest;
+  const available = points.filter((point) => point.yield != null && Number.isFinite(point.yield));
+  const date = available[0]?.asOf;
+  return date && available.every((point) => point.asOf === date) ? date : null;
 }
 
 export function spreadBasisPoints(points: readonly YieldPoint[]): number | null {
-  const y2 = points.find((point) => point.maturity === "2Y")?.yield;
-  const y10 = points.find((point) => point.maturity === "10Y")?.yield;
-  if (y2 == null || y10 == null) return null;
-  return Math.round((y10 - y2) * 100);
+  const y2 = points.find((point) => point.maturity === "2Y");
+  const y10 = points.find((point) => point.maturity === "10Y");
+  if (y2?.yield == null || y10?.yield == null || !Number.isFinite(y2.yield) || !Number.isFinite(y10.yield)
+    || !y2.asOf || y2.asOf !== y10.asOf) return null;
+  return Math.round((y10.yield - y2.yield) * 100);
 }
 
-export function isInverted(points: readonly YieldPoint[]): boolean {
+export function isInverted(points: readonly YieldPoint[]): boolean | null {
   const spread = spreadBasisPoints(points);
-  return spread != null && spread < 0;
+  return spread == null ? null : spread < 0;
 }

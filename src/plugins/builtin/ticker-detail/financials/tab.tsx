@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction 
 import { usePaneStateValue, usePaneTicker } from "../../../../state/app/context";
 import {
   DataTableView,
+  Notice,
   PaneStatusBody,
   Tabs,
   usePaneFooter,
@@ -21,19 +22,19 @@ import {
   FINANCIAL_SUB_TABS,
   FINANCIAL_SUB_TABS_WIDTH,
   buildFinancialRows,
-  buildPreviousStatementMap,
   collectDefaultCollapsedGroupIds,
   collectGroupIds,
   computeGrowth,
-  computeTTM,
   formatFinancialCell,
   formatFinancialHeader,
   financialStatementCurrency,
+  financialStatementLimitations,
   formatFinancialValue,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
   resolveFinancialSubTabKey,
   semanticGrowthValue,
+  selectFinancialStatements,
   statementMetricValue,
   type FinancialPeriod,
   type FinancialTableRow,
@@ -243,16 +244,8 @@ export function ResolvedFinancialsTab({
 
   const resolvedPeriod = resolveFinancialPeriod(period, hasAnnualStatements, hasQuarterlyStatements);
   const isAnnual = resolvedPeriod === "annual";
-  const rawStatements = isAnnual
-    ? annualStatements.slice(-5).reverse()
-    : quarterlyStatements.slice(-6).reverse();
-  const ttm = isAnnual ? computeTTM(quarterlyStatements) : null;
-  const displayStatements = ttm ? [ttm, ...rawStatements] : rawStatements;
-  const previousStatementMap = buildPreviousStatementMap(
-    resolvedPeriod,
-    annualStatements,
-    quarterlyStatements,
-    ttm,
+  const { statements: displayStatements, previousStatementMap } = selectFinancialStatements(
+    resolvedPeriod, subTab.key, annualStatements, quarterlyStatements,
   );
   const columns: FinancialTableColumn[] = [
     {
@@ -406,6 +399,7 @@ export function ResolvedFinancialsTab({
         resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
         rootBefore={(
           <>
+            {financialStatementLimitations(financials).map((limitation) => <Notice key={limitation} tone="muted">{limitation}</Notice>)}
             <Box flexDirection="row" height={1}>
               <Box width={FINANCIAL_SUB_TABS_WIDTH} height={1}>
                 <Tabs

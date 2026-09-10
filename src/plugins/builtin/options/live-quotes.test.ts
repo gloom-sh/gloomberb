@@ -6,6 +6,7 @@ import {
   buildOptionQuoteKey,
   buildOptionQuoteTargets,
   overlayOptionRowQuotes,
+  overlayOptionContractQuote,
   resolveOptionQuoteCoverage,
 } from "./live-quotes";
 
@@ -166,7 +167,7 @@ describe("options live quotes", () => {
     const overlaid = overlayOptionRowQuotes([original], entries, freshness)[0]!.call!;
 
     expect(overlaid).toMatchObject({
-      lastPrice: 2.5,
+      lastPrice: 1,
       bid: 2.45,
       ask: 2.55,
       lastUpdated: 1_800_000_000_000,
@@ -215,7 +216,7 @@ describe("options live quotes", () => {
       now: 1_800_000_030_000,
       subscriptionStartedAt: 1_800_000_000_000,
     };
-    expect(overlayOptionRowQuotes([original], entries, heterogeneousChainSnapshot)[0]!.call!.lastPrice).toBe(9);
+    expect(overlayOptionRowQuotes([original], entries, heterogeneousChainSnapshot)[0]!.call!.bid).toBe(8.9);
     expect(resolveOptionQuoteCoverage(targets, entries, heterogeneousChainSnapshot)).toMatchObject({
       liveCount: 1,
       status: "mixed",
@@ -258,7 +259,7 @@ describe("options live quotes", () => {
       subscriptionStartedAt: 1_800_000_905_000,
     };
 
-    expect(overlayOptionRowQuotes([original], entries, freshness)[0]!.call!.lastPrice).toBe(2.25);
+    expect(overlayOptionRowQuotes([original], entries, freshness)[0]!.call!.bid).toBe(2.2);
     const targets = buildOptionQuoteTargets([original], {
       fallbackHeight: 14,
       selectedIndex: 0,
@@ -294,7 +295,7 @@ describe("options live quotes", () => {
       subscriptionStartedAt: 1_799_999_500_000,
     };
 
-    expect(overlayOptionRowQuotes([original], entries, freshness)[0]!.call!.lastPrice).toBe(2.5);
+    expect(overlayOptionRowQuotes([original], entries, freshness)[0]!.call!.bid).toBe(2.45);
     const targets = buildOptionQuoteTargets([original], {
       fallbackHeight: 14,
       selectedIndex: 0,
@@ -338,4 +339,17 @@ describe("options live quotes", () => {
     });
     expect(resolveOptionQuoteCoverage(targets, entries, freshness).status).toBe("delayed");
   });
+});
+
+ test("LAST only advances for a dated executed trade, never a mark or older trade", () => {
+  const original = contract(100, "C");
+  const quote: Quote = { symbol: original.contractSymbol, price: 8, mark: 9,
+    currency: "USD", change: 0, changePercent: 0, lastUpdated: 1_800_000_000_000,
+    lastTradePrice: 7, lastTradeTime: 1_790_000_000_000 };
+  const updated = overlayOptionContractQuote(original, quote)!;
+  expect(updated.lastPrice).toBe(7);
+  expect(updated.lastTradeDate).toBe(1_790_000_000);
+  expect(overlayOptionContractQuote(updated, { ...quote, lastTradePrice: 5,
+    lastTradeTime: 1_789_000_000_000 })!.lastPrice).toBe(7);
+  expect(overlayOptionContractQuote(original, { ...quote, lastTradeTime: undefined })!.lastPrice).toBe(original.lastPrice);
 });

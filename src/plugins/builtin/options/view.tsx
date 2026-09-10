@@ -148,11 +148,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const expirationCount = chain?.expirationDates.length ?? 0;
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
     || (expirationChainEntry?.phase === "loading" || expirationChainEntry?.phase === "refreshing");
-  const error = initialChainEntry?.phase === "error"
-    ? initialChainEntry.error?.message ?? "Failed to load options"
-    : expirationChainEntry?.phase === "error"
-      ? expirationChainEntry.error?.message ?? "Failed to load options"
-      : null;
+  // Refresh failures keep a ready entry with last-good data and an error.
+  // Surface that warning even when the cached chain is still usable.
+  const error = initialChainEntry?.error?.message ?? expirationChainEntry?.error?.message
+    ?? (initialChainEntry?.phase === "error" || expirationChainEntry?.phase === "error"
+      ? "Failed to load options" : null);
 
   useEffect(() => {
     onCaptureRef.current = onCapture;
@@ -437,7 +437,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     return <EmptyState title="No ticker selected." message="Select a ticker to view options." />;
   }
   if (loading && !chain) return <Spinner label="Loading options chain..." />;
-  if (error) return <EmptyState title="Options chain unavailable." message={error} />;
+  if (error && !chain) return <EmptyState title="Options chain unavailable." message={error} />;
   if (!chain || chain.expirationDates.length === 0) {
     return <EmptyState title={`No options available for ${effectiveTicker}.`} />;
   }
@@ -523,7 +523,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         onVisibleRangeChange={handleVisibleStrikeRangeChange}
         getItemKey={(row) => String(row.strike)}
         renderCell={renderCell}
-        emptyStateTitle={strikesLoading ? "Loading strikes..." : "No strikes available."}
+        emptyStateTitle={error && !strikeChain ? "Selected expiration unavailable." : strikesLoading ? "Loading strikes..." : "No strikes available."}
         rootWidth={Math.max(1, width - 2)}
         rootHeight={tableHeight}
         columnGap={0}

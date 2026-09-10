@@ -124,10 +124,15 @@ export function overlayOptionContractQuote(
   if (!contract || !quote) return contract;
   if (contract.lastUpdated != null && quote.lastUpdated < contract.lastUpdated) return contract;
 
-  const streamedPrice = isFiniteNumber(quote.mark) ? quote.mark : quote.price;
+  const hasNewTrade = isFiniteNumber(quote.lastTradePrice) && quote.lastTradePrice > 0
+    && isFiniteNumber(quote.lastTradeTime) && quote.lastTradeTime > 0
+    && quote.lastTradeTime >= contract.lastTradeDate * 1000;
   return {
     ...contract,
-    lastPrice: isFiniteNumber(streamedPrice) ? streamedPrice : contract.lastPrice,
+    // Generic quote.price may itself be a midpoint. LAST must remain an
+    // executed trade, with its own timestamp, even while the bid/ask updates.
+    lastPrice: hasNewTrade ? quote.lastTradePrice! : contract.lastPrice,
+    lastTradeDate: hasNewTrade ? quote.lastTradeTime! / 1000 : contract.lastTradeDate,
     bid: isFiniteNumber(quote.bid) ? quote.bid : contract.bid,
     ask: isFiniteNumber(quote.ask) ? quote.ask : contract.ask,
     lastUpdated: quote.lastUpdated,

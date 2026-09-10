@@ -26,7 +26,7 @@ import {
   getPortfolioPositionMetrics,
   resolveBrokerFallbackMarketValue,
   resolveBrokerFallbackPnl,
-  signedQuoteUnrealizedPnl,
+  signedPositionDirection,
 } from "./position-metrics";
 
 export interface ColumnContext {
@@ -91,7 +91,7 @@ function earliestDateAcquired(ticker: TickerRecord, activeTab: string | undefine
 function positionSideLabel(ticker: TickerRecord, activeTab: string | undefined): string | null {
   const positions = activePositions(ticker, activeTab);
   if (positions.length === 0) return null;
-  const shortCount = positions.filter((position) => position.side === "short").length;
+  const shortCount = positions.filter((position) => signedPositionDirection(position) < 0).length;
   if (shortCount === 0) return "LONG";
   if (shortCount === positions.length) return "SHORT";
   return "MIX";
@@ -156,11 +156,11 @@ function getActiveMarketValue(
   toBaseQuote: (value: number) => number,
   toBasePosition: (value: number) => number,
 ): number | null {
-  if (activeQuote && positionMetrics.totalPriceUnits !== 0) {
-    return toBaseQuote(Math.abs(positionMetrics.totalPriceUnits) * activeQuote.price);
+  if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+    return toBaseQuote(positionMetrics.grossPriceUnits * activeQuote.price);
   }
   const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
-  return brokerFallbackMktValue == null ? null : toBasePosition(brokerFallbackMktValue);
+  return brokerFallbackMktValue == null ? null : brokerFallbackMktValue;
 }
 
 export function resolvePortfolioPriceValue(
@@ -195,12 +195,14 @@ export function getColumnValue(
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
-  const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
-  const brokerFallbackPnl = resolveBrokerFallbackPnl(positionMetrics, brokerFallbackMktValue);
+  const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
+    currency: ctx.baseCurrency,
+    convert: (value, currency) => convertCurrency(value, currency, ctx.baseCurrency, ctx.exchangeRates),
+  });
+  const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(baseMetrics);
+  const brokerFallbackPnl = resolveBrokerFallbackPnl(baseMetrics);
   const toBaseQuote = (value: number) =>
     convertCurrency(value, quoteCurrency, ctx.baseCurrency, ctx.exchangeRates);
-  const toBasePosition = (value: number) =>
-    convertCurrency(value, positionCurrency, ctx.baseCurrency, ctx.exchangeRates);
   const formatOptions: MarketFormatOptions = {
     assetCategory: ticker.metadata.assetCategory,
     multiplier: multiplierHint,
@@ -305,57 +307,52 @@ export function getColumnValue(
     case "side":
       return { text: positionSideLabel(ticker, ctx.activeTab) ?? "—" };
     case "shares":
-      return { text: totalShares !== 0 ? formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) : "—" };
+      return { text: positionMetrics.positionCount > 0 ? formatMarketQuantity(totalShares, { ...formatOptions, maxWidth: col.width }) : "—" };
     case "avg_cost":
       if (totalCostUnits === 0) return { text: "—" };
       return { text: formatMarketCost(totalCost / Math.abs(totalCostUnits), { ...formatOptions, maxWidth: col.width }) };
     case "cost_basis":
-      if (totalCost === 0) return { text: "—" };
-      return { text: formatCompact(toBasePosition(totalCost)) };
+      if (baseMetrics.totalCost === 0) return { text: "—" };
+      return { text: formatCompact(baseMetrics.totalCost) };
     case "mkt_value":
-      if (activeQuote && totalPriceUnits !== 0) {
-        return { text: formatCompact(toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price)) };
+      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+        return { text: formatCompact(toBaseQuote(positionMetrics.grossPriceUnits * activeQuote.price)) };
       }
       if (brokerFallbackMktValue != null) {
-        return { text: formatCompact(toBasePosition(brokerFallbackMktValue)) };
+        return { text: formatCompact(brokerFallbackMktValue) };
       }
       return { text: "—" };
     case "weight": {
-      const marketValue = getActiveMarketValue(activeQuote, positionMetrics, toBaseQuote, toBasePosition);
+      const marketValue = getActiveMarketValue(activeQuote, baseMetrics, toBaseQuote, (value) => value);
       if (marketValue == null || !ctx.portfolioTotalMarketValue) return { text: "—" };
       return { text: formatPercentRaw((marketValue / ctx.portfolioTotalMarketValue) * 100) };
     }
     case "day_pnl":
-      if (activeQuote && totalPriceUnits !== 0) {
+      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
         const dayPnl = toBaseQuote(totalPriceUnits * activeQuote.change);
         return { text: `${dayPnl >= 0 ? "+" : ""}${formatCompact(dayPnl)}`, color: priceColor(dayPnl) };
       }
       return { text: "—" };
     case "pnl":
-      if (activeQuote && totalPriceUnits !== 0) {
-        const pnl = signedQuoteUnrealizedPnl(
-          toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price),
-          toBasePosition(totalCost),
-          totalPriceUnits,
-        );
+      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+        const pnl = (toBaseQuote(totalPriceUnits * activeQuote.price) - baseMetrics.signedCost);
         return { text: `${pnl >= 0 ? "+" : ""}${formatCompact(pnl)}`, color: priceColor(pnl) };
       }
       if (brokerFallbackPnl != null) {
-        const pnl = toBasePosition(brokerFallbackPnl);
+        const pnl = brokerFallbackPnl;
         return { text: `${pnl >= 0 ? "+" : ""}${formatCompact(pnl)}`, color: priceColor(pnl) };
       }
       return { text: "—" };
     case "pnl_pct":
-      if (activeQuote && totalCost !== 0) {
-        const marketValue = toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price);
-        const costBasis = toBasePosition(totalCost);
-        const pnl = signedQuoteUnrealizedPnl(marketValue, costBasis, totalPriceUnits);
+      if (activeQuote && baseMetrics.totalCost !== 0) {
+        const costBasis = baseMetrics.totalCost;
+        const pnl = (toBaseQuote(totalPriceUnits * activeQuote.price) - baseMetrics.signedCost);
         const percent = costBasis !== 0 ? (pnl / costBasis) * 100 : 0;
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
-      if (brokerFallbackPnl != null && totalCost !== 0) {
-        const costBasis = toBasePosition(totalCost);
-        const pnl = toBasePosition(brokerFallbackPnl);
+      if (brokerFallbackPnl != null && baseMetrics.totalCost !== 0) {
+        const costBasis = baseMetrics.totalCost;
+        const pnl = brokerFallbackPnl;
         const percent = costBasis !== 0 ? (pnl / costBasis) * 100 : 0;
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
@@ -429,12 +426,14 @@ export function getSortValue(
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
-  const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
-  const brokerFallbackPnl = resolveBrokerFallbackPnl(positionMetrics, brokerFallbackMktValue);
+  const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
+    currency: ctx.baseCurrency,
+    convert: (value, currency) => convertCurrency(value, currency, ctx.baseCurrency, ctx.exchangeRates),
+  });
+  const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(baseMetrics);
+  const brokerFallbackPnl = resolveBrokerFallbackPnl(baseMetrics);
   const toBaseQuote = (value: number) =>
     convertCurrency(value, quoteCurrency, ctx.baseCurrency, ctx.exchangeRates);
-  const toBasePosition = (value: number) =>
-    convertCurrency(value, positionCurrency, ctx.baseCurrency, ctx.exchangeRates);
 
   switch (col.id) {
     case "ticker":
@@ -510,52 +509,47 @@ export function getSortValue(
     case "side":
       return positionSideLabel(ticker, ctx.activeTab);
     case "shares":
-      return totalShares !== 0 ? totalShares : null;
+      return positionMetrics.positionCount > 0 ? totalShares : null;
     case "avg_cost":
       return totalCostUnits !== 0 ? totalCost / Math.abs(totalCostUnits) : null;
     case "cost_basis":
-      return totalCost !== 0 ? toBasePosition(totalCost) : null;
+      return baseMetrics.totalCost !== 0 ? baseMetrics.totalCost : null;
     case "mkt_value":
-      if (activeQuote && totalPriceUnits !== 0) {
-        return toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price);
+      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+        return toBaseQuote(positionMetrics.grossPriceUnits * activeQuote.price);
       }
       if (brokerFallbackMktValue != null) {
-        return toBasePosition(brokerFallbackMktValue);
+        return brokerFallbackMktValue;
       }
       return null;
     case "weight": {
-      const marketValue = getActiveMarketValue(activeQuote, positionMetrics, toBaseQuote, toBasePosition);
+      const marketValue = getActiveMarketValue(activeQuote, baseMetrics, toBaseQuote, (value) => value);
       return marketValue != null && ctx.portfolioTotalMarketValue
         ? (marketValue / ctx.portfolioTotalMarketValue) * 100
         : null;
     }
     case "day_pnl":
-      if (activeQuote && totalPriceUnits !== 0) {
+      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
         return toBaseQuote(totalPriceUnits * activeQuote.change);
       }
       return null;
     case "pnl":
-      if (activeQuote && totalPriceUnits !== 0) {
-        return signedQuoteUnrealizedPnl(
-          toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price),
-          toBasePosition(totalCost),
-          totalPriceUnits,
-        );
+      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+        return (toBaseQuote(totalPriceUnits * activeQuote.price) - baseMetrics.signedCost);
       }
       if (brokerFallbackPnl != null) {
-        return toBasePosition(brokerFallbackPnl);
+        return brokerFallbackPnl;
       }
       return null;
     case "pnl_pct":
-      if (activeQuote && totalCost !== 0) {
-        const marketValue = toBaseQuote(Math.abs(totalPriceUnits) * activeQuote.price);
-        const costBasis = toBasePosition(totalCost);
-        const pnl = signedQuoteUnrealizedPnl(marketValue, costBasis, totalPriceUnits);
+      if (activeQuote && baseMetrics.totalCost !== 0) {
+        const costBasis = baseMetrics.totalCost;
+        const pnl = (toBaseQuote(totalPriceUnits * activeQuote.price) - baseMetrics.signedCost);
         return costBasis !== 0 ? (pnl / costBasis) * 100 : null;
       }
-      if (brokerFallbackPnl != null && totalCost !== 0) {
-        const costBasis = toBasePosition(totalCost);
-        const pnl = toBasePosition(brokerFallbackPnl);
+      if (brokerFallbackPnl != null && baseMetrics.totalCost !== 0) {
+        const costBasis = baseMetrics.totalCost;
+        const pnl = brokerFallbackPnl;
         return costBasis !== 0 ? (pnl / costBasis) * 100 : null;
       }
       return null;

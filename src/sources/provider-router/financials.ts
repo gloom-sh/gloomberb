@@ -1,7 +1,7 @@
 import type { CachedResourceRecord } from "../../data/resource-store";
 import type { AnalystResearchData, CorporateActionsData, FinancialStatement, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
-import { mergeFinancialStatementRows } from "../../utils/financial-statements";
+import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import {
@@ -28,10 +28,23 @@ export interface CachedQuoteSelection {
   stale: boolean;
 }
 
+function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinancials {
+  const type = financials.quote?.instrumentType?.toLowerCase().replace(/[\s_-]/g, "");
+  if (!type || !["etf", "exchangetradedfund", "mutualfund", "fund", "index", "currency", "forex", "fx", "future", "futures", "cryptocurrency", "crypto", "digitalcurrency"].includes(type)) return financials;
+  // An empty company response for a confirmed fund or other non-equity must
+  // not inherit stale issuer accounts from a former symbol collision.
+  return { ...financials, financialCurrency: undefined, fundamentals: undefined, profile: undefined, annualStatements: [], quarterlyStatements: [] };
+}
+
 export function sanitizeCachedFinancials(
   financials: TickerFinancials,
   options: { includeStaleQuotes?: boolean } = {},
 ): TickerFinancials {
+  financials = excludeNonCompanyFinancials({
+    ...financials,
+    annualStatements: coalesceFinancialPeriodAliases(financials.annualStatements),
+    quarterlyStatements: coalesceFinancialPeriodAliases(financials.quarterlyStatements),
+  });
   if (options.includeStaleQuotes || !isQuoteStaleForCurrentSession(financials.quote)) return financials;
   return {
     ...financials,
@@ -164,12 +177,12 @@ export function hasShallowStatementHistory(data: TickerFinancials | null | undef
 }
 
 export function mergeMissingStatementArrays(primary: TickerFinancials, fallback: TickerFinancials): TickerFinancials {
-  return {
+  return excludeNonCompanyFinancials({
     ...primary,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
-  };
+  });
 }
 
 export function hasAnalystResearchValue(data: AnalystResearchData): boolean {
@@ -231,7 +244,7 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
   if (!primary || !fallback) {
     const single = primary ?? fallback;
     const resolved = single ? resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(single)) : null;
-    return resolved;
+    return resolved ? excludeNonCompanyFinancials(resolved) : null;
   }
 
   const preferFallbackPriceData = hasLikelyQuoteUnitMismatch(primary.quote, fallback.quote);
@@ -243,7 +256,7 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
   );
   const resolvedQuote = resolveCanonicalQuote(quoteContributions).quote;
 
-  return {
+  return excludeNonCompanyFinancials({
     ...fallback,
     ...primary,
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
@@ -254,7 +267,7 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
     priceHistory: normalizePriceHistory(dominant.priceHistory.length > 0 ? dominant.priceHistory : secondary.priceHistory),
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
-  };
+  });
 }
 
 export function mergeCachedFinancialRecords(

@@ -125,7 +125,7 @@ export function formatFinancialValue(
 }
 
 export function formatFinancialHeader(date: string, currency?: string): string {
-  const period = date === "TTM" ? "TTM" : date.slice(0, 7);
+  const period = date === "TTM" ? "TTM" : date.slice(0, 10);
   return currency ? `${period} ${currency}` : period;
 }
 
@@ -136,6 +136,22 @@ export function financialStatementCurrency(
   const fallback = financials?.financialCurrency;
   const currencies = new Set(statements.map((statement) => statement.currency ?? fallback));
   return currencies.size === 1 ? [...currencies][0] : undefined;
+}
+
+export function financialStatementLimitations(financials: TickerFinancials | null | undefined): string[] {
+  const industry = financials?.profile?.industry ?? "";
+  const records = [financials?.fundamentals, ...(financials?.annualStatements ?? []), ...(financials?.quarterlyStatements ?? [])];
+  const hasMetric = (keys: string[]) => records.some((record) => keys.some((key) => {
+    const value = (record as Record<string, unknown> | undefined)?.[key];
+    return typeof value === "number" && Number.isFinite(value);
+  }));
+  if (/\breit\b/i.test(industry) && !hasMetric(["fundsFromOperations", "adjustedFundsFromOperations", "ffo", "affo"])) {
+    return ["FFO/AFFO are unavailable. Operating cash flow is not a substitute for these REIT measures."];
+  }
+  if (/\bbanks?\b/i.test(industry) && !hasMetric(["commonEquityTier1Ratio", "cet1Ratio", "riskWeightedAssets"])) {
+    return ["Bank capital measures, including CET1 and risk-weighted assets, are unavailable."];
+  }
+  return [];
 }
 
 export function resolveFinancialPeriod(
@@ -308,6 +324,32 @@ export interface FinancialTableModel {
   rows: FinancialTableModelRow[];
 }
 
+export function selectFinancialStatements(
+  period: FinancialPeriod,
+  statement: string,
+  annualStatements: FinancialStatement[],
+  quarterlyStatements: FinancialStatement[],
+  limit = period === "annual" ? 5 : 6,
+) {
+  const rawStatements = (period === "annual" ? annualStatements : quarterlyStatements).slice(-limit).reverse();
+  const ttm = period === "annual" && statement !== "balance" ? computeTTM(quarterlyStatements) : null;
+  const previousStatementMap = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, ttm);
+  const statements = ttm ? [ttm, ...rawStatements] : rawStatements;
+
+  // A balance sheet is a dated snapshot. It needs neither a four-quarter sum
+  // nor four reports before the latest position can be compared with year end.
+  const latest = quarterlyStatements.at(-1);
+  if (period === "annual" && statement === "balance" && latest && latest.date > (annualStatements.at(-1)?.date ?? "")) {
+    statements.unshift(latest);
+    const previous = [...quarterlyStatements].reverse().find((candidate) => {
+      const days = (Date.parse(latest.date) - Date.parse(candidate.date)) / 86_400_000;
+      return days >= 350 && days <= 380 && candidate.currency === latest.currency;
+    });
+    if (previous) previousStatementMap.set(latest.date, previous);
+  }
+  return { statements, previousStatementMap };
+}
+
 export function buildFinancialTableModel(
   financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements" | "financialCurrency" | "fundamentals"> | null | undefined,
   options: {
@@ -327,14 +369,11 @@ export function buildFinancialTableModel(
 
   const requestedPeriod = options.period ?? (hasAnnualStatements ? "annual" : "quarterly");
   const period = resolveFinancialPeriod(requestedPeriod, hasAnnualStatements, hasQuarterlyStatements);
-  const isAnnual = period === "annual";
-  const rawStatements = isAnnual
-    ? annualStatements.slice(-(options.annualLimit ?? 5)).reverse()
-    : quarterlyStatements.slice(-(options.quarterlyLimit ?? 6)).reverse();
-  const ttm = isAnnual ? computeTTM(quarterlyStatements) : null;
-  const statements = ttm ? [ttm, ...rawStatements] : rawStatements;
-  const previousStatementMap = buildPreviousStatementMap(period, annualStatements, quarterlyStatements, ttm);
   const subTabKey = resolveFinancialSubTabKey(options.statement);
+  const { statements, previousStatementMap } = selectFinancialStatements(
+    period, subTabKey, annualStatements, quarterlyStatements,
+    period === "annual" ? options.annualLimit : options.quarterlyLimit,
+  );
   const subTab = FINANCIAL_SUB_TABS.find((tab) => tab.key === subTabKey) ?? FINANCIAL_SUB_TABS[0]!;
   const collapsedGroups = options.expandAll
     ? new Set<string>()

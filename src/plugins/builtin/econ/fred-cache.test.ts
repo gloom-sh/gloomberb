@@ -109,3 +109,16 @@ describe("FRED series cache", () => {
     expect(result.data.observations[0]!.value).toBe(319);
   });
 });
+
+test("a successful HTTP response cannot erase the source's stale flag or retrieval time", async () => {
+  const { withFredSourceFreshness } = await import("../../../data/fred-series");
+  const sourceTime = Date.parse("2026-09-08T12:00:00Z");
+  const entry = withFredSourceFreshness({
+    data: { observations: [{ date: "2026-09-04", value: 4.78 }], info: null, stale: true, fetchedAt: new Date(sourceTime).toISOString() },
+    fetchedAt: Date.parse("2026-09-10T12:00:00Z"),
+    stale: false,
+    source: "network" as const,
+  });
+  expect(entry.stale).toBe(true);
+  expect(entry.fetchedAt).toBe(sourceTime);
+});

@@ -32,8 +32,8 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   }, [setDraft]);
 
   const fields = useMemo<InlineField[]>(() => [
-    { id: "spot", label: "Spot", value: draft.spot, onValue: (value) => updateDraft({ spot: value }) },
-    { id: "strike", label: "Strike", value: draft.strike, onValue: (value) => updateDraft({ strike: value }) },
+    { id: "spot", label: "Spot", value: draft.spot, valueText: String(draft.spot), onValue: (value) => updateDraft({ spot: value }) },
+    { id: "strike", label: "Strike", value: draft.strike, valueText: String(draft.strike), onValue: (value) => updateDraft({ strike: value }) },
     {
       id: "days",
       label: "Days",
@@ -53,11 +53,12 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     { id: "dividendYield", label: "Div yld", value: draft.dividendYield, percent: true, onValue: (value) => updateDraft({ dividendYield: value }) },
     {
       id: "marketPrice",
-      label: "Market",
+      label: draft.marketPriceSource === "mid" ? "Mid" : draft.marketPriceSource === "last" ? "Last" : "Market",
       value: draft.marketPrice,
+      valueText: String(Number(draft.marketPrice.toPrecision(12))),
       // Clearing the field is how a standalone user says "no market price".
-      onValue: (value) => updateDraft({ marketPrice: Math.max(0, value) }),
-      onClear: () => updateDraft({ marketPrice: 0 }),
+      onValue: (value) => updateDraft({ marketPrice: Math.max(0, value), marketPriceSource: undefined }),
+      onClear: () => updateDraft({ marketPrice: 0, marketPriceSource: undefined }),
     },
   ], [draft, updateDraft]);
 
@@ -171,9 +172,9 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
 
       <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
         <KeyValueRow
-          label="Fair value"
+          label="Model"
           value={formatNumber(valuation.price, 4)}
-          detail={draft.side === "call" ? "call" : "put"}
+          detail="per unit"
           color={colors.textBright}
           width={metricWidth}
         />

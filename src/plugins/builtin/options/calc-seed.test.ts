@@ -76,17 +76,17 @@ describe("buildChainCalcParams", () => {
     expect(draftFromParams(params!).daysToExpiry).toBeCloseTo(30 + 2 / 24, 8);
   });
 
-  test("uses the mid when the contract has not traded", () => {
+  test("uses a valid midpoint ahead of an old last trade", () => {
     const params = buildChainCalcParams({
       symbol: "AAPL",
-      row: row({ call: contract({ lastPrice: 0, bid: 7, ask: 8 }) }),
+      row: row({ call: contract({ lastPrice: 12, bid: 7, ask: 8 }) }),
       side: "call",
       spot: 231.5,
       dividendYield: null,
       now: NOW,
     });
 
-    expect(draftFromParams(params!).marketPrice).toBe(7.5);
+    expect(draftFromParams(params!)).toMatchObject({marketPrice: 7.5, marketPriceSource: "mid"});
   });
 
   test("returns nothing without a contract or a trustworthy underlying spot", () => {
@@ -115,4 +115,12 @@ describe("buildChainCalcParams", () => {
       now: NOW,
     })).toBeNull();
   });
+});
+
+test("a crossed or one-sided market never becomes a midpoint", () => {
+  for (const [bid, ask] of [[8, 7], [0, 8], [7, 0], [NaN, 8], [7, Infinity]]) {
+    const params = buildChainCalcParams({symbol: "AAPL", row: row({call: contract({lastPrice: 6, bid, ask})}),
+      side: "call", spot: 230, dividendYield: null, now: NOW});
+    expect(draftFromParams(params!)).toMatchObject({marketPrice: 6, marketPriceSource: "last"});
+  }
 });

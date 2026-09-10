@@ -9,10 +9,11 @@ export function createBaseConverter(dataProvider: Pick<DataProvider, "getExchang
     if (cached != null) return cached;
     try {
       const rate = await dataProvider.getExchangeRate(normalizedCurrency);
-      rateCache.set(normalizedCurrency, rate);
-      return rate;
+      const validRate = Number.isFinite(rate) && rate > 0 ? rate : Number.NaN;
+      rateCache.set(normalizedCurrency, validRate);
+      return validRate;
     } catch {
-      return 1;
+      return Number.NaN;
     }
   };
 
@@ -25,7 +26,7 @@ export function createBaseConverter(dataProvider: Pick<DataProvider, "getExchang
       getRate(normalizedFrom),
       getRate(normalizedBase),
     ]);
-    if (baseRate === 0) return value;
+    if (!Number.isFinite(fromRate) || !Number.isFinite(baseRate) || baseRate <= 0) return Number.NaN;
     return (value * fromRate) / baseRate;
   };
 }

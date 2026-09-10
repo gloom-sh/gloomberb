@@ -32,15 +32,16 @@ export function getPortfolioPositionValue({
   const quote = financials?.quote;
   const activeQuote = getActiveQuoteDisplay(quote);
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
-  const metrics = getPortfolioPositionMetrics(scopedTicker, undefined, quoteCurrency);
+  const metrics = getPortfolioPositionMetrics(scopedTicker, undefined, quoteCurrency, {
+    currency: baseCurrency, convert: (value, currency) => convertCurrency(value, currency, baseCurrency, exchangeRates),
+  });
 
-  if (activeQuote && metrics.totalPriceUnits !== 0) {
-    return convertCurrency(Math.abs(metrics.totalPriceUnits) * activeQuote.price, quoteCurrency, baseCurrency, exchangeRates);
+  if (activeQuote && metrics.grossPriceUnits !== 0) {
+    return convertCurrency(metrics.grossPriceUnits * activeQuote.price, quoteCurrency, baseCurrency, exchangeRates);
   }
 
   const brokerFallback = resolveBrokerFallbackMarketValue(metrics);
-  const positionCurrency = metrics.positionCurrency || quoteCurrency;
-  return convertCurrency(Math.abs(brokerFallback ?? metrics.totalCost), positionCurrency, baseCurrency, exchangeRates);
+  return brokerFallback ?? (metrics.positionCount > 0 ? Number.NaN : 0);
 }
 
 export function resolveActivePortfolioId({
