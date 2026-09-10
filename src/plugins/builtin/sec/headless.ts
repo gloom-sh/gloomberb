@@ -6,7 +6,7 @@ import type {
 } from "../../../types/plugin";
 import type { SecFilingItem } from "../../../types/data-provider";
 import { loadSecFilings } from "./client";
-import { buildSecFilingRows } from "./model";
+import { buildSecFilingRows, secFilingIssuers } from "./model";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
   {
@@ -14,7 +14,9 @@ const SEC_COLUMNS: HeadlessPaneColumn[] = [
     header: "Filed",
     format: (value) => typeof value === "string" ? value.slice(0, 10) : "-",
   },
+  { key: "acceptedAt", header: "Accepted UTC" },
   { key: "form", header: "Form" },
+  { key: "companyName", header: "Issuer" },
   { key: "filing", header: "Filing" },
   { key: "items", header: "Items" },
   { key: "accessionNumber", header: "Accession" },
@@ -60,7 +62,7 @@ export function createSecHeadless(
       const filings = await dependencies.loadFilings(symbol, limit, args, ctx);
       return {
         rows: buildSecFilingRows(filings).slice(0, limit),
-        metadata: { symbol, returned: Math.min(filings.length, limit) },
+        metadata: { symbol, returned: Math.min(filings.length, limit), issuers: secFilingIssuers(filings.slice(0, limit)) },
       };
     },
   };

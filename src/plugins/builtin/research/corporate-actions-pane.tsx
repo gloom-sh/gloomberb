@@ -36,6 +36,7 @@ import {
 } from "../sec/filing-content";
 import {
   buildEventRows,
+  CORPORATE_ACTION_COVERAGE,
   eventSourceNotice,
   formatEventMetric,
   type EventRow,
@@ -139,7 +140,7 @@ function buildEventColumns(): EventColumn[] {
     { id: "qRevenue", label: "Q REV", width: 12, align: "right" },
     { id: "annualEps", label: "ANN EPS", width: 12, align: "right" },
     { id: "annualRevenue", label: "ANN REV", width: 12, align: "right" },
-    { id: "value", label: "VALUE", width: 8, align: "right" },
+    { id: "value", label: "VALUE", width: 11, align: "right" },
     { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
   ];
 }
@@ -194,6 +195,11 @@ export function buildEventDetailBody({
   primaryContentLoading: boolean;
 }): string {
   const lines: string[] = ["Summary", eventSummaryLine(row)];
+  if (row.status === "Factor") {
+    lines.push("", "Provider split/adjustment factor",
+      "This factor can encode a stock split or a spinoff price adjustment. It does not establish shares received, distribution terms, or the legal effective date. Verify those terms in issuer filings.",
+      ...(row.providerDescription ? [`Provider description: ${row.providerDescription}`] : []));
+  }
   if (row.status !== "Earnings") {
     return lines.join("\n");
   }
@@ -532,6 +538,7 @@ export function CorporateActionsView({
           </Box>}
           {rows.some((row) => row.status === "Earnings") && <Prose width={width - 2} color={colors.textDim}
             text="Event EPS and consensus use an unspecified accounting basis; TTM uses statements. Period ends are not announcement dates. Open a row for source details." />}
+          {variant === "corporate-actions" && <Prose text={CORPORATE_ACTION_COVERAGE} width={Math.max(width - 2, 12)} color={colors.textDim} />}
         </Box>
       ) : undefined}
       rootWidth={width}

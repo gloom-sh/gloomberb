@@ -62,6 +62,7 @@ describe("SEC headless model", () => {
       accessionNumber: "0000320193-26-000100",
       primaryDocument: null,
       cik: "0000320193",
+      companyName: null,
       url: "https://www.sec.gov/filing/one",
     }]);
 
@@ -69,4 +70,14 @@ describe("SEC headless model", () => {
     expect(both.rows).toHaveLength(2);
     expect(requestedLimits).toEqual([1, 2]);
   });
+});
+
+
+test("ticker reuse preserves the actual filing issuer rather than the requested ticker's former company", async () => {
+  const headless = createSecHeadless({ loadFilings: async () => [{
+    ...filings[0]!, cik: "0001826011", companyName: "Banzai International, Inc."
+  }] });
+  const result = await headless.load({ ...args(1), argument: "PARA", symbols: ["PARA"] }, context());
+  expect(result.rows[0]).toMatchObject({ cik: "0001826011", companyName: "Banzai International, Inc." });
+  expect(result.metadata?.issuers).toEqual([{ cik: "0001826011", companyName: "Banzai International, Inc." }]);
 });

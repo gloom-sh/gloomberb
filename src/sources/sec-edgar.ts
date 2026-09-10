@@ -132,6 +132,10 @@ function zeroPadCik(value: unknown): string | null {
 
 function parseTimestamp(value: unknown): Date | undefined {
   const digits = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(digits)) {
+    const timestamp = new Date(digits);
+    return Number.isFinite(timestamp.getTime()) ? timestamp : undefined;
+  }
   if (!/^\d{14}$/.test(digits)) return undefined;
   const year = Number(digits.slice(0, 4));
   const month = Number(digits.slice(4, 6));

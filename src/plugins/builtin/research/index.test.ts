@@ -327,7 +327,7 @@ describe("event rows", () => {
     expect(rows).toMatchObject([
       { id: "div:2026-02-10", status: "Dividend", value: "$0.26" },
       { id: "earn:2026-01-30", status: "Earnings" },
-      { id: "split:2025-12-01:4-for-1 split", status: "Split", value: "4:1" },
+      { id: "split:2025-12-01:4-for-1 split", status: "Factor", value: "4:1" },
     ]);
     expect(rows[0]?.qEps).toBeUndefined();
     expect(rows[0]?.annualEps).toBeUndefined();

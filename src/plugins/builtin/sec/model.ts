@@ -52,6 +52,9 @@ export function getFormDescription(form: string): string {
     case "10-Q/A": return "Quarterly Report (Amended)";
     case "8-K": return "Current Report";
     case "8-K/A": return "Current Report (Amended)";
+    case "8-K12B": return "Successor Issuer Current Report";
+    case "S-4": return "Business Combination or Exchange Offer Registration";
+    case "S-4/A": return "Business Combination or Exchange Offer Registration (Amended)";
     case "4": return "Insider Transaction";
     case "3": return "Initial Insider Ownership";
     case "5": return "Annual Insider Ownership";
@@ -83,7 +86,24 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       accessionNumber: filing.accessionNumber,
       primaryDocument: filing.primaryDocument ?? null,
       cik: filing.cik,
+      companyName: filing.companyName ?? null,
       url: filing.filingUrl,
     };
   });
+}
+
+
+export function secFilingIssuers(filings: readonly SecFilingItem[]) {
+  const issuers = new Map<string, { cik: string; companyName: string | null }>();
+  for (const filing of filings) {
+    const previous = issuers.get(filing.cik);
+    if (!previous || (!previous.companyName && filing.companyName)) {
+      issuers.set(filing.cik, { cik: filing.cik, companyName: filing.companyName ?? null });
+    }
+  }
+  return [...issuers.values()];
+}
+
+export function secIssuerLabel(issuer: { cik: string; companyName?: string | null }): string {
+  return `${issuer.companyName || "Issuer name unavailable"} · CIK ${issuer.cik}`;
 }

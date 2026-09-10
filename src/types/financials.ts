@@ -205,11 +205,11 @@ export interface DividendAction {
 export interface SplitAction {
   date: string;
   description?: string;
-  /** New shares per old share, e.g. 10 for a ten-for-one forward split. */
+  /** Provider adjustment ratio; may represent a split or a spinoff price adjustment, not verified share terms. */
   ratio?: number;
-  /** Old shares surrendered. */
+  /** Denominator of the provider adjustment factor. */
   fromFactor?: number;
-  /** New shares received. */
+  /** Numerator of the provider adjustment factor. */
   toFactor?: number;
 }
 

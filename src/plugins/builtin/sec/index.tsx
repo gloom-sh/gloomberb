@@ -5,8 +5,8 @@ import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useDebouncedPluginPaneState } from "../../runtime";
 import { usePaneTicker } from "../../../state/app/context";
-import type { ScrollBoxRenderable } from "../../../ui";
-import { EmptyState, FeedDataTableStackView, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
+import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { EmptyState, FeedDataTableStackView, Prose, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -33,6 +33,8 @@ import {
   getFilingDisplayTitle,
   getFormDescription,
   getMeaningfulPrimaryDescription,
+  secFilingIssuers,
+  secIssuerLabel,
 } from "./model";
 
 export { secHeadless } from "./headless";
@@ -177,7 +179,9 @@ function toFeedItems(
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
       detailMeta: [
+        secIssuerLabel(filing),
         `Filed ${formatFiledAt(filing)}`,
+        ...(filing.acceptedAt ? [`Accepted ${filing.acceptedAt.toISOString()} (UTC)`] : []),
         `Accession ${filing.accessionNumber}`,
         ...(filing.items ? [`Items ${filing.items}`] : []),
       ],
@@ -279,6 +283,9 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       selectedIdx={selectedIdx}
       onSelect={setSelectedIdx}
       onOpenItemIdChange={setOpenItemId}
+      rootBefore={<Box flexDirection="column" paddingX={1}>
+        {secFilingIssuers(filings).map((issuer) => <Prose key={issuer.cik} text={secIssuerLabel(issuer)} width={Math.max(width - 2, 12)} />)}
+      </Box>}
       sourceLabel="Form"
       titleLabel="Filing"
       emptyStateTitle="No SEC filings."

@@ -8,7 +8,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { formatEventMetric, buildEventRows, eventSourceNotice } from "./event-model";
+import { formatEventMetric, buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
 
 const COLUMNS = [
   { key: "date", header: "Date" },
@@ -92,6 +92,7 @@ export function createEventsHeadless(
           .map((row) => ({ ...row })),
         errors: errors.length > 0 ? errors : undefined,
         metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,
+          coverageNote: CORPORATE_ACTION_COVERAGE,
           actionsFetchedAt: data.actions?.fetchedAt, estimatesFetchedAt: data.estimates?.fetchedAt,
           ...(notice ? { notice: notice.text } : {}),
         },
