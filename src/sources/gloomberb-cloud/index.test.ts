@@ -3,6 +3,7 @@ import { createGloomberbCloudCapabilities, GloomberbCloudProvider } from "./inde
 import { getRangeStartDate, toHistoryRequest } from "./normalizers";
 import type { NewsCapability } from "../../capabilities";
 import { apiClient, type AuthUser, type CloudNewsPayload } from "../../api-client";
+import { cloudNewsParams } from "./news";
 
 const verifiedUser: AuthUser = {
   id: "user-1",
@@ -39,6 +40,17 @@ test("requests fifty years of cloud history for the ALL range", () => {
     outputsize: 600,
     rangeKey: "ALL",
   });
+});
+
+test("news lookup shares the canonical listing across public and Yahoo deep-link aliases", () => {
+  for (const ticker of ["VOD:XLON", "VOD.L"]) {
+    expect(cloudNewsParams({ scope: "ticker", ticker, exchange: "LSE" }))
+      .toMatchObject({ ticker: "VOD", exchange: "XLON" });
+  }
+  expect(cloudNewsParams({ scope: "ticker", ticker: "BRK.B", exchange: "NYSE" }))
+    .toMatchObject({ ticker: "BRK.B", exchange: "XNYS" });
+  expect(cloudNewsParams({ scope: "ticker", ticker: "VOD.L", exchange: "NASDAQ" }))
+    .toMatchObject({ ticker: "VOD.L", exchange: "XNAS" });
 });
 
 function makeCloudNewsPayload(overrides: Partial<CloudNewsPayload> = {}): CloudNewsPayload {
