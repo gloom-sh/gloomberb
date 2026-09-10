@@ -15,6 +15,15 @@ function deferred<T>() {
 }
 
 describe("shared cached market queries", () => {
+  test("USD identity works offline without fetching or expiring from its undated static cache", async () => {
+    let calls = 0;
+    const provider = createTestDataProvider({ id: "offline", getExchangeRate: async () => { calls++; throw new Error("offline"); } });
+    const router = new AssetDataRouter(provider);
+    expect(await router.getExchangeRate("USD")).toBe(1);
+    expect(router.getCachedExchangeRates(["USD"]).get("USD")).toBe(1);
+    expect(router.getCachedExchangeRates(["USD"], { allowExpired: false }).get("USD")).toBe(1);
+    expect(calls).toBe(0);
+  });
   test("retries partial corporate actions and invalidates cached estimates without reporting currency", async () => {
     const persistence = new AppPersistence(":memory:");
     let actionCalls = 0;

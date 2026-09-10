@@ -17,4 +17,6 @@ test("FX retention is bounded by observation age, independent of a recent fetch"
   ]) expect(() => exchangeRateMetadata(data, "EUR", now)).toThrow();
   expect(() => exchangeRateMetadata({ rate: 1.16 }, "EUR", now, now - MAX_FX_OBSERVATION_AGE_MS)).toThrow();
   expect(exchangeRateMetadata({ ...recent, stale: true, asOf: new Date(now).toISOString() }, "EUR", now).staleAt).toBe(now);
+  expect(exchangeRateMetadata(1, "USD", now, 0)).toEqual({ staleAt: Infinity, expiresAt: Infinity, source: "identity" });
+  expect(() => exchangeRateMetadata(1.01, "USD", now, 0)).toThrow();
 });

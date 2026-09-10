@@ -3,6 +3,14 @@ import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 export const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
 const FX_FRESH_MS = 60 * 60_000;
 
+interface FxRateMetadata {
+  fetchedAt?: number;
+  asOf?: number;
+  staleAt?: number;
+  expiresAt?: number;
+  source?: string;
+}
+
 export function isUsableCachedExchangeRate(rate: number | null, currency: string,
   timing: { asOf?: number; fetchedAt?: number | null }, now = Date.now()): boolean {
   try {
@@ -13,12 +21,17 @@ export function isUsableCachedExchangeRate(rate: number | null, currency: string
 }
 
 /** Validate before numeric decoding, including persisted and legacy snapshots. */
-export function exchangeRateMetadata(value: unknown, currency: string, now = Date.now(), fallbackFetchedAt?: number) {
+export function exchangeRateMetadata(value: unknown, currency: string, now = Date.now(), fallbackFetchedAt?: number): FxRateMetadata {
   const data = typeof value === "number" ? { rate: value } : value as Partial<ExchangeRateSnapshot> | null;
   const fail = () => { throw new Error(`Invalid or expired exchange rate for ${currency}/USD`); };
   if (!data || typeof data !== "object" || !Number.isFinite(data.rate) || data.rate! <= 0
     || (data.fromCurrency !== undefined && data.fromCurrency !== currency)
     || (data.toCurrency !== undefined && data.toCurrency !== "USD")) return fail();
+  // The numeraire identity needs no market observation or upstream request.
+  if (currency === "USD") {
+    if (data.rate !== 1) return fail();
+    return { staleAt: Infinity, expiresAt: Infinity, source: "identity" };
+  }
   const timestamp = (input: unknown): number | undefined => {
     if (input === undefined) return undefined;
     if (typeof input !== "string" || !Number.isFinite(Date.parse(input))) return fail();
