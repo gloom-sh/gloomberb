@@ -97,6 +97,45 @@ describe("resolveTheme", () => {
     }
   });
 
+  test("the content tier moves, not just the frame", () => {
+    // The whole point of the content tier: a style has to change the rhythm and
+    // emphasis of what fills a pane, not only the box around it.
+    const terminal = resolveTheme("catppuccin", "terminal").tokens;
+    const modern = resolveTheme("catppuccin", "modern").tokens;
+
+    expect(modern.spacing.rowHeight).toBeGreaterThan(terminal.spacing.rowHeight);
+    expect(modern.spacing.columnGap).toBeGreaterThan(terminal.spacing.columnGap);
+    expect(modern.spacing.sectionGap).toBeGreaterThan(terminal.spacing.sectionGap);
+    expect(modern.table.layout.rowHeight).toBe(modern.spacing.rowHeight);
+    expect(modern.table.row.stripe).toBeString();
+    expect(terminal.table.row.stripe).toBeNull();
+    expect(modern.type.label.transform).toBe("upper");
+    expect(terminal.type.label.transform).toBe("none");
+  });
+
+  test("every style fills every type role", () => {
+    const roles = ["display", "heading", "label", "body", "value", "caption", "numeric"] as const;
+    for (const styleId of getStyleIds()) {
+      const { type } = resolveTheme("amber", styleId).tokens;
+      for (const role of roles) {
+        expect(type[role], `${styleId}.${role}`).toBeDefined();
+        expect(typeof type[role].attributes, `${styleId}.${role}`).toBe("number");
+      }
+      // Body and numeric stay unstyled: they are the baseline every other role
+      // is read against, and a transform on them would shout the whole pane.
+      expect(type.body).toEqual({ attributes: 0, transform: "none" });
+      expect(type.numeric).toEqual({ attributes: 0, transform: "none" });
+    }
+  });
+
+  test("a heading treatment picks exactly one emphasis, never two", () => {
+    const emphasis = (bits: number) => [1, 2, 4, 8].filter((bit) => (bits & bit) !== 0).length;
+    for (const styleId of getStyleIds()) {
+      const { heading } = resolveTheme("amber", styleId).tokens.type;
+      expect(emphasis(heading.attributes), styleId).toBeLessThanOrEqual(1);
+    }
+  });
+
   test("no two styles resolve to the same chrome on the same scheme", () => {
     // The point of the split: a style has to change something a user can see,
     // not just carry a different id.

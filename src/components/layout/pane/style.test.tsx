@@ -1,9 +1,19 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
+import { applyTheme } from "../../../theme/colors";
+import { DEFAULT_THEME } from "../../../theme/schemes";
+import { DEFAULT_STYLE } from "../../../theme/styles";
 import { ThemeProvider } from "../../../theme/theme-context";
 import { Text } from "../../../ui";
 import { PaneWrapper } from "./index";
+
+// The active theme is module-global, and a style now drives layout arithmetic
+// as well as colour, so a test that switches style has to put it back or the
+// next file lays out against the wrong column gap and row height.
+afterEach(() => {
+  applyTheme(DEFAULT_THEME, DEFAULT_STYLE);
+});
 
 const WIDTH = 34;
 const HEIGHT = 6;

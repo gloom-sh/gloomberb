@@ -293,7 +293,9 @@ function WebDataTableRowInner<
             data-gloom-role="data-table-cell"
             style={{
               minWidth: 0,
-              height: WEB_CELL_HEIGHT,
+              // Fills the row's content box rather than a fixed cell, so a
+              // taller row centres its text and a row rule is not painted over.
+              height: "100%",
               overflow: "hidden",
               backgroundColor: cell.backgroundColor ?? rowBg,
             }}

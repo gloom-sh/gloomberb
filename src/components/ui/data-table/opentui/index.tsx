@@ -131,8 +131,6 @@ function OpenTuiDataTableRowInner<
   const restingBg = stripe && index % 2 === 1 ? stripe : colors.bg;
   const rowBg = selected ? colors.selected : rowBackgroundColor ?? restingBg;
   const rowHoverBg = selected ? undefined : tokens.table.row.hover;
-  const rowRule = tokens.table.layout.rowRule ? tokens.table.layout.headerRule : null;
-
   return (
     <Box
       flexDirection="row"
@@ -140,9 +138,6 @@ function OpenTuiDataTableRowInner<
       {...tableContentWidthProps(contentWidth)}
       paddingX={horizontalPadding}
       backgroundColor={rowBg}
-      border={rowRule ? ["bottom"] : undefined}
-      borderColor={rowRule ?? undefined}
-      style={rowRule ? { border: 0, borderBottom: `1px solid ${rowRule}` } : undefined}
       hoverBackgroundColor={rowHoverBg}
       data-gloom-context-menu-surface={rowContextMenuSurface ? "true" : undefined}
       onMouseDown={(event: any) => {
@@ -489,11 +484,6 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           {...tableContentWidthProps(contentWidth)}
           paddingX={horizontalPadding}
           backgroundColor={tokens.table.headerBg}
-          border={tokens.table.layout.headerRule ? ["bottom"] : undefined}
-          borderColor={tokens.table.layout.headerRule ?? undefined}
-          style={tokens.table.layout.headerRule
-            ? { border: 0, borderBottom: `1px solid ${tokens.table.layout.headerRule}` }
-            : undefined}
         >
           {displayColumns.map((column, columnIndex) => {
             const isSorted = sortColumnId === column.id;

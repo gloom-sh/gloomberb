@@ -62,9 +62,14 @@ export interface StyleCharts {
  */
 export interface StyleTable {
   header: TableHeaderMode;
-  /** A hairline under every body row. */
+  /**
+   * A hairline under every body row. DOM only, and deliberately so: a rule is
+   * thinner than a cell, and spending a whole terminal row on one would change
+   * the density rather than decorate it. The terminal carries a table's
+   * identity through the header treatment, striping and row height instead.
+   */
   rowRule: boolean;
-  /** Alternating row tint, the whitespace styles' substitute for rules. */
+  /** Alternating row tint. Works in both renderers, being a fill not a line. */
   stripe: boolean;
 }
 
