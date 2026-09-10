@@ -69,6 +69,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -97,6 +98,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -160,6 +162,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -190,6 +193,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -254,6 +258,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -313,6 +318,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 60_000 },
         fetchedAt: now,
       },
@@ -365,6 +371,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: old,
       },
@@ -392,6 +399,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now,
       },
@@ -459,6 +467,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now,
       },
@@ -475,6 +484,7 @@ describe("AssetDataRouter cached financials", () => {
         annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }],
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now + 1_000,
       },
@@ -504,6 +514,7 @@ describe("AssetDataRouter cached financials", () => {
         }),
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now - 1_000,
       },
@@ -579,6 +590,7 @@ describe("AssetDataRouter cached financials", () => {
         },
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: old,
       },
@@ -604,6 +616,7 @@ describe("AssetDataRouter cached financials", () => {
         listingExchangeName: "JPX",
       }),
       {
+        schemaVersion: 4,
         cachePolicy: { staleMs: 60_000, expireMs: 7 * 24 * 60 * 60_000 },
         fetchedAt: now,
       },

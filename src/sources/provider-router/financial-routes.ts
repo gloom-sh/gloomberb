@@ -84,6 +84,24 @@ export class ProviderRouterFinancialRoutes {
     exchange?: string,
     context?: MarketDataRequestContext,
   ): Promise<TickerFinancials> {
+    const financials = await this.loadTickerFinancials(ticker, exchange, context);
+    if (financials.quote) return financials;
+    // Statement depth does not establish quote freshness. Use the same quote
+    // fallback route as QQ, including its cache and broker/listing context.
+    try {
+      const quote = await this.getQuote(ticker, exchange, context);
+      return resolveTickerFinancialsQuoteState(financials, quote) ?? financials;
+    } catch {
+      // Delisted or temporarily unquoted issuers can still have valid accounts.
+      return financials;
+    }
+  }
+
+  private async loadTickerFinancials(
+    ticker: string,
+    exchange?: string,
+    context?: MarketDataRequestContext,
+  ): Promise<TickerFinancials> {
     const isOptionTicker =
       parseOptionSymbol(ticker) != null ||
       parseOptionSymbol(context?.instrument?.localSymbol ?? "") != null ||

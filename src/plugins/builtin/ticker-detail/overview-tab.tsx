@@ -1,4 +1,4 @@
-import { EmptyState, SectionHeading } from "../../../components";
+import { EmptyState, Notice, SectionHeading } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo } from "../../../components/company-logo";
 import { PriceReturnStrip } from "../../../components/price-performance";
@@ -202,6 +202,10 @@ export function OverviewTab({
             <QuoteBook quote={quote} assetCategory={ticker.metadata.assetCategory} width={quoteBookWidth} />
           )}
         </Box>
+
+        {!quote && financials && (
+          <Notice>{t("Current quote unavailable. Other research data is still available.")}</Notice>
+        )}
 
         {(hasDayRange || hasYearRange) && quote && (
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? 2 : 0} width={contentWidth}>
