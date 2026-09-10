@@ -78,6 +78,29 @@ describe("resolveChartSpecData", () => {
     expect(seeded?.bufferedSeries?.find((entry) => entry.panelId === "volume")?.points).toHaveLength(1);
   });
 
+  test("direct volume fields and volume studies retain established units without labeling crypto volume as shares", async () => {
+    for (const [instrumentType, expectedUnit] of [["EQUITY", "shares"], ["FUTURE", "contracts"], ["CRYPTOCURRENCY", ""], [undefined, ""]] as const) {
+      const history = [{ date: new Date("2026-01-15"), close: 1, volume: 1234 }];
+      const financials = { ...emptyFinancials(), quote: { symbol: "TEST", currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-15"), instrumentType }, priceHistory: history };
+      const provider = createTestDataProvider({
+        getQuote: async () => financials.quote,
+        getTickerFinancials: async () => financials,
+        getPriceHistory: async () => history,
+        getPriceHistoryForResolution: async () => history,
+      });
+      const result = await resolveChartSpecData(chartSpec({
+        viewport: { range: "1M", resolution: "1d" },
+        series: [chartSeries({ id: "direct", source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.volume" } }), chartSeries({ id: "price", source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "market.close" } })],
+        studies: [{ id: "volume", kind: "volume", inputSeriesIds: ["price"], parameters: {}, panelId: "main", axis: "left" }],
+      }), { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16") });
+      for (const id of ["direct", "volume"]) {
+        expect(result.series.find((entry) => entry.id === id)?.unit).toBe(expectedUnit);
+        expect(result.series.find((entry) => entry.id === id)?.points.map((point) => point.value)).toEqual([1234]);
+      }
+      expect(result.warnings.some((warning) => warning.includes("does not specify"))).toBe(!expectedUnit);
+    }
+  });
+
   test("cached history honors the visible date range before the network resolves", () => {
     const source = { kind: "security" as const, instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.close" };
     const history = ["2021-01-01", "2026-08-01", "2026-08-15", "2026-09-10"].map((day, i) => ({

@@ -1,3 +1,4 @@
+import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { appendLiveQuotePoint } from "./chart-data";
@@ -670,9 +671,10 @@ function baseSecuritySeries(
   const points = extractSecuritySeries(financials, spec.source);
   const symbol = instrumentLabel(spec.source);
   const currency = financials.quote?.currency;
-  const unit = field.unit.startsWith("currency") && currency
-    ? field.unit.replace("currency", currency)
-    : field.unit;
+  const assetKind = resolveAssetDisplayKind({ assetCategory: financials.quote?.instrumentType });
+  const volumeUnit = assetKind === "equity" ? "shares" as const : assetKind === "contract" ? "contracts" as const : undefined;
+  const unit = field.id === "market.volume" ? volumeUnit ?? ""
+    : field.unit.startsWith("currency") && currency ? field.unit.replace("currency", currency) : field.unit;
   const currencyUnitGroup = field.unit.startsWith("currency") && currency
     ? `${field.unitGroup}:${currency}`
     : field.unitGroup;
@@ -693,6 +695,9 @@ function baseSecuritySeries(
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
+    volumeUnit,
+    warning: field.id === "market.volume" && !volumeUnit && points.length > 0
+      ? "The provider does not specify the volume unit." : undefined,
     nativeFrequency: spec.source.period && spec.source.period !== "auto"
       ? spec.source.period
       : field.nativeFrequency,

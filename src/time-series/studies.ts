@@ -306,7 +306,7 @@ function resolveVolume(spec: ChartStudySpec, input: ResolvedSeries, color: strin
     label: `Volume ${input.label}`,
     points,
     color,
-    unit: "shares",
+    unit: input.volumeUnit ?? "",
     unitGroup: "volume",
     style: "columns",
     axis: "left",
@@ -532,7 +532,12 @@ export function resolveStudies(
     else if (spec.kind === "bollinger") outputs = resolveBollinger(spec, input, color);
     else if (spec.kind === "rsi") outputs = resolveRsi(spec, input, color);
     else if (spec.kind === "macd") outputs = resolveMacd(spec, input, color);
-    else if (spec.kind === "volume") outputs = resolveVolume(spec, input, color);
+    else if (spec.kind === "volume") {
+      outputs = resolveVolume(spec, input, color);
+      if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {
+        warnings.push(`Volume for ${input.label}: the provider does not specify the unit.`);
+      }
+    }
     else {
       const pairedInput = inputs[1]!;
       const inputUnit = seriesUnit(input);

@@ -379,7 +379,8 @@ function compositeAxisLabelWidth(
       // below one currency unit. Probe those digits without changing the data.
       const scale = domain.unitGroup.toLowerCase().split(":")[0] === "currency-total"
         ? 10 ** Math.max(0, Math.min(12, Math.floor(Math.log10(Math.abs(value) || 1) / 3) * 3))
-        : 1;
+        : Math.abs(value) > 0 && Math.abs(value) < 0.01
+          ? 10 ** Math.floor(Math.log10(Math.abs(value))) : 1;
       const precisionValue = (value < 0 ? -1 : 1) * (Math.floor(Math.abs(value) / scale) + 0.1234) * scale;
       labels.push(cursorFormat(precisionValue, domain));
     }
@@ -1881,7 +1882,8 @@ export function CompositeChart({
   const availableAxisWidth = axisCount > 0
     ? Math.max(0, Math.floor((totalWidth - minimumPlotWidth) / axisCount) - 1)
     : 0;
-  const includeCursorLabels = interactive || cursorDate !== undefined;
+  // Static overview charts also pin the latest price with cursor precision.
+  const includeCursorLabels = interactive || cursorDate !== undefined || !!scenePanels?.some((panel) => panel.lastPrice);
   const resolvedAxisWidth = useMemo(() => maximumAxisWidth === 0 ? 0 : Math.min(
     availableAxisWidth,
     Math.max(

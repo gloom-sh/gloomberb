@@ -1471,6 +1471,20 @@ describe("CompositeChart", () => {
     expect(capturedSurfaceNode!.width).toBeGreaterThanOrEqual(30);
   });
 
+  test("static overview charts reserve the complete tiny-price marker without losing the plot", async () => {
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart width={60} height={12} showLegend={false} interactive={false}
+          series={[{ ...series("price", "main", "right", "USD", [0.000005, 0.0000051, 0.00000526]), unitGroup: "price:USD", timeBasis: { kind: "market", timeZone: "UTC" } }]}
+          panels={[{ id: "main" }]} />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("$0.00000526");
+    expect(capturedSurfaceNode!.width).toBeGreaterThanOrEqual(30);
+  });
+
   test("preserves integer-domain cursor decimals without moving the plot and honors hidden axes", async () => {
     let setAxisWidth: ((value: number) => void) | null = null;
     function Harness() {

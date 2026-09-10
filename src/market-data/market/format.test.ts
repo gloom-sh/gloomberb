@@ -16,7 +16,9 @@ describe("resolveAssetDisplayKind", () => {
   });
 
   test("maps common broker security types", () => {
-    expect(resolveAssetDisplayKind({ assetCategory: "CRYPTO" })).toBe("crypto");
+    for (const assetCategory of ["CRYPTO", "CRYPTOCURRENCY", "Digital Currency"]) {
+      expect(resolveAssetDisplayKind({ assetCategory })).toBe("crypto");
+    }
     expect(resolveAssetDisplayKind({ assetCategory: "STK" })).toBe("equity");
     expect(resolveAssetDisplayKind({ contractSecType: "OPT" })).toBe("contract");
     expect(resolveAssetDisplayKind({ assetCategory: "FOREX" })).toBe("cash");
@@ -53,6 +55,16 @@ describe("formatMarketPrice", () => {
     expect(formatMarketPrice(1.084567, { isCashBalance: true })).toBe("1.084567");
     expect(formatMarketPrice(1.17364, { assetCategory: "CURRENCY" })).toBe("1.17364");
     expect(formatMarketPrice(0.000123456789, { assetCategory: "CRYPTO" })).toBe("0.00012346");
+  });
+
+  test("keeps tiny nonzero quotes, ranges and signed changes meaningful without asset metadata", () => {
+    expect(formatMarketPriceWithCurrency(0.000005100000180391362, "USD")).toBe("$0.0000051");
+    expect(formatMarketPriceWithCurrency(0.000005259999852569308, "USD")).toBe("$0.00000526");
+    expect(formatSignedMarketPrice(-0.00000015256411960863806)).toBe("-0.0000001526");
+    expect(formatMarketPrice(0.0000051, { maxWidth: 7 })).toBe("5.1e-6");
+    expect(formatMarketPrice(1.234e-25)).toBe("1.234e-25");
+    expect(formatMarketPrice(0)).toBe("0");
+    expect(formatMarketPriceWithCurrency(0, "USD")).toBe("$0");
   });
 
   test("can adapt chart precision to the visible price range", () => {
