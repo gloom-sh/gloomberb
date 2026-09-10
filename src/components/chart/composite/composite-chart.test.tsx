@@ -435,6 +435,23 @@ describe("CompositeChart", () => {
     expect(accessoryStart - lastLegendEnd).toBeGreaterThan(1);
   });
 
+  test("retains financial values and negative signs when long legend names need truncation", async () => {
+    testSetup = await testRender(
+      <CompositeChart width={100} height={12} panels={[{ id: "main" }]} series={[
+        { ...series("revenue", "main", "left", "USD", [90_007_000_000]), label: "MSFT:XNAS Revenue", unitGroup: "currency-total:USD" },
+        { ...series("margin", "main", "right", "%", [-49.612]), label: "Very long issuer Operating Margin", unitGroup: "percent" },
+        { ...series("hk-revenue", "main", "left", "USD", [90_007_000_000]), label: "腾讯控股腾讯控股 Revenue", unitGroup: "currency-total:USD" },
+      ]} />,
+      { width: 102, height: 14 },
+    );
+    await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
+    const legend = testSetup.captureCharFrame().split("\n")[0]!;
+    expect(legend).toContain("MSFT:XNAS Revenue $90.01B");
+    expect(legend).toContain("... -49.6%");
+    expect(legend).toContain("腾讯控股腾讯控股");
+    expect(legend.match(/\$90\.01B/g)).toHaveLength(2);
+  });
+
   test("keeps non-plotted legend series available for restoring", async () => {
     const price = series("price", "main", "left", "USD", [100, 103, 101]);
     const hiddenRevenue = series("revenue", "main", "right", "%", [4, 6, 8]);

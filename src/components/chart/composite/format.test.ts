@@ -180,5 +180,9 @@ describe("composite chart unit formatting", () => {
     expect(formatChartLegendValue(79_432.18, "USD", "price:USD")).toBe("$79,432.18");
     expect(formatCompositeCursorValue(79_432.18, domain)).toBe("$79,432.18");
     expect(formatCompositeAxisValue(79_432.18, domain)).toBe("$79K");
+    expect(formatChartLegendValue(1_234_567.89, "USD", "price:USD")).toBe("$1,234,567.89");
+    expect(formatChartLegendValue(90_007_000_000, "USD", "currency-total:USD")).toBe("$90.01B");
+    expect(formatChartLegendValue(-12_345_600_000, "EUR", "currency-total")).toBe("€-12.35B");
+    expect(formatChartLegendValue(123_456_000, "CAD", "currency-total:CAD")).toBe("123.46M CAD");
   });
 });

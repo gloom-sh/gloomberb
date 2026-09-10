@@ -15,9 +15,8 @@ import { useShortcut } from "../../../react/input";
 import { useOptionalPaneInstanceId, usePaneSettingValue } from "../../../state/app/context";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
-import { formatPercentRaw } from "../../../utils/format";
+import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { downsampleCompositeChartScene } from "./downsample";
 import { reuseResolvedSeriesList } from "./panel-series";
@@ -1360,19 +1359,27 @@ function CompositeLegend({
         && Number.isFinite(entry.latestChangePercent)
       ? ` ${formatPercentRaw(entry.latestChangePercent)}`
       : "";
-    const fullText = entry.points.length === 0
-      ? `${entry.label}${entry.hidden ? "" : " no data"}`
-      : `${entry.label} ${legendValue(
+    const valueText = entry.points.length === 0
+      ? entry.hidden ? "" : "no data"
+      : `${legendValue(
         entry,
         cursorValue?.value ?? null,
         formatValue,
       )}${changeText}`;
+    const fullText = [entry.label, valueText].filter(Boolean).join(" ");
     const details = formatCompositePointDetails(cursorValue?.point);
-    const tooltip = details ? `${fullText} · ${details}` : fullText;
-    const textWidth = Math.max(1, Math.min(30, [...fullText].length));
+    const exactTotal = entry.unitGroup.split(":")[0] === "currency-total"
+      && cursorValue?.value != null && Number.isFinite(cursorValue.value)
+      ? `Value ${cursorValue.value} ${entry.unit}` : "";
+    const tooltip = [fullText, exactTotal, details].filter(Boolean).join(" · ");
+    // Keep the value (including its sign/unit) intact. Long names may shorten;
+    // oversized values remain reachable through the scrollable legend.
+    const labelWidth = Math.max(0, 30 - (valueText ? displayWidth(valueText) + 1 : 0));
+    const text = [truncateToDisplayWidth(entry.label, labelWidth), valueText].filter(Boolean).join(" ");
+    const textWidth = Math.max(1, displayWidth(text));
     return {
       entry,
-      text: truncateWithEllipsis(fullText, textWidth),
+      text,
       width: textWidth + 2,
       toggleable,
       tooltip,
