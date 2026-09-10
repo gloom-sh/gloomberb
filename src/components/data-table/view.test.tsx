@@ -175,10 +175,14 @@ function DeferredScrollHarness({ onScroll, initialRows = [], initialIndex = 500,
 }
 
 async function renderSettled() {
-  await act(async () => {
-    await testSetup!.renderOnce();
-    await testSetup!.renderOnce();
-  });
+  // Commit React's measurement/scroll effects between native frames, then
+  // paint the resulting viewport. One act around every frame can leave the
+  // numeric scroll offset updated while the captured frame is still old.
+  for (let phase = 0; phase < 3; phase += 1) {
+    await act(async () => {
+      await testSetup!.renderOnce();
+    });
+  }
 }
 
 const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
