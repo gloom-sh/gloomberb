@@ -38,6 +38,7 @@ describe("pane sizing", () => {
       height: 28,
       flexGrow: 0,
       flexBasis: undefined,
+      paddingX: 1,
     });
   });
 });

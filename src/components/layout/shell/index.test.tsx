@@ -13,7 +13,7 @@ import {
 } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID, cloneLayout, createDefaultConfig, type LayoutConfig } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
-import { Textarea } from "../../../ui";
+import { Text, Textarea } from "../../../ui";
 import { TransientLayoutProvider, useTransientLayout, type TransientLayoutState } from "../transient-layout";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import {
@@ -162,6 +162,30 @@ function findUpdateLayout(actions: ShellTestAction[]) {
 }
 
 describe("Shell", () => {
+  test.each([false, true])("keeps both numeric edges visible under terminal focus borders (floating=%s)", async (floating) => {
+    const config = createDefaultConfig("/tmp/gloomberb-pane-border-test");
+    const main = requireLayoutInstance(config, "portfolio-list:main");
+    const detail = requireLayoutInstance(config, "ticker-detail:main");
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "pane", instanceId: main.instanceId },
+      instances: floating ? [main, detail] : [main],
+      floating: floating ? [{ instanceId: detail.instanceId, x: 4, y: 2, width: 50, height: 12 }] : [],
+      detached: [],
+    };
+    let contentWidth = 0;
+    const EdgeValues = ({ width }: PaneProps) => {
+      contentWidth = width;
+      return <Text>{`49.6%${".".repeat(Math.max(0, width - 10))}-8.5%`}</Text>;
+    };
+    const registry = createShellPluginRegistry(floating
+      ? { tickerDetailComponent: EdgeValues }
+      : { portfolioListComponent: EdgeValues });
+    await renderShellForWindowModeTest(createShellStateWithLayout(config, layout, floating ? detail.instanceId : main.instanceId), { registry });
+    await testSetup!.renderOnce();
+    expect(contentWidth).toBe((floating ? 50 : 80) - 2);
+    expect(testSetup!.captureCharFrame()).toContain(`49.6%${".".repeat(contentWidth - 10)}-8.5%`);
+  });
+
   test("uses the desktop titlebar overlay height for shell chrome math", () => {
     expect(resolveAppHeaderHeightCells({ titleBarOverlay: true, cellHeightPx: 18 })).toBe(28 / 18);
     expect(resolveAppHeaderHeightCells({ titleBarOverlay: false, cellHeightPx: 18 })).toBe(1);

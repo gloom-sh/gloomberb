@@ -41,6 +41,9 @@ function getPaneBodyLayoutProps(nativePaneChrome: boolean | undefined, bodyHeigh
     height: bodyHeight,
     flexGrow: bodyHeight == null ? 1 : 0,
     flexBasis: bodyHeight == null ? 0 : undefined,
+    // Terminal focus borders occupy the outer columns. Keep every pane's
+    // content inside them, including while focus moves between panes.
+    paddingX: 1,
   };
 }
 
@@ -71,5 +74,5 @@ export function resolvePaneBodyFrame({
 
 function resolvePaneBodyWidth(width: number, nativePaneChrome: boolean | undefined): number {
   const finiteWidth = Number.isFinite(width) ? width : 1;
-  return nativePaneChrome ? Math.max(1, finiteWidth) : Math.max(1, Math.floor(finiteWidth));
+  return nativePaneChrome ? Math.max(1, finiteWidth) : Math.max(1, Math.floor(finiteWidth) - 2);
 }
