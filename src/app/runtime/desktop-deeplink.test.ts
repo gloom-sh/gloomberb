@@ -26,6 +26,20 @@ describe("desktop deeplinks", () => {
     });
   });
 
+  test("ignores the website's analytics handoff parameters", () => {
+    const handoff =
+      "_gloom=0f1e2d3c-4b5a-4968-8776-655443322110&utm_source=x&twclid=click_1&first_touch_at=2026-09-10T11:00:00.000Z&first_touch_referrer=https%3A%2F%2Ft.co%2Fabc";
+    expect(resolveDesktopDeepLinkAction(`gloomberb://cloud/success?${handoff}`)).toEqual(
+      resolveDesktopDeepLinkAction("gloomberb://cloud/success"),
+    );
+    expect(resolveDesktopDeepLinkAction(`gloomberb://ticker/NVDA?tab=chart&${handoff}`)).toEqual(
+      resolveDesktopDeepLinkAction("gloomberb://ticker/NVDA?tab=chart"),
+    );
+    expect(resolveDesktopDeepLinkAction(`gloomberb://cloud/roundup?week=2026-07-03&${handoff}`)).toEqual(
+      resolveDesktopDeepLinkAction("gloomberb://cloud/roundup?week=2026-07-03"),
+    );
+  });
+
   test("routes ticker links with arbitrary registered tab ids", () => {
     expect(resolveDesktopDeepLinkAction("gloomberb://ticker/NVDA?tab=analyst-research")).toEqual({
       type: "open-ticker",
