@@ -233,7 +233,9 @@ test("streams live quotes without resetting manual scroll", async () => {
   });
   await renderSettled();
 
-  const targets = subscriptions.at(-1) ?? [];
+  const subscribedTargets = subscriptions.at(-1) ?? [];
+  expect(subscribedTargets.some((target) => target.symbol === "AAPL" && target.exchange !== "OPTIONS")).toBe(true);
+  const targets = subscribedTargets.filter((target) => target.exchange === "OPTIONS");
   expect(targets.length).toBeGreaterThan(16);
   expect(targets.length).toBeLessThanOrEqual(80);
   expect(targets.filter((target) => target.visible === true).length).toBeGreaterThan(16);
@@ -291,6 +293,32 @@ test("streams live quotes without resetting manual scroll", async () => {
   });
   await renderSettled();
   expect(bodyScroll.scrollTop).toBe(0);
+});
+
+test("a standalone chain subscribes to its underlying and resolves ATM without a research pane", async () => {
+  let targets: QuoteSubscriptionTarget[] = [];
+  let emit: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | undefined;
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getOptionsChain: async () => makeChain(Array.from({ length: 100 }, (_, index) => 50 + index), 120),
+    subscribeQuotes: (nextTargets, onQuote) => {
+      targets = nextTargets;
+      emit = onQuote;
+      return () => {};
+    },
+  });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  await act(async () => {
+    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} />, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  const underlying = targets.find((target) => target.symbol === "AAPL");
+  expect(underlying).toBeDefined();
+  await act(async () => { emit!(underlying!, makeFinancials(120.2).quote!); });
+  await renderSettled();
+  const scrollBox = testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable;
+  expect(scrollBox.scrollTop).toBeGreaterThan(0);
+  expect(testSetup!.captureCharFrame()).toContain("ATM IV 20.0%");
 });
 
 test("lets the expiration tab row use the full available width", async () => {

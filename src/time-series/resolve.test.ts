@@ -1459,6 +1459,51 @@ describe("resolveChartSpecData", () => {
     expect(sma?.points.at(-1)?.date.getTime()).toBe(quoteTime);
   });
 
+  test.each(["line", "candles"] as const)("keeps one daily bar when a live quote updates a %s chart", async (style) => {
+    const now = Date.parse("2026-09-10T18:44:00Z");
+    const source = { kind: "security" as const, instrument: { symbol: "SQQQ", exchange: "NASDAQ" }, fieldId: "market.close" };
+    const provider = createTestDataProvider({
+      getPriceHistoryForResolution: async () => [{
+        date: new Date("2026-09-10T13:30:00Z"), open: 40, high: 41, low: 39, close: 39.77, volume: 1000,
+      }],
+    });
+    const result = await resolveChartSpecData(chartSpec({
+      viewport: { range: "1M", resolution: "1d" },
+      series: [{ id: "price", source, style, transform: "raw", axis: "left", panelId: "main", interpolation: "none" }],
+    }), {
+      dataProvider: provider,
+      now: new Date(now),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
+        symbol: "SQQQ", price: 39.75, currency: "USD", change: 0, changePercent: 0,
+        lastUpdated: now, listingExchangeName: "NASDAQ", marketState: "REGULAR",
+      }]]),
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.series[0]?.points).toHaveLength(1);
+    expect(result.series[0]?.points[0]).toMatchObject({ value: 39.75, open: 40, high: 41, low: 39, volume: 1000 });
+  });
+
+  test("retains the known listing session when the quote omits exchange metadata", async () => {
+    const now = Date.parse("2026-09-11T00:01:00Z");
+    const source = { kind: "security" as const, instrument: { symbol: "SQQQ", exchange: "NASDAQ" }, fieldId: "market.close" };
+    const result = await resolveChartSpecData(chartSpec({
+      viewport: { range: "1M", resolution: "1d" },
+      series: [{ id: "price", source, style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }],
+    }), {
+      dataProvider: createTestDataProvider({ getPriceHistoryForResolution: async () => [
+        { date: new Date("2026-09-10T00:00:00Z"), close: 100 },
+      ] }),
+      now: new Date(now),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), {
+        symbol: "SQQQ", price: 100, postMarketPrice: 105, currency: "USD", change: 0, changePercent: 0,
+        lastUpdated: now - 60_000, marketState: "POST",
+      }]]),
+    });
+    expect(result.errors).toEqual([]);
+    expect(result.series[0]?.points).toHaveLength(1);
+    expect(result.series[0]?.points[0]?.value).toBe(105);
+  });
+
   test("reuses raw source loads while live quotes recompute the chart tail", async () => {
     const now = Date.parse("2026-05-15T20:30:00Z");
     const source = {

@@ -57,9 +57,12 @@ test("changing, disabling, and unmounting a resource invalidate pending work", a
 });
 
 test.each([false, true])("refresh failure clears data only when configured: %s", async (clearOnError) => {
-  await mount(async () => "cached", clearOnError);
+  await mount(async (force) => {
+    if (force) throw new Error("");
+    return "cached";
+  }, clearOnError);
   await act(async () => {
-    changeLoader(() => { throw new Error(""); });
+    await resource.reload();
   });
   expect(resource).toMatchObject({
     data: clearOnError ? null : "cached",
@@ -67,4 +70,14 @@ test.each([false, true])("refresh failure clears data only when configured: %s",
     error: "",
     status: "error",
   });
+});
+
+test("a new security cannot display the previous security's loaded data while pending or failed", async () => {
+  await mount(async () => "AAPL history");
+  expect(resource.data).toBe("AAPL history");
+  const next = Promise.withResolvers<string>();
+  await act(async () => { changeLoader(() => next.promise); });
+  expect(resource).toMatchObject({ data: null, updatedAt: null, loading: true, error: null });
+  await act(async () => { next.reject(new Error("MSFT unavailable")); });
+  expect(resource).toMatchObject({ data: null, updatedAt: null, loading: false, error: "MSFT unavailable" });
 });

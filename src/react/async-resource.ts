@@ -12,7 +12,8 @@ export function useAsyncResource<T>(
   loader: ((force: boolean) => Promise<T>) | null,
   options: { initialData?: () => T | null; clearOnError?: boolean } = {},
 ) {
-  const [state, setState] = useState<ResourceState<T>>(() => ({
+  const [state, setState] = useState<ResourceState<T> & { owner: typeof loader }>(() => ({
+    owner: loader,
     data: options.initialData?.() ?? null,
     loading: !!loader,
     error: null,
@@ -23,14 +24,16 @@ export function useAsyncResource<T>(
   const load = useCallback(async (force = false) => {
     const currentGeneration = ++generation.current;
     if (!loader) {
-      setState({ data: null, loading: false, error: null, updatedAt: null });
+      setState({ owner: loader, data: null, loading: false, error: null, updatedAt: null });
       return;
     }
-    setState((current) => ({ ...current, loading: true, error: null }));
+    setState((current) => current.owner === loader
+      ? { ...current, loading: true, error: null }
+      : { owner: loader, data: null, loading: true, error: null, updatedAt: null });
     try {
       const data = await loader(force);
       if (generation.current === currentGeneration) {
-        setState({ data, loading: false, error: null, updatedAt: Date.now() });
+        setState({ owner: loader, data, loading: false, error: null, updatedAt: Date.now() });
       }
     } catch (error) {
       if (generation.current === currentGeneration) {
@@ -50,6 +53,10 @@ export function useAsyncResource<T>(
   }, [load]);
 
   const reload = useCallback(() => load(true), [load]);
-  const status = state.error !== null ? "error" : state.data !== null ? "loaded" : state.loading ? "loading" : "idle";
-  return { ...state, status, load, reload };
+  // Hide a previous resource during the render before the new loader's effect
+  // runs, as well as throughout a failed request for the new security.
+  const { data, loading, error, updatedAt } = state.owner === loader ? state
+    : { data: null, loading: !!loader, error: null, updatedAt: null };
+  const status = error !== null ? "error" : data !== null ? "loaded" : loading ? "loading" : "idle";
+  return { data, loading, error, updatedAt, status, load, reload };
 }

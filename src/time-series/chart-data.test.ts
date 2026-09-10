@@ -17,6 +17,38 @@ function quoteFixture(overrides: Partial<Quote> = {}): Quote {
 }
 
 describe("appendLiveQuotePoint", () => {
+  test("merges daily quote updates by session for date labels and opening timestamps", () => {
+    const now = Date.parse("2026-09-10T18:44:00Z");
+    const quote = quoteFixture({ price: 39.75, lastUpdated: now });
+    for (const date of ["2026-09-10T00:00:00Z", "2026-09-10T13:30:00Z"]) {
+      const history = [{ date: new Date(date), open: 40, high: 41, low: 39, close: 39.77, volume: 1000 }];
+      const updated = appendLiveQuotePoint(history, quote, { now, mode: "ohlc", resolution: "1d" });
+      expect(updated).toHaveLength(1);
+      expect(updated[0]).toMatchObject({ close: 39.75, open: 40, high: 41, low: 39, volume: 1000 });
+      expect(history[0]?.close).toBe(39.77);
+    }
+  });
+
+  test("does not merge the next premarket into yesterday's daily bar within 24 hours", () => {
+    const now = Date.parse("2026-09-11T12:00:00Z");
+    const history = [{ date: new Date("2026-09-10T13:30:00Z"), close: 100 }];
+    const updated = appendLiveQuotePoint(history, quoteFixture({
+      price: 100, preMarketPrice: 105, marketState: "PRE", lastUpdated: now,
+    }), { now, mode: "ohlc", resolution: "1d" });
+    expect(updated).toHaveLength(2);
+    expect(updated[0]?.close).toBe(100);
+    expect(updated[1]?.close).toBe(105);
+  });
+
+  test("keeps an after-hours quote in its exchange session across UTC midnight", () => {
+    const now = Date.parse("2026-09-11T00:01:00Z");
+    const updated = appendLiveQuotePoint([{ date: new Date("2026-09-10T00:00:00Z"), close: 100 }],
+      quoteFixture({ price: 100, postMarketPrice: 105, marketState: "POST", lastUpdated: now - 60_000 }),
+      { now, mode: "ohlc", resolution: "1d" });
+    expect(updated).toHaveLength(1);
+    expect(updated[0]?.close).toBe(105);
+  });
+
   test("extends coarse chart histories with a fresh quote tail", () => {
     const history: PricePoint[] = [
       { date: new Date("2026-05-04T00:00:00Z"), close: 56 },
@@ -172,7 +204,7 @@ describe("appendLiveQuotePoint", () => {
         price: 346.27,
         lastUpdated: Date.parse("2026-07-22T18:52:00Z"),
       }),
-      Date.parse("2026-07-22T18:53:00Z"),
+      { now: Date.parse("2026-07-22T18:53:00Z") },
     );
 
     expect(extended).toBe(history);

@@ -40,7 +40,6 @@ import {
   maxStudyWarmupPoints,
   resolveStudies,
 } from "./studies";
-import { isOhlcSeriesStyle } from "./spec";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
@@ -556,11 +555,12 @@ function mergeHistory(
   quoteOverride: Quote | undefined,
   now: number,
   liveBarResolution?: ManualChartResolution,
+  exchange?: string,
 ): TickerFinancials {
   const base = financials ?? emptyFinancials();
   const quote = latestQuote(base.quote, quoteOverride);
   const priceHistory = appendLiveQuotePoint(history, quote, liveBarResolution
-    ? { now, mode: "ohlc", resolution: liveBarResolution }
+    ? { now, mode: "ohlc", resolution: liveBarResolution, exchange }
     : { now });
   return { ...base, quote, priceHistory };
 }
@@ -1112,9 +1112,11 @@ export async function resolveChartSpecData(
         ]);
         resolvedSource = sourceWithResolvedExchange(source, financials);
       }
-      const liveBarResolution = isOhlcSeriesStyle(seriesSpec.style) ? initialResolution : undefined;
+      // Display style does not change the sampling interval: line and candle
+      // charts must merge a live quote into the same active price bar.
+      const liveBarResolution = initialResolution;
       const merged = history
-        ? mergeHistory(financials, history, quoteOverride, referenceNow.getTime(), liveBarResolution)
+        ? mergeHistory(financials, history, quoteOverride, referenceNow.getTime(), liveBarResolution, resolvedSource.instrument.exchange)
         : quoteOverride && financials
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;

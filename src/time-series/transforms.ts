@@ -1,7 +1,9 @@
 import type { ResolvedSeries, SeriesTransform, TimeSeriesPoint } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
-const NUMERIC_POINT_FIELDS = ["value", "open", "high", "low", "close", "volume"] as const;
+// Volume is separate supporting data, not another price. A volume series has
+// its primary measurement in `value`, which still receives the transform.
+const NUMERIC_POINT_FIELDS = ["value", "open", "high", "low", "close"] as const;
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
