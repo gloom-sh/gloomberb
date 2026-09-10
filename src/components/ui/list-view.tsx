@@ -192,7 +192,9 @@ export function ListView({
   const rowHoverBg = hoverBgColor ?? tokens.list.hoverBg;
   const selectedItem = selectedIndex >= 0 ? items[selectedIndex] : undefined;
   const activeScrollIndex = scrollIndex ?? selectedIndex;
-  const terminalRowHeight = rowHeight ?? 1;
+  // The style sets the rhythm; a caller only overrides when its rows carry
+  // more than one line of content.
+  const terminalRowHeight = rowHeight ?? tokens.spacing.rowHeight;
   const terminalRowGap = rowGap ?? 0;
   const rowStride = terminalRowHeight + terminalRowGap;
 

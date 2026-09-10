@@ -24,6 +24,21 @@ export type CandleMode = "filled" | "hollow" | "ohlc";
 export type ChartGridMode = "none" | "dots" | "lines";
 export type ShadowMode = "none" | "soft" | "hard";
 export type HeaderCase = "upper" | "as-is";
+export type TableHeaderMode = "filled" | "inverted" | "underline" | "plain";
+export type HeadingTreatment = "bold" | "caps" | "underline";
+/** How far the DOM type sizes spread apart. The terminal is always flat. */
+export type TypeScale = "flat" | "subtle" | "wide";
+
+/**
+ * The semantic roles content is set in. A pane says what a run of text *is*
+ * and the style decides how it reads, which is what lets a style reach past
+ * the pane frame into the numbers and labels that fill the screen.
+ *
+ * `numeric` is deliberately separate from `value`: a finance terminal aligns
+ * columns on the digit, so numbers stay monospace and tabular in every style,
+ * including the ones that set the rest of the UI in a proportional face.
+ */
+export type TypeRole = "display" | "heading" | "label" | "body" | "value" | "caption" | "numeric";
 
 export interface StyleChrome {
   paneBorder: PaneBorderKind;
@@ -39,6 +54,37 @@ export interface StyleChrome {
 export interface StyleCharts {
   candles: CandleMode;
   grid: ChartGridMode;
+}
+
+/**
+ * How a table treats its own structure. Separate from `chrome.separators`,
+ * which governs the gaps between panes; this is the grid inside one.
+ */
+export interface StyleTable {
+  header: TableHeaderMode;
+  /** A hairline under every body row. */
+  rowRule: boolean;
+  /** Alternating row tint, the whitespace styles' substitute for rules. */
+  stripe: boolean;
+}
+
+/**
+ * The content half of a style: the rhythm and emphasis of everything inside a
+ * pane. All of it is expressed in cells or in text attributes, so the terminal
+ * carries the whole decision and the DOM only adds size and face on top.
+ */
+export interface StyleContent {
+  /** Row height in cells for lists and tables. */
+  rowHeight: 1 | 2;
+  /** Cells between table columns. */
+  columnGap: 1 | 2;
+  /** Cells of padding inside a content region. */
+  padX: 1 | 2;
+  /** Cells between one section and the next. */
+  sectionGap: 1 | 2;
+  table: StyleTable;
+  headings: HeadingTreatment;
+  scale: TypeScale;
 }
 
 /** DOM only. The terminal has one font and one cell, and ignores all of it. */
@@ -63,6 +109,7 @@ export interface StyleSpec {
   name: string;
   description: string;
   chrome: StyleChrome;
+  content: StyleContent;
   glyphs: GlyphMode;
   charts: StyleCharts;
   typography: StyleTypography;
@@ -86,6 +133,15 @@ const terminal: StyleSpec = {
     density: "compact",
     separators: "lines",
   },
+  content: {
+    rowHeight: 1,
+    columnGap: 1,
+    padX: 1,
+    sectionGap: 1,
+    table: { header: "filled", rowRule: false, stripe: false },
+    headings: "bold",
+    scale: "flat",
+  },
   glyphs: "unicode",
   charts: { candles: "filled", grid: "dots" },
   typography: { ui: MONO_STACK, mono: MONO_STACK, headingWeight: 700, letterSpacing: "0" },
@@ -104,6 +160,16 @@ const phosphor: StyleSpec = {
     headerCase: "upper",
     density: "compact",
     separators: "lines",
+  },
+  content: {
+    rowHeight: 1,
+    columnGap: 1,
+    padX: 1,
+    sectionGap: 1,
+    // A CRT has one weight and one size, so emphasis is reverse video and caps.
+    table: { header: "inverted", rowRule: false, stripe: false },
+    headings: "caps",
+    scale: "flat",
   },
   glyphs: "ascii",
   charts: { candles: "ohlc", grid: "lines" },
@@ -124,6 +190,17 @@ const modern: StyleSpec = {
     density: "comfortable",
     separators: "whitespace",
   },
+  content: {
+    // Rows get a second cell of air, which is the whole point of the style and
+    // also its cost: a positions table shows about half as many holdings.
+    rowHeight: 2,
+    columnGap: 2,
+    padX: 2,
+    sectionGap: 2,
+    table: { header: "plain", rowRule: false, stripe: true },
+    headings: "caps",
+    scale: "wide",
+  },
   glyphs: "unicode",
   charts: { candles: "hollow", grid: "none" },
   typography: { ui: SANS_STACK, mono: MONO_STACK, headingWeight: 600, letterSpacing: "0" },
@@ -143,6 +220,15 @@ const paper: StyleSpec = {
     density: "normal",
     separators: "lines",
   },
+  content: {
+    rowHeight: 1,
+    columnGap: 2,
+    padX: 1,
+    sectionGap: 1,
+    table: { header: "underline", rowRule: true, stripe: false },
+    headings: "underline",
+    scale: "subtle",
+  },
   glyphs: "unicode",
   charts: { candles: "hollow", grid: "lines" },
   typography: { ui: SERIF_STACK, mono: MONO_STACK, headingWeight: 600, letterSpacing: "0.01em" },
@@ -161,6 +247,15 @@ const minimal: StyleSpec = {
     headerCase: "as-is",
     density: "normal",
     separators: "whitespace",
+  },
+  content: {
+    rowHeight: 1,
+    columnGap: 2,
+    padX: 1,
+    sectionGap: 2,
+    table: { header: "plain", rowRule: false, stripe: false },
+    headings: "bold",
+    scale: "subtle",
   },
   glyphs: "unicode",
   charts: { candles: "filled", grid: "none" },
@@ -197,7 +292,4 @@ export function densityPadding(density: Density): { x: number; y: number } {
   return { x: 1, y: 1 };
 }
 
-/** Row height in cells. The terminal has one row; the DOM can afford more. */
-export function densityRowHeight(density: Density): number {
-  return density === "comfortable" ? 2 : 1;
-}
+

@@ -671,3 +671,57 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   transition-duration: 0ms !important;
   animation-duration: 0ms !important;
 }
+
+/* --------------------------------------------------------------------------
+ * Type roles
+ *
+ * A pane says what a run of text is with `typeRole`; the terminal turns that
+ * into cell attributes and this turns it into size and face. Sizes stay in
+ * cell-relative units so a role can never push a row off the grid.
+ * -------------------------------------------------------------------------- */
+
+[data-gloom-type] {
+  font-family: var(--gloom-font-ui);
+  letter-spacing: var(--gloom-letter-spacing, 0);
+}
+
+/* Numbers keep the mono face and tabular figures in every style: a column of
+ * prices has to align on the digit, whatever the rest of the UI is set in. */
+[data-gloom-type="numeric"],
+[data-gloom-type="value"] {
+  font-family: var(--gloom-font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+[data-gloom-type="heading"] {
+  font-weight: var(--gloom-heading-weight, 700);
+}
+[data-gloom-type="label"] {
+  font-size: var(--gloom-type-label-size, 1em);
+  letter-spacing: var(--gloom-type-label-tracking, var(--gloom-letter-spacing, 0));
+  opacity: var(--gloom-type-label-opacity, 1);
+}
+[data-gloom-type="caption"] {
+  font-size: var(--gloom-type-caption-size, 1em);
+}
+[data-gloom-type="display"] {
+  font-size: var(--gloom-type-display-size, 1em);
+  font-weight: var(--gloom-heading-weight, 700);
+}
+
+/* The scale only spreads where the style asked for it. `flat` leaves every
+ * role at the cell's own size, which is what keeps the terminal styles honest
+ * on the desktop too. */
+[data-gloom-style="modern"] {
+  --gloom-type-label-size: 0.85em;
+  --gloom-type-label-tracking: 0.08em;
+  --gloom-type-label-opacity: 0.75;
+  --gloom-type-caption-size: 0.92em;
+  --gloom-type-display-size: 1.35em;
+}
+[data-gloom-style="paper"],
+[data-gloom-style="minimal"] {
+  --gloom-type-caption-size: 0.95em;
+  --gloom-type-display-size: 1.15em;
+}

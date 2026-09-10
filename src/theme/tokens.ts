@@ -11,7 +11,6 @@ import { DEFAULT_SCHEME, getScheme, type Theme } from "./schemes";
 import {
   DEFAULT_STYLE,
   densityPadding,
-  densityRowHeight,
   getStyle,
   type Density,
   type FocusMode,
@@ -19,6 +18,8 @@ import {
   type PaneHeaderMode,
   type SeparatorMode,
   type StyleSpec,
+  type TableHeaderMode,
+  type TypeRole,
 } from "./styles";
 
 export type ThemePalette = Readonly<Omit<Theme, "name" | "description">>;
@@ -117,7 +118,30 @@ export interface TableTokens {
   headerText: string;
   border: string;
   row: { hover: string; selected: string; selectedText: string; stripe: string | null };
+  /** Structure, in cells, so a table lays out the same in both renderers. */
+  layout: {
+    headerMode: TableHeaderMode;
+    rowHeight: number;
+    columnGap: number;
+    padX: number;
+    rowRule: boolean;
+    /** Hairline under the header row; null when the style draws none. */
+    headerRule: string | null;
+  };
 }
+
+/**
+ * Treatment for one semantic type role. Attributes and case are all the
+ * terminal has, and they are enough to carry the decision; the DOM reads the
+ * same role off a data attribute and adds size and face in CSS.
+ */
+export interface TypeTreatment {
+  /** TextAttributes bitmask. */
+  attributes: number;
+  transform: "none" | "upper";
+}
+
+export type TypeTokens = Record<TypeRole, TypeTreatment>;
 
 export interface ListTokens {
   bg: string;
@@ -181,6 +205,9 @@ export interface ChartTokens {
 export interface ThemeTokens {
   surface: SurfaceTokens;
   text: TextTokens;
+  type: TypeTokens;
+  /** Content rhythm in cells: rows, gaps, section spacing. */
+  spacing: { rowHeight: number; columnGap: number; padX: number; sectionGap: number };
   pane: PaneTokens;
   commandBar: CommandBarTokens;
   table: TableTokens;
@@ -407,6 +434,46 @@ function buildCommandBar(palette: ThemePalette, style: StyleSpec): CommandBarTok
 }
 
 /* -------------------------------------------------------------------------- */
+/* Type recipes                                                               */
+/* -------------------------------------------------------------------------- */
+
+// Mirrors ui/host's TextAttributes without importing the UI layer into theming.
+const BOLD = 1 << 0;
+const DIM = 1 << 1;
+const ITALIC = 1 << 2;
+const UNDERLINE = 1 << 3;
+
+/**
+ * How each role reads, derived from the style's heading treatment rather than
+ * enumerated per style, so a new style cannot forget a role.
+ */
+function buildType(style: StyleSpec): TypeTokens {
+  const { headings } = style.content;
+  const heading: TypeTreatment = headings === "caps"
+    ? { attributes: BOLD, transform: "upper" }
+    : headings === "underline"
+      ? { attributes: UNDERLINE, transform: "none" }
+      : { attributes: BOLD, transform: "none" };
+  return {
+    display: { attributes: BOLD, transform: "none" },
+    heading,
+    // A caps style labels its columns in caps too, which is where most of the
+    // label role actually shows up.
+    label: headings === "caps"
+      ? { attributes: 0, transform: "upper" }
+      : { attributes: 0, transform: "none" },
+    body: { attributes: 0, transform: "none" },
+    value: { attributes: BOLD, transform: "none" },
+    // Print sets its asides in italic; a terminal font may not have one, in
+    // which case the renderer falls back to plain and nothing shifts.
+    caption: headings === "underline"
+      ? { attributes: ITALIC, transform: "none" }
+      : { attributes: DIM, transform: "none" },
+    numeric: { attributes: 0, transform: "none" },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
 /* Chart recipes                                                              */
 /* -------------------------------------------------------------------------- */
 
@@ -438,7 +505,7 @@ function chartIndicatorPalette(palette: ThemePalette): string[] {
 /* -------------------------------------------------------------------------- */
 
 function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
-  const { chrome } = style;
+  const { chrome, content } = style;
   const padding = densityPadding(chrome.density);
   const hover = blendHex(palette.bg, palette.selected, 0.5);
   const border = paneBorder(palette, style);
@@ -503,6 +570,13 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
       selected: palette.selected,
       selectedText: palette.selectedText,
     },
+    type: buildType(style),
+    spacing: {
+      rowHeight: style.content.rowHeight,
+      columnGap: style.content.columnGap,
+      padX: style.content.padX,
+      sectionGap: style.content.sectionGap,
+    },
     text: {
       primary: textPrimary,
       dim: textDim,
@@ -525,7 +599,7 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
         grip: chrome.headerGrip,
         upperCaseTitles: chrome.headerCase === "upper",
         padding,
-        rowHeight: densityRowHeight(chrome.density),
+        rowHeight: content.rowHeight,
         drawsBorder: chrome.paneBorder !== "none",
         invertHeader: chrome.paneHeader === "inverted",
         underlineHeader: chrome.paneHeader === "underline",
@@ -563,15 +637,30 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
     },
     commandBar,
     table: {
-      headerBg: chrome.separators === "whitespace" ? bodyBg.idle : blendHex(palette.panel, palette.border, 0.22),
-      headerText: textDim,
+      // A plain or underlined header sits on the body; only a filled one gets
+      // its own plate, and an inverted one takes the ink.
+      headerBg: content.table.header === "filled"
+        ? blendHex(palette.panel, palette.border, 0.22)
+        : content.table.header === "inverted"
+          ? blendForContrast(textDim, bodyBg.idle, higherContrast("#ffffff", "#000000", bodyBg.idle), 3.0)
+          : bodyBg.idle,
+      headerText: content.table.header === "inverted" ? bodyBg.idle : textDim,
       border: chrome.separators === "whitespace" ? blendHex(palette.border, palette.bg, 0.6) : palette.border,
       row: {
         hover,
         selected: palette.selected,
         selectedText: palette.selectedText,
-        // Zebra striping is a whitespace style's substitute for rules.
-        stripe: chrome.separators === "whitespace" ? blendHex(palette.bg, palette.panel, 0.55) : null,
+        stripe: content.table.stripe ? blendHex(palette.bg, palette.panel, 0.55) : null,
+      },
+      layout: {
+        headerMode: content.table.header,
+        rowHeight: content.rowHeight,
+        columnGap: content.columnGap,
+        padX: content.padX,
+        rowRule: content.table.rowRule,
+        headerRule: content.table.header === "underline" || content.table.rowRule
+          ? blendHex(palette.border, palette.bg, 0.25)
+          : null,
       },
     },
     list: {

@@ -16,15 +16,12 @@ export interface SectionHeadingProps {
 
 export function SectionHeading({ title, marginTop = 0, width, wrap = false }: SectionHeadingProps) {
   const tokens = useThemeTokens();
-  const style = useThemeStyle();
-  // A printed style underlines its headings instead of setting them in bold.
-  const attributes = style.chrome.paneHeader === "underline"
-    ? TextAttributes.UNDERLINE
-    : TextAttributes.BOLD;
-  const label = style.chrome.headerCase === "upper" ? t(title).toUpperCase() : t(title);
+  // The style owns bold vs caps vs underline through the `heading` role, so
+  // this only has to say what the text is.
+  const label = t(title);
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
-      <Text fg={tokens.text.dim} attributes={attributes} wrapText={wrap}>
+      <Text fg={tokens.text.dim} typeRole="heading" wrapText={wrap}>
         {wrap || width === undefined ? label : truncateToDisplayWidth(label, width)}
       </Text>
     </Box>
@@ -36,10 +33,10 @@ export interface SectionProps extends SectionHeadingProps {
 }
 
 export function Section({ title, children, width, marginTop, wrap }: SectionProps) {
-  const { pane } = useThemeTokens();
+  const { spacing } = useThemeTokens();
   // Density is the gap between sections: a whitespace style separates with air
   // where a ruled one can rely on the heading to do the work.
-  const gap = marginTop ?? Math.max(1, pane.chrome.padding.y + 1);
+  const gap = marginTop ?? spacing.sectionGap;
   return (
     <Box flexDirection="column" width={width} marginTop={gap} data-gloom-ui="section">
       <SectionHeading title={title} width={width} wrap={wrap} />
@@ -61,6 +58,7 @@ export interface KeyValueRowProps {
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
 export function KeyValueRow({ label, value, detail, color, width, labelWidth, emphasis = true }: KeyValueRowProps) {
   const tokens = useThemeTokens();
+  const rowHeight = tokens.spacing.rowHeight;
   const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
   const preferredLabelWidth = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
   const labelColumns = rowWidth === undefined ? preferredLabelWidth : Math.min(preferredLabelWidth, Math.max(0, rowWidth - 1));
@@ -70,17 +68,17 @@ export function KeyValueRow({ label, value, detail, color, width, labelWidth, em
     : availableWidth;
   const detailWidth = availableWidth === undefined ? undefined : availableWidth - valueWidth!;
   return (
-    <Box height={1} width={rowWidth} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row">
+    <Box height={rowHeight} width={rowWidth} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row">
       <Box width={labelColumns} flexShrink={0} overflow="hidden">
-        <Text fg={tokens.text.dim}>{t(label)}</Text>
+        <Text fg={tokens.text.dim} typeRole="label">{t(label)}</Text>
       </Box>
       <Box width={valueWidth} flexShrink={0} overflow="hidden">
-        <Text fg={color ?? tokens.text.primary} attributes={emphasis ? TextAttributes.BOLD : undefined}>
+        <Text fg={color ?? tokens.text.primary} typeRole={emphasis ? "value" : "numeric"}>
           {valueWidth === undefined ? value : truncateToDisplayWidth(value, valueWidth)}
         </Text>
       </Box>
       {detail && (detailWidth === undefined || detailWidth > 0) && (
-        <Text fg={tokens.text.dim}>
+        <Text fg={tokens.text.dim} typeRole="caption">
           {detailWidth === undefined ? `  ${detail}` : truncateToDisplayWidth(detail, detailWidth)}
         </Text>
       )}
@@ -105,7 +103,7 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle" }: Ba
   const fg = color ? (variant === "solid" ? tokens.surface.app : color) : fill.fg;
   return (
     <Box height={1} paddingX={1} backgroundColor={bg} data-gloom-ui="badge" data-tone={tone}>
-      <Text fg={fg} attributes={TextAttributes.BOLD}>{t(label)}</Text>
+      <Text fg={fg} typeRole="label" attributes={TextAttributes.BOLD}>{t(label)}</Text>
     </Box>
   );
 }
