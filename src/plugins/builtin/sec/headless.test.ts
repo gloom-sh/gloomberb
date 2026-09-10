@@ -91,6 +91,9 @@ test("accepted timestamps survive persisted JSON rows and invalid cached values 
   expect(buildSecFilingRows([restored])[0]?.acceptedAt).toBe("2025-03-20T20:10:11.000Z");
   const compact = { ...restored, acceptedAt: undefined, acceptedAtRaw: "20250320161011" };
   expect(buildSecFilingRows([compact])[0]).toMatchObject({ acceptedAt: null, acceptedAtRaw: "20250320161011", acceptanceReported: "20250320161011 (timezone unspecified)" });
+  expect(secAcceptanceTimestamp("2025-03-20T16:10:11")).toBeNull();
+  const naive = JSON.parse(JSON.stringify({ ...filing, acceptedAt: "2025-03-20T16:10:11" })) as SecFilingItem;
+  expect(buildSecFilingRows([naive])[0]).toMatchObject({ acceptedAt: null, acceptanceReported: "2025-03-20T16:10:11 (timezone unspecified)" });
   expect(secAcceptanceTimestamp("invalid")).toBeNull();
   expect(secAcceptanceTimestamp(undefined)).toBeNull();
 });

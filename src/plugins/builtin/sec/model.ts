@@ -110,12 +110,14 @@ export function secIssuerLabel(issuer: { cik: string; companyName?: string | nul
 /** Persistence may return timestamps as strings even when the network model uses Date. */
 export function secAcceptanceTimestamp(value: unknown): string | null {
   if (!(value instanceof Date) && typeof value !== "string") return null;
+  if (typeof value === "string" && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
 }
 
 export function secReportedAcceptance(filing: SecFilingItem): string | null {
-  const raw = filing.acceptedAtRaw?.trim();
+  const persistedValue: unknown = filing.acceptedAt;
+  const raw = filing.acceptedAtRaw?.trim() || (typeof persistedValue === "string" ? persistedValue.trim() : undefined);
   if (raw) return /^\d{14}$/.test(raw) || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw)
     ? `${raw} (timezone unspecified)`
     : raw;
