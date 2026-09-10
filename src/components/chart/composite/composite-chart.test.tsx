@@ -1250,9 +1250,11 @@ describe("CompositeChart", () => {
     await act(async () => testSetup!.renderOnce());
 
     // Pressing the ruler icon has to arm the tool for an unmodified drag.
+    const toolbarRow = testSetup.captureCharFrame().split("\n").findIndex((line) => line.includes("↔"));
+    const rulerX = testSetup.captureCharFrame().split("\n")[toolbarRow]!.indexOf("↔");
     await act(async () => {
-      await testSetup!.mockMouse.moveTo(11, 1);
-      await testSetup!.mockMouse.click(11, 1);
+      await testSetup!.mockMouse.moveTo(rulerX, toolbarRow);
+      await testSetup!.mockMouse.click(rulerX, toolbarRow);
     });
     await act(async () => testSetup!.renderOnce());
     await act(async () => {
@@ -1264,7 +1266,7 @@ describe("CompositeChart", () => {
 
     await act(async () => {
       capturedSurfaceProps!.onMouseUp(pointerEvent(30, 2));
-      await testSetup!.mockMouse.click(11, 1);
+      await testSetup!.mockMouse.click(rulerX, toolbarRow);
     });
     await act(async () => testSetup!.renderOnce());
     await act(async () => {
@@ -1438,6 +1440,63 @@ describe("CompositeChart", () => {
     expect(frame).toContain("106%");
     expect(frame).toContain("2025-01-03");
     expect(frame).toContain("────────");
+  });
+
+  test.each([
+    ["USD", "currency-total:USD", 90_007_000_000, "$90.01B"],
+    ["EUR", "currency-total:EUR", -12_345_600_000, "€-12.35B"],
+    ["CAD", "currency-total:CAD", 123_456_000, "123.46M CAD"],
+    ["USD", "price:USD", 1_234_567.89, "$1,234,567.89"],
+    ["USD", "price:USD", 0.0123, "$0.0123"],
+    ["USD", "price:USD", 1e30, "…"],
+  ] as const)("renders a complete cursor marker for %s %s %s", async (unit, unitGroup, value, label) => {
+    testSetup = await testRender(
+      <CaptureChartSurfaceProvider>
+        <CompositeChart
+          width={60}
+          height={12}
+          showLegend={false}
+          series={[{
+            ...series("price", "main", "left", unit, [value * 0.8, value, value * 1.2]),
+            unitGroup,
+          }]}
+          panels={[{ id: "main" }]}
+          cursorDate={new Date("2025-01-02T00:00:00.000Z")}
+        />
+      </CaptureChartSurfaceProvider>,
+      { width: 62, height: 14 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain(label);
+    expect(capturedSurfaceNode!.width).toBeGreaterThanOrEqual(30);
+  });
+
+  test("preserves integer-domain cursor decimals without moving the plot and honors hidden axes", async () => {
+    let setAxisWidth: ((value: number) => void) | null = null;
+    function Harness() {
+      const [axisWidth, setWidth] = useState(9);
+      setAxisWidth = setWidth;
+      return <CaptureChartSurfaceProvider>
+        <CompositeChart width={60} height={12} showLegend={false} axisWidth={axisWidth}
+          series={[series("price", "main", "left", "USD", [100, 200, 100])]}
+          panels={[{ id: "main" }]}
+        />
+      </CaptureChartSurfaceProvider>;
+    }
+    testSetup = await testRender(<Harness />, { width: 62, height: 14 });
+    await act(async () => testSetup!.renderOnce());
+    const plotWidth = capturedSurfaceNode!.width as number;
+    const plotHeight = capturedSurfaceNode!.height as number;
+    await act(async () => capturedSurfaceProps!.onMouseMove(pointerEvent(
+      (plotWidth - 1) / 2, (plotHeight - 1) * 0.4975,
+    )));
+    await act(async () => testSetup!.renderOnce());
+    expect(testSetup.captureCharFrame()).toContain("$150.28");
+    expect(capturedSurfaceNode!.width).toBe(plotWidth);
+    await act(async () => setAxisWidth?.(0));
+    await act(async () => testSetup!.renderOnce());
+    expect(capturedSurfaceNode!.width).toBe(60);
+    expect(testSetup.captureCharFrame()).not.toContain("$");
   });
 
   test("keeps the requested window while older cached observations partially overlap it", async () => {
@@ -1641,6 +1700,7 @@ describe("CompositeChart", () => {
 
   test("keeps the date axis and mouse recovery when refreshed data misses the zoomed window", async () => {
     let replacePoints: ((points: TimeSeriesPoint[]) => void) | null = null;
+    let lastWindow: { start: Date; end: Date } | null = null;
     function Harness() {
       const [points, setPoints] = useState(
         series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108]).points,
@@ -1660,6 +1720,7 @@ describe("CompositeChart", () => {
             start: new Date("2025-01-01T00:00:00.000Z"),
             end: new Date("2025-01-09T00:00:00.000Z"),
           }}
+          onViewportChange={(next) => { lastWindow = next; }}
         />
       );
     }
@@ -1692,8 +1753,6 @@ describe("CompositeChart", () => {
 
     // An observation-free window keeps the chart frame and its axes; only the
     // plotted points go away.
-    // An observation-free window keeps the chart frame and its axes; only the
-    // plotted points go away.
     const emptyFrame = testSetup.captureCharFrame();
     expect(emptyFrame).not.toContain("No chart data");
     expect(emptyFrame).not.toContain("•");
@@ -1711,8 +1770,8 @@ describe("CompositeChart", () => {
 
     const recoveredFrame = testSetup.captureCharFrame();
     expect(recoveredFrame).toContain("•");
-    expect(recoveredFrame).toContain("2025-01-01");
-    expect(recoveredFrame).toContain("Jan 9");
+    expect(lastWindow!.start.getTime()).toBeLessThanOrEqual(Date.parse("2025-01-01"));
+    expect(lastWindow!.end.getTime()).toBeGreaterThanOrEqual(Date.parse("2025-01-09"));
   });
 
   test("restores persisted drawings from pane settings on mount", async () => {

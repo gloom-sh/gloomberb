@@ -82,6 +82,9 @@ export function formatCompositeAxisValue(value: number, domain: CompositeAxisDom
 export function formatCompositeCursorValue(value: number, domain: CompositeAxisDomain): string {
   const group = domain.unitGroup.toLowerCase();
   if (group.startsWith("derived-unit:")) return compactNumber(value);
+  if (group.split(":")[0] === "currency-total") {
+    return formatChartLegendValue(value, domain.unit, domain.unitGroup);
+  }
   const fullPrice = formatFullCurrencyValue(value, domain.unit);
   if (fullPrice) return fullPrice;
   return formatCompositeAxisValue(value, domain);

@@ -360,16 +360,30 @@ function cursorAxisLabel(
 const MINIMUM_AXIS_LABEL_WIDTH = 3;
 
 /**
- * Cells the gutter needs for its own labels. Ticks cover the axis itself, and a
- * mid-domain sample covers the wider cursor readout that lands between them.
+ * Reserve cursor precision even when the tick values are round numbers. This
+ * keeps the plot stable while the pointer moves between integer tick values.
  */
 function compositeAxisLabelWidth(
   domain: CompositeAxisDomain | undefined,
-  format: CompositeAxisValueFormatter = formatCompositeAxisValue,
+  format: CompositeAxisValueFormatter | undefined,
+  includeCursor: boolean,
 ): number {
   if (!domain) return 0;
-  const labels = compositeAxisTicks(domain, 3, format).map((tick) => tick.label);
-  labels.push(format((domain.min + domain.max) / 2, domain));
+  const ticks = compositeAxisTicks(domain, 3, format);
+  const labels = ticks.map((tick) => tick.label);
+  if (includeCursor) {
+    const cursorFormat = format ?? formatCompositeCursorValue;
+    for (const { value } of ticks) {
+      labels.push(cursorFormat(value, domain));
+      // Totals use two decimals at their compact scale; prices can use four
+      // below one currency unit. Probe those digits without changing the data.
+      const scale = domain.unitGroup.toLowerCase().split(":")[0] === "currency-total"
+        ? 10 ** Math.max(0, Math.min(12, Math.floor(Math.log10(Math.abs(value) || 1) / 3) * 3))
+        : 1;
+      const precisionValue = (value < 0 ? -1 : 1) * (Math.floor(Math.abs(value) / scale) + 0.1234) * scale;
+      labels.push(cursorFormat(precisionValue, domain));
+    }
+  }
   return labels.reduce((widest, label) => Math.max(widest, [...label].length), 0);
 }
 
@@ -1861,16 +1875,23 @@ export function CompositeChart({
   const maximumAxisWidth = Math.max(0, Math.floor(axisWidth));
   // Gutters follow their labels. A fixed budget left dead space beside short
   // prices, which costs plot width on every chart that does not need it.
-  const resolvedAxisWidth = useMemo(() => Math.min(
-    maximumAxisWidth,
+  const axisCount = Number(hasLeftAxis) + Number(hasRightAxis);
+  // Keep at least half the chart (and 12 cells on small charts) for the plot.
+  const minimumPlotWidth = Math.min(totalWidth, Math.max(12, Math.floor(totalWidth / 2)));
+  const availableAxisWidth = axisCount > 0
+    ? Math.max(0, Math.floor((totalWidth - minimumPlotWidth) / axisCount) - 1)
+    : 0;
+  const includeCursorLabels = interactive || cursorDate !== undefined;
+  const resolvedAxisWidth = useMemo(() => maximumAxisWidth === 0 ? 0 : Math.min(
+    availableAxisWidth,
     Math.max(
-      MINIMUM_AXIS_LABEL_WIDTH,
+      Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
       ...(projectedScene?.panels ?? []).flatMap((panel) => [
-        compositeAxisLabelWidth(panel.axes.left, formatAxisValue),
-        compositeAxisLabelWidth(panel.axes.right, formatAxisValue),
-      ]),
+        compositeAxisLabelWidth(panel.axes.left, formatAxisValue, includeCursorLabels),
+        compositeAxisLabelWidth(panel.axes.right, formatAxisValue, includeCursorLabels),
+      ]).map((width) => includeCursorLabels ? width : Math.min(width, maximumAxisWidth)),
     ),
-  ), [formatAxisValue, maximumAxisWidth, projectedScene]);
+  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, maximumAxisWidth, projectedScene]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
