@@ -1,3 +1,4 @@
+import { FINANCIAL_VINTAGE_NOTICE } from "../../../../utils/financial-statements";
 import { Box, Text, useUiCapabilities } from "../../../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../../ui";
 import { useShortcut } from "../../../../react/input";
@@ -400,6 +401,7 @@ export function ResolvedFinancialsTab({
         resetScrollKey={`${resolvedPeriod}:${subTab.key}:${displayStatements.length}`}
         rootBefore={(
           <>
+            <Notice tone="muted">{FINANCIAL_VINTAGE_NOTICE}</Notice>
             {financialStatementLimitations(financials).map((limitation) => <Notice key={limitation} tone="muted">{limitation}</Notice>)}
             {financialStatementDateNotice(displayStatements) && <Notice tone="muted">{financialStatementDateNotice(displayStatements)}</Notice>}
             <Box flexDirection="row" height={1}>

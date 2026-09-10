@@ -356,6 +356,11 @@ export function renderHeadlessPaneText(
   fallbackTitle: string,
 ): string {
   const lines = [reportTitle(definition, args, fallbackTitle), ""];
+  const notices = result.metadata?.notices;
+  if (Array.isArray(notices)) {
+    const textNotices = [...new Set(notices.filter((notice): notice is string => typeof notice === "string" && notice.trim().length > 0))];
+    if (textNotices.length) lines.push(...textNotices, "");
+  }
   switch (definition.shape) {
     case "rows": {
       const rowsResult = result as HeadlessPaneResult & { rows: HeadlessPaneRow[]; columns?: HeadlessPaneColumn[] };

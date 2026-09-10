@@ -279,3 +279,12 @@ test("partial usable reports retain rows without marking their symbol wholly una
   } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-partial") } as MarketContext, "");
   expect(report.data).toMatchObject({ rowCount: 1, empty: false, complete: false, unavailableSymbols: [], rows: [{ date: "2025-06-30", margin: .46 }] });
 });
+
+test("headless text preserves applicable coverage notices once before the exported rows", () => {
+  const text = renderHeadlessPaneText({ shape: "rows", columns: [{ key: "value", header: "Value" }] } as any,
+    { rows: [{ value: 96_571_000_000 }], metadata: { notices: ["Historical versions unavailable.", "Historical versions unavailable.", null, ""] } },
+    { symbols: ["MSFT"], options: {}, argument: "MSFT", rawArgument: "MSFT" }, "Financial Statements");
+  expect(text.match(/Historical versions unavailable\./g)).toHaveLength(1);
+  expect(text.indexOf("Historical versions unavailable.")).toBeLessThan(text.indexOf("VALUE"));
+  expect(text).toContain("96571000000");
+});

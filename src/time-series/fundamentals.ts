@@ -802,7 +802,7 @@ function dedupeFundamentalPeriods(points: readonly TimeSeriesPoint[]): TimeSerie
     ));
 }
 
-/** Extracts a point-in-time-safe fundamental or valuation series from a snapshot. */
+/** Extracts the selected statement snapshot, retaining known availability dates without reconstructing prior vintages. */
 export function extractFundamentalSeries(
   financials: TickerFinancials | null,
   source: SecuritySeriesSource,
