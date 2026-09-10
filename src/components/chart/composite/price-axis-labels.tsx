@@ -5,7 +5,9 @@ import { colors } from "../../../theme/colors";
 function formatAxisCell(label: string | null, width: number): string {
   if (width <= 0) return "";
   if (!label) return " ".repeat(width);
-  return label.length >= width ? label.slice(0, width) : label.padStart(width);
+  // A clipped numeric prefix can change both magnitude and currency. If a
+  // constrained chart cannot fit the complete label, show no partial value.
+  return ([...label].length > width ? "…" : label).padStart(width);
 }
 
 interface PriceAxisMarker {

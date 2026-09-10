@@ -185,6 +185,7 @@ export interface CompositeChartProps {
    */
   viewportResetKey?: string;
   colors?: Partial<CompositeChartColors>;
+  /** Tick gutter budget. Cursor values can widen it; zero hides both axes. */
   axisWidth?: number;
   showLegend?: boolean;
   /** Show the regular-session percentage beside latest eligible legend values. */
