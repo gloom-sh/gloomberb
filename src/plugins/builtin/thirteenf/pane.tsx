@@ -559,6 +559,9 @@ function FundDetailView({
 
   return (
     <Box flexDirection="column" width={width} flexGrow={1} overflow="hidden">
+      {data?.name && data.name !== seed.name ? (
+        <Box paddingX={1}><Text fg={colors.text}>{data.name}</Text></Box>
+      ) : null}
       <Box height={1}>
         <Tabs
           tabs={FUND_DETAIL_TABS}
