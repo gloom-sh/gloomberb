@@ -62,7 +62,7 @@ export function parseArgumentsOption(value: string): Record<string, string> {
   return pairs;
 }
 
-export function parsePaneFunctionArgs(args: string[]): ParsedPaneFunctionArgs {
+export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: number } = {}): ParsedPaneFunctionArgs {
   const positionals: string[] = [];
   const options: Record<string, string | true> = {};
   let outputPath: string | null = null;
@@ -122,6 +122,9 @@ export function parsePaneFunctionArgs(args: string[]): ParsedPaneFunctionArgs {
 
   const target = positionals[0]?.trim() ?? "";
   const arg = positionals.slice(1).join(" ").trim();
+  // The outer CLI parser consumes --limit before fn/shot sees its arguments.
+  // Restore it for the pane's own schema and loader, including bounds checks.
+  if (globalOptions.limit != null) options.limit = String(globalOptions.limit);
   return { target, arg, options, outputPath, width, height, theme, scale, watermark, requireBotSafe };
 }
 

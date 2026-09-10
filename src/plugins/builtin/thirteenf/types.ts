@@ -92,7 +92,7 @@ export interface FundDetailData {
   previousHoldings: ThirteenFHoldingRecord[];
 }
 
-export type HoldingAction = "held" | "new" | "add" | "trim" | "exit";
+export type HoldingAction = "held" | "new" | "add" | "trim" | "exit" | "unknown";
 
 export interface FundHoldingRow {
   id: string;

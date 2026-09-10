@@ -61,7 +61,7 @@ describe("dividend yield headless", () => {
     expect(result.sections[0]).toMatchObject({
       title: "Dividend metrics",
       entries: expect.arrayContaining([
-        { label: "Trailing yield", value: 0.005 },
+        { label: "Trailing yield", value: 0.005, formatted: "0.50%" },
         { label: "Frequency", value: "quarterly" },
       ]),
     });

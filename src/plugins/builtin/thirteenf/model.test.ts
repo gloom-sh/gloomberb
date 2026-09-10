@@ -57,6 +57,8 @@ describe("13F model", () => {
   test("uses the latest plausibly filed 13F quarter", () => {
     expect(latestLikely13FQuarter(new Date("2026-05-24T00:00:00Z"))).toBe("2026Q1");
     expect(latestLikely13FQuarter(new Date("2026-04-20T00:00:00Z"))).toBe("2025Q4");
+    expect(latestLikely13FQuarter(new Date("2026-01-15T00:00:00Z"))).toBe("2025Q3");
+    expect(latestLikely13FQuarter(new Date("2026-02-20T00:00:00Z"))).toBe("2025Q4");
   });
 
   test("selects the latest filing for each period", () => {
@@ -139,6 +141,43 @@ describe("13F model", () => {
       investmentDiscretion: "SOLE",
     });
     expect(sortFilingPositionRows(rows, { columnId: "value", direction: "desc" }).map((row) => row.ticker)).toEqual(["BBB", "AAA"]);
+  });
+
+  test("uses CUSIP and security type across ticker and class-label changes, and excludes option P&L", () => {
+    const current = [
+      holding({ ticker: "NEW", titleOfClass: "ORDINARY", value: 120, shares: 10 }),
+      holding({ ticker: "NEW", putCall: "PUT", value: 120, shares: 10 }),
+      holding({ ticker: "NEW", shareType: "PRN", value: 500, shares: 500 }),
+    ];
+    const rows = buildFundHoldingRows({
+      cik: "0001067983", name: "Fund", forms: [],
+      latestForm: form({}), previousForm: form({ periodOfReport: "2025-12-31" }),
+      latestHoldings: current,
+      previousHoldings: [
+        holding({ ticker: "OLD", titleOfClass: "COM", value: 100, shares: 10 }),
+        holding({ ticker: "OLD", putCall: "PUT", value: 100, shares: 10 }),
+      ],
+    });
+    expect(rows).toHaveLength(3);
+    expect(rows.find((row) => row.shareType === "SH" && !row.putCall))
+      .toMatchObject({ ticker: "NEW", action: "held", sharesChange: 0, estimatedPnl: 20 });
+    expect(rows.find((row) => row.putCall === "PUT"))
+      .toMatchObject({ estimatedPnl: null, shares: 10, action: "held" });
+    expect(rows.find((row) => row.shareType === "PRN")?.shares).toBe(500);
+  });
+
+  test("does not call a first filing or a missing-quarter comparison new buying", () => {
+    for (const previousForm of [null, form({ periodOfReport: "2025-09-30" })]) {
+      const rows = buildFundHoldingRows({
+        cik: "0001067983", name: "Fund", forms: [], latestForm: form({}), previousForm,
+        latestHoldings: [holding({ value: 120, shares: 10 })],
+        previousHoldings: previousForm ? [holding({ value: 100, shares: 9 })] : [],
+      });
+      expect(rows[0]).toMatchObject({
+        value: 120, shares: 10, previousValue: null, sharesChange: null,
+        sharesChangePercent: null, valueChange: null, estimatedPnl: null, action: "unknown",
+      });
+    }
   });
 
   test("timeline rows include period-over-period value changes", () => {

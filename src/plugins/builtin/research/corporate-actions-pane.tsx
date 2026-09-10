@@ -113,8 +113,8 @@ function scoreFilingForEarnings(filing: SecFilingItem, earningsDate: string): nu
   return score;
 }
 
-export function matchEarningsSecFiling(row: { status: string; date: string } | null | undefined, filings: readonly SecFilingItem[]): SecFilingItem | null {
-  if (!row || row.status !== "Earnings") return null;
+export function matchEarningsSecFiling(row: { status: string; date: string; dateType?: EventRow["dateType"] } | null | undefined, filings: readonly SecFilingItem[]): SecFilingItem | null {
+  if (!row || row.status !== "Earnings" || row.dateType === "fiscal-period-end") return null;
   let best: { filing: SecFilingItem; score: number } | null = null;
   for (const filing of filings) {
     const score = scoreFilingForEarnings(filing, row.date);
@@ -189,6 +189,10 @@ function buildEventDetailBody({
   }
 
   lines.push("", "SEC Filing");
+  if (row.dateType === "fiscal-period-end") {
+    lines.push("The source supplies a fiscal period end, not an announcement date. Open SEC filings to locate the earnings release.");
+    return lines.join("\n");
+  }
   if (secFilingsLoading && !filing) {
     lines.push("Loading recent SEC filings...");
     return lines.join("\n");

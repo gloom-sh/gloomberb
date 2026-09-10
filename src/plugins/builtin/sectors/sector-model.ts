@@ -20,6 +20,7 @@ export interface SectorRow extends SectorDef {
   return1Y: number | null;
   currency: string;
   loading: boolean;
+  quoteUnavailable?: boolean;
 }
 
 type SectorColumnId = "name" | "etf" | "price" | "changePercent" | "return1M" | "return1Y" | "bar";
@@ -83,6 +84,7 @@ export function normalizeRowsForCollection(
       return1Y: existing?.return1Y ?? null,
       currency: existing?.currency ?? "USD",
       loading: existing?.loading ?? true,
+      quoteUnavailable: existing?.quoteUnavailable ?? false,
     };
   });
 }

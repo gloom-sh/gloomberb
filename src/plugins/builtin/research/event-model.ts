@@ -6,7 +6,7 @@ import type {
   TickerFinancials,
 } from "../../../types/financials";
 import {
-  formatCurrency,
+  formatDistributionAmount,
   formatCompact,
   formatNumber,
   formatPercent,
@@ -19,6 +19,7 @@ export type EventStatus = "Earnings" | "Q Est" | "FY Est" | "TTM" | "Dividend" |
 export interface EventRow {
   id: string;
   date: string;
+  dateType?: "announcement" | "fiscal-period-end";
   status: EventStatus;
   period: string;
   detail: string;
@@ -158,8 +159,8 @@ function ttmRow(quarterlyStatements: readonly FinancialStatement[], financialCur
 
 function earningsDetail(earning: CorporateActionsData["earnings"][number]): string {
   if (earning.epsActual == null) return "Pending";
-  if (earning.difference == null) return "Reported";
-  return `diff ${formatNumber(earning.difference, 2)}`;
+  const detail = earning.difference == null ? "Reported" : `diff ${formatNumber(earning.difference, 2)}`;
+  return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
 }
 
 function eventSortRank(status: EventStatus): number {
@@ -185,17 +186,18 @@ export function buildEventRows(
   if (ttm) rows.push(ttm);
 
   for (const earning of data?.earnings ?? []) {
-    const statement = statementForEarningsDate(quarterlyStatements, earning.date);
+    // A pending announcement must never inherit the previous report's actuals.
+    const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning.date);
     rows.push({
       id: `earn:${earning.date}`,
       date: earning.date,
+      dateType: earning.dateType,
       status: "Earnings",
       period: statement ? quarterLabel(statement) : earning.time?.trim() || "-",
       detail: earningsDetail(earning),
-      epsCurrency: earning.epsActual != null || (statement?.eps == null && earning.epsEstimate != null)
-        ? data?.currency ?? currency : statement?.currency ?? financials?.financialCurrency,
-      revenueCurrency: statement?.currency ?? financials?.financialCurrency,
-      qEps: earning.epsActual ?? statement?.eps ?? earning.epsEstimate,
+      epsCurrency: earning.currency,
+      revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
+      qEps: earning.epsActual ?? earning.epsEstimate,
       qRevenue: statement?.totalRevenue,
       value: earning.surprisePercent != null ? formatPercentRaw(earning.surprisePercent) : "-",
       tone: earning.surprisePercent == null ? "muted" : earning.surprisePercent >= 0 ? "positive" : "negative",
@@ -210,8 +212,8 @@ export function buildEventRows(
       status: isFiscal ? "FY Est" : "Q Est",
       period: formatPeriod(pair.period),
       detail: formatEstimateDetail(pair),
-      epsCurrency: estimates?.currency,
-      revenueCurrency: estimates?.currency,
+      epsCurrency: pair.eps?.currency,
+      revenueCurrency: pair.revenue?.currency,
       qEps: isFiscal ? undefined : pair.eps?.average,
       qRevenue: isFiscal ? undefined : pair.revenue?.average,
       annualEps: isFiscal ? pair.eps?.average : undefined,
@@ -228,7 +230,7 @@ export function buildEventRows(
       status: "Dividend",
       period: "-",
       detail: "Ex-date",
-      value: formatCurrency(dividend.amount, currency),
+      value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
       tone: "positive",
     });
   }
@@ -241,7 +243,7 @@ export function buildEventRows(
       period: "-",
       detail: split.description ?? "Split",
       value: split.fromFactor && split.toFactor
-        ? `${split.fromFactor}:${split.toFactor}`
+        ? `${split.toFactor}:${split.fromFactor}`
         : formatNumber(split.ratio, 4),
       tone: "muted",
     });
@@ -280,14 +282,22 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
     ? "Reported earnings"
     : "Corporate actions";
   const notices: string[] = [];
+  const unavailableSections = Object.entries(state.actions?.coverage ?? {})
+    .filter(([section, status]) => status === "unavailable" && (state.variant !== "earnings-estimates" || section === "earnings"))
+    .map(([section]) => section);
 
   if (state.actionsError) {
     notices.push(`${actionsLabel} unavailable: ${state.actionsError}`);
+  } else if (unavailableSections.length > 0) {
+    notices.push(`Unavailable: ${unavailableSections.join(", ")}`);
   } else if (state.actions && !hasCorporateActionRows(state.actions)) {
     notices.push(state.variant === "earnings-estimates"
       ? `No reported earnings for ${state.symbol}`
       : `No dividends, splits, or reported earnings for ${state.symbol}`);
   }
+
+  if (state.actions?.stale) notices.push(`Corporate actions stale${state.actions.fetchedAt ? ` (fetched ${state.actions.fetchedAt})` : ""}`);
+  if (state.estimates?.stale) notices.push(`Analyst estimates stale${state.estimates.fetchedAt ? ` (fetched ${state.estimates.fetchedAt})` : ""}`);
 
   if (state.estimatesError) {
     notices.push(`Analyst estimates unavailable: ${state.estimatesError}`);
@@ -298,7 +308,7 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
   if (notices.length === 0) return null;
   return {
     text: notices.join("   "),
-    failed: !!state.actionsError || !!state.estimatesError,
+    failed: !!state.actionsError || !!state.estimatesError || unavailableSections.length > 0 || !!state.actions?.stale || !!state.estimates?.stale,
   };
 }
 

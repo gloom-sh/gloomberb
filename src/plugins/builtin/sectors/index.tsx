@@ -108,11 +108,12 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       if (fetchGenRef.current !== gen) return;
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? {}), loading: false }))
+        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, quoteUnavailable: true }), loading: false }))
       )));
 
       const loadedCount = outcomes.filter((outcome) => outcome.row).length;
-      setLoadError(loadedCount === 0 ? "Sector data unavailable" : null);
+      const missingQuotes = outcomes.filter((outcome) => !outcome.row || outcome.row.quoteUnavailable).length;
+      setLoadError(loadedCount === 0 ? "Sector data unavailable" : missingQuotes > 0 ? `${missingQuotes} quotes unavailable` : null);
       // A refresh that returned nothing must not claim the board is current.
       if (loadedCount === 0) return;
       setLastRefreshByCollection((prev) => ({ ...prev, [collectionId]: Date.now() }));

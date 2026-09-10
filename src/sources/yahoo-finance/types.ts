@@ -78,6 +78,7 @@ export type QuoteSummaryResponse = {
           period?: string;
           endDate?: string;
           earningsEstimate?: {
+            earningsCurrency?: string;
             avg?: { raw?: number } | number | null;
             low?: { raw?: number } | number | null;
             high?: { raw?: number } | number | null;
@@ -86,6 +87,7 @@ export type QuoteSummaryResponse = {
             growth?: { raw?: number } | number | null;
           };
           revenueEstimate?: {
+            revenueCurrency?: string;
             avg?: { raw?: number } | number | null;
             low?: { raw?: number } | number | null;
             high?: { raw?: number } | number | null;
@@ -121,6 +123,7 @@ export type QuoteSummaryResponse = {
       };
       earningsHistory?: {
         history?: Array<{
+          currency?: string;
           epsActual?: { raw?: number } | number | null;
           epsEstimate?: { raw?: number } | number | null;
           epsDifference?: { raw?: number } | number | null;

@@ -3,7 +3,6 @@ import type { PricePoint, Quote } from "../../../types/financials";
 import type { SectorDef } from "./sector-data";
 import {
   computeTrailingReturn,
-  latestHistoryClose,
   ONE_MONTH_DAYS,
   ONE_YEAR_DAYS,
   type SectorRow,
@@ -24,26 +23,28 @@ export async function loadSectorRows(
       sectors.map((sector) => ({ symbol: sector.etf, exchange: "" })),
     ).catch(() => []);
     for (const result of results) quotes.set(result.target.symbol, result.quote ?? null);
-  } else {
-    await Promise.all(sectors.map(async (sector) => {
-      try {
-        quotes.set(sector.etf, await provider.getQuote(sector.etf, ""));
-      } catch {
-        quotes.set(sector.etf, null);
-      }
-    }));
   }
+  // A partial batch must not silently replace a live quote with yesterday's
+  // history close. Retry only the missing instruments through the normal route.
+  await Promise.all(sectors.filter((sector) => !quotes.get(sector.etf)).map(async (sector) => {
+    try {
+      quotes.set(sector.etf, await provider.getQuote(sector.etf, ""));
+    } catch {
+      quotes.set(sector.etf, null);
+    }
+  }));
 
   return Promise.all(sectors.map(async (sector) => {
     const history: PricePoint[] = await provider.getPriceHistory(sector.etf, "", "1Y")
       .catch(() => []);
     const quote = quotes.get(sector.etf) ?? null;
     if (!quote && history.length === 0) return { etf: sector.etf, row: null };
-    const price = quote?.price ?? latestHistoryClose(history);
+    const price = quote?.price ?? null;
     return {
       etf: sector.etf,
       row: {
         price,
+        quoteUnavailable: !quote,
         changePercent: quote?.changePercent ?? null,
         return1M: computeTrailingReturn(history, ONE_MONTH_DAYS, price),
         return1Y: computeTrailingReturn(history, ONE_YEAR_DAYS, price),

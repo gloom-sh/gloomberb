@@ -5,9 +5,9 @@ import type { TickerFinancials } from "../../../../types/financials";
 import type { InstrumentSearchResult } from "../../../../types/instrument";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { AppAction } from "../../../../state/app/context";
-import { canonicalExchange } from "../../../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../../../utils/exchanges";
 import { compareSortValues } from "../../../../utils/sort-values";
-import { upsertTickerFromSearchResult } from "../../../../tickers/search";
+import { findExactTickerSearchMatch, upsertTickerFromSearchResult } from "../../../../tickers/search";
 import { getSharedRegistry } from "../../../registry";
 import { getSortValue, type ColumnContext } from "../../portfolio-list/metrics";
 import type { ScreenerSortPreference } from "./model";
@@ -24,10 +24,6 @@ function summarizeWarning(unresolved: string[], duplicateCount: number): string 
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
-function resolveResultSymbol(result: InstrumentSearchResult): string {
-  return (result.brokerContract?.localSymbol || result.symbol.split(".")[0] || "").trim().toUpperCase();
-}
-
 function matchesExchange(result: InstrumentSearchResult, exchange: string): boolean {
   if (!exchange) return true;
   const normalized = canonicalExchange(exchange);
@@ -35,6 +31,18 @@ function matchesExchange(result: InstrumentSearchResult, exchange: string): bool
     || canonicalExchange(result.primaryExchange) === normalized
     || canonicalExchange(result.brokerContract?.exchange) === normalized
     || canonicalExchange(result.brokerContract?.primaryExchange) === normalized;
+}
+
+function matchesCandidate(result: InstrumentSearchResult, candidate: { symbol: string; exchange: string }): boolean {
+  const requested = parsePublicTickerKey(candidate.symbol);
+  const parsedResult = parsePublicTickerKey(result.brokerContract?.localSymbol || result.symbol);
+  const resultExchange = parsedResult.exchange || result.exchange;
+  if (!matchesExchange({ ...result, exchange: resultExchange }, requested.exchange || candidate.exchange)) return false;
+  return findExactTickerSearchMatch([{
+    label: parsedResult.symbol,
+    exchangeLabel: resultExchange,
+    primaryExchangeLabel: result.primaryExchange || result.brokerContract?.primaryExchange,
+  }], candidate.symbol) != null;
 }
 
 async function resolveCandidateTicker(
@@ -48,8 +56,12 @@ async function resolveCandidateTicker(
     throw new Error("AI screener could not access the ticker repository.");
   }
 
-  const localTicker = localTickers.get(candidate.symbol);
-  if (localTicker && (!candidate.exchange || localTicker.metadata.exchange.toUpperCase() === candidate.exchange)) {
+  const localTicker = [...localTickers.values()].find((ticker) => matchesCandidate({
+    providerId: "saved", symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange,
+    name: ticker.metadata.name, currency: ticker.metadata.currency, type: ticker.metadata.assetCategory || "",
+    brokerContract: ticker.metadata.broker_contracts?.[0],
+  }, candidate));
+  if (localTicker) {
     return {
       symbol: localTicker.metadata.ticker,
       exchange: localTicker.metadata.exchange,
@@ -59,10 +71,7 @@ async function resolveCandidateTicker(
   }
 
   const searchResults = await dataProvider.search(candidate.symbol);
-  const matches = searchResults.filter((result) => resolveResultSymbol(result) === candidate.symbol);
-  const selected = matches.find((result) => matchesExchange(result, candidate.exchange))
-    ?? matches[0]
-    ?? null;
+  const selected = searchResults.find((result) => matchesCandidate(result, candidate)) ?? null;
   if (!selected) return null;
 
   const { ticker, created } = await upsertTickerFromSearchResult(registry.tickerRepository, selected);

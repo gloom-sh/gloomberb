@@ -12,7 +12,9 @@ function compactPeriod(period: string): string {
 }
 
 export function targetUpside(target: AnalystResearchData["priceTarget"]): number | undefined {
-  if (!target?.average || !target.current) return undefined;
+  if (target?.average == null || target.current == null
+    || !Number.isFinite(target.average) || !Number.isFinite(target.current)
+    || target.average < 0 || target.current <= 0) return undefined;
   return (target.average - target.current) / target.current;
 }
 
@@ -206,7 +208,10 @@ export function buildAnalystSummaryLines(data: AnalystResearchData | null): stri
 
   if (target) {
     lines.push(`low ${price(target.low)}   med ${price(target.median)}   high ${price(target.high)}`);
+    if (target.current != null) lines.push(`Upside reference price ${price(target.current)}`);
   }
+
+  if (data.fetchedAt || data.stale) lines.push(`${data.stale ? "Stale data" : "Fetched"}${data.fetchedAt ? ` ${data.fetchedAt}` : ""}`);
   if (data.recommendationRating != null || rec || total > 0) {
     lines.push([
       data.recommendationRating != null ? `rating ${formatRatingLabel(data.recommendationRating)}` : null,

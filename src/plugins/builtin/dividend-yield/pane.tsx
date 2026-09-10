@@ -12,9 +12,11 @@ import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
 import { Box, Text, TextAttributes } from "../../../ui";
-import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
+import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
-import { fetchDividendData } from "./client";
+import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics } from "./client";
+import { buildTrailingCashChartPoints, formatDividendYield } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
   buildDividendColumns,
@@ -25,16 +27,11 @@ import {
   type DividendRow,
   type DividendSortPreference,
 } from "./model";
-import type { DividendMetrics, DividendPayment } from "./types";
-
-function formatYield(value: number | null): string {
-  if (value == null) return "—";
-  return `${(value * 100).toFixed(2)}%`;
-}
+import type { DividendMetrics } from "./types";
 
 function formatRate(value: number | null, currency: string): string {
   if (value == null) return "—";
-  return formatCurrency(value, currency);
+  return formatDistributionAmount(value, currency);
 }
 
 function formatGrowth(value: number | null): string {
@@ -67,42 +64,17 @@ interface MetricRow {
 
 function buildMetricRows(metrics: DividendMetrics, currency: string): MetricRow[] {
   return [
-    { label: "Trailing Yield", value: formatYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0), bold: true },
-    { label: "Forward Yield", value: formatYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
-    { label: "Trailing Rate", value: formatRate(metrics.trailingRate, currency) },
-    { label: "Forward Rate", value: formatRate(metrics.forwardRate, currency) },
-    { label: "1Y Growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
-    { label: "3Y Growth", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
-    { label: "Payout Ratio", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
+    { label: "TTM Cash Yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0), bold: true },
+    { label: "Forward Yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
+    { label: "TTM Cash/Share", value: formatRate(metrics.trailingRate, currency) },
+    { label: "Forward/Share", value: formatRate(metrics.forwardRate, currency) },
+    { label: "1Y Cash Growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },
+    { label: "3Y Cash CAGR", value: formatGrowth(metrics.growth3Y), color: priceColor(metrics.growth3Y ?? 0) },
+    { label: "Earnings Payout", value: metrics.payoutRatio != null ? `${(metrics.payoutRatio * 100).toFixed(1)}%` : "—" },
     { label: "Frequency", value: formatFrequency(metrics.paymentFrequency) },
     { label: "Ex-Dividend", value: formatDate(metrics.exDividendDate) },
     { label: "Next Pay", value: formatDate(metrics.nextPayDate) },
   ];
-}
-
-function buildYieldChartPoints(payments: DividendPayment[], currentPrice: number | null): ProjectedChartPoint[] {
-  if (payments.length === 0 || currentPrice == null || currentPrice <= 0) return [];
-  const sorted = [...payments].sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
-  const DAY = 24 * 60 * 60 * 1000;
-  const points: ProjectedChartPoint[] = [];
-
-  for (const payment of sorted) {
-    const trailingCutoff = new Date(payment.exDate.getTime() - 365 * DAY);
-    const trailingSum = sorted
-      .filter((p) => p.exDate >= trailingCutoff && p.exDate <= payment.exDate)
-      .reduce((sum, p) => sum + p.amount, 0);
-    const yieldPct = (trailingSum / currentPrice) * 100;
-    points.push({
-      date: payment.exDate,
-      open: yieldPct,
-      high: yieldPct,
-      low: yieldPct,
-      close: yieldPct,
-      volume: 0,
-    });
-  }
-
-  return points;
 }
 
 function renderMetricCell(row: MetricRow, width: number) {
@@ -164,9 +136,9 @@ function DividendSummary({
             height={chartHeight}
             mode="line"
             colors={palette}
-            yAxisLabel="Yield %"
+            yAxisLabel="TTM cash/share"
             yAxisColor={colors.textDim}
-            formatYAxisValue={(value) => `${value.toFixed(2)}%`}
+            formatYAxisValue={(value) => formatRate(value, currency)}
           />
         </Box>
       )}
@@ -186,7 +158,7 @@ function renderCell(
       return { text: row.exDate, color: selectedColor ?? colors.textDim };
     case "amount":
       return {
-        text: formatNumber(row.amount, 4),
+        text: formatDistributionAmount(row.amount, row.currency),
         color: selectedColor ?? colors.textBright,
         attributes: TextAttributes.BOLD,
       };
@@ -197,7 +169,7 @@ function renderCell(
 
 export function DividendYieldPane({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const { symbol, ticker, financials } = usePaneTicker();
-  const currency = ticker?.metadata.currency ?? "USD";
+  const quoteCurrency = financials?.quote?.currency;
   const exchange = ticker?.metadata.exchange ?? "";
   const quotePrice = financials?.quote?.price ?? null;
 
@@ -205,10 +177,10 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
   const [selectedIdx, setSelectedIdx] = useState(0);
   // Ten years of history must not be refetched on every live price tick, so the
   // quote is read through a ref instead of being an effect dependency.
-  const quotePriceRef = useRef(quotePrice);
-  quotePriceRef.current = quotePrice;
+  const quoteRef = useRef({ price: quotePrice, currency: quoteCurrency });
+  quoteRef.current = { price: quotePrice, currency: quoteCurrency };
 
-  const request = useCallback(() => fetchDividendData(symbol!, quotePriceRef.current, exchange), [exchange, symbol]);
+  const request = useCallback(() => fetchDividendData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, symbol]);
   const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null, { clearOnError: true });
   useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
@@ -217,13 +189,15 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
   }), [error, loading]);
 
   const payments = data?.payments ?? [];
-  const metrics = data?.metrics;
+  const currency = data?.currency ?? payments[0]?.currency ?? resolveCurrencyUnit(ticker?.metadata.currency).currency;
+  const currentPrice = dividendReferencePrice(quotePrice, quoteCurrency, currency) ?? data?.price ?? null;
+  const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const columns = useMemo(() => buildDividendColumns(width), [width]);
   const chartPoints = useMemo(
-    () => buildYieldChartPoints(payments, data?.price ?? quotePrice),
-    [data?.price, payments, quotePrice],
+    () => buildTrailingCashChartPoints(payments),
+    [payments],
   );
 
   const handleHeaderClick = useCallback((columnId: string) => {
@@ -238,7 +212,7 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
     ? "No ticker selected."
     : loading
       ? "Loading dividends..."
-      : error ?? "No dividend history";
+      : error ?? (data?.historyAvailable ? "No cash distributions reported." : "Dividend history unavailable.");
 
   return (
     <DataTableView<DividendRow, DividendColumn>
@@ -255,7 +229,7 @@ export function DividendYieldPane({ focused, width, height }: { focused: boolean
       rootBefore={metrics ? (
         <DividendSummary
           metrics={metrics}
-          currency={payments[0]?.currency ?? currency}
+          currency={currency}
           width={width}
           chartPoints={chartPoints}
         />

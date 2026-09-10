@@ -7,6 +7,18 @@ function args(collection: string): HeadlessPaneLoadArgs {
 }
 
 describe("sectors headless model", () => {
+  test("reports incomplete quotes even when historical returns remain available", async () => {
+    const headless = createSectorsHeadless({
+      load: async (_args, definitions) => definitions.map((definition) => ({
+        etf: definition.etf,
+        row: { price: null, changePercent: null, return1Y: 10, quoteUnavailable: true },
+      })),
+    });
+    const result = await headless.load(args("sectors"), {} as HeadlessPaneContext);
+    expect(result.unavailableSymbols).toContain("XLK");
+    expect(result.rows.find((row) => row.etf === "XLK")?.return1Y).toBe(10);
+  });
+
   test("changes the loaded ETF universe with the collection option", async () => {
     const requested: string[][] = [];
     const headless = createSectorsHeadless({

@@ -80,6 +80,27 @@ function args(view: string, limit = 50): HeadlessPaneLoadArgs {
 }
 
 describe("13F headless model", () => {
+  test("requires an unambiguous manager even when the requested output has only one row", async () => {
+    const lookups: number[] = [];
+    let loaded = false;
+    const headless = createThirteenFHeadless({
+      loadBrowser: async (_tab, _query, limit) => {
+        lookups.push(limit);
+        return { rows: [
+          { id: "asset", cik: "0000949012", name: "Berkshire Asset Management", source: "funds" },
+          { id: "hathaway", cik: detail.cik, name: detail.name, source: "funds" },
+        ] };
+      },
+      loadDetail: async () => { loaded = true; return detail; },
+    });
+    await expect(headless.load({ ...args("holdings", 1), argument: "Berkshire" }, context()))
+      .rejects.toThrow(/Ambiguous 13F fund.*0001067983/);
+    expect(loaded).toBe(false);
+    expect(lookups).toEqual([25]);
+    const exact = await headless.load({ ...args("holdings", 1), argument: "Berkshire Hathaway" }, context());
+    expect(exact.metadata?.cik).toBe(detail.cik);
+  });
+
   test("projects browser rows and switches to fund holdings", async () => {
     const headless = createThirteenFHeadless({
       loadBrowser: async () => ({

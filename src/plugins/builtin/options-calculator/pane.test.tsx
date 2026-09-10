@@ -106,12 +106,10 @@ test("prices the seeded contract and solves its implied volatility", async () =>
   expect(frame).toContain("European exercise");
 });
 
-test("opens on defaults with no seed and leaves implied volatility empty", async () => {
-  await render();
-
+test("shows the remaining fraction of a day for a live near-expiry contract", async () => {
+  await render({ days: "0.25" });
   const frame = testSetup!.captureCharFrame();
-  expect(frame).toContain("Spot");
-  expect(frame).toContain("Market");
+  expect(frame).toMatch(/Days\s+0\.25\s*d/);
   expect(frame).toMatch(/Implied IV\s+—/);
 });
 

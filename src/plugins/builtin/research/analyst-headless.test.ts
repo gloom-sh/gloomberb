@@ -38,6 +38,17 @@ function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): Headles
 }
 
 describe("analyst research headless model", () => {
+  test("keeps an explicit zero target distinct from missing data and exposes stale reference prices", async () => {
+    const headless = createAnalystResearchHeadless({ loadData: async () => ({ ...data,
+      stale: true, fetchedAt: "2026-09-09T16:00:00Z", priceTarget: { average: 0, current: 2, currency: "USD" },
+    }) });
+    const result = await headless.load(args(), context());
+    expect(result.sections[0]?.entries?.slice(0, 3)).toMatchObject([
+      { label: "Average target", value: 0 }, { label: "Target upside", value: -1 }, { label: "Upside reference price", value: 2 },
+    ]);
+    expect(result.errors).toEqual(["Analyst research is stale"]);
+    expect(result.metadata).toMatchObject({ stale: true, fetchedAt: "2026-09-09T16:00:00Z" });
+  });
   test("projects summary and ratings while applying sort and limit", async () => {
     const headless = createAnalystResearchHeadless({ loadData: async () => data });
 

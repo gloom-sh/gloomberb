@@ -5,6 +5,7 @@ import type {
   HolderRecord,
 } from "../../types/financials";
 import type { EarningsEvent } from "../../types/data-provider";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 import {
   deriveShareChange,
   financeRawNumber,
@@ -146,26 +147,36 @@ export async function loadYahooCorporateActions({
 
   for (const symbol of symbolsToTry) {
     try {
-      const chart = await fetchChart(symbol, "5y", "1d");
       const params = new URLSearchParams({
         modules: "price,quoteType,calendarEvents,earningsHistory",
       });
       const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?${params}`;
-      const data = await fetchJsonWithCrumb<QuoteSummaryResponse>(url);
-      const result = data.quoteSummary?.result?.[0];
-      if (!result) throw new Error(`No corporate actions for ${symbol}`);
+      const [chartResult, summaryResult] = await Promise.allSettled([
+        fetchChart(symbol, "5y", "1d"),
+        fetchJsonWithCrumb<QuoteSummaryResponse>(url).then((data) => {
+          const result = data.quoteSummary?.result?.[0];
+          if (!result) throw new Error(`No corporate actions for ${symbol}`);
+          return result;
+        }),
+      ]);
+      if (chartResult.status === "rejected" && summaryResult.status === "rejected") throw summaryResult.reason;
+      const chart = chartResult.status === "fulfilled" ? chartResult.value : undefined;
+      const result = summaryResult.status === "fulfilled" ? summaryResult.value : undefined;
+      const dividendUnit = resolveCurrencyUnit(chart?.meta.currency);
 
       const actions: CorporateActionsData = {
         providerId,
-        symbol: result.price?.symbol ?? symbol,
-        name: result.price?.shortName ?? result.price?.longName,
-        currency: result.price?.currency ?? chart.meta.currency,
-        exchange: result.price?.exchangeName ?? result.quoteType?.exchange,
-        dividends: mapYahooDividends(chart.events),
-        splits: mapYahooSplits(chart.events),
+        fetchedAt: new Date().toISOString(),
+        coverage: { dividends: chart ? "available" : "unavailable", splits: chart ? "available" : "unavailable", earnings: result?.calendarEvents || result?.earningsHistory ? "available" : "unavailable" },
+        symbol: result?.price?.symbol ?? symbol,
+        name: result?.price?.shortName ?? result?.price?.longName,
+        currency: dividendUnit.currency || undefined,
+        exchange: result?.price?.exchangeName ?? result?.quoteType?.exchange,
+        dividends: mapYahooDividends(chart?.events).map((dividend) => ({ ...dividend, amount: dividend.amount / dividendUnit.divisor })),
+        splits: mapYahooSplits(chart?.events),
         earnings: [
-          ...mapYahooCalendarEarnings(result),
-          ...mapYahooEarningsHistory(result),
+          ...mapYahooCalendarEarnings(result ?? {}),
+          ...mapYahooEarningsHistory(result ?? {}),
         ],
       };
 

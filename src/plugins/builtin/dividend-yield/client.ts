@@ -5,9 +5,10 @@ import { fetchYahooChart } from "../../../sources/yahoo-finance/requests";
 import { getYahooSymbolsToTry } from "../../../sources/yahoo-finance/symbols";
 import type { QuoteSummaryResponse } from "../../../sources/yahoo-finance/types";
 import type { DividendMetrics, DividendPayment } from "./types";
+import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { calendarYearsBefore } from "./calendar";
 
 export const YAHOO_DIVIDENDS_CONNECTION_ID = "yahoo-dividends";
-const DAY_MS = 24 * 60 * 60 * 1000;
 const yahoo = new YahooHttpClient();
 
 let connectionHealth: ConnectionHealthRegistry | null = null;
@@ -74,12 +75,13 @@ export function extractDividendFields(payload: unknown): QuoteSummaryDividendFie
   };
 }
 
-function toDividendPayment(
+export function toDividendPayment(
   exDate: string,
   amount: number,
   currency: string,
 ): DividendPayment | null {
-  if (amount <= 0) return null;
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  const unit = resolveCurrencyUnit(currency);
   const parsed = new Date(`${exDate}T00:00:00.000Z`);
   if (Number.isNaN(parsed.getTime())) return null;
   return {
@@ -87,8 +89,8 @@ function toDividendPayment(
     recordDate: null,
     paymentDate: null,
     declarationDate: null,
-    amount,
-    currency,
+    amount: amount / unit.divisor,
+    currency: unit.currency,
     type: "cash",
   };
 }
@@ -97,18 +99,21 @@ export interface DividendData {
   payments: DividendPayment[];
   metrics: DividendMetrics;
   price: number | null;
+  currency?: string;
+  historyAvailable?: boolean;
 }
 
 export async function fetchDividendData(
   symbol: string,
   currentPrice: number | null,
   exchange = "",
+  currentPriceCurrency?: string,
 ): Promise<DividendData> {
   const symbols = exchange ? getYahooSymbolsToTry(symbol, exchange) : [symbol];
   let lastError: unknown;
   for (const yahooSymbol of symbols) {
     try {
-      return await fetchDividendDataForSymbol(yahooSymbol, currentPrice);
+      return await fetchDividendDataForSymbol(yahooSymbol, currentPrice, currentPriceCurrency);
     } catch (error) {
       lastError = error;
     }
@@ -119,6 +124,7 @@ export async function fetchDividendData(
 async function fetchDividendDataForSymbol(
   symbol: string,
   currentPrice: number | null,
+  currentPriceCurrency?: string,
 ): Promise<DividendData> {
   const quoteUrl =
     `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}`
@@ -137,58 +143,61 @@ async function fetchDividendDataForSymbol(
     ? extractDividendFields(quoteResult.value)
     : null;
 
-  const currency = quoteFields?.currency
-    ?? (chartResult.status === "fulfilled" ? chartResult.value.meta.currency ?? null : null)
-    ?? "USD";
+  const rawCurrency = (chartResult.status === "fulfilled" ? chartResult.value.meta.currency ?? null : null)
+    ?? quoteFields?.currency ?? "USD";
+  const { currency, divisor } = resolveCurrencyUnit(rawCurrency);
 
   const payments: DividendPayment[] = [];
   if (chartResult.status === "fulfilled") {
     for (const dividend of mapYahooDividends(chartResult.value.events)) {
-      const payment = toDividendPayment(dividend.exDate, dividend.amount, currency);
+      const payment = toDividendPayment(dividend.exDate, dividend.amount, rawCurrency);
       if (payment) payments.push(payment);
     }
     payments.sort((a, b) => b.exDate.getTime() - a.exDate.getTime());
   }
 
-  const resolvedPrice = currentPrice
-    ?? (chartResult.status === "fulfilled" ? chartResult.value.meta.regularMarketPrice ?? null : null)
-    ?? null;
+  const chartPrice = chartResult.status === "fulfilled" ? chartResult.value.meta.regularMarketPrice : null;
+  const resolvedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency)
+    ?? (chartPrice != null && Number.isFinite(chartPrice) && chartPrice > 0 ? chartPrice / divisor : null);
 
-  const metrics = buildMetrics(payments, quoteFields, resolvedPrice);
+  const historyAvailable = chartResult.status === "fulfilled";
+  // Yahoo annual-rate fields can use a different denomination from its pence
+  // charts (VOD.L is one example). Cash history has explicit chart units.
+  const summaryUnit = resolveCurrencyUnit(quoteFields?.currency);
+  const summaryRatesComparable = divisor === 1
+    && (!quoteFields?.currency || (summaryUnit.currency === currency && summaryUnit.divisor === 1));
+  const metrics = buildDividendMetrics(payments, quoteFields, resolvedPrice, { historyAvailable, summaryRatesComparable });
 
-  if (payments.length === 0 && !quoteFields?.trailingAnnualDividendRate) {
+  if (!historyAvailable && metrics.trailingRate == null && metrics.forwardRate == null) {
     throw new Error(`No dividend data found for ${symbol}`);
   }
 
-  return { payments, metrics, price: resolvedPrice };
+  return { payments, metrics, price: resolvedPrice, currency, historyAvailable };
 }
 
-function buildMetrics(
+/** A quote from another listing/currency cannot price this cash distribution series. */
+export function dividendReferencePrice(price: number | null, priceCurrency: string | undefined, cashCurrency: string): number | null {
+  if (price == null || !Number.isFinite(price) || price <= 0) return null;
+  const unit = resolveCurrencyUnit(priceCurrency);
+  if (!unit.currency || unit.currency !== resolveCurrencyUnit(cashCurrency).currency) return null;
+  return price / unit.divisor;
+}
+
+export function buildDividendMetrics(
   payments: DividendPayment[],
   quoteFields: QuoteSummaryDividendFields | null,
   currentPrice: number | null,
+  options: { historyAvailable?: boolean; summaryRatesComparable?: boolean; now?: Date } = {},
 ): DividendMetrics {
-  const trailingRate = quoteFields?.trailingAnnualDividendRate
-    ?? (payments.length > 0
-      ? payments
-        .filter((p) => p.exDate >= new Date(Date.now() - 365 * DAY_MS))
-        .reduce((sum, p) => sum + p.amount, 0)
-      : null);
-
-  const forwardRate = quoteFields?.forwardAnnualDividendRate ?? null;
-
-  const trailingYield = quoteFields?.trailingAnnualDividendYield != null
-    ? quoteFields.trailingAnnualDividendYield
-    : trailingRate != null && currentPrice != null && currentPrice > 0
-      ? trailingRate / currentPrice
-      : null;
-
-  const forwardYield = forwardRate != null && currentPrice != null && currentPrice > 0
-    ? forwardRate / currentPrice
-    : null;
-
-  const growth1Y = payments.length >= 2 ? computeGrowth1Y(payments) : null;
-  const growth3Y = payments.length >= 4 ? computeGrowth3Y(payments) : null;
+  const now = options.now ?? new Date();
+  const eligible = payments.filter((payment) => payment.exDate <= now && Number.isFinite(payment.amount) && payment.amount > 0);
+  const cutoff = calendarYearsBefore(now, 1);
+  const trailingRate = options.historyAvailable !== false
+    ? eligible.filter((payment) => payment.exDate > cutoff).reduce((sum, payment) => sum + payment.amount, 0)
+    : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
+  const forwardRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
+  const growth1Y = computeGrowth(eligible, 1, now);
+  const growth3Y = computeGrowth(eligible, 3, now);
 
   const exDividendDate = quoteFields?.exDividendDate != null
     ? new Date(quoteFields.exDividendDate * 1000)
@@ -196,62 +205,44 @@ function buildMetrics(
       ? payments[0]!.exDate
       : null;
 
-  const nextPayDate = quoteFields?.dividendDate != null
-    ? new Date(quoteFields.dividendDate * 1000)
-    : null;
+  const reportedPayDate = quoteFields?.dividendDate != null ? new Date(quoteFields.dividendDate * 1000) : null;
+  const today = new Date(now.toISOString().slice(0, 10));
+  const nextPayDate = reportedPayDate && reportedPayDate >= today ? reportedPayDate : null;
 
-  return {
-    trailingYield,
-    forwardYield,
+  return repriceDividendMetrics({
+    trailingYield: null,
+    forwardYield: null,
     trailingRate,
     forwardRate,
     payoutRatio: quoteFields?.payoutRatio ?? null,
     growth1Y,
     growth3Y,
-    paymentFrequency: inferFrequency(payments),
+    paymentFrequency: inferFrequency(eligible),
     exDividendDate,
     nextPayDate,
+  }, currentPrice);
+}
+
+export function repriceDividendMetrics(metrics: DividendMetrics, price: number | null): DividendMetrics {
+  const validPrice = price != null && Number.isFinite(price) && price > 0;
+  return {
+    ...metrics,
+    trailingYield: validPrice && metrics.trailingRate != null ? metrics.trailingRate / price : null,
+    forwardYield: validPrice && metrics.forwardRate != null ? metrics.forwardRate / price : null,
   };
 }
 
 const DAY = 24 * 60 * 60 * 1000;
 
-function computeGrowth1Y(payments: DividendPayment[]): number | null {
-  const now = new Date();
-  const recentCutoff = new Date(now.getTime() - 365 * DAY);
-  const priorCutoff = new Date(now.getTime() - 2 * 365 * DAY);
-  const recent = payments
-    .filter((p) => p.exDate >= recentCutoff && p.exDate <= now)
-    .reduce((sum, p) => sum + p.amount, 0);
-  const prior = payments
-    .filter((p) => p.exDate >= priorCutoff && p.exDate < recentCutoff)
-    .reduce((sum, p) => sum + p.amount, 0);
-  if (prior <= 0) return null;
-  return (recent - prior) / prior;
-}
-
-function computeGrowth3Y(payments: DividendPayment[]): number | null {
-  const regular = payments.filter((p) => p.type === "cash" || p.type === "unknown");
-  if (regular.length < 4) return null;
-  const freq = inferFrequency(regular);
-  if (!freq || freq === "irregular") return null;
-  const annualCount = freq === "monthly" ? 12 : freq === "quarterly" ? 4 : freq === "semi-annual" ? 2 : 1;
-
-  const now = new Date();
-  const recentStart = new Date(now.getTime() - 365 * DAY);
-  const threeYearsAgo = new Date(now.getTime() - 3 * 365 * DAY);
-  const priorStart = new Date(now.getTime() - 4 * 365 * DAY);
-
-  const sorted = [...regular].sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
-  const recentAvg = sorted
-    .filter((p) => p.exDate >= recentStart && p.exDate <= now)
-    .reduce((sum, p) => sum + p.amount, 0) / annualCount;
-  const priorAvg = sorted
-    .filter((p) => p.exDate >= priorStart && p.exDate <= threeYearsAgo)
-    .reduce((sum, p) => sum + p.amount, 0) / annualCount;
-
-  if (priorAvg <= 0 || recentAvg <= 0) return null;
-  return Math.pow(recentAvg / priorAvg, 1 / 3) - 1;
+function computeGrowth(payments: DividendPayment[], years: number, now: Date): number | null {
+  const recentStart = calendarYearsBefore(now, 1);
+  const priorEnd = calendarYearsBefore(now, years);
+  const priorStart = calendarYearsBefore(priorEnd, 1);
+  // A new fund's partial first year is not a full-year growth baseline.
+  if (!payments.some((payment) => payment.exDate <= priorStart)) return null;
+  const recent = payments.filter((p) => p.exDate > recentStart && p.exDate <= now).reduce((sum, p) => sum + p.amount, 0);
+  const prior = payments.filter((p) => p.exDate > priorStart && p.exDate <= priorEnd).reduce((sum, p) => sum + p.amount, 0);
+  return prior > 0 && recent > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null;
 }
 
 function inferFrequency(payments: DividendPayment[]): DividendMetrics["paymentFrequency"] {

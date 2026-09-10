@@ -86,10 +86,18 @@ function intrinsicValuation(
   const price = side === "call"
     ? Math.max(0, discountedSpot - discountedStrike)
     : Math.max(0, discountedStrike - discountedSpot);
+  const direction = side === "call" ? 1 : -1;
   return {
     ...ZERO_GREEKS,
     price,
     delta: inTheMoney ? (side === "call" ? Math.exp(-dividendYield * years) : -Math.exp(-dividendYield * years)) : 0,
+    // Zero volatility removes uncertainty, but discounting still changes the
+    // forward payoff as time and interest rates change. At expiry only the
+    // terminal payoff remains.
+    thetaPerDay: inTheMoney && years > 0
+      ? direction * (dividendYield * discountedSpot - rate * discountedStrike) / DAYS_PER_YEAR
+      : 0,
+    rhoPerPoint: inTheMoney && years > 0 ? direction * years * discountedStrike / 100 : 0,
   };
 }
 

@@ -15,6 +15,28 @@ function deferred<T>() {
 }
 
 describe("shared cached market queries", () => {
+  test("retries partial corporate actions and invalidates cached estimates without reporting currency", async () => {
+    const persistence = new AppPersistence(":memory:");
+    let actionCalls = 0;
+    let analystCalls = 0;
+    const provider = createTestDataProvider({ id: "research",
+      getCorporateActions: async () => ({ symbol: "BABA", dividends: [], splits: [], earnings: [],
+        coverage: { earnings: ++actionCalls === 1 ? "unavailable" as const : "available" as const } }),
+      getAnalystResearch: async () => { analystCalls++; return { symbol: "BABA", recommendations: [], ratings: [],
+        earningsEstimates: [{ date: "2026-09-30", period: "current quarter", currency: "CNY", average: 10.97 }], revenueEstimates: [] }; },
+    });
+    persistence.resources.set({ namespace: "market", kind: "analystResearch", entityKey: "BABA", sourceKey: "provider:research" },
+      { symbol: "BABA", currency: "USD", recommendations: [], ratings: [], earningsEstimates: [{ date: "2026-09-30", period: "current quarter", average: 10.97 }], revenueEstimates: [] },
+      { cachePolicy: { staleMs: 86400000, expireMs: 86400000 } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    try {
+      expect((await router.getAnalystResearch("BABA")).earningsEstimates[0]?.currency).toBe("CNY");
+      expect(analystCalls).toBe(1);
+      expect((await router.getCorporateActions("BABA")).coverage?.earnings).toBe("unavailable");
+      expect((await router.getCorporateActions("BABA")).coverage?.earnings).toBe("available");
+      expect(actionCalls).toBe(2);
+    } finally { persistence.close(); }
+  });
   test("preserves stale FX age, shares refreshes, notifies consumers, and unsubscribes on destroy", async () => {
     const persistence = new AppPersistence(":memory:");
     const pending = deferred<number>();

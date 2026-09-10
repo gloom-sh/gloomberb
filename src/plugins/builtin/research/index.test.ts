@@ -175,7 +175,8 @@ describe("analyst summary", () => {
     } satisfies AnalystResearchData);
 
     expect(lines[0]).toBe("low $225.00   med $482.50   high $625.00");
-    expect(lines[1]).toBe("rating 8.8/10   SB 12  B 18  H 4  S 1   35 analysts (month)");
+    expect(lines[1]).toBe("Upside reference price $467.50");
+    expect(lines[2]).toBe("rating 8.8/10   SB 12  B 18  H 4  S 1   35 analysts (month)");
   });
 });
 
@@ -326,7 +327,7 @@ describe("event rows", () => {
     expect(rows).toMatchObject([
       { id: "div:2026-02-10", status: "Dividend", value: "$0.26" },
       { id: "earn:2026-01-30", status: "Earnings" },
-      { id: "split:2025-12-01:4-for-1 split", status: "Split", value: "1:4" },
+      { id: "split:2025-12-01:4-for-1 split", status: "Split", value: "4:1" },
     ]);
     expect(rows[0]?.qEps).toBeUndefined();
     expect(rows[0]?.annualEps).toBeUndefined();
@@ -361,6 +362,7 @@ describe("event rows", () => {
     ];
 
     expect(matchEarningsSecFiling(row, filings)?.accessionNumber).toBe("0000320193-26-000009");
+    expect(matchEarningsSecFiling({ ...row!, dateType: "fiscal-period-end" }, filings)).toBeNull();
   });
 });
 

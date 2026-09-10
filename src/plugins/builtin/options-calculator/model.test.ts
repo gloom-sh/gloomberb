@@ -54,6 +54,22 @@ describe("valueOption", () => {
       .toBeCloseTo(100 - 100 * Math.exp(-0.05), 6);
   });
 
+  test("zero-volatility theta and rho agree with changes in the discounted payoff", () => {
+    for (const side of ["call", "put"] as const) {
+      const draft = { ...CANONICAL, side, spot: side === "call" ? 120 : 80, volatility: 0, dividendYield: 0.02 };
+      const value = valueOption(draft);
+      const dayStep = 0.001;
+      const rateStep = 0.000001;
+      const theta = (valueOption({ ...draft, daysToExpiry: draft.daysToExpiry - dayStep }).price
+        - valueOption({ ...draft, daysToExpiry: draft.daysToExpiry + dayStep }).price) / (2 * dayStep);
+      const rho = (valueOption({ ...draft, rate: draft.rate + rateStep }).price
+        - valueOption({ ...draft, rate: draft.rate - rateStep }).price) / (2 * rateStep * 100);
+      expect(value.thetaPerDay).toBeCloseTo(theta, 7);
+      expect(value.rhoPerPoint).toBeCloseTo(rho, 7);
+      expect(valueOption({ ...draft, daysToExpiry: 0 }).rhoPerPoint).toBe(0);
+    }
+  });
+
   test("never returns NaN or Infinity for impossible inputs", () => {
     const broken: OptionCalcDraft[] = [
       { ...CANONICAL, spot: 0 },
