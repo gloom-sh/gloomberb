@@ -5,6 +5,7 @@
  * without rendering.
  */
 import { apiClient, type AuthUser } from "../../../api-client";
+import { identifyResearchUser } from "../../../api-client/research-activity";
 import { t } from "../../../i18n";
 import { chatController } from "../chat/controller";
 
@@ -130,6 +131,7 @@ export async function performEmailAuth(mode: AccountMode, email: string, passwor
   if (sessionToken) {
     chatController.adoptSession(sessionToken, user);
   }
+  identifyResearchUser();
   await chatController.refreshSession().catch(() => {});
   return user;
 }
