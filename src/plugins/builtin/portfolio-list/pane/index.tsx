@@ -18,6 +18,8 @@ import {
   type CollectionSortPreference,
 } from "../../../../state/app/context";
 import { selectEffectiveExchangeRates } from "../../../../utils/exchange-rate-map";
+import { summarizeFxRates, fxStatusLabel } from "../../../../utils/fx-status";
+import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
 import type { TickerRecord } from "../../../../types/ticker";
 import type { PaneProps } from "../../../../types/plugin";
 import { calculatePortfolioSummaryTotals, resolveCollectionSortPreference, type ColumnContext } from "../metrics";
@@ -141,6 +143,9 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   );
   const fetchedExchangeRates = useFxRatesMap(trackedCurrencies);
   const effectiveExchangeRates = selectEffectiveExchangeRates(fetchedExchangeRates, cachedExchangeRates);
+  const conversionCurrencies = trackedCurrencies.some((currency) => currency !== config.baseCurrency) ? trackedCurrencies : [];
+  const fxStatus = summarizeFxRates(conversionCurrencies, effectiveExchangeRates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
+  const fxStatusText = fxStatusLabel(fxStatus);
   const portfolioSummaryTotals = useMemo(() => calculatePortfolioSummaryTotals(
     tickers,
     financialsMap,
@@ -377,7 +382,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   ]);
 
   usePaneFooter("portfolio-list", () => ({
-    info: summaryFooterInfo,
+    info: fxStatusText ? [...summaryFooterInfo, { id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: fxStatus.stale || fxStatus.unknownTime || fxStatus.unavailable ? "warning" as const : "muted" as const }] }] : summaryFooterInfo,
     hints: showCashDrawer
       ? [{
           id: "cash",
@@ -386,7 +391,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           onPress: () => setCashDrawerExpanded(!cashDrawerExpanded),
         }]
       : [],
-  }), [cashDrawerExpanded, setCashDrawerExpanded, showCashDrawer, summaryFooterInfo]);
+  }), [cashDrawerExpanded, setCashDrawerExpanded, showCashDrawer, summaryFooterInfo, fxStatusText]);
 
   const quickAddCollectionKind = useMemo<QuickAddCollectionKind | null>(() => {
     if (!activeCollectionId) return null;

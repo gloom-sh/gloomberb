@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   DataTableView,
+  Prose,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -15,6 +16,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useAssetData } from "../../runtime";
+import { summarizeFxRates, fxStatusLabel } from "../../../utils/fx-status";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { MAJOR_CURRENCIES, formatRate, resolveCurrencies, type MajorCurrency } from "./pairs";
@@ -25,32 +27,6 @@ const NO_SAVED_CURRENCIES: string[] = [];
 const BASE_COLUMN_WIDTH = 5;
 const RATE_COLUMN_WIDTH = 10;
 
-interface FxStatus {
-  loading: number;
-  unavailable: number;
-  latestTs: number;
-}
-
-/**
- * Per-currency load state for the footer and the cell placeholders. The rates
- * map above already subscribes this pane to the same coordinator keys, so
- * reading the entries here re-renders with it.
- */
-function readFxStatus(currencies: readonly MajorCurrency[], rates: Map<string, number>): FxStatus {
-  const coordinator = getSharedMarketDataCoordinator();
-  let loading = 0;
-  let unavailable = 0;
-  let latestTs = 0;
-  for (const currency of currencies) {
-    if (currency === "USD") continue;
-    const entry = coordinator?.getFxEntry(currency) ?? null;
-    if (entry?.phase === "loading") loading += 1;
-    else if (!rates.has(currency)) unavailable += 1;
-    latestTs = Math.max(latestTs, entry?.fetchedAt ?? 0);
-  }
-  return { loading, unavailable, latestTs };
-}
-
 function FxMatrixPane({ focused, width, height }: PaneProps) {
   const dataProvider = useAssetData();
   const [savedCurrencies] = usePaneSettingValue<string[]>("currencies", NO_SAVED_CURRENCIES);
@@ -58,7 +34,8 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const [selectedCurrency, setSelectedCurrency] = useState<string | null>(null);
 
   const rates = useFxRatesMap(currencies);
-  const status = useMemo(() => readFxStatus(currencies, rates), [currencies, rates]);
+  const status = summarizeFxRates(currencies, rates, (currency) => getSharedMarketDataCoordinator()?.getFxEntry(currency));
+  const statusText = fxStatusLabel(status);
 
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
@@ -71,7 +48,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     }
   }, [currencies]);
 
-  useAutoRefresh(status.latestTs || null, refresh);
+  useAutoRefresh(status.latestFetchedAt || null, refresh);
 
   const columns = useMemo<DataTableColumn[]>(() => [
     { id: "base", label: "", width: BASE_COLUMN_WIDTH, align: "left" },
@@ -120,20 +97,16 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
     return true;
   }, [refresh]);
 
-  const updatedAgo = useUpdatedAgo(status.latestTs || null);
+  const updatedAgo = useUpdatedAgo(status.latestFetchedAt || null);
 
   usePaneFooter(FX_MATRIX_PANE_ID, () => {
     const info: PaneFooterSegment[] = [];
     if (status.loading > 0) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
-    if (status.unavailable > 0) {
-      info.push({
-        id: "unavailable",
-        parts: [{ text: `${status.unavailable} unavailable`, tone: "warning" }],
-      });
-    }
-    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" }] });
+    if (statusText) info.push({ id: "rates", parts: [{ text: statusText, tone: status.stale || status.unknownTime || status.unavailable ? "warning" : "muted" }] });
+    if (status.sources.length) info.push({ id: "sources", parts: [{ text: status.sources.join("/"), tone: "muted" }] });
+    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `fetched ${updatedAgo}`, tone: "muted" }] });
     return { info };
-  }, [status.loading, status.unavailable, updatedAgo]);
+  }, [status.loading, statusText, status.sources.join("/"), updatedAgo]);
 
   return (
     <DataTableView<MajorCurrency>
@@ -144,6 +117,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         getId: (row) => row,
         onChange: (id) => setSelectedCurrency(id),
       }}
+      rootBefore={<Prose width={Math.max(1, width - 2)} text="One unit of the row currency buys the column amount. Indicative cross rates use USD legs; observation times may differ." color={colors.textDim} />}
       rootWidth={width}
       rootHeight={height}
       columns={columns}

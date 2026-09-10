@@ -1,3 +1,4 @@
+import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
 import type { DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { OptionsChain } from "../../types/financials";
 import type { OptionsRequest, SecFilingsRequest } from "../request-types";
@@ -191,7 +192,8 @@ export function loadFxRateEntry(options: {
   const normalizedCurrency = options.currency.trim().toUpperCase();
   const key = buildFxKey(normalizedCurrency);
   const current = store.get(key);
-  if (hasFreshEntryData(current, FX_CACHE_TTL_MS)) {
+  if (hasFreshEntryData(current, FX_CACHE_TTL_MS) && !current.error
+    && (current.staleAt == null || current.staleAt > Date.now())) {
     return Promise.resolve(current);
   }
   if (normalizedCurrency === "USD") {
@@ -203,13 +205,22 @@ export function loadFxRateEntry(options: {
     store.update(key, loadingEntry);
     const startedAt = Date.now();
     try {
-      const rate = await dataProvider.getExchangeRate(normalizedCurrency);
-      const attempts = [createAttempt(dataProvider.id, startedAt, "success")];
-      return store.update(key, (current) => readyEntry(current, rate, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
+      const snapshot = await dataProvider.getExchangeRateSnapshot?.(normalizedCurrency);
+      const rate = snapshot?.rate ?? await dataProvider.getExchangeRate(normalizedCurrency);
+      const metadata = exchangeRateMetadata(snapshot ?? rate, normalizedCurrency, Date.now(), Date.now());
+      const source = snapshot?.source ?? dataProvider.id;
+      const attempts = [createAttempt(source, startedAt, "success")];
+      return store.update(key, (current) => {
+        const entry = readyEntry(current, rate, source, attempts, { keepLastGoodOnEmpty: true });
+        return { ...entry, ...metadata };
+      });
     } catch (error) {
       const classified = classifyError(error);
       const attempt = createAttempt(dataProvider.id, startedAt, "fatal_error", classified.reasonCode, classified.message);
-      return store.update(key, (current) => errorEntry(current, attempt));
+      return store.update(key, (current) => errorEntry(
+        isUsableCachedExchangeRate(current.data ?? current.lastGoodData, normalizedCurrency, current)
+          ? current : { ...current, data: null, lastGoodData: null }, attempt,
+      ));
     }
   });
 }

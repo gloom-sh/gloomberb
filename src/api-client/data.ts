@@ -1,3 +1,4 @@
+import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { TickerFinancials } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import {
@@ -273,8 +274,8 @@ export class CloudDataApi {
 
   async getCloudExchangeRate(
     fromCurrency: string,
-  ): Promise<CloudMarketResponse<{ rate: number }>> {
-    return this.request<CloudMarketResponse<{ rate: number }>>(
+  ): Promise<CloudMarketResponse<Partial<ExchangeRateSnapshot> & { rate: number }>> {
+    return this.request<CloudMarketResponse<Partial<ExchangeRateSnapshot> & { rate: number }>>(
       cloudExchangeRatePath(fromCurrency),
     );
   }

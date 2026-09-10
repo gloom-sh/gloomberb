@@ -15,6 +15,15 @@ function deferred<T>() {
 }
 
 describe("shared cached market queries", () => {
+  test("USD identity works offline without fetching or expiring from its undated static cache", async () => {
+    let calls = 0;
+    const provider = createTestDataProvider({ id: "offline", getExchangeRate: async () => { calls++; throw new Error("offline"); } });
+    const router = new AssetDataRouter(provider);
+    expect(await router.getExchangeRate("USD")).toBe(1);
+    expect(router.getCachedExchangeRates(["USD"]).get("USD")).toBe(1);
+    expect(router.getCachedExchangeRates(["USD"], { allowExpired: false }).get("USD")).toBe(1);
+    expect(calls).toBe(0);
+  });
   test("retries partial corporate actions and invalidates cached estimates without reporting currency", async () => {
     const persistence = new AppPersistence(":memory:");
     let actionCalls = 0;
@@ -135,6 +144,69 @@ describe("shared cached market queries", () => {
         { rate: 0 }, { cachePolicy: { staleMs: 60_000, expireMs: 120_000 } });
       expect(await router.getExchangeRate("EUR")).toBe(1.15);
     } finally { persistence.close(); }
+  });
+
+  test("FX source observation and retrieval times survive cache reload and failed refresh", async () => {
+    const now = Date.now();
+    const fetchedAt = now - 30 * 60_000;
+    const asOf = now - 45 * 60_000;
+    let calls = 0;
+    const persistence = new AppPersistence(":memory:");
+    const provider = createTestDataProvider({ id: "cloud", getExchangeRateSnapshot: async () => {
+      if (++calls > 1) throw new Error("offline");
+      return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "yahoo", asOf: new Date(asOf).toISOString(),
+        fetchedAt: new Date(fetchedAt).toISOString(), staleAt: new Date(now + 30 * 60_000).toISOString(), stale: false };
+    } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    const coordinator = new MarketDataCoordinator(router);
+    const reloaded = new AssetDataRouter(provider, [], persistence.resources);
+    try {
+      expect(await coordinator.loadFxRate("EUR")).toMatchObject({ data: 1.16, source: "yahoo", fetchedAt, asOf });
+      expect(await reloaded.getExchangeRate("EUR")).toBe(1.16);
+      expect(reloaded.getCachedQuery("getExchangeRate", ["EUR"]).getSnapshot().result).toMatchObject({ source: "yahoo", fetchedAt, asOf });
+      expect(calls).toBe(1);
+      await router.getCachedQuery("getExchangeRate", ["EUR"]).load({ force: true });
+      expect(coordinator.getFxEntry("EUR")).toMatchObject({ data: 1.16, source: "yahoo", fetchedAt, asOf });
+      expect(coordinator.getFxEntry("EUR").error).not.toBeNull();
+      expect(calls).toBe(2);
+    } finally { coordinator.destroy(); persistence.close(); }
+  });
+
+  test("expired numeric FX fallback also rejects a mismatched pair", () => {
+    const persistence = new AppPersistence(":memory:");
+    const provider = createTestDataProvider({ id: "fx" });
+    persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:fx" },
+      { fromCurrency: "JPY", toCurrency: "USD", rate: 0.0065 },
+      { fetchedAt: Date.now() - 10_000, cachePolicy: { staleMs: 1, expireMs: 2 } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    try {
+      expect(router.getCachedExchangeRates(["EUR"], { allowExpired: true }).has("EUR")).toBe(false);
+    } finally { persistence.close(); }
+  });
+
+  test("FX memory, persistence and renderer fallbacks expire by source time during a failed refresh", async () => {
+    const actualNow = Date.now;
+    let now = actualNow();
+    const sourceTime = now - 7 * 86_400_000 + 1000;
+    Date.now = () => now;
+    const persistence = new AppPersistence(":memory:");
+    let calls = 0;
+    const provider = createTestDataProvider({ id: "fx", getExchangeRateSnapshot: async () => {
+      if (++calls > 1) throw new Error("offline");
+      return { rate: 1.16, fromCurrency: "EUR", toCurrency: "USD", source: "yahoo", asOf: new Date(sourceTime).toISOString(), fetchedAt: new Date(now).toISOString(), stale: true };
+    } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    const coordinator = new MarketDataCoordinator(router);
+    try {
+      expect((await coordinator.loadFxRate("EUR")).data).toBe(1.16);
+      now += 2000;
+      expect(router.getCachedExchangeRates(["EUR"], { allowExpired: true }).has("EUR")).toBe(false);
+      const entry = await coordinator.loadFxRate("EUR");
+      expect(entry.data).toBeNull();
+      expect(entry.lastGoodData).toBeNull();
+      expect(entry.error).not.toBeNull();
+      await expect(router.getExchangeRate("EUR")).rejects.toThrow();
+    } finally { Date.now = actualNow; coordinator.destroy(); persistence.close(); }
   });
 
 });

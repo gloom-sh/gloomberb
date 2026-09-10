@@ -27,6 +27,7 @@ export interface QueryEntry<T> {
   lastGoodData: T | null;
   source: string | null;
   fetchedAt: number | null;
+  asOf?: number;
   staleAt: number | null;
   error: { reasonCode: string; message: string } | null;
   attempts: ProviderAttempt[];

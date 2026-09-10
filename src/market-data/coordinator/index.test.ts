@@ -154,6 +154,28 @@ describe("MarketDataCoordinator", () => {
     expect(calls).toBe(0);
   });
 
+  it("retries a recently retrieved stale FX rate without changing its source time on failure", async () => {
+    const now = Date.now();
+    let calls = 0;
+    const provider = createProvider({
+      getExchangeRateSnapshot: async () => {
+        if (++calls > 1) throw new Error("rate provider offline");
+        return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "yahoo",
+          asOf: new Date(now - 7_200_000).toISOString(), fetchedAt: new Date(now).toISOString(),
+          staleAt: new Date(now - 3_600_000).toISOString(), stale: true };
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const first = await coordinator.loadFxRate("EUR");
+    const retry = await coordinator.loadFxRate("EUR");
+    expect(calls).toBe(2);
+    expect(first.asOf).toBe(now - 7_200_000);
+    expect(retry.lastGoodData).toBe(1.16);
+    expect(retry.asOf).toBe(first.asOf);
+    expect(retry.fetchedAt).toBe(first.fetchedAt);
+    expect(retry.error?.message).toContain("offline");
+  });
+
   it("reuses fresh empty tab query results instead of refetching on reopen", async () => {
     let optionsCalls = 0;
     const provider = createProvider({

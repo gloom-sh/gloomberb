@@ -1,3 +1,5 @@
+import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
+import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
 import {
   normalizeChartResolutionSupport,
@@ -312,8 +314,19 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getExchangeRate(fromCurrency: string): Promise<number> {
-    const response = await apiClient.getCloudExchangeRate(fromCurrency);
-    return unwrapRequiredCloudResponse(response, `Cloud exchange rate is unavailable for ${fromCurrency}`).rate;
+    return (await this.getExchangeRateSnapshot(fromCurrency)).rate;
+  }
+
+  async getExchangeRateSnapshot(fromCurrency: string): Promise<ExchangeRateSnapshot> {
+    const currency = fromCurrency.trim().toUpperCase();
+    const response = await apiClient.getCloudExchangeRate(currency);
+    const data = unwrapRequiredCloudResponse(response, `Cloud exchange rate is unavailable for ${currency}`);
+    exchangeRateMetadata({ ...data, asOf: data.asOf ?? response.asOf }, currency);
+    // Older servers have no observation metadata. Keep asOf unknown rather than
+    // presenting the request completion time as the rate's time.
+    return { ...data, rate: data.rate, fromCurrency: currency, toCurrency: "USD", source: data.source ?? this.id,
+      asOf: data.asOf ?? response.asOf, fetchedAt: data.fetchedAt ?? new Date().toISOString(),
+      stale: data.stale === true || response.stale === true };
   }
 
   async search(query: string, _context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {

@@ -1,3 +1,5 @@
+import { exchangeRateMetadata } from "../utils/exchange-rate-snapshot";
+import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { Quote, PricePoint, TickerFinancials, OptionsChain, CompanyProfile, HolderData, AnalystResearchData, CorporateActionsData } from "../types/financials";
 import type { DataProvider, EarningsEvent, MarketDataRequestContext, NewsItem, SecFilingItem } from "../types/data-provider";
 import type { TimeRange } from "../time-series/range";
@@ -202,19 +204,37 @@ export class YahooFinanceClient implements DataProvider {
     throw lastError || new Error(`No quote for ${ticker}`);
   }
 
-  /** Fetch exchange rate to USD */
+  /** Fetch exchange rate to USD. */
   async getExchangeRate(fromCurrency: string): Promise<number> {
-    // Normalize sub-unit currencies to their main unit
-    const { currency: normalized } = normalizeSubUnitCurrency(fromCurrency);
-    fromCurrency = normalized;
-    if (fromCurrency === "USD") return 1;
+    return (await this.getExchangeRateSnapshot(fromCurrency)).rate;
+  }
 
-    const { meta, history } = await this.fetchChart(`${fromCurrency}USD=X`, "1mo");
-    const rate = meta.regularMarketPrice ?? history[history.length - 1]?.close;
-    if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) {
-      throw new Error(`No exchange rate data for ${fromCurrency}/USD`);
+  async getExchangeRateSnapshot(fromCurrency: string): Promise<ExchangeRateSnapshot> {
+    const { currency } = normalizeSubUnitCurrency(fromCurrency);
+    const normalized = currency.trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(normalized)) throw new Error("Exchange rates require a three-letter currency code");
+    const fetchedAt = new Date().toISOString();
+    if (normalized === "USD") return { fromCurrency: normalized, toCurrency: "USD", rate: 1, source: "identity", fetchedAt, stale: false };
+    const { meta, history } = await this.fetchChart(`${normalized}USD=X`, "1mo");
+    if ((meta.symbol && meta.symbol !== `${normalized}USD=X`) || (meta.currency && meta.currency !== "USD")) {
+      throw new Error(`Exchange rate pair mismatch for ${normalized}/USD`);
     }
-    return rate;
+    const last = history.at(-1);
+    const hasCurrent = typeof meta.regularMarketPrice === "number" && Number.isFinite(meta.regularMarketPrice) && meta.regularMarketPrice > 0;
+    const currentTime = Number(meta.regularMarketTime) * 1000;
+    // Yahoo rounds regularMarketPrice (JPY/USD can become 0.0065). Prefer
+    // the full-precision chart close when it describes the same observation.
+    const useBar = last && (!hasCurrent || last.date.getTime() >= currentTime);
+    const rate = useBar ? last.close : hasCurrent ? meta.regularMarketPrice! : undefined;
+    if (typeof rate !== "number" || !Number.isFinite(rate) || rate <= 0) throw new Error(`No exchange rate data for ${normalized}/USD`);
+    const time = useBar ? last.date.getTime() : currentTime;
+    const asOf = typeof time === "number" && Number.isFinite(time) && time > 0 ? new Date(time).toISOString() : undefined;
+    const retrieved = Date.now();
+    const staleAt = Math.min(retrieved + 60 * 60_000, asOf ? Date.parse(asOf) + 60 * 60_000 : Infinity);
+    const snapshot: ExchangeRateSnapshot = { fromCurrency: normalized, toCurrency: "USD", rate, source: this.id, asOf, fetchedAt: new Date(retrieved).toISOString(),
+      staleAt: new Date(staleAt).toISOString(), stale: staleAt <= retrieved, delayMinutes: 0 };
+    exchangeRateMetadata(snapshot, normalized, retrieved);
+    return snapshot;
   }
 
   /** Search for a ticker by name/symbol - uses direct fetch (no retry) for speed */

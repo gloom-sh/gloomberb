@@ -3,6 +3,26 @@ import { YahooFinanceClient } from "./yahoo-finance";
 import { getYahooSymbolsToTry } from "./yahoo-finance/symbols";
 
 describe("YahooFinanceClient exchange aliases", () => {
+  test("FX rates keep the matching price observation time and reject another pair", async () => {
+    const provider = new YahooFinanceClient() as any;
+    const previous = Date.now() - 7_200_000;
+    provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 1 / 154, regularMarketTime: previous / 1000 }, history: [] });
+    const snapshot = await provider.getExchangeRateSnapshot("JPY");
+    expect(snapshot.rate).toBeCloseTo(1 / 154, 12);
+    expect(snapshot.asOf).toBe(new Date(previous).toISOString());
+    expect(Date.parse(snapshot.fetchedAt)).toBeGreaterThan(previous);
+    expect(snapshot.stale).toBe(true);
+    provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD", regularMarketPrice: 0.0065, regularMarketTime: previous / 1000 }, history: [{ date: new Date(previous), close: 0.006475719157606363 }] });
+    expect((await provider.getExchangeRateSnapshot("JPY")).rate).toBe(0.006475719157606363);
+    provider.fetchChart = async () => ({ meta: { symbol: "JPYUSD=X", currency: "USD" }, history: [{ date: new Date(previous), close: 1 / 155 }] });
+    expect(await provider.getExchangeRateSnapshot("JPY")).toMatchObject({ rate: 1 / 155, asOf: new Date(previous).toISOString() });
+    provider.fetchChart = async () => ({ meta: { symbol: "USDJPY=X", currency: "JPY", regularMarketPrice: 154 }, history: [] });
+    await expect(provider.getExchangeRateSnapshot("JPY")).rejects.toThrow("pair mismatch");
+    provider.fetchChart = async () => ({ meta: { regularMarketPrice: 1 / 154 }, history: [{ date: new Date(previous), close: 1 / 155 }] });
+    // An unrelated old bar cannot supply the timestamp for an undated current price.
+    expect((await provider.getExchangeRateSnapshot("JPY")).asOf).toBeUndefined();
+  });
+
   test("maps detailed statement sub-lines from fundamentals timeseries", async () => {
     const provider = new YahooFinanceClient() as any;
     const point = (type: string, value: number) => ({
