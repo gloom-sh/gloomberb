@@ -56,14 +56,16 @@ function catalog(readyProviderIds: readonly AiProviderId[]): AiRuntimeCatalog {
         ...(supportsOAuth ? { loginType: "oauth" as const } : {}),
       };
     }),
-    models: AI_PROVIDER_IDS.map((providerId) => {
+    models: AI_PROVIDER_IDS.flatMap((providerId) => {
       const definition = getAiProviderDefinition(providerId)!;
-      return {
-        id: definition.preferredModelIds[0]!,
+      const modelId = definition.preferredModelIds[0];
+      if (!modelId) return [];
+      return [{
+        id: modelId,
         providerId,
-        label: definition.preferredModelIds[0]!,
+        label: modelId,
         available: ready.has(providerId),
-      };
+      }];
     }),
   };
 }

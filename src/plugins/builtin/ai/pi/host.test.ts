@@ -163,7 +163,7 @@ describe("Pi AI host screener mode", () => {
 });
 
 describe("Pi AI host catalog and account connection", () => {
-  test("publishes all seven providers with canonical ids and native capabilities", () => {
+  test("publishes all curated providers with canonical ids and native capabilities", () => {
     const summaries = AI_PROVIDER_IDS.map((id) => disconnectedSummary(id, id));
     const catalog = toAiRuntimeCatalog({ providers: summaries, refreshErrors: {} });
 

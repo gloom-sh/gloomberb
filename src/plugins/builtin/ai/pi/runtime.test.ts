@@ -51,6 +51,22 @@ describe("PiAiRuntime", () => {
     ]);
   });
 
+  test("falls back to the first community model when a live catalog has no curated defaults", async () => {
+    const faux = fauxProvider({
+      provider: "spore",
+      models: [
+        { id: "qwen3.6-35b-a3b:32k:personal", name: "Qwen personal" },
+        { id: "qwen3.6-35b-a3b:32k", name: "Qwen 32k" },
+      ],
+    });
+    const models = createModels({ credentials: new InMemoryCredentialStore() });
+    models.setProvider(faux.provider);
+    const runtime = new PiAiRuntime({ models });
+
+    expect((await runtime.getProviderSummary("spore")).defaultModelId).toBe("qwen3.6-35b-a3b:32k");
+    expect((await runtime.resolveModel({ providerId: "spore" })).id).toBe("qwen3.6-35b-a3b:32k");
+  });
+
   test("uses the provider default for a blank model and streams cumulative text", async () => {
     const { faux, runtime } = createFauxRuntime();
     let requestedModel = "";

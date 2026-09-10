@@ -15,6 +15,7 @@ import { openaiProvider } from "@earendil-works/pi-ai/providers/openai";
 import { openrouterProvider } from "@earendil-works/pi-ai/providers/openrouter";
 import { xaiProvider } from "@earendil-works/pi-ai/providers/xai";
 import { AI_PROVIDER_IDS, type AiProviderId } from "../providers";
+import { sporeProvider } from "./spore";
 
 export type PiProviderFactory = () => Provider;
 
@@ -30,6 +31,7 @@ const FACTORIES_BY_PROVIDER_ID = {
   "github-copilot": githubCopilotProvider,
   xai: xaiProvider,
   openrouter: openrouterProvider,
+  spore: sporeProvider,
 } as const satisfies Readonly<Record<AiProviderId, PiProviderFactory>>;
 
 export const GLOOMBERB_PI_PROVIDER_IDS: readonly AiProviderId[] = AI_PROVIDER_IDS;

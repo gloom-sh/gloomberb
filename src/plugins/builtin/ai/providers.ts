@@ -8,6 +8,7 @@ export const AI_PROVIDER_IDS = [
   "github-copilot",
   "xai",
   "openrouter",
+  "spore",
 ] as const;
 
 export type AiProviderId = (typeof AI_PROVIDER_IDS)[number];
@@ -30,7 +31,8 @@ export interface AiProviderDefinition {
   outputModes: readonly AiRunOutputMode[];
   /**
    * Ordered, curated defaults. The runtime chooses the first one available to
-   * the connected account and never falls back to provider array order.
+   * the connected account. If none match — including live catalogs with an
+   * empty list — it uses the first available non-personal model.
    */
   preferredModelIds: readonly string[];
 }
@@ -93,6 +95,13 @@ const PROVIDER_DEFINITIONS: readonly AiProviderDefinition[] = [
       "openai/gpt-5.6-sol",
       "google/gemini-3.6-flash",
     ],
+  },
+  {
+    id: "spore",
+    name: "Spore",
+    outputModes: ALL_OUTPUT_MODES,
+    // Live GET /models catalog. Runtime default is the first fetched community id.
+    preferredModelIds: [],
   },
 ];
 

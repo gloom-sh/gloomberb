@@ -72,6 +72,7 @@ function providerLabel(providerId: string): string {
   if (providerId === "github-copilot") return "GitHub Copilot";
   if (providerId === "xai") return "xAI / Grok";
   if (providerId === "openrouter") return "OpenRouter";
+  if (providerId === "spore") return "Spore";
   if (providerId === "opencode") return "OpenCode";
   if (providerId === "pi") return "Pi";
   return providerId;

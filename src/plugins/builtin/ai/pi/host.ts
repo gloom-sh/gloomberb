@@ -400,7 +400,7 @@ export function createPiAiHost(options: CreatePiAiHostOptions): AiRunHost {
   const sendRemoteRequest = options.sendRemoteRequest ?? sendRemoteControlRequest;
   const pendingConnections = new Map<string, Promise<AiRuntimeCatalog>>();
 
-  const getCatalog = async () => toAiRuntimeCatalog(await runtime.getCatalog());
+  const getCatalog = async () => toAiRuntimeCatalog(await runtime.getCatalog({ refresh: true }));
 
   return {
     getCatalog,
