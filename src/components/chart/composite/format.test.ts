@@ -11,6 +11,7 @@ import {
 } from "./format";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import {
+  renderCompositeAxisText,
   renderCompositeTimeAxis,
   renderCompositeViewportTimeAxis,
 } from "./text-renderer";
@@ -198,4 +199,16 @@ describe("composite chart unit formatting", () => {
     expect(formatCompositeCursorValue(-12_345_600_000, { ...domain, unit: "EUR", unitGroup: "currency-total" })).toBe("€-12.35B");
     expect(formatCompositeCursorValue(123_456_000, { ...domain, unit: "CAD", unitGroup: "currency-total:CAD" })).toBe("123.46M CAD");
   });
+});
+
+// Regression: truncating before PriceAxisLabels bypassed its full-value guard.
+test("constrained axis ticks never become plausible numeric prefixes", () => {
+  const domain = { side: "right" as const, seriesIds: ["tiny"], min: 3.88e-6, max: 6.12e-6, scale: "linear" as const, unit: "USD", unitGroup: "price" };
+  for (const side of ["left", "right"] as const) {
+    const short = renderCompositeAxisText(domain, 5, 8, side).map((row) => row.trim()).filter(Boolean);
+    expect(short).toEqual(["…", "…", "…"]);
+    expect(renderCompositeAxisText(domain, 5, 12, side)[0]?.trim()).toBe("$0.00000612");
+    expect(renderCompositeAxisText(domain, 5, 5, side, () => "12345 CAD")[0]?.trim()).toBe("…");
+    expect(renderCompositeAxisText(domain, 5, 5, side, () => "−12.5%")[0]?.trim()).toBe("…");
+  }
 });

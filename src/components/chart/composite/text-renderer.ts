@@ -1,3 +1,4 @@
+import { displayWidth, padTo } from "../../../utils/format";
 import { compositeAxisTicks, type CompositeAxisValueFormatter } from "./format";
 import type { CompositeViewportRange } from "./interactions";
 import { resolveCompositeObservationWidth } from "./rasterizer";
@@ -293,8 +294,10 @@ export function renderCompositeAxisText(
   if (!domain || width <= 0) return rows;
   for (const tick of compositeAxisTicks(domain, 3, format)) {
     const row = clamp(Math.round(tick.ratio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
-    const label = tick.label.length > width ? tick.label.slice(0, width) : tick.label;
-    rows[row] = side === "left" ? label.padStart(width) : label.padEnd(width);
+    // Never pass a clipped number to the axis renderer: its later overflow
+    // guard cannot distinguish that prefix from a complete formatted value.
+    const label = displayWidth(tick.label) > width ? "…" : tick.label;
+    rows[row] = padTo(label, width, side === "left" ? "right" : "left");
   }
   return rows;
 }
