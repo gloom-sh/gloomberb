@@ -534,27 +534,17 @@ describe("GloomberbCloudProvider", () => {
     expect(history[0]?.close).toBeCloseTo(0.231, 8);
   });
 
-  test("normalizes LSE cloud history when the response reports a default currency", async () => {
-    apiClient.ensureVerifiedSession = async () => verifiedUser;
-    apiClient.getCloudHistory = async () => ({
-      status: "success",
-      currency: "USD",
-      data: [{
-        date: "2026-05-22",
-        open: 407.5,
-        high: 410,
-        low: 350,
-        close: 379,
-      }],
-    });
-
+  test("preserves normalized LSE cloud history when currency metadata is missing or uses a major unit", async () => {
     const provider = new GloomberbCloudProvider();
-    const history = await provider.getPriceHistory("FTC", "LSE", "1M");
-
-    expect(history[0]?.open).toBeCloseTo(4.075, 8);
-    expect(history[0]?.high).toBeCloseTo(4.1, 8);
-    expect(history[0]?.low).toBeCloseTo(3.5, 8);
-    expect(history[0]?.close).toBeCloseTo(3.79, 8);
+    for (const currency of [undefined, "GBP", "USD"]) {
+      apiClient.getCloudHistory = async () => ({
+        status: "success",
+        ...(currency ? { currency } : {}),
+        data: [{ date: "2026-08-31T00:00:00.000Z", open: 1.241, high: 1.285, low: 1.198, close: 1.256, volume: 123 }],
+      });
+      const history = await provider.getPriceHistory("VOD:XLON", "LSE", "ALL");
+      expect(history[0]).toMatchObject({ open: 1.241, high: 1.285, low: 1.198, close: 1.256, volume: 123 });
+    }
   });
 
   test("fetches institutional holders from the cloud market endpoint", async () => {

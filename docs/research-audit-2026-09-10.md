@@ -36,6 +36,7 @@ Browser interactions included search/command submission, equity overview and fin
 - Live NVDA trades could move below a lagging daily bar's low. Quote handling reconciles observed extrema within a regular session and guards against carrying them across dates, units or extended-hours sessions.
 - History presets previously used observation counts as calendar periods. Bounds now represent calendar weeks/months/years, with exchange-local daily labels and inclusive explicit end dates.
 - Missing FX silently became parity. Invalid conversions now remain unavailable, affected totals/risk sizing are guarded, and formatters show an em dash instead of a fabricated amount or `NaN`.
+- Cloud history no longer infers a second subunit conversion from the exchange. The captured London chart used normalized GBP values but displayed them 100× too small; explicit subunit metadata is still honored.
 - World index levels now use index points, including structured output. Inverse-yen FX pairs retain enough precision to be useful.
 
 ### Fundamentals and valuation
@@ -66,10 +67,10 @@ Provider semantics were checked against [Twelve statistics documentation](https:
 
 ## Validation and remaining coverage limits
 
-The backend changes have 146 passing focused tests with 471 assertions, plus a server TypeScript check. The app passed 2,724 tests across 476 files, all six runtime typechecks, the browser bundle audit, desktop view build, Cloudflare dry-run, core binary smoke test and global-upgrade smoke test. A final valuation guard receives its own focused regression check after that full run. Browser and tmux checks supplement the automated tests.
+The backend changes have 146 passing focused tests with 471 assertions, plus a server TypeScript check. The app passed 2,731 tests across 477 files in PR CI, all six runtime typechecks, the browser bundle audit, desktop view build, Cloudflare dry-run, core binary smoke test and global-upgrade smoke test. The final history-unit correction also passed all 23 cloud adapter tests. Browser and tmux checks supplement the automated tests.
 
 The browser session used anonymous/delayed data. Live Pro entitlements and authenticated broker execution were not exercised. Provider coverage remains uneven: some foreign fundamentals and option chains are unavailable, and calendar sources can omit actuals. These gaps should be shown explicitly. All 19 world indices loaded in final CLI probes, and the three intermittently missing browser indices also succeeded through direct cloud cache/refresh probes.
 
 Correlation aligns shared dates, not simultaneous exchange closing times. Basket risk estimates are not cash-flow-adjusted account performance. Actual account return calculation and broker performance feeds require separate validation with an authenticated test account.
 
-Backend changes are tracked in [platform PR #220](https://github.com/vincelwt/gloomberb-platform/pull/220) and [production follow-up #221](https://github.com/vincelwt/gloomberb-platform/pull/221). No GitHub release is created as part of this audit.
+Backend changes are tracked in [platform PR #220](https://github.com/vincelwt/gloomberb-platform/pull/220) and [production follow-up #221](https://github.com/vincelwt/gloomberb-platform/pull/221). The web terminal receives the merged frontend automatically. Installed CLI/desktop builds need the corresponding release to receive these client fixes, including normalized history handling. No GitHub release is created as part of this audit.

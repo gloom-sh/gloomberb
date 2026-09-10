@@ -27,7 +27,7 @@ import {
   type CloudPricePointPayload,
 } from "../../api-client";
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
-import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory } from "../../utils/price-history";
 import { createProviderMiss } from "../provider-errors";
@@ -125,9 +125,10 @@ function mapCloudPriceHistory(
   if (isStaleCloudResponse(response)) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
-  const { divisor } = resolvePriceHistoryCurrencyUnit(
+  // Cloud history is already in major currency units unless the response
+  // explicitly declares a raw subunit. The exchange alone cannot set its scale.
+  const { divisor } = resolveCurrencyUnit(
     response.currency ?? response.providerMeta?.currency,
-    exchange,
   );
   const points = normalizePriceHistory(
     unwrapRequiredCloudResponse(
