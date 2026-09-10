@@ -54,6 +54,15 @@ export function formatChartLegendValue(value: number, unit: string, unitGroup = 
   }
   if (group.includes("ratio") || trimmed.toLowerCase() === "x") return `${compact}x`;
   if (group.startsWith("derived-unit:")) return `${compact} ${trimmed}`;
+  if (group.split(":")[0] === "currency-total") {
+    const scale = ([[1e12, "T"], [1e9, "B"], [1e6, "M"], [1e3, "K"]] as const)
+      .find(([divisor]) => Math.abs(value) >= divisor);
+    if (scale) {
+      const amount = `${Number((value / scale[0]).toFixed(2))}${scale[1]}`;
+      const prefix = currencyPrefix(trimmed);
+      return prefix ? `${prefix}${amount}` : `${amount} ${trimmed}`.trim();
+    }
+  }
   const fullPrice = formatFullCurrencyValue(value, trimmed);
   if (fullPrice) return fullPrice;
   return trimmed && trimmed.length <= 6 ? `${compact}${trimmed.startsWith("/") ? "" : " "}${trimmed}` : compact;
