@@ -115,8 +115,8 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
         children: [
           { label: "Basic EPS", key: "basicEps", format: "eps" },
           { label: "Diluted EPS", key: "eps", format: "eps" },
-          { label: "Basic Shares", key: "basicShares", format: "compact", growthDirection: LOWER_IS_BETTER },
-          { label: "Shares Out", key: "dilutedShares", format: "compact", growthDirection: LOWER_IS_BETTER },
+          { label: "Avg Basic Shares", key: "basicShares", format: "compact", growthDirection: LOWER_IS_BETTER },
+          { label: "Avg Diluted Shares", key: "dilutedShares", format: "compact", growthDirection: LOWER_IS_BETTER },
         ],
       },
     ],

@@ -222,8 +222,8 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Flex DU12345");
     expect(frame).toContain("Val           1.3k");
     expect(frame).toContain("P&L           +250  (+25.00%)");
-    expect(frame).toContain("Risk / Return");
-    expect(frame).toContain("Sharpe Ratio");
+    expect(frame).toContain("Current-weight basket estimates");
+    expect(frame).toContain("Est. Sharpe");
     expect(frame).toContain("Beta (SPY)");
     expect(frame).toContain("SECTOR");
     expectBlankLineBetween(frame, "Beta (SPY)", "Sector Allocation");
@@ -305,7 +305,7 @@ describe("PortfolioAnalyticsPane", () => {
     const frame = testSetup!.captureCharFrame();
     expect(frame).toContain("Net Liq       125k");
     expect(frame).toContain("Val           113.6k");
-    expect(frame).toContain("Margin Lev    1.1x");
+    expect(frame).toContain("Margin Lev    0.9x");
     expect(frame).toContain("Cash          -50k");
     expect(frame).toContain("Day           +900");
     expect(frame).toContain("P&L           +777");

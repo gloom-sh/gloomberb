@@ -54,7 +54,8 @@ export interface DataTableProps<
   headerScrollRef: RefObject<ScrollBoxRenderable | null>;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
   syncHeaderScroll: () => void;
-  onBodyScrollActivity: () => void;
+  /** Controlled browser scrolling reports its origin; all scrolls still notify pagination. */
+  onBodyScrollActivity: (source?: "programmatic" | "user") => void;
   headerScrollId?: string;
   bodyScrollId?: string;
   getItemKey: (item: T, index: number) => string;

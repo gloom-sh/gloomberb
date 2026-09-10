@@ -16,7 +16,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
-import { convertCurrency, formatPercentRaw } from "../../../utils/format";
+import { convertCurrency, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { CompactRangeBar, PositionTable, QuoteBook, StatGrid } from "./overview/components";
 import { buildOverviewStats, buildPositionRows } from "./overview/model";
 
@@ -83,6 +83,11 @@ export function OverviewTab({
   const quoteBookInline = hasBidAsk && contentWidth >= 68;
   const quoteBookWidth = quoteBookInline ? Math.min(32, Math.max(24, Math.floor(contentWidth * 0.3))) : Math.min(contentWidth, 32);
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
+  const companyName = ticker.metadata.name || quote?.name || "";
+  const marketStateText = quote?.marketState ? t(marketStateLabel(quote.marketState)) : "";
+  const companyNameWidth = Math.max(0, quoteSummaryWidth - (nativePaneChrome ? 6 : 0)
+    - ticker.metadata.ticker.length - (listingVenue ? listingVenue.length + 3 : 0)
+    - (marketStateText ? marketStateText.length + 1 : 0) - 3);
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const hasYearRange = quote?.low52w != null && quote?.high52w != null && quote.high52w > quote.low52w;
   const rangeInline = contentWidth >= 70 && hasDayRange && hasYearRange;
@@ -122,27 +127,27 @@ export function OverviewTab({
     <ScrollBox flexGrow={1} flexBasis={0} scrollY focusable={false}>
       <Box flexDirection="column" paddingX={1} paddingTop={nativePaneChrome ? 1 : 0} paddingBottom={1} gap={1}>
         <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
-          <Box flexDirection="row" width={quoteSummaryWidth}>
+          <Box flexDirection="row" width={quoteSummaryWidth} flexShrink={0} minWidth={0} overflow="hidden">
             <CompanyLogo
               symbol={ticker.metadata.ticker}
               assetCategory={ticker.metadata.assetCategory}
               name={ticker.metadata.name || quote?.name}
             />
             <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-            <Box flexDirection="row">
-              <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
+            <Box flexDirection="row" minWidth={0} overflow="hidden">
+              <Text flexShrink={0} attributes={TextAttributes.BOLD} fg={colors.textBright}>
                 {ticker.metadata.ticker}
               </Text>
-              {(ticker.metadata.name || quote?.name) && (ticker.metadata.name || quote?.name) !== ticker.metadata.ticker && (
+              {companyName && companyName !== ticker.metadata.ticker && companyNameWidth > 0 && (
                 <Text fg={colors.textDim}>
-                  {" "}- {ticker.metadata.name || quote?.name || ""}
+                  {" "}- {truncateToDisplayWidth(companyName, companyNameWidth)}
                 </Text>
               )}
               {listingVenue && (
-                <Text fg={colors.textDim}>{" "}({listingVenue})</Text>
+                <Text flexShrink={0} fg={colors.textDim}>{" "}({listingVenue})</Text>
               )}
               {quote?.marketState && (
-                <Text fg={marketStateColor(quote.marketState)}>
+                <Text flexShrink={0} fg={marketStateColor(quote.marketState)}>
                   {" "}{t(marketStateLabel(quote.marketState))}
                 </Text>
               )}

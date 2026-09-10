@@ -32,9 +32,11 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   TSX: "TSX",
   XTSE: "TSX",
   TSXV: "TSXV",
+  XTSX: "TSXV",
   VAN: "TSXV",
   CN: "CSE",
   CNSX: "CSE",
+  XCNQ: "CSE",
   CSE: "CSE",
   ASX: "ASX",
   XASX: "ASX",
@@ -243,20 +245,26 @@ export function parsePublicTickerKey(value: string): { symbol: string; exchange?
   const normalized = normalizeSymbol(value);
   const separator = normalized.lastIndexOf(":");
   if (separator <= 0 || separator === normalized.length - 1) return { symbol: normalized };
-  return {
-    symbol: normalized.slice(0, separator),
-    exchange: canonicalExchange(normalized.slice(separator + 1)),
-  };
+  const exchange = canonicalExchange(normalized.slice(separator + 1));
+  let symbol = normalized.slice(0, separator);
+  // Older callers could append the same exchange more than once. Repair only
+  // repeated aliases of that exchange, preserving any other symbol content.
+  for (let nested = symbol.lastIndexOf(":"); nested > 0; nested = symbol.lastIndexOf(":")) {
+    if (canonicalExchange(symbol.slice(nested + 1)) !== exchange) break;
+    symbol = symbol.slice(0, nested);
+  }
+  return { symbol, exchange };
 }
 
 export function canonicalTickerKey(symbol: string, exchange?: string): string {
-  const normalizedSymbol = normalizeSymbol(symbol);
-  const canonical = canonicalExchange(exchange);
-  return canonical ? `${normalizedSymbol}:${canonical}` : normalizedSymbol;
+  const parsed = parsePublicTickerKey(symbol);
+  // An explicit listing in the symbol wins over remembered/default metadata.
+  const canonical = parsed.exchange ?? canonicalExchange(exchange);
+  return canonical ? `${parsed.symbol}:${canonical}` : parsed.symbol;
 }
 
 export function publicTickerKey(symbol: string, exchange?: string): string {
-  const normalizedSymbol = normalizeSymbol(symbol);
-  const publicValue = publicExchange(exchange);
-  return publicValue ? `${normalizedSymbol}:${publicValue}` : normalizedSymbol;
+  const parsed = parsePublicTickerKey(symbol);
+  const publicValue = publicExchange(parsed.exchange ?? exchange);
+  return publicValue ? `${parsed.symbol}:${publicValue}` : parsed.symbol;
 }

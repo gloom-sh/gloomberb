@@ -75,8 +75,6 @@ const FLOW_KEYS = new Set<string>([
   "cashDividendsPaid",
   "commonStockDividendPaid",
   "netOtherFinancingCharges",
-  "beginningCashPosition",
-  "endCashPosition",
   "changesInCash",
   "effectOfExchangeRateChanges",
 ]);
@@ -140,21 +138,28 @@ const BALANCE_KEYS = new Set<string>([
   "shareIssued",
   "ordinarySharesNumber",
   "treasurySharesNumber",
-  "basicShares",
-  "dilutedShares",
+  "endCashPosition",
 ]);
 
 function aggregateQuarterlyStatements(
   statements: FinancialStatement[],
   date: string,
 ): FinancialStatement | null {
-  if (statements.length < 4) return null;
+  if (statements.length !== 4) return null;
+  // A provider may return semiannual reports or skip a quarter. Four rows do
+  // not necessarily cover twelve months; never label those sums as TTM.
+  for (let index = 1; index < statements.length; index += 1) {
+    const days = (Date.parse(statements[index]!.date) - Date.parse(statements[index - 1]!.date)) / 86_400_000;
+    if (!Number.isFinite(days) || days < 60 || days > 120) return null;
+  }
+  const currencies = new Set(statements.map((statement) => statement.currency));
+  if (currencies.size > 1) return null;
 
-  const aggregate: FinancialStatement = { date };
+  const aggregate: FinancialStatement = { date, currency: [...currencies][0] };
   for (const key of FLOW_KEYS) {
     const values = statements
       .map((statement) => (statement as unknown as Record<string, unknown>)[key])
-      .filter((value): value is number => typeof value === "number");
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     if (values.length === 4) {
       (aggregate as unknown as Record<string, unknown>)[key] = values.reduce((left, right) => left + right, 0);
     }
@@ -163,20 +168,30 @@ function aggregateQuarterlyStatements(
   const latest = statements[statements.length - 1]!;
   for (const key of BALANCE_KEYS) {
     const value = (latest as unknown as Record<string, unknown>)[key];
-    if (typeof value === "number") {
+    if (typeof value === "number" && Number.isFinite(value)) {
       (aggregate as unknown as Record<string, unknown>)[key] = value;
     }
   }
 
+  const openingCash = statements[0]!.beginningCashPosition;
+  if (openingCash != null && Number.isFinite(openingCash)) aggregate.beginningCashPosition = openingCash;
+
+  // These are average shares over each quarter, unlike balance-sheet shares.
+  for (const key of ["basicShares", "dilutedShares"] as const) {
+    const values = statements.map((statement) => statement[key]);
+    if (values.every((value): value is number => value != null && Number.isFinite(value))) {
+      aggregate[key] = values.reduce((sum, value) => sum + value, 0) / 4;
+    }
+  }
   return aggregate;
 }
 
 export function computeTTM(quarterlyStatements: FinancialStatement[]) {
-  return aggregateQuarterlyStatements(quarterlyStatements.slice(-4), "TTM");
+  return aggregateQuarterlyStatements([...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date)).slice(-4), "TTM");
 }
 
 function computePreviousTtm(quarterlyStatements: FinancialStatement[]) {
-  return aggregateQuarterlyStatements(quarterlyStatements.slice(-8, -4), "prevTTM");
+  return aggregateQuarterlyStatements([...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date)).slice(-8, -4), "prevTTM");
 }
 
 export function buildPreviousStatementMap(
@@ -189,12 +204,21 @@ export function buildPreviousStatementMap(
   const previousMap = new Map<string, FinancialStatement>();
 
   for (let index = 1; index < sourceStatements.length; index += 1) {
-    previousMap.set(sourceStatements[index]!.date, sourceStatements[index - 1]!);
+    const current = sourceStatements[index]!;
+    const previous = sourceStatements[index - 1]!;
+    const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
+    const [minimum, maximum] = period === "annual" ? [300, 430] : [60, 120];
+    if (days < minimum! || days > maximum! || !Number.isFinite(days)) continue;
+    if (current.currency && previous.currency && current.currency !== previous.currency) continue;
+    previousMap.set(current.date, previous);
   }
 
   if (ttm) {
     const previousTtm = computePreviousTtm(quarterlyStatements);
-    if (previousTtm) {
+    const latest = quarterlyStatements.at(-1);
+    const prior = quarterlyStatements.at(-5);
+    const days = latest && prior ? (Date.parse(latest.date) - Date.parse(prior.date)) / 86_400_000 : NaN;
+    if (previousTtm && days >= 300 && days <= 430 && (!ttm.currency || !previousTtm.currency || ttm.currency === previousTtm.currency)) {
       previousMap.set("TTM", previousTtm);
     }
   }

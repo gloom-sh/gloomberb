@@ -70,10 +70,15 @@ export interface QuoteContribution extends Quote {
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
 export interface Fundamentals {
+  /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
+  financialCurrency?: string;
+  /** Provider-reported issuer market cap in the quote currency; never inferred from share counts. */
+  marketCap?: number;
   trailingPE?: number;
   forwardPE?: number;
   pegRatio?: number;
   enterpriseValue?: number;
+  enterpriseToRevenue?: number;
   operatingCashFlow?: number;
   freeCashFlow?: number;
   dividendYield?: number;
@@ -219,6 +224,8 @@ export interface CompanyProfile {
 
 export interface FinancialStatement {
   date: string;
+  /** Reporting currency for monetary statement fields (per-share values use reported shares). */
+  currency?: string;
   /** Earliest date on which the complete row was publicly available, when known. */
   availableAt?: string;
   /** Per-field publication dates used by point-in-time charts and calculations. */
@@ -374,6 +381,7 @@ export interface PricePoint {
 }
 
 export interface TickerFinancials {
+  financialCurrency?: string;
   quote?: Quote;
   quoteContributions?: QuoteContributionMap;
   fundamentals?: Fundamentals;

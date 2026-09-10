@@ -47,6 +47,12 @@ describe("kelly sizing model", () => {
     expectClose(result.addTrimValue, 4_000, 0.01);
     expectClose(result.estimatedUnits ?? 0, 20, 0.01);
     expectClose(result.riskFraction, 0.0072, 0.0001);
+
+    const unavailable = calculateKellySizing({ mode: "binary", draft, bankroll: 100_000, currentValue: Number.NaN, price: 200 });
+    expect(unavailable.recommendationLabel).toBe("Unavailable");
+    expect(unavailable.addTrimValue).toBe(0);
+    expect(unavailable.estimatedUnits).toBeNull();
+    expect(unavailable.warnings).toContain("Current holding value unavailable; check FX rates.");
   });
 
   test("returns zero size when there is no positive edge", () => {

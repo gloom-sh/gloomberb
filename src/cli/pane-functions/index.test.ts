@@ -42,6 +42,11 @@ function capabilityFor(templateId: string) {
 }
 
 describe("pane function CLI args", () => {
+  test("inline options do not consume the next positional instrument", () => {
+    expect(parsePaneFunctionArgs(["GP", "--range=1M", "ES=F"])).toMatchObject({
+      target: "GP", arg: "ES=F", options: { range: "1M" },
+    });
+  });
   test("parses target, argument, output, size, and pane options", () => {
     const parsed = parsePaneFunctionArgs([
       "FA",

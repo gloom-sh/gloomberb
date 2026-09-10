@@ -11,6 +11,8 @@ import {
   computeDatedBeta,
   computeDatedReturns,
   computeWeightedPortfolioReturns,
+  syntheticAccountUnsupportedReason,
+  syntheticPositionUnsupportedReason,
   type WeightedReturnSeries,
 } from "../plugins/builtin/analytics/metrics";
 import {
@@ -373,49 +375,46 @@ function recentPriceHistory(history: PricePoint[], days: number): PricePoint[] {
   });
 }
 
-function oneYearReturnFromSeries(series: WeightedReturnSeries[]): number | null {
-  const returns = computeWeightedPortfolioReturns(series);
-  if (returns.length === 0) return null;
-  const cumulative = returns.reduce((acc, point) => (
-    Number.isFinite(point.value) ? acc * (1 + point.value) : acc
-  ), 1) - 1;
-  return Number.isFinite(cumulative) ? cumulative : null;
-}
-
 function collectAnalyticsByPortfolio(
   config: AppConfig,
   tickers: Map<string, TickerRecord>,
   financials: Map<string, TickerFinancials>,
   exchangeRates: Map<string, number>,
+  brokerAccounts: Record<string, BrokerAccount[]>,
 ) {
   const output: Record<string, Record<string, unknown>> = {};
   const spyReturns = computeDatedReturns(recentPriceHistory(financials.get("SPY")?.priceHistory ?? [], 366));
   for (const portfolio of config.portfolios) {
-    let returnWeight = 0;
-    let weightedReturn = 0;
+    const account = portfolio.brokerInstanceId && portfolio.brokerAccountId
+      ? brokerAccounts[portfolio.brokerInstanceId]?.find((entry) => entry.accountId === portfolio.brokerAccountId)
+      : undefined;
+    let unsupported = !!syntheticAccountUnsupportedReason(account);
     const datedReturnSeries: WeightedReturnSeries[] = [];
     for (const ticker of tickers.values()) {
       const tickerFinancials = financials.get(ticker.metadata.ticker);
       const portfolioPositions = ticker.metadata.positions.filter((position) => position.portfolio === portfolio.id);
-      if (portfolioPositions.length === 0 && !ticker.metadata.portfolios.includes(portfolio.id)) continue;
+      if (portfolioPositions.length === 0) continue;
+      unsupported ||= !!syntheticPositionUnsupportedReason(
+        ticker, tickerFinancials?.quote?.currency || ticker.metadata.currency || config.baseCurrency, portfolio.id,
+      );
       for (const position of portfolioPositions) {
+        if (position.shares === 0) continue;
         const value = positionValueBase(position, tickerFinancials, config.baseCurrency, exchangeRates);
-        if (value != null) {
-          const return1Y = tickerFinancials?.fundamentals?.return1Y;
-          if (typeof return1Y === "number" && Number.isFinite(return1Y)) {
-            returnWeight += value;
-            weightedReturn += return1Y * value;
-          }
-          const returns = computeDatedReturns(recentPriceHistory(tickerFinancials?.priceHistory ?? [], 366));
-          if (returns.length >= 10) datedReturnSeries.push({ weight: value, returns });
+        if (value == null || !Number.isFinite(value)) {
+          unsupported = true;
+          continue;
         }
+        const returns = computeDatedReturns(recentPriceHistory(tickerFinancials?.priceHistory ?? [], 366));
+        if (returns.length >= 10) datedReturnSeries.push({ weight: value, returns });
+        else unsupported = true;
       }
     }
-    const portfolioReturns = computeWeightedPortfolioReturns(datedReturnSeries);
+    const portfolioReturns = unsupported ? [] : computeWeightedPortfolioReturns(datedReturnSeries);
     const previewAnalytics = getSyncedProfileAnalytics(portfolio.id);
     output[portfolio.id] = {
-      oneYearReturn: previewAnalytics?.oneYearReturn
-        ?? (returnWeight > 0 ? weightedReturn / returnWeight : oneYearReturnFromSeries(datedReturnSeries)),
+      // A weighted history of today's holdings is not the investor's actual
+      // one-year account return. Only preserve an explicitly supplied preview.
+      oneYearReturn: previewAnalytics?.oneYearReturn ?? null,
       spyBeta: previewAnalytics?.spyBeta
         ?? (
           portfolioReturns.length > 0 && spyReturns.length > 0
@@ -482,7 +481,7 @@ function collectCoreCollectionsPayload(
     ),
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
-    analyticsByPortfolio: collectAnalyticsByPortfolio(config, tickers, financials, exchangeRates),
+    analyticsByPortfolio: collectAnalyticsByPortfolio(config, tickers, financials, exchangeRates, brokerAccounts),
     accountsByPortfolio: collectAccountsByPortfolio(config, brokerAccounts),
     tickers: records,
   };

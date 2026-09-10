@@ -59,7 +59,7 @@ async function buildPaneInstance(
   const fallbackSymbol = headlessArgKind === "free-text" || headlessArgKind === "none"
     ? null
     : headlessArgKind === "tickers" || headlessArgKind === "symbol-list"
-      ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\n]/)[0] ?? ""))
+      ? normalizeTickerInput(null, cleanTickerInput(target.split(/[,\s]+/)[0] ?? ""))
       : shortcutArgKind === "text"
         ? null
         : normalizeTickerInput(null, cleanTickerInput(target));

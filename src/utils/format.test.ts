@@ -1,6 +1,26 @@
 import { describe, expect, test } from "bun:test";
-import { displayWidth, formatTimeAgo, padTo, truncateToDisplayWidth } from "./format";
+import { convertCurrency, displayWidth, formatCompact, formatCurrency, formatNumber, formatPercent, formatPercentRaw, formatTimeAgo, padTo, truncateToDisplayWidth } from "./format";
 import { normalizeTimestamp } from "./timestamp";
+
+test("currency conversion never presents a missing or invalid FX leg as parity", () => {
+  const rates = new Map([["EUR", 1.2], ["JPY", 0.008]]);
+  expect(convertCurrency(100, "EUR", "USD", rates)).toBe(120);
+  expect(convertCurrency(120, "USD", "EUR", rates)).toBe(100);
+  expect(convertCurrency(100, "EUR", "JPY", rates)).toBe(15_000);
+  expect(convertCurrency(100, "EUR", "EUR", new Map())).toBe(100);
+  expect(convertCurrency(0, "EUR", "USD", new Map())).toBe(0);
+
+  for (const invalidRate of [undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    const invalid = invalidRate === undefined ? new Map<string, number>() : new Map([["EUR", invalidRate]]);
+    expect(convertCurrency(100, "EUR", "USD", invalid)).toBeNaN();
+    expect(convertCurrency(100, "USD", "EUR", invalid)).toBeNaN();
+  }
+  for (const value of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    for (const format of [formatCurrency, formatCompact, formatNumber, formatPercent, formatPercentRaw]) {
+      expect(format(value)).toBe("—");
+    }
+  }
+});
 
 describe("formatTimeAgo", () => {
   test("handles UTC ISO timestamps with explicit offsets", () => {

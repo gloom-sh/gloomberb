@@ -19,6 +19,8 @@ export interface PortfolioSummaryTotals {
   unrealizedPnlPct: number;
   avgWatchlistChange: number;
   watchlistCount: number;
+  /** Currency pairs preventing the full portfolio from being valued. */
+  unavailableConversions?: string[];
 }
 
 export function calculatePortfolioSummaryTotals(
@@ -37,6 +39,12 @@ export function calculatePortfolioSummaryTotals(
   let hasPositions = false;
   let watchlistChangeSum = 0;
   let watchlistCount = 0;
+  const unavailableConversions = new Set<string>();
+  const toBase = (value: number, currency: string) => {
+    const converted = convertCurrency(value, currency, baseCurrency, exchangeRates);
+    if (Number.isFinite(value) && !Number.isFinite(converted)) unavailableConversions.add(`${currency}/${baseCurrency}`);
+    return converted;
+  };
 
   for (const ticker of tickers) {
     const financials = financialsMap.get(ticker.metadata.ticker);
@@ -55,8 +63,8 @@ export function calculatePortfolioSummaryTotals(
     const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency);
     const { positionCurrency, totalPriceUnits, totalCost } = positionMetrics;
     const brokerFallbackMktValue = resolveBrokerFallbackMarketValue(positionMetrics);
-    const toBaseQuote = (value: number) => convertCurrency(value, quoteCurrency, baseCurrency, exchangeRates);
-    const toBasePosition = (value: number) => convertCurrency(value, positionCurrency, baseCurrency, exchangeRates);
+    const toBaseQuote = (value: number) => toBase(value, quoteCurrency);
+    const toBasePosition = (value: number) => toBase(value, positionCurrency);
 
     if (quote && activeQuote && totalPriceUnits !== 0) {
       hasPositions = true;
@@ -96,5 +104,6 @@ export function calculatePortfolioSummaryTotals(
     unrealizedPnlPct,
     avgWatchlistChange,
     watchlistCount,
+    ...(unavailableConversions.size > 0 ? { unavailableConversions: [...unavailableConversions].sort() } : {}),
   };
 }

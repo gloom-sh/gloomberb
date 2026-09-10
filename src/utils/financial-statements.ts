@@ -1,6 +1,6 @@
 import type { FinancialStatement } from "../types/financials";
 
-const STATEMENT_METADATA_KEYS = new Set(["date", "availableAt", "fieldAvailability"]);
+const STATEMENT_METADATA_KEYS = new Set(["date", "currency", "availableAt", "fieldAvailability"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 function metricKeys(...rows: Array<FinancialStatement | undefined>): string[] {
@@ -77,6 +77,8 @@ export function mergeFinancialStatementRows(
   const mergedRows = primaryRows.map((row) => {
     const fallback = matchFallbackRow(row, fallbackRows, usedFallbackRows);
     if (fallback) usedFallbackRows.add(fallback);
+    // Keep the preferred report intact when providers use different reporting currencies.
+    if (row.currency && fallback?.currency && row.currency !== fallback.currency) return row;
     const merged = {
       ...fallback,
       ...row,

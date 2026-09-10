@@ -222,6 +222,9 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
       { id: "summary", parts: [{ text: footerSummary, tone: "muted" as const }] },
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+      ...(!loading && analysis && analysis.returns.length < correlationWindow
+        ? [{ id: "correlation-history", parts: [{ text: `Correlation needs ${correlationWindow} shared returns; ${analysis.returns.length} available`, tone: "warning" as const }] }]
+        : []),
     ],
     hints: [
       { id: "range", key: "t", label: "ime range", onPress: cycleRange },
@@ -232,6 +235,8 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   }), [
     cycleRange,
     cycleWindow,
+    analysis,
+    correlationWindow,
     error,
     footerSummary,
     loading,
@@ -263,7 +268,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
         <RelationshipToggle checked={showCorrelation} label="Correlation" onPress={toggleCorrelation} />
         <RelationshipToggle checked={showRegression} label="Fit line" onPress={toggleRegression} />
         <Button label={`Range ${range}`} variant="ghost" onPress={cycleRange} />
-        <Button label={`Window ${correlationWindow}d`} variant="ghost" onPress={cycleWindow} />
+        <Button label={`Window ${correlationWindow} obs`} variant="ghost" onPress={cycleWindow} />
       </Box>
       <Box height={1} flexDirection="row" gap={2}>
         {priceSeries.map((series) => (
@@ -307,7 +312,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
           cursorDate={cursorDate}
           showTimeAxis
           timeAxisColor={colors.textDim}
-          yAxisLabel={`Rolling corr (${correlationWindow}d)`}
+          yAxisLabel={`Rolling corr (${correlationWindow} obs)`}
           yAxisColor={colors.textDim}
           formatYAxisValue={(value) => formatNumber(value, 2)}
           onCursorDateChange={selectCursorDate}

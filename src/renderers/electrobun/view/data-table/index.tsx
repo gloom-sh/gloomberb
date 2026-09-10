@@ -139,8 +139,13 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     emitVisibleRange();
   }, [emitVisibleRange, onBodyScrollActivity]);
   const scheduleBodyScrollActivity = useRafCallback(handleBodyScrollActivity);
+  const scheduleControlledScrollActivity = useRafCallback(() => {
+    onBodyScrollActivity("programmatic");
+    emitVisibleRange();
+  });
   const scheduleVisibleRangeMeasure = useRafCallback(emitVisibleRange);
   const lastAppliedScrollRequestRef = useRef<string | null>(null);
+  const controlledScrollOffsetRef = useRef<{ top: number; left: number } | null>(null);
 
   const rowVirtualizer = useVirtualizer({
     count: items.length,
@@ -225,7 +230,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     }
     if (nextTop !== currentTop) {
       element.scrollTop = nextTop * WEB_CELL_HEIGHT;
-      scheduleBodyScrollActivity();
+      // A controlled scroll is navigation requested by the app. Reporting it
+      // as user activity makes panes such as options stop following the spot
+      // price before the user has touched the table. Remember the actual
+      // (possibly clamped) offset to recognize the ensuing native scroll event.
+      controlledScrollOffsetRef.current = { top: element.scrollTop, left: element.scrollLeft };
+      scheduleControlledScrollActivity();
     }
     lastAppliedScrollRequestRef.current = scrollRequestKey;
     scheduleVisibleRangeMeasure();
@@ -234,7 +244,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     scrollToIndex,
     scrollToIndexAlign,
     scrollToIndexVersion,
-    scheduleBodyScrollActivity,
+    scheduleControlledScrollActivity,
     scheduleVisibleRangeMeasure,
   ]);
 
@@ -301,13 +311,23 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
           focusPane();
           onTableMouseDown?.({});
         }}
-        onScroll={() => {
+        onScroll={(event) => {
           markScrollbarActive();
+          const controlledOffset = controlledScrollOffsetRef.current;
+          controlledScrollOffsetRef.current = null;
+          if (controlledOffset
+            && event.currentTarget.scrollTop === controlledOffset.top
+            && event.currentTarget.scrollLeft === controlledOffset.left) {
+            scheduleVisibleRangeMeasure();
+            return;
+          }
           scheduleBodyScrollActivity();
         }}
         onWheel={() => {
+          controlledScrollOffsetRef.current = null;
           markScrollbarActive();
         }}
+        onTouchMove={() => { controlledScrollOffsetRef.current = null; }}
       >
         <div
           data-gloom-role="data-table-scroll-content"

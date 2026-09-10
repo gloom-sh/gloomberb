@@ -169,7 +169,11 @@ export async function loadYahooTickerFinancials(
   const revenue = latest("annualTotalRevenue");
   const netIncome = latest("annualNetIncome");
 
+  const annualStatements = buildYahooStatements(metrics, "annual");
+  const quarterlyStatements = buildYahooStatements(metrics, "quarterly");
+  const financialCurrency = annualStatements.at(-1)?.currency ?? quarterlyStatements.at(-1)?.currency;
   const fundamentals: Fundamentals = {
+    financialCurrency,
     trailingPE: latest("trailingPeRatio"),
     forwardPE: latest("trailingForwardPeRatio"),
     pegRatio: latest("trailingPegRatio"),
@@ -180,8 +184,8 @@ export async function loadYahooTickerFinancials(
     revenue,
     netIncome,
     eps: latest("annualDilutedEPS"),
-    operatingMargin: revenue && latest("annualEBITDA") != null
-      ? latest("annualEBITDA")! / revenue
+    operatingMargin: revenue && latest("annualOperatingIncome") != null
+      ? latest("annualOperatingIncome")! / revenue
       : undefined,
     profitMargin: revenue && netIncome != null ? netIncome / revenue : undefined,
     return1Y: computeYahooReturn(history, 365),
@@ -193,8 +197,9 @@ export async function loadYahooTickerFinancials(
     quote,
     fundamentals,
     profile,
-    annualStatements: buildYahooStatements(metrics, "annual"),
-    quarterlyStatements: buildYahooStatements(metrics, "quarterly"),
+    financialCurrency,
+    annualStatements,
+    quarterlyStatements,
     priceHistory: history,
   };
 }

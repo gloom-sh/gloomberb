@@ -1,7 +1,7 @@
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { colors, priceColor } from "../../../theme/colors";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
-import type { BrokerPortfolioPerformance } from "../../../types/trading";
+import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/trading";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/relative-time";
@@ -12,16 +12,14 @@ import type { ColumnContext, PortfolioSummaryTotals } from "../portfolio-list/me
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
 import { performancePointValue } from "./broker-performance";
 import {
-  betaColor,
-  betaLabel,
   formatReturn,
   formatSignedCompact,
-  sharpeColor,
-  sharpeLabel,
 } from "./display";
 import {
   computeDatedReturns,
   computeWeightedPortfolioReturns,
+  syntheticAccountUnsupportedReason,
+  syntheticPositionUnsupportedReason,
   type DatedReturn,
   type WeightedReturnSeries,
 } from "./metrics";
@@ -59,8 +57,8 @@ function finiteNumber(value: unknown): value is number {
 }
 
 function formatMarginLeverage(netLiquidation: number | undefined, totalMarketValue: number): string | null {
-  if (!finiteNumber(netLiquidation) || !finiteNumber(totalMarketValue) || totalMarketValue <= 0) return null;
-  return `${(netLiquidation / totalMarketValue).toFixed(1)}x`;
+  if (!finiteNumber(netLiquidation) || netLiquidation <= 0 || !finiteNumber(totalMarketValue) || totalMarketValue < 0) return null;
+  return `${(totalMarketValue / netLiquidation).toFixed(1)}x`;
 }
 
 export function buildPortfolioChartTargets(portfolioTickers: TickerRecord[]): PortfolioChartTarget[] {
@@ -84,6 +82,9 @@ export interface PortfolioReturnSeriesResult {
   coverage: number;
   /** Holdings dropped because their history was missing, still loading, or too short. */
   missingCount: number;
+  /** Holdings with no reliable base-currency value, so weights cannot be determined. */
+  unvaluedCount: number;
+  unsupportedReason: string | null;
 }
 
 export function buildPortfolioReturnSeries({
@@ -91,18 +92,28 @@ export function buildPortfolioReturnSeries({
   chartEntries,
   financials,
   columnContext,
+  account,
 }: {
   chartTargets: PortfolioChartTarget[];
   chartEntries: ChartEntryLookup;
   financials: Map<string, TickerFinancials>;
   columnContext: ColumnContext;
+  account?: BrokerAccount | null;
 }): PortfolioReturnSeriesResult {
   const weightedSeries: WeightedReturnSeries[] = [];
   let coveredValue = 0;
   let totalValue = 0;
   let missingCount = 0;
+  let unvaluedCount = 0;
+  let unsupportedReason = syntheticAccountUnsupportedReason(account);
   for (const { ticker, request } of chartTargets) {
+    unsupportedReason ??= syntheticPositionUnsupportedReason(
+      ticker,
+      financials.get(ticker.metadata.ticker)?.quote?.currency || ticker.metadata.currency || columnContext.baseCurrency,
+      columnContext.activeTab,
+    );
     const value = getPortfolioPositionValue(ticker, financials.get(ticker.metadata.ticker), columnContext);
+    if (value == null) unvaluedCount += 1;
     const weight = value == null ? 0 : Math.abs(value);
     totalValue += weight;
 
@@ -121,9 +132,11 @@ export function buildPortfolioReturnSeries({
 
   const returns = computeWeightedPortfolioReturns(weightedSeries);
   return {
-    returns: returns.length > 0 ? returns : null,
+    returns: !unsupportedReason && unvaluedCount === 0 && returns.length > 0 ? returns : null,
     coverage: totalValue > 0 ? coveredValue / totalValue : chartTargets.length === 0 ? 1 : 0,
     missingCount,
+    unvaluedCount,
+    unsupportedReason,
   };
 }
 
@@ -156,6 +169,14 @@ export function buildAnalyticsSummaryRows({
   const accountFreshness = formatAccountFreshness(account);
   const totalMarketValue = resolvePortfolioMarketValue(portfolioStats, account, convertAccountValue);
 
+  if (portfolioStats.unavailableConversions?.length || (account && !Number.isFinite(convertAccountValue(1)))) {
+    rows.push({
+      id: "fx-unavailable", label: "FX", value: "Unavailable",
+      detail: portfolioStats.unavailableConversions?.join(", ") ?? account?.currency,
+      color: colors.warning,
+    });
+  }
+
   if (account?.netLiquidation != null) {
     rows.push({
       id: "net-liquidation",
@@ -172,7 +193,10 @@ export function buildAnalyticsSummaryRows({
     color: colors.text,
   });
 
-  const marginLeverage = formatMarginLeverage(account?.netLiquidation, totalMarketValue);
+  const marginLeverage = formatMarginLeverage(
+    account?.netLiquidation == null ? undefined : convertAccountValue(account.netLiquidation),
+    totalMarketValue,
+  );
   if (marginLeverage) {
     rows.push({
       id: "margin-leverage",
@@ -229,7 +253,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "settled-cash",
       label: "Settled",
-      value: formatCompact(account.settledCash),
+      value: formatCompact(convertAccountValue(account.settledCash)),
       color: colors.text,
     });
   }
@@ -237,7 +261,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "available-funds",
       label: "Avail",
-      value: formatCompact(account.availableFunds),
+      value: formatCompact(convertAccountValue(account.availableFunds)),
       color: colors.text,
     });
   }
@@ -245,7 +269,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "excess-liquidity",
       label: "Excess",
-      value: formatCompact(account.excessLiquidity),
+      value: formatCompact(convertAccountValue(account.excessLiquidity)),
       color: colors.text,
     });
   }
@@ -253,7 +277,7 @@ export function buildAnalyticsSummaryRows({
     rows.push({
       id: "buying-power",
       label: "BP",
-      value: formatCompact(account.buyingPower),
+      value: formatCompact(convertAccountValue(account.buyingPower)),
       color: colors.text,
     });
   }
@@ -291,46 +315,30 @@ export function buildAnalyticsRiskRows({
   beta,
   coverage = 1,
   missingCount = 0,
+  unvaluedCount = 0,
+  unsupportedReason = null,
 }: {
   sharpe: number | null;
   beta: number | null;
   coverage?: number;
   missingCount?: number;
+  unvaluedCount?: number;
+  unsupportedReason?: string | null;
 }): AnalyticsMetricRow[] {
+  const unavailable = unvaluedCount > 0
+    ? `${unvaluedCount} holding${unvaluedCount === 1 ? "" : "s"} unvalued; check prices and FX`
+    : unsupportedReason;
   const partial = formatRiskCoverage(coverage, missingCount);
-  const partialSuffix = partial ? ` - partial: ${partial}` : "";
   return [
-    sharpe !== null
-      ? {
-        id: "sharpe",
-        label: "Sharpe Ratio",
-        value: formatNumber(sharpe, 2),
-        detail: `${sharpeLabel(sharpe)}${partialSuffix}`,
-        color: partial ? colors.textMuted : sharpeColor(sharpe),
-      }
-      : {
-        id: "sharpe",
-        label: "Sharpe Ratio",
-        value: "—",
-        detail: partial ?? "insufficient data",
-        color: colors.textMuted,
-      },
-    beta !== null
-      ? {
-        id: "beta",
-        label: "Beta (SPY)",
-        value: formatNumber(beta, 2),
-        detail: `${betaLabel(beta)}${partialSuffix}`,
-        color: partial ? colors.textMuted : betaColor(beta),
-      }
-      : {
-        id: "beta",
-        label: "Beta (SPY)",
-        value: "—",
-        detail: partial ?? "insufficient data",
-        color: colors.textMuted,
-      },
-  ];
+    { id: "sharpe", label: "Est. Sharpe", value: sharpe, method: "Current weights; price returns; 5% Rf, 252 sessions" },
+    { id: "beta", label: "Est. Beta (SPY)", value: beta, method: "Current weights; excludes cash, fees and trades" },
+  ].map((row) => ({
+    id: row.id,
+    label: row.label,
+    value: unavailable ? "—" : formatNumber(row.value ?? undefined, 2),
+    detail: unavailable ?? (row.value == null ? "Insufficient history for basket estimate" : `${row.method}${partial ? `; partial: ${partial}` : ""}`),
+    color: colors.textMuted,
+  }));
 }
 
 export function resolvePerformancePalette(

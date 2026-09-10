@@ -52,15 +52,16 @@ export const QUARTERLY_SNAPSHOT_FIELDS: readonly NumericStatementField[] = [
   "cashCashEquivalentsAndShortTermInvestments",
   "totalDebt",
   "totalEquity",
-  "basicShares",
-  "dilutedShares",
   "shareIssued",
   "ordinarySharesNumber",
 ];
 
+const QUARTERLY_AVERAGE_FIELDS: readonly NumericStatementField[] = ["basicShares", "dilutedShares"];
+
 const NUMERIC_STATEMENT_FIELDS: readonly NumericStatementField[] = [
   ...QUARTERLY_FLOW_FIELDS,
   ...QUARTERLY_SNAPSHOT_FIELDS,
+  ...QUARTERLY_AVERAGE_FIELDS,
 ];
 
 const FUNDAMENTAL_IDS = new Set([
@@ -203,13 +204,14 @@ function periodDateSource(statements: readonly InternalStatement[]): InternalSta
 
 function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): InternalStatement {
   const dateSource = periodDateSource(statements);
-  const merged: InternalStatement = { date: dateSource.date };
+  const merged: InternalStatement = { date: dateSource.date, currency: dateSource.currency };
+  const compatibleStatements = statements.filter((statement) => statement.currency === dateSource.currency);
   const derivedFields: NumericStatementField[] = [];
   const fieldAvailability: Record<string, string> = {};
   const record = merged as unknown as Record<string, unknown>;
 
   for (const field of NUMERIC_STATEMENT_FIELDS) {
-    const candidates = statements.flatMap((statement): StatementFieldCandidate[] => {
+    const candidates = compatibleStatements.flatMap((statement): StatementFieldCandidate[] => {
       const value = statementNumber(statement, field);
       if (value === null) return [];
       return [{
@@ -268,6 +270,7 @@ function precedingQuarterInputs(
   const annualCategory = periodCategory(annualStatement.date, "quarterly");
   const byCategory = new Map<string, PrecedingQuarterInput>();
   for (const statement of quarterlyStatements) {
+    if (statement.currency !== annualStatement.currency) continue;
     const time = statementTime(statement);
     if (!Number.isFinite(time) || time >= annualTime || annualTime - time > 370 * DAY_MS) continue;
     const category = periodCategory(statement.date, "quarterly");
@@ -305,16 +308,20 @@ export function deriveQuarterlyStatements(
   const byDate = new Map(mergedQuarterly.map((statement) => [statement.date, { ...statement }]));
 
   for (const annualStatement of mergeStatementsByPeriod(annualStatements)) {
-    let target: InternalStatement = byDate.get(annualStatement.date) ?? { date: annualStatement.date };
+    let target: InternalStatement = byDate.get(annualStatement.date) ?? { date: annualStatement.date, currency: annualStatement.currency };
+    if (target.currency !== annualStatement.currency) continue;
     let changed = false;
 
-    for (const field of QUARTERLY_FLOW_FIELDS) {
+    for (const field of [...QUARTERLY_FLOW_FIELDS, ...QUARTERLY_AVERAGE_FIELDS]) {
       if (statementNumber(target, field) !== null) continue;
       const annualValue = statementNumber(annualStatement, field);
       if (annualValue === null) continue;
       const previousInputs = precedingQuarterInputs(mergedQuarterly, annualStatement, field);
       if (previousInputs.length !== 3) continue;
-      const derived = annualValue - previousInputs.reduce((sum, input) => sum + input.value, 0);
+      const inputTimes = [...previousInputs.map((input) => input.time), statementTime(annualStatement)];
+      if (inputTimes.some((time, index) => index > 0 && (time - inputTimes[index - 1]! < 60 * DAY_MS || time - inputTimes[index - 1]! > 120 * DAY_MS))) continue;
+      const annualTotal = annualValue * (QUARTERLY_AVERAGE_FIELDS.includes(field) ? 4 : 1);
+      const derived = annualTotal - previousInputs.reduce((sum, input) => sum + input.value, 0);
       if (!Number.isFinite(derived)) continue;
       const availableAt = latestDateString([
         annualStatement.fieldAvailability?.[field] ?? annualStatement.availableAt,
@@ -351,25 +358,27 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
   const result: InternalStatement[] = [];
   for (let index = 3; index < sorted.length; index += 1) {
     const window = sorted.slice(index - 3, index + 1);
-    const firstTime = statementTime(window[0]!);
-    const lastTime = statementTime(window.at(-1)!);
-    if (!Number.isFinite(firstTime) || !Number.isFinite(lastTime) || lastTime - firstTime > 400 * DAY_MS) {
+    const times = window.map(statementTime);
+    if (new Set(window.map((statement) => statement.currency)).size > 1
+      || times.some((time, index) => !Number.isFinite(time) || (index > 0 && (time - times[index - 1]! < 60 * DAY_MS || time - times[index - 1]! > 120 * DAY_MS)))) {
       continue;
     }
 
     const latest = window.at(-1)!;
     const ttm: InternalStatement = {
       date: latest.date,
+      currency: latest.currency,
       availableAt: latestDateString(window.map((statement) => statement.availableAt)),
       fieldAvailability: {},
       __timeSeriesTtm: true,
       __timeSeriesDerivedFields: [],
     };
 
-    for (const field of QUARTERLY_FLOW_FIELDS) {
+    for (const field of [...QUARTERLY_FLOW_FIELDS, ...QUARTERLY_AVERAGE_FIELDS]) {
       const values = window.map((statement) => statementNumber(statement, field));
       if (!values.every((value): value is number => value !== null)) continue;
-      (ttm as unknown as Record<string, unknown>)[field] = values.reduce((sum, value) => sum + value, 0);
+      (ttm as unknown as Record<string, unknown>)[field] = values.reduce((sum, value) => sum + value, 0)
+        / (QUARTERLY_AVERAGE_FIELDS.includes(field) ? 4 : 1);
       ttm.__timeSeriesDerivedFields!.push(field);
       const availableAt = latestDateString(window.map((statement) => (
         statement.fieldAvailability?.[field] ?? statement.availableAt
@@ -627,6 +636,7 @@ function historicalValuation(
   statement: FinancialStatement,
   metric: string,
 ): number | null {
+  if (statement.currency && financials.quote?.currency && statement.currency !== financials.quote.currency) return null;
   const priceDate = metricAvailability(statement, metric) ?? statement.date;
   const price = priceAtOrBefore(financials.priceHistory, priceDate);
   return price === null ? null : valuationAtPrice(statement, metric, price);
@@ -692,6 +702,7 @@ function currentDerivedValuationPoint(
   const quoteTime = quoteDate.getTime();
   const statement = statements
     .flatMap((candidate) => {
+      if (candidate.currency && quote.currency && candidate.currency !== quote.currency) return [];
       const availableAt = validDate(metricAvailability(candidate, metric) ?? candidate.date);
       const observedAt = validDate(candidate.date);
       if (!availableAt || !observedAt || availableAt.getTime() > quoteTime) return [];

@@ -307,7 +307,7 @@ export function calculateKellySizing({
   price?: number | null;
 }): KellySizingResult {
   const warnings: string[] = [];
-  if (!finite(bankroll) || bankroll <= 0) {
+  if (!finite(bankroll) || bankroll <= 0 || !finite(currentValue)) {
     return {
       mode,
       bankroll: 0,
@@ -326,7 +326,7 @@ export function calculateKellySizing({
       riskFraction: 0,
       expectedReturn: 0,
       expectedLogGrowth: 0,
-      warnings: ["No positive bankroll available."],
+      warnings: [!finite(currentValue) ? "Current holding value unavailable; check FX rates." : "No positive bankroll available."],
       clipReasons: [],
       recommendationLabel: "Unavailable",
     };

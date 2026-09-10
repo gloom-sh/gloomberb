@@ -201,6 +201,12 @@ export function buildPortfolioSummarySegments({
   const accountMetrics = resolvePortfolioAccountMetrics(totals, accountState?.account, convertAccountValue);
   const totalMarketValue = resolvePortfolioMarketValue(totals, accountState?.account, convertAccountValue);
 
+  if (totals.unavailableConversions?.length || (accountState && !Number.isFinite(convertAccountValue(1)))) {
+    candidates.push(createSummarySegment("fx-unavailable", [
+      { text: "FX unavailable", tone: "muted", color: colors.warning },
+    ]));
+  }
+
   if (accountState?.account.netLiquidation != null) {
     candidates.push(createSummarySegment("netliq", [
       { text: "Net Liq", tone: "label" },

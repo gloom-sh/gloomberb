@@ -139,6 +139,7 @@ export const YAHOO_TIMESERIES_TYPES = {
 
 type YahooTimeseriesPoint = {
   asOfDate: string;
+  currency?: string;
   periodType?: string;
   value: number;
 };
@@ -155,6 +156,7 @@ export function parseYahooTimeseries(results: Array<Record<string, any>>): Yahoo
     parsed[type] = (Array.isArray(result[key]) ? result[key] : [])
       .map((point: any) => ({
         asOfDate: point?.asOfDate,
+        currency: typeof point?.currencyCode === "string" ? point.currencyCode : undefined,
         periodType: point?.periodType,
         value: point?.reportedValue?.raw,
       }))
@@ -193,6 +195,8 @@ export function buildYahooStatements(
   const assign = (type: string, field: keyof FinancialStatement) => {
     for (const point of metrics[type] || []) {
       const row = byDate.get(point.asOfDate) || { date: point.asOfDate };
+      if (row.currency && point.currency && row.currency !== point.currency) continue;
+      if (point.currency) row.currency = point.currency;
       (row as any)[field] = point.value;
       byDate.set(point.asOfDate, row);
     }

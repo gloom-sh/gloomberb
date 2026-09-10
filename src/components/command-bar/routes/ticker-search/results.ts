@@ -1,9 +1,11 @@
 import type { TickerRecord } from "../../../../types/ticker";
 import {
   createLocalTickerSearchCandidates,
+  findExactTickerSearchMatch,
   type TickerSearchCandidate,
 } from "../../../../tickers/search";
 import type { ResultItem } from "../../list/model";
+import { isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
 
@@ -47,14 +49,13 @@ export function formatInstrumentBadge(
 }
 
 export function normalizeCommandTickerSearchText(value: string): string {
-  return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
+  const normalized = value.trim().toUpperCase();
+  return isExplicitMarketSymbol(normalized) ? normalized : normalized.replace(/[^A-Z0-9]+/g, "");
 }
 
 function isExactTickerResultMatch(item: ResultItem, query: string): boolean {
   if (item.kind !== "ticker" && item.kind !== "search") return false;
-  const normalizedQuery = normalizeCommandTickerSearchText(query);
-  if (!normalizedQuery) return false;
-  return normalizeCommandTickerSearchText(item.label) === normalizedQuery;
+  return findExactTickerSearchMatch([item], query) != null;
 }
 
 export function mergeTickerSearchResultItems(

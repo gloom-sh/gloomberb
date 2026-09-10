@@ -56,7 +56,7 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   const yieldStatus = useMemo<PaneFooterSegment[]>(() => [
       ...(inverted ? [{ id: "inverted", parts: [{ text: "INVERTED", tone: "warning" as const, bold: true }] }] : []),
-      ...(bp != null ? [{ id: "spread", parts: [{ text: `2Y-10Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
+      ...(bp != null ? [{ id: "spread", parts: [{ text: `10Y − 2Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
       ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" as const }] }] : []),
   ], [asOf, bp, inverted, updatedAgo]);

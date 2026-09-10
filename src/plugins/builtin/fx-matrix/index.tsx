@@ -104,7 +104,7 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
 
     const base = rates.get(row);
     const quote = rates.get(quoteCurrency);
-    if (base == null || quote == null) {
+    if (base == null || quote == null || !Number.isFinite(base) || !Number.isFinite(quote) || base <= 0 || quote <= 0) {
       // A missing leg must never fall back to parity: 1.0000 on EUR/JPY reads
       // as a real rate.
       const pending = status.loading > 0;

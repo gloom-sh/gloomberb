@@ -1,11 +1,43 @@
 import { describe, expect, test } from "bun:test";
 import {
-  alignDatedReturns,
-  computeDatedReturns,
   computeReturns,
-  correlateDatedReturns,
+  correlateDailyCloses,
+  dailyCloses,
   pearsonCorrelation,
 } from "./compute";
+
+describe("cross-market return alignment", () => {
+  test("uses matching return intervals across weekends, exchange holidays, and missing sessions", () => {
+    const history = (dates: string[], closes: number[]) => dates.map((date, i) => ({ date: new Date(date), close: closes[i]! }));
+    const equity = history(
+      ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-09", "2026-01-12"],
+      [100, 110, 105, 115, 111, 118],
+    );
+    const crypto = [...history(
+      ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-09", "2026-01-12"],
+      [200, 220, 210, 230, 222, 236],
+    ), ...history(["2026-01-04", "2026-01-08", "2026-01-11"], [250, 190, 270])];
+
+    // Both assets have identical moves between shared closes. Weekend-only
+    // prices must not change the intervals used for either side.
+    expect(correlateDailyCloses(dailyCloses(equity), dailyCloses(crypto))).toEqual({ correlation: 1, sampleSize: 5 });
+    expect(correlateDailyCloses(dailyCloses(crypto), dailyCloses(equity))).toEqual({ correlation: 1, sampleSize: 5 });
+  });
+
+  test("uses the final valid observation for a date without inventing intraday daily returns", () => {
+    expect(dailyCloses([
+      { date: new Date("2026-01-03T22:00:00Z"), close: 121 },
+      { date: new Date("2026-01-02T20:00:00Z"), close: 105 },
+      { date: new Date("2026-01-01"), close: 100 },
+      { date: new Date("2026-01-02T22:00:00Z"), close: 110 },
+      { date: new Date("2026-01-02T23:00:00Z"), close: Number.NaN },
+    ])).toEqual([
+      { dateKey: "2026-01-01", close: 100 },
+      { dateKey: "2026-01-02", close: 110 },
+      { dateKey: "2026-01-03", close: 121 },
+    ]);
+  });
+});
 
 describe("computeReturns", () => {
   test("computes simple returns", () => {
@@ -18,54 +50,6 @@ describe("computeReturns", () => {
 
   test("skips zero or invalid previous closes", () => {
     expect(computeReturns([0, 10, 20, Number.NaN, 30])).toEqual([1]);
-  });
-});
-
-describe("computeDatedReturns", () => {
-  test("keys returns by the current close date", () => {
-    const returns = computeDatedReturns([
-      { date: new Date("2024-01-01T00:00:00Z"), close: 100 },
-      { date: new Date("2024-01-02T00:00:00Z"), close: 110 },
-      { date: new Date("2024-01-03T00:00:00Z"), close: 121 },
-    ]);
-
-    expect(returns).toEqual([
-      { dateKey: "2024-01-02", value: 0.1 },
-      { dateKey: "2024-01-03", value: 0.1 },
-    ]);
-  });
-
-  test("sorts points before computing returns", () => {
-    const returns = computeDatedReturns([
-      { date: new Date("2024-01-03T00:00:00Z"), close: 121 },
-      { date: new Date("2024-01-01T00:00:00Z"), close: 100 },
-      { date: new Date("2024-01-02T00:00:00Z"), close: 110 },
-    ]);
-
-    expect(returns.map((entry) => entry.dateKey)).toEqual(["2024-01-02", "2024-01-03"]);
-  });
-});
-
-describe("alignDatedReturns", () => {
-  test("aligns series by shared date keys", () => {
-    const aligned = alignDatedReturns(
-      [
-        { dateKey: "2024-01-02", value: 1 },
-        { dateKey: "2024-01-03", value: 2 },
-        { dateKey: "2024-01-04", value: 3 },
-      ],
-      [
-        { dateKey: "2024-01-01", value: 99 },
-        { dateKey: "2024-01-02", value: 10 },
-        { dateKey: "2024-01-04", value: 30 },
-      ],
-    );
-
-    expect(aligned).toEqual({
-      x: [1, 3],
-      y: [10, 30],
-      sampleSize: 2,
-    });
   });
 });
 
@@ -89,42 +73,11 @@ describe("pearsonCorrelation", () => {
   test("returns null for zero variance", () => {
     expect(pearsonCorrelation([5, 5, 5, 5, 5], [1, 2, 3, 4, 5])).toBeNull();
   });
-});
 
-describe("correlateDatedReturns", () => {
-  test("correlates only shared trading dates", () => {
-    const result = correlateDatedReturns(
-      [
-        { dateKey: "2024-01-02", value: 1 },
-        { dateKey: "2024-01-03", value: 2 },
-        { dateKey: "2024-01-04", value: 3 },
-        { dateKey: "2024-01-05", value: 4 },
-        { dateKey: "2024-01-06", value: 5 },
-      ],
-      [
-        { dateKey: "2024-01-01", value: 999 },
-        { dateKey: "2024-01-02", value: 2 },
-        { dateKey: "2024-01-03", value: 4 },
-        { dateKey: "2024-01-04", value: 6 },
-        { dateKey: "2024-01-05", value: 8 },
-        { dateKey: "2024-01-06", value: 10 },
-      ],
-    );
-
-    expect(result.sampleSize).toBe(5);
-    expect(result.correlation).toBeCloseTo(1, 5);
-  });
-
-  test("returns sample size even when shared observations are insufficient", () => {
-    expect(correlateDatedReturns(
-      [
-        { dateKey: "2024-01-02", value: 1 },
-        { dateKey: "2024-01-03", value: 2 },
-      ],
-      [
-        { dateKey: "2024-01-02", value: 1 },
-        { dateKey: "2024-01-03", value: 2 },
-      ],
-    )).toEqual({ correlation: null, sampleSize: 2 });
+  test("keeps nearly constant return series finite and correlations bounded", () => {
+    const x = [1, 2, 3, 4, 5].map((value) => 0.001 + value * 1e-12);
+    expect(pearsonCorrelation(x, x)).toBeCloseTo(1);
+    expect(pearsonCorrelation(x, x.map((value) => -value))).toBeCloseTo(-1);
+    expect(pearsonCorrelation(x, [1, 2, Number.NaN, 4, 5])).toBeNull();
   });
 });

@@ -202,6 +202,17 @@ describe("chart composer expressions", () => {
       .toThrow('Invalid chart series "MSFT:revenu"');
   });
 
+  test("preserves futures and forex identifiers in direct and custom chart presets", () => {
+    for (const symbol of ["ES=F", "6J=F", "JPY=X", "EURUSD=X", "EUR/USD"]) {
+      const spec = buildPriceChartPreset(symbol);
+      expect(spec.series[0]?.source).toMatchObject({ kind: "security", instrument: { symbol } });
+      expect(parseSeriesExpression(formatSeriesExpression(spec.series[0]!)))
+        .toMatchObject({ kind: "security", symbol });
+      expect(buildCustomChartPreset(`${symbol}:price`).series[0]?.source)
+        .toMatchObject({ kind: "security", instrument: { symbol } });
+    }
+  });
+
   test("parses exchange-qualified tickers without confusing the exchange for a field", () => {
     const spec = buildCustomChartPreset("3hnx:lse, 3HNX:LSE:revenue");
 

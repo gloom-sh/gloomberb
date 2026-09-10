@@ -7,6 +7,7 @@ import type {
 } from "../../../types/financials";
 import {
   formatCurrency,
+  formatCompact,
   formatNumber,
   formatPercent,
   formatPercentRaw,
@@ -21,6 +22,8 @@ export interface EventRow {
   status: EventStatus;
   period: string;
   detail: string;
+  epsCurrency?: string;
+  revenueCurrency?: string;
   qEps?: number;
   qRevenue?: number;
   annualEps?: number;
@@ -133,7 +136,7 @@ function estimateValue(pair: EstimatePair): string {
   return growth == null ? "-" : formatPercent(growth);
 }
 
-function ttmRow(quarterlyStatements: readonly FinancialStatement[]): EventRow | null {
+function ttmRow(quarterlyStatements: readonly FinancialStatement[], financialCurrency?: string): EventRow | null {
   const latestFour = quarterlyStatements.slice(-4);
   const ttm = computeTTM([...quarterlyStatements]);
   if (!ttm || (ttm.totalRevenue == null && ttm.eps == null)) return null;
@@ -144,6 +147,8 @@ function ttmRow(quarterlyStatements: readonly FinancialStatement[]): EventRow | 
     status: "TTM",
     period: "4 qtrs",
     detail: "sum",
+    epsCurrency: ttm.currency ?? financialCurrency,
+    revenueCurrency: ttm.currency ?? financialCurrency,
     annualEps: ttm.eps,
     annualRevenue: ttm.totalRevenue,
     value: "-",
@@ -171,12 +176,12 @@ function eventSortRank(status: EventStatus): number {
 export function buildEventRows(
   data: CorporateActionsData | null,
   estimates: AnalystResearchData | null,
-  financials: Pick<TickerFinancials, "quarterlyStatements"> | null,
+  financials: Pick<TickerFinancials, "quarterlyStatements" | "financialCurrency"> | null,
   currency: string,
 ): EventRow[] {
   const rows: EventRow[] = [];
   const quarterlyStatements = sortedQuarterlyStatements(financials);
-  const ttm = ttmRow(quarterlyStatements);
+  const ttm = ttmRow(quarterlyStatements, financials?.financialCurrency);
   if (ttm) rows.push(ttm);
 
   for (const earning of data?.earnings ?? []) {
@@ -187,6 +192,9 @@ export function buildEventRows(
       status: "Earnings",
       period: statement ? quarterLabel(statement) : earning.time?.trim() || "-",
       detail: earningsDetail(earning),
+      epsCurrency: earning.epsActual != null || (statement?.eps == null && earning.epsEstimate != null)
+        ? data?.currency ?? currency : statement?.currency ?? financials?.financialCurrency,
+      revenueCurrency: statement?.currency ?? financials?.financialCurrency,
       qEps: earning.epsActual ?? statement?.eps ?? earning.epsEstimate,
       qRevenue: statement?.totalRevenue,
       value: earning.surprisePercent != null ? formatPercentRaw(earning.surprisePercent) : "-",
@@ -202,6 +210,8 @@ export function buildEventRows(
       status: isFiscal ? "FY Est" : "Q Est",
       period: formatPeriod(pair.period),
       detail: formatEstimateDetail(pair),
+      epsCurrency: estimates?.currency,
+      revenueCurrency: estimates?.currency,
       qEps: isFiscal ? undefined : pair.eps?.average,
       qRevenue: isFiscal ? undefined : pair.revenue?.average,
       annualEps: isFiscal ? pair.eps?.average : undefined,
@@ -298,4 +308,11 @@ function hasCorporateActionRows(data: CorporateActionsData): boolean {
 
 function hasAnalystEstimates(data: AnalystResearchData): boolean {
   return data.earningsEstimates.length > 0 || data.revenueEstimates.length > 0;
+}
+
+
+export function formatEventMetric(value: number | undefined, currency: string | undefined, kind: "eps" | "revenue"): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  const formatted = kind === "eps" ? formatNumber(value, 2) : formatCompact(value);
+  return currency ? `${formatted} ${currency}` : formatted;
 }

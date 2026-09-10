@@ -8,17 +8,16 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { formatCompact, formatNumber } from "../../../utils/format";
-import { buildEventRows } from "./event-model";
+import { formatEventMetric, buildEventRows } from "./event-model";
 
 const COLUMNS = [
   { key: "date", header: "Date" },
   { key: "status", header: "Event" },
   { key: "period", header: "Period" },
-  { key: "qEps", header: "Q EPS", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatNumber(Number(value), 2) },
-  { key: "qRevenue", header: "Q revenue", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatCompact(Number(value)) },
-  { key: "annualEps", header: "Annual EPS", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatNumber(Number(value), 2) },
-  { key: "annualRevenue", header: "Annual revenue", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatCompact(Number(value)) },
+  { key: "qEps", header: "Q EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
+  { key: "qRevenue", header: "Q revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
+  { key: "annualEps", header: "Annual EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
+  { key: "annualRevenue", header: "Annual revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
   { key: "value", header: "Value", align: "right" as const },
   { key: "detail", header: "Detail" },
 ];

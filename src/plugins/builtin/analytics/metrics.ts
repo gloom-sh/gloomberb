@@ -1,5 +1,6 @@
 import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
+import type { BrokerAccount } from "../../../types/trading";
 import { getPricePointTimestamp } from "../../../utils/price-history";
 
 export interface DatedReturn {
@@ -10,6 +11,34 @@ export interface DatedReturn {
 export interface WeightedReturnSeries {
   weight: number;
   returns: DatedReturn[];
+}
+
+/** The synthetic daily-equity basket cannot model financing or leveraged exposure. */
+export function syntheticAccountUnsupportedReason(account?: BrokerAccount | null): string | null {
+  if (!account) return null;
+  if ((Number.isFinite(account.totalCashValue) && account.totalCashValue! < 0)
+    || (Number.isFinite(account.netLiquidation) && (account.netLiquidation! <= 0
+      || (Number.isFinite(account.grossPositionValue) && account.grossPositionValue! > account.netLiquidation!)))) {
+    return "Leveraged account: financing history required";
+  }
+  return null;
+}
+
+export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCurrency: string, portfolioId?: string): string | null {
+  const positions = ticker.metadata.positions.filter((position) => (
+    (!portfolioId || position.portfolio === portfolioId) && position.shares !== 0
+  ));
+  if (positions.some((position) => position.side === "short" || position.shares < 0)) {
+    return "Short positions: signed exposure history required";
+  }
+  const equityCategories = new Set(["", "STK", "STOCK", "EQUITY", "ETF", "ETN", "FUND", "ADR", "REIT"]);
+  if (!equityCategories.has((ticker.metadata.assetCategory ?? "").toUpperCase())
+    || positions.some((position) => position.multiplier != null && position.multiplier !== 1)
+    || /=[A-Z]+$|-[A-Z]{3,4}$|\d{6}[CP]\d{8}$/.test(ticker.metadata.ticker)) {
+    return "Unsupported asset: equity basket estimate only";
+  }
+  if (quoteCurrency !== "USD") return "Foreign holdings: historical FX returns required";
+  return null;
 }
 
 function toDateKey(timestamp: number): string {

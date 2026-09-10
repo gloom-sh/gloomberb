@@ -8,14 +8,23 @@ import {
   getSearchResultSymbol,
   shouldReplaceTickerName,
 } from "./result";
-import { canonicalExchange } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 
 export async function upsertTickerFromSearchResult(
   tickerRepository: AppTickerRepositoryPort,
   result: InstrumentSearchResult,
 ): Promise<{ ticker: TickerRecord; created: boolean }> {
-  const symbol = getSearchResultSymbol(result);
+  let symbol = getSearchResultSymbol(result);
   let ticker = await tickerRepository.loadTicker(symbol);
+  const selectedExchange = canonicalExchange(
+    result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange,
+  );
+  const savedExchange = canonicalExchange(ticker?.metadata.exchange);
+  if (ticker && selectedExchange && savedExchange && selectedExchange !== savedExchange) {
+    // Opening a second listing must never re-denominate existing positions.
+    symbol = publicTickerKey(parsePublicTickerKey(symbol).symbol, selectedExchange);
+    ticker = await tickerRepository.loadTicker(symbol);
+  }
   const created = !ticker;
 
   if (!ticker) {

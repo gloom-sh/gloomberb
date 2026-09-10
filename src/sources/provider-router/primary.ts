@@ -69,6 +69,7 @@ export class ProviderRouterPrimaryRoutes {
         const sourceKey = this.options.providerSourceKey(provider);
         const cacheValue = primaryResult
           ? {
+            financialCurrency: value.financialCurrency,
             annualStatements: value.annualStatements,
             quarterlyStatements: value.quarterlyStatements,
             priceHistory: [],

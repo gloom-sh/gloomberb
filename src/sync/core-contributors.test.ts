@@ -350,7 +350,7 @@ describe("core sync contributors", () => {
     expect((payload as any).tickers[0].quote.price).toBe(150);
     expect((payload as any).tickers[0].quote.weekReferencePrice).toBe(125);
     expect((payload as any).tickers[0].quote.weekChangePercent).toBe(20);
-    expect((payload as any).analyticsByPortfolio.main.oneYearReturn).toBe(0.42);
+    expect((payload as any).analyticsByPortfolio.main.oneYearReturn).toBeNull();
 
     const saved: TickerRecord[] = [];
     const sanitizedTickerPayload = { tickers: (payload as any).tickers };
@@ -415,7 +415,7 @@ describe("core sync contributors", () => {
     expect(state.tickers.get("NVDA")?.metadata.positions).toHaveLength(1);
   });
 
-  test("syncs only public return and beta analytics", async () => {
+  test("does not publish current holdings performance as account return or unsupported basket beta", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
     config.baseCurrency = "USD";
     config.portfolios = [
@@ -501,10 +501,10 @@ describe("core sync contributors", () => {
 
     expect(payload.baseCurrency).toBe("USD");
     expect(payload.exchangeRates).toEqual({ USD: 1, JPY: 0.0067 });
-    expect(payload.analyticsByPortfolio.main.oneYearReturn).toBe(0.1);
-    expect(payload.analyticsByPortfolio.main.spyBeta).toBeCloseTo(1.5, 5);
-    expect(payload.analyticsByPortfolio["broker:ibkr:U123"].oneYearReturn).toBe(0.2);
-    expect(payload.analyticsByPortfolio["broker:ibkr:U123"].spyBeta).toBeCloseTo(3, 5);
+    expect(payload.analyticsByPortfolio.main.oneYearReturn).toBeNull();
+    expect(payload.analyticsByPortfolio.main.spyBeta).toBeNull();
+    expect(payload.analyticsByPortfolio["broker:ibkr:U123"].oneYearReturn).toBeNull();
+    expect(payload.analyticsByPortfolio["broker:ibkr:U123"].spyBeta).toBeNull();
     expect(payload.accountsByPortfolio).toEqual({
       "broker:ibkr:U123": {
         currency: "USD",
@@ -518,6 +518,18 @@ describe("core sync contributors", () => {
     expect(payload.analyticsByPortfolio.main).not.toHaveProperty("holdingsCount");
     expect(payload.analyticsByPortfolio.main).not.toHaveProperty("currency");
     expect(payload.analyticsByPortfolio.main).not.toHaveProperty("sourceLabel");
+
+    const mainTicker = state.tickers.get("7203.T")!;
+    mainTicker.metadata.currency = "USD";
+    mainTicker.metadata.positions[0]!.currency = "USD";
+    state.financials.get("7203.T")!.quote!.currency = "USD";
+    const supported = await coreCollectionsSyncContributor.collect({ state }) as any;
+    expect(supported.analyticsByPortfolio.main.spyBeta).toBeCloseTo(1.5, 5);
+    expect(supported.analyticsByPortfolio.main.oneYearReturn).toBeNull();
+
+    mainTicker.metadata.positions[0]!.side = "short";
+    const short = await coreCollectionsSyncContributor.collect({ state }) as any;
+    expect(short.analyticsByPortfolio.main.spyBeta).toBeNull();
   });
 
   test("redaction removes nested credential-shaped fields", () => {

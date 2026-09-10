@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../ui";
 import { isPlainKeyboardEvent } from "../utils/keyboard";
+import type { DataTableProps } from "./ui/data-table/types";
 
 function listenToScrollBarChange(
   scrollBar: ScrollBoxRenderable["verticalScrollBar"],
@@ -171,13 +172,13 @@ export function useTableBodyScrollActivity({
   syncHeaderScroll,
   afterScroll,
 }: {
-  onBodyScrollActivity?: () => void;
+  onBodyScrollActivity?: DataTableProps<unknown>["onBodyScrollActivity"];
   syncHeaderScroll: () => void;
   afterScroll?: () => void;
 }) {
-  return useCallback(() => {
+  return useCallback<DataTableProps<unknown>["onBodyScrollActivity"]>((source) => {
     if (onBodyScrollActivity) {
-      onBodyScrollActivity();
+      onBodyScrollActivity(source);
     } else {
       queueMicrotask(syncHeaderScroll);
     }

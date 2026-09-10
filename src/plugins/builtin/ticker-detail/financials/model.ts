@@ -80,8 +80,8 @@ export function statementMetricValue(
   def: Pick<MetricDef, "key" | "compute">,
   statement: FinancialStatement,
 ): number | undefined {
-  if (def.key) return statement[def.key] as number | undefined;
-  return def.compute?.(statement);
+  const value = def.key ? statement[def.key] : def.compute?.(statement);
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 export const FINANCIAL_PERIOD_TABS_WIDTH = "Annual".length + "Quarterly".length + 4;
@@ -92,7 +92,7 @@ const FINANCIAL_GROWTH_W = 7;
 const FINANCIAL_VALUE_W = FINANCIAL_COL_W - FINANCIAL_GROWTH_W;
 
 export function computeGrowth(current: number | undefined, previous: number | undefined): number | undefined {
-  if (current == null || previous == null || previous === 0) return undefined;
+  if (current == null || previous == null || !Number.isFinite(current) || !Number.isFinite(previous) || previous === 0) return undefined;
   return (current - previous) / Math.abs(previous);
 }
 
@@ -118,14 +118,24 @@ export function formatFinancialValue(
   value: number | undefined,
   row: Pick<FinancialTableRow, "format" | "divisor">,
 ): string {
-  if (value == null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   if (row.format === "eps") return formatNumber(value, 2);
   if (row.format === "percent") return `${formatNumber(value * 100, 1)}%`;
   return formatWithDivisor(value, row.divisor);
 }
 
-export function formatFinancialHeader(date: string): string {
-  return date === "TTM" ? "TTM" : date.slice(0, 7);
+export function formatFinancialHeader(date: string, currency?: string): string {
+  const period = date === "TTM" ? "TTM" : date.slice(0, 7);
+  return currency ? `${period} ${currency}` : period;
+}
+
+export function financialStatementCurrency(
+  financials: Pick<TickerFinancials, "financialCurrency" | "fundamentals"> | null | undefined,
+  statements: readonly FinancialStatement[],
+): string | undefined {
+  const fallback = financials?.financialCurrency;
+  const currencies = new Set(statements.map((statement) => statement.currency ?? fallback));
+  return currencies.size === 1 ? [...currencies][0] : undefined;
 }
 
 export function resolveFinancialPeriod(
@@ -164,7 +174,7 @@ function hasStatementValue(
   statements: FinancialStatement[],
   key: keyof FinancialStatement,
 ): boolean {
-  return statements.some((statement) => typeof statement[key] === "number");
+  return statements.some((statement) => typeof statement[key] === "number" && Number.isFinite(statement[key]));
 }
 
 function hasFinancialRowValue(
@@ -299,7 +309,7 @@ export interface FinancialTableModel {
 }
 
 export function buildFinancialTableModel(
-  financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements"> | null | undefined,
+  financials: Pick<TickerFinancials, "annualStatements" | "quarterlyStatements" | "financialCurrency" | "fundamentals"> | null | undefined,
   options: {
     period?: FinancialPeriod;
     statement?: string;
@@ -309,8 +319,8 @@ export function buildFinancialTableModel(
     expandAll?: boolean;
   } = {},
 ): FinancialTableModel | null {
-  const annualStatements = financials?.annualStatements ?? [];
-  const quarterlyStatements = financials?.quarterlyStatements ?? [];
+  const annualStatements = [...(financials?.annualStatements ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  const quarterlyStatements = [...(financials?.quarterlyStatements ?? [])].sort((a, b) => a.date.localeCompare(b.date));
   const hasAnnualStatements = annualStatements.length > 0;
   const hasQuarterlyStatements = quarterlyStatements.length > 0;
   if (!hasAnnualStatements && !hasQuarterlyStatements) return null;

@@ -193,6 +193,9 @@ describe("headless pane arguments and options", () => {
       argument: ["AAPL", "MSFT"],
       symbols: ["AAPL", "MSFT"],
     });
+    expect(buildHeadlessPaneLoadArgs(definition, "CMP", "$aapl msft, AAPL", {})).toMatchObject({
+      symbols: ["AAPL", "MSFT"],
+    });
     expect(() => buildHeadlessPaneLoadArgs(definition, "CMP", "AAPL", {}))
       .toThrow("CMP requires at least 2 symbols");
   });

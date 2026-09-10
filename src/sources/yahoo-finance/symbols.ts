@@ -1,4 +1,4 @@
-import { canonicalExchange } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 
 const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   NASDAQ: "", NMS: "", NYSE: "", AMEX: "", ARCA: "", NYSEArca: "", BATS: "", BYX: "", IEX: "", PINK: "", OTC: "",
@@ -15,10 +15,10 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   SET: ".BK", BKK: ".BK", KLSE: ".KL", MYX: ".KL", PSE: ".PS", HOSE: ".VN", HNX: ".VN",
   LSE: ".L", LSEETF: ".L",
   XETRA: ".DE", XETR: ".DE", IBIS: ".DE", IBIS2: ".DE", FWB: ".F", FWB2: ".F", GETTEX: ".DE", TGATE: ".DE", SWB: ".SG",
-  EURONEXT: ".AS", AEB: ".AS", SBF: ".PA", "ENEXT.BE": ".BR", BVL: ".LS",
-  BVME: ".MI", BM: ".MC",
+  EURONEXT: ".AS", AEB: ".AS", AMS: ".AS", SBF: ".PA", EPA: ".PA", "ENEXT.BE": ".BR", BRU: ".BR", BVL: ".LS", LIS: ".LS",
+  BVME: ".MI", BIT: ".MI", BM: ".MC",
   SIX: ".SW", EBS: ".SW", SWX: ".SW",
-  SFB: ".ST", Stockholm: ".ST", OMX: ".ST", CPH: ".CO", HEX: ".HE", OSE: ".OL", OMXNO: ".OL", ICEX: ".IC",
+  SFB: ".ST", Stockholm: ".ST", OMX: ".ST", CPH: ".CO", HEX: ".HE", HEL: ".HE", OSE: ".OL", OSL: ".OL", OMXNO: ".OL", ICEX: ".IC",
   VSE: ".VI", WSE: ".WA", GPW: ".WA", PRA: ".PR", BUX: ".BD", ATHEX: ".AT", BVB: ".RO", BIST: ".IS",
   TASE: ".TA",
   JSE: ".JO",
@@ -47,6 +47,9 @@ const KNOWN_SUFFIXES = new Set(
 );
 
 export function getYahooSymbol(ticker: string, exchange: string): string {
+  const qualified = parsePublicTickerKey(ticker);
+  ticker = qualified.symbol;
+  exchange = qualified.exchange || exchange;
   if (tickerHasYahooSuffix(ticker)) return ticker;
   const canonical = canonicalExchange(exchange) || exchange;
   const suffix = EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
@@ -54,6 +57,9 @@ export function getYahooSymbol(ticker: string, exchange: string): string {
 }
 
 export function getYahooSymbolsToTry(ticker: string, exchange: string): string[] {
+  const qualified = parsePublicTickerKey(ticker);
+  ticker = qualified.symbol;
+  exchange = qualified.exchange || exchange;
   if (tickerHasYahooSuffix(ticker)) return [ticker];
 
   const canonical = canonicalExchange(exchange) || exchange;
@@ -88,7 +94,7 @@ export function getYahooSymbolsToTry(ticker: string, exchange: string): string[]
   return [primary];
 }
 
-function tickerHasYahooSuffix(ticker: string): boolean {
+export function tickerHasYahooSuffix(ticker: string): boolean {
   const dot = ticker.indexOf(".");
   if (dot < 0) return false;
   return KNOWN_SUFFIXES.has(ticker.slice(dot));

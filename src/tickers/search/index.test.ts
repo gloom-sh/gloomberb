@@ -58,6 +58,112 @@ function makeDataProvider(results: InstrumentSearchResult[]): DataProvider {
 }
 
 describe("ticker-search utilities", () => {
+  test("preserves futures, FX and index identity across saved and provider search matches", async () => {
+    for (const symbol of ["ES=F", "6J=F", "JPY=X", "EURUSD=X", "EUR/USD", "^GSPC"]) {
+      const lookalike = symbol.replace(/[^A-Z0-9]/g, "");
+      const tickers = new Map([[lookalike, makeTicker(lookalike)]]);
+      const queries: string[] = [];
+      const dataProvider = createTestDataProvider({
+        search: async (query) => {
+          queries.push(query);
+          return [makeSearchResult(lookalike), makeSearchResult(symbol)];
+        },
+      });
+      const resolved = await resolveTickerSearch({ query: symbol, activeTicker: null, tickers, dataProvider });
+      expect(resolved).toMatchObject({ kind: "provider", symbol });
+      expect(queries).not.toContain(lookalike);
+      const candidates = await searchTickerCandidates({ query: symbol, tickers, dataProvider });
+      expect(candidates[0]?.symbol).toBe(symbol);
+      expect(candidates.some((candidate) => candidate.symbol === lookalike)).toBe(false);
+      expect(findExactTickerSearchMatch([{ label: lookalike }], symbol)).toBeNull();
+      expect(findExactTickerSearchMatch([{ label: symbol }], lookalike)).toBeNull();
+    }
+    expect(findExactTickerSearchMatch([{ label: "EURUSD=X" }], "EUR/USD")?.label).toBe("EURUSD=X");
+    expect(findExactTickerSearchMatch([{ label: "USD/JPY" }], "JPY=X")?.label).toBe("USD/JPY");
+    expect(findExactTickerSearchMatch([{ label: "JPY/USD" }], "JPY=X")).toBeNull();
+  });
+
+  test("retains the quote currency of FX catalogue rows and reuses saved qualified futures", async () => {
+    for (const symbol of ["JPY=X", "USDJPY=X", "USD/JPY", "EUR/JPY"]) {
+      expect(await resolveTickerSearch({
+        query: symbol, activeTicker: null, tickers: new Map(),
+        dataProvider: makeDataProvider([makeSearchResult(symbol, "Currency Pair", { type: "Physical Currency" })]),
+      })).toMatchObject({ kind: "provider", result: { symbol, currency: "JPY" } });
+    }
+    const future = makeTicker("ES=F:CME", "S&P 500 Futures", { exchange: "CME", assetCategory: "FUTURE" });
+    for (const query of ["ES=F", "ES=F:CME"]) {
+      expect(await resolveTickerSearch({
+        query, activeTicker: null, tickers: new Map([[future.metadata.ticker, future]]),
+        dataProvider: createTestDataProvider({ search: async () => { throw new Error("saved future should resolve locally"); } }),
+      })).toMatchObject({ kind: "local", symbol: "ES=F:CME" });
+    }
+    expect(findExactTickerSearchMatch([{ label: "ES=F:CME" }], "ES=F:NYMEX")).toBeNull();
+  });
+
+  test("resolves catalogue omissions through a quote for the exact market symbol only", async () => {
+    const lookalike = makeSearchResult("ESF", "Eurotech", { exchange: "MTA" });
+    const quoteCalls: string[] = [];
+    const dataProvider = createTestDataProvider({
+      search: async () => [lookalike],
+      getQuote: async (symbol) => {
+        quoteCalls.push(symbol);
+        return {
+          symbol, providerId: "market-data", name: "S&P 500 Futures", price: 6000,
+          currency: "USD", lastUpdated: Date.now(), change: 10, changePercent: 0.1,
+          exchangeName: "CME",
+        };
+      },
+    });
+    const candidates = await searchTickerCandidates({ query: "ES=F", tickers: new Map(), dataProvider });
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toMatchObject({ symbol: "ES=F", instrumentClass: "derivative", result: { currency: "USD", exchange: "CME", type: "FUTURE" } });
+    expect(quoteCalls).toEqual(["ES=F"]);
+
+    for (const invalidQuote of [
+      { symbol: "ESF", price: 6000 },
+      { symbol: "ES=F", price: NaN },
+      { symbol: "ES=F", price: 0 },
+    ]) {
+      expect(await resolveTickerSearch({
+        query: "ES=F", activeTicker: null, tickers: new Map(),
+        dataProvider: createTestDataProvider({
+          search: async () => [lookalike],
+          getQuote: async () => ({ ...invalidQuote, currency: "USD", lastUpdated: Date.now(), change: 0, changePercent: 0 }),
+        }),
+      })).toBeNull();
+    }
+  });
+
+  test("resolves explicit venues ahead of punctuation lookalikes and saved foreign listings", async () => {
+    const tickers = new Map([["VOD", makeTicker("VOD", "Vodafone ADR", { exchange: "NASDAQ" })]]);
+    const dataProvider = makeDataProvider([
+      makeSearchResult("VODL", "Vodafone", { exchange: "CBOE" }),
+      makeSearchResult("VOD", "Vodacom", { exchange: "JSE" }),
+      makeSearchResult("VOD", "Vodafone", { exchange: "LSE" }),
+    ]);
+    for (const query of ["VOD.L", "VOD:XLON"]) {
+      const results = await searchTickerCandidates({ query, tickers, dataProvider });
+      expect(results[0]).toMatchObject({ symbol: "VOD", exchangeLabel: "LSE" });
+      expect(findExactTickerSearchMatch(results, query)?.exchangeLabel).toBe("LSE");
+      expect(await resolveTickerSearch({ query, activeTicker: null, tickers, dataProvider }))
+        .toMatchObject({ kind: "provider", result: { symbol: "VOD", exchange: "LSE" } });
+    }
+    expect(findExactTickerSearchMatch([{ label: "VODL", right: "CBOE" }], "VOD.L")).toBeNull();
+  });
+
+  test("respects provider suffixes in Europe and numeric Asian listings", async () => {
+    for (const [query, symbol, exchange] of [
+      ["SAP.DE", "SAP", "XETRA"], ["AIR.PA", "AIR", "PAR"],
+      ["ASML.AS", "ASML", "AMS"], ["7203.T", "7203", "JPX"], ["0700.HK", "700", "HKG"],
+    ]) {
+      const results = await searchTickerCandidates({
+        query: query!, tickers: new Map(),
+        dataProvider: makeDataProvider([makeSearchResult(symbol!, "Issuer", { exchange: exchange! })]),
+      });
+      expect(findExactTickerSearchMatch(results, query!)?.symbol).toBe(symbol!);
+    }
+  });
+
   test("normalizes explicit and focused ticker inputs", () => {
     expect(normalizeTickerInput("AAPL", undefined)).toBe("AAPL");
     expect(normalizeTickerInput("AAPL", " msft ")).toBe("MSFT");
@@ -547,31 +653,45 @@ describe("ticker-search utilities", () => {
     expect(saved).toHaveLength(1);
   });
 
-  test("replaces a saved listing when search selects a different exchange", async () => {
+  test("keeps holdings intact when opening a second listing with the same symbol", async () => {
     const existing = makeTicker("AAPL", "Apple Inc.");
     existing.metadata.exchange = "NASDAQ";
     existing.metadata.currency = "USD";
+    existing.metadata.portfolios = ["Core"];
+    existing.metadata.positions = [{ portfolio: "Core", quantity: 10, costBasis: 200, currency: "USD" }] as any;
+    const original = structuredClone(existing);
+    const records = new Map([["AAPL", existing]]);
     const saved: TickerRecord[] = [];
     const repository = {
-      loadTicker: async () => existing,
-      createTicker: async (metadata: TickerRecord["metadata"]) => ({ metadata }),
+      loadTicker: async (symbol: string) => records.get(symbol) ?? null,
+      createTicker: async (metadata: TickerRecord["metadata"]) => {
+        const ticker = { metadata };
+        records.set(metadata.ticker, ticker);
+        return ticker;
+      },
       saveTicker: async (ticker: TickerRecord) => {
         saved.push(ticker);
       },
     };
 
-    const { ticker } = await upsertTickerFromSearchResult(repository as any, {
+    const result: InstrumentSearchResult = {
       providerId: "test",
       symbol: "AAPL",
       name: "Apple Inc.",
       exchange: "BYMA",
       type: "EQUITY",
       currency: "ARS",
-    });
+    };
+    const { ticker, created } = await upsertTickerFromSearchResult(repository as any, result);
 
+    expect(created).toBe(true);
+    expect(ticker.metadata.ticker).toBe("AAPL:BYMA");
     expect(ticker.metadata.exchange).toBe("BYMA");
     expect(ticker.metadata.currency).toBe("ARS");
-    expect(saved).toHaveLength(1);
+    expect(ticker.metadata.positions).toEqual([]);
+    expect(existing).toEqual(original);
+    expect(saved).toHaveLength(0);
+    expect(await upsertTickerFromSearchResult(repository as any, result)).toMatchObject({ created: false, ticker });
   });
 
   test("exposes local ticker candidates in saved category", () => {

@@ -4,6 +4,7 @@ import { parseTickerListInput } from "./list";
 describe("parseTickerListInput", () => {
   test("normalizes, de-duplicates, and preserves order", () => {
     expect(parseTickerListInput(" msft, aapl,\nMSFT, nvda ")).toEqual(["MSFT", "AAPL", "NVDA"]);
+    expect(parseTickerListInput("AAPL TSM, SAP.DE\t7203.T AAPL")).toEqual(["AAPL", "TSM", "SAP.DE", "7203.T"]);
   });
 
   test("rejects empty ticker lists", () => {
