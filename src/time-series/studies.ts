@@ -380,13 +380,14 @@ function ratioUnit(left: ResolvedSeries, right: ResolvedSeries): {
   };
 }
 
-function pairedSamples(left: ResolvedSeries, right: ResolvedSeries): PairedSample[] {
+function pairedSamples(left: ResolvedSeries, right: ResolvedSeries, carryForward: boolean): PairedSample[] {
   return alignTimeSeries([left, right], {
     mode: "intersection",
-    // Formula inputs are point-in-time values, regardless of how either
-    // source is drawn. Carry only the latest publicly available observation;
-    // alignTimeSeries still gates every value by availableAt.
-    carryForward: true,
+    // Ratios/spreads compare latest known levels; correlations need actual
+    // shared observations before calculating returns. Carrying a closed market
+    // invents zero returns and mismatches both sides of a weekend/holiday move.
+    // Both modes still respect the publication time of each observation.
+    carryForward,
   }).flatMap((row) => {
     const leftValue = row.values[left.id];
     const rightValue = row.values[right.id];
@@ -419,7 +420,7 @@ function resolvePairStudy(
   right: ResolvedSeries,
   color: string,
 ): ResolvedSeries[] {
-  const paired = pairedSamples(left, right);
+  const paired = pairedSamples(left, right, spec.kind !== "correlation");
   if (spec.kind === "ratio" || spec.kind === "spread") {
     const multiplier = finiteNumber(spec.parameters.multiplier) ? spec.parameters.multiplier : 1;
     const points = paired.map((sample) => derivedPoint(
@@ -479,7 +480,7 @@ function resolvePairStudy(
       rightVariance += rightDelta ** 2;
     }
     const denominator = Math.sqrt(leftVariance * rightVariance);
-    const value = denominator === 0 ? null : covariance / denominator;
+    const value = denominator === 0 ? null : Math.max(-1, Math.min(1, covariance / denominator));
     points.push(derivedPoint({ point: values[index]!.point, value: values[index]!.left }, value));
   }
   return [outputSeries(spec, left, {
@@ -550,7 +551,7 @@ export function resolveStudies(
         );
       }
       if (spec.kind === "correlation" && input.nativeFrequency !== pairedInput.nativeFrequency) {
-        warnings.push(`${spec.id}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations using as-of alignment.`);
+        warnings.push(`${spec.id}: correlation mixes ${input.nativeFrequency} and ${pairedInput.nativeFrequency} observations; only matching observation times contribute.`);
       }
       outputs = resolvePairStudy(spec, input, pairedInput, color);
     }
