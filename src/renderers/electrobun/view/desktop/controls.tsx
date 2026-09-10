@@ -150,13 +150,10 @@ export function WebCheckbox({
     >
       <label
         onMouseDown={(event) => {
-          event.preventDefault();
           event.stopPropagation();
         }}
         onClick={(event) => {
-          event.preventDefault();
           event.stopPropagation();
-          if (!disabled) onChange?.(!checked);
         }}
         style={{
           display: "flex",
@@ -175,8 +172,15 @@ export function WebCheckbox({
         <input
           type="checkbox"
           checked={checked}
-          readOnly
           disabled={disabled}
+          onChange={(event) => {
+            if (!disabled) onChange?.(event.currentTarget.checked);
+          }}
+          onKeyDown={(event) => {
+            // Space activates the native input. Keep it out of pane shortcuts
+            // without cancelling the browser's checked-state transition.
+            if (event.key === " ") event.stopPropagation();
+          }}
           style={{
             appearance: "none",
             WebkitAppearance: "none",
