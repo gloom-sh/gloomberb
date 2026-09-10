@@ -180,7 +180,12 @@ export function setManualPortfolioPosition(
     throw new Error("Position currency is required.");
   }
 
-  const replacedPositionCount = ticker.metadata.positions.filter((position) => position.portfolio === portfolioId).length;
+  const replacedPositions = ticker.metadata.positions.filter((position) => position.portfolio === portfolioId);
+  const replacedPositionCount = replacedPositions.length;
+  // Editing a single snapshot (for example after a split) does not change its
+  // acquisition date. A consolidated replacement of several lots has no one date.
+  const dateAcquired = replacedPositions.length === 1 && replacedPositions[0]?.broker === "manual"
+    ? replacedPositions[0].dateAcquired : undefined;
   const nextPositions = ticker.metadata.positions.filter((position) => position.portfolio !== portfolioId);
   const addedMembership = !ticker.metadata.portfolios.includes(portfolioId);
 
@@ -190,6 +195,7 @@ export function setManualPortfolioPosition(
     avgCost: input.avgCost,
     currency: nextCurrency,
     broker: "manual",
+    ...(dateAcquired ? { dateAcquired } : {}),
   });
 
   return {

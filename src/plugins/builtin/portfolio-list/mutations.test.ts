@@ -176,6 +176,19 @@ describe("portfolio-list mutations", () => {
     }]);
   });
 
+  test("split reconciliation preserves a single acquisition date without retaining stale valuation", () => {
+    const position = { portfolio: "main", shares: 10, avgCost: 500, currency: "USD", broker: "manual", dateAcquired: "2024-01-02", marketValue: 10000, markPrice: 1000 };
+    const ticker = makeTicker({ portfolios: ["main"], positions: [position] });
+    const input = { shares: 100, avgCost: 50, currency: "USD" };
+    const reconciled = setManualPortfolioPosition(ticker, "main", input).ticker.metadata.positions[0]!;
+    expect(reconciled.dateAcquired).toBe("2024-01-02");
+    expect(reconciled.shares * reconciled.avgCost).toBe(position.shares * position.avgCost);
+    expect(reconciled.marketValue).toBeUndefined();
+    expect(reconciled.markPrice).toBeUndefined();
+    ticker.metadata.positions.push({ ...position, dateAcquired: "2024-03-01" });
+    expect(setManualPortfolioPosition(ticker, "main", input).ticker.metadata.positions[0]!.dateAcquired).toBeUndefined();
+  });
+
   test("resolves position currency from explicit, ticker, portfolio, or base currency defaults", () => {
     const portfolio = { id: "research", name: "Research", currency: "EUR" };
 

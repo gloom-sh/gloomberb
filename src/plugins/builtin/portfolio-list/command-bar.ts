@@ -53,6 +53,7 @@ function buildManualPortfolioPositionWorkflow(
     {
       id: "shares",
       label: "Shares",
+      description: "Current quantity after any corporate actions; existing holdings are not adjusted automatically.",
       type: "number",
       placeholder: "10",
       required: !options.positionOptional,
@@ -60,6 +61,7 @@ function buildManualPortfolioPositionWorkflow(
     {
       id: "avgCost",
       label: "Avg Cost",
+      description: "Current per-share cost basis after adjustments. Cash distributions are not tracked.",
       type: "number",
       placeholder: "180",
       required: !options.positionOptional,

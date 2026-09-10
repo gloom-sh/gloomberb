@@ -96,11 +96,12 @@ async function showCollectionWithMarketData(
   const id = matchedPortfolio?.id ?? matchedWatchlist!.id;
   const displayName = matchedPortfolio?.name ?? matchedWatchlist!.name;
   const currency = matchedPortfolio?.currency ?? baseCurrency;
+  const structured = isPortfolio && ctx.cliOptions?.format != null && ctx.cliOptions.format !== "text";
   const filtered = tickers.filter((ticker) =>
     isPortfolio ? ticker.metadata.portfolios.includes(id) : ticker.metadata.watchlists.includes(id)
   );
 
-  if (filtered.length === 0) {
+  if (filtered.length === 0 && !structured) {
     console.log(cliStyles.bold(displayName));
     console.log(cliStyles.muted("No tickers in this collection."));
     return;
@@ -118,14 +119,18 @@ async function showCollectionWithMarketData(
     }),
   );
 
-  console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
-  console.log(cliStyles.muted(`${filtered.length} ticker${filtered.length === 1 ? "" : "s"}`));
-  console.log("");
+  if (!structured) {
+    console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
+    console.log(cliStyles.muted(`${filtered.length} ticker${filtered.length === 1 ? "" : "s"}`));
+    console.log("");
+  }
 
   if (isPortfolio) {
     let totalPnl = 0;
     const unavailablePnl = new Set<string>();
     const rows: string[][] = [];
+    const positionsExport: Record<string, unknown>[] = [];
+    const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
 
     for (const ticker of filtered) {
       const quote = quotes.get(ticker.metadata.ticker);
@@ -138,6 +143,9 @@ async function showCollectionWithMarketData(
 
       if (positions.length === 0) {
         rows.push([ticker.metadata.ticker, priceText, changeText, "—", "—", "—"]);
+        positionsExport.push({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange, shares: null, avgCost: null,
+          positionCurrency: null, quotePrice: known(activeQuote?.price), quoteCurrency: quote?.currency ?? null,
+          costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency });
         continue;
       }
 
@@ -156,6 +164,12 @@ async function showCollectionWithMarketData(
           : brokerPnl != null ? await toBase(brokerPnl, positionCurrency) : null;
         if (pnl != null && Number.isFinite(pnl)) totalPnl += pnl;
         else unavailablePnl.add(ticker.metadata.ticker);
+        const direction = metrics.totalPriceUnits < 0 ? -1 : 1;
+        positionsExport.push({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange,
+          shares: metrics.totalShares, avgCost: position.avgCost, positionCurrency,
+          quotePrice: known(activeQuote?.price), quoteCurrency, quoteAsOf: quote?.lastUpdated ?? null,
+          costBasis: known(direction * costBasisBase), marketValue: currentValueBase == null ? null : known(direction * currentValueBase),
+          unrealizedPnl: known(pnl), baseCurrency, dateAcquired: position.dateAcquired ?? null });
 
         rows.push([
           ticker.metadata.ticker,
@@ -166,6 +180,20 @@ async function showCollectionWithMarketData(
           pnl == null || !Number.isFinite(pnl) ? "—" : colorBySign(formatSignedCurrency(pnl, baseCurrency), pnl),
         ]);
       }
+    }
+
+    const accountingBasis = "Unrealized P&L on current positions; excludes realized trades, distributions and cash flows. This is not account investment return.";
+    const manualAccounting = !matchedPortfolio?.brokerId && !matchedPortfolio?.brokerInstanceId
+      ? "Manual holdings are snapshots. Reconcile shares and per-share cost after corporate actions using portfolio position set; cash distributions are not credited."
+      : null;
+    if (structured) {
+      ctx.printResult({ data: positionsExport, metadata: {
+        portfolioId: id, portfolioName: displayName, baseCurrency,
+        totalUnrealizedPnl: unavailablePnl.size > 0 ? null : totalPnl,
+        complete: unavailablePnl.size === 0, unavailableSymbols: [...unavailablePnl],
+        accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
+      } });
+      return;
     }
 
     console.log(renderTable(
@@ -181,6 +209,8 @@ async function showCollectionWithMarketData(
     ));
     console.log("");
     console.log(renderStat("Total P&L", unavailablePnl.size > 0 ? "—" : colorBySign(formatSignedCurrency(totalPnl, baseCurrency), totalPnl)));
+    console.log(cliStyles.muted(accountingBasis));
+    if (manualAccounting) console.log(cliStyles.muted(manualAccounting));
     if (unavailablePnl.size > 0) console.log(cliStyles.muted(`P&L unavailable for ${[...unavailablePnl].join(", ")}: a quote, broker value or currency conversion is missing.`));
   } else {
     const rows: string[][] = [];

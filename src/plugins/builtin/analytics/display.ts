@@ -25,11 +25,13 @@ export function betaColor(beta: number): string {
   return colors.positive;
 }
 
-export function formatSignedCompact(value: number): string {
+export function formatSignedCompact(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
   return `${value >= 0 ? "+" : ""}${formatCompact(value)}`;
 }
 
-export function formatWeight(weight: number): string {
+export function formatWeight(weight: number | null): string {
+  if (weight == null || !Number.isFinite(weight)) return "—";
   return `${(weight * 100).toFixed(1)}%`;
 }
 
@@ -38,7 +40,8 @@ export function formatReturn(value: number): string {
   return `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
 }
 
-export function renderBar(weight: number, maxWidth: number): string {
+export function renderBar(weight: number | null, maxWidth: number): string {
+  if (weight == null || !Number.isFinite(weight) || weight <= 0) return "";
   const filled = Math.round(weight * maxWidth);
   return "█".repeat(Math.min(filled, maxWidth));
 }

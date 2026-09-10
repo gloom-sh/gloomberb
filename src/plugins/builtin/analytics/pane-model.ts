@@ -10,7 +10,7 @@ import { buildChartKey } from "../../../market-data/selectors";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../portfolio-list/account-metrics";
 import type { ColumnContext, PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
-import { performancePointValue } from "./broker-performance";
+import { buildPerformanceChartPoints, resolvePerformanceMetric } from "./broker-performance";
 import {
   formatReturn,
   formatSignedCompact,
@@ -238,11 +238,13 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  const latestPerformancePoint = brokerPerformance?.points.at(-1);
-  if (latestPerformancePoint?.cumulativeReturn != null) {
+  const latestPerformancePoint = brokerPerformance?.points
+    .filter((point) => Number.isFinite(new Date(point.date).getTime()))
+    .sort((left, right) => new Date(left.date).getTime() - new Date(right.date).getTime()).at(-1);
+  if (latestPerformancePoint?.cumulativeReturn != null && Number.isFinite(latestPerformancePoint.cumulativeReturn)) {
     rows.push({
       id: "historical-return",
-      label: "Hist Ret",
+      label: "Broker return",
       value: formatReturn(latestPerformancePoint.cumulativeReturn),
       detail: brokerPerformance?.period,
       color: priceColor(latestPerformancePoint.cumulativeReturn),
@@ -344,11 +346,9 @@ export function buildAnalyticsRiskRows({
 export function resolvePerformancePalette(
   performance: BrokerPortfolioPerformance | null,
 ): ReturnType<typeof resolveChartPalette> {
-  const points = performance?.points ?? [];
-  const first = points.find((point) => performancePointValue(point) != null);
-  const last = [...points].reverse().find((point) => performancePointValue(point) != null);
-  const firstValue = first ? performancePointValue(first) : null;
-  const lastValue = last ? performancePointValue(last) : null;
+  const points = buildPerformanceChartPoints(performance);
+  const firstValue = points[0]?.close ?? null;
+  const lastValue = points.at(-1)?.close ?? null;
   return resolveChartPalette(colors, firstValue != null && lastValue != null && lastValue < firstValue ? "negative" : "positive");
 }
 
@@ -361,8 +361,8 @@ export function buildHistoryAxisLabel({
   activePortfolio: Portfolio | null;
   baseCurrency: string;
 }): string {
-  return performance?.points.some((point) => point.value != null)
-    ? `Value (${performance.currency ?? activePortfolio?.currency ?? baseCurrency})`
+  return resolvePerformanceMetric(performance) === "value"
+    ? `Value (${performance?.currency ?? activePortfolio?.currency ?? baseCurrency})`
     : "Return";
 }
 
@@ -370,7 +370,7 @@ export function formatHistoryAxisValue(
   value: number,
   performance: BrokerPortfolioPerformance | null,
 ): string {
-  return performance?.points.some((point) => point.value != null)
+  return resolvePerformanceMetric(performance) === "value"
     ? formatCompact(value)
     : `${(value * 100).toFixed(1)}%`;
 }
