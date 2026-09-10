@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -74,6 +74,11 @@ async function captureConsole<T>(fn: () => Promise<T> | T): Promise<{ result: T;
   const originalLog = console.log;
   const originalError = console.error;
 
+  const stdout = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    logs.push(String(chunk).replace(/\n$/, ""));
+    return true;
+  });
+
   console.log = (...args: unknown[]) => {
     logs.push(args.map(String).join(" "));
   };
@@ -91,6 +96,7 @@ async function captureConsole<T>(fn: () => Promise<T> | T): Promise<{ result: T;
   } finally {
     console.log = originalLog;
     console.error = originalError;
+    stdout.mockRestore();
   }
 }
 
@@ -100,6 +106,11 @@ async function captureConsoleFailure(fn: () => Promise<unknown> | unknown): Prom
   const originalLog = console.log;
   const originalError = console.error;
   const originalExitCode = process.exitCode;
+
+  const stdout = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+    logs.push(String(chunk).replace(/\n$/, ""));
+    return true;
+  });
 
   console.log = (...args: unknown[]) => {
     logs.push(args.map(String).join(" "));
@@ -123,6 +134,7 @@ async function captureConsoleFailure(fn: () => Promise<unknown> | unknown): Prom
     console.log = originalLog;
     console.error = originalError;
     process.exitCode = originalExitCode ?? 0;
+    stdout.mockRestore();
   }
 }
 

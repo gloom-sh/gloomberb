@@ -135,7 +135,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
 ): void {
   if (options.quiet && options.format === "text") return;
   const output = serializeCliResult(result, options, renderOptions);
-  if (output) console.log(output);
+  // Bun's console writer can truncate a large pipe write after stdout has been
+  // initialized. The stream queues the remaining bytes until the reader drains.
+  if (output) process.stdout.write(`${output}\n`);
 }
 
 export function serializeCliError(error: CliErrorObject, options: CliGlobalOptions): string {

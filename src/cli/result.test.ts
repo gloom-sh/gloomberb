@@ -80,3 +80,21 @@ describe("serializeCliError", () => {
     });
   });
 });
+
+test("large research reports remain complete through a pipe after stdout initialization", async () => {
+  const child = Bun.spawn([process.execPath, "-e", `
+    import { printCliResult } from ${JSON.stringify(new URL("./result.ts", import.meta.url).pathname)};
+    import { DEFAULT_CLI_OPTIONS } from ${JSON.stringify(new URL("./options.ts", import.meta.url).pathname)};
+    // CLI color/terminal detection initializes the stream before reports print.
+    void process.stdout;
+    printCliResult({ data: { rows: Array.from({ length: 6000 }, (_, id) => ({ id, name: "東京 — research report" })) } },
+      { ...DEFAULT_CLI_OPTIONS, format: "json" });
+  `], { stdout: "pipe", stderr: "pipe" });
+  const [stdout, stderr, status] = await Promise.all([
+    new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited,
+  ]);
+  expect({ status, stderr }).toEqual({ status: 0, stderr: "" });
+  const report = JSON.parse(stdout);
+  expect(report.data.rows).toHaveLength(6000);
+  expect(report.data.rows.at(-1)).toEqual({ id: 5999, name: "東京 — research report" });
+});
