@@ -16,6 +16,8 @@ export interface SegmentedControlProps {
   value: string;
   onChange?: (value: string) => void;
   focused?: boolean;
+  /** For controls whose owning dialog tracks focus independently of native text inputs. */
+  allowEditable?: boolean;
   shortcutScope?: string;
   width?: number | "100%";
   wrap?: boolean;
@@ -26,6 +28,7 @@ export function SegmentedControl({
   value,
   onChange,
   focused = false,
+  allowEditable = false,
   shortcutScope,
   width,
   wrap = false,
@@ -67,6 +70,7 @@ export function SegmentedControl({
     enabled: ui.kind !== "desktop-web" && focused && !!onChange,
     phase: "before",
     scope: shortcutScope,
+    allowEditable,
   });
 
   if (HostSegmentedControl) {
