@@ -381,12 +381,48 @@ describe("study resolution", () => {
     });
     expect(result.series.find(({ id }) => id === "spread")?.points).toHaveLength(5);
     const correlation = result.series.find(({ id }) => id === "correlation")?.points ?? [];
-    expect(correlation).toHaveLength(3);
-    expect(correlation.every((entry) => Math.abs((entry.value ?? 0) - 0.5) < 1e-10)).toBe(true);
+    expect(correlation).toHaveLength(0);
+    expect(result.warnings).toContain("correlation: not enough valid history to calculate correlation.");
     expect(result.series.find(({ id }) => id === "correlation")).toMatchObject({
       style: "line",
       interpolation: "none",
     });
+  });
+
+  test("correlates returns over shared observations without inventing closed-market zero returns", () => {
+    const series = (id: string, rows: Array<[string, number | null]>): ResolvedSeries => ({
+      ...resolved(id),
+      points: rows.map(([day, value]) => ({ date: new Date(day), observedAt: new Date(day), value })),
+    });
+    // Stock closes Friday, then Tuesday after a holiday. Crypto also trades
+    // throughout the weekend. Both have identical returns on common dates.
+    const stock = series("stock", [["2026-09-04", 100], ["2026-09-08", 110], ["2026-09-09", 99], ["2026-09-10", 118.8]]);
+    const crypto = series("crypto", [["2026-09-04", 1000], ["2026-09-05", 2000], ["2026-09-06", 500], ["2026-09-07", 1500], ["2026-09-08", 1100], ["2026-09-09", 990], ["2026-09-10", 1188]]);
+    const result = resolveStudies([stock, crypto], [study("corr", "correlation", ["stock", "crypto"], { period: 3 })]);
+    const points = result.series[0]!.points;
+    expect(points).toHaveLength(1);
+    expect(points[0]!.date.toISOString().slice(0, 10)).toBe("2026-09-10");
+    expect(points[0]!.value).toBeCloseTo(1, 12);
+
+    // A missing stock observation cannot be replaced by its previous close.
+    stock.points.splice(1, 0, { date: new Date("2026-09-07"), observedAt: new Date("2026-09-07"), value: null });
+    expect(resolveStudies([stock, crypto], [study("corr", "correlation", ["stock", "crypto"], { period: 3 })]).series[0]!.points).toEqual(points);
+  });
+
+  test("correlation waits for matching publication times instead of pairing equal observation dates", () => {
+    const left = resolved("left");
+    left.points = left.points.slice(0, 3);
+    const right = { ...resolved("right", 2), points: left.points.map((point) => ({
+      ...point, value: point.value! * 2,
+      availableAt: new Date(point.date.getTime() + 12 * 60 * 60_000),
+    })) };
+    const calculation = study("corr", "correlation", ["left", "right"], { period: 2 });
+    expect(resolveStudies([left, right], [calculation]).series[0]!.points).toHaveLength(0);
+    left.points = left.points.map((point) => ({ ...point, availableAt: new Date(point.date.getTime() + 12 * 60 * 60_000) }));
+    const [point] = resolveStudies([left, right], [calculation]).series[0]!.points;
+    expect(point?.date).toEqual(new Date("2024-01-03T12:00:00Z"));
+    expect(point?.availableAt).toEqual(point?.date);
+    expect(point?.value).toBeCloseTo(1, 12);
   });
 
   test("returns actionable errors for missing inputs instead of throwing", () => {
