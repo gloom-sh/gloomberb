@@ -93,6 +93,9 @@ export function useAppTickerOpenRuntime({
       ? null
       : findFixedTickerPaneForSymbol(currentLayout, paneType, symbol);
     if (existing) {
+      if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
+        dispatch({ type: "UPDATE_PANE_STATE", paneId: existing.instanceId, patch: { activeTabId: options.tabId } });
+      }
       focusVisiblePane(existing.instanceId, currentLayout);
       return;
     }
@@ -118,10 +121,14 @@ export function useAppTickerOpenRuntime({
         },
       );
     persistLayout(nextLayout);
+    if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
+      dispatch({ type: "UPDATE_PANE_STATE", paneId: instance.instanceId, patch: { activeTabId: options.tabId } });
+    }
     activatePane(instance.instanceId, nextLayout);
   }, [
     activatePane,
     buildPaneInstance,
+    dispatch,
     focusVisiblePane,
     persistLayout,
     pluginRegistry,

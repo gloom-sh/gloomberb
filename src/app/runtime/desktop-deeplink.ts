@@ -381,13 +381,8 @@ function handleOpenTicker(
   pluginRegistry.pinTicker(action.symbol, {
     floating: true,
     paneType: TICKER_RESEARCH_PANE_ID,
+    tabId: action.tabId ?? undefined,
   });
-
-  if (action.tabId) {
-    globalThis.setTimeout(() => {
-      pluginRegistry.switchTab(action.tabId!);
-    }, 80);
-  }
   notifySuccess(pluginRegistry, action.message);
 }
 

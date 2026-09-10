@@ -602,6 +602,8 @@ export interface PinTickerOptions {
   floating?: boolean;
   paneType?: string;
   forceNewPane?: boolean;
+  /** Select this research tab once the requested ticker has resolved. */
+  tabId?: string;
 }
 
 export interface GloomPluginContext {

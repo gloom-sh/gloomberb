@@ -13,8 +13,9 @@ import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../
 export async function upsertTickerFromSearchResult(
   tickerRepository: AppTickerRepositoryPort,
   result: InstrumentSearchResult,
+  options: { tickerSymbol?: string } = {},
 ): Promise<{ ticker: TickerRecord; created: boolean }> {
-  let symbol = getSearchResultSymbol(result);
+  let symbol = options.tickerSymbol ?? getSearchResultSymbol(result);
   let ticker = await tickerRepository.loadTicker(symbol);
   const selectedExchange = canonicalExchange(
     result.exchange === "SMART" ? result.primaryExchange : result.exchange || result.primaryExchange,
