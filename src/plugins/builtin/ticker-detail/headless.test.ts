@@ -54,7 +54,7 @@ test("financial exports distinguish provider dates from SEC period evidence and 
   expect(columns.find(({ date }) => date === "2024-09-01")).toMatchObject({ dateSource: "sec", providerDate: "2024-08-31", dateEvidence, label: "2024-09-01 USD (SEC date)" });
   expect(columns.find(({ date }) => date === "2023-08-31")).toMatchObject({ dateSource: "provider", dateEvidence: null, label: "2023-08-31 USD (provider date)" });
   expect(columns.find(({ date }) => date === "TTM")).toMatchObject({ dateSource: "derived", dateEvidence: null, providerDate: null });
-  expect(columns.every((column) => !("availableAt" in column))).toBe(true);
+  expect(columns.every((column) => column.availableAt === null && column.fieldAvailability === null)).toBe(true);
   expect(result.columns?.find(({ key }) => key === "2023-08-31")?.header).toContain("provider date");
 });
 
@@ -95,4 +95,17 @@ test("historical prices use remembered exchanges and clip and sort the full OHLC
   expect(requests).toEqual([["ABC", "LSE", "1M"]]);
   expect(result.rows.map((row) => row.close)).toEqual([18, 22]);
   expect(result.rows[1]).toEqual({ date: "2026-03-09T00:00:00.000Z", open: 20, high: 23, low: 19, close: 22, volume: 100 });
+});
+
+test("financial JSON exports preserve selected metric availability separately from fiscal-period evidence", async () => {
+  const fieldAvailability = { totalRevenue: "2018-08-03", netIncome: "2018-08-03", capitalExpenditure: "2017-08-02" };
+  const dateEvidence = { accessionNumber: "0001564590-17-014900", filed: "2017-08-02", startDate: "2016-07-01" };
+  const ctx = { marketData: createTestDataProvider({ getTickerFinancials: async () => ({
+    annualStatements: [{ date: "2017-06-30", currency: "USD", dateSource: "sec", dateEvidence, availableAt: "2018-08-03", fieldAvailability, totalRevenue: 96_571_000_000, netIncome: 25_489_000_000 }],
+    quarterlyStatements: [], priceHistory: [],
+  }) }) } as HeadlessPaneContext;
+  const result = await financialStatementsHeadless.load(args(["MSFT"], { period: "annual", statement: "income" }), ctx);
+  const restored = JSON.parse(JSON.stringify(result));
+  expect(restored.metadata.columns[0]).toMatchObject({ date: "2017-06-30", dateEvidence, availableAt: "2018-08-03", fieldAvailability });
+  expect(restored.rows.find((row: { metric: string }) => row.metric.includes("Revenue"))["2017-06-30"]).toBe(96_571_000_000);
 });

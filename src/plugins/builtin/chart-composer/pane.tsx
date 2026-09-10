@@ -1,7 +1,11 @@
+import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
+import { wrapTextLines } from "../../../utils/text-wrap";
+import { isFundamentalFieldId } from "../../../time-series/field-catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import {
   ChoiceDialog,
+  Prose,
   Tabs,
   usePaneFooter,
   type PaneFooterPressEvent,
@@ -549,12 +553,17 @@ function ChartComposerSurface({
     }
   }, { enabled: focused && !dialogOpen });
 
+  const showVintageNotice = spec.series.some((entry) => entry.visible !== false
+    && entry.source.kind === "security" && isFundamentalFieldId(entry.source.fieldId));
+  const vintageNoticeHeight = showVintageNotice ? wrapTextLines(FINANCIAL_VINTAGE_NOTICE, Math.max(8, width - 2)).length : 0;
+  const statusWarning = resolution.warnings.find((warning) => warning !== FINANCIAL_VINTAGE_NOTICE);
+
   usePaneFooter(footerId, () => ({
     info: [
       ...(resolution.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(resolution.errors[0] ? [{ id: "error", parts: [{ text: resolution.errors[0], tone: "warning" as const }] }] : []),
-      ...(!resolution.errors[0] && resolution.warnings[0]
-        ? [{ id: "warning", parts: [{ text: resolution.warnings[0], tone: "warning" as const }] }]
+      ...(!resolution.errors[0] && statusWarning
+        ? [{ id: "warning", parts: [{ text: statusWarning, tone: "warning" as const }] }]
         : []),
     ],
     hints: [
@@ -581,7 +590,7 @@ function ChartComposerSurface({
     shareData,
     resolution.errors,
     resolution.loading,
-    resolution.warnings,
+    statusWarning,
   ]);
 
   const emptyMessage = spec.series.length === 0
@@ -665,6 +674,9 @@ function ChartComposerSurface({
         renderTrigger={() => null}
       />
 
+      {showVintageNotice && <Box paddingX={1} flexShrink={0}>
+        <Prose text={FINANCIAL_VINTAGE_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} />
+      </Box>}
       <Box flexGrow={1} minHeight={4}>
         <CompositeChart
           series={plottedSeries}
@@ -674,7 +686,7 @@ function ChartComposerSurface({
           viewport={viewport}
           viewportResetKey={authoredViewportKey}
           width={Math.max(1, width)}
-          height={Math.max(4, height - 1)}
+          height={Math.max(4, height - 1 - vintageNoticeHeight)}
           focused={focused}
           interactive={surfacePointerInteractive}
           allowHistoricalBackfill

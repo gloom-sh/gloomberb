@@ -1,3 +1,4 @@
+import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { describe, expect, test } from "bun:test";
 import { chartSeriesSourceKey } from "../capabilities";
 import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
@@ -2020,4 +2021,20 @@ describe("mergePriceHistoryWindows", () => {
       }
     }
   });
+});
+
+test("financial charts disclose snapshot vintages once without changing period or availability timestamps", async () => {
+  const dataProvider = createTestDataProvider({ getTickerFinancials: async () => ({
+    annualStatements: [{ date: "2017-06-30", totalRevenue: 96_571_000_000, netIncome: 25_489_000_000, fieldAvailability: { totalRevenue: "2018-08-03", netIncome: "2018-08-03" } }],
+    quarterlyStatements: [], priceHistory: [],
+  }) });
+  for (const timestampMode of ["period-end", "available-at"] as const) {
+    const result = await resolveChartSpecData(chartSpec({ viewport: { range: "ALL", resolution: "auto" },
+      series: ["totalRevenue", "netIncome"].map((field) => chartSeries({ id: field, style: "columns",
+        source: { kind: "security", instrument: { symbol: "MSFT", exchange: "NASDAQ" }, fieldId: `fundamental.${field}`, period: "annual", timestampMode },
+      })),
+    }), { dataProvider });
+    expect(result.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE)).toHaveLength(1);
+    expect(result.series[0]?.points[0]).toMatchObject({ value: 96_571_000_000, observedAt: new Date("2017-06-30T00:00:00Z"), availableAt: new Date("2018-08-03T00:00:00Z"), date: new Date(timestampMode === "period-end" ? "2017-06-30T00:00:00Z" : "2018-08-03T00:00:00Z") });
+  }
 });

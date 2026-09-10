@@ -1,5 +1,7 @@
 import type { FinancialStatement } from "../types/financials";
 
+export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include restatements. Historical as-of values are not reconstructed.";
+
 const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 

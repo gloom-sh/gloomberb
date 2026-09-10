@@ -1,4 +1,5 @@
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
+import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
 import { appendLiveQuotePoint } from "./chart-data";
 import {
   getTimeRangeForDateWindow,
@@ -883,7 +884,9 @@ export async function resolveChartSpecData(
   options: ChartResolveOptions = {},
 ): Promise<ChartResolutionResult> {
   const errors: string[] = [];
-  const warnings: string[] = [];
+  const warnings: string[] = spec.series.some((entry) => entry.visible !== false
+    && entry.source.kind === "security" && isFundamentalFieldId(entry.source.fieldId))
+    ? [FINANCIAL_VINTAGE_NOTICE] : [];
   const priorityWarnings: string[] = [];
   const baseSeriesIds = new Set(spec.series.map((entry) => entry.id));
   const visibleSeriesIds = new Set(spec.series
