@@ -18,7 +18,7 @@ import { openTuiUiHost } from "./ui-host";
 import { OpenTuiDialogHostProvider } from "./dialog-host";
 import { openTuiToastHost } from "./toast-host";
 import { ToastHostProvider } from "../../ui/toast";
-import { colors } from "../../theme/colors";
+import { colors, tokens } from "../../theme/colors";
 import { startMainThreadMonitor } from "../../utils/main-thread-monitor";
 import { measurePerfAsync } from "../../utils/perf-marks";
 import type { CliLaunchRequest } from "../../types/plugin";
@@ -161,7 +161,7 @@ export async function startOpenTuiApp(options: StartOpenTuiAppOptions = {}): Pro
           <ToastHostProvider host={openTuiToastHost}>
             <OpenTuiDialogHostProvider
               size="medium"
-              dialogOptions={{ style: { backgroundColor: colors.bg, borderColor: colors.borderFocused, borderStyle: "single", paddingX: 2, paddingY: 1 } }}
+              dialogOptions={{ style: { backgroundColor: tokens.dialog.bg, borderColor: tokens.dialog.border, borderStyle: tokens.pane.chrome.boxBorderStyle, paddingX: 2, paddingY: 1 } }}
               backdropColor={colors.bg}
               backdropOpacity={0.8}
             >

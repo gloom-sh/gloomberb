@@ -1,5 +1,6 @@
 import type { AppAction } from "../../../state/app/context";
 import type { Dispatch } from "react";
+import { stylesAreSelectable } from "../../../theme/presets";
 
 type CommandExecutor = (dispatch: Dispatch<AppAction>, context: CommandContext) => void | Promise<void>;
 
@@ -21,7 +22,7 @@ export interface Command {
   execute?: CommandExecutor;
 }
 
-export const commands: Command[] = [
+const allCommands: Command[] = [
   // Security description
   {
     id: "security-description",
@@ -207,9 +208,18 @@ export const commands: Command[] = [
     id: "theme",
     prefix: "TH",
     label: "Change Theme",
-    description: "Switch color theme",
+    description: "Switch style and color scheme together",
     hasArg: true,
     argPlaceholder: "theme name",
+    category: "Config",
+  },
+  {
+    id: "colors",
+    prefix: "CO",
+    label: "Change Colors",
+    description: "Swap the color scheme, keeping the current style",
+    hasArg: true,
+    argPlaceholder: "scheme name",
     category: "Config",
   },
   {
@@ -254,6 +264,16 @@ export const commands: Command[] = [
     category: "Danger",
   },
 ];
+
+/**
+ * `colors` swaps the scheme and keeps the style. While only one style ships it
+ * would do exactly what `theme` does, so it stays out of the palette until a
+ * second style makes the distinction real.
+ */
+export const commands: Command[] = allCommands.filter(
+  (command) => command.id !== "colors" || stylesAreSelectable(),
+);
+
 
 /** Find a command whose prefix matches the start of the input */
 export function matchPrefix(input: string, commandList: Command[] = commands): { command: Command; arg: string; prefix: string } | null {

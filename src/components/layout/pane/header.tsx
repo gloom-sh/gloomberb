@@ -1,11 +1,13 @@
-import { Box, Span, Text, useNativeRenderer, useUiCapabilities } from "../../../ui";
+import { Box, Span, Text, TextAttributes, useNativeRenderer, useUiCapabilities } from "../../../ui";
 import { useCallback, useRef, type ReactNode } from "react";
-import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
+import { blendHex, colors } from "../../../theme/colors";
+import { useGlyphs, useThemeTokens } from "../../../theme/theme-context";
+import type { GlyphSet } from "../../../theme/glyphs";
+import type { PaneTokens } from "../../../theme/tokens";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 
 const PANE_HEADER_HEIGHT = 1;
-const PANE_HEADER_GRIP = ":: ";
 export const PANE_HEADER_ACTION = " ... ";
 export const PANE_HEADER_CLOSE = " x ";
 
@@ -39,6 +41,11 @@ function truncateTitle(title: string, maxWidth: number): string {
   return truncateToDisplayWidth(title, maxWidth);
 }
 
+/** The style decides whether titles shout; the caller only supplies the words. */
+function styleTitle(title: string, pane: PaneTokens): string {
+  return pane.chrome.upperCaseTitles ? title.toUpperCase() : title;
+}
+
 function DesktopPaneButton({
   icon,
   onMouseDown,
@@ -59,11 +66,11 @@ function DesktopPaneButton({
       justifyContent="center"
       onMouseDown={onMouseDown}
       data-gloom-interactive={onMouseDown ? "true" : undefined}
+      data-gloom-role="pane-icon-button"
       aria-label={label}
       aria-pressed={pressed}
       title={label}
       style={{
-        borderRadius: 4,
         minWidth: 20,
         paddingInline: 4,
         backgroundColor: "transparent",
@@ -90,11 +97,13 @@ function TerminalPaneButton({
   text,
   fg,
   role,
+  attributes,
   onMouseDown,
 }: {
   text: string;
   fg: string;
   role: string;
+  attributes?: number;
   onMouseDown?: (event: any) => void;
 }) {
   return (
@@ -106,9 +115,29 @@ function TerminalPaneButton({
       data-gloom-interactive={onMouseDown ? "true" : undefined}
       onMouseDown={onMouseDown}
     >
-      <Text fg={fg} selectable={false}>{text}</Text>
+      <Text fg={fg} selectable={false} attributes={attributes}>{text}</Text>
     </Box>
   );
+}
+
+/**
+ * Reverse video for an inverted header, an underline for a printed one, bold
+ * for a focused title. The terminal gets real cell attributes and the DOM host
+ * maps the same flags onto CSS, so one decision covers both renderers.
+ *
+ * INVERSE is the attribute rather than a pre-swapped pair of colours because
+ * the title run only covers the columns the words occupy; the row behind it is
+ * painted from the same tokens, and letting the renderer do the flip keeps the
+ * two in step when a title is truncated.
+ */
+function headerAttributes(pane: PaneTokens, focused: boolean): number | undefined {
+  let attributes = 0;
+  if (pane.chrome.invertHeader) attributes |= TextAttributes.INVERSE;
+  if (pane.chrome.underlineHeader) attributes |= TextAttributes.UNDERLINE;
+  if (focused && (pane.chrome.headerMode === "inline" || pane.chrome.headerMode === "plain")) {
+    attributes |= TextAttributes.BOLD;
+  }
+  return attributes || undefined;
 }
 
 export function PaneHeader({
@@ -129,13 +158,28 @@ export function PaneHeader({
 }: PaneHeaderProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const nativeRenderer = useNativeRenderer();
+  const glyphs = useGlyphs();
+  const { pane } = useThemeTokens();
   const terminalHeaderRef = useRef<unknown>(null);
   const visuallyFocused = focused || windowModeSelected;
-  const backgroundColor = floating ? floatingPaneTitleBg(visuallyFocused) : paneTitleBg(visuallyFocused);
+  const state = visuallyFocused ? "focused" : "idle";
+  const grip = pane.chrome.grip;
+  // With INVERSE the renderer swaps the pair, so the title run is handed the
+  // colours the other way round and the row keeps the resolved background.
+  const rowBackground = floating ? pane.title.floatingBg[state] : pane.title.bg[state];
+  const rowText = floating ? pane.title.floatingText[state] : pane.title.text[state];
+  const inverted = pane.chrome.invertHeader;
+  const backgroundColor = rowBackground;
+  const textColor = inverted ? rowBackground : rowText;
+  const textBackground = inverted ? rowText : undefined;
+  const gripColor = pane.title.grip[state];
+  const borderColor = visuallyFocused ? pane.border.focused : pane.border.idle;
+  const attributes = headerAttributes(pane, visuallyFocused);
+  const displayTitle = styleTitle(title, pane);
+  const quickSettingLabel = ` ${glyphs.bolt} `;
   const actionText = showActions ? PANE_HEADER_ACTION : "     ";
   const closeText = floating ? PANE_HEADER_CLOSE : "";
-  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(" ⚡ "), 0);
-  const textColor = paneTitleText(visuallyFocused, floating);
+  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(quickSettingLabel), 0);
   const handleTerminalHeaderMouseDown = useCallback((event: any) => {
     capturePointerDrag(nativeRenderer, terminalHeaderRef.current);
     onHeaderMouseDown?.(event);
@@ -149,6 +193,7 @@ export function PaneHeader({
         backgroundColor={backgroundColor}
         flexDirection="row"
         data-gloom-role="pane-header"
+        data-gloom-header-mode={pane.chrome.headerMode}
         data-floating={floating ? "true" : "false"}
         data-focused={focused ? "true" : "false"}
         data-window-mode-selected={windowModeSelected ? "true" : "false"}
@@ -158,29 +203,35 @@ export function PaneHeader({
         onMouseDragEnd={onHeaderMouseDragEnd}
         onContextMenu={onHeaderContextMenu}
         style={{
-          borderBottom: `1px solid ${visuallyFocused ? colors.borderFocused : colors.border}`,
-          paddingInline: 6,
-          boxShadow: visuallyFocused
-            ? `inset 0 -1px 0 ${blendHex(paneTitleBg(visuallyFocused), colors.borderFocused, 0.18)}`
-            : `inset 0 -1px 0 ${blendHex(paneTitleBg(visuallyFocused), colors.textBright, 0.04)}`,
+          borderBottom: pane.chrome.headerMode === "bar" || pane.chrome.underlineHeader
+            ? `1px solid ${borderColor}`
+            : "none",
+          boxShadow: pane.chrome.headerMode === "bar"
+            ? `inset 0 -1px 0 ${blendHex(backgroundColor, visuallyFocused ? colors.borderFocused : colors.textBright, visuallyFocused ? 0.18 : 0.04)}`
+            : "none",
         }}
       >
-        <Text fg={visuallyFocused ? colors.borderFocused : colors.textMuted} selectable={false} data-gloom-role="pane-grip">
-          {PANE_HEADER_GRIP}
-        </Text>
+        {grip && (
+          <Text fg={gripColor} selectable={false} data-gloom-role="pane-grip" attributes={attributes}>
+            {grip}
+          </Text>
+        )}
         <Box minWidth={0} flexShrink={1} overflow="hidden">
           <Text
             fg={textColor}
+            bg={textBackground}
+            attributes={attributes}
             selectable={false}
             data-gloom-role="pane-title"
             style={{
-              fontWeight: visuallyFocused ? 700 : 600,
+              fontWeight: visuallyFocused ? "var(--gloom-heading-weight, 700)" : 600,
+              letterSpacing: "var(--gloom-letter-spacing, 0)",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
             }}
           >
-            {title}
+            {displayTitle}
           </Text>
         </Box>
         {quickSettings.map((setting) => (
@@ -237,16 +288,22 @@ export function PaneHeader({
     );
   }
 
-  if (visuallyFocused || floating) {
+  // When focus is carried by the border, only the focused pane is boxed, which
+  // is what makes the terminal style's grid readable. Any other focus mode has
+  // its own signal, so the box is a constant and every pane gets one.
+  const boxedHeader = pane.chrome.drawsBorder
+    && (visuallyFocused || floating || pane.chrome.focusMode !== "border");
+
+  if (boxedHeader) {
     // Build: ┌─:: Title ─────────── ... x─┐
-    // Reserve 2 for corners, 1 for ─ after ┌, 1 for ─ before ┐
-    const borderColor = visuallyFocused ? colors.borderFocused : colors.border;
+    // Reserve 2 for corners, 1 for the rule after the corner, 1 before the next.
+    const { topLeft, topRight, horizontal } = glyphs.border;
     const innerWidth = Math.max(0, width - 4);
-    const contentWidth = PANE_HEADER_GRIP.length + terminalQuickSettingsWidth + closeText.length + actionText.length;
+    const contentWidth = grip.length + terminalQuickSettingsWidth + closeText.length + actionText.length;
     const titleWidth = Math.max(0, innerWidth - contentWidth);
-    const clippedTitle = truncateTitle(title, titleWidth);
-    const fillLen = Math.max(0, innerWidth - PANE_HEADER_GRIP.length - displayWidth(clippedTitle) - terminalQuickSettingsWidth - actionText.length - closeText.length);
-    const fill = "─".repeat(fillLen);
+    const clippedTitle = truncateTitle(displayTitle, titleWidth);
+    const fillLen = Math.max(0, innerWidth - grip.length - displayWidth(clippedTitle) - terminalQuickSettingsWidth - actionText.length - closeText.length);
+    const fill = horizontal.repeat(fillLen);
 
     return (
       <Box
@@ -260,12 +317,12 @@ export function PaneHeader({
         onMouseDrag={onHeaderMouseDrag}
         onMouseDragEnd={onHeaderMouseDragEnd}
       >
-        <Text fg={borderColor} selectable={false}>{"┌─"}</Text>
-        <Text fg={textColor} selectable={false}>{`${PANE_HEADER_GRIP}${clippedTitle}`}</Text>
+        <Text fg={borderColor} selectable={false}>{`${topLeft}${horizontal}`}</Text>
+        <Text fg={textColor} bg={textBackground} selectable={false} attributes={attributes}>{`${grip}${clippedTitle}`}</Text>
         {quickSettings.map((setting) => (
           <TerminalPaneButton
             key={setting.key}
-            text=" ⚡ "
+            text={quickSettingLabel}
             fg={setting.active ? colors.warning : colors.textDim}
             role="pane-quick-setting"
             onMouseDown={setting.onMouseDown}
@@ -286,13 +343,15 @@ export function PaneHeader({
             onMouseDown={onCloseMouseDown}
           />
         )}
-        <Text fg={borderColor} selectable={false}>{"─┐"}</Text>
+        <Text fg={borderColor} selectable={false}>{`${horizontal}${topRight}`}</Text>
       </Box>
     );
   }
 
-  const titleWidth = Math.max(0, width - PANE_HEADER_GRIP.length - terminalQuickSettingsWidth - actionText.length - closeText.length);
-  const clippedTitle = truncateTitle(title, titleWidth);
+  const titleWidth = Math.max(0, width - grip.length - terminalQuickSettingsWidth - actionText.length - closeText.length);
+  const clippedTitle = truncateTitle(displayTitle, titleWidth);
+  // An inverted or underlined header owns the whole row, so the title run is
+  // padded out to the columns it covers rather than stopping at the last word.
   const padding = " ".repeat(Math.max(0, titleWidth - displayWidth(clippedTitle)));
 
   return (
@@ -307,13 +366,13 @@ export function PaneHeader({
       onMouseDrag={onHeaderMouseDrag}
       onMouseDragEnd={onHeaderMouseDragEnd}
     >
-      <Text fg={textColor} selectable={false}>
-        {`${PANE_HEADER_GRIP}${clippedTitle}${padding}`}
+      <Text fg={textColor} bg={textBackground} selectable={false} attributes={attributes}>
+        {`${grip}${clippedTitle}${padding}`}
       </Text>
       {quickSettings.map((setting) => (
         <TerminalPaneButton
           key={setting.key}
-          text=" ⚡ "
+          text={quickSettingLabel}
           fg={setting.active ? colors.warning : colors.textDim}
           role="pane-quick-setting"
           onMouseDown={setting.onMouseDown}
@@ -323,6 +382,7 @@ export function PaneHeader({
         text={actionText}
         fg={textColor}
         role="pane-action"
+        attributes={attributes}
         onMouseDown={onActionMouseDown}
       />
       {floating && (
@@ -330,6 +390,7 @@ export function PaneHeader({
           text={closeText}
           fg={textColor}
           role="pane-close"
+          attributes={attributes}
           onMouseDown={onCloseMouseDown}
         />
       )}

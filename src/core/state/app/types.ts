@@ -55,6 +55,8 @@ export interface AppState {
   commandBarQuery: string;
   commandBarLaunchRequest: CommandBarPluginLaunchRequest | CommandBarTickerSearchLaunchRequest | null;
   themePreview: string | null;
+  /** Transient style half of a theme preview, cleared with `themePreview`. */
+  themeStylePreview: string | null;
   refreshing: Set<string>;
   initialized: boolean;
   statusBarVisible: boolean;
@@ -93,8 +95,8 @@ export type AppAction =
   | { type: "SET_BROKER_ACCOUNTS"; instanceId: string; accounts: BrokerAccount[] }
   | { type: "SET_INITIALIZED" }
   | { type: "TOGGLE_STATUS_BAR" }
-  | { type: "SET_THEME"; theme: string }
-  | { type: "PREVIEW_THEME"; theme: string | null }
+  | { type: "SET_THEME"; theme: string; style?: string }
+  | { type: "PREVIEW_THEME"; theme: string | null; style?: string | null }
   | { type: "SET_UPDATE_AVAILABLE"; release: ReleaseInfo | null }
   | { type: "SET_UPDATE_PROGRESS"; progress: UpdateProgress | null }
   | { type: "SET_UPDATE_CHECK_IN_PROGRESS"; checking: boolean }

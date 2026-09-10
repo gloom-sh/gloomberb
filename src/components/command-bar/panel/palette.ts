@@ -1,28 +1,31 @@
 import { useMemo } from "react";
-import {
-  commandBarAccentText, commandBarBg, commandBarHeadingText, commandBarHoverBg,
-  commandBarInputBg, commandBarMatchText, commandBarPanelBg, commandBarSelectedBg,
-  commandBarSelectedText, commandBarSubtleText, commandBarText,
-} from "../../../theme/colors";
-import { useThemeColors } from "../../../theme/theme-context";
+import { useThemeTokens } from "../../../theme/theme-context";
 
+/**
+ * The command bar's surface, straight off the resolved tokens. `native` picks
+ * the DOM's layered sheet, where the panel and the input sit on their own
+ * surfaces, over the terminal's single flat one.
+ */
 export function useCommandBarPalette(native: boolean) {
-  const colors = useThemeColors();
-  return useMemo(() => ({
-    bg: commandBarBg(colors),
-    panelBg: native ? commandBarPanelBg(colors) : commandBarBg(colors),
-    inputBg: native ? commandBarInputBg(colors) : commandBarBg(colors),
-    accent: commandBarAccentText(colors),
-    heading: commandBarHeadingText(colors),
-    hoverBg: commandBarHoverBg(colors),
-    match: commandBarMatchText(colors),
-    selectedBg: commandBarSelectedBg(colors),
-    selectedText: commandBarSelectedText(colors),
-    subtle: commandBarSubtleText(colors),
-    text: commandBarText(colors),
-    border: colors.border,
-    borderFocused: colors.borderFocused,
-    negative: colors.negative,
-    panel: colors.panel,
-  }), [colors, native]);
+  const tokens = useThemeTokens();
+  return useMemo(() => {
+    const { commandBar } = tokens;
+    return {
+      bg: commandBar.bg,
+      panelBg: native ? commandBar.panelBg : commandBar.bg,
+      inputBg: native ? commandBar.inputBg : commandBar.bg,
+      accent: commandBar.accentText,
+      heading: commandBar.headingText,
+      hoverBg: commandBar.hoverBg,
+      match: commandBar.matchText,
+      selectedBg: commandBar.selectedBg,
+      selectedText: commandBar.selectedText,
+      subtle: commandBar.subtleText,
+      text: commandBar.text,
+      border: commandBar.border,
+      borderFocused: commandBar.borderFocused,
+      negative: tokens.text.negative,
+      panel: tokens.surface.panel,
+    };
+  }, [native, tokens]);
 }

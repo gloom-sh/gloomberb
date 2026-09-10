@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { glyphs } from "../../../theme/colors";
 import {
   DataTableView,
   InputSearchBar,
@@ -210,7 +211,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       getItemKey={(row) => futuresRowId(row)}
       renderSectionHeader={(row) => row.type === "header"
         ? {
-          text: `${visibleCollapsed.has(row.sector) ? "▶" : "▼"} ${FUTURES_SECTOR_LABELS[row.sector]}`,
+          text: `${visibleCollapsed.has(row.sector) ? glyphs.caret.collapsed : glyphs.caret.expanded} ${FUTURES_SECTOR_LABELS[row.sector]}`,
           onMouseDown: () => toggleSector(row.sector),
         }
         : null}

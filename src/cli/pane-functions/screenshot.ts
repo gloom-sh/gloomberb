@@ -8,7 +8,9 @@ import { CHART_COMPOSER_PANE_ID, type AppConfig } from "../../types/config";
 import type { OptionsChain, PricePoint, TickerFinancials } from "../../types/financials";
 import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
-import { getTheme, getThemeIds } from "../../theme/themes";
+import { resolvePresetSelection } from "../../theme/presets";
+import { getTheme, getThemeIds, hasScheme } from "../../theme/themes";
+import { getAllStyleIds, hasAnyStyle } from "../../theme/styles";
 
 const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
 import {
@@ -454,7 +456,7 @@ export async function buildDesktopShotPayload(
   };
   const config = stripDesktopShotCredentials<AppConfig>({
     ...context.config,
-    ...(theme ? { theme: resolveShotTheme(theme) } : {}),
+    ...(theme ? resolveShotTheme(theme) : {}),
     layout,
     layouts: [{
       name: "CLI Shot",
@@ -549,15 +551,24 @@ export async function buildDesktopShotPayload(
   return payload;
 }
 
-function resolveShotTheme(requested: string): string {
+/**
+ * Accepts a scheme id, a scheme name, or a `<style>-<scheme>` preset, so a
+ * shot can capture the structural half as well as the palette.
+ */
+function resolveShotTheme(requested: string): { theme: string; themeStyle?: string } {
   const normalized = requested.trim().toLowerCase().replace(/[\s_]+/g, "-");
   const ids = getThemeIds();
-  const match = ids.find((id) => id.toLowerCase() === normalized)
+  const scheme = ids.find((id) => id.toLowerCase() === normalized)
     ?? ids.find((id) => getTheme(id).name.toLowerCase().replace(/[\s_]+/g, "-") === normalized);
-  if (!match) {
-    throw new Error(`Unknown theme "${requested}". Available themes: ${ids.join(", ")}`);
+  if (scheme) return { theme: scheme };
+
+  const selection = resolvePresetSelection(normalized);
+  if (selection?.schemeId && hasScheme(selection.schemeId) && hasAnyStyle(selection.styleId)) {
+    return { theme: selection.schemeId, themeStyle: selection.styleId };
   }
-  return match;
+  throw new Error(
+    `Unknown theme "${requested}". Schemes: ${ids.join(", ")}. Styles: ${getAllStyleIds().join(", ")}.`,
+  );
 }
 
 function shotPriceHistoryRange(resolved: ResolvedPaneFunction): TimeRange | null {

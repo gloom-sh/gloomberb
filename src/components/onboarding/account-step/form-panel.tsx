@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { TextField } from "../../ui";
 import type { AccountMode, AccountSubmitError } from "../../../plugins/builtin/cloud/auth-model";
@@ -29,7 +29,7 @@ function TuiFieldRow({
   if (!active) {
     return (
       <Box height={1} flexDirection="row">
-        <Text fg={colors.positive}>{"✓ "}</Text>
+        <Text fg={colors.positive}>{`${glyphs.check} `}</Text>
         <Text fg={colors.text}>{`${label}: ${masked ? "*".repeat(value.length) : value}`}</Text>
       </Box>
     );

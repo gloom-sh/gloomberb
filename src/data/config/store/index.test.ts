@@ -384,6 +384,44 @@ describe("sanitizeLayout", () => {
   });
 });
 
+describe("loadConfig theme selection", () => {
+  async function loadWithTheme(saved: Record<string, unknown>): Promise<{ theme: string; themeStyle?: string }> {
+    const dataDir = await createTempConfigDir();
+    await writeConfigJson(dataDir, createSavedConfig(saved));
+    const config = await loadConfig(dataDir);
+    return { theme: config.theme, themeStyle: config.themeStyle };
+  }
+
+  test("a config written before styles existed keeps its scheme under the terminal style", async () => {
+    expect(await loadWithTheme({ theme: "nord", themeStyle: undefined }))
+      .toEqual({ theme: "nord", themeStyle: "terminal" });
+  });
+
+  test("reads a scheme and a style independently", async () => {
+    expect(await loadWithTheme({ theme: "catppuccin", themeStyle: "terminal" }))
+      .toEqual({ theme: "catppuccin", themeStyle: "terminal" });
+  });
+
+  test("an experimental style is not accepted from the config file", async () => {
+    // A config written while a style was in development must not strand
+    // someone in it. Opting in is GLOOMBERB_THEME_STYLE's job.
+    expect(await loadWithTheme({ theme: "catppuccin", themeStyle: "modern" }))
+      .toEqual({ theme: "catppuccin", themeStyle: "terminal" });
+  });
+
+  test("a theme naming an unoffered style falls back rather than half-applying", async () => {
+    expect(await loadWithTheme({ theme: "phosphor" }))
+      .toEqual({ theme: "amber", themeStyle: "terminal" });
+  });
+
+  test("falls back for an unknown scheme or style rather than rendering nothing", async () => {
+    expect(await loadWithTheme({ theme: "not-a-scheme", themeStyle: "not-a-style" }))
+      .toEqual({ theme: "amber", themeStyle: "terminal" });
+    expect(await loadWithTheme({ theme: 7, themeStyle: [] }))
+      .toEqual({ theme: "amber", themeStyle: "terminal" });
+  });
+});
+
 describe("loadConfig", () => {
   test("migrates unreachable pane instances and their saved state", async () => {
     const dataDir = await createTempConfigDir();

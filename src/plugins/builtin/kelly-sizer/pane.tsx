@@ -2,7 +2,7 @@ import { Button } from "../../../components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import {
   InputSearchBar,
   Tabs,
@@ -311,14 +311,14 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
         xRatio: result.clippedFraction / curveMaxFraction,
         label: targetLabel === "target" ? "target" : `${targetLabel} cap`,
         color: colors.positive,
-        lineChar: "┃",
+        lineChar: glyphs.border.vertical,
       },
       {
         id: "full",
         xRatio: result.fullKellyFraction / curveMaxFraction,
         label: "full",
         color: colors.textMuted,
-        lineChar: "│",
+        lineChar: glyphs.border.vertical,
       },
     ];
     // Anything past the window edge would be drawn on top of the axis, so drop it.

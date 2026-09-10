@@ -11,7 +11,7 @@ import {
   type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import {
   Box,
   ScrollBox,
@@ -270,7 +270,7 @@ export function RiskFactorsPane({
                     text={point}
                     width={proseWidth}
                     color={colors.text}
-                    prefix="• "
+                    prefix={`${glyphs.bullet} `}
                   />
                 ))}
               </Box>

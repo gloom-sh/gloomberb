@@ -1,3 +1,5 @@
+import { getCurrentStyle, glyphs } from "../../../theme/colors";
+import type { GlyphSet } from "../../../theme/glyphs";
 import { compositeAxisTicks, type CompositeAxisValueFormatter } from "./format";
 import type { CompositeViewportRange } from "./interactions";
 import { resolveCompositeObservationWidth } from "./rasterizer";
@@ -157,6 +159,32 @@ function renderColumns(
   }
 }
 
+/** Box-drawing edge for a hollow candle, so the outline joins at the corners. */
+function hollowBodyChar(
+  row: number,
+  top: number,
+  bottom: number,
+  offset: number,
+  half: number,
+  set: GlyphSet,
+): string {
+  const onTop = row === top;
+  const onBottom = row === bottom;
+  const onLeft = offset === -half;
+  const onRight = offset === half;
+  if (onTop && onLeft) return set.border.topLeft;
+  if (onTop && onRight) return set.border.topRight;
+  if (onBottom && onLeft) return set.border.bottomLeft;
+  if (onBottom && onRight) return set.border.bottomRight;
+  if (onTop || onBottom) return set.border.horizontal;
+  return set.border.vertical;
+}
+
+/** True for a cell that carries nothing but the grid, so an overlay may claim it. */
+function isBackdropCell(current: string | undefined, gridChar: string): boolean {
+  return current === " " || current === gridChar || current === undefined;
+}
+
 function renderOhlc(
   rows: string[][],
   series: CompositeProjectedSeries,
@@ -164,6 +192,7 @@ function renderOhlc(
   width: number,
   height: number,
 ): void {
+  const candles = getCurrentStyle().charts.candles;
   const candleWidth = resolveCompositeTextOhlcWidth(series.points, width);
   const halfCandleWidth = Math.floor(candleWidth / 2);
   for (const projected of series.points) {
@@ -178,20 +207,27 @@ function renderOhlc(
     const highRow = valueRow(high, domain, height);
     const lowRow = valueRow(low, domain, height);
     if (closeRow === null || highRow === null || lowRow === null) continue;
-    drawLine(rows, x, highRow, x, lowRow, "│");
-    if (series.source.style === "candles" && openRow !== null) {
-      for (let row = Math.min(openRow, closeRow); row <= Math.max(openRow, closeRow); row += 1) {
+    drawLine(rows, x, highRow, x, lowRow, glyphs.border.vertical);
+    if (series.source.style === "candles" && openRow !== null && candles !== "ohlc") {
+      const bodyTop = Math.min(openRow, closeRow);
+      const bodyBottom = Math.max(openRow, closeRow);
+      for (let row = bodyTop; row <= bodyBottom; row += 1) {
         for (let offset = -halfCandleWidth; offset <= halfCandleWidth; offset += 1) {
-          setCell(rows, x + offset, row, "█");
+          // A hollow body keeps its outline and lets the plot through, which is
+          // how a lighter style reads a candle without a block of ink.
+          const onEdge = row === bodyTop || row === bodyBottom
+            || offset === -halfCandleWidth || offset === halfCandleWidth;
+          if (candles === "hollow" && !onEdge) continue;
+          setCell(rows, x + offset, row, candles === "hollow" ? hollowBodyChar(row, bodyTop, bodyBottom, offset, halfCandleWidth, glyphs) : glyphs.bar.full);
         }
       }
       continue;
     }
     const tickWidth = Math.max(1, halfCandleWidth);
-    if (series.source.style === "ohlc" && openRow !== null) {
-      drawLine(rows, Math.max(0, x - tickWidth), openRow, x, openRow, "─");
+    if (openRow !== null && (series.source.style === "ohlc" || candles === "ohlc")) {
+      drawLine(rows, Math.max(0, x - tickWidth), openRow, x, openRow, glyphs.border.horizontal);
     }
-    drawLine(rows, x, closeRow, Math.min(width - 1, x + tickWidth), closeRow, "─");
+    drawLine(rows, x, closeRow, Math.min(width - 1, x + tickWidth), closeRow, glyphs.border.horizontal);
   }
 }
 
@@ -216,9 +252,14 @@ export function renderCompositePanelText(
   const height = Math.max(1, panel.height);
   const plotWidth = Math.max(1, width);
   const rows = Array.from({ length: height }, () => Array(plotWidth).fill(" "));
-  for (let index = 1; index <= 3; index += 1) {
-    const row = Math.round((height - 1) * (index / 4));
-    for (let x = 0; x < plotWidth; x += 3) setCell(rows, x, row, "·");
+  const grid = getCurrentStyle().charts.grid;
+  const gridChar = grid === "lines" ? glyphs.border.horizontal : glyphs.dot;
+  const gridStep = grid === "lines" ? 1 : 3;
+  if (grid !== "none") {
+    for (let index = 1; index <= 3; index += 1) {
+      const row = Math.round((height - 1) * (index / 4));
+      for (let x = 0; x < plotWidth; x += gridStep) setCell(rows, x, row, gridChar);
+    }
   }
 
   const columnLayout = buildCompositeColumnLayout(panel);
@@ -260,7 +301,7 @@ export function renderCompositePanelText(
     );
     for (let x = 0; x < plotWidth; x += 1) {
       const current = rows[row]?.[x];
-      if (current === " " || current === "·") setCell(rows, x, row, "╌");
+      if (isBackdropCell(current, gridChar)) setCell(rows, x, row, "╌");
     }
   }
 
@@ -268,14 +309,14 @@ export function renderCompositePanelText(
     const cursorX = clamp(Math.round(cursorXRatio * Math.max(plotWidth - 1, 0)), 0, Math.max(plotWidth - 1, 0));
     for (let y = 0; y < height; y += 1) {
       const current = rows[y]?.[cursorX];
-      setCell(rows, cursorX, y, current === " " || current === "·" ? "│" : "┼");
+      setCell(rows, cursorX, y, isBackdropCell(current, gridChar) ? glyphs.border.vertical : glyphs.border.cross);
     }
   }
   if (cursorYRatio !== null) {
     const cursorY = clamp(Math.round(cursorYRatio * Math.max(height - 1, 0)), 0, Math.max(height - 1, 0));
     for (let x = 0; x < plotWidth; x += 1) {
       const current = rows[cursorY]?.[x];
-      setCell(rows, x, cursorY, current === " " || current === "·" ? "─" : "┼");
+      setCell(rows, x, cursorY, isBackdropCell(current, gridChar) ? glyphs.border.horizontal : glyphs.border.cross);
     }
   }
 

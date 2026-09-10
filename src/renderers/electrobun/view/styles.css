@@ -5,7 +5,8 @@ body {
   --cell-w: 8px;
   --cell-h: 18px;
   margin: 0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-family: var(--gloom-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  letter-spacing: var(--gloom-letter-spacing, 0);
   font-size: 12px;
   line-height: var(--cell-h);
   color: var(--gloom-text, #f2f2f2);
@@ -88,25 +89,25 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="pane-window"][data-floating="true"] {
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--gloom-radius-pane, 0px);
   overflow: hidden;
-  box-shadow: 0 18px 38px color-mix(in srgb, var(--gloom-bg) 46%, transparent);
+  box-shadow: var(--gloom-shadow-floating, none);
 }
 [data-gloom-role="pane-window"][data-floating="true"]::after {
   content: "";
   position: absolute;
   inset: 0;
-  border: 1px solid var(--pane-border-color, var(--gloom-border));
+  border: var(--gloom-pane-border-width, 1px) solid var(--pane-border-color, var(--gloom-border));
   border-radius: inherit;
   pointer-events: none;
   z-index: 100;
 }
 [data-gloom-role="pane-window"][data-floating="true"][data-focused="true"] {
-  box-shadow: 0 18px 40px color-mix(in srgb, var(--gloom-bg) 50%, transparent);
+  box-shadow: var(--gloom-shadow-floating, none);
 }
 [data-gloom-role="pane-window"][data-floating="true"][data-window-mode-selected="true"] {
   box-shadow:
-    0 18px 40px color-mix(in srgb, var(--gloom-bg) 50%, transparent),
+    var(--gloom-shadow-floating, none),
     0 0 0 2px var(--gloom-border-focused),
     0 0 0 5px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
 }
@@ -116,10 +117,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="pane-window"][data-floating="false"] {
   border: 0;
-  border-radius: 0;
+  border-radius: var(--gloom-radius-pane, 0px);
 }
 [data-gloom-role="pane-window"][data-floating="false"][data-focused="true"] {
-  box-shadow: inset 0 0 0 1px var(--pane-border-color, var(--gloom-border-focused));
+  box-shadow: inset 0 0 0 var(--gloom-pane-border-width, 1px) var(--pane-border-color, var(--gloom-border-focused));
 }
 [data-gloom-role="pane-window"][data-floating="false"][data-window-mode-selected="true"] {
   box-shadow:
@@ -128,7 +129,7 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="pane-header"] {
   align-items: center;
-  padding-inline: 7px;
+  padding-inline: calc(var(--cell-w) * var(--gloom-pane-pad-x, 1) - 1px);
   cursor: grab;
   -webkit-user-select: none;
   user-select: none;
@@ -207,14 +208,15 @@ body.gloom-dragging {
 }
 [data-gloom-role="pane-hint"] {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-control, 0px);
 }
 [data-gloom-role="pane-hint"]:hover {
   background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
 }
 [data-gloom-role="pane-action"],
-[data-gloom-role="pane-close"] {
-  border-radius: 4px;
+[data-gloom-role="pane-close"],
+[data-gloom-role="pane-icon-button"] {
+  border-radius: var(--gloom-radius-control, 0px);
   padding-inline: 2px;
 }
 [data-gloom-role="pane-action"]:hover,
@@ -226,21 +228,21 @@ body.gloom-dragging {
 }
 [data-gloom-role="window-mode-status"] {
   border: 1px solid color-mix(in srgb, var(--gloom-border-focused) 76%, transparent);
-  border-radius: 8px;
+  border-radius: var(--gloom-radius-pane, 0px);
   background:
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--gloom-border-focused) 95%, var(--gloom-bg) 5%),
       color-mix(in srgb, var(--gloom-border-focused) 82%, var(--gloom-bg) 18%)
     ) !important;
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--gloom-bg) 55%, transparent);
+  box-shadow: var(--gloom-shadow-floating, none);
   overflow: hidden;
 }
 [data-gloom-role="window-mode-status"] span {
   line-height: var(--cell-h);
 }
 [data-gloom-role="window-mode-corner"] {
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-control, 0px);
   box-shadow:
     0 0 0 1px var(--gloom-bg),
     0 0 0 4px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
@@ -279,6 +281,9 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 }
 [data-gloom-role="tab-close"]:hover {
   background: color-mix(in srgb, var(--gloom-text-bright) 10%, transparent);
+}
+[data-gloom-role="pane-icon-button"]:hover {
+  background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
 }
 [data-gloom-scrollbar-x],
 [data-gloom-scrollbar-y] {
@@ -394,7 +399,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 }
 .gloom-fatal button {
   border: 1px solid var(--gloom-border, #5b6070);
-  border-radius: 6px;
+  border-radius: var(--gloom-radius-control, 0px);
   padding: 5px 10px;
   color: var(--gloom-text, #f2f2f2);
   background: var(--gloom-panel, #1f222b);
@@ -438,17 +443,17 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   padding: 11px 10px 11px 12px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--gloom-toast-accent) 54%, var(--gloom-border));
-  border-radius: 7px;
+  border-radius: var(--gloom-radius-pane, 0px);
   background: color-mix(in srgb, var(--gloom-panel) 94%, var(--gloom-bg));
   color: var(--gloom-text);
-  box-shadow: 0 14px 32px color-mix(in srgb, var(--gloom-bg) 42%, transparent);
+  box-shadow: var(--gloom-shadow-popover, none);
   pointer-events: auto;
 }
 .gloom-toast[data-type="success"] { --gloom-toast-accent: var(--gloom-positive); }
 .gloom-toast[data-type="error"] { --gloom-toast-accent: var(--gloom-negative); }
 .gloom-toast[data-actionable="true"] {
   cursor: pointer;
-  transition: transform 120ms cubic-bezier(0.23, 1, 0.32, 1), border-color 120ms ease, background-color 120ms ease;
+  transition: transform var(--gloom-transition), border-color var(--gloom-transition), background-color var(--gloom-transition);
 }
 .gloom-toast[data-actionable="true"]:active { transform: scale(0.985); }
 .gloom-toast-indicator {
@@ -470,7 +475,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 .gloom-toast-title {
   overflow: hidden;
   color: var(--gloom-text-bright);
-  font-weight: 700;
+  font-weight: var(--gloom-heading-weight, 700);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -501,7 +506,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 .gloom-toast-action {
   padding: 3px 7px;
   border-color: color-mix(in srgb, var(--gloom-toast-accent) 42%, var(--gloom-border));
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-control, 0px);
   color: var(--gloom-text-bright);
 }
 /* Secondary reads as the quieter option next to the primary action. */
@@ -514,7 +519,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   width: 22px;
   height: 22px;
   padding: 0;
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-control, 0px);
   place-items: center;
 }
 .gloom-toast-dismiss svg {
@@ -557,13 +562,11 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   max-height: calc(100vh - 48px);
   overflow: auto;
   border: 1px solid var(--gloom-border);
-  border-radius: 6px;
+  border-radius: var(--gloom-radius-pane, 0px);
   background: var(--gloom-panel);
   color: var(--gloom-text);
   padding: 0;
-  box-shadow:
-    0 18px 48px color-mix(in srgb, var(--gloom-bg) 46%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
+  box-shadow: var(--gloom-shadow-floating, none);
 }
 .gloom-popover-anchor {
   display: inline-flex;
@@ -576,9 +579,149 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
   max-height: min(420px, calc(100vh - 20px));
   overflow: auto;
   border: 1px solid;
-  border-radius: 8px;
+  border-radius: var(--gloom-radius-pane, 0px);
   padding: 8px;
+  box-shadow: var(--gloom-shadow-popover, none);
+}
+
+/* --------------------------------------------------------------------------
+ * Style projections
+ *
+ * Everything above reads the style through vars. What is left are the effects
+ * with no terminal counterpart, so they are keyed on the style id rather than
+ * pushed into a var no other style would set.
+ * -------------------------------------------------------------------------- */
+
+/* Sans UI type wherever the copy is prose rather than a column of numbers. */
+[data-gloom-style] [data-gloom-ui="section-heading"] span,
+[data-gloom-style] [data-gloom-role="pane-title"],
+[data-gloom-style] .gloom-toast-title,
+[data-gloom-style] .gloom-dialog h1,
+[data-gloom-style] .gloom-dialog h2 {
+  font-family: var(--gloom-font-ui, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  font-weight: var(--gloom-heading-weight, 700);
+  letter-spacing: var(--gloom-letter-spacing, 0);
+}
+
+/* Borderless: the surface, not a rule, separates one pane from the next. */
+[data-gloom-style="modern"] [data-gloom-role="pane-window"][data-floating="false"],
+[data-gloom-style="minimal"] [data-gloom-role="pane-window"][data-floating="false"] {
+  box-shadow: none;
+}
+[data-gloom-style="modern"] [data-gloom-role="pane-window"][data-floating="false"][data-focused="true"] {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gloom-border-focused) 30%, transparent);
+}
+[data-gloom-style="modern"] [data-gloom-role="pane-header"],
+[data-gloom-style="minimal"] [data-gloom-role="pane-header"],
+[data-gloom-style="modern"] [data-gloom-role="pane-footer"],
+[data-gloom-style="minimal"] [data-gloom-role="pane-footer"] {
+  border-top-color: transparent;
+  border-bottom-color: transparent;
+  box-shadow: none;
+}
+[data-gloom-style="modern"] [data-gloom-role="dock-divider"]::before,
+[data-gloom-style="minimal"] [data-gloom-role="dock-divider"]::before {
+  opacity: 0;
+}
+[data-gloom-style="modern"] [data-gloom-role="data-table-row"]:nth-child(even):not([data-selected="true"]),
+[data-gloom-style="minimal"] [data-gloom-role="data-table-row"]:nth-child(even):not([data-selected="true"]) {
+  background-color: var(--gloom-table-stripe, transparent);
+}
+
+/* Paper: a printed rule and an offset drop, no glow, no translucency. */
+[data-gloom-style="paper"] [data-gloom-role="pane-window"][data-floating="false"] {
+  box-shadow: inset 0 0 0 1px var(--pane-border-color, var(--gloom-border));
+}
+[data-gloom-style="paper"] [data-gloom-ui="section-heading"] span {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Phosphor: a CRT, so the whole app carries scanlines and the type blooms. */
+[data-gloom-style="phosphor"] #root::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 20000;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--gloom-bg) 22%, transparent) 0px,
+    color-mix(in srgb, var(--gloom-bg) 22%, transparent) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
+}
+[data-gloom-style="phosphor"] [data-gloom-role="pane-title"],
+[data-gloom-style="phosphor"] [data-gloom-ui="section-heading"] span {
+  text-shadow: 0 0 6px currentColor;
+}
+[data-gloom-style="phosphor"] [data-gloom-role="pane-window"][data-floating="false"][data-focused="true"] {
   box-shadow:
-    0 14px 34px color-mix(in srgb, var(--gloom-bg) 42%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
+    inset 0 0 0 1px var(--pane-border-color, var(--gloom-border-focused)),
+    inset 0 0 18px color-mix(in srgb, var(--gloom-border-focused) 12%, transparent);
+}
+
+/* A style that opts out of motion opts out everywhere, not just where a rule
+ * happened to name the transition var. */
+[data-gloom-style="phosphor"] *,
+[data-gloom-style="phosphor"] *::before,
+[data-gloom-style="phosphor"] *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+}
+
+/* --------------------------------------------------------------------------
+ * Type roles
+ *
+ * A pane says what a run of text is with `typeRole`; the terminal turns that
+ * into cell attributes and this turns it into size and face. Sizes stay in
+ * cell-relative units so a role can never push a row off the grid.
+ * -------------------------------------------------------------------------- */
+
+[data-gloom-type] {
+  font-family: var(--gloom-font-ui, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  letter-spacing: var(--gloom-letter-spacing, 0);
+}
+
+/* Numbers keep the mono face and tabular figures in every style: a column of
+ * prices has to align on the digit, whatever the rest of the UI is set in. */
+[data-gloom-type="numeric"],
+[data-gloom-type="value"] {
+  font-family: var(--gloom-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+[data-gloom-type="heading"] {
+  font-weight: var(--gloom-heading-weight, 700);
+}
+[data-gloom-type="label"] {
+  font-size: var(--gloom-type-label-size, 1em);
+  letter-spacing: var(--gloom-type-label-tracking, var(--gloom-letter-spacing, 0));
+  opacity: var(--gloom-type-label-opacity, 1);
+}
+[data-gloom-type="caption"] {
+  font-size: var(--gloom-type-caption-size, 1em);
+}
+[data-gloom-type="display"] {
+  font-size: var(--gloom-type-display-size, 1em);
+  font-weight: var(--gloom-heading-weight, 700);
+}
+
+/* The scale only spreads where the style asked for it. `flat` leaves every
+ * role at the cell's own size, which is what keeps the terminal styles honest
+ * on the desktop too. */
+[data-gloom-style="modern"] {
+  --gloom-type-label-size: 0.85em;
+  --gloom-type-label-tracking: 0.08em;
+  --gloom-type-label-opacity: 0.75;
+  --gloom-type-caption-size: 0.92em;
+  --gloom-type-display-size: 1.35em;
+}
+[data-gloom-style="paper"],
+[data-gloom-style="minimal"] {
+  --gloom-type-caption-size: 0.95em;
+  --gloom-type-display-size: 1.15em;
 }

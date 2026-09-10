@@ -11,6 +11,7 @@ import {
 import type { AppConfig, PaneBinding, PaneInstanceConfig, SavedLayout } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { BrokerAccount } from "../../../types/trading";
+import { DEFAULT_STYLE } from "../../../theme/styles";
 import { isBrokerPortfolioId } from "../../../utils/broker-instances";
 import type { AppState, LayoutHistoryEntry, PaneRuntimeState } from "./types";
 
@@ -163,6 +164,12 @@ export function getFocusedCollectionId(state: AppState): string | null {
 
 export function getEffectiveThemeId(state: Pick<AppState, "config" | "themePreview">): string {
   return state.themePreview ?? state.config.theme;
+}
+
+export function getEffectiveThemeStyleId(
+  state: Pick<AppState, "config" | "themeStylePreview">,
+): string {
+  return state.themeStylePreview ?? state.config.themeStyle ?? DEFAULT_STYLE;
 }
 
 export function clearTickerBindings(layout: LayoutConfig, symbol: string): LayoutConfig {

@@ -1,5 +1,7 @@
 /** @jsxImportSource react */
 import { memo, type CSSProperties } from "react";
+import { glyphs } from "../../../../theme/colors";
+import { useThemeTokens } from "../../../../theme/theme-context";
 import { TextAttributes } from "../../../../ui/host";
 import type {
   DataTableCell,
@@ -28,7 +30,7 @@ function renderHeaderLabel<C extends DataTableColumn>(
   sortDirection: "asc" | "desc",
 ) {
   const isSorted = sortColumnId === column.id;
-  const indicator = isSorted ? (sortDirection === "asc" ? " ▲" : " ▼") : "";
+  const indicator = isSorted ? ` ${sortDirection === "asc" ? glyphs.triangle.up : glyphs.triangle.down}` : "";
   return {
     isSorted,
     text: column.label + indicator,
@@ -70,6 +72,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
   sortColumnId: string | null;
   sortDirection: "asc" | "desc";
 }) {
+  const tokens = useThemeTokens();
   return (
     <div
       data-gloom-role="data-table-header-row"
@@ -87,7 +90,10 @@ export function WebDataTableHeader<C extends DataTableColumn>({
         paddingLeft: inlinePaddingPx(horizontalPadding),
         paddingRight: inlinePaddingPx(horizontalPadding),
         boxSizing: "border-box",
-        backgroundColor: CSS_PANEL,
+        backgroundColor: tokens.table.headerBg,
+        borderBottom: tokens.table.layout.headerRule
+          ? `1px solid ${tokens.table.layout.headerRule}`
+          : undefined,
       }}
     >
       {columns.map((column) => {
@@ -105,7 +111,7 @@ export function WebDataTableHeader<C extends DataTableColumn>({
               minWidth: 0,
               height: WEB_CELL_HEIGHT,
               overflow: "hidden",
-              backgroundColor: column.headerBackgroundColor ?? CSS_PANEL,
+              backgroundColor: column.headerBackgroundColor ?? tokens.table.headerBg,
             }}
             onMouseDown={(event) => {
               focusPane();
@@ -116,10 +122,11 @@ export function WebDataTableHeader<C extends DataTableColumn>({
           >
             <span
               title={text}
+              data-gloom-type="label"
               style={{
                 ...clippedCellTextStyle(
                   column,
-                  isSorted ? CSS_TEXT : column.headerColor ?? CSS_TEXT_DIM,
+                  isSorted ? tokens.table.headerText : column.headerColor ?? tokens.table.headerText,
                   TextAttributes.BOLD,
                 ),
                 whiteSpace: "pre",
@@ -180,6 +187,7 @@ function WebDataTableRowInner<
   rowContextMenuSurface: boolean;
   selected: boolean;
 }) {
+  const tokens = useThemeTokens();
   const sectionHeader: DataTableSectionHeader | null =
     renderSectionHeader?.(item, index) ?? null;
   const baseRowStyle: CSSProperties = {
@@ -237,9 +245,14 @@ function WebDataTableRowInner<
 
   const rowState = { selected };
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
+  // A striping style tints alternate rows; a ruled one leaves them flat and
+  // draws a hairline under each instead.
+  const stripe = tokens.table.row.stripe;
+  const restingBg = stripe && index % 2 === 1 ? stripe : CSS_BG;
   const rowBg = selected
     ? CSS_SELECTED
-    : rowBackgroundColor ?? CSS_BG;
+    : rowBackgroundColor ?? restingBg;
+  const rowRule = tokens.table.layout.rowRule ? tokens.table.layout.headerRule : null;
 
   return (
     <div
@@ -250,6 +263,7 @@ function WebDataTableRowInner<
       style={{
         ...baseRowStyle,
         backgroundColor: rowBg,
+        borderBottom: rowRule ? `1px solid ${rowRule}` : undefined,
       }}
       onMouseDown={(event) => {
         focusPane();
@@ -279,7 +293,9 @@ function WebDataTableRowInner<
             data-gloom-role="data-table-cell"
             style={{
               minWidth: 0,
-              height: WEB_CELL_HEIGHT,
+              // Fills the row's content box rather than a fixed cell, so a
+              // taller row centres its text and a row rule is not painted over.
+              height: "100%",
               overflow: "hidden",
               backgroundColor: cell.backgroundColor ?? rowBg,
             }}
@@ -328,6 +344,9 @@ function WebDataTableRowInner<
             ) : (
               <span
                 title={cell.text}
+                // Matches the terminal: a right-aligned column is a number and
+                // keeps tabular figures whatever face the style sets.
+                data-gloom-type={column.align === "right" ? "numeric" : "body"}
                 style={clippedCellTextStyle(
                   column,
                   cell.color ?? (selected ? CSS_SELECTED_TEXT : CSS_TEXT),

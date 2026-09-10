@@ -1048,6 +1048,39 @@ export default {
 - Use `colors` and the shared components instead of hard-coded palette values when possible.
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.
 
+### Themes: a scheme plus a style
+
+A theme is a colour **scheme** and a structural **style**. The scheme is the 18 palette entries you already know through `colors`. The style is the structural half: pane borders, header treatment, focus channel, density, glyph repertoire, chart treatment, and (on the desktop and web only) type and material.
+
+**Only one style ships today.** `terminal` is the look the app has always had, and it is the only entry users can pick. The other styles are defined and tested but marked experimental, because the vocabulary is finished and the designs are not. Run one during development with `GLOOMBERB_THEME_STYLE=modern`, or capture one with `gloomberb shot <pane> --theme modern-catppuccin`.
+
+That does not make this section optional. A pane written against the kit and the tokens is a pane that will not need revisiting when a style ships; a pane written against raw palette entries and hard-coded row heights is one that will.
+
+The supported path for a plugin is the shared kit. Every component in `gloomberb/components` already reads the resolved theme, so a pane built from the kit picks up a new style with no work: borders appear or disappear, headings change treatment, rows tighten or loosen, and glyphs degrade to ASCII where the style says they must.
+
+When a pane needs to draw something the kit does not cover, read the resolved tokens rather than recombining palette entries by hand:
+
+```typescript
+import { useGlyphs, useThemeStyle, useThemeTokens } from "gloomberb/react";
+
+function Sparkline({ ratios }: { ratios: number[] }) {
+  const tokens = useThemeTokens();
+  const glyphs = useGlyphs();
+  return (
+    <Text fg={tokens.text.accent}>
+      {ratios.map((ratio) => glyphs.sparkline[Math.round(ratio * 8)]).join("")}
+    </Text>
+  );
+}
+```
+
+- `useThemeTokens()` returns the semantic tree: `pane.*`, `table.row.*`, `list.*`, `badge.*`, `button.*`, `dialog.*`, `toast.*`, `chart.indicator[]`, `surface.*` and `text.*`. These are final colours with the contrast floors already applied, so they do not need another blend on top.
+- `useGlyphs()` returns the repertoire the active style permits: arrows, carets, bullets, checks, circles, sparkline and bar blocks, spinner frames, and the box-drawing set. Use it instead of typing a box-drawing or arrow character directly, or your pane will be the only thing on screen that still draws Unicode under an ASCII style.
+- `useThemeStyle()` exposes the structural decisions themselves (`chrome.density`, `chrome.separators`, `charts.candles`) for the rare case where a domain drawing has to change shape rather than colour.
+- `tokens` and `glyphs` are also exported from `gloomberb/theme` as live module-level views, for formatting helpers that run outside React.
+
+Do not hard-code a radius, a shadow, or a font in a `style={{}}` prop. The DOM renderer publishes `--gloom-radius-pane`, `--gloom-radius-control`, `--gloom-shadow-floating`, `--gloom-shadow-popover`, `--gloom-font-ui`, `--gloom-font-mono`, `--gloom-heading-weight`, `--gloom-letter-spacing`, `--gloom-row-h` and `--gloom-transition`, and `<html>` carries `data-gloom-style`, so a role selector can respond to the style without a prop.
+
 ## Example: adding a command
 
 ```typescript

@@ -1,7 +1,6 @@
-import { useThemeColors } from "../../theme/theme-context";
+import { useGlyphs, useThemeColors, useThemeTokens } from "../../theme/theme-context";
 import { type ComponentType } from "react";
 import { Box, Text, TextAttributes, useUiHost, type HostCheckboxProps } from "../../ui";
-import { hoverBg } from "../../theme/colors";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 
 export type CheckboxProps = HostCheckboxProps;
@@ -18,6 +17,8 @@ export function Checkbox({
   variant = "default",
 }: CheckboxProps) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
+  const glyphs = useGlyphs();
   useRemoteUiNode({
     role: "checkbox",
     label,
@@ -50,7 +51,7 @@ export function Checkbox({
     );
   }
 
-  const marker = checked ? "\u2713" : " ";
+  const marker = checked ? glyphs.checkbox.checked : glyphs.checkbox.unchecked;
   const visibleLabel = displayLabel ?? label;
   const fg = disabled ? colors.textMuted : active ? colors.textBright : colors.text;
   const descriptionWidth = typeof width === "number" ? Math.max(20, width - 2) : 28;
@@ -58,7 +59,7 @@ export function Checkbox({
     <Box
       flexDirection="column"
       width={width}
-      backgroundColor={active && !disabled ? hoverBg(colors) : undefined}
+      backgroundColor={active && !disabled ? tokens.surface.hover : undefined}
       cursor={disabled ? "default" : "pointer"}
       onMouseDown={(event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
         event?.preventDefault?.();

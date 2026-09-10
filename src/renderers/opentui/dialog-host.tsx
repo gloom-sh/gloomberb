@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { colors } from "../../theme/colors";
+import { colors, tokens } from "../../theme/colors";
 import {
   DialogHostProvider,
   type AlertContext,
@@ -168,9 +168,9 @@ function DialogLayer({
           maxWidth={maxWidth}
           maxHeight={maxHeight}
           border={style.border ?? true}
-          borderStyle={style.borderStyle ?? "single"}
-          borderColor={style.borderColor ?? colors.borderFocused}
-          backgroundColor={style.backgroundColor ?? colors.bg}
+          borderStyle={style.borderStyle ?? tokens.pane.chrome.boxBorderStyle}
+          borderColor={style.borderColor ?? tokens.dialog.border}
+          backgroundColor={style.backgroundColor ?? tokens.dialog.bg}
           paddingX={style.paddingX ?? 2}
           paddingY={style.paddingY ?? 1}
           onMouseDown={(event: { stopPropagation(): void }) => event.stopPropagation()}

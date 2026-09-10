@@ -23,6 +23,7 @@ import {
   getTableWidth,
   hasMeaningfulTableHorizontalOverflow,
 } from "../../../../components/ui/table-layout";
+import { useThemeTokens } from "../../../../theme/theme-context";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../input-host";
 import { useScrollbarActivity } from "../scrollbar-activity";
 import {
@@ -73,14 +74,21 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   emptyStateHint,
   virtualize = true,
   overscan = 3,
-  columnGap = 1,
-  horizontalPadding = 1,
+  columnGap: columnGapProp,
+  horizontalPadding: horizontalPaddingProp,
   fillAvailableWidth = true,
   showHorizontalScrollbar = true,
   scrollToIndex,
   scrollToIndexAlign = "nearest",
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
+  const tokens = useThemeTokens();
+  // A row is as many cells tall as the style asks for. The sticky header band
+  // stays one cell either way, so every offset that skips the header keeps
+  // using WEB_CELL_HEIGHT.
+  const rowSizePx = WEB_CELL_HEIGHT * tokens.table.layout.rowHeight;
+  const columnGap = columnGapProp ?? tokens.table.layout.columnGap;
+  const horizontalPadding = horizontalPaddingProp ?? tokens.table.layout.padX;
   const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const bodyElementRef = useRef<HTMLDivElement | null>(null);
@@ -120,7 +128,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     if (!element) return;
     const range = resolveDataTableVisibleRange({
       itemCount: items.length,
-      rowSize: WEB_CELL_HEIGHT,
+      rowSize: rowSizePx,
       scrollOffset: element.scrollTop,
       viewportSize: Math.max(0, element.clientHeight - WEB_CELL_HEIGHT),
     });
@@ -145,7 +153,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   const rowVirtualizer = useVirtualizer({
     count: items.length,
     getScrollElement: () => bodyElementRef.current,
-    estimateSize: () => WEB_CELL_HEIGHT,
+    estimateSize: () => rowSizePx,
     overscan,
     paddingStart: WEB_CELL_HEIGHT,
     scrollPaddingStart: WEB_CELL_HEIGHT,
@@ -157,8 +165,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       return Array.from({ length: items.length }, (_, index) => ({
         index,
         key: getItemKey(items[index]!, index),
-        size: WEB_CELL_HEIGHT,
-        start: WEB_CELL_HEIGHT + index * WEB_CELL_HEIGHT,
+        size: rowSizePx,
+        start: WEB_CELL_HEIGHT + index * rowSizePx,
       }));
     },
     [getItemKey, items, virtualize],
@@ -168,7 +176,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     : allRows;
   const totalHeight = virtualize
     ? rowVirtualizer.getTotalSize()
-    : WEB_CELL_HEIGHT + items.length * WEB_CELL_HEIGHT;
+    : WEB_CELL_HEIGHT + items.length * rowSizePx;
   const bodyAfterHeight = bodyAfter ? WEB_CELL_HEIGHT * 6 : 0;
   const horizontalScrollEnabled = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, viewportWidth, columnGap);
@@ -213,7 +221,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
     const element = bodyElementRef.current;
     if (!element) return;
-    const viewportRows = Math.max(1, Math.floor(element.clientHeight / WEB_CELL_HEIGHT) - 1);
+    const viewportRows = Math.max(1, Math.floor(element.clientHeight / rowSizePx) - 1);
     const currentTop = toCellY(element.scrollTop);
     let nextTop = currentTop;
     if (scrollToIndexAlign === "center") {
@@ -224,7 +232,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
       nextTop = targetIndex - viewportRows + 1;
     }
     if (nextTop !== currentTop) {
-      element.scrollTop = nextTop * WEB_CELL_HEIGHT;
+      element.scrollTop = nextTop * rowSizePx;
       scheduleBodyScrollActivity();
     }
     lastAppliedScrollRequestRef.current = scrollRequestKey;

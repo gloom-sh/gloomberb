@@ -7,6 +7,13 @@ interface DataTableVisibleWindowOptions<T> {
   overscan: number;
   scrollTop: number;
   virtualize: boolean;
+  /**
+   * Cells per row. The scroll box measures in cells while the window is in
+   * rows, so every conversion between the two goes through this. It used to be
+   * implicitly 1, which is why a taller row would have scrolled at double
+   * speed and rendered twice the rows that fit.
+   */
+  rowHeight?: number;
 }
 
 export interface DataTableVisibleWindow<T> {
@@ -14,6 +21,16 @@ export interface DataTableVisibleWindow<T> {
   startIndex: number;
   viewportHeight: number;
   visibleItems: T[];
+}
+
+/** Row index of the first visible row, from a scroll offset measured in cells. */
+export function dataTableTopRow(scrollTop: number, rowHeight: number): number {
+  const size = normalizeRowHeight(rowHeight);
+  return Math.max(0, Math.floor((Number.isFinite(scrollTop) ? scrollTop : 0) / size));
+}
+
+function normalizeRowHeight(rowHeight: number | undefined): number {
+  return Number.isFinite(rowHeight) && (rowHeight ?? 0) > 0 ? Math.floor(rowHeight!) : 1;
 }
 
 export function resolveDataTableScrollTop(
@@ -42,19 +59,25 @@ export function resolveDataTableVisibleWindow<T>({
   overscan,
   scrollTop,
   virtualize,
+  rowHeight,
 }: DataTableVisibleWindowOptions<T>): DataTableVisibleWindow<T> {
-  const viewportHeight = virtualize
+  const size = normalizeRowHeight(rowHeight);
+  // Both measurements arrive in cells; the window is in rows.
+  const viewportRows = virtualize
     ? Math.max(
         1,
-        Math.min(
-          measuredViewportHeight ?? Math.min(items.length, 16),
-          Math.max(1, Math.ceil(appViewportHeight)),
+        Math.ceil(
+          Math.min(
+            measuredViewportHeight ?? Math.min(items.length * size, 16),
+            Math.max(1, Math.ceil(appViewportHeight)),
+          ) / size,
         ),
       )
     : items.length;
-  const startIndex = virtualize ? Math.max(scrollTop - overscan, 0) : 0;
+  const viewportHeight = viewportRows;
+  const startIndex = virtualize ? Math.max(dataTableTopRow(scrollTop, size) - overscan, 0) : 0;
   const endIndex = virtualize
-    ? Math.min(startIndex + viewportHeight + overscan * 2, items.length)
+    ? Math.min(startIndex + viewportRows + overscan * 2, items.length)
     : items.length;
 
   return {

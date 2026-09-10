@@ -183,7 +183,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(...buildLayoutItems(match.arg, { confirmDangerousActions: true }));
   } else if (match && match.command.id === "window-mode") {
     items.push(...buildWindowModeItems(match.arg));
-  } else if (match && match.command.id === "theme") {
+  } else if (match && (match.command.id === "theme" || match.command.id === "colors")) {
     initialIdx = 0;
   } else if (match && match.command.id === "language") {
     const item = commandToItem(match.command, match.arg);

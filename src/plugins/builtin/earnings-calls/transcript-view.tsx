@@ -6,7 +6,7 @@ import type {
 } from "../../../api-client";
 import { PaneStatusBody, Prose, SectionHeading } from "../../../components";
 import { Tabs } from "../../../components/ui/tabs";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import {
   Box,
   ScrollBox,
@@ -71,7 +71,7 @@ function Section({
           text={sentence}
           width={width}
           color={colors.text}
-          prefix="• "
+          prefix={`${glyphs.bullet} `}
         />
       ))}
     </Box>

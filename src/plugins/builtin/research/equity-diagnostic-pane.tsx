@@ -13,7 +13,7 @@ import { Button, EmptyState, SectionHeading, Spinner, usePaneFooter } from "../.
 import { ExternalLinkText } from "../../../components/ui";
 import { t, tf } from "../../../i18n";
 import { useShortcut } from "../../../react/input";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatTimeAgo, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -394,7 +394,7 @@ function ReportView({ report, width, failure, onRetry }: {
           <SectionHeading title="WATCH ITEMS" />
           {report.watchItems.map((item, index) => (
             <Box key={`${index}:${item.slice(0, 24)}`} flexDirection="row" width={width}>
-              <Box width={2} flexShrink={0}><Text fg={colors.textMuted}>{"· "}</Text></Box>
+              <Box width={2} flexShrink={0}><Text fg={colors.textMuted}>{`${glyphs.dot} `}</Text></Box>
               <Box flexDirection="column" flexGrow={1} minWidth={0}>
                 <Paragraph text={item} width={width - 2} color={colors.text} />
               </Box>
