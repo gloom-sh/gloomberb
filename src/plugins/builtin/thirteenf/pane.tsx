@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, InputSearchBar, PaneStatusBody, Tabs, useTableLoadMore, type DataTableKeyEvent,
+  EmptyState, InputSearchBar, KeyValueRow, PaneStatusBody, Tabs, useTableLoadMore, type DataTableKeyEvent,
   type DataTableRootKeyContext, type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -31,6 +31,8 @@ import {
   DEFAULT_TIMELINE_SORT,
   FUND_DETAIL_TABS,
   THIRTEENF_PANE_ID,
+  THIRTEENF_OPTIONS_NOTE,
+  hasComparable13FQuarter,
   buildBrowserColumns,
   buildFilingPositionColumns,
   buildFilingPositionRows,
@@ -617,6 +619,15 @@ function FundDetailView({
             onChange: (id) => setHoldingSelectedId(id),
           }}
           rootWidth={width}
+          rootBefore={(
+            <Box flexDirection="column" paddingX={1}>
+              <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
+              <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
+              {visibleHoldingRows.some((row) => !!row.putCall) ? (
+                <Text fg={colors.textMuted}>{THIRTEENF_OPTIONS_NOTE}</Text>
+              ) : null}
+            </Box>
+          )}
           columns={buildHoldingColumns(width)}
           items={visibleHoldingRows}
           sortColumnId={holdingSort.columnId}
@@ -774,6 +785,7 @@ function FilingDetailView({
           <Text fg={colors.text}>{value}</Text>
         </Box>
       ))}
+      {holdings.some((row) => !!row.putCall) ? <Text fg={colors.textMuted}>{THIRTEENF_OPTIONS_NOTE}</Text> : null}
     </Box>
   );
   const emptyTitle = status === "loading" || status === "idle"

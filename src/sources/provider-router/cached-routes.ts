@@ -155,14 +155,15 @@ export class ProviderRouterCachedRoutes {
         error: `No holder data provider available for ${ticker}`,
       };
       case "getAnalystResearch": return {
-        ...tickerRoute("analystResearch", "analystResearch"), request: (provider, force) => provider.getAnalystResearch?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
-        rank: (data: AnalystResearchData) => !hasAnalystResearchValue(data) ? 0 : isAnalystResearchMissingRatingTargets(data) ? 1 : 2,
-        acceptCached: (data: AnalystResearchData) => !isAnalystResearchMissingRatingTargets(data), throwLastError: true,
+        ...tickerRoute("analystResearch-v2", "analystResearch"), request: (provider, force) => provider.getAnalystResearch?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
+        rank: (data: AnalystResearchData) => !hasAnalystResearchValue(data) ? 0 : data.stale || isAnalystResearchMissingRatingTargets(data) ? 1 : 2,
+        acceptCached: (data: AnalystResearchData) => !data.stale && !isAnalystResearchMissingRatingTargets(data), throwLastError: true,
         error: `No analyst research provider available for ${ticker}`,
       };
       case "getCorporateActions": return {
-        ...tickerRoute("corporateActions", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
-        rank: (data: CorporateActionsData) => hasCorporateActionsValue(data) ? 2 : 0, throwLastError: true,
+        ...tickerRoute("corporateActions-v2", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
+        rank: (data: CorporateActionsData) => !hasCorporateActionsValue(data) ? 0 : data.stale || Object.values(data.coverage ?? {}).includes("unavailable") ? 1 : 2,
+        acceptCached: (data: CorporateActionsData) => !data.stale && !Object.values(data.coverage ?? {}).includes("unavailable"), throwLastError: true,
         error: `No corporate actions provider available for ${ticker}`,
       };
       case "getOptionsChain": return {

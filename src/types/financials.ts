@@ -74,8 +74,9 @@ export type QuoteContributionMap = Record<string, QuoteContribution>;
 export interface Fundamentals {
   /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
   financialCurrency?: string;
-  /** Provider-reported issuer market cap in the quote currency; never inferred from share counts. */
+  /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
+  marketCapCurrency?: string;
   trailingPE?: number;
   forwardPE?: number;
   pegRatio?: number;
@@ -159,6 +160,8 @@ export interface AnalystRatingRecord {
 export interface AnalystEstimateRecord {
   date: string;
   period: string;
+  /** Explicit currency for these estimates; independent of the listing currency. */
+  currency?: string;
   analysts?: number;
   average?: number;
   low?: number;
@@ -169,6 +172,8 @@ export interface AnalystEstimateRecord {
 
 export interface AnalystResearchData {
   providerId?: string;
+  fetchedAt?: string;
+  stale?: boolean;
   symbol: string;
   name?: string;
   currency?: string;
@@ -191,13 +196,18 @@ export interface DividendAction {
 export interface SplitAction {
   date: string;
   description?: string;
+  /** New shares per old share, e.g. 10 for a ten-for-one forward split. */
   ratio?: number;
+  /** Old shares surrendered. */
   fromFactor?: number;
+  /** New shares received. */
   toFactor?: number;
 }
 
 export interface EarningsAction {
   date: string;
+  dateType?: "announcement" | "fiscal-period-end";
+  currency?: string;
   time?: string;
   epsEstimate?: number;
   epsActual?: number;
@@ -207,6 +217,9 @@ export interface EarningsAction {
 
 export interface CorporateActionsData {
   providerId?: string;
+  fetchedAt?: string;
+  stale?: boolean;
+  coverage?: Partial<Record<"dividends" | "splits" | "earnings", "available" | "unavailable">>;
   symbol: string;
   name?: string;
   currency?: string;

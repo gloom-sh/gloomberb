@@ -30,6 +30,7 @@ export function projectSectorRows(
     return1Y: byEtf.get(definition.etf)?.return1Y ?? null,
     currency: byEtf.get(definition.etf)?.currency ?? "USD",
     loading: false,
+    quoteUnavailable: !byEtf.get(definition.etf) || byEtf.get(definition.etf)?.quoteUnavailable === true,
   })), DEFAULT_SORT_PREFERENCE);
 }
 
@@ -65,12 +66,15 @@ export function createSectorsHeadless(
       const definitions = getSectorCollection(collectionId).items;
       const outcomes = await dependencies.load(args, definitions, ctx.marketData);
       const rows = projectSectorRows(definitions, outcomes);
+      const unavailableQuotes = rows.filter((row) => row.quoteUnavailable).map((row) => row.etf);
       return {
+        unavailableSymbols: unavailableQuotes.length > 0 ? unavailableQuotes : undefined,
         rows: rows.map((row) => ({ ...row })),
         metadata: {
           collection: collectionId,
           available: outcomes.filter((outcome) => outcome.row).length,
           requested: definitions.length,
+          unavailableQuotes,
         },
       };
     },

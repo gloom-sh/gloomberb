@@ -5,6 +5,8 @@ import { paneSchemas as researchSchemas } from "../../plugins/builtin/research/h
 import type { HeadlessPaneDefinition } from "../../types/headless";
 import { describe, expect, test } from "bun:test";
 import { paneFunctionTestInternals } from "./index";
+import { parseCliGlobalArgs } from "../options";
+import { thirteenFHeadless } from "../../plugins/builtin/thirteenf/headless";
 
 const {
   parsePaneFunctionArgs,
@@ -42,6 +44,18 @@ function capabilityFor(templateId: string) {
 }
 
 describe("pane function CLI args", () => {
+  test("passes global limits through the pane schema instead of silently using its default", () => {
+    const capability = getPaneFunctionCapability({
+      id: "funds", paneId: dummyPane.id, label: "Funds", description: "Funds", headless: thirteenFHeadless,
+    }, dummyPane);
+    for (const flags of [["--limit", "15"], ["--limit=15"]]) {
+      const global = parseCliGlobalArgs(["fn", "13F", "1067983", ...flags, "--json"]);
+      const parsed = parsePaneFunctionArgs(global.args.slice(1), global.options);
+      expect(normalizeCapabilityOptions(capability, parsed.options, { strict: true }).limit).toBe(15);
+    }
+    const parsed = parsePaneFunctionArgs(["13F", "1067983"], { limit: 201 });
+    expect(() => normalizeCapabilityOptions(capability, parsed.options, { strict: true })).toThrow();
+  });
   test("inline options do not consume the next positional instrument", () => {
     expect(parsePaneFunctionArgs(["GP", "--range=1M", "ES=F"])).toMatchObject({
       target: "GP", arg: "ES=F", options: { range: "1M" },

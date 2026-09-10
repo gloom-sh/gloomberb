@@ -41,7 +41,7 @@ async function withPaneRuntime<T>(
   }) => Promise<T>,
   settings: { strictHeadlessOptions?: boolean } = {},
 ): Promise<T> {
-  const parsed = parsePaneFunctionArgs(args);
+  const parsed = parsePaneFunctionArgs(args, ctx.cliOptions);
   return withMarketData(ctx, async (context) => {
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {

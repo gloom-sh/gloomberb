@@ -3,16 +3,17 @@ import { toTimestampMillis } from "./timestamp";
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
 
-function getCurrencyFormatter(currency: string): Intl.NumberFormat {
-  let formatter = currencyFormatters.get(currency);
+function getCurrencyFormatter(currency: string, maximumFractionDigits = 2): Intl.NumberFormat {
+  const key = `${currency}:${maximumFractionDigits}`;
+  let formatter = currencyFormatters.get(key);
   if (!formatter) {
     formatter = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
       minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      maximumFractionDigits,
     });
-    currencyFormatters.set(currency, formatter);
+    currencyFormatters.set(key, formatter);
   }
   return formatter;
 }
@@ -33,6 +34,12 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
 export function formatCurrency(value: number | undefined, currency = "USD"): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return getCurrencyFormatter(currency).format(value);
+}
+
+/** Preserve fractional per-share distributions, including split-adjusted history. */
+export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return getCurrencyFormatter(currency, 6).format(value);
 }
 
 /** Format a number as percentage (e.g., +1.23%) */

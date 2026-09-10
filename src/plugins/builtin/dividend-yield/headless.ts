@@ -6,7 +6,8 @@ import type {
 } from "../../../types/plugin";
 import { fetchDividendData, type DividendData } from "./client";
 import type { DividendPayment } from "./types";
-import { toDividendRows } from "./view";
+import { formatDividendYield, toDividendRows } from "./view";
+import { formatDistributionAmount } from "../../../utils/format";
 
 const PAYMENT_COLUMNS = [
   { key: "exDate", header: "Ex-date" },
@@ -22,12 +23,17 @@ export interface DividendYieldHeadlessDependencies {
 const defaultDependencies: DividendYieldHeadlessDependencies = {
   async loadData(symbol, context) {
     let currentPrice: number | null = null;
+    let currentPriceCurrency: string | undefined;
+    const instrument = await context.resolveInstrument?.(symbol);
+    const exchange = instrument?.exchange ?? "";
     try {
-      currentPrice = (await context.marketData.getQuote(symbol, "")).price ?? null;
+      const quote = await context.marketData.getQuote(symbol, exchange);
+      currentPrice = quote.price ?? null;
+      currentPriceCurrency = quote.currency;
     } catch {
       currentPrice = null;
     }
-    return fetchDividendData(symbol, currentPrice);
+    return fetchDividendData(symbol, currentPrice, exchange, currentPriceCurrency);
   },
 };
 
@@ -54,6 +60,7 @@ export function projectDividendYieldHeadless(
     };
   });
   const metrics = data.metrics;
+  const currency = data.currency ?? data.payments[0]?.currency ?? "USD";
 
   return {
     sections: [
@@ -61,10 +68,10 @@ export function projectDividendYieldHeadless(
         title: "Dividend metrics",
         entries: [
           { label: "Price", value: data.price },
-          { label: "Trailing yield", value: metrics.trailingYield },
-          { label: "Forward yield", value: metrics.forwardYield },
-          { label: "Trailing rate", value: metrics.trailingRate },
-          { label: "Forward rate", value: metrics.forwardRate },
+          { label: "Trailing yield", value: metrics.trailingYield, formatted: formatDividendYield(metrics.trailingYield) },
+          { label: "Forward yield", value: metrics.forwardYield, formatted: formatDividendYield(metrics.forwardYield) },
+          { label: "Trailing rate", value: metrics.trailingRate, formatted: formatDistributionAmount(metrics.trailingRate ?? undefined, currency) },
+          { label: "Forward rate", value: metrics.forwardRate, formatted: formatDistributionAmount(metrics.forwardRate ?? undefined, currency) },
           { label: "Payout ratio", value: metrics.payoutRatio },
           { label: "1Y growth", value: metrics.growth1Y },
           { label: "3Y growth", value: metrics.growth3Y },
@@ -84,6 +91,10 @@ export function projectDividendYieldHeadless(
       returnedPayments: rows.length,
       truncated: rows.length < matching.length,
       type,
+      currency: data.currency ?? data.payments[0]?.currency ?? null,
+      historyAvailable: data.historyAvailable ?? true,
+      yieldMethod: "Cash distributions with ex-dates in the preceding 12 months divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
+      forwardRateMethod: "Provider indicated annual cash rate, only when its currency units are comparable with the share price.",
     },
   };
 }

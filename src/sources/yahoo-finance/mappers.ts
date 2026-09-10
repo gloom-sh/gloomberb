@@ -102,18 +102,21 @@ export function mapYahooAnalystResearchResponse(
   fallbackSymbol: string,
 ): AnalystResearchData {
   const financialData = result.financialData;
-  const targetHigh = financeRawNumber(financialData?.targetHighPrice);
-  const targetLow = financeRawNumber(financialData?.targetLowPrice);
-  const targetMean = financeRawNumber(financialData?.targetMeanPrice);
-  const targetMedian = financeRawNumber(financialData?.targetMedianPrice);
-  const currentPrice = financeRawNumber(financialData?.currentPrice);
+  const unit = resolveCurrencyUnit(result.price?.currency);
+  const priceValue = (value: unknown) => normalizeMarketValue(financeRawNumber(value), unit.divisor);
+  const targetHigh = priceValue(financialData?.targetHighPrice);
+  const targetLow = priceValue(financialData?.targetLowPrice);
+  const targetMean = priceValue(financialData?.targetMeanPrice);
+  const targetMedian = priceValue(financialData?.targetMedianPrice);
+  const currentPrice = priceValue(financialData?.currentPrice);
   const trend = result.earningsTrend?.trend ?? [];
 
   return {
     providerId: "yahoo",
+    fetchedAt: new Date().toISOString(),
     symbol: result.price?.symbol ?? fallbackSymbol,
     name: result.price?.shortName ?? result.price?.longName,
-    currency: result.price?.currency,
+    currency: unit.currency || undefined,
     exchange: result.price?.exchangeName,
     priceTarget: targetHigh != null || targetLow != null || targetMean != null || targetMedian != null
       ? {
@@ -122,7 +125,7 @@ export function mapYahooAnalystResearchResponse(
           low: targetLow,
           average: targetMean,
           current: currentPrice,
-          currency: result.price?.currency,
+          currency: unit.currency || undefined,
         }
       : undefined,
     recommendationRating: yahooRecommendationMeanToRating(financeRawNumber(financialData?.recommendationMean)),
@@ -146,16 +149,18 @@ export function mapYahooAnalystResearchResponse(
         const action = normalizeYahooRatingAction(rating.action, rating.priceTargetAction);
         const current = rating.toGrade?.trim();
         const prior = rating.fromGrade?.trim();
-        const currentPriceTarget = financeRawNumber(rating.currentPriceTarget);
-        const priorPriceTarget = financeRawNumber(rating.priorPriceTarget);
+        const currentPriceTarget = priceValue(rating.currentPriceTarget);
+        const priorPriceTarget = priceValue(rating.priorPriceTarget);
+        // A grade-only action uses two zero sentinels, not an explicit $0 target.
+        const emptyTargets = currentPriceTarget === 0 && priorPriceTarget === 0 && !rating.priceTargetAction?.trim();
         return {
           date,
           firm,
           ...(action ? { action } : {}),
           ...(current ? { current } : {}),
           ...(prior ? { prior } : {}),
-          ...(currentPriceTarget != null ? { currentPriceTarget } : {}),
-          ...(priorPriceTarget != null ? { priorPriceTarget } : {}),
+          ...(!emptyTargets && currentPriceTarget != null ? { currentPriceTarget } : {}),
+          ...(!emptyTargets && priorPriceTarget != null ? { priorPriceTarget } : {}),
         };
       })
       .filter((rating): rating is AnalystResearchData["ratings"][number] => rating !== null)
@@ -205,6 +210,7 @@ export function mapYahooCalendarEarnings(result: YahooQuoteSummaryResult): Earni
   const timestamp = yahooRawDateTime(rawDate);
   return [{
     date,
+    dateType: "announcement",
     time: timestamp ? inferEarningsTiming(timestamp) : undefined,
     epsEstimate: financeRawNumber(result.calendarEvents?.earnings?.earningsAverage),
   }];
@@ -216,11 +222,15 @@ export function mapYahooEarningsHistory(result: YahooQuoteSummaryResult): Earnin
       const date = yahooRawDate(earning.quarter);
       if (!date) return null;
       const surprisePercent = financeRawNumber(earning.surprisePercent);
+      const unit = resolveCurrencyUnit(earning.currency);
+      const monetaryValue = (value: unknown) => normalizeMarketValue(financeRawNumber(value), unit.divisor);
       return {
         date,
-        epsEstimate: financeRawNumber(earning.epsEstimate),
-        epsActual: financeRawNumber(earning.epsActual),
-        difference: financeRawNumber(earning.epsDifference),
+        dateType: "fiscal-period-end",
+        currency: unit.currency || undefined,
+        epsEstimate: monetaryValue(earning.epsEstimate),
+        epsActual: monetaryValue(earning.epsActual),
+        difference: monetaryValue(earning.epsDifference),
         surprisePercent: surprisePercent == null ? undefined : surprisePercent * 100,
       };
     })
@@ -369,12 +379,17 @@ function mapYahooEstimate(
 ): AnalystEstimateRecord | null {
   if (!estimate || typeof estimate !== "object") return null;
   const record = estimate as Record<string, unknown>;
-  const average = financeRawNumber(record.avg);
-  const low = financeRawNumber(record.low);
-  const high = financeRawNumber(record.high);
+  const rawCurrency = record[yearAgoKey === "yearAgoEps" ? "earningsCurrency" : "revenueCurrency"];
+  const unit = resolveCurrencyUnit(typeof rawCurrency === "string" ? rawCurrency : undefined);
+  const monetaryValue = (value: unknown) => normalizeMarketValue(financeRawNumber(value), unit.divisor);
+  const average = monetaryValue(record.avg);
+  const low = monetaryValue(record.low);
+  const high = monetaryValue(record.high);
   const analysts = financeRawNumber(record.numberOfAnalysts);
-  const yearAgo = financeRawNumber(record[yearAgoKey]);
+  const yearAgo = monetaryValue(record[yearAgoKey]);
   const growth = financeRawNumber(record.growth);
+  // Yahoo emits all-zero placeholders for periods with no analyst coverage.
+  if (analysts === 0 && [average, low, high, yearAgo, growth].every((value) => value == null || value === 0)) return null;
   if (
     average == null
     && low == null
@@ -387,6 +402,7 @@ function mapYahooEstimate(
   }
   return {
     date: trend.endDate ?? "",
+    currency: unit.currency || undefined,
     period: normalizeYahooRecommendationPeriod(trend.period),
     analysts,
     average,

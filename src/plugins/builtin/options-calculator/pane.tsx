@@ -38,8 +38,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
       id: "days",
       label: "Days",
       value: draft.daysToExpiry,
-      // Whole days read better than the shared 2-decimal number format.
-      valueText: String(Math.round(draft.daysToExpiry)),
+      // Keep intraday expiry visible; rounding six hours to "0 d" makes a
+      // live contract appear expired while its time value is still priced.
+      valueText: Number.isInteger(draft.daysToExpiry)
+        ? String(draft.daysToExpiry)
+        : draft.daysToExpiry > 0 && draft.daysToExpiry < 0.0001
+          ? "<0.0001"
+          : String(Number(draft.daysToExpiry.toFixed(4))),
       suffix: "d",
       onValue: (value) => updateDraft({ daysToExpiry: Math.max(0, value) }),
     },

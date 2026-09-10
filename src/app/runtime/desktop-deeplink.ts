@@ -373,17 +373,19 @@ function handleOpenTicker(
   pluginRegistry: PluginRegistry,
 ): void {
   if (!requirePane(pluginRegistry, TICKER_RESEARCH_PANE_ID, "Ticker research is unavailable.")) return;
-  if (action.tabId && !pluginRegistry.getTickerResearchTabPluginId(action.tabId)) {
-    notifyError(pluginRegistry, `Ticker tab "${action.tabId}" is unavailable.`);
-    return;
-  }
+  const unavailableTab = action.tabId && !pluginRegistry.getTickerResearchTabPluginId(action.tabId);
+  const tabId = unavailableTab ? "overview" : action.tabId;
 
   pluginRegistry.pinTicker(action.symbol, {
     floating: true,
     paneType: TICKER_RESEARCH_PANE_ID,
-    tabId: action.tabId ?? undefined,
+    tabId: tabId ?? undefined,
   });
-  notifySuccess(pluginRegistry, action.message);
+  if (unavailableTab) {
+    pluginRegistry.notify({ body: `Ticker tab "${action.tabId}" is unavailable. Opening ${action.symbol} overview.`, type: "info" });
+  } else {
+    notifySuccess(pluginRegistry, action.message);
+  }
 }
 
 function handleOpenCollection(

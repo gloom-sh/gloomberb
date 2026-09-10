@@ -8,7 +8,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { formatEventMetric, buildEventRows } from "./event-model";
+import { formatEventMetric, buildEventRows, eventSourceNotice } from "./event-model";
 
 const COLUMNS = [
   { key: "date", header: "Date" },
@@ -27,6 +27,9 @@ export interface EventHeadlessData {
   estimates: AnalystResearchData | null;
   financials: TickerFinancials | null;
   currency: string;
+  actionsError?: string | null;
+  estimatesError?: string | null;
+  financialsError?: string | null;
 }
 
 export interface EventsHeadlessDependencies {
@@ -39,21 +42,25 @@ export interface EventsHeadlessDependencies {
 
 const defaultDependencies: EventsHeadlessDependencies = {
   async load(_args, symbol, provider) {
-    if (!provider.getCorporateActions) {
-      throw new Error("Corporate actions source unavailable");
-    }
-    const [actions, estimates, financials] = await Promise.all([
-      provider.getCorporateActions(symbol, ""),
+    const [actions, estimates, financials] = await Promise.allSettled([
+      provider.getCorporateActions ? provider.getCorporateActions(symbol, "") : Promise.reject(new Error("Corporate actions source unavailable")),
       provider.getAnalystResearch
-        ? provider.getAnalystResearch(symbol, "").catch(() => null)
-        : null,
-      provider.getTickerFinancials(symbol, "").catch(() => null),
+        ? provider.getAnalystResearch(symbol, "")
+        : Promise.reject(new Error("Analyst estimates source unavailable")),
+      provider.getTickerFinancials(symbol, ""),
     ]);
+    const actionsData = actions.status === "fulfilled" ? actions.value : null;
+    const estimatesData = estimates.status === "fulfilled" ? estimates.value : null;
+    const financialsData = financials.status === "fulfilled" ? financials.value : null;
+    const error = (result: PromiseSettledResult<unknown>) => result.status === "rejected" ? String(result.reason instanceof Error ? result.reason.message : result.reason) : null;
     return {
-      actions,
-      estimates,
-      financials,
-      currency: actions.currency ?? estimates?.currency ?? financials?.quote?.currency ?? "USD",
+      actions: actionsData,
+      estimates: estimatesData,
+      financials: financialsData,
+      actionsError: error(actions),
+      estimatesError: error(estimates),
+      financialsError: error(financials),
+      currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "USD",
     };
   },
 };
@@ -74,10 +81,20 @@ export function createEventsHeadless(
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
       const data = await dependencies.load(args, symbol, ctx.marketData);
+      const notice = eventSourceNotice({ variant: "corporate-actions", symbol,
+        actions: data.actions, actionsError: data.actionsError ?? null,
+        estimates: data.estimates, estimatesError: data.estimatesError ?? null });
+      const errors = [notice?.failed ? notice.text : null,
+        data.financialsError ? `Financial statements unavailable: ${data.financialsError}` : null,
+      ].filter((error): error is string => !!error);
       return {
         rows: buildEventRows(data.actions, data.estimates, data.financials, data.currency)
           .map((row) => ({ ...row })),
-        metadata: { symbol, currency: data.currency },
+        errors: errors.length > 0 ? errors : undefined,
+        metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,
+          actionsFetchedAt: data.actions?.fetchedAt, estimatesFetchedAt: data.estimates?.fetchedAt,
+          ...(notice ? { notice: notice.text } : {}),
+        },
       };
     },
   };

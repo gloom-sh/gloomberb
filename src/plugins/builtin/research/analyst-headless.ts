@@ -60,6 +60,11 @@ function overviewEntries(data: AnalystResearchData): HeadlessPaneEntry[] {
       formatted: upside == null ? "-" : formatPercent(upside),
     },
     {
+      label: "Upside reference price",
+      value: target?.current ?? null,
+      formatted: target?.current == null ? "-" : formatCurrency(target.current, currency),
+    },
+    {
       label: "Target range",
       value: target ? { low: target.low, median: target.median, high: target.high } : null,
       formatted: target
@@ -159,10 +164,13 @@ export function createAnalystResearchHeadless(
       ];
       return {
         sections,
+        errors: data.stale ? ["Analyst research is stale"] : undefined,
         metadata: {
           symbol: data.symbol || symbol,
           name: data.name ?? null,
           currency,
+          fetchedAt: data.fetchedAt,
+          stale: data.stale,
         },
       };
     },

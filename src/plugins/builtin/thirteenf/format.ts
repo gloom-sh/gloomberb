@@ -45,6 +45,8 @@ export function actionLabel(action: HoldingAction): string {
       return "Exit";
     case "held":
       return "Held";
+    case "unknown":
+      return "--";
   }
 }
 

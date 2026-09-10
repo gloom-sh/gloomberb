@@ -9,6 +9,7 @@ import {
   createEarningsTranscriptHeadless,
   type EarningsCallsHeadlessDependencies,
 } from "./headless";
+import { buildTranscriptSegments, findCallForQuarter } from "./model";
 
 const calls: CloudEarningsCallPayload[] = [
   {
@@ -138,6 +139,19 @@ describe("earnings calls headless", () => {
 });
 
 describe("earnings transcript headless", () => {
+  test("full-text fallback searches return matching paragraphs rather than the entire call", () => {
+    const fallback = { ...transcript, turns: [], fullText: "Welcome to the quarterly call.\n\nMembership renewal rates increased.\n\nThank you for joining us." };
+    expect(buildTranscriptSegments(fallback, "transcript", { search: "RENEWAL" }).map((row) => row.text)).toEqual(["Membership renewal rates increased."]);
+    expect(buildTranscriptSegments(fallback, "transcript", { search: "missing" })).toEqual([]);
+    expect(buildTranscriptSegments(fallback, "transcript", { speaker: "CFO", search: "renewal" })).toEqual([]);
+  });
+
+  test("non-calendar fiscal quarter selection uses reported fiscal identity, not announcement month", () => {
+    const cost = [{ ...calls[0]!, id: "cost-fq4", ticker: "COST", fiscalYear: 2025, fiscalQuarter: 4, callAt: "2025-09-25T21:00:00Z" },
+      { ...calls[1]!, id: "cost-fq1", ticker: "COST", fiscalYear: 2026, fiscalQuarter: 1, callAt: "2025-12-11T21:00:00Z" }];
+    expect(findCallForQuarter(cost, "FQ4-2025")?.id).toBe("cost-fq4");
+    expect(findCallForQuarter(cost, "FY2026")?.id).toBe("cost-fq1");
+  });
   test("selects a quarter and filters speakers by role acronym", async () => {
     const definition = createEarningsTranscriptHeadless(dependencies());
 

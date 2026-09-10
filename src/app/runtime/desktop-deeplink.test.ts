@@ -1,7 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import { resolveDesktopDeepLinkAction } from "./desktop-deeplink";
+import { handleDesktopDeepLink, resolveDesktopDeepLinkAction } from "./desktop-deeplink";
+import type { PluginRegistry } from "../../plugins/registry";
+import type { AppState } from "../../state/app/context";
 
 describe("desktop deeplinks", () => {
+  test("opens a valid ticker on overview when a requested tab is unavailable, preserving registered tabs and rejected links", () => {
+    const pinned: Array<{ symbol: string; options: unknown }> = [];
+    const notices: Array<{ body: string; type: string }> = [];
+    const panes = new Map([["ticker-research", {}]]);
+    const registry = {
+      panes,
+      getTickerResearchTabPluginId: (id: string) => ["overview", "corporate-actions"].includes(id) ? "research" : undefined,
+      pinTicker: (symbol: string, options: unknown) => { pinned.push({ symbol, options }); },
+      notify: (notice: { body: string; type: string }) => { notices.push(notice); },
+    } as unknown as PluginRegistry;
+    const options = { pluginRegistry: registry, dispatch: () => {}, stateRef: { current: {} as AppState } };
+
+    handleDesktopDeepLink("gloomberb://ticker/RIVN?tab=events", options);
+    expect(pinned).toEqual([{ symbol: "RIVN", options: { floating: true, paneType: "ticker-research", tabId: "overview" } }]);
+    expect(notices.at(-1)).toEqual({ body: 'Ticker tab "events" is unavailable. Opening RIVN overview.', type: "info" });
+
+    handleDesktopDeepLink("gloomberb://ticker/RIVN?tab=corporate-actions", options);
+    expect(pinned.at(-1)?.options).toMatchObject({ tabId: "corporate-actions" });
+    handleDesktopDeepLink("gloomberb://ticker?tab=events", options);
+    expect(pinned).toHaveLength(2);
+    expect(notices.at(-1)?.type).toBe("error");
+    panes.clear();
+    handleDesktopDeepLink("gloomberb://ticker/RIVN?tab=events", options);
+    expect(pinned).toHaveLength(2);
+    expect(notices.at(-1)?.body).toBe("Ticker research is unavailable.");
+  });
+
   test("routes cloud roundup links to account management", () => {
     expect(resolveDesktopDeepLinkAction("gloomberb://cloud/roundup?week=2026-07-03")).toEqual({
       type: "open-account-management",

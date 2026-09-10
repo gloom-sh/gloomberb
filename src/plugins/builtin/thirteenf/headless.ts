@@ -17,6 +17,8 @@ import {
   buildFundHoldingRows,
   buildTimelineRows,
   inferBrowserTabFromQuery,
+  hasComparable13FQuarter,
+  THIRTEENF_OPTIONS_NOTE,
   isCikQuery,
   positionType,
   sortBrowserRows,
@@ -79,7 +81,8 @@ const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
   },
   {
     key: "weight",
-    header: "Weight",
+    header: "13F %",
+    description: "Share of the filing's reported value, including underlying notional for options; not portfolio allocation.",
     align: "right",
     format: (value) => formatPercentMaybe(value == null ? null : Number(value)),
   },
@@ -164,17 +167,23 @@ function browserTab(view: HeadlessThirteenFView, query: string): ThirteenFBrowse
 
 async function resolveFund(
   query: string,
-  limit: number,
   args: HeadlessPaneLoadArgs,
   ctx: HeadlessPaneContext,
   dependencies: ThirteenFHeadlessDependencies,
 ): Promise<{ cik: string; name: string }> {
   if (!query) throw new Error("13F holdings and filings require a fund name or CIK.");
   if (isCikQuery(query)) return { cik: normalizeCik(query), name: query };
-  const result = await dependencies.loadBrowser("funds", query, Math.min(limit, 25), args, ctx);
-  const exact = result.rows.find((row) => row.name.toLocaleLowerCase() === query.toLocaleLowerCase());
-  const fund = exact ?? result.rows[0];
-  if (!fund) throw new Error(`No 13F fund found for "${query}".`);
+  // A small output limit must not hide other matching managers during lookup.
+  const result = await dependencies.loadBrowser("funds", query, 25, args, ctx);
+  const candidates = [...new Map(result.rows.map((row) => [row.cik, row])).values()];
+  const exact = candidates.filter((row) => row.name.toLocaleLowerCase() === query.toLocaleLowerCase());
+  const fund = exact.length === 1 ? exact[0]
+    : candidates.length === 1 && !result.hasMore ? candidates[0] : undefined;
+  if (candidates.length === 0) throw new Error(`No 13F fund found for "${query}".`);
+  if (!fund) {
+    const choices = candidates.slice(0, 5).map((row) => `${row.name} (${row.cik})`).join("; ");
+    throw new Error(`Ambiguous 13F fund "${query}". Use an exact fund name or CIK: ${choices}.`);
+  }
   return { cik: fund.cik, name: fund.name };
 }
 
@@ -223,7 +232,7 @@ export function createThirteenFHeadless(
       const limit = Number(args.options.limit);
 
       if (view === "holdings" || view === "filings") {
-        const fund = await resolveFund(query, limit, args, ctx, dependencies);
+        const fund = await resolveFund(query, args, ctx, dependencies);
         const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx);
         if (view === "filings") {
           const rows = sortTimelineRows(buildTimelineRows(detail.forms), DEFAULT_TIMELINE_SORT)
@@ -259,6 +268,9 @@ export function createThirteenFHeadless(
             fund: detail.name,
             latestPeriod: detail.latestForm?.periodOfReport ?? null,
             previousPeriod: detail.previousForm?.periodOfReport ?? null,
+            comparisonAvailable: hasComparable13FQuarter(detail),
+            valueBasis: THIRTEENF_OPTIONS_NOTE,
+            estimatedPnlBasis: "Quarter-end unit-value change on overlapping reported shares; excludes options, trading costs and dividends; not actual fund P&L.",
           },
         };
       }

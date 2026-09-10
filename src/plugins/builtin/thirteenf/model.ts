@@ -26,6 +26,7 @@ import type {
 
 export const THIRTEENF_PANE_ID = "thirteenf-funds";
 export const THIRTEENF_TEMPLATE_ID = "thirteenf-funds-pane";
+export const THIRTEENF_OPTIONS_NOTE = "Option values and shares refer to the underlying; 13F % is share of reported value.";
 
 export const FUND_DETAIL_TABS: Array<{ label: string; value: ThirteenFDetailTab }> = [
   { label: "Holdings", value: "holdings" },
@@ -72,19 +73,14 @@ export function normalizeQuarterDate(value: Date): string {
 }
 
 export function latestLikely13FQuarter(now = new Date()): string {
-  const year = now.getUTCFullYear();
-  const quarterEnds = [
-    Date.UTC(year - 1, 11, 31),
-    Date.UTC(year, 2, 31),
-    Date.UTC(year, 5, 30),
-    Date.UTC(year, 8, 30),
-    Date.UTC(year, 11, 31),
-  ];
-  const availableAt = quarterEnds
-    .map((timestamp) => timestamp + 50 * 24 * 60 * 60_000)
-    .filter((timestamp) => timestamp <= now.getTime())
-    .at(-1) ?? quarterEnds[0]!;
-  return normalizeQuarterDate(new Date(availableAt - 50 * 24 * 60 * 60_000));
+  const currentQuarterStart = Math.floor(now.getUTCMonth() / 3) * 3;
+  // Allow the provider's existing 50-day reporting buffer, including January
+  // when the latest broadly available filing period is the previous Q3.
+  for (let offset = 0; offset < 8; offset += 1) {
+    const end = new Date(Date.UTC(now.getUTCFullYear(), currentQuarterStart - offset * 3, 0));
+    if (end.getTime() + 50 * 86_400_000 <= now.getTime()) return normalizeQuarterDate(end);
+  }
+  return "";
 }
 
 export function dateYearsAgo(years: number, now = new Date()): string {
@@ -210,10 +206,9 @@ interface HoldingAggregate {
 
 function holdingKey(holding: ThirteenFHoldingRecord): string {
   return [
-    holding.ticker || "NO-TICKER",
-    holding.cusip,
-    holding.putCall || "",
-    holding.titleOfClass || "",
+    holding.cusip.trim().toUpperCase(),
+    holding.putCall.trim().toUpperCase(),
+    holding.shareType.trim().toUpperCase(),
   ].join("|");
 }
 
@@ -261,6 +256,9 @@ function estimateHoldingPnl(
   previous: HoldingAggregate | undefined,
 ): number | null {
   if (!current || !previous) return null;
+  // A 13F option value is underlying notional. Its change cannot price the
+  // option, and the filing does not identify strike, expiry or premium.
+  if (current.putCall || previous.putCall) return null;
   if (current.value <= 0 || previous.value <= 0) return null;
   if (current.shares <= 0 || previous.shares <= 0) return null;
 
@@ -270,10 +268,21 @@ function estimateHoldingPnl(
   return (currentPrice - previousPrice) * overlappingShares;
 }
 
+export function hasComparable13FQuarter(data: FundDetailData): boolean {
+  const current = data.latestForm?.periodOfReport;
+  const previous = data.previousForm?.periodOfReport;
+  if (!current || !previous) return false;
+  const date = new Date(`${current}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime())) return false;
+  const priorEnd = new Date(Date.UTC(date.getUTCFullYear(), Math.floor(date.getUTCMonth() / 3) * 3, 0));
+  return previous === priorEnd.toISOString().slice(0, 10);
+}
+
 export function buildFundHoldingRows(data: FundDetailData | null): FundHoldingRow[] {
   if (!data?.latestForm) return [];
   const current = aggregateHoldings(data.latestHoldings);
-  const previous = aggregateHoldings(data.previousHoldings);
+  const comparable = hasComparable13FQuarter(data);
+  const previous = aggregateHoldings(comparable ? data.previousHoldings : []);
   const allKeys = new Set([...current.keys(), ...previous.keys()]);
   const totalValue = data.latestForm.tableValueTotal
     ?? [...current.values()].reduce((sum, item) => sum + item.value, 0);
@@ -286,10 +295,10 @@ export function buildFundHoldingRows(data: FundDetailData | null): FundHoldingRo
     const shares = currentHolding?.shares ?? null;
     const previousValue = previousHolding?.value ?? null;
     const previousShares = previousHolding?.shares ?? null;
-    const valueChange = value != null || previousValue != null
+    const valueChange = comparable && (value != null || previousValue != null)
       ? (value ?? 0) - (previousValue ?? 0)
       : null;
-    const sharesChange = shares != null || previousShares != null
+    const sharesChange = comparable && (shares != null || previousShares != null)
       ? (shares ?? 0) - (previousShares ?? 0)
       : null;
     const sharesChangePercent = sharesChange != null && previousShares && previousShares !== 0
@@ -312,7 +321,7 @@ export function buildFundHoldingRows(data: FundDetailData | null): FundHoldingRo
       estimatedPnl: estimateHoldingPnl(currentHolding, previousHolding),
       sharesChange,
       sharesChangePercent,
-      action: resolveAction(currentHolding, previousHolding),
+      action: comparable ? resolveAction(currentHolding, previousHolding) : "unknown",
       accessionNumber: display.accessionNumber,
     };
   });
@@ -562,7 +571,7 @@ export function buildFilingPositionColumns(width: number): FilingPositionColumn[
     { id: "type", label: "TYPE", width: typeWidth, align: "left" },
     { id: "issuer", label: "ISSUER", width: issuerWidth, align: "left" },
     { id: "value", label: "VALUE", width: valueWidth, align: "right" },
-    { id: "weight", label: "WEIGHT", width: weightWidth, align: "right" },
+    { id: "weight", label: "13F %", width: weightWidth, align: "right" },
     { id: "shares", label: "SHARES", width: sharesWidth, align: "right" },
     { id: "cusip", label: "CUSIP", width: cusipWidth, align: "left" },
     { id: "discretion", label: "DISCR", width: discretionWidth, align: "left" },
@@ -586,7 +595,7 @@ export function buildHoldingColumns(width: number): FundHoldingColumn[] {
     { id: "issuer", label: "ISSUER", width: issuerWidth, align: "left" },
     { id: "value", label: "VALUE", width: valueWidth, align: "right" },
     { id: "estimatedPnl", label: "EST P&L", width: pnlWidth, align: "right" },
-    { id: "weight", label: "WEIGHT", width: weightWidth, align: "right" },
+    { id: "weight", label: "13F %", width: weightWidth, align: "right" },
     { id: "shares", label: "SHARES", width: sharesWidth, align: "right" },
     { id: "sharesChange", label: "QOQ", width: changeWidth, align: "right" },
     { id: "action", label: "ACTION", width: actionWidth, align: "left" },

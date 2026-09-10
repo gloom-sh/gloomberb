@@ -133,6 +133,7 @@ export function buildTranscriptSegments(
       const search = options.search?.trim().toLowerCase() ?? "";
       if (!options.speaker?.trim() && (!search || transcript.fullText.toLowerCase().includes(search))) {
         for (const paragraph of transcript.fullText.split(/\n{2,}/)) {
+          if (search && !paragraph.toLowerCase().includes(search)) continue;
           for (const text of chunks(paragraph)) {
             withoutIndexes.push({
               section,

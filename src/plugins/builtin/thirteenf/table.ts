@@ -195,6 +195,7 @@ function actionColor(action: FundHoldingRow["action"]): string {
     case "exit":
       return colors.negative;
     case "held":
+    case "unknown":
       return colors.textDim;
   }
 }
