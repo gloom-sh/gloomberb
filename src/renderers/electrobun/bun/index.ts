@@ -378,10 +378,27 @@ function quitDesktopApp(): void {
   Utils.quit();
 }
 
-function controlWindowForRpcKey(windowKey: string | undefined, action: DesktopWindowControlAction): boolean {
-  const targetWindow = windowKey === MAIN_WINDOW_RPC_KEY
+function windowForRpcKey(windowKey: string | undefined): BrowserWindow | null {
+  return windowKey === MAIN_WINDOW_RPC_KEY
     ? mainWindow
     : detachedWindowManager.getWindowForRpcKey(windowKey);
+}
+
+/**
+ * Electrobun has no fullscreen event, so the view asks after every resize.
+ * A runtime whose native library cannot answer reports windowed, which is the
+ * layout the header held before it could ask at all.
+ */
+function isWindowFullscreenForRpcKey(windowKey: string | undefined): boolean {
+  try {
+    return windowForRpcKey(windowKey)?.isFullScreen?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+function controlWindowForRpcKey(windowKey: string | undefined, action: DesktopWindowControlAction): boolean {
+  const targetWindow = windowForRpcKey(windowKey);
   if (!targetWindow) return false;
   if (action !== "close") {
     detachedWindowManager.suppressAutoDockForRpcKey(windowKey);
@@ -471,6 +488,7 @@ async function handleBackendRequest(
     case "host.restart":
     case "host.exit":
     case "host.windowControl":
+    case "host.windowFullscreen":
     case "host.openExternal":
     case "host.copyText":
     case "host.focusWindow":
@@ -487,6 +505,7 @@ async function handleBackendRequest(
         focusWindowForRpcKey: (windowKey) => detachedWindowManager.focusWindowForRpcKey(windowKey),
         getMainWindow: () => mainWindow,
         getRpcWindowKey,
+        isWindowFullscreenForRpcKey,
         request,
         restartDesktopApp,
         rpc,

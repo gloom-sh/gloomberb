@@ -84,11 +84,16 @@ export function resolveHeaderPromptGeometry(options: {
   termWidth: number;
   nativePaneChrome?: boolean;
   nativeWindowChrome?: boolean;
+  /** Sniffed from the host when absent. */
+  platform?: string;
   titleBarOverlay?: boolean;
+  windowFullscreen?: boolean;
 }): HeaderPromptGeometry {
-  const { nativePaneChrome, termWidth, titleBarOverlay } = options;
+  const { nativePaneChrome, platform, termWidth, titleBarOverlay, windowFullscreen } = options;
   const nativeWindowChrome = options.nativeWindowChrome ?? titleBarOverlay;
-  const leadingInset = titleBarOverlay && nativeWindowChrome ? getTitlebarLeadingInset() : 0;
+  const leadingInset = titleBarOverlay && nativeWindowChrome
+    ? getTitlebarLeadingInset({ platform, windowFullscreen })
+    : 0;
   const left = leadingInset + 1;
   const updateColumns = headerPromptUpdateColumns(termWidth);
   const marketColumns = headerMarketColumns(termWidth, left, updateColumns);

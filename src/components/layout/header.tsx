@@ -37,6 +37,7 @@ import { truncateToDisplayWidth } from "../../utils/format";
 import { formatCommandBarShortcut, getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
+import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
@@ -377,11 +378,13 @@ export function Header({
   const uiKind = useUiHost().kind;
   const { nativePaneChrome = false, titleBarOverlay, nativeWindowChrome = titleBarOverlay, windowControls } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
+  const windowFullscreen = useWindowFullscreen();
   const prompt = resolveHeaderPromptGeometry({
     nativePaneChrome,
     nativeWindowChrome,
     termWidth,
     titleBarOverlay,
+    windowFullscreen,
   });
   const shortcutLabel = formatCommandBarShortcut(getShortcutDisplayMode(uiKind));
   // Desktop has its own window chrome to sit on; the terminal has none, so the

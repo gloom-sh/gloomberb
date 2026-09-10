@@ -19,6 +19,7 @@ interface DesktopHostRequestOptions<TRpc> {
   focusWindowForRpcKey: (windowKey: string) => void;
   getMainWindow: () => BrowserWindow | null;
   getRpcWindowKey: (rpc: TRpc) => string | undefined;
+  isWindowFullscreenForRpcKey: (windowKey: string | undefined) => boolean;
   request: DesktopHostRequest;
   restartDesktopApp: (message?: DesktopRestartMessage) => void;
   rpc: TRpc;
@@ -59,6 +60,7 @@ export async function handleDesktopHostRequest<TRpc>({
   focusWindowForRpcKey,
   getMainWindow,
   getRpcWindowKey,
+  isWindowFullscreenForRpcKey,
   request,
   restartDesktopApp,
   rpc,
@@ -104,6 +106,8 @@ export async function handleDesktopHostRequest<TRpc>({
       }
       return null;
     }
+    case "host.windowFullscreen":
+      return isWindowFullscreenForRpcKey(getRpcWindowKey(rpc));
     case "host.openExternal": {
       if (typeof request.payload.url !== "string") {
         throw new Error("host.openExternal requires a URL.");

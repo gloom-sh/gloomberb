@@ -133,6 +133,7 @@ export interface DesktopBackendRequestMap {
   "host.restart": { request: DesktopRestartMessage; response: null };
   "host.exit": { request: null; response: null };
   "host.windowControl": { request: { action: DesktopWindowControlAction }; response: null };
+  "host.windowFullscreen": { request: null; response: boolean };
   "host.openExternal": { request: { url: string }; response: null };
   "host.copyText": { request: { text: string }; response: null };
   "host.focusWindow": { request: null; response: null };

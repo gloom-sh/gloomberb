@@ -21,6 +21,7 @@ import {
   installElectrobunHttpFetchTransport,
 } from "./http-fetch";
 import { installElectrobunUpdateHost } from "./update-host";
+import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
 import { DesktopFatalScreen, ElectrobunErrorBoundary } from "./fatal-screen";
 import { WebInputHostProvider } from "./input-host";
 import { webNativeRenderer } from "./native-renderer";
@@ -102,6 +103,7 @@ async function boot() {
   const init = await measurePerfAsync("startup.electrobun.backend-init", () => backendInitPromise);
   installElectrobunAiHost();
   installFocusScopeRelease();
+  installElectrobunWindowFullscreenTracking();
   const desktopSnapshot = init.windowKind === "detached" && init.paneId && init.desktopSnapshot
     ? prepareDetachedSnapshot(init.desktopSnapshot, init.paneId)
     : init.desktopSnapshot;

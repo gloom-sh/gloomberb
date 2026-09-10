@@ -21,11 +21,19 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
   function WebScrollBox({ children, ...props }, ref) {
     const elementRef = useRef<HTMLDivElement | null>(null);
     const isHeaderLikeScroller = props.scrollX === true && props.scrollY !== true && props.height === 1;
+    /**
+     * OpenTUI's ScrollBox scrolls vertically unless told otherwise, so this one
+     * has to as well: a pane that renders a ScrollBox and nothing more expects
+     * the wheel to work, and used to get an unscrollable box that only its own
+     * arrow-key handler could move. The one-row horizontal strips (tab bars,
+     * table headers, chart legends) are the exception and scroll on their axis.
+     */
+    const scrollYEnabled = props.scrollY !== false && !isHeaderLikeScroller;
     const [horizontalScrollBarVisible, setHorizontalScrollBarVisible] = useState(
       () => props.scrollX === true && !isHeaderLikeScroller,
     );
     const [verticalScrollBarVisible, setVerticalScrollBarVisible] = useState(
-      () => props.scrollY === true,
+      () => scrollYEnabled,
     );
     const horizontalScrollBarVisibleRef = useRef(horizontalScrollBarVisible);
     const verticalScrollBarVisibleRef = useRef(verticalScrollBarVisible);
@@ -92,10 +100,10 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
     }, [horizontalScrollBar, props.scrollX]);
 
     useEffect(() => {
-      if (props.scrollY !== true) {
+      if (!scrollYEnabled) {
         verticalScrollBar.visible = false;
       }
-    }, [props.scrollY, verticalScrollBar]);
+    }, [scrollYEnabled, verticalScrollBar]);
 
     useEffect(() => () => {
       if (scrollFrameRef.current != null) {
@@ -226,9 +234,9 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
       verticalScrollBar,
     ]);
 
-    const scrollable = props.scrollX === true || props.scrollY === true;
+    const scrollable = props.scrollX === true || scrollYEnabled;
     const overflowX = props.scrollX === true ? "auto" : "hidden";
-    const overflowY = props.scrollY === true ? "auto" : "hidden";
+    const overflowY = scrollYEnabled ? "auto" : "hidden";
     const handleScroll = useCallback(() => {
       emitScrollPositionChanges();
       markScrollbarActive();
@@ -251,7 +259,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
         {...cleanDomProps(props)}
         ref={elementRef}
         data-gloom-scrollbar-x={props.scrollX === true ? (horizontalScrollBarVisible ? "visible" : "hidden") : undefined}
-        data-gloom-scrollbar-y={props.scrollY === true ? (verticalScrollBarVisible ? "visible" : "hidden") : undefined}
+        data-gloom-scrollbar-y={scrollYEnabled ? (verticalScrollBarVisible ? "visible" : "hidden") : undefined}
         data-gloom-scrollbar-active={scrollbarActive ? "true" : undefined}
         onMouseDown={(event) => callMouseHandler(props.onMouseDown, event, "down")}
         onMouseMove={(event) => callMouseHandler(props.onMouseMove, event, "move")}

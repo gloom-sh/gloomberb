@@ -9,6 +9,7 @@ import {
 import {
   resolveCommandBarPanelLayout,
 } from "./layout";
+import { useWindowFullscreen } from "../../layout/window-fullscreen";
 import { matchThemeOptions } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
 
@@ -52,6 +53,9 @@ export function useCommandBarPanelState({
   visibleListStateRef,
 }: UseCommandBarPanelStateOptions) {
   visibleListStateRef.current = routeListState;
+  // The sheet drops out of the header prompt, so it has to follow the prompt
+  // off the traffic lights when the window goes fullscreen.
+  const windowFullscreen = useWindowFullscreen();
 
   useEffect(() => {
     const listState = routeListState;
@@ -122,6 +126,7 @@ export function useCommandBarPanelState({
     themePickerActive,
     themePickerRowCount,
     titleBarOverlay,
+    windowFullscreen,
   }), [
     cellHeightPx,
     cellWidthPx,
@@ -137,6 +142,7 @@ export function useCommandBarPanelState({
     themePickerActive,
     themePickerRowCount,
     titleBarOverlay,
+    windowFullscreen,
   ]);
   const selectedListRowIndex = visibleListState
     ? listRowIndexByGlobalIndex.get(visibleListState.selectedIdx) ?? -1
