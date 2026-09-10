@@ -53,6 +53,7 @@ function buildManualPortfolioPositionWorkflow(
     {
       id: "shares",
       label: "Shares",
+      description: "No automatic adjustments. Enter current quantity.",
       type: "number",
       placeholder: "10",
       required: !options.positionOptional,
@@ -60,6 +61,7 @@ function buildManualPortfolioPositionWorkflow(
     {
       id: "avgCost",
       label: "Avg Cost",
+      description: "Distributions are not tracked. Enter adjusted cost per share.",
       type: "number",
       placeholder: "180",
       required: !options.positionOptional,

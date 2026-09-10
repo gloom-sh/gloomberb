@@ -8,6 +8,8 @@ import type { AppConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
+import type { BrokerAdapter } from "../../../types/plugin";
+import type { BrokerPortfolioPerformance } from "../../../types/trading";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { portfolioAnalyticsModule } from "./index";
 import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
@@ -139,12 +141,16 @@ function AnalyticsHarness({
   financials,
   runtime = createTestPluginRuntime(),
   ticker = createSharedTicker(),
+  width = 100,
+  height = 24,
 }: {
   config: AppConfig;
   brokerAccounts?: Record<string, BrokerAccount[]>;
   financials?: TickerFinancials;
   runtime?: PluginRuntimeAccess;
   ticker?: TickerRecord;
+  width?: number;
+  height?: number;
 }) {
   const initialState = createInitialState(config);
   initialState.focusedPaneId = TEST_PANE_ID;
@@ -166,8 +172,8 @@ function AnalyticsHarness({
         paneId={TEST_PANE_ID}
         paneType="analytics"
         focused
-        width={100}
-        height={24}
+        width={width}
+        height={height}
       />
     </TestPaneProvider>
   );
@@ -177,16 +183,6 @@ async function flushFrame() {
   await act(async () => {
     await testSetup!.renderOnce();
   });
-}
-
-function expectBlankLineBetween(frame: string, beforeText: string, afterText: string) {
-  const lines = frame.split("\n");
-  const beforeRow = lines.findIndex((line) => line.includes(beforeText));
-  const afterRow = lines.findIndex((line) => line.includes(afterText));
-
-  expect(beforeRow).toBeGreaterThanOrEqual(0);
-  expect(afterRow).toBe(beforeRow + 2);
-  expect(lines[beforeRow + 1]?.trim()).toBe("");
 }
 
 beforeEach(() => {
@@ -205,6 +201,49 @@ afterEach(async () => {
 });
 
 describe("PortfolioAnalyticsPane", () => {
+  test("switching accounts hides prior performance while the next account is pending", async () => {
+    const firstId = BROKER_PORTFOLIO_ID;
+    const secondId = "broker:ibkr-flex:DU54321";
+    let completeSecond!: (value: BrokerPortfolioPerformance) => void;
+    const second = new Promise<BrokerPortfolioPerformance>((resolve) => { completeSecond = resolve; });
+    const adapter: BrokerAdapter = {
+      id: "ibkr", name: "Fixture", configSchema: [], validate: async () => true, importPositions: async () => [],
+      getPortfolioPerformance: async (_instance, accountId) => accountId === "DU54321" ? second : {
+        accountId, source: "flex", period: "First account", fetchedAt: 1,
+        points: [{ date: "2026-01-01", value: 10000, cumulativeReturn: 0 }, { date: "2026-02-01", value: 11000, cumulativeReturn: .1 }],
+      },
+    };
+    const runtime = createTestPluginRuntime({ getBrokerAdapter: () => adapter });
+    const config = createAnalyticsConfig(firstId);
+    config.portfolios = [
+      { id: firstId, name: "First", currency: "USD", brokerInstanceId: "ibkr-flex", brokerAccountId: "DU12345" },
+      { id: secondId, name: "Second", currency: "USD", brokerInstanceId: "ibkr-flex", brokerAccountId: "DU54321" },
+    ];
+    config.brokerInstances = [{ id: "ibkr-flex", brokerType: "ibkr", label: "Fixture", enabled: false, config: {} }];
+    const ticker = createSharedTicker();
+    ticker.metadata.portfolios = [firstId, secondId];
+    ticker.metadata.positions = [firstId, secondId].map((portfolio) => ({ ...ticker.metadata.positions[1]!, portfolio }));
+    await act(async () => {
+      testSetup = await testRender(<AnalyticsHarness config={config} runtime={runtime} ticker={ticker} />, { width: 100, height: 24 });
+      await testSetup.renderOnce();
+    });
+    await flushFrame();
+    expect(testSetup!.captureCharFrame()).toContain("+10.00%");
+    await act(async () => { testSetup!.mockInput.pressArrow("right"); await testSetup!.renderOnce(); });
+    await flushFrame();
+    expect(harnessState?.paneState[TEST_PANE_ID]?.portfolioId).toBe(secondId);
+    expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
+    expect(testSetup!.captureCharFrame()).not.toContain("Portfolio History");
+    await act(async () => {
+      completeSecond({ accountId: "DU54321", source: "flex", period: "Second account", fetchedAt: 1,
+        points: [{ date: "2026-01-01", cumulativeReturn: 0 }, { date: "2026-02-01", cumulativeReturn: .2 }] });
+      await second;
+    });
+    await flushFrame();
+    expect(testSetup!.captureCharFrame()).toContain("+20.00%");
+    expect(testSetup!.captureCharFrame()).not.toContain("+10.00%");
+  });
+
   test("renders portfolio tabs and filters broker-managed positions to the active portfolio", async () => {
     await act(async () => {
       testSetup = await testRender(
@@ -226,7 +265,6 @@ describe("PortfolioAnalyticsPane", () => {
     expect(frame).toContain("Est. Sharpe");
     expect(frame).toContain("Beta (SPY)");
     expect(frame).toContain("SECTOR");
-    expectBlankLineBetween(frame, "Beta (SPY)", "Sector Allocation");
     expect(frame).toContain("Technology");
     expect(frame).toContain("100.0%");
     expect(frame).not.toContain("2.5k");
@@ -384,11 +422,13 @@ describe("PortfolioAnalyticsPane", () => {
     await act(async () => {
       testSetup = await testRender(
         <AnalyticsHarness
+          width={80}
+          height={30}
           config={config}
           runtime={runtime}
           ticker={createBrokerTicker(GATEWAY_PORTFOLIO_ID, "ibkr-live")}
         />,
-        { width: 100, height: 24 },
+        { width: 80, height: 30 },
       );
       await Promise.resolve();
       await testSetup.renderOnce();
@@ -402,9 +442,11 @@ describe("PortfolioAnalyticsPane", () => {
       { instanceId: "ibkr-live", accountId: "DU12345" },
       { instanceId: "ibkr-flex", accountId: "DU12345" },
     ]);
-    expect(frame).toContain("Hist Ret");
+    expect(frame).toContain("Broker return");
     expect(frame).toContain("+10.00%");
     expect(frame).toContain("Portfolio History");
+    expect(frame).toContain("Technology");
+    expect(frame).toContain("100.0%");
     expect(frame).toContain("Flex FLEX");
   });
 

@@ -60,6 +60,8 @@ export function PortfolioHistorySection({
   axisLabel,
   period,
   stale,
+  note,
+  manual,
   formatAxisValue,
 }: {
   show: boolean;
@@ -72,6 +74,8 @@ export function PortfolioHistorySection({
   axisLabel: string;
   period: string | undefined;
   stale: boolean | undefined;
+  note: string | null;
+  manual: boolean;
   formatAxisValue: (value: number) => string;
 }) {
   if (show) {
@@ -83,6 +87,7 @@ export function PortfolioHistorySection({
             {`  Flex ${period ?? ""}${stale ? " - cached" : ""}`}
           </Text>
         </Box>
+        {note ? <Box paddingX={1} flexDirection="column" flexShrink={0}><Notice tone="muted">{note}</Notice></Box> : null}
         <Box paddingX={1} height={height}>
           <StaticChartSurface
             points={points}
@@ -102,20 +107,32 @@ export function PortfolioHistorySection({
   if (loading) {
     return (
       <Box height={1} paddingX={1}>
-        <Spinner label={loadingText("IBKR history")} />
+        <Spinner label={loadingText("account history")} />
       </Box>
     );
   }
 
   if (error) {
     return (
-      <Box paddingX={1}>
-        <Notice>{`${unavailableText("IBKR history")} ${error}`}</Notice>
+      <Box paddingX={1} flexDirection="column" flexShrink={0}>
+        <Notice>{`${unavailableText("Account history")} ${error}`}</Notice>
       </Box>
     );
   }
 
-  return null;
+  if (points.length > 0) {
+    return (
+      <Box paddingX={1} flexDirection="column" flexShrink={0}>
+        <Notice tone="muted">{`${points.length >= 2 ? "Enlarge this pane to view account history." : "Account history needs at least two observations for a chart."}${note ? ` ${note}` : ""}`}</Notice>
+      </Box>
+    );
+  }
+
+  return manual ? (
+    <Box paddingX={1} flexDirection="column" flexShrink={0}>
+      <Notice tone="muted">Manual portfolios have no cash-flow performance history. P&L covers current holdings. Reconcile corporate actions with PF → Set position; distributions are not credited.</Notice>
+    </Box>
+  ) : null;
 }
 
 export function SectorAllocationTable({
@@ -162,11 +179,11 @@ export function SectorAllocationTable({
           case "weight":
             return { text: formatWeight(row.weight) };
           case "value":
-            return { text: formatCompact(row.value) };
+            return { text: row.value == null ? "—" : formatCompact(row.value) };
           case "pnl":
             return {
               text: formatSignedCompact(row.pnl),
-              color: priceColor(row.pnl),
+              color: row.pnl == null ? colors.textMuted : priceColor(row.pnl),
             };
           case "return":
             return {

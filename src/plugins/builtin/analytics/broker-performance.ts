@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
+import { useAsyncResource } from "../../../react/async-resource";
 import type { ProjectedChartPoint } from "../../../components/chart/core/data";
 import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerPortfolioPerformance } from "../../../types/trading";
@@ -53,27 +54,44 @@ function resolveBrokerAccountId(portfolio: Portfolio | null): string | null {
   return parts[0] === "broker" && parts.length >= 3 ? parts.slice(2).join(":") : null;
 }
 
-export function performancePointValue(point: BrokerPortfolioPerformance["points"][number]): number | null {
-  if (point.value != null && Number.isFinite(point.value)) return point.value;
-  if (point.cumulativeReturn != null && Number.isFinite(point.cumulativeReturn)) return point.cumulativeReturn;
-  return null;
+export type PerformanceMetric = "value" | "cumulativeReturn";
+
+function finitePointValue(point: BrokerPortfolioPerformance["points"][number], metric: PerformanceMetric): number | null {
+  const value = point[metric];
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
+/** Choose one unit for the entire series; a missing NAV is never a percentage. */
+export function resolvePerformanceMetric(performance: BrokerPortfolioPerformance | null): PerformanceMetric {
+  const points = performance?.points.filter((point) => Number.isFinite(new Date(point.date).getTime())) ?? [];
+  const count = (metric: PerformanceMetric) => new Set(points.filter((point) => finitePointValue(point, metric) != null)
+    .map((point) => new Date(point.date).getTime())).size;
+  const valueCount = count("value");
+  const returnCount = count("cumulativeReturn");
+  return valueCount >= 2 || (valueCount > 0 && returnCount < 2) ? "value" : "cumulativeReturn";
 }
 
 export function buildPerformanceChartPoints(performance: BrokerPortfolioPerformance | null): ProjectedChartPoint[] {
   if (!performance) return [];
-  return performance.points.flatMap((point) => {
-    const value = performancePointValue(point);
+  const metric = resolvePerformanceMetric(performance);
+  const byDate = new Map<number, ProjectedChartPoint>();
+  for (const point of performance.points) {
+    const value = finitePointValue(point, metric);
     const date = new Date(point.date);
-    if (value == null || !Number.isFinite(date.getTime())) return [];
-    return [{
-      date,
-      open: value,
-      high: value,
-      low: value,
-      close: value,
-      volume: 0,
-    }];
-  });
+    if (value == null || !Number.isFinite(date.getTime())) continue;
+    byDate.set(date.getTime(), { date, open: value, high: value, low: value, close: value, volume: 0 });
+  }
+  return [...byDate.values()].sort((left, right) => left.date.getTime() - right.date.getTime());
+}
+
+export function performanceHistoryNote(performance: BrokerPortfolioPerformance | null): string | null {
+  if (!performance) return null;
+  const metric = resolvePerformanceMetric(performance);
+  const missing = performance.points.filter((point) => finitePointValue(point, metric) == null).length;
+  const basis = metric === "value"
+    ? "Account value includes deposits and withdrawals. Investment returns require cash-flow adjustments."
+    : "Broker-reported return; calculation method not supplied.";
+  return `${basis}${missing ? ` ${missing} missing ${metric === "value" ? "value" : "return"} observation${missing === 1 ? "" : "s"} omitted.` : ""}`;
 }
 
 export function useBrokerPortfolioPerformance(
@@ -83,60 +101,24 @@ export function useBrokerPortfolioPerformance(
   const { getBrokerAdapter } = usePluginBrokerActions();
   const brokerInstances = useMemo(() => findBrokerPerformanceCandidates(config, portfolio), [config, portfolio]);
   const accountId = useMemo(() => resolveBrokerAccountId(portfolio), [portfolio]);
-  const [state, setState] = useState<BrokerPerformanceState>({
-    loading: false,
-    performance: null,
-    error: null,
-  });
-
-  useEffect(() => {
-    let cancelled = false;
-    if (brokerInstances.length === 0 || !accountId) {
-      setState({ loading: false, performance: null, error: null });
-      return;
+  const load = useCallback(async () => {
+    let lastError: string | null = null;
+    for (const brokerInstance of brokerInstances) {
+      const broker = getBrokerAdapter(brokerInstance.brokerType);
+      if (!broker?.getPortfolioPerformance || !accountId) continue;
+      try {
+        const performance = await broker.getPortfolioPerformance(brokerInstance, accountId);
+        if (performance && performance.accountId !== accountId) {
+          lastError = "Returned history belongs to a different account";
+          continue;
+        }
+        if (performance && performance.points.length > 0) return performance;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+      }
     }
-
-    setState((current) => ({ ...current, loading: true, error: null }));
-    void (async () => {
-      let lastError: string | null = null;
-      for (const brokerInstance of brokerInstances) {
-        const broker = getBrokerAdapter(brokerInstance.brokerType);
-        if (!broker?.getPortfolioPerformance) continue;
-        try {
-          const performance = await broker.getPortfolioPerformance(brokerInstance, accountId);
-          if (performance && performance.points.length > 0) {
-            if (!cancelled) {
-              setState({ loading: false, performance, error: null });
-            }
-            return;
-          }
-        } catch (error) {
-          lastError = error instanceof Error ? error.message : String(error);
-        }
-      }
-
-      if (!cancelled) {
-        setState({
-          loading: false,
-          performance: null,
-          error: lastError ?? "No IBKR portfolio history returned",
-        });
-      }
-    })()
-      .catch((error) => {
-        if (!cancelled) {
-          setState({
-            loading: false,
-            performance: null,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
+    throw new Error(lastError ?? "No account history returned");
   }, [accountId, brokerInstances, getBrokerAdapter]);
-
-  return state;
+  const resource = useAsyncResource(brokerInstances.length > 0 && accountId ? load : null);
+  return { loading: resource.loading, performance: resource.data, error: resource.error };
 }

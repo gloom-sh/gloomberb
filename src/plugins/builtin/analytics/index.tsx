@@ -1,11 +1,12 @@
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
-import { EmptyState, Tabs } from "../../../components";
+import { EmptyState, Notice, Tabs } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors } from "../../../theme/colors";
 import { convertCurrency } from "../../../utils/format";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import {
   getFocusedCollectionId,
   useAppSelector,
@@ -18,6 +19,7 @@ import { usePortfolioAccountState } from "../portfolio-list/header";
 import { calculatePortfolioSummaryTotals, type ColumnContext } from "../portfolio-list/metrics";
 import {
   buildPerformanceChartPoints,
+  performanceHistoryNote,
   useBrokerPortfolioPerformance,
 } from "./broker-performance";
 import {
@@ -43,7 +45,6 @@ import {
   nextSectorSortPreference,
   sortSectorRows,
   type SectorSortPreference,
-  type SectorTableRow,
 } from "./sector-model";
 import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
 import {
@@ -194,10 +195,20 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [portfolioReturnSeries, spyReturnSeries],
   );
 
-  const sectorRows = useMemo<SectorTableRow[]>(
+  const sectorAllocation = useMemo(
     () => buildSectorRowsFromPortfolioColumns(portfolioTickers, financials, columnContext),
     [columnContext, financials, portfolioTickers],
   );
+  const allocationNotices = [
+    { text: "Weights use gross position value; cash excluded.", tone: "muted" as const },
+    ...(sectorAllocation.unvaluedSymbols.length > 0 ? [{
+      text: `Weights unavailable: missing prices or FX for ${sectorAllocation.unvaluedSymbols.join(", ")}.`, tone: "warning" as const,
+    }] : []),
+    ...(sectorAllocation.fundSymbols.length > 0 ? [{
+      text: "Fund constituents and ETF overlap are unavailable; funds are grouped separately.", tone: "muted" as const,
+    }] : []),
+  ];
+  const sectorRows = sectorAllocation.rows;
   const sortedSectorRows = useMemo(
     () => sortSectorRows(sectorRows, sectorSort),
     [sectorRows, sectorSort],
@@ -236,7 +247,12 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [beta, returnSeriesResult.coverage, returnSeriesResult.missingCount, returnSeriesResult.unvaluedCount, returnSeriesResult.unsupportedReason, sharpe],
   );
   const metricsHeight = summaryRows.length + riskRows.length + 5;
-  const availableHistoryChartHeight = height - metricsHeight - 7;
+  const historyNote = performanceHistoryNote(brokerPerformance.performance);
+  const noticeWidth = Math.max(1, width - 2);
+  const noticeHeight = allocationNotices.reduce((total, notice) => total + wrapTextLines(notice.text, noticeWidth).length, 0)
+    + (historyNote ? wrapTextLines(historyNote, noticeWidth).length : 0);
+  // Keep table rows available after the history method and coverage notices wrap.
+  const availableHistoryChartHeight = height - metricsHeight - 7 - noticeHeight;
   const historyChartHeight = performanceChartPoints.length >= 2 && availableHistoryChartHeight >= 5
     ? Math.min(8, availableHistoryChartHeight)
     : 0;
@@ -313,13 +329,18 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
                 axisLabel={historyAxisLabel}
                 period={brokerPerformance.performance?.period}
                 stale={brokerPerformance.performance?.stale}
+                note={historyNote}
+                manual={!activePortfolio?.brokerInstanceId}
                 formatAxisValue={formatHistoryAxis}
               />
 
               <Box height={1} paddingX={1}>
                 <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>
-                  Sector Allocation
+                  Holdings by sector
                 </Text>
+              </Box>
+              <Box paddingX={1} flexDirection="column">
+                {allocationNotices.map((notice) => <Notice key={notice.text} tone={notice.tone}>{notice.text}</Notice>)}
               </Box>
 
               <SectorAllocationTable
