@@ -5,6 +5,8 @@ export interface CachedValue<T> {
   staleAt: number;
   expiresAt: number;
   source: string;
+  /** Source observation time, when supplied; fetchedAt remains retrieval time. */
+  asOf?: number;
   refreshError?: unknown;
 }
 

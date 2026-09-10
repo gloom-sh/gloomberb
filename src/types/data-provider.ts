@@ -1,3 +1,4 @@
+import type { ExchangeRateSnapshot } from "./exchange-rate";
 import type {
   AnalystResearchData,
   CorporateActionsData,
@@ -155,6 +156,7 @@ export interface AssetDataProvider {
   getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials>;
   getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote>;
   getExchangeRate(fromCurrency: string): Promise<number>;
+  getExchangeRateSnapshot?(fromCurrency: string): Promise<ExchangeRateSnapshot>;
   search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]>;
   getSecFilings?(ticker: string, count?: number, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]>;
   getHolders?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData>;

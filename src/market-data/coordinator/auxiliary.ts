@@ -191,7 +191,8 @@ export function loadFxRateEntry(options: {
   const normalizedCurrency = options.currency.trim().toUpperCase();
   const key = buildFxKey(normalizedCurrency);
   const current = store.get(key);
-  if (hasFreshEntryData(current, FX_CACHE_TTL_MS)) {
+  if (hasFreshEntryData(current, FX_CACHE_TTL_MS) && !current.error
+    && (current.staleAt == null || current.staleAt > Date.now())) {
     return Promise.resolve(current);
   }
   if (normalizedCurrency === "USD") {
@@ -203,9 +204,19 @@ export function loadFxRateEntry(options: {
     store.update(key, loadingEntry);
     const startedAt = Date.now();
     try {
-      const rate = await dataProvider.getExchangeRate(normalizedCurrency);
-      const attempts = [createAttempt(dataProvider.id, startedAt, "success")];
-      return store.update(key, (current) => readyEntry(current, rate, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
+      const snapshot = await dataProvider.getExchangeRateSnapshot?.(normalizedCurrency);
+      const rate = snapshot?.rate ?? await dataProvider.getExchangeRate(normalizedCurrency);
+      if (!Number.isFinite(rate) || rate <= 0 || (snapshot && (snapshot.fromCurrency !== normalizedCurrency || snapshot.toCurrency !== "USD"))) {
+        throw new Error(`Invalid exchange rate for ${normalizedCurrency}/USD`);
+      }
+      const source = snapshot?.source ?? dataProvider.id;
+      const attempts = [createAttempt(source, startedAt, "success")];
+      return store.update(key, (current) => {
+        const entry = readyEntry(current, rate, source, attempts, { keepLastGoodOnEmpty: true });
+        const time = (value?: string) => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : undefined;
+        return { ...entry, fetchedAt: time(snapshot?.fetchedAt) ?? entry.fetchedAt, asOf: time(snapshot?.asOf),
+          staleAt: snapshot?.stale ? Math.min(time(snapshot.staleAt) ?? Date.now(), Date.now()) : time(snapshot?.staleAt) ?? entry.staleAt };
+      });
     } catch (error) {
       const classified = classifyError(error);
       const attempt = createAttempt(dataProvider.id, startedAt, "fatal_error", classified.reasonCode, classified.message);

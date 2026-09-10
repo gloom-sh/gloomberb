@@ -137,4 +137,42 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
 
+  test("FX source observation and retrieval times survive cache reload and failed refresh", async () => {
+    const now = Date.now();
+    const fetchedAt = now - 30 * 60_000;
+    const asOf = now - 45 * 60_000;
+    let calls = 0;
+    const persistence = new AppPersistence(":memory:");
+    const provider = createTestDataProvider({ id: "cloud", getExchangeRateSnapshot: async () => {
+      if (++calls > 1) throw new Error("offline");
+      return { fromCurrency: "EUR", toCurrency: "USD", rate: 1.16, source: "yahoo", asOf: new Date(asOf).toISOString(),
+        fetchedAt: new Date(fetchedAt).toISOString(), staleAt: new Date(now + 30 * 60_000).toISOString(), stale: false };
+    } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    const coordinator = new MarketDataCoordinator(router);
+    const reloaded = new AssetDataRouter(provider, [], persistence.resources);
+    try {
+      expect(await coordinator.loadFxRate("EUR")).toMatchObject({ data: 1.16, source: "yahoo", fetchedAt, asOf });
+      expect(await reloaded.getExchangeRate("EUR")).toBe(1.16);
+      expect(reloaded.getCachedQuery("getExchangeRate", ["EUR"]).getSnapshot().result).toMatchObject({ source: "yahoo", fetchedAt, asOf });
+      expect(calls).toBe(1);
+      await router.getCachedQuery("getExchangeRate", ["EUR"]).load({ force: true });
+      expect(coordinator.getFxEntry("EUR")).toMatchObject({ data: 1.16, source: "yahoo", fetchedAt, asOf });
+      expect(coordinator.getFxEntry("EUR").error).not.toBeNull();
+      expect(calls).toBe(2);
+    } finally { coordinator.destroy(); persistence.close(); }
+  });
+
+  test("expired numeric FX fallback also rejects a mismatched pair", () => {
+    const persistence = new AppPersistence(":memory:");
+    const provider = createTestDataProvider({ id: "fx" });
+    persistence.resources.set({ namespace: "market", kind: "exchange-rate", entityKey: "EUR/USD", sourceKey: "provider:fx" },
+      { fromCurrency: "JPY", toCurrency: "USD", rate: 0.0065 },
+      { fetchedAt: Date.now() - 10_000, cachePolicy: { staleMs: 1, expireMs: 2 } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    try {
+      expect(router.getCachedExchangeRates(["EUR"], { allowExpired: true }).has("EUR")).toBe(false);
+    } finally { persistence.close(); }
+  });
+
 });
