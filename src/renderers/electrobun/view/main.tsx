@@ -28,6 +28,10 @@ import { WebToastHostProvider } from "./toast-host";
 import { createWebUiHost, webRendererHost } from "./ui-host";
 import { createApplicationMenuBridge } from "./application-menu-bridge";
 import { createDesktopDeepLinkBridge } from "./desktop-deeplink-bridge";
+import {
+  initializeDesktopResearchActivity,
+  observeDesktopDeepLinks,
+} from "../../../api-client/research-activity";
 import { createDesktopWindowBridge } from "./desktop/window/bridge";
 import { prepareDetachedSnapshot } from "./desktop/window/snapshot";
 import { createElectrobunAppServices } from "./app-services";
@@ -105,7 +109,8 @@ async function boot() {
   applyLanguageFromConfig(config);
   const desktopWindowBridge = createDesktopWindowBridge(init.windowKind, init.paneId);
   const desktopApplicationMenuBridge = createApplicationMenuBridge();
-  const desktopDeepLinkBridge = createDesktopDeepLinkBridge();
+  initializeDesktopResearchActivity();
+  const desktopDeepLinkBridge = observeDesktopDeepLinks(createDesktopDeepLinkBridge());
   const webUiHost = createWebUiHost(init.desktopPlatform);
   // Compiled by the Bun process, which owns the filesystem. A failure here must
   // not stop the app from starting: the marketplace reports broken plugins, and

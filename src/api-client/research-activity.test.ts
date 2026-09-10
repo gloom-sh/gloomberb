@@ -1,8 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { resolveBrowserAttribution } from "./research-activity";
+import {
+  adoptDesktopHandoff,
+  carriesHandoff,
+  observeDesktopDeepLinks,
+  readStoredAttribution,
+  resolveBrowserAttribution,
+} from "./research-activity";
 
 const NOW = Date.parse("2026-09-10T12:00:00.000Z");
 const DAY = 24 * 60 * 60 * 1000;
+const ANON = "0f1e2d3c-4b5a-4968-8776-655443322110";
+
+function memoryStorage(initial: Record<string, string> = {}) {
+  const map = new Map(Object.entries(initial));
+  return {
+    map,
+    getItem: (key: string) => map.get(key) ?? null,
+    setItem: (key: string, value: string) => void map.set(key, value),
+  };
+}
 
 describe("resolveBrowserAttribution", () => {
   test("a direct visit still records a first touch", () => {
@@ -144,6 +160,64 @@ describe("resolveBrowserAttribution", () => {
     expect(result.first_touch_landing_page).toBe("/");
   });
 
+  test("a first touch forwarded by the website is adopted over inventing one", () => {
+    const result = resolveBrowserAttribution({
+      href:
+        "https://term.gloom.sh/?ticker=NVDA&_gloom=" +
+        ANON +
+        "&first_touch_at=2026-09-08T09:00:00.000Z&first_touch_landing_page=%2Fcloud&first_touch_referrer=https%3A%2F%2Ft.co%2Fabc&first_touch_utm_source=x&first_touch_twclid=click_9",
+      now: NOW,
+      referrer: "https://gloom.sh/cloud",
+      stored: null,
+    });
+    expect(result).toEqual({
+      first_touch_at: "2026-09-08T09:00:00.000Z",
+      first_touch_landing_page: "/cloud",
+      first_touch_referrer: "https://t.co/abc",
+      first_touch_utm_source: "x",
+      first_touch_twclid: "click_9",
+    });
+  });
+
+  test("a forwarded first touch never overrides a fresh stored one", () => {
+    const stored = resolveBrowserAttribution({
+      href: "https://term.gloom.sh/",
+      now: NOW - 2 * DAY,
+      referrer: "https://news.ycombinator.com/",
+      stored: null,
+    });
+    const result = resolveBrowserAttribution({
+      href: "https://term.gloom.sh/?first_touch_at=2026-09-09T09:00:00.000Z&first_touch_landing_page=%2F&first_touch_referrer=https%3A%2F%2Ft.co%2Fabc",
+      now: NOW,
+      referrer: "https://gloom.sh/",
+      stored: JSON.stringify(stored),
+    });
+    expect(result).toEqual(stored);
+  });
+
+  test("a stale, future, or malformed forwarded first touch is ignored", () => {
+    for (const at of ["2026-07-01T00:00:00.000Z", "2026-09-11T00:00:00.000Z", "yesterday", ""]) {
+      const result = resolveBrowserAttribution({
+        href: `https://term.gloom.sh/?first_touch_at=${encodeURIComponent(at)}&first_touch_referrer=https%3A%2F%2Ft.co%2Fabc`,
+        now: NOW,
+        referrer: "",
+        stored: null,
+      });
+      expect(result.first_touch_at).toBe("2026-09-10T12:00:00.000Z");
+      expect(result.first_touch_referrer).toBeUndefined();
+    }
+  });
+
+  test("a forwarded first touch a minute ahead of this clock is still fresh", () => {
+    const result = resolveBrowserAttribution({
+      href: "https://term.gloom.sh/?first_touch_at=2026-09-10T12:01:00.000Z&first_touch_landing_page=%2Fcloud",
+      now: NOW,
+      referrer: "",
+      stored: null,
+    });
+    expect(result.first_touch_landing_page).toBe("/cloud");
+  });
+
   test("corrupt storage and junk values are ignored", () => {
     const result = resolveBrowserAttribution({
       href: "https://term.gloom.sh/?utm_source=" + "x".repeat(400) + "&twclid=%20%20",
@@ -154,5 +228,89 @@ describe("resolveBrowserAttribution", () => {
     expect(result.utm_source).toHaveLength(300);
     expect(result.twclid).toBeUndefined();
     expect(result.first_touch_referrer).toBeUndefined();
+  });
+});
+
+describe("readStoredAttribution", () => {
+  test("returns only touches inside their windows and never invents one", () => {
+    expect(readStoredAttribution(null, NOW)).toEqual({});
+    expect(
+      readStoredAttribution(
+        JSON.stringify({
+          first_touch_at: new Date(NOW - 40 * DAY).toISOString(),
+          first_touch_referrer: "https://t.co/old",
+          last_touch_at: new Date(NOW - DAY).toISOString(),
+          twclid: "click_recent",
+        }),
+        NOW,
+      ),
+    ).toEqual({
+      last_touch_at: new Date(NOW - DAY).toISOString(),
+      twclid: "click_recent",
+    });
+  });
+});
+
+describe("desktop handoff", () => {
+  test("carriesHandoff recognises ids, campaigns, and first touches only", () => {
+    expect(carriesHandoff("gloomberb://ticker/NVDA?tab=earnings-calls")).toBe(false);
+    expect(carriesHandoff(`gloomberb://cloud/success?_gloom=${ANON}`)).toBe(true);
+    expect(carriesHandoff("gloomberb://ticker/NVDA?utm_source=x")).toBe(true);
+    expect(carriesHandoff("gloomberb://ticker/NVDA?first_touch_at=2026-09-10T11:00:00.000Z")).toBe(true);
+    expect(carriesHandoff("not a url")).toBe(false);
+  });
+
+  test("a plain deep link leaves storage untouched", () => {
+    const storage = memoryStorage();
+    expect(adoptDesktopHandoff("gloomberb://ticker/NVDA?tab=chart", storage, NOW)).toBe(false);
+    expect(storage.map.size).toBe(0);
+  });
+
+  test("a website link persists the visitor id and touches for later sign-in", () => {
+    const storage = memoryStorage();
+    const href =
+      `gloomberb://cloud/success?_gloom=${ANON}` +
+      "&utm_source=x&utm_campaign=c1&twclid=click_1" +
+      "&first_touch_at=2026-09-08T09:00:00.000Z&first_touch_landing_page=%2F&first_touch_referrer=https%3A%2F%2Ft.co%2Fabc";
+    expect(adoptDesktopHandoff(href, storage, NOW)).toBe(true);
+    expect(storage.getItem("gloomberb.web.anonymous-id")).toBe(ANON);
+    expect(JSON.parse(storage.getItem("gloomberb.web.attribution")!)).toEqual({
+      first_touch_at: "2026-09-08T09:00:00.000Z",
+      first_touch_landing_page: "/",
+      first_touch_referrer: "https://t.co/abc",
+      last_touch_at: "2026-09-10T12:00:00.000Z",
+      utm_source: "x",
+      utm_campaign: "c1",
+      twclid: "click_1",
+    });
+  });
+
+  test("a campaign-only link without a forwarded first touch records the link as the first touch", () => {
+    const storage = memoryStorage();
+    adoptDesktopHandoff("gloomberb://cloud/success?utm_source=x&twclid=click_1", storage, NOW);
+    const saved = JSON.parse(storage.getItem("gloomberb.web.attribution")!);
+    expect(saved.first_touch_landing_page).toBe("cloud/success");
+    expect(saved.first_touch_twclid).toBe("click_1");
+    expect(saved.first_touch_referrer).toBeUndefined();
+  });
+
+  test("observeDesktopDeepLinks inspects every link and still delivers it to the app", () => {
+    const storage = memoryStorage();
+    const listeners = new Set<(link: { url: string }) => void>();
+    const pending = [{ url: `gloomberb://cloud/success?_gloom=${ANON}&utm_source=x` }];
+    const bridge = {
+      subscribe(listener: (link: { url: string }) => void) {
+        listeners.add(listener);
+        for (const link of pending.splice(0)) listener(link);
+        return () => void listeners.delete(listener);
+      },
+    };
+    const seen: string[] = [];
+    const unsubscribe = observeDesktopDeepLinks(bridge, storage).subscribe((link) => seen.push(link.url));
+    for (const listener of listeners) listener({ url: "gloomberb://ticker/NVDA" });
+    expect(seen).toEqual([`gloomberb://cloud/success?_gloom=${ANON}&utm_source=x`, "gloomberb://ticker/NVDA"]);
+    expect(storage.getItem("gloomberb.web.anonymous-id")).toBe(ANON);
+    unsubscribe();
+    expect(listeners.size).toBe(0);
   });
 });
