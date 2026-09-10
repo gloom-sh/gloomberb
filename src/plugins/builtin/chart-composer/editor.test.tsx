@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { useShortcut } from "../../../react/input";
+import { Input, type InputRenderable } from "../../../ui";
 import { SeriesEditorDialog } from "./editor";
 import {
   appendChartSeries,
@@ -16,28 +18,7 @@ async function emitKey(
   sequence: string,
   overrides: Partial<{ shift: boolean }> = {},
 ) {
-  await act(async () => {
-    (testSetup!.renderer as any).keyInput.emit("keypress", {
-      name,
-      sequence,
-      ctrl: false,
-      meta: false,
-      super: false,
-      option: false,
-      shift: overrides.shift ?? false,
-      eventType: "press",
-      repeated: false,
-      defaultPrevented: false,
-      propagationStopped: false,
-      preventDefault() {
-        this.defaultPrevented = true;
-      },
-      stopPropagation() {
-        this.propagationStopped = true;
-      },
-    });
-    await testSetup!.renderOnce();
-  });
+  await emitKeypress(testSetup!, { name, sequence, shift: overrides.shift ?? false }, { trackPropagation: true });
 }
 
 async function waitForFrameToContain(text: string, attempts = 12): Promise<string> {
@@ -274,6 +255,34 @@ describe("chart composer series editor", () => {
       .map((row) => row.trimEnd())
       .filter((row) => row.length > contentWidth);
     expect(overflowRows).toEqual([]);
+  });
+
+  test("logical editor focus owns arrows when another native text editor retains focus", async () => {
+    let background: InputRenderable | null = null;
+    let resolved: ReturnType<typeof buildPriceChartPreset> | null | undefined;
+    let globalArrows = 0;
+    function Harness() {
+      useShortcut((event) => {
+        if (event.name === "left" || event.name === "right") globalArrows += 1;
+      }, { phase: "after", allowEditable: true });
+      return <>
+        <Input ref={(input) => { background = input; }} value="unchanged" />
+        <SeriesEditorDialog dialogId="retained-editor-focus" initialSpec={buildPriceChartPreset("QQQ")}
+          dismiss={() => {}} resolve={(next) => { resolved = next; }} />
+      </>;
+    }
+    testSetup = await testRender(<Harness />, { width: 92, height: 48 });
+    for (let index = 0; index < 4; index += 1) await emitKey("tab", "\t");
+    // The full terminal can still identify an underlying input as its focused
+    // editor after the dialog has moved its own logical focus to a selector.
+    await act(async () => { background!.focus(); await testSetup!.renderOnce(); });
+    await emitKey("right", "\u001b[C");
+    await emitKey("left", "\u001b[D");
+    await emitKey("right", "\u001b[C");
+    await emitKey("enter", "\r");
+    expect(resolved?.series[0]).toMatchObject({ transform: "percent", style: "line" });
+    expect(background!.editBuffer.getText()).toBe("unchanged");
+    expect(globalArrows).toBe(0);
   });
 
   test("edits every segmented series setting with Tab and arrow keys", async () => {

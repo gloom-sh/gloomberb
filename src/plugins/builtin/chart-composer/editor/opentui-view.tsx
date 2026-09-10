@@ -65,6 +65,7 @@ export function OpenTuiSeriesEditorFields({
                     value={field.value}
                     onChange={field.onChange}
                     focused={focused}
+                    allowEditable={focused}
                     shortcutScope={dialogId}
                     width="100%"
                     wrap
@@ -78,6 +79,7 @@ export function OpenTuiSeriesEditorFields({
                 value={field.value}
                 onChange={field.onChange}
                 focused={focused}
+                allowEditable={focused}
                 shortcutScope={dialogId}
                 width="100%"
                 wrap
