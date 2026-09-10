@@ -303,6 +303,7 @@ async function searchProviderResults(
         const quote = await dataProvider.getQuote(symbol, exchange);
         const type = isCryptoInstrumentType(quote.instrumentType) ? quote.instrumentType : marketType;
         if (Number.isFinite(quote.price) && quote.price !== 0
+          && (!isCryptoInstrumentType(type) || quote.price > 0)
           && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
           && quote.currency?.trim()
           && type

@@ -75,7 +75,7 @@ describe("ticker-search utilities", () => {
       .toMatchObject({ kind: "provider", result: { exchange: "CCC" } });
     expect(await resolveTickerSearch({ query: "SHIB-USD:COINBASE PRO", activeTicker: null, tickers, dataProvider })).toBeNull();
     // A hyphen alone cannot establish an instrument's type or its identity.
-    for (const invalid of [{ instrumentType: "EQUITY" }, { symbol: "OTHER-USD" }, { price: 0 }, { instrumentType: undefined }]) {
+    for (const invalid of [{ instrumentType: "EQUITY" }, { symbol: "OTHER-USD" }, { price: 0 }, { price: -1 }, { instrumentType: undefined }]) {
       expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers: new Map(),
         dataProvider: createTestDataProvider({ search: async () => [alias], getQuote: async () => ({ ...quote, ...invalid }) }) })).toBeNull();
     }
