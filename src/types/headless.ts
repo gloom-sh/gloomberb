@@ -92,6 +92,8 @@ export interface HeadlessPaneEntry {
 }
 
 interface HeadlessPaneResultBase {
+  /** False when usable output does not fully cover the requested inputs/depth. */
+  complete?: boolean;
   /** Resolved inputs, including implicit peers or symbols parsed from an expression. */
   symbols?: string[];
   /** Missing inputs must remain visible even when other inputs returned rows. */

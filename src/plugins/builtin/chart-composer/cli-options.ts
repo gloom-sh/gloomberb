@@ -95,6 +95,9 @@ export function applyChartComposerCapabilityOptions(
       ...next,
       viewport: {
         ...next.viewport,
+        // A period count is not a five-year date window. Preserve authored
+        // constraints, otherwise select from all available observations.
+        ...(!selectedRange && !next.viewport.dateWindow ? { range: "ALL" as const } : {}),
         maxPoints: Math.max(1, Math.min(40, Math.floor(options.periods))),
       },
     };

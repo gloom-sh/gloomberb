@@ -420,7 +420,7 @@ export async function buildHeadlessFunctionReport(
       options: resolved.options,
       rowCount,
       empty: rowCount === 0,
-      complete: unavailableSymbols.length === 0 && !loaded.result.errors?.length,
+      complete: loaded.result.complete !== false && unavailableSymbols.length === 0 && !loaded.result.errors?.length,
       unavailableSymbols,
       ...serialized,
     },

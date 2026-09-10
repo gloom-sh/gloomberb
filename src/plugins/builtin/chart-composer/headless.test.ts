@@ -97,3 +97,36 @@ test("chart reports retain raw comparison endpoints and growth preceding a finan
   expect(financial.series[0]!.points).toHaveLength(1);
   expect(financial.series[0]!.points[0]).toMatchObject({ value: 150, growth: 0.5 });
 });
+
+test("explicit financial periods replay available SEC history and expose actual cloud depth deficits", async () => {
+  const actual = await import("./financial-periods.fixture.json");
+  const { buildFundamentalChartPreset } = await import("./presets");
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const options = { metric: "operatingMargin", period: "annual", periods: 10 };
+  const spec = applyChartComposerCapabilityOptions(buildFundamentalChartPreset(["MSFT"]), "fundamental-series", options);
+  const context = { ...fixture().context, settings: { chartSpec: spec }, marketData: createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: actual.secAnnual, quarterlyStatements: [], priceHistory: [] }),
+  }) };
+  const args = { argument: ["MSFT"], rawArgument: "MSFT", symbols: ["MSFT"], options };
+  const full = await chartHeadless("fundamental-graph-pane").load(args, context);
+  expect(spec.viewport.range).toBe("ALL");
+  expect(full.series[0]!.points).toHaveLength(10);
+  expect(full.series[0]!.points[0]!.observedAt.toISOString()).toBe("2017-06-30T00:00:00.000Z");
+  expect(full.complete).toBe(true);
+  expect(full.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 10, returned: 10, complete: true })]);
+  const partial = await chartHeadless("fundamental-graph-pane").load(args, { ...context, marketData: createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: actual.cloudAnnual, quarterlyStatements: [], priceHistory: [] }),
+  }) });
+  expect(partial.series[0]!.points).toHaveLength(4);
+  expect(partial.complete).toBe(false);
+  expect(partial.unavailableSymbols).toEqual([]);
+  expect(partial.metadata?.periodCoverage).toEqual([expect.objectContaining({ requested: 10, returned: 4, complete: false })]);
+  expect((partial as ChartPaneModel).chart.warnings.join(" ")).toContain("4 of 10 requested annual observations");
+  const constrained = applyChartComposerCapabilityOptions({ ...spec, viewport: { ...spec.viewport,
+    dateWindow: { start: "2024-01-01", end: "2025-12-31" } } }, "fundamental-series", options);
+  const windowed = await chartHeadless("fundamental-graph-pane").load(args, { ...context, settings: { chartSpec: constrained } });
+  expect(windowed.series[0]!.points).toHaveLength(2);
+  expect(windowed.complete).toBe(false);
+  const explicitRange = applyChartComposerCapabilityOptions(spec, "fundamental-series", { ...options, rangePreset: "1Y" });
+  expect(explicitRange.viewport.range).toBe("1Y");
+});

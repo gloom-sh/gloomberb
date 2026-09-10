@@ -268,3 +268,14 @@ describe("headless pane arguments and options", () => {
     });
   });
 });
+
+test("partial usable reports retain rows without marking their symbol wholly unavailable", async () => {
+  const definition: HeadlessPaneDefinition<"rows"> = {
+    shape: "rows", argument: { kind: "none" }, options: [],
+    load: () => ({ symbols: ["MSFT"], rows: [{ date: "2025-06-30", margin: .46 }], complete: false }),
+  };
+  const report = await buildHeadlessFunctionReport({
+    headless: definition, token: "partial", label: "Partial", options: {}, instance: {}, capability: { id: "partial" },
+  } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-partial") } as MarketContext, "");
+  expect(report.data).toMatchObject({ rowCount: 1, empty: false, complete: false, unavailableSymbols: [], rows: [{ date: "2025-06-30", margin: .46 }] });
+});
