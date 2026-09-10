@@ -1,6 +1,5 @@
 import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
-import { parseForm4Xml } from "./insider-data";
-import type { ParsedInsiderFiling } from "./model";
+import { parseInsiderFiling, type ParsedInsiderFiling } from "./model";
 
 export async function loadInsiderFilings(
   provider: DataProvider,
@@ -36,11 +35,7 @@ export async function loadParsedInsiderFilings(
     throwIfAborted(options.signal);
     try {
       const content = await provider.getSecFilingContent(filing);
-      parsed.push({
-        filing,
-        transaction: content ? parseForm4Xml(content) : null,
-        isLoading: false,
-      });
+      parsed.push(...parseInsiderFiling(filing, content));
     } catch {
       throwIfAborted(options.signal);
       parsed.push({ filing, transaction: null, isLoading: false });
