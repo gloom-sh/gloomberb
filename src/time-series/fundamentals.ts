@@ -523,7 +523,7 @@ function metricDependencies(metric: string, statement: FinancialStatement): Nume
     return uniqueDependencies([
       "totalRevenue",
       selectedShares(statement)?.field,
-      finiteNumber(statement.totalDebt) ? "totalDebt" : undefined,
+      "totalDebt",
       selectedCash(statement)?.field,
     ]);
   }
@@ -531,7 +531,7 @@ function metricDependencies(metric: string, statement: FinancialStatement): Nume
     return uniqueDependencies([
       "ebitda",
       selectedShares(statement)?.field,
-      finiteNumber(statement.totalDebt) ? "totalDebt" : undefined,
+      "totalDebt",
       selectedCash(statement)?.field,
     ]);
   }
@@ -649,10 +649,12 @@ function valuationAtPrice(
 ): number | null {
   const shares = selectedShares(statement);
   const marketCap = shares ? price * shares.value : null;
-  const cash = selectedCash(statement)?.value ?? 0;
-  const debt = finiteNumber(statement.totalDebt) ? statement.totalDebt : 0;
-  const enterpriseValue = marketCap !== null
-    ? marketCap + debt - (finiteNumber(cash) ? cash : 0)
+  const cash = selectedCash(statement)?.value;
+  const debt = statement.totalDebt;
+  // Unknown balance-sheet inputs are not zero balances. Avoid manufacturing
+  // an EV multiple from market capitalization alone when coverage is sparse.
+  const enterpriseValue = marketCap !== null && finiteNumber(debt) && finiteNumber(cash)
+    ? marketCap + debt - cash
     : null;
   if (metric === "trailingPE") {
     const eps = selectedEps(statement)?.value;

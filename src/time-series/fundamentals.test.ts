@@ -462,6 +462,34 @@ describe("fundamental series extraction", () => {
     });
   });
 
+  test("enterprise-value multiples require known debt and cash, while explicit zeros remain valid", () => {
+    const statement: FinancialStatement = {
+      date: "2024-12-31",
+      availableAt: "2025-02-01",
+      totalRevenue: 100,
+      ebitda: 25,
+      basicShares: 10,
+      totalDebt: 0,
+      cashAndCashEquivalents: 0,
+    };
+    const snapshot = (row: FinancialStatement): TickerFinancials => ({
+      ...financials([], [row], [{ date: new Date("2025-01-31T00:00:00Z"), close: 100 }]),
+      quote: { symbol: "TEST", price: 100, currency: "USD", change: 0, changePercent: 0,
+        lastUpdated: Date.parse("2025-03-01T16:00:00Z") },
+    });
+    for (const [field, expected] of [["valuation.evSales", 10], ["valuation.evEbitda", 40]] as const) {
+      const known = extractFundamentalSeries(snapshot(statement), source(field, "annual"));
+      expect(known.map((point) => point.value)).toEqual([expected, expected]);
+      for (const missing of ["totalDebt", "cashAndCashEquivalents"] as const) {
+        expect(extractFundamentalSeries(snapshot({ ...statement, [missing]: undefined }), source(field, "annual"))).toEqual([]);
+        expect(extractFundamentalSeries(snapshot({ ...statement, [missing]: Number.NaN }), source(field, "annual"))).toEqual([]);
+      }
+    }
+    // Missing EV inputs must not disable a market-cap-based ratio.
+    expect(extractFundamentalSeries(snapshot({ ...statement, totalDebt: undefined }), source("valuation.priceSales", "annual"))
+      .map((point) => point.value)).toEqual([10, 10]);
+  });
+
   test("tracks the selected share and cash alternatives for enterprise value", () => {
     const points = extractFundamentalSeries(
       financials([], [{
