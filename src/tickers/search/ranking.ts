@@ -81,20 +81,25 @@ export function findExactTickerSearchMatch<T extends Pick<TickerSearchRankableIt
   items: T[],
   query: string,
 ): T | null {
+  const literal = items.find((item) => normalizeTickerSymbol(item.symbol || item.label) === normalizeTickerSymbol(query));
+  if (literal) return literal;
   if (isQualifiedTickerQuery(query)) {
-    return items.find((item) => normalizeTickerSymbol(item.symbol || item.label) === normalizeTickerSymbol(query))
-      ?? items.find((item) => matchesQualifiedTicker(item, query)) ?? null;
+    return items.find((item) => matchesQualifiedTicker(item, query)) ?? null;
   }
   const aliasForms = buildSymbolAliases(query);
   const normalizedAliases = new Set(aliasForms.map((value) => normalizeSearchText(value)));
   const compactAliases = new Set(aliasForms.map((value) => compactSearchText(value)));
 
-  return items.find((item) => !isExplicitMarketSymbol(item.symbol || item.label) &&
+  return items.find((item) => !isExplicitMarketSymbol(item.symbol || item.label) && !isCryptoInstrumentType(item.instrumentType) &&
     getItemSearchAliases(item).some((alias) =>
       normalizedAliases.has(normalizeSearchText(alias))
       || compactAliases.has(compactSearchText(alias))
     )
   ) ?? null;
+}
+
+export function isCryptoInstrumentType(type?: string): boolean {
+  return ["CRYPTO", "CRYPTOCURRENCY", "DIGITALCURRENCY"].includes((type ?? "").toUpperCase().replace(/[\s_-]/g, ""));
 }
 
 function isQualifiedTickerQuery(query: string): boolean {
@@ -207,14 +212,16 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   const matchedLocalSymbols = new Set(
     ranked
       .filter(({ item, textScore }) => textScore > 0 && item.kind === "ticker")
-      .map(({ item, normalizedSymbol }) => isQualifiedTickerQuery(query) ? getTickerSearchListingKey(item) : normalizedSymbol),
+      .map(({ item, normalizedSymbol }) => isQualifiedTickerQuery(query) || isCryptoInstrumentType(item.instrumentType)
+        ? getTickerSearchListingKey(item) : normalizedSymbol),
   );
 
   const filtered = ranked.filter(({ item, normalizedSymbol, textScore }) => {
     if (textScore <= 0) return false;
     if (isExplicitMarketSymbol(query) && !isExplicitMarketSymbol(item.symbol || item.label)) return false;
     if (item.kind !== "search") return true;
-    return !matchedLocalSymbols.has(isQualifiedTickerQuery(query) ? getTickerSearchListingKey(item) : normalizedSymbol);
+    return !matchedLocalSymbols.has(isQualifiedTickerQuery(query) || isCryptoInstrumentType(item.instrumentType)
+      ? getTickerSearchListingKey(item) : normalizedSymbol);
   });
 
   type RankedEntry = (typeof ranked)[number];
@@ -440,7 +447,9 @@ function scoreSymbolMatchRank(
   intent: SearchQueryIntent,
   item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>,
 ): number {
+  if (normalizeTickerSymbol(item.symbol || item.label) === normalizeTickerSymbol(intent.rawQuery)) return 4;
   if (isQualifiedTickerQuery(intent.rawQuery)) return matchesQualifiedTicker(item, intent.rawQuery) ? 4 : 0;
+  if (isCryptoInstrumentType(item.instrumentType)) return 0;
   if (isExplicitMarketSymbol(item.symbol || item.label)) return 0;
   if (!intent.normalizedQuery && !intent.compactQuery) return 0;
   const displaySymbol = normalizeSearchText(item.symbol || item.label);

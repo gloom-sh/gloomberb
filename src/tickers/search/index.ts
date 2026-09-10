@@ -10,6 +10,7 @@ import {
   findExactTickerSearchMatch,
   getForexQuoteCurrency,
   isExplicitMarketSymbol,
+  isCryptoInstrumentType,
   normalizeSearchText,
   normalizeTickerSymbol,
   rankTickerSearchItems,
@@ -77,6 +78,7 @@ export function createLocalTickerSearchCandidates(
       kind: "ticker",
       saved: true,
       instrumentClass: classifyInstrumentKind(hint?.brokerContract?.secType || hint?.type || ticker.metadata.assetCategory),
+      instrumentType: hint?.brokerContract?.secType || hint?.type || ticker.metadata.assetCategory,
       searchAliases: buildSymbolAliases(symbol),
       ticker,
       result: hint,
@@ -108,6 +110,7 @@ function createProviderTickerSearchCandidates(
       kind: "search",
       saved,
       instrumentClass: classifyInstrumentKind(result.brokerContract?.secType || result.type),
+      instrumentType: result.brokerContract?.secType || result.type,
       searchAliases: buildSearchResultAliases(result),
       result,
     }];
@@ -283,21 +286,29 @@ async function searchProviderResults(
     }
   }));
 
-  // Some search catalogues omit futures and return similarly spelled equities.
-  // A quote for the exact market symbol can supply a verifiable research target.
-  if (isExplicitMarketSymbol(query)
-    && !findExactTickerSearchMatch([...byKey.values()].map((result) => ({ label: getSearchResultSymbol(result) })), query)) {
-    const { symbol, exchange } = parsePublicTickerKey(normalizeTickerSymbol(query));
-    const type = /=F$/.test(symbol) ? "FUTURE"
+  // Catalogues can omit exact market symbols or return a crypto pair from a
+  // different venue. Verify the requested quote before accepting an alias.
+  const requested = parsePublicTickerKey(normalizeTickerSymbol(query));
+  const possibleCryptoPair = /^[A-Z0-9]{1,15}-[A-Z]{3,5}$/.test(requested.symbol);
+  if ((isExplicitMarketSymbol(query) || possibleCryptoPair)
+    && !findExactTickerSearchMatch([...byKey.values()].map((result) => ({
+      label: getSearchResultSymbol(result), instrumentType: result.type, right: result.exchange,
+    })), query)) {
+    const { symbol, exchange } = requested;
+    const marketType = /=F$/.test(symbol) ? "FUTURE"
       : /^(?:[A-Z]{3}(?:\/[A-Z]{3}|(?:[A-Z]{3})?=X))$/.test(symbol) ? "CURRENCY"
       : /^\^[A-Z0-9.-]+$/.test(symbol) ? "INDEX" : null;
-    if (type) {
+    if (marketType || possibleCryptoPair) {
       try {
         const quote = await dataProvider.getQuote(symbol, exchange);
+        const type = isCryptoInstrumentType(quote.instrumentType) ? quote.instrumentType : marketType;
         if (Number.isFinite(quote.price) && quote.price !== 0
           && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
           && quote.currency?.trim()
-          && findExactTickerSearchMatch([{ label: quote.symbol }], symbol)) {
+          && type
+          && (!exchange || canonicalExchange(quote.listingExchangeName || quote.exchangeName) === exchange)
+          && (possibleCryptoPair ? normalizeTickerSymbol(quote.symbol) === symbol
+            : findExactTickerSearchMatch([{ label: quote.symbol }], symbol))) {
           add([{
             providerId: quote.providerId || dataProvider.id,
             symbol,

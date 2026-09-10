@@ -145,6 +145,7 @@ export async function loadYahooTickerFinancials(
 
   const quote: Quote = {
     symbol,
+    instrumentType: meta.instrumentType,
     providerId: loaders.providerId,
     price: currentPrice,
     currency: normalizedCurrency,
@@ -230,6 +231,7 @@ export async function loadYahooQuote(
 
   return {
     symbol,
+    instrumentType: meta.instrumentType,
     providerId: loaders.providerId,
     price,
     currency: normalizedCurrency,

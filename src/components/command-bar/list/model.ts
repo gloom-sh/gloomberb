@@ -23,6 +23,8 @@ export interface ResultItem {
   /** Short tag drawn left of the label: a shortcut, an asset class, a document type. */
   badge?: string;
   right?: string;
+  /** Provider type retained for symbol/alias identity checks. */
+  instrumentType?: string;
   shortcutQuery?: string;
   searchText?: string;
   /** Tints the trailing marker and the section heading with the AI accent. */

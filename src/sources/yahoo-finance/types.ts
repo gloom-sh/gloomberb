@@ -2,6 +2,7 @@ type TradingPeriod = { start?: number; end?: number; gmtoffset?: number; timezon
 
 export type ChartResult = {
   meta?: {
+    instrumentType?: string;
     currency?: string; longName?: string; shortName?: string;
     regularMarketPrice?: number; chartPreviousClose?: number;
     fiftyTwoWeekHigh?: number; fiftyTwoWeekLow?: number;
