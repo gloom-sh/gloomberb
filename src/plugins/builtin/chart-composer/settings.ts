@@ -50,7 +50,7 @@ export const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStud
 export const CHART_FORMULA_OPTIONS: Array<PaneSettingOption & { value: PairStudySelection }> = [
   { value: "ratio", label: "Ratio", description: "First series divided by the second series." },
   { value: "spread", label: "Spread", description: "First series minus the second series." },
-  { value: "correlation", label: "Correlation 20", description: "20-observation rolling return correlation." },
+  { value: "correlation", label: "Correlation 20", description: "20-observation rolling return correlation on shared observation times." },
 ];
 
 export const CHART_SETTING_KEYS = {

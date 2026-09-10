@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { WebSegmentedControl } from "./controls";
+import { WebCheckbox, WebSegmentedControl } from "./controls";
 import { WebListView } from "./list-view";
 import { Button } from "../../../../components/ui/button";
 import { TextField } from "../../../../components/ui/fields";
@@ -10,6 +10,49 @@ import { Box, Text } from "../../../../ui";
 import { createDomTestHarness } from "../test-utils";
 
 const { render: renderDom } = createDomTestHarness();
+
+test("desktop checkbox keeps browser state aligned with controlled selection on input and label clicks", async () => {
+  const changes: boolean[] = [];
+  const parentEvents: string[] = [];
+  function Selection() {
+    const [selected, setSelected] = useState(false);
+    return <div onClick={() => parentEvents.push("click")} onMouseDown={() => parentEvents.push("mousedown")}
+      onKeyDown={() => parentEvents.push("keydown")}>
+      <WebCheckbox label="Correlation 20" checked={selected} onChange={(value) => {
+        changes.push(value);
+        setSelected(value);
+      }} />
+      <output>{selected ? "Study enabled" : "Study disabled"}</output>
+      <WebCheckbox label="Unavailable" disabled checked={false} onChange={() => parentEvents.push("disabled")} />
+    </div>;
+  }
+  const container = await renderDom(<Selection />);
+  const [input, disabled] = [...container.querySelectorAll("input")];
+  const [label, disabledLabel] = [...container.querySelectorAll("label")];
+  const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+  const space = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  await act(async () => {
+    input!.dispatchEvent(mouseDown);
+    input!.dispatchEvent(space);
+  });
+  // Browser focus and keyboard activation must remain enabled; happy-dom does
+  // not synthesize a native Space click, so the actual click is tested below.
+  expect(mouseDown.defaultPrevented).toBe(false);
+  expect(space.defaultPrevented).toBe(false);
+  await act(async () => { input!.click(); });
+  expect(container.querySelector("output")!.textContent).toBe("Study enabled");
+  expect(input!.checked).toBe(true);
+  await act(async () => { label!.click(); });
+  expect(container.querySelector("output")!.textContent).toBe("Study disabled");
+  expect(input!.checked).toBe(false);
+  await act(async () => { label!.click(); });
+  expect(input!.checked).toBe(true);
+  await act(async () => { input!.click(); });
+  expect(input!.checked).toBe(false);
+  await act(async () => { disabled!.click(); disabledLabel!.click(); });
+  expect(changes).toEqual([true, false, true, false]);
+  expect(parentEvents).toEqual([]);
+});
 
 test("desktop segmented controls expose radio semantics and keyboard selection", async () => {
   const selected: string[] = [];
