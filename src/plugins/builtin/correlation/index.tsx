@@ -1,6 +1,6 @@
 import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { InputSearchBar, SegmentedControl, usePaneFooter } from "../../../components";
+import { Notice, InputSearchBar, SegmentedControl, usePaneFooter } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -186,6 +186,8 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
           shortcutScope="correlation:range"
         />
       </Box>
+
+      <Box height={1} paddingX={1}><Notice tone="muted">Local-price returns; shared dates, market closes differ.</Notice></Box>
 
       {/* Column header row */}
       <Box flexDirection="row" paddingX={1} height={1} width={matrixRowWidth} backgroundColor={headerBg}>

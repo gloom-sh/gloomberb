@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
-import { DataTableView, Tabs, usePaneFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
+import { DataTableView, Notice, Tabs, usePaneFooter, type DataTableCell, type DataTableKeyEvent, type PaneFooterSegment } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -58,7 +58,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     [activeCollection.id, savedIndustryEtfs, savedSectorEtfs],
   );
   const [rowsByCollection, setRowsByCollection] = useDebouncedPluginPaneState<SectorRowsByCollection>(
-    "rowsByCollection:v1",
+    "rowsByCollection:v2",
     INITIAL_ROWS_BY_COLLECTION,
   );
   const [lastRefreshByCollection, setLastRefreshByCollection] = useDebouncedPluginPaneState<SectorRefreshByCollection>(
@@ -108,12 +108,17 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       if (fetchGenRef.current !== gen) return;
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, quoteUnavailable: true }), loading: false }))
+        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, return1M: null, return1Y: null, returnAsOfDate: null, return1MStartDate: null, return1YStartDate: null, quoteUnavailable: true }), loading: false }))
       )));
 
       const loadedCount = outcomes.filter((outcome) => outcome.row).length;
       const missingQuotes = outcomes.filter((outcome) => !outcome.row || outcome.row.quoteUnavailable).length;
-      setLoadError(loadedCount === 0 ? "Sector data unavailable" : missingQuotes > 0 ? `${missingQuotes} quotes unavailable` : null);
+      const missingReturns = outcomes.filter((outcome) => outcome.row && (outcome.row.return1M == null || outcome.row.return1Y == null)).length;
+      const warnings = [
+        ...(missingQuotes > 0 ? [`${missingQuotes} quotes unavailable`] : []),
+        ...(missingReturns > 0 ? [`${missingReturns} return windows incomplete`] : []),
+      ];
+      setLoadError(loadedCount === 0 ? "Sector data unavailable" : warnings.join(" · ") || null);
       // A refresh that returned nothing must not claim the board is current.
       if (loadedCount === 0) return;
       setLastRefreshByCollection((prev) => ({ ...prev, [collectionId]: Date.now() }));
@@ -206,17 +211,19 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   }, []);
 
   const updatedAgo = useUpdatedAgo(lastRefreshMs);
+  const returnAsOfDate = rows.map((row) => row.returnAsOfDate).filter((date): date is string => !!date).sort().at(-1);
 
   usePaneFooter("sectors", () => {
     const info: PaneFooterSegment[] = [];
     if (loading) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (loadError) info.push({ id: "error", parts: [{ text: loadError, tone: "warning" }] });
+    if (returnAsOfDate) info.push({ id: "return-as-of", parts: [{ text: `returns as of ${returnAsOfDate}`, tone: "muted" }] });
     if (updatedAgo) info.push({ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" }] });
     return { info };
-  }, [loadError, loading, updatedAgo]);
+  }, [loadError, loading, returnAsOfDate, updatedAgo]);
 
   const rootBefore = (
-    <Box height={1} paddingX={1}>
+    <Box height={2} paddingX={1} flexDirection="column">
       <Tabs
         tabs={tabs}
         activeValue={activeCollection.id}
@@ -229,6 +236,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
         variant="bare"
         focused={focused}
       />
+      <Notice tone="muted">ETF price returns; cash distributions excluded.</Notice>
     </Box>
   );
 

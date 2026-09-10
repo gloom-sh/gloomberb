@@ -31,6 +31,9 @@ export function projectSectorRows(
     currency: byEtf.get(definition.etf)?.currency ?? "USD",
     loading: false,
     quoteUnavailable: !byEtf.get(definition.etf) || byEtf.get(definition.etf)?.quoteUnavailable === true,
+    returnAsOfDate: byEtf.get(definition.etf)?.returnAsOfDate ?? null,
+    return1MStartDate: byEtf.get(definition.etf)?.return1MStartDate ?? null,
+    return1YStartDate: byEtf.get(definition.etf)?.return1YStartDate ?? null,
   })), DEFAULT_SORT_PREFERENCE);
 }
 
@@ -67,14 +70,20 @@ export function createSectorsHeadless(
       const outcomes = await dependencies.load(args, definitions, ctx.marketData);
       const rows = projectSectorRows(definitions, outcomes);
       const unavailableQuotes = rows.filter((row) => row.quoteUnavailable).map((row) => row.etf);
+      const unavailableReturns = rows.filter((row) => row.return1M == null || row.return1Y == null).map((row) => row.etf);
+      const unavailableSymbols = [...new Set([...unavailableQuotes, ...unavailableReturns])];
       return {
-        unavailableSymbols: unavailableQuotes.length > 0 ? unavailableQuotes : undefined,
+        unavailableSymbols: unavailableSymbols.length > 0 ? unavailableSymbols : undefined,
+        errors: unavailableReturns.map((symbol) => `${symbol}: price history does not cover one or more requested calendar windows.`),
         rows: rows.map((row) => ({ ...row })),
         metadata: {
           collection: collectionId,
           available: outcomes.filter((outcome) => outcome.row).length,
           requested: definitions.length,
           unavailableQuotes,
+          unavailableReturns,
+          returnDefinition: "ETF price returns in listing currency; cash distributions are not reinvested. Shared ending session and calendar-month/year boundaries; prior close used for holidays.",
+          returnWindows: rows.map((row) => ({ symbol: row.etf, asOfDate: row.returnAsOfDate, monthStartDate: row.return1MStartDate, yearStartDate: row.return1YStartDate })),
         },
       };
     },
