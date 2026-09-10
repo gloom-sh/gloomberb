@@ -1,3 +1,4 @@
+import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { appendLiveQuotePoint } from "./chart-data";
 import {
   getTimeRangeForDateWindow,
@@ -403,8 +404,7 @@ export function seedChartResolutionResult(
     const clipped = bounds.start !== null && bounds.end !== null
       ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
       : { ...entry, points: filterPoints(entry.points, bounds) };
-    return spec.viewport.maxPoints === undefined ? clipped
-      : { ...clipped, points: clipped.points.slice(-spec.viewport.maxPoints) };
+    return limitSeriesObservations(spec, clipped);
   });
   return {
     series: visible,
@@ -1204,12 +1204,8 @@ export async function resolveChartSpecData(
       ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
       : { ...entry, points: filterPoints(entry.points, bounds) }
   ));
-  if (spec.viewport.maxPoints !== undefined) {
-    resolved = resolved.map((entry) => ({
-      ...entry,
-      points: entry.points.slice(-spec.viewport.maxPoints!),
-    }));
-  }
+  resolved = resolved.map((entry) => limitSeriesObservations(spec, entry));
+  warnings.push(...financialPeriodCoverageWarnings(financialPeriodCoverage(spec, resolved)));
   const resolvedById = new Map(resolved.map((entry) => [entry.id, entry] as const));
   const hiddenBaseSeries = rawSeries
     .filter((entry) => !visibleSeriesIds.has(entry.id))

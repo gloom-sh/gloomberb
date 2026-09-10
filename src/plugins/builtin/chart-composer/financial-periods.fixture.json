@@ -1,0 +1,225 @@
+{
+  "source": "SEC CompanyFacts, MSFT CIK0000789019; cloud MSFT financials; captured2026-09-10",
+  "secAnnual": [
+    {
+      "date": "2008-06-30",
+      "operatingIncome": 22271000000,
+      "totalRevenue": 60420000000,
+      "availableAt": "2010-07-30",
+      "fieldAvailability": {
+        "totalRevenue": "2010-07-30",
+        "operatingIncome": "2010-07-30"
+      }
+    },
+    {
+      "date": "2009-06-30",
+      "operatingIncome": 20363000000,
+      "totalRevenue": 58437000000,
+      "availableAt": "2010-07-30",
+      "fieldAvailability": {
+        "totalRevenue": "2010-07-30",
+        "operatingIncome": "2010-07-30"
+      }
+    },
+    {
+      "date": "2010-06-30",
+      "operatingIncome": 24098000000,
+      "totalRevenue": 62484000000,
+      "availableAt": "2010-07-30",
+      "fieldAvailability": {
+        "totalRevenue": "2010-07-30",
+        "operatingIncome": "2010-07-30"
+      }
+    },
+    {
+      "date": "2011-06-30",
+      "operatingIncome": 27161000000,
+      "totalRevenue": 69943000000,
+      "availableAt": "2011-07-28",
+      "fieldAvailability": {
+        "totalRevenue": "2011-07-28",
+        "operatingIncome": "2011-07-28"
+      }
+    },
+    {
+      "date": "2012-06-30",
+      "operatingIncome": 21763000000,
+      "totalRevenue": 73723000000,
+      "availableAt": "2012-07-26",
+      "fieldAvailability": {
+        "totalRevenue": "2012-07-26",
+        "operatingIncome": "2012-07-26"
+      }
+    },
+    {
+      "date": "2013-06-30",
+      "operatingIncome": 26764000000,
+      "totalRevenue": 77849000000,
+      "availableAt": "2015-07-31",
+      "fieldAvailability": {
+        "totalRevenue": "2013-07-30",
+        "operatingIncome": "2013-07-30"
+      }
+    },
+    {
+      "date": "2014-06-30",
+      "operatingIncome": 27759000000,
+      "totalRevenue": 86833000000,
+      "availableAt": "2016-07-28",
+      "fieldAvailability": {
+        "totalRevenue": "2014-07-31",
+        "operatingIncome": "2014-07-31"
+      }
+    },
+    {
+      "date": "2015-06-30",
+      "operatingIncome": 18161000000,
+      "totalRevenue": 93580000000,
+      "availableAt": "2016-07-28",
+      "fieldAvailability": {
+        "totalRevenue": "2015-07-31",
+        "operatingIncome": "2015-07-31"
+      }
+    },
+    {
+      "date": "2016-06-30",
+      "operatingIncome": 26078000000,
+      "totalRevenue": 91154000000,
+      "availableAt": "2018-08-03",
+      "fieldAvailability": {
+        "totalRevenue": "2018-08-03",
+        "operatingIncome": "2018-08-03"
+      }
+    },
+    {
+      "date": "2017-06-30",
+      "operatingIncome": 29025000000,
+      "totalRevenue": 96571000000,
+      "availableAt": "2018-08-03",
+      "fieldAvailability": {
+        "totalRevenue": "2018-08-03",
+        "operatingIncome": "2018-08-03"
+      }
+    },
+    {
+      "date": "2018-06-30",
+      "operatingIncome": 35058000000,
+      "totalRevenue": 110360000000,
+      "availableAt": "2018-08-03",
+      "fieldAvailability": {
+        "totalRevenue": "2018-08-03",
+        "operatingIncome": "2018-08-03"
+      }
+    },
+    {
+      "date": "2019-06-30",
+      "operatingIncome": 42959000000,
+      "totalRevenue": 125843000000,
+      "availableAt": "2019-08-01",
+      "fieldAvailability": {
+        "totalRevenue": "2019-08-01",
+        "operatingIncome": "2019-08-01"
+      }
+    },
+    {
+      "date": "2020-06-30",
+      "operatingIncome": 52959000000,
+      "totalRevenue": 143015000000,
+      "availableAt": "2020-07-30",
+      "fieldAvailability": {
+        "totalRevenue": "2020-07-30",
+        "operatingIncome": "2020-07-30"
+      }
+    },
+    {
+      "date": "2021-06-30",
+      "operatingIncome": 69916000000,
+      "totalRevenue": 168088000000,
+      "availableAt": "2021-07-29",
+      "fieldAvailability": {
+        "totalRevenue": "2021-07-29",
+        "operatingIncome": "2021-07-29"
+      }
+    },
+    {
+      "date": "2022-06-30",
+      "operatingIncome": 83383000000,
+      "totalRevenue": 198270000000,
+      "availableAt": "2022-07-28",
+      "fieldAvailability": {
+        "totalRevenue": "2022-07-28",
+        "operatingIncome": "2022-07-28"
+      }
+    },
+    {
+      "date": "2023-06-30",
+      "operatingIncome": 88523000000,
+      "totalRevenue": 211915000000,
+      "availableAt": "2023-07-27",
+      "fieldAvailability": {
+        "totalRevenue": "2023-07-27",
+        "operatingIncome": "2023-07-27"
+      }
+    },
+    {
+      "date": "2024-06-30",
+      "operatingIncome": 109433000000,
+      "totalRevenue": 245122000000,
+      "availableAt": "2024-07-30",
+      "fieldAvailability": {
+        "totalRevenue": "2024-07-30",
+        "operatingIncome": "2024-07-30"
+      }
+    },
+    {
+      "date": "2025-06-30",
+      "operatingIncome": 128528000000,
+      "totalRevenue": 281724000000,
+      "availableAt": "2025-07-30",
+      "fieldAvailability": {
+        "totalRevenue": "2025-07-30",
+        "operatingIncome": "2025-07-30"
+      }
+    },
+    {
+      "date": "2026-06-30",
+      "operatingIncome": 155237000000,
+      "totalRevenue": 331839000000,
+      "availableAt": "2026-07-29",
+      "fieldAvailability": {
+        "totalRevenue": "2026-07-29",
+        "operatingIncome": "2026-07-29"
+      }
+    }
+  ],
+  "cloudAnnual": [
+    {
+      "date": "2022-06-30",
+      "currency": "USD"
+    },
+    {
+      "date": "2023-06-30",
+      "currency": "USD",
+      "operatingIncome": 88523000000,
+      "totalRevenue": 211915000000
+    },
+    {
+      "date": "2024-06-30",
+      "currency": "USD",
+      "operatingIncome": 109433000000,
+      "totalRevenue": 245122000000
+    },
+    {
+      "date": "2025-06-30",
+      "currency": "USD",
+      "operatingIncome": 128528000000,
+      "totalRevenue": 281724000000
+    },
+    {
+      "date": "2026-06-30",
+      "currency": "USD",
+      "operatingIncome": 155237000000,
+      "totalRevenue": 331839000000
+    }
+  ]
+}

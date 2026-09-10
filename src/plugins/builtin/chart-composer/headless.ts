@@ -1,3 +1,4 @@
+import { financialPeriodCoverage } from "../../../time-series/financial-period-coverage";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
@@ -66,9 +67,14 @@ export async function loadChartPaneModel(
   });
   spec = { ...spec, series: spec.series.map((series) => resolvedSeries.get(series.id) ?? series) };
   const ids = new Set(spec.series.map((series) => series.id));
+  const periodCoverage = financialPeriodCoverage(spec, chart.series);
   return {
     chart,
     spec,
+    ...(periodCoverage.length ? {
+      complete: periodCoverage.every((entry) => entry.complete),
+      stats: periodCoverage.map((entry) => ({ label: `${entry.label} observations`, value: `${entry.returned}/${entry.requested} ${entry.period}${entry.complete ? "" : " (partial)"}` })),
+    } : {}),
     snapshot: {
       financials: [...financials].map(([key, data]) => [key, { ...data, priceHistory: histories.get(key) ?? data.priceHistory }]),
       intradayHistories: [],
@@ -104,6 +110,7 @@ export async function loadChartPaneModel(
     }),
     metadata: {
       viewport: spec.viewport, panels: spec.panels, warnings: chart.warnings,
+      ...(periodCoverage.length ? { periodCoverage } : {}),
       summaries: chart.series.map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
     },
   };
