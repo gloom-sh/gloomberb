@@ -3,6 +3,7 @@ import type { DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
 import { createTestDataProvider } from "../../test-support/data-provider";
+import { loadYahooQuote } from "../../sources/yahoo-finance/snapshots";
 import {
   buildTickerSearchCandidates,
   createLocalTickerSearchCandidates,
@@ -58,6 +59,52 @@ function makeDataProvider(results: InstrumentSearchResult[]): DataProvider {
 }
 
 describe("ticker-search utilities", () => {
+  test("verifies omitted crypto symbols before selecting a punctuation alias on another venue", async () => {
+    const alias = makeSearchResult("SHIB/USD", "SHIBA INU US Dollar", { type: "Digital Currency", exchange: "COINBASE PRO" });
+    const quote = { symbol: "SHIB-USD", instrumentType: "CRYPTOCURRENCY", price: 0.00000509, currency: "USD", lastUpdated: 1789077420000,
+      change: 0, changePercent: 0, listingExchangeName: "CCC" };
+    const dataProvider = createTestDataProvider({ search: async () => [alias], getQuote: async () => quote });
+    const savedAlias = makeTicker("SHIB/USD", "SHIBA INU US Dollar", { exchange: "COINBASE PRO", assetCategory: "Digital Currency" });
+    const tickers = new Map([["SHIB/USD", savedAlias]]);
+    expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers, dataProvider }))
+      .toMatchObject({ kind: "provider", symbol: "SHIB-USD", result: { exchange: "CCC", currency: "USD", type: "CRYPTOCURRENCY" } });
+    const candidates = await searchTickerCandidates({ query: "SHIB-USD", tickers, dataProvider });
+    expect(candidates[0]?.symbol).toBe("SHIB-USD");
+    expect(findExactTickerSearchMatch(candidates, "SHIB-USD")?.symbol).toBe("SHIB-USD");
+    expect(await resolveTickerSearch({ query: "SHIB-USD:CCC", activeTicker: null, tickers, dataProvider }))
+      .toMatchObject({ kind: "provider", result: { exchange: "CCC" } });
+    expect(await resolveTickerSearch({ query: "SHIB-USD:COINBASE PRO", activeTicker: null, tickers, dataProvider })).toBeNull();
+    // A hyphen alone cannot establish an instrument's type or its identity.
+    for (const invalid of [{ instrumentType: "EQUITY" }, { symbol: "OTHER-USD" }, { price: 0 }, { price: -1 }, { instrumentType: undefined }]) {
+      expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers: new Map(),
+        dataProvider: createTestDataProvider({ search: async () => [alias], getQuote: async () => ({ ...quote, ...invalid }) }) })).toBeNull();
+    }
+  });
+
+  test("prefers literal provider symbols without losing equity share-class aliases", async () => {
+    const results = [makeSearchResult("SHIB/USD", "Shiba Inu", { type: "Digital Currency", exchange: "COINBASE PRO" }),
+      makeSearchResult("SHIB-USD", "Shiba Inu", { type: "CRYPTOCURRENCY", exchange: "CCC", currency: "USD" })];
+    expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers: new Map(), dataProvider: makeDataProvider(results) }))
+      .toMatchObject({ symbol: "SHIB-USD" });
+    expect(await resolveTickerSearch({ query: "BRK-B", activeTicker: null, tickers: new Map(),
+      dataProvider: makeDataProvider([makeSearchResult("BRK.B", "Berkshire", { exchange: "NYSE" })]) }))
+      .toMatchObject({ symbol: "BRK.B" });
+  });
+
+  test("native Yahoo chart instrument type verifies an omitted crypto catalogue entry", async () => {
+    const dataProvider = createTestDataProvider({
+      search: async () => [makeSearchResult("SHIB/USD", "Shiba Inu", { exchange: "COINBASE PRO", type: "Digital Currency" })],
+      getQuote: async (symbol) => loadYahooQuote(symbol, {
+        providerId: "yahoo-finance",
+        fetchChart: async () => ({ meta: { instrumentType: "CRYPTOCURRENCY", currency: "USD", exchangeName: "CCC",
+          regularMarketPrice: 0.00000509, regularMarketTime: 1789077420 }, history: [{ date: new Date("2026-09-10"), close: 0.00000509 }] }),
+        fetchQuoteSupplement: async () => ({}), fetchExtendedHoursData: async () => ({}),
+      }),
+    });
+    expect(await resolveTickerSearch({ query: "SHIB-USD", activeTicker: null, tickers: new Map(), dataProvider }))
+      .toMatchObject({ symbol: "SHIB-USD", result: { type: "CRYPTOCURRENCY", exchange: "CCC" } });
+  });
+
   test("preserves futures, FX and index identity across saved and provider search matches", async () => {
     for (const symbol of ["ES=F", "6J=F", "JPY=X", "EURUSD=X", "EUR/USD", "^GSPC"]) {
       const lookalike = symbol.replace(/[^A-Z0-9]/g, "");

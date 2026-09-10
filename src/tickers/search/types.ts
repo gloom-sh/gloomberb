@@ -14,6 +14,7 @@ export interface TickerSearchRankableItem {
   symbol?: string;
   saved?: boolean;
   instrumentClass?: TickerSearchInstrumentClass;
+  instrumentType?: string;
   exchangeLabel?: string;
   primaryExchangeLabel?: string;
   providerRank?: number;

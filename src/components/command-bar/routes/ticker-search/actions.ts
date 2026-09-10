@@ -60,6 +60,7 @@ export function useCommandBarTickerSearchActions({
       return {
         id: candidate.id,
         label: candidate.label,
+        instrumentType: candidate.instrumentType,
         detail,
         badge,
         right,
@@ -79,6 +80,7 @@ export function useCommandBarTickerSearchActions({
     return {
       id: candidate.id,
       label: candidate.label,
+      instrumentType: candidate.instrumentType,
       detail,
       badge,
       right,

@@ -18,3 +18,15 @@ test("venue-qualified browser entries preserve listing identity and explicit sym
     .toEqual({ symbol: "VOD:XLON", tab: "overview" });
   expect(researchEntryFromSearch("?ticker=VOD&exchange=LSE%3Bbad")).toBeNull();
 });
+
+test("crypto pair links survive the URL writer's slash and spaced venue round trip", () => {
+  for (const ticker of ["SHIB/USD", "SHIB/USD:COINBASE PRO"]) {
+    const params = new URLSearchParams({ ticker, exchange: "COINBASE PRO", tab: "chart" });
+    expect(researchEntryFromSearch(params.toString())).toEqual({ symbol: "SHIB/USD:COINBASE PRO", tab: "chart" });
+  }
+  expect(researchEntryFromSearch("?ticker=SHIB-USD&exchange=CCC"))
+    .toEqual({ symbol: "SHIB-USD:CCC", tab: "overview" });
+  for (const ticker of ["SHIB/USD/OTHER", "../USD", "SHIB/USD:COINBASE;BAD", "SHIB/USD:COINBASE\nPRO"]) {
+    expect(researchEntryFromSearch(new URLSearchParams({ ticker }).toString())).toBeNull();
+  }
+});

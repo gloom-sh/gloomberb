@@ -55,6 +55,16 @@ test("exact-match promotion never treats a futures or FX spelling as an equity",
   }
 });
 
+test("crypto punctuation aliases never outrank the verified exact symbol in command results", () => {
+  const rows = mergeTickerSearchResultItems("SHIB-USD", [
+    { ...resultItem("alias", "SHIB/USD", "COINBASE PRO", "search"), category: "Other Listings", instrumentType: "Digital Currency" },
+    { ...resultItem("exact", "SHIB-USD", "CCC", "search"), category: "Other Listings", instrumentType: "CRYPTOCURRENCY" },
+  ], []);
+  expect(rows[0]?.category).not.toBe("Exact Match");
+  expect(rows[1]?.category).toBe("Exact Match");
+  expect(mergePlainRootTickerResults("SHIB-USD", rows, [resultItem("pane", "Research", "", "action")])[0]?.id).toBe("exact");
+});
+
 test("folds a plain query's symbol hits into one capped Instruments section behind the local rows", () => {
   const pane: ResultItem = {
     id: "pane:news",
