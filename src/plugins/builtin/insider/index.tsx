@@ -11,7 +11,6 @@ import { EmptyState, FeedDataTableStackView, Spinner, useExternalLinkFooter, use
 import { usePluginPaneState } from "../../runtime";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { truncateWithEllipsis as truncateText } from "../../../utils/text-wrap";
-import { parseForm4Xml } from "./insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   buildInsiderTransactionDetailBody,
@@ -23,6 +22,8 @@ import {
 import { useSecFilingContentCache } from "../sec/filing-content";
 import {
   buildInsiderSummary,
+  insiderTransactionId,
+  parseInsiderFiling,
   type ParsedInsiderFiling as ParsedFiling,
 } from "./model";
 import { insiderHeadless } from "./headless";
@@ -35,7 +36,9 @@ const FORM4_PAGE_SIZE = 20;
 const SEC_FILING_SCAN_LIMIT = 20_000;
 
 function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
-  return parsed.map(({ filing, transaction, isLoading }) => {
+  return parsed.map((entry) => {
+    const { filing, transaction, isLoading } = entry;
+    const id = insiderTransactionId(entry);
     const filingMeta = [
       `Filed ${formatFilingShortDate(filing.filingDate)}`,
       `Accession ${filing.accessionNumber}`,
@@ -44,7 +47,7 @@ function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
 
     if (!transaction) {
       return {
-        id: filing.accessionNumber,
+        id,
         eyebrow: formatFilingFormLabel(filing.form),
         title: isLoading ? "Loading Form 4 filing..." : "Form 4 transaction unavailable",
         timestamp: filing.filingDate,
@@ -57,10 +60,10 @@ function toFeedItems(parsed: ParsedFiling[]): FeedDataTableItem[] {
     }
 
     return {
-      id: filing.accessionNumber,
+      id,
       eyebrow: transaction.reportedName,
       title: buildInsiderTransactionTitle(transaction),
-      timestamp: transaction.filingDate,
+      timestamp: transaction.filingDate ?? filing.filingDate,
       detailTitle: transaction.reportedName,
       detailMeta: [
         ...(transaction.title ? [transaction.title] : []),
@@ -116,14 +119,10 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     targets: visibleForm4Filings,
   });
 
-  const allParsed: ParsedFiling[] = useMemo(() => visibleForm4Filings.map((filing) => {
+  const allParsed: ParsedFiling[] = useMemo(() => visibleForm4Filings.flatMap((filing) => {
     const hasContent = contentMap.has(filing.accessionNumber);
     const xml = contentMap.get(filing.accessionNumber) ?? null;
-    return {
-      filing,
-      transaction: xml ? parseForm4Xml(xml) : null,
-      isLoading: !hasContent,
-    };
+    return parseInsiderFiling(filing, xml, !hasContent);
   }), [contentMap, visibleForm4Filings]);
 
   // Apply name filter
@@ -133,10 +132,10 @@ function InsiderView({ width, height, focused }: { width: number; height: number
       : allParsed
   ), [allParsed, nameFilter]);
   const feedItems = useMemo(() => toFeedItems(parsed), [parsed]);
-  const summary = useMemo(() => buildInsiderSummary(allParsed), [allParsed]);
+  const summary = useMemo(() => buildInsiderSummary(parsed), [parsed]);
   const selectedTransaction = parsed[selectedIdx]?.transaction ?? null;
   const openFiling = openItemId
-    ? parsed.find(({ filing }) => filing.accessionNumber === openItemId)?.filing ?? null
+    ? parsed.find((entry) => insiderTransactionId(entry) === openItemId)?.filing ?? null
     : null;
 
   const toggleNameFilter = useCallback((reportedName: string) => {

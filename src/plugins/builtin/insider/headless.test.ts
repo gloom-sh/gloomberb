@@ -94,6 +94,20 @@ describe("insider client", () => {
     expect(result).toHaveLength(2);
     expect(maxActiveContentLoads).toBe(1);
   });
+
+  test("filing limit expands every transaction and reports failed content even with an owner filter", async () => {
+    const tx = (shares: number) => `<nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>2026-08-20</value></transactionDate><transactionCoding><transactionCode>G</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${shares}</value></transactionShares></transactionAmounts></nonDerivativeTransaction>`;
+    const provider = createTestDataProvider({
+      getSecFilings: async () => parsed.map(({ filing }) => filing),
+      getSecFilingContent: async (filing) => filing.accessionNumber === "one"
+        ? `<ownershipDocument><reportingOwner><reportingOwnerId><rptOwnerName>SU LISA T</rptOwnerName></reportingOwnerId></reportingOwner>${tx(55)}${tx(294)}</ownershipDocument>`
+        : null,
+    });
+    const result = await createInsiderHeadless().load(args("su lisa t", 2), { ...context(), marketData: provider });
+    expect(result.rows.map((row) => [row.id, row.shares, row.side])).toEqual([["one:0", 55, "GIFT"], ["one:1", 294, "GIFT"]]);
+    expect(result.metadata).toMatchObject({ parsed: 1, transactions: 2, requested: 2 });
+    expect(result.errors).toEqual(["two: Form 4 transactions are unavailable or incomplete."]);
+  });
 });
 
 describe("insider headless model", () => {

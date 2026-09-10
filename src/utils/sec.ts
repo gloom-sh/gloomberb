@@ -1,4 +1,5 @@
 import type { TickerRecord } from "../types/ticker";
+import { canonicalExchange } from "./exchanges";
 
 const US_EQUITY_EXCHANGES = new Set([
   "AMEX",
@@ -19,12 +20,12 @@ function normalize(value?: string): string {
 }
 
 function isUsExchange(value?: string): boolean {
-  return US_EQUITY_EXCHANGES.has(normalize(value));
+  return US_EQUITY_EXCHANGES.has(canonicalExchange(value));
 }
 
 function isEquityType(value?: string): boolean {
-  const normalized = normalize(value);
-  return normalized.length === 0 || normalized === "STK" || normalized === "EQUITY" || normalized === "ADR";
+  const normalized = normalize(value).replace(/[\s_-]/g, "");
+  return normalized.length === 0 || ["STK", "EQUITY", "ADR", "COMMONSTOCK", "DEPOSITARYRECEIPT"].includes(normalized);
 }
 
 export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boolean {

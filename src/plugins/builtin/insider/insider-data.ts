@@ -1,50 +1,80 @@
+import { decodeHtmlEntities } from "../../../utils/html-entities";
 
 export interface InsiderTransaction {
-  filingDate: Date;
+  /** Transaction date, distinct from the enclosing SEC filing date. */
+  filingDate: Date | null;
   reportedName: string;
   title: string;
-  transactionType: "P" | "S" | "A" | "D" | "";
-  shares: number;
+  transactionType: string;
+  shares: number | null;
   pricePerShare: number | null;
   totalValue: number | null;
   sharesOwned: number | null;
   form: string;
+  transactionIndex?: number;
+  securityTitle?: string;
+  isDerivative?: boolean;
+  acquiredDisposed?: string;
+  ownershipType?: string;
+  ownershipNature?: string;
+  reportingOwners?: Array<{ name: string; cik: string; title: string }>;
 }
 
-export function parseForm4Xml(xml: string): InsiderTransaction | null {
-  const nameMatch = xml.match(/<rptOwnerName>([^<]+)<\/rptOwnerName>/);
-  if (!nameMatch) return null;
+function tagContent(xml: string, tag: string): string | undefined {
+  return xml.match(new RegExp(`<(?:[\\w.-]+:)?${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/(?:[\\w.-]+:)?${tag}\\s*>`, "i"))?.[1];
+}
 
-  const titleMatch = xml.match(/<officerTitle>([^<]+)<\/officerTitle>/);
-  const codeMatch = xml.match(/<transactionCode>([^<]+)<\/transactionCode>/);
-  const sharesMatch = xml.match(/<transactionShares>[\s\S]*?<value>([^<]+)<\/value>/);
-  const priceMatch = xml.match(/<transactionPricePerShare>[\s\S]*?<value>([^<]+)<\/value>/);
-  const ownedMatch = xml.match(/<sharesOwnedFollowingTransaction>[\s\S]*?<value>([^<]+)<\/value>/);
-  const dateMatch = xml.match(/<transactionDate>[\s\S]*?<value>([^<]+)<\/value>/);
+function tagText(xml: string, tag: string): string {
+  return decodeHtmlEntities((tagContent(xml, tag) ?? "").replace(/<[^>]*>/g, "").trim());
+}
 
-  const shares = sharesMatch ? parseFloat(sharesMatch[1]!) : 0;
-  const price = priceMatch ? parseFloat(priceMatch[1]!) : null;
-  const code = codeMatch?.[1] ?? "";
+function numberValue(xml: string, tag: string): number | null {
+  const raw = tagText(tagContent(xml, tag) ?? "", "value");
+  if (!raw) return null;
+  const value = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(value) ? value : null;
+}
 
-  return {
-    filingDate: dateMatch ? new Date(dateMatch[1]!) : new Date(),
-    reportedName: nameMatch[1]!.trim(),
-    title: titleMatch?.[1]?.trim() ?? "",
-    transactionType: (code === "P" || code === "S" || code === "A" || code === "D") ? code : "",
-    shares: isNaN(shares) ? 0 : shares,
-    pricePerShare: price !== null && !isNaN(price) ? price : null,
-    totalValue: price !== null && !isNaN(price) && !isNaN(shares) ? shares * price : null,
-    sharesOwned: ownedMatch ? parseFloat(ownedMatch[1]!) : null,
-    form: "4",
-  };
+export function parseForm4Xml(xml: string): InsiderTransaction[] {
+  const owners = [...xml.matchAll(/<(?:[\w.-]+:)?reportingOwner(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?reportingOwner\s*>/gi)]
+    .map((match) => ({ name: tagText(match[1]!, "rptOwnerName"), cik: tagText(match[1]!, "rptOwnerCik"), title: tagText(match[1]!, "officerTitle") }))
+    .filter((owner) => owner.name);
+  if (!owners.length) return [];
+  const blocks = [...xml.matchAll(/<(?:[\w.-]+:)?(nonDerivativeTransaction|derivativeTransaction)(?:\s[^>]*)?>([\s\S]*?)<\/(?:[\w.-]+:)?\1\s*>/gi)];
+  return blocks.map((match, transactionIndex) => {
+    const block = match[2]!;
+    const amounts = tagContent(block, "transactionAmounts") ?? "";
+    const shares = numberValue(amounts, "transactionShares");
+    const price = numberValue(amounts, "transactionPricePerShare");
+    const dateText = tagText(tagContent(block, "transactionDate") ?? "", "value");
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(dateText) ? new Date(`${dateText}T00:00:00Z`) : null;
+    return {
+      filingDate: date && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === dateText ? date : null,
+      reportedName: owners.map(({ name }) => name).join("; "),
+      title: [...new Set(owners.map(({ title }) => title).filter(Boolean))].join("; "),
+      reportingOwners: owners,
+      transactionType: tagText(tagContent(block, "transactionCoding") ?? "", "transactionCode"),
+      securityTitle: tagText(tagContent(block, "securityTitle") ?? "", "value"),
+      isDerivative: match[1]!.toLowerCase() === "derivativetransaction",
+      transactionIndex,
+      shares,
+      pricePerShare: price,
+      totalValue: shares != null && price != null ? shares * price : null,
+      sharesOwned: numberValue(tagContent(block, "postTransactionAmounts") ?? "", "sharesOwnedFollowingTransaction"),
+      acquiredDisposed: tagText(tagContent(amounts, "transactionAcquiredDisposedCode") ?? "", "value"),
+      ownershipType: tagText(tagContent(tagContent(block, "ownershipNature") ?? "", "directOrIndirectOwnership") ?? "", "value"),
+      ownershipNature: tagText(tagContent(tagContent(block, "ownershipNature") ?? "", "natureOfOwnership") ?? "", "value"),
+      form: tagText(xml, "documentType") || "4",
+    };
+  });
 }
 
 export function transactionTypeLabel(type: InsiderTransaction["transactionType"]): string {
-  switch (type) {
-    case "P": return "BUY";
-    case "S": return "SELL";
-    case "A": return "AWARD";
-    case "D": return "DISPOSE";
-    default: return "-";
-  }
+  const labels: Record<string, string> = {
+    P: "BUY", S: "SELL", A: "AWARD", D: "DISPOSE", M: "EXERCISE", C: "CONVERT",
+    F: "TAX/EXERCISE PAYMENT", G: "GIFT", X: "EXERCISE", O: "OUT-OF-MONEY EXERCISE",
+    E: "EXPIRATION", H: "CANCELLATION", I: "DISCRETIONARY", J: "OTHER", K: "SWAP",
+    L: "SMALL ACQUISITION", U: "TENDER", W: "INHERITANCE", Z: "TRUST TRANSFER",
+  };
+  return labels[type] ?? (type || "—");
 }

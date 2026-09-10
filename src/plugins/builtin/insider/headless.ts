@@ -25,6 +25,8 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   },
   { key: "insider", header: "Insider" },
   { key: "title", header: "Title" },
+  { key: "security", header: "Security" },
+  { key: "isDerivative", header: "Derivative" },
   { key: "side", header: "Side" },
   {
     key: "shares",
@@ -98,16 +100,23 @@ export function createInsiderHeadless(
       const parsed = await dependencies.loadParsed(symbol, limit, args, ctx);
       const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
       const filtered = name
-        ? parsed.filter(({ transaction }) => transaction?.reportedName.toLocaleLowerCase() === name)
+        ? parsed.filter(({ transaction }) => transaction?.reportedName.toLocaleLowerCase() === name
+          || transaction?.reportingOwners?.some((owner) => owner.name.toLocaleLowerCase() === name))
         : parsed;
+      const incomplete = [...new Set(buildInsiderRows(parsed)
+        .filter((row) => row.status !== "parsed")
+        .map((row) => row.accessionNumber))];
       return {
         rows: buildInsiderRows(filtered),
+        errors: incomplete.map((accessionNumber) => `${accessionNumber}: Form 4 transactions are unavailable or incomplete.`),
         metadata: {
           symbol,
-          summary: buildInsiderSummary(parsed),
-          parsed: parsed.filter(({ transaction }) => transaction != null).length,
+          summary: buildInsiderSummary(filtered),
+          parsed: new Set(parsed.filter(({ transaction }) => transaction != null).map(({ filing }) => filing.accessionNumber)).size,
+          transactions: filtered.filter(({ transaction }) => transaction != null).length,
           requested: limit,
           name: name || null,
+          limitations: ["Only loaded Form 4 filings are summarized; amendments are not reconciled."],
         },
       };
     },

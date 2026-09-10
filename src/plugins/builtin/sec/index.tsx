@@ -9,10 +9,11 @@ import type { ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Spinner, useTableLoadMore, type FeedDataTableItem } from "../../../components";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
-import { formatCompact, formatCurrency } from "../../../utils/format";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   formatFilingMetaDate,
+  buildInsiderTransactionTitle,
+  buildInsiderTransactionDetailBody,
   renderFilingNotice,
 } from "./filing-display";
 import {
@@ -102,27 +103,27 @@ function buildDetailBodyWithDocuments({
 
 function buildForm4Preview(content: string | null): string | null {
   if (!content) return null;
-  const tx = parseForm4Xml(content);
+  const transactions = parseForm4Xml(content);
+  const tx = transactions[0];
   if (!tx) return null;
-  const type = transactionTypeLabel(tx.transactionType);
-  const shares = formatCompact(tx.shares);
-  const price = tx.pricePerShare != null ? ` @ ${formatCurrency(tx.pricePerShare)}` : "";
-  return `${tx.reportedName} — ${type} ${shares} shares${price}`;
+  if (transactions.length === 1) return `${tx.reportedName} — ${buildInsiderTransactionTitle(tx)}`;
+  const types = [...new Set(transactions.map((transaction) => transactionTypeLabel(transaction.transactionType)))];
+  return `${tx.reportedName} — ${transactions.length} transactions: ${types.join(", ")}`;
 }
 
 function buildForm4Detail(content: string | null, filing: SecFilingItem): string {
   if (!content) return buildDetailBody(filing);
-  const tx = parseForm4Xml(content);
+  const transactions = parseForm4Xml(content);
+  const tx = transactions[0];
   if (!tx) return buildDetailBody(filing);
 
   const lines: string[] = [];
   lines.push(`Insider: ${tx.reportedName}`);
   if (tx.title) lines.push(`Title: ${tx.title}`);
-  lines.push(`Transaction: ${transactionTypeLabel(tx.transactionType)}`);
-  lines.push(`Shares: ${formatCompact(tx.shares)}`);
-  if (tx.pricePerShare != null) lines.push(`Price/Share: ${formatCurrency(tx.pricePerShare)}`);
-  if (tx.totalValue != null) lines.push(`Total Value: ${formatCurrency(tx.totalValue)}`);
-  if (tx.sharesOwned != null) lines.push(`Shares Owned After: ${formatCompact(tx.sharesOwned)}`);
+  for (const [index, transaction] of transactions.entries()) {
+    if (transactions.length > 1) lines.push("", `Transaction ${index + 1}`);
+    lines.push(buildInsiderTransactionDetailBody(transaction));
+  }
   return lines.join("\n");
 }
 

@@ -35,15 +35,17 @@ describe("isUsEquityTicker", () => {
     }))).toBe(true);
   });
 
-  test("accepts US-listed ADRs", () => {
-    expect(isUsEquityTicker(makeTicker({
-      assetCategory: "ADR",
-    }))).toBe(true);
-  });
-
-  test("rejects non-equity instruments", () => {
-    expect(isUsEquityTicker(makeTicker({
-      assetCategory: "OPT",
-    }))).toBe(false);
+  test("accepts catalogue common stocks and depositary receipts without admitting funds or foreign listings", () => {
+    for (const assetCategory of ["ADR", "Common Stock", "Depositary Receipt"]) {
+      expect(isUsEquityTicker(makeTicker({ assetCategory }))).toBe(true);
+      expect(isUsEquityTicker(makeTicker({ assetCategory, exchange: "LSE" }))).toBe(false);
+      expect(isUsEquityTicker(makeTicker({ assetCategory, currency: "CAD" }))).toBe(false);
+    }
+    for (const exchange of ["XNAS", "NGM", "NCM", "XNYS", "XASE"]) {
+      expect(isUsEquityTicker(makeTicker({ assetCategory: "Common Stock", exchange }))).toBe(true);
+    }
+    for (const assetCategory of ["OPT", "ETF", "Mutual Fund", "Preferred Stock"]) {
+      expect(isUsEquityTicker(makeTicker({ assetCategory }))).toBe(false);
+    }
   });
 });
