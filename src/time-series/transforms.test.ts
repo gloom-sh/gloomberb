@@ -33,6 +33,20 @@ function series(id: string, points: TimeSeriesPoint[], interpolation: ResolvedSe
 }
 
 describe("series transformations", () => {
+  test("price display transforms preserve supporting share volume", () => {
+    const points = [
+      { ...point("2024-01-01", 10), open: 9, high: 11, low: 8, close: 10, volume: 1000 },
+      { ...point("2024-01-02", 15), open: 12, high: 16, low: 11, close: 15, volume: 2000 },
+    ];
+    for (const transform of ["percent", "index100", "log", "yoy"] as const) {
+      const transformed = applySeriesTransform(points, transform);
+      expect(transformed.map(({ volume }) => volume)).toEqual([1000, 2000]);
+    }
+    expect(applySeriesTransform(points, "percent")[1]).toMatchObject({ value: 50, close: 50, open: 20 });
+    const volumes = points.map((point) => ({ ...point, value: point.volume }));
+    expect(applySeriesTransform(volumes, "percent").map(({ value }) => value)).toEqual([0, 100]);
+  });
+
   test("normalizes to percent and index 100 from the first nonzero observation", () => {
     const points = [point("2024-01-01", 10), point("2024-02-01", 15), point("2024-03-01", 20)];
     expect(applySeriesTransform(points, "percent").map(({ value }) => value)).toEqual([0, 50, 100]);

@@ -1,6 +1,7 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
+import { resolveExchangeTimeZone } from "../utils/exchanges";
 import {
   CHART_RESOLUTION_STEP_MS,
   type ManualChartResolution,
@@ -20,6 +21,7 @@ export type AppendLiveQuotePointOptions =
     now?: number;
     mode: "ohlc";
     resolution: ManualChartResolution;
+    exchange?: string;
   };
 
 function coerceDate(value: Date | string | number): Date {
@@ -44,13 +46,27 @@ function quoteBelongsToLatestBar(
   latestTime: number,
   quoteTime: number,
   resolution: ManualChartResolution,
+  exchange?: string,
 ): boolean {
   if (quoteTime < latestTime) return false;
-  if (resolution === "1mo") {
-    const latestDate = new Date(latestTime);
-    const quoteDate = new Date(quoteTime);
-    return latestDate.getUTCFullYear() === quoteDate.getUTCFullYear()
-      && latestDate.getUTCMonth() === quoteDate.getUTCMonth();
+  if (resolution === "1d" || resolution === "1wk" || resolution === "1mo") {
+    const zone = resolveExchangeTimeZone(exchange) ?? "UTC";
+    // Vendors use both UTC date labels and actual session-opening timestamps.
+    // A daily bar belongs to a calendar session, not the next rolling 24 hours.
+    const key = (timestamp: number, dateLabel: boolean) => {
+      const day = dateLabel ? new Date(timestamp).toISOString().slice(0, 10) :
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+        }).format(new Date(timestamp));
+      if (resolution === "1mo") return day.slice(0, 7);
+      if (resolution === "1wk") {
+        const monday = new Date(`${day}T00:00:00Z`);
+        monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7);
+        return monday.toISOString().slice(0, 10);
+      }
+      return day;
+    };
+    return key(latestTime, latestTime % 86_400_000 === 0) === key(quoteTime, false);
   }
   return quoteTime - latestTime < CHART_RESOLUTION_STEP_MS[resolution];
 }
@@ -117,7 +133,7 @@ export function appendLiveQuotePoint(
   }
 
   if (options.mode === "ohlc") {
-    if (quoteBelongsToLatestBar(latestTime, quoteTime, options.resolution)) {
+    if (quoteBelongsToLatestBar(latestTime, quoteTime, options.resolution, options.exchange || quote.listingExchangeName || quote.exchangeName)) {
       const merged = mergeQuoteIntoLatestBar(latest, quotePrice);
       return [...points.slice(0, -1), merged];
     }

@@ -8,6 +8,7 @@ import { measurePerf } from "../../../../utils/perf-marks";
 import { useDoubleClickActivation } from "../../../use-double-click-activation";
 import { useScrollBoxScrollActivity } from "../../../table-view-shared";
 import { EmptyState } from "../../status";
+import { observeScrollBoxContentSize } from "../../../../renderers/opentui/scrollbox-layout";
 import {
   expandTableColumns,
   fitTableCellText,
@@ -235,6 +236,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const nativeRenderer = useNativeRenderer();
   const [scrollVersion, setScrollVersion] = useState(0);
   const lastAppliedScrollRequestRef = useRef<string | null>(null);
+  const controlledScrollTopRef = useRef<number | null>(null);
   const lastVisibleRangeRef = useRef<{
     key: string | number | undefined;
     range: DataTableVisibleRange;
@@ -323,10 +325,15 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     if (virtualize) {
       setScrollVersion((current) => current + 1);
     }
-    onBodyScrollActivity();
+    const controlledTop = controlledScrollTopRef.current;
+    controlledScrollTopRef.current = null;
+    const source = controlledTop !== null && scrollRef.current?.scrollTop === controlledTop
+      ? "programmatic"
+      : "user";
+    onBodyScrollActivity(source);
     emitVisibleRange();
     nativeRenderer.requestRender();
-  }, [emitVisibleRange, nativeRenderer, onBodyScrollActivity, virtualize]);
+  }, [emitVisibleRange, nativeRenderer, onBodyScrollActivity, scrollRef, virtualize]);
   useScrollBoxScrollActivity({
     scrollRef,
     onVerticalScroll: handleBodyScrollActivity,
@@ -334,11 +341,11 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   });
   const handleBodySizeChange = useCallback(() => {
     measureContentWidth();
-    if (virtualize) {
-      setScrollVersion((current) => current + 1);
-    }
+    setScrollVersion((current) => current + 1);
     queueMicrotask(emitVisibleRange);
-  }, [emitVisibleRange, measureContentWidth, virtualize]);
+  }, [emitVisibleRange, measureContentWidth]);
+
+  useEffect(() => observeScrollBoxContentSize(scrollRef.current, handleBodySizeChange), [handleBodySizeChange, scrollRef]);
 
   useEffect(() => {
     emitVisibleRange();
@@ -350,9 +357,14 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   }, [dispatch, paneInstanceId]);
 
   const applyScrollToIndex = useCallback(() => {
-    if (scrollToIndex == null || items.length === 0) return true;
+    if (scrollToIndex == null) return true;
+    if (items.length === 0) return false;
     const scrollBox = scrollRef.current;
-    if (!scrollBox?.viewport) return false;
+    // An empty or unmeasured body clamps scrollTo to zero. Keep the request
+    // pending until the rows and viewport have completed native layout.
+    if (!scrollBox?.viewport
+      || scrollBox.viewport.height <= 0
+      || scrollBox.scrollHeight < items.length) return false;
 
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
     const visibleHeight = Math.max(
@@ -370,6 +382,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
 
     if (nextTop === currentTop) return true;
     scrollBox.scrollTo(nextTop);
+    controlledScrollTopRef.current = scrollBox.scrollTop;
     return scrollBox.scrollTop === nextTop;
   }, [
     appViewport.height,
@@ -414,6 +427,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     const scrollRequestKey = [
       scrollToIndex,
       scrollToIndexVersion,
+      scrollToIndexAlign,
       measuredViewportHeight ?? "pending",
     ].join(":");
     if (lastAppliedScrollRequestRef.current === scrollRequestKey) return;
@@ -422,22 +436,15 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       lastAppliedScrollRequestRef.current = scrollRequestKey;
       return;
     }
-    let cancelled = false;
-    const retry = () => {
-      if (cancelled) return;
-      if (applyScrollToIndex()) {
-        lastAppliedScrollRequestRef.current = scrollRequestKey;
-      }
-    };
-    process.nextTick(retry);
-    return () => {
-      cancelled = true;
-    };
+    // Body/content size events retry a pending request after measurement;
+    // completed requests remain consumed while users scroll or rows append.
   }, [
     applyScrollToIndex,
     measuredViewportHeight,
     scrollToIndex,
+    scrollToIndexAlign,
     scrollToIndexVersion,
+    scrollVersion,
   ]);
 
   return (

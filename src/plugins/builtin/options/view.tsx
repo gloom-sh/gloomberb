@@ -15,7 +15,8 @@ import {
   type DataTableVisibleRange,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
+import { useLiveQuoteEntries, useQuoteUpdates } from "../../../state/hooks/quote-streaming";
+import { quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { usePluginAppActions } from "../../runtime";
 import {
   OPTIONS_CALCULATOR_TEMPLATE_ID,
@@ -107,6 +108,14 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const parsed = target?.parsedOption ?? null;
   const effectiveTicker = target?.effectiveTicker ?? "";
   const effectiveExchange = target?.effectiveExchange ?? "";
+  const underlyingQuoteTarget = isOpt
+    ? effectiveTicker ? { symbol: effectiveTicker, exchange: effectiveExchange, route: "provider" as const } : null
+    : quoteSubscriptionTargetFromTicker(ticker, effectiveTicker, "provider");
+  // A standalone chain has no parent research pane to subscribe to its stock.
+  // Its spot, ATM selection and Greeks must update independently of other panes.
+  useQuoteUpdates(underlyingQuoteTarget ? [{
+    ...underlyingQuoteTarget, surface: "options", visible: true, selected: true, weight: 100,
+  }] : [], { liveStreaming });
   const underlyingFinancials = useTickerFinancials(isOpt ? effectiveTicker : null, null);
   const underlying = isOpt ? underlyingFinancials : financials;
   const spot = underlying?.quote?.price;

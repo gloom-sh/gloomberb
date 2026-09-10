@@ -318,10 +318,14 @@ export function DataTableView<
       || previous.key !== current.key;
     const selectedRowAppeared = !previous?.resolved && current.resolved;
     if (selectionChanged || selectedRowAppeared) {
-      requestSelectionScroll(effectiveSelectedIndex);
+      // An external selection renders before the optimistic cursor's syncing
+      // effect commits. Scroll to the new selection, retaining an immediate
+      // cursor only while a keyboard navigation commit is still pending.
+      requestSelectionScroll(pendingCommitRef.current ? effectiveSelectedIndex : defaultCursorIndex);
     }
   }, [
     clearSelectionScrollTarget,
+    defaultCursorIndex,
     effectiveSelectedIndex,
     requestSelectionScroll,
     scrollToIndex,

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
+import type { ScrollBoxRenderable } from "@opentui/core";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
 import {
   AppContext,
@@ -132,6 +133,47 @@ function LargeSelectionHarness({
   );
 }
 
+let setDeferredRows: ((rows: Row[]) => void) | undefined;
+let setRequestedIndex: ((index: number) => void) | undefined;
+
+function DeferredScrollHarness({ onScroll, initialRows = [], initialIndex = 500, controlSelection = false }: {
+  onScroll?: (source?: "programmatic" | "user") => void;
+  initialRows?: Row[];
+  initialIndex?: number;
+  controlSelection?: boolean;
+}) {
+  const [items, setItems] = useState<Row[]>(initialRows);
+  const [requestedIndex, requestIndex] = useState(initialIndex);
+  setDeferredRows = setItems;
+  setRequestedIndex = requestIndex;
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-table-deferred-scroll"));
+  return (
+    <AppContext value={{ state, dispatch: () => {} }}>
+      <PaneInstanceProvider paneId="deferred-scroll-test">
+        <DataTableView<Row, Column>
+          focused
+          selection={controlSelection
+            ? { kind: "index", selectedIndex: requestedIndex, onChange: requestIndex }
+            : { kind: "none" }}
+          columns={columns}
+          items={items}
+          sortColumnId={null}
+          sortDirection="asc"
+          onHeaderClick={() => {}}
+          getItemKey={(row) => row.id}
+          renderCell={(row) => ({ text: row.title })}
+          emptyStateTitle="Loading rows"
+          bodyScrollId="deferred-scroll-body"
+          scrollToIndex={requestedIndex}
+          scrollToIndexAlign="center"
+          resetScrollKey="contract-chain"
+          onBodyScrollActivity={onScroll}
+        />
+      </PaneInstanceProvider>
+    </AppContext>
+  );
+}
+
 async function renderSettled() {
   await act(async () => {
     await testSetup!.renderOnce();
@@ -244,4 +286,40 @@ describe("DataTableView", () => {
 
     expect(renderedCells - beforeNavigation).toBeLessThanOrEqual(4);
   });
+});
+
+test("fulfills a center request after rows are laid out and then leaves manual scrolling alone", async () => {
+  const scrollSources: Array<"programmatic" | "user" | undefined> = [];
+  testSetup = await testRender(
+    <DeferredScrollHarness onScroll={(source) => scrollSources.push(source)} />,
+    { width: 60, height: 12 },
+  );
+  await renderSettled();
+  await act(async () => { setDeferredRows!(largeRows); });
+  await renderSettled();
+  const body = testSetup.renderer.root.findDescendantById("deferred-scroll-body") as ScrollBoxRenderable;
+  expect(body.scrollTop).toBe(500 - Math.floor(body.viewport.height / 2));
+  expect(testSetup.captureCharFrame()).toContain("Row 500");
+  expect(scrollSources.at(-1)).toBe("programmatic");
+
+  await act(async () => { body.scrollTo(50); });
+  await renderSettled();
+  await act(async () => { setDeferredRows!([...largeRows, { type: "row", id: "new", title: "New row" }]); });
+  await renderSettled();
+  expect(body.scrollTop).toBe(50);
+  expect(scrollSources.at(-1)).toBe("user");
+});
+
+
+test("an external selection and scroll request cannot be reversed by the previous cursor", async () => {
+  testSetup = await testRender(
+    <DeferredScrollHarness initialRows={largeRows} initialIndex={0} controlSelection />,
+    { width: 60, height: 12 },
+  );
+  await renderSettled();
+  await act(async () => { setRequestedIndex!(500); });
+  await renderSettled();
+  const body = testSetup.renderer.root.findDescendantById("deferred-scroll-body") as ScrollBoxRenderable;
+  expect(body.scrollTop).toBe(500 - Math.floor(body.viewport.height / 2));
+  expect(testSetup.captureCharFrame()).toContain("Row 500");
 });

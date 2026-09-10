@@ -195,7 +195,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   quoteRef.current = { price: quotePrice, currency: quoteCurrency };
 
   const request = useCallback(() => loadData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, symbol]);
-  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null, { clearOnError: true });
+  const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null);
   useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
   usePaneFooter("dividend-yield", () => ({
