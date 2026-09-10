@@ -60,7 +60,10 @@ export function projectStat(
   const nowMs = opts.nowMs ?? Date.now();
   const perYear = periodsPerYear(points.map((point) => ({ date: point.date, value: point.value })));
   const yearEarlier = new Date(latest.date);
-  yearEarlier.setUTCFullYear(yearEarlier.getUTCFullYear() - 1);
+  const year = yearEarlier.getUTCFullYear() - 1;
+  const month = yearEarlier.getUTCMonth();
+  const day = Math.min(yearEarlier.getUTCDate(), new Date(Date.UTC(year, month + 1, 0)).getUTCDate());
+  yearEarlier.setTime(Date.UTC(year, month, day));
   const target = yearEarlier.toISOString().slice(0, 10);
   // Monthly/quarterly releases are calendar periods. Daily series can use the
   // nearest preceding business day, but never an arbitrary row count.
