@@ -13,7 +13,7 @@ import { getSortValue, type ColumnContext } from "../../portfolio-list/metrics";
 import type { ScreenerSortPreference } from "./model";
 import type { ValidatedScreenerResult } from "./contract";
 
-function summarizeWarning(unresolved: string[], duplicateCount: number): string | null {
+function summarizeWarning(unresolved: string[], failed: string[], duplicateCount: number): string | null {
   const parts: string[] = [];
   if (duplicateCount > 0) {
     parts.push(`Dropped ${duplicateCount} duplicate${duplicateCount === 1 ? "" : "s"}.`);
@@ -21,6 +21,7 @@ function summarizeWarning(unresolved: string[], duplicateCount: number): string 
   if (unresolved.length > 0) {
     parts.push(`Could not resolve ${unresolved.length}: ${unresolved.slice(0, 5).join(", ")}${unresolved.length > 5 ? "..." : ""}.`);
   }
+  if (failed.length > 0) parts.push(`Lookup failed for ${failed.length}: ${failed.slice(0, 5).join(", ")}. Retry to check these candidates.`);
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
@@ -56,11 +57,14 @@ async function resolveCandidateTicker(
     throw new Error("AI screener could not access the ticker repository.");
   }
 
-  const localTicker = [...localTickers.values()].find((ticker) => matchesCandidate({
+  const localMatches = [...localTickers.values()].filter((ticker) => matchesCandidate({
     providerId: "saved", symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange,
     name: ticker.metadata.name, currency: ticker.metadata.currency, type: ticker.metadata.assetCategory || "",
     brokerContract: ticker.metadata.broker_contracts?.[0],
   }, candidate));
+  // A saved ticker is not evidence that an unqualified symbol has only one listing.
+  const qualified = !!(parsePublicTickerKey(candidate.symbol).exchange || candidate.exchange);
+  const localTicker = qualified && localMatches.length === 1 ? localMatches[0] : undefined;
   if (localTicker) {
     return {
       symbol: localTicker.metadata.ticker,
@@ -71,7 +75,12 @@ async function resolveCandidateTicker(
   }
 
   const searchResults = await dataProvider.search(candidate.symbol);
-  const selected = searchResults.find((result) => matchesCandidate(result, candidate)) ?? null;
+  const matches = searchResults.filter((result) => matchesCandidate(result, candidate));
+  const venues = new Set(matches.map((result) => canonicalExchange(
+    parsePublicTickerKey(result.brokerContract?.localSymbol || result.symbol).exchange
+      || result.primaryExchange || result.brokerContract?.primaryExchange || result.exchange,
+  )));
+  const selected = venues.size === 1 ? matches[0] : null;
   if (!selected) return null;
 
   const { ticker, created } = await upsertTickerFromSearchResult(registry.tickerRepository, selected);
@@ -99,11 +108,19 @@ export async function validateScreenerResults(
 ): Promise<{ results: ValidatedScreenerResult[]; warning: string | null }> {
   const resolved: ValidatedScreenerResult[] = [];
   const unresolved: string[] = [];
+  const failed: string[] = [];
   let duplicateCount = 0;
   const seen = new Set<string>();
+  if (!getSharedRegistry() || !dataProvider) throw new Error("AI screener could not access the ticker repository.");
 
   for (const candidate of candidates) {
-    const result = await resolveCandidateTicker(candidate, localTickers, stateDispatch, dataProvider);
+    let result: ValidatedScreenerResult | null;
+    try {
+      result = await resolveCandidateTicker(candidate, localTickers, stateDispatch, dataProvider);
+    } catch {
+      failed.push(candidate.symbol);
+      continue;
+    }
     if (!result) {
       unresolved.push(candidate.symbol);
       continue;
@@ -118,7 +135,7 @@ export async function validateScreenerResults(
 
   return {
     results: resolved,
-    warning: summarizeWarning(unresolved, duplicateCount),
+    warning: summarizeWarning(unresolved, failed, duplicateCount),
   };
 }
 

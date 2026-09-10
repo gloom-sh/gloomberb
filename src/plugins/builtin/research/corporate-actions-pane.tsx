@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
+  Prose,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -113,8 +114,11 @@ function scoreFilingForEarnings(filing: SecFilingItem, earningsDate: string): nu
   return score;
 }
 
-export function matchEarningsSecFiling(row: { status: string; date: string; dateType?: EventRow["dateType"] } | null | undefined, filings: readonly SecFilingItem[]): SecFilingItem | null {
-  if (!row || row.status !== "Earnings" || row.dateType === "fiscal-period-end") return null;
+export function matchEarningsSecFiling(row: { status: string; date: string; dateType?: EventRow["dateType"]; dateEvidence?: EventRow["dateEvidence"] } | null | undefined, filings: readonly SecFilingItem[]): SecFilingItem | null {
+  if (!row || row.status !== "Earnings") return null;
+  if (row.dateType === "fiscal-period-end") {
+    return row.dateEvidence ? filings.find((filing) => filing.accessionNumber === row.dateEvidence?.accessionNumber) ?? null : null;
+  }
   let best: { filing: SecFilingItem; score: number } | null = null;
   for (const filing of filings) {
     const score = scoreFilingForEarnings(filing, row.date);
@@ -164,7 +168,13 @@ function eventSummaryLine(row: EventRow): string {
   ].filter((line): line is string => !!line).join(" | ");
 }
 
-function buildEventDetailBody({
+function earningsInput(value: number | undefined, currency?: string): string {
+  if (value == null || !Number.isFinite(value)) return "-";
+  const amount = new Intl.NumberFormat("en-US", { maximumFractionDigits: 8 }).format(value);
+  return currency ? `${amount} ${currency}` : amount;
+}
+
+export function buildEventDetailBody({
   row,
   secFilingsLoading,
   filing,
@@ -188,10 +198,24 @@ function buildEventDetailBody({
     return lines.join("\n");
   }
 
+  lines.push("", "EPS comparison (provider values)");
+  lines.push(`Actual: ${earningsInput(row.epsActual, row.epsCurrency)} | Consensus: ${earningsInput(row.epsEstimate, row.epsCurrency)}`);
+  if (row.epsDifference != null) lines.push(`Difference: ${earningsInput(row.epsDifference, row.epsCurrency)}`);
+  if (row.surprisePercent != null) lines.push(`Surprise: ${earningsInput(row.surprisePercent)}%`);
+  lines.push("EPS and consensus may be adjusted; the provider does not specify the accounting basis. Statement EPS can differ.");
+  if (row.providerId || row.fetchedAt) lines.push([row.providerId, row.fetchedAt ? `Fetched ${row.fetchedAt}` : null].filter(Boolean).join(" | "));
+  if (row.fiscalPeriodEnd) lines.push(`Fiscal period: ${row.fiscalPeriodEnd} (${row.periodDateSource === "sec" ? "SEC corroborated" : "provider date"})`);
+  if (row.providerPeriodDate) lines.push(`Provider period date: ${row.providerPeriodDate}`);
+  if (row.dateEvidence) lines.push(`Period evidence: ${row.dateEvidence.accessionNumber}, filed ${row.dateEvidence.filed}. This is not an announcement date or verification of every metric.`);
+  if (row.qRevenue == null && row.earningsState === "reported") lines.push("Quarterly revenue unavailable: no matching statement period was identified.");
+
   lines.push("", "SEC Filing");
   if (row.dateType === "fiscal-period-end") {
-    lines.push("The source supplies a fiscal period end, not an announcement date. Open SEC filings to locate the earnings release.");
-    return lines.join("\n");
+    lines.push("The event source supplies a fiscal period date, not an announcement date.");
+    if (!row.dateEvidence) {
+      lines.push("Open SEC filings to locate the earnings release.");
+      return lines.join("\n");
+    }
   }
   if (secFilingsLoading && !filing) {
     lines.push("Loading recent SEC filings...");
@@ -501,13 +525,13 @@ export function CorporateActionsView({
       }}
       onActivate={(row) => setOpenRowId(row.id)}
       onDetailKeyDown={handleDetailKeyDown}
-      rootBefore={sourceNotice && rows.length > 0 ? (
-        <Box
-          height={1}
-          paddingX={1}
-          {...(sourceNotice.failed ? { "data-gloom-status": "error" } : {})}
-        >
-          <Text fg={sourceNotice.failed ? colors.negative : colors.textDim}>{sourceNotice.text}</Text>
+      rootBefore={rows.length > 0 ? (
+        <Box flexDirection="column" paddingX={1}>
+          {sourceNotice && <Box {...(sourceNotice.failed ? { "data-gloom-status": "error" } : {})}>
+            <Prose width={width - 2} color={sourceNotice.failed ? colors.negative : colors.textDim} text={sourceNotice.text} />
+          </Box>}
+          {rows.some((row) => row.status === "Earnings") && <Prose width={width - 2} color={colors.textDim}
+            text="Event EPS and consensus use an unspecified accounting basis; TTM uses statements. Period ends are not announcement dates. Open a row for source details." />}
         </Box>
       ) : undefined}
       rootWidth={width}

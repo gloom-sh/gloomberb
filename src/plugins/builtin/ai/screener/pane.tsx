@@ -330,7 +330,6 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
     return true;
   }, [activateTicker, cursorSymbol]);
 
-  const contentHeight = Math.max(height - 3, 4);
   const editorProvider = editorState ? getAiProvider(editorState.providerId, providers) : null;
   const refreshActiveTab = useCallback(() => {
     if (!activeTab || isRunningActiveTab) return;
@@ -415,7 +414,6 @@ export function AiScreenerPane({ focused, width, height }: PaneProps) {
           activeTab={activeTab}
           columnContext={columnContext}
           columns={columns}
-          contentHeight={contentHeight}
           cursorSymbol={cursorSymbol}
           financialsMap={financialsMap}
           focused={focused}

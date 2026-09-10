@@ -53,6 +53,24 @@ function args(options: Record<string, string | number | boolean>): HeadlessPaneL
 const context = {} as HeadlessPaneContext;
 
 describe("earnings estimates headless", () => {
+  test("all excludes cash actions and reported excludes pending announcements and statement TTM", async () => {
+    const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({ ...sources, actions: { ...sources.actions!,
+      dividends: [{ exDate: "2026-07-01", amount: 1 }],
+      earnings: [...sources.actions!.earnings, { date: "2026-10-01", epsEstimate: 1 }],
+    } }) });
+    const all = await definition.load(args({ kind: "all" }), context);
+    expect(all.rows.some((row) => row.status === "Dividend")).toBe(false);
+    const reported = await definition.load(args({ kind: "reported" }), context);
+    expect(reported.rows).toHaveLength(1);
+    expect(reported.rows[0]).toMatchObject({ epsActual: 0.48, epsEstimate: 0.45, epsDifference: 0.03, surprisePercent: 6.67 });
+  });
+
+  test("stale source rows remain usable while reporting incomplete coverage", async () => {
+    const definition = createEarningsEstimatesHeadless({ loadSources: async () => ({ ...sources, actions: { ...sources.actions!, stale: true } }) });
+    const result = await definition.load(args({ kind: "all" }), context);
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.errors?.join(" ")).toContain("stale");
+  });
   test("maps the shared event model into estimate rows", async () => {
     const definition = createEarningsEstimatesHeadless({
       loadSources: async () => sources,

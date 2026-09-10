@@ -7,6 +7,10 @@ import {
 } from "./contract";
 
 describe("AI screener helpers", () => {
+  test("malformed candidates are not reported as a successful empty screen", () => {
+    expect(() => parseScreenerResponse('{"tickers":[{"reason":"missing symbol"}]}')).toThrow("malformed ticker candidates");
+    expect(parseScreenerResponse('{"tickers":[]}').tickers).toEqual([]);
+  });
   test("includes the model override in run identity", () => {
     expect(getScreenerPromptSignature("quality", "codex", "gpt-a"))
       .not.toBe(getScreenerPromptSignature("quality", "codex", "gpt-b"));

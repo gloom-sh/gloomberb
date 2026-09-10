@@ -9,7 +9,7 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
-import { formatEventMetric, buildEventRows, type EventRow } from "./event-model";
+import { formatEventMetric, buildEventRows, eventSourceNotice, type EventRow } from "./event-model";
 
 const ESTIMATE_COLUMNS = [
   { key: "date", header: "Date" },
@@ -83,9 +83,9 @@ const defaultDependencies: EarningsEstimatesHeadlessDependencies = {
 };
 
 function matchesKind(row: EventRow, kind: string): boolean {
-  if (kind === "all") return true;
+  if (kind === "all") return ["Earnings", "Q Est", "FY Est", "TTM"].includes(row.status);
   if (kind === "estimates") return row.status === "Q Est" || row.status === "FY Est";
-  return row.status === "Earnings" || row.status === "TTM";
+  return row.status === "Earnings" && row.earningsState === "reported";
 }
 
 export function projectEarningsEstimatesHeadless(
@@ -101,17 +101,28 @@ export function projectEarningsEstimatesHeadless(
     sources.currency,
   ).filter((row) => matchesKind(row, kind));
   const rows = matching.slice(0, limit).map((row) => ({ ...row }));
+  const notice = eventSourceNotice({ variant: "earnings-estimates", symbol: args.symbols[0] ?? String(args.argument ?? ""),
+    actions: sources.actions, estimates: sources.estimates,
+    actionsError: sources.actions ? null : "Source unavailable", estimatesError: sources.estimates ? null : "Source unavailable",
+  });
+  const errors = [...(sources.errors ?? []), ...(notice?.failed ? [notice.text] : [])];
+  const unmatchedReportedPeriods = matching.filter((row) => row.earningsState === "reported" && !row.fiscalPeriodEnd).map((row) => row.date);
+  if (unmatchedReportedPeriods.length) errors.push(`No statement period identified for ${unmatchedReportedPeriods.length} reported earnings row(s); quarterly revenue is unavailable.`);
 
   return {
     columns: ESTIMATE_COLUMNS,
     rows,
-    errors: sources.errors?.length ? sources.errors : undefined,
+    errors: errors.length ? errors : undefined,
     metadata: {
       currency: sources.currency,
       kind,
       total: matching.length,
       returned: rows.length,
       truncated: rows.length < matching.length,
+      coverageNote: notice?.text,
+      epsBasis: "Provider EPS and consensus may be adjusted; accounting basis is unspecified. TTM EPS comes from statements.",
+      dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
+      unmatchedReportedPeriods,
     },
   };
 }
