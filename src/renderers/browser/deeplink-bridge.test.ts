@@ -10,7 +10,7 @@ afterEach(() => {
 
 describe("browser social share handoff", () => {
   test("preserves the incoming ticker while the previous workspace restores", () => {
-    const location = { search: "?ticker=NVDA&tab=earnings-calls" };
+    const location = { search: "?ticker=VOD&exchange=LSE&tab=earnings-calls" };
     Object.defineProperty(globalThis, "window", { configurable: true, value: {
       location, addEventListener() {}, removeEventListener() {},
     } });
@@ -18,7 +18,7 @@ describe("browser social share handoff", () => {
     location.search = "?ticker=AAPL&tab=overview";
     const seen: string[] = [];
     bridge.subscribe(({ url }) => seen.push(url));
-    expect(seen).toEqual(["gloomberb://ticker/NVDA?tab=earnings-calls"]);
+    expect(seen).toEqual(["gloomberb://ticker/VOD%3AXLON?tab=earnings-calls"]);
   });
   test("maps a valid pane share query to the common deep-link runtime", () => {
     const id = "0123456789abcdef0123456789abcdef";
