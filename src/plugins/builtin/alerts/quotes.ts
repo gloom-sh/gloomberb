@@ -28,8 +28,8 @@ export async function resolveAlertQuote(
   return {
     ...quote,
     price: display.price,
-    change: display.change,
-    changePercent: display.changePercent,
+    change: display.change ?? Number.NaN,
+    changePercent: display.changePercent ?? Number.NaN,
   };
 }
 

@@ -170,7 +170,7 @@ export function OverviewTab({
                   {formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, { assetCategory: ticker.metadata.assetCategory })}
                 </Text>
                 <Text fg={priceColor(quote.preMarketChange ?? 0)}>
-                  {formatSignedMarketPrice(quote.preMarketChange ?? 0, { assetCategory: ticker.metadata.assetCategory })} ({formatPercentRaw(quote.preMarketChangePercent ?? 0)})
+                  {formatSignedMarketPrice(quote.preMarketChange, { assetCategory: ticker.metadata.assetCategory })} ({formatPercentRaw(quote.preMarketChangePercent)})
                 </Text>
               </Box>
             )}
@@ -181,7 +181,7 @@ export function OverviewTab({
                   {formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, { assetCategory: ticker.metadata.assetCategory })}
                 </Text>
                 <Text fg={priceColor(quote.postMarketChange ?? 0)}>
-                  {formatSignedMarketPrice(quote.postMarketChange ?? 0, { assetCategory: ticker.metadata.assetCategory })} ({formatPercentRaw(quote.postMarketChangePercent ?? 0)})
+                  {formatSignedMarketPrice(quote.postMarketChange, { assetCategory: ticker.metadata.assetCategory })} ({formatPercentRaw(quote.postMarketChangePercent)})
                 </Text>
               </Box>
             )}

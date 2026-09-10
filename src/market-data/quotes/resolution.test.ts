@@ -5,7 +5,7 @@ import {
   resolveTickerFinancialsQuoteState,
   upsertQuoteContributionMap,
 } from "./resolution";
-import { normalizeQuoteContribution } from "./contributions";
+import { mergeQuoteContribution, normalizeQuoteContribution } from "./contributions";
 
 describe("quote-resolution", () => {
   test("keeps actual trade price and timestamp paired with the selected price provider", () => {
@@ -517,4 +517,44 @@ describe("quote-resolution", () => {
     expect(financials?.quote?.marketState).toBeUndefined();
     expect(financials?.quote?.provenance?.price?.providerId).toBe("ibkr");
   });
+});
+
+
+test("live after-hours prices never inherit the daily loss as their session return", () => {
+  const base = { symbol: "NVDA", providerId: "gloomberb-cloud", dataSource: "live" as const,
+    marketState: "POST" as const, price: 218.47, currency: "USD", previousClose: 223.67,
+    change: -5.2, changePercent: -2.324853578933245,
+    exchangeName: "NASDAQ", lastUpdated: Date.parse("2026-09-10T20:30:00Z") };
+  const noClose = normalizeQuoteContribution(base)!;
+  expect(noClose.postMarketPrice).toBe(218.47);
+  expect(noClose.postMarketChange).toBeUndefined();
+  expect(noClose.postMarketChangePercent).toBeUndefined();
+  const reported = normalizeQuoteContribution({ ...base, regularClose: 218.36, regularCloseSessionDate: "2026-09-10",
+    postMarketPrice: 218.47, postMarketChange: 0.11, postMarketChangePercent: 0.0503755266532 })!;
+  const canonical = resolveCanonicalQuote({ cloud: reported }, base.lastUpdated).quote!;
+  expect(canonical.change).toBeCloseTo(-5.2, 8);
+  expect(canonical.postMarketChange).toBe(0.11);
+  expect(canonical.regularClose).toBe(218.36);
+  for (const change of [{}, { currency: "EUR" }, { symbol: "ASML", exchangeName: "AMS" },
+    { lastUpdated: base.lastUpdated + 86400000 }]) {
+    const next = mergeQuoteContribution(reported, { ...base, ...change, marketState: undefined, price: 219 });
+    expect(next.postMarketPrice).toBe(219);
+    expect(next.postMarketChange).toBeUndefined();
+    expect(next.postMarketChangePercent).toBeUndefined();
+    expect(next.regularClose).toBeUndefined();
+    expect(next.regularCloseSessionDate).toBeUndefined();
+  }
+});
+
+test("a different price provider cannot inherit a closing-price anchor", () => {
+  const now = Date.parse("2026-09-10T20:30:00Z");
+  const result = resolveCanonicalQuote({
+    cloud: { symbol: "NVDA", providerId: "gloomberb-cloud", dataSource: "delayed", price: 218.47, currency: "USD",
+      change: -5.2, changePercent: -2.32, lastUpdated: now - 900000, regularClose: 218.36, regularCloseSessionDate: "2026-09-10" },
+    ibkr: { symbol: "NVDA", providerId: "ibkr", dataSource: "live", price: 219, currency: "USD",
+      change: -4.67, changePercent: -2.08, lastUpdated: now },
+  }, now).quote!;
+  expect(result.price).toBe(219);
+  expect(result.regularClose).toBeUndefined();
+  expect(result.regularCloseSessionDate).toBeUndefined();
 });

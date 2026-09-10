@@ -14,7 +14,7 @@ export function formatSignedCurrency(value: number, currency: string): string {
   return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
 }
 
-export function formatSignedPercentRaw(value: number): string {
+export function formatSignedPercentRaw(value: number | undefined): string {
   return formatPercentRaw(value);
 }
 

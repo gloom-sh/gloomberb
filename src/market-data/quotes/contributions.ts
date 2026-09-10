@@ -69,8 +69,9 @@ export function finalizeSessionFields(
       preMarketChange: undefined,
       preMarketChangePercent: undefined,
       postMarketPrice: quote.postMarketPrice ?? (canProjectSessionPrice ? quote.price : undefined),
-      postMarketChange: quote.postMarketChange ?? (canProjectSessionPrice ? quote.change : undefined),
-      postMarketChangePercent: quote.postMarketChangePercent ?? (canProjectSessionPrice ? quote.changePercent : undefined),
+      // A daily move uses the previous day's close, not the after-hours baseline.
+      postMarketChange: quote.postMarketChange,
+      postMarketChangePercent: quote.postMarketChangePercent,
     };
   }
 
@@ -128,6 +129,10 @@ export function mergeQuoteContribution(
   const merged: QuoteContribution = {
     ...current,
     ...reconcileQuoteDayRange(next, current),
+    // Close provenance belongs to this observation; never borrow an anchor
+    // from another session, listing or currency when a new quote omits it.
+    regularClose: next.regularClose,
+    regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
   };
 
   if (next.marketState == null && current.marketState != null) {
@@ -146,8 +151,9 @@ export function mergeQuoteContribution(
       merged.preMarketChangePercent = next.preMarketChangePercent ?? (canProjectNextSessionPrice ? next.changePercent : current.preMarketChangePercent);
     } else {
       merged.postMarketPrice = next.postMarketPrice ?? (canProjectNextSessionPrice ? next.price : current.postMarketPrice);
-      merged.postMarketChange = next.postMarketChange ?? (canProjectNextSessionPrice ? next.change : current.postMarketChange);
-      merged.postMarketChangePercent = next.postMarketChangePercent ?? (canProjectNextSessionPrice ? next.changePercent : current.postMarketChangePercent);
+      const changesPostPrice = next.postMarketPrice != null || canProjectNextSessionPrice;
+      merged.postMarketChange = next.postMarketChange ?? (changesPostPrice ? undefined : current.postMarketChange);
+      merged.postMarketChangePercent = next.postMarketChangePercent ?? (changesPostPrice ? undefined : current.postMarketChangePercent);
     }
   }
 

@@ -45,6 +45,7 @@ export function mapQuote(
     price: normalizePriceValueByDivisor(quote.price, divisor) ?? quote.price,
     change: normalizePriceValueByDivisor(quote.change, divisor) ?? quote.change,
     previousClose: normalizePriceValueByDivisor(quote.previousClose, divisor),
+    regularClose: normalizePriceValueByDivisor(quote.regularClose, divisor),
     high52w: normalizePriceValueByDivisor(quote.high52w, divisor),
     low52w: normalizePriceValueByDivisor(quote.low52w, divisor),
     bid: normalizePriceValueByDivisor(quote.bid, divisor),

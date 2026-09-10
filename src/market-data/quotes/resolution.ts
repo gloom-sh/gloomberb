@@ -442,6 +442,8 @@ export function resolveCanonicalQuote(
     change: Number(resolved.change ?? priceProvider?.change ?? 0),
     changePercent: Number(resolved.changePercent ?? priceProvider?.changePercent ?? 0),
     previousClose: resolved.previousClose as Quote["previousClose"],
+    regularClose: priceProvider?.regularClose,
+    regularCloseSessionDate: priceProvider?.regularClose != null ? priceProvider.regularCloseSessionDate : undefined,
     changeSessionDate: resolved.changeSessionDate as Quote["changeSessionDate"],
     high52w: resolved.high52w as Quote["high52w"],
     low52w: resolved.low52w as Quote["low52w"],

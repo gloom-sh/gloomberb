@@ -261,13 +261,13 @@ export async function buildTickerReport({
   appendMetricSection(lines, "Extended Hours", [
     ["Pre-Market", quote.preMarketPrice != null
       ? colorBySign(
-        `${formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, { assetCategory: tickerFile?.metadata.assetCategory })} (${formatSignedPercentRaw(quote.preMarketChangePercent ?? 0)})`,
+        `${formatMarketPriceWithCurrency(quote.preMarketPrice, quote.currency, { assetCategory: tickerFile?.metadata.assetCategory })} (${quote.preMarketChangePercent != null ? formatSignedPercentRaw(quote.preMarketChangePercent) : "—"})`,
         quote.preMarketChange ?? 0,
       )
       : "—"],
     ["After Hours", quote.postMarketPrice != null
       ? colorBySign(
-        `${formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, { assetCategory: tickerFile?.metadata.assetCategory })} (${formatSignedPercentRaw(quote.postMarketChangePercent ?? 0)})`,
+        `${formatMarketPriceWithCurrency(quote.postMarketPrice, quote.currency, { assetCategory: tickerFile?.metadata.assetCategory })} (${quote.postMarketChangePercent != null ? formatSignedPercentRaw(quote.postMarketChangePercent) : "—"})`,
         quote.postMarketChange ?? 0,
       )
       : "—"],

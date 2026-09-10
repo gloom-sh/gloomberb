@@ -87,7 +87,7 @@ export function useMarketSummary(): MarketSummary {
   }, [appActive]);
 
   const activeSpyQuote = getActiveQuoteDisplay(spyQuote);
-  const spyColor = activeSpyQuote ? priceColor(activeSpyQuote.change, colors) : colors.textDim;
+  const spyColor = activeSpyQuote?.change != null ? priceColor(activeSpyQuote.change, colors) : colors.textDim;
   const spyText = activeSpyQuote
     ? `SPY ${formatMarketPrice(activeSpyQuote.price, { assetCategory: "ETF" })} ${formatPercentRaw(activeSpyQuote.changePercent)}`
     : "SPY —";
