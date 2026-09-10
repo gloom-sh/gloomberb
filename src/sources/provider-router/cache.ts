@@ -1,12 +1,13 @@
 import type { CachedResourceRecord, ResourceStore } from "../../data/resource-store";
 import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
-import type { PricePoint } from "../../types/financials";
+import type { PricePoint, TickerFinancials } from "../../types/financials";
 import type { CachePolicy, CachePolicyMap } from "../../types/persistence";
 import { canonicalExchange } from "../../utils/exchanges";
 import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 
 const MARKET_NAMESPACE = "market";
+const FINANCIALS_SCHEMA_VERSION = 2;
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -103,6 +104,7 @@ export function cacheRouterResource<T>(
     value,
     {
       cachePolicy,
+      ...(kind === "financials" ? { schemaVersion: FINANCIALS_SCHEMA_VERSION } : {}),
     },
   );
 }
@@ -142,6 +144,13 @@ export function listCachedResources<T>(
     variantKeys,
     sourceKeys,
     allowExpired,
+  }).filter((record) => {
+    if (kind !== "financials" || record.schemaVersion >= FINANCIALS_SCHEMA_VERSION) return true;
+    // Legacy SEC-supplemented annuals mixed quarter facts and fallback
+    // concepts. Their period durations cannot be reconstructed from cache.
+    // Refresh those records; unrelated quote/history/company caches remain usable.
+    const value = record.value as TickerFinancials;
+    return !value.annualStatements?.some((row) => row.availableAt || Object.keys(row.fieldAvailability ?? {}).length > 0);
   });
   if (records.length === 0) return [];
 

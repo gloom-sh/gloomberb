@@ -56,6 +56,7 @@ type LookupEntry = {
 };
 
 type CompanyFactsEntry = {
+  tagPriority?: number;
   start?: string;
   end?: string;
   val?: number;
@@ -443,6 +444,11 @@ function shouldReplaceCompanyFact(
   if (!selected) return true;
   const left = candidate;
   const right = selected;
+  // Ordered tags are fallback concepts, not interchangeable restatements.
+  // For example ProfitLoss includes noncontrolling interests while the
+  // preferred NetIncomeLoss reports income attributable to the parent.
+  const priorityDiff = (left.tagPriority ?? 0) - (right.tagPriority ?? 0);
+  if (priorityDiff !== 0) return priorityDiff < 0;
   const leftFiled = companyFactsFiledRank(left.filed);
   const rightFiled = companyFactsFiledRank(right.filed);
   const filedDiff = leftFiled - rightFiled;
@@ -468,9 +474,20 @@ function compareCompanyFactsChronologically(
     || String(left.frame ?? "").localeCompare(String(right.frame ?? ""));
 }
 
-function isAnnualCompanyFact(entry: CompanyFactsEntry): boolean {
+function isAnnualFiling(entry: CompanyFactsEntry): boolean {
   const form = normalize(entry.form);
-  return (form === "10-K" || form === "10-K/A") && normalize(entry.fp ?? undefined) === "FY";
+  return form === "10-K" || form === "10-K/A";
+}
+
+function isAnnualDurationFact(entry: CompanyFactsEntry): boolean {
+  if (!isAnnualFiling(entry)) return false;
+  const start = entry.start ? Date.parse(`${entry.start}T00:00:00Z`) : Number.NaN;
+  const end = entry.end ? Date.parse(`${entry.end}T00:00:00Z`) : Number.NaN;
+  const days = (end - start) / 86_400_000;
+  // `fp` describes the filing, not each fact in it. A 10-K also repeats
+  // quarterly results. SEC annual frames allow 365 +/- 30 days, including
+  // 52/53-week fiscal years; shorter transition periods remain unclassified.
+  return Number.isFinite(days) && days >= 335 && days <= 395;
 }
 
 function isQuarterlyCompanyFact(entry: CompanyFactsEntry, periodType: "duration" | "instant"): boolean {
@@ -528,11 +545,14 @@ function fillCompanyFactsStatementRows(
   entries: CompanyFactsEntry[],
   field: CompanyFactsStatementField,
   period: "annual" | "quarterly",
+  annualPeriodEnds: ReadonlySet<string>,
 ): void {
   for (const entry of [...entries].sort(compareCompanyFactsChronologically)) {
     if (!entry.end || typeof entry.val !== "number") continue;
     const matchesPeriod = period === "annual"
-      ? isAnnualCompanyFact(entry)
+      ? field.periodType === "duration"
+        ? isAnnualDurationFact(entry)
+        : isAnnualFiling(entry) && annualPeriodEnds.has(entry.end)
       : isQuarterlyCompanyFact(entry, field.periodType);
     if (!matchesPeriod) continue;
     setCompanyFactValue(
@@ -577,12 +597,21 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
   const quarterlyRows = new Map<string, FinancialStatement>();
   const annualSelectedFacts = new Map<string, CompanyFactsEntry>();
   const quarterlySelectedFacts = new Map<string, CompanyFactsEntry>();
+  const fieldEntries = COMPANY_FACTS_STATEMENT_FIELDS.map((field) => ({
+    field,
+    entries: field.tags.flatMap((tag, tagPriority) => companyFactsEntries(payload, tag, field.units)
+      .map((entry) => ({ ...entry, tagPriority }))),
+  }));
+  // Balance-sheet facts have no duration. Anchor their dates to actual annual
+  // periods, so quarterly comparative snapshots in a 10-K stay quarterly.
+  const annualPeriodEnds = new Set(fieldEntries.flatMap(({ field, entries }) => field.periodType === "duration"
+    ? entries.filter(isAnnualDurationFact).map((entry) => entry.end!)
+    : []));
 
-  for (const field of COMPANY_FACTS_STATEMENT_FIELDS) {
-    const entries = field.tags.flatMap((tag) => companyFactsEntries(payload, tag, field.units));
+  for (const { field, entries } of fieldEntries) {
     if (entries.length === 0) continue;
-    fillCompanyFactsStatementRows(annualRows, annualSelectedFacts, entries, field, "annual");
-    fillCompanyFactsStatementRows(quarterlyRows, quarterlySelectedFacts, entries, field, "quarterly");
+    fillCompanyFactsStatementRows(annualRows, annualSelectedFacts, entries, field, "annual", annualPeriodEnds);
+    fillCompanyFactsStatementRows(quarterlyRows, quarterlySelectedFacts, entries, field, "quarterly", annualPeriodEnds);
   }
 
   return {
