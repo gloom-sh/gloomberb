@@ -418,7 +418,18 @@ export interface PricePoint {
   volume?: number;
 }
 
+export interface StatementHistoryAttempt {
+  mode: "extended";
+  source: "sec";
+  status: "available" | "unsupported" | "retryable-failure";
+  fetchedAt: string;
+  attemptedAt?: string;
+  cik?: string;
+  reason?: string;
+}
+
 export interface TickerFinancials {
+  statementHistory?: StatementHistoryAttempt;
   financialCurrency?: string;
   quote?: Quote;
   quoteContributions?: QuoteContributionMap;

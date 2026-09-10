@@ -910,16 +910,29 @@ export async function resolveChartSpecData(
   const initialVisibleBounds = requestedBounds(spec, referenceNow);
 
   const loadFinancials = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
-    const key = instrumentKey(source);
+    const fieldId = getTimeSeriesField(source.fieldId)?.id ?? source.fieldId;
+    // Calendar-window research needs the same full source bundle as a period
+    // count. Current forward multiples have no historical statement series.
+    const statementHistory = /^(fundamental|valuation)\./.test(fieldId)
+      && fieldId !== "valuation.forwardPE" && fieldId !== "valuation.pegRatio"
+      ? "extended" as const : undefined;
+    const key = `${instrumentKey(source)}|history:${statementHistory ?? "default"}`;
     let pending = cache.financialsByInstrument.get(key);
     if (!pending) {
       pending = sources.dataProvider!
         .getTickerFinancials(
           source.instrument.symbol,
           source.instrument.exchange ?? "",
-          requestContext(source),
+          { ...requestContext(source), statementHistory },
         )
-        .catch(() => null);
+        .then((value) => {
+          if (value.statementHistory?.status === "retryable-failure") {
+            warnings.push(`${source.instrument.symbol}: extended SEC history is temporarily unavailable; retained observations may be from an earlier retrieval.`);
+          }
+          if (statementHistory && (!value.statementHistory || value.statementHistory.status === "retryable-failure")) cache.financialsByInstrument.delete(key);
+          return value;
+        })
+        .catch(() => { cache.financialsByInstrument.delete(key); return null; });
       cache.financialsByInstrument.set(key, pending);
     }
     return pending;

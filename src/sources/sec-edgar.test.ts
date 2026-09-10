@@ -140,6 +140,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       NetIncomeLoss: { units: { USD: [{ ...earlier, accn: "0000909832-24-000050", filed: "2024-10-20", val: 10 }] } },
     } } });
     expect(statements.annualStatements[0]).toMatchObject({ date: "2024-09-01", dateSource: "sec",
+      currency: "USD",
       dateEvidence: { accessionNumber: earlier.accn, filed: earlier.filed, startDate: earlier.start },
       availableAt: "2024-10-20", fieldAvailability: { totalRevenue: "2024-10-09", netIncome: "2024-10-20" } });
   });
@@ -251,6 +252,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
     expect(statements.annualStatements).toEqual([{
       date: "2020-12-31",
       dateSource: "sec",
+      currency: "USD",
       availableAt: "2020-12-31",
       fieldAvailability: {
         totalRevenue: "2020-12-31",
@@ -271,6 +273,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       {
         date: "2021-03-31",
         dateSource: "sec",
+      currency: "USD",
         availableAt: "2021-03-31",
         fieldAvailability: {
           totalRevenue: "2021-03-31",
@@ -290,6 +293,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       {
         date: "2021-06-30",
         dateSource: "sec",
+      currency: "USD",
         availableAt: "2021-06-30",
         fieldAvailability: { totalRevenue: "2021-06-30" },
         totalRevenue: 40,
@@ -339,6 +343,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
     expect(parseCompanyFactsFinancialStatements(payload).quarterlyStatements).toEqual([{
       date: "2025-03-29",
       dateSource: "sec",
+      currency: "USD",
       availableAt: "2025-05-02",
       fieldAvailability: { totalRevenue: "2025-05-02" },
       totalRevenue: 95_359,
@@ -467,6 +472,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       {
         date: "2025-03-31",
         dateSource: "sec",
+      currency: "USD",
         availableAt: "2025-03-31",
         fieldAvailability: { totalRevenue: "2025-03-31", grossProfit: "2025-03-31" },
         totalRevenue: 100,
@@ -475,6 +481,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       {
         date: "2026-03-31",
         dateSource: "sec",
+      currency: "USD",
         availableAt: "2026-03-31",
         fieldAvailability: { totalRevenue: "2026-03-31", grossProfit: "2026-03-31" },
         totalRevenue: 200,
@@ -856,4 +863,22 @@ test("SEC acceptance timestamps preserve source values without inferring missing
   expect(rows.map((row) => row.acceptedAt?.toISOString())).toEqual([
     "2026-09-09T20:54:25.000Z", "2025-03-20T20:05:00.000Z", undefined, undefined,
   ]);
+});
+
+test("statement retrieval verifies the issuer and preserves class identity without borrowing issuer EPS", async () => {
+  const client = new SecEdgarClient() as any;
+  client.loadLookup = async () => new Map([["BRK-B", { cik: "0001067983" }]]);
+  const raw = {
+    cik: 1067983,
+    facts: { "us-gaap": {
+      Revenues: { units: { USD: [{ start: "2025-01-01", end: "2025-12-31", val: 100, form: "10-K", filed: "2026-02-15" }] } },
+      EarningsPerShareDiluted: { units: { "USD/shares": [{ start: "2025-01-01", end: "2025-12-31", val: 200, form: "10-K", filed: "2026-02-15" }] } },
+    } },
+  };
+  client.fetchJson = async () => raw;
+  const value = await client.getFinancialStatements("BRK.B");
+  expect(value.annualStatements[0]).toMatchObject({ currency: "USD", totalRevenue: 100 });
+  expect(value.annualStatements[0].eps).toBeUndefined();
+  client.fetchJson = async () => ({ ...raw, cik: 789019 });
+  await expect(client.getFinancialStatements("BRK.B")).rejects.toThrow("issuer mismatch");
 });

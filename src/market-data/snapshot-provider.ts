@@ -52,13 +52,13 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
   };
   const overrides: Partial<DataProvider> = {
     async getTickerFinancials(symbol, exchange, context) {
-      return financials(symbol, exchange) ?? fallback.getTickerFinancials(symbol, exchange, context);
+      return (context?.statementHistory === "extended" ? undefined : financials(symbol, exchange)) ?? fallback.getTickerFinancials(symbol, exchange, context);
     },
     getCachedFinancialsForTargets(targets, settings) {
       const captured = new Map<string, TickerFinancials>();
       const missing: CachedFinancialsTarget[] = [];
       for (const target of targets) {
-        const value = financials(target.symbol, target.exchange);
+        const value = target.statementHistory === "extended" ? undefined : financials(target.symbol, target.exchange);
         if (value) captured.set(target.symbol.trim().toUpperCase(), value);
         else missing.push(target);
       }
@@ -68,7 +68,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     },
     getTickerFinancialsBatch(targets, settings) {
       return seededBatch(targets, (target): TickerFinancialsBatchResult | undefined => {
-        const value = financials(target.symbol, target.exchange);
+        const value = target.statementHistory === "extended" ? undefined : financials(target.symbol, target.exchange);
         return value ? { target, financials: value } : undefined;
       }, (missing) => fallback.getTickerFinancialsBatch?.(missing, settings) ?? Promise.all(missing.map(async (target) => ({
         target, financials: await fallback.getTickerFinancials(target.symbol, target.exchange, target),

@@ -79,3 +79,15 @@ test("captured intraday data rejects other intervals and clips explicit windows 
   await expect(unavailable.getPriceHistory("AAPL", "NASDAQ", "1D")).rejects.toThrow("Session unavailable");
   await expect(unavailable.getDetailedPriceHistory!("AAPL", "NASDAQ", points[0]!.date, points[2]!.date, "1m")).rejects.toThrow("Session unavailable");
 });
+
+test("an ordinary captured snapshot cannot satisfy an explicit extended history request", async () => {
+ const captured = financials("MSFT", 100), extended = { ...captured, annualStatements: [{ date: "2010-06-30", totalRevenue: 100 }] };
+ let requests = 0;
+ const provider = createSnapshotDataProvider({ financials: [["MSFT:NASDAQ", captured]] }, createTestDataProvider({
+  async getTickerFinancials(_symbol, _exchange, context) { requests++; expect(context?.statementHistory).toBe("extended"); return extended; },
+ }));
+ expect(await provider.getTickerFinancials("MSFT", "NASDAQ")).toBe(captured);
+ expect(await provider.getTickerFinancials("MSFT", "NASDAQ", { statementHistory: "extended" })).toBe(extended);
+ expect((await provider.getTickerFinancialsBatch!([{ symbol: "MSFT", exchange: "NASDAQ", statementHistory: "extended" }]))[0]?.financials).toBe(extended);
+ expect(requests).toBe(2);
+});

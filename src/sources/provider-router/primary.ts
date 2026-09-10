@@ -1,3 +1,5 @@
+import { selectCachedResource } from "./cache";
+import { financialHistoryVariants, hasReusableExtendedHistory } from "./statement-history";
 import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
@@ -57,19 +59,25 @@ export class ProviderRouterPrimaryRoutes {
     context?: MarketDataRequestContext,
   ): Promise<SourceResult<TickerFinancials> | null> {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
-    const variantKey = this.options.getTickerVariantCandidates(exchange)[0] ?? "";
+    const variantKey = financialHistoryVariants(this.options.getTickerVariantCandidates(exchange), context)[0] ?? "";
     let primaryResult: SourceResult<TickerFinancials> | null = null;
 
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
         const rawValue = await provider.getTickerFinancials(ticker, exchange, context);
         const resolvedValue = resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(rawValue));
-        const value = resolvedValue ? dropUnusableProviderQuote(resolvedValue, exchange) : null;
+        let value = resolvedValue ? dropUnusableProviderQuote(resolvedValue, exchange) : null;
         if (!value) continue;
         const sourceKey = this.options.providerSourceKey(provider);
+        if (context?.statementHistory === "extended" && !hasReusableExtendedHistory(value)) {
+          const previous = selectCachedResource<TickerFinancials>(this.options.resources, "financials", entityKey, [variantKey], [sourceKey], true);
+          const attempt = value.statementHistory;
+          value = { ...mergeFinancials(value, previous?.value ?? null)!, statementHistory: attempt };
+        }
         const cacheValue = primaryResult
           ? {
             financialCurrency: value.financialCurrency,
+            statementHistory: value.statementHistory,
             annualStatements: value.annualStatements,
             quarterlyStatements: value.quarterlyStatements,
             priceHistory: [],
@@ -81,11 +89,13 @@ export class ProviderRouterPrimaryRoutes {
           variantKey,
           sourceKey,
           cacheValue,
-          this.options.resolveProviderPolicy("financials", provider),
+          context?.statementHistory === "extended" && !hasReusableExtendedHistory(value)
+            ? { staleMs: 60_000, expireMs: 60_000 }
+            : this.options.resolveProviderPolicy("financials", provider),
         );
         if (!primaryResult) {
           primaryResult = { sourceKey, value };
-          if (hasDetailedStatementRows(value) && hasDeepStatementHistory(value)) return primaryResult;
+          if (context?.statementHistory === "extended" ? value.statementHistory?.status === "available" : hasDetailedStatementRows(value) && hasDeepStatementHistory(value)) return primaryResult;
           continue;
         }
         if (!primaryResult.value.quote && value.quote) {
@@ -104,7 +114,7 @@ export class ProviderRouterPrimaryRoutes {
             sourceKey: primaryResult.sourceKey,
             value: mergeMissingStatementArrays(primaryResult.value, value),
           };
-          if (hasDetailedStatementRows(primaryResult.value) && hasDeepStatementHistory(primaryResult.value)) return primaryResult;
+          if (context?.statementHistory === "extended" ? primaryResult.value.statementHistory?.status === "available" : hasDetailedStatementRows(primaryResult.value) && hasDeepStatementHistory(primaryResult.value)) return primaryResult;
         }
       } catch (error) {
         if (shouldLogProviderError(error)) {

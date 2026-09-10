@@ -107,6 +107,7 @@ export function hasCachedTargetBrokerContext(target: CachedFinancialsTarget): bo
 
 export function contextFromCachedTarget(target: CachedFinancialsTarget): MarketDataRequestContext {
   return {
+    statementHistory: target.statementHistory,
     brokerId: target.brokerId,
     brokerInstanceId: target.brokerInstanceId,
     instrument: target.instrument ?? null,

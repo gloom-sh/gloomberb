@@ -208,10 +208,10 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     return true;
   }
 
-  async getTickerFinancials(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<TickerFinancials> {
+  async getTickerFinancials(ticker: string, exchange = "", context?: MarketDataRequestContext): Promise<TickerFinancials> {
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudFinancials(target.symbol, target.exchange);
+      const response = await apiClient.getCloudFinancials(target.symbol, target.exchange, context?.statementHistory);
       if (isStaleCloudResponse(response)) {
         throw createProviderMiss(`Cloud financials are stale for ${ticker}`);
       }
@@ -226,6 +226,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     targets: CachedFinancialsTarget[],
     options: { forceRefresh?: boolean } = {},
   ): Promise<TickerFinancialsBatchResult[]> {
+    if (targets.some((target) => target.statementHistory === "extended")) {
+      return Promise.all(targets.map(async (target) => {
+        try { return { target, financials: await this.getTickerFinancials(target.symbol, target.exchange, target) }; }
+        catch (error) { return { target, financials: null, error }; }
+      }));
+    }
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudFinancialsBatch(
         targets.map((target) => cloudInstrumentTarget(target.symbol, target.exchange)),

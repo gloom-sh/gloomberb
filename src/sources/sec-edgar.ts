@@ -492,6 +492,7 @@ function isAnnualDurationFact(entry: CompanyFactsEntry): boolean {
 }
 
 function isQuarterlyCompanyFact(entry: CompanyFactsEntry, periodType: "duration" | "instant"): boolean {
+  if (!/^(10-K|10-Q)(\/A)?$/.test(normalize(entry.form))) return false;
   if (periodType === "instant") {
     return /^CY\d{4}Q[1-4]I$/.test(entry.frame ?? "")
       || (
@@ -523,7 +524,7 @@ function setCompanyFactValue(
 ): void {
   const selectionKey = `${date}:${String(field)}`;
   if (!shouldReplaceCompanyFact(entry, selectedFacts.get(selectionKey))) return;
-  const row = rows.get(date) ?? { date, dateSource: "sec" };
+  const row = rows.get(date) ?? { date, dateSource: "sec", currency: "USD" };
   (row as unknown as Record<string, unknown>)[field] = value;
   if (entry.filed) {
     row.fieldAvailability = {
@@ -586,10 +587,8 @@ function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>, s
       statement.freeCashFlow = statement.operatingCashFlow + statement.capitalExpenditure;
       const operatingCashFlowAvailableAt = statement.fieldAvailability?.operatingCashFlow;
       const capitalExpenditureAvailableAt = statement.fieldAvailability?.capitalExpenditure;
-      const derivedAvailableAt = [operatingCashFlowAvailableAt, capitalExpenditureAvailableAt]
-        .filter((value): value is string => !!value)
-        .sort()
-        .at(-1);
+      const derivedAvailableAt = operatingCashFlowAvailableAt && capitalExpenditureAvailableAt
+        ? [operatingCashFlowAvailableAt, capitalExpenditureAvailableAt].sort().at(-1) : undefined;
       if (derivedAvailableAt) {
         statement.fieldAvailability = {
           ...(statement.fieldAvailability ?? {}),
@@ -597,6 +596,10 @@ function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>, s
         };
       }
     }
+    const numericFields = Object.keys(statement).filter((field) => typeof (statement as unknown as Record<string, unknown>)[field] === "number");
+    statement.fieldAvailability ??= {};
+    statement.availableAt = numericFields.every((field) => statement.fieldAvailability?.[field])
+      ? Object.values(statement.fieldAvailability).sort().at(-1) : undefined;
   }
   return statements;
 }
@@ -752,11 +755,19 @@ export class SecEdgarClient {
     if (!normalizedTicker) return null;
 
     const lookup = await this.loadLookup();
-    const entry = lookup.get(normalizedTicker);
+    const entry = lookup.get(normalizedTicker) ?? lookup.get(normalizedTicker.replace(/\./g, "-"));
     if (!entry) return null;
 
     const payload = await this.fetchJson<unknown>(`${COMPANY_FACTS_URL}/CIK${entry.cik}.json`);
-    return parseCompanyFactsFinancialStatements(payload);
+    if (zeroPadCik(asRecord(payload)?.cik) !== entry.cik) throw new Error("SEC companyfacts issuer mismatch");
+    const statements = parseCompanyFactsFinancialStatements(payload);
+    if (/[.-]/.test(normalizedTicker)) {
+      for (const row of [...statements.annualStatements, ...statements.quarterlyStatements]) {
+        delete row.eps;
+        if (row.fieldAvailability) delete row.fieldAvailability.eps;
+      }
+    }
+    return statements;
   }
 
   async getFilingDocuments(filing: SecFilingItem): Promise<SecFilingDocument[]> {
