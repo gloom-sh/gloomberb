@@ -2,6 +2,8 @@ import type {
   TickerSearchInstrumentClass,
   TickerSearchRankableItem,
 } from "./types";
+import { getYahooSymbol, tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
+import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
@@ -66,6 +68,7 @@ const ASSET_HINT_MAP: Record<string, TickerSearchInstrumentClass> = {
 const SAVED_MATCH_BONUS = 900;
 
 interface SearchQueryIntent {
+  rawQuery: string;
   normalizedQuery: string;
   compactQuery: string;
   companyQuery: string;
@@ -78,16 +81,68 @@ export function findExactTickerSearchMatch<T extends Pick<TickerSearchRankableIt
   items: T[],
   query: string,
 ): T | null {
+  if (isQualifiedTickerQuery(query)) {
+    return items.find((item) => normalizeTickerSymbol(item.symbol || item.label) === normalizeTickerSymbol(query))
+      ?? items.find((item) => matchesQualifiedTicker(item, query)) ?? null;
+  }
   const aliasForms = buildSymbolAliases(query);
   const normalizedAliases = new Set(aliasForms.map((value) => normalizeSearchText(value)));
   const compactAliases = new Set(aliasForms.map((value) => compactSearchText(value)));
 
-  return items.find((item) =>
+  return items.find((item) => !isExplicitMarketSymbol(item.symbol || item.label) &&
     getItemSearchAliases(item).some((alias) =>
       normalizedAliases.has(normalizeSearchText(alias))
       || compactAliases.has(compactSearchText(alias))
     )
   ) ?? null;
+}
+
+function isQualifiedTickerQuery(query: string): boolean {
+  const symbol = normalizeTickerSymbol(query);
+  return isExplicitMarketSymbol(symbol) || !!parsePublicTickerKey(symbol).exchange || tickerHasYahooSuffix(symbol);
+}
+
+/** Futures, currency pairs, and indices use punctuation as part of their identity. */
+export function isExplicitMarketSymbol(symbol: string): boolean {
+  return /[=^]/.test(symbol) || /^[A-Z]{3}\/[A-Z]{3}$/i.test(symbol.trim());
+}
+
+function forexPair(symbol: string): string | null {
+  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(symbol)) return symbol.replace("/", "");
+  if (/^[A-Z]{6}=X$/.test(symbol)) return symbol.slice(0, -2);
+  if (/^[A-Z]{3}=X$/.test(symbol)) return `USD${symbol.slice(0, -2)}`;
+  return null;
+}
+
+export function getForexQuoteCurrency(symbol: string): string | undefined {
+  return forexPair(parsePublicTickerKey(normalizeTickerSymbol(symbol)).symbol)?.slice(3);
+}
+
+/** Venue and market syntax must survive exact matching. Only explicit FX forms are equivalent. */
+function matchesQualifiedTicker(
+  item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>,
+  query: string,
+): boolean {
+  const normalized = normalizeTickerSymbol(query);
+  const symbol = normalizeTickerSymbol(item.symbol || item.label);
+  if (symbol === normalized) return true;
+  const requested = parsePublicTickerKey(normalized);
+  const candidate = parsePublicTickerKey(symbol);
+  const exchanges = [candidate.exchange, item.exchangeLabel, item.primaryExchangeLabel, item.right]
+    .filter((value): value is string => !!value);
+  if (requested.exchange) {
+    return candidate.symbol === requested.symbol
+      && exchanges.some((exchange) => canonicalExchange(exchange) === requested.exchange);
+  }
+  if (isExplicitMarketSymbol(requested.symbol)) {
+    const pair = forexPair(requested.symbol);
+    return candidate.symbol === requested.symbol || (pair != null && forexPair(candidate.symbol) === pair);
+  }
+  return exchanges.some((exchange) => getYahooSymbol(candidate.symbol, exchange).toUpperCase() === normalized);
+}
+
+function getTickerSearchListingKey(item: TickerSearchRankableItem): string {
+  return `${normalizeTickerSymbol(item.symbol || item.label)}|${canonicalExchange(item.exchangeLabel || item.primaryExchangeLabel || item.right)}`;
 }
 
 export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "id" | "label" | "detail" | "kind" | "category" | "right"> & Partial<TickerSearchRankableItem>>(
@@ -126,7 +181,8 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       );
       const aliasScore = getItemSearchAliases(item)
         .reduce((best, alias) => Math.max(best, scoreSearchAlias(intent, alias)), 0);
-      const textScore = labelScore + detailScore + aliasScore;
+      const textScore = labelScore + detailScore + aliasScore
+        + (isQualifiedTickerQuery(query) && matchesQualifiedTicker(item, query) ? 100_000 : 0);
       const saved = isSavedSearchItem(item);
       const explicitIntentScore = scoreAssetPreference(intent, item.instrumentClass)
         + scoreExchangePreference(intent, item);
@@ -151,13 +207,14 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   const matchedLocalSymbols = new Set(
     ranked
       .filter(({ item, textScore }) => textScore > 0 && item.kind === "ticker")
-      .map(({ normalizedSymbol }) => normalizedSymbol),
+      .map(({ item, normalizedSymbol }) => isQualifiedTickerQuery(query) ? getTickerSearchListingKey(item) : normalizedSymbol),
   );
 
   const filtered = ranked.filter(({ item, normalizedSymbol, textScore }) => {
     if (textScore <= 0) return false;
+    if (isExplicitMarketSymbol(query) && !isExplicitMarketSymbol(item.symbol || item.label)) return false;
     if (item.kind !== "search") return true;
-    return !matchedLocalSymbols.has(normalizedSymbol);
+    return !matchedLocalSymbols.has(isQualifiedTickerQuery(query) ? getTickerSearchListingKey(item) : normalizedSymbol);
   });
 
   type RankedEntry = (typeof ranked)[number];
@@ -267,6 +324,12 @@ export function normalizeTickerSymbol(symbol: string): string {
 export function buildSymbolAliases(symbol: string): string[] {
   const normalizedSymbol = normalizeTickerSymbol(symbol);
   if (!normalizedSymbol) return [];
+  if (isExplicitMarketSymbol(normalizedSymbol)) {
+    const pair = forexPair(normalizedSymbol);
+    return pair
+      ? [...new Set([normalizedSymbol, `${pair}=X`, `${pair.slice(0, 3)}/${pair.slice(3)}`])]
+      : [normalizedSymbol];
+  }
 
   const searchText = normalizeSearchText(normalizedSymbol);
   const aliases = new Set<string>([
@@ -312,6 +375,7 @@ function analyzeSearchQuery(query: string): SearchQueryIntent {
   const companyQuery = companyTokens.join(" ");
 
   return {
+    rawQuery: query,
     normalizedQuery,
     compactQuery,
     companyQuery,
@@ -376,6 +440,8 @@ function scoreSymbolMatchRank(
   intent: SearchQueryIntent,
   item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>,
 ): number {
+  if (isQualifiedTickerQuery(intent.rawQuery)) return matchesQualifiedTicker(item, intent.rawQuery) ? 4 : 0;
+  if (isExplicitMarketSymbol(item.symbol || item.label)) return 0;
   if (!intent.normalizedQuery && !intent.compactQuery) return 0;
   const displaySymbol = normalizeSearchText(item.symbol || item.label);
   const compactDisplaySymbol = compactSearchText(item.symbol || item.label);

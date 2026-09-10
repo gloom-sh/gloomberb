@@ -43,6 +43,10 @@ export function buildOverviewStats({
   toBase: CurrencyConverter;
 }): StatField[] {
   const stats: StatField[] = [];
+  const financialCurrency = fundamentals?.financialCurrency;
+  const money = (value: number) => financialCurrency
+    ? formatCompactCurrency(value, financialCurrency)
+    : formatCompact(value);
 
   if (quote?.volume != null) {
     stats.push({ label: "Volume", value: formatCompact(quote.volume) });
@@ -53,29 +57,29 @@ export function buildOverviewStats({
   if (fundamentals?.sharesOutstanding) {
     stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });
   }
-  if (fundamentals?.trailingPE) {
+  if (fundamentals?.trailingPE != null) {
     stats.push({ label: "P/E (TTM)", value: formatNumber(fundamentals.trailingPE, 1) });
   }
-  if (fundamentals?.forwardPE) {
+  if (fundamentals?.forwardPE != null) {
     stats.push({ label: "Fwd P/E", value: formatNumber(fundamentals.forwardPE, 1) });
   }
-  if (fundamentals?.eps) {
-    stats.push({ label: "EPS", value: formatCurrency(fundamentals.eps, quoteCurrency) });
+  if (fundamentals?.eps != null) {
+    stats.push({ label: "EPS", value: financialCurrency ? formatCurrency(fundamentals.eps, financialCurrency) : formatNumber(fundamentals.eps, 2) });
   }
-  if (fundamentals?.pegRatio) {
+  if (fundamentals?.pegRatio != null) {
     stats.push({ label: "PEG", value: formatNumber(fundamentals.pegRatio, 2) });
   }
   if (fundamentals?.dividendYield != null) {
     stats.push({ label: "Div Yield", value: formatPercent(fundamentals.dividendYield) });
   }
-  if (fundamentals?.revenue) {
-    stats.push({ label: "Revenue", value: formatCompact(fundamentals.revenue) });
+  if (fundamentals?.revenue != null) {
+    stats.push({ label: "Revenue", value: money(fundamentals.revenue) });
   }
-  if (fundamentals?.netIncome) {
-    stats.push({ label: "Net Income", value: formatCompact(fundamentals.netIncome) });
+  if (fundamentals?.netIncome != null) {
+    stats.push({ label: "Net Income", value: money(fundamentals.netIncome) });
   }
-  if (fundamentals?.freeCashFlow) {
-    stats.push({ label: "FCF", value: formatCompact(fundamentals.freeCashFlow) });
+  if (fundamentals?.freeCashFlow != null) {
+    stats.push({ label: "FCF", value: money(fundamentals.freeCashFlow) });
   }
   if (fundamentals?.operatingMargin != null) {
     stats.push({ label: "Op Margin", value: formatPercent(fundamentals.operatingMargin) });
@@ -90,8 +94,8 @@ export function buildOverviewStats({
       valueColor: priceColor(fundamentals.revenueGrowth),
     });
   }
-  if (fundamentals?.enterpriseValue) {
-    stats.push({ label: "EV", value: formatCompact(fundamentals.enterpriseValue) });
+  if (fundamentals?.enterpriseValue != null) {
+    stats.push({ label: "EV", value: formatCompactCurrency(fundamentals.enterpriseValue, quoteCurrency) });
   }
 
   return stats;

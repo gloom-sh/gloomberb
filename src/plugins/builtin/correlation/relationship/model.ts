@@ -4,6 +4,7 @@ import type { ScatterChartPoint } from "../../../../components/chart/static";
 import type { PaneSettingsDef, PaneTemplateCreateOptions } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { formatTickerListInput, parseTickerListInput } from "../../../../tickers/list";
+import { alignDailyCloses, dailyCloses, pearsonCorrelation } from "../compute";
 
 export type RelationshipRange = Extract<TimeRange, "1M" | "3M" | "6M" | "1Y" | "5Y" | "ALL">;
 
@@ -48,17 +49,6 @@ export interface RelationshipAnalysis {
   latestCorrelation: number | null;
 }
 
-function pricePointTime(point: PricePoint): number {
-  const value = point.date as Date | string | number;
-  return value instanceof Date ? value.getTime() : new Date(value).getTime();
-}
-
-function pricePointDateKey(point: PricePoint): string | null {
-  const timestamp = pricePointTime(point);
-  if (!Number.isFinite(timestamp)) return null;
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
-
 function syntheticChartPoint(date: Date, value: number): ProjectedChartPoint {
   return {
     date,
@@ -71,29 +61,11 @@ function syntheticChartPoint(date: Date, value: number): ProjectedChartPoint {
 }
 
 function alignRelationshipPrices(leftPoints: PricePoint[], rightPoints: PricePoint[]): RelationshipAlignedPoint[] {
-  const rightByDate = new Map<string, PricePoint>();
-  for (const point of rightPoints) {
-    const dateKey = pricePointDateKey(point);
-    if (!dateKey || !Number.isFinite(point.close) || point.close <= 0) continue;
-    rightByDate.set(dateKey, point);
-  }
-
-  return [...leftPoints]
-    .sort((left, right) => pricePointTime(left) - pricePointTime(right))
-    .flatMap((leftPoint): RelationshipAlignedPoint[] => {
-      const dateKey = pricePointDateKey(leftPoint);
-      if (!dateKey || !Number.isFinite(leftPoint.close) || leftPoint.close <= 0) return [];
-      const rightPoint = rightByDate.get(dateKey);
-      if (!rightPoint || !Number.isFinite(rightPoint.close) || rightPoint.close <= 0) return [];
-      const timestamp = pricePointTime(leftPoint);
-      return [{
-        date: new Date(timestamp),
-        dateKey,
-        leftClose: leftPoint.close,
-        rightClose: rightPoint.close,
-        ratio: leftPoint.close / rightPoint.close,
-      }];
-    });
+  return alignDailyCloses(dailyCloses(leftPoints), dailyCloses(rightPoints)).map((point) => ({
+    ...point,
+    date: new Date(`${point.dateKey}T00:00:00Z`),
+    ratio: point.leftClose / point.rightClose,
+  }));
 }
 
 function buildRelationshipReturns(aligned: RelationshipAlignedPoint[]): RelationshipReturnPoint[] {
@@ -115,37 +87,14 @@ function buildRelationshipReturns(aligned: RelationshipAlignedPoint[]): Relation
   return returns;
 }
 
-function pearson(x: number[], y: number[], minObservations = 5): number | null {
-  const n = Math.min(x.length, y.length);
-  if (n < minObservations) return null;
-
-  let sumX = 0;
-  let sumY = 0;
-  let sumXY = 0;
-  let sumX2 = 0;
-  let sumY2 = 0;
-  for (let i = 0; i < n; i++) {
-    const xValue = x[i]!;
-    const yValue = y[i]!;
-    sumX += xValue;
-    sumY += yValue;
-    sumXY += xValue * yValue;
-    sumX2 += xValue * xValue;
-    sumY2 += yValue * yValue;
-  }
-
-  const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-  return denominator === 0 ? null : (n * sumXY - sumX * sumY) / denominator;
-}
-
 function buildRollingCorrelationPoints(
   returns: RelationshipReturnPoint[],
   windowSize: number,
 ): ProjectedChartPoint[] {
   const points: ProjectedChartPoint[] = [];
-  for (let index = 0; index < returns.length; index++) {
-    const window = returns.slice(Math.max(0, index - windowSize + 1), index + 1);
-    const correlation = pearson(
+  for (let index = windowSize - 1; index < returns.length; index++) {
+    const window = returns.slice(index - windowSize + 1, index + 1);
+    const correlation = pearsonCorrelation(
       window.map((entry) => entry.rightReturn),
       window.map((entry) => entry.leftReturn),
       5,
@@ -175,7 +124,7 @@ function computeRelationshipRegression(returns: RelationshipReturnPoint[]): Rela
 
   const beta = numerator / denominator;
   const alpha = meanY - beta * meanX;
-  const r = pearson(x, y, 5);
+  const r = pearsonCorrelation(x, y, 5);
   if (r === null) return null;
 
   let residualSumSquares = 0;

@@ -8,7 +8,7 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
-import { usePaneInstance } from "../../../state/app/context";
+import { useAppSelector, usePaneInstance } from "../../../state/app/context";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { colors, priceColor } from "../../../theme/colors";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
@@ -16,7 +16,8 @@ import { formatCompact, formatCurrency, formatNumber, formatPercent, formatPerce
 import { usePluginTickerActions } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo, useClampSelectedIndex } from "../shared/table-pane";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
-import { relativeValuationValues } from "./relative-valuation-model";
+import { useFxRatesMap } from "../../../market-data/hooks";
+import { comparableMarketCap, relativeValuationValues } from "./relative-valuation-model";
 
 type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency">;
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
@@ -33,17 +34,17 @@ function relativeSymbolsFromPane(symbol: string | null, paneSettings: Record<str
   return symbol ? [symbol] : [];
 }
 
-function buildRelativeColumns(width: number): RelativeColumn[] {
+function buildRelativeColumns(width: number, baseCurrency: string): RelativeColumn[] {
   const symbolWidth = 8;
   const priceWidth = 10;
   const pctWidth = 8;
-  const capWidth = 9;
+  const capWidth = 12;
   const metricWidth = 8;
   return [
     { id: "symbol", label: "TICKER", width: symbolWidth, align: "left" },
     { id: "price", label: "LAST", width: priceWidth, align: "right" },
     { id: "changePercent", label: "CHG%", width: pctWidth, align: "right" },
-    { id: "marketCap", label: "MCAP", width: capWidth, align: "right" },
+    { id: "marketCap", label: `MCAP ${baseCurrency}`, width: capWidth, align: "right" },
     { id: "trailingPE", label: "P/E", width: metricWidth, align: "right" },
     { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
     { id: "evSales", label: "EV/S", width: metricWidth, align: "right" },
@@ -93,23 +94,27 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const [error, setError] = useState<string | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
-  const columns = useMemo(() => buildRelativeColumns(width), [width]);
+  const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.currency)]);
+  const columns = useMemo(() => buildRelativeColumns(width, baseCurrency), [width, baseCurrency]);
   const fetchGenRef = useRef(0);
 
   const reload = useCallback((forceRefresh = false) => {
+    fetchGenRef.current += 1;
+    const gen = fetchGenRef.current;
     if (symbols.length === 0) {
       setRows([]);
+      setLoading(false);
       setError("No tickers selected");
       return;
     }
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator) {
       setRows([]);
+      setLoading(false);
       setError("Market data unavailable");
       return;
     }
-    fetchGenRef.current += 1;
-    const gen = fetchGenRef.current;
     setLoading(true);
     setError(null);
     // One batched snapshot request instead of one request per peer.
@@ -136,9 +141,14 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     reload(false);
+    return () => { fetchGenRef.current += 1; };
   }, [reload]);
 
-  const sortedRows = useMemo(() => sortRelativeRows(rows, sortPreference), [rows, sortPreference]);
+  const comparableRows = useMemo(() => rows.map((row) => ({
+    ...row, marketCap: comparableMarketCap(row.marketCap, row.currency, baseCurrency, fxRates),
+  })), [rows, baseCurrency, fxRates]);
+  const missingFx = rows.some((row, index) => row.marketCap != null && comparableRows[index]?.marketCap == null);
+  const sortedRows = useMemo(() => sortRelativeRows(comparableRows, sortPreference), [comparableRows, sortPreference]);
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
@@ -181,8 +191,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, []);
 
   usePaneFooter("relative-valuation", () => ({
-    info: loadingErrorFooterInfo(loading, error),
-  }), [error, loading]);
+    info: loadingErrorFooterInfo(loading, error ?? (missingFx ? "Market-cap FX unavailable" : null)),
+  }), [error, loading, missingFx]);
 
   return (
     <DataTableView<RelativeRow, RelativeColumn>

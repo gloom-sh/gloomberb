@@ -1,12 +1,15 @@
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { canonicalExchange } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
+import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import {
   buildSymbolAliases,
   classifyInstrumentKind,
   findExactTickerSearchMatch,
+  getForexQuoteCurrency,
+  isExplicitMarketSymbol,
   normalizeSearchText,
   normalizeTickerSymbol,
   rankTickerSearchItems,
@@ -89,6 +92,8 @@ function createProviderTickerSearchCandidates(
   return searchResults.flatMap((result, providerRank) => {
     if (options.includeOptionContracts === false && isOptionSearchResult(result)) return [];
     const symbol = getSearchResultSymbol(result);
+    const currency = result.currency || getForexQuoteCurrency(symbol);
+    if (currency && !result.currency) result = { ...result, currency };
     const saved = localTickers.has(symbol);
     return [{
       id: buildProviderCandidateId(result, symbol),
@@ -278,12 +283,45 @@ async function searchProviderResults(
     }
   }));
 
+  // Some search catalogues omit futures and return similarly spelled equities.
+  // A quote for the exact market symbol can supply a verifiable research target.
+  if (isExplicitMarketSymbol(query)
+    && !findExactTickerSearchMatch([...byKey.values()].map((result) => ({ label: getSearchResultSymbol(result) })), query)) {
+    const { symbol, exchange } = parsePublicTickerKey(normalizeTickerSymbol(query));
+    const type = /=F$/.test(symbol) ? "FUTURE"
+      : /^(?:[A-Z]{3}(?:\/[A-Z]{3}|(?:[A-Z]{3})?=X))$/.test(symbol) ? "CURRENCY"
+      : /^\^[A-Z0-9.-]+$/.test(symbol) ? "INDEX" : null;
+    if (type) {
+      try {
+        const quote = await dataProvider.getQuote(symbol, exchange);
+        if (Number.isFinite(quote.price) && quote.price !== 0
+          && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
+          && quote.currency?.trim()
+          && findExactTickerSearchMatch([{ label: quote.symbol }], symbol)) {
+          add([{
+            providerId: quote.providerId || dataProvider.id,
+            symbol,
+            name: quote.name || symbol,
+            exchange: exchange || quote.listingExchangeName || quote.exchangeName || "",
+            currency: quote.currency,
+            type,
+          }]);
+        }
+      } catch {
+        // An unverified symbol stays unresolved; never substitute a fuzzy equity.
+      }
+    }
+  }
+
   return [...byKey.values()];
 }
 
 function buildProviderSearchQueries(query: string): string[] {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
+  const qualified = parsePublicTickerKey(trimmedQuery);
+  if (qualified.exchange) return [trimmedQuery.toUpperCase(), qualified.symbol];
+  if (tickerHasYahooSuffix(trimmedQuery.toUpperCase())) return [trimmedQuery.toUpperCase()];
 
   const symbolLike = /^[A-Za-z0-9.^=\-/]+$/.test(trimmedQuery);
   const queries = new Set<string>();

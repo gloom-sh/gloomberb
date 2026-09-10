@@ -50,7 +50,7 @@ function normalizeSymbol(value: string): string {
 function normalizeSymbolList(value: string): string[] {
   const symbols: string[] = [];
   const seen = new Set<string>();
-  for (const part of value.split(/[,\n]/)) {
+  for (const part of value.split(/[,\s]+/)) {
     const symbol = normalizeSymbol(part);
     if (!symbol || seen.has(symbol)) continue;
     seen.add(symbol);

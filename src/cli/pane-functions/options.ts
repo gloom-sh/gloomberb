@@ -90,7 +90,7 @@ export function parsePaneFunctionArgs(args: string[]): ParsedPaneFunctionArgs {
     const key = equalsIndex >= 0 ? raw.slice(0, equalsIndex) : raw;
     const inlineValue = equalsIndex >= 0 ? raw.slice(equalsIndex + 1) : undefined;
     const next = args[index + 1];
-    const nextValue = next && !next.startsWith("--") ? args[++index] : true;
+    const nextValue = inlineValue === undefined && next && !next.startsWith("--") ? args[++index] : true;
     const value: string | true = inlineValue ?? nextValue ?? true;
     const normalizedKey = normalizeOptionKey(key);
     if (normalizedKey === "requireBotSafe" || normalizedKey === "botSafe") {

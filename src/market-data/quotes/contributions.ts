@@ -5,6 +5,7 @@ import type {
   SessionConfidence,
   TickerFinancials,
 } from "../../types/financials";
+import { reconcileQuoteDayRange } from "./day-range";
 
 function inferQuoteProviderId(quote: Quote | QuoteContribution): string {
   if (quote.providerId?.trim()) return quote.providerId;
@@ -99,7 +100,7 @@ export function normalizeQuoteContribution(
   const routingExchangeName = quote.routingExchangeName;
   const routingExchangeFullName = quote.routingExchangeFullName ?? routingExchangeName;
 
-  return finalizeSessionFields({
+  return finalizeSessionFields(reconcileQuoteDayRange({
     ...quote,
     providerId,
     listingExchangeName,
@@ -109,7 +110,7 @@ export function normalizeQuoteContribution(
     exchangeName: listingExchangeName ?? quote.exchangeName,
     fullExchangeName: listingExchangeFullName ?? quote.fullExchangeName,
     sessionConfidence: inferSessionConfidence(quote, providerId),
-  });
+  }));
 }
 
 export function mergeQuoteContribution(
@@ -124,7 +125,7 @@ export function mergeQuoteContribution(
 
   const merged: QuoteContribution = {
     ...current,
-    ...next,
+    ...reconcileQuoteDayRange(next, current),
   };
 
   if (next.marketState == null && current.marketState != null) {

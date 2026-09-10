@@ -168,8 +168,9 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       chartEntries,
       financials,
       columnContext,
+      account: accountState?.account,
     }),
-    [chartEntries, chartTargets, columnContext, financials],
+    [accountState, chartEntries, chartTargets, columnContext, financials],
   );
   const portfolioReturnSeries = returnSeriesResult.returns;
 
@@ -229,8 +230,10 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       beta,
       coverage: returnSeriesResult.coverage,
       missingCount: returnSeriesResult.missingCount,
+      unvaluedCount: returnSeriesResult.unvaluedCount,
+      unsupportedReason: returnSeriesResult.unsupportedReason,
     }),
-    [beta, returnSeriesResult.coverage, returnSeriesResult.missingCount, sharpe],
+    [beta, returnSeriesResult.coverage, returnSeriesResult.missingCount, returnSeriesResult.unvaluedCount, returnSeriesResult.unsupportedReason, sharpe],
   );
   const metricsHeight = summaryRows.length + riskRows.length + 5;
   const availableHistoryChartHeight = height - metricsHeight - 7;

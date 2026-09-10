@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig } from "../../../types/config";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { applyPaneSettingFieldValue, createPaneTemplateOrThrow } from "./ops";
+import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
 
 function makeDataProvider() {
@@ -18,6 +18,40 @@ function makeTickerRepository() {
     getAllTickers: async () => [],
   };
 }
+
+test("command ticker resolution persists the verified future without switching to a saved equity", async () => {
+  const state = createInitialState(createDefaultConfig(":memory:"));
+  const equity: TickerRecord = { metadata: {
+    ticker: "ESF", name: "Eurotech", exchange: "MTA", currency: "EUR",
+    portfolios: ["long-term"], watchlists: [], positions: [], custom: {}, tags: [],
+  } };
+  state.tickers.set("ESF", equity);
+  const original = structuredClone(equity);
+  const created: TickerRecord[] = [];
+  const resolved = await resolveTickerInput(" es=f ", "ESF", null, {
+    getState: () => state,
+    dispatch: () => {},
+    pluginRegistry: { events: { emit: () => {} } } as any,
+    tickerRepository: {
+      loadTicker: async (symbol: string) => state.tickers.get(symbol) ?? null,
+      createTicker: async (metadata: TickerRecord["metadata"]) => {
+        const ticker = { metadata };
+        created.push(ticker);
+        return ticker;
+      },
+    } as any,
+    dataProvider: createTestDataProvider({
+      search: async () => [{ providerId: "test", symbol: "ESF", name: "Eurotech", exchange: "MTA", type: "EQUITY" }],
+      getQuote: async (symbol) => ({
+        symbol, name: "S&P 500 Futures", exchangeName: "CME", currency: "USD",
+        price: 6000, lastUpdated: Date.now(), change: 0, changePercent: 0,
+      }),
+    }),
+  });
+  expect(resolved).toMatchObject({ symbol: "ES=F", source: "provider", created: true });
+  expect(created[0]?.metadata).toMatchObject({ ticker: "ES=F", assetCategory: "FUTURE", currency: "USD", exchange: "CME" });
+  expect(equity).toEqual(original);
+});
 
 describe("createPaneTemplateOrThrow", () => {
   test("treats createInstance null as cancellation and does not create a pane", async () => {

@@ -31,27 +31,27 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
 
 /** Format a number as currency (e.g., $1,234.56) */
 export function formatCurrency(value: number | undefined, currency = "USD"): string {
-  if (value === undefined || value === null || Number.isNaN(value)) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   return getCurrencyFormatter(currency).format(value);
 }
 
 /** Format a number as percentage (e.g., +1.23%) */
 export function formatPercent(value: number | undefined): string {
-  if (value === undefined || value === null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   const sign = value > 0 ? "+" : "";
   return `${sign}${(value * 100).toFixed(2)}%`;
 }
 
 /** Format a percentage that's already in percent form (e.g., 1.23 -> +1.23%) */
 export function formatPercentRaw(value: number | undefined): string {
-  if (value === undefined || value === null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   const sign = value > 0 ? "+" : "";
   return `${sign}${value.toFixed(2)}%`;
 }
 
 /** Format large numbers compactly (e.g., 1.5T, 234B, 12.3M, 5k) */
 export function formatCompact(value: number | undefined): string {
-  if (value === undefined || value === null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   const abs = Math.abs(value);
   const sign = value < 0 ? "-" : "";
   const fmt = (n: number, decimals: number, suffix: string) => {
@@ -69,13 +69,13 @@ export function formatCompact(value: number | undefined): string {
 
 /** Format a compact value with an explicit currency code (e.g., 1.5T USD) */
 export function formatCompactCurrency(value: number | undefined, currency = "USD"): string {
-  if (value === undefined || value === null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   return `${formatCompact(value)} ${currency}`;
 }
 
 /** Format a plain number with commas */
 export function formatNumber(value: number | undefined, decimals = 2): string {
-  if (value === undefined || value === null) return "—";
+  if (value == null || !Number.isFinite(value)) return "—";
   return getNumberFormatter(decimals).format(value);
 }
 
@@ -242,17 +242,23 @@ export function padTo(str: string, width: number, align: "left" | "right" | "cen
   return clipped + " ".repeat(padding);
 }
 
-/** Convert a value from one currency to base currency using cached exchange rates */
+/**
+ * Convert using USD-per-unit rates. Missing FX remains unavailable (NaN), so
+ * totals cannot silently mix source currency with base currency. Numeric
+ * formatters render this as a dash and JSON encodes it as null.
+ */
 export function convertCurrency(
   value: number,
   fromCurrency: string,
   baseCurrency: string,
   exchangeRates: Map<string, number>,
 ): number {
-  if (fromCurrency === baseCurrency) return value;
-  const fromRate = exchangeRates.get(fromCurrency);
-  const baseRate = exchangeRates.get(baseCurrency);
-  if (fromRate == null || baseRate == null || baseRate === 0) return value;
+  if (!Number.isFinite(value)) return Number.NaN;
+  if (fromCurrency === baseCurrency || value === 0) return value;
+  const fromRate = fromCurrency === "USD" ? 1 : exchangeRates.get(fromCurrency);
+  const baseRate = baseCurrency === "USD" ? 1 : exchangeRates.get(baseCurrency);
+  if (fromRate == null || baseRate == null || !Number.isFinite(fromRate) || !Number.isFinite(baseRate)
+    || fromRate <= 0 || baseRate <= 0) return Number.NaN;
   return (value * fromRate) / baseRate;
 }
 

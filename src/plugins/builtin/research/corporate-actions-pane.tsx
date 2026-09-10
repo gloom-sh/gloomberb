@@ -13,7 +13,6 @@ import type {
   CorporateActionsData,
 } from "../../../types/financials";
 import { blendHex, colors } from "../../../theme/colors";
-import { formatCompact, formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
@@ -37,6 +36,7 @@ import {
 import {
   buildEventRows,
   eventSourceNotice,
+  formatEventMetric,
   type EventRow,
   type EventStatus,
 } from "./event-model";
@@ -131,10 +131,10 @@ function buildEventColumns(): EventColumn[] {
     { id: "date", label: "DATE", width: 10, align: "left" },
     { id: "status", label: "EVENT", width: 8, align: "left" },
     { id: "period", label: "PERIOD", width: 9, align: "left" },
-    { id: "qEps", label: "Q EPS", width: 6, align: "right" },
-    { id: "qRevenue", label: "Q REV", width: 7, align: "right" },
-    { id: "annualEps", label: "ANN EPS", width: 7, align: "right" },
-    { id: "annualRevenue", label: "ANN REV", width: 7, align: "right" },
+    { id: "qEps", label: "Q EPS", width: 12, align: "right" },
+    { id: "qRevenue", label: "Q REV", width: 12, align: "right" },
+    { id: "annualEps", label: "ANN EPS", width: 12, align: "right" },
+    { id: "annualRevenue", label: "ANN REV", width: 12, align: "right" },
     { id: "value", label: "VALUE", width: 8, align: "right" },
     { id: "detail", label: "DETAIL", width: 9, align: "left", flexGrow: 1 },
   ];
@@ -155,10 +155,10 @@ function eventSummaryLine(row: EventRow): string {
   return [
     row.date,
     row.period,
-    row.qEps != null ? `EPS ${formatNumber(row.qEps, 2)}` : null,
-    row.qRevenue != null ? `Rev ${formatCompact(row.qRevenue)}` : null,
-    row.annualEps != null ? `Ann EPS ${formatNumber(row.annualEps, 2)}` : null,
-    row.annualRevenue != null ? `Ann Rev ${formatCompact(row.annualRevenue)}` : null,
+    row.qEps != null ? `EPS ${formatEventMetric(row.qEps, row.epsCurrency, "eps")}` : null,
+    row.qRevenue != null ? `Rev ${formatEventMetric(row.qRevenue, row.revenueCurrency, "revenue")}` : null,
+    row.annualEps != null ? `Ann EPS ${formatEventMetric(row.annualEps, row.epsCurrency, "eps")}` : null,
+    row.annualRevenue != null ? `Ann Rev ${formatEventMetric(row.annualRevenue, row.revenueCurrency, "revenue")}` : null,
     row.value !== "-" ? row.value : null,
     row.detail || null,
   ].filter((line): line is string => !!line).join(" | ");
@@ -461,13 +461,13 @@ export function CorporateActionsView({
       case "period":
         return { text: row.period, color: selectedColor ?? colors.textDim };
       case "qEps":
-        return { text: formatNumber(row.qEps, 2), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qEps, row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
       case "qRevenue":
-        return { text: formatCompact(row.qRevenue), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.qRevenue, row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
       case "annualEps":
-        return { text: formatNumber(row.annualEps, 2), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualEps, row.epsCurrency, "eps"), color: selectedColor ?? colors.textDim };
       case "annualRevenue":
-        return { text: formatCompact(row.annualRevenue), color: selectedColor ?? colors.textDim };
+        return { text: formatEventMetric(row.annualRevenue, row.revenueCurrency, "revenue"), color: selectedColor ?? colors.textDim };
       case "value":
         return { text: row.value, color: selectedColor ?? toneColor(row.tone) };
       case "detail":

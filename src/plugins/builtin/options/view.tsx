@@ -516,7 +516,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         sortDirection="asc"
         onHeaderClick={() => {}}
         onTableMouseDown={enterInteractive}
-        onBodyScrollActivity={() => { userSelectedStrikeRef.current = true; }}
+        onBodyScrollActivity={(source) => {
+          if (source !== "programmatic") userSelectedStrikeRef.current = true;
+        }}
         visibleRangeKey={viewportKey}
         onVisibleRangeChange={handleVisibleStrikeRangeChange}
         getItemKey={(row) => String(row.strike)}

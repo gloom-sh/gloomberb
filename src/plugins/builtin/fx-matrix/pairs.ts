@@ -2,9 +2,10 @@
 export const MAJOR_CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD"] as const;
 export type MajorCurrency = typeof MAJOR_CURRENCIES[number];
 
-/** Format rate with appropriate precision — JPY pairs get 2 decimals, others get 4 */
+/** Preserve conventional quote precision and meaningful digits on inverse JPY crosses. */
 export function formatRate(rate: number, toCurrency: string): string {
-  const decimals = toCurrency === "JPY" ? 2 : 4;
+  if (!Number.isFinite(rate) || rate <= 0) return "—";
+  const decimals = rate < 0.1 ? Math.min(8, 4 - Math.floor(Math.log10(rate))) : toCurrency === "JPY" ? 2 : 4;
   return rate.toFixed(decimals);
 }
 

@@ -17,7 +17,6 @@ import {
 } from "./cache";
 import { withBrokerTimeout } from "./brokers";
 import {
-  deriveMarketCapFromShares,
   hasMeaningfulProfile,
   hasShallowStatementHistory,
   mergeCachedFinancialRecords,
@@ -283,9 +282,7 @@ export class ProviderRouterFinancialRoutes {
     return {
       brokerRecord: sanitizedBrokerRecord,
       providerValue: providerSelection.value,
-      value: value
-        ? deriveMarketCapFromShares(value, { replaceExisting: !!quoteSelection.quote && quoteSelection.quote.marketCap == null })
-        : null,
+      value,
       stale: (sanitizedBrokerRecord?.stale ?? false) || providerSelection.stale || quoteSelection.stale,
     };
   }

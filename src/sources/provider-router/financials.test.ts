@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   dropUnusableProviderQuote,
+  mergeFinancials,
+  mergeMissingStatementArrays,
   isProviderQuoteUsableForCurrentSession,
 } from "./financials";
 import { makeFinancials, makeQuote } from "./test-support";
@@ -97,4 +99,20 @@ describe("provider-router financial quote usability", () => {
     expect(value.profile?.sector).toBe("Industrials");
     expect(value.quote).toBeUndefined();
   });
+});
+
+
+test("keeps incompatible and unverified reporting currencies out of merged valuation inputs", () => {
+  const primary = makeFinancials({ fundamentals: { financialCurrency: "USD", revenue: 100 } });
+  const fallback = makeFinancials({ fundamentals: { financialCurrency: "TWD", revenue: 3000, freeCashFlow: 500 } });
+  expect(mergeFinancials(primary, fallback)?.fundamentals).toEqual({ financialCurrency: "USD", revenue: 100 });
+  primary.fundamentals!.financialCurrency = undefined;
+  expect(mergeFinancials(primary, fallback)?.fundamentals?.financialCurrency).toBeUndefined();
+});
+
+test("fallback reporting currency does not label unknown primary statement units", () => {
+  const primary = makeFinancials({ annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }] });
+  const fallback = makeFinancials({ financialCurrency: "TWD", annualStatements: [{ date: "2024-12-31", currency: "TWD", totalRevenue: 3000 }] });
+  expect(mergeMissingStatementArrays(primary, fallback).financialCurrency).toBeUndefined();
+  expect(mergeFinancials(primary, fallback)?.financialCurrency).toBeUndefined();
 });

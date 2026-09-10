@@ -99,7 +99,7 @@ export interface DataTableViewProps<
   headerScrollRef?: RefObject<ScrollBoxRenderable | null>;
   scrollRef?: RefObject<ScrollBoxRenderable | null>;
   syncHeaderScroll?: () => void;
-  onBodyScrollActivity?: () => void;
+  onBodyScrollActivity?: DataTableProps<T, C>["onBodyScrollActivity"];
   keyboardNavigation?: boolean;
   onRootKeyDown?: (
     event: DataTableKeyEvent,

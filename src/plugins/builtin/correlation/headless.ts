@@ -2,8 +2,7 @@ import type { HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber } from "../../../utils/format";
 import { loadHeadlessPriceHistory, loadHeadlessSymbols } from "../shared/headless-market-data";
-import { computeDatedReturns } from "./compute";
-import { buildCorrelationMatrix, pairKey, type CorrelationSeries } from "./matrix/model";
+import { buildCorrelationMatrix, buildCorrelationSeries, pairKey } from "./matrix/model";
 import { buildRelationshipAnalysis, DEFAULT_RELATIONSHIP_SECOND_SYMBOL } from "./relationship/model";
 import { paneSchemas } from "./headless-schema";
 
@@ -19,10 +18,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
   async load({ symbols, options }, ctx) {
     const range = (options.rangePreset ?? "1Y") as TimeRange;
     const loaded = await loadHeadlessSymbols(symbols, ctx, (symbol) => loadHeadlessPriceHistory(ctx, symbol, range));
-    const bySymbol = new Map(loaded.entries.map(({ symbol, data }): [string, CorrelationSeries] => {
-      const returns = computeDatedReturns(data);
-      return [symbol, { symbol, returns, status: returns.length >= 5 ? "ready" : "insufficient", observationCount: returns.length }];
-    }));
+    const bySymbol = new Map(loaded.entries.map(({ symbol, data }) => [symbol, buildCorrelationSeries(symbol, data)]));
     const matrix = buildCorrelationMatrix(symbols, bySymbol);
     const rows = symbols.flatMap((left, index) => symbols.slice(index + 1).map((right) => {
       const result = matrix.results.get(pairKey(left, right));
@@ -34,6 +30,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
       rows, unavailableSymbols, errors: loaded.errors,
       metadata: {
         range,
+        returnAlignment: "Close-to-close returns between shared UTC dates; exchange closing times may differ.",
         availability: symbols.map((symbol) => ({
           symbol, status: bySymbol.get(symbol)?.status ?? "error", observationCount: bySymbol.get(symbol)?.observationCount ?? 0,
         })),

@@ -136,3 +136,11 @@ describe("mergeFinancialStatementRows", () => {
     expect(merged[0]?.date).toBe("2025-06-28");
   });
 });
+
+
+test("does not fill a reporting-currency row from differently denominated statements", () => {
+  expect(mergeFinancialStatementRows(
+    [{ date: "2025-12-31", currency: "TWD", totalRevenue: 3_800_000_000_000 }],
+    [{ date: "2025-12-31", currency: "USD", totalRevenue: 120_000_000_000, netIncome: 60_000_000_000 }],
+  )).toEqual([{ date: "2025-12-31", currency: "TWD", totalRevenue: 3_800_000_000_000 }]);
+});

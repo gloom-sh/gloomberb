@@ -92,6 +92,7 @@ describe("WorldIndicesPane", () => {
     expect(frame).toContain("Americas");
     expect(frame).toContain("SPX");
     expect(frame).toContain("6,812.44");
+    expect(frame).not.toContain("$6,812.44");
     expect(frame).toContain("+0.42%");
   });
 

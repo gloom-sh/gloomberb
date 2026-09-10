@@ -52,7 +52,7 @@ export function applyTransform(
 ): StatPoint[] {
   const clean = observations
     .filter((entry): entry is { date: string; value: number } =>
-      entry.value != null && Number.isFinite(entry.value))
+      entry.value != null && Number.isFinite(entry.value) && Number.isFinite(Date.parse(entry.date)))
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date));
   if (clean.length === 0) return [];
@@ -61,12 +61,21 @@ export function applyTransform(
     return clean.map((entry) => ({ date: entry.date, value: entry.value }));
   }
 
-  const perYear = periodsPerYear(clean);
+  const perYear = transform === "qoq-annualized" ? 4 : periodsPerYear(clean);
   const lag = transform === "yoy" ? perYear : 1;
+  // FRED monthly/quarterly observations represent calendar periods. Removing a
+  // missing month before applying a positional lag turns y/y into a 13-month
+  // change, or reports a two-quarter GDP move as one quarter's annualized rate.
+  const calendarCadence = perYear === 12 || perYear === 4 || perYear === 1;
+  const byMonth = new Map(clean.map((point) => [point.date.slice(0, 7), point]));
+  const lagMonths = transform === "yoy" ? 12 : 12 / perYear;
   const out: StatPoint[] = [];
-  for (let i = lag; i < clean.length; i += 1) {
+  for (let i = 0; i < clean.length; i += 1) {
     const now = clean[i]!;
-    const before = clean[i - lag]!;
+    const before = calendarCadence
+      ? byMonth.get(new Date(Date.UTC(Number(now.date.slice(0, 4)), Number(now.date.slice(5, 7)) - 1 - lagMonths, 1)).toISOString().slice(0, 7))
+      : clean[i - lag];
+    if (!before) continue;
     if (transform === "change") {
       out.push({ date: now.date, value: now.value - before.value });
       continue;

@@ -4,7 +4,7 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { loadWorldIndexQuotes, type WorldIndexQuoteResult } from "./client";
 import {
   getIndicesByRegion,
@@ -21,9 +21,9 @@ const COLUMNS = [
     key: "price",
     header: "Last",
     align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => value == null
+    format: (value: unknown) => value == null
       ? "-"
-      : formatCurrency(Number(value), String(row.currency ?? "USD")),
+      : formatNumber(Number(value), 2),
   },
   {
     key: "change",
@@ -62,6 +62,7 @@ export function projectWorldIndicesHeadless(
           return {
             ...entry,
             price: quote?.price ?? null,
+            unit: "index points",
             currency: quote?.currency ?? null,
             change: quote?.change ?? null,
             changePercent: quote?.changePercent ?? null,

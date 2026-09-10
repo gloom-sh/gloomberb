@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { buildFinancialTableModel, formatFinancialHeader } from "./financials/model";
+import { buildFinancialTableModel, financialStatementCurrency, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
@@ -18,7 +18,11 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       period: options.period === "quarterly" ? "quarterly" : "annual",
       statement: String(options.statement ?? "income"),
     });
-    const dates = table?.statements.map(({ date }) => ({ date, label: formatFinancialHeader(date).trim() })) ?? [];
+    const statementCurrency = financialStatementCurrency(financials, table?.statements ?? []);
+    const dates = table?.statements.map(({ date, currency }) => ({
+      date, currency: currency ?? statementCurrency ?? null,
+      label: formatFinancialHeader(date, currency ?? statementCurrency).trim(),
+    })) ?? [];
     const rows = table?.rows.map((row) => ({
       id: row.id, kind: row.kind, metric: row.unitLabel,
       cells: row.cells.map((cell, index) => ({
@@ -40,9 +44,9 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       metadata: {
-        symbol, name: financials.quote?.name ?? symbol, currency: financials.quote?.currency ?? null,
+        symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
-        period: table?.period ?? options.period, columns: dates,
+        period: table?.period ?? options.period, growthBasis: table?.period === "quarterly" ? "QoQ" : "YoY", columns: dates,
       },
     };
   },

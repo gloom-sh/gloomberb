@@ -7,7 +7,7 @@ function normalizeTickerToken(value: string): string {
 
 export function parseTickerListInput(raw: string, maxTickers = MAX_TICKER_LIST_SIZE): string[] {
   const tokens = raw
-    .split(/[,\n]/)
+    .split(/[,\s]+/)
     .map(normalizeTickerToken)
     .filter(Boolean);
 

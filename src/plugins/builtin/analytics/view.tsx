@@ -40,9 +40,9 @@ export function AnalyticsMetricsPanel({
       ))}
 
       <Box height={1} />
-      <SectionHeading title="Risk / Return" />
+      <SectionHeading title="Current-weight basket estimates" />
       {riskRows.map((row) => (
-        <KeyValueRow key={row.id} {...row} />
+        <KeyValueRow key={row.id} {...row} labelWidth={16} />
       ))}
       <Box height={1} />
     </Box>

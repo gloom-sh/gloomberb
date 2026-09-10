@@ -264,7 +264,7 @@ describe("AssetDataRouter cached financials", () => {
     persistence.close();
   });
 
-  test("derives cached market cap from quote price and shares outstanding", () => {
+  test("does not fabricate market cap from an unverified shares basis", () => {
     const dbPath = createTempDbPath("cached-derived-market-cap");
     const persistence = new AppPersistence(dbPath);
     const now = Date.now();
@@ -313,7 +313,7 @@ describe("AssetDataRouter cached financials", () => {
       allowExpired: true,
       includeStaleQuotes: true,
     });
-    expect(cached.get("AMD")?.quote?.marketCap).toBeCloseTo(725_969_400_000);
+    expect(cached.get("AMD")?.quote?.marketCap).toBeUndefined();
 
     persistence.close();
   });
@@ -613,7 +613,7 @@ describe("AssetDataRouter cached financials", () => {
 
     expect(cached.get("6315.T")?.quote?.price).toBe(2688);
     expect(cached.get("6315.T")?.quote?.changePercent).toBe(0.49);
-    expect(cached.get("6315.T")?.quote?.marketCap).toBe(201_601_241_856);
+    expect(cached.get("6315.T")?.quote?.marketCap).toBeUndefined();
     expect(cached.get("6315.T")?.fundamentals?.trailingPE).toBe(37.2);
 
     persistence.close();

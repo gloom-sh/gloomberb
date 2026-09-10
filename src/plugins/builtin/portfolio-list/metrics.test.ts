@@ -4,6 +4,7 @@ import type { ColumnConfig } from "../../../types/config";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { blendHex, colors } from "../../../theme/colors";
+import { buildPortfolioSummarySegments } from "./summary";
 import {
   calculatePortfolioSummaryTotals,
   getColumnValue,
@@ -60,6 +61,30 @@ const defaultColumnContext: ColumnContext = {
 };
 
 describe("portfolio-metrics", () => {
+  test("withholds mixed-currency totals until FX is known, then restores complete values", () => {
+    const us = createTicker({ positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual" }] });
+    const eur = createTicker({ ticker: "SAP", currency: "EUR", positions: [{ portfolio: "main", shares: 10, avgCost: 100, broker: "manual", currency: "EUR" }] });
+    const financials = new Map([
+      ["AAPL", createFinancials()],
+      ["SAP", createFinancials({ quote: { symbol: "SAP", currency: "EUR" } })],
+    ]);
+    const unavailable = calculatePortfolioSummaryTotals([us, eur], financials, "USD", new Map(), true, "main");
+    expect(unavailable.totalMktValue).toBeNaN();
+    expect(unavailable.unrealizedPnl).toBeNaN();
+    expect(unavailable.unavailableConversions).toEqual(["EUR/USD"]);
+    const segments = buildPortfolioSummarySegments({ totals: unavailable, accountState: null, widthBudget: 200 });
+    const rendered = segments.flatMap((segment) => segment.parts.map((part) => part.text)).join(" ");
+    expect(rendered).toContain("FX unavailable");
+    expect(rendered).toContain("Val —");
+    expect(rendered).not.toContain("NaN");
+    expect(rendered).not.toContain("2.4k");
+
+    const restored = calculatePortfolioSummaryTotals([us, eur], financials, "USD", new Map([["EUR", 1.2]]), true, "main");
+    expect(restored.totalMktValue).toBe(2640);
+    expect(restored.unrealizedPnl).toBe(440);
+    expect(restored.unavailableConversions).toBeUndefined();
+  });
+
   test("defaults portfolio tabs to market value descending", () => {
     expect(resolveCollectionSortPreference("main", true, {})).toEqual({
       columnId: "mkt_value",

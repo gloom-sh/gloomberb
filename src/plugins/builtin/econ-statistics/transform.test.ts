@@ -83,4 +83,27 @@ describe("applyTransform", () => {
   test("a zero base cannot produce a percent change", () => {
     expect(applyTransform(monthly([0, 5]), "mom")).toHaveLength(0);
   });
+
+  test("missing months never shift year-over-year comparisons into different periods", () => {
+    const observations: Array<{ date: string; value: number | null }> = monthly([
+      100, 102, 104, 104, 104, 104, 104, 104, 104, 104, 104, 104, 110, 112,
+    ]);
+    observations[1]!.value = null;
+    expect(applyTransform(observations, "yoy")).toEqual([{ date: "2021-01-01", value: expect.closeTo(10, 6) }]);
+    const mom = applyTransform(observations, "mom");
+    expect(mom.some((point) => point.date === "2020-03-01")).toBe(false);
+  });
+
+  test("annualized GDP growth requires the immediately preceding quarter", () => {
+    const observations = [
+      { date: "2024-01-01", value: 100 },
+      { date: "2024-04-01", value: 101 },
+      { date: "2024-07-01", value: null },
+      { date: "2024-10-01", value: 104 },
+    ];
+    const result = applyTransform(observations, "qoq-annualized");
+    expect(result).toHaveLength(1);
+    expect(result[0]!.date).toBe("2024-04-01");
+    expect(result[0]!.value).toBeCloseTo((1.01 ** 4 - 1) * 100);
+  });
 });

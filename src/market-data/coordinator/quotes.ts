@@ -56,6 +56,7 @@ const STREAM_QUOTE_FIELDS: Array<keyof Quote> = [
   "change",
   "changePercent",
   "previousClose",
+  "changeSessionDate",
   "high52w",
   "low52w",
   "marketCap",

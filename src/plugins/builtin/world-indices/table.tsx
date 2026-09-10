@@ -2,7 +2,7 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { marketStateColor, marketStateLabel } from "../../../market-data/market/status";
 import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import { marketStatusDot, type BoardQuoteMap } from "../shared/use-quote-board";
 import type {
   WorldIndexColumnId,
@@ -114,10 +114,10 @@ export function renderWorldIndexCell(
       };
     case "price":
       if (loadingCell) return { text: "…", color: dimmed };
-      if (quote?.price === undefined) return { text: "—", color: dimmed };
+      if (!quote || !Number.isFinite(quote.price)) return { text: "—", color: dimmed };
       // A retained quote still beats a dash; dim it so stale is visible.
       return {
-        text: formatCurrency(quote.price, quote.currency ?? "USD"),
+        text: formatNumber(quote.price, 2),
         color: state?.stale ? dimmed : selectedColor,
       };
     case "change":

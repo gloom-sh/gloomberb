@@ -503,3 +503,22 @@ describe("economic vintage extraction", () => {
     expect(point?.value).toBe(123.4);
   });
 });
+
+
+test("financial chart TTM rejects missing quarters and inconsistent reporting currencies", () => {
+  for (const rows of [
+    ["2024-09-30", "2025-03-31", "2025-06-30", "2025-09-30"].map((date) => ({ date, totalRevenue: 100 })),
+    ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"].map((date, index) => ({ date, totalRevenue: 100, currency: index === 0 ? "USD" : "TWD" })),
+  ]) {
+    expect(extractFundamentalSeries(financials(rows, []), source("fundamental.totalRevenue", "ttm"))).toEqual([]);
+  }
+});
+
+test("quarterly share averages derive from the annual average instead of copying it", () => {
+  const rows = deriveQuarterlyStatements([
+    { date: "2025-03-31", basicShares: 100 },
+    { date: "2025-06-30", basicShares: 90 },
+    { date: "2025-09-30", basicShares: 80 },
+  ], [{ date: "2025-12-31", basicShares: 85 }]);
+  expect(rows.at(-1)?.basicShares).toBe(70);
+});

@@ -6,6 +6,8 @@ export function compareSortValues(
   right: SortComparableValue,
   direction: SortDirection,
 ): number {
+  if (typeof left === "number" && !Number.isFinite(left)) left = null;
+  if (typeof right === "number" && !Number.isFinite(right)) right = null;
   if (left == null && right == null) return 0;
   if (left == null) return 1;
   if (right == null) return -1;

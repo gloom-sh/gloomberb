@@ -48,3 +48,13 @@ test("relationship identifies just the missing benchmark, and both inputs when d
   expect(disjoint.unavailableSymbols).toEqual(["ABC", "SPY"]);
   expect(disjoint.metadata).toMatchObject({ alignedPriceCount: 0, returnCount: 0, regression: null });
 });
+
+test("rolling correlation waits for the entire selected observation window", async () => {
+  const request = args(["ABC"]);
+  request.options.correlationWindow = 30;
+  const result = await relationshipHeadless.load(request, context());
+  expect(result.series[0]!.points).toHaveLength(7);
+  expect(result.series[1]!.points).toHaveLength(0);
+  expect(result.metadata).toMatchObject({ latestCorrelation: null, returnCount: 6 });
+  expect(result.stats?.find((stat) => stat.key === "beta")?.value).toBeCloseTo(1);
+});

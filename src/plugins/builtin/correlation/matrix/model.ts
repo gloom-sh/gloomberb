@@ -1,7 +1,7 @@
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { colors } from "../../../../theme/colors";
 import type { PricePoint } from "../../../../types/financials";
-import { computeDatedReturns, correlateDatedReturns, type CorrelationResult, type DatedReturn } from "../compute";
+import { dailyCloses, correlateDailyCloses, type CorrelationResult, type DailyClose } from "../compute";
 import type { CorrelationRangePreset } from "../settings";
 
 export const ROW_HEADER_WIDTH = 7;
@@ -13,7 +13,7 @@ export type SeriesStatus = "loading" | "ready" | "insufficient" | "empty" | "err
 
 export interface CorrelationSeries {
   symbol: string;
-  returns: DatedReturn[];
+  prices: DailyClose[];
   status: SeriesStatus;
   observationCount: number;
 }
@@ -46,30 +46,29 @@ export function getSeriesForEntry(
 
   if (!priceHistory || priceHistory.length === 0) {
     if (entry?.error?.reasonCode === "NO_DATA") {
-      return { symbol, returns: [], status: "empty", observationCount: 0 };
+      return { symbol, prices: [], status: "empty", observationCount: 0 };
     }
     if (entry?.phase === "error" || entry?.error) {
       return {
         symbol,
-        returns: [],
+        prices: [],
         status: "error",
         observationCount: 0,
       };
     }
-    return { symbol, returns: [], status: "loading", observationCount: 0 };
+    return { symbol, prices: [], status: "loading", observationCount: 0 };
   }
 
-  const returns = computeDatedReturns(priceHistory);
-  if (returns.length < MIN_CORRELATION_OBSERVATIONS) {
-    return {
-      symbol,
-      returns,
-      status: "insufficient",
-      observationCount: returns.length,
-    };
-  }
+  return buildCorrelationSeries(symbol, priceHistory);
+}
 
-  return { symbol, returns, status: "ready", observationCount: returns.length };
+export function buildCorrelationSeries(symbol: string, history: readonly PricePoint[]): CorrelationSeries {
+  const prices = dailyCloses(history);
+  const observationCount = Math.max(0, prices.length - 1);
+  return {
+    symbol, prices, observationCount,
+    status: observationCount < MIN_CORRELATION_OBSERVATIONS ? "insufficient" : "ready",
+  };
 }
 
 export function rowHeaderColor(status: SeriesStatus): string {
@@ -107,7 +106,7 @@ export function buildCorrelationMatrix(
       const rowSeries = seriesBySymbol.get(rowSym);
       const colSeries = seriesBySymbol.get(colSym);
       const result = rowSeries && colSeries
-        ? correlateDatedReturns(rowSeries.returns, colSeries.returns, MIN_CORRELATION_OBSERVATIONS)
+        ? correlateDailyCloses(rowSeries.prices, colSeries.prices, MIN_CORRELATION_OBSERVATIONS)
         : { correlation: null, sampleSize: 0 };
       results.set(pairKey(rowSym, colSym), result);
       if (rowIndex < colIndex) {

@@ -27,8 +27,8 @@ import {
   type CloudPricePointPayload,
 } from "../../api-client";
 import type { NewsArticle, NewsQuery } from "../../types/news-source";
-import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
-import { canonicalTickerKey } from "../../utils/exchanges";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges";
 import { normalizePriceHistory } from "../../utils/price-history";
 import { createProviderMiss } from "../provider-errors";
 import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
@@ -125,9 +125,10 @@ function mapCloudPriceHistory(
   if (isStaleCloudResponse(response)) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
-  const { divisor } = resolvePriceHistoryCurrencyUnit(
+  // Cloud history is already in major currency units unless the response
+  // explicitly declares a raw subunit. The exchange alone cannot set its scale.
+  const { divisor } = resolveCurrencyUnit(
     response.currency ?? response.providerMeta?.currency,
-    exchange,
   );
   const points = normalizePriceHistory(
     unwrapRequiredCloudResponse(
@@ -152,6 +153,21 @@ function mapCloudPriceHistory(
 
 function quoteTargetKey(symbol: string, exchange?: string): string {
   return canonicalTickerKey(symbol, exchange);
+}
+
+function cloudInstrumentTarget(symbol: string, exchange?: string) {
+  const parsed = parsePublicTickerKey(symbol);
+  return { symbol: parsed.symbol, exchange: parsed.exchange ?? exchange };
+}
+
+function retainRequestedQuoteSymbol(quote: Quote, ticker: string): Quote {
+  return parsePublicTickerKey(ticker).exchange ? { ...quote, symbol: ticker } : quote;
+}
+
+function retainRequestedFinancialsSymbol(financials: TickerFinancials, ticker: string): TickerFinancials {
+  return financials.quote
+    ? { ...financials, quote: retainRequestedQuoteSymbol(financials.quote, ticker) }
+    : financials;
 }
 
 async function requireVerifiedSession(): Promise<void> {
@@ -189,15 +205,16 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getTickerFinancials(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<TickerFinancials> {
+    const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudFinancials(ticker, exchange);
+      const response = await apiClient.getCloudFinancials(target.symbol, target.exchange);
       if (isStaleCloudResponse(response)) {
         throw createProviderMiss(`Cloud financials are stale for ${ticker}`);
       }
-      return mapCloudFinancials(
+      return retainRequestedFinancialsSymbol(mapCloudFinancials(
         unwrapRequiredCloudResponse(response, `Cloud financials are unavailable for ${ticker}`),
         response.providerMeta,
-      );
+      ), ticker);
     }, `Cloud financials are unavailable for ${ticker}`);
   }
 
@@ -207,10 +224,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   ): Promise<TickerFinancialsBatchResult[]> {
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudFinancialsBatch(
-        targets.map((target) => ({
-          symbol: target.symbol,
-          exchange: target.exchange,
-        })),
+        targets.map((target) => cloudInstrumentTarget(target.symbol, target.exchange)),
         options.forceRefresh ? "refresh" : "cache-first",
       );
       if (isStaleCloudResponse(response)) {
@@ -218,14 +232,14 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       }
       const payload = unwrapRequiredCloudResponse(response, "Cloud financials are unavailable");
       return payload.items.map((item, index) => {
-        const target = targets[index] ?? {
+        const target = targets.find((target) => quoteTargetKey(target.symbol, target.exchange) === quoteTargetKey(item.symbol, item.exchange)) ?? targets[index] ?? {
           symbol: item.symbol,
           exchange: item.exchange,
         };
         if ((item.status === "success" || item.status === "partial") && item.data) {
           return {
             target,
-            financials: mapCloudFinancials(item.data),
+            financials: retainRequestedFinancialsSymbol(mapCloudFinancials(item.data), target.symbol),
           };
         }
         return {
@@ -238,16 +252,17 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getQuote(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<Quote> {
+    const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(
       async () => {
-        const response = await apiClient.getCloudQuote(ticker, exchange);
+        const response = await apiClient.getCloudQuote(target.symbol, target.exchange);
         if (isStaleCloudResponse(response)) {
           throw createProviderMiss(`Cloud quotes are stale for ${ticker}`);
         }
-        return mapQuote(
+        return retainRequestedQuoteSymbol(mapQuote(
           unwrapRequiredCloudResponse(response, `Cloud quotes are unavailable for ${ticker}`),
           response.providerMeta,
-        );
+        ), ticker);
       },
       `Cloud quotes are unavailable for ${ticker}`,
     );
@@ -259,10 +274,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   ): Promise<QuoteBatchResult[]> {
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudQuotesBatch(
-        targets.map((target) => ({
-          symbol: target.symbol,
-          exchange: target.exchange,
-        })),
+        targets.map((target) => cloudInstrumentTarget(target.symbol, target.exchange)),
         options.forceRefresh ? "refresh" : "cache-first",
       );
       if (isStaleCloudResponse(response)) {
@@ -270,14 +282,14 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       }
       const payload = unwrapRequiredCloudResponse(response, "Cloud quotes are unavailable");
       return payload.items.map((item, index) => {
-        const target = targets[index] ?? {
+        const target = targets.find((target) => quoteTargetKey(target.symbol, target.exchange) === quoteTargetKey(item.symbol, item.exchange)) ?? targets[index] ?? {
           symbol: item.symbol,
           exchange: item.exchange,
         };
         if ((item.status === "success" || item.status === "partial") && item.data) {
           return {
             target,
-            quote: mapQuote(item.data),
+            quote: retainRequestedQuoteSymbol(mapQuote(item.data), target.symbol),
           };
         }
         return {
@@ -339,25 +351,28 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getHolders(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<HolderData> {
+    const target = cloudInstrumentTarget(ticker, exchange);
     await requireVerifiedSession();
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudHolders(ticker, exchange);
+      const response = await apiClient.getCloudHolders(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud holders are unavailable for ${ticker}`) as CloudHoldersPayload;
     }, `Cloud holders are unavailable for ${ticker}`);
   }
 
   async getAnalystResearch(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<AnalystResearchData> {
+    const target = cloudInstrumentTarget(ticker, exchange);
     await requireVerifiedSession();
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudAnalystResearch(ticker, exchange);
+      const response = await apiClient.getCloudAnalystResearch(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud analyst research is unavailable for ${ticker}`) as CloudAnalystResearchPayload;
     }, `Cloud analyst research is unavailable for ${ticker}`);
   }
 
   async getCorporateActions(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<CorporateActionsData> {
+    const target = cloudInstrumentTarget(ticker, exchange);
     await requireVerifiedSession();
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudCorporateActions(ticker, exchange);
+      const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
     }, `Cloud corporate actions are unavailable for ${ticker}`);
   }
@@ -367,9 +382,11 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, _context?: MarketDataRequestContext): Promise<PricePoint[]> {
+    const target = cloudInstrumentTarget(ticker, exchange);
+    exchange = target.exchange ?? "";
     const request = toHistoryRequest(range);
     const response = await withCloudFallback(
-      () => apiClient.getCloudHistory(ticker, exchange, request),
+      () => apiClient.getCloudHistory(target.symbol, exchange, request),
       `Cloud chart data is unavailable for ${ticker}`,
     );
     return mapCloudPriceHistory(response, ticker, exchange, request.interval);
@@ -382,12 +399,14 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     resolution: ManualChartResolution,
     _context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    const target = cloudInstrumentTarget(ticker, exchange);
+    exchange = target.exchange ?? "";
     const interval = toCloudInterval(resolution);
     const endDate = new Date();
     const startDate = getRangeStartDate(bufferRange, endDate);
     const includeTime = /(min|h)$/i.test(interval);
     const response = await withCloudFallback(
-      () => apiClient.getCloudHistory(ticker, exchange, {
+      () => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
         startDate: formatCloudDateTime(startDate, includeTime, exchange),
         endDate: formatCloudDateTime(endDate, includeTime, exchange),
@@ -405,10 +424,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     barSize: string,
     _context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    const target = cloudInstrumentTarget(ticker, exchange);
+    exchange = target.exchange ?? "";
     const interval = toCloudInterval(barSize);
     const includeTime = /(min|h)$/i.test(interval);
     const response = await withCloudFallback(
-      () => apiClient.getCloudHistory(ticker, exchange, {
+      () => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
         startDate: formatCloudDateTime(startDate, includeTime, exchange),
         endDate: formatCloudDateTime(endDate, includeTime, exchange),
@@ -419,8 +440,9 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, _context?: MarketDataRequestContext): Promise<OptionsChain> {
+    const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
-      const response = await apiClient.getCloudOptionsChain(ticker, exchange, expirationDate);
+      const response = await apiClient.getCloudOptionsChain(target.symbol, target.exchange, expirationDate);
       const chain = unwrapRequiredCloudResponse(
         response,
         `Cloud options chains are unavailable for ${ticker}`,
@@ -445,8 +467,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
     return apiClient.subscribeQuotes(
       targets.map((target) => ({
-        symbol: target.symbol,
-        exchange: target.exchange,
+        ...cloudInstrumentTarget(target.symbol, target.exchange),
         surface: target.surface,
         visible: target.visible,
         selected: target.selected,
@@ -460,7 +481,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
         }];
         const mappedQuote = mapQuote(quote);
         for (const match of matches) {
-          onQuote(match, mappedQuote);
+          onQuote(match, retainRequestedQuoteSymbol(mappedQuote, match.symbol));
         }
       },
     );

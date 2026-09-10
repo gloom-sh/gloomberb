@@ -1,5 +1,5 @@
 import type { CachedResourceRecord } from "../../data/resource-store";
-import type { AnalystResearchData, CorporateActionsData, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, FinancialStatement, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
@@ -28,41 +28,13 @@ export interface CachedQuoteSelection {
   stale: boolean;
 }
 
-export function deriveMarketCapFromShares(
-  financials: TickerFinancials,
-  options: { replaceExisting?: boolean } = {},
-): TickerFinancials {
-  const quote = financials.quote;
-  const sharesOutstanding = financials.fundamentals?.sharesOutstanding;
-  if (
-    !quote
-    || (quote.marketCap != null && !options.replaceExisting)
-    || !Number.isFinite(quote.price)
-    || !Number.isFinite(sharesOutstanding)
-    || quote.price <= 0
-    || !sharesOutstanding
-    || sharesOutstanding <= 0
-  ) {
-    return financials;
-  }
-
-  return {
-    ...financials,
-    quote: {
-      ...quote,
-      marketCap: quote.price * sharesOutstanding,
-    },
-  };
-}
-
 export function sanitizeCachedFinancials(
   financials: TickerFinancials,
   options: { includeStaleQuotes?: boolean } = {},
 ): TickerFinancials {
-  const enriched = deriveMarketCapFromShares(financials);
-  if (options.includeStaleQuotes || !isQuoteStaleForCurrentSession(enriched.quote)) return enriched;
+  if (options.includeStaleQuotes || !isQuoteStaleForCurrentSession(financials.quote)) return financials;
   return {
-    ...enriched,
+    ...financials,
     quote: undefined,
     quoteContributions: undefined,
   };
@@ -194,6 +166,7 @@ export function hasShallowStatementHistory(data: TickerFinancials | null | undef
 export function mergeMissingStatementArrays(primary: TickerFinancials, fallback: TickerFinancials): TickerFinancials {
   return {
     ...primary,
+    financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
   };
@@ -239,11 +212,26 @@ function mergeDefinedObject<T extends object>(preferred: T | null | undefined, f
   return Object.fromEntries(mergedEntries) as T;
 }
 
+function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamentals | undefined): Fundamentals | undefined {
+  if (primary?.financialCurrency && fallback?.financialCurrency && primary.financialCurrency !== fallback.financialCurrency) {
+    // Revenue and cash flows must come from the same reporting currency.
+    return primary;
+  }
+  const merged = mergeDefinedObject(primary, fallback);
+  if (merged && primary && !primary.financialCurrency && [
+    primary.revenue, primary.netIncome, primary.operatingCashFlow, primary.freeCashFlow, primary.eps,
+  ].some((value) => value != null)) {
+    // A fallback cannot retrospectively denominate an older cached snapshot.
+    delete merged.financialCurrency;
+  }
+  return merged;
+}
+
 export function mergeFinancials(primary: TickerFinancials | null, fallback: TickerFinancials | null): TickerFinancials | null {
   if (!primary || !fallback) {
     const single = primary ?? fallback;
     const resolved = single ? resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(single)) : null;
-    return resolved ? deriveMarketCapFromShares(resolved) : null;
+    return resolved;
   }
 
   const preferFallbackPriceData = hasLikelyQuoteUnitMismatch(primary.quote, fallback.quote);
@@ -255,17 +243,18 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
   );
   const resolvedQuote = resolveCanonicalQuote(quoteContributions).quote;
 
-  return deriveMarketCapFromShares({
+  return {
     ...fallback,
     ...primary,
+    financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     quote: resolvedQuote,
     quoteContributions,
     profile: mergeDefinedObject(primary.profile, fallback.profile),
-    fundamentals: mergeDefinedObject(primary.fundamentals, fallback.fundamentals),
+    fundamentals: mergeFundamentals(primary.fundamentals, fallback.fundamentals),
     priceHistory: normalizePriceHistory(dominant.priceHistory.length > 0 ? dominant.priceHistory : secondary.priceHistory),
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
-  });
+  };
 }
 
 export function mergeCachedFinancialRecords(

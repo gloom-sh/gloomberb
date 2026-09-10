@@ -9,16 +9,16 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
-import { buildEventRows, type EventRow } from "./event-model";
+import { formatEventMetric, buildEventRows, type EventRow } from "./event-model";
 
 const ESTIMATE_COLUMNS = [
   { key: "date", header: "Date" },
   { key: "status", header: "Event" },
   { key: "period", header: "Period" },
-  { key: "qEps", header: "Q EPS", align: "right" as const },
-  { key: "qRevenue", header: "Q revenue", align: "right" as const },
-  { key: "annualEps", header: "Annual EPS", align: "right" as const },
-  { key: "annualRevenue", header: "Annual revenue", align: "right" as const },
+  { key: "qEps", header: "Q EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
+  { key: "qRevenue", header: "Q revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
+  { key: "annualEps", header: "Annual EPS", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.epsCurrency === "string" ? row.epsCurrency : undefined, "eps") },
+  { key: "annualRevenue", header: "Annual revenue", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatEventMetric(value == null ? undefined : Number(value), typeof row.revenueCurrency === "string" ? row.revenueCurrency : undefined, "revenue") },
   { key: "value", header: "Value", align: "right" as const },
   { key: "detail", header: "Detail" },
 ];

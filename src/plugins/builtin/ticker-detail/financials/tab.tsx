@@ -28,6 +28,7 @@ import {
   computeTTM,
   formatFinancialCell,
   formatFinancialHeader,
+  financialStatementCurrency,
   formatFinancialValue,
   resolveFinancialPeriod,
   resolveFinancialPeriodOption,
@@ -79,8 +80,8 @@ export function ResolvedFinancialsTab({
   bodyScrollId?: string;
   allowArrowSubTabNavigation?: boolean;
 }) {
-  const annualStatements = financials?.annualStatements ?? [];
-  const quarterlyStatements = financials?.quarterlyStatements ?? [];
+  const annualStatements = [...(financials?.annualStatements ?? [])].sort((a, b) => a.date.localeCompare(b.date));
+  const quarterlyStatements = [...(financials?.quarterlyStatements ?? [])].sort((a, b) => a.date.localeCompare(b.date));
   const hasAnnualStatements = annualStatements.length > 0;
   const hasQuarterlyStatements = quarterlyStatements.length > 0;
   const fallbackPeriod: FinancialPeriod = hasAnnualStatements ? "annual" : "quarterly";
@@ -257,7 +258,7 @@ export function ResolvedFinancialsTab({
     {
       id: "metric",
       kind: "metric",
-      label: isAnnual ? "Annual" : "Quarterly",
+      label: isAnnual ? "Annual · YoY" : "Quarterly · QoQ",
       width: FINANCIAL_LABEL_W,
       align: "left",
     },
@@ -265,7 +266,7 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      label: padTo(formatFinancialHeader(statement.date), FINANCIAL_COL_W, "center"),
+      label: padTo(formatFinancialHeader(statement.date, statement.currency ?? financialStatementCurrency(financials, displayStatements)), FINANCIAL_COL_W, "center"),
       width: FINANCIAL_COL_W,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,

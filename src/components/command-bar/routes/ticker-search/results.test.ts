@@ -33,6 +33,28 @@ test("keeps completed ticker-search results authoritative over provisional rows"
   expect(mergeTickerSearchResultItems("Apple", [noResults], [])).toEqual([noResults]);
 });
 
+test("exact-match categories preserve a requested listing's venue", () => {
+  const items = mergeTickerSearchResultItems("VOD.L", [
+    { ...resultItem("london", "VOD", "LSE", "search"), category: "Other Listings" },
+    { ...resultItem("cboe", "VODL", "CBOE", "search"), category: "Other Listings" },
+  ], []);
+  expect(items[0]?.category).toBe("Exact Match");
+  expect(items[1]?.category).not.toBe("Exact Match");
+});
+
+test("exact-match promotion never treats a futures or FX spelling as an equity", () => {
+  for (const [query, lookalike] of [["ES=F", "ESF"], ["EUR/USD", "EURUSD"], ["JPY=X", "JPYX"]]) {
+    const rows = mergeTickerSearchResultItems(query!, [
+      { ...resultItem("equity", lookalike!, "MTA", "search"), category: "Other Listings" },
+      { ...resultItem("market", query!, "", "search"), category: "Other Listings" },
+    ], []);
+    expect(rows[0]?.category).not.toBe("Exact Match");
+    expect(rows[1]?.category).toBe("Exact Match");
+    expect(mergePlainRootTickerResults(query!, rows, [resultItem("pane", "Research", "", "action")])[0]?.id)
+      .toBe("market");
+  }
+});
+
 test("folds a plain query's symbol hits into one capped Instruments section behind the local rows", () => {
   const pane: ResultItem = {
     id: "pane:news",
