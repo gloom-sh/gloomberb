@@ -432,7 +432,7 @@ describe("study resolution", () => {
       const result = resolveStudies([input], [study("volume", "volume", [input.id])]);
       expect(result.series[0]?.unit).toBe(volumeUnit ?? "");
       expect(result.series[0]?.points.map((point) => point.value)).toEqual(input.points.map((point) => point.volume));
-      expect(result.warnings).toEqual(volumeUnit ? [] : ["Volume for VOLUME-INPUT: the provider does not specify the unit."]);
+      expect(result.warnings).toEqual(volumeUnit ? [] : ["Volume unit unknown: VOLUME-INPUT."]);
     }
   });
 

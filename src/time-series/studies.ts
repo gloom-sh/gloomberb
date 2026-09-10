@@ -535,7 +535,7 @@ export function resolveStudies(
     else if (spec.kind === "volume") {
       outputs = resolveVolume(spec, input, color);
       if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {
-        warnings.push(`Volume for ${input.label}: the provider does not specify the unit.`);
+        warnings.push(`Volume unit unknown: ${input.label}.`);
       }
     }
     else {

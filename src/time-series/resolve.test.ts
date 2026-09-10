@@ -97,7 +97,7 @@ describe("resolveChartSpecData", () => {
         expect(result.series.find((entry) => entry.id === id)?.unit).toBe(expectedUnit);
         expect(result.series.find((entry) => entry.id === id)?.points.map((point) => point.value)).toEqual([1234]);
       }
-      expect(result.warnings.some((warning) => warning.includes("does not specify"))).toBe(!expectedUnit);
+      expect(result.warnings.some((warning) => warning.includes("Volume unit unknown"))).toBe(!expectedUnit);
     }
   });
 

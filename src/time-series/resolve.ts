@@ -697,7 +697,7 @@ function baseSecuritySeries(
     unitGroup: currencyUnitGroup,
     volumeUnit,
     warning: field.id === "market.volume" && !volumeUnit && points.length > 0
-      ? "The provider does not specify the volume unit." : undefined,
+      ? "Volume unit unknown." : undefined,
     nativeFrequency: spec.source.period && spec.source.period !== "auto"
       ? spec.source.period
       : field.nativeFrequency,
