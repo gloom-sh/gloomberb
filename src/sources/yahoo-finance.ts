@@ -1,3 +1,4 @@
+import { exchangeRateMetadata } from "../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { Quote, PricePoint, TickerFinancials, OptionsChain, CompanyProfile, HolderData, AnalystResearchData, CorporateActionsData } from "../types/financials";
 import type { DataProvider, EarningsEvent, MarketDataRequestContext, NewsItem, SecFilingItem } from "../types/data-provider";
@@ -229,10 +230,11 @@ export class YahooFinanceClient implements DataProvider {
     const time = useBar ? last.date.getTime() : currentTime;
     const asOf = typeof time === "number" && Number.isFinite(time) && time > 0 ? new Date(time).toISOString() : undefined;
     const retrieved = Date.now();
-    if (asOf && Date.parse(asOf) > retrieved + 60_000) throw new Error(`Future exchange rate observation for ${normalized}/USD`);
     const staleAt = Math.min(retrieved + 60 * 60_000, asOf ? Date.parse(asOf) + 60 * 60_000 : Infinity);
-    return { fromCurrency: normalized, toCurrency: "USD", rate, source: this.id, asOf, fetchedAt: new Date(retrieved).toISOString(),
+    const snapshot: ExchangeRateSnapshot = { fromCurrency: normalized, toCurrency: "USD", rate, source: this.id, asOf, fetchedAt: new Date(retrieved).toISOString(),
       staleAt: new Date(staleAt).toISOString(), stale: staleAt <= retrieved, delayMinutes: 0 };
+    exchangeRateMetadata(snapshot, normalized, retrieved);
+    return snapshot;
   }
 
   /** Search for a ticker by name/symbol - uses direct fetch (no retry) for speed */

@@ -33,11 +33,20 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     read: (allowExpired: boolean) => CachedValue<T> | null;
     fetch?: (force: boolean) => Promise<CachedValue<T>>;
     acceptCached?: (value: T) => boolean;
+    /** Optional source-age/identity limit that also applies to stale fallback. */
+    acceptResult?: (result: CachedValue<T>) => boolean;
   }) {
     this.state = { result: options.read(false), loading: false, error: null };
   }
 
-  getSnapshot = (): CachedQueryState<T> => this.state;
+  getSnapshot = (): CachedQueryState<T> => {
+    if (this.state.result && !this.usable(this.state.result)) this.state = { ...this.state, result: null };
+    return this.state;
+  };
+
+  private usable(result: CachedValue<T> | null): CachedValue<T> | null {
+    return result && (this.options.acceptResult?.(result) ?? true) ? result : null;
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -61,7 +70,7 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
     replace?: boolean;
     fetch?: (force: boolean) => Promise<CachedValue<T>>;
   } = {}): Promise<CachedValue<T>> {
-    const cached = this.state.result ?? this.options.read(false);
+    const cached = this.usable(this.state.result) ?? this.usable(this.options.read(false));
     const acceptable = cached && (this.options.acceptCached?.(cached.value) ?? true);
     if (!force && acceptable && cached.staleAt > Date.now()) return Promise.resolve(cached);
     if (!this.active || replace) {
@@ -72,7 +81,7 @@ export class CachedQuery<T> implements CachedQueryHandle<T> {
         if (generation === this.generation) this.publish({ result, loading: false, error: null });
         return result;
       }, (error: unknown) => {
-        const fallback = cached ?? this.options.read(true);
+        const fallback = this.usable(cached) ?? this.usable(this.options.read(true));
         if (generation === this.generation) this.publish({ result: fallback, loading: false, error });
         if (fallback) return { ...fallback, refreshError: error };
         throw error;

@@ -1,3 +1,4 @@
+import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
 import type { DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { OptionsChain } from "../../types/financials";
 import type { OptionsRequest, SecFilingsRequest } from "../request-types";
@@ -206,21 +207,20 @@ export function loadFxRateEntry(options: {
     try {
       const snapshot = await dataProvider.getExchangeRateSnapshot?.(normalizedCurrency);
       const rate = snapshot?.rate ?? await dataProvider.getExchangeRate(normalizedCurrency);
-      if (!Number.isFinite(rate) || rate <= 0 || (snapshot && (snapshot.fromCurrency !== normalizedCurrency || snapshot.toCurrency !== "USD"))) {
-        throw new Error(`Invalid exchange rate for ${normalizedCurrency}/USD`);
-      }
+      const metadata = exchangeRateMetadata(snapshot ?? rate, normalizedCurrency, Date.now(), Date.now());
       const source = snapshot?.source ?? dataProvider.id;
       const attempts = [createAttempt(source, startedAt, "success")];
       return store.update(key, (current) => {
         const entry = readyEntry(current, rate, source, attempts, { keepLastGoodOnEmpty: true });
-        const time = (value?: string) => value && Number.isFinite(Date.parse(value)) ? Date.parse(value) : undefined;
-        return { ...entry, fetchedAt: time(snapshot?.fetchedAt) ?? entry.fetchedAt, asOf: time(snapshot?.asOf),
-          staleAt: snapshot?.stale ? Math.min(time(snapshot.staleAt) ?? Date.now(), Date.now()) : time(snapshot?.staleAt) ?? entry.staleAt };
+        return { ...entry, ...metadata };
       });
     } catch (error) {
       const classified = classifyError(error);
       const attempt = createAttempt(dataProvider.id, startedAt, "fatal_error", classified.reasonCode, classified.message);
-      return store.update(key, (current) => errorEntry(current, attempt));
+      return store.update(key, (current) => errorEntry(
+        isUsableCachedExchangeRate(current.data ?? current.lastGoodData, normalizedCurrency, current)
+          ? current : { ...current, data: null, lastGoodData: null }, attempt,
+      ));
     }
   });
 }

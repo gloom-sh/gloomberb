@@ -379,7 +379,9 @@ export class MarketDataCoordinator {
       store.set(key, {
         phase: loading ? (result ? "refreshing" : "loading") : result ? "ready" : "error",
         data: value,
-        lastGoodData: value ?? current.lastGoodData,
+        // FX query ownership includes the maximum source age. A null result
+        // means there is no valid conversion fallback left to project.
+        lastGoodData: value ?? (method === "getExchangeRate" ? null : current.lastGoodData),
         source: result?.source ?? null,
         fetchedAt: result?.fetchedAt ?? null,
         asOf: result?.asOf,

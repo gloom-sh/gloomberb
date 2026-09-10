@@ -1,3 +1,4 @@
+import { exchangeRateMetadata, isUsableCachedExchangeRate } from "../../utils/exchange-rate-snapshot";
 import { CachedQuery, type CachedValue } from "../../data/cached-query";
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, MarketDataRequestContext, SecFilingItem } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
@@ -15,10 +16,10 @@ interface Route {
   variants: string[];
   request: (provider: DataProvider, force: boolean) => Promise<unknown> | undefined;
   error: string;
-  rank?: (value: any) => number;
+  rank?: (value: any, fetchedAt?: number) => number;
   acceptCached?: (value: any) => boolean;
   decode?: (value: any) => unknown;
-  metadata?: (value: any) => Partial<CachedValue<unknown>>;
+  metadata?: (value: any, fetchedAt?: number) => Partial<CachedValue<unknown>>;
   encode?: (value: any) => unknown;
   empty?: () => unknown;
   throwLastError?: boolean;
@@ -54,8 +55,8 @@ export class ProviderRouterCachedRoutes {
     const read = (allowExpired: boolean): CachedValue<unknown> | null => {
       if (staticUsd) return { value: 1, fetchedAt: 0, staleAt: Infinity, expiresAt: Infinity, source: "static" };
       const records = listCachedResources<unknown>(this.deps.resources, route.kind, route.entityKey, route.variants, sourceKeys, allowExpired)
-        .filter((record) => (route.rank?.(record.value) ?? 0) >= 0)
-        .map((record) => ({ ...record, value: route.decode ? route.decode(record.value) : record.value, metadata: route.metadata?.(record.value) }));
+        .filter((record) => (route.rank?.(record.value, record.fetchedAt) ?? 0) >= 0)
+        .map((record) => ({ ...record, value: route.decode ? route.decode(record.value) : record.value, metadata: route.metadata?.(record.value, record.fetchedAt) }));
       const record = (route.acceptCached ? records.find((entry) => route.acceptCached!(entry.value)) : null) ?? records[0];
       if (!record) return null;
       return {
@@ -69,10 +70,13 @@ export class ProviderRouterCachedRoutes {
       this.deps.cacheResource(route.kind, route.entityKey, route.variants[0] ?? "", sourceKey, route.encode ? route.encode(value) : value, policy);
       const fetchedAt = Date.now();
       return { value: route.decode ? route.decode(value) : value, fetchedAt, staleAt: fetchedAt + policy.staleMs,
-        expiresAt: fetchedAt + policy.expireMs, source: sourceKey.replace(/^provider:/, ""), ...route.metadata?.(value) };
+        expiresAt: fetchedAt + policy.expireMs, source: sourceKey.replace(/^provider:/, ""), ...route.metadata?.(value, fetchedAt) };
     };
     const query = new CachedQuery({
       read,
+      acceptResult: method === "getExchangeRate" ? (result) => isUsableCachedExchangeRate(
+        result.value as number, String(args[0]).trim().toUpperCase(), result,
+      ) : undefined,
       acceptCached: route.acceptCached,
       fetch: async (force) => {
         if (route.brokerRequest) {
@@ -129,7 +133,7 @@ export class ProviderRouterCachedRoutes {
       else if (options.allowExpired !== false) {
         const route = this.describe("getExchangeRate", [currency]);
         const record = listCachedResources<{ rate: number }>(this.deps.resources, "exchange-rate", route.entityKey, [""], this.deps.getProviderSourceKeys(), true)
-          .find((candidate) => (route.rank?.(candidate.value) ?? -1) >= 0);
+          .find((candidate) => (route.rank?.(candidate.value, candidate.fetchedAt) ?? -1) >= 0);
         if (record) results.set(currency, record.value.rate);
       }
     }
@@ -149,25 +153,13 @@ export class ProviderRouterCachedRoutes {
         return {
           kind: "exchange-rate", policy: "exchangeRate", entityKey: `${currency}/USD`, variants: [""],
           request: (provider) => provider.getExchangeRateSnapshot?.(currency) ?? provider.getExchangeRate(currency),
-          rank: (value: any) => {
-            const rate = typeof value === "number" ? value : value?.rate;
-            return Number.isFinite(rate) && rate > 0 && (!value?.fromCurrency || value.fromCurrency === currency)
-              && (!value?.toCurrency || value.toCurrency === "USD") ? 2 : -1;
+          rank: (value: any, fetchedAt) => {
+            try { exchangeRateMetadata(value, currency, Date.now(), fetchedAt); return 2; }
+            catch { return -1; }
           },
           decode: (data: any) => typeof data === "number" ? data : data.rate,
           encode: (data: any) => typeof data === "number" ? { rate: data } : data,
-          metadata: (data: any) => {
-            if (typeof data !== "object" || !data) return {};
-            const finiteTime = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? Date.parse(value) : undefined;
-            const fetchedAt = finiteTime(data.fetchedAt);
-            const staleAt = finiteTime(data.staleAt);
-            return {
-              ...(fetchedAt !== undefined ? { fetchedAt, expiresAt: fetchedAt + 7 * 24 * 60 * 60_000 } : {}),
-              ...(staleAt !== undefined || data.stale === true ? { staleAt: data.stale === true ? Math.min(staleAt ?? Date.now(), Date.now()) : staleAt! } : {}),
-              asOf: finiteTime(data.asOf),
-              ...(typeof data.source === "string" ? { source: data.source } : {}),
-            };
-          },
+          metadata: (data, fetchedAt) => exchangeRateMetadata(data, currency, Date.now(), fetchedAt),
           error: `No exchange rate provider available for ${currency}`,
         };
       }

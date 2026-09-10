@@ -175,4 +175,29 @@ describe("shared cached market queries", () => {
     } finally { persistence.close(); }
   });
 
+  test("FX memory, persistence and renderer fallbacks expire by source time during a failed refresh", async () => {
+    const actualNow = Date.now;
+    let now = actualNow();
+    const sourceTime = now - 7 * 86_400_000 + 1000;
+    Date.now = () => now;
+    const persistence = new AppPersistence(":memory:");
+    let calls = 0;
+    const provider = createTestDataProvider({ id: "fx", getExchangeRateSnapshot: async () => {
+      if (++calls > 1) throw new Error("offline");
+      return { rate: 1.16, fromCurrency: "EUR", toCurrency: "USD", source: "yahoo", asOf: new Date(sourceTime).toISOString(), fetchedAt: new Date(now).toISOString(), stale: true };
+    } });
+    const router = new AssetDataRouter(provider, [], persistence.resources);
+    const coordinator = new MarketDataCoordinator(router);
+    try {
+      expect((await coordinator.loadFxRate("EUR")).data).toBe(1.16);
+      now += 2000;
+      expect(router.getCachedExchangeRates(["EUR"], { allowExpired: true }).has("EUR")).toBe(false);
+      const entry = await coordinator.loadFxRate("EUR");
+      expect(entry.data).toBeNull();
+      expect(entry.lastGoodData).toBeNull();
+      expect(entry.error).not.toBeNull();
+      await expect(router.getExchangeRate("EUR")).rejects.toThrow();
+    } finally { Date.now = actualNow; coordinator.destroy(); persistence.close(); }
+  });
+
 });

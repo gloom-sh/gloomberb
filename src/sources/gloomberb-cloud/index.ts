@@ -1,3 +1,4 @@
+import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
 import {
@@ -320,8 +321,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const currency = fromCurrency.trim().toUpperCase();
     const response = await apiClient.getCloudExchangeRate(currency);
     const data = unwrapRequiredCloudResponse(response, `Cloud exchange rate is unavailable for ${currency}`);
-    if (!Number.isFinite(data.rate) || data.rate <= 0 || (data.fromCurrency && data.fromCurrency !== currency)
-      || (data.toCurrency && data.toCurrency !== "USD")) throw new Error(`Invalid exchange rate for ${currency}/USD`);
+    exchangeRateMetadata({ ...data, asOf: data.asOf ?? response.asOf }, currency);
     // Older servers have no observation metadata. Keep asOf unknown rather than
     // presenting the request completion time as the rate's time.
     return { ...data, rate: data.rate, fromCurrency: currency, toCurrency: "USD", source: data.source ?? this.id,
