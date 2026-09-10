@@ -125,6 +125,30 @@ test("growth is unavailable across missing years or a reporting currency change"
   expect(table?.rows.find((row) => row.summaryKey === "totalRevenue")?.cells.map((cell) => cell.growth)).toEqual([undefined, undefined, undefined]);
 });
 
+test("annual growth finds a unique prior year around interleaved ADR EPS observations", () => {
+  const annualStatements = [
+    { date: "2025-03-31", currency: "JPY", totalRevenue: 48_036_704_000_000, eps: 3595.6 },
+    { date: "2025-06-30", currency: "JPY", eps: 3251.3 },
+    { date: "2025-09-30", currency: "JPY", eps: 3534.8 },
+    { date: "2026-03-31", currency: "JPY", totalRevenue: 50_684_952_000_000, eps: 2952.5 },
+  ];
+  const model = () => buildFinancialTableModel({ annualStatements, quarterlyStatements: [] }, {
+    period: "annual", statement: "income", expandAll: true,
+  })!;
+  const revenue = (table: ReturnType<typeof model>) => table.rows.find((row) => row.summaryKey === "totalRevenue")!.cells[0]!;
+  const table = model();
+  expect(revenue(table)).toMatchObject({ value: 50_684_952_000_000 });
+  expect(revenue(table).growth).toBeCloseTo(0.0551296775);
+  expect(table.rows.find((row) => row.key === "eps")!.cells[0]!.growth).toBeCloseTo(-0.1788574925);
+  expect(table.statements.map((row) => row.date)).toEqual([...annualStatements].reverse().map((row) => row.date));
+
+  annualStatements[0]!.currency = "USD";
+  expect(revenue(model()).growth).toBeUndefined();
+  annualStatements[0]!.currency = "JPY";
+  annualStatements.splice(1, 0, { date: "2025-04-30", currency: "JPY", totalRevenue: 49_000_000_000_000, eps: 3500 });
+  expect(revenue(model()).growth).toBeUndefined();
+});
+
 test("annual balance sheets show the latest dated snapshot with comparable year-on-year growth", () => {
   const financials = {
     annualStatements: [{ date: "2025-12-31", currency: "USD", totalAssets: 200 }],

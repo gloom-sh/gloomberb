@@ -205,7 +205,17 @@ export function buildPreviousStatementMap(
 
   for (let index = 1; index < sourceStatements.length; index += 1) {
     const current = sourceStatements[index]!;
-    const previous = sourceStatements[index - 1]!;
+    // Providers can include off-cycle 12-month observations (for example ADR
+    // EPS) between fiscal years. They must not hide a comparable prior year.
+    // More than one annual candidate is ambiguous; do not guess its identity.
+    const candidates = period === "annual"
+      ? sourceStatements.filter((candidate) => {
+        const days = (Date.parse(current.date) - Date.parse(candidate.date)) / 86_400_000;
+        return days >= 300 && days <= 430;
+      })
+      : [sourceStatements[index - 1]!];
+    if (candidates.length !== 1) continue;
+    const previous = candidates[0]!;
     const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
     const [minimum, maximum] = period === "annual" ? [300, 430] : [60, 120];
     if (days < minimum! || days > maximum! || !Number.isFinite(days)) continue;
