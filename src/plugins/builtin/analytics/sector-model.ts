@@ -65,7 +65,7 @@ export function getPortfolioPositionValue(
   columnContext: ColumnContext,
 ): number | null {
   const value = getSortValue(PORTFOLIO_VALUE_COLUMN, ticker, financials, columnContext);
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function getSectorSortValue(row: SectorTableRow, columnId: SectorColumnId): string | number | null {

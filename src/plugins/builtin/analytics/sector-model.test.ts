@@ -39,3 +39,18 @@ test("gross long/short concentration keeps signed P&L and missing cost cannot be
     expect(sortSectorRows(rows, { columnId: "return", direction }).at(-1)?.returnPct).toBeNull();
   }
 });
+
+test("known zero broker values and marks retain zero weight and losses without becoming missing data", () => {
+  for (const zeroValue of [{ marketValue: 0 }, { markPrice: 0 }]) {
+    const worthless = holding("ZERO");
+    worthless.metadata.sector = "Energy";
+    worthless.metadata.positions = [{ portfolio: "main", shares: 10, avgCost: 100, currency: "USD", broker: "manual", ...zeroValue }];
+    const calculate = () => buildSectorRowsFromPortfolioColumns([holding("AAPL"), worthless], new Map(), context());
+    expect(calculate().unvaluedSymbols).toEqual([]);
+    expect(calculate().rows.find((row) => row.sector === "Energy")).toMatchObject({ value: 0, weight: 0, pnl: -1000, returnPct: -100 });
+    expect(calculate().rows.find((row) => row.sector === "Technology")?.weight).toBe(1);
+    worthless.metadata.positions = [{ portfolio: "main", shares: 10, avgCost: 100, currency: "USD", broker: "manual" }];
+    expect(calculate().unvaluedSymbols).toEqual(["ZERO"]);
+    expect(calculate().rows.every((row) => row.weight === null)).toBe(true);
+  }
+});
