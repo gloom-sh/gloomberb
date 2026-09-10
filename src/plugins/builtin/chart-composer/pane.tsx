@@ -182,6 +182,7 @@ function ChartComposerSurface({
   const runtimeViewportTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
   const adaptiveViewportRef = useRef<RuntimeChartViewport | null>(null);
   const requestViewportRef = useRef<RuntimeChartViewport | null>(null);
+  const requestViewportOwnerRef = useRef(authoredViewportKey);
   const activeRuntimeViewport = runtimeViewportState?.key === authoredViewportKey
     ? runtimeViewportState
     : null;
@@ -272,11 +273,18 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
-  const shareData = useMemo(() => buildChartShareData(plottedSeries), [plottedSeries]);
+  const shareWarnings = useMemo(() => [...resolution.errors, ...resolution.warnings], [resolution.errors, resolution.warnings]);
+  const shareData = useMemo(() => buildChartShareData(plottedSeries, activeRuntimeViewport?.requestViewport ?? viewport, shareWarnings),
+    [plottedSeries, activeRuntimeViewport?.requestViewport, viewport, shareWarnings]);
   const createPublicShare = usePublicShare();
   const shareChart = useCallback(() => {
-    if (shareData) void createPublicShare({ kind: "chart", data: shareData });
-  }, [createPublicShare, shareData]);
+    // Read the latest gesture immediately, even before its history request's
+    // debounce commits. Sharing should match the window visible at the click.
+    const visibleWindow = requestViewportOwnerRef.current === authoredViewportKey
+      ? requestViewportRef.current ?? viewport : viewport;
+    const data = buildChartShareData(plottedSeries, visibleWindow, shareWarnings);
+    if (data) void createPublicShare({ kind: "chart", data });
+  }, [createPublicShare, plottedSeries, viewport, shareWarnings, authoredViewportKey]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -324,6 +332,7 @@ function ChartComposerSurface({
     );
     adaptiveViewportRef.current = restored?.adaptiveViewport ?? null;
     requestViewportRef.current = restored?.requestViewport ?? null;
+    requestViewportOwnerRef.current = authoredViewportKey;
     setRuntimeViewportState((current) => current?.key === authoredViewportKey ? current : restored);
     if (persistedInteractionViewport && !restored) setStoredInteractionViewport(null);
     return () => {
@@ -353,6 +362,7 @@ function ChartComposerSurface({
     if (!Number.isFinite(start) || !Number.isFinite(end) || start > end) return;
     const viewport = { start: new Date(start), end: new Date(end) };
     requestViewportRef.current = viewport;
+    requestViewportOwnerRef.current = authoredViewportKey;
     // A pan can leave the window a provider serves at the current resolution
     // just as a zoom can, so both re-pick.
     if (spec.viewport.resolution === "auto") adaptiveViewportRef.current = viewport;

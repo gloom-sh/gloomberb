@@ -54,7 +54,6 @@ import {
   COMPOSITE_KEYBOARD_PAN_RATIO,
   COMPOSITE_ZOOM_STEP_FACTOR,
   buildCompositeNavigationFrame,
-  clampCompositeViewport,
   compositeNavigationDataViewport,
   compositeViewportPositions,
   fitCompositeViewport,
@@ -1709,10 +1708,12 @@ export function CompositeChart({
     [allowHistoricalBackfill, marketTimelineSeries, visibleSeries],
   );
   const authoredViewport = useMemo(() => {
-    if (!navigationFrame) return viewport ?? null;
-    return viewport
-      ? clampCompositeViewport(navigationFrame, viewport)
-      : compositeNavigationDataViewport(navigationFrame);
+    // The requested dates own the axis, including gaps in a cached or partial
+    // response. Fitting them to available observations silently changes the
+    // research period. User pan/zoom gestures retain their navigation limits.
+    if (viewport && Number.isFinite(viewport.start.getTime())
+      && Number.isFinite(viewport.end.getTime()) && viewport.start <= viewport.end) return viewport;
+    return navigationFrame ? compositeNavigationDataViewport(navigationFrame) : null;
   }, [navigationFrame, viewport]);
   const activeUserViewport = authoredViewportChanged ? null : userViewport;
   const effectiveViewport = activeUserViewport ?? authoredViewport;

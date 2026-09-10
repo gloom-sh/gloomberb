@@ -98,3 +98,23 @@ test("pane share renders the handoff copy, tracked CTA and printable facts only"
   expect(html).not.toContain("<script>");
   expect(html).toContain("Delete share");
 });
+
+test("chart snapshot retains exact values, gaps and units without a fabricated empty-panel scale", () => {
+  const html = renderToStaticMarkup(<ShareView share={{
+    kind: "chart",
+    data: { title: "Research snapshot", series: [
+      { name: "Price", unit: "USD", points: [{ x: "2026-01-01", y: 123.456789 }, { x: "2026-01-02", y: null }, { x: "2026-01-03", y: 124 }] },
+      { name: "Missing yield", unit: "%", points: [{ x: "2026-01-01", y: null }] },
+    ], warnings: ["Partial history"] },
+    createdAt: "2026-09-10T12:00:00Z", expiresAt: "2026-10-10T12:00:00Z", ownedByViewer: false,
+  }} />);
+  expect(html).toContain("123.456789");
+  expect(html).toContain("Unavailable");
+  expect(html).toContain("Partial history");
+  expect(html).toContain("Snapshot shared 2026-09-10 12:00 UTC");
+  expect(html.match(/<circle/g)).toHaveLength(2);
+  expect(html).not.toContain("<polyline");
+  const emptyPanel = html.slice(html.indexOf('aria-label="% chart"'), html.indexOf('class="chart-notes"'));
+  expect(emptyPanel).toContain("No observations available");
+  expect(emptyPanel).not.toContain("chart-y-axis");
+});
