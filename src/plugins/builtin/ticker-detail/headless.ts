@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { buildFinancialTableModel, financialStatementCurrency, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
+import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
@@ -20,9 +20,12 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       expandAll: true,
     });
     const statementCurrency = financialStatementCurrency(financials, table?.statements ?? []);
-    const dates = table?.statements.map(({ date, currency }) => ({
+    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence }) => ({
       date, currency: currency ?? statementCurrency ?? null,
-      label: formatFinancialHeader(date, currency ?? statementCurrency).trim(),
+      dateSource: date === "TTM" ? "derived" : dateSource ?? "provider",
+      providerDate: date === "TTM" ? null : providerDate ?? null,
+      dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,
+      label: formatFinancialHeader(date, currency ?? statementCurrency, dateSource).trim(),
     })) ?? [];
     const rows = table?.rows.map((row) => ({
       id: row.id, kind: row.kind, metric: row.unitLabel,
@@ -49,6 +52,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: table?.period ?? options.period, growthBasis: table?.period === "quarterly" ? "QoQ" : "YoY", columns: dates,
         limitations: financialStatementLimitations(financials),
+        dateProvenance: financialStatementDateNotice(table?.statements ?? []),
       },
     };
   },

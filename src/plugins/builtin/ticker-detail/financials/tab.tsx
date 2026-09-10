@@ -28,6 +28,7 @@ import {
   formatFinancialCell,
   formatFinancialHeader,
   financialStatementCurrency,
+  financialStatementDateNotice,
   financialStatementLimitations,
   formatFinancialValue,
   resolveFinancialPeriod,
@@ -259,7 +260,7 @@ export function ResolvedFinancialsTab({
       id: `statement:${statement.date}:${index}`,
       kind: "statement",
       statement,
-      label: padTo(formatFinancialHeader(statement.date, statement.currency ?? financialStatementCurrency(financials, displayStatements)), FINANCIAL_COL_W, "center"),
+      label: padTo(formatFinancialHeader(statement.date, statement.currency ?? financialStatementCurrency(financials, displayStatements), statement.dateSource, true), FINANCIAL_COL_W, "center"),
       width: FINANCIAL_COL_W,
       align: "right",
       headerColor: statement.date === "TTM" ? colors.textBright : colors.textDim,
@@ -400,6 +401,7 @@ export function ResolvedFinancialsTab({
         rootBefore={(
           <>
             {financialStatementLimitations(financials).map((limitation) => <Notice key={limitation} tone="muted">{limitation}</Notice>)}
+            {financialStatementDateNotice(displayStatements) && <Notice tone="muted">{financialStatementDateNotice(displayStatements)}</Notice>}
             <Box flexDirection="row" height={1}>
               <Box width={FINANCIAL_SUB_TABS_WIDTH} height={1}>
                 <Tabs

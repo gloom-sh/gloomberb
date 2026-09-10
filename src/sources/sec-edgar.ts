@@ -57,6 +57,7 @@ type LookupEntry = {
 
 type CompanyFactsEntry = {
   tagPriority?: number;
+  accn?: string;
   start?: string;
   end?: string;
   val?: number;
@@ -403,6 +404,7 @@ function companyFactsEntries(payload: unknown, tag: string, units: string[]): Co
       .map((entry) => companyFactsRecord(entry))
       .filter((entry): entry is Record<string, unknown> => !!entry)
       .map((entry) => ({
+        accn: typeof entry.accn === "string" ? entry.accn : undefined,
         start: typeof entry.start === "string" ? entry.start : undefined,
         end: typeof entry.end === "string" ? entry.end : undefined,
         val: typeof entry.val === "number" ? entry.val : undefined,
@@ -522,7 +524,7 @@ function setCompanyFactValue(
 ): void {
   const selectionKey = `${date}:${String(field)}`;
   if (!shouldReplaceCompanyFact(entry, selectedFacts.get(selectionKey))) return;
-  const row = rows.get(date) ?? { date };
+  const row = rows.get(date) ?? { date, dateSource: "sec" };
   (row as unknown as Record<string, unknown>)[field] = value;
   if (entry.filed) {
     row.fieldAvailability = {
@@ -566,9 +568,17 @@ function fillCompanyFactsStatementRows(
   }
 }
 
-function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>): FinancialStatement[] {
+function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>, selectedFacts: Map<string, CompanyFactsEntry>): FinancialStatement[] {
   const statements = Array.from(rows.values()).sort((left, right) => left.date.localeCompare(right.date));
   for (const statement of statements) {
+    // A selected duration fact identifies the fiscal period. Its accession and
+    // filing date are evidence for that identity, never row-wide availability.
+    const anchor = [...selectedFacts.entries()]
+      .filter(([key, entry]) => key.startsWith(`${statement.date}:`) && entry.start && entry.accn
+        && /^\d{10}-\d{2}-\d{6}$/.test(entry.accn) && entry.filed && entry.filed >= statement.date)
+      .map(([, entry]) => entry)
+      .sort((left, right) => left.filed!.localeCompare(right.filed!) || left.accn!.localeCompare(right.accn!))[0];
+    if (anchor) statement.dateEvidence = { accessionNumber: anchor.accn!, filed: anchor.filed!, startDate: anchor.start! };
     if (
       typeof statement.freeCashFlow !== "number"
       && typeof statement.operatingCashFlow === "number"
@@ -615,8 +625,8 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
   }
 
   return {
-    annualStatements: finalizeCompanyFactsStatements(annualRows),
-    quarterlyStatements: finalizeCompanyFactsStatements(quarterlyRows),
+    annualStatements: finalizeCompanyFactsStatements(annualRows, annualSelectedFacts),
+    quarterlyStatements: finalizeCompanyFactsStatements(quarterlyRows, quarterlySelectedFacts),
   };
 }
 

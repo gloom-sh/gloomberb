@@ -1,6 +1,6 @@
 import type { FinancialStatement } from "../types/financials";
 
-const STATEMENT_METADATA_KEYS = new Set(["date", "currency", "availableAt", "fieldAvailability"]);
+const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 function metricKeys(...rows: Array<FinancialStatement | undefined>): string[] {
@@ -25,6 +25,8 @@ function canonicalStatementDate(
   fallback: FinancialStatement | undefined,
 ): string {
   if (!fallback) return primary.date;
+  if (primary.dateSource === "sec") return primary.date;
+  if (fallback.dateSource === "sec") return hasMatchingFinancialValues(primary, fallback) ? fallback.date : primary.date;
   if (isVerifiedCalendarAlias(primary, fallback)) return [primary.date, fallback.date].sort()[0]!;
   return hasAvailabilityEvidence(fallback) && !hasAvailabilityEvidence(primary)
     ? fallback.date
@@ -62,7 +64,7 @@ function isVerifiedCalendarAlias(left: FinancialStatement, right: FinancialState
   };
   if (monthEnd(left) === monthEnd(right)) return false;
   const fiscal = monthEnd(left) ? right : left;
-  if (!hasAvailabilityEvidence(fiscal)) return false;
+  if (fiscal.dateSource !== "sec" && !hasAvailabilityEvidence(fiscal)) return false;
   // A month-end approximation can be weeks away for a 52/53-week issuer.
   // Require corroborating values, not just proximity or common zero fields.
   return hasMatchingFinancialValues(left, right);
@@ -121,6 +123,15 @@ export function mergeFinancialStatementRows(
       // otherwise retain their primary provider's period identity.
       date: canonicalStatementDate(row, fallback),
     } as FinancialStatement;
+    // Period provenance belongs to the selected date. It must not leak from a
+    // different fallback period or become publication evidence for any value.
+    const dateOwner = [row, fallback].find((candidate) => candidate?.date === merged.date && candidate.dateSource === "sec")
+      ?? (row.date === merged.date ? row : fallback);
+    for (const key of ["dateSource", "providerDate", "dateEvidence"] as const) delete merged[key];
+    if (dateOwner?.dateSource) merged.dateSource = dateOwner.dateSource;
+    if (dateOwner?.providerDate) merged.providerDate = dateOwner.providerDate;
+    if (dateOwner?.dateEvidence) merged.dateEvidence = dateOwner.dateEvidence;
+    if (merged.dateSource === "sec" && row.date !== merged.date && !merged.providerDate) merged.providerDate = row.date;
     const fieldAvailability: Record<string, string> = {};
     const keys = metricKeys(row, fallback);
 
