@@ -5,7 +5,7 @@ import {
   buildTimelineRows,
   inferBrowserTabFromQuery,
   latestLikely13FQuarter,
-  selectLatestFormsByPeriod,
+  buildPeriodReports,
   sortFilingPositionRows,
 } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
@@ -61,29 +61,32 @@ describe("13F model", () => {
     expect(latestLikely13FQuarter(new Date("2026-02-20T00:00:00Z"))).toBe("2025Q4");
   });
 
-  test("selects the latest filing for each period", () => {
-    const selected = selectLatestFormsByPeriod([
-      form({ accessionNumber: "old", periodOfReport: "2025-12-31", filedAsOfDate: "2026-02-14" }),
-      form({ accessionNumber: "amended", periodOfReport: "2025-12-31", filedAsOfDate: "2026-02-20", isAmendment: true }),
-      form({ accessionNumber: "new", periodOfReport: "2026-03-31", filedAsOfDate: "2026-05-15" }),
-    ]);
-    expect(selected.map((entry) => entry.accessionNumber)).toEqual(["new", "amended"]);
+  test("reconciles additions and smaller full restatements without losing filing history", () => {
+    const original = form({ accessionNumber: "original", tableEntryTotal: 110, tableValueTotal: 258701144516 });
+    const addition = form({ accessionNumber: "addition", filedAsOfDate: "2026-05-20", isAmendment: true,
+      amendmentType: "NEW HOLDINGS", tableEntryTotal: 4, tableValueTotal: 1106550356 });
+    const reports = buildPeriodReports([addition, original, addition]);
+    expect(reports[0]).toMatchObject({ complete: true, tableEntryTotal: 114, tableValueTotal: 259807694872 });
+    expect(reports[0]?.filings.map((entry) => entry.accessionNumber)).toEqual(["original", "addition"]);
+    const restatement = form({ accessionNumber: "restated", filedAsOfDate: "2026-06-01", isAmendment: true,
+      amendmentType: "RESTATEMENT", tableEntryTotal: 1, tableValueTotal: 20 });
+    const extra = { ...addition, accessionNumber: "extra", filedAsOfDate: "2026-06-02" };
+    const revised = buildPeriodReports([extra, original, restatement, addition])[0];
+    expect(revised?.filings.map((entry) => entry.accessionNumber)).toEqual(["restated", "extra"]);
+    expect(revised).toMatchObject({ complete: true, tableEntryTotal: 5, tableValueTotal: 1106550376 });
+    expect(buildTimelineRows([original, addition, restatement, extra]).map((row) => row.id))
+      .toEqual(["extra", "restated", "addition", "original"]);
+    expect(buildTimelineRows([original, addition]).every((row) => row.valueChangePercent === null)).toBe(true);
   });
 
-  test("does not replace a full period filing with a supplemental amendment", () => {
-    const selected = selectLatestFormsByPeriod([
-      form({ accessionNumber: "full", periodOfReport: "2025-03-31", filedAsOfDate: "2025-05-15", tableEntryTotal: 110 }),
-      form({
-        accessionNumber: "supplemental",
-        submissionType: "13F-HR/A",
-        periodOfReport: "2025-03-31",
-        filedAsOfDate: "2025-06-03",
-        tableEntryTotal: 4,
-        isAmendment: true,
-        amendmentType: "NEW HOLDINGS",
-      }),
-    ]);
-    expect(selected.map((entry) => entry.accessionNumber)).toEqual(["full"]);
+  test("does not infer a full report from a standalone or untyped amendment", () => {
+    const original = form({ accessionNumber: "original" });
+    for (const amendmentType of [undefined, "NEW HOLDINGS"]) {
+      const amendment = form({ accessionNumber: "amendment", isAmendment: true, amendmentType,
+        filedAsOfDate: "2026-05-20" });
+      expect(buildPeriodReports([amendment])[0]).toMatchObject({ complete: false, tableValueTotal: null });
+      if (!amendmentType) expect(buildPeriodReports([original, amendment])[0]?.complete).toBe(false);
+    }
   });
 
   test("aggregates current and prior holdings into change rows", () => {
@@ -180,10 +183,34 @@ describe("13F model", () => {
     }
   });
 
+  test("missing amounts stay unknown through aggregation and incomplete reports do not fabricate exits", () => {
+    const latest = form({});
+    const previous = form({ accessionNumber: "previous", periodOfReport: "2025-12-31" });
+    const data: FundDetailData = { cik: latest.cik, name: "Fund", forms: [latest, previous],
+      latestForm: latest, previousForm: previous,
+      latestHoldings: [holding({ value: 20, shares: 2 }), holding({ value: null, shares: null })],
+      previousHoldings: [holding({ value: 50, shares: 5 }), holding({ cusip: "123456789" })] };
+    const rows = buildFundHoldingRows(data);
+    expect(rows[0]).toMatchObject({ value: null, shares: null, sharesChange: null,
+      valueChange: null, weight: null, estimatedPnl: null, action: "unknown" });
+    const report = buildPeriodReports([latest])[0]!;
+    report.complete = false;
+    expect(buildFundHoldingRows({ ...data, latestReport: report })).toHaveLength(1);
+    expect(buildFilingPositionRows([holding({ value: 20 })], null)[0]?.weight).toBeNull();
+  });
+
+  test("filing value changes do not bridge a missing quarter", () => {
+    const rows = buildTimelineRows([
+      form({ accessionNumber: "current", periodOfReport: "2026-03-31" }),
+      form({ accessionNumber: "old", periodOfReport: "2025-09-30" }),
+    ]);
+    expect(rows[0]?.valueChangePercent).toBeNull();
+  });
+
   test("timeline rows include period-over-period value changes", () => {
     const rows = buildTimelineRows([
-      form({ periodOfReport: "2026-03-31", tableValueTotal: 120, amendmentType: "RESTATEMENT" }),
-      form({ periodOfReport: "2025-12-31", tableValueTotal: 100 }),
+      form({ accessionNumber: "latest", periodOfReport: "2026-03-31", tableValueTotal: 120, amendmentType: "RESTATEMENT" }),
+      form({ accessionNumber: "previous", periodOfReport: "2025-12-31", tableValueTotal: 100 }),
     ]);
     expect(rows[0]?.valueChangePercent).toBeCloseTo(0.2);
     expect(rows[0]).toMatchObject({

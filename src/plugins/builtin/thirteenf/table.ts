@@ -180,7 +180,7 @@ export function renderTimelineCell(
       };
     case "form":
       return {
-        text: row.isAmendment ? `${row.submissionType} amended` : row.submissionType,
+        text: row.isAmendment ? row.amendmentType?.toUpperCase() === "RESTATEMENT" ? "Restatement" : row.amendmentType?.toUpperCase() === "NEW HOLDINGS" ? "New holdings" : "Amendment (unknown)" : row.submissionType,
         color: selectedColor ?? (row.isAmendment ? colors.warning : colors.textDim),
       };
   }

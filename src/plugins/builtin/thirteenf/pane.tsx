@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DataTableView,
-  EmptyState, InputSearchBar, KeyValueRow, PaneStatusBody, Tabs, useTableLoadMore, type DataTableKeyEvent,
+  EmptyState, Notice, InputSearchBar, KeyValueRow, PaneStatusBody, Tabs, useTableLoadMore, type DataTableKeyEvent,
   type DataTableRootKeyContext, type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -424,7 +424,7 @@ function FundDetailView({
 
   const holdingRows = useMemo(() => buildFundHoldingRows(data), [data]);
   const visibleHoldingRows = useMemo(() => (
-    sortHoldingRows(holdingRows.filter((row) => row.value != null), holdingSort)
+    sortHoldingRows(holdingRows, holdingSort)
   ), [holdingRows, holdingSort]);
   const filingRows = useMemo(() => sortTimelineRows(buildTimelineRows(data?.forms ?? []), filingSort), [data?.forms, filingSort]);
   const selectedHoldingIndex = selectedIndexById(visibleHoldingRows, holdingSelectedId);
@@ -447,7 +447,7 @@ function FundDetailView({
       : selectedFiling;
   const currentSourceUrl = activeTab === "filings"
     ? openFiling?.url ?? selectedFiling?.url
-    : latestForm?.url;
+    : selectedHoldingFiling?.url ?? latestForm?.url;
   const statusFiling = openFiling ?? latestForm;
   useEffect(() => {
     if (holdingSelectedId && visibleHoldingRows.some((row) => row.id === holdingSelectedId)) return;
@@ -626,6 +626,10 @@ function FundDetailView({
             <Box flexDirection="column" paddingX={1}>
               <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
               <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
+              {data?.latestReport && data.latestReport.filings.length > 1 ? (
+                <KeyValueRow label="Public report" value={`${data.latestReport.filings.length} filings combined`} width={Math.max(1, width - 2)} />
+              ) : null}
+              {data?.warnings?.map((warning) => <Notice key={warning} tone="warning">{warning}</Notice>)}
               {visibleHoldingRows.some((row) => !!row.putCall) ? (
                 <Text fg={colors.textMuted}>{THIRTEENF_OPTIONS_NOTE}</Text>
               ) : null}

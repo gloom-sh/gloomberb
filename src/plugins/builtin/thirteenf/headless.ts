@@ -122,6 +122,7 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
     format: (value) => formatPercentMaybe(value == null ? null : Number(value)),
   },
   { key: "submissionType", header: "Form" },
+  { key: "amendmentType", header: "Amendment" },
 ];
 
 type HeadlessThirteenFView =
@@ -250,7 +251,7 @@ export function createThirteenFHeadless(
           };
         }
         const rows = sortHoldingRows(
-          buildFundHoldingRows(detail).filter((row) => row.value != null),
+          buildFundHoldingRows(detail),
           DEFAULT_HOLDING_SORT,
         )
           .slice(0, limit)
@@ -262,6 +263,7 @@ export function createThirteenFHeadless(
         return {
           columns: HOLDING_COLUMNS,
           rows,
+          ...(detail.warnings?.length ? { errors: detail.warnings } : {}),
           metadata: {
             view,
             cik: detail.cik,
@@ -269,6 +271,10 @@ export function createThirteenFHeadless(
             latestPeriod: detail.latestForm?.periodOfReport ?? null,
             previousPeriod: detail.previousForm?.periodOfReport ?? null,
             comparisonAvailable: hasComparable13FQuarter(detail),
+            currentFilings: detail.latestReport?.filings.map((form) => form.accessionNumber) ?? [],
+            previousFilings: detail.previousReport?.filings.map((form) => form.accessionNumber) ?? [],
+            currentReportedValue: detail.latestReport?.complete ? detail.latestReport.tableValueTotal : null,
+            changeBasis: "Changes compare disclosed quarter-end positions, not trades. Omitted or confidential holdings can affect apparent entries and exits.",
             valueBasis: THIRTEENF_OPTIONS_NOTE,
             estimatedPnlBasis: "Quarter-end unit-value change on overlapping reported shares; excludes options, trading costs and dividends; not actual fund P&L.",
           },

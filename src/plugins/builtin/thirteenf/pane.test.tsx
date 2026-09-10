@@ -266,7 +266,7 @@ describe("ThirteenFPane", () => {
 
     const filingsFrame = testSetup!.captureCharFrame();
     expect(filingsFrame).toContain("PERIOD");
-    expect(filingsFrame).toContain("13F-HR/A");
+    expect(filingsFrame).toContain("Restatement");
     expect(filingsFrame).toContain("Back Alpha Capital");
     expect(filingsFrame).not.toContain("Accession");
   });
