@@ -22,6 +22,27 @@ test("period evidence follows the selected fiscal date without inventing field a
 });
 
 describe("mergeFinancialStatementRows", () => {
+  test("merging and JSON roundtrips preserve unknown fields in an authoritative availability map", () => {
+    const primary: FinancialStatement = {
+      date: "2025-12-31", availableAt: "2026-04-01", totalRevenue: 100, grossProfit: 40,
+      fieldAvailability: { grossProfit: "2026-02-01" },
+    };
+    const fallback: FinancialStatement = { date: primary.date, netIncome: 10, availableAt: "2026-03-01" };
+    const merged = JSON.parse(JSON.stringify(mergeFinancialStatementRows([primary], [fallback])[0])) as FinancialStatement;
+    expect(merged).toMatchObject({ totalRevenue: 100, grossProfit: 40, netIncome: 10,
+      fieldAvailability: { grossProfit: "2026-02-01", netIncome: "2026-03-01" } });
+    expect(merged.availableAt).toBeUndefined();
+    expect(merged.fieldAvailability?.totalRevenue).toBeUndefined();
+    expect(mergeFinancialStatementRows([merged], [fallback])[0]).toEqual(merged);
+    // Independent evidence may date a matching retained value, but not a different one.
+    const [corroborated] = mergeFinancialStatementRows([merged], [{ date: primary.date, totalRevenue: 100, availableAt: "2026-02-15" }]);
+    expect(corroborated?.fieldAvailability?.totalRevenue).toBe("2026-02-15");
+    expect(corroborated?.availableAt).toBe("2026-03-01");
+    const [emptyMap] = mergeFinancialStatementRows([{ ...primary, fieldAvailability: {} }], [{ date: primary.date }]);
+    expect(emptyMap?.fieldAvailability).toEqual({});
+    expect(emptyMap?.availableAt).toBeUndefined();
+  });
+
   test("preserves per-field availability across providers", () => {
     const [merged] = mergeFinancialStatementRows(
       [{

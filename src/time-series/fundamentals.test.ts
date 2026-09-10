@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { FinancialStatement, TickerFinancials } from "../types/financials";
 import { alignTimeSeries } from "./alignment";
 import { extractFredSeries } from "./economic";
-import { deriveQuarterlyStatements, extractFundamentalSeries } from "./fundamentals";
+import { deriveQuarterlyStatements, extractFundamentalSeries, fundamentalSeriesUsesAvailabilityFallback } from "./fundamentals";
 import type { ResolvedSeries, SecuritySeriesSource } from "./types";
 
 const DAY = 24 * 60 * 60 * 1_000;
@@ -327,20 +327,25 @@ describe("fundamental series extraction", () => {
     expect(points[0]?.availableAt?.toISOString().slice(0, 10)).toBe("2025-02-01");
   });
 
-  test("falls back to row availability only for a dependency without field provenance", () => {
-    const points = extractFundamentalSeries(
-      financials([], [{
-        date: "2024-12-31",
-        availableAt: "2025-04-01",
-        fieldAvailability: { grossProfit: "2025-02-01" },
-        grossProfit: 40,
-        totalRevenue: 100,
-      }]),
-      source("fundamental.grossMargin", "annual"),
-    );
-
-    expect(points[0]?.value).toBe(40);
-    expect(points[0]?.date.toISOString().slice(0, 10)).toBe("2025-04-01");
+  test("partial field maps cannot date unknown metrics or their derived dependencies", () => {
+    const statement = { date: "2024-12-31", availableAt: "2025-04-01", grossProfit: 40, totalRevenue: 100 };
+    for (const fieldAvailability of [{ grossProfit: "2025-02-01" }, {}, { grossProfit: "2025-02-01", totalRevenue: "invalid" }]) {
+      for (const availableAt of [undefined, statement.availableAt]) {
+        const snapshot = financials([], [{ ...statement, availableAt, fieldAvailability }]);
+        for (const [field, value] of [["totalRevenue", 100], ["grossMargin", 40]] as const) {
+          const definition = source(`fundamental.${field}`, "annual");
+          const [point] = extractFundamentalSeries(snapshot, definition);
+          expect(point?.value).toBe(value);
+          expect(point?.availableAt).toBeUndefined();
+          expect(point?.date.toISOString().slice(0, 10)).toBe(statement.date);
+          expect(fundamentalSeriesUsesAvailabilityFallback(snapshot, definition)).toBe(true);
+        }
+      }
+    }
+    // Legacy rows with no per-field map still declare a date for the complete row.
+    const [legacy] = extractFundamentalSeries(financials([], [statement]), source("fundamental.grossMargin", "annual"));
+    expect(legacy?.value).toBe(40);
+    expect(legacy?.availableAt?.toISOString().slice(0, 10)).toBe(statement.availableAt);
   });
 
   test("tracks only the EPS branch actually used by historical PE", () => {
@@ -549,4 +554,29 @@ test("quarterly share averages derive from the annual average instead of copying
     { date: "2025-09-30", basicShares: 80 },
   ], [{ date: "2025-12-31", basicShares: 85 }]);
   expect(rows.at(-1)?.basicShares).toBe(70);
+});
+
+test("derived Q4 and TTM dates require every flow input while retaining dated balance snapshots", () => {
+  const quarters: FinancialStatement[] = [
+    { date: "2024-03-31", totalRevenue: 20, availableAt: "2024-05-01" },
+    { date: "2024-06-30", totalRevenue: 20 },
+    { date: "2024-09-30", totalRevenue: 20, availableAt: "2024-11-01" },
+  ];
+  const annual: FinancialStatement = {
+    date: "2024-12-31", totalRevenue: 100, totalAssets: 200, availableAt: "2025-02-01",
+  };
+  const q4 = deriveQuarterlyStatements(quarters, [annual]).at(-1)!;
+  expect(q4).toMatchObject({ totalRevenue: 40, totalAssets: 200, fieldAvailability: { totalAssets: "2025-02-01" } });
+  expect(q4.availableAt).toBeUndefined();
+  expect(q4.fieldAvailability?.totalRevenue).toBeUndefined();
+  const snapshot = financials(quarters, [annual]);
+  for (const [metric, value, availableAt] of [["totalRevenue", 100, undefined], ["totalAssets", 200, "2025-02-01"]] as const) {
+    const [point] = extractFundamentalSeries(snapshot, source(`fundamental.${metric}`, "ttm"));
+    expect(point?.value).toBe(value);
+    expect(point?.availableAt?.toISOString().slice(0, 10)).toBe(availableAt);
+  }
+  const known = financials(quarters.map((row, index) => index === 1 ? { ...row, availableAt: "2025-04-01" } : row), [annual]);
+  const [complete] = extractFundamentalSeries(known, source("fundamental.totalRevenue", "ttm"));
+  expect(complete?.value).toBe(100);
+  expect(complete?.availableAt?.toISOString().slice(0, 10)).toBe("2025-04-01");
 });

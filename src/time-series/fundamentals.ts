@@ -3,7 +3,7 @@ import type {
   PricePoint,
   TickerFinancials,
 } from "../types/financials";
-import { areNearbyFinancialPeriodEnds } from "../utils/financial-statements";
+import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvailability } from "../utils/financial-statements";
 import { canonicalTimeSeriesFieldId } from "./field-catalog";
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 
@@ -112,17 +112,6 @@ function validDate(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
-function latestDateString(values: Array<string | null | undefined>): string | undefined {
-  let latest: { value: string; time: number } | undefined;
-  for (const value of values) {
-    if (!value) continue;
-    const time = Date.parse(value);
-    if (!Number.isFinite(time)) continue;
-    if (!latest || time > latest.time) latest = { value, time };
-  }
-  return latest?.value;
-}
-
 function statementTime(statement: FinancialStatement): number {
   return Date.parse(statement.date);
 }
@@ -142,9 +131,15 @@ function setStatementNumber(
   statement.__timeSeriesDerivedFields = [
     ...new Set([...(statement.__timeSeriesDerivedFields ?? []), field]),
   ];
-  if (availableAt) {
-    statement.fieldAvailability = { ...statement.fieldAvailability, [field]: availableAt };
-  }
+  statement.fieldAvailability = { ...statement.fieldAvailability };
+  if (availableAt) statement.fieldAvailability[field] = availableAt;
+  else delete statement.fieldAvailability[field];
+}
+
+function completeStatementAvailability(statement: InternalStatement): string | undefined {
+  return completeAvailability(NUMERIC_STATEMENT_FIELDS
+    .filter((field) => statementNumber(statement, field) !== null)
+    .map((field) => statementFieldAvailability(statement, field)));
 }
 
 function periodCategory(date: string, period: "annual" | "quarterly"): string {
@@ -217,7 +212,7 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
       return [{
         statement,
         value,
-        availableAt: statement.fieldAvailability?.[field] ?? statement.availableAt,
+        availableAt: statementFieldAvailability(statement, field),
         derived: statement.__timeSeriesDerivedFields?.includes(field) === true,
       }];
     });
@@ -228,10 +223,8 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
     if (selected.derived) derivedFields.push(field);
   }
 
-  if (Object.keys(fieldAvailability).length > 0) {
-    merged.fieldAvailability = fieldAvailability;
-    merged.availableAt = latestDateString(Object.values(fieldAvailability));
-  }
+  merged.fieldAvailability = fieldAvailability;
+  merged.availableAt = completeStatementAvailability(merged);
   if (derivedFields.length > 0) merged.__timeSeriesDerivedFields = derivedFields;
   return merged;
 }
@@ -283,7 +276,7 @@ function precedingQuarterInputs(
         date: statement.date,
         time,
         value,
-        availableAt: statement.fieldAvailability?.[field] ?? statement.availableAt,
+        availableAt: statementFieldAvailability(statement, field),
       });
     }
   }
@@ -323,8 +316,8 @@ export function deriveQuarterlyStatements(
       const annualTotal = annualValue * (QUARTERLY_AVERAGE_FIELDS.includes(field) ? 4 : 1);
       const derived = annualTotal - previousInputs.reduce((sum, input) => sum + input.value, 0);
       if (!Number.isFinite(derived)) continue;
-      const availableAt = latestDateString([
-        annualStatement.fieldAvailability?.[field] ?? annualStatement.availableAt,
+      const availableAt = completeAvailability([
+        statementFieldAvailability(annualStatement, field),
         ...previousInputs.map((input) => input.availableAt),
       ]);
       setStatementNumber(target, field, derived, availableAt);
@@ -335,17 +328,13 @@ export function deriveQuarterlyStatements(
       if (statementNumber(target, field) !== null) continue;
       const annualValue = statementNumber(annualStatement, field);
       if (annualValue === null) continue;
-      const availableAt = annualStatement.fieldAvailability?.[field] ?? annualStatement.availableAt;
+      const availableAt = statementFieldAvailability(annualStatement, field);
       setStatementNumber(target, field, annualValue, availableAt);
       changed = true;
     }
 
     if (changed) {
-      target.availableAt = latestDateString([
-        target.availableAt,
-        annualStatement.availableAt,
-        ...Object.values(target.fieldAvailability ?? {}),
-      ]);
+      target.availableAt = completeStatementAvailability(target);
       byDate.set(target.date, target);
     }
   }
@@ -368,7 +357,6 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
     const ttm: InternalStatement = {
       date: latest.date,
       currency: latest.currency,
-      availableAt: latestDateString(window.map((statement) => statement.availableAt)),
       fieldAvailability: {},
       __timeSeriesTtm: true,
       __timeSeriesDerivedFields: [],
@@ -380,8 +368,8 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
       (ttm as unknown as Record<string, unknown>)[field] = values.reduce((sum, value) => sum + value, 0)
         / (QUARTERLY_AVERAGE_FIELDS.includes(field) ? 4 : 1);
       ttm.__timeSeriesDerivedFields!.push(field);
-      const availableAt = latestDateString(window.map((statement) => (
-        statement.fieldAvailability?.[field] ?? statement.availableAt
+      const availableAt = completeAvailability(window.map((statement) => (
+        statementFieldAvailability(statement, field)
       )));
       if (availableAt) ttm.fieldAvailability![field] = availableAt;
     }
@@ -390,13 +378,10 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
       const value = statementNumber(latest, field);
       if (value === null) continue;
       (ttm as unknown as Record<string, unknown>)[field] = value;
-      const availableAt = latest.fieldAvailability?.[field] ?? latest.availableAt;
+      const availableAt = statementFieldAvailability(latest, field);
       if (availableAt) ttm.fieldAvailability![field] = availableAt;
     }
-    ttm.availableAt = latestDateString([
-      ttm.availableAt,
-      ...Object.values(ttm.fieldAvailability ?? {}),
-    ]);
+    ttm.availableAt = completeStatementAvailability(ttm);
     result.push(ttm);
   }
   return result;
@@ -548,10 +533,7 @@ function metricDependencies(metric: string, statement: FinancialStatement): Nume
 
 function metricAvailability(statement: FinancialStatement, metric: string): string | undefined {
   const dependencies = metricDependencies(metric, statement);
-  if (dependencies.length === 0) return statement.availableAt;
-  return latestDateString(dependencies.map((field) => (
-    latestDateString([statement.fieldAvailability?.[field]]) ?? statement.availableAt
-  )));
+  return completeAvailability(dependencies.map((field) => statementFieldAvailability(statement, field)));
 }
 
 function fundamentalValue(
