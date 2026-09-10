@@ -21,6 +21,9 @@ import {
   resolveTickerOpenTarget,
   type TickerOpenTarget,
 } from "../../tickers/open-target";
+import { findExactTickerSearchMatch } from "../../tickers/search";
+import { parsePublicTickerKey } from "../../utils/exchanges";
+import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
 
 interface UseAppTickerOpenRuntimeOptions {
   activatePane: (paneId: string, layout?: LayoutConfig) => void;
@@ -89,14 +92,38 @@ export function useAppTickerOpenRuntime({
     const symbol = target.symbol;
     const currentState = stateRef.current;
     const currentLayout = currentState.config.layout;
-    const existing = options?.forceNewPane
+    let existing = options?.forceNewPane
       ? null
       : findFixedTickerPaneForSymbol(currentLayout, paneType, symbol);
+    if (!options?.forceNewPane && !existing && (parsePublicTickerKey(symbol).exchange || tickerHasYahooSuffix(symbol))) {
+      existing = currentLayout.instances.find((instance) => {
+        if (instance.paneId !== paneType || instance.binding?.kind !== "fixed" || !isPaneInLayout(currentLayout, instance.instanceId)) return false;
+        const ticker = currentState.tickers.get(instance.binding.symbol);
+        return !!ticker?.metadata.exchange && !!findExactTickerSearchMatch([
+          { label: instance.binding.symbol, right: ticker.metadata.exchange },
+        ], symbol);
+      }) ?? null;
+    }
     if (existing) {
+      // A reload can qualify a previously bare saved symbol. Reuse only the
+      // verified same listing, retaining its pane identity and its followers.
+      const previousSymbol = existing.binding?.kind === "fixed" ? existing.binding.symbol : null;
+      let nextLayout = currentLayout;
+      if (previousSymbol && previousSymbol !== symbol) {
+        const existingId = existing.instanceId;
+        nextLayout = { ...currentLayout, instances: currentLayout.instances.map((instance) => (
+          instance.instanceId === existingId ? {
+            ...instance,
+            binding: { kind: "fixed" as const, symbol },
+            title: !instance.title || instance.title === previousSymbol ? symbol : instance.title,
+          } : instance
+        )) };
+        persistLayout(nextLayout);
+      }
       if (paneType === TICKER_RESEARCH_PANE_ID && options?.tabId) {
         dispatch({ type: "UPDATE_PANE_STATE", paneId: existing.instanceId, patch: { activeTabId: options.tabId } });
       }
-      focusVisiblePane(existing.instanceId, currentLayout);
+      focusVisiblePane(existing.instanceId, nextLayout);
       return;
     }
 

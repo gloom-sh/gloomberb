@@ -7,12 +7,23 @@ import { createInitialState, type AppAction } from "../../state/app/context";
 import { createDefaultConfig, createPaneInstance, TICKER_RESEARCH_PANE_ID } from "../../types/config";
 import type { TickerRecord } from "../../types/ticker";
 import { useAppTickerOpenRuntime } from "./ticker-open-runtime";
+import { researchEntryFromSearch } from "../../renderers/browser/research-entry";
 
 test("a slow linked ticker applies its tab to the reused or new pane after hydration", async () => {
-  for (const reusePane of [true, false]) {
+  for (const { savedListing, savedExchange, reusePane } of [
+    { savedListing: "VOD:XLON", savedExchange: "JSE", reusePane: true },
+    { savedListing: "VOD", savedExchange: "LSE", reusePane: true },
+    { savedListing: "VOD", savedExchange: "JSE", reusePane: false },
+  ]) {
     const config = createDefaultConfig(":memory:");
-    config.layout = createBrowserResearchLayout(reusePane ? "VOD:XLON" : "NVDA");
+    config.layout = createBrowserResearchLayout(savedListing);
     const stateRef = { current: createInitialState(config) };
+    // A saved same-spelling issuer on another venue must not satisfy the link.
+    stateRef.current.tickers.set("VOD", { metadata: {
+      ticker: "VOD", exchange: savedExchange,
+      currency: savedExchange === "LSE" ? "GBP" : "ZAR", name: savedExchange === "LSE" ? "Vodafone" : "Vodacom",
+      portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
+    } });
     const actions: AppAction[] = [];
     const focused: string[] = [];
     let layouts = 0;
@@ -45,10 +56,12 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     const rendered = await testRender(<Harness />, { width: 20, height: 2 });
     try {
       await act(async () => { await rendered.renderOnce(); });
-      const opening = runtime.openPinnedTicker("VOD:XLON", { tabId: "financials", floating: true });
+      const entry = researchEntryFromSearch("?ticker=VOD&exchange=LSE&tab=financials")!;
+      const opening = runtime.openPinnedTicker(entry.symbol, { tabId: entry.tab, floating: true });
       // Focus may change while the provider is still resolving the linked listing.
       stateRef.current.focusedPaneId = "world-indices:main";
-      expect(actions).toEqual([]);
+      // Explicit exact local matches may resolve without the deferred provider.
+      if (savedExchange !== "LSE") expect(actions).toEqual([]);
       releaseSearch();
       await act(async () => { await opening; });
       const paneId = reusePane ? BROWSER_RESEARCH_PANE_ID : "ticker-detail:linked";
@@ -58,7 +71,9 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
       expect(stateRef.current.config.layout.instances.find((pane) => pane.instanceId === paneId)?.binding)
         .toEqual({ kind: "fixed", symbol: "VOD:XLON" });
       expect(focused).toEqual([paneId]);
-      expect(layouts).toBe(reusePane ? 0 : 1);
+      expect(layouts).toBe(savedListing === "VOD:XLON" ? 0 : 1);
+      expect(stateRef.current.config.layout.instances.filter((pane) => pane.paneId === TICKER_RESEARCH_PANE_ID))
+        .toHaveLength(reusePane ? 1 : 2);
     } finally {
       await act(async () => { rendered.renderer.destroy(); });
     }

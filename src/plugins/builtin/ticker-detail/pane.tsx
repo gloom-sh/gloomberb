@@ -28,6 +28,8 @@ import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 
@@ -104,9 +106,16 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     if (!focused || !ticker || getCurrentPluginTarget() !== "web") return;
     const url = new URL(window.location.href);
     url.searchParams.set("ticker", ticker.metadata.ticker);
+    // A bare ticker can name different issuers on different venues. Keep the
+    // selected listing on reload, and replace any previous pane's venue.
+    if (ticker.metadata.exchange && !parsePublicTickerKey(ticker.metadata.ticker).exchange && !tickerHasYahooSuffix(ticker.metadata.ticker)) {
+      url.searchParams.set("exchange", ticker.metadata.exchange);
+    } else {
+      url.searchParams.delete("exchange");
+    }
     url.searchParams.set("tab", activeTabId);
     window.history.replaceState(window.history.state, "", url.href);
-  }, [focused, ticker?.metadata.ticker, activeTabId]);
+  }, [focused, ticker?.metadata.ticker, ticker?.metadata.exchange, activeTabId]);
   const [pluginCaptured, setPluginCaptured] = useState(false);
   useEffect(() => {
     if (focused && Number.isFinite(financials?.quote?.price) && (financials?.quote?.price ?? 0) > 0) {
