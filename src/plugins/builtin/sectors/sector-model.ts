@@ -9,8 +9,6 @@ import {
 } from "./sector-data";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-export const ONE_MONTH_DAYS = 30;
-export const ONE_YEAR_DAYS = 365;
 export const DEFAULT_COLLECTION_ID: SectorCollectionId = "sectors";
 
 export interface SectorRow extends SectorDef {
@@ -21,6 +19,9 @@ export interface SectorRow extends SectorDef {
   currency: string;
   loading: boolean;
   quoteUnavailable?: boolean;
+  returnAsOfDate?: string | null;
+  return1MStartDate?: string | null;
+  return1YStartDate?: string | null;
 }
 
 type SectorColumnId = "name" | "etf" | "price" | "changePercent" | "return1M" | "return1Y" | "bar";
@@ -85,6 +86,9 @@ export function normalizeRowsForCollection(
       currency: existing?.currency ?? "USD",
       loading: existing?.loading ?? true,
       quoteUnavailable: existing?.quoteUnavailable ?? false,
+      returnAsOfDate: existing?.returnAsOfDate ?? null,
+      return1MStartDate: existing?.return1MStartDate ?? null,
+      return1YStartDate: existing?.return1YStartDate ?? null,
     };
   });
 }
@@ -116,27 +120,45 @@ export function latestHistoryClose(history: readonly PricePoint[]): number | nul
   return getSortedHistory(history).at(-1)?.point.close ?? null;
 }
 
+export function latestHistoryDate(history: readonly PricePoint[]): string | null {
+  const latest = getSortedHistory(history).at(-1);
+  return latest ? new Date(latest.timestamp).toISOString().slice(0, 10) : null;
+}
+
+export type SectorReturnRange = "1M" | "1Y";
+
+/** Clamp calendar subtraction so March 31 maps to February's final day. */
+export function sectorReturnTargetDate(asOfDate: string, range: SectorReturnRange): string {
+  const shifted = new Date(`${asOfDate}T00:00:00Z`);
+  const day = shifted.getUTCDate();
+  shifted.setUTCDate(1);
+  shifted.setUTCMonth(shifted.getUTCMonth() - (range === "1M" ? 1 : 12));
+  const lastDay = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth() + 1, 0)).getUTCDate();
+  shifted.setUTCDate(Math.min(day, lastDay));
+  return shifted.toISOString().slice(0, 10);
+}
+
 export function computeTrailingReturn(
   history: readonly PricePoint[],
-  days: number,
+  range: SectorReturnRange,
   latestPrice?: number | null,
-): number | null {
+  asOfDate = latestHistoryDate(history),
+): { value: number; startDate: string; endDate: string } | null {
+  if (!asOfDate) return null;
   const points = getSortedHistory(history);
-  if (points.length < 2) return null;
-
-  const latest = points.at(-1)!;
+  const target = sectorReturnTargetDate(asOfDate, range);
+  // Use the last close on/before the calendar boundary, allowing a weekend or
+  // exchange holiday. A shorter history or a long source gap is not 1M/1Y.
+  const baseline = points.findLast(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10) <= target);
+  if (!baseline) return null;
+  const startDate = new Date(baseline.timestamp).toISOString().slice(0, 10);
+  if (Date.parse(target) - Date.parse(startDate) > 7 * DAY_MS) return null;
+  const end = points.findLast(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10) === asOfDate);
   const endPrice = latestPrice != null && Number.isFinite(latestPrice) && latestPrice > 0
     ? latestPrice
-    : latest.point.close;
-  const targetTimestamp = latest.timestamp - days * DAY_MS;
-  let baseline = points[0]!;
-  for (const point of points) {
-    if (point.timestamp > targetTimestamp) break;
-    baseline = point;
-  }
-  const baselinePrice = baseline.point.close;
-  if (!Number.isFinite(endPrice) || !Number.isFinite(baselinePrice) || baselinePrice <= 0) return null;
-  return (endPrice / baselinePrice - 1) * 100;
+    : end?.point.close;
+  if (endPrice == null || !Number.isFinite(endPrice) || endPrice <= 0) return null;
+  return { value: (endPrice / baseline.point.close - 1) * 100, startDate, endDate: asOfDate };
 }
 
 export function buildSectorColumns(width: number): SectorColumn[] {

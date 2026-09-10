@@ -38,3 +38,17 @@ describe("sectors headless model", () => {
     expect(requested[0]).not.toEqual(requested[1]);
   });
 });
+
+
+test("an available quote does not make an unavailable annual window complete", async () => {
+  const headless = createSectorsHeadless({
+    load: async (_args, definitions) => definitions.map((definition) => ({
+      etf: definition.etf,
+      row: { price: 100, changePercent: 1, return1M: 2, return1Y: null, quoteUnavailable: false, returnAsOfDate: "2026-09-10" },
+    })),
+  });
+  const result = await headless.load(args("sectors"), {} as HeadlessPaneContext);
+  expect(result.unavailableSymbols).toContain("XLK");
+  expect(result.errors?.some((error) => error.startsWith("XLK:"))).toBe(true);
+  expect(result.rows.find((row) => row.etf === "XLK")).toMatchObject({ price: 100, return1M: 2, return1Y: null });
+});

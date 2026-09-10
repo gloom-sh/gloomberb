@@ -39,9 +39,11 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
       metadata: {
         range,
         unavailablePairs,
-        returnAlignment: "Close-to-close returns between shared UTC dates; exchange closing times may differ.",
+        returnAlignment: "Local-price close-to-close returns between shared UTC dates; no FX conversion, and exchange closing times may differ.",
         availability: symbols.map((symbol) => ({
           symbol, status: bySymbol.get(symbol)?.status ?? "error", observationCount: bySymbol.get(symbol)?.observationCount ?? 0,
+          firstDate: bySymbol.get(symbol)?.prices.at(0)?.dateKey ?? null,
+          lastDate: bySymbol.get(symbol)?.prices.at(-1)?.dateKey ?? null,
         })),
       },
     };
