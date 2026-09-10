@@ -10,7 +10,7 @@ import {
 import { normalizeTickerSymbol } from "./search/ranking";
 import type { TickerOpenTarget } from "./search/types";
 import { parsePublicTickerKey } from "../utils/exchanges";
-import { tickerHasYahooSuffix } from "../sources/yahoo-finance/symbols";
+import { getYahooSymbol, tickerHasYahooSuffix } from "../sources/yahoo-finance/symbols";
 
 export type { TickerOpenTarget } from "./search/types";
 
@@ -77,6 +77,11 @@ export async function resolveTickerOpenTarget({
     if (preserveListingKey && quoteExchange) {
       const baseSymbol = requested.exchange ? requested.symbol : symbol.slice(0, symbol.lastIndexOf("."));
       if (!findExactTickerSearchMatch([{ label: baseSymbol, right: quoteExchange }], symbol)) return null;
+    }
+    if (preserveListingKey) {
+      const yahooAlias = requested.exchange ? getYahooSymbol(requested.symbol, requested.exchange) : symbol;
+      const explicitAliasMatches = tickerHasYahooSuffix(yahooAlias) && normalizeTickerSymbol(quote.symbol) === yahooAlias;
+      if (!explicitAliasMatches && !findExactTickerSearchMatch([{ label: quote.symbol, right: quoteExchange }], symbol)) return null;
     }
     const quoteSymbol = preserveListingKey ? symbol : normalizeTickerSymbol(quote.symbol || symbol);
     const existing = await tickerRepository.loadTicker(quoteSymbol);

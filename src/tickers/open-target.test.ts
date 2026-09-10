@@ -43,17 +43,24 @@ test("opening an ordinary query keeps the provider ticker instead of persisting 
   expect(await tickerRepository.loadTicker("BRKB")).toBeNull();
 });
 
-test("quote-only hydration rejects a conflicting reported listing exchange", async () => {
+test("quote-only hydration verifies the returned symbol and listing before preserving a qualified key", async () => {
   for (const query of ["VOD:XLON", "VOD.L"]) {
-    for (const exchange of ["NASDAQ", "LSE"]) {
+    for (const [symbol, exchange, valid] of [
+      ["VOD", "NASDAQ", false],
+      ["BARC", "LSE", false],
+      ["VOD", undefined, false],
+      ["VOD.L", "NASDAQ", false],
+      ["VOD", "LSE", true],
+      ["VOD.L", "LSE", true],
+    ] as const) {
       const tickerRepository = repository();
       const target = await resolveTickerOpenTarget({
         query, tickerRepository, tickers: new Map(),
         dataProvider: createTestDataProvider({ getQuote: async () => ({
-          symbol: "VOD", exchangeName: exchange, price: 1.25, currency: "GBP", lastUpdated: 1, change: 0, changePercent: 0,
+          symbol, exchangeName: exchange, price: 1.25, currency: "GBP", lastUpdated: 1, change: 0, changePercent: 0,
         }) }),
       });
-      if (exchange === "NASDAQ") {
+      if (!valid) {
         expect(target).toBeNull();
         expect(await tickerRepository.loadAllTickers()).toEqual([]);
       } else {
