@@ -6,6 +6,7 @@ import type {
 } from "../../api-client";
 import type { CloudNewsParams } from "../../api-client/paths";
 import { parsePublicTickerKey, publicExchange } from "../../utils/exchanges";
+import { getYahooSymbol, tickerHasYahooSuffix } from "../yahoo-finance/symbols";
 
 function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -93,10 +94,16 @@ export function mapCloudNewsArticle(
 export function cloudNewsParams(query: NewsQuery): CloudNewsParams {
   const feed = query.feed ?? (query.scope === "ticker" ? "ticker" : "latest");
   const ticker = query.ticker ? parsePublicTickerKey(query.ticker) : undefined;
+  const exchange = ticker?.exchange ?? query.exchange;
+  let symbol = ticker?.symbol;
+  if (symbol && exchange && tickerHasYahooSuffix(symbol)) {
+    const baseSymbol = symbol.slice(0, symbol.lastIndexOf("."));
+    if (getYahooSymbol(baseSymbol, exchange) === symbol) symbol = baseSymbol;
+  }
   return {
     feed,
-    ticker: feed === "ticker" ? ticker?.symbol : undefined,
-    exchange: feed === "ticker" ? publicExchange(ticker?.exchange ?? query.exchange) : undefined,
+    ticker: feed === "ticker" ? symbol : undefined,
+    exchange: feed === "ticker" ? publicExchange(exchange) : undefined,
     tickerTier:
       feed === "ticker" ? query.tickerTier ?? "primary" : query.tickerTier,
     tickerRelations: query.tickerRelations,
