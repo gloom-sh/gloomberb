@@ -133,6 +133,16 @@ describe("parseFilingDocuments", () => {
 });
 
 describe("parseCompanyFactsFinancialStatements", () => {
+  test("keeps the fiscal period accession separate from later metric publication dates", () => {
+    const earlier = { start: "2023-09-04", end: "2024-09-01", form: "10-K", fp: "FY", accn: "0000909832-24-000049", filed: "2024-10-09", val: 100 };
+    const statements = parseCompanyFactsFinancialStatements({ facts: { "us-gaap": {
+      Revenues: { units: { USD: [earlier] } },
+      NetIncomeLoss: { units: { USD: [{ ...earlier, accn: "0000909832-24-000050", filed: "2024-10-20", val: 10 }] } },
+    } } });
+    expect(statements.annualStatements[0]).toMatchObject({ date: "2024-09-01", dateSource: "sec",
+      dateEvidence: { accessionNumber: earlier.accn, filed: earlier.filed, startDate: earlier.start },
+      availableAt: "2024-10-20", fieldAvailability: { totalRevenue: "2024-10-09", netIncome: "2024-10-20" } });
+  });
   test("keeps preferred income concept and its restatements separate from consolidated fallback income", () => {
     const period = { start: "2017-09-04", end: "2018-09-02", form: "10-K", fp: "FY" };
     const statements = parseCompanyFactsFinancialStatements({ facts: { "us-gaap": {
@@ -240,6 +250,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
 
     expect(statements.annualStatements).toEqual([{
       date: "2020-12-31",
+      dateSource: "sec",
       availableAt: "2020-12-31",
       fieldAvailability: {
         totalRevenue: "2020-12-31",
@@ -259,6 +270,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
     expect(statements.quarterlyStatements).toEqual([
       {
         date: "2021-03-31",
+        dateSource: "sec",
         availableAt: "2021-03-31",
         fieldAvailability: {
           totalRevenue: "2021-03-31",
@@ -277,6 +289,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       },
       {
         date: "2021-06-30",
+        dateSource: "sec",
         availableAt: "2021-06-30",
         fieldAvailability: { totalRevenue: "2021-06-30" },
         totalRevenue: 40,
@@ -325,6 +338,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
 
     expect(parseCompanyFactsFinancialStatements(payload).quarterlyStatements).toEqual([{
       date: "2025-03-29",
+      dateSource: "sec",
       availableAt: "2025-05-02",
       fieldAvailability: { totalRevenue: "2025-05-02" },
       totalRevenue: 95_359,
@@ -452,6 +466,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
     expect(statements.quarterlyStatements).toEqual([
       {
         date: "2025-03-31",
+        dateSource: "sec",
         availableAt: "2025-03-31",
         fieldAvailability: { totalRevenue: "2025-03-31", grossProfit: "2025-03-31" },
         totalRevenue: 100,
@@ -459,6 +474,7 @@ describe("parseCompanyFactsFinancialStatements", () => {
       },
       {
         date: "2026-03-31",
+        dateSource: "sec",
         availableAt: "2026-03-31",
         fieldAvailability: { totalRevenue: "2026-03-31", grossProfit: "2026-03-31" },
         totalRevenue: 200,

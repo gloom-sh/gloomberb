@@ -124,9 +124,19 @@ export function formatFinancialValue(
   return formatWithDivisor(value, row.divisor);
 }
 
-export function formatFinancialHeader(date: string, currency?: string): string {
+export function formatFinancialHeader(date: string, currency?: string, dateSource?: FinancialStatement["dateSource"], compact = false): string {
   const period = date === "TTM" ? "TTM" : date.slice(0, 10);
-  return currency ? `${period} ${currency}` : period;
+  const label = currency ? `${period} ${currency}` : period;
+  if (date === "TTM") return label;
+  return `${label} ${compact ? (dateSource === "sec" ? "S" : "P") : (dateSource === "sec" ? "(SEC date)" : "(provider date)")}`;
+}
+
+export function financialStatementDateNotice(statements: readonly FinancialStatement[]): string {
+  const dated = statements.filter(({ date }) => date !== "TTM");
+  return [
+    dated.some(({ dateSource }) => dateSource !== "sec") ? "P: provider period date; may be approximate." : "",
+    dated.some(({ dateSource }) => dateSource === "sec") ? "S: SEC fiscal date; filing evidence identifies the period, not every metric's publication date." : "",
+  ].filter(Boolean).join(" ");
 }
 
 export function financialStatementCurrency(

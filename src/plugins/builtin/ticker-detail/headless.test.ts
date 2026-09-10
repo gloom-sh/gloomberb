@@ -39,6 +39,25 @@ test("financial statements keep raw values, dated growth cells, and formatted co
   expect((shares.cells as Array<{ growth: number }>)[0]!.growth).toBeCloseTo(0.2);
 });
 
+test("financial exports distinguish provider dates from SEC period evidence and derived TTM", async () => {
+  const dateEvidence = { accessionNumber: "0000909832-24-000049", filed: "2024-10-09", startDate: "2023-09-04" };
+  const ctx = { marketData: createTestDataProvider({ async getTickerFinancials() {
+    return { annualStatements: [
+      { date: "2023-08-31", currency: "USD", dateSource: "provider" as const, totalRevenue: 100 },
+      { date: "2024-09-01", currency: "USD", dateSource: "sec" as const, providerDate: "2024-08-31", dateEvidence, totalRevenue: 120 },
+    ], quarterlyStatements: ["2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"].map((date) => ({
+      date, currency: "USD", dateSource: "sec" as const, dateEvidence, totalRevenue: 40,
+    })), priceHistory: [] };
+  } }) } as HeadlessPaneContext;
+  const result = await financialStatementsHeadless.load(args(["COST"], { period: "annual", statement: "income" }), ctx);
+  const columns = result.metadata!.columns as Array<Record<string, unknown>>;
+  expect(columns.find(({ date }) => date === "2024-09-01")).toMatchObject({ dateSource: "sec", providerDate: "2024-08-31", dateEvidence, label: "2024-09-01 USD (SEC date)" });
+  expect(columns.find(({ date }) => date === "2023-08-31")).toMatchObject({ dateSource: "provider", dateEvidence: null, label: "2023-08-31 USD (provider date)" });
+  expect(columns.find(({ date }) => date === "TTM")).toMatchObject({ dateSource: "derived", dateEvidence: null, providerDate: null });
+  expect(columns.every((column) => !("availableAt" in column))).toBe(true);
+  expect(result.columns?.find(({ key }) => key === "2023-08-31")?.header).toContain("provider date");
+});
+
 test("quote comparison retains successful exchange-qualified inputs when a peer fails", async () => {
   const ctx = {
     signal: new AbortController().signal,

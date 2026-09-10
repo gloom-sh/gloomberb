@@ -1,6 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
+import type { FinancialStatement } from "../types/financials";
+
+test("period evidence follows the selected fiscal date without inventing field availability", () => {
+  const dateEvidence = { accessionNumber: "0000909832-26-000050", filed: "2026-06-04", startDate: "2026-02-16" };
+  const fiscal: FinancialStatement = { date: "2026-05-10", currency: "USD", dateSource: "sec", dateEvidence, totalRevenue: 70527, netIncome: 2192, totalAssets: 81639 };
+  const provider: FinancialStatement = { ...fiscal, date: "2026-05-31", dateSource: "provider", dateEvidence: undefined };
+  for (const [primary, fallback] of [[provider, fiscal], [fiscal, provider]] as const) {
+    const [merged] = mergeFinancialStatementRows([primary], [fallback]);
+    expect(merged).toMatchObject({ date: fiscal.date, dateSource: "sec", dateEvidence });
+    expect(merged?.availableAt).toBeUndefined();
+    expect(merged?.fieldAvailability).toBeUndefined();
+  }
+  const sameDate = mergeFinancialStatementRows([{ ...provider, date: fiscal.date }], [fiscal])[0]!;
+  expect(sameDate.dateEvidence).toEqual(dateEvidence);
+  const different = mergeFinancialStatementRows([{ ...provider, date: "2026-05-09", totalRevenue: 1 }], [{ ...fiscal, availableAt: "2026-06-04" }])[0]!;
+  expect(different.date).toBe("2026-05-09");
+  expect(different.dateSource).toBe("provider");
+  expect(different.dateEvidence).toBeUndefined();
+});
 
 describe("mergeFinancialStatementRows", () => {
   test("preserves per-field availability across providers", () => {

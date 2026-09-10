@@ -248,6 +248,16 @@ export interface CompanyProfile {
 
 export interface FinancialStatement {
   date: string;
+  /** Source of the fiscal period date; does not establish metric publication dates. */
+  dateSource?: "sec" | "provider";
+  /** Original vendor period date when independent filing evidence changes it. */
+  providerDate?: string;
+  /** Filing evidence for the period identity only, not availability of every field. */
+  dateEvidence?: {
+    accessionNumber: string;
+    filed: string;
+    startDate: string;
+  };
   /** Reporting currency for monetary statement fields (per-share values use reported shares). */
   currency?: string;
   /** Earliest date on which the complete row was publicly available, when known. */
