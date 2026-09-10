@@ -296,11 +296,13 @@ export function getColumnValue(
       };
     case "ext_hours":
       if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
-        const changePercent = activeQuote?.changePercent ?? quote.preMarketChangePercent ?? 0;
+        const changePercent = quote.preMarketChangePercent;
+        if (!finiteNumber(changePercent)) return { text: "—" };
         return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
       }
       if ((quote?.marketState === "POST" || quote?.marketState === "POSTPOST") && quote.postMarketPrice != null) {
-        const changePercent = activeQuote?.changePercent ?? quote.postMarketChangePercent ?? 0;
+        const changePercent = quote.postMarketChangePercent;
+        if (!finiteNumber(changePercent)) return { text: "—" };
         return { text: formatPercentRaw(changePercent), color: priceColor(changePercent) };
       }
       return { text: "—" };
@@ -328,7 +330,7 @@ export function getColumnValue(
       return { text: formatPercentRaw((marketValue / ctx.portfolioTotalMarketValue) * 100) };
     }
     case "day_pnl":
-      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+      if (activeQuote && finiteNumber(activeQuote.change) && positionMetrics.grossPriceUnits !== 0) {
         const dayPnl = toBaseQuote(totalPriceUnits * activeQuote.change);
         return { text: `${dayPnl >= 0 ? "+" : ""}${formatCompact(dayPnl)}`, color: priceColor(dayPnl) };
       }
@@ -476,7 +478,7 @@ export function getSortValue(
         ? (quote?.bidSize ?? 0) + (quote?.askSize ?? 0)
         : null;
     case "change":
-      return activeQuote ? activeQuote.change : null;
+      return activeQuote?.change ?? null;
     case "change_pct":
       return activeQuote?.changePercent ?? null;
     case "volume":
@@ -500,10 +502,10 @@ export function getSortValue(
       return fundamentals?.dividendYield ?? null;
     case "ext_hours":
       if ((quote?.marketState === "PRE" || quote?.marketState === "PREPRE") && quote.preMarketPrice != null) {
-        return activeQuote?.changePercent ?? quote.preMarketChangePercent ?? 0;
+        return quote.preMarketChangePercent ?? null;
       }
       if ((quote?.marketState === "POST" || quote?.marketState === "POSTPOST") && quote.postMarketPrice != null) {
-        return activeQuote?.changePercent ?? quote.postMarketChangePercent ?? 0;
+        return quote.postMarketChangePercent ?? null;
       }
       return null;
     case "side":
@@ -529,7 +531,7 @@ export function getSortValue(
         : null;
     }
     case "day_pnl":
-      if (activeQuote && positionMetrics.grossPriceUnits !== 0) {
+      if (activeQuote && finiteNumber(activeQuote.change) && positionMetrics.grossPriceUnits !== 0) {
         return toBaseQuote(totalPriceUnits * activeQuote.change);
       }
       return null;

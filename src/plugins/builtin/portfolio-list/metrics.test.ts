@@ -489,3 +489,23 @@ describe("position aggregation across sides, currencies and broker coverage", ()
     expect(getSortValue(column("pnl"), ticker, undefined, defaultColumnContext)).toBeNull();
   });
 });
+
+
+test("portfolio daily P&L and extended-hours returns use distinct reference closes", () => {
+  const ticker = createTicker({ positions: [{ portfolio: "main", shares: 10, avgCost: 200, broker: "manual" }] });
+  const financials = createFinancials({ quote: { price: 218.36, previousClose: 223.67,
+    change: -5.31, changePercent: -2.374, marketState: "POST", postMarketPrice: 218.47,
+    postMarketChange: 0.11, postMarketChangePercent: 0.0503755266532 } });
+  const column = (id: string): ColumnConfig => ({ id, label: id, width: 15, align: "right" });
+  expect(getSortValue(column("day_pnl"), ticker, financials, defaultColumnContext)).toBeCloseTo(-52, 8);
+  expect(getColumnValue(column("change_pct"), ticker, financials, defaultColumnContext).text).toBe("-2.32%");
+  expect(getColumnValue(column("ext_hours"), ticker, financials, defaultColumnContext).text).toBe("+0.05%");
+  expect(calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", new Map([["USD", 1]]), true, "main").dailyPnl).toBeCloseTo(-52, 8);
+  delete financials.quote!.previousClose;
+  expect(getColumnValue(column("day_pnl"), ticker, financials, defaultColumnContext).text).toBe("—");
+  expect(getSortValue(column("day_pnl"), ticker, financials, defaultColumnContext)).toBeNull();
+  expect(calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", new Map([["USD", 1]]), true, "main").dailyPnl).toBeNaN();
+  delete financials.quote!.postMarketChangePercent;
+  expect(getColumnValue(column("ext_hours"), ticker, financials, defaultColumnContext).text).toBe("—");
+  expect(getSortValue(column("ext_hours"), ticker, financials, defaultColumnContext)).toBeNull();
+});

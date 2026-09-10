@@ -8,6 +8,8 @@ describe("mapCloudFinancials", () => {
         symbol: "VOD",
         price: 23.1,
         currency: "GBp",
+        regularClose: 23,
+        regularCloseSessionDate: "2026-05-12",
         change: 1,
         changePercent: 4.5,
         lastUpdated: Date.parse("2026-05-13T15:00:00Z"),
@@ -28,6 +30,8 @@ describe("mapCloudFinancials", () => {
 
     expect(financials.quote?.currency).toBe("GBP");
     expect(financials.quote?.price).toBeCloseTo(0.231);
+    expect(financials.quote?.regularClose).toBeCloseTo(0.23);
+    expect(financials.quote?.regularCloseSessionDate).toBe("2026-05-12");
     expect(financials.priceHistory[0]?.close).toBeCloseTo(0.231);
     expect(financials.priceHistory[0]?.date.toISOString()).toBe("2026-05-13T09:15:00.000Z");
   });

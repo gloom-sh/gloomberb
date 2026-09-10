@@ -16,8 +16,8 @@ const CLOSING_COUNTDOWN_WINDOW_SECONDS = 60 * 60;
 
 export interface ActiveQuoteDisplay {
   price: number;
-  change: number;
-  changePercent: number;
+  change?: number;
+  changePercent?: number;
 }
 
 export function marketStateLabel(state: MarketState): string {
@@ -85,12 +85,13 @@ function isClosedMarketState(state?: MarketState): boolean {
 }
 
 /** Closed prices are final snapshots, so they should not look live or directional. */
-export function marketPriceColor(change: number, state?: MarketState): string {
-  return isClosedMarketState(state) ? colors.textDim : priceColor(change);
+export function marketPriceColor(change: number | undefined, state?: MarketState): string {
+  return change == null || isClosedMarketState(state) ? colors.textDim : priceColor(change);
 }
 
 /** Preserve a closed session's direction while visually distinguishing it from a live move. */
-export function marketChangeColor(change: number, state?: MarketState): string {
+export function marketChangeColor(change: number | undefined, state?: MarketState): string {
+  if (change == null) return colors.textDim;
   const directionalColor = priceColor(change);
   if (!isClosedMarketState(state) || change === 0) return directionalColor;
   return blendHex(directionalColor, colors.textDim, CLOSED_CHANGE_MUTING_RATIO);
@@ -126,22 +127,17 @@ export function exchangeShortName(exchangeName?: string, fullExchangeName?: stri
 export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   if (!quote) return null;
   if ((quote.marketState === "PRE" || quote.marketState === "PREPRE") && quote.preMarketPrice != null) {
-    return {
-      price: quote.preMarketPrice,
-      change: quote.preMarketChange ?? 0,
-      changePercent: quote.preMarketChangePercent ?? 0,
-    };
+    return { price: quote.preMarketPrice, change: quote.preMarketChange, changePercent: quote.preMarketChangePercent };
   }
-  if ((quote.marketState === "POST" || quote.marketState === "POSTPOST") && quote.postMarketPrice != null) {
-    return {
-      price: quote.postMarketPrice,
-      change: quote.postMarketChange ?? 0,
-      changePercent: quote.postMarketChangePercent ?? 0,
-    };
+  const extendedPrice = (quote.marketState === "POST" || quote.marketState === "POSTPOST") ? quote.postMarketPrice : undefined;
+  if (extendedPrice != null) {
+    // Generic quote/day-P&L views use the daily reference, while the separate
+    // extended-hours row uses the completed regular session as its reference.
+    const previousClose = quote.previousClose;
+    const change = previousClose != null && Number.isFinite(previousClose) && previousClose > 0
+      ? extendedPrice - previousClose : undefined;
+    return { price: extendedPrice, change,
+      changePercent: change != null ? (change / previousClose!) * 100 : undefined };
   }
-  return {
-    price: quote.price,
-    change: quote.change,
-    changePercent: quote.changePercent,
-  };
+  return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
 }

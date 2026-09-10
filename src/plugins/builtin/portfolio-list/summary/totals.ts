@@ -58,8 +58,8 @@ export function calculatePortfolioSummaryTotals(
     const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
     if (!isPortfolio) {
-      if (quote?.changePercent != null) {
-        watchlistChangeSum += quote.changePercent;
+      if (activeQuote?.changePercent != null) {
+        watchlistChangeSum += activeQuote.changePercent;
         watchlistCount++;
       }
       continue;
@@ -77,7 +77,7 @@ export function calculatePortfolioSummaryTotals(
     const toBaseQuote = (value: number) => toBase(value, quoteCurrency);
 
     if (quote && activeQuote) {
-      const previousClose = quote.previousClose ?? (activeQuote.price - activeQuote.change);
+      const previousClose = activeQuote.change != null ? activeQuote.price - activeQuote.change : Number.NaN;
       totalMktValue += toBaseQuote(grossPriceUnits * activeQuote.price);
       netMktValue += toBaseQuote(totalPriceUnits * activeQuote.price);
       totalPrevValue += toBaseQuote(grossPriceUnits * previousClose);

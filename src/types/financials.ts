@@ -29,6 +29,10 @@ export interface Quote {
   change: number;
   changePercent: number;
   previousClose?: number;
+  /** Official close of a completed regular session, in this quote's currency. */
+  regularClose?: number;
+  /** Exchange-local date of regularClose; separate from the daily previous-close reference. */
+  regularCloseSessionDate?: string;
   /** Provider's exchange-local session date for the daily quote reference. */
   changeSessionDate?: string;
   high52w?: number;
