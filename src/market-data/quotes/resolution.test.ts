@@ -5,6 +5,7 @@ import {
   resolveTickerFinancialsQuoteState,
   upsertQuoteContributionMap,
 } from "./resolution";
+import { normalizeQuoteContribution } from "./contributions";
 
 describe("quote-resolution", () => {
   test("resolves price, session, listing venue, and route from separate providers", () => {
@@ -359,6 +360,49 @@ describe("quote-resolution", () => {
     expect(quote?.preMarketPrice).toBeUndefined();
     expect(quote?.preMarketChange).toBeUndefined();
     expect(quote?.preMarketChangePercent).toBeUndefined();
+  });
+
+  test("explicit session state does not turn a delayed or unclassified regular close into extended-hours trades", () => {
+    for (const marketState of ["PRE", "POST"] as const) {
+      for (const dataSource of ["delayed", undefined] as const) {
+        const contribution = normalizeQuoteContribution({
+          symbol: "ASML", providerId: "gloomberb-cloud", listingExchangeName: "AMS",
+          price: 1472.8, currency: "EUR", previousClose: 1497.6,
+          change: -24.8, changePercent: -1.65598,
+          lastUpdated: Date.parse("2026-09-10T15:29:00Z"),
+          marketState, sessionConfidence: "explicit", dataSource,
+        })!;
+        const canonical = resolveCanonicalQuote({ "gloomberb-cloud": contribution }, contribution.lastUpdated).quote;
+        for (const quote of [contribution, canonical]) {
+          expect(quote?.price).toBe(1472.8);
+          expect(quote?.marketState).toBe(marketState);
+          expect(quote?.preMarketPrice).toBeUndefined();
+          expect(quote?.preMarketChange).toBeUndefined();
+          expect(quote?.preMarketChangePercent).toBeUndefined();
+          expect(quote?.postMarketPrice).toBeUndefined();
+          expect(quote?.postMarketChange).toBeUndefined();
+          expect(quote?.postMarketChangePercent).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  test("preserves reported delayed after-hours fields without filling missing changes from the daily move", () => {
+    const base = {
+      symbol: "ASML", providerId: "gloomberb-cloud", listingExchangeName: "AMS",
+      price: 1472.8, currency: "EUR", previousClose: 1497.6,
+      change: -24.8, changePercent: -1.65598, lastUpdated: Date.parse("2026-09-10T16:00:00Z"),
+      marketState: "POST" as const, sessionConfidence: "explicit" as const, dataSource: "delayed" as const,
+      postMarketPrice: 1475,
+    };
+    const priceOnly = normalizeQuoteContribution(base)!;
+    expect(priceOnly.postMarketPrice).toBe(1475);
+    expect(priceOnly.postMarketChange).toBeUndefined();
+    expect(priceOnly.postMarketChangePercent).toBeUndefined();
+    const reported = normalizeQuoteContribution({ ...base, postMarketChange: 2.2, postMarketChangePercent: 0.1494 })!;
+    expect(resolveCanonicalQuote({ "gloomberb-cloud": reported }, reported.lastUpdated).quote).toMatchObject({
+      postMarketPrice: 1475, postMarketChange: 2.2, postMarketChangePercent: 0.1494,
+    });
   });
 
   test("ignores stale cloud price contributions when a fresh yahoo quote exists", () => {
