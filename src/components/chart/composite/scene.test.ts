@@ -624,3 +624,31 @@ describe("composite chart scene", () => {
     expect(applyCompositeChartCursor(withCursor, new Date("2025-01-01T00:00:00.000Z"))).toBe(withCursor);
   });
 });
+
+test("a missing step observation before the viewport prevents carrying an older known level into it", () => {
+  const step = series({ id: "step", style: "step", interpolation: "step-after", points: [
+    point("2026-07-26", 4), { ...point("2026-08-01", 0), value: null }, point("2026-08-20", 5),
+  ] });
+  const scene = buildCompositeChartScene([step], [{ id: "main" }], {
+    width: 100, height: 20, viewport: { start: new Date("2026-08-10"), end: new Date("2026-09-10") },
+  });
+  const values = scene?.panels[0]?.series[0]?.points ?? [];
+  expect(values.length).toBeGreaterThan(0);
+  expect(values.every((point) => point.value === 5)).toBe(true);
+  expect(values[0]!.timestamp).toBe(new Date("2026-08-20").getTime());
+});
+
+test("opening step observations replace the older anchor before scaling and carrying levels", () => {
+  for (const value of [4, null]) {
+    const step = series({ id: "step", style: "step", interpolation: "step-after", points: [
+      point("2026-07-26", 999), { ...point("2026-08-10", 0), value }, point("2026-08-20", 5),
+    ] });
+    const scene = buildCompositeChartScene([step], [{ id: "main" }], {
+      width: 100, height: 20, viewport: { start: new Date("2026-08-10"), end: new Date("2026-09-10") },
+    });
+    const points = scene?.panels[0]?.series[0]?.points ?? [];
+    expect(points.length).toBeGreaterThan(0);
+    expect(points.every((point) => point.value !== 999)).toBe(true);
+    expect(points[0]!.timestamp).toBe(new Date(value === null ? "2026-08-20" : "2026-08-10").getTime());
+  }
+});

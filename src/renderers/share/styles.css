@@ -52,3 +52,32 @@ main.pane h1 { margin-bottom: 14px; overflow-wrap: anywhere; }
   .layout-pane { padding: 7px; font-size: 12px; }
   .layout-extra-panes { right: 10px; bottom: 10px; width: 52%; }
 }
+.snapshot-date, .chart-notes { color: #b8bbc5; font-size: 12px; }
+.chart-panel { margin: 28px 0; }
+.chart-dates { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
+.chart-unit { display: block; margin-bottom: 8px; font-size: 12px; }
+.chart-plot { display: flex; height: 300px; }
+.chart-plot .chart { flex: 1; min-width: 0; height: 100%; }
+.chart-y-axis { display: flex; flex-direction: column; justify-content: space-between; padding: 18px 8px 18px 0; width: 76px; flex-shrink: 0; text-align: right; font-size: 12px; line-height: 1; }
+.chart-dates { margin-top: 8px; margin-left: 84px; }
+.chart-grid { stroke: #4a4e5c; stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.series-point { fill: #f1b94a; stroke-width: 4; vector-effect: non-scaling-stroke; }
+.series-point.series-0 { stroke: #f1b94a; }
+.series-point.series-1 { fill: #62b8f6; } .series-point.series-2 { fill: #7fd18a; } .series-point.series-3 { fill: #ef7f7f; } .series-point.series-4 { fill: #b697ef; } .series-point.series-5 { fill: #e29b63; }
+.series-key { display: inline-block; width: 14px; margin-right: 6px; border-top: 2px solid #f1b94a; vertical-align: middle; }
+.series-key.series-1 { border-color: #62b8f6; } .series-key.series-2 { border-color: #7fd18a; } .series-key.series-3 { border-color: #ef7f7f; } .series-key.series-4 { border-color: #b697ef; } .series-key.series-5 { border-color: #e29b63; }
+.shared-data summary { cursor: pointer; padding: 10px 0; }
+.shared-data caption { text-align: left; padding: 10px; }
+.shared-data .table-wrap { max-height: 360px; margin-top: 12px; }
+@media (max-width: 640px) {
+  .chart-dates { flex-wrap: wrap; }
+  .chart-dates span:nth-child(2) { order: 3; flex-basis: 100%; text-align: center; }
+  .chart-plot { height: 200px; }
+  .chart-y-axis { width: 64px; padding-top: 12px; padding-bottom: 12px; }
+  .chart-dates { margin-left: 72px; }
+  .legend { font-size: 12px; }
+}
+
+main.wide h1, .legend li, .chart-notes li, .shared-data caption { overflow-wrap: anywhere; }
+.chart-unavailable { color: #b8bbc5; border: 1px solid #4a4e5c; padding: 20px; }
+.chart-y-axis { font-variant-numeric: tabular-nums; }

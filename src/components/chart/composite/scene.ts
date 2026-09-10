@@ -165,7 +165,8 @@ function scopeSeriesToViewport(
     return !!projected && projected.ratio >= 0 && projected.ratio <= 1;
   });
   if (series.interpolation === "step-after" || series.style === "step") {
-    const anchor = [...points].reverse().find(({ timestamp, value }) => timestamp < startTime && value !== null);
+    const anchor = points.some(({ timestamp }) => timestamp === startTime) ? undefined
+      : [...points].reverse().find(({ timestamp }) => timestamp < startTime);
     if (anchor && !visible.includes(anchor)) visible.unshift(anchor);
   }
   return visible.some(({ value }) => value !== null)

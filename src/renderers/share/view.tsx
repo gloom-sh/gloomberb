@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import type { ShareRecord } from "../../shares/api";
+import { sharedChartGeometry, sharedChartLinePoints } from "./chart";
 
 const FACT_LIMIT = 8;
 const FACT_MAX_LENGTH = 120;
@@ -125,24 +126,32 @@ export function ShareView({
       </main>
     );
   }
-  const values = share.data.series.flatMap((series) => series.points.map((point) => point.y));
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = max - min || 1;
+  const chart = sharedChartGeometry(share.data);
+  const format = (value: number) => value.toLocaleString("en-US", { maximumSignificantDigits: 6 });
   return (
     <main className="wide">
       <h1>{share.data.title}</h1>
-      <svg className="chart" viewBox="0 0 1000 420" role="img" aria-label={share.data.title}>
-        {share.data.series.map((series, seriesIndex) => {
-          const points = series.points.map((point, index) => {
-            const x = series.points.length <= 1 ? 500 : 20 + (index / (series.points.length - 1)) * 960;
-            const y = 400 - ((point.y - min) / span) * 380;
-            return `${x},${y}`;
-          }).join(" ");
-          return <polyline key={series.name} points={points} className={`series series-${seriesIndex % 6}`} />;
-        })}
-      </svg>
-      <ul className="legend">{share.data.series.map((series) => <li key={series.name}>{series.name}</li>)}</ul>
+      <p className="snapshot-date">Snapshot shared {new Date(share.createdAt).toISOString().replace("T", " ").slice(0, 16)} UTC. Observation dates appear below.</p>
+      {chart.panels.map((panel) => <section className="chart-panel" key={panel.unit} aria-label={`${panel.unit} chart`}>
+        <strong className="chart-unit">{panel.unit}</strong>
+        {panel.hasValues ? <><div className="chart-plot"><div className="chart-y-axis"><span>{format(panel.max)}</span><span>{format((panel.max + panel.min) / 2)}</span><span>{format(panel.min)}</span></div>
+        <svg className="chart" viewBox="0 0 1000 320" preserveAspectRatio="none" role="img" aria-label={`${share.data.title} — ${panel.unit}`}>
+          <line x1="20" x2="980" y1="160" y2="160" className="chart-grid" />
+          {panel.series.flatMap((series) => series.segments.map((segment, segmentIndex) => segment.length === 1 || series.style === "points"
+            ? segment.map((point, pointIndex) => <circle key={`${series.index}:${segmentIndex}:${pointIndex}`} cx={point.x} cy={point.y} r="1" className={`series-point series-${series.index % 6}`}><title>{`${series.name}: ${point.label}`}</title></circle>)
+            : <polyline key={`${series.index}:${segmentIndex}`} points={sharedChartLinePoints(segment, series.style)} className={`series series-${series.index % 6}`}><title>{series.name}</title></polyline>))}
+        </svg></div>
+        <div className="chart-dates"><span>{chart.startLabel}</span><span>{chart.axisLabel}</span><span>{chart.endLabel}</span></div></> : <p className="chart-unavailable">No observations available in this window.</p>}
+        <ul className="legend">{panel.series.map((series) => <li key={series.index}><span className={`series-key series-${series.index % 6}`} />{series.name}</li>)}</ul>
+      </section>)}
+      {share.data.warnings?.length ? <ul className="chart-notes">{share.data.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul> : null}
+      <details className="shared-data"><summary>View snapshot data</summary>
+        {share.data.series.map((series, index) => <div className="table-wrap" key={index}><table>
+          <caption>{series.name} · {series.unit ?? "Unit unavailable"}</caption>
+          <thead><tr><th>{chart.axisLabel}</th><th>Value</th></tr></thead>
+          <tbody>{series.points.map((point, pointIndex) => <tr key={pointIndex}><td>{point.x}</td><td>{point.y === null ? "Unavailable" : String(point.y)}</td></tr>)}</tbody>
+        </table></div>)}
+      </details>
       <SourceLink url={share.data.sourceUrl} />
       {ownerActions}
     </main>

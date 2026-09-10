@@ -1423,6 +1423,27 @@ describe("CompositeChart", () => {
     expect(frame).toContain("────────");
   });
 
+  test("keeps the requested window while older cached observations partially overlap it", async () => {
+    testSetup = await testRender(
+      <CompositeChart
+        width={90}
+        height={14}
+        series={[{
+          ...series("price", "main", "left", "USD", []),
+          points: [point("2026-07-31", 100), point("2026-08-15", 110), point("2026-08-31", 105)],
+        }]}
+        panels={[{ id: "main" }]}
+        viewport={{ start: new Date("2026-08-10"), end: new Date("2026-09-10") }}
+      />,
+      { width: 92, height: 16 },
+    );
+    await act(async () => testSetup!.renderOnce());
+    const frame = testSetup.captureCharFrame();
+    expect(frame).toContain("Aug 10");
+    expect(frame).toContain("Sep 10");
+    expect(frame).not.toContain("Jul 31");
+  });
+
   test("zooms around the mouse pointer with control-wheel", async () => {
     testSetup = await testRender(
       <CaptureChartSurfaceProvider>

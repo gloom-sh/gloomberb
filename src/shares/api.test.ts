@@ -24,6 +24,21 @@ const portablePane = {
 const shareId = "0123456789abcdef0123456789abcdef";
 
 describe("share API client", () => {
+  test("chart viewport dates require real calendar dates and explicit timestamp zones", () => {
+    const payload = (start: string, end = start) => ({ kind: "chart", data: {
+      title: "Window", viewport: { start, end }, series: [{ name: "A", points: [{ x: start, y: 1 }] }],
+    } });
+    for (const date of ["2024-02-29", "2000-02-29", "2026-09-10T12:30Z", "2026-09-10T12:30:45.123+02:00"]) {
+      expect(parseSharePayload(payload(date))).not.toBeNull();
+    }
+    for (const date of ["2026-02-30", "2026-02-29", "1900-02-29", "2026-04-31", "2026-00-01", "2026-01-00",
+      "09/10/2026", "2026-9-1", "2026-09-10T12:30:00", "2026-02-30T12:00:00Z", "2026-09-10T24:00:00Z",
+      "2026-09-10T12:60:00Z", "2026-09-10T12:30:60Z", "2026-09-10T12:30:00+24:00", "2026-09-10T12:30:00+02:60"]) {
+      expect(parseSharePayload(payload(date))).toBeNull();
+    }
+    expect(parseSharePayload(payload("2026-09-10T03:00:00+02:00", "2026-09-10T00:30:00Z"))).toBeNull();
+  });
+
   test("validates strict payloads and http(s)-only source URLs", () => {
     expect(parseSharePayload(article)).toEqual(article);
     expect(parseSharePayload({ ...article, data: { ...article.data, sourceUrl: "javascript:alert(1)" } })).toBeNull();

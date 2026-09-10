@@ -32,8 +32,12 @@ export interface ChartShareData {
   title: string;
   series: Array<{
     name: string;
-    points: Array<{ x: string | number; y: number }>;
+    unit?: string;
+    style?: "line" | "step" | "points";
+    points: Array<{ x: string | number; y: number | null }>;
   }>;
+  viewport?: { start: string; end: string };
+  warnings?: string[];
   sourceUrl?: string;
 }
 
@@ -78,6 +82,24 @@ function safeOptionalUrl(value: unknown): value is string | undefined {
   return value === undefined || (typeof value === "string" && safeExternalUrl(value) !== null);
 }
 
+function viewportDate(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > 40) return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2}))?$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > days[month - 1]!) return false;
+  if (match[4] !== undefined) {
+    if (Number(match[4]) > 23 || Number(match[5]) > 59 || Number(match[6] ?? 0) > 59) return false;
+    const zone = match[7]!;
+    if (zone !== "Z" && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4, 6)) > 59)) return false;
+  }
+  return Number.isFinite(Date.parse(value));
+}
+
 function isCell(value: unknown): value is CellValue {
   return value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
 }
@@ -99,18 +121,28 @@ function isTableData(value: unknown): value is TableShareData {
 
 function isChartData(value: unknown): value is ChartShareData {
   if (!record(value) || !shortString(value.title) || !safeOptionalUrl(value.sourceUrl)) return false;
+  if (Object.keys(value).some((key) => !["title", "series", "sourceUrl", "viewport", "warnings"].includes(key))) return false;
+  if (value.warnings !== undefined && (!Array.isArray(value.warnings) || value.warnings.length > 20
+    || !value.warnings.every((warning) => shortString(warning, 500)))) return false;
+  if (value.viewport !== undefined && (!record(value.viewport)
+    || Object.keys(value.viewport).some((key) => !["start", "end"].includes(key))
+    || !viewportDate(value.viewport.start) || !viewportDate(value.viewport.end)
+    || Date.parse(value.viewport.start) > Date.parse(value.viewport.end))) return false;
   return Array.isArray(value.series)
     && value.series.length > 0
     && value.series.length <= MAX_CHART_SERIES
     && value.series.every((series) => record(series)
+      && Object.keys(series).every((key) => ["name", "points", "unit", "style"].includes(key))
       && shortString(series.name, 120)
+      && (series.unit === undefined || shortString(series.unit, 80))
+      && (series.style === undefined || ["line", "step", "points"].includes(series.style as string))
       && Array.isArray(series.points)
       && series.points.length > 0
       && series.points.length <= MAX_CHART_POINTS
       && series.points.every((point) => record(point)
+        && Object.keys(point).every((key) => ["x", "y"].includes(key))
         && ((typeof point.x === "string" && point.x.length <= 100) || (typeof point.x === "number" && Number.isFinite(point.x)))
-        && typeof point.y === "number"
-        && Number.isFinite(point.y)));
+        && (point.y === null || (typeof point.y === "number" && Number.isFinite(point.y)))));
 }
 
 function isArticleData(value: unknown): value is ArticleShareData {
