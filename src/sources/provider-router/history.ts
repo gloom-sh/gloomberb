@@ -14,7 +14,7 @@ import { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
 import { canonicalExchange } from "../../utils/exchanges";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
-import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "../../utils/price-history";
+import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
 import {
   buildVariantKey,
@@ -192,6 +192,7 @@ export class ProviderRouterHistoryRoutes {
       fallbackVariantParts: [["range", bufferRange], ["resolution", resolution]],
     });
     const intraday = isIntradayResolution(resolution);
+    const intervalMs = priceHistoryIntervalMs(resolution);
     return this.executeHistoryRequest({
       ...identity,
       cacheVariantKeys: expandedHistoryCacheVariantKeys(this.deps, {
@@ -205,8 +206,8 @@ export class ProviderRouterHistoryRoutes {
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No resolution-aware history provider available for ${ticker}`,
-      isCachedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange),
-      isFetchedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange),
+      isCachedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange, intervalMs),
+      isFetchedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange, intervalMs),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistoryForResolution
         ? candidate.broker.getPriceHistoryForResolution(
           ticker,
@@ -302,14 +303,15 @@ export class ProviderRouterHistoryRoutes {
       fallbackVariantParts: fallbackParts,
     });
     const currentWindowAtLookup = isCurrentHistoryWindow(endDate);
+    const intervalMs = priceHistoryIntervalMs(barSize);
     return this.executeHistoryRequest({
       ...identity,
       context,
-      cachePolicyKey: "priceHistoryIntraday",
+      cachePolicyKey: intervalMs != null && intervalMs >= 24 * 60 * 60 * 1000 ? "priceHistoryDaily" : "priceHistoryIntraday",
       isCachedValueStale: (value) => currentWindowAtLookup
-        && isPriceHistoryStaleForCurrentWindow(value, Date.now(), { exchange }),
+        && isPriceHistoryStaleForCurrentWindow(value, Date.now(), { exchange, intervalMs }),
       isFetchedValueStale: (value) => isCurrentHistoryWindow(endDate)
-        && isPriceHistoryStaleForCurrentWindow(value, Date.now(), { exchange }),
+        && isPriceHistoryStaleForCurrentWindow(value, Date.now(), { exchange, intervalMs }),
       fetchBroker: async (candidate) => candidate.broker.getDetailedPriceHistory
         ? candidate.broker.getDetailedPriceHistory(
           ticker,

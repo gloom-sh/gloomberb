@@ -67,8 +67,8 @@ export function isIntradayRange(range: TimeRange): boolean {
   return range === "1D" || range === "1W" || range === "1M" || range === "3M";
 }
 
-export function isStaleIntradayHistory(points: PricePoint[], enabled: boolean, exchange?: string): boolean {
-  return enabled && isPriceHistoryStaleForCurrentWindow(points, Date.now(), { exchange });
+export function isStaleIntradayHistory(points: PricePoint[], enabled: boolean, exchange?: string, intervalMs?: number | null): boolean {
+  return enabled && isPriceHistoryStaleForCurrentWindow(points, Date.now(), { exchange, intervalMs });
 }
 
 export function isCurrentHistoryWindow(endDate?: Date): boolean {

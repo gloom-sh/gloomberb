@@ -18,6 +18,43 @@ afterEach(() => {
 });
 
 describe("AssetDataRouter chart history", () => {
+  test("uses requested bar cadence for fetched and cached charts and infers generic daily data", async () => {
+    const originalNow = Date.now;
+    Date.now = () => Date.parse("2026-09-10T19:39:09Z");
+    const persistence = new AppPersistence(createTempDbPath("bar-cadence-freshness"));
+    const intraday = ["2026-09-10T18:45:00Z", "2026-09-10T19:00:00Z"].map((date) => ({ date: new Date(date), close: 709 }));
+    const daily = ["2026-09-04T00:00:00Z", "2026-09-08T00:00:00Z", "2026-09-09T00:00:00Z"].map((date) => ({ date: new Date(date), close: 716.31 }));
+    const weekly = [{ date: new Date("2026-09-07T00:00:00Z"), close: 716.31 }];
+    const calls = { generic: 0, resolution: 0, detailed: 0 };
+    const router = new AssetDataRouter({
+      ...fallbackProvider,
+      async getPriceHistory() { calls.generic++; return daily; },
+      async getPriceHistoryForResolution() { calls.resolution++; return intraday; },
+      async getDetailedPriceHistory(_ticker, _exchange, _start, _end, barSize) {
+        calls.detailed++;
+        return barSize === "1wk" ? weekly : intraday;
+      },
+    }, [], persistence.resources);
+    const start = new Date("2026-08-10T19:39:09Z");
+    const end = new Date(Date.now());
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        // Persistence serializes Date labels; values and timestamps must survive.
+        expect(JSON.stringify(await router.getPriceHistory("QQQ", "NASDAQ", "1M"))).toBe(JSON.stringify(daily));
+        expect(JSON.stringify(await router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "15m"))).toBe(JSON.stringify(intraday));
+        expect(JSON.stringify(await router.getDetailedPriceHistory("QQQ", "NASDAQ", start, end, "15m"))).toBe(JSON.stringify(intraday));
+        expect(JSON.stringify(await router.getDetailedPriceHistory("QQQ", "NASDAQ", start, end, "1wk"))).toBe(JSON.stringify(weekly));
+      }
+      expect(calls).toEqual({ generic: 1, resolution: 1, detailed: 2 });
+      await expect(router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "1m")).rejects.toThrow("No resolution-aware history provider");
+      Date.now = () => Date.parse("2026-09-11T19:39:09Z");
+      await expect(router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "15m")).rejects.toThrow("No resolution-aware history provider");
+    } finally {
+      persistence.close();
+      Date.now = originalNow;
+    }
+  });
+
   test("does not log expected provider misses for missing chart data", async () => {
     const noisyProvider: DataProvider = {
       ...fallbackProvider,

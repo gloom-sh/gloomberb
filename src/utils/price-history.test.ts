@@ -1,5 +1,38 @@
 import { describe, expect, test } from "bun:test";
-import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "./price-history";
+import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "./price-history";
+
+describe("history freshness follows bar cadence", () => {
+  const now = Date.parse("2026-09-10T19:39:09Z");
+  const points = (dates: string[]) => dates.map((date) => ({ date: new Date(date), close: 709 }));
+
+  test("allows delayed completed bars without relaxing one-minute freshness", () => {
+    const history = points(["2026-09-10T18:45:00Z", "2026-09-10T19:00:00Z"]);
+    expect(isPriceHistoryStaleForCurrentWindow(history, now, { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15m") })).toBe(false);
+    expect(isPriceHistoryStaleForCurrentWindow(history, now, { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("1m") })).toBe(true);
+    expect(isPriceHistoryStaleForCurrentWindow(history, now, { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("5min") })).toBe(true);
+    expect(isPriceHistoryStaleForCurrentWindow(history, Date.parse("2026-09-10T19:46:00Z"), { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15m") })).toBe(true);
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-10T17:30:00Z"]), now,
+      { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("1h") })).toBe(false);
+  });
+
+  test("infers generic daily history across weekends and holidays, not a sparse intraday pair", () => {
+    const daily = points(["2026-09-04T00:00:00Z", "2026-09-08T00:00:00Z", "2026-09-09T00:00:00Z"]);
+    expect(isPriceHistoryStaleForCurrentWindow(daily, now, { exchange: "NASDAQ" })).toBe(false);
+    expect(isPriceHistoryStaleForCurrentWindow(daily, now, { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15m") })).toBe(true);
+    const sparse = points(["2026-09-09T19:00:00Z", "2026-09-10T19:00:00Z"]);
+    expect(isPriceHistoryStaleForCurrentWindow(sparse, now, { exchange: "NASDAQ" })).toBe(true);
+  });
+
+  test("keeps explicit weekly labels usable and still rejects prior-session intraday bars", () => {
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-07T00:00:00Z"]), now,
+      { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("1week") })).toBe(false);
+    const previousSession = points(["2026-09-09T18:45:00Z", "2026-09-09T19:00:00Z"]);
+    expect(isPriceHistoryStaleForCurrentWindow(previousSession, now,
+      { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15min") })).toBe(true);
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-11T19:00:00Z"]), Date.parse("2026-09-13T19:39:09Z"),
+      { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15min") })).toBe(false);
+  });
+});
 
 describe("normalizePriceHistory", () => {
   test("drops poisoned cached history when every timestamp collapses to the same value", () => {
