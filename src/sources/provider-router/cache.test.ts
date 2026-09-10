@@ -5,6 +5,25 @@ import { cleanupProviderRouterTestFiles, createTempDbPath, makeFinancials, makeQ
 
 afterEach(cleanupProviderRouterTestFiles);
 
+test("legacy cloud financial caches retain statements but refresh quotes whose freshness was lost", () => {
+  const persistence = new AppPersistence(createTempDbPath("nested-quote-freshness"));
+  const key = { namespace: "market", kind: "financials", entityKey: "7203", variantKey: "exchange=TYO", sourceKey: "provider:gloomberb-cloud" };
+  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
+  const old = makeFinancials({ quote: makeQuote({ symbol: "7203", currency: "JPY", price: 2980.5, providerId: "gloomberb-cloud" }),
+    annualStatements: [{ date: "2026-03-31", totalRevenue: 100, fieldAvailability: { totalRevenue: "2026-05-08" } }],
+  });
+  persistence.resources.set(key, old, { cachePolicy, schemaVersion: 3 });
+  const quote = makeQuote({ symbol: "7203", currency: "JPY", price: 2994, providerId: "yahoo" });
+  persistence.resources.set({ ...key, kind: "quote", sourceKey: "provider:yahoo" }, quote, { cachePolicy });
+  const read = () => listCachedResources(persistence.resources, "financials", "7203", [key.variantKey], [key.sourceKey], true)[0]!.value as ReturnType<typeof makeFinancials>;
+  expect(read().quote).toBeUndefined();
+  expect(read().annualStatements).toEqual(old.annualStatements);
+  expect(listCachedResources(persistence.resources, "quote", "7203", [key.variantKey], ["provider:yahoo"], true)[0]!.value).toEqual(quote);
+  cacheRouterResource(persistence.resources, "financials", "7203", key.variantKey, key.sourceKey, { ...old, quote: { ...old.quote!, stale: true } }, cachePolicy);
+  expect(read().quote?.stale).toBe(true);
+  persistence.close();
+});
+
 test("refreshes legacy SEC annual caches without discarding unrelated data and accepts repaired writes", () => {
   const persistence = new AppPersistence(createTempDbPath("sec-annual-cache-version"));
   const key = { namespace: "market", kind: "financials", entityKey: "COST", variantKey: "exchange=NASDAQ", sourceKey: "provider:yahoo" };

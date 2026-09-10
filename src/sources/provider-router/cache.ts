@@ -7,7 +7,7 @@ import { canonicalExchange } from "../../utils/exchanges";
 import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 
 const MARKET_NAMESPACE = "market";
-const FINANCIALS_SCHEMA_VERSION = 3;
+const FINANCIALS_SCHEMA_VERSION = 4;
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -145,7 +145,7 @@ export function listCachedResources<T>(
     sourceKeys,
     allowExpired,
   }).filter((record) => {
-    if (kind !== "financials" || record.schemaVersion >= FINANCIALS_SCHEMA_VERSION) return true;
+    if (kind !== "financials" || record.schemaVersion >= 3) return true;
     // Earlier merges could date unknown fields from a partial availability map,
     // in addition to the older SEC annual/concept errors. Cached dates cannot
     // distinguish inferred metadata from source evidence; refresh dated rows.
@@ -153,6 +153,12 @@ export function listCachedResources<T>(
     const value = record.value as TickerFinancials;
     return ![...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
       .some((row) => row.availableAt || Object.keys(row.fieldAvailability ?? {}).length > 0);
+  }).map((record) => {
+    if (kind !== "financials" || record.schemaVersion >= 4 || record.sourceKey !== "provider:gloomberb-cloud") return record;
+    // Legacy cloud aggregates lost the nested quote's stale flag. Retain valid
+    // issuer data, but obtain the quote through its independent freshness route.
+    const value = record.value as TickerFinancials;
+    return { ...record, value: { ...value, quote: undefined, quoteContributions: undefined } as T };
   });
   if (records.length === 0) return [];
 
