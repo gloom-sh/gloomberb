@@ -29,6 +29,21 @@ function source(
 }
 
 describe("fundamental series extraction", () => {
+  test("labels issuer periods by their reported end instead of inferring fiscal quarters or years", () => {
+    // MSFT June 2025 is fiscal Q4; Target's year ended February 2025 is fiscal 2024.
+    const cases = [
+      { period: "quarterly" as const, date: "2025-06-30", filed: "2025-07-30", value: 76_441_000_000, label: "Quarter ended 2025-06-30" },
+      { period: "annual" as const, date: "2025-02-01", filed: "2025-03-12", value: 106_566_000_000, label: "Year ended 2025-02-01" },
+    ];
+    for (const entry of cases) {
+      const row = { date: entry.date, availableAt: entry.filed, totalRevenue: entry.value };
+      const snapshot = financials(entry.period === "quarterly" ? [row] : [], entry.period === "annual" ? [row] : []);
+      const [point] = extractFundamentalSeries(snapshot, source("fundamental.totalRevenue", entry.period));
+      expect(point).toMatchObject({ value: entry.value, periodLabel: entry.label, observedAt: new Date(entry.date), availableAt: new Date(entry.filed) });
+      expect(point?.date).toEqual(new Date(entry.filed));
+    }
+  });
+
   const quarters: FinancialStatement[] = [
     { date: "2024-03-31", availableAt: "2024-05-01", totalRevenue: 10 },
     { date: "2024-06-30", availableAt: "2024-08-01", totalRevenue: 20 },
@@ -69,7 +84,7 @@ describe("fundamental series extraction", () => {
 
   test("timestamps reported values when they became available, not at period end", () => {
     const points = extractFundamentalSeries(financials(quarters, annual), source("fundamental.totalRevenue"));
-    const q4 = points.find((point) => point.periodLabel === "2024 Q4");
+    const q4 = points.find((point) => point.periodLabel === "Quarter ended 2024-12-31");
     expect(q4?.value).toBe(40);
     expect(q4?.observedAt.toISOString().slice(0, 10)).toBe("2024-12-31");
     expect(q4?.date.toISOString().slice(0, 10)).toBe("2025-02-15");
@@ -104,13 +119,13 @@ describe("fundamental series extraction", () => {
       value: point.value,
     }))).toEqual([
       {
-        period: "2025 Q2",
+        period: "Quarter ended 2025-06-28",
         observedAt: "2025-06-28",
         availableAt: "2025-08-01",
         value: 94_036,
       },
       {
-        period: "2025 Q3",
+        period: "Quarter ended 2025-09-27",
         observedAt: "2025-09-27",
         availableAt: "2025-10-31",
         value: 102_466,
@@ -137,7 +152,7 @@ describe("fundamental series extraction", () => {
       source("fundamental.totalRevenue"),
     );
 
-    expect(points.map((point) => point.periodLabel)).toEqual(["2025 Q1", "2025 Q2"]);
+    expect(points.map((point) => point.periodLabel)).toEqual(["Quarter ended 2025-03-29", "Quarter ended 2025-06-28"]);
   });
 
   test("preserves distinct irregular periods within one calendar quarter", () => {
@@ -176,7 +191,7 @@ describe("fundamental series extraction", () => {
     expect(points.map((point) => ({
       period: point.periodLabel,
       value: point.value,
-    }))).toEqual([{ period: "TTM 2025 Q4", value: 100 }]);
+    }))).toEqual([{ period: "TTM ended 2025-12-27", value: 100 }]);
   });
 
   test("retains a later disclosed value when a period is actually restated", () => {
@@ -278,7 +293,7 @@ describe("fundamental series extraction", () => {
     );
     expect(points).toHaveLength(1);
     expect(points[0]?.value).toBe(100);
-    expect(points[0]?.periodLabel).toBe("TTM 2024 Q4");
+    expect(points[0]?.periodLabel).toBe("TTM ended 2024-12-31");
     expect(points[0]?.date.toISOString().slice(0, 10)).toBe("2025-02-15");
   });
 
@@ -303,7 +318,7 @@ describe("fundamental series extraction", () => {
       timeline: [new Date("2025-01-15T00:00:00Z"), new Date("2025-02-15T00:00:00Z")],
     });
     expect(rows[0]?.values.revenue?.value).toBe(30);
-    expect(rows[0]?.values.revenue?.point.periodLabel).toBe("2024 Q3");
+    expect(rows[0]?.values.revenue?.point.periodLabel).toBe("Quarter ended 2024-09-30");
     expect(rows[1]?.values.revenue?.value).toBe(40);
     expect(rows[1]?.values.revenue?.carried).toBe(false);
   });
@@ -382,7 +397,7 @@ describe("fundamental series extraction", () => {
     );
 
     expect(points).toHaveLength(1);
-    expect(points[0]?.periodLabel).toBe("FY2024");
+    expect(points[0]?.periodLabel).toBe("Year ended 2024-12-28");
     expect(points[0]?.value).toBe(20.2);
   });
 
