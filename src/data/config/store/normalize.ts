@@ -16,7 +16,7 @@ import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { hasScheme } from "../../../theme/schemes";
-import { DEFAULT_STYLE, hasStyle } from "../../../theme/styles";
+import { DEFAULT_STYLE, hasStyle, requestedExperimentalStyle } from "../../../theme/styles";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig } from "./migrations";
 
@@ -134,7 +134,12 @@ function sanitizeFontSize(value: unknown, fallback: number): number {
  * `theme` predates styles, so a config that only carries it means a colour
  * scheme under the terminal style, which is what the app looked like then.
  * A `theme` that names a style instead of a scheme is read as the style, so a
- * hand-edited config saying `"theme": "phosphor"` does the obvious thing.
+ * hand-edited config saying `"theme": "paper"` does the obvious thing once
+ * that style ships.
+ *
+ * An experimental style is not accepted from the file. It has to come from
+ * GLOOMBERB_THEME_STYLE, so a config written while a style was being
+ * developed cannot strand someone in it later.
  */
 function sanitizeThemeSelection(
   theme: unknown,
@@ -143,12 +148,14 @@ function sanitizeThemeSelection(
 ): { theme: string; themeStyle: string } {
   const requestedStyle = typeof themeStyle === "string" ? themeStyle.trim() : "";
   const requestedScheme = typeof theme === "string" ? theme.trim() : "";
+  const fallbackStyle = requestedExperimentalStyle()
+    ?? (hasStyle(defaults.themeStyle ?? "") ? defaults.themeStyle! : DEFAULT_STYLE);
   if (requestedScheme && !hasScheme(requestedScheme) && hasStyle(requestedScheme)) {
     return { theme: defaults.theme, themeStyle: requestedScheme };
   }
   return {
     theme: hasScheme(requestedScheme) ? requestedScheme : defaults.theme,
-    themeStyle: hasStyle(requestedStyle) ? requestedStyle : defaults.themeStyle ?? DEFAULT_STYLE,
+    themeStyle: hasStyle(requestedStyle) ? requestedStyle : fallbackStyle,
   };
 }
 

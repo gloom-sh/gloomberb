@@ -1,5 +1,5 @@
-import { getScheme, isDarkTheme } from "./schemes";
-import { DEFAULT_STYLE, getStyle, hasStyle } from "./styles";
+import { getScheme, getSchemeIds, hasScheme, isDarkTheme } from "./schemes";
+import { DEFAULT_STYLE, getStyle, getStyleIds, hasAnyStyle, hasStyle } from "./styles";
 
 /**
  * The curated pairings. A scheme and a style compose freely, but most of the
@@ -31,11 +31,31 @@ const PRESET_PAIRS: Array<[styleId: string, schemeId: string]> = [
   ["minimal", "white"],
 ];
 
-export const presets: ThemePreset[] = PRESET_PAIRS.map(([styleId, schemeId]) => ({
+/**
+ * While only one style ships, a theme is a scheme again, so the shortlist is
+ * every scheme under the default style. That is the flat list the picker has
+ * always shown. As soon as a second style stops being experimental the
+ * curated pairings take over on their own.
+ */
+function resolvePresetPairs(): Array<[string, string]> {
+  const stable = getStyleIds();
+  if (stable.length <= 1) {
+    const styleId = stable[0] ?? DEFAULT_STYLE;
+    return getSchemeIds().map((schemeId) => [styleId, schemeId]);
+  }
+  return PRESET_PAIRS.filter(([styleId]) => hasStyle(styleId));
+}
+
+export const presets: ThemePreset[] = resolvePresetPairs().map(([styleId, schemeId]) => ({
   id: `${styleId}-${schemeId}`,
   styleId,
   schemeId,
 }));
+
+/** True while a theme is just a scheme, so callers can drop the style column. */
+export function stylesAreSelectable(): boolean {
+  return getStyleIds().length > 1;
+}
 
 const presetsById = new Map(presets.map((preset) => [preset.id, preset]));
 
@@ -92,8 +112,19 @@ export function resolvePresetSelection(
       return { styleId: candidate.styleId, schemeId: candidate.schemeId };
     }
   }
-  // "phosphor" on its own keeps the current scheme; "nord" on its own keeps the
-  // current style, which is what a pre-styles config id means.
+  // A composite `<style>-<scheme>` still resolves even when the style is
+  // experimental, which is how the shot CLI and GLOOMBERB_THEME_STYLE reach one
+  // while it is being developed. Split at each hyphen because both halves may
+  // contain one, as in `modern-nord-light`.
+  for (let cut = normalized.indexOf("-"); cut > 0; cut = normalized.indexOf("-", cut + 1)) {
+    const styleId = normalized.slice(0, cut);
+    const schemeId = normalized.slice(cut + 1);
+    if (hasAnyStyle(styleId) && hasScheme(schemeId)) return { styleId, schemeId };
+  }
+  // A bare scheme id keeps the caller's style, which is what a pre-styles
+  // config value means. A name that is both, such as `paper`, is read as the
+  // scheme unless its style is actually on offer.
+  if (hasScheme(normalized)) return { styleId: fallbackStyleId, schemeId: normalized };
   if (hasStyle(normalized)) return { styleId: normalized, schemeId: "" };
   return { styleId: fallbackStyleId, schemeId: normalized };
 }

@@ -178,8 +178,17 @@ export interface ButtonTokens extends Record<ButtonVariantToken, ButtonFill> {
 }
 
 export interface DialogTokens {
+  /** The dialog box itself, as the terminal draws it. */
   bg: string;
   border: string;
+  /**
+   * The elevated modal panel the DOM uses for onboarding and the sign-in gate.
+   * A separate surface from `bg` on purpose: the two were always different, and
+   * collapsing them into one moved the terminal's dialogs off the app
+   * background.
+   */
+  surfaceBg: string;
+  surfaceBorder: string;
   titleText: string;
   bodyText: string;
   subtleText: string;
@@ -532,14 +541,17 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
   const textDim = onBody(palette.textDim, higherContrast(textPrimary, palette.textBright, palette.bg), BODY_TEXT_MIN);
   const textMuted = onBody(palette.textMuted, higherContrast(textDim, textPrimary, palette.bg), SUBTLE_TEXT_MIN);
 
-  const badgeSubtle = (tone: BadgeTone, hue: string): BadgeFill => ({
+  // These reproduce the badge recipe the app has always used. The pair is
+  // already contrast-safe by construction: a subtle badge tints the background
+  // towards its own hue and then writes in that hue.
+  const badgeSubtle = (_tone: BadgeTone, hue: string): BadgeFill => ({
     bg: blendHex(palette.bg, hue, 0.28),
-    fg: blendForContrast(hue, blendHex(palette.bg, hue, 0.28), extremeOnBg, SUBTLE_TEXT_MIN),
+    fg: hue,
   });
   const badgeSolid = (tone: BadgeTone, hue: string): BadgeFill => (
     tone === "neutral"
       ? { bg: palette.selected, fg: palette.selectedText }
-      : { bg: hue, fg: blendForContrast(palette.bg, hue, higherContrast("#ffffff", "#000000", hue), BODY_TEXT_MIN) }
+      : { bg: hue, fg: palette.bg }
   );
   const badgeHues: Record<BadgeTone, string> = {
     neutral: textDim,
@@ -551,14 +563,13 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
 
   const buttonFill = (hue: string): ButtonFill => ({
     bg: hue,
-    fg: blendForContrast(palette.bg, hue, higherContrast("#ffffff", "#000000", hue), BODY_TEXT_MIN),
+    fg: palette.bg,
     border: hue,
     hoverBg: blendHex(hue, extremeOnBg, 0.14),
   });
 
-  const dialogBg = chrome.paneBorder === "none"
-    ? blendHex(palette.panel, palette.bg, 0.1)
-    : blendHex(palette.panel, palette.border, 0.08);
+  const dialogBg = palette.bg;
+  const dialogSurfaceBg = blendHex(palette.panel, palette.bg, 0.12);
 
   return {
     surface: {
@@ -639,8 +650,10 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
     table: {
       // A plain or underlined header sits on the body; only a filled one gets
       // its own plate, and an inverted one takes the ink.
+      // `filled` is the plain panel the app has always used for a table
+      // header; the other modes are what a style changes it to.
       headerBg: content.table.header === "filled"
-        ? blendHex(palette.panel, palette.border, 0.22)
+        ? palette.panel
         : content.table.header === "inverted"
           ? blendForContrast(textDim, bodyBg.idle, higherContrast("#ffffff", "#000000", bodyBg.idle), 3.0)
           : bodyBg.idle,
@@ -687,38 +700,43 @@ function buildTokens(palette: ThemePalette, style: StyleSpec): ThemeTokens {
         warning: badgeSolid("warning", badgeHues.warning),
       },
     },
+    // Unchanged from the pre-split recipe: a button's fill is a scheme
+    // decision, not a style one, so no style varies it. Only the radius and
+    // shadow move, and those come from the DOM vars.
     button: {
       primary: buttonFill(accent),
       secondary: {
-        bg: palette.selected,
-        fg: palette.selectedText,
+        bg: palette.panel,
+        fg: textPrimary,
         border: palette.border,
-        hoverBg: blendHex(palette.selected, extremeOnBg, 0.12),
+        hoverBg: hover,
       },
       ghost: {
-        bg: "transparent",
-        fg: palette.textDim,
+        bg: palette.bg,
+        fg: textDim,
         border: "transparent",
         hoverBg: hover,
       },
       danger: buttonFill(palette.negative),
       disabled: {
-        bg: blendHex(palette.panel, palette.bg, 0.4),
-        fg: palette.textMuted,
-        border: blendHex(palette.border, palette.bg, 0.4),
-        hoverBg: blendHex(palette.panel, palette.bg, 0.4),
+        bg: palette.panel,
+        fg: textMuted,
+        border: palette.border,
+        hoverBg: palette.panel,
       },
     },
     dialog: {
       bg: dialogBg,
       border: chrome.focus === "glow" ? blendHex(palette.border, palette.bg, 0.3) : palette.borderFocused,
-      titleText: blendForContrast(palette.textBright, dialogBg, extremeOnBg, BODY_TEXT_MIN),
-      bodyText: blendForContrast(palette.text, dialogBg, extremeOnBg, BODY_TEXT_MIN),
-      subtleText: blendForContrast(palette.textDim, dialogBg, extremeOnBg, SUBTLE_TEXT_MIN),
+      surfaceBg: dialogSurfaceBg,
+      surfaceBorder: blendHex(palette.border, palette.borderFocused, 0.18),
+      titleText: palette.textBright,
+      bodyText: textPrimary,
+      subtleText: textMuted,
       backdrop: palette.bg,
     },
     toast: {
-      bg: blendHex(palette.panel, palette.bg, 0.06),
+      bg: palette.panel,
       border: palette.border,
       titleText: palette.textBright,
       bodyText: palette.text,

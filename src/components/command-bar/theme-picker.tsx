@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { t } from "../../i18n";
-import { getPresets, presetLabels } from "../../theme/presets";
+import { getPresets, presetLabels, stylesAreSelectable } from "../../theme/presets";
 import { getScheme, getThemeIds, isDarkTheme } from "../../theme/schemes";
 import { useGlyphs } from "../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../ui";
@@ -39,6 +39,13 @@ export interface ThemeOption {
   dark: boolean;
 }
 
+/**
+ * With one style shipping there is nothing to group by, so the list sorts by
+ * scheme name and drops the style column. The moment a second style ships the
+ * entries group by style again without any change here.
+ */
+const SHOW_STYLE_COLUMN = stylesAreSelectable();
+
 const PRESET_OPTIONS: ThemeOption[] = getPresets()
   .map((preset) => {
     const labels = presetLabels(preset);
@@ -48,11 +55,13 @@ const PRESET_OPTIONS: ThemeOption[] = getPresets()
       schemeId: preset.schemeId,
       styleName: labels.style,
       schemeName: labels.scheme,
-      name: labels.full,
+      name: SHOW_STYLE_COLUMN ? labels.full : labels.scheme,
       dark: labels.dark,
     };
   })
-  .sort((a, b) => a.styleName.localeCompare(b.styleName) || a.schemeName.localeCompare(b.schemeName));
+  .sort((a, b) => (SHOW_STYLE_COLUMN
+    ? a.styleName.localeCompare(b.styleName) || a.schemeName.localeCompare(b.schemeName)
+    : a.schemeName.localeCompare(b.schemeName)));
 
 const SCHEME_OPTIONS: ThemeOption[] = getThemeIds()
   .map((id) => ({
@@ -261,7 +270,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     onCommitRef.current(selectionOf(selected));
   }, [cancelPreview]);
 
-  const showStyleColumn = mode === "theme";
+  const showStyleColumn = mode === "theme" && SHOW_STYLE_COLUMN;
   const nameWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH);
   const styleWidth = showStyleColumn ? Math.min(STYLE_COLUMN_WIDTH, Math.max(0, nameWidth - 6)) : 0;
   const schemeWidth = Math.max(1, nameWidth - styleWidth);

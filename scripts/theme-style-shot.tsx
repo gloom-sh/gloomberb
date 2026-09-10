@@ -13,7 +13,7 @@ import { Badge, Divider, KeyValueRow, Section } from "../src/components/ui";
 import { testRender } from "../src/renderers/opentui/test-utils";
 import { applyTheme } from "../src/theme/colors";
 import { getSchemeIds } from "../src/theme/schemes";
-import { getStyleIds } from "../src/theme/styles";
+import { getAllStyleIds } from "../src/theme/styles";
 import { ThemeProvider } from "../src/theme/theme-context";
 import { Box, Text } from "../src/ui";
 
@@ -70,7 +70,8 @@ const pairs = (requested.length > 0 ? requested : ["terminal/amber", "phosphor/a
   .map((entry) => {
     const [styleId, schemeId] = entry.split("/");
     if (!styleId || !schemeId) throw new Error(`Expected <style>/<scheme>, got "${entry}"`);
-    if (!getStyleIds().includes(styleId)) throw new Error(`Unknown style "${styleId}"`);
+    // Experimental styles included: this script exists to review them.
+    if (!getAllStyleIds().includes(styleId)) throw new Error(`Unknown style "${styleId}"`);
     if (!getSchemeIds().includes(schemeId)) throw new Error(`Unknown scheme "${schemeId}"`);
     return { styleId, schemeId };
   });

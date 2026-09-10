@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { displayWidth } from "../utils/format";
 import { BORDER_KINDS, resolveGlyphs, sparklineBlock } from "./glyphs";
-import { getStyleIds, getStyle, type GlyphMode } from "./styles";
+import { getAllStyleIds, getStyle, type GlyphMode } from "./styles";
 
 const MODES: GlyphMode[] = ["unicode", "ascii", "nerd"];
 /** Not marks: the repertoire's own name and a multi-character string. */
@@ -84,7 +84,7 @@ describe("glyph table", () => {
   });
 
   test("every shipped style resolves a usable set", () => {
-    for (const styleId of getStyleIds()) {
+    for (const styleId of getAllStyleIds()) {
       const style = getStyle(styleId);
       const set = resolveGlyphs(style.glyphs, style.chrome.paneBorder);
       expect(set.mode).toBe(style.glyphs);

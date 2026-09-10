@@ -1052,6 +1052,10 @@ export default {
 
 A theme is a colour **scheme** and a structural **style**. The scheme is the 18 palette entries you already know through `colors`. The style is the structural half: pane borders, header treatment, focus channel, density, glyph repertoire, chart treatment, and (on the desktop and web only) type and material.
 
+**Only one style ships today.** `terminal` is the look the app has always had, and it is the only entry users can pick. The other styles are defined and tested but marked experimental, because the vocabulary is finished and the designs are not. Run one during development with `GLOOMBERB_THEME_STYLE=modern`, or capture one with `gloomberb shot <pane> --theme modern-catppuccin`.
+
+That does not make this section optional. A pane written against the kit and the tokens is a pane that will not need revisiting when a style ships; a pane written against raw palette entries and hard-coded row heights is one that will.
+
 The supported path for a plugin is the shared kit. Every component in `gloomberb/components` already reads the resolved theme, so a pane built from the kit picks up a new style with no work: borders appear or disappear, headings change treatment, rows tighten or loosen, and glyphs degrade to ASCII where the style says they must.
 
 When a pane needs to draw something the kit does not cover, read the resolved tokens rather than recombining palette entries by hand:

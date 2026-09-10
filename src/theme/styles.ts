@@ -113,6 +113,16 @@ export interface StyleSpec {
   id: string;
   name: string;
   description: string;
+  /**
+   * Defined and tested, but not offered to users yet. The scheme/style split
+   * and every tier below it are finished; the styles themselves are not good
+   * enough to ship, and shipping a half-designed style is worse than shipping
+   * none. They stay here so the tiers keep being exercised against more than
+   * one set of answers, which is the only way the abstraction stays honest.
+   *
+   * Opt in for development with GLOOMBERB_THEME_STYLE=<id>.
+   */
+  experimental?: boolean;
   chrome: StyleChrome;
   content: StyleContent;
   glyphs: GlyphMode;
@@ -157,6 +167,7 @@ const phosphor: StyleSpec = {
   id: "phosphor",
   name: "Phosphor",
   description: "CRT revival: heavy rules, reversed caps, scanlines",
+  experimental: true,
   chrome: {
     paneBorder: "heavy",
     paneHeader: "inverted",
@@ -186,6 +197,7 @@ const modern: StyleSpec = {
   id: "modern",
   name: "Modern",
   description: "Borderless surfaces, whitespace separators, roomy rows",
+  experimental: true,
   chrome: {
     paneBorder: "none",
     paneHeader: "plain",
@@ -216,6 +228,7 @@ const paper: StyleSpec = {
   id: "paper",
   name: "Paper",
   description: "Thin rules, underlined headings, printed shadows",
+  experimental: true,
   chrome: {
     paneBorder: "line",
     paneHeader: "underline",
@@ -244,6 +257,7 @@ const minimal: StyleSpec = {
   id: "minimal",
   name: "Minimal",
   description: "No chrome at all; the focused pane is the only marked one",
+  experimental: true,
   chrome: {
     paneBorder: "none",
     paneHeader: "inline",
@@ -278,12 +292,38 @@ export const styles: Record<string, StyleSpec> = {
 
 export const DEFAULT_STYLE = "terminal";
 
+/**
+ * The styles the product offers. Everything user-facing reads this, so the
+ * pickers, the presets and config normalisation all light up on their own the
+ * day a style stops being experimental.
+ */
 export function getStyleIds(): string[] {
+  return Object.keys(styles).filter((id) => !styles[id]!.experimental);
+}
+
+/** Every defined style, experimental ones included. For tests and tooling. */
+export function getAllStyleIds(): string[] {
   return Object.keys(styles);
 }
 
+/** True for a style the product offers. */
 export function hasStyle(id: string): boolean {
+  return Object.hasOwn(styles, id) && !styles[id]!.experimental;
+}
+
+/** True for any defined style, so `resolveTheme` can still build one. */
+export function hasAnyStyle(id: string): boolean {
   return Object.hasOwn(styles, id);
+}
+
+/**
+ * The style an explicit opt-in asks for, or null. Reading the environment here
+ * keeps the gate in one place instead of spread across config and renderers.
+ */
+export function requestedExperimentalStyle(): string | null {
+  const requested = (globalThis as { process?: { env?: Record<string, string | undefined> } })
+    .process?.env?.GLOOMBERB_THEME_STYLE?.trim();
+  return requested && hasAnyStyle(requested) ? requested : null;
 }
 
 export function getStyle(id: string): StyleSpec {

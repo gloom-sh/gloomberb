@@ -398,13 +398,20 @@ describe("loadConfig theme selection", () => {
   });
 
   test("reads a scheme and a style independently", async () => {
-    expect(await loadWithTheme({ theme: "catppuccin", themeStyle: "modern" }))
-      .toEqual({ theme: "catppuccin", themeStyle: "modern" });
+    expect(await loadWithTheme({ theme: "catppuccin", themeStyle: "terminal" }))
+      .toEqual({ theme: "catppuccin", themeStyle: "terminal" });
   });
 
-  test("a theme naming a style is read as the style, keeping the default scheme", async () => {
+  test("an experimental style is not accepted from the config file", async () => {
+    // A config written while a style was in development must not strand
+    // someone in it. Opting in is GLOOMBERB_THEME_STYLE's job.
+    expect(await loadWithTheme({ theme: "catppuccin", themeStyle: "modern" }))
+      .toEqual({ theme: "catppuccin", themeStyle: "terminal" });
+  });
+
+  test("a theme naming an unoffered style falls back rather than half-applying", async () => {
     expect(await loadWithTheme({ theme: "phosphor" }))
-      .toEqual({ theme: "amber", themeStyle: "phosphor" });
+      .toEqual({ theme: "amber", themeStyle: "terminal" });
   });
 
   test("falls back for an unknown scheme or style rather than rendering nothing", async () => {

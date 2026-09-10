@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { contrastRatio } from "./color-utils";
 import { getSchemeIds } from "./schemes";
-import { getStyleIds, getStyle } from "./styles";
+import { getAllStyleIds, getStyle } from "./styles";
 import { auditContrast, resolveTheme } from "./tokens";
 
 /** One dark, one light, one mid-tone, so a recipe cannot pass by luck. */
@@ -10,7 +10,7 @@ const SAMPLE_SCHEMES = ["amber", "catppuccin", "paper", "github-light"];
 describe("resolveTheme", () => {
   test("gives every style and scheme pair readable tokens", () => {
     const failures: string[] = [];
-    for (const styleId of getStyleIds()) {
+    for (const styleId of getAllStyleIds()) {
       for (const schemeId of getSchemeIds()) {
         for (const failure of auditContrast(resolveTheme(schemeId, styleId).tokens)) {
           failures.push(`${styleId}/${schemeId} ${failure.label} ${failure.ratio.toFixed(2)}:1 < ${failure.min}:1`);
@@ -115,7 +115,7 @@ describe("resolveTheme", () => {
 
   test("every style fills every type role", () => {
     const roles = ["display", "heading", "label", "body", "value", "caption", "numeric"] as const;
-    for (const styleId of getStyleIds()) {
+    for (const styleId of getAllStyleIds()) {
       const { type } = resolveTheme("amber", styleId).tokens;
       for (const role of roles) {
         expect(type[role], `${styleId}.${role}`).toBeDefined();
@@ -130,7 +130,7 @@ describe("resolveTheme", () => {
 
   test("a heading treatment picks exactly one emphasis, never two", () => {
     const emphasis = (bits: number) => [1, 2, 4, 8].filter((bit) => (bits & bit) !== 0).length;
-    for (const styleId of getStyleIds()) {
+    for (const styleId of getAllStyleIds()) {
       const { heading } = resolveTheme("amber", styleId).tokens.type;
       expect(emphasis(heading.attributes), styleId).toBeLessThanOrEqual(1);
     }
@@ -140,7 +140,7 @@ describe("resolveTheme", () => {
     // The point of the split: a style has to change something a user can see,
     // not just carry a different id.
     for (const schemeId of SAMPLE_SCHEMES) {
-      const signatures = getStyleIds().map((styleId) => {
+      const signatures = getAllStyleIds().map((styleId) => {
         const { tokens, glyphs } = resolveTheme(schemeId, styleId);
         return JSON.stringify([
           tokens.pane.chrome.borderKind,
@@ -154,7 +154,7 @@ describe("resolveTheme", () => {
           tokens.pane.title.text.focused,
         ]);
       });
-      expect(new Set(signatures).size, schemeId).toBe(getStyleIds().length);
+      expect(new Set(signatures).size, schemeId).toBe(getAllStyleIds().length);
     }
   });
 

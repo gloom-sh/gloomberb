@@ -10,7 +10,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { slugifyName } from "../../utils/slugify";
 import { resolvePresetSelection } from "../../theme/presets";
 import { getTheme, getThemeIds, hasScheme } from "../../theme/themes";
-import { getStyleIds, hasStyle } from "../../theme/styles";
+import { getAllStyleIds, hasAnyStyle } from "../../theme/styles";
 
 const DEFAULT_SHOT_DEVICE_SCALE_FACTOR = 2;
 import {
@@ -563,11 +563,11 @@ function resolveShotTheme(requested: string): { theme: string; themeStyle?: stri
   if (scheme) return { theme: scheme };
 
   const selection = resolvePresetSelection(normalized);
-  if (selection?.schemeId && hasScheme(selection.schemeId) && hasStyle(selection.styleId)) {
+  if (selection?.schemeId && hasScheme(selection.schemeId) && hasAnyStyle(selection.styleId)) {
     return { theme: selection.schemeId, themeStyle: selection.styleId };
   }
   throw new Error(
-    `Unknown theme "${requested}". Schemes: ${ids.join(", ")}. Styles: ${getStyleIds().join(", ")}.`,
+    `Unknown theme "${requested}". Schemes: ${ids.join(", ")}. Styles: ${getAllStyleIds().join(", ")}.`,
   );
 }
 

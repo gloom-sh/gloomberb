@@ -598,7 +598,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 [data-gloom-style] .gloom-toast-title,
 [data-gloom-style] .gloom-dialog h1,
 [data-gloom-style] .gloom-dialog h2 {
-  font-family: var(--gloom-font-ui);
+  font-family: var(--gloom-font-ui, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
   font-weight: var(--gloom-heading-weight, 700);
   letter-spacing: var(--gloom-letter-spacing, 0);
 }
@@ -681,7 +681,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
  * -------------------------------------------------------------------------- */
 
 [data-gloom-type] {
-  font-family: var(--gloom-font-ui);
+  font-family: var(--gloom-font-ui, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
   letter-spacing: var(--gloom-letter-spacing, 0);
 }
 
@@ -689,7 +689,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
  * prices has to align on the digit, whatever the rest of the UI is set in. */
 [data-gloom-type="numeric"],
 [data-gloom-type="value"] {
-  font-family: var(--gloom-font-mono);
+  font-family: var(--gloom-font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0;
 }
