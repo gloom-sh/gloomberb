@@ -14,6 +14,7 @@ import { PaneContent } from "./pane/content";
 import { resolvePaneBodyFrame, shouldReservePaneFooter } from "./pane/sizing";
 import { getPaneDisplayTitle } from "./pane/title";
 import { TITLEBAR_OVERLAY_HEIGHT_PX, getTitlebarLeadingInset } from "./titlebar-overlay";
+import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
 import {
   createDoubleEscapeCloseState,
@@ -60,7 +61,10 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     windowControls,
   } = useUiCapabilities();
   const showWindowControls = nativeWindowChrome && windowControls === "windows";
-  const titlebarLeadingInset = titleBarOverlay && nativeWindowChrome ? getTitlebarLeadingInset() : 0;
+  const windowFullscreen = useWindowFullscreen();
+  const titlebarLeadingInset = titleBarOverlay && nativeWindowChrome
+    ? getTitlebarLeadingInset({ windowFullscreen })
+    : 0;
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, desktopWindowBridge.paneId) ?? null);
   const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) ?? null : null;
   const hasPaneSettings = !!instance && pluginRegistry.hasPaneSettings(instance.instanceId);

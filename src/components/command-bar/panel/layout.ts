@@ -51,6 +51,7 @@ export function resolveCommandBarPanelLayout({
   themePickerActive,
   themePickerRowCount,
   titleBarOverlay,
+  windowFullscreen,
 }: {
   cellHeightPx: number;
   cellWidthPx: number;
@@ -66,8 +67,15 @@ export function resolveCommandBarPanelLayout({
   themePickerActive: boolean;
   themePickerRowCount: number;
   titleBarOverlay: boolean | undefined;
+  windowFullscreen: boolean;
 }): CommandBarPanelLayout {
-  const prompt = resolveHeaderPromptGeometry({ nativePaneChrome, nativeWindowChrome, termWidth, titleBarOverlay });
+  const prompt = resolveHeaderPromptGeometry({
+    nativePaneChrome,
+    nativeWindowChrome,
+    termWidth,
+    titleBarOverlay,
+    windowFullscreen,
+  });
   const barWidth = prompt.width;
   const contentPadding = nativePaneChrome ? 1 : 3;
   const nativePanelPaddingColumns = nativePaneChrome

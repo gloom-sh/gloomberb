@@ -14,6 +14,7 @@ const BASE = {
   themePickerActive: false,
   themePickerRowCount: 0,
   titleBarOverlay: undefined as boolean | undefined,
+  windowFullscreen: false,
 };
 
 const DESKTOP = {
@@ -67,6 +68,37 @@ describe("command bar sheet geometry", () => {
     expect(desktop.panelBounds.x).toBe(desktopPrompt.left);
     expect(desktop.panelBounds.width).toBe(desktopPrompt.width);
     expect(desktop.panelBounds.y).toBeCloseTo(28 / 18, 6);
+  });
+
+  /**
+   * macOS takes the traffic lights away in fullscreen, so the columns the
+   * header held for them have to go back to the prompt, and the sheet has to
+   * follow it there rather than hang off its old left edge.
+   */
+  test("gives the traffic-light columns back in fullscreen", () => {
+    const windowed = resolveHeaderPromptGeometry({
+      nativePaneChrome: true,
+      nativeWindowChrome: true,
+      platform: "macOS",
+      termWidth: 200,
+      titleBarOverlay: true,
+    });
+    const fullscreen = resolveHeaderPromptGeometry({
+      nativePaneChrome: true,
+      nativeWindowChrome: true,
+      platform: "macOS",
+      termWidth: 200,
+      titleBarOverlay: true,
+      windowFullscreen: true,
+    });
+    expect(windowed.left).toBe(9);
+    expect(fullscreen.left).toBe(1);
+
+    // Wide enough and the prompt is already at its cap, so the columns only
+    // show up as width on a window that was short of them.
+    const narrow = { nativePaneChrome: true, nativeWindowChrome: true, platform: "macOS", termWidth: 60, titleBarOverlay: true };
+    expect(resolveHeaderPromptGeometry({ ...narrow, windowFullscreen: true }).width)
+      .toBeGreaterThan(resolveHeaderPromptGeometry(narrow).width);
   });
 
   /**
