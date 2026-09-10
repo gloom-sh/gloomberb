@@ -447,13 +447,81 @@ describe("useChartResolution", () => {
     });
 
     expect(latestResult?.series[0]?.points.length).toBe(2);
-    expect(latestResult?.loading).toBe(false);
+    expect(latestResult?.loading).toBe(true);
 
     await act(async () => {
       history.resolve(INITIAL_HISTORY);
       await testSetup!.renderOnce();
     });
     await waitFor(() => latestResult?.loading === false);
+  });
+
+  test("a settled history failure is not replaced by an indefinitely loading cached seed", async () => {
+    const history = deferred<PricePoint[]>();
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => history.promise,
+      getPriceHistory: async () => { throw new Error("Selected history unavailable"); },
+    });
+    setSharedMarketDataCoordinator({
+      subscribe: () => () => {}, getVersion: () => 1,
+      getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready",
+        data: INITIAL_HISTORY, lastGoodData: INITIAL_HISTORY, source: "test", fetchedAt: Date.now() }),
+    } as never);
+    testSetup = await testRender(<ResolutionHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
+    expect(latestResult?.loading).toBe(true);
+    expect(latestResult?.series[0]?.points.length).toBe(2);
+    history.reject(new Error("Selected history unavailable"));
+    await waitFor(() => latestResult?.loading === false);
+    expect(latestResult?.errors.join(" ")).toContain("Selected history unavailable");
+    await flushEffects(3);
+    expect(latestResult?.loading).toBe(false);
+  });
+
+  test("identical hydrated specs preserve one pending resolution during quote-driven renders", async () => {
+    const history = deferred<PricePoint[]>();
+    let historyCalls = 0;
+    let resolvedInputs = 0;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async () => { historyCalls += 1; return history.promise; },
+      getPriceHistory: async () => [],
+    });
+    const sources = { ...sourcesFor(provider), onSecurityData: () => { resolvedInputs += 1; } };
+    testSetup = await testRender(<MutableSpecHarness sources={sources} />, { width: 24, height: 1 });
+    await waitFor(() => historyCalls === 1);
+    for (let index = 0; index < 3; index += 1) {
+      await act(async () => { setChartSpec?.(JSON.parse(JSON.stringify(SPEC))); });
+      await flushEffects(2);
+    }
+    history.resolve(INITIAL_HISTORY);
+    await waitFor(() => latestResult?.loading === false);
+    expect(historyCalls).toBe(1);
+    expect(resolvedInputs).toBe(1);
+    expect(latestResult?.series[0]?.points).toHaveLength(2);
+  });
+
+  test("changing a security cannot retain its predecessor's chart after a failed request", async () => {
+    const other = deferred<PricePoint[]>();
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => EMPTY_FINANCIALS,
+      getPriceHistoryForResolution: async (symbol) => symbol === "OTHER" ? other.promise : INITIAL_HISTORY,
+      getPriceHistory: async () => { throw new Error("OTHER unavailable"); },
+    });
+    testSetup = await testRender(<MutableSpecHarness sources={sourcesFor(provider)} />, { width: 24, height: 1 });
+    await waitFor(() => latestResult?.loading === false && latestResult.series[0]?.points.length === 2);
+    await act(async () => {
+      setChartSpec?.({ ...SPEC, series: [{ ...SPEC.series[0]!, source: {
+        kind: "security", instrument: { symbol: "OTHER", exchange: "NASDAQ" }, fieldId: "market.ohlcv",
+      } }] });
+      await testSetup!.renderOnce();
+    });
+    expect(latestResult?.series.flatMap((entry) => entry.points)).toEqual([]);
+    expect(latestResult?.loading).toBe(true);
+    other.reject(new Error("OTHER unavailable"));
+    await waitFor(() => latestResult?.loading === false);
+    expect(latestResult?.series.flatMap((entry) => entry.points)).toEqual([]);
+    expect(latestResult?.errors.join(" ")).toContain("OTHER unavailable");
   });
 
   test("reuses cached history when the spec object identity changes", async () => {

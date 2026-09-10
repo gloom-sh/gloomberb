@@ -74,7 +74,49 @@ describe("resolveChartSpecData", () => {
 
     const volume = seeded?.series.find((entry) => entry.panelId === "volume");
     expect(volume?.points.map((point) => point.value)).toEqual([5_000]);
-    expect(seeded?.bufferedSeries).toBe(seeded?.series);
+    expect(seeded?.bufferedSeries?.find((entry) => entry.panelId === "volume")?.points).toHaveLength(1);
+  });
+
+  test("cached history honors the visible date range before the network resolves", () => {
+    const source = { kind: "security" as const, instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.close" };
+    const history = ["2021-01-01", "2026-08-01", "2026-08-15", "2026-09-10"].map((day, i) => ({
+      date: new Date(`${day}T00:00:00Z`), close: 100 + i, volume: 1_000 + i,
+    }));
+    const seeded = seedChartResolutionResult(chartSpec({
+      viewport: { range: "1M", resolution: "auto" },
+      series: [chartSeries({ source, transform: "percent" })],
+    }), new Map([[chartQuoteOverrideKeyForSource(source), history]]));
+    expect(seeded?.viewport?.start.toISOString()).toBe("2026-08-10T00:00:00.000Z");
+    expect(seeded?.viewport?.end.toISOString()).toBe("2026-09-10T00:00:00.000Z");
+    expect(seeded?.series[0]?.points.map((p) => p.date.toISOString().slice(0, 10))).toEqual(["2026-08-15", "2026-09-10"]);
+    expect(seeded?.series[0]?.points[0]?.value).toBe(0);
+    expect(seeded?.bufferedSeries?.[0]?.points).toHaveLength(4);
+  });
+
+  test("a point-limited seed exposes a viewport only for an explicit date window", () => {
+    const source = { kind: "security" as const, instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.close" };
+    const history = ["2026-08-01", "2026-08-15", "2026-09-10"].map((day, index) => ({
+      date: new Date(`${day}T00:00:00Z`), close: 100 + index,
+    }));
+    const cached = new Map([[chartQuoteOverrideKeyForSource(source), history]]);
+    const spec = chartSpec({ viewport: { range: "1Y", resolution: "auto", maxPoints: 2 }, series: [chartSeries({ source })] });
+    const seed = seedChartResolutionResult(spec, cached);
+    expect(seed?.series[0]?.points).toHaveLength(2);
+    expect(seed?.viewport).toBeUndefined();
+    expect(seed?.bufferedSeries).toBeUndefined();
+    const explicit = seedChartResolutionResult({ ...spec, viewport: {
+      ...spec.viewport, dateWindow: { start: "2026-08-01", end: "2026-09-10" },
+    } }, cached);
+    expect(explicit?.viewport?.start.toISOString()).toBe("2026-08-01T00:00:00.000Z");
+    expect(explicit?.viewport?.end.toISOString()).toBe("2026-09-10T23:59:59.999Z");
+  });
+
+  test("stale cached observations cannot move a current preset window into the past", () => {
+    const source = { kind: "security" as const, instrument: { symbol: "TEST" }, fieldId: "market.close" };
+    const cached = new Map([[chartQuoteOverrideKeyForSource(source), [{ date: new Date("2026-08-31T00:00:00Z"), close: 100 }]]]);
+    const result = seedChartResolutionResult(chartSpec({ viewport: { range: "1M", resolution: "auto" },
+      series: [chartSeries({ source })] }), cached, new Date("2026-09-10T18:00:00Z"));
+    expect(result?.viewport).toEqual({ start: new Date("2026-08-10T18:00:00Z"), end: new Date("2026-09-10T18:00:00Z") });
   });
 
   test("keeps study output over the whole buffered history its base series carries", async () => {

@@ -374,6 +374,7 @@ function emptyFinancials(priceHistory: TickerFinancials["priceHistory"] = []): T
 export function seedChartResolutionResult(
   spec: ChartSpec,
   historyByInstrument: ReadonlyMap<string, TickerFinancials["priceHistory"]>,
+  referenceNow?: Date,
 ): ChartResolutionResult | null {
   const series: ResolvedSeries[] = [];
   spec.series.forEach((seriesSpec, index) => {
@@ -385,19 +386,36 @@ export function seedChartResolutionResult(
     if (resolved?.points.length) series.push(resolved);
   });
   if (series.length === 0) return null;
-  // Studies ride along with the seed. Without them the chart briefly drops to
-  // base series alone whenever it falls back here, and every panel a study
-  // owns loses its rows until the first real resolve lands.
-  const seeded = spec.studies.length > 0
-    ? [...series, ...resolveStudies(series, spec.studies).series]
-    : series;
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const entry of series) {
+    for (const point of entry.points) latest = Math.max(latest, point.date.getTime());
+  }
+  const bounds = requestedBounds(spec, referenceNow ?? new Date(latest));
+  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, bounds));
+  // Calculate studies from raw buffered inputs, then use the same presentation
+  // and visible-window rules as the network result.
+  const studies = resolveStudies(series, spec.studies);
+  const bufferedSeries = [
+    ...baseSeries,
+    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, bounds),
+  ];
+  const visible = bufferedSeries.map((entry) => {
+    const clipped = bounds.start !== null && bounds.end !== null
+      ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
+      : { ...entry, points: filterPoints(entry.points, bounds) };
+    return spec.viewport.maxPoints === undefined ? clipped
+      : { ...clipped, points: clipped.points.slice(-spec.viewport.maxPoints) };
+  });
   return {
-    series: seeded,
-    legendSeries: seeded,
-    bufferedSeries: seeded,
-    loading: false,
-    errors: [],
-    warnings: [],
+    series: visible,
+    legendSeries: visible,
+    ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
+    ...((explicitBounds(spec) !== null || spec.viewport.maxPoints === undefined)
+      && bounds.start !== null && bounds.end !== null
+      ? { viewport: { start: new Date(bounds.start), end: new Date(bounds.end) } } : {}),
+    loading: true,
+    errors: studies.errors,
+    warnings: studies.warnings,
     resolution: spec.viewport.resolution === "auto"
       ? getPresetResolution(spec.viewport.range)
       : spec.viewport.resolution,

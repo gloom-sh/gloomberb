@@ -101,10 +101,18 @@ export function useChartResolution(
 ): UseChartResolutionResult {
   const snapshot = options.snapshot;
   const coordinator = getSharedMarketDataCoordinator();
-  const [result, setResult] = useState<ChartResolutionResult>(
-    () => snapshot ?? seedChartResolutionResult(spec, collectSeedHistory(spec)) ?? EMPTY_RESULT,
-  );
-  const needsSeed = !snapshot && !hasRenderableData(result);
+  const specKey = JSON.stringify(spec);
+  const [state, setState] = useState(() => ({
+    key: specKey,
+    result: snapshot ?? seedChartResolutionResult(spec, collectSeedHistory(spec), sources.now ?? new Date()) ?? EMPTY_RESULT,
+  }));
+  // A selected range, listing or transform owns its displayed data. A pending
+  // request must not keep another specification's result under the new controls.
+  const result = state.key === specKey ? state.result : EMPTY_RESULT;
+  // A seed bridges an in-flight request. Once that request settles, an empty
+  // or failed result must not be replaced with a fresh loading seed forever.
+  const needsSeed = !snapshot && !hasRenderableData(result)
+    && (state.key !== specKey || result.loading);
   const subscribeSeed = useCallback((listener: () => void) => {
     if (!needsSeed || !coordinator) return () => {};
     return coordinator.subscribe(listener);
@@ -115,7 +123,7 @@ export function useChartResolution(
   }, [coordinator, needsSeed]);
   useSyncExternalStore(subscribeSeed, getSeedSnapshot, () => 0);
   const seeded = needsSeed
-    ? seedChartResolutionResult(spec, collectSeedHistory(spec))
+    ? seedChartResolutionResult(spec, collectSeedHistory(spec), sources.now ?? new Date())
     : null;
   const displayed = hasRenderableData(result) ? result : (seeded ?? result);
   const resultRef = useRef(displayed);
@@ -175,9 +183,9 @@ export function useChartResolution(
     cacheIdentityRef.current = { spec, sources, revision };
     const cache = resolveCacheRef.current;
     const current = resultRef.current;
-    const backgroundRefresh = hasRenderableData(current) && !isExplicitReload;
+    const backgroundRefresh = state.key === specKey && hasRenderableData(current) && !current.loading && !isExplicitReload;
     if (!backgroundRefresh) {
-      setResult((currentResult) => ({ ...currentResult, loading: true, errors: [] }));
+      setState({ key: specKey, result: { ...current, loading: true, errors: [] } });
     }
     resolveChartSpecData(
       spec,
@@ -188,17 +196,16 @@ export function useChartResolution(
       .then((next) => {
         if (generationRef.current !== generation) return;
         if (backgroundRefresh && !hasRenderableData(next)) return;
-        setResult(next);
+        setState({ key: specKey, result: next });
       })
       .catch((error) => {
         if (generationRef.current !== generation) return;
         if (backgroundRefresh) return;
-        setResult({
-          series: [],
+        setState({ key: specKey, result: {
+          ...current,
           loading: false,
           errors: [error instanceof Error ? error.message : String(error)],
-          warnings: [],
-        });
+        } });
       });
     return () => {
       if (generationRef.current === generation) generationRef.current += 1;
@@ -212,7 +219,7 @@ export function useChartResolution(
     requestViewportStart,
     revision,
     sources,
-    spec,
+    specKey,
   ]);
 
   const liveTargetSignature = liveChartQuoteTargetSignature(spec);
@@ -242,24 +249,30 @@ export function useChartResolution(
             liveSubscriptionGenerationRef.current === subscriptionGeneration
             && generationRef.current === generation
           ) {
-            setResult((current) => (
-              (request.options.autoViewport || request.options.requestViewport)
-              && !current.loading
-              && hasRenderableData(current)
+            const requestKey = JSON.stringify(request.spec);
+            setState((current) => ({ key: requestKey, result:
+              current.key === requestKey
+              && (request.options.autoViewport || request.options.requestViewport)
+              && !current.result.loading
+              && hasRenderableData(current.result)
               && !hasRenderableData(next)
-                ? current
-                : next
-            ));
+                ? current.result
+                : next,
+            }));
           }
         } catch (error) {
           if (
             liveSubscriptionGenerationRef.current !== subscriptionGeneration
             || generationRef.current !== generation
           ) return;
-          setResult((current) => ({
+          const requestKey = JSON.stringify(request.spec);
+          setState((current) => current.key !== requestKey ? current : ({
             ...current,
-            loading: false,
-            errors: [error instanceof Error ? error.message : String(error)],
+            result: {
+              ...current.result,
+              loading: false,
+              errors: [error instanceof Error ? error.message : String(error)],
+            },
           }));
         }
       },
