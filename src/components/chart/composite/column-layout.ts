@@ -53,7 +53,7 @@ function observedTimestamp(point: CompositeProjectedPoint): number | null {
 function annualBucket(point: CompositeProjectedPoint): FinancialPeriodBucket | null {
   const periodLabel = point.point.periodLabel?.trim();
   const timestamp = observedTimestamp(point);
-  if (!periodLabel || !/^FY\d{4}$/.test(periodLabel) || timestamp === null) return null;
+  if (!periodLabel || !/^(?:FY\d{4}|Year ended \d{4}-\d{2}-\d{2})$/.test(periodLabel) || timestamp === null) return null;
   const observedAt = new Date(timestamp);
   const observedYear = observedAt.getUTCFullYear();
   const cohortYear = observedAt.getUTCMonth() <= 1 ? observedYear - 1 : observedYear;
@@ -63,7 +63,7 @@ function annualBucket(point: CompositeProjectedPoint): FinancialPeriodBucket | n
 function quarterlyBucket(point: CompositeProjectedPoint): FinancialPeriodBucket | null {
   const periodLabel = point.point.periodLabel?.trim();
   const timestamp = observedTimestamp(point);
-  if (!periodLabel || !/^\d{4} Q[1-4]$/.test(periodLabel) || timestamp === null) return null;
+  if (!periodLabel || !/^(?:\d{4} Q[1-4]|Quarter ended \d{4}-\d{2}-\d{2})$/.test(periodLabel) || timestamp === null) return null;
 
   const observedYear = new Date(timestamp).getUTCFullYear();
   let nearest: { year: number; quarter: number; distance: number } | null = null;

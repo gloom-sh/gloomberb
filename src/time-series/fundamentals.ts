@@ -142,10 +142,10 @@ function completeStatementAvailability(statement: InternalStatement): string | u
     .map((field) => statementFieldAvailability(statement, field)));
 }
 
-function periodCategory(date: string, period: "annual" | "quarterly"): string {
+/** Internal calendar bucket for selecting adjacent inputs, not an issuer fiscal label. */
+function calendarQuarterBucket(date: string): string {
   const parsedYear = Number(date.slice(0, 4));
   let year = Number.isFinite(parsedYear) ? parsedYear : 0;
-  if (period === "annual") return year > 0 ? `FY${year}` : date;
 
   let month = Number(date.slice(5, 7));
   const day = Number(date.slice(8, 10));
@@ -260,13 +260,13 @@ function precedingQuarterInputs(
   const annualTime = statementTime(annualStatement);
   if (!Number.isFinite(annualTime)) return [];
 
-  const annualCategory = periodCategory(annualStatement.date, "quarterly");
+  const annualCategory = calendarQuarterBucket(annualStatement.date);
   const byCategory = new Map<string, PrecedingQuarterInput>();
   for (const statement of quarterlyStatements) {
     if (statement.currency !== annualStatement.currency) continue;
     const time = statementTime(statement);
     if (!Number.isFinite(time) || time >= annualTime || annualTime - time > 370 * DAY_MS) continue;
-    const category = periodCategory(statement.date, "quarterly");
+    const category = calendarQuarterBucket(statement.date);
     if (category === annualCategory) continue;
     const value = statementNumber(statement, field);
     if (value === null) continue;
@@ -582,11 +582,9 @@ function pointForStatement(
     observedAt,
     availableAt: availableAt ?? undefined,
     value,
-    periodLabel: period === "annual"
-      ? periodCategory(statement.date, "annual")
-      : period === "ttm"
-        ? `TTM ${periodCategory(statement.date, "quarterly")}`
-        : periodCategory(statement.date, "quarterly"),
+    // Providers do not supply a reliable issuer fiscal-year/quarter identity.
+    // Calendar-month numbering would mislabel non-calendar fiscal years.
+    periodLabel: `${period === "annual" ? "Year" : period === "ttm" ? "TTM" : "Quarter"} ended ${statement.date}`,
     provenance: { quality: derived ? "derived" : "reported" },
   };
 }

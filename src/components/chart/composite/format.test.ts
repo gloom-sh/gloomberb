@@ -83,6 +83,16 @@ describe("composite chart timestamp formatting", () => {
 });
 
 describe("composite chart point details", () => {
+  test("shows explicit financial period ends once and keeps their later availability", () => {
+    for (const period of ["Quarter", "Year", "TTM"]) {
+      expect(formatCompositePointDetails({
+        date: new Date("2025-07-30"), observedAt: new Date("2025-06-30"),
+        availableAt: new Date("2025-07-30"), value: 76_441_000_000,
+        periodLabel: `${period} ended 2025-06-30`, provenance: { quality: "reported" },
+      })).toBe(`${period} ended 2025-06-30 · Available 2025-07-30 · Reported`);
+    }
+  });
+
   test("disambiguates fiscal period, availability, and provenance", () => {
     const point: TimeSeriesPoint = {
       date: new Date("2025-03-14T00:00:00.000Z"),

@@ -148,7 +148,8 @@ export function formatCompositePointDetails(point: TimeSeriesPoint | null | unde
   const availableAt = validUtcTimestamp(point.availableAt);
 
   if (periodLabel) details.push(periodLabel);
-  if (observedAt) {
+  const labelIncludesObservedDate = ["Quarter", "Year", "TTM"].some((period) => periodLabel === `${period} ended ${observedAt}`);
+  if (observedAt && !labelIncludesObservedDate) {
     const isFiscalPeriod = periodLabel && periodLabel.toLowerCase() !== "current";
     details.push(`${isFiscalPeriod ? "Period ended" : "Observed"} ${observedAt}`);
   }

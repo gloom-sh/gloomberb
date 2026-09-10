@@ -115,13 +115,13 @@ describe("composite chart renderers", () => {
     expect(Math.max(...greenXs)).toBeLessThan(Math.min(...orangeXs));
   });
 
-  test("groups offset annual and quarterly fiscal closes into stable cohort lanes", () => {
+  test("groups explicit period-end labels and legacy fiscal labels into the same stable cohort lanes", () => {
     const cases = [
       {
         frequency: "annual" as const,
         first: [
-          { date: "2024-01-28", periodLabel: "FY2024" },
-          { date: "2025-01-26", periodLabel: "FY2025" },
+          { date: "2024-01-28", periodLabel: "Year ended 2024-01-28" },
+          { date: "2025-01-26", periodLabel: "Year ended 2025-01-26" },
         ],
         second: [
           { date: "2023-12-31", periodLabel: "FY2023" },
@@ -131,8 +131,8 @@ describe("composite chart renderers", () => {
       {
         frequency: "quarterly" as const,
         first: [
-          { date: "2024-01-28", periodLabel: "2024 Q1" },
-          { date: "2024-04-28", periodLabel: "2024 Q2" },
+          { date: "2024-01-28", periodLabel: "Quarter ended 2024-01-28" },
+          { date: "2024-04-28", periodLabel: "Quarter ended 2024-04-28" },
         ],
         second: [
           { date: "2023-12-31", periodLabel: "2023 Q4" },
