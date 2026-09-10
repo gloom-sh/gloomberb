@@ -77,9 +77,9 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
       filedAt: filing.filingDate instanceof Date
         ? filing.filingDate.toISOString()
         : String(filing.filingDate),
-      acceptedAt: filing.acceptedAt instanceof Date
-        ? filing.acceptedAt.toISOString()
-        : filing.acceptedAt ? String(filing.acceptedAt) : null,
+      acceptedAt: secAcceptanceTimestamp(filing.acceptedAt),
+      acceptedAtRaw: filing.acceptedAtRaw ?? null,
+      acceptanceReported: secReportedAcceptance(filing),
       form: filing.form,
       filing: formDescription ? `${displayTitle} | ${formDescription}` : displayTitle,
       items: filing.items ?? null,
@@ -91,7 +91,6 @@ export function buildSecFilingRows(filings: readonly SecFilingItem[]) {
     };
   });
 }
-
 
 export function secFilingIssuers(filings: readonly SecFilingItem[]) {
   const issuers = new Map<string, { cik: string; companyName: string | null }>();
@@ -107,3 +106,20 @@ export function secFilingIssuers(filings: readonly SecFilingItem[]) {
 export function secIssuerLabel(issuer: { cik: string; companyName?: string | null }): string {
   return `${issuer.companyName || "Issuer name unavailable"} · CIK ${issuer.cik}`;
 }
+
+/** Persistence may return timestamps as strings even when the network model uses Date. */
+export function secAcceptanceTimestamp(value: unknown): string | null {
+  if (!(value instanceof Date) && typeof value !== "string") return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+export function secReportedAcceptance(filing: SecFilingItem): string | null {
+  const raw = filing.acceptedAtRaw?.trim();
+  if (raw) return /^\d{14}$/.test(raw) || !/(?:Z|[+-]\d{2}:\d{2})$/.test(raw)
+    ? `${raw} (timezone unspecified)`
+    : raw;
+  return secAcceptanceTimestamp(filing.acceptedAt);
+}
+
+export const SEC_ACCEPTANCE_NOTE = "SEC-reported acceptance is not verified public availability or an announcement time. Source timestamps without a timezone remain unconverted.";

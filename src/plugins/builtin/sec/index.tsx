@@ -22,6 +22,7 @@ import {
   formatCompactDocumentLabel,
   isDefaultVisibleFilingDocument,
   isInlineExhibitDocument,
+  filingPreviewTruncated,
 } from "./filing-documents";
 import {
   buildInlineFilingContentTargets,
@@ -35,6 +36,8 @@ import {
   getMeaningfulPrimaryDescription,
   secFilingIssuers,
   secIssuerLabel,
+  secReportedAcceptance,
+  SEC_ACCEPTANCE_NOTE,
 } from "./model";
 
 export { secHeadless } from "./headless";
@@ -139,6 +142,7 @@ function toFeedItems(
 ): FeedDataTableItem[] {
   return filings.map((filing) => {
     const displayTitle = getFilingDisplayTitle(filing);
+    const acceptedAt = secReportedAcceptance(filing);
     const formDesc = getFormDescription(filing.form);
     const hasFetchedContent = contentCache.has(filing.accessionNumber);
     const fetchedContent = contentCache.get(filing.accessionNumber);
@@ -181,9 +185,11 @@ function toFeedItems(
       detailMeta: [
         secIssuerLabel(filing),
         `Filed ${formatFiledAt(filing)}`,
-        ...(filing.acceptedAt ? [`Accepted ${filing.acceptedAt.toISOString()} (UTC)`] : []),
+        ...(acceptedAt ? [`SEC-reported acceptance ${acceptedAt}`, SEC_ACCEPTANCE_NOTE] : []),
         `Accession ${filing.accessionNumber}`,
         ...(filing.items ? [`Items ${filing.items}`] : []),
+        ...(filingPreviewTruncated(filing, selected ? selectedDocuments : [], contentCache)
+          ? ["Preview truncated. Open the SEC filing for the complete documents and terms."] : []),
       ],
       detailBody,
     };

@@ -31,6 +31,8 @@ export interface SecFilingItem {
   form: string;
   filingDate: Date;
   acceptedAt?: Date;
+  /** Unmodified SEC acceptanceDateTime; a missing timezone is not inferred. */
+  acceptedAtRaw?: string;
   primaryDocument?: string;
   primaryDocDescription?: string;
   items?: string;

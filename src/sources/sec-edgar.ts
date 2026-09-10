@@ -136,14 +136,8 @@ function parseTimestamp(value: unknown): Date | undefined {
     const timestamp = new Date(digits);
     return Number.isFinite(timestamp.getTime()) ? timestamp : undefined;
   }
-  if (!/^\d{14}$/.test(digits)) return undefined;
-  const year = Number(digits.slice(0, 4));
-  const month = Number(digits.slice(4, 6));
-  const day = Number(digits.slice(6, 8));
-  const hour = Number(digits.slice(8, 10));
-  const minute = Number(digits.slice(10, 12));
-  const second = Number(digits.slice(12, 14));
-  return new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  // Compact SEC wall-clock values carry no timezone. Keep the source value separately.
+  return undefined;
 }
 
 function parseDate(value: unknown): Date | undefined {
@@ -308,6 +302,7 @@ function parseFilingColumns(
       form,
       filingDate,
       acceptedAt: parseTimestamp(acceptanceTimes[index]),
+      acceptedAtRaw: typeof acceptanceTimes[index] === "string" ? acceptanceTimes[index].trim() || undefined : undefined,
       primaryDocument,
       primaryDocDescription: String(primaryDescriptions[index] ?? "").trim() || undefined,
       items: String(items[index] ?? "").trim() || undefined,

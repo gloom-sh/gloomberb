@@ -846,6 +846,8 @@ export interface CloudSecFilingPayload {
   form: string;
   filingDate: string;
   acceptedAt?: string;
+  /** Unmodified SEC acceptanceDateTime; a missing timezone is not inferred. */
+  acceptedAtRaw?: string;
   primaryDocument?: string;
   primaryDocDescription?: string;
   items?: string;

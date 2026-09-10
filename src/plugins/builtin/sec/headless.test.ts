@@ -4,6 +4,7 @@ import { createDefaultConfig } from "../../../types/config";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createSecHeadless } from "./headless";
+import { buildSecFilingRows, secAcceptanceTimestamp } from "./model";
 
 const filings: SecFilingItem[] = [
   {
@@ -56,6 +57,8 @@ describe("SEC headless model", () => {
     expect(first.rows).toEqual([{
       filedAt: "2026-08-25T00:00:00.000Z",
       acceptedAt: null,
+      acceptedAtRaw: null,
+      acceptanceReported: null,
       form: "8-K",
       filing: "8-K | Results of Operations | Current Report",
       items: "2.02,9.01",
@@ -72,7 +75,6 @@ describe("SEC headless model", () => {
   });
 });
 
-
 test("ticker reuse preserves the actual filing issuer rather than the requested ticker's former company", async () => {
   const headless = createSecHeadless({ loadFilings: async () => [{
     ...filings[0]!, cik: "0001826011", companyName: "Banzai International, Inc."
@@ -80,4 +82,15 @@ test("ticker reuse preserves the actual filing issuer rather than the requested 
   const result = await headless.load({ ...args(1), argument: "PARA", symbols: ["PARA"] }, context());
   expect(result.rows[0]).toMatchObject({ cik: "0001826011", companyName: "Banzai International, Inc." });
   expect(result.metadata?.issuers).toEqual([{ cik: "0001826011", companyName: "Banzai International, Inc." }]);
+});
+
+test("accepted timestamps survive persisted JSON rows and invalid cached values remain unknown", () => {
+  const filing = { ...filings[0]!, acceptedAt: new Date("2025-03-20T20:10:11.000Z") };
+  const restored = JSON.parse(JSON.stringify(filing)) as SecFilingItem;
+  expect(secAcceptanceTimestamp(restored.acceptedAt)).toBe("2025-03-20T20:10:11.000Z");
+  expect(buildSecFilingRows([restored])[0]?.acceptedAt).toBe("2025-03-20T20:10:11.000Z");
+  const compact = { ...restored, acceptedAt: undefined, acceptedAtRaw: "20250320161011" };
+  expect(buildSecFilingRows([compact])[0]).toMatchObject({ acceptedAt: null, acceptedAtRaw: "20250320161011", acceptanceReported: "20250320161011 (timezone unspecified)" });
+  expect(secAcceptanceTimestamp("invalid")).toBeNull();
+  expect(secAcceptanceTimestamp(undefined)).toBeNull();
 });
