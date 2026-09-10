@@ -1,7 +1,7 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { buildFinancialTableModel, financialStatementCurrency, formatFinancialHeader } from "./financials/model";
+import { buildFinancialTableModel, financialStatementCurrency, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
 import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
@@ -17,6 +17,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     const table = buildFinancialTableModel(financials, {
       period: options.period === "quarterly" ? "quarterly" : "annual",
       statement: String(options.statement ?? "income"),
+      expandAll: true,
     });
     const statementCurrency = financialStatementCurrency(financials, table?.statements ?? []);
     const dates = table?.statements.map(({ date, currency }) => ({
@@ -47,6 +48,7 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
         period: table?.period ?? options.period, growthBasis: table?.period === "quarterly" ? "QoQ" : "YoY", columns: dates,
+        limitations: financialStatementLimitations(financials),
       },
     };
   },

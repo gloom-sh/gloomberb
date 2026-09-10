@@ -26,10 +26,19 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
     }));
     const unavailableSymbols = symbols.filter((symbol) => bySymbol.get(symbol)?.status !== "ready");
     if (!unavailableSymbols.length && rows.every((row) => row.correlation == null)) unavailableSymbols.push(...symbols);
+    const unavailablePairs = rows.filter((row) => row.correlation == null).map((row) => ({
+      left: row.left, right: row.right, sampleSize: row.sampleSize,
+      reason: row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
+    }));
     return {
-      rows, unavailableSymbols, errors: loaded.errors,
+      rows, unavailableSymbols,
+      errors: [
+        ...loaded.errors,
+        ...unavailablePairs.map((pair) => `${pair.left}/${pair.right}: ${pair.reason} (${pair.sampleSize} shared observations).`),
+      ],
       metadata: {
         range,
+        unavailablePairs,
         returnAlignment: "Close-to-close returns between shared UTC dates; exchange closing times may differ.",
         availability: symbols.map((symbol) => ({
           symbol, status: bySymbol.get(symbol)?.status ?? "error", observationCount: bySymbol.get(symbol)?.observationCount ?? 0,

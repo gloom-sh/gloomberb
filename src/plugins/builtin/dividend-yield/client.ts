@@ -101,6 +101,13 @@ export interface DividendData {
   price: number | null;
   currency?: string;
   historyAvailable?: boolean;
+  notes?: string[];
+  providerId?: string;
+  /** Source fetch time, not the last ex-date or this pane's cache-read time. */
+  fetchedAt?: string;
+  stale?: boolean;
+  priceAsOf?: string;
+  priceStale?: boolean;
 }
 
 export async function fetchDividendData(
@@ -172,7 +179,10 @@ async function fetchDividendDataForSymbol(
     throw new Error(`No dividend data found for ${symbol}`);
   }
 
-  return { payments, metrics, price: resolvedPrice, currency, historyAvailable };
+  return { payments, metrics, price: resolvedPrice, currency, historyAvailable,
+    providerId: "yahoo", ...(historyAvailable ? { fetchedAt: new Date().toISOString() } : {}),
+    notes: ["Cash yield excludes taxes and reinvestment. SEC yield, tax components and future payments are not modeled."],
+  };
 }
 
 /** A quote from another listing/currency cannot price this cash distribution series. */
@@ -217,7 +227,7 @@ export function buildDividendMetrics(
     payoutRatio: quoteFields?.payoutRatio ?? null,
     growth1Y,
     growth3Y,
-    paymentFrequency: inferFrequency(eligible),
+    paymentFrequency: inferFrequency(eligible, now),
     exDividendDate,
     nextPayDate,
   }, currentPrice);
@@ -245,12 +255,16 @@ function computeGrowth(payments: DividendPayment[], years: number, now: Date): n
   return prior > 0 && recent > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null;
 }
 
-function inferFrequency(payments: DividendPayment[]): DividendMetrics["paymentFrequency"] {
-  if (payments.length < 2) return null;
-  const sorted = [...payments].sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
+function inferFrequency(payments: DividendPayment[], now: Date): DividendMetrics["paymentFrequency"] {
+  if (!payments.some((payment) => payment.exDate > calendarYearsBefore(now, 1))) return null;
+  const cutoff = calendarYearsBefore(now, 2);
+  // Old suspensions or a former schedule must not redefine a fund's recent cadence.
+  const dates = [...new Set(payments.filter((payment) => payment.exDate > cutoff).map((payment) => payment.exDate.getTime()))]
+    .sort((a, b) => a - b);
+  if (dates.length < 2) return null;
   const gaps: number[] = [];
-  for (let i = 1; i < sorted.length; i++) {
-    gaps.push((sorted[i]!.exDate.getTime() - sorted[i - 1]!.exDate.getTime()) / DAY);
+  for (let i = 1; i < dates.length; i++) {
+    gaps.push((dates[i]! - dates[i - 1]!) / DAY);
   }
   const avgGapDays = gaps.reduce((sum, g) => sum + g, 0) / gaps.length;
   if (Math.abs(avgGapDays - 30) < 8) return "monthly";

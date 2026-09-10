@@ -7,11 +7,19 @@ test("cash chart uses complete calendar-year cash totals without inventing histo
     new Date(Date.UTC(2024, 1 + month, 1)).toISOString().slice(0, 10), 0.5, "USD",
   )!);
   payments.push(toDividendPayment("2027-02-01", 50, "USD")!);
-  const points = buildTrailingCashChartPoints(payments.reverse(), new Date("2026-09-10"));
+  const points = buildTrailingCashChartPoints(payments.reverse(), new Date("2026-02-01"));
   expect(points).toHaveLength(13);
   expect(points[0]?.date.toISOString().slice(0, 10)).toBe("2025-02-01");
   expect(points.every((point) => point.close === 6)).toBe(true);
   expect(buildTrailingCashChartPoints(payments.slice(1, 3), new Date("2026-09-10"))).toEqual([]);
+});
+
+test("cash chart reaches the current zero cash rate after payments stop", () => {
+  const points = buildTrailingCashChartPoints([
+    toDividendPayment("2023-08-04", 0.125, "USD")!,
+    toDividendPayment("2024-08-07", 0.125, "USD")!,
+  ], new Date("2026-09-10"));
+  expect(points.at(-1)).toMatchObject({ date: new Date("2026-09-10"), close: 0 });
 });
 
 test("leap-day cash chart retains payments after the clamped February 28 cutoff", () => {

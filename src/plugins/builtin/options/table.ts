@@ -222,7 +222,9 @@ function formatOptionContractCell(
   const greeks = optionGreeksForColumn(row, column);
   switch (column.field) {
     case "last":
-      return formatMarketPrice(contract.lastPrice, { assetCategory: "OPT", maxWidth: column.width });
+      return contract.lastPrice > 0
+        ? formatMarketPrice(contract.lastPrice, { assetCategory: "OPT", maxWidth: column.width })
+        : "—";
     case "bid":
       return formatMarketPrice(contract.bid, { assetCategory: "OPT", maxWidth: column.width });
     case "ask":

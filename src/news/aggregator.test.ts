@@ -490,8 +490,8 @@ describe("NewsService", () => {
   });
 
   it("appends paged news instead of replacing the first page", async () => {
-    const first = makeItem({ url: "https://example.com/a", title: "First" });
-    const second = makeItem({ url: "https://example.com/b", title: "Second" });
+    const first = makeItem({ url: "https://example.com/a", title: "First", publishedAt: new Date("2026-01-02") });
+    const second = makeItem({ url: "https://example.com/b", title: "Second", publishedAt: new Date("2026-01-01") });
     const fetchNewsPage = mock(async (query: { cursor?: string }) => (
       query.cursor === "page-2"
         ? { articles: [second], nextCursor: null }
@@ -520,8 +520,8 @@ describe("NewsService", () => {
   });
 
   it("keeps paged news past the query page size", async () => {
-    const first = makeItem({ url: "https://example.com/a", title: "First" });
-    const second = makeItem({ url: "https://example.com/b", title: "Second" });
+    const first = makeItem({ url: "https://example.com/a", title: "First", publishedAt: new Date("2026-01-02") });
+    const second = makeItem({ url: "https://example.com/b", title: "Second", publishedAt: new Date("2026-01-01") });
     const fetchNewsPage = mock(async (query: { cursor?: string }) => (
       query.cursor === "page-2"
         ? { articles: [second], nextCursor: "page-3" }

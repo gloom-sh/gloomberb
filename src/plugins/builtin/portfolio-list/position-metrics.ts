@@ -2,64 +2,45 @@ import type { TickerRecord } from "../../../types/ticker";
 
 export interface PortfolioPositionMetrics {
   positionCurrency: string;
+  positionCount: number;
+  hasShorts: boolean;
   totalShares: number;
   totalCost: number;
+  /** Signed cost basis, for net market value minus cost P&L. */
+  signedCost: number;
   totalCostUnits: number;
   totalPriceUnits: number;
+  grossPriceUnits: number;
   multiplierHint: number;
   brokerMktValue: number;
+  brokerNetMktValue: number;
   hasBrokerMktValue: boolean;
   brokerPnl: number;
   hasBrokerPnl: boolean;
   brokerMarkPrice: number | undefined;
 }
 
-function getPositionCurrency(
-  positions: TickerRecord["metadata"]["positions"],
-  fallbackCurrency: string,
-): string {
-  return positions.find((position) => position.currency)?.currency || fallbackCurrency;
-}
-
 function normalizePositionMultiplier(multiplier: number | undefined): number {
-  return typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0
-    ? multiplier
-    : 1;
+  return typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1;
 }
 
-export function signedPositionDirection(position: {
-  shares: number;
-  side?: "long" | "short";
-}): 1 | -1 {
+export function signedPositionDirection(position: { shares: number; side?: "long" | "short" }): 1 | -1 {
   if (position.side === "short") return -1;
   if (position.side === "long") return 1;
   return position.shares < 0 ? -1 : 1;
 }
 
-/** Quote-path unrealized P&L. Shorts profit when market value falls below cost. */
-export function signedQuoteUnrealizedPnl(
-  absMarketValue: number,
-  cost: number,
-  totalPriceUnits: number,
-): number {
-  return (totalPriceUnits < 0 ? -1 : 1) * (absMarketValue - cost);
-}
-
-function resolvePositionCostMultiplier(
-  position: TickerRecord["metadata"]["positions"][number],
-): number {
+export function resolvePositionCostMultiplier(position: TickerRecord["metadata"]["positions"][number]): number {
   const priceMultiplier = normalizePositionMultiplier(position.multiplier);
   if (priceMultiplier === 1) return 1;
-
-  if (position.marketValue == null || position.unrealizedPnl == null) {
-    return priceMultiplier;
-  }
+  if (position.marketValue == null || position.unrealizedPnl == null) return priceMultiplier;
 
   const costWithoutMultiplier = Math.abs(position.shares) * position.avgCost;
   const costWithMultiplier = costWithoutMultiplier * priceMultiplier;
-  const withoutMultiplierError = Math.abs((position.marketValue - costWithoutMultiplier) - position.unrealizedPnl);
-  const withMultiplierError = Math.abs((position.marketValue - costWithMultiplier) - position.unrealizedPnl);
-
+  const direction = signedPositionDirection(position);
+  const marketValue = Math.abs(position.marketValue);
+  const withoutMultiplierError = Math.abs(direction * (marketValue - costWithoutMultiplier) - position.unrealizedPnl);
+  const withMultiplierError = Math.abs(direction * (marketValue - costWithMultiplier) - position.unrealizedPnl);
   // Some broker derivative feeds report avgCost already scaled to the contract.
   return withoutMultiplierError < withMultiplierError ? 1 : priceMultiplier;
 }
@@ -68,75 +49,62 @@ export function getPortfolioPositionMetrics(
   ticker: TickerRecord,
   activeTab: string | undefined,
   fallbackCurrency: string,
+  valuation?: { currency: string; convert: (value: number, currency: string) => number },
 ): PortfolioPositionMetrics {
-  const tabPositions = activeTab
-    ? ticker.metadata.positions.filter((position) => position.portfolio === activeTab)
-    : ticker.metadata.positions;
-  const positionCurrency = getPositionCurrency(tabPositions, fallbackCurrency);
-  let totalShares = 0;
-  let totalCost = 0;
-  let totalCostUnits = 0;
-  let totalPriceUnits = 0;
-  let multiplierHint = 1;
-  let brokerMktValue = 0;
-  let hasBrokerMktValue = false;
-  let brokerPnl = 0;
-  let hasBrokerPnl = false;
-  for (const position of tabPositions) {
+  const positions = ticker.metadata.positions.filter((position) =>
+    (!activeTab || position.portfolio === activeTab) && position.shares !== 0,
+  );
+  const currencies = new Set(positions.map((position) => position.currency || fallbackCurrency));
+  const positionCurrency = valuation?.currency ?? (currencies.size > 1 ? "Mixed" : [...currencies][0] || fallbackCurrency);
+  const convert = (value: number, position: typeof positions[number]) => valuation
+    ? valuation.convert(value, position.currency || fallbackCurrency)
+    : currencies.size > 1 ? Number.NaN : value;
+  const metrics: PortfolioPositionMetrics = {
+    positionCurrency, positionCount: positions.length, hasShorts: false,
+    totalShares: 0, totalCost: 0, signedCost: 0, totalCostUnits: 0,
+    totalPriceUnits: 0, grossPriceUnits: 0, multiplierHint: 1,
+    brokerMktValue: 0, brokerNetMktValue: 0, hasBrokerMktValue: positions.length > 0,
+    brokerPnl: 0, hasBrokerPnl: positions.length > 0,
+    brokerMarkPrice: positions.length === 1 ? positions[0]?.markPrice : undefined,
+  };
+  for (const position of positions) {
     const direction = signedPositionDirection(position);
     const magnitude = Math.abs(position.shares);
     const priceMultiplier = normalizePositionMultiplier(position.multiplier);
     const costMultiplier = resolvePositionCostMultiplier(position);
-    multiplierHint = Math.max(multiplierHint, priceMultiplier, costMultiplier);
+    const cost = magnitude * position.avgCost * costMultiplier;
+    metrics.hasShorts ||= direction < 0;
+    metrics.multiplierHint = Math.max(metrics.multiplierHint, priceMultiplier, costMultiplier);
+    metrics.totalShares += magnitude * direction;
+    metrics.totalCost += convert(cost, position);
+    metrics.signedCost += direction * convert(cost, position);
+    metrics.totalCostUnits += magnitude * costMultiplier;
+    metrics.totalPriceUnits += magnitude * priceMultiplier * direction;
+    metrics.grossPriceUnits += magnitude * priceMultiplier;
 
-    totalShares += magnitude * direction;
-    totalCost += magnitude * position.avgCost * costMultiplier;
-    totalCostUnits += magnitude * costMultiplier;
-    totalPriceUnits += magnitude * priceMultiplier * direction;
-
-    if (position.marketValue != null) {
-      brokerMktValue += position.marketValue;
-      hasBrokerMktValue = true;
+    // Normalize each lot before summing: broker values may be signed, and a
+    // complete snapshot for one account cannot stand in for another missing lot.
+    const marketValue = Number.isFinite(position.marketValue) ? Math.abs(position.marketValue!)
+      : Number.isFinite(position.markPrice) ? magnitude * priceMultiplier * position.markPrice!
+      : Number.isFinite(position.unrealizedPnl) ? cost + direction * position.unrealizedPnl!
+      : null;
+    const pnl = Number.isFinite(position.unrealizedPnl) ? position.unrealizedPnl!
+      : marketValue != null ? direction * (marketValue - cost) : null;
+    if (marketValue == null) metrics.hasBrokerMktValue = false;
+    else {
+      metrics.brokerMktValue += convert(marketValue, position);
+      metrics.brokerNetMktValue += direction * convert(marketValue, position);
     }
-    if (position.unrealizedPnl != null) {
-      brokerPnl += position.unrealizedPnl;
-      hasBrokerPnl = true;
-    }
+    if (pnl == null) metrics.hasBrokerPnl = false;
+    else metrics.brokerPnl += convert(pnl, position);
   }
-
-  return {
-    positionCurrency,
-    totalShares,
-    totalCost,
-    totalCostUnits,
-    totalPriceUnits,
-    multiplierHint,
-    brokerMktValue,
-    hasBrokerMktValue,
-    brokerPnl,
-    hasBrokerPnl,
-    brokerMarkPrice: tabPositions.length === 1 ? tabPositions[0]?.markPrice : undefined,
-  };
+  return metrics;
 }
 
 export function resolveBrokerFallbackMarketValue(metrics: PortfolioPositionMetrics): number | null {
-  if (metrics.hasBrokerMktValue) return metrics.brokerMktValue;
-  if (metrics.brokerMarkPrice != null && metrics.totalPriceUnits !== 0) {
-    return Math.abs(metrics.totalPriceUnits) * metrics.brokerMarkPrice;
-  }
-  if (metrics.hasBrokerPnl) {
-    return metrics.totalCost + metrics.brokerPnl;
-  }
-  return null;
+  return metrics.hasBrokerMktValue ? metrics.brokerMktValue : null;
 }
 
-export function resolveBrokerFallbackPnl(
-  metrics: PortfolioPositionMetrics,
-  brokerMarketValue: number | null,
-): number | null {
-  if (metrics.hasBrokerPnl) return metrics.brokerPnl;
-  if (brokerMarketValue != null && metrics.totalCost !== 0) {
-    return brokerMarketValue - metrics.totalCost;
-  }
-  return null;
+export function resolveBrokerFallbackPnl(metrics: PortfolioPositionMetrics, _brokerMarketValue?: number | null): number | null {
+  return metrics.hasBrokerPnl ? metrics.brokerPnl : null;
 }

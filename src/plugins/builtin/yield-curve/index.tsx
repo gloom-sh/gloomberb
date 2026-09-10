@@ -58,8 +58,11 @@ function YieldCurvePane({ focused, width, height }: PaneProps) {
       ...(inverted ? [{ id: "inverted", parts: [{ text: "INVERTED", tone: "warning" as const, bold: true }] }] : []),
       ...(bp != null ? [{ id: "spread", parts: [{ text: `10Y − 2Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
       ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
+      ...(!asOf && points.length ? [{ id: "mixed-dates", parts: [{ text: "Mixed or unknown observation dates", tone: "warning" as const }] }] : []),
+      ...(points.some((point) => point.yield == null) ? [{ id: "missing", parts: [{ text: "Some tenors unavailable", tone: "warning" as const }] }] : []),
+      ...(points.some((point) => point.stale) ? [{ id: "stale", parts: [{ text: "Cached source · refresh failed", tone: "warning" as const }] }] : []),
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" as const }] }] : []),
-  ], [asOf, bp, inverted, updatedAgo]);
+  ], [asOf, bp, inverted, updatedAgo, points]);
   usePaneStatusFooter({
     registrationId: "yield-curve",
     loading,

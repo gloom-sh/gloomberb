@@ -5,7 +5,7 @@ import { createYieldCurveHeadless } from "./headless";
 const args: HeadlessPaneLoadArgs = { rawArgument: "", argument: null, symbols: [], options: {} };
 
 describe("yield curve headless model", () => {
-  test("returns ordered maturities and the shared 2Y to 10Y spread", async () => {
+  test("does not calculate a spread across different observation dates", async () => {
     const headless = createYieldCurveHeadless({
       load: async () => [
         { maturity: "10Y", maturityYears: 10, yield: 4.1, asOf: "2026-09-03" },
@@ -16,9 +16,11 @@ describe("yield curve headless model", () => {
 
     expect(result.rows.map((row) => row.maturity)).toEqual(["2Y", "10Y"]);
     expect(result.metadata).toEqual({
-      asOf: "2026-09-04",
-      inverted: true,
-      spread2Y10YBasisPoints: -25,
+      asOf: null,
+      inverted: null,
+      spread2Y10YBasisPoints: null,
+      missingTenors: [],
+      stale: false,
     });
   });
 });

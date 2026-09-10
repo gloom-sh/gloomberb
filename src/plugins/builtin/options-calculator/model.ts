@@ -22,6 +22,7 @@ export interface OptionCalcDraft {
   dividendYield: number;
   /** 0 means "not supplied", which is also the only price no option can trade at. */
   marketPrice: number;
+  marketPriceSource?: "mid" | "last";
 }
 
 export const DEFAULT_OPTION_CALC_DRAFT: OptionCalcDraft = {
@@ -277,5 +278,7 @@ export function draftFromParams(params: Record<string, string> | undefined): Opt
     volatility: numberParam(params, "volatility", DEFAULT_OPTION_CALC_DRAFT.volatility),
     dividendYield: numberParam(params, "dividendYield", DEFAULT_OPTION_CALC_DRAFT.dividendYield),
     marketPrice: numberParam(params, "marketPrice", DEFAULT_OPTION_CALC_DRAFT.marketPrice),
+    ...(params.marketPriceSource === "mid" || params.marketPriceSource === "last"
+      ? { marketPriceSource: params.marketPriceSource } : {}),
   };
 }

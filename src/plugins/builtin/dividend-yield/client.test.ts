@@ -69,6 +69,22 @@ describe("extractDividendFields", () => {
 });
 
 describe("cash distribution calculations", () => {
+  test("uses recent payment cadence and does not imply suspended dividends still pay quarterly", () => {
+    const quarterly = Array.from({ length: 8 }, (_, quarter) => payment(
+      new Date(Date.UTC(2024, 8 + quarter * 3, 25)).toISOString().slice(0, 10),
+    ));
+    // TQQQ's long earlier gaps formerly changed its current quarterly cadence to semi-annual.
+    const resumed = buildDividendMetrics([payment("2016-09-25"), ...quarterly], null, 100, { now });
+    expect(resumed.paymentFrequency).toBe("quarterly");
+    const suspended = buildDividendMetrics([
+      payment("2023-11-06"), payment("2024-02-06"), payment("2024-05-06"), payment("2024-08-07"),
+    ], null, 100, { now });
+    expect(suspended.trailingRate).toBe(0);
+    expect(suspended.paymentFrequency).toBeNull();
+    const annual = buildDividendMetrics([payment("2025-05-01"), payment("2026-05-01")], null, 100, { now });
+    expect(annual.paymentFrequency).toBe("annual");
+  });
+
   test("initial loading and headless yields only use external prices with matching explicit currency", async () => {
     const timestamp = Math.floor((Date.now() - 86_400_000) / 1000);
     setHttpFetchTransport(async (url) => {

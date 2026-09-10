@@ -119,20 +119,6 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const collectionTickerCount = useAppSelector((state) => getCollectionTickerCount(state, collectionId));
   const collectionName = useAppSelector((state) => getCollectionName(state, collectionId));
 
-  // Cloud quotes are delayed on the free tier; a broker feed can still be live.
-  const cloudAccess = useCloudAccessFooter({
-    delayLabel: tf("{count}m", { count: CLOUD_QUOTE_DELAY_MINUTES }),
-    degraded: financials?.quote?.dataSource !== "live",
-    focused,
-    segmentId: "ticker-research-access",
-    shortcutScope: "ticker-research:upgrade",
-  });
-  usePaneFooter(
-    "ticker-research-access",
-    () => cloudAccess.segment ? { info: [cloudAccess.segment], order: -1 } : null,
-    [cloudAccess.segment],
-  );
-
   const disabledPlugins = config.disabledPlugins;
   const registry = getSharedRegistry();
   const tickerResearchTabsSnapshot = useRegistryTickerResearchTabsSnapshot(registry);
@@ -153,6 +139,22 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const resolvedTabId = paneSettings.hideTabs
     ? resolveLockedTabId(paneSettings, allTabs)
     : (allTabs.some((tab) => tab.id === activeTabId) ? activeTabId : (allTabs[0]?.id ?? "overview"));
+  // Only quote/chart views use the parent quote status. Other research tabs
+  // own their data status (the options chain may have a different delay/feed).
+  const quoteFooterActive = resolvedTabId === "overview" || resolvedTabId === "chart";
+  const cloudAccess = useCloudAccessFooter({
+    delayLabel: tf("{count}m", { count: CLOUD_QUOTE_DELAY_MINUTES }),
+    degraded: financials?.quote?.dataSource !== "live",
+    focused: focused && quoteFooterActive,
+    segmentId: "ticker-research-access",
+    shortcutScope: "ticker-research:upgrade",
+  });
+  usePaneFooter(
+    "ticker-research-access",
+    () => quoteFooterActive && cloudAccess.segment ? { info: [cloudAccess.segment], order: -1 } : null,
+    [cloudAccess.segment, quoteFooterActive],
+  );
+
   const tabBarHeight = paneSettings.hideTabs ? 0 : 1;
   const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIdKey = allTabs.map((tab) => tab.id).join("\0");

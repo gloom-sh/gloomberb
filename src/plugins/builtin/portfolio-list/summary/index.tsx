@@ -207,6 +207,12 @@ export function buildPortfolioSummarySegments({
     ]));
   }
 
+  if (totals.unavailableSymbols?.length) {
+    candidates.push(createSummarySegment("prices-unavailable", [
+      { text: "Prices unavailable", tone: "muted", color: colors.warning },
+    ]));
+  }
+
   if (accountState?.account.netLiquidation != null) {
     candidates.push(createSummarySegment("netliq", [
       { text: "Net Liq", tone: "label" },
@@ -215,9 +221,16 @@ export function buildPortfolioSummarySegments({
   }
 
   candidates.push(createSummarySegment("val", [
-    { text: "Val", tone: "label" },
+    { text: totals.hasShorts ? "Gross" : "Val", tone: "label" },
     { text: formatCompact(totalMarketValue), tone: "value", bold: true },
   ]));
+
+  if (totals.hasShorts && totals.netMktValue != null) {
+    candidates.push(createSummarySegment("net-value", [
+      { text: "Net", tone: "label" },
+      { text: formatCompact(totals.netMktValue), tone: "value", bold: true },
+    ]));
+  }
 
   if (accountState?.account.totalCashValue != null) {
     candidates.push(createSummarySegment("cash", [

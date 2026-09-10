@@ -21,6 +21,13 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
       .reduce((sum, p) => sum + p.amount, 0);
     points.push({ date: payment.exDate, open: cash, high: cash, low: cash, close: cash, volume: 0 });
   }
+  // A suspended payer still needs a current point: otherwise its chart stops
+  // at the final payout and suggests that historical cash rate remains current.
+  const currentCutoff = calendarYearsBefore(now, 1);
+  if (now > sorted.at(-1)!.exDate && currentCutoff >= firstDate) {
+    const cash = sorted.filter((payment) => payment.exDate > currentCutoff).reduce((sum, payment) => sum + payment.amount, 0);
+    points.push({ date: now, open: cash, high: cash, low: cash, close: cash, volume: 0 });
+  }
   return points;
 }
 

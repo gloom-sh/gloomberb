@@ -6,7 +6,6 @@ import {
   curveAsOf,
   isInverted,
   loadYieldCurve,
-  parseYieldPoints,
   spreadBasisPoints,
   type YieldCurveLoader,
   type YieldPoint,
@@ -51,13 +50,15 @@ export function createYieldCurveHeadless(
         args,
         () => ctx.apiClient.getCloudYieldCurve(),
       );
-      const rows = parseYieldPoints(points);
+      const rows = [...points].sort((a, b) => a.maturityYears - b.maturityYears);
       return {
         rows: rows.map((point) => ({ ...point })),
         metadata: {
           asOf: curveAsOf(points),
           inverted: isInverted(points),
           spread2Y10YBasisPoints: spreadBasisPoints(points),
+          missingTenors: points.filter((point) => point.yield == null).map((point) => point.maturity),
+          stale: points.some((point) => point.stale),
         },
       };
     },

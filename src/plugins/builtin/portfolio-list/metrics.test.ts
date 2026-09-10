@@ -189,7 +189,7 @@ describe("portfolio-metrics", () => {
     )).toMatchObject({
       totalMktValue: 1250,
       totalCostBasis: 1000,
-      dailyPnl: 0,
+      dailyPnl: Number.NaN,
       unrealizedPnl: 250,
       hasPositions: true,
     });
@@ -423,5 +423,69 @@ describe("portfolio-metrics", () => {
     expect(getColumnValue({ id: "ex_div", label: "EX-DIV", width: 7, align: "right" }, ticker, financials, context).text).toBe("Feb 15");
     expect(getColumnValue({ id: "next_earn", label: "ERN", width: 7, align: "right" }, ticker, financials, context).text).toBe("Jan 29");
     expect(getSortValue({ id: "target_pct", label: "TARGET%", width: 8, align: "right" }, ticker, financials, context)).toBe(25);
+  });
+});
+
+
+describe("position aggregation across sides, currencies and broker coverage", () => {
+  const column = (id: string): ColumnConfig => ({ id, label: id, width: 12, align: "right" });
+  test("keeps offsetting long/short gross exposure and signed costs in summary, cells and sorts", () => {
+    const ticker = createTicker({ positions: [
+      { portfolio: "main", shares: 100, avgCost: 100, broker: "manual", side: "long" },
+      { portfolio: "main", shares: 100, avgCost: 110, broker: "manual", side: "short" },
+    ] });
+    const financials = createFinancials();
+    const totals = calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", new Map(), true, "main");
+    expect(totals).toMatchObject({ hasPositions: true, hasShorts: true, totalMktValue: 24000, netMktValue: 0, totalCostBasis: 21000, unrealizedPnl: 1000, dailyPnl: 0 });
+    expect(getSortValue(column("mkt_value"), ticker, financials, defaultColumnContext)).toBe(24000);
+    expect(getSortValue(column("pnl"), ticker, financials, defaultColumnContext)).toBe(1000);
+    expect(getSortValue(column("pnl_pct"), ticker, financials, defaultColumnContext)).toBeCloseTo(1000 / 21000 * 100);
+    expect(getColumnValue(column("shares"), ticker, financials, defaultColumnContext).text).toBe("0");
+    expect(getColumnValue(column("pnl"), ticker, financials, defaultColumnContext).text).toBe("+1k");
+    expect(buildPortfolioSummarySegments({ totals, accountState: null, widthBudget: 200 }).map(segment => segment.parts.map(part => part.text).join(" ")).join(" ")).toContain("Gross 24k Net 0");
+  });
+
+  test("converts each cost basis before summing and withholds averages across native currencies", () => {
+    const ticker = createTicker({ positions: [
+      { portfolio: "main", shares: 10, avgCost: 100, currency: "USD", broker: "manual" },
+      { portfolio: "main", shares: 10, avgCost: 80, currency: "EUR", broker: "manual" },
+    ] });
+    const financials = createFinancials();
+    const context = { ...defaultColumnContext, exchangeRates: new Map([["USD", 1], ["EUR", 1.25]]) };
+    const totals = calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", context.exchangeRates, true, "main");
+    expect(totals.totalCostBasis).toBe(2000);
+    expect(totals.unrealizedPnl).toBe(400);
+    expect(getSortValue(column("cost_basis"), ticker, financials, context)).toBe(2000);
+    expect(getSortValue(column("pnl"), ticker, financials, context)).toBe(400);
+    expect(getColumnValue(column("avg_cost"), ticker, financials, context).text).toBe("—");
+    const unavailable = calculatePortfolioSummaryTotals([ticker], new Map([["AAPL", financials]]), "USD", new Map(), true, "main");
+    expect(unavailable.unrealizedPnl).toBeNaN();
+    expect(unavailable.unavailableConversions).toEqual(["EUR/USD"]);
+  });
+
+  test("reconciles signed short broker values and contract-scaled costs without inventing daily P&L", () => {
+    const ticker = createTicker({ positions: [{ portfolio: "main", shares: -10, avgCost: 500, multiplier: 100, currency: "USD", broker: "ibkr", marketValue: -4000, unrealizedPnl: 1000 }] });
+    const totals = calculatePortfolioSummaryTotals([ticker], new Map(), "USD", new Map(), true, "main");
+    expect(totals).toMatchObject({ totalMktValue: 4000, netMktValue: -4000, totalCostBasis: 5000, unrealizedPnl: 1000 });
+    expect(totals.dailyPnl).toBeNaN();
+    expect(getColumnValue(column("side"), ticker, undefined, defaultColumnContext).text).toBe("SHORT");
+    ticker.metadata.positions[0]!.marketValue = undefined;
+    const fromPnl = calculatePortfolioSummaryTotals([createTicker({ positions: [{ portfolio: "main", shares: -10, avgCost: 100, broker: "ibkr", unrealizedPnl: 100 }] })], new Map(), "USD", new Map(), true, "main");
+    expect(fromPnl).toMatchObject({ totalMktValue: 900, netMktValue: -900, unrealizedPnl: 100 });
+  });
+
+  test("does not pass off one broker lot or one ticker as a complete portfolio valuation", () => {
+    const ticker = createTicker({ positions: [
+      { portfolio: "main", shares: 10, avgCost: 100, broker: "ibkr", marketValue: 1200, unrealizedPnl: 200 },
+      { portfolio: "main", shares: 10, avgCost: 110, broker: "manual" },
+    ] });
+    const totals = calculatePortfolioSummaryTotals([ticker], new Map(), "USD", new Map(), true, "main");
+    expect(totals.hasPositions).toBe(true);
+    expect(totals.totalCostBasis).toBe(2100);
+    expect(totals.totalMktValue).toBeNaN();
+    expect(totals.unrealizedPnl).toBeNaN();
+    expect(totals.unavailableSymbols).toEqual(["AAPL"]);
+    expect(getSortValue(column("mkt_value"), ticker, undefined, defaultColumnContext)).toBeNull();
+    expect(getSortValue(column("pnl"), ticker, undefined, defaultColumnContext)).toBeNull();
   });
 });

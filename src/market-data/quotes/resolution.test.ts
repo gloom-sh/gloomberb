@@ -8,6 +8,20 @@ import {
 import { normalizeQuoteContribution } from "./contributions";
 
 describe("quote-resolution", () => {
+  test("keeps actual trade price and timestamp paired with the selected price provider", () => {
+    const now = Date.parse("2026-09-10T18:00:00Z");
+    const contributions: QuoteContributionMap = {
+      ibkr: { symbol: "PLTR", providerId: "ibkr", dataSource: "live", price: 166, mark: 166, lastTradePrice: 165.9,
+        currency: "USD", change: 1, changePercent: 1, lastUpdated: now, lastTradeTime: now - 2000 },
+      yahoo: { symbol: "PLTR", providerId: "yahoo", dataSource: "delayed", price: 165, lastTradePrice: 164.9,
+        currency: "USD", change: 0, changePercent: 0, lastUpdated: now - 900000, lastTradeTime: now - 900000 },
+    };
+    expect(resolveCanonicalQuote(contributions, now).quote).toMatchObject({ price: 166, lastTradePrice: 165.9, lastTradeTime: now - 2000 });
+    delete contributions.ibkr!.lastTradeTime;
+    expect(resolveCanonicalQuote(contributions, now).quote?.lastTradeTime).toBeUndefined();
+    delete contributions.ibkr!.lastTradePrice;
+    expect(resolveCanonicalQuote(contributions, now).quote?.lastTradePrice).toBeUndefined();
+  });
   test("resolves price, session, listing venue, and route from separate providers", () => {
     const now = Date.parse("2026-04-08T11:00:00Z");
     const contributions: QuoteContributionMap = {

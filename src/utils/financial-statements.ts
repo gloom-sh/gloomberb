@@ -25,6 +25,7 @@ function canonicalStatementDate(
   fallback: FinancialStatement | undefined,
 ): string {
   if (!fallback) return primary.date;
+  if (isVerifiedCalendarAlias(primary, fallback)) return [primary.date, fallback.date].sort()[0]!;
   return hasAvailabilityEvidence(fallback) && !hasAvailabilityEvidence(primary)
     ? fallback.date
     : primary.date;
@@ -46,6 +47,38 @@ export function areNearbyFinancialPeriodEnds(
     && Math.abs(leftTime - rightTime) <= NEARBY_PERIOD_END_MS;
 }
 
+function hasMatchingFinancialValues(left: FinancialStatement, right: FinancialStatement): boolean {
+  if (left.currency && right.currency && left.currency !== right.currency) return false;
+  const shared = metricKeys(left, right).filter((key) => hasMetricValue(left, key) && hasMetricValue(right, key));
+  return shared.every((key) => Object.is(metricValue(left, key), metricValue(right, key)))
+    && shared.filter((key) => Number.isFinite(metricValue(left, key)) && metricValue(left, key) !== 0).length >= 3;
+}
+
+function isVerifiedCalendarAlias(left: FinancialStatement, right: FinancialStatement): boolean {
+  if (left.date === right.date || left.date.slice(0, 7) !== right.date.slice(0, 7)) return false;
+  const monthEnd = (row: FinancialStatement) => {
+    const date = new Date(`${row.date}T00:00:00Z`);
+    return Number.isFinite(date.getTime()) && new Date(date.getTime() + 86_400_000).getUTCDate() === 1;
+  };
+  if (monthEnd(left) === monthEnd(right)) return false;
+  const fiscal = monthEnd(left) ? right : left;
+  if (!hasAvailabilityEvidence(fiscal)) return false;
+  // A month-end approximation can be weeks away for a 52/53-week issuer.
+  // Require corroborating values, not just proximity or common zero fields.
+  return hasMatchingFinancialValues(left, right);
+}
+
+export function coalesceFinancialPeriodAliases(rows: FinancialStatement[]): FinancialStatement[] {
+  const result: FinancialStatement[] = [];
+  for (const row of rows) {
+    const index = result.findIndex((existing) => isVerifiedCalendarAlias(existing, row)
+      || (existing.date === row.date && hasMatchingFinancialValues(existing, row)));
+    if (index < 0) result.push(row);
+    else result[index] = mergeFinancialStatementRows([result[index]!], [row])[0]!;
+  }
+  return result.sort((left, right) => left.date.localeCompare(right.date));
+}
+
 function matchFallbackRow(
   primary: FinancialStatement,
   fallbackRows: FinancialStatement[],
@@ -61,7 +94,7 @@ function matchFallbackRow(
       const fallbackTime = statementDateTime(row);
       if (fallbackTime === null) return [];
       const distance = Math.abs(fallbackTime - primaryTime);
-      return areNearbyFinancialPeriodEnds(primary.date, row.date) ? [{ row, distance }] : [];
+      return areNearbyFinancialPeriodEnds(primary.date, row.date) || isVerifiedCalendarAlias(primary, row) ? [{ row, distance }] : [];
     })
     .sort((left, right) => left.distance - right.distance || left.row.date.localeCompare(right.row.date))[0]?.row;
 }
@@ -70,6 +103,8 @@ export function mergeFinancialStatementRows(
   primaryRows: FinancialStatement[],
   fallbackRows: FinancialStatement[],
 ): FinancialStatement[] {
+  primaryRows = coalesceFinancialPeriodAliases(primaryRows);
+  fallbackRows = coalesceFinancialPeriodAliases(fallbackRows);
   if (primaryRows.length === 0) return fallbackRows;
   if (fallbackRows.length === 0) return primaryRows;
 

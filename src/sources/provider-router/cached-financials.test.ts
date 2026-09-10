@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import type { DataProvider } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
+import { mergeFinancials, sanitizeCachedFinancials } from "./financials";
 import {
   cleanupProviderRouterTestFiles,
   createTempDbPath,
@@ -12,6 +13,23 @@ import {
 
 afterEach(() => {
   cleanupProviderRouterTestFiles();
+});
+
+test("confirmed fund classification prevents cached company accounts from returning after merge", () => {
+  const now = Date.now();
+  const fund = makeFinancials({ quote: makeQuote({ symbol: "IWDA.L", providerId: "gloomberb-cloud", instrumentType: "ETF", currency: "USD", lastUpdated: now }) });
+  const contaminated = makeFinancials({
+    quote: makeQuote({ symbol: "IWDA.L", providerId: "yahoo", currency: "USD", lastUpdated: now - 1000 }),
+    fundamentals: { trailingPE: 0.238, revenue: 0 }, profile: { industry: "Specialty Chemicals" },
+    annualStatements: [{ date: "2025-12-31", totalRevenue: 0 }],
+  });
+  const merged = mergeFinancials(fund, contaminated)!;
+  expect(merged.quote?.instrumentType).toBe("ETF");
+  expect(merged.fundamentals).toBeUndefined();
+  expect(merged.profile).toBeUndefined();
+  expect(merged.annualStatements).toEqual([]);
+  expect(sanitizeCachedFinancials({ ...contaminated, quote: fund.quote }, { includeStaleQuotes: true }).fundamentals).toBeUndefined();
+  expect(mergeFinancials(contaminated, null)?.fundamentals?.trailingPE).toBe(0.238);
 });
 
 describe("AssetDataRouter cached financials", () => {
