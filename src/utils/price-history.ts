@@ -4,9 +4,40 @@ import { isTimestampStaleForExchangeSession } from "../market-data/market/freshn
 
 const MAX_CURRENT_INTRADAY_HISTORY_LAG_MS = 18 * 60 * 60 * 1000;
 const MAX_SAME_SESSION_HISTORY_LAG_MS = 30 * 60 * 1000;
+const DELAYED_HISTORY_ALLOWANCE_MS = 15 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 interface PriceHistoryFreshnessOptions {
   exchange?: string;
+  intervalMs?: number | null;
+}
+
+export function priceHistoryIntervalMs(interval: string): number | null {
+  const match = /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hour|hours|d|day|days|w|wk|week|weeks|mo|month|months)$/i.exec(interval.trim());
+  if (!match) return null;
+  const count = Number(match[1]);
+  const unit = match[2]!.toLowerCase();
+  const step = /^(mo|month)/.test(unit) ? 30 * DAY_MS
+    : /^(w|wk|week)/.test(unit) ? 7 * DAY_MS
+    : /^(d|day)/.test(unit) ? DAY_MS
+    : /^(h|hr|hour)/.test(unit) ? 60 * 60 * 1000
+    : 60 * 1000;
+  return count > 0 && Number.isFinite(count * step) ? count * step : null;
+}
+
+function inferredHistoryIntervalMs(points: PricePoint[]): number | null {
+  const times = [...new Set(points.slice(-20).map(getPricePointTimestamp))];
+  const gaps = times.slice(1).map((time, index) => time - times[index]!);
+  const shortest = Math.min(...gaps);
+  if (shortest > 0 && shortest <= 60 * 60 * 1000) return shortest;
+  // A generic range does not specify bar size. Multiple daily labels can
+  // establish daily cadence; a single overnight gap between sparse intraday
+  // observations cannot. One-hour drift allows daily exchange opens over DST.
+  if (times.length >= 3 && shortest >= 20 * 60 * 60 * 1000) {
+    const clockTimes = times.map((time) => time % DAY_MS);
+    if (Math.max(...clockTimes) - Math.min(...clockTimes) <= 60 * 60 * 1000) return DAY_MS;
+  }
+  return null;
 }
 
 export function getPricePointTimestamp(point: PricePoint): number {
@@ -78,10 +109,20 @@ export function isPriceHistoryStaleForCurrentWindow(
   const latest = normalized.at(-1);
   if (!latest) return false;
 
+  const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized);
+  // Daily/weekly/monthly labels are period starts, not live observation times.
+  // Their cache policy controls refresh; an intraday lag test is inapplicable.
+  if (intervalMs != null && intervalMs >= DAY_MS) return false;
+
   const latestTime = getPricePointTimestamp(latest);
   if (!Number.isFinite(latestTime)) return false;
   const age = now - latestTime;
-  if (age <= MAX_SAME_SESSION_HISTORY_LAG_MS) return false;
+  // Completed bars are timestamped at their opening time. Before the next
+  // completed bar is delivered, the newest bar may be almost two intervals
+  // plus the feed delay old. Keep the existing tolerance for finer bars.
+  const allowedLag = Math.max(MAX_SAME_SESSION_HISTORY_LAG_MS,
+    intervalMs != null ? 2 * intervalMs + DELAYED_HISTORY_ALLOWANCE_MS : 0);
+  if (age <= allowedLag) return false;
   const exchange = options.exchange || "NASDAQ";
   if (
     resolveExchangeTimeZone(exchange)
