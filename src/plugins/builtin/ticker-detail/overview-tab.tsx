@@ -16,7 +16,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { selectEffectiveExchangeRates } from "../../../utils/exchange-rate-map";
 import { resolveExchangeTimeZone } from "../../../utils/exchanges";
-import { convertCurrency, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
+import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { CompactRangeBar, PositionTable, QuoteBook, StatGrid } from "./overview/components";
 import { buildOverviewStats, buildPositionRows } from "./overview/model";
 
@@ -83,6 +83,12 @@ export function OverviewTab({
   const quoteBookInline = hasBidAsk && contentWidth >= 68;
   const quoteBookWidth = quoteBookInline ? Math.min(32, Math.max(24, Math.floor(contentWidth * 0.3))) : Math.min(contentWidth, 32);
   const quoteSummaryWidth = quoteBookInline ? Math.max(20, contentWidth - quoteBookWidth - 2) : contentWidth;
+  const quotePriceText = quote ? formatMarketPriceWithCurrency(quote.price, quote.currency, { assetCategory: ticker.metadata.assetCategory }) : "";
+  const quoteChangeText = quote ? formatSignedMarketPrice(quote.change, { assetCategory: ticker.metadata.assetCategory }) : "";
+  const quotePercentText = quote ? `(${formatPercentRaw(quote.changePercent)})` : "";
+  const quoteTextWidth = Math.max(1, quoteSummaryWidth - (nativePaneChrome ? 6 : 0));
+  const stackQuoteChange = displayWidth(quoteChangeText) + 1 + displayWidth(quotePercentText) > quoteTextWidth;
+  const stackQuoteSummary = displayWidth(quotePriceText) + 3 + displayWidth(quoteChangeText) + displayWidth(quotePercentText) > quoteTextWidth;
   const companyName = ticker.metadata.name || quote?.name || "";
   const marketStateText = quote?.marketState ? t(marketStateLabel(quote.marketState)) : "";
   const companyNameWidth = Math.max(0, quoteSummaryWidth - (nativePaneChrome ? 6 : 0)
@@ -154,13 +160,14 @@ export function OverviewTab({
             </Box>
 
             {quote && (
-              <Box flexDirection="row" gap={2}>
+              <Box flexDirection={stackQuoteSummary ? "column" : "row"} gap={stackQuoteSummary ? 0 : 2}>
                 <Text attributes={TextAttributes.BOLD} fg={colors.textBright}>
-                  {formatMarketPriceWithCurrency(quote.price, quote.currency, { assetCategory: ticker.metadata.assetCategory })}
+                  {quotePriceText}
                 </Text>
-                <Text fg={priceColor(quote.change)}>
-                  {formatSignedMarketPrice(quote.change, { assetCategory: ticker.metadata.assetCategory })} ({formatPercentRaw(quote.changePercent)})
-                </Text>
+                <Box flexDirection={stackQuoteChange ? "column" : "row"} gap={stackQuoteChange ? 0 : 1}>
+                  <Text fg={priceColor(quote.change)}>{quoteChangeText}</Text>
+                  <Text fg={priceColor(quote.change)}>{quotePercentText}</Text>
+                </Box>
               </Box>
             )}
             {quote && (quote.marketState === "PRE" || quote.marketState === "PREPRE") && quote.preMarketPrice != null && (

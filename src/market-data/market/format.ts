@@ -16,7 +16,7 @@ export interface MarketFormatOptions extends AssetDisplayContext {
 }
 
 const CASH_TYPES = new Set(["CASH", "FX", "FOREX", "CCY", "CURRENCY", "CURRENCYPAIR"]);
-const CRYPTO_TYPES = new Set(["CRYPTO", "CRYPTOCURRENCY", "COIN", "TOKEN"]);
+const CRYPTO_TYPES = new Set(["CRYPTO", "CRYPTOCURRENCY", "DIGITALCURRENCY", "COIN", "TOKEN"]);
 const EQUITY_TYPES = new Set(["STK", "STOCK", "EQUITY", "ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "ADR"]);
 const CONTRACT_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "FOP"]);
 
@@ -134,6 +134,29 @@ function getAdaptivePriceFractionDigits(priceRange: number | undefined, precisio
   return Math.max(0, Math.ceil(-Math.log10(visibleStep)) + precisionOffset);
 }
 
+/** Keep four significant digits for tiny prices even when instrument metadata
+ * is absent. Decimal formatting below this floor otherwise turns real prices
+ * and day-range endpoints into identical zeroes. */
+function tinyPriceFractionDigits(value: number): number {
+  const absolute = Math.abs(value);
+  return absolute > 0 && absolute < 0.01 && Number.isFinite(absolute)
+    ? Math.max(0, 3 - Math.floor(Math.log10(absolute))) : 0;
+}
+
+function formatPriceNumber(value: number, decimals: number, maxWidth: number | undefined, minimumDecimals = 0): string {
+  const tinyDecimals = tinyPriceFractionDigits(value);
+  const rendered = tinyDecimals > 20
+    ? "0"
+    : formatVariableNumber(value, Math.max(decimals, tinyDecimals), tinyDecimals > 0 ? undefined : maxWidth, minimumDecimals);
+  if (value === 0 || !Number.isFinite(value) || (Number(rendered.replaceAll(",", "")) !== 0 && fitsWidth(rendered, maxWidth))) return rendered;
+  // A constrained cell must not imply a worthless asset or unchanged price.
+  for (let precision = 4; precision >= 1; precision -= 1) {
+    const scientific = Number(value.toPrecision(precision)).toExponential();
+    if (fitsWidth(scientific, maxWidth)) return scientific;
+  }
+  return "…";
+}
+
 function getPriceMaxFractionDigits(
   kind: AssetDisplayKind,
   value: number,
@@ -190,8 +213,8 @@ export function resolveAssetDisplayKind({
   if (isCashBalance) return "cash";
 
   const normalizedType = normalizeType(contractSecType || assetCategory);
-  if (CASH_TYPES.has(normalizedType) || normalizedType.includes("FOREX") || normalizedType.includes("CURRENCY")) return "cash";
   if (CRYPTO_TYPES.has(normalizedType) || normalizedType.includes("CRYPTO")) return "crypto";
+  if (CASH_TYPES.has(normalizedType) || normalizedType.includes("FOREX") || normalizedType.includes("CURRENCY")) return "cash";
   if (EQUITY_TYPES.has(normalizedType)) return "equity";
   if (CONTRACT_TYPES.has(normalizedType)) return "contract";
   if ((multiplier ?? 1) > 1) return "contract";
@@ -224,7 +247,7 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
     getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0),
     minimumFractionDigits,
   );
-  return formatVariableNumber(value, maxFractionDigits, options.maxWidth, minimumFractionDigits);
+  return formatPriceNumber(value, maxFractionDigits, options.maxWidth, minimumFractionDigits);
 }
 
 export function formatMarketCost(value: number | undefined, options: MarketFormatOptions = {}): string {

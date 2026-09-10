@@ -22,6 +22,7 @@ function resolved(id: string, multiplier = 1): ResolvedSeries {
     color: "#fff",
     unit: "USD/share",
     unitGroup: "price",
+    volumeUnit: "shares",
     nativeFrequency: "daily",
     dataShape: "ohlcv",
     style: "line",
@@ -423,6 +424,16 @@ describe("study resolution", () => {
     expect(point?.date).toEqual(new Date("2024-01-03T12:00:00Z"));
     expect(point?.availableAt).toEqual(point?.date);
     expect(point?.value).toBeCloseTo(1, 12);
+  });
+
+  test("volume studies preserve known instrument units and disclose unspecified provider volume", () => {
+    for (const volumeUnit of ["shares", "contracts", undefined] as const) {
+      const input = { ...resolved("volume-input"), volumeUnit };
+      const result = resolveStudies([input], [study("volume", "volume", [input.id])]);
+      expect(result.series[0]?.unit).toBe(volumeUnit ?? "");
+      expect(result.series[0]?.points.map((point) => point.value)).toEqual(input.points.map((point) => point.volume));
+      expect(result.warnings).toEqual(volumeUnit ? [] : ["Volume unit unknown: VOLUME-INPUT."]);
+    }
   });
 
   test("returns actionable errors for missing inputs instead of throwing", () => {

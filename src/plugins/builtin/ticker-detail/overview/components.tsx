@@ -96,12 +96,12 @@ export function CompactRangeBar({
   if (range <= 0) return null;
   const position = Math.max(0, Math.min(1, (current - low) / range));
   const pctLabel = `${Math.round(position * 100)}%`;
-  const lowText = formatMarketPriceWithCurrency(low, currency, { assetCategory });
-  const highText = formatMarketPriceWithCurrency(high, currency, { assetCategory });
   const endpointWidth = Math.min(
     RANGE_ENDPOINT_WIDTH,
     Math.max(7, Math.floor((width - 8) / 3)),
   );
+  const lowText = formatMarketPriceWithCurrency(low, currency, { assetCategory, maxWidth: endpointWidth });
+  const highText = formatMarketPriceWithCurrency(high, currency, { assetCategory, maxWidth: endpointWidth });
   const barWidth = Math.max(5, width - endpointWidth * 2 - 2);
   const markerIndex = Math.max(0, Math.min(barWidth - 1, Math.round(position * (barWidth - 1))));
   const labelWidth = Math.max(0, width - displayWidth(pctLabel));

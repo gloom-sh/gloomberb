@@ -130,6 +130,8 @@ export interface ResolvedSeries {
   /** Unit of rawValue, retained when presentation transforms change unit. */
   rawUnit?: string;
   unitGroup: string;
+  /** Volume basis established by the source instrument; omitted when unspecified. */
+  volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;
   /** Authored time basis retained for layout and cursor semantics. */
   timestampMode?: SeriesTimestampMode;
