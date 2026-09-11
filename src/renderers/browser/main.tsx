@@ -22,6 +22,7 @@ import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
+import { flushPendingPersistence } from "../../state/persist-scheduler";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -36,6 +37,12 @@ root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
 
 async function boot(): Promise<void> {
   installBrowserConfigStore();
+  // A document reload does not unmount React. Flush both config and session
+  // timers while localStorage is still available, including background tabs.
+  window.addEventListener("pagehide", () => { void flushPendingPersistence(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") void flushPendingPersistence();
+  });
   installBrowserFetchTransports();
   initializeBrowserResearchActivity();
   installFocusScopeRelease();
