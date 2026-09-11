@@ -319,11 +319,6 @@ const DEFAULT_MACRO_LAYOUT: LayoutConfig = {
       settings: { stat: "cpi-yoy", range: "20Y" },
     },
     {
-      instanceId: "fear-greed:macro",
-      paneId: "fear-greed",
-      binding: { kind: "none" },
-    },
-    {
       instanceId: "volatility-term-structure:macro",
       paneId: "volatility-term-structure",
       binding: { kind: "none" },

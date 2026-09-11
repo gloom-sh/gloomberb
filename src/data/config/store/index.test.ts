@@ -791,6 +791,10 @@ describe("loadConfig", () => {
     expect(config.disabledPlugins).toEqual([
       "ticker-research",
       "market-overview",
+      // Extracted into their own plugins, so a legacy id now means the plugin
+      // of that name rather than the built-in that used to contain it.
+      "market-heatmap",
+      "fear-greed",
       "macro",
       "ibkr",
       "broker",

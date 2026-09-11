@@ -89,6 +89,31 @@ describe("seedExtractedPlugins", () => {
     expect(result.seeded).toContain("substack");
   });
 
+  /**
+   * Fear & Greed, Market Halts, Market Heatmap and the IPO calendar were
+   * modules inside Market Overview and Macro, so turning that plugin off was
+   * the only way to turn them off. Restoring them as their own plugins would
+   * put panes back that the user had removed.
+   */
+  test("keeps an extracted module disabled when the plugin that contained it was", async () => {
+    for (const [owner, extracted] of [
+      ["market-overview", ["fear-greed", "market-halts", "market-heatmap"]],
+      ["macro", ["ipo-calendar"]],
+    ] as const) {
+      const installs: string[] = [];
+      const result = await withPluginsDir((dir) => seedExtractedPlugins(
+        config({ disabledPlugins: [owner] }), async (ref) => { installs.push(ref); }, dir,
+      ));
+
+      for (const id of extracted) {
+        const entry = EXTRACTED_PLUGINS.find((candidate) => candidate.id === id)!;
+        expect(installs).not.toContain(entry.repo);
+        // Recorded, so it is not offered again on every launch.
+        expect(result.seeded).toContain(id);
+      }
+    }
+  });
+
   test("keeps TV disabled when its former Macro owner was disabled", async () => {
     for (const owner of ["macro", "macro-tv", "tv"]) {
       const installs: string[] = [];

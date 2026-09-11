@@ -88,7 +88,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | Shortcut | Function |
 |----------|----------|
 | `TOP` | Ranked market stories |
-| `HM` | Market heatmap for large US stocks and ETFs |
+| `HM` | Market heatmap for large US stocks and ETFs ([Market Heatmap plugin](https://github.com/gloom-sh/gloom-market-heatmap)) |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
 | `FLOW` | Unusual options activity: sweeps, blocks, and large premium |
@@ -113,12 +113,12 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `VAL [indicator]` | Whole-market valuation: Buffett, CAPE, excess CAPE yield, Tobin Q, investor equity allocation, dividend yield, margin debt, cap/profits, cap/M2 |
 | `CDS [ticker]` | Single-name corporate CDS activity: most-active issuers, or one issuer's trades |
 | `ERN` | Earnings calendar |
-| `IPO` | Upcoming and recent IPOs |
-| `HALT` | US trading halts with reason and resumption times |
+| `IPO` | Upcoming and recent IPOs ([IPO Calendar plugin](https://github.com/gloom-sh/gloom-ipo-calendar)) |
+| `HALT` | US trading halts with reason and resumption times ([Market Halts plugin](https://github.com/gloom-sh/gloom-market-halts)) |
 | `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
-| `FNG` | Fear and greed market gauge |
+| `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
 
 ### Workspace and App Controls
 
@@ -150,7 +150,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `TH <theme>` | Change color theme |
 | `FONT+` / `FONT-` | Increase or decrease desktop font size |
 | `CONN` | Connection health |
-| `POLL` | Prediction-market polls |
+| `POLL` | Political polls from VoteHub ([Polls plugin](https://github.com/gloom-sh/gloom-polls)) |
 | `UPGRADE` | Account upgrade |
 | `CR` | Cycle chart renderer |
 | `LANG <locale>` | Change interface language (`auto`, `en`, `es`, `zh-CN`, `zh-TW`, `ja`, or `ko`) |
@@ -175,7 +175,7 @@ Human-readable output is the default. Automation can opt into structured output 
 | `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
 | `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds |
-| `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market overview data |
+| `gloomberb movers\|indices\|sectors\|fx\|earnings` | Fetch market overview data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation\|relationship <symbols>` | Compare securities |
 | `gloomberb portfolio [action]` | Manage manual portfolios |
@@ -198,7 +198,7 @@ Human-readable output is the default. Automation can opt into structured output 
 
 Use **New Portfolio** or **Add Broker Account** to connect a broker. Gloomberb can import positions from Interactive Brokers, Public, Robinhood, and SimpleFIN.
 
-Each broker is a plugin with its own repository, installed on first launch and updatable on its own. Manage them from the plugin directory, or with `gloomberb install gloom-sh/gloomberb-public` and friends.
+Each broker is a plugin with its own repository, installed on first launch and updatable on its own. Manage them from the plugin directory, or with `gloomberb install gloom-sh/gloom-public` and friends.
 
 - Robinhood opens a browser sign-in page. Gloomberb uses only the read-only account and equity-position tools from the Robinhood Trading MCP server.
 - Public needs an API secret from Public API settings. Gloomberb creates a short-lived access token and uses only the account and portfolio endpoints.
@@ -218,6 +218,16 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 - **Command switching:** enter `LANG` in the command bar (Ctrl+P) to cycle languages, or use `LANG auto`, `LANG en`, `LANG es`, `LANG zh-CN`, `LANG zh-TW`, `LANG ja`, or `LANG ko`. The choice is persisted in `config.json`.
 - **One-run override:** `GLOOMBERB_LANG=ja gloomberb` (or another supported locale) takes highest priority in environments that expose process locale variables.
 
+## Market and macro plugins
+
+Fear & Greed, Market Halts, Market Heatmap, the IPO Calendar, and Polls each live in their own repository rather than inside the app. Each reads one third-party site directly, so a plugin can ship a fix the day that site changes instead of waiting for an app release.
+
+Existing installations restore all five once after upgrading, keeping their saved panes: the pane and template ids are unchanged. A plugin whose Market Overview or Macro owner was switched off stays off, and a deliberate removal is respected. To install one by hand:
+
+```bash
+gloomberb install gloom-sh/gloom-fear-greed
+```
+
 ## Live TV
 
-Install [TV](https://github.com/gloom-sh/gloomberb-tv) with `gloomberb install gloom-sh/gloomberb-tv`. Existing installations restore it once after upgrading. Live TV in the terminal also requires `mpv` with Kitty video output. Gloomberb resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
+Install [TV](https://github.com/gloom-sh/gloom-tv) with `gloomberb install gloom-sh/gloom-tv`. Existing installations restore it once after upgrading. Live TV in the terminal also requires `mpv` with Kitty video output. Gloomberb resolves the stream in JavaScript and runs `mpv` with its `yt-dlp` integration disabled, so `yt-dlp` is not required.
