@@ -98,4 +98,22 @@ test(`${displayName}: retained provenance explains ALL and preserves modern wind
     expect(mapPricePoint({ date: "2006-01-03", close: 18.27, historySource: invalid as never }).historySource).toBeUndefined();
   }
 });
+
+test(`${displayName}: Auto retains an earlier restriction after empty default fallback`, async () => {
+  const provider = { ...fallbackProvider,
+    getDetailedPriceHistory: async () => { throw new HistoryCoverageError(providerName); },
+    getPriceHistoryForResolution: async () => { throw new HistoryCoverageError(providerName); },
+    getPriceHistory: async (): Promise<PricePoint[]> => [],
+  };
+  const auto = spec("1997-01-01", "1997-12-31"); auto.viewport.resolution = "auto";
+  const providerName = source.provider;
+  const result = await resolveChartSpecData(auto, { ...sources(new AssetDataRouter(cloud())), dataProvider: provider });
+  expect(result.errors.join(" ")).toContain(`${displayName} London Shell coverage begins`);
+  const independent = [{ date: new Date("1997-06-30"), close: 4.095 }, { date: new Date("1997-07-01"), close: 4.315 }];
+  const recovered = await resolveChartSpecData(auto, { ...sources(new AssetDataRouter(cloud())),
+    dataProvider: { ...provider, getPriceHistory: async () => independent } });
+  expect(recovered.errors).toEqual([]);
+  expect(recovered.warnings.join(" ")).not.toContain("lineage");
+  expect(recovered.series[0]?.points.map((point) => point.value)).toEqual([4.095, 4.315]);
+});
 }

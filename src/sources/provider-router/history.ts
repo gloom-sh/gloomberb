@@ -10,6 +10,7 @@ import {
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../time-series/resolution";
+import { subtractTimeRange } from "../../time-series/date-window";
 import { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
@@ -41,6 +42,7 @@ interface HistoryRequestDescriptor {
   cacheVariantKeys: string[];
   exactCacheVariantKeys: string[];
   requestedRange?: TimeRange;
+  requestedStart: number;
   context?: MarketDataRequestContext;
   cachePolicyKey: PriceHistoryCachePolicyKey;
   missingProviderError?: string;
@@ -172,6 +174,7 @@ export class ProviderRouterHistoryRoutes {
       ...identity,
       cacheVariantKeys: expandedHistoryCacheVariantKeys(this.deps, { ticker, exchange, context, range }),
       requestedRange: range,
+      requestedStart: subtractTimeRange(new Date(), range).getTime(),
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No history provider available for ${ticker}`,
@@ -221,6 +224,7 @@ export class ProviderRouterHistoryRoutes {
         resolution,
       }),
       requestedRange: bufferRange,
+      requestedStart: subtractTimeRange(new Date(), bufferRange).getTime(),
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No resolution-aware history provider available for ${ticker}`,
@@ -324,6 +328,7 @@ export class ProviderRouterHistoryRoutes {
     const intervalMs = priceHistoryIntervalMs(barSize);
     return this.executeHistoryRequest({
       ...identity,
+      requestedStart: startDate.getTime(),
       context,
       cachePolicyKey: intervalMs != null && intervalMs >= 24 * 60 * 60 * 1000 ? "priceHistoryDaily" : "priceHistoryIntraday",
       isCachedValueStale: (value) => currentWindowAtLookup
@@ -361,7 +366,7 @@ export class ProviderRouterHistoryRoutes {
       sourceKeys,
       false,
     ).filter((record) => request.cachePolicyKey === "priceHistoryIntraday"
-      || !hasUnverifiedShellHistory(record.value, request.target, record.sourceKey));
+      || !hasUnverifiedShellHistory(record.value, request.target, record.sourceKey, request.requestedStart));
     const cached = cachedRecords.find((record) => record.value.length > 0) ?? cachedRecords[0] ?? null;
     const cachedValue = cached ? normalizeRequestHistory(cached.value, request) : [];
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);

@@ -107,3 +107,25 @@ test("legacy financial snapshots lose affected history while valid accounts and 
     } finally { store.close(); }
   }
 });
+
+
+test("safe old filtered caches recover missing disclosure only for requested long windows", async () => {
+  for (const origin of ["yahoo", "twelvedata"] as const) {
+    const store = new AppPersistence(createTempDbPath("shell-lineage-missing-provenance"));
+    const legacy = good.map(({ historySource, ...point }) => point);
+    const corrected = good.map((point) => ({ ...point, historySource: { ...point.historySource!, provider: origin } }));
+    try {
+      store.resources.set({ namespace: "market", kind: "price-history", entityKey: "SHEL",
+        variantKey: "exchange=LSE;range=ALL;resolution=1wk;version=4;unit=GBP", sourceKey: "provider:gloomberb-cloud" }, legacy, { cachePolicy: policy });
+      let calls = 0;
+      const provider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistoryForResolution() { calls++; return corrected; } };
+      const router = new AssetDataRouter(provider, [], store.resources);
+      equal(await router.getPriceHistoryForResolution("SHEL", "LSE", "1Y", "1wk"), [legacy[1]]);
+      expect(calls).toBe(0);
+      equal(await router.getPriceHistoryForResolution("SHEL", "LSE", "ALL", "1wk"), corrected);
+      expect(calls).toBe(1);
+      equal(await new AssetDataRouter(provider, [], store.resources).getPriceHistoryForResolution("SHEL", "LSE", "ALL", "1wk"), corrected);
+      expect(calls).toBe(1);
+    } finally { store.close(); }
+  }
+});

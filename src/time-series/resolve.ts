@@ -672,6 +672,7 @@ async function loadPriceHistory(
     throw error;
   });
   observeCoverage(fallback);
+  if (fallback.length === 0 && coverageNotice) throw new Error(coverageNotice);
   if (
     request.explicitWindow
     && fallback.length > 0

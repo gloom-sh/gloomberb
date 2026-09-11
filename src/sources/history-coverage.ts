@@ -37,11 +37,16 @@ export function verifiedPriceHistorySource(value: unknown): PriceHistorySource |
  * Both exact Yahoo and Twelve London histories share the unreconciled basis. */
 export function hasUnverifiedShellHistory(
   points: readonly PricePoint[], target: { symbol: string; exchange?: string }, sourceKey: string,
+  requestedStart?: number,
 ): boolean {
   if (!isShellLondonTarget(target.symbol, target.exchange)
     || !["provider:yahoo", "provider:gloomberb-cloud"].includes(sourceKey)) return false;
   const cutoff = Date.parse(SHELL_VERIFIED_LINEAGE_START);
-  return points.some((point) => getPricePointTimestamp(point) < cutoff);
+  return points.some((point) => getPricePointTimestamp(point) < cutoff)
+    // Older clients dropped even corrected source provenance. Refetch those
+    // cached long windows to recover the explanation, without invalidating 1Y.
+    || (requestedStart !== undefined && requestedStart < cutoff && points.length > 0
+      && !points.some((point) => verifiedPriceHistorySource(point.historySource)));
 }
 
 export function historyCoverageNotice(points: readonly PricePoint[], requestedStart: number | null): string | null {
