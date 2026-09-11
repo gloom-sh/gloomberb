@@ -10,6 +10,7 @@ import type { AppAction } from "../../../state/app/context";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { NativeSelectElement } from "../../ui/native-select";
 import { extractBrokerWorkflowValues } from "./broker";
+import { buildTickerListingPicker } from "./ticker-listing-picker";
 import type {
   CommandBarCollectionWorkflowActions,
   CommandBarNotifyFn,
@@ -161,6 +162,18 @@ export function useCommandBarWorkflowRuntime({
       }
       closeAll({ revertThemePreview: false });
     } catch (error) {
+      const listingPicker = buildTickerListingPicker(route, error, (fieldId) => {
+        const field = visibleFields.find((field) => field.id === fieldId);
+        return field ? getWorkflowFieldStringValue(field, route.values[fieldId]) : "";
+      });
+      if (listingPicker) {
+        setRouteStack((current) => {
+          const top = current.at(-1);
+          if (top?.kind !== "workflow" || top.payload !== route.payload || !top.pending) return current;
+          return [...current.slice(0, -1), { ...top, pending: false, error: null }, listingPicker];
+        });
+        return;
+      }
       updateTopRoute((current) => current.kind === "workflow"
         ? {
           ...current,
