@@ -33,6 +33,7 @@ import {
   usePaneTicker,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
+import { publicTickerKey } from "../../../utils/exchanges";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
@@ -55,7 +56,7 @@ import {
   getSelectedPairStudies,
   setBuiltinStudies,
   setPairStudies,
-  rebindChartSecuritySymbol,
+  rebindResearchChartSpec,
   type BuiltinStudySelection,
   type PairStudySelection,
 } from "./presets";
@@ -737,22 +738,9 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
   );
 }
 
-function firstChartSecuritySymbol(spec: ChartSpec): string | null {
-  for (const entry of spec.series) {
-    if (entry.source.kind === "security") return entry.source.instrument.symbol;
-  }
-  return null;
-}
-
-function specHasSecuritySymbol(spec: ChartSpec, symbol: string | null | undefined): boolean {
-  if (!symbol) return false;
-  return spec.series.some((entry) => (
-    entry.source.kind === "security" && entry.source.instrument.symbol === symbol
-  ));
-}
-
 export function ChartComposerResearchTab({ focused, width, height, onCapture }: TickerResearchTabProps) {
-  const { symbol } = usePaneTicker();
+  const { symbol: paneSymbol, ticker } = usePaneTicker();
+  const symbol = paneSymbol ? publicTickerKey(paneSymbol, ticker?.metadata.exchange) : null;
   const fallback = useMemo(() => symbol ? buildPriceChartPreset(symbol) : buildEmptyChartPreset(), [symbol]);
   const [storedSpec, setStoredSpec] = usePaneSettingValue<unknown>(CHART_SPEC_SETTING_KEY, fallback);
   const spec = useMemo(() => parseChartSpecOr(storedSpec, fallback), [fallback, storedSpec]);
@@ -760,15 +748,7 @@ export function ChartComposerResearchTab({ focused, width, height, onCapture }: 
 
   useEffect(() => {
     if (!symbol) return;
-    const previousSymbol = previousSymbolRef.current;
-    const fromSymbol = specHasSecuritySymbol(spec, previousSymbol)
-      ? previousSymbol
-      : firstChartSecuritySymbol(spec) ?? previousSymbol;
-    if (!fromSymbol || fromSymbol === symbol) {
-      previousSymbolRef.current = symbol;
-      return;
-    }
-    const rebound = rebindChartSecuritySymbol(spec, fromSymbol, symbol);
+    const rebound = rebindResearchChartSpec(spec, previousSymbolRef.current, symbol);
     if (rebound !== spec) setStoredSpec(rebound);
     previousSymbolRef.current = symbol;
   }, [setStoredSpec, spec, symbol]);
