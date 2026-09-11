@@ -109,6 +109,7 @@ export interface TimeSeriesPoint {
   volume?: number | null;
   periodLabel?: string;
   provenance?: {
+    priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
     secEpsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
     providerId?: string;
     quality?: "reported" | "derived" | "estimated";
@@ -146,6 +147,9 @@ export interface ResolvedSeries {
   interpolation: SeriesInterpolation;
   /** Present only for exchange-traded market observations. */
   timeBasis?: ResolvedSeriesMarketTimeBasis;
+  /** Price/volume observations and their derived studies, including 24/7
+   * markets. Independent of whether the chart compresses exchange sessions. */
+  observationKind?: "market";
   /** Regular-session move supplied with the latest market quote. */
   latestChangePercent?: number;
   points: TimeSeriesPoint[];
@@ -169,8 +173,18 @@ export interface TimeSeriesFieldDefinition {
   defaultInterpolation: SeriesInterpolation;
 }
 
+export interface ChartSeriesPriceHistoryIntegrity {
+  seriesId: string;
+  label: string;
+  /** A selected source row, or a visible calculation affected by an earlier row. */
+  scope: "requested-observation" | "visible-calculation";
+  integrity: import("../utils/price-history-integrity").PriceHistoryIntegrity;
+}
+
 export interface ChartResolutionResult {
   series: ResolvedSeries[];
+  /** Survives comparison clipping; contains selected rows and affected visible calculations, not unrelated loaded history. */
+  priceHistoryIntegrity?: ChartSeriesPriceHistoryIntegrity[];
   /** Method and exact shared source dates for normalized closing-price comparisons. */
   priceComparison?: import("./price-comparison").PriceComparison;
   /** Provider capabilities shared by every active market series. */

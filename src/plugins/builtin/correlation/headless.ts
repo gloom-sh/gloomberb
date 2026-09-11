@@ -28,7 +28,9 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
     if (!unavailableSymbols.length && rows.every((row) => row.correlation == null)) unavailableSymbols.push(...symbols);
     const unavailablePairs = rows.filter((row) => row.correlation == null).map((row) => ({
       left: row.left, right: row.right, sampleSize: row.sampleSize,
-      reason: row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
+      reason: bySymbol.get(row.left as string)?.status === "invalid" || bySymbol.get(row.right as string)?.status === "invalid"
+        ? "Inconsistent OHLC history"
+        : row.sampleSize < 5 ? "Insufficient shared return observations" : "Zero return variance",
     }));
     return {
       rows, unavailableSymbols,
@@ -42,6 +44,7 @@ export const correlationHeadless: HeadlessPaneDefinition<"rows"> = {
         returnAlignment: "Local-price close-to-close returns between shared UTC dates; no FX conversion, and exchange closing times may differ.",
         availability: symbols.map((symbol) => ({
           symbol, status: bySymbol.get(symbol)?.status ?? "error", observationCount: bySymbol.get(symbol)?.observationCount ?? 0,
+          ...(bySymbol.get(symbol)?.integrity ? { integrity: bySymbol.get(symbol)!.integrity } : {}),
           firstDate: bySymbol.get(symbol)?.prices.at(0)?.dateKey ?? null,
           lastDate: bySymbol.get(symbol)?.prices.at(-1)?.dateKey ?? null,
         })),
@@ -64,6 +67,8 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
     const unavailableSymbols = symbols.filter((symbol) => (histories.get(symbol) ?? []).filter((point) => (
       Number.isFinite(point.close) && point.close > 0 && Number.isFinite(new Date(point.date).getTime())
     )).length < 2);
+    if (analysis.integrity?.left.length) unavailableSymbols.push(symbols[0]!);
+    if (analysis.integrity?.right.length) unavailableSymbols.push(symbols[1]!);
     if (!unavailableSymbols.length && !analysis.returns.length) unavailableSymbols.push(...symbols);
     return {
       symbols,
@@ -81,9 +86,10 @@ export const relationshipHeadless: HeadlessPaneDefinition<"series"> = {
         { key: "returnCount", label: "Shared returns", value: analysis.stats?.sampleSize ?? analysis.returns.length },
       ],
       unavailableSymbols: [...new Set(unavailableSymbols)],
-      errors: loaded.errors,
+      errors: [...loaded.errors, ...(analysis.unavailableReason ? [analysis.unavailableReason] : [])],
       metadata: {
         left: symbols[0], right: symbols[1], range, correlationWindow,
+        ...(analysis.integrity ? { integrity: analysis.integrity } : {}),
         latestRatio: analysis.latestRatio, latestCorrelation: analysis.latestCorrelation,
         regression: analysis.stats, alignedPriceCount: analysis.aligned.length, returnCount: analysis.returns.length,
       },

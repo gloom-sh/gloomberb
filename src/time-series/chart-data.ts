@@ -1,4 +1,5 @@
 import type { PricePoint, Quote } from "../types/financials";
+import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { resolveExchangeTimeZone } from "../utils/exchanges";
@@ -76,6 +77,8 @@ function finiteOrFallback(value: number | undefined, fallback: number): number {
 }
 
 function mergeQuoteIntoLatestBar(latest: PricePoint, quotePrice: number): PricePoint {
+  // A later quote cannot establish which reported OHLC field was wrong.
+  if (pricePointIntegrity(latest)) return latest;
   const open = finiteOrFallback(latest.open, latest.close);
   const high = finiteOrFallback(latest.high, Math.max(open, latest.close));
   const low = finiteOrFallback(latest.low, Math.min(open, latest.close));

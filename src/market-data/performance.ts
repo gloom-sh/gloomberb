@@ -1,4 +1,5 @@
 import type { PricePoint, Quote } from "../types/financials";
+import { pricePointIntegrity } from "../utils/price-history-integrity";
 
 export interface PriceReturnHorizon {
   id: string;
@@ -11,6 +12,7 @@ export interface PriceReturnField {
   id: string;
   label: string;
   value: number | null;
+  unavailableReason?: "inconsistent-ohlc";
 }
 
 export const PRICE_RETURN_HORIZONS: PriceReturnHorizon[] = [
@@ -31,7 +33,7 @@ function normalizePriceReturnHistory(points: readonly PricePoint[]): PricePoint[
   const byTimestamp = new Map<number, PricePoint>();
   for (const point of points) {
     const date = coercePointDate(point.date as Date | string | number);
-    if (!date || !Number.isFinite(point.close)) continue;
+    if (!date || (!Number.isFinite(point.close) && !pricePointIntegrity(point))) continue;
     byTimestamp.set(date.getTime(), { ...point, date });
   }
   return [...byTimestamp.entries()]
@@ -77,8 +79,18 @@ export function computePriceReturnForHorizon(
   points: readonly PricePoint[],
   horizon: PriceReturnHorizon,
 ): number | null {
+  return priceReturnForHorizon(points, horizon).value;
+}
+
+function priceReturnForHorizon(
+  points: readonly PricePoint[],
+  horizon: PriceReturnHorizon,
+): Pick<PriceReturnField, "value" | "unavailableReason"> {
   const history = normalizePriceReturnHistory(points);
-  if (history.length < 2) return null;
+  if (history.length < 2) return {
+    value: null,
+    ...(history.some(pricePointIntegrity) ? { unavailableReason: "inconsistent-ohlc" as const } : {}),
+  };
 
   const latest = history.at(-1)!;
   const cutoff = subtractHorizon(latest.date, horizon);
@@ -92,9 +104,12 @@ export function computePriceReturnForHorizon(
     }
   }
 
-  if (!baseline || !Number.isFinite(baseline.close) || baseline.close === 0) return null;
-  if (!Number.isFinite(latest.close)) return null;
-  return (latest.close - baseline.close) / baseline.close;
+  if (history.some((point) => point.date >= (baseline?.date ?? cutoff) && pricePointIntegrity(point))) {
+    return { value: null, unavailableReason: "inconsistent-ohlc" };
+  }
+  if (!baseline || !Number.isFinite(baseline.close) || baseline.close === 0) return { value: null };
+  if (!Number.isFinite(latest.close)) return { value: null };
+  return { value: (latest.close - baseline.close) / baseline.close };
 }
 
 export function buildPriceReturnFields(
@@ -104,6 +119,6 @@ export function buildPriceReturnFields(
   return horizons.map((horizon) => ({
     id: horizon.id,
     label: horizon.label,
-    value: computePriceReturnForHorizon(points, horizon),
+    ...priceReturnForHorizon(points, horizon),
   }));
 }

@@ -1,3 +1,4 @@
+import { pricePointIntegrity, type PriceHistoryIntegrity } from "../../../../utils/price-history-integrity";
 import type { QueryEntry } from "../../../../market-data/result-types";
 import { colors } from "../../../../theme/colors";
 import type { PricePoint } from "../../../../types/financials";
@@ -9,13 +10,14 @@ export const MATRIX_CELL_WIDTH = 10;
 export const MIN_MATRIX_CELL_WIDTH = 7;
 const MIN_CORRELATION_OBSERVATIONS = 5;
 
-export type SeriesStatus = "loading" | "ready" | "insufficient" | "empty" | "error";
+export type SeriesStatus = "loading" | "ready" | "insufficient" | "empty" | "error" | "invalid";
 
 export interface CorrelationSeries {
   symbol: string;
   prices: DailyClose[];
   status: SeriesStatus;
   observationCount: number;
+  integrity?: PriceHistoryIntegrity[];
 }
 
 export function displaySymbol(symbol: string): string {
@@ -63,6 +65,8 @@ export function getSeriesForEntry(
 }
 
 export function buildCorrelationSeries(symbol: string, history: readonly PricePoint[]): CorrelationSeries {
+  const integrity = history.flatMap((point) => { const issue = pricePointIntegrity(point); return issue ? [issue] : []; });
+  if (integrity.length) return { symbol, prices: [], observationCount: 0, status: "invalid", integrity };
   const prices = dailyCloses(history);
   const observationCount = Math.max(0, prices.length - 1);
   return {
@@ -75,6 +79,7 @@ export function rowHeaderColor(status: SeriesStatus): string {
   switch (status) {
     case "loading":
       return colors.textDim;
+    case "invalid":
     case "error":
     case "empty":
       return colors.negative;
@@ -100,7 +105,6 @@ export function buildCorrelationMatrix(
 
   for (let rowIndex = 0; rowIndex < symbols.length; rowIndex++) {
     for (let colIndex = 0; colIndex < symbols.length; colIndex++) {
-      if (rowIndex === colIndex) continue;
       const rowSym = symbols[rowIndex]!;
       const colSym = symbols[colIndex]!;
       const rowSeries = seriesBySymbol.get(rowSym);
@@ -111,7 +115,8 @@ export function buildCorrelationMatrix(
       results.set(pairKey(rowSym, colSym), result);
       if (rowIndex < colIndex) {
         if (result.sampleSize > 0) sampleSizes.push(result.sampleSize);
-        if (result.correlation == null && result.sampleSize < MIN_CORRELATION_OBSERVATIONS) {
+        if (rowSeries?.status !== "invalid" && colSeries?.status !== "invalid"
+          && result.correlation == null && result.sampleSize < MIN_CORRELATION_OBSERVATIONS) {
           hasThinPair = true;
         }
       }
@@ -139,14 +144,16 @@ export function buildStatusSummary(
   const loading = byStatus("loading");
   const errors = [...byStatus("error"), ...byStatus("empty")];
   const insufficient = byStatus("insufficient");
+  const invalid = byStatus("invalid");
 
+  if (invalid.length > 0) parts.push(`Inconsistent OHLC: ${formatSeriesSymbolList(invalid, seriesBySymbol)}`);
   if (loading.length > 0) parts.push(`Loading: ${formatSeriesSymbolList(loading, seriesBySymbol)}`);
   if (errors.length > 0) parts.push(`No data: ${formatSeriesSymbolList(errors, seriesBySymbol)}`);
   if (insufficient.length > 0) parts.push(`Need history: ${formatSeriesSymbolList(insufficient, seriesBySymbol, true)}`);
 
   if (sampleMin != null && sampleMax != null) {
     parts.push(sampleMin === sampleMax ? `obs ${sampleMin}` : `obs ${sampleMin}-${sampleMax}`);
-  } else if (symbols.length >= 2) {
+  } else if (symbols.length >= 2 && invalid.length === 0) {
     parts.push("No paired dates yet");
   }
 

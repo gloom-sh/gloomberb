@@ -88,7 +88,7 @@ describe("cash distribution calculations", () => {
       requested.push(sourceSymbol);
       if (sourceSymbol !== expected) return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
       if (url.includes("/chart/")) return Response.json({ chart: { result: [{
-        meta: { symbol: expected, currency, regularMarketPrice: 100 }, timestamp: [timestamp],
+        meta: { symbol: expected, currency, regularMarketPrice: 100, dataGranularity: "1mo" }, timestamp: [timestamp],
         indicators: { quote: [{ close: [100] }] }, events: { dividends: { [timestamp]: { date: timestamp, amount } } },
       }] } });
       return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency } }] } });
@@ -143,7 +143,7 @@ describe("cash distribution calculations", () => {
       if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
       if (url.includes("getcrumb")) return new Response("fixture-crumb");
       if (url.includes("/chart/")) return Response.json({ chart: { result: [{
-        meta: { currency: "EUR", regularMarketPrice: 80 }, timestamp: [timestamp],
+        meta: { currency: "EUR", regularMarketPrice: 80, dataGranularity: "1mo" }, timestamp: [timestamp],
         indicators: { quote: [{ close: [80] }] }, events: { dividends: { [timestamp]: { date: timestamp, amount: 4 } } },
       }] } });
       if (url.includes("/quoteSummary/")) return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "EUR" } }] } });

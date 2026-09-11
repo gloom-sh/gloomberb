@@ -7,6 +7,7 @@ import type {
   TimeSeriesPoint,
 } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
+import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
 
 export interface PricePointsToResolvedSeriesOptions {
   id: string;
@@ -24,23 +25,16 @@ export interface PricePointsToResolvedSeriesOptions {
   timeBasis?: ResolvedSeriesMarketTimeBasis;
 }
 
-function finiteOrNull(value: number | null | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function normalizePricePoint(point: PricePoint, providerId?: string): TimeSeriesPoint | null {
   const date = point.date instanceof Date ? new Date(point.date) : new Date(point.date as unknown as string | number);
   if (!Number.isFinite(date.getTime())) return null;
+  const { integrity, ...values } = pricePointValues(point);
   return {
     date,
     observedAt: date,
-    value: finiteOrNull(point.close),
-    open: finiteOrNull(point.open),
-    high: finiteOrNull(point.high),
-    low: finiteOrNull(point.low),
-    close: finiteOrNull(point.close),
-    volume: finiteOrNull(point.volume),
-    provenance: providerId ? { providerId, quality: "reported" } : undefined,
+    value: values.close,
+    ...values,
+    provenance: providerId || integrity ? { providerId, quality: "reported", ...(integrity ? { priceHistoryIntegrity: integrity } : {}) } : undefined,
   };
 }
 
@@ -71,6 +65,6 @@ export function pricePointsToResolvedSeries(
     interpolation: "none",
     timeBasis: options.timeBasis,
     points: [...byTimestamp.values()].sort((left, right) => left.date.getTime() - right.date.getTime()),
-    warning: options.warning,
+    warning: [options.warning, priceHistoryIntegrityNotice([...byTimestamp.values()].filter((point) => point.provenance?.priceHistoryIntegrity).length)].filter(Boolean).join(" ") || undefined,
   };
 }

@@ -75,6 +75,10 @@ function priceHistoryVariantParts(
     ["version", PRICE_HISTORY_CACHE_VERSION],
     ["inception", inceptionVersion],
     ["calendar", monthly ? 1 : undefined],
+    // Old Yahoo/cloud ALL responses could serve weekly/quarterly bars under
+    // a different requested interval. Exact and broader cache lookups must
+    // refetch these windows instead of relabeling the cached bars.
+    ["granularity", range === "ALL" ? 1 : undefined],
   ];
   return unit.divisor === 1
     ? versionedParts
@@ -101,7 +105,12 @@ function makeHistoryRequestIdentity(
   const cacheVariantKeys = [
     identity.variantKey,
     buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange, input.ticker)),
-  ];
+  ].flatMap((key) => {
+    // Broker and independent-provider records did not use the affected Yahoo
+    // request. Keep their old keys readable, then filter by source below.
+    const legacy = key.replace(/;granularity=1(?=;|$)/, "");
+    return legacy === key ? [key] : [key, legacy];
+  });
   return {
     target: { symbol: input.ticker, exchange: input.exchange },
     identity,
@@ -365,8 +374,14 @@ export class ProviderRouterHistoryRoutes {
       request.cacheVariantKeys,
       sourceKeys,
       false,
-    ).filter((record) => request.cachePolicyKey === "priceHistoryIntraday"
-      || !hasUnverifiedShellHistory(record.value, request.target, record.sourceKey, request.requestedStart));
+    ).filter((record) => {
+      const unverifiedAllInterval = ["provider:yahoo", "provider:gloomberb-cloud"].includes(record.sourceKey)
+        && /(?:^|;)range=ALL(?:;|$)/.test(record.variantKey)
+        && !/(?:^|;)granularity=1(?:;|$)/.test(record.variantKey);
+      if (unverifiedAllInterval) return false;
+      return request.cachePolicyKey === "priceHistoryIntraday"
+        || !hasUnverifiedShellHistory(record.value, request.target, record.sourceKey, request.requestedStart);
+    });
     const cached = cachedRecords.find((record) => record.value.length > 0) ?? cachedRecords[0] ?? null;
     const cachedValue = cached ? normalizeRequestHistory(cached.value, request) : [];
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);

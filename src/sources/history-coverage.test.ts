@@ -7,7 +7,7 @@ const meta = { symbol: "SHEL.L", exchangeName: "LSE", currency: "GBp" };
 const point = (date: string, close: number) => ({ date: new Date(date), close });
 
 test("the shared Yahoo request boundary removes spanning OHLC and retains source provenance", async () => {
-  const raw = { chart: { result: [{ meta,
+  const raw = { chart: { result: [{ meta: { ...meta, dataGranularity: "1wk" },
     timestamp: [Date.parse("2005-07-18T07:00:00Z") / 1000, Date.parse("2005-07-25T07:00:00Z") / 1000],
     indicators: { quote: [{ open: [1829.5, 1764], high: [1845, 1776], low: [1720, 1701], close: [1748, 1747], volume: [42, 58] }] },
   }] } };

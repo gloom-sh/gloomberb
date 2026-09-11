@@ -15,7 +15,7 @@ function returnValueColor(value: number | null): string {
 }
 
 function hasAnyReturn(fields: readonly PriceReturnField[]): boolean {
-  return fields.some((field) => field.value != null);
+  return fields.some((field) => field.value != null || field.unavailableReason);
 }
 
 function chunkFields<T>(fields: readonly T[], size: number): T[][] {
