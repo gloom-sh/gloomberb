@@ -71,7 +71,8 @@ export function buildOverviewStats({
     stats.push({ label: "PEG", value: formatNumber(fundamentals.pegRatio, 2) });
   }
   if (fundamentals?.dividendYield != null) {
-    stats.push({ label: "Div Yield", value: formatPercent(fundamentals.dividendYield) });
+    const label = fundamentals.dividendYieldBasis === "forward" ? "Fwd Div Yld" : fundamentals.dividendYieldBasis === "trailing" ? "TTM Div Yld" : "Div Yield";
+    stats.push({ label, value: formatPercent(fundamentals.dividendYield) });
   }
   if (fundamentals?.revenue != null) {
     stats.push({ label: "Revenue", value: money(fundamentals.revenue) });

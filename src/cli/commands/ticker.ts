@@ -280,7 +280,7 @@ export async function buildTickerReport({
     ["Forward P/E", fundamentals?.forwardPE != null ? formatNumber(fundamentals.forwardPE, 2) : "—"],
     ["PEG", fundamentals?.pegRatio != null ? formatNumber(fundamentals.pegRatio, 2) : "—"],
     ["EPS", fundamentals?.eps != null ? formatCurrency(fundamentals.eps, quote.currency) : "—"],
-    ["Dividend Yield", fundamentals?.dividendYield != null ? formatPercent(fundamentals.dividendYield) : "—"],
+    [`Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`, fundamentals?.dividendYield != null ? formatPercent(fundamentals.dividendYield) : "—"],
     ["Revenue", formatNullableCompact(fundamentals?.revenue)],
     ["Net Income", formatNullableCompact(fundamentals?.netIncome)],
     ["Operating Cash Flow", formatNullableCompact(fundamentals?.operatingCashFlow)],

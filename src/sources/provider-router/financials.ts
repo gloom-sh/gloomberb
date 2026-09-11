@@ -48,6 +48,8 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
     financialCurrency: undefined,
     fundamentals: fund && statistics?.dividendYield != null ? {
       dividendYield: statistics.dividendYield,
+      dividendYieldBasis: statistics.dividendYieldBasis,
+      dividendYieldSource: statistics.dividendYieldSource,
       source: statistics.source,
       fetchedAt: statistics.fetchedAt,
       stale: statistics.stale,
@@ -254,6 +256,13 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
     return primary;
   }
   const merged = mergeDefinedObject(primary, fallback);
+  const dividend = primary?.dividendYield != null ? primary : fallback;
+  if (merged && dividend) {
+    // A yield's source and basis must come from the same observation as its
+    // value, never from an unrelated fallback that supplied other metrics.
+    merged.dividendYieldBasis = dividend.dividendYieldBasis;
+    merged.dividendYieldSource = dividend.dividendYieldSource;
+  }
   if (merged && primary && !primary.financialCurrency && [
     primary.revenue, primary.netIncome, primary.operatingCashFlow, primary.freeCashFlow, primary.eps,
   ].some((value) => value != null)) {

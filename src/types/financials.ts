@@ -98,6 +98,8 @@ export interface Fundamentals {
   operatingCashFlow?: number;
   freeCashFlow?: number;
   dividendYield?: number;
+  dividendYieldBasis?: "forward" | "trailing";
+  dividendYieldSource?: "twelvedata" | "yahoo";
   revenue?: number;
   netIncome?: number;
   eps?: number;

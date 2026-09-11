@@ -36,13 +36,13 @@ test("fund research keeps distribution yield and description through cache and m
   const now = Date.now();
   const fund = makeFinancials({
     quote: makeQuote({ symbol: "SGOV", providerId: "gloomberb-cloud", instrumentType: "ETF", lastUpdated: now }),
-    fundamentals: { dividendYield: 0.036658540225881886, source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true,
+    fundamentals: { dividendYield: 0.036658540225881886, dividendYieldBasis: "forward", dividendYieldSource: "twelvedata", source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true,
       enterpriseValue: 0, revenue: 0, netIncome: 0, freeCashFlow: 0 },
     profile: { description: "Short Treasury bond fund", sector: "Contaminated issuer sector" },
     annualStatements: [{ date: "2025-12-31", totalRevenue: 0 }],
   });
   for (const value of [sanitizeCachedFinancials(fund, { includeStaleQuotes: true }), mergeFinancials(fund, null)!]) {
-    expect(value.fundamentals).toEqual({ dividendYield: 0.036658540225881886, source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true });
+    expect(value.fundamentals).toEqual({ dividendYield: 0.036658540225881886, dividendYieldBasis: "forward", dividendYieldSource: "twelvedata", source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true });
     expect(value.profile).toEqual({ description: "Short Treasury bond fund" });
     expect(value.annualStatements).toEqual([]);
   }
