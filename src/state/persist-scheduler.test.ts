@@ -1,11 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { createPersistScheduler } from "./persist-scheduler";
+import { createPersistScheduler, flushPendingPersistence } from "./persist-scheduler";
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe("createPersistScheduler", () => {
+  test("page exit drains the latest config and session once, excluding cancelled writes", async () => {
+    const saved: string[] = [];
+    const config = createPersistScheduler<string>({ delayMs: 60_000, save: (value) => { saved.push(value); } });
+    const session = createPersistScheduler<string>({ delayMs: 60_000, save: (value) => { saved.push(value); } });
+    const cancelled = createPersistScheduler<string>({ delayMs: 60_000, save: (value) => { saved.push(value); } });
+    config.schedule("old chart");
+    config.schedule("percent chart");
+    session.schedule("selected pane");
+    cancelled.schedule("discarded");
+    cancelled.cancel();
+    await flushPendingPersistence();
+    await flushPendingPersistence();
+    expect(saved).toEqual(["percent chart", "selected pane"]);
+
+    // Returning from a background tab must allow subsequent changes to save.
+    config.schedule("index chart");
+    await flushPendingPersistence();
+    expect(saved).toEqual(["percent chart", "selected pane", "index chart"]);
+  });
+
   test("coalesces scheduled saves and writes the latest value", async () => {
     const saved: number[] = [];
     const scheduler = createPersistScheduler<number>({

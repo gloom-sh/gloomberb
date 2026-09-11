@@ -2,6 +2,13 @@ export const CONFIG_SAVE_DEBOUNCE_MS = 500;
 export const SESSION_SAVE_DEBOUNCE_MS = 1000;
 export const PLUGIN_STATE_SAVE_DEBOUNCE_MS = 500;
 
+const pendingFlushes = new Set<() => Promise<void>>();
+
+/** Drain delayed writes before the browser suspends or discards this page. */
+export async function flushPendingPersistence(): Promise<void> {
+  await Promise.allSettled([...pendingFlushes].map((flush) => flush()));
+}
+
 export interface PersistSchedulerOptions<T> {
   delayMs: number;
   save: (value: T) => Promise<void> | void;
@@ -48,6 +55,7 @@ export function createPersistScheduler<T>({
 
   const drain = async () => {
     clearTimer();
+    pendingFlushes.delete(drain);
     if (!hasPendingValue) return inFlight;
     const value = pendingValue as T;
     pendingValue = undefined;
@@ -59,6 +67,7 @@ export function createPersistScheduler<T>({
     schedule(value: T): void {
       pendingValue = value;
       hasPendingValue = true;
+      pendingFlushes.add(drain);
       clearTimer();
       timer = setTimeout(() => {
         void drain();
@@ -69,11 +78,13 @@ export function createPersistScheduler<T>({
     },
     cancel(): void {
       clearTimer();
+      pendingFlushes.delete(drain);
       pendingValue = undefined;
       hasPendingValue = false;
     },
     saveImmediately(value: T): Promise<void> {
       clearTimer();
+      pendingFlushes.delete(drain);
       pendingValue = undefined;
       hasPendingValue = false;
       return enqueueSave(value, false);
