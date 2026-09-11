@@ -46,6 +46,7 @@ import {
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
 import { clipPriceComparison, priceComparisonSeriesIds, resolvePriceComparison } from "./price-comparison";
+import { reportingCurrencySeries } from "./reporting-currency";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
 import { resolutionForExplicitMarketPeriods } from "./market-resolution";
@@ -678,7 +679,9 @@ function baseSecuritySeries(
   if (!field) return null;
   const points = extractSecuritySeries(financials, spec.source);
   const symbol = instrumentLabel(spec.source);
-  const currency = financials.quote?.currency || quoteMetadata?.currency;
+  const statementCurrency = field.id.startsWith("fundamental.") && field.unit.startsWith("currency")
+    ? reportingCurrencySeries(points, financials.financialCurrency) : null;
+  const currency = statementCurrency ? statementCurrency.currency : financials.quote?.currency || quoteMetadata?.currency;
   const assetKind = resolveAssetDisplayKind({ assetCategory: financials.quote?.instrumentType || quoteMetadata?.instrumentType });
   const volumeUnit = assetKind === "equity" ? "shares" as const : assetKind === "contract" ? "contracts" as const : undefined;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
@@ -705,7 +708,7 @@ function baseSecuritySeries(
     unitGroup: currencyUnitGroup,
     volumeUnit,
     warning: field.id === "market.volume" && !volumeUnit && points.length > 0
-      ? "Volume unit unknown." : undefined,
+      ? "Volume unit unknown." : statementCurrency?.warning,
     nativeFrequency: spec.source.period && spec.source.period !== "auto"
       ? spec.source.period
       : field.nativeFrequency,
@@ -1204,7 +1207,7 @@ export async function resolveChartSpecData(
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
       if (isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {
-        result.warning = "Publication dates are unavailable for some observations; period-end dates are used as a fallback.";
+        result.warning = [result.warning, "Publication dates are unavailable for some observations; period-end dates are used as a fallback."].filter(Boolean).join(" ");
       }
       return result;
     } catch (error) {
