@@ -46,7 +46,7 @@ import {
 } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
-import { clipPriceComparison, priceComparisonSeriesIds, resolvePriceComparison } from "./price-comparison";
+import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, resolvePriceComparison } from "./price-comparison";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
@@ -402,7 +402,7 @@ export function seedChartResolutionResult(
   const priceComparison = resolvePriceComparison(spec, series, bounds);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
-  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, comparisonBounds));
+  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
   const studies = resolveStudies(series, spec.studies);
@@ -1261,13 +1261,13 @@ export async function resolveChartSpecData(
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
     : followLatestMarketObservation(initialVisibleBounds, rawSeries);
-  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds);
+  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, initialResolution);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
   const resolution = initialResolution;
   const baseSeries = rawSeries
     .filter((entry) => visibleSeriesIds.has(entry.id))
-    .map((entry) => prepareBaseSeriesForStudies(entry, comparisonBounds, false, priceComparison ? undefined : requestVisibleBounds));
+    .map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds, false, priceComparison ? undefined : requestVisibleBounds));
   // Studies run over the same loaded history their base series carries. Clipping
   // them to the requested window instead left a study with no observations
   // wherever the accumulated buffer had already been panned past, so a study's

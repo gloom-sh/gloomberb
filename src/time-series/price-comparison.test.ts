@@ -66,7 +66,42 @@ describe("normalized market price comparison", () => {
     expect(result.series.map((s) => s.points.at(-1)?.value)).toEqual([100, 200]);
     expect(result.series.map((s) => s.points.length)).toEqual([3, 2]);
     const shifted = result.series.map((s, index) => ({ ...s, points: s.points.map((p) => ({ ...p, date: new Date(p.date.getTime() + index * 1_000) })) }));
-    expect(resolvePriceComparison(spec(), shifted, { start: null, end: null })?.start).toBeNull();
+    expect(resolvePriceComparison(spec(), shifted, { start: null, end: null }, "1m")?.start).toBeNull();
+  });
+
+  test("daily comparisons align market dates while preserving exact source timestamps and endpoints", async () => {
+    const chart = spec();
+    chart.series[0]!.source = { kind: "security", instrument: { symbol: "OLDER", exchange: "CCC" }, fieldId: "market.close" };
+    const data = {
+      OLDER: rows([["2026-09-07", 80], ["2026-09-08", 100], ["2026-09-09", 110], ["2026-09-10", 200]]),
+      NEWER: rows([["2026-09-08T13:30:00Z", 50], ["2026-09-09T13:30:00Z", 60]]),
+    };
+    const result = await resolveChartSpecData(chart, sources(data));
+    expect(result.priceComparison).toMatchObject({ alignment: "session-date", sourceBounds: {
+      OLDER: { start: Date.parse("2026-09-08"), end: Date.parse("2026-09-09") },
+      NEWER: { start: Date.parse("2026-09-08T13:30:00Z"), end: Date.parse("2026-09-09T13:30:00Z") },
+    } });
+    for (const collection of [result.series, result.bufferedSeries!, result.legendSeries!]) {
+      expect(collection.map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 10], [0, 20]]);
+      expect(collection[0]!.points.at(-1)!.date.toISOString()).toBe("2026-09-09T00:00:00.000Z");
+      expect(collection[1]!.points[0]!.date.toISOString()).toBe("2026-09-08T13:30:00.000Z");
+    }
+    expect(summarizeResolvedSeries(result.series[1]!)).toMatchObject({ startValue: 50, endValue: 60, return: 0.2 });
+    const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]])));
+    expect(seeded?.series.map((entry) => entry.points.at(-1)?.value)).toEqual([10, 20]);
+    expect(data.OLDER.at(-1)?.close).toBe(200);
+  });
+
+  test("session dates handle venues opening on the preceding UTC day", async () => {
+    const chart = spec();
+    chart.series[1]!.source = { kind: "security", instrument: { symbol: "NEWER", exchange: "ASX" }, fieldId: "market.close" };
+    const result = await resolveChartSpecData(chart, sources({
+      OLDER: rows([["2026-01-08T14:30:00Z", 10], ["2026-01-09T14:30:00Z", 12]]),
+      NEWER: rows([["2026-01-07T23:00:00Z", 20], ["2026-01-08T23:00:00Z", 30]]),
+    }));
+    expect(result.series.map((entry) => entry.points.at(-1)?.value)).toEqual([20, 50]);
+    // In summer Sydney's opening bar starts on the previous UTC date.
+    expect(result.priceComparison?.sourceBounds?.NEWER.start).toBe(Date.parse("2026-01-07T23:00:00Z"));
   });
 
   test("one-leg streamed and snapshot quotes cannot rewrite a shared weekly source bar", async () => {

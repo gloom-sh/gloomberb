@@ -1,15 +1,32 @@
 import { scalarPointValue } from "./alignment";
 import { getTimeSeriesField } from "./field-catalog";
 import type { ChartSpec, ResolvedSeries } from "./types";
+import type { ManualChartResolution } from "./resolution";
+import { zonedDateTimeParts } from "../utils/zoned-date-time";
 
 export const PRICE_COMPARISON_BASIS = "Price returns in each listing's currency; cash distributions and FX conversion excluded.";
 
 export interface PriceComparison {
   seriesIds: string[];
-  /** Exact source observation timestamps, never filled or rounded across markets. */
+  /** Display envelope; each leg retains its exact source endpoints below. */
   start: number | null;
   end: number | null;
   notice: string;
+  alignment?: "session-date" | "timestamp";
+  sourceBounds?: Record<string, { start: number; end: number }>;
+}
+
+function observationDate(time: number, series: ResolvedSeries): string {
+  const date = new Date(time);
+  // Date-only provider bars are represented as UTC midnight throughout the app.
+  // Timestamped bars use the exchange's local calendar; crypto uses UTC.
+  if (time % 86_400_000 === 0 || !series.timeBasis) return date.toISOString().slice(0, 10);
+  const { year, month, day } = zonedDateTimeParts(time, series.timeBasis.timeZone);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+export function priceComparisonBoundsForSeries(series: ResolvedSeries, comparison: PriceComparison | null) {
+  return comparison?.sourceBounds?.[series.id] ?? comparison;
 }
 
 function displayDate(time: number): string {
@@ -37,37 +54,51 @@ export function resolvePriceComparison(
   spec: ChartSpec,
   series: readonly ResolvedSeries[],
   bounds: { start: number | null; end: number | null },
+  resolution: ManualChartResolution | "auto" = spec.viewport.resolution,
 ): PriceComparison | null {
   const seriesIds = priceComparisonSeriesIds(spec);
   if (!seriesIds) return null;
   const byId = new Map(series.map((entry) => [entry.id, entry]));
-  const timestamps = seriesIds.map((id) => new Set((byId.get(id)?.points ?? []).flatMap((point) => {
+  const calendarBars = resolution === "1d" || resolution === "1wk" || resolution === "1mo";
+  const observations = seriesIds.map((id) => new Map((byId.get(id)?.points ?? []).flatMap((point) => {
     const time = point.date.getTime();
     const value = scalarPointValue(point);
     return Number.isFinite(time) && value !== null
       && (bounds.start === null || time >= bounds.start)
-      && (bounds.end === null || time <= bounds.end) ? [time] : [];
+      && (bounds.end === null || time <= bounds.end)
+      ? [[calendarBars ? observationDate(time, byId.get(id)!) : String(time), point] as const] : [];
   })));
-  const shared = [...timestamps[0]!].filter((time) => timestamps.every((times) => times.has(time))).sort((a, b) => a - b);
-  const start = shared.find((time) => seriesIds.every((id) => {
-    const point = byId.get(id)?.points.find((point) => point.date.getTime() === time);
+  const shared = [...observations[0]!.keys()].filter((key) => observations.every((points) => points.has(key)))
+    .sort((a, b) => calendarBars ? a.localeCompare(b) : Number(a) - Number(b));
+  const start = shared.find((key) => observations.every((points) => {
+    const point = points.get(key);
     return point && scalarPointValue(point) !== 0;
   }));
   const end = shared.at(-1);
-  if (start === undefined || end === undefined || start >= end) return {
+  if (start === undefined || end === undefined || start === end) return {
     seriesIds, start: null, end: null,
     notice: `${PRICE_COMPARISON_BASIS} Comparison unavailable: need two shared dates and a nonzero baseline.`,
   };
+  const sourceBounds = Object.fromEntries(seriesIds.map((id, index) => [id, {
+    start: observations[index]!.get(start)!.date.getTime(),
+    end: observations[index]!.get(end)!.date.getTime(),
+  }]));
   return {
-    seriesIds, start, end,
-    notice: `${PRICE_COMPARISON_BASIS} Shared observations: ${displayDate(start)} to ${displayDate(end)}.`,
+    seriesIds,
+    start: Math.min(...Object.values(sourceBounds).map((range) => range.start)),
+    end: Math.max(...Object.values(sourceBounds).map((range) => range.end)),
+    alignment: calendarBars ? "session-date" : "timestamp",
+    sourceBounds,
+    notice: calendarBars
+      ? `${PRICE_COMPARISON_BASIS} Shared calendar dates: ${start} to ${end}; market session times may differ.`
+      : `${PRICE_COMPARISON_BASIS} Shared observations: ${displayDate(Number(start))} to ${displayDate(Number(end))}.`,
   };
 }
 
 /** Clip only compared legs; raw observations and study inputs stay available in the source cache. */
 export function clipPriceComparison(series: ResolvedSeries, comparison: PriceComparison | null): ResolvedSeries {
   if (!comparison?.seriesIds.includes(series.id)) return series;
-  const { start, end } = comparison;
+  const { start, end } = priceComparisonBoundsForSeries(series, comparison)!;
   return {
     ...series,
     // The legend must describe the compared endpoint, not a newer one-leg quote.
