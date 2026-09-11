@@ -449,6 +449,7 @@ test("starts at a held contract's expiry and preserves a researcher-selected rol
   const provider = createTestDataProvider({
     getTickerFinancials: async () => makeFinancials(326.72),
     getOptionsChain: async (_ticker, _exchange, expirationDate) => {
+      if (_ticker === "MSFT") return new Promise<OptionsChain>(() => {});
       requestedExpirations.push(expirationDate);
       const expiry = expirationDate ?? expirationDates[0]!;
       const chain = makeChain([330 + expirationDates.indexOf(expiry) * 10], 340, expirationDates);
@@ -465,8 +466,14 @@ test("starts at a held contract's expiry and preserves a researcher-selected rol
     { portfolio: "fixture", shares: -1, avgCost: 5.52, broker: "manual", multiplier: 100 },
     { portfolio: "fixture", shares: 1, side: "long", avgCost: 5.52, broker: "manual", multiplier: 100 },
   ];
+  let selectTicker: (ticker: TickerRecord) => void = () => {};
+  function SwitchingHarness() {
+    const [selected, setSelected] = useState(ticker);
+    selectTicker = setSelected;
+    return <OptionsHarness ticker={selected} />;
+  }
   await act(async () => {
-    testSetup = await testRender(<OptionsHarness ticker={ticker} />, { width: 124, height: 16 });
+    testSetup = await testRender(<SwitchingHarness />, { width: 124, height: 16 });
   });
   await renderSettled();
   expect(requestedExpirations.at(-1)).toBe(expirationDates[1]);
@@ -488,6 +495,15 @@ test("starts at a held contract's expiry and preserves a researcher-selected rol
   await act(async () => { testSetup!.mockInput.pressArrow("left"); });
   await renderSettled();
   expect(testSetup!.captureCharFrame()).toContain("340");
+
+  // Returning before another instrument's catalogue loads must initialize the
+  // holding again, rather than retain that intermediate target's index zero.
+  await act(async () => { selectTicker(makeTicker("MSFT")); });
+  await renderSettled();
+  expect(testSetup!.captureCharFrame()).toContain("Loading options chain");
+  await act(async () => { selectTicker(ticker); });
+  await renderSettled();
+  expect(testSetup!.captureCharFrame()).toMatch(/34\.05\s+34\s+.*340/);
 });
 
 test("keeps the selected chain visible when its refresh fails", async () => {

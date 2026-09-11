@@ -197,6 +197,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   }, [expirationCount]);
 
   useEffect(() => {
+    initializedExpiryTargetRef.current = null;
     userSelectedStrikeRef.current = false;
     setScrollToIndexAlign("nearest");
     setInteractive(false);
