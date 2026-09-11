@@ -112,7 +112,8 @@ export async function loadChartPaneModel(
     metadata: {
       viewport: spec.viewport, panels: spec.panels, warnings: chart.warnings,
       ...(periodCoverage.length ? { periodCoverage } : {}),
-      notices: chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE),
+      notices: chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === chart.priceComparison?.notice),
+      priceComparison: chart.priceComparison ?? null,
       summaries: chart.series.map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
     },
   };

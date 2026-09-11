@@ -557,7 +557,9 @@ function ChartComposerSurface({
   const showVintageNotice = spec.series.some((entry) => entry.visible !== false
     && entry.source.kind === "security" && isFundamentalFieldId(entry.source.fieldId));
   const vintageNoticeHeight = showVintageNotice ? wrapTextLines(FINANCIAL_VINTAGE_NOTICE, Math.max(8, width - 2)).length : 0;
-  const statusWarning = resolution.warnings.find((warning) => warning !== FINANCIAL_VINTAGE_NOTICE);
+  const comparisonNotice = resolution.priceComparison?.notice;
+  const comparisonNoticeHeight = comparisonNotice ? wrapTextLines(comparisonNotice, Math.max(8, width - 2)).length : 0;
+  const statusWarning = resolution.warnings.find((warning) => warning !== FINANCIAL_VINTAGE_NOTICE && warning !== comparisonNotice);
 
   usePaneFooter(footerId, () => ({
     info: [
@@ -678,6 +680,9 @@ function ChartComposerSurface({
       {showVintageNotice && <Box paddingX={1} flexShrink={0}>
         <Prose text={FINANCIAL_VINTAGE_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} />
       </Box>}
+      {comparisonNotice && <Box paddingX={1} flexShrink={0}>
+        <Prose text={comparisonNotice} width={Math.max(8, width - 2)} color={colors.textDim} />
+      </Box>}
       <Box flexGrow={1} minHeight={4}>
         <CompositeChart
           series={plottedSeries}
@@ -687,7 +692,7 @@ function ChartComposerSurface({
           viewport={viewport}
           viewportResetKey={authoredViewportKey}
           width={Math.max(1, width)}
-          height={Math.max(4, height - 1 - vintageNoticeHeight)}
+          height={Math.max(4, height - 1 - vintageNoticeHeight - comparisonNoticeHeight)}
           focused={focused}
           interactive={surfacePointerInteractive}
           allowHistoricalBackfill

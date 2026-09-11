@@ -45,6 +45,7 @@ import {
 } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
+import { clipPriceComparison, priceComparisonSeriesIds, resolvePriceComparison } from "./price-comparison";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
 import { resolutionForExplicitMarketPeriods } from "./market-resolution";
@@ -395,22 +396,26 @@ export function seedChartResolutionResult(
     for (const point of entry.points) latest = Math.max(latest, point.date.getTime());
   }
   const bounds = requestedBounds(spec, referenceNow ?? new Date(latest));
-  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, bounds));
+  const priceComparison = resolvePriceComparison(spec, series, bounds);
+  const comparisonBounds = priceComparison && priceComparison.start !== null
+    ? priceComparison : bounds;
+  const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
   const studies = resolveStudies(series, spec.studies);
   const bufferedSeries = [
     ...baseSeries,
-    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, bounds),
-  ];
+    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds),
+  ].map((entry) => clipPriceComparison(entry, priceComparison));
   const visible = bufferedSeries.map((entry) => {
     const clipped = bounds.start !== null && bounds.end !== null
       ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
       : { ...entry, points: filterPoints(entry.points, bounds) };
-    return limitSeriesObservations(spec, clipped);
+    return clipPriceComparison(limitSeriesObservations(spec, clipped), priceComparison);
   });
   return {
     series: visible,
+    ...(priceComparison ? { priceComparison } : {}),
     legendSeries: visible,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
     ...((explicitBounds(spec) !== null || spec.viewport.maxPoints === undefined)
@@ -418,7 +423,7 @@ export function seedChartResolutionResult(
       ? { viewport: { start: new Date(bounds.start), end: new Date(bounds.end) } } : {}),
     loading: true,
     errors: studies.errors,
-    warnings: studies.warnings,
+    warnings: [...studies.warnings, ...(priceComparison ? [priceComparison.notice] : [])],
     resolution: spec.viewport.resolution === "auto"
       ? getPresetResolution(spec.viewport.range)
       : spec.viewport.resolution,
@@ -577,12 +582,13 @@ function mergeHistory(
   now: number,
   liveBarResolution?: ManualChartResolution,
   exchange?: string,
+  appendQuote = true,
 ): TickerFinancials {
   const base = financials ?? emptyFinancials();
   const quote = latestQuote(base.quote, quoteOverride);
-  const priceHistory = appendLiveQuotePoint(history, quote, liveBarResolution
+  const priceHistory = appendQuote ? appendLiveQuotePoint(history, quote, liveBarResolution
     ? { now, mode: "ohlc", resolution: liveBarResolution, exchange }
-    : { now });
+    : { now }) : history;
   return { ...base, quote, priceHistory };
 }
 
@@ -914,6 +920,7 @@ export async function resolveChartSpecData(
   }
 
   const referenceNow = sources.now ?? new Date();
+  const comparedSeriesIds = new Set(priceComparisonSeriesIds(spec) ?? []);
   const initialVisibleBounds = requestedBounds(spec, referenceNow);
 
   const loadFinancials = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
@@ -1174,7 +1181,10 @@ export async function resolveChartSpecData(
       // charts must merge a live quote into the same active price bar.
       const liveBarResolution = initialResolution;
       const merged = history
-        ? mergeHistory(financials, history, quoteOverride, referenceNow.getTime(), liveBarResolution, resolvedSource.instrument.exchange)
+        // A streamed quote may update only one leg, even inside the same weekly
+        // bar. Comparison endpoints therefore use source history observations;
+        // quotes still provide currency/type without rewriting their prices.
+        ? mergeHistory(financials, history, quoteOverride, referenceNow.getTime(), liveBarResolution, resolvedSource.instrument.exchange, !comparedSeriesIds.has(seriesSpec.id))
         : quoteOverride && financials
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;
@@ -1211,10 +1221,13 @@ export async function resolveChartSpecData(
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
     : followLatestMarketObservation(initialVisibleBounds, rawSeries);
+  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds);
+  const comparisonBounds = priceComparison && priceComparison.start !== null
+    ? priceComparison : bounds;
   const resolution = initialResolution;
   const baseSeries = rawSeries
     .filter((entry) => visibleSeriesIds.has(entry.id))
-    .map((entry) => prepareBaseSeriesForStudies(entry, bounds, false, requestVisibleBounds));
+    .map((entry) => prepareBaseSeriesForStudies(entry, comparisonBounds, false, priceComparison ? undefined : requestVisibleBounds));
   // Studies run over the same loaded history their base series carries. Clipping
   // them to the requested window instead left a study with no observations
   // wherever the accumulated buffer had already been panned past, so a study's
@@ -1231,21 +1244,24 @@ export async function resolveChartSpecData(
         studyResult.series,
         spec.studies,
         rawSeries,
-        bounds,
-        requestVisibleBounds,
+        comparisonBounds,
+        priceComparison ? undefined : requestVisibleBounds,
       ),
     ];
     warnings.push(...studyResult.warnings);
     errors.push(...studyResult.errors);
   }
 
-  const bufferedSeries = assignAxes(resolved, [...spec.series, ...spec.studies], warnings);
+  const bufferedSeries = assignAxes(resolved, [...spec.series, ...spec.studies], warnings)
+    .map((entry) => clipPriceComparison(entry, priceComparison));
   resolved = bufferedSeries.map((entry) => (
     bounds.start !== null && bounds.end !== null
       ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
       : { ...entry, points: filterPoints(entry.points, bounds) }
   ));
   resolved = resolved.map((entry) => limitSeriesObservations(spec, entry));
+  resolved = resolved.map((entry) => clipPriceComparison(entry, priceComparison));
+  if (priceComparison) warnings.push(priceComparison.notice);
   warnings.push(...financialPeriodCoverageWarnings(financialPeriodCoverage(spec, resolved)));
   const resolvedById = new Map(resolved.map((entry) => [entry.id, entry] as const));
   const hiddenBaseSeries = rawSeries
@@ -1281,6 +1297,7 @@ export async function resolveChartSpecData(
     : undefined;
   return {
     series: resolved,
+    ...(priceComparison ? { priceComparison } : {}),
     ...(sharedSupport.length > 0 ? { resolutionSupport: sharedSupport } : {}),
     legendSeries,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),

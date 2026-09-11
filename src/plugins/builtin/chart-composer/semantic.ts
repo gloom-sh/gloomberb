@@ -84,6 +84,7 @@ export function chartComposerSemanticMetadata(
     loading: resolution.loading,
     errors: resolution.errors,
     warnings: resolution.warnings,
+    priceComparison: resolution.priceComparison ?? null,
     resolutionSupport: resolution.resolutionSupport ?? null,
     viewport: viewportEvidence(runtimeViewport ?? resolution.viewport),
     authoredViewport: viewportEvidence(resolution.viewport),
