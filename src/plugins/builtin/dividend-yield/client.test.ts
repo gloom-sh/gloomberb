@@ -69,6 +69,58 @@ describe("extractDividendFields", () => {
 });
 
 describe("cash distribution calculations", () => {
+  test.each([
+    ["SHY:XNAS", "", "SHY", "USD", 0.244],
+    ["LQD:ARCX", "NASDAQ", "LQD", "USD", 0.444],
+    ["VOD:XLON", "NASDAQ", "VOD.L", "GBp", 2.03],
+    ["SHOP:XTSE", "NASDAQ", "SHOP.TO", "CAD", 0.1],
+    ["SAP:XFRA", "", "SAP.F", "EUR", 2.35],
+    ["BRK.B:XNYS", "", "BRK-B", "USD", 0.1],
+    ["SHY", "", "SHY", "USD", 0.244],
+    ["VOD.L", "", "VOD.L", "GBp", 2.03],
+  ] as const)("loads the selected dividend listing %s with separate exchange %s", async (symbol, exchange, expected, currency, amount) => {
+    const requested: string[] = [];
+    const timestamp = Math.floor((Date.now() - 86_400_000) / 1000);
+    setHttpFetchTransport(async (url) => {
+      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
+      if (url.includes("getcrumb")) return new Response("fixture-crumb");
+      const sourceSymbol = decodeURIComponent(new URL(url).pathname.split("/").at(-1)!);
+      requested.push(sourceSymbol);
+      if (sourceSymbol !== expected) return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
+      if (url.includes("/chart/")) return Response.json({ chart: { result: [{
+        meta: { symbol: expected, currency, regularMarketPrice: 100 }, timestamp: [timestamp],
+        indicators: { quote: [{ close: [100] }] }, events: { dividends: { [timestamp]: { date: timestamp, amount } } },
+      }] } });
+      return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency } }] } });
+    });
+
+    const data = await fetchDividendData(symbol, null, exchange);
+    expect(requested).toEqual([expected, expected]);
+    expect(data.historyAvailable).toBe(true);
+    expect(data.payments).toHaveLength(1);
+    expect(data.payments[0]?.amount).toBeCloseTo(amount / (currency === "GBp" ? 100 : 1), 12);
+    expect(data.currency).toBe(currency === "GBp" ? "GBP" : currency);
+  });
+
+  test("an unavailable explicitly selected foreign listing does not fall back to another venue", async () => {
+    const requested: string[] = [];
+    setHttpFetchTransport(async (url) => {
+      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
+      if (url.includes("getcrumb")) return new Response("fixture-crumb");
+      requested.push(decodeURIComponent(new URL(url).pathname.split("/").at(-1)!));
+      return Response.json({ chart: { result: [] }, quoteSummary: { result: [] } });
+    });
+    await expect(fetchDividendData("SAP:XFRA", null)).rejects.toThrow("No dividend data found");
+    expect(requested).toEqual(["SAP.F", "SAP.F"]);
+  });
+
+  test.each(["SHY:UNKNOWN", "VOD.L:XNAS"])("rejects unmapped or contradictory listing %s without a US fallback", async (symbol) => {
+    const requested: string[] = [];
+    setHttpFetchTransport(async (url) => { requested.push(url); throw new Error("Unexpected source request"); });
+    await expect(fetchDividendData(symbol, null)).rejects.toThrow("selected listing");
+    expect(requested).toEqual([]);
+  });
+
   test("uses recent payment cadence and does not imply suspended dividends still pay quarterly", () => {
     const quarterly = Array.from({ length: 8 }, (_, quarter) => payment(
       new Date(Date.UTC(2024, 8 + quarter * 3, 25)).toISOString().slice(0, 10),

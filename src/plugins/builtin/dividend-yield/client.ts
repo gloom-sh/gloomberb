@@ -7,6 +7,7 @@ import type { QuoteSummaryResponse } from "../../../sources/yahoo-finance/types"
 import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarYearsBefore } from "./calendar";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 export const YAHOO_DIVIDENDS_CONNECTION_ID = "yahoo-dividends";
 const yahoo = new YahooHttpClient();
@@ -116,7 +117,11 @@ export async function fetchDividendData(
   exchange = "",
   currentPriceCurrency?: string,
 ): Promise<DividendData> {
-  const symbols = exchange ? getYahooSymbolsToTry(symbol, exchange) : [symbol];
+  const qualified = parsePublicTickerKey(symbol);
+  const symbols = qualified.exchange
+    ? getYahooSymbolsToTry(symbol, exchange, { exactExchange: true })
+    : exchange ? getYahooSymbolsToTry(symbol, exchange) : [symbol];
+  if (symbols.length === 0) throw new Error(`Dividend source does not support the selected listing ${symbol}`);
   let lastError: unknown;
   for (const yahooSymbol of symbols) {
     try {

@@ -56,13 +56,26 @@ export function getYahooSymbol(ticker: string, exchange: string): string {
   return `${normalizeYahooTicker(ticker, canonical)}${suffix}`;
 }
 
-export function getYahooSymbolsToTry(ticker: string, exchange: string): string[] {
+export function getYahooSymbolsToTry(
+  ticker: string,
+  exchange: string,
+  options: { exactExchange?: boolean } = {},
+): string[] {
   const qualified = parsePublicTickerKey(ticker);
   ticker = qualified.symbol;
   exchange = qualified.exchange || exchange;
-  if (tickerHasYahooSuffix(ticker)) return [ticker];
-
   const canonical = canonicalExchange(exchange) || exchange;
+  // Explicit listings may use symbol spelling alternatives, but must not
+  // resolve an unknown exchange to the default US suffix or try another venue.
+  const exactSuffix = options.exactExchange
+    ? Object.entries(EXCHANGE_SUFFIX_MAP).find(([key]) => canonicalExchange(key) === canonical)?.[1]
+    : undefined;
+  if (options.exactExchange && exactSuffix === undefined) return [];
+  if (tickerHasYahooSuffix(ticker)) {
+    if (options.exactExchange && (!exactSuffix || !ticker.endsWith(exactSuffix))) return [];
+    return [ticker];
+  }
+
   const normalized = normalizeYahooTicker(ticker, canonical);
   const dotVariant = normalized.includes(".") ? normalized.replace(/\./g, "-") : null;
 
@@ -79,16 +92,18 @@ export function getYahooSymbolsToTry(ticker: string, exchange: string): string[]
     return Array.from(symbols);
   }
 
-  const fallbacks = EXCHANGE_FALLBACKS[canonical] ?? EXCHANGE_FALLBACKS[exchange];
+  const fallbacks = options.exactExchange
+    ? undefined
+    : EXCHANGE_FALLBACKS[canonical] ?? EXCHANGE_FALLBACKS[exchange];
   if (fallbacks) {
     const results = fallbacks.map((suffix) => `${normalized}${suffix}`);
     if (dotVariant) results.unshift(...fallbacks.map((suffix) => `${dotVariant}${suffix}`));
     return results;
   }
 
-  const primary = getYahooSymbol(ticker, canonical);
+  const primary = options.exactExchange ? `${normalized}${exactSuffix}` : getYahooSymbol(ticker, canonical);
   if (dotVariant) {
-    const suffix = EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
+    const suffix = exactSuffix ?? EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
     return [`${dotVariant}${suffix}`, primary];
   }
   return [primary];
