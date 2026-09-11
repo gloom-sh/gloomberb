@@ -1,8 +1,18 @@
+/**
+ * The account gates panes share.
+ *
+ * `SignInWall` is the one wall a pane shows when it cannot load anything until
+ * the account is right: same headline grammar, same explanation slot, same two
+ * actions, wherever it appears. A pane only supplies the phrase that finishes
+ * "Sign in to ...", so the copy stays in one voice instead of drifting per pane.
+ * `InlineAuthActions` is the other shape: a row of actions sitting inside a
+ * surface that still works signed out, such as the chat composer.
+ */
 import { Box, Text } from "../../../ui";
-import { Button } from "../../../components";
+import { Button, EmptyState } from "../../../components";
 import { usePluginAppActions } from "../../runtime";
 import { colors } from "../../../theme/colors";
-import { t } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { requestAuthDialog } from "./auth-dialog";
 import type { AccountMode } from "./auth-model";
 
@@ -28,31 +38,41 @@ export function InlineAuthActions({ showSignup = true }: { showSignup?: boolean 
   );
 }
 
-export function CloudAuthNotice({
-  message,
-  showSignup = true,
-  needsVerification = false,
-}: {
-  message: string;
-  showSignup?: boolean;
-  /** Forces the verification branch and uses `message` as its headline. */
+export interface SignInWallProps {
+  /**
+   * Finishes the headline: "Sign in to {action}." / "Verify your email to
+   * {action}.". A lowercase verb phrase, no trailing period.
+   */
+  action: string;
+  /** The session exists but the address is unconfirmed, so signing in again solves nothing. */
   needsVerification?: boolean;
-}) {
+  /** One line for anything the pane still has to explain; most panes need none. */
+  hint?: string;
+}
+
+/** The account wall for a pane body that cannot render until the account is right. */
+export function SignInWall({ action, needsVerification = false, hint }: SignInWallProps) {
   const { openCommandBar } = usePluginAppActions();
 
-  if (needsVerification || /verification/i.test(message)) {
-    return (
-      <Box flexDirection="column" padding={1} gap={1}>
-        <Text fg={colors.positive}>{needsVerification ? message : t("Verify your email to use Cloud tweets.")}</Text>
-        <Button label={t("Resend Verification Email")} variant="secondary" onPress={() => openCommandBar("Resend Verification Email")} />
-      </Box>
-    );
-  }
-
   return (
-    <Box flexDirection="column" padding={1} gap={1}>
-      <Text fg={colors.textDim}>{message}</Text>
-      <InlineAuthActions showSignup={showSignup} />
+    <Box flexDirection="column" paddingX={1} paddingY={1} data-gloom-ui="sign-in-wall">
+      <EmptyState
+        title={needsVerification
+          ? tf("Verify your email to {action}.", { action: t(action) })
+          : tf("Sign in to {action}.", { action: t(action) })}
+        hint={hint}
+        actions={needsVerification ? (
+          <Button
+            label={t("Resend Verification Email")}
+            onPress={() => openCommandBar("Resend Verification Email")}
+          />
+        ) : (
+          <>
+            <Button label={t("Log in")} variant="primary" onPress={() => openAuth(openCommandBar, "login")} />
+            <Button label={t("Sign up free")} variant="secondary" onPress={() => openAuth(openCommandBar, "signup")} />
+          </>
+        )}
+      />
     </Box>
   );
 }

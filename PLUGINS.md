@@ -897,6 +897,8 @@ Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book 
 </PaneStatusBody>
 ```
 
+A built-in pane whose body cannot render until the account is right renders `SignInWall` from `src/plugins/builtin/cloud/auth-actions.tsx` rather than its own prompt. The pane passes only the phrase that finishes the headline (`action="browse earnings call transcripts"`) plus `needsVerification` when the session exists but the address is unconfirmed; the component owns the copy, the actions, and the verification branch.
+
 Use `usePaneSettingValue(key, fallback)` from `gloomberb/react` for persistent pane settings and `usePaneTitle(title)` for a content-derived pane title. They update the active saved layout without requiring direct app-config writes. Both accept an optional explicit pane ID.
 
 Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Preserve existing pane-specific action shortcuts instead of duplicating them in body toolbars. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:

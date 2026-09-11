@@ -30,7 +30,7 @@ import type {
   CloudSearchDocument,
   CloudSearchHit,
 } from "../../../api-client";
-import { CloudAuthNotice } from "../cloud/auth-actions";
+import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../shared/plan-access";
 import {
@@ -504,14 +504,11 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     showHint: !!openHit?.url,
   });
 
-  if (signInRequired) {
-    return <CloudAuthNotice message="Sign in to search transcripts, news, and filings." />;
-  }
-  if (verificationRequired) {
+  if (signInRequired || verificationRequired) {
     return (
-      <CloudAuthNotice
-        needsVerification
-        message="Verify your email to search transcripts, news, and filings."
+      <SignInWall
+        action="search transcripts, news, and filings"
+        needsVerification={verificationRequired}
       />
     );
   }

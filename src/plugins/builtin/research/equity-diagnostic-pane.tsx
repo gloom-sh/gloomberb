@@ -17,7 +17,7 @@ import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { formatTimeAgo, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
-import { CloudAuthNotice } from "../cloud/auth-actions";
+import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../shared/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
@@ -507,11 +507,8 @@ export function EquityDiagnosticView({ focused, width }: {
         />
       );
     }
-    if (signInRequired) {
-      return <CloudAuthNotice message={t("Sign in to run the Equity Diagnostic.")} />;
-    }
-    if (verificationRequired) {
-      return <CloudAuthNotice needsVerification message={t("Verify your email to run the Equity Diagnostic.")} />;
+    if (signInRequired || verificationRequired) {
+      return <SignInWall action="run the Equity Diagnostic" needsVerification={verificationRequired} />;
     }
     if (proRequired) {
       return (

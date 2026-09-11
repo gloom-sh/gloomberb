@@ -419,17 +419,22 @@ export function WebSegmentedControl({
     if (next) onChange?.(next.value);
   };
 
+  // Callers place the control on a single grid row, so its border and padding
+  // have to live inside one cell: sized any taller it bled over the pane title
+  // and the table header below it.
   return (
     <Box
       flexDirection="row"
       flexWrap={wrap ? "wrap" : "nowrap"}
       width={width}
+      height={wrap ? undefined : 1}
+      alignItems="center"
       backgroundColor={panelFill(colors)}
       role="radiogroup"
       style={{
         border: `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
         borderRadius: CONTROL_RADIUS,
-        padding: 2,
+        padding: 1,
       }}
     >
       {options.map((option) => {
@@ -437,7 +442,6 @@ export function WebSegmentedControl({
         return (
           <Box
             key={option.value}
-            height={1}
             flexDirection="row"
             alignItems="center"
             justifyContent="center"
@@ -463,14 +467,16 @@ export function WebSegmentedControl({
               }
             }}
             style={{
+              alignSelf: wrap ? undefined : "stretch",
               borderRadius: CONTROL_RADIUS - 2,
-              paddingInline: 10,
+              paddingInline: 8,
               cursor: option.disabled ? "default" : "pointer",
             }}
           >
             <Text
               fg={option.disabled ? colors.textMuted : active ? colors.selectedText : colors.textDim}
               attributes={active ? TextAttributes.BOLD : 0}
+              style={{ lineHeight: "normal" }}
             >
               {option.label}
             </Text>
