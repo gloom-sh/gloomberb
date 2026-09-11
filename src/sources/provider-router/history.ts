@@ -374,7 +374,7 @@ export class ProviderRouterHistoryRoutes {
     const usableCached = cachedValue.length > 0 && cached && !cached.expired && !cachedHistoryStale;
     if (usableCached && !forceRefresh) {
       const exactHit = request.exactCacheVariantKeys.includes(cached.variantKey);
-      if (cached.stale && exactHit) {
+      if (cached.stale) {
         scheduleRouterRevalidation(this.historyRefreshInFlight, request.identity.revalidationKey, () => this.refreshHistory(request));
       }
       return exactHit || !request.requestedRange

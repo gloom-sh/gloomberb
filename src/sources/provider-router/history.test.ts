@@ -402,6 +402,48 @@ describe("AssetDataRouter chart history", () => {
     persistence.close();
   });
 
+  test("revalidates a stale wider cache once for concurrent shorter requests and persists the correction", async () => {
+    const persistence = new AppPersistence(createTempDbPath("stale-wider-chart-cache"));
+    const date = new Date(Date.now() - 24 * 60 * 60_000);
+    const stalePoint = { date, open: 764.08, high: 758.555, low: 757.57, close: 758.15 };
+    const correctedPoint = { date, open: 758.03, high: 760.11, low: 756.64, close: 757.83 };
+    let resolveFresh!: (points: typeof stalePoint[]) => void;
+    const fresh = new Promise<typeof stalePoint[]>((resolve) => { resolveFresh = resolve; });
+    let calls = 0;
+    const provider = {
+      ...fallbackProvider,
+      async getPriceHistoryForResolution(_symbol: string, _exchange: string, range: string) {
+        if (range === "5Y") return [stalePoint];
+        calls += 1;
+        return fresh;
+      },
+    };
+    try {
+      await new AssetDataRouter(provider, [], persistence.resources)
+        .getPriceHistoryForResolution("SPY", "NYSEARCA", "5Y", "1d");
+      persistence.database.connection.query("UPDATE resource_cache SET stale_at = ?").run(Date.now() - 1);
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      const initial = await Promise.all(Array.from({ length: 2 }, () =>
+        router.getPriceHistoryForResolution("SPY", "NYSEARCA", "1M", "1d")));
+      expect(initial.map((points) => points[0]?.close)).toEqual([758.15, 758.15]);
+      await Promise.resolve();
+      expect(calls).toBe(1);
+      resolveFresh([correctedPoint]);
+      await fresh;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      const reloaded = await new AssetDataRouter(provider, [], persistence.resources)
+        .getPriceHistoryForResolution("SPY", "NYSEARCA", "1M", "1d");
+      expect(reloaded.map(({ date: _date, ...point }) => point)).toEqual([
+        { open: 758.03, high: 760.11, low: 756.64, close: 757.83 },
+      ]);
+      expect(calls).toBe(1);
+    } finally {
+      resolveFresh?.([]);
+      await fresh;
+      persistence.close();
+    }
+  });
+
   test("falls back to later providers for fixed-resolution chart history", async () => {
     const cloudProvider: DataProvider = {
       ...fallbackProvider,
