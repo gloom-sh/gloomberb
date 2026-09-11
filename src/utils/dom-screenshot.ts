@@ -136,10 +136,52 @@ function fontFor(style: CSSStyleDeclaration): string {
   ].join(" ");
 }
 
-function textBaselineOffset(style: CSSStyleDeclaration, rect: DOMRect): number {
+function textBaselineOffset(style: CSSStyleDeclaration, rect: Pick<DOMRect, "height">): number {
   const fontSize = px(style.fontSize) || rect.height;
   const lineHeight = px(style.lineHeight) || rect.height || fontSize;
   return Math.max(fontSize * 0.78, (lineHeight + fontSize * 0.58) / 2);
+}
+
+type TextRect = Pick<DOMRect, "left" | "top" | "width" | "height">;
+
+/** Recover the browser's actual line breaks, including font and inline layout. */
+export function renderedTextFragments(
+  value: string,
+  measure: (start: number, end: number) => readonly TextRect[],
+): { value: string; rect: TextRect }[] {
+  const offsets = [0];
+  for (const character of value) offsets.push(offsets.at(-1)! + character.length);
+  const fragments: { value: string; rect: TextRect }[] = [];
+  let start = 0;
+  const visible = (rects: readonly TextRect[]) => rects.filter((rect) => rect.width > 0 && rect.height > 0);
+  while (start < offsets.length - 1) {
+    const remaining = visible(measure(offsets[start]!, value.length));
+    const first = remaining[0];
+    if (!first) break;
+    // Binary search by code-point boundaries; measuring every glyph in long
+    // research notes would add unnecessary layout work to each screenshot.
+    let low = start + 1;
+    let high = offsets.length - 1;
+    let end = low;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const rects = visible(measure(offsets[start]!, offsets[middle]!));
+      if (rects.every((rect) => Math.abs(rect.top - first.top) < 0.5)) {
+        end = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    const rects = visible(measure(offsets[start]!, offsets[end]!));
+    if (rects.length) {
+      const left = Math.min(...rects.map((rect) => rect.left));
+      fragments.push({ value: value.slice(offsets[start], offsets[end]), rect: {
+        left, top: first.top, height: Math.max(...rects.map((rect) => rect.height)),
+        width: Math.max(...rects.map((rect) => rect.left + rect.width)) - left,
+      } });
+    }
+    start = end;
+  }
+  return fragments;
 }
 
 function drawTextNode(
@@ -157,8 +199,7 @@ function drawTextNode(
   const range = document.createRange();
   range.selectNodeContents(textNode);
   const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
-  range.detach();
-  if (rects.length === 0) return;
+  if (rects.length === 0) { range.detach(); return; }
 
   context.fillStyle = style.color;
   context.font = fontFor(style);
@@ -166,17 +207,21 @@ function drawTextNode(
   context.textBaseline = "alphabetic";
   context.direction = style.direction === "rtl" ? "rtl" : "ltr";
 
-  const explicitLines = value.split(/\r?\n/);
-  if (explicitLines.length === rects.length) {
-    rects.forEach((rect, index) => {
-      const line = explicitLines[index] ?? "";
-      if (line.length === 0) return;
-      context.fillText(line, rect.left - origin.left, rect.top - origin.top + textBaselineOffset(style, rect));
-    });
-    return;
-  }
-
-  context.fillText(value, rects[0]!.left - origin.left, rects[0]!.top - origin.top + textBaselineOffset(style, rects[0]!));
+  try {
+    const fragments = rects.length === 1 ? [{ value, rect: rects[0]! }]
+      : renderedTextFragments(value, (start, end) => {
+        range.setStart(textNode, start);
+        range.setEnd(textNode, end);
+        return Array.from(range.getClientRects());
+      });
+    for (const fragment of fragments) {
+      const text = style.whiteSpace === "normal" || style.whiteSpace === "nowrap"
+        ? fragment.value.replace(/\s+/g, " ") : fragment.value.replace(/\r?\n/g, "");
+      if (!text) continue;
+      const rect = fragment.rect;
+      context.fillText(text, rect.left - origin.left, rect.top - origin.top + textBaselineOffset(style, rect));
+    }
+  } finally { range.detach(); }
 }
 
 function drawCanvasElement(
