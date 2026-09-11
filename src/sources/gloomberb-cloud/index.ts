@@ -148,7 +148,7 @@ function mapCloudPriceHistory(
     ?? ""
   ).trim().toLowerCase();
   if (
-    /(min|h)$/i.test(interval)
+    /^\d+(min|h)$/i.test(interval)
     && upstream !== "yahoo"
     && hasMalformedIntradayHistory(points)
   ) {
@@ -433,7 +433,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const interval = toCloudInterval(resolution);
     const endDate = new Date();
     const startDate = getRangeStartDate(bufferRange, endDate);
-    const includeTime = /(min|h)$/i.test(interval);
+    const includeTime = /^\d+(min|h)$/i.test(interval);
     const response = await withCloudFallback(
       () => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
@@ -456,7 +456,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(barSize);
-    const includeTime = /(min|h)$/i.test(interval);
+    const includeTime = /^\d+(min|h)$/i.test(interval);
     const response = await withCloudFallback(
       () => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,

@@ -480,6 +480,22 @@ describe("GloomberbCloudProvider", () => {
     });
   });
 
+  test("monthly requests use calendar dates even near a US timezone boundary", async () => {
+    const requests: Array<Record<string, string | number | undefined>> = [];
+    apiClient.getCloudHistory = async (_symbol, _exchange, params = {}) => {
+      requests.push(params);
+      return { status: "success", data: [{ date: "2026-08-01", close: 710 }] };
+    };
+    const provider = new GloomberbCloudProvider();
+    const rows = await provider.getDetailedPriceHistory("QQQ", "NASDAQ", new Date("2026-01-01T00:00:00Z"), new Date("2026-09-01T00:00:00Z"), "1mo");
+    expect(requests[0]).toEqual({ interval: "1month", startDate: "2026-01-01", endDate: "2026-09-01" });
+    expect(rows[0]?.close).toBe(710);
+    await provider.getPriceHistoryForResolution("QQQ", "NASDAQ", "ALL", "1mo");
+    expect(requests[1]?.interval).toBe("1month");
+    expect(requests[1]?.startDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(requests[1]?.endDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
   test("fetches fixed-resolution chart history with the requested interval", async () => {
     apiClient.ensureVerifiedSession = async () => verifiedUser;
 
