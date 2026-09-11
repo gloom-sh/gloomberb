@@ -701,8 +701,14 @@ function baseSecuritySeries(
   const currency = statementCurrency ? statementCurrency.currency : financials.quote?.currency || quoteMetadata?.currency;
   const assetKind = resolveAssetDisplayKind({ assetCategory: financials.quote?.instrumentType || quoteMetadata?.instrumentType });
   const volumeUnit = assetKind === "equity" ? "shares" as const : assetKind === "contract" ? "contracts" as const : undefined;
+  // A price quote establishes its currency, but only instrument metadata can
+  // establish a per-share or per-crypto-unit basis. This does not establish the
+  // provider's volume denomination or a derivative's contract multiplier.
+  const unitTemplate = field.unitGroup === "price" && isMarketFieldId(field.id)
+    ? `currency${assetKind === "equity" ? "/share" : assetKind === "crypto" ? "/unit" : ""}`
+    : field.unit;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
-    : field.unit.startsWith("currency") && currency ? field.unit.replace("currency", currency) : field.unit;
+    : unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate;
   const currencyUnitGroup = field.unit.startsWith("currency") && currency
     ? `${field.unitGroup}:${currency}`
     : field.unitGroup;
