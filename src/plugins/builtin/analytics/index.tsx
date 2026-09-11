@@ -200,12 +200,8 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     [columnContext, financials, portfolioTickers],
   );
   const allocationNotices = [
-    { text: "Weights use gross position value; cash excluded.", tone: "muted" as const },
     ...(sectorAllocation.unvaluedSymbols.length > 0 ? [{
       text: `Weights unavailable: missing prices or FX for ${sectorAllocation.unvaluedSymbols.join(", ")}.`, tone: "warning" as const,
-    }] : []),
-    ...(sectorAllocation.fundSymbols.length > 0 ? [{
-      text: "Fund constituents and ETF overlap are unavailable; funds are grouped separately.", tone: "muted" as const,
     }] : []),
   ];
   const sectorRows = sectorAllocation.rows;
@@ -253,7 +249,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const noticeWidth = Math.max(1, width - 2);
   const noticeHeight = allocationNotices.reduce((total, notice) => total + wrapTextLines(notice.text, noticeWidth).length, 0)
     + (historyNote ? wrapTextLines(historyNote, noticeWidth).length : 0);
-  // Keep table rows available after the history method and coverage notices wrap.
+  // Keep table rows available after active data warnings wrap.
   const availableHistoryChartHeight = height - metricsHeight - 7 - noticeHeight;
   const historyChartHeight = performanceChartPoints.length >= 2 && availableHistoryChartHeight >= 5
     ? Math.min(8, availableHistoryChartHeight)

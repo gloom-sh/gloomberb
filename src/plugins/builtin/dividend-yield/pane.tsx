@@ -102,7 +102,6 @@ function DividendSummary({
   width,
   chartPoints,
   hasHistory,
-  notes,
   warnings,
 }: {
   metrics: DividendMetrics;
@@ -110,7 +109,6 @@ function DividendSummary({
   width: number;
   chartPoints: ProjectedChartPoint[];
   hasHistory: boolean;
-  notes: string[];
   warnings: string[];
 }) {
   const metricRows = buildMetricRows(metrics, currency);
@@ -139,7 +137,6 @@ function DividendSummary({
         <Box paddingX={1}><Notice>No cash distributions reported in the past 12 months.</Notice></Box>
       ) : null}
       {warnings.map((warning) => <Box key={warning} paddingX={1}><Notice>{warning}</Notice></Box>)}
-      {notes.map((note) => <Box key={note} paddingX={1}><Notice tone="muted">{note}</Notice></Box>)}
       {chartPoints.length >= 2 && (
         <Box flexDirection="column" paddingX={1} height={chartHeight}>
           <StaticChartSurface
@@ -258,7 +255,6 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
           width={width}
           chartPoints={chartPoints}
           hasHistory={payments.length > 0}
-          notes={data?.notes ?? []}
           warnings={sourceWarnings}
         />
       ) : undefined}

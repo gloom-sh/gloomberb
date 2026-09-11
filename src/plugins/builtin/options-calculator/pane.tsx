@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { KeyValueRow, Prose, SegmentedControl, usePaneFooter } from "../../../components";
+import { KeyValueRow, SegmentedControl, usePaneFooter } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneInstance, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
@@ -211,10 +211,6 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
           <KeyValueRow label="Rho" value={formatSigned(valuation.rhoPerPoint, 4)} detail="per rate pt" width={metricWidth} />
         </Box>
       </ScrollBox>
-
-      <Box paddingX={1} flexShrink={0}>
-        <Prose text="European exercise only: no early exercise or discrete dividends." width={Math.max(8, width - 2)} color={colors.textMuted} />
-      </Box>
     </Box>
   );
 }

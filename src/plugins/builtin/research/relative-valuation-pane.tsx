@@ -1,4 +1,4 @@
-import { formatPriceEarnings, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
+import { formatPriceEarnings } from "../../../utils/price-earnings";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, TextAttributes } from "../../../ui";
@@ -153,8 +153,6 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const missingFx = rows.some((row, index) => row.marketCap != null && comparableRows[index]?.marketCap == null);
   const sortedRows = useMemo(() => sortRelativeRows(comparableRows, sortPreference), [comparableRows, sortPreference]);
 
-  const hasNonComparablePE = rows.some((row) => Object.values(row.reportedMultiples).some((value) => value != null && value <= 0));
-  const hasFundamentalCap = rows.some((row) => row.marketCapProvenance?.kind === "fundamentals");
   const selectedRow = sortedRows[selectedIdx];
   const selectedCapNotice = selectedRow?.marketCapProvenance?.kind === "fundamentals"
     ? `${selectedRow.symbol} cap: ${describeFundamentalMarketCap(selectedRow.marketCapProvenance)}.` : undefined;
@@ -215,10 +213,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onRootKeyDown={handleKeyDown}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={hasNonComparablePE || hasFundamentalCap ? <Box paddingX={1} flexShrink={0} flexDirection="column">
-        {hasNonComparablePE ? <Prose text={PRICE_EARNINGS_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} /> : null}
-        {hasFundamentalCap ? <Prose text="Some market caps use financial snapshots; quote time does not date these values. Select a row for its source." width={Math.max(8, width - 2)} color={colors.textDim} /> : null}
-        {selectedCapNotice ? <Prose text={selectedCapNotice} width={Math.max(8, width - 2)} color={colors.textDim} /> : null}
+      rootBefore={selectedCapNotice ? <Box paddingX={1} flexShrink={0} flexDirection="column">
+        <Prose text={selectedCapNotice} width={Math.max(8, width - 2)} color={colors.textDim} />
       </Box> : undefined}
       columns={columns}
       items={sortedRows}

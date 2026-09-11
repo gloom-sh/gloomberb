@@ -37,7 +37,6 @@ import {
 } from "../sec/filing-content";
 import {
   buildEventRows,
-  CORPORATE_ACTION_COVERAGE,
   eventSourceNotice,
   formatEventMetric,
   type EventRow,
@@ -561,9 +560,6 @@ export function CorporateActionsView({
           {sourceNotice && <Box {...(sourceNotice.failed ? { "data-gloom-status": "error" } : {})}>
             <Prose width={width - 2} color={sourceNotice.failed ? colors.negative : colors.textDim} text={sourceNotice.text} />
           </Box>}
-          {rows.some((row) => row.status === "Earnings") && <Prose width={width - 2} color={colors.textDim}
-            text="Event EPS and consensus use an unspecified accounting basis; TTM uses statements. Period ends are not announcement dates. Open a row for source details." />}
-          {variant === "corporate-actions" && <Prose text={CORPORATE_ACTION_COVERAGE} width={Math.max(width - 2, 12)} color={colors.textDim} />}
         </Box>
       ) : undefined}
       rootWidth={width}

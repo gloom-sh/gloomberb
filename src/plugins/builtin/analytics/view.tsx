@@ -130,7 +130,7 @@ export function PortfolioHistorySection({
 
   return manual ? (
     <Box paddingX={1} flexDirection="column" flexShrink={0}>
-      <Notice tone="muted">Manual portfolios have no cash-flow performance history. P&L covers current holdings. Reconcile corporate actions with PF → Set position; distributions are not credited.</Notice>
+      <Notice tone="muted">Account history unavailable for manual portfolios.</Notice>
     </Box>
   ) : null;
 }

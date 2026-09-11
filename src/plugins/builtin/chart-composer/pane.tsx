@@ -1,6 +1,5 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { wrapTextLines } from "../../../utils/text-wrap";
-import { isFundamentalFieldId } from "../../../time-series/field-catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import {
@@ -8,10 +7,11 @@ import {
   Prose,
   Tabs,
   usePaneFooter,
+  type PaneFooterPressEvent,
 } from "../../../components";
 import {
-  Button,
   MultiSelectDialogButton,
+  type MultiSelectDialogButtonHandle,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
@@ -118,6 +118,14 @@ interface ChartComposerSurfaceProps {
 }
 
 const QUICK_ADD_CAPTURE = "quick-add";
+
+function footerAnchorPoint(event?: PaneFooterPressEvent): { x: number; y: number } | undefined {
+  const x = event?.pixelX;
+  const y = event?.pixelY;
+  return typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)
+    ? { x, y }
+    : undefined;
+}
 
 function isPriceStudyTarget(spec: ChartSpec): boolean {
   return spec.series.some((series) => (
@@ -287,6 +295,8 @@ function ChartComposerSurface({
   const [quickAddWidth, setQuickAddWidth] = useState(14);
   const interactionCaptureRef = useRef(false);
   const interactionCaptureSourcesRef = useRef(new Set<string>());
+  const indicatorsDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
+  const formulasDialogRef = useRef<MultiSelectDialogButtonHandle | null>(null);
   const indicatorsDisabled = !isPriceStudyTarget(spec);
   const formulasDisabled = spec.series.filter((series) => series.visible !== false).length < 2;
   const setInteractionCaptured = useCallback((source: string, captured: boolean) => {
@@ -497,12 +507,10 @@ function ChartComposerSurface({
     }
   }, { enabled: focused && !dialogOpen });
 
-  const showVintageNotice = spec.series.some((entry) => entry.visible !== false
-    && entry.source.kind === "security" && isFundamentalFieldId(entry.source.fieldId));
-  const financialNotice = [FINANCIAL_VINTAGE_NOTICE, ...(resolution.warnings.includes(SEC_EPS_BASIS_NOTICE) ? [SEC_EPS_BASIS_NOTICE] : [])].join(" ");
-  const vintageNoticeHeight = showVintageNotice ? wrapTextLines(financialNotice, Math.max(8, width - 2)).length : 0;
   const comparisonNotice = resolution.priceComparison?.notice;
-  const comparisonNoticeHeight = comparisonNotice ? wrapTextLines(comparisonNotice, Math.max(8, width - 2)).length : 0;
+  const comparisonUnavailable = resolution.priceComparison?.start === null
+    ? "Comparison unavailable: need two shared dates and a nonzero baseline."
+    : null;
   const statusError = resolution.errors[0];
   // Failed series use their authored id in errors and their display label in warnings.
   const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
@@ -510,23 +518,46 @@ function ChartComposerSurface({
   const errorSeriesLabel = legendSeries?.find((entry) => entry.id === errorSeries?.id)?.label;
   const duplicateErrorNotices = new Set([statusError, errorMessage,
     errorSeriesLabel && errorMessage ? `${errorSeriesLabel}: ${errorMessage}` : undefined]);
+  // A failed shared window empties every compared leg; one comparison message explains it.
+  const comparisonEmptyNotices = new Set(comparisonUnavailable
+    ? resolution.legendSeries?.filter((entry) => resolution.priceComparison?.seriesIds.includes(entry.id))
+      .map((entry) => `${entry.label}: no observations in the selected date range.`)
+    : []);
   const statusWarnings = resolution.warnings.filter((warning) => (
     warning !== FINANCIAL_VINTAGE_NOTICE && warning !== SEC_EPS_BASIS_NOTICE && warning !== comparisonNotice
-    && !duplicateErrorNotices.has(warning)
+    && !duplicateErrorNotices.has(warning) && !comparisonEmptyNotices.has(warning)
   ));
-  const statusNotices = [...new Set([...(statusError ? [statusError] : []), ...statusWarnings])];
+  const statusNotices = [...new Set([...(statusError ? [statusError] : []), ...(comparisonUnavailable ? [comparisonUnavailable] : []), ...statusWarnings])];
   // Leave one cell for a scrollbar when a short pane cannot show the full notice.
   const statusNoticeWidth = Math.max(8, width - 3);
   const statusNoticeHeight = statusNotices.length > 0
     ? Math.min(statusNotices.reduce((lines, notice) => lines + wrapTextLines(notice, statusNoticeWidth).length, 0),
-      Math.max(1, height - 2 - vintageNoticeHeight - comparisonNoticeHeight - 4))
+      Math.max(1, height - 1 - 4))
     : 0;
+
+  // Footer registrations compare presentation, so their callbacks must read current actions.
+  const currentActionsRef = useRef({ openSeriesEditor, shareChart });
+  currentActionsRef.current = { openSeriesEditor, shareChart };
+  const footerSeries = useCallback(() => { void currentActionsRef.current.openSeriesEditor(); }, []);
+  const footerShare = useCallback(() => { currentActionsRef.current.shareChart(); }, []);
+  const openIndicators = useCallback((event?: PaneFooterPressEvent) => {
+    indicatorsDialogRef.current?.open(footerAnchorPoint(event));
+  }, []);
+  const openFormulas = useCallback((event?: PaneFooterPressEvent) => {
+    formulasDialogRef.current?.open(footerAnchorPoint(event));
+  }, []);
 
   usePaneFooter(footerId, () => ({
     info: resolution.loading
       ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
       : [],
-  }), [resolution.loading]);
+    hints: [
+      { id: "series", key: "s", label: "eries", onPress: footerSeries },
+      { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
+      { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
+      ...(publicSharing ? [{ id: "share", key: "y", label: " share", onPress: footerShare, disabled: !shareData }] : []),
+    ],
+  }), [resolution.loading, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, publicSharing, footerShare, !!shareData]);
 
   const emptyMessage = spec.series.length === 0
     ? "Add a series to start the chart"
@@ -580,47 +611,34 @@ function ChartComposerSurface({
           />
         </Box>
       </Box>
-      <Box flexDirection="row" height={1} flexShrink={0} paddingX={1} gap={1} overflow="hidden">
-        <Button label="Series" compact onPress={() => { void openSeriesEditor(); }} />
-        <MultiSelectDialogButton
-          label="Indicators"
-          title="Chart Indicators"
-          options={CHART_STUDY_OPTIONS}
-          selectedValues={selectedStudies}
-          onChange={(values) => setSpec(setBuiltinStudies(spec, values as BuiltinStudySelection[]))}
-          disabled={indicatorsDisabled}
-          idPrefix={`${footerId}:indicators`}
-          shortcutKey="i"
-          shortcutActive={shortcutActive}
-          onOpenChange={setIndicatorsOpen}
-          renderTrigger={({ openDialog, disabled }) => (
-            <Button label="Indicators" compact disabled={disabled} onPress={() => openDialog()} />
-          )}
-        />
-        <MultiSelectDialogButton
-          label="Formulas"
-          title="Pair Formulas"
-          options={CHART_FORMULA_OPTIONS}
-          selectedValues={selectedPairStudies}
-          onChange={(values) => setSpec(setPairStudies(spec, values as PairStudySelection[]))}
-          disabled={formulasDisabled}
-          idPrefix={`${footerId}:formulas`}
-          shortcutKey="f"
-          shortcutActive={shortcutActive}
-          onOpenChange={setFormulasOpen}
-          renderTrigger={({ openDialog, disabled }) => (
-            <Button label="Formulas" compact disabled={disabled} onPress={() => openDialog()} />
-          )}
-        />
-
-        {publicSharing && <Button label="Share" compact onPress={shareChart} disabled={!shareData} />}
-      </Box>
-      {showVintageNotice && <Box paddingX={1} flexShrink={0}>
-        <Prose text={financialNotice} width={Math.max(8, width - 2)} color={colors.textDim} />
-      </Box>}
-      {comparisonNotice && <Box paddingX={1} flexShrink={0}>
-        <Prose text={comparisonNotice} width={Math.max(8, width - 2)} color={colors.textDim} />
-      </Box>}
+      <MultiSelectDialogButton
+        ref={indicatorsDialogRef}
+        label="Indicators"
+        title="Chart Indicators"
+        options={CHART_STUDY_OPTIONS}
+        selectedValues={selectedStudies}
+        onChange={(values) => setSpec(setBuiltinStudies(spec, values as BuiltinStudySelection[]))}
+        disabled={indicatorsDisabled}
+        idPrefix={`${footerId}:indicators`}
+        shortcutKey="i"
+        shortcutActive={shortcutActive}
+        onOpenChange={setIndicatorsOpen}
+        renderTrigger={() => null}
+      />
+      <MultiSelectDialogButton
+        ref={formulasDialogRef}
+        label="Formulas"
+        title="Pair Formulas"
+        options={CHART_FORMULA_OPTIONS}
+        selectedValues={selectedPairStudies}
+        onChange={(values) => setSpec(setPairStudies(spec, values as PairStudySelection[]))}
+        disabled={formulasDisabled}
+        idPrefix={`${footerId}:formulas`}
+        shortcutKey="f"
+        shortcutActive={shortcutActive}
+        onOpenChange={setFormulasOpen}
+        renderTrigger={() => null}
+      />
       {statusNotices.length > 0 && <ScrollBox key={statusNotices.join("\n")} height={statusNoticeHeight} flexShrink={0} scrollY focusable={false}>
         <Box flexDirection="column" paddingX={1} flexShrink={0}>
           {statusNotices.map((notice) => (
@@ -638,7 +656,7 @@ function ChartComposerSurface({
           clipToViewport={!!spec.viewport.dateWindow}
           viewportResetKey={authoredViewportKey}
           width={Math.max(1, width)}
-          height={Math.max(4, height - 2 - vintageNoticeHeight - comparisonNoticeHeight - statusNoticeHeight)}
+          height={Math.max(4, height - 1 - statusNoticeHeight)}
           focused={focused}
           interactive={surfacePointerInteractive}
           allowHistoricalBackfill
