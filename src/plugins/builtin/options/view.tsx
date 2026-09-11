@@ -45,6 +45,8 @@ import {
 import { useOptionsAccessFooter } from "./footer";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { signedPositionDirection } from "../portfolio-list/position-metrics";
+import { optionMarketReference } from "./market-reference";
+import { OptionQuoteContext, optionQuoteContextHeight } from "./quote-context";
 
 type SummaryMetric = { label: string; value: string };
 
@@ -306,15 +308,17 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   })), [optionFieldIds]);
 
   const selectedRow = rows[strikeIdx] ?? null;
+  const selectedSide = resolveCalcSide(calcSide, parsed?.side, selectedRow);
+  const selectedReference = optionMarketReference(selectedSide === "put" ? selectedRow?.put : selectedRow?.call);
   const calcParams = useMemo(() => buildChainCalcParams({
     symbol: effectiveTicker,
     row: selectedRow,
-    side: resolveCalcSide(calcSide, parsed?.side, selectedRow),
+    side: selectedSide,
     // On an option ticker the pane quote is the contract's own price, so load
     // the underlying snapshot rather than silently using the option mark as spot.
     spot,
     dividendYield,
-  }), [calcSide, dividendYield, effectiveTicker, parsed?.side, selectedRow, spot]);
+  }), [dividendYield, effectiveTicker, selectedSide, selectedRow, spot]);
 
   const openCalculator = useCallback(() => {
     if (!calcParams) return;
@@ -470,7 +474,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     : 0;
   const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
   const summaryRowCount = height >= 10 ? 2 : height >= 7 ? 1 : 0;
-  const tableHeight = Math.max(1, height - 1 - summaryRowCount - (isOpt && parsed ? 1 : 0));
+  const quoteContextHeight = optionQuoteContextHeight(selectedReference, width - 2, Math.max(1, Math.floor(height / 3)));
+  const tableHeight = Math.max(1, height - 1 - summaryRowCount - (isOpt && parsed ? 1 : 0) - quoteContextHeight);
   // The strip scrolls; without a marker a clipped last date reads as the last expiry.
   const expirationStripOverflows = chain.expirationDates
     .reduce((total, ts) => total + formatExpDate(ts).length + 2, 0) > expirationTabsWidth;
@@ -509,6 +514,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
           </Text>
         </Box>
       )}
+
+      {selectedReference && <OptionQuoteContext reference={selectedReference} width={width - 2} height={quoteContextHeight} />}
 
       <DataTableView<OptionTableRow, OptionColumn>
         focused={focused}

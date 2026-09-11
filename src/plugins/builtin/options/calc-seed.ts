@@ -1,6 +1,7 @@
 import type { OptionContract } from "../../../types/financials";
 import { buildOptionCalcParams, type OptionSide } from "../options-calculator/model";
 import type { OptionTableRow } from "./types";
+import { optionMarketReference } from "./market-reference";
 
 /**
  * Which contract the calculator should open on. An explicit pick (clicking a
@@ -57,5 +58,7 @@ export function buildChainCalcParams(options: {
     dividendYield: options.dividendYield,
   }, options.now);
   if (market.source) params.marketPriceSource = market.source;
+  const reference = optionMarketReference(contract);
+  if (reference) params.marketReference = JSON.stringify(reference);
   return params;
 }
