@@ -195,7 +195,7 @@ export function buildEventDetailBody({
   primaryContentLoading: boolean;
 }): string {
   if (row.status === "Q Est" || row.status === "FY Est") {
-    const lines = ["Forecast for the stated fiscal period end; this is not an earnings announcement date."];
+    const lines = [`Fiscal period end: ${row.date}`];
     for (const [key, label] of [["eps", "EPS"], ["revenue", "Revenue"]] as const) {
       const estimate = row.estimateInputs?.[key];
       if (!estimate) continue;
@@ -203,21 +203,20 @@ export function buildEventDetailBody({
       lines.push("", `${label} consensus${estimate.currency ? "" : " (currency unavailable)"}`,
         `Average: ${amount(estimate.average)}`,
         `Low: ${amount(estimate.low)} | High: ${amount(estimate.high)}`,
-        `Prior-year comparison: ${amount(estimate.yearAgo)} (provider input; may be a forecast)`,
+        `Prior-year input: ${amount(estimate.yearAgo)}`,
         `Provider growth: ${estimate.growth == null ? "-" : formatPercent(estimate.growth)}`,
         `Contributing analysts: ${estimate.analysts ?? "-"}`);
     }
     if (!row.estimateInputs) lines.push("", eventSummaryLine(row), "Detailed estimate inputs are unavailable.");
-    if (row.estimateGrowthMetric) lines.push("", `The table growth value refers to ${row.estimateGrowthMetric === "eps" ? "EPS" : "revenue"}.`);
-    lines.push("", "Consensus is a forecast. EPS accounting and adjustment basis are unspecified; statement EPS may differ.",
+    if (row.estimateGrowthMetric) lines.push("", `Table growth: ${row.estimateGrowthMetric === "eps" ? "EPS" : "Revenue"}`);
+    lines.push("",
       `Source: ${row.providerId ?? "unavailable"}`,
-      row.fetchedAt ? `Fetched: ${row.fetchedAt} (retrieval time, not an estimate revision date).` : "Retrieval time unavailable.");
+      row.fetchedAt ? `Fetched: ${row.fetchedAt}` : "Retrieval time unavailable.");
     return lines.join("\n");
   }
   const lines: string[] = ["Summary", eventSummaryLine(row)];
   if (row.status === "Factor") {
     lines.push("", "Provider split/adjustment factor",
-      "This factor can encode a stock split or a spinoff price adjustment. It does not establish shares received, distribution terms, or the legal effective date. Verify those terms in issuer filings.",
       ...(row.providerDescription ? [`Provider description: ${row.providerDescription}`] : []));
   }
   if (row.status !== "Earnings") {
@@ -228,18 +227,16 @@ export function buildEventDetailBody({
   lines.push(`Actual: ${earningsInput(row.epsActual, row.epsCurrency)} | Consensus: ${earningsInput(row.epsEstimate, row.epsCurrency)}`);
   if (row.epsDifference != null) lines.push(`Difference: ${earningsInput(row.epsDifference, row.epsCurrency)}`);
   if (row.surprisePercent != null) lines.push(`Surprise: ${earningsInput(row.surprisePercent)}%`);
-  lines.push("EPS and consensus may be adjusted; the provider does not specify the accounting basis. Statement EPS can differ.");
   if (row.providerId || row.fetchedAt) lines.push([row.providerId, row.fetchedAt ? `Fetched ${row.fetchedAt}` : null].filter(Boolean).join(" | "));
   if (row.fiscalPeriodEnd) lines.push(`Fiscal period: ${row.fiscalPeriodEnd} (${row.periodDateSource === "sec" ? "SEC corroborated" : "provider date"})`);
   if (row.providerPeriodDate) lines.push(`Provider period date: ${row.providerPeriodDate}`);
-  if (row.dateEvidence) lines.push(`Period evidence: ${row.dateEvidence.accessionNumber}, filed ${row.dateEvidence.filed}. This is not an announcement date or verification of every metric.`);
+  if (row.dateEvidence) lines.push(`Period evidence: ${row.dateEvidence.accessionNumber}, filed ${row.dateEvidence.filed}`);
   if (row.qRevenue == null && row.earningsState === "reported") lines.push("Quarterly revenue unavailable: no matching statement period was identified.");
 
   lines.push("", "SEC Filing");
   if (row.dateType === "fiscal-period-end") {
-    lines.push("The event source supplies a fiscal period date, not an announcement date.");
     if (!row.dateEvidence) {
-      lines.push("Open SEC filings to locate the earnings release.");
+      lines.push("Related SEC filing unavailable.");
       return lines.join("\n");
     }
   }

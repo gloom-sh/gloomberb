@@ -60,4 +60,6 @@ A calculator opened from a chain uses a saved contract observation. Its quote an
 
 Event EPS and consensus can use an unspecified accounting basis, while TTM values come from statements. Fiscal period ends are not announcement dates. Open an event row for its source inputs and dates.
 
+Consensus estimates are forecasts for the stated fiscal period. The provider's prior-year input can itself be an estimate; it does not establish a reported result. Fetched timestamps identify retrieval, not when consensus was revised. Filing evidence corroborates a fiscal period without verifying every reported metric.
+
 Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered. Source failures and unavailable event data remain visible rather than appearing as an empty event calendar.
