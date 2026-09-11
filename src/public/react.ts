@@ -73,5 +73,6 @@ export { useAsyncResource } from "../react/async-resource";
 // stop while the app is in the background.
 export { useAutoRefresh, useUpdatedAgo } from "../plugins/builtin/shared/auto-refresh";
 
-// The type behind `useConnectionHealth()`, for a plugin that passes it around.
-export type { ConnectionHealthRegistry } from "../core/connection-health";
+// The class behind `useConnectionHealth()`. A value export so a plugin test
+// can construct one to exercise its own connection-status registration.
+export { ConnectionHealthRegistry } from "../core/connection-health";
