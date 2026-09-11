@@ -27,7 +27,7 @@ import type { TimeRange } from "./range";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
 import type { Quote, TickerFinancials } from "../types/financials";
 import type { FredSeriesLoadResult, FredSeriesRequest } from "../data/fred-series";
-import { extractFredSeries } from "./economic";
+import { extractFredSeries, fredCreditCoverageNotice } from "./economic";
 import {
   getTimeSeriesField,
   isFundamentalFieldId,
@@ -1166,6 +1166,8 @@ export async function resolveChartSpecData(
         };
         const fred = await loadEconomicSeries(request);
         const result = baseEconomicSeries(seriesSpec, fred, index);
+        const coverageNotice = fredCreditCoverageNotice(seriesSpec.source.seriesId, fred.data.info, requestVisibleBounds.start);
+        if (result && coverageNotice) priorityWarnings.push(`${result.label}: ${coverageNotice}`);
         const freshnessWarning = staleFredWarning(fred);
         if (result && freshnessWarning) priorityWarnings.push(`${result.label}: ${freshnessWarning}`);
         return result;

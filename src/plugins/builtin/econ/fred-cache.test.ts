@@ -44,6 +44,31 @@ afterEach(() => {
 });
 
 describe("FRED series cache", () => {
+  test("refreshes legacy metadata and preserves coverage and source freshness through reopening", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const request: FredSeriesRequest = { seriesId: "BAMLC0A0CM", startDate: "2007-01-01", sortOrder: "asc" };
+    const old = { ...makeSeries(0.8), info: { ...makeSeries(0.8).info!, id: request.seriesId } };
+    persistence.seedResource("fred-series", "BAMLC0A0CM:start=2007-01-01:sort=asc", old,
+      { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachFredSeriesPersistence(persistence);
+    let calls = 0;
+    const fetchedAt = new Date(Date.now() - 60_000).toISOString();
+    const updated = { ...old, fetchedAt, info: { ...old.info, observationStart: "2023-09-12", observationEnd: "2026-09-10" } };
+    const loaded = await loadCachedFredSeries(request, async () => { calls++; return updated; });
+    expect(calls).toBe(1);
+    expect(loaded.data.info?.observationStart).toBe("2023-09-12");
+    resetFredSeriesPersistence();
+    attachFredSeriesPersistence(persistence);
+    const reopened = await loadCachedFredSeries(request, async () => { throw Error("Must reuse upgraded cache"); });
+    expect(reopened.data).toEqual(updated);
+    expect(reopened.fetchedAt).toBe(Date.parse(fetchedAt));
+    expect(reopened.stale).toBe(false);
+    const offline = await loadCachedFredSeries(request, async () => { throw Error("offline"); }, { force: true });
+    expect(offline.stale).toBe(true);
+    expect(offline.data.info?.observationEnd).toBe("2026-09-10");
+    expect(offline.fetchedAt).toBe(Date.parse(fetchedAt));
+  });
+
   test("uses server-hydrated series without calling the network loader", async () => {
     hydrateFredSeries([["cpiaucsl", {
       data: makeSeries(321),
@@ -93,7 +118,7 @@ describe("FRED series cache", () => {
       makeSeries(319),
       {
         sourceKey: "gloomberb-cloud",
-        schemaVersion: 1,
+        schemaVersion: 2,
         stale: true,
       },
     );

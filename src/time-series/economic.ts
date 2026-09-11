@@ -1,4 +1,34 @@
 import type { TimeSeriesPoint } from "./types";
+import type { CloudFredSeriesInfoPayload } from "../api-client";
+
+const ICE_CREDIT_SERIES = new Set([
+  "BAMLC0A0CM", "BAMLC0A1CAAA", "BAMLC0A2CAA", "BAMLC0A3CA", "BAMLC0A4CBBB",
+  "BAMLH0A0HYM2", "BAMLC0A0CMEY", "BAMLH0A0HYM2EY",
+]);
+
+function sourceDate(value: string | undefined): number | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value ? time : null;
+}
+
+/** Source coverage is separate from query limits and calculation buffers. */
+export function fredCreditCoverageNotice(
+  seriesId: string,
+  info: CloudFredSeriesInfoPayload | null,
+  visibleStart: number | null,
+): string | null {
+  const id = seriesId.trim().toUpperCase();
+  if (!ICE_CREDIT_SERIES.has(id) || info?.id.trim().toUpperCase() !== id) return null;
+  const start = sourceDate(info.observationStart);
+  const end = sourceDate(info.observationEnd);
+  if (start === null || end === null || start > end) return null;
+  if (visibleStart !== null && visibleStart >= start) return null;
+  const retention = /Starting in April 2026, this series will only include 3 years of observations\./.test(info.notes)
+    ? " FRED limits this ICE series to 3 years."
+    : "";
+  return `FRED coverage: ${info.observationStart} to ${info.observationEnd}. Earlier dates are unavailable from this source.${retention}`;
+}
 
 export interface FredObservationLike {
   date: string;

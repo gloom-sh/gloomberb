@@ -40,6 +40,41 @@ const fredLoad = (
 });
 
 describe("resolveChartSpecData", () => {
+  test("credit stress windows disclose source coverage without clipping buffers or scaling effective yields", async () => {
+    const spec = buildCustomChartPreset("FRED:BAMLC0A0CM,FRED:BAMLC0A0CMEY");
+    const requests: string[] = [];
+    const sources = {
+      now: new Date("2026-09-11"),
+      loadFredSeries: async (request: { seriesId: string; startDate?: string }) => {
+        requests.push(request.startDate!);
+        const yieldSeries = request.seriesId.endsWith("EY");
+        return fredLoad({
+          observations: [
+            { date: "2023-09-12", value: yieldSeries ? 5.82 : 1.23 },
+            { date: "2025-04-09", value: yieldSeries ? 5.5 : 1.21 },
+            { date: "2026-09-10", value: yieldSeries ? 5.68 : 0.8 },
+          ],
+          info: { id: request.seriesId, title: yieldSeries ? "IG effective yield" : "IG OAS", units: "Percent",
+            frequency: "Daily, Close", seasonalAdjustment: "Not Seasonally Adjusted", source: "FRED", notes: "",
+            observationStart: "2023-09-12", observationEnd: "2026-09-10" },
+        });
+      },
+    };
+    const fiveYear = await resolveChartSpecData(spec, sources);
+    expect(fiveYear.warnings.filter((warning) => warning.includes("FRED coverage"))).toHaveLength(2);
+    expect(fiveYear.warnings.some((warning) => warning.includes("vintage dates"))).toBe(true);
+    expect(fiveYear.series.map((series) => series.points.at(-1)?.value)).toEqual([0.8, 5.68]);
+    expect(fiveYear.series.map((series) => series.unit)).toEqual(["%", "%"]);
+    const recent = await resolveChartSpecData({ ...spec, viewport: { ...spec.viewport, range: "1Y" } }, sources);
+    expect(requests.at(-1)! < "2023-09-12").toBe(true); // Calculation buffer predates the visible window.
+    expect(recent.warnings.some((warning) => warning.includes("FRED coverage"))).toBe(false);
+    const old = await resolveChartSpecData({ ...spec, viewport: { ...spec.viewport,
+      dateWindow: { start: "2020-01-01", end: "2020-06-30" } } }, sources);
+    expect(old.series.every((series) => series.points.length === 0)).toBe(true);
+    expect(old.warnings.filter((warning) => warning.includes("Earlier dates are unavailable"))).toHaveLength(2);
+    expect(old.viewport.start?.toISOString().slice(0, 10)).toBe("2020-01-01");
+  });
+
   test("qualified price charts retain quote metadata without injecting the fetched snapshot into history", async () => {
     let quoteCalls = 0;
     let financialCalls = 0;

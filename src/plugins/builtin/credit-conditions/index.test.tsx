@@ -64,7 +64,7 @@ beforeEach(() => {
       "fred-series",
       `${seriesId}:limit=45:sort=desc`,
       entry(seriesId, index).data,
-      { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
+      { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
     );
   }
   attachFredSeriesPersistence(persistence);

@@ -60,7 +60,7 @@ describe("loadCreditConditions", () => {
       expect(persistence.getResource<{ observations: unknown[] }>(
         "fred-series",
         `${CREDIT_SERIES[0].seriesId}:limit=45:sort=desc`,
-        { sourceKey: "gloomberb-cloud", schemaVersion: 1 },
+        { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
       )?.value.observations).toHaveLength(45);
 
       resetFredSeriesPersistence();
