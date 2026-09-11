@@ -2,6 +2,7 @@ type TradingPeriod = { start?: number; end?: number; gmtoffset?: number; timezon
 
 export type ChartResult = {
   meta?: {
+    dataGranularity?: string;
     instrumentType?: string;
     symbol?: string;
     currency?: string; longName?: string; shortName?: string;

@@ -24,9 +24,9 @@ test("saved Shell source caches recover across range, broader and detailed paths
     const corrected = good.map((point) => ({ ...point, historySource: { ...point.historySource!, provider: origin } }));
     try {
       for (const [kind, variantKey] of [
-        ["price-history", "exchange=LSE;range=ALL;version=4;calendar=1;unit=GBP"],
-        ["price-history", "exchange=LSE;range=ALL;resolution=1wk;version=4;unit=GBP"],
-        ["price-history", "range=ALL;resolution=1wk;version=4;unit=GBP"],
+        ["price-history", "exchange=LSE;range=ALL;version=4;calendar=1;granularity=1;unit=GBP"],
+        ["price-history", "exchange=LSE;range=ALL;resolution=1wk;version=4;granularity=1;unit=GBP"],
+        ["price-history", "range=ALL;resolution=1wk;version=4;granularity=1;unit=GBP"],
         ["detailed-price-history", "exchange=LSE;start=1996-01-01;end=2026-09-10;bar=1wk;version=4;unit=GBP"],
       ]) store.resources.set({ namespace: "market", kind: kind!, entityKey: ticker, variantKey, sourceKey: `provider:${id}` }, legacy, { cachePolicy: policy });
       let calls = 0;
@@ -109,14 +109,14 @@ test("legacy financial snapshots lose affected history while valid accounts and 
 });
 
 
-test("safe old filtered caches recover missing disclosure only for requested long windows", async () => {
+test("cadence-verified filtered caches recover missing disclosure only for requested long windows", async () => {
   for (const origin of ["yahoo", "twelvedata"] as const) {
     const store = new AppPersistence(createTempDbPath("shell-lineage-missing-provenance"));
     const legacy = good.map(({ historySource, ...point }) => point);
     const corrected = good.map((point) => ({ ...point, historySource: { ...point.historySource!, provider: origin } }));
     try {
       store.resources.set({ namespace: "market", kind: "price-history", entityKey: "SHEL",
-        variantKey: "exchange=LSE;range=ALL;resolution=1wk;version=4;unit=GBP", sourceKey: "provider:gloomberb-cloud" }, legacy, { cachePolicy: policy });
+        variantKey: "exchange=LSE;range=ALL;resolution=1wk;version=4;granularity=1;unit=GBP", sourceKey: "provider:gloomberb-cloud" }, legacy, { cachePolicy: policy });
       let calls = 0;
       const provider = { ...fallbackProvider, id: "gloomberb-cloud", async getPriceHistoryForResolution() { calls++; return corrected; } };
       const router = new AssetDataRouter(provider, [], store.resources);

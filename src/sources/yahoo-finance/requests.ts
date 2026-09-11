@@ -1,3 +1,4 @@
+import { matchesYahooChartInterval, yahooHistoryRangeParams } from "./yahoo-chart-interval";
 import type {
   CompanyProfile,
   PricePoint,
@@ -33,7 +34,7 @@ export async function fetchYahooChart(
 }> {
   const params = new URLSearchParams({
     interval,
-    range,
+    ...yahooHistoryRangeParams(range),
     includePrePost: String(includePrePost),
     events: "div,split",
   });
@@ -42,6 +43,9 @@ export async function fetchYahooChart(
   const result = data.chart?.result?.[0];
   if (!result?.timestamp?.length) {
     throw new Error(data.chart?.error?.description || `No chart data for ${symbol}`);
+  }
+  if (!matchesYahooChartInterval(interval, result.meta?.dataGranularity)) {
+    throw new Error(`Yahoo returned ${result.meta?.dataGranularity ?? "unknown"} bars for requested ${interval} history`);
   }
   const quote = result.indicators?.quote?.[0];
   if (!quote) throw new Error(`Missing indicators for ${symbol}`);
