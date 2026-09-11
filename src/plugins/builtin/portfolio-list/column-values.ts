@@ -1,4 +1,5 @@
 import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
+import { convertMarketCapitalization, selectMarketCapitalization } from "../../../utils/market-capitalization";
 import type { ColumnConfig } from "../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -284,9 +285,11 @@ export function getColumnValue(
       const position = ((activeQuote.price - quote.low52w) / range) * 100;
       return { text: formatPercentRaw(Math.max(0, Math.min(100, position))) };
     }
-    case "market_cap":
-      if (!quote?.marketCap) return { text: "—" };
-      return { text: formatCompact(toBaseQuote(quote.marketCap)) };
+    case "market_cap": {
+      const cap = selectMarketCapitalization(quote, fundamentals);
+      const value = cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
+      return { text: value == null ? "—" : formatCompact(value) };
+    }
     case "pe":
       return { text: formatPriceEarnings(fundamentals?.trailingPE) };
     case "forward_pe":
@@ -493,8 +496,10 @@ export function getSortValue(
       const range = quote.high52w - quote.low52w;
       return range > 0 ? ((activeQuote.price - quote.low52w) / range) * 100 : null;
     }
-    case "market_cap":
-      return quote?.marketCap ? toBaseQuote(quote.marketCap) : null;
+    case "market_cap": {
+      const cap = selectMarketCapitalization(quote, fundamentals);
+      return cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
+    }
     case "pe":
       return comparablePriceEarnings(fundamentals?.trailingPE);
     case "forward_pe":

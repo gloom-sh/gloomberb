@@ -1,7 +1,11 @@
 import { Box } from "../../../../ui";
+import { colors } from "../../../../theme/colors";
+import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../../../utils/market-capitalization";
+import { wrapTextLines } from "../../../../utils/text-wrap";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Tabs,
+  Prose,
   usePaneFooter,
   type DataTableKeyEvent,
   type TickerListVisibleRange,
@@ -404,7 +408,12 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   }, [activeCollectionId, config, currentPortfolio]);
   const showQuickAdd = !!(activeCollectionId && activeCollectionEntry && quickAddCollectionKind);
   const quickAddHeight = showQuickAdd ? 1 : 0;
-  const contentHeight = Math.max(1, height - headerHeight - drawerHeight - quickAddHeight);
+  const selectedFinancials = cursorSymbol ? financialsMap.get(cursorSymbol) : undefined;
+  const selectedCap = selectMarketCapitalization(selectedFinancials?.quote, selectedFinancials?.fundamentals);
+  const capNotice = viewMode === "table" && columns.some((column) => column.id === "market_cap") && selectedCap?.provenance.kind === "fundamentals"
+    ? `${cursorSymbol} market cap: ${describeFundamentalMarketCap(selectedCap.provenance)}.` : undefined;
+  const capNoticeHeight = capNotice ? wrapTextLines(capNotice, Math.max(8, width - 2)).length : 0;
+  const contentHeight = Math.max(1, height - headerHeight - drawerHeight - quickAddHeight - capNoticeHeight);
   const quickAddRow = activeCollectionId && activeCollectionEntry && quickAddCollectionKind ? (
     <QuickAddTickerInput
       collectionId={activeCollectionId}
@@ -435,6 +444,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
         </Box>
       )}
 
+      {capNotice ? <Box paddingX={1} flexShrink={0}><Prose text={capNotice} width={Math.max(8, width - 2)} color={colors.textDim} /></Box> : null}
       {viewMode === "table" ? (
         <PortfolioTickerTable
           columns={columns}
