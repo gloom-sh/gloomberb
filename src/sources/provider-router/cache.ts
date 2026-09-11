@@ -8,7 +8,7 @@ import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../
 import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 
 const MARKET_NAMESPACE = "market";
-const FINANCIALS_SCHEMA_VERSION = 6;
+const FINANCIALS_SCHEMA_VERSION = 7;
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -164,6 +164,13 @@ export function listCachedResources<T>(
     sourceKeys,
     allowExpired,
   }).filter((record) => {
+    // Older SEC projections can mix pre/post-split EPS in one long history.
+    // Refresh the source evidence instead of relabeling old numbers locally.
+    if (kind === "financials" && record.schemaVersion < 7) {
+      const value = record.value as TickerFinancials;
+      if ([...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
+        .some((row) => row.dateSource === "sec" && row.eps !== undefined)) return false;
+    }
     if (kind !== "financials" || record.schemaVersion >= 3) return true;
     // Earlier merges could date unknown fields from a partial availability map,
     // in addition to the older SEC annual/concept errors. Cached dates cannot

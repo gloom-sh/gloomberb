@@ -5,6 +5,24 @@ import { cleanupProviderRouterTestFiles, createTempDbPath, makeFinancials, makeQ
 
 afterEach(cleanupProviderRouterTestFiles);
 
+test("legacy SEC EPS caches refresh for cloud and native without discarding unrelated resources", () => {
+  const persistence = new AppPersistence(createTempDbPath("eps-share-basis"));
+  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
+  for (const sourceKey of ["provider:gloomberb-cloud", "provider:yahoo"]) {
+    const key = { namespace: "market", kind: "financials", entityKey: "AAPL", variantKey: "exchange=NASDAQ", sourceKey };
+    const old = makeFinancials({ annualStatements: [{ date: "2017-09-30", dateSource: "sec", eps: 9.21 }] });
+    persistence.resources.set(key, old, { cachePolicy, schemaVersion: 6 });
+    expect(listCachedResources(persistence.resources, "financials", "AAPL", [key.variantKey], [sourceKey], true)).toEqual([]);
+    const current = makeFinancials({ annualStatements: [{ date: "2017-09-30", dateSource: "sec", eps: 2.3025,
+      epsBasis: { status: "split-adjusted", source: "sec", originalValue: 9.21, basisDate: "2020-08-28", factor: 4, evidence: [] } }] });
+    cacheRouterResource(persistence.resources, "financials", "AAPL", key.variantKey, sourceKey, current, cachePolicy);
+    expect(listCachedResources(persistence.resources, "financials", "AAPL", [key.variantKey], [sourceKey], true)[0]!.value).toEqual(current);
+    persistence.resources.set({ ...key, entityKey: "MSFT" }, makeFinancials({ annualStatements: [{ date: "2025-06-30", totalRevenue: 100 }] }), { cachePolicy, schemaVersion: 6 });
+    expect(listCachedResources(persistence.resources, "financials", "MSFT", [key.variantKey], [sourceKey], true)).toHaveLength(1);
+  }
+  persistence.close();
+});
+
 test("legacy cloud yields refresh without discarding quotes, accounts or native provider values", () => {
   const persistence = new AppPersistence(createTempDbPath("dividend-yield-provenance"));
   const key = { namespace: "market", kind: "financials", entityKey: "NESN", variantKey: "exchange=SWX", sourceKey: "provider:gloomberb-cloud" };
@@ -24,13 +42,13 @@ test("legacy cloud yields refresh without discarding quotes, accounts or native 
   expect((read("provider:yahoo").value as ReturnType<typeof makeFinancials>).fundamentals?.dividendYield).toBe(0.16);
   // A new client can cache an old backend response during a rolling deploy.
   cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, old, cachePolicy);
-  expect(read().schemaVersion).toBe(6);
+  expect(read().schemaVersion).toBe(7);
   expect(read().stale).toBe(true);
   expect((read().value as ReturnType<typeof makeFinancials>).fundamentals?.dividendYield).toBeUndefined();
   expect((read().value as ReturnType<typeof makeFinancials>).quote).toEqual(old.quote);
   const corrected = { ...old, fundamentals: { ...old.fundamentals, dividendYield: 0.0399, dividendYieldBasis: "forward" as const, dividendYieldSource: "yahoo" as const } };
   cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, corrected, cachePolicy);
-  expect(read().schemaVersion).toBe(6);
+  expect(read().schemaVersion).toBe(7);
   expect(read().stale).toBe(false);
   expect(read().value).toEqual(corrected);
   persistence.close();

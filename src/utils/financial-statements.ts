@@ -1,8 +1,9 @@
 import type { FinancialStatement } from "../types/financials";
 
 export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include restatements. Historical as-of values are not reconstructed.";
+export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";
 
-const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability"]);
+const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis"]);
 const NEARBY_PERIOD_END_MS = 7 * 24 * 60 * 60 * 1_000;
 
 /** An explicit field map is authoritative: omitted fields have unknown availability. */
@@ -139,6 +140,8 @@ export function mergeFinancialStatementRows(
       // otherwise retain their primary provider's period identity.
       date: canonicalStatementDate(row, fallback),
     } as FinancialStatement;
+    const correctedFallbackEps = !row.epsBasis && !!fallback?.epsBasis && row.eps === fallback.epsBasis.originalValue;
+    if (row.eps !== undefined && !row.epsBasis && !correctedFallbackEps) delete merged.epsBasis;
     // Period provenance belongs to the selected date. It must not leak from a
     // different fallback period or become publication evidence for any value.
     const dateOwner = [row, fallback].find((candidate) => candidate?.date === merged.date && candidate.dateSource === "sec")
@@ -152,6 +155,19 @@ export function mergeFinancialStatementRows(
     const keys = metricKeys(row, fallback);
 
     for (const key of keys) {
+      // A refreshed SEC decision supersedes precisely the original EPS still
+      // held by a primary cache; unrelated provider values keep their priority.
+      if (key === "eps" && correctedFallbackEps) {
+        if (fallback!.epsBasis!.status === "unresolved") delete merged.eps;
+        else merged.eps = fallback!.eps;
+        const available = statementFieldAvailability(fallback, "eps");
+        if (available && merged.eps !== undefined) fieldAvailability.eps = available;
+        continue;
+      }
+      if (key === "eps" && row.epsBasis?.status === "unresolved") {
+        delete merged.eps;
+        continue;
+      }
       const primaryHasValue = hasMetricValue(row, key);
       const fallbackHasValue = hasMetricValue(fallback, key);
       if (!primaryHasValue && fallbackHasValue) {

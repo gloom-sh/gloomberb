@@ -1,5 +1,6 @@
 import type { SecFilingDocument, SecFilingItem } from "../types/data-provider";
 import type { FinancialStatement } from "../types/financials";
+import { createSecEpsBasisResolver } from "../utils/sec-eps-basis";
 import { truncateWithEllipsis } from "../utils/text-wrap";
 import { decodeHtmlEntities } from "../utils/html-entities";
 import {
@@ -568,9 +569,19 @@ function fillCompanyFactsStatementRows(
   }
 }
 
-function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>, selectedFacts: Map<string, CompanyFactsEntry>): FinancialStatement[] {
+function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>, selectedFacts: Map<string, CompanyFactsEntry>, resolveEps: ReturnType<typeof createSecEpsBasisResolver>): FinancialStatement[] {
   const statements = Array.from(rows.values()).sort((left, right) => left.date.localeCompare(right.date));
   for (const statement of statements) {
+    const epsFact = selectedFacts.get(`${statement.date}:eps`);
+    if (epsFact) {
+      const normalized = resolveEps(epsFact);
+      if (normalized.basis) {
+        statement.epsBasis = normalized.basis;
+        statement.eps = normalized.value;
+        if (normalized.availableAt) statement.fieldAvailability!.eps = normalized.availableAt;
+        else if (statement.fieldAvailability) delete statement.fieldAvailability.eps;
+      }
+    }
     // A selected duration fact identifies the fiscal period. Its accession and
     // filing date are evidence for that identity, never row-wide availability.
     const anchor = [...selectedFacts.entries()]
@@ -626,9 +637,10 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
     fillCompanyFactsStatementRows(quarterlyRows, quarterlySelectedFacts, entries, field, "quarterly", annualPeriodEnds);
   }
 
+  const resolveEps = createSecEpsBasisResolver(payload);
   return {
-    annualStatements: finalizeCompanyFactsStatements(annualRows, annualSelectedFacts),
-    quarterlyStatements: finalizeCompanyFactsStatements(quarterlyRows, quarterlySelectedFacts),
+    annualStatements: finalizeCompanyFactsStatements(annualRows, annualSelectedFacts, resolveEps),
+    quarterlyStatements: finalizeCompanyFactsStatements(quarterlyRows, quarterlySelectedFacts, resolveEps),
   };
 }
 

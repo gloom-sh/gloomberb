@@ -67,6 +67,11 @@ export function graphRowsForFinancials(
     const previous = points[index - 1]?.value;
     const current = point.value;
     const currentLabel = point.periodLabel === "Current";
+    const previousPoint = points[index - 1];
+    const elapsedDays = previousPoint ? (point.observedAt.getTime() - previousPoint.observedAt.getTime()) / 86_400_000 : 0;
+    // Withheld observations must not turn a multi-year gap into YoY growth.
+    const consecutivePeriod = period === "annual"
+      ? elapsedDays >= 335 && elapsedDays <= 395 : elapsedDays >= 60 && elapsedDays <= 120;
     const date = currentLabel ? "Current" : point.observedAt.toISOString().slice(0, 10);
     return {
       key: `${symbol}:${date}:${metric}`,
@@ -74,7 +79,7 @@ export function graphRowsForFinancials(
       date,
       category: point.periodLabel ?? date,
       value: current,
-      growth: typeof previous === "number" && previous !== 0
+      growth: consecutivePeriod && typeof previous === "number" && previous !== 0
         ? (current - previous) / Math.abs(previous)
         : null,
       barWidth: Math.max(1, Math.round((Math.abs(current) / maximum) * 24)),
