@@ -55,6 +55,8 @@
     "i18n:audit": "bun run scripts/i18n-audit.ts",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
+    "web:proxy-hosts": "bun run scripts/generate-web-proxy-hosts.ts",
+    "web:proxy-hosts:check": "bun run scripts/generate-web-proxy-hosts.ts --check",
     "typecheck": "bun run typecheck:opentui && bun run typecheck:electrobun-bun && bun run typecheck:electrobun-view && bun run typecheck:browser && bun run typecheck:cloudflare && bun run typecheck:scripts",
     "typecheck:opentui": "tsc --project tsconfig.opentui.json",
     "typecheck:electrobun-bun": "tsc --project tsconfig.electrobun-bun.json",

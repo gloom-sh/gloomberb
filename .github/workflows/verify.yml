@@ -31,6 +31,11 @@ jobs:
       - name: Check the built-in plugin manifest
         run: bun run plugins:manifest:check
 
+      # Fails when a plugin in the browser catalog declares a host the worker
+      # proxy does not know about, which would ship broken on the web.
+      - name: Check the web proxy allowlist
+        run: bun run web:proxy-hosts:check
+
   build-and-test:
     runs-on: ubuntu-latest
     steps:
