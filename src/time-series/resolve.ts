@@ -109,6 +109,7 @@ export interface ChartResolveOptions {
 /** Raw source data retained while live quotes recompute the chart tail. */
 export class ChartResolveCache {
   readonly financialsByInstrument = new Map<string, Promise<TickerFinancials | null>>();
+  readonly quoteMetadataByInstrument = new Map<string, Promise<Pick<Quote, "currency" | "instrumentType"> | null>>();
   readonly priceHistoryByRequest = new Map<string, Promise<TickerFinancials["priceHistory"]>>();
   readonly accumulatedPriceHistory = new Map<string, TickerFinancials["priceHistory"]>();
   readonly resolutionSupportByInstrument = new Map<string, Promise<ChartResolutionSupport[]>>();
@@ -664,14 +665,15 @@ function baseSecuritySeries(
   financials: TickerFinancials,
   index: number,
   marketResolution?: ManualChartResolution,
+  quoteMetadata?: Pick<Quote, "currency" | "instrumentType"> | null,
 ): ResolvedSeries | null {
   if (spec.source.kind !== "security") return null;
   const field = getTimeSeriesField(spec.source.fieldId);
   if (!field) return null;
   const points = extractSecuritySeries(financials, spec.source);
   const symbol = instrumentLabel(spec.source);
-  const currency = financials.quote?.currency;
-  const assetKind = resolveAssetDisplayKind({ assetCategory: financials.quote?.instrumentType });
+  const currency = financials.quote?.currency || quoteMetadata?.currency;
+  const assetKind = resolveAssetDisplayKind({ assetCategory: financials.quote?.instrumentType || quoteMetadata?.instrumentType });
   const volumeUnit = assetKind === "equity" ? "shares" as const : assetKind === "contract" ? "contracts" as const : undefined;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
     : field.unit.startsWith("currency") && currency ? field.unit.replace("currency", currency) : field.unit;
@@ -942,6 +944,18 @@ export async function resolveChartSpecData(
     }
     return pending;
   };
+  const loadQuoteMetadata = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>) => {
+    const key = instrumentKey(source);
+    let pending = cache.quoteMetadataByInstrument.get(key);
+    if (!pending) {
+      pending = Promise.resolve().then(() => sources.dataProvider!.getQuote(
+        source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source),
+      )).then(({ currency, instrumentType }) => ({ currency, instrumentType }))
+        .catch(() => { cache.quoteMetadataByInstrument.delete(key); return null; });
+      cache.quoteMetadataByInstrument.set(key, pending);
+    }
+    return pending;
+  };
   const loadResolutionSupport = (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
     immediate: boolean,
@@ -1137,6 +1151,11 @@ export async function resolveChartSpecData(
         ? sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source))
         : undefined;
       const financialsPromise = needsFinancials ? loadFinancials(source) : Promise.resolve(null);
+      // Qualified price charts avoid loading company statements. They still
+      // need listing metadata when no streamed quote has supplied it. Retain
+      // only currency/type: a metadata fetch must not append an old price.
+      const quoteMetadataPromise = !needsFinancials && !quoteOverride?.currency
+        ? loadQuoteMetadata(source) : Promise.resolve(null);
       let resolvedSource = source;
       let financials: TickerFinancials | null;
       let history: TickerFinancials["priceHistory"] | null;
@@ -1167,6 +1186,7 @@ export async function resolveChartSpecData(
         merged,
         index,
         initialResolution,
+        await quoteMetadataPromise,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
       if (isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {

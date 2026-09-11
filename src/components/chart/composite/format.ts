@@ -10,6 +10,8 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   CNY: "¥",
 };
 
+const CURRENCY_CODES = new Set(Intl.supportedValuesOf("currency"));
+
 const HOUR_MS = 60 * 60 * 1_000;
 const INTRADAY_SPAN_MAX_MS = 36 * HOUR_MS;
 
@@ -28,7 +30,7 @@ function compactNumber(value: number): string {
 
 function unitCurrencyCode(unit: string): string | null {
   const currency = unit.trim().toUpperCase().split(/[\s/]/)[0] ?? "";
-  return CURRENCY_SYMBOLS[currency] ? currency : null;
+  return CURRENCY_CODES.has(currency) ? currency : null;
 }
 
 function currencyPrefix(unit: string): string {
