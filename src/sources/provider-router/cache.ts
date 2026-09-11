@@ -159,9 +159,13 @@ export function listCachedResources<T>(
     // issuer data, but obtain the quote through its independent freshness route.
     let value = record.value as TickerFinancials;
     if (record.schemaVersion < 4) value = { ...value, quote: undefined, quoteContributions: undefined };
-    // Prior cloud yields could contain uncorroborated annualization. Remove
-    // that metric and refresh while retaining valid quotes and issuer data.
-    const legacyYield = record.schemaVersion < 5 && value.fundamentals?.dividendYield != null;
+    // A new client can cache an old backend response during a rolling deploy.
+    // Require the metric's own provenance as well as the cache schema before
+    // reusing a cloud yield; retain valid quotes and other issuer data.
+    const statistics = value.fundamentals;
+    const hasDividendProvenance = ["forward", "trailing"].includes(statistics?.dividendYieldBasis ?? "")
+      && ["twelvedata", "yahoo"].includes(statistics?.dividendYieldSource ?? "");
+    const legacyYield = statistics?.dividendYield != null && (record.schemaVersion < 5 || !hasDividendProvenance);
     if (legacyYield) value = { ...value, fundamentals: { ...value.fundamentals,
       dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined } };
     return { ...record, stale: record.stale || legacyYield, value: value as T };
