@@ -5,7 +5,7 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import { isManualPortfolio } from "../../../plugins/builtin/portfolio-list/mutations";
 import type { DataProvider } from "../../../types/data-provider";
 import type { Portfolio, TickerRecord, Watchlist } from "../../../types/ticker";
-import { resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
+import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult } from "../../../tickers/search";
 import { parseTickerListInput } from "../../../tickers/list";
 
 export interface SharedWorkflowDeps {
@@ -140,13 +140,20 @@ export async function resolveTickerInput(
   deps: SharedWorkflowDeps,
 ): Promise<ResolvedTickerInput | null> {
   const state = deps.getState();
-  const resolvedTicker = await resolveTickerSearch({
-    query: rawInput,
-    activeTicker,
-    tickers: state.tickers,
-    dataProvider: deps.dataProvider,
-    searchContext: getTickerSearchContext(state, collectionId),
-  });
+  let resolvedTicker;
+  try {
+    resolvedTicker = await resolveTickerSearch({
+      query: rawInput,
+      activeTicker,
+      tickers: state.tickers,
+      dataProvider: deps.dataProvider,
+      searchContext: getTickerSearchContext(state, collectionId),
+    });
+  } catch (error) {
+    // Interactive callers already open a listing picker for unresolved input.
+    if (error instanceof AmbiguousTickerError) return null;
+    throw error;
+  }
   if (!resolvedTicker) return null;
   return materializeResolvedTicker(resolvedTicker, deps);
 }

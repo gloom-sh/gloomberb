@@ -5,6 +5,7 @@ import type { TickerRecord } from "../../types/ticker";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { loadYahooQuote } from "../../sources/yahoo-finance/snapshots";
 import {
+  AmbiguousTickerError,
   buildTickerSearchCandidates,
   createLocalTickerSearchCandidates,
   findExactTickerSearchMatch,
@@ -59,6 +60,68 @@ function makeDataProvider(results: InstrumentSearchResult[]): DataProvider {
 }
 
 describe("ticker-search utilities", () => {
+  test("duplicate bare symbols follow verified quote identity independent of catalogue order", async () => {
+    for (const [symbol, venue, currency, providerCurrency] of [
+      ["GLD", "NYSE", "USD", "USD"],
+      ["VOD", "LSE", "GBP", "GBp"],
+      ["7203", "TYO", "JPY", "JPY"],
+    ]) {
+      const wanted = makeSearchResult(symbol!, "Exact listing", { exchange: venue, currency: providerCurrency });
+      const other = makeSearchResult(symbol!, "Other listing", { exchange: "BYMA", currency: "ARS" });
+      for (const results of [[other, wanted], [wanted, other]]) {
+        const resolved = await resolveTickerSearch({ query: symbol, activeTicker: null, tickers: new Map(),
+          dataProvider: createTestDataProvider({ search: async () => results, getQuote: async () => ({
+            symbol: symbol!, listingExchangeName: venue, currency: currency!, price: 100, lastUpdated: 1, change: 0, changePercent: 0,
+          }) }),
+        });
+        expect(resolved).toMatchObject({ kind: "provider", result: { exchange: venue, currency } });
+      }
+    }
+  });
+
+  test("ambiguous symbols require venue, currency and exact quote evidence", async () => {
+    const results = [makeSearchResult("GLD", "SPDR", { exchange: "BYMA", currency: "ARS" }),
+      makeSearchResult("GLD", "SPDR", { exchange: "NYSE", currency: "USD" })];
+    const quote = { symbol: "GLD", listingExchangeName: "NYSE", currency: "USD", price: 400, lastUpdated: 1, change: 0, changePercent: 0 };
+    for (const invalid of [null, { ...quote, listingExchangeName: undefined }, { ...quote, currency: "ARS" },
+      { ...quote, symbol: "GLDM" }, { ...quote, price: Number.NaN }, { ...quote, lastUpdated: 0 }]) {
+      await expect(resolveTickerSearch({ query: "GLD", activeTicker: null, tickers: new Map(),
+        dataProvider: createTestDataProvider({ search: async () => results, getQuote: async () => {
+          if (!invalid) throw new Error("Quote unavailable");
+          return invalid;
+        } }),
+      })).rejects.toBeInstanceOf(AmbiguousTickerError);
+    }
+  });
+
+  test("explicit venues and saved identities bypass default quote disambiguation", async () => {
+    const results = [makeSearchResult("VOD", "Vodacom", { exchange: "JSE", currency: "ZAR" }),
+      makeSearchResult("VOD", "Vodafone", { exchange: "LSE", currency: "GBP" }),
+      makeSearchResult("VOD", "Vodafone ADR", { exchange: "NASDAQ", currency: "USD" })];
+    let quoteCalls = 0;
+    const dataProvider = createTestDataProvider({ search: async () => results, getQuote: async () => {
+      quoteCalls++; throw new Error("Quote unavailable");
+    } });
+    for (const [query, exchange] of [["VOD:XLON", "LSE"], ["VOD:LSE", "LSE"], ["VOD:JSE", "JSE"], ["VOD:NASDAQ", "NASDAQ"]]) {
+      expect(await resolveTickerSearch({ query, activeTicker: null, tickers: new Map(), dataProvider }))
+        .toMatchObject({ kind: "provider", result: { exchange } });
+    }
+    const saved = makeTicker("VOD", "Saved Vodafone", { exchange: "LSE", currency: "GBP" });
+    expect(await resolveTickerSearch({ query: "VOD", activeTicker: null, tickers: new Map([["VOD", saved]]), dataProvider }))
+      .toMatchObject({ kind: "local", ticker: saved });
+    expect(quoteCalls).toBe(0);
+  });
+
+  test("share-class aliases keep the requested security when duplicate venues need a quote", async () => {
+    expect(await resolveTickerSearch({ query: "BRK-B", activeTicker: null, tickers: new Map(),
+      dataProvider: createTestDataProvider({
+        search: async () => [makeSearchResult("BRK.B", "Berkshire", { exchange: "BYMA", currency: "ARS" }),
+          makeSearchResult("BRK.B", "Berkshire", { exchange: "NYSE", currency: "USD" })],
+        getQuote: async () => ({ symbol: "BRK-B", listingExchangeName: "NYSE", currency: "USD", price: 400, lastUpdated: 1, change: 0, changePercent: 0 }),
+      }),
+    })).toMatchObject({ kind: "provider", symbol: "BRK.B", result: { exchange: "NYSE" } });
+  });
+
   test("verifies omitted crypto symbols before selecting a punctuation alias on another venue", async () => {
     const alias = makeSearchResult("SHIB/USD", "SHIBA INU US Dollar", { type: "Digital Currency", exchange: "COINBASE PRO" });
     const quote = { symbol: "SHIB-USD", instrumentType: "CRYPTOCURRENCY", price: 0.00000509, currency: "USD", lastUpdated: 1789077420000,

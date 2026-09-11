@@ -1,9 +1,10 @@
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
 import { parseOptionSymbol } from "../../utils/options";
+import { resolveCurrencyUnit } from "../../utils/currency-units";
 import {
   buildSymbolAliases,
   classifyInstrumentKind,
@@ -34,6 +35,13 @@ export {
   rankTickerSearchItems,
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
+
+export class AmbiguousTickerError extends Error {
+  constructor(readonly query: string, readonly listings: readonly string[]) {
+    super(`Multiple listings match ${query}. Choose an exchange in search or use ${listings.slice(0, 3).join(", ")}.`);
+    this.name = "AmbiguousTickerError";
+  }
+}
 
 const OPTION_TYPES = new Set(["OPT", "OPTION", "OPTIONS"]);
 
@@ -212,14 +220,51 @@ export async function resolveTickerSearch({
     await searchProviderResults(dataProvider, symbol, searchContext),
     tickers,
   );
-  const exactMatch = findExactTickerSearchMatch(providerItems, symbol);
+  const literalMatches = providerItems.filter((item) => normalizeTickerSymbol(item.symbol) === symbol);
+  const matches = literalMatches.length ? literalMatches
+    : providerItems.filter((item) => findExactTickerSearchMatch([item], symbol));
+  let exactMatch = matches[0];
   if (!exactMatch?.result) return null;
+
+  const listings = new Set(matches.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!))));
+  if (listings.size > 1 && !parsePublicTickerKey(symbol).exchange && !tickerHasYahooSuffix(symbol)) {
+    // Search order is relevance, not a canonical listing identifier. Align bare
+    // symbols with the quote source only when it supplies the exact identity.
+    let verified: TickerSearchCandidate[] = [];
+    try {
+      const quote = await dataProvider.getQuote(symbol, "");
+      const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+      const currency = resolveCurrencyUnit(quote.currency).currency;
+      if (exchange && currency && Number.isFinite(quote.price) && quote.price !== 0
+        && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0) {
+        verified = matches.filter((item) => {
+          const result = item.result!;
+          const candidateCurrency = resolveCurrencyUnit(result.currency).currency;
+          return canonicalExchange(listingExchange(result)) === exchange
+            && (!candidateCurrency || candidateCurrency === currency)
+            && findExactTickerSearchMatch([{ label: quote.symbol, right: exchange, instrumentType: quote.instrumentType }], item.symbol)
+            && (!isCryptoInstrumentType(result.type) || quote.price > 0);
+        }).map((item) => ({ ...item, result: { ...item.result!, currency } }));
+      }
+    } catch {
+      // An unavailable quote cannot establish the default listing.
+    }
+    if (new Set(verified.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!)))).size !== 1) {
+      throw new AmbiguousTickerError(symbol, [...listings]);
+    }
+    exactMatch = verified[0]!;
+  }
 
   return {
     kind: "provider",
     symbol: exactMatch.symbol,
-    result: exactMatch.result,
+    result: exactMatch.result!,
   };
+}
+
+function listingExchange(result: InstrumentSearchResult): string {
+  return result.exchange === "SMART" ? result.primaryExchange || result.exchange
+    : result.exchange || result.primaryExchange || "";
 }
 
 function buildProviderHints(

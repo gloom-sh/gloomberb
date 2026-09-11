@@ -5,6 +5,7 @@ import {
   type TickerSearchCandidate,
 } from "../../../../tickers/search";
 import type { ResultItem } from "../../list/model";
+import { canonicalExchange } from "../../../../utils/exchanges";
 import { isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
@@ -92,9 +93,9 @@ function isInstrumentItem(item: ResultItem): boolean {
 
 /**
  * Fold symbol-search rows into a plain root query's list. An exact symbol hit
- * is promoted ahead of everything; the rest collapse into one Instruments
- * section with one row per symbol, since the listing split of the DES route
- * is noise next to panes and commands. Info rows ("no matches", "search
+ * is promoted ahead of everything, with distinct venues retained so a bare
+ * symbol cannot hide another security. Non-exact matches collapse into one
+ * Instruments section with one row per symbol. Info rows ("no matches", "search
  * failed") are dropped: the instruments are an extra here, never the answer.
  */
 export function mergePlainRootTickerResults(
@@ -104,17 +105,18 @@ export function mergePlainRootTickerResults(
 ): ResultItem[] {
   const seenSymbols = new Set<string>();
   const instruments: ResultItem[] = [];
+  const isExact = (item: ResultItem) => item.category === "Exact Match" || isExactTickerResultMatch(item, query);
   for (const item of providerItems) {
     if (!isInstrumentItem(item)) continue;
     const symbol = item.label.trim().toUpperCase();
-    if (seenSymbols.has(symbol)) continue;
-    seenSymbols.add(symbol);
+    const key = isExact(item) ? `${symbol}:${canonicalExchange(item.right)}` : symbol;
+    if (seenSymbols.has(key)) continue;
+    seenSymbols.add(key);
     instruments.push(item);
     if (instruments.length >= ROOT_INSTRUMENTS_LIMIT) break;
   }
   if (instruments.length === 0) return rootItems;
 
-  const isExact = (item: ResultItem) => item.category === "Exact Match" || isExactTickerResultMatch(item, query);
   return [
     ...instruments.filter(isExact).map((item) => ({ ...item, category: "Exact Match" })),
     ...rootItems,
