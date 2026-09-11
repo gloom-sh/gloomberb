@@ -435,6 +435,25 @@ describe("CompositeChart", () => {
     expect(accessoryStart - lastLegendEnd).toBeGreaterThan(1);
   });
 
+  test("shortens long comparison names before clipping yield precision or units at 80 columns", async () => {
+    testSetup = await testRender(
+      <CompositeChart width={78} height={12}
+        series={[
+          { ...series("ig", "main", "left", "%", [5.68]), label: "ICE BofA US Corporate Index Effective Yield" },
+          { ...series("hy", "main", "left", "%", [7.42]), label: "ICE BofA US High Yield Index Effective Yield" },
+        ]}
+        panels={[{ id: "main" }]}
+        legendAccessory={<Box width={14} height={1}><Text>+ add series</Text></Box>}
+        legendAccessoryWidth={14}
+      />, { width: 80, height: 14 },
+    );
+    await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
+    const legend = testSetup.captureCharFrame().split("\n").find((line) => line.includes("+ add series"))!;
+    expect(legend).toContain("5.68%");
+    expect(legend).toContain("7.42%");
+    expect(legend.indexOf("7.42%") + 5).toBeLessThan(legend.indexOf("+ add series"));
+  });
+
   test("leaving a historical chart restores its window's legend value instead of the navigation buffer", async () => {
     let setCursor: (date: Date | null) => void = () => {};
     const margin: ResolvedSeries = {
