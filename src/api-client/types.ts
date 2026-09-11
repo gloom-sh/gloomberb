@@ -343,6 +343,8 @@ export interface CloudFredSeriesInfoPayload {
   source: string;
   notes: string;
   lastUpdated?: string;
+  observationStart?: string;
+  observationEnd?: string;
 }
 
 export interface CloudFredSeriesPayload {

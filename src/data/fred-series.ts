@@ -6,7 +6,8 @@ import type {
 
 const CACHE_KIND = "fred-series";
 const CACHE_SOURCE = "gloomberb-cloud";
-const CACHE_SCHEMA_VERSION = 1;
+// Refresh persisted metadata that predates FRED's source coverage dates.
+const CACHE_SCHEMA_VERSION = 2;
 const CACHE_POLICY = {
   staleMs: 24 * 60 * 60 * 1000,
   expireMs: 30 * 24 * 60 * 60 * 1000,
