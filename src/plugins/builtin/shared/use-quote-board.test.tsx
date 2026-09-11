@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act, useMemo } from "react";
+import { act, useMemo, useState } from "react";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import type { MarketDataRequestContext, QuoteBatchResult } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
@@ -53,22 +53,28 @@ function batchProvider(reply: () => QuoteBatchResult[] | Error) {
 
 let quotes: BoardQuoteMap = new Map();
 let refreshBoard: () => void = () => {};
+let setBoardSymbols: (symbols: string[]) => void = () => {};
+let setBoardProvider: (provider: object | null) => void = () => {};
 
-function Probe({ intervalMs }: { intervalMs: number }) {
-  const board = useQuoteBoard(SYMBOLS, intervalMs);
+function Probe({ intervalMs, symbols }: { intervalMs: number; symbols: string[] }) {
+  const board = useQuoteBoard(symbols, intervalMs);
   quotes = board.quotes;
   refreshBoard = board.refresh;
   return <Text>{`${board.quotes.size}`}</Text>;
 }
 
 function Harness({ provider, intervalMs }: { provider: object; intervalMs: number }) {
+  const [symbols, setSymbols] = useState(SYMBOLS);
+  const [activeProvider, setProvider] = useState<object | null>(provider);
+  setBoardSymbols = setSymbols;
+  setBoardProvider = setProvider;
   const runtime = useMemo(
-    () => ({ getMarketData: () => provider }) as unknown as PluginRuntimeAccess,
-    [provider],
+    () => ({ getMarketData: () => activeProvider }) as unknown as PluginRuntimeAccess,
+    [activeProvider],
   );
   return (
     <PluginRenderProvider runtime={runtime} pluginId="test">
-      <Probe intervalMs={intervalMs} />
+      <Probe intervalMs={intervalMs} symbols={symbols} />
     </PluginRenderProvider>
   );
 }
@@ -207,5 +213,66 @@ describe("useQuoteBoard failure handling", () => {
     const status = quoteBoardStatus(quotes);
     expect(status).toMatchObject({ stale: 0, unavailable: 1 });
     expect(quoteBoardFooterInfo(status).map((segment) => segment.id)).toEqual(["error", "fresh"]);
+  });
+});
+
+describe("useQuoteBoard target changes", () => {
+  test("drops removed quotes and errors while retaining overlapping quotes across pending requests", async () => {
+    const pending: Array<(rows: QuoteBatchResult[]) => void> = [];
+    const provider = { getQuotesBatch: () => new Promise<QuoteBatchResult[]>((resolve) => pending.push(resolve)) };
+    await mount(provider);
+    const recent = { ...quote("^GSPC", 100), lastUpdated: 1_700_001_000_000 };
+    const retained = quote("^FTSE", 200);
+    await act(async () => pending.shift()!([
+      { target: { symbol: "^GSPC" }, quote: recent },
+      { target: { symbol: "^FTSE" }, quote: retained },
+    ]));
+    await settle();
+    await act(async () => refreshBoard());
+    const previousRequest = pending.shift()!;
+    await act(async () => setBoardSymbols(["^FTSE", "DX-Y.NYB"]));
+    await settle();
+    const currentRequest = pending.shift()!;
+    expect([...quotes.keys()]).toEqual(["^FTSE", "DX-Y.NYB"]);
+    expect(quotes.get("^FTSE")?.quote).toBe(retained);
+    expect(quoteBoardStatus(quotes).latestTs).toBe(retained.lastUpdated);
+    await act(async () => previousRequest([
+      { target: { symbol: "^GSPC" }, quote: null, error: new Error("removed listing failed") },
+      { target: { symbol: "^FTSE" }, quote: quote("^FTSE", 999) },
+    ]));
+    await settle();
+    expect([...quotes.keys()]).toEqual(["^FTSE", "DX-Y.NYB"]);
+    expect(quotes.get("^FTSE")?.quote).toBe(retained);
+    expect(quotes.get("^FTSE")?.loading).toBe(true);
+    await act(async () => currentRequest([
+      { target: { symbol: "^FTSE" }, quote: null, error: new Error("temporary outage") },
+      { target: { symbol: "DX-Y.NYB" }, quote: null, error: new Error("unavailable") },
+    ]));
+    await settle();
+    expect(quoteBoardStatus(quotes)).toMatchObject({ stale: 1, unavailable: 1, loading: 0, latestTs: retained.lastUpdated });
+    expect(quotes.get("^FTSE")?.quote).toBe(retained);
+    await act(async () => setBoardSymbols(["^FTSE"]));
+    await settle();
+    expect([...quotes.keys()]).toEqual(["^FTSE"]);
+    expect(quoteBoardStatus(quotes).unavailable).toBe(0);
+    await act(async () => pending.shift()!([{ target: { symbol: "^FTSE" }, quote: retained }]));
+    await settle();
+  });
+
+  test("invalidates pending work and prunes selection when the provider disconnects", async () => {
+    let finish!: (rows: QuoteBatchResult[]) => void;
+    const provider = { getQuotesBatch: () => new Promise<QuoteBatchResult[]>((resolve) => { finish = resolve; }) };
+    await mount(provider);
+    await act(async () => { setBoardSymbols(["^FTSE"]); setBoardProvider(null); });
+    await settle();
+    expect([...quotes.keys()]).toEqual(["^FTSE"]);
+    expect(quotes.get("^FTSE")?.loading).toBe(false);
+    await act(async () => finish(SYMBOLS.map((symbol) => ({ target: { symbol }, quote: quote(symbol, 999) }))));
+    await settle();
+    expect([...quotes.keys()]).toEqual(["^FTSE"]);
+    expect(quotes.get("^FTSE")?.quote).toBeNull();
+    await act(async () => setBoardSymbols([]));
+    await settle();
+    expect(quoteBoardStatus(quotes)).toEqual({ loading: 0, stale: 0, unavailable: 0, latestTs: 0 });
   });
 });
