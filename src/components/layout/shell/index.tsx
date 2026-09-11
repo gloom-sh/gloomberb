@@ -164,8 +164,13 @@ export function Shell({
     pluginRegistry,
   });
   const dockGeometryOptions = useMemo<DockGeometryOptions>(() => (
-    nativePaneChrome ? { precise: true } : { reserveDividerGutters: true }
-  ), [nativePaneChrome]);
+    nativePaneChrome ? {
+      precise: true,
+      // A whole text row overlaps the next pane's header buttons. Keep the
+      // visible divider centered and share its smaller hit rect with the host.
+      dividerSize: { horizontal: 1, vertical: Math.min(1, 8 / (cellHeightPx ?? 18)) },
+    } : { reserveDividerGutters: true }
+  ), [nativePaneChrome, cellHeightPx]);
   const bounds = useMemo<LayoutBounds>(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
 
   const persistLayout = useCallback((nextLayout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => {

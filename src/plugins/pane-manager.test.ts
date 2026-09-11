@@ -93,6 +93,28 @@ describe("pane-manager split-tree drops", () => {
     expect(right!.rect.x).toBe(divider!.rect.x + divider!.rect.width);
   });
 
+  test("desktop resize targets stay centered without covering lower pane header actions", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const layout: LayoutConfig = { ...config.layout, dockRoot: {
+      kind: "split", axis: "horizontal", ratio: 0.5,
+      first: { kind: "split", axis: "vertical", ratio: 0.5,
+        first: { kind: "pane", instanceId: "top" }, second: { kind: "pane", instanceId: "bottom" } },
+      second: { kind: "pane", instanceId: "right" },
+    } };
+    const original = getDockLeafLayouts(layout, BOUNDS, { precise: true });
+    const bottom = original.find((leaf) => leaf.instanceId === "bottom")!;
+    for (const cellHeight of [14, 18, 24]) {
+      const options = { precise: true, dividerSize: { horizontal: 1, vertical: 8 / cellHeight } };
+      expect(getDockLeafLayouts(layout, BOUNDS, options)).toEqual(original);
+      const dividers = getDockDividerLayouts(layout, BOUNDS, options);
+      const vertical = dividers.find((divider) => divider.axis === "vertical")!.rect;
+      expect(vertical.height * cellHeight).toBeCloseTo(8);
+      expect(vertical.y + vertical.height / 2).toBe(bottom.rect.y);
+      expect(vertical.y + vertical.height).toBeLessThan(bottom.rect.y + 0.45);
+      expect(dividers.find((divider) => divider.axis === "horizontal")!.rect.width).toBe(1);
+    }
+  });
+
   test("splits the hovered pane on leaf drops and matches the preview", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const notesPane = createPaneInstance("chat");

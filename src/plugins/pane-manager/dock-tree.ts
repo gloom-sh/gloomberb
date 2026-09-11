@@ -42,7 +42,7 @@ export interface DockResizeTarget extends DockDividerLayout {
 
 export interface DockGeometryOptions {
   precise?: boolean;
-  dividerSize?: number;
+  dividerSize?: number | { horizontal: number; vertical: number };
   reserveDividerGutters?: boolean;
 }
 
@@ -169,7 +169,9 @@ function collectDockGeometry(
   }
 
   const precise = options.precise === true;
-  const dividerSize = options.dividerSize ?? 1;
+  const dividerSize = typeof options.dividerSize === "object"
+    ? options.dividerSize[node.axis]
+    : options.dividerSize ?? 1;
   const reserveDividerGutters = options.reserveDividerGutters === true && !precise;
 
   if (node.axis === "horizontal") {
