@@ -17,7 +17,7 @@ export interface MarketFormatOptions extends AssetDisplayContext {
 
 const CASH_TYPES = new Set(["CASH", "FX", "FOREX", "CCY", "CURRENCY", "CURRENCYPAIR"]);
 const CRYPTO_TYPES = new Set(["CRYPTO", "CRYPTOCURRENCY", "DIGITALCURRENCY", "COIN", "TOKEN"]);
-const EQUITY_TYPES = new Set(["STK", "STOCK", "EQUITY", "ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "ADR"]);
+const EQUITY_TYPES = new Set(["STK", "STOCK", "COMMONSTOCK", "EQUITY", "ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "ADR"]);
 const CONTRACT_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "FOP"]);
 
 const currencySymbols = new Map<string, string>();
