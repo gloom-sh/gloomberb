@@ -1,4 +1,4 @@
-import { EmptyState, Notice, SectionHeading } from "../../../components";
+import { EmptyState, Notice, Prose, SectionHeading } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo } from "../../../components/company-logo";
 import { PriceReturnStrip } from "../../../components/price-performance";
@@ -19,6 +19,7 @@ import { resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { CompactRangeBar, PositionTable, QuoteBook, StatGrid } from "./overview/components";
 import { buildOverviewStats, buildPositionRows } from "./overview/model";
+import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../../utils/market-capitalization";
 
 export function OverviewTab({
   width,
@@ -38,11 +39,13 @@ export function OverviewTab({
 
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
+  const capitalization = selectMarketCapitalization(quote, fundamentals);
   const profile = financials?.profile;
   const exchangeRates = useFxRatesMap([
     baseCurrency,
     ticker.metadata.currency,
     quote?.currency,
+    capitalization?.currency,
     ...ticker.metadata.positions.map((position) => position.currency),
   ]);
   const effectiveExchangeRates = selectEffectiveExchangeRates(exchangeRates, exchangeRatesState);
@@ -107,6 +110,7 @@ export function OverviewTab({
     quoteCurrency,
     baseCurrency,
     toBase,
+    marketCapExchangeRates: effectiveExchangeRates,
   });
   const performanceFields = buildPriceReturnFields(
     appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], quote),
@@ -260,6 +264,7 @@ export function OverviewTab({
           <Box flexDirection="column">
             <SectionHeading title={t("Fundamentals")} />
             <StatGrid fields={stats} width={contentWidth} />
+            {capitalization?.provenance.kind === "fundamentals" ? <Prose text={`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`} width={contentWidth} color={colors.textDim} /> : null}
           </Box>
         )}
 

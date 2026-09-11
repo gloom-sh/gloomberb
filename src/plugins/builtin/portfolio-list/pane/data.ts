@@ -3,6 +3,7 @@ import { PRICE_SPARKLINE_COLUMN_ID } from "../../../../components/price-sparklin
 import type { AppConfig, ColumnConfig } from "../../../../types/config";
 import type { TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
+import { selectMarketCapitalization } from "../../../../utils/market-capitalization";
 import type { CollectionSortPreference } from "../../../../state/app/context";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { resolveQuoteAgeTimestamp } from "../../../../market-data/quotes/time";
@@ -149,6 +150,8 @@ export function buildTrackedCurrencies(
     if (financials?.quote?.currency) {
       currencies.add(financials.quote.currency);
     }
+    const cap = selectMarketCapitalization(financials?.quote, financials?.fundamentals);
+    if (cap) currencies.add(cap.currency);
   }
 
   for (const balance of accountState?.visibleCashBalances ?? []) {

@@ -42,3 +42,17 @@ export function describeFundamentalMarketCap(provenance: MarketCapitalization["p
     : "retrieval time unavailable";
   return `${source} fundamentals, ${retrieval}${provenance.stale ? ", stale" : ""}; valuation date unavailable`;
 }
+
+export function convertMarketCapitalization(
+  value: number | null,
+  currency: string | null,
+  baseCurrency: string,
+  rates: ReadonlyMap<string, number>,
+): number | null {
+  if (value == null || !Number.isFinite(value) || !currency) return null;
+  if (currency === baseCurrency) return value;
+  const fromRate = currency === "USD" ? 1 : rates.get(currency);
+  const toRate = baseCurrency === "USD" ? 1 : rates.get(baseCurrency);
+  if (fromRate == null || toRate == null || !Number.isFinite(fromRate) || !Number.isFinite(toRate) || fromRate <= 0 || toRate <= 0) return null;
+  return value * fromRate / toRate;
+}

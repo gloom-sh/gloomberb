@@ -1,4 +1,5 @@
 import { formatPriceEarnings } from "../../../../utils/price-earnings";
+import { convertMarketCapitalization, selectMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
@@ -36,13 +37,14 @@ export function buildOverviewStats({
   fundamentals,
   quoteCurrency,
   baseCurrency,
-  toBase,
+  marketCapExchangeRates = new Map(),
 }: {
   quote: Quote | undefined;
   fundamentals: TickerFinancials["fundamentals"] | undefined;
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
+  marketCapExchangeRates?: ReadonlyMap<string, number>;
 }): StatField[] {
   const stats: StatField[] = [];
   const financialCurrency = fundamentals?.financialCurrency;
@@ -53,8 +55,10 @@ export function buildOverviewStats({
   if (quote?.volume != null) {
     stats.push({ label: "Volume", value: formatCompact(quote.volume) });
   }
-  if (quote?.marketCap) {
-    stats.push({ label: "Market Cap", value: formatCompactCurrency(toBase(quote.marketCap, quoteCurrency), baseCurrency) });
+  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  if (capitalization) {
+    const converted = convertMarketCapitalization(capitalization.value, capitalization.currency, baseCurrency, marketCapExchangeRates);
+    stats.push({ label: "Market Cap", value: formatCompactCurrency(converted ?? capitalization.value, converted == null ? capitalization.currency : baseCurrency) });
   }
   if (fundamentals?.sharesOutstanding) {
     stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });
