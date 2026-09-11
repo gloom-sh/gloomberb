@@ -41,6 +41,9 @@ export const SHARED_SPECIFIERS = [
   "gloomberb/dialog",
   "gloomberb/market-data",
   "gloomberb/time-series",
+  // Quote subscriptions live in host state; a bundled copy would open its own
+  // feed and never see the host's updates.
+  "gloomberb/quotes",
 ] as const;
 
 export type SharedSpecifier = (typeof SHARED_SPECIFIERS)[number];

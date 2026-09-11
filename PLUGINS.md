@@ -899,6 +899,51 @@ Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book 
 
 Use `usePaneSettingValue(key, fallback)` from `gloomberb/react` for persistent pane settings and `usePaneTitle(title)` for a content-derived pane title. They update the active saved layout without requiring direct app-config writes. Both accept an optional explicit pane ID.
 
+### Loading data into a pane
+
+A pane that fetches on a schedule uses the host's loading helpers rather than its own `useEffect` and timers, so it cancels, refreshes, and reports age the same way built-in panes do:
+
+```tsx
+import { useAsyncResource, useAutoRefresh, useUpdatedAgo } from "gloomberb/react";
+import { usePaneStatusFooter } from "gloomberb/components";
+import { createPluginCache } from "gloomberb/utils";
+
+const { data, loading, error, updatedAt, load } = useAsyncResource(loadThing, { initialData: getCachedThing });
+useAutoRefresh(updatedAt, load);
+const updatedAgo = useUpdatedAgo(updatedAt);
+usePaneStatusFooter({ registrationId: "my-pane", loading, error });
+```
+
+The loader receives `force` so a manual reload can bypass the plugin's own cache; `initialData` seeds the pane from that cache before the first fetch resolves.
+
+`createPluginCache` keeps the last good payload in plugin persistence with a TTL, so the pane has something to show before its first fetch after a restart. Table panes get `compareSortValues` and `cycleSortPreference` from `gloomberb/utils` so mixed columns sort like the host's.
+
+### Live quotes
+
+`gloomberb/quotes` is the streaming layer over `useMarketData()`. A pane showing many symbols subscribes to them and receives the same live or polled updates the host's screeners get, through one shared feed per symbol:
+
+```tsx
+import {
+  buildScreenerQuoteTargets,
+  overlayScreenerQuoteEntries,
+  resolveScreenerQuoteFeedStatus,
+  useLiveQuoteEntries,
+  useLiveStreamingSetting,
+  LIVE_STREAMING_QUICK_SETTING,
+} from "gloomberb/quotes";
+
+const liveStreaming = useLiveStreamingSetting();
+const targets = useMemo(() => buildScreenerQuoteTargets(rows, selectedSymbol), [rows, selectedSymbol]);
+const { entries, freshnessNow, subscriptionStartedAt } = useLiveQuoteEntries(targets, { liveStreaming });
+const liveRows = useMemo(() => overlayScreenerQuoteEntries(rows, entries), [rows, entries]);
+```
+
+Declare `LIVE_STREAMING_QUICK_SETTING` in the pane's `quickSettings` so the toggle sits in the header on the same persisted key as every other screener. The module is shared with the host and never bundled into a plugin: the subscriptions are host state.
+
+### Network access
+
+List every third-party host a plugin fetches from in its `hosts` field, as bare domains. The terminal and desktop reach anything, so there it is documentation and what the plugin directory shows. On the web, the browser cannot call a host without CORS headers, and the hosted app proxies exactly the hosts that bundled plugins declare. A host left out works on the desktop and fails on the web.
+
 Pane footers show changing status such as loading, errors, stale data, or live/delayed feeds. Preserve existing pane-specific action shortcuts instead of duplicating them in body toolbars. Do not repeat the pane title, fixed labels, row counts, or generic keyboard hints:
 
 ```typescript

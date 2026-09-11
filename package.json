@@ -26,6 +26,7 @@
     "./types/trading": "./src/types/trading.ts",
     "./time-series": "./src/public/time-series.ts",
     "./market-data": "./src/public/market-data.ts",
+    "./quotes": "./src/public/quotes.ts",
     "./dialog": "./src/ui/dialog.tsx",
     "./broker": "./src/public/broker.ts"
   },
