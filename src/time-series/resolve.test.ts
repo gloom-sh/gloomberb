@@ -40,6 +40,37 @@ const fredLoad = (
 });
 
 describe("resolveChartSpecData", () => {
+  test("qualified price charts retain quote metadata without injecting the fetched snapshot into history", async () => {
+    let quoteCalls = 0;
+    let financialCalls = 0;
+    const history = [{ date: new Date("2026-01-15"), close: 77.53, volume: 1234 }];
+    const provider = createTestDataProvider({
+      getQuote: async () => { quoteCalls++; return { symbol: "NESN", currency: "CHF", instrumentType: "EQUITY", price: 999, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-16") }; },
+      getTickerFinancials: async () => { financialCalls++; return emptyFinancials(); },
+      getPriceHistory: async () => history,
+      getPriceHistoryForResolution: async () => history,
+    });
+    const spec = chartSpec({ viewport: { range: "1M", resolution: "1d" }, series: [chartSeries({ source: { kind: "security", instrument: { symbol: "NESN", exchange: "SWX" }, fieldId: "market.close" } })] });
+    const cache = new ChartResolveCache();
+    const sources = { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16") };
+    const result = await resolveChartSpecData(spec, sources, cache);
+    expect(result.series[0]).toMatchObject({ unit: "CHF/share", unitGroup: "price:CHF", volumeUnit: "shares" });
+    expect(result.series[0]?.points.map((point) => point.value)).toEqual([77.53]);
+    await resolveChartSpecData(spec, sources, cache);
+    expect(quoteCalls).toBe(1);
+    expect(financialCalls).toBe(0);
+
+    const unavailable = createTestDataProvider({
+      getQuote: async () => { throw new Error("Quote temporarily unavailable"); },
+      getPriceHistory: async () => history,
+      getPriceHistoryForResolution: async () => history,
+    });
+    const withoutMetadata = await resolveChartSpecData(spec, { ...sources, dataProvider: unavailable });
+    expect(withoutMetadata.errors).toEqual([]);
+    expect(withoutMetadata.series[0]?.points.map((point) => point.value)).toEqual([77.53]);
+    expect(withoutMetadata.series[0]?.unit).toBe("currency/share");
+  });
+
   test("seeds study series so their panels survive the wait for real data", async () => {
     const date = new Date("2026-01-05T00:00:00.000Z");
     const seeded = seedChartResolutionResult(

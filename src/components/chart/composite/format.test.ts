@@ -201,6 +201,17 @@ describe("composite chart unit formatting", () => {
   });
 });
 
+test("international price legends and cursors retain currency and price precision", () => {
+  for (const [currency, expected] of [["CAD", "CA$173.45"], ["CHF", "CHF173.45"], ["HKD", "HK$173.45"], ["SEK", "SEK173.45"]]) {
+    const unit = `${currency}/share`;
+    const domain = { side: "right" as const, seriesIds: ["price"], min: 170, max: 180, scale: "linear" as const, unit, unitGroup: `price:${currency}` };
+    expect(formatChartLegendValue(173.45, unit, domain.unitGroup)).toBe(expected);
+    expect(formatCompositeCursorValue(173.45, domain)).toBe(expected);
+  }
+  expect(formatChartLegendValue(173.45, "CAD/JPY", "derived-unit:cad/jpy")).toBe("173 CAD/JPY");
+  expect(formatChartLegendValue(173.45, "CPI", "index")).toBe("173 CPI");
+});
+
 // Regression: truncating before PriceAxisLabels bypassed its full-value guard.
 test("constrained axis ticks never become plausible numeric prefixes", () => {
   const domain = { side: "right" as const, seriesIds: ["tiny"], min: 3.88e-6, max: 6.12e-6, scale: "linear" as const, unit: "USD", unitGroup: "price" };
