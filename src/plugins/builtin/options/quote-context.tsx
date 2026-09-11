@@ -10,17 +10,20 @@ export function optionQuoteContextHeight(reference: OptionMarketReference | unde
 }
 
 /** Shared source context for the selected chain contract and its calculator snapshot. */
-export function OptionQuoteContext({ reference, width, height, snapshot = false }: {
+export function OptionQuoteContext({ reference, width, height, snapshot = false, scrollable = true }: {
   reference: OptionMarketReference;
   width: number;
   height: number;
   snapshot?: boolean;
+  /** A parent scrolling the full result body can own overflow instead. */
+  scrollable?: boolean;
 }) {
-  return <ScrollBox key={JSON.stringify(reference)} height={height} flexShrink={0} scrollY focusable={false}>
-    <Box flexDirection="column">
-      {optionMarketReferenceLines(reference).map((line, index) => (
-        <Prose key={index} text={snapshot && index === 0 ? `Snapshot: ${line}` : line} width={Math.max(8, width)} color={colors.textDim} />
-      ))}
-    </Box>
-  </ScrollBox>;
+  const content = <Box flexDirection="column">
+    {optionMarketReferenceLines(reference).map((line, index) => (
+      <Prose key={index} text={snapshot && index === 0 ? `Snapshot: ${line}` : line} width={Math.max(8, width)} color={colors.textDim} />
+    ))}
+  </Box>;
+  return scrollable
+    ? <ScrollBox key={JSON.stringify(reference)} height={height} flexShrink={0} scrollY focusable={false}>{content}</ScrollBox>
+    : content;
 }
