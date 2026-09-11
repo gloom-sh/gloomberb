@@ -5,6 +5,7 @@ import type { BrokerAccount, BrokerPortfolioPerformance } from "../../../types/t
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/relative-time";
+import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import { instrumentFromTicker, type ChartRequest } from "../../../market-data/request-types";
 import { buildChartKey } from "../../../market-data/selectors";
 import { resolvePortfolioAccountMetrics, resolvePortfolioMarketValue } from "../portfolio-list/account-metrics";
@@ -16,12 +17,13 @@ import {
   formatSignedCompact,
 } from "./display";
 import {
-  computeDatedReturns,
+  resolveDatedReturns,
   computeWeightedPortfolioReturns,
   syntheticAccountUnsupportedReason,
   syntheticPositionUnsupportedReason,
   type DatedReturn,
   type WeightedReturnSeries,
+  type ReturnHistoryResult,
 } from "./metrics";
 import { getPortfolioPositionValue } from "./sector-model";
 import type { AnalyticsMetricRow } from "./view";
@@ -85,6 +87,7 @@ export interface PortfolioReturnSeriesResult {
   /** Holdings with no reliable base-currency value, so weights cannot be determined. */
   unvaluedCount: number;
   unsupportedReason: string | null;
+  historyIntegrity: Array<{ symbol: string; integrity: PriceHistoryIntegrity }>;
 }
 
 export function buildPortfolioReturnSeries({
@@ -106,6 +109,7 @@ export function buildPortfolioReturnSeries({
   let missingCount = 0;
   let unvaluedCount = 0;
   let unsupportedReason = syntheticAccountUnsupportedReason(account);
+  const historyIntegrity: PortfolioReturnSeriesResult["historyIntegrity"] = [];
   for (const { ticker, request } of chartTargets) {
     unsupportedReason ??= syntheticPositionUnsupportedReason(
       ticker,
@@ -120,7 +124,9 @@ export function buildPortfolioReturnSeries({
     const key = buildChartKey(request);
     const entry = chartEntries.get(key);
     const history = entry?.data ?? entry?.lastGoodData ?? null;
-    const returns = history && history.length >= 11 ? computeDatedReturns(history) : [];
+    const resolved = resolveDatedReturns(history ?? []);
+    if (resolved.integrity) historyIntegrity.push({ symbol: ticker.metadata.ticker, integrity: resolved.integrity });
+    const returns = resolved.returns;
     if (value == null || returns.length < 10) {
       missingCount += 1;
       continue;
@@ -132,23 +138,22 @@ export function buildPortfolioReturnSeries({
 
   const returns = computeWeightedPortfolioReturns(weightedSeries);
   return {
-    returns: !unsupportedReason && unvaluedCount === 0 && returns.length > 0 ? returns : null,
+    returns: !unsupportedReason && unvaluedCount === 0 && historyIntegrity.length === 0 && returns.length > 0 ? returns : null,
     coverage: totalValue > 0 ? coveredValue / totalValue : chartTargets.length === 0 ? 1 : 0,
     missingCount,
     unvaluedCount,
     unsupportedReason,
+    historyIntegrity,
   };
 }
 
 export function buildBenchmarkReturnSeries(
   request: ChartRequest,
   chartEntries: ChartEntryLookup,
-): DatedReturn[] | null {
+): ReturnHistoryResult {
   const entry = chartEntries.get(buildChartKey(request));
   const history = entry?.data ?? entry?.lastGoodData ?? null;
-  if (!history || history.length < 11) return null;
-  const returns = computeDatedReturns(history);
-  return returns.length > 0 ? returns : null;
+  return resolveDatedReturns(history ?? []);
 }
 
 export function buildAnalyticsSummaryRows({
@@ -319,6 +324,8 @@ export function buildAnalyticsRiskRows({
   missingCount = 0,
   unvaluedCount = 0,
   unsupportedReason = null,
+  historyIntegrity = [],
+  benchmarkIntegrity = null,
 }: {
   sharpe: number | null;
   beta: number | null;
@@ -326,21 +333,27 @@ export function buildAnalyticsRiskRows({
   missingCount?: number;
   unvaluedCount?: number;
   unsupportedReason?: string | null;
+  historyIntegrity?: PortfolioReturnSeriesResult["historyIntegrity"];
+  benchmarkIntegrity?: PriceHistoryIntegrity | null;
 }): AnalyticsMetricRow[] {
   const unavailable = unvaluedCount > 0
     ? `${unvaluedCount} holding${unvaluedCount === 1 ? "" : "s"} unvalued; check prices and FX`
+    : historyIntegrity.length > 0 ? `Inconsistent OHLC history: ${historyIntegrity.map((entry) => entry.symbol).join(", ")}`
     : unsupportedReason;
   const partial = formatRiskCoverage(coverage, missingCount);
   return [
     { id: "sharpe", label: "Est. Sharpe", value: sharpe, method: "Current weights; price returns; 5% Rf, 252 sessions" },
     { id: "beta", label: "Est. Beta (SPY)", value: beta, method: "Current weights; excludes cash, fees and trades" },
-  ].map((row) => ({
-    id: row.id,
-    label: row.label,
-    value: unavailable ? "—" : formatNumber(row.value ?? undefined, 2),
-    detail: unavailable ?? (row.value == null ? "Insufficient history for basket estimate" : `${row.method}${partial ? `; partial: ${partial}` : ""}`),
-    color: colors.textMuted,
-  }));
+  ].map((row) => {
+    const reason = unavailable ?? (row.id === "beta" && benchmarkIntegrity ? "SPY benchmark: inconsistent OHLC history" : null);
+    return {
+      id: row.id,
+      label: row.label,
+      value: reason ? "—" : formatNumber(row.value ?? undefined, 2),
+      detail: reason ?? (row.value == null ? "Insufficient history for basket estimate" : `${row.method}${partial ? `; partial: ${partial}` : ""}`),
+      color: colors.textMuted,
+    };
+  });
 }
 
 export function resolvePerformancePalette(

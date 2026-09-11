@@ -2,8 +2,56 @@ import { expect, test } from "bun:test";
 import type { ResolvedPortfolioAccountState } from "../portfolio-list/summary";
 import type { PortfolioSummaryTotals } from "../portfolio-list/metrics";
 import type { TickerRecord } from "../../../types/ticker";
+import type { PricePoint } from "../../../types/financials";
 import { buildChartKey } from "../../../market-data/selectors";
-import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
+import { buildAnalyticsRiskRows, buildAnalyticsSummaryRows, buildBenchmarkReturnSeries, buildPortfolioChartTargets, buildPortfolioReturnSeries } from "./pane-model";
+
+function riskTicker(symbol: string): TickerRecord {
+  return { metadata: { ticker: symbol, exchange: "NYSE", currency: "USD", name: symbol,
+    positions: [{ portfolio: "main", shares: 10, avgCost: 100, markPrice: 120, broker: "manual", currency: "USD" }],
+    portfolios: ["main"], watchlists: [], custom: {}, tags: [],
+  } };
+}
+
+function riskHistory(): PricePoint[] {
+  return Array.from({ length: 21 }, (_, index) => ({ date: new Date(Date.UTC(2026, 7, 21 + index)), close: 740 + index + index % 2 }));
+}
+
+// Original reported SPY contradiction captured during the research audit.
+const rejectedSpy = { date: new Date("2026-09-10"), open: 764.08, high: 758.555, low: 757.57, close: 758.15, volume: 3461376 };
+
+test("a rejected benchmark suppresses beta while the independent basket Sharpe remains available", () => {
+  const request = buildPortfolioChartTargets([riskTicker("SPY")])[0]!.request;
+  const history = [...riskHistory().slice(0, -1), rejectedSpy];
+  const entries = new Map([[buildChartKey(request), { data: history }]]);
+  const result = buildBenchmarkReturnSeries(request, entries);
+  expect(result.returns).toEqual([]);
+  expect(result.integrity?.sourcePoints[0]).toMatchObject({ open: 764.08, high: 758.555, close: 758.15 });
+  const rows = buildAnalyticsRiskRows({ sharpe: 1.75, beta: 1.2, benchmarkIntegrity: result.integrity });
+  expect(rows[0]?.value).toBe("1.75");
+  expect(rows[1]).toMatchObject({ value: "—", detail: "SPY benchmark: inconsistent OHLC history" });
+  entries.set(buildChartKey(request), { data: riskHistory() });
+  expect(buildBenchmarkReturnSeries(request, entries)).toMatchObject({ integrity: null });
+  expect(buildBenchmarkReturnSeries(request, entries).returns).toHaveLength(20);
+  expect(history.at(-1)?.high).toBe(758.555);
+});
+
+test("a corrupt holding cannot be silently dropped from estimated portfolio risk", () => {
+  const targets = buildPortfolioChartTargets([riskTicker("SPY"), riskTicker("MSFT")]);
+  const chartEntries = new Map(targets.map(({ request }, index) => [buildChartKey(request), {
+    data: index === 0 ? [...riskHistory().slice(0, -1), rejectedSpy] : riskHistory(),
+  }]));
+  const input = { chartTargets: targets, chartEntries, financials: new Map(),
+    columnContext: { activeTab: "main", baseCurrency: "USD", exchangeRates: new Map<string, number>(), now: 0 } };
+  const result = buildPortfolioReturnSeries(input);
+  expect(result).toMatchObject({ returns: null, coverage: 0.5, missingCount: 1 });
+  expect(result.historyIntegrity[0]).toMatchObject({ symbol: "SPY", integrity: { sourcePoints: [{ ...rejectedSpy, date: "2026-09-10T00:00:00.000Z" }] } });
+  const rows = buildAnalyticsRiskRows({ ...result, sharpe: 2, beta: 1 });
+  expect(rows.every((row) => row.value === "—" && row.detail === "Inconsistent OHLC history: SPY")).toBe(true);
+  chartEntries.set(buildChartKey(targets[0]!.request), { data: riskHistory() });
+  expect(buildPortfolioReturnSeries(input).returns).toHaveLength(20);
+  expect(buildPortfolioReturnSeries(input).historyIntegrity).toEqual([]);
+});
 
 test("converts every account balance while keeping leverage independent of display currency", () => {
   const accountState = {

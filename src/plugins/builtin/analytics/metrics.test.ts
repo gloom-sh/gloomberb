@@ -3,6 +3,7 @@ import {
   computeBeta,
   computeDatedBeta,
   computeDatedReturns,
+  resolveDatedReturns,
   computeSectorAllocation,
   computeSharpeRatio,
   computeWeightedPortfolioReturns,
@@ -89,6 +90,21 @@ describe("computeBeta", () => {
       { dateKey: "2024-01-02", value: 0.1 },
       { dateKey: "2024-01-03", value: -0.1 },
     ]);
+  });
+
+  test("quarantines contradictory samples and permits a corrected duplicate to recover", () => {
+    const start = { date: new Date("2026-09-08"), close: 100 };
+    const bad = { date: new Date("2026-09-09"), open: 105, high: 102, low: 99, close: 101 };
+    const end = { date: new Date("2026-09-10"), close: 110 };
+    const input = [start, bad, end];
+    const rejected = resolveDatedReturns(input);
+    expect(computeDatedReturns(input)).toEqual([]);
+    expect(rejected.integrity?.sourcePoints[0]).toMatchObject({ date: "2026-09-09T00:00:00.000Z", open: 105, high: 102 });
+    const recovered = resolveDatedReturns([...input, { ...bad, high: 106 }]);
+    expect(recovered.integrity).toBeNull();
+    expect(recovered.returns.map((entry) => entry.value)).toEqual([0.01, 9 / 101]);
+    expect(bad.high).toBe(102);
+    expect(rejected.integrity?.sourcePoints[0]?.high).toBe(102);
   });
 });
 

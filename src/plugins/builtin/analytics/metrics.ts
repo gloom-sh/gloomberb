@@ -2,6 +2,7 @@ import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import type { BrokerAccount } from "../../../types/trading";
 import { getPricePointTimestamp } from "../../../utils/price-history";
+import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 
 export interface DatedReturn {
   dateKey: string;
@@ -81,9 +82,24 @@ export function computeBeta(assetReturns: number[], marketReturns: number[]): nu
   return covariance / marketVariance;
 }
 
-export function computeDatedReturns(history: PricePoint[]): DatedReturn[] {
-  const points = history
-    .map((point) => ({ point, timestamp: getPricePointTimestamp(point) }))
+export interface ReturnHistoryResult {
+  returns: DatedReturn[];
+  integrity: PriceHistoryIntegrity | null;
+}
+
+export function resolveDatedReturns(history: PricePoint[]): ReturnHistoryResult {
+  const byTimestamp = new Map<number, PricePoint>();
+  for (const point of history) {
+    const timestamp = getPricePointTimestamp(point);
+    if (Number.isFinite(timestamp)) byTimestamp.set(timestamp, point);
+  }
+  const reported = [...byTimestamp].map(([timestamp, point]) => ({ timestamp, point }));
+  const issues = reported.map(({ point }) => pricePointIntegrity(point))
+    .filter((entry): entry is PriceHistoryIntegrity => !!entry);
+  // Dropping the rejected day would silently change the risk sample and bridge
+  // its neighbors. Quarantine the sample until corrected source data arrives.
+  if (issues.length > 0) return { returns: [], integrity: mergePriceHistoryIntegrity(...issues) };
+  const points = reported
     .filter(({ point, timestamp }) => (
       Number.isFinite(timestamp)
       && Number.isFinite(point.close)
@@ -102,7 +118,11 @@ export function computeDatedReturns(history: PricePoint[]): DatedReturn[] {
       value,
     });
   }
-  return returns;
+  return { returns, integrity: null };
+}
+
+export function computeDatedReturns(history: PricePoint[]): DatedReturn[] {
+  return resolveDatedReturns(history).returns;
 }
 
 export function computeWeightedPortfolioReturns(series: WeightedReturnSeries[]): DatedReturn[] {

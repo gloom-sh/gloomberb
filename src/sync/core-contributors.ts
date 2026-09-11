@@ -9,7 +9,7 @@ import type { SyncContributor } from "./types";
 import { convertCurrency } from "../utils/format";
 import {
   computeDatedBeta,
-  computeDatedReturns,
+  resolveDatedReturns,
   computeWeightedPortfolioReturns,
   syntheticAccountUnsupportedReason,
   syntheticPositionUnsupportedReason,
@@ -383,12 +383,14 @@ function collectAnalyticsByPortfolio(
   brokerAccounts: Record<string, BrokerAccount[]>,
 ) {
   const output: Record<string, Record<string, unknown>> = {};
-  const spyReturns = computeDatedReturns(recentPriceHistory(financials.get("SPY")?.priceHistory ?? [], 366));
+  const spySample = resolveDatedReturns(recentPriceHistory(financials.get("SPY")?.priceHistory ?? [], 366));
+  const spyReturns = spySample.returns;
   for (const portfolio of config.portfolios) {
     const account = portfolio.brokerInstanceId && portfolio.brokerAccountId
       ? brokerAccounts[portfolio.brokerInstanceId]?.find((entry) => entry.accountId === portfolio.brokerAccountId)
       : undefined;
     let unsupported = !!syntheticAccountUnsupportedReason(account);
+    let invalidHistory = false;
     const datedReturnSeries: WeightedReturnSeries[] = [];
     for (const ticker of tickers.values()) {
       const tickerFinancials = financials.get(ticker.metadata.ticker);
@@ -404,7 +406,9 @@ function collectAnalyticsByPortfolio(
           unsupported = true;
           continue;
         }
-        const returns = computeDatedReturns(recentPriceHistory(tickerFinancials?.priceHistory ?? [], 366));
+        const sample = resolveDatedReturns(recentPriceHistory(tickerFinancials?.priceHistory ?? [], 366));
+        invalidHistory ||= sample.integrity != null;
+        const returns = sample.returns;
         if (returns.length >= 10) datedReturnSeries.push({ weight: value, returns });
         else unsupported = true;
       }
@@ -414,8 +418,8 @@ function collectAnalyticsByPortfolio(
     output[portfolio.id] = {
       // A weighted history of today's holdings is not the investor's actual
       // one-year account return. Only preserve an explicitly supplied preview.
-      oneYearReturn: previewAnalytics?.oneYearReturn ?? null,
-      spyBeta: previewAnalytics?.spyBeta
+      oneYearReturn: invalidHistory ? null : previewAnalytics?.oneYearReturn ?? null,
+      spyBeta: invalidHistory || spySample.integrity ? null : previewAnalytics?.spyBeta
         ?? (
           portfolioReturns.length > 0 && spyReturns.length > 0
             ? computeDatedBeta(portfolioReturns, spyReturns)

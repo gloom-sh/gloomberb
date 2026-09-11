@@ -527,6 +527,23 @@ describe("core sync contributors", () => {
     expect(supported.analyticsByPortfolio.main.spyBeta).toBeCloseTo(1.5, 5);
     expect(supported.analyticsByPortfolio.main.oneYearReturn).toBeNull();
 
+    const cleanBenchmark = state.financials.get("SPY")!.priceHistory!;
+    const benchmarkEnd = cleanBenchmark.at(-1)!;
+    state.financials.get("SPY")!.priceHistory = [...cleanBenchmark.slice(0, -1), { ...benchmarkEnd, high: benchmarkEnd.close - 1 }];
+    setSyncedProfileAnalytics("main", { oneYearReturn: 0.25, spyBeta: 1.4 });
+    const invalidBenchmark = await coreCollectionsSyncContributor.collect({ state }) as any;
+    expect(invalidBenchmark.analyticsByPortfolio.main).toEqual({ oneYearReturn: 0.25, spyBeta: null });
+    state.financials.get("SPY")!.priceHistory = cleanBenchmark;
+    const cleanHolding = state.financials.get("7203.T")!.priceHistory!;
+    const holdingEnd = cleanHolding.at(-1)!;
+    state.financials.get("7203.T")!.priceHistory = [...cleanHolding.slice(0, -1), { ...holdingEnd, low: holdingEnd.close + 1 }];
+    const invalidHolding = await coreCollectionsSyncContributor.collect({ state }) as any;
+    expect(invalidHolding.analyticsByPortfolio.main).toEqual({ oneYearReturn: null, spyBeta: null });
+    state.financials.get("7203.T")!.priceHistory = cleanHolding;
+    setSyncedProfileAnalytics("main", null);
+    const corrected = await coreCollectionsSyncContributor.collect({ state }) as any;
+    expect(corrected.analyticsByPortfolio.main.spyBeta).toBeCloseTo(1.5, 5);
+
     mainTicker.metadata.positions[0]!.side = "short";
     const short = await coreCollectionsSyncContributor.collect({ state }) as any;
     expect(short.analyticsByPortfolio.main.spyBeta).toBeNull();
