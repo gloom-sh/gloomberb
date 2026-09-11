@@ -175,6 +175,26 @@ function earningsDetail(earning: CorporateActionsData["earnings"][number]): stri
   return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
 }
 
+function earningsRowIds(earnings: CorporateActionsData["earnings"]): string[] {
+  const baseIds = earnings.map((earning) => `earn:${earning.date}${earning.dateType ? `:${earning.dateType}` : ""}`);
+  const counts = new Map<string, number>();
+  for (const id of baseIds) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const occurrences = new Map<string, number>();
+  return earnings.map((earning, index) => {
+    let id = baseIds[index]!;
+    // The source has no event ID or fiscal-period identity for announcements.
+    // Retain colliding records without assigning inferred periods; their supplied
+    // inputs keep distinct details stable when the provider reorders the feed.
+    if (counts.get(id)! > 1) id += `:${JSON.stringify([
+      earning.time ?? null, earning.currency ?? null, earning.epsActual ?? null,
+      earning.epsEstimate ?? null, earning.difference ?? null, earning.surprisePercent ?? null,
+    ])}`;
+    const occurrence = (occurrences.get(id) ?? 0) + 1;
+    occurrences.set(id, occurrence);
+    return occurrence === 1 ? id : `${id}:${occurrence}`;
+  });
+}
+
 function eventSortRank(status: EventStatus): number {
   switch (status) {
     case "Q Est": return 0;
@@ -197,11 +217,13 @@ export function buildEventRows(
   const ttm = ttmRow(quarterlyStatements, financials?.financialCurrency);
   if (ttm) rows.push(ttm);
 
-  for (const earning of data?.earnings ?? []) {
+  const earnings = data?.earnings ?? [];
+  const earningsIds = earningsRowIds(earnings);
+  for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
     rows.push({
-      id: `earn:${earning.date}`,
+      id: earningsIds[index]!,
       date: statement?.date ?? earning.date,
       dateType: earning.dateType,
       status: "Earnings",
@@ -323,7 +345,9 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
     notices.push(`${actionsLabel} unavailable: ${state.actionsError}`);
   } else if (unavailableSections.length > 0) {
     notices.push(`Unavailable: ${unavailableSections.join(", ")}`);
-  } else if (state.actions && !hasCorporateActionRows(state.actions)) {
+  } else if (state.actions && !(state.variant === "earnings-estimates"
+    ? state.actions.earnings.some((earning) => earning.epsActual != null)
+    : hasCorporateActionRows(state.actions))) {
     notices.push(state.variant === "earnings-estimates"
       ? `No reported earnings for ${state.symbol}`
       : `No dividends, splits, or reported earnings for ${state.symbol}`);

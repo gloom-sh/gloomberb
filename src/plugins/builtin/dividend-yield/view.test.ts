@@ -19,7 +19,33 @@ test("cash chart reaches the current zero cash rate after payments stop", () => 
     toDividendPayment("2023-08-04", 0.125, "USD")!,
     toDividendPayment("2024-08-07", 0.125, "USD")!,
   ], new Date("2026-09-10"));
-  expect(points.at(-1)).toMatchObject({ date: new Date("2026-09-10"), close: 0 });
+  expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.close])).toEqual([
+    ["2024-08-04", 0], ["2024-08-07", 0.125], ["2025-08-07", 0], ["2026-09-10", 0],
+  ]);
+});
+
+test("cash chart drops on each expiry and combines same-day cash and expiries once", () => {
+  const points = buildTrailingCashChartPoints([
+    toDividendPayment("2022-01-01", 1, "USD")!,
+    toDividendPayment("2023-01-01", 1, "USD")!,
+    toDividendPayment("2023-04-01", 2, "USD")!,
+    toDividendPayment("2024-01-01", 4, "USD")!,
+    toDividendPayment("2024-01-01", 5, "USD")!,
+  ], new Date("2024-05-01"));
+  expect(points.map((point) => [point.date.toISOString().slice(0, 10), point.close])).toEqual([
+    ["2023-01-01", 1], ["2023-04-01", 3], ["2024-01-01", 11], ["2024-04-01", 9], ["2024-05-01", 9],
+  ]);
+});
+
+test("February 29 cash leaves the clamped annual window on March 1 of the following year", () => {
+  const points = buildTrailingCashChartPoints([
+    toDividendPayment("2022-01-01", 1, "USD")!,
+    toDividendPayment("2024-02-28", 2, "USD")!,
+    toDividendPayment("2024-02-29", 3, "USD")!,
+  ], new Date("2025-03-02"));
+  expect(points.slice(-3).map((point) => [point.date.toISOString().slice(0, 10), point.close])).toEqual([
+    ["2025-02-28", 3], ["2025-03-01", 0], ["2025-03-02", 0],
+  ]);
 });
 
 test("leap-day cash chart retains payments after the clamped February 28 cutoff", () => {

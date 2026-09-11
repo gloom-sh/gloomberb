@@ -6,6 +6,7 @@ import { RemoteUiRegistryProvider, useRemoteUiRegistry, type RemoteUiRegistry } 
 import { resolveChartPalette } from "../core/palette";
 import { StaticChartSurface, buildStaticChartSeries } from "./chart-surface";
 import type { ProjectedChartPoint } from "../core/data";
+import { buildCompositeChartScene } from "../composite/scene";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let remoteRegistry: RemoteUiRegistry | null = null;
@@ -35,6 +36,18 @@ function RemoteRegistryProbe() {
 }
 
 describe("StaticChartSurface", () => {
+  test("calendar step charts preserve unequal time gaps and hold values until the next change", () => {
+    const irregular = points.map((point, index) => ({ ...point, date: new Date(`2026-01-${["01", "02", "11"][index]}`) }));
+    const series = buildStaticChartSeries(irregular, "step", "#00ff00", [], true);
+    const scene = buildCompositeChartScene(series, [{ id: "main" }], { width: 80, height: 10 });
+    expect(scene?.timeScale.kind).toBe("calendar");
+    const primary = scene!.panels[0]!.series[0]!;
+    expect(primary.source.style).toBe("step");
+    const [first, second, last] = primary.points;
+    expect((second!.xRatio - first!.xRatio) / (last!.xRatio - first!.xRatio)).toBeCloseTo(0.1, 10);
+    expect(primary.points.map((point) => point.value)).toEqual([3.5, 4.1, 4.9]);
+  });
+
   test("aligns an index-keyed overlay to the primary observations", () => {
     const [primary, overlay] = buildStaticChartSeries(points, "line", "#00ff00", [
       { id: "secondary", color: "#ffaa00", points: [{ index: 0, value: 1 }, { index: 2, value: 3 }, { index: 9, value: 4 }] },

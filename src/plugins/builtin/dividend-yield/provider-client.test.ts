@@ -39,9 +39,11 @@ test("browser income distinguishes confirmed no cash from unknown coverage, fail
   }
   const noQuote = await fetchProviderDividendData(createTestDataProvider({ getCorporateActions: async () => actions() }), "FUND", null, "AMS");
   expect(noQuote.metrics).toMatchObject({ trailingRate: 4, trailingYield: null });
-  await expect(fetchProviderDividendData(createTestDataProvider({
-    getCorporateActions: async () => actions({ dividends: [{ exDate: "broken", amount: 4 }] }),
-  }), "FUND", 100, "AMS", "EUR")).rejects.toThrow("records are invalid");
+  for (const exDate of ["broken", "2026-02-30", "2025-02-29", "2026-04-31"]) {
+    await expect(fetchProviderDividendData(createTestDataProvider({
+      getCorporateActions: async () => actions({ dividends: [{ exDate, amount: 4 }] }),
+    }), "FUND", 100, "AMS", "EUR")).rejects.toThrow("records are invalid");
+  }
 });
 
 test("cached dividend and quote provenance survive projection without hiding usable history", async () => {

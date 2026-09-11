@@ -1,9 +1,58 @@
 import { describe, expect, test } from "bun:test";
-import { extractExtendedHoursPrices, mapYahooAnalystResearchResponse, mapYahooCalendarEarnings, mapYahooEarningsHistory } from "./mappers";
+import { extractExtendedHoursPrices, mapYahooAnalystResearchResponse, mapYahooCalendarEarnings, mapYahooDividends, mapYahooEarningsHistory, mapYahooSplits, yahooRawDate } from "./mappers";
 import { loadYahooCorporateActions } from "./quote-summary";
 import type { ChartResult } from "./types";
 
 describe("Yahoo mappers", () => {
+  test("uses historical exchange-local dates for dividend and split timestamps", () => {
+    // Synthetic source-boundary fixtures; these do not assert an issuer's actual actions.
+    const cases = [
+      ["Australia/Sydney", "2026-01-01T23:00:00Z", "2026-01-02"],
+      ["Australia/Sydney", "2026-07-01T00:00:00Z", "2026-07-01"],
+      ["Pacific/Auckland", "2026-01-01T21:00:00Z", "2026-01-02"],
+      ["Europe/London", "2026-07-01T07:00:00Z", "2026-07-01"],
+      ["America/New_York", "2026-01-02T14:30:00Z", "2026-01-02"],
+      ["America/New_York", "2026-07-01T13:30:00Z", "2026-07-01"],
+      // The DST change means the same UTC clock time falls on different local dates.
+      ["Australia/Sydney", "2026-04-04T13:30:00Z", "2026-04-05"],
+      ["Australia/Sydney", "2026-04-05T13:30:00Z", "2026-04-05"],
+    ];
+    for (const [exchangeTimezoneName, instant, expected] of cases) {
+      const date = Date.parse(instant!) / 1000;
+      const events = {
+        dividends: { one: { date, amount: 0.25 } },
+        splits: { one: { date, numerator: 1, denominator: 10, splitRatio: "1:10" } },
+      };
+      const meta = { exchangeTimezoneName };
+      expect(mapYahooDividends(events, meta)).toEqual([{ exDate: expected, amount: 0.25 }]);
+      expect(mapYahooSplits(events, meta)).toEqual([{ date: expected, description: "1:10 split", ratio: 0.1, fromFactor: 10, toFactor: 1 }]);
+    }
+  });
+
+  test("preserves UTC fallback and independent date-only fields without inferring a timezone", () => {
+    const date = Date.parse("2026-01-01T23:00:00Z") / 1000;
+    const events = { dividends: { valid: { date, amount: 1 }, invalid: { date: Infinity, amount: 1 } }, splits: { valid: { date }, invalid: { date: 1e20 } } };
+    for (const meta of [undefined, {}, { exchangeTimezoneName: "Unknown/Exchange" }]) {
+      expect(mapYahooDividends(events, meta)).toEqual([{ exDate: "2026-01-01", amount: 1 }]);
+      expect(mapYahooSplits(events, meta).map((row) => row.date)).toEqual(["2026-01-01"]);
+    }
+    expect(yahooRawDate("2026-01-02")).toBe("2026-01-02");
+    expect(yahooRawDate({ fmt: "2026-01-02", raw: date })).toBe("2026-01-02");
+  });
+
+  test("carries chart timezone through corporate-action loading", async () => {
+    const date = Date.parse("2026-01-01T23:00:00Z") / 1000;
+    const data = await loadYahooCorporateActions({ ticker: "FIXTURE.AX", providerId: "yahoo",
+      fetchChart: async () => ({ meta: { currency: "AUD", exchangeTimezoneName: "Australia/Sydney" }, events: {
+        dividends: { one: { date, amount: 0.25 } }, splits: { one: { date, numerator: 1, denominator: 10 } },
+      } }),
+      fetchJsonWithCrumb: async () => { throw new Error("Independent earnings unavailable"); },
+    });
+    expect(data.dividends).toEqual([{ exDate: "2026-01-02", amount: 0.25 }]);
+    expect(data.splits[0]).toMatchObject({ date: "2026-01-02", ratio: 0.1, fromFactor: 10, toFactor: 1 });
+    expect(data.currency).toBe("AUD");
+  });
+
   test("normalizes London price targets without converting USD earnings estimates", () => {
     const data = mapYahooAnalystResearchResponse({ price: { currency: "GBp" },
       financialData: { targetMeanPrice: 3812.312, currentPrice: 3533.5 },

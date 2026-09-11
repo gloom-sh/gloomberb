@@ -21,6 +21,39 @@ test("pending RIVN earnings show consensus without borrowing prior-quarter actua
   expect(row?.revenueCurrency).toBeUndefined();
 });
 
+test("same-day announcements and fiscal periods retain independent detail identities", () => {
+  const actions = { symbol: "TEST", dividends: [], splits: [], earnings: [
+    { date: "2026-09-30", dateType: "announcement" as const, epsEstimate: 2.2 },
+    { date: "2026-09-30", dateType: "fiscal-period-end" as const, epsActual: 2, epsEstimate: 1.8 },
+  ] };
+  const rows = buildEventRows(actions, null, null, "USD");
+  const reported = rows.find((row) => row.earningsState === "reported")!;
+  const pending = rows.find((row) => row.earningsState === "pending")!;
+  expect(new Set(rows.map((row) => row.id)).size).toBe(2);
+  // Detail lookup uses the selected row's id; it must not resolve to the announcement.
+  expect(rows.find((row) => row.id === reported.id)).toMatchObject({ epsActual: 2, epsEstimate: 1.8 });
+  expect(rows.find((row) => row.id === pending.id)).toMatchObject({ earningsState: "pending", epsEstimate: 2.2 });
+  const reordered = buildEventRows({ ...actions, earnings: [...actions.earnings].reverse() }, null, null, "USD");
+  expect(reordered.find((row) => row.earningsState === "reported")?.id).toBe(reported.id);
+  expect(reordered.find((row) => row.earningsState === "pending")?.id).toBe(pending.id);
+});
+
+test("multiple reported records and exact duplicates retain unique same-provenance identities", () => {
+  const first = { date: "2026-09-30", dateType: "announcement" as const, epsActual: 2, epsEstimate: 1.8 };
+  const second = { ...first, epsActual: 3, epsEstimate: 2.7 };
+  for (const dateType of ["announcement", "fiscal-period-end", undefined] as const) {
+    const actions = { symbol: "TEST", dividends: [], splits: [], earnings: [first, second, first].map((earning) => ({ ...earning, dateType })) };
+    const rows = buildEventRows(actions, null, null, "USD");
+    expect(new Set(rows.map((row) => row.id)).size).toBe(3);
+    const selected = rows.find((row) => row.epsActual === 3)!;
+    expect(rows.find((row) => row.id === selected.id)?.epsEstimate).toBe(2.7);
+    const reordered = buildEventRows({ ...actions, earnings: [actions.earnings[1]!, actions.earnings[2]!, actions.earnings[0]!] }, null, null, "USD");
+    expect(reordered.find((row) => row.id === selected.id)?.epsActual).toBe(3);
+    expect(new Set(reordered.map((row) => row.id))).toEqual(new Set(rows.map((row) => row.id)));
+    expect(rows.every((row) => row.fiscalPeriodEnd === undefined)).toBe(true);
+  }
+});
+
 test("ADRs keep independent consensus EPS and revenue currencies and never infer missing ones", () => {
   const rows = buildEventRows(null, { symbol: "TSM", currency: "USD", recommendations: [], ratings: [],
     earningsEstimates: [{ date: "2026-09-30", period: "current_quarter", average: 4.46, currency: "USD" }],
@@ -52,6 +85,23 @@ test("partial and stale corporate data are not described as an empty event histo
     actions: { symbol: "RIVN", dividends: [], splits: [], earnings: [], coverage: { earnings: "unavailable", dividends: "available" }, stale: true },
   });
   expect(notice).toEqual({ text: "Unavailable: earnings   Corporate actions stale", failed: true });
+});
+
+test("EE ignores dividends, adjustments and pending announcements when assessing reported earnings coverage", () => {
+  const state = { variant: "earnings-estimates" as const, symbol: "TEST", actionsError: null, estimatesError: null, estimates: null,
+    actions: { symbol: "TEST", dividends: [{ exDate: "2026-09-30", amount: 0.1 }],
+      splits: [{ date: "2026-09-30", fromFactor: 10, toFactor: 1 }],
+      earnings: [{ date: "2026-09-30", dateType: "announcement" as const, epsEstimate: 2.2 }],
+    },
+  };
+  expect(eventSourceNotice(state)).toEqual({ text: "No reported earnings for TEST", failed: false });
+  expect(eventSourceNotice({ ...state, variant: "corporate-actions" })).toBeNull();
+  expect(eventSourceNotice({ ...state, actions: { ...state.actions,
+    earnings: [{ ...state.actions.earnings[0]!, epsActual: 0 }],
+  } })).toBeNull();
+  expect(eventSourceNotice({ ...state, actions: { ...state.actions,
+    coverage: { earnings: "unavailable" },
+  } })).toEqual({ text: "Unavailable: earnings", failed: true });
 });
 
 test("period aliases retain exact filing provenance and raw surprise inputs", () => {

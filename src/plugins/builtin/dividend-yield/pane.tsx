@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
+  KeyValueRow,
   Notice,
   StaticChartSurface,
   usePaneFooter,
@@ -79,22 +80,13 @@ function buildMetricRows(metrics: DividendMetrics, currency: string): MetricRow[
 }
 
 function renderMetricCell(row: MetricRow, width: number) {
-  const valueWidth = Math.min(row.value.length, Math.max(6, width - 8));
-  const labelWidth = Math.max(8, width - valueWidth - 1);
+  const rowWidth = Math.max(1, width - 1);
+  const valueWidth = Math.min(rowWidth, Math.max(6, row.value.length));
   return (
-    <Box height={1} flexDirection="row">
-      <Text fg={colors.textDim}>{row.label.slice(0, labelWidth).padEnd(labelWidth)}</Text>
-      <Text
-        fg={row.color ?? colors.text}
-        attributes={row.bold ? TextAttributes.BOLD : undefined}
-      >
-        {row.value}
-      </Text>
-    </Box>
+    <KeyValueRow label={row.label} value={row.value.padStart(valueWidth)}
+      width={rowWidth} labelWidth={rowWidth - valueWidth} color={row.color} emphasis={row.bold ?? false} />
   );
 }
-
-const MIN_METRIC_COLUMN_WIDTH = 18;
 
 function DividendSummary({
   metrics,
@@ -112,9 +104,9 @@ function DividendSummary({
   warnings: string[];
 }) {
   const metricRows = buildMetricRows(metrics, currency);
-  // Two 18-cell blocks overflow anything narrower than 38 cells, so collapse.
-  const columnCount = width - 2 >= MIN_METRIC_COLUMN_WIDTH * 2 ? 2 : 1;
-  const colWidth = Math.max(MIN_METRIC_COLUMN_WIDTH, Math.floor((width - 2) / columnCount));
+  const minColumnWidth = Math.max(...metricRows.map((row) => row.label.length + 2 + Math.max(6, row.value.length)));
+  const columnCount = width - 2 >= minColumnWidth * 2 ? 2 : 1;
+  const colWidth = Math.max(1, Math.floor((width - 2) / columnCount));
   const rowCount = Math.ceil(metricRows.length / columnCount);
   const chartHeight = chartPoints.length >= 2 ? 6 : 0;
   const palette = resolveChartPalette(colors, "positive");
@@ -143,7 +135,9 @@ function DividendSummary({
             points={chartPoints}
             width={Math.max(10, width - 2)}
             height={chartHeight}
-            mode="line"
+            mode="step"
+            calendarSpaced
+            showTimeAxis
             colors={palette}
             yAxisLabel="TTM cash/share"
             yAxisColor={colors.textDim}

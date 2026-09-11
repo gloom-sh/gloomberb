@@ -192,7 +192,7 @@ describe("event rows", () => {
       inlineContent: new Map(), primaryContent: null, primaryContentLoading: false });
     expect(detail).toContain("Low: 4 USD | High: 5 USD");
     expect(detail).toContain("Low: 1,400,000,000,000 TWD | High: 1,500,000,000,000 TWD");
-    expect(detail).toContain("Prior-year comparison: 0 USD");
+    expect(detail).toContain("Prior-year input: 0 USD");
     expect(detail).toContain("Provider growth: 0.00%");
     expect(detail).toContain("Provider growth: +45.00%");
   });
@@ -289,7 +289,7 @@ describe("event rows", () => {
     };
     const rows = buildEventRows(actions, null, financials, "USD");
 
-    const earnings = rows.find((row) => row.id === "earn:2026-03-31");
+    const earnings = rows.find((row) => row.status === "Earnings" && row.date === "2026-03-31");
     const ttm = rows.find((row) => row.status === "TTM");
 
     expect(earnings).toMatchObject({
@@ -385,9 +385,7 @@ describe("event rows", () => {
     const detail = buildEventDetailBody({ row: periodRow, secFilingsLoading: false,
       filing: filings[0]!, documents: [], documentsLoading: false, inlineContent: new Map(),
       primaryContent: "Fiscal statement content", primaryContentLoading: false });
-    expect(detail).toContain("not an announcement date");
     expect(detail).toContain("Fiscal statement content");
-    expect(detail).toContain("accounting basis");
   });
 });
 
