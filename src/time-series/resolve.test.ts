@@ -61,7 +61,8 @@ describe("resolveChartSpecData", () => {
     expect(financialCalls).toBe(0);
 
     const unavailable = createTestDataProvider({
-      getQuote: async () => { throw new Error("Quote temporarily unavailable"); },
+      // Optional metadata can also fail synchronously in a provider adapter.
+      getQuote: () => { throw new Error("Quote temporarily unavailable"); },
       getPriceHistory: async () => history,
       getPriceHistoryForResolution: async () => history,
     });

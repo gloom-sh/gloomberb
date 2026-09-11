@@ -948,9 +948,9 @@ export async function resolveChartSpecData(
     const key = instrumentKey(source);
     let pending = cache.quoteMetadataByInstrument.get(key);
     if (!pending) {
-      pending = sources.dataProvider!.getQuote(
+      pending = Promise.resolve().then(() => sources.dataProvider!.getQuote(
         source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source),
-      ).then(({ currency, instrumentType }) => ({ currency, instrumentType }))
+      )).then(({ currency, instrumentType }) => ({ currency, instrumentType }))
         .catch(() => { cache.quoteMetadataByInstrument.delete(key); return null; });
       cache.quoteMetadataByInstrument.set(key, pending);
     }
