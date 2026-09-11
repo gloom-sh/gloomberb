@@ -44,6 +44,13 @@ describe("research position valuation", () => {
       .toMatchObject({ cost: "$5,000.00", value: "$4,000.00", pnlValue: 1000, ret: "+20.00%" });
   });
 
+  test("negative entry prices keep the P&L direction in the return denominator", () => {
+    expect(row({ shares: 1, avgCost: -10, multiplier: 100 }, { quotePrice: -20 }))
+      .toMatchObject({ cost: "-$1,000.00", value: "-$2,000.00", pnlValue: -1000, ret: "-100.00%" });
+    expect(row({ shares: 1, side: "short", avgCost: -10, multiplier: 100 }, { quotePrice: -20 }))
+      .toMatchObject({ pnlValue: 1000, ret: "+100.00%" });
+  });
+
   test("position cost and quote marks use their own currencies before signed P&L", () => {
     const toBase = (value: number, currency: string) => currency === "EUR" ? value * 1.2 : value;
     expect(row({ side: "short", currency: "EUR" }, { quotePrice: 130, toBase }))

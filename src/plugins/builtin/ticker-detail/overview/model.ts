@@ -139,7 +139,7 @@ export function buildPositionRows({
         ? signedPositionDirection(position) * marketValueBase - metrics.signedCost
         : null);
     const returnPercent = pnlValue != null && costBasisBase != null && costBasisBase !== 0
-      ? formatPercentRaw((pnlValue / costBasisBase) * 100)
+      ? formatPercentRaw((pnlValue / Math.abs(costBasisBase)) * 100)
       : "—";
     const unit = metrics.multiplierHint > 1 ? " ct" : " sh";
 
