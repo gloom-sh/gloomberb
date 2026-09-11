@@ -34,6 +34,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
     return { rows, unavailableSymbols, errors: loaded.errors, metadata: {
       notices: rows.some((row) => Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
       multipleBasis: "Comparable P/E fields require a positive finite multiple; reportedMultiples preserves the finite provider values.",
+      marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
     } };
 
   },

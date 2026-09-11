@@ -1,4 +1,5 @@
 import { formatPriceEarnings, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
+import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, TextAttributes } from "../../../ui";
 import {
@@ -21,7 +22,7 @@ import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { comparableMarketCap, relativeValuationValues } from "./relative-valuation-model";
 
-type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency" | "reportedMultiples">;
+type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency" | "reportedMultiples" | "marketCapCurrency" | "marketCapProvenance">;
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
 type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
@@ -97,7 +98,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
-  const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.currency)]);
+  const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
   const columns = useMemo(() => buildRelativeColumns(width, baseCurrency), [width, baseCurrency]);
   const fetchGenRef = useRef(0);
 
@@ -147,12 +148,16 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, [reload]);
 
   const comparableRows = useMemo(() => rows.map((row) => ({
-    ...row, marketCap: comparableMarketCap(row.marketCap, row.currency, baseCurrency, fxRates),
+    ...row, marketCap: comparableMarketCap(row.marketCap, row.marketCapCurrency, baseCurrency, fxRates),
   })), [rows, baseCurrency, fxRates]);
   const missingFx = rows.some((row, index) => row.marketCap != null && comparableRows[index]?.marketCap == null);
   const sortedRows = useMemo(() => sortRelativeRows(comparableRows, sortPreference), [comparableRows, sortPreference]);
 
   const hasNonComparablePE = rows.some((row) => Object.values(row.reportedMultiples).some((value) => value != null && value <= 0));
+  const hasFundamentalCap = rows.some((row) => row.marketCapProvenance?.kind === "fundamentals");
+  const selectedRow = sortedRows[selectedIdx];
+  const selectedCapNotice = selectedRow?.marketCapProvenance?.kind === "fundamentals"
+    ? `${selectedRow.symbol} cap: ${describeFundamentalMarketCap(selectedRow.marketCapProvenance)}.` : undefined;
 
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
@@ -210,8 +215,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onRootKeyDown={handleKeyDown}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={hasNonComparablePE ? <Box paddingX={1} flexShrink={0}>
-        <Prose text={PRICE_EARNINGS_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} />
+      rootBefore={hasNonComparablePE || hasFundamentalCap ? <Box paddingX={1} flexShrink={0} flexDirection="column">
+        {hasNonComparablePE ? <Prose text={PRICE_EARNINGS_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} /> : null}
+        {hasFundamentalCap ? <Prose text="Some market caps use financial snapshots; quote time does not date these values. Select a row for its source." width={Math.max(8, width - 2)} color={colors.textDim} /> : null}
+        {selectedCapNotice ? <Prose text={selectedCapNotice} width={Math.max(8, width - 2)} color={colors.textDim} /> : null}
       </Box> : undefined}
       columns={columns}
       items={sortedRows}

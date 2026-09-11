@@ -85,3 +85,34 @@ test("loss-making peers retain reported multiples without ranking them as cheap 
   }
   expect(financials.fundamentals).toMatchObject({ trailingPE: -5.2, forwardPE: -9, freeCashFlow: -20 });
 });
+
+test("qualified peers retain dated fundamental caps after stale quote removal and preserve cash-flow currency boundaries", async () => {
+  const base = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 55_866_216_448, marketCapCurrency: "USD", financialCurrency: "USD",
+      freeCashFlow: -7_940_250_112, source: "yahoo" as const, fetchedAt: "2026-09-11T15:23:57.311Z", stale: false } };
+  const values = relativeValuationValues(base);
+  expect(values).toMatchObject({ price: null, currency: null, marketCap: base.fundamentals.marketCap, marketCapCurrency: "USD",
+    marketCapProvenance: { kind: "fundamentals", source: "yahoo", retrievedAt: base.fundamentals.fetchedAt, stale: false } });
+  expect(values.fcfYield).toBeCloseTo(-7_940_250_112 / 55_866_216_448, 12);
+  expect(relativeValuationValues({ ...base, fundamentals: { ...base.fundamentals, financialCurrency: undefined } }).fcfYield).toBeNull();
+  expect(relativeValuationValues({ ...base, fundamentals: { ...base.fundamentals, financialCurrency: "EUR" } }).fcfYield).toBeNull();
+
+  const requested: Array<[string, string | undefined]> = [];
+  const ctx = { signal: new AbortController().signal,
+    marketData: createTestDataProvider({ async getTickerFinancials(symbol, exchange) { requested.push([symbol, exchange]); return base; } }) } as HeadlessPaneContext;
+  const result = await relativeValuationHeadless.load({ symbols: ["F:XNYS"], argument: ["F:XNYS"], rawArgument: "F:XNYS", options: {} }, ctx);
+  expect(result.rows[0]).toMatchObject({ symbol: "F:XNYS", marketCapCurrency: "USD", marketCapProvenance: values.marketCapProvenance });
+  expect(result.unavailableSymbols).toEqual([]);
+  expect(requested).toEqual([["F", "NYSE"]]);
+  expect(result.metadata?.marketCapBasis).toContain("retrieval time is not a valuation date");
+});
+
+test("a foreign fundamental capitalization converts in its own currency, independently of the quote", () => {
+  const financials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    quote: { symbol: "TSM", price: 200, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1 },
+    fundamentals: { marketCap: 1000, marketCapCurrency: "TWD", financialCurrency: "TWD", freeCashFlow: 100 } };
+  const row = relativeValuationValues(financials);
+  expect(row).toMatchObject({ price: 200, currency: "USD", marketCap: 1000, marketCapCurrency: "TWD", fcfYield: 0.1 });
+  expect(comparableMarketCap(row.marketCap, row.marketCapCurrency, "USD", new Map([["TWD", 0.03]]))).toBe(30);
+  expect(comparableMarketCap(row.marketCap, row.marketCapCurrency, "USD", new Map())).toBeNull();
+});

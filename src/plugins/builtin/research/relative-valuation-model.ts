@@ -1,9 +1,11 @@
 import { comparablePriceEarnings } from "../../../utils/price-earnings";
+import { selectMarketCapitalization } from "../../../utils/market-capitalization";
 import type { TickerFinancials } from "../../../types/financials";
 
 export function relativeValuationValues(financials: TickerFinancials | null) {
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
+  const capitalization = selectMarketCapitalization(quote, fundamentals);
   const compatibleCurrency = !!fundamentals?.financialCurrency && !!quote?.currency
     && fundamentals.financialCurrency === quote.currency;
   const reportedMultiples = {
@@ -14,7 +16,9 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
     price: quote?.price ?? null,
     currency: quote?.currency ?? null,
     changePercent: quote?.changePercent ?? null,
-    marketCap: quote?.marketCap ?? null,
+    marketCap: capitalization?.value ?? null,
+    marketCapCurrency: capitalization?.currency ?? null,
+    marketCapProvenance: capitalization?.provenance ?? null,
     trailingPE: comparablePriceEarnings(reportedMultiples.trailingPE),
     forwardPE: comparablePriceEarnings(reportedMultiples.forwardPE),
     reportedMultiples,
@@ -24,8 +28,9 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
         ? fundamentals.enterpriseToRevenue
         : fundamentals?.enterpriseValue != null && fundamentals.revenue != null && fundamentals.revenue > 0
           ? fundamentals.enterpriseValue / fundamentals.revenue : null,
-    fcfYield: compatibleCurrency && fundamentals?.freeCashFlow != null && quote?.marketCap != null && quote.marketCap > 0
-      ? fundamentals.freeCashFlow / quote.marketCap : null,
+    fcfYield: capitalization && fundamentals?.financialCurrency === capitalization.currency
+      && fundamentals.freeCashFlow != null && Number.isFinite(fundamentals.freeCashFlow) && capitalization.value > 0
+      ? fundamentals.freeCashFlow / capitalization.value : null,
     revenueGrowth: fundamentals?.revenueGrowth ?? fundamentals?.lastQuarterGrowth ?? null,
     operatingMargin: fundamentals?.operatingMargin ?? null,
   };
