@@ -5,6 +5,31 @@ import { cleanupProviderRouterTestFiles, createTempDbPath, makeFinancials, makeQ
 
 afterEach(cleanupProviderRouterTestFiles);
 
+test("legacy cloud yields refresh without discarding quotes, accounts or native provider values", () => {
+  const persistence = new AppPersistence(createTempDbPath("dividend-yield-provenance"));
+  const key = { namespace: "market", kind: "financials", entityKey: "NESN", variantKey: "exchange=SWX", sourceKey: "provider:gloomberb-cloud" };
+  const cachePolicy = { staleMs: 60_000, expireMs: 120_000 };
+  const old = makeFinancials({ quote: makeQuote({ symbol: "NESN", currency: "CHF" }),
+    fundamentals: { dividendYield: 0.16, revenue: 88775000064 }, profile: { description: "Nestle" },
+    annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }] });
+  persistence.resources.set(key, old, { cachePolicy, schemaVersion: 4 });
+  persistence.resources.set({ ...key, sourceKey: "provider:yahoo" }, old, { cachePolicy, schemaVersion: 4 });
+  const read = (sourceKey = key.sourceKey) => listCachedResources(persistence.resources, "financials", "NESN", [key.variantKey], [sourceKey], true)[0]!;
+  const record = read(); const value = record.value as ReturnType<typeof makeFinancials>;
+  expect(record.stale).toBe(true);
+  expect(value.fundamentals?.dividendYield).toBeUndefined();
+  expect(value.quote).toEqual(old.quote);
+  expect(value.annualStatements).toEqual(old.annualStatements);
+  expect(value.fundamentals?.revenue).toBe(88775000064);
+  expect((read("provider:yahoo").value as ReturnType<typeof makeFinancials>).fundamentals?.dividendYield).toBe(0.16);
+  const corrected = { ...old, fundamentals: { ...old.fundamentals, dividendYield: 0.0399, dividendYieldBasis: "forward" as const, dividendYieldSource: "yahoo" as const } };
+  cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, corrected, cachePolicy);
+  expect(read().schemaVersion).toBe(5);
+  expect(read().stale).toBe(false);
+  expect(read().value).toEqual(corrected);
+  persistence.close();
+});
+
 test("legacy cloud financial caches retain statements but refresh quotes whose freshness was lost", () => {
   const persistence = new AppPersistence(createTempDbPath("nested-quote-freshness"));
   const key = { namespace: "market", kind: "financials", entityKey: "7203", variantKey: "exchange=TYO", sourceKey: "provider:gloomberb-cloud" };

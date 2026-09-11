@@ -116,3 +116,13 @@ test("fallback reporting currency does not label unknown primary statement units
   expect(mergeMissingStatementArrays(primary, fallback).financialCurrency).toBeUndefined();
   expect(mergeFinancials(primary, fallback)?.financialCurrency).toBeUndefined();
 });
+
+test("yield basis and source stay attached to the selected yield observation", () => {
+  const forward = makeFinancials({ fundamentals: { dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" } });
+  const trailing = makeFinancials({ fundamentals: { dividendYield: 0.03, dividendYieldBasis: "trailing", dividendYieldSource: "twelvedata", revenue: 100 } });
+  expect(mergeFinancials(forward, trailing)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo", revenue: 100 });
+  const unknown = makeFinancials({ fundamentals: { dividendYield: 0.16 } });
+  expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldBasis).toBeUndefined();
+  expect(mergeFinancials(unknown, forward)?.fundamentals?.dividendYieldSource).toBeUndefined();
+  expect(mergeFinancials(makeFinancials({ fundamentals: { revenue: 200 } }), forward)?.fundamentals).toMatchObject({ dividendYield: 0.0399, dividendYieldBasis: "forward", dividendYieldSource: "yahoo" });
+});

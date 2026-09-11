@@ -44,7 +44,7 @@ export function buildTickerAiContext(
     if (fundamentals.operatingMargin != null) lines.push(`Operating Margin: ${formatPercent(fundamentals.operatingMargin)}`);
     if (fundamentals.profitMargin != null) lines.push(`Profit Margin: ${formatPercent(fundamentals.profitMargin)}`);
     if (fundamentals.freeCashFlow) lines.push(`Free Cash Flow: ${formatCompact(fundamentals.freeCashFlow)}`);
-    if (fundamentals.dividendYield != null) lines.push(`Dividend Yield: ${formatPercent(fundamentals.dividendYield)}`);
+    if (fundamentals.dividendYield != null) lines.push(`Dividend Yield${fundamentals.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}: ${formatPercent(fundamentals.dividendYield)}${fundamentals.dividendYieldSource ? ` [${fundamentals.dividendYieldSource}]` : ""}`);
     if (fundamentals.return1Y != null) lines.push(`1Y Return: ${formatPercent(fundamentals.return1Y)}`);
   }
 

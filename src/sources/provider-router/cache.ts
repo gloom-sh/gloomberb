@@ -7,7 +7,7 @@ import { canonicalExchange } from "../../utils/exchanges";
 import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 
 const MARKET_NAMESPACE = "market";
-const FINANCIALS_SCHEMA_VERSION = 4;
+const FINANCIALS_SCHEMA_VERSION = 5;
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -154,11 +154,17 @@ export function listCachedResources<T>(
     return ![...(value.annualStatements ?? []), ...(value.quarterlyStatements ?? [])]
       .some((row) => row.availableAt || Object.keys(row.fieldAvailability ?? {}).length > 0);
   }).map((record) => {
-    if (kind !== "financials" || record.schemaVersion >= 4 || record.sourceKey !== "provider:gloomberb-cloud") return record;
+    if (kind !== "financials" || record.sourceKey !== "provider:gloomberb-cloud") return record;
     // Legacy cloud aggregates lost the nested quote's stale flag. Retain valid
     // issuer data, but obtain the quote through its independent freshness route.
-    const value = record.value as TickerFinancials;
-    return { ...record, value: { ...value, quote: undefined, quoteContributions: undefined } as T };
+    let value = record.value as TickerFinancials;
+    if (record.schemaVersion < 4) value = { ...value, quote: undefined, quoteContributions: undefined };
+    // Prior cloud yields could contain uncorroborated annualization. Remove
+    // that metric and refresh while retaining valid quotes and issuer data.
+    const legacyYield = record.schemaVersion < 5 && value.fundamentals?.dividendYield != null;
+    if (legacyYield) value = { ...value, fundamentals: { ...value.fundamentals,
+      dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined } };
+    return { ...record, stale: record.stale || legacyYield, value: value as T };
   });
   if (records.length === 0) return [];
 
