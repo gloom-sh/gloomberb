@@ -22,6 +22,12 @@ test("legacy cloud yields refresh without discarding quotes, accounts or native 
   expect(value.annualStatements).toEqual(old.annualStatements);
   expect(value.fundamentals?.revenue).toBe(88775000064);
   expect((read("provider:yahoo").value as ReturnType<typeof makeFinancials>).fundamentals?.dividendYield).toBe(0.16);
+  // A new client can cache an old backend response during a rolling deploy.
+  cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, old, cachePolicy);
+  expect(read().schemaVersion).toBe(5);
+  expect(read().stale).toBe(true);
+  expect((read().value as ReturnType<typeof makeFinancials>).fundamentals?.dividendYield).toBeUndefined();
+  expect((read().value as ReturnType<typeof makeFinancials>).quote).toEqual(old.quote);
   const corrected = { ...old, fundamentals: { ...old.fundamentals, dividendYield: 0.0399, dividendYieldBasis: "forward" as const, dividendYieldSource: "yahoo" as const } };
   cacheRouterResource(persistence.resources, "financials", "NESN", key.variantKey, key.sourceKey, corrected, cachePolicy);
   expect(read().schemaVersion).toBe(5);
