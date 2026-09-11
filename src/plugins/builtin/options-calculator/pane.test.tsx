@@ -2,7 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { useReducer } from "react";
 import { act } from "react";
 import { useShortcut } from "../../../react/input";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import {
   AppContext,
   PaneInstanceProvider,
@@ -28,7 +29,7 @@ function GlobalTabHandler() {
   return null;
 }
 
-function Harness({ params }: { params?: Record<string, string> }) {
+function Harness({ params, width = 90, height = 18 }: { params?: Record<string, string>; width?: number; height?: number }) {
   const config = createDefaultConfig("/tmp/gloomberb-options-calculator-test");
   config.layout = {
     dockRoot: { kind: "pane", instanceId: TEST_PANE_ID },
@@ -51,13 +52,14 @@ function Harness({ params }: { params?: Record<string, string> }) {
     <AppContext value={{ state, dispatch }}>
       <GlobalTabHandler />
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
+        <PaneKeyboardScrollController paneId={TEST_PANE_ID} focused />
         <PluginRenderProvider pluginId="ticker-research" runtime={createTestPluginRuntime()}>
           <OptionsCalculatorPane
             paneId={TEST_PANE_ID}
             paneType={OPTIONS_CALCULATOR_PANE_ID}
             focused
-            width={90}
-            height={18}
+            width={width}
+            height={height}
           />
         </PluginRenderProvider>
       </PaneInstanceProvider>
@@ -65,9 +67,9 @@ function Harness({ params }: { params?: Record<string, string> }) {
   );
 }
 
-async function render(params?: Record<string, string>) {
+async function render(params?: Record<string, string>, width = 90, height = 18) {
   await act(async () => {
-    testSetup = await testRender(<Harness params={params} />, { width: 90, height: 18 });
+    testSetup = await testRender(<Harness params={params} width={width} height={height} />, { width, height });
     await Promise.resolve();
     await testSetup.renderOnce();
   });
@@ -84,6 +86,32 @@ afterEach(async () => {
     await act(async () => { testSetup!.renderer.destroy(); });
     testSetup = undefined;
   }
+});
+
+test("narrow results keep assumptions visible while scrolling Greeks and editing fixed inputs", async () => {
+  await render({
+    symbol: "COST:XNAS", side: "call", spot: "902.63", strike: "905", days: "14.1784",
+    volatility: "0.269", rate: "0.04", marketPrice: "18.075", marketPriceSource: "mid",
+    marketReference: JSON.stringify({ contractSymbol: "COST260925C00905000", expiration: 1790294400,
+      currency: "USD", bid: 17.2, ask: 18.95, lastPrice: 18.67, lastTradeDate: 1789139450 }),
+  }, 48, 16);
+  expect(testSetup!.captureCharFrame()).toContain("COST260925C00905000");
+  expect(testSetup!.captureCharFrame()).toContain("discrete dividends.");
+  await emitKeypress(testSetup!, { name: "end", sequence: "\u001B[F" });
+  const bottom = testSetup!.captureCharFrame();
+  expect(bottom).toMatch(/Theta\s+-[\d.]+\s+per day/);
+  expect(bottom).toMatch(/Vega\s+[\d.]+\s+per vol pt/);
+  expect(bottom).toMatch(/Rho\s+[+\d.]+\s+per rate pt/);
+  expect(bottom).toContain("discrete dividends.");
+
+  // Inputs stay reachable while the researcher reads the bottom of the results.
+  await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+  await act(async () => { await testSetup!.mockInput.typeText("910"); testSetup!.mockInput.pressEnter(); });
+  await act(async () => { await testSetup!.renderOnce(); });
+  expect(testSetup!.captureCharFrame()).toMatch(/Spot\s+910/);
+  await emitKeypress(testSetup!, { name: "escape", sequence: "\u001B" });
+  await emitKeypress(testSetup!, { name: "home", sequence: "\u001B[H" });
+  expect(testSetup!.captureCharFrame()).toContain("COST260925C00905000");
 });
 
 test("prices the seeded contract and solves its implied volatility", async () => {

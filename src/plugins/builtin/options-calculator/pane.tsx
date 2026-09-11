@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
-import { KeyValueRow, SegmentedControl, usePaneFooter } from "../../../components";
+import { KeyValueRow, Prose, SegmentedControl, usePaneFooter } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneInstance, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useUiHost } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { InlineField } from "../kelly-sizer/fields";
@@ -126,11 +126,13 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const columns = width >= 78 ? 3 : width >= 42 ? 2 : 1;
   const fieldWidth = Math.max(12, Math.min(26, Math.floor((width - 2) / columns)));
   const rows = Math.max(1, Math.ceil(fields.length / columns));
-  const pairMetrics = width >= 50;
-  const metricWidth = pairMetrics ? Math.floor((width - 2) / 2) : Math.max(1, width - 2);
-  const trailingMetricWidth = pairMetrics ? Math.max(1, width - 2 - metricWidth) : metricWidth;
-  const referenceHeight = optionQuoteContextHeight(draft.marketReference, width - 2, Math.max(1, height - rows - 5), true);
-  const showGreeks = height >= 1 + rows + 1 + (pairMetrics ? 1 : 2) + (pairMetrics ? 3 : 5) + 1 + referenceHeight;
+  // Each paired metric needs room for its label, value and complete unit.
+  const pairMetrics = width >= 82;
+  // Leave a column for the native scrollbar beside the result body's padding.
+  const resultWidth = Math.max(1, width - 3);
+  const metricWidth = pairMetrics ? Math.floor(resultWidth / 2) : resultWidth;
+  const trailingMetricWidth = pairMetrics ? Math.max(1, resultWidth - metricWidth) : metricWidth;
+  const referenceHeight = optionQuoteContextHeight(draft.marketReference, resultWidth, Number.POSITIVE_INFINITY, true);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -174,29 +176,29 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
 
       <Box height={1} />
 
-      {draft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
-        <OptionQuoteContext reference={draft.marketReference} width={width - 2} height={referenceHeight} snapshot />
-      </Box>}
+      <ScrollBox id="options-calculator-results" flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
+        {draft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
+          <OptionQuoteContext reference={draft.marketReference} width={resultWidth} height={referenceHeight} snapshot scrollable={false} />
+        </Box>}
 
-      <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
-        <KeyValueRow
-          label="Model"
-          value={formatNumber(valuation.price, 4)}
-          detail="per unit"
-          color={colors.textBright}
-          width={metricWidth}
-        />
-        <KeyValueRow
-          label="Implied IV"
-          value={implied.volatility != null ? `${formatNumber(implied.volatility * 100, 2)}%` : "—"}
-          detail={implied.volatility != null ? draft.marketPriceSource === "mid" ? "from mid"
-            : draft.marketPriceSource === "last" ? "from last" : "from input" : undefined}
-          color={implied.volatility != null ? colors.positive : colors.textDim}
-          width={trailingMetricWidth}
-        />
-      </Box>
+        <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
+          <KeyValueRow
+            label="Model"
+            value={formatNumber(valuation.price, 4)}
+            detail="per unit"
+            color={colors.textBright}
+            width={metricWidth}
+          />
+          <KeyValueRow
+            label="Implied IV"
+            value={implied.volatility != null ? `${formatNumber(implied.volatility * 100, 2)}%` : "—"}
+            detail={implied.volatility != null ? draft.marketPriceSource === "mid" ? "from mid"
+              : draft.marketPriceSource === "last" ? "from last" : "from input" : undefined}
+            color={implied.volatility != null ? colors.positive : colors.textDim}
+            width={trailingMetricWidth}
+          />
+        </Box>
 
-      {showGreeks ? (
         <Box flexDirection="column" paddingX={1}>
           <Box flexDirection={pairMetrics ? "row" : "column"}>
             <KeyValueRow label="Delta" value={formatSigned(valuation.delta, 4)} width={metricWidth} />
@@ -208,17 +210,10 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
           </Box>
           <KeyValueRow label="Rho" value={formatSigned(valuation.rhoPerPoint, 4)} detail="per rate pt" width={metricWidth} />
         </Box>
-      ) : null}
+      </ScrollBox>
 
-      <Box flexGrow={1} />
-
-      <Box height={1} paddingX={1} overflow="hidden">
-        <Text fg={colors.textMuted}>
-          {truncateText(
-            "European exercise only: no early exercise or discrete dividends.",
-            Math.max(1, width - 2),
-          )}
-        </Text>
+      <Box paddingX={1} flexShrink={0}>
+        <Prose text="European exercise only: no early exercise or discrete dividends." width={Math.max(8, width - 2)} color={colors.textMuted} />
       </Box>
     </Box>
   );
