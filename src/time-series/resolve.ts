@@ -38,7 +38,7 @@ import {
   fundamentalSeriesUsesAvailabilityFallback,
   valuationSeriesUsesLiveQuote,
 } from "./fundamentals";
-import { extractSecuritySeries } from "./market";
+import { extractSecuritySeries, priceHistoryIntegrityNotices } from "./market";
 import {
   activeStudyInputSeriesIds,
   maxStudyWarmupPoints,
@@ -439,7 +439,7 @@ export function seedChartResolutionResult(
       ? { viewport: { start: new Date(displayBounds.start), end: new Date(displayBounds.end) } } : {}),
     loading: true,
     errors: studies.errors,
-    warnings: [...studies.warnings, ...(priceComparison ? [priceComparison.notice] : [])],
+    warnings: [...studies.warnings, ...priceHistoryIntegrityNotices(visible), ...(priceComparison ? [priceComparison.notice] : [])],
     resolution,
   };
 }
@@ -1332,6 +1332,7 @@ export async function resolveChartSpecData(
   resolved = resolved.map((entry) => limitSeriesObservations(spec, entry));
   resolved = resolved.map((entry) => clipPriceComparison(entry, priceComparison));
   if (priceComparison) warnings.push(priceComparison.notice);
+  warnings.push(...priceHistoryIntegrityNotices(resolved));
   warnings.push(...financialPeriodCoverageWarnings(financialPeriodCoverage(spec, resolved)));
   const resolvedById = new Map(resolved.map((entry) => [entry.id, entry] as const));
   const hiddenBaseSeries = rawSeries

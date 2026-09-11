@@ -3,6 +3,7 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/
 import type { TimeRange } from "../../../time-series/range";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice } from "../../../market-data/market/format";
+import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
 import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
 import {
@@ -112,10 +113,10 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
       const date = new Date(point.date);
       return {
         date: Number.isFinite(date.getTime()) ? date.toISOString() : String(point.date),
-        open: point.open ?? null, high: point.high ?? null, low: point.low ?? null,
-        close: point.close, volume: point.volume ?? null,
+        ...pricePointValues(point),
       };
     }).sort((left, right) => left.date.localeCompare(right.date));
-    return { rows, unavailableSymbols: rows.length ? [] : [symbol], metadata: { symbol, range } };
+    const notice = priceHistoryIntegrityNotice(rows.filter((row) => row.integrity).length);
+    return { rows, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
   },
 };

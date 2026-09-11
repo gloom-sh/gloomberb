@@ -109,6 +109,7 @@ export interface TimeSeriesPoint {
   volume?: number | null;
   periodLabel?: string;
   provenance?: {
+    priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
     secEpsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
     providerId?: string;
     quality?: "reported" | "derived" | "estimated";

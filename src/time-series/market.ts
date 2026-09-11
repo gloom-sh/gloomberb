@@ -1,7 +1,8 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
+import { pricePointIntegrity, pricePointValues, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
-import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
+import type { ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -38,17 +39,19 @@ interface AggregatedPricePoint {
   low: number;
   close: number;
   volume?: number;
+  integrity?: PriceHistoryIntegrity;
 }
 
 /** Aggregates OHLCV correctly: first open, max high, min low, last close, summed volume. */
 function aggregatePriceHistory(
   points: readonly PricePoint[],
   period: SeriesPeriod,
-): PricePoint[] {
+): Array<PricePoint & { integrity?: PriceHistoryIntegrity }> {
   const sorted = points
     .flatMap((point) => {
       const date = pricePointDate(point.date);
-      return date && finiteNumber(point.close) ? [{ ...point, date }] : [];
+      const integrity = pricePointIntegrity(point);
+      return date && (finiteNumber(point.close) || integrity) ? [{ ...point, date, integrity }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
   if (period === "auto") return sorted.map((point) => ({ ...point, date: new Date(point.date) }));
@@ -69,6 +72,7 @@ function aggregatePriceHistory(
         low,
         close: point.close,
         volume: finiteNumber(point.volume) ? point.volume : undefined,
+        integrity: point.integrity,
       });
       continue;
     }
@@ -76,6 +80,8 @@ function aggregatePriceHistory(
     current.high = Math.max(current.high, high);
     current.low = Math.min(current.low, low);
     current.close = point.close;
+    if (point.integrity) current.integrity = current.integrity
+      ? mergePriceHistoryIntegrity(current.integrity, point.integrity) : point.integrity;
     if (finiteNumber(point.volume)) current.volume = (current.volume ?? 0) + point.volume;
   }
   return [...buckets.values()];
@@ -89,27 +95,32 @@ export function extractPriceSeries(
   if (!isMarketFieldId(fieldId)) return [];
   const aggregated = aggregatePriceHistory(priceHistory, source.period ?? "auto");
   return aggregated.map((point) => {
+    const { integrity, ...values } = pricePointValues(point, point.integrity);
     const value = fieldId === "market.open"
-      ? point.open
+      ? values.open
       : fieldId === "market.high"
-        ? point.high
+        ? values.high
         : fieldId === "market.low"
-          ? point.low
+          ? values.low
           : fieldId === "market.volume"
-            ? point.volume
-            : point.close;
+            ? values.volume
+            : values.close;
     return {
       date: new Date(point.date),
       observedAt: new Date(point.date),
       availableAt: new Date(point.date),
-      value: finiteNumber(value) ? value : null,
-      open: finiteNumber(point.open) ? point.open : null,
-      high: finiteNumber(point.high) ? point.high : null,
-      low: finiteNumber(point.low) ? point.low : null,
-      close: finiteNumber(point.close) ? point.close : null,
-      volume: finiteNumber(point.volume) ? point.volume : null,
-      provenance: { quality: "reported" as const },
+      value,
+      ...values,
+      provenance: { quality: "reported" as const, ...(integrity ? { priceHistoryIntegrity: integrity } : {}) },
     };
+  });
+}
+
+export function priceHistoryIntegrityNotices(series: readonly Pick<ResolvedSeries, "label" | "points">[]): string[] {
+  return series.flatMap((entry) => {
+    const dates = new Set(entry.points.flatMap((point) => point.provenance?.priceHistoryIntegrity?.sourcePoints.map((source) => source.date) ?? []));
+    const notice = priceHistoryIntegrityNotice(dates.size);
+    return notice ? [`${entry.label}: ${notice}`] : [];
   });
 }
 

@@ -1,6 +1,7 @@
 import { financialPeriodCoverage } from "../../../time-series/financial-period-coverage";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
+import { priceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, resolveChartSpecData } from "../../../time-series/resolve";
@@ -69,6 +70,7 @@ export async function loadChartPaneModel(
   spec = { ...spec, series: spec.series.map((series) => resolvedSeries.get(series.id) ?? series) };
   const ids = new Set(spec.series.map((series) => series.id));
   const periodCoverage = financialPeriodCoverage(spec, chart.series);
+  const integrityNotices = priceHistoryIntegrityNotices(chart.series);
   return {
     chart,
     spec,
@@ -76,6 +78,7 @@ export async function loadChartPaneModel(
       complete: periodCoverage.every((entry) => entry.complete),
       stats: periodCoverage.map((entry) => ({ label: `${entry.label} observations`, value: `${entry.returned}/${entry.requested} ${entry.period}${entry.complete ? "" : " (partial)"}` })),
     } : {}),
+    ...(integrityNotices.length ? { complete: false } : {}),
     snapshot: {
       financials: [...financials].map(([key, data]) => [key, { ...data, priceHistory: histories.get(key) ?? data.priceHistory }]),
       intradayHistories: [],
@@ -112,7 +115,7 @@ export async function loadChartPaneModel(
     metadata: {
       viewport: spec.viewport, panels: spec.panels, warnings: chart.warnings,
       ...(periodCoverage.length ? { periodCoverage } : {}),
-      notices: chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice),
+      notices: [...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice), ...integrityNotices],
       priceComparison: chart.priceComparison ?? null,
       summaries: chart.series.map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
     },

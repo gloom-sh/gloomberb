@@ -1,4 +1,5 @@
-import { alignTimeSeries, scalarPointValue } from "./alignment";
+import { alignTimeSeries, effectiveTimeSeriesPointTime, scalarPointValue } from "./alignment";
+import { mergePriceHistoryIntegrity } from "../utils/price-history-integrity";
 import type {
   ChartStudyKind,
   ChartStudySpec,
@@ -499,6 +500,81 @@ function requiredInputs(kind: ChartStudyKind): number {
   return kind === "ratio" || kind === "spread" || kind === "correlation" ? 2 : 1;
 }
 
+/**
+ * A contradictory observation interrupts the input history. Running studies on
+ * each continuous segment keeps finite windows from skipping the missing bar
+ * and makes recursive indicators warm up again from valid observations.
+ */
+function resolveInterruptedStudy(
+  inputs: readonly ResolvedSeries[],
+  spec: ChartStudySpec,
+): StudyResolutionResult | null {
+  const gaps = new Map<number, TimeSeriesPoint>();
+  for (const input of inputs) {
+    for (const point of input.points) {
+      const integrity = point.provenance?.priceHistoryIntegrity;
+      if (!integrity) continue;
+      const timestamp = effectiveTimeSeriesPointTime(point);
+      const previous = gaps.get(timestamp)?.provenance?.priceHistoryIntegrity;
+      gaps.set(timestamp, {
+        date: new Date(timestamp), observedAt: new Date(timestamp), value: null,
+        provenance: {
+          quality: "derived",
+          priceHistoryIntegrity: previous ? mergePriceHistoryIntegrity(previous, integrity) : integrity,
+        },
+      });
+    }
+  }
+  if (!gaps.size) return null;
+  const times = [...gaps.keys()].sort((left, right) => left - right);
+  const outputs = new Map<string, ResolvedSeries>();
+  const warnings = new Set<string>();
+  const errors = new Set<string>();
+  const cursors = inputs.map((input) => ({
+    input,
+    points: [...input.points].sort((left, right) => effectiveTimeSeriesPointTime(left) - effectiveTimeSeriesPointTime(right)),
+    index: 0,
+    previous: undefined as TimeSeriesPoint | undefined,
+  }));
+  let start = Number.NEGATIVE_INFINITY;
+  for (const end of [...times, Number.POSITIVE_INFINITY]) {
+    const segmentInputs = cursors.map((cursor) => {
+      while (cursor.index < cursor.points.length && effectiveTimeSeriesPointTime(cursor.points[cursor.index]!) <= start) {
+        cursor.previous = cursor.points[cursor.index++];
+      }
+      const previous = cursor.previous;
+      const points: TimeSeriesPoint[] = [];
+      while (cursor.index < cursor.points.length && effectiveTimeSeriesPointTime(cursor.points[cursor.index]!) < end) {
+        const point = cursor.points[cursor.index++]!;
+        points.push(point);
+        cursor.previous = point;
+      }
+      // A valid unaffected peer remains usable for as-of ratio/spread levels.
+      // Correlations instead restart their shared observations and returns.
+      if (spec.kind === "ratio" || spec.kind === "spread") {
+        if (previous && !previous.provenance?.priceHistoryIntegrity) points.unshift(previous);
+      }
+      return { ...cursor.input, points };
+    });
+    const segment = resolveStudies(segmentInputs, [spec]);
+    for (const output of segment.series) {
+      const points = output.points.filter((point) => effectiveTimeSeriesPointTime(point) > start);
+      const previous = outputs.get(output.id);
+      outputs.set(output.id, { ...output, points: [...(previous?.points ?? []), ...points] });
+    }
+    for (const warning of segment.warnings) {
+      if (!warning.includes("not enough valid history")) warnings.add(warning);
+    }
+    for (const error of segment.errors) errors.add(error);
+    start = end;
+  }
+  for (const output of outputs.values()) {
+    output.points.push(...gaps.values());
+    output.points.sort((left, right) => left.date.getTime() - right.date.getTime());
+  }
+  return { series: [...outputs.values()], warnings: [...warnings], errors: [...errors] };
+}
+
 /** Base series that must be calculated for currently visible studies. */
 export function activeStudyInputSeriesIds(
   studySpecs: readonly ChartStudySpec[],
@@ -527,6 +603,13 @@ export function resolveStudies(
     }
     const input = inputs[0]!;
     const color = spec.color ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
+    const interrupted = resolveInterruptedStudy(inputs as ResolvedSeries[], { ...spec, color });
+    if (interrupted) {
+      resolved.push(...interrupted.series);
+      warnings.push(...interrupted.warnings);
+      errors.push(...interrupted.errors);
+      return;
+    }
     let outputs: ResolvedSeries[] = [];
     if (spec.kind === "sma") outputs = resolveMovingAverage(spec, input, color, false);
     else if (spec.kind === "ema") outputs = resolveMovingAverage(spec, input, color, true);

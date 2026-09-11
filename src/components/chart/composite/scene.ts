@@ -437,6 +437,8 @@ function attachLastPriceMarker(
   const projected = panel?.series.find((entry) => entry.source.id === primary.id);
   const domain = panel?.axes[primary.axis];
   if (!panel || !projected || !domain) return;
+  // A rejected latest bar does not turn the preceding close into a current price.
+  if (normalizedSourcePoints(primary).at(-1)?.point.provenance?.priceHistoryIntegrity) return;
   const value = lastCloseOf(projected.points);
   if (value === null) return;
   const yRatio = projectCompositeValue(value, domain);
@@ -492,6 +494,11 @@ function buildCursorValues(
   const cursorTime = cursorDate?.getTime() ?? viewport.endTime;
   return panels.flatMap((panel) => panel.series.map((entry) => {
     let projected = cursorPointForSeries(entry, cursorTime);
+    const integrityGap = normalizedSourcePoints(entry.source).findLast(({ timestamp, point }) => (
+      timestamp <= cursorTime && timestamp > (projected?.timestamp ?? Number.NEGATIVE_INFINITY)
+      && point.provenance?.priceHistoryIntegrity
+    ));
+    if (integrityGap) projected = null;
     // The drawn navigation buffer can include observations after the chosen
     // end. An unarmed legend describes the active window, including when the
     // pointer leaves; explicitly inspected cursor dates keep their own behavior.
@@ -502,7 +509,7 @@ function buildCursorValues(
       color: entry.source.color,
       unit: entry.source.unit,
       value: projected?.value ?? null,
-      point: projected?.point ?? null,
+      point: projected?.point ?? integrityGap?.point ?? null,
     };
   }));
 }
@@ -540,7 +547,9 @@ export function buildCompositeChartScene(
   const dataSeries = series.filter((entry) => normalizedPoints(entry).length > 0);
   if (dataSeries.length === 0) return null;
 
-  const times = dataSeries.flatMap((entry) => normalizedPoints(entry).map((point) => point.timestamp));
+  const times = dataSeries.flatMap((entry) => normalizedSourcePoints(entry)
+    .filter(({ value, point }) => value !== null || point.provenance?.priceHistoryIntegrity)
+    .map((point) => point.timestamp));
   const uniqueTimes = [...new Set(times)].sort((left, right) => left - right);
   if (uniqueTimes.length === 0) return null;
   const firstTime = uniqueTimes[0]!;

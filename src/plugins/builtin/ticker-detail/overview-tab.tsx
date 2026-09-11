@@ -115,7 +115,7 @@ export function OverviewTab({
   const performanceFields = buildPriceReturnFields(
     appendQuoteToPriceReturnHistory(financials?.priceHistory ?? [], quote),
   ).map((field) => {
-    if (field.value != null) return field;
+    if (field.value != null || field.unavailableReason) return field;
     if (field.id === "1Y" && fundamentals?.return1Y != null) {
       return { ...field, value: fundamentals.return1Y };
     }
@@ -124,7 +124,7 @@ export function OverviewTab({
     }
     return field;
   });
-  const hasPerformance = performanceFields.some((field) => field.value != null);
+  const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
   const positionRows = buildPositionRows({
     ticker,
     quote,
@@ -239,6 +239,8 @@ export function OverviewTab({
             )}
           </Box>
         )}
+
+        {priceSeries.warning && <Notice>{priceSeries.warning}</Notice>}
 
         {hasHistory && (
           <CompositeChart

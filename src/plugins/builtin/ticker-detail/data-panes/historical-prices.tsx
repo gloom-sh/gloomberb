@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { TextAttributes } from "../../../../ui";
 import {
   DataTableView,
+  Notice,
   loadingText,
   unavailableText,
   usePaneFooter,
@@ -15,6 +16,7 @@ import type { PricePoint } from "../../../../types/financials";
 import { colors, priceColor } from "../../../../theme/colors";
 import { formatCompact, formatPercent } from "../../../../utils/format";
 import { formatMarketPrice } from "../../../../market-data/market/format";
+import { pricePointValues, priceHistoryIntegrityNotice } from "../../../../utils/price-history-integrity";
 import {
   useAssetData,
   useDebouncedPluginPaneState,
@@ -28,7 +30,7 @@ type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
 
 export type HistoricalPriceRow = {
   key: string;
-  point: PricePoint;
+  point: ReturnType<typeof pricePointValues>;
   date: string;
   change: number | null;
   changePercent: number | null;
@@ -49,7 +51,7 @@ function formatMaybePercent(value: number | null): string {
   return value == null ? "-" : formatPercent(value);
 }
 
-function formatMaybeCompact(value: number | undefined): string {
+function formatMaybeCompact(value: number | null | undefined): string {
   return value == null ? "-" : formatCompact(value);
 }
 
@@ -57,19 +59,19 @@ export function buildHistoricalPriceRows(points: PricePoint[]): HistoricalPriceR
   const sorted = points
     .flatMap((point, sourceIndex) => {
       const date = pricePointDate(point);
-      return date ? [{ point, date, sourceIndex }] : [];
+      return date ? [{ point: pricePointValues(point), date, sourceIndex }] : [];
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
   return sorted.map((entry, index) => {
     const previous = sorted[index - 1]?.point;
     const { point, date, sourceIndex } = entry;
-    const change = previous ? point.close - previous.close : null;
+    const change = previous?.close != null && point.close != null ? point.close - previous.close : null;
     return {
       key: `${date.toISOString()}:${sourceIndex}`,
       point,
       date: formatDateTime(date),
       change,
-      changePercent: previous?.close ? change! / previous.close : null,
+      changePercent: previous?.close && change !== null ? change / previous.close : null,
     };
   }).reverse();
 }
@@ -113,6 +115,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
   }, [dataProvider, range]);
   const { data, loading, error, reload } = useTickerRequest<PricePoint[]>(loader, symbol, exchange);
   const rows = useMemo(() => buildHistoricalPriceRows(data ?? []), [data]);
+  const integrityNotice = priceHistoryIntegrityNotice(rows.filter((row) => row.point.integrity).length);
   const columns = useMemo(() => buildHistoryColumns(width), [width]);
   const boundedSelectedIdx = rows.length > 0 ? Math.min(selectedIdx, rows.length - 1) : -1;
   const cycleRange = useCallback(() => setRange((current) => nextHistoryRange(current)), [setRange]);
@@ -181,6 +184,7 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       onRootKeyDown={handleKeyDown}
       rootWidth={width}
       rootHeight={height}
+      rootBefore={integrityNotice ? <Notice>{integrityNotice}</Notice> : undefined}
       columns={columns}
       items={rows}
       sortColumnId={null}
