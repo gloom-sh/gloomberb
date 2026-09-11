@@ -69,3 +69,19 @@ test("provider EV/S requires verified compatible reporting units even when a rat
   financials.fundamentals.enterpriseToRevenue = NaN;
   expect(relativeValuationValues(financials).evSales).toBe(4);
 });
+
+test("loss-making peers retain reported multiples without ranking them as cheap earnings", async () => {
+  const financials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    quote: { symbol: "LOSS", price: 16, currency: "USD", change: 0, changePercent: 0, lastUpdated: 1, marketCap: 100 },
+    fundamentals: { trailingPE: -5.2, forwardPE: -9, financialCurrency: "USD", freeCashFlow: -20 } };
+  const ctx = { signal: new AbortController().signal,
+    marketData: createTestDataProvider({ getTickerFinancials: async () => financials }) } as HeadlessPaneContext;
+  const result = await relativeValuationHeadless.load({ symbols: ["LOSS"], argument: ["LOSS"], rawArgument: "LOSS", options: {} }, ctx);
+  expect(result.rows[0]).toMatchObject({ trailingPE: null, forwardPE: null, fcfYield: -0.2,
+    reportedMultiples: { trailingPE: -5.2, forwardPE: -9 } });
+  for (const key of ["trailingPE", "forwardPE"]) {
+    const column = relativeValuationHeadless.columns!.find((column) => column.key === key)!;
+    expect(column.format!(result.rows[0]![key], result.rows[0]!)).toBe("N/M");
+  }
+  expect(financials.fundamentals).toMatchObject({ trailingPE: -5.2, forwardPE: -9, freeCashFlow: -20 });
+});

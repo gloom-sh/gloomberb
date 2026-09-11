@@ -1226,6 +1226,11 @@ export async function resolveChartSpecData(
         await quoteMetadataPromise,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
+      const reportedForwardPE = merged.fundamentals?.forwardPE;
+      if (source.fieldId === "valuation.forwardPE" && reportedForwardPE != null
+        && Number.isFinite(reportedForwardPE) && reportedForwardPE <= 0) {
+        result.warning = [result.warning, "Reported forward P/E is non-positive and is not meaningful for valuation."].filter(Boolean).join(" ");
+      }
       if (isFundamentalFieldId(source.fieldId) && fundamentalSeriesUsesAvailabilityFallback(merged, source)) {
         result.warning = [result.warning, "Publication dates are unavailable for some observations; period-end dates are used as a fallback."].filter(Boolean).join(" ");
       }

@@ -1,3 +1,4 @@
+import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
 import type { ColumnConfig } from "../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -287,9 +288,9 @@ export function getColumnValue(
       if (!quote?.marketCap) return { text: "—" };
       return { text: formatCompact(toBaseQuote(quote.marketCap)) };
     case "pe":
-      return { text: fundamentals?.trailingPE ? formatNumber(fundamentals.trailingPE, 1) : "—" };
+      return { text: formatPriceEarnings(fundamentals?.trailingPE) };
     case "forward_pe":
-      return { text: fundamentals?.forwardPE ? formatNumber(fundamentals.forwardPE, 1) : "—" };
+      return { text: formatPriceEarnings(fundamentals?.forwardPE) };
     case "dividend_yield":
       return {
         text: fundamentals?.dividendYield != null ? `${(fundamentals.dividendYield * 100).toFixed(2)}%` : "—",
@@ -495,9 +496,9 @@ export function getSortValue(
     case "market_cap":
       return quote?.marketCap ? toBaseQuote(quote.marketCap) : null;
     case "pe":
-      return fundamentals?.trailingPE ?? null;
+      return comparablePriceEarnings(fundamentals?.trailingPE);
     case "forward_pe":
-      return fundamentals?.forwardPE ?? null;
+      return comparablePriceEarnings(fundamentals?.forwardPE);
     case "dividend_yield":
       return fundamentals?.dividendYield ?? null;
     case "ext_hours":
