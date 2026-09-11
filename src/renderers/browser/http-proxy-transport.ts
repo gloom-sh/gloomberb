@@ -1,6 +1,6 @@
 import { createProxyResponse, type HttpProxyResponseEnvelope } from "../../utils/http-proxy-response";
 import type { HttpFetchTransport } from "../../utils/http-transport";
-import { isProxiedHost } from "../../utils/plugin-proxy-hosts";
+import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
 
 /**
  * Client half of the plugin HTTP transport for the hosted web app.
@@ -19,11 +19,11 @@ import { isProxiedHost } from "../../utils/plugin-proxy-hosts";
  */
 export const HTTP_PROXY_PATH = "/http-proxy";
 
-function needsProxy(url: string): boolean {
+function needsProxy(url: string, hosts: readonly string[]): boolean {
   try {
     const target = new URL(url, typeof location === "undefined" ? undefined : location.href);
     if (typeof location !== "undefined" && target.origin === location.origin) return false;
-    return isProxiedHost(target.hostname);
+    return isProxiedHost(target.hostname, hosts);
   } catch {
     return false;
   }
@@ -53,9 +53,10 @@ async function serializeBody(body: BodyInit | null | undefined): Promise<string 
 
 export function createBrowserHttpProxyTransport(
   send: typeof fetch = fetch,
+  hosts: readonly string[] = PROXY_ALLOWED_HOSTS,
 ): HttpFetchTransport {
   return async function proxiedFetch(url: string, init?: RequestInit): Promise<Response> {
-    if (!needsProxy(url)) return send(url, init);
+    if (!needsProxy(url, hosts)) return send(url, init);
 
     const proxied = await send(HTTP_PROXY_PATH, {
       method: "POST",

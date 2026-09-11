@@ -14,7 +14,7 @@
  * running on our bandwidth and our IP reputation. Everything below exists to
  * keep that from happening.
  */
-import { isProxiedHost } from "../../utils/plugin-proxy-hosts";
+import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../../utils/plugin-proxy-hosts";
 
 const PROXY_METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
 const SESSION_COOKIE_NAMES = ["__Secure-gloomberb.session_token", "gloomberb.session_token"];
@@ -50,7 +50,10 @@ export interface HttpProxyEnvelope {
  * somewhere internal" bugs, including the decimal and IPv6-mapped spellings
  * that defeat naive checks.
  */
-export function validateProxyTarget(rawUrl: unknown): { url: URL } | { error: string; status: number } {
+export function validateProxyTarget(
+  rawUrl: unknown,
+  hosts: readonly string[] = PROXY_ALLOWED_HOSTS,
+): { url: URL } | { error: string; status: number } {
   if (typeof rawUrl !== "string" || rawUrl.length > 2_048) {
     return { error: "A target URL is required.", status: 400 };
   }
@@ -72,7 +75,7 @@ export function validateProxyTarget(rawUrl: unknown): { url: URL } | { error: st
   if (/^\d|^\[|:/.test(url.hostname) || url.hostname === "localhost") {
     return { error: "The target host is not allowed.", status: 403 };
   }
-  if (!isProxiedHost(url.hostname)) {
+  if (!isProxiedHost(url.hostname, hosts)) {
     return { error: "The target host is not on the plugin allowlist.", status: 403 };
   }
   return { url };
@@ -117,6 +120,7 @@ function proxyError(message: string, status: number): Response {
 export async function handleHttpProxy(
   request: Request,
   fetchUpstream: typeof fetch = fetch,
+  hosts: readonly string[] = PROXY_ALLOWED_HOSTS,
 ): Promise<Response> {
   if (request.method !== "POST") {
     return proxyError("Method not allowed", 405);
@@ -136,7 +140,7 @@ export async function handleHttpProxy(
     return proxyError("The request body is not valid JSON.", 400);
   }
 
-  const target = validateProxyTarget(payload.url);
+  const target = validateProxyTarget(payload.url, hosts);
   if ("error" in target) return proxyError(target.error, target.status);
 
   const init = payload.init && typeof payload.init === "object" && !Array.isArray(payload.init)

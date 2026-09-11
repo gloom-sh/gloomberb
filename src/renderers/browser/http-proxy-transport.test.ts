@@ -1,6 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createBrowserHttpProxyTransport } from "./http-proxy-transport";
 
+// The real allowlist is generated from what bundled plugins declare. These
+// tests are about routing, so they pin one example host.
+const HOSTS = ["substack.com"];
+
 const originalLocation = Reflect.get(globalThis, "location");
 
 beforeAll(() => {
@@ -32,7 +36,7 @@ describe("browser plugin transport", () => {
         setCookie: ["substack.sid=granted; Path=/"],
         body: "{\"ok\":true}",
       });
-    }) as unknown as typeof fetch);
+    }) as unknown as typeof fetch, HOSTS);
 
     const response = await transport("https://substack.com/api/v1/reader/feed", {
       headers: { cookie: "substack.sid=stored" },
@@ -54,7 +58,7 @@ describe("browser plugin transport", () => {
       headers: {},
       setCookie: ["substack.sid=granted; Path=/", "other=1"],
       body: "{}",
-    })) as unknown as typeof fetch);
+    })) as unknown as typeof fetch, HOSTS);
 
     const response = await transport("https://substack.com/api/v1/login");
 
@@ -70,7 +74,7 @@ describe("browser plugin transport", () => {
     const transport = createBrowserHttpProxyTransport((async (url: string) => {
       calls.push(String(url));
       return new Response("ok");
-    }) as unknown as typeof fetch);
+    }) as unknown as typeof fetch, HOSTS);
 
     await transport("/api/portfolio");
     await transport("https://plugins.gloom.sh/registry.json");
@@ -87,7 +91,7 @@ describe("browser plugin transport", () => {
     const transport = createBrowserHttpProxyTransport((async () => Response.json(
       { error: "Sign in to use plugin requests." },
       { status: 401 },
-    )) as unknown as typeof fetch);
+    )) as unknown as typeof fetch, HOSTS);
 
     await expect(transport("https://substack.com/api/v1/reader/feed")).rejects.toThrow("refused (401)");
   });

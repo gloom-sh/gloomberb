@@ -3,6 +3,10 @@ import { handleHttpProxy, validateProxyTarget } from "./http-proxy";
 
 const SESSION_COOKIE = "__Secure-gloomberb.session_token=abc123";
 
+// The real allowlist is generated from what bundled plugins declare. These
+// tests are about the guardrails, so they pin one example host.
+const HOSTS = ["substack.com"];
+
 function proxyRequest(body: unknown, init: RequestInit = {}): Request {
   return new Request("https://term.gloom.sh/http-proxy", {
     method: "POST",
@@ -14,14 +18,14 @@ function proxyRequest(body: unknown, init: RequestInit = {}): Request {
 
 describe("proxy target validation", () => {
   test("allows an allowlisted host and its subdomains", () => {
-    expect(validateProxyTarget("https://substack.com/api/v1/reader/feed")).toHaveProperty("url");
-    expect(validateProxyTarget("https://example.substack.com/api/v1/posts")).toHaveProperty("url");
+    expect(validateProxyTarget("https://substack.com/api/v1/reader/feed", HOSTS)).toHaveProperty("url");
+    expect(validateProxyTarget("https://example.substack.com/api/v1/posts", HOSTS)).toHaveProperty("url");
   });
 
   test("refuses a host that merely ends with an allowlisted name", () => {
     // "evilsubstack.com" ends with "substack.com" as a string but is a
     // different registrable domain, so suffix matching has to be on a label.
-    expect(validateProxyTarget("https://evilsubstack.com/x")).toMatchObject({ status: 403 });
+    expect(validateProxyTarget("https://evilsubstack.com/x", HOSTS)).toMatchObject({ status: 403 });
   });
 
   test.each([
@@ -32,7 +36,7 @@ describe("proxy target validation", () => {
     ["https://localhost/x", "localhost"],
     ["https://api.github.com/x", "a host that is not allowlisted"],
   ])("refuses %s (%s)", (url) => {
-    const result = validateProxyTarget(url);
+    const result = validateProxyTarget(url, HOSTS);
 
     expect(result).not.toHaveProperty("url");
     expect((result as { status: number }).status).toBeGreaterThanOrEqual(400);
@@ -53,6 +57,7 @@ describe("proxy request handling", () => {
         seen = new Request(input as never, init);
         return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
       }) as typeof fetch,
+      HOSTS,
     );
 
     expect(response.status).toBe(200);
@@ -70,6 +75,7 @@ describe("proxy request handling", () => {
         status: 200,
         headers: { "set-cookie": "substack.sid=granted; Path=/; HttpOnly" },
       })) as typeof fetch,
+      HOSTS,
     );
     const envelope = await response.json() as { setCookie: string[]; headers: Record<string, string> };
 
@@ -85,6 +91,7 @@ describe("proxy request handling", () => {
         body: JSON.stringify({ url: "https://substack.com/x" }),
       }),
       (async () => new Response("nope")) as typeof fetch,
+      HOSTS,
     );
 
     expect(response.status).toBe(401);
@@ -94,6 +101,7 @@ describe("proxy request handling", () => {
     const response = await handleHttpProxy(
       proxyRequest({ url: "https://substack.com/x" }, { headers: { origin: "https://evil.example" } }),
       (async () => new Response("nope")) as typeof fetch,
+      HOSTS,
     );
 
     expect(response.status).toBe(403);
@@ -105,6 +113,7 @@ describe("proxy request handling", () => {
       (async () => {
         throw Object.assign(new Error("timed out"), { name: "TimeoutError" });
       }) as typeof fetch,
+      HOSTS,
     );
 
     expect(response.status).toBe(504);
