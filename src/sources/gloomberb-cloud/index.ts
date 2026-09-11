@@ -298,6 +298,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
           symbol: item.symbol,
           exchange: item.exchange,
         };
+        // A successful batch can contain an expired cache fallback for only
+        // one listing. Match the single-quote freshness boundary and let the
+        // normal router retry that item without discarding its healthy peers.
+        if (item.stale === true) {
+          return { target, quote: null, error: createProviderMiss(`Cloud quotes are stale for ${target.symbol}`) };
+        }
         if ((item.status === "success" || item.status === "partial") && item.data) {
           return {
             target,
