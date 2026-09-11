@@ -32,6 +32,36 @@ test("confirmed fund classification prevents cached company accounts from return
   expect(mergeFinancials(contaminated, null)?.fundamentals?.trailingPE).toBe(0.238);
 });
 
+test("fund research keeps distribution yield and description through cache and merge boundaries", () => {
+  const now = Date.now();
+  const fund = makeFinancials({
+    quote: makeQuote({ symbol: "SGOV", providerId: "gloomberb-cloud", instrumentType: "ETF", lastUpdated: now }),
+    fundamentals: { dividendYield: 0.036658540225881886, source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true,
+      enterpriseValue: 0, revenue: 0, netIncome: 0, freeCashFlow: 0 },
+    profile: { description: "Short Treasury bond fund", sector: "Contaminated issuer sector" },
+    annualStatements: [{ date: "2025-12-31", totalRevenue: 0 }],
+  });
+  for (const value of [sanitizeCachedFinancials(fund, { includeStaleQuotes: true }), mergeFinancials(fund, null)!]) {
+    expect(value.fundamentals).toEqual({ dividendYield: 0.036658540225881886, source: "twelvedata", fetchedAt: "2026-09-10T22:30:00Z", stale: true });
+    expect(value.profile).toEqual({ description: "Short Treasury bond fund" });
+    expect(value.annualStatements).toEqual([]);
+  }
+  const company = makeFinancials({
+    quote: makeQuote({ symbol: "SGOV", providerId: "yahoo", instrumentType: "EQUITY", lastUpdated: now - 1000 }),
+    fundamentals: { dividendYield: 0.99, revenue: 0 }, profile: { description: "Wrong company" },
+  });
+  const emptyFund = makeFinancials({ quote: fund.quote });
+  for (const value of [mergeFinancials(emptyFund, company)!, mergeFinancials(company, emptyFund)!]) {
+    expect(value.quote?.instrumentType).toBe("ETF");
+    expect(value.fundamentals).toBeUndefined();
+    expect(value.profile).toBeUndefined();
+  }
+  expect(mergeFinancials(fund, company)?.profile?.description).toBe("Short Treasury bond fund");
+  expect(mergeFinancials(company, null)?.fundamentals?.revenue).toBe(0);
+  expect(sanitizeCachedFinancials({ ...fund, fundamentals: { dividendYield: 0 } }, { includeStaleQuotes: true }).fundamentals?.dividendYield).toBe(0);
+  expect(sanitizeCachedFinancials({ ...fund, quote: { ...fund.quote!, instrumentType: "INDEX" } }, { includeStaleQuotes: true }).profile).toBeUndefined();
+});
+
 describe("AssetDataRouter cached financials", () => {
   test("drops stale cached cloud quotes while preserving cached cloud fundamentals", () => {
     const dbPath = createTempDbPath("stale-cloud-cached-financials");
