@@ -580,3 +580,16 @@ describe("applyPaneSettingFieldValue", () => {
     });
   });
 });
+
+
+test("interactive ambiguous ticker input returns to the picker without mutating research or holdings", async () => {
+  const state = createInitialState(createDefaultConfig(":memory:"));
+  let writes = 0;
+  const resolved = await resolveTickerInput("GLD", null, null, {
+    getState: () => state, dispatch: () => { writes++; }, pluginRegistry: {} as any,
+    tickerRepository: { createTicker: async () => { writes++; throw new Error("Must not create ticker"); } } as any,
+    dataProvider: createTestDataProvider({ search: async () => ["BYMA", "NYSE"].map((exchange) => ({ providerId: "cloud", symbol: "GLD", exchange, name: "SPDR", type: "ETF" })) }),
+  });
+  expect(resolved).toBeNull();
+  expect(writes).toBe(0);
+});

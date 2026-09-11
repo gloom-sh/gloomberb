@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { JsonTickerRepository } from "../data/json-ticker-repository";
 import { createTestDataProvider } from "../test-support/data-provider";
+import { AmbiguousTickerError } from "./search";
 import { resolveTickerOpenTarget } from "./open-target";
 
 function repository() {
@@ -68,4 +69,18 @@ test("quote-only hydration verifies the returned symbol and listing before prese
       }
     }
   }
+});
+
+
+test("ambiguous search cannot fall through to an unqualified quote and create a ticker", async () => {
+  const tickerRepository = repository();
+  let quoteCalls = 0;
+  await expect(resolveTickerOpenTarget({ query: "GLD", tickerRepository, tickers: new Map(),
+    dataProvider: createTestDataProvider({
+      search: async () => ["BYMA", "NYSE"].map((exchange) => ({ providerId: "cloud", symbol: "GLD", name: "SPDR", exchange, type: "ETF" })),
+      getQuote: async () => { quoteCalls++; return { symbol: "GLD", currency: "USD", price: 400, lastUpdated: 1, change: 0, changePercent: 0 }; },
+    }),
+  })).rejects.toBeInstanceOf(AmbiguousTickerError);
+  expect(quoteCalls).toBe(1);
+  expect(await tickerRepository.loadAllTickers()).toEqual([]);
 });

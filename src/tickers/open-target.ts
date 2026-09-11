@@ -2,6 +2,7 @@ import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { SearchRequestContext, DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import {
+  AmbiguousTickerError,
   normalizeTickerInput,
   findExactTickerSearchMatch,
   resolveTickerSearch,
@@ -41,7 +42,8 @@ export async function resolveTickerOpenTarget({
       dataProvider,
       searchContext,
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof AmbiguousTickerError) throw error;
     resolved = null;
   }
 

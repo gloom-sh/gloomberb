@@ -21,7 +21,7 @@ import {
   resolveTickerOpenTarget,
   type TickerOpenTarget,
 } from "../../tickers/open-target";
-import { findExactTickerSearchMatch } from "../../tickers/search";
+import { AmbiguousTickerError, findExactTickerSearchMatch } from "../../tickers/search";
 import { parsePublicTickerKey } from "../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../sources/yahoo-finance/symbols";
 
@@ -67,11 +67,15 @@ export function useAppTickerOpenRuntime({
       }
       return target;
     } catch (err) {
+      if (err instanceof AmbiguousTickerError) {
+        dispatch({ type: "SET_COMMAND_BAR", open: true, query: rawSymbol,
+          launch: { kind: "ticker-search", query: rawSymbol } });
+      }
       const message = err instanceof Error ? err.message : String(err);
       pluginRegistry.notify({ body: `Failed to open ${rawSymbol}: ${message}`, type: "error" });
       return null;
     }
-  }, [dataProvider, pluginRegistry, stateRef, tickerRepository]);
+  }, [dataProvider, dispatch, pluginRegistry, stateRef, tickerRepository]);
 
   const publishTickerOpenTarget = useCallback((target: TickerOpenTarget) => {
     const currentTicker = stateRef.current.tickers.get(target.symbol);

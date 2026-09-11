@@ -79,3 +79,33 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
     }
   }
 });
+
+
+test("ambiguous deep links open the listing picker without publishing an arbitrary ticker", async () => {
+  const actions: AppAction[] = [];
+  const notifications: string[] = [];
+  const stateRef = { current: createInitialState(createDefaultConfig(":memory:")) };
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({
+      stateRef,
+      dataProvider: createTestDataProvider({
+        search: async () => ["BYMA", "NYSE"].map((exchange) => ({ providerId: "cloud", symbol: "GLD", name: "SPDR", exchange, type: "ETF" })),
+        getQuote: async () => ({ symbol: "GLD", price: 400, currency: "USD", lastUpdated: 1, change: 0, changePercent: 0 }),
+      }),
+      tickerRepository: { createTicker: async () => { throw new Error("Must not create an ambiguous ticker"); } } as any,
+      dispatch: (action) => { actions.push(action); },
+      pluginRegistry: { notify: ({ body }: { body: string }) => { notifications.push(body); } } as any,
+      buildPaneInstance: () => null, persistLayout() {}, activatePane() {}, focusVisiblePane() {},
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await testRender(<Harness />, { width: 20, height: 2 });
+  try {
+    await act(async () => { await rendered.renderOnce(); await runtime.openPinnedTicker("GLD"); });
+    expect(actions).toEqual([{ type: "SET_COMMAND_BAR", open: true, query: "GLD", launch: { kind: "ticker-search", query: "GLD" } }]);
+    expect(notifications[0]).toContain("Multiple listings match GLD");
+  } finally {
+    await act(async () => { rendered.renderer.destroy(); });
+  }
+});

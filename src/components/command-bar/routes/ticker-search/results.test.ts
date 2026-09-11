@@ -75,7 +75,7 @@ test("folds a plain query's symbol hits into one capped Instruments section behi
     action: () => {},
   };
   const providerItems = [
-    resultItem("search:NVDA", "NVDA", "Equity NASDAQ", "search"),
+    resultItem("search:NVDA", "NVDA", "NASDAQ", "search"),
     // The saved row for the same symbol carries a different badge; one row per symbol.
     resultItem("goto:NVDA", "NVDA", "NASDAQ"),
     resultItem("search:NVDA.MX", "NVDA.MX", "Equity BMV", "search"),
@@ -116,4 +116,13 @@ test("names the instrument class for the badge column", () => {
   })).toBe("ETF");
   expect(formatInstrumentBadge({ instrumentClass: "derivative" })).toBe("DERIV");
   expect(formatInstrumentBadge({ instrumentClass: "other", result: search("INDEX") })).toBeUndefined();
+});
+
+
+test("plain exact-symbol search retains venue choices while deduplicating the same listing", () => {
+  const items = [resultItem("gld:tsv", "GLD", "TSXV", "search"),
+    resultItem("gld:nyse", "GLD", "NYSE", "search"), resultItem("gld:byma", "GLD", "BYMA", "search"),
+    resultItem("gld:duplicate", "GLD", "XNYS", "search")];
+  expect(mergePlainRootTickerResults("GLD", items, []).map((item) => item.id))
+    .toEqual(["gld:tsv", "gld:nyse", "gld:byma"]);
 });
