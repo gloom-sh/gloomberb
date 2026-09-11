@@ -3,11 +3,12 @@ import type { TimeRange } from "../../time-series/range";
 import type { BrokerContractRef } from "../../types/instrument";
 import type { PricePoint, TickerFinancials } from "../../types/financials";
 import type { CachePolicy, CachePolicyMap } from "../../types/persistence";
-import { canonicalExchange } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
+import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
 import { isPriceHistoryStaleForCurrentWindow } from "../../utils/price-history";
 
 const MARKET_NAMESPACE = "market";
-const FINANCIALS_SCHEMA_VERSION = 5;
+const FINANCIALS_SCHEMA_VERSION = 6;
 
 const DEFAULT_CACHE_POLICIES = {
   brokerQuote: { staleMs: 15_000, expireMs: 15 * 60_000 },
@@ -127,6 +128,24 @@ export function sortCachedRecords<T>(
   });
 }
 
+function hasUnverifiedLegacyAsmlValuation(record: CachedResourceRecord, value: TickerFinancials): boolean {
+  if (record.schemaVersion >= 6 || !RETRACTABLE_VALUATION_FIELDS.some((field) => value.fundamentals?.[field] != null)) return false;
+  const target = parsePublicTickerKey(record.entityKey);
+  const quote = parsePublicTickerKey(value.quote?.symbol ?? "");
+  if (![target.symbol, quote.symbol].some((symbol) => symbol === "ASML" || symbol === "ASML.AS")) return false;
+  const requested = target.exchange || (target.symbol === "ASML.AS" ? "AMS" : "")
+    || canonicalExchange(record.variantKey.match(/(?:^|;)exchange=([^;]+)/)?.[1]);
+  const rawListing = value.quote?.listingExchangeName || value.quote?.exchangeName || quote.exchange;
+  const listing = canonicalExchange(rawListing);
+  // Only corroborated non-US listings may retain their legacy valuation.
+  // A requested venue alone does not prove which listing supplied old data.
+  const verifiedForeign = ["ASML", "ASML.AS"].includes(quote.symbol) && resolveExchangeTimeZone(listing)
+    && rawListing?.trim().toUpperCase() !== "EURONEXT" && !["NASDAQ", "NYSE", "AMEX", "ARCA"].includes(listing)
+    && (!requested || requested === listing) && (!quote.exchange || quote.exchange === listing) && !!value.quote?.currency
+    && (listing !== "AMS" || value.quote.currency === "EUR");
+  return !verifiedForeign;
+}
+
 export function listCachedResources<T>(
   resources: ResourceStore | undefined,
   kind: string,
@@ -158,6 +177,7 @@ export function listCachedResources<T>(
     // Legacy cloud aggregates lost the nested quote's stale flag. Retain valid
     // issuer data, but obtain the quote through its independent freshness route.
     let value = record.value as TickerFinancials;
+    const legacyValuation = hasUnverifiedLegacyAsmlValuation(record, value);
     if (record.schemaVersion < 4) value = { ...value, quote: undefined, quoteContributions: undefined };
     // A new client can cache an old backend response during a rolling deploy.
     // Require the metric's own provenance as well as the cache schema before
@@ -168,7 +188,9 @@ export function listCachedResources<T>(
     const legacyYield = statistics?.dividendYield != null && (record.schemaVersion < 5 || !hasDividendProvenance);
     if (legacyYield) value = { ...value, fundamentals: { ...value.fundamentals,
       dividendYield: undefined, dividendYieldBasis: undefined, dividendYieldSource: undefined } };
-    return { ...record, stale: record.stale || legacyYield, value: value as T };
+    if (legacyValuation) value = { ...value, fundamentals: redactUnavailableFundamentals({ ...value.fundamentals,
+      unavailableFields: [...RETRACTABLE_VALUATION_FIELDS] }) };
+    return { ...record, stale: record.stale || legacyYield || legacyValuation, value: value as T };
   });
   if (records.length === 0) return [];
 
