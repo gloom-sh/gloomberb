@@ -61,6 +61,15 @@ function marketScene(
 }
 
 describe("adaptive composite time axis", () => {
+  test("retains the research year on a same-year stress window even in a narrow export", () => {
+    for (const width of [18, 40, 80]) {
+      const layout = viewport("2025-03-01T00:00:00Z", "2025-05-31T23:59:59Z", width);
+      expect(layout.text).toContain("2025");
+      expect(layout.ticks[0]?.timestamp).toBe(Date.parse("2025-03-01T00:00:00Z"));
+      expect(layout.ticks.at(-1)?.timestamp).toBe(Date.parse("2025-05-31T23:59:59Z"));
+      expectValidLayout(layout, width);
+    }
+  });
   test("increases intraday density with width while keeping concise UTC clock labels", () => {
     const narrow = viewport(
       "2026-07-29T09:30:00.000Z",
@@ -169,8 +178,8 @@ describe("adaptive composite time axis", () => {
 
     expect(monday?.ratio).toBe(0.25);
     expect(monday?.start).toBeLessThan(30);
-    expect(layout.ticks.some((tick) => tick.label.includes("4"))).toBe(false);
-    expect(layout.ticks.some((tick) => tick.label.includes("5"))).toBe(false);
+    expect(layout.ticks.some((tick) => tick.timestamp === Date.parse("2025-01-04"))).toBe(false);
+    expect(layout.ticks.some((tick) => tick.timestamp === Date.parse("2025-01-05"))).toBe(false);
     expectValidLayout(layout, 80);
   });
 

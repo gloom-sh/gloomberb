@@ -361,11 +361,7 @@ function formatBoundaryLabel(
     }
     case "day":
     case "week":
-      return calendarLabel(
-        timestamp,
-        includeBoundaryYear
-          && date.getUTCFullYear() !== new Date(counterpart).getUTCFullYear(),
-      );
+      return calendarLabel(timestamp, includeBoundaryYear);
     case "month":
       return calendarLabel(timestamp, includeBoundaryYear);
     case "year":
@@ -513,6 +509,13 @@ function layoutTimeAxis({
   if (startLabel.length + endLabel.length + 1 > axisWidth) {
     startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, false);
     endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, false);
+  }
+  if (startLabel.length + endLabel.length + 1 > axisWidth) {
+    // A standalone same-year chart still needs its year. Shorten the right
+    // endpoint first instead of dropping that context from both boundaries.
+    if (new Date(firstTimestamp).getUTCFullYear() === new Date(lastTimestamp).getUTCFullYear()) {
+      endLabel = formatBoundaryLabel(lastTimestamp, firstTimestamp, interval, false, false);
+    }
   }
   if (startLabel.length + endLabel.length + 1 > axisWidth) {
     startLabel = formatBoundaryLabel(firstTimestamp, lastTimestamp, interval, false, false);

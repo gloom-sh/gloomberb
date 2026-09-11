@@ -1396,11 +1396,13 @@ function CompositeLegend({
       entry,
       text,
       width: textWidth + 2,
+      labelWidth,
+      valueText,
       toggleable,
       tooltip,
     };
   });
-  const desiredSeriesWidth = entries.reduce(
+  let desiredSeriesWidth = entries.reduce(
     (total, entry, index) => total + entry.width + (index > 0 ? 1 : 0),
     0,
   );
@@ -1410,6 +1412,27 @@ function CompositeLegend({
   const reservedAccessoryGap = accessory && width > resolvedAccessoryWidth ? 1 : 0;
   // The cursor date lives on the time axis, where the crosshair points at it.
   const widthBeforeAccessory = Math.max(0, width - resolvedAccessoryWidth - reservedAccessoryGap);
+  // A slightly overflowing row should shorten names before hiding a value's
+  // final digits/unit under the accessory. Keep a readable name fragment; if
+  // the full row cannot fit even then, retain its existing scrollable layout.
+  const minimumSeriesWidth = entries.reduce((total, entry, index) => {
+    const text = [truncateToDisplayWidth(entry.entry.label, Math.min(8, entry.labelWidth)), entry.valueText]
+      .filter(Boolean).join(" ");
+    return total + Math.max(1, displayWidth(text)) + 2 + (index > 0 ? 1 : 0);
+  }, 0);
+  if (minimumSeriesWidth <= widthBeforeAccessory) {
+    while (desiredSeriesWidth > widthBeforeAccessory) {
+      const shrinkable = entries.filter((entry) => entry.labelWidth > 8)
+        .sort((left, right) => right.labelWidth - left.labelWidth)[0];
+      if (!shrinkable) break;
+      const previousWidth = shrinkable.width;
+      shrinkable.labelWidth -= 1;
+      shrinkable.text = [truncateToDisplayWidth(shrinkable.entry.label, shrinkable.labelWidth), shrinkable.valueText]
+        .filter(Boolean).join(" ");
+      shrinkable.width = Math.max(1, displayWidth(shrinkable.text)) + 2;
+      desiredSeriesWidth -= previousWidth - shrinkable.width;
+    }
+  }
   const seriesWidth = Math.min(desiredSeriesWidth, widthBeforeAccessory);
   const accessorySpacerWidth = accessory
     ? Math.max(reservedAccessoryGap, width - seriesWidth - resolvedAccessoryWidth)
