@@ -69,12 +69,16 @@ describe("ticker-search utilities", () => {
       const wanted = makeSearchResult(symbol!, "Exact listing", { exchange: venue, currency: providerCurrency });
       const other = makeSearchResult(symbol!, "Other listing", { exchange: "BYMA", currency: "ARS" });
       for (const results of [[other, wanted], [wanted, other]]) {
+        const quoteCalls: Parameters<DataProvider["getQuote"]>[] = [];
         const resolved = await resolveTickerSearch({ query: symbol, activeTicker: null, tickers: new Map(),
-          dataProvider: createTestDataProvider({ search: async () => results, getQuote: async () => ({
-            symbol: symbol!, listingExchangeName: venue, currency: currency!, price: 100, lastUpdated: 1, change: 0, changePercent: 0,
-          }) }),
+          searchContext: { brokerId: "ibkr", brokerInstanceId: "research-account", preferBroker: true, interactive: true, onPartial: () => {} },
+          dataProvider: createTestDataProvider({ search: async () => results, getQuote: async (...args) => {
+            quoteCalls.push(args);
+            return { symbol: symbol!, listingExchangeName: venue, currency: currency!, price: 100, lastUpdated: 1, change: 0, changePercent: 0 };
+          } }),
         });
         expect(resolved).toMatchObject({ kind: "provider", result: { exchange: venue, currency } });
+        expect(quoteCalls).toEqual([[symbol, "", { brokerId: "ibkr", brokerInstanceId: "research-account" }]]);
       }
     }
   });

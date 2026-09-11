@@ -232,7 +232,10 @@ export async function resolveTickerSearch({
     // symbols with the quote source only when it supplies the exact identity.
     let verified: TickerSearchCandidate[] = [];
     try {
-      const quote = await dataProvider.getQuote(symbol, "");
+      const quote = await dataProvider.getQuote(symbol, "", {
+        brokerId: searchContext?.brokerId,
+        brokerInstanceId: searchContext?.brokerInstanceId,
+      });
       const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
       const currency = resolveCurrencyUnit(quote.currency).currency;
       if (exchange && currency && Number.isFinite(quote.price) && quote.price !== 0
