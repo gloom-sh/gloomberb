@@ -2,6 +2,7 @@ import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatMarketPrice } from "../../../market-data/market/format";
 import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
 import {
@@ -98,7 +99,9 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     { key: "date", header: "Date", format: (value) => String(value).slice(0, 10) },
     ...["open", "high", "low", "close", "volume"].map((key) => ({
       key, header: key, align: "right" as const,
-      format: (value: unknown) => value == null ? "-" : formatNumber(Number(value), key === "volume" ? 0 : 2),
+      format: (value: unknown) => value == null || !Number.isFinite(Number(value)) ? "-"
+        : key === "volume" ? formatNumber(Number(value), 0)
+        : formatMarketPrice(Number(value), { minimumFractionDigits: 2 }),
     })),
   ],
   async load({ symbols, options }, ctx) {
