@@ -415,7 +415,18 @@ export interface FinancialStatement {
   treasurySharesNumber?: number;
 }
 
+/** Verified provider identity retained with observations through cache/clipping. */
+export interface PriceHistorySource {
+  provider: "yahoo" | "twelvedata";
+  symbol: "SHEL";
+  exchange: "LSE";
+  currency: "GBP";
+  /** Source coverage restriction, not security inception or an adjustment ratio. */
+  verifiedLineageStart?: "2005-07-21";
+}
+
 export interface PricePoint {
+  historySource?: PriceHistorySource;
   date: Date;
   open?: number;
   high?: number;

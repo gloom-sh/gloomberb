@@ -6,6 +6,7 @@ import type {
   HolderData,
   HolderRecord,
   OptionsChain,
+  PriceHistorySource,
   Quote,
 } from "../types/financials";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
@@ -305,6 +306,7 @@ export interface CloudCorporateActionsPayload extends CorporateActionsData {
 }
 
 export interface CloudPricePointPayload {
+  historySource?: PriceHistorySource;
   date: string;
   open?: number;
   high?: number;
@@ -1046,6 +1048,14 @@ export interface CloudMarketResponse<T> {
     inceptionDate: string;
     firstAllowedBarDate: string;
     source: "issuer";
+    sourceUrl: string;
+    firstBarDate: string | null;
+    lastBarDate: string | null;
+    barCount: number;
+  } | {
+    source: "yahoo" | "twelvedata";
+    reasonCode: "UNVERIFIED_PREDECESSOR_LINEAGE";
+    verifiedLineageStart: "2005-07-21";
     sourceUrl: string;
     firstBarDate: string | null;
     lastBarDate: string | null;

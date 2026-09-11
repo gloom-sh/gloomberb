@@ -1,6 +1,7 @@
 import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
+import { hasShellCoverageRestriction, HistoryCoverageError, isShellLondonTarget, SHELL_VERIFIED_LINEAGE_START } from "../history-coverage";
 import {
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
@@ -127,7 +128,11 @@ function mapCloudPriceHistory(
   ticker: string,
   exchange: string,
   interval: string,
+  requestedStart: Date,
 ): PricePoint[] {
+  if (response.status === "empty" && isShellLondonTarget(ticker, exchange)
+    && requestedStart.getTime() < Date.parse(SHELL_VERIFIED_LINEAGE_START)
+    && hasShellCoverageRestriction(response.coverage)) throw new HistoryCoverageError(response.coverage.source);
   if (isStaleCloudResponse(response)) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
@@ -418,7 +423,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       () => apiClient.getCloudHistory(target.symbol, exchange, request),
       `Cloud chart data is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, ticker, exchange, request.interval);
+    return mapCloudPriceHistory(response, ticker, exchange, request.interval, getRangeStartDate(range, new Date()));
   }
 
   async getPriceHistoryForResolution(
@@ -442,7 +447,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       }),
       `Cloud chart data is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, ticker, exchange, interval);
+    return mapCloudPriceHistory(response, ticker, exchange, interval, startDate);
   }
 
   async getDetailedPriceHistory(
@@ -465,7 +470,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       }),
       `Cloud detailed chart history is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, ticker, exchange, interval);
+    return mapCloudPriceHistory(response, ticker, exchange, interval, startDate);
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, _context?: MarketDataRequestContext): Promise<OptionsChain> {
