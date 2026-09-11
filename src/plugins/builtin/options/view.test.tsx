@@ -77,11 +77,13 @@ function OptionsHarness({
   ticker,
   quotePrice,
   width = 122,
+  height = 14,
   onCapture = () => { },
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
   width?: number;
+  height?: number;
   onCapture?: (capturing: boolean) => void;
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
@@ -99,7 +101,7 @@ function OptionsHarness({
 
   return (
     <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-      <OptionsView width={width} height={14} focused onCapture={onCapture} />
+      <OptionsView width={width} height={height} focused onCapture={onCapture} />
     </TestPaneProvider>
   );
 }
@@ -107,7 +109,7 @@ function OptionsHarness({
 function RealtimeOptionsHarness({ ticker }: { ticker: TickerRecord }) {
   const [quotePrice, setQuotePrice] = useState(120.2);
   setOptionsQuotePrice = setQuotePrice;
-  return <OptionsHarness ticker={ticker} quotePrice={quotePrice} />;
+  return <OptionsHarness ticker={ticker} quotePrice={quotePrice} height={20} />;
 }
 
 async function renderSettled() {
@@ -227,7 +229,7 @@ test("streams live quotes without resetting manual scroll", async () => {
       <RealtimeOptionsHarness ticker={makeTicker("AAPL")} />,
       {
         width: 124,
-        height: 16,
+        height: 22,
       },
     );
   });
