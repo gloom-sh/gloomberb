@@ -106,6 +106,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const [interactive, setInteractive] = useState(false);
   const userSelectedStrikeRef = useRef(false);
   const initializedExpiryTargetRef = useRef<string | null>(null);
+  const quoteContextRowsRef = useRef(3);
   const onCaptureRef = useRef(onCapture);
   const target = resolveOptionsTarget(ticker);
   const isOpt = target?.isOptionTicker ?? false;
@@ -474,7 +475,12 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     : 0;
   const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
   const summaryRowCount = height >= 10 ? 2 : height >= 7 ? 1 : 0;
-  const quoteContextHeight = optionQuoteContextHeight(selectedReference, width - 2, Math.max(1, Math.floor(height / 3)));
+  // Keep the table's geometry stable through an empty cold-expiry response.
+  // Growing it during loading can turn a clamped scroll into apparent user navigation.
+  const maxContextHeight = Math.max(1, Math.floor(height / 3));
+  quoteContextRowsRef.current = Math.max(quoteContextRowsRef.current,
+    optionQuoteContextHeight(selectedReference, width - 2, maxContextHeight));
+  const quoteContextHeight = Math.min(maxContextHeight, quoteContextRowsRef.current);
   const tableHeight = Math.max(1, height - 1 - summaryRowCount - (isOpt && parsed ? 1 : 0) - quoteContextHeight);
   // The strip scrolls; without a marker a clipped last date reads as the last expiry.
   const expirationStripOverflows = chain.expirationDates
@@ -515,7 +521,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         </Box>
       )}
 
-      {selectedReference && <OptionQuoteContext reference={selectedReference} width={width - 2} height={quoteContextHeight} />}
+      <Box height={quoteContextHeight} flexShrink={0}>
+        {selectedReference && <OptionQuoteContext reference={selectedReference} width={width - 2} height={quoteContextHeight} />}
+      </Box>
 
       <DataTableView<OptionTableRow, OptionColumn>
         focused={focused}

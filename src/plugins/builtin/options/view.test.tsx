@@ -183,6 +183,38 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
+test("keeps table geometry steady while a cold expiry has no contract context", async () => {
+  const firstExpiry = 1_782_345_600;
+  const nextExpiry = firstExpiry + 7 * 86400;
+  const initial = makeChain([100, 101], 101, [firstExpiry, nextExpiry]);
+  let finishNext!: (chain: OptionsChain) => void;
+  const next = new Promise<OptionsChain>((resolve) => { finishNext = resolve; });
+  const provider = createTestDataProvider({
+    getOptionsChain: async (_symbol, _exchange, expiration) => expiration === nextExpiry ? next : initial,
+  });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  await act(async () => {
+    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} />, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  const tableHeight = () => (testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).height;
+  const before = tableHeight();
+  await act(async () => { testSetup!.mockInput.pressEnter(); });
+  await renderSettled();
+  await act(async () => { testSetup!.mockInput.pressKey("l"); });
+  await renderSettled();
+  expect(testSetup!.captureCharFrame()).toContain("Loading strikes");
+  expect(testSetup!.captureCharFrame()).not.toContain("AAPL260619C");
+  expect(tableHeight()).toBe(before);
+  await act(async () => { finishNext({ ...initial,
+    calls: initial.calls.map((c) => ({ ...c, expiration: nextExpiry, contractSymbol: c.contractSymbol.replace("260619", "260626") })),
+    puts: initial.puts.map((c) => ({ ...c, expiration: nextExpiry, contractSymbol: c.contractSymbol.replace("260619", "260626") })),
+  }); });
+  await renderSettled();
+  expect(tableHeight()).toBe(before);
+  expect(testSetup!.captureCharFrame()).toContain("AAPL260626C00101000");
+});
+
 test("shows volatility statistics and mirrored default Greeks", async () => {
   const provider = createTestDataProvider({
     getOptionsChain: async () => makeChain([100, 101], 101),
