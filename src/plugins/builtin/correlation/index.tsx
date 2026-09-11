@@ -230,15 +230,9 @@ function CorrelationMatrixPane({ focused, width, height }: PaneProps) {
               </Box>
               {/* Cells */}
               {symbols.map((colSym) => {
-                const isDiag = rowSym === colSym;
-                let r: number | null = null;
-                if (isDiag) {
-                  r = 1;
-                } else {
-                  r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
-                }
+                const r = matrix.results.get(pairKey(rowSym, colSym))?.correlation ?? null;
                 const cellColors = resolveCorrelationHeatmapCellColors(r);
-                const text = isDiag ? " 1.00" : formatCorrelation(r);
+                const text = formatCorrelation(r);
                 return (
                   <Box
                     key={colSym}

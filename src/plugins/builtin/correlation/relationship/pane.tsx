@@ -222,7 +222,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
       { id: "summary", parts: [{ text: footerSummary, tone: "muted" as const }] },
       ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-      ...(!loading && analysis && analysis.returns.length < correlationWindow
+      ...(!loading && analysis && !analysis.unavailableReason && analysis.returns.length < correlationWindow
         ? [{ id: "correlation-history", parts: [{ text: `Correlation needs ${correlationWindow} shared returns; ${analysis.returns.length} available`, tone: "warning" as const }] }]
         : []),
     ],
@@ -252,7 +252,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
 
   if (!analysis || analysis.aligned.length < 2) {
     return (
-      <PaneStatusBody loading={loading} error={loading ? null : error} subject="relationship history" empty emptyTitle="No overlapping price history." />
+      <PaneStatusBody loading={loading} error={loading ? null : analysis?.unavailableReason ?? error} subject="relationship history" empty emptyTitle="No overlapping price history." />
     );
   }
 

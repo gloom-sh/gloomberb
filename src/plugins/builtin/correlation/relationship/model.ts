@@ -1,3 +1,4 @@
+import { pricePointIntegrity, type PriceHistoryIntegrity } from "../../../../utils/price-history-integrity";
 import type { ProjectedChartPoint } from "../../../../components/chart/core/data";
 import type { TimeRange } from "../../../../components/chart/core/types";
 import type { ScatterChartPoint } from "../../../../components/chart/static";
@@ -39,6 +40,8 @@ export interface RelationshipRegressionStats {
 }
 
 export interface RelationshipAnalysis {
+  unavailableReason?: string;
+  integrity?: { left: PriceHistoryIntegrity[]; right: PriceHistoryIntegrity[] };
   aligned: RelationshipAlignedPoint[];
   returns: RelationshipReturnPoint[];
   ratioPoints: ProjectedChartPoint[];
@@ -149,6 +152,15 @@ export function buildRelationshipAnalysis(
   rightPoints: PricePoint[],
   correlationWindow = DEFAULT_RELATIONSHIP_CORRELATION_WINDOW,
 ): RelationshipAnalysis {
+  const issues = (points: PricePoint[]) => points.flatMap((point) => {
+    const issue = pricePointIntegrity(point); return issue ? [issue] : [];
+  });
+  const integrity = { left: issues(leftPoints), right: issues(rightPoints) };
+  if (integrity.left.length || integrity.right.length) return {
+    aligned: [], returns: [], ratioPoints: [], correlationPoints: [], scatterPoints: [],
+    stats: null, latestRatio: null, latestCorrelation: null, integrity,
+    unavailableReason: "Inconsistent OHLC history; relationship calculations are unavailable for this window.",
+  };
   const aligned = alignRelationshipPrices(leftPoints, rightPoints);
   const returns = buildRelationshipReturns(aligned);
   const correlationPoints = buildRollingCorrelationPoints(returns, correlationWindow);
