@@ -114,7 +114,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `ERN` | Earnings calendar |
 | `IPO` | Upcoming and recent IPOs |
 | `HALT` | US trading halts with reason and resumption times |
-| `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloomberb-tv)) |
+| `TV` | Live Bloomberg, CNBC, and Yahoo Finance television ([TV plugin](https://github.com/gloom-sh/gloom-tv)) |
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge |

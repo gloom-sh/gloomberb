@@ -4,6 +4,7 @@ import { join } from "path";
 import type { AppConfig } from "../types/config";
 import { debugLog } from "../utils/debug-log";
 import { getPluginsDir } from "./loader";
+import { pluginDirectoryNames } from "./plugin-names";
 
 const log = debugLog.createLogger("plugin-seed");
 
@@ -16,13 +17,13 @@ const log = debugLog.createLogger("plugin-seed");
  * so it is never reinstalled — including when the user removes it deliberately.
  */
 export const EXTRACTED_PLUGINS = [
-  { id: "tv", repo: "gloom-sh/gloomberb-tv", directory: "gloomberb-tv", previousOwnerIds: ["macro", "macro-tv"] },
-  { id: "substack", repo: "gloom-sh/gloomberb-substack", directory: "gloomberb-substack" },
+  { id: "tv", repo: "gloom-sh/gloom-tv", directory: "gloom-tv", previousOwnerIds: ["macro", "macro-tv"] },
+  { id: "substack", repo: "gloom-sh/gloom-substack", directory: "gloom-substack" },
   { id: "ibkr", repo: "gloom-sh/gloomberb-ibkr", directory: "gloomberb-ibkr" },
   { id: "ibkr-gateway", repo: "gloom-sh/gloomberb-ibkr-gateway", directory: "gloomberb-ibkr-gateway" },
-  { id: "public", repo: "gloom-sh/gloomberb-public", directory: "gloomberb-public" },
-  { id: "robinhood", repo: "gloom-sh/gloomberb-robinhood", directory: "gloomberb-robinhood" },
-  { id: "simplefin", repo: "gloom-sh/gloomberb-simplefin", directory: "gloomberb-simplefin" },
+  { id: "public", repo: "gloom-sh/gloom-public", directory: "gloom-public" },
+  { id: "robinhood", repo: "gloom-sh/gloom-robinhood", directory: "gloom-robinhood" },
+  { id: "simplefin", repo: "gloom-sh/gloom-simplefin", directory: "gloom-simplefin" },
 ] as const;
 
 export interface SeedResult {
@@ -32,8 +33,13 @@ export interface SeedResult {
   seeded: string[];
 }
 
+/**
+ * Checks both product names, because a plugin installed before its repository
+ * was renamed sits in a directory under the old one. Missing that install would
+ * clone a second copy, and the loader refuses the duplicate id.
+ */
 function isInstalled(directory: string, pluginsDir: string): boolean {
-  return existsSync(join(pluginsDir, directory));
+  return pluginDirectoryNames(directory).some((name) => existsSync(join(pluginsDir, name)));
 }
 
 /**

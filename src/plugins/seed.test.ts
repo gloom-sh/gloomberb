@@ -56,7 +56,7 @@ describe("seedExtractedPlugins", () => {
       dir,
     ));
 
-    expect(installs).not.toContain("gloom-sh/gloomberb-substack");
+    expect(installs).not.toContain("gloom-sh/gloom-substack");
     // Recorded, so we stop asking rather than retrying every launch.
     expect(result.seeded).toContain("substack");
   });
@@ -64,11 +64,28 @@ describe("seedExtractedPlugins", () => {
   test("records a plugin that is already installed without reinstalling it", async () => {
     const installs: string[] = [];
     const result = await withPluginsDir((pluginsDir) => {
+      mkdirSync(join(pluginsDir, "gloom-substack"), { recursive: true });
+      return seedExtractedPlugins(config(), async (ref) => { installs.push(ref); }, pluginsDir);
+    });
+
+    expect(installs).not.toContain("gloom-sh/gloom-substack");
+    expect(result.seeded).toContain("substack");
+  });
+
+  /**
+   * The plugin repositories are renaming to `gloom-`, so anyone who installed
+   * one before the rename has it in a directory under the old name. Seeding by
+   * the new name alone would clone a second copy, and the loader then refuses
+   * both for sharing an id.
+   */
+  test("finds an install made before the repository was renamed", async () => {
+    const installs: string[] = [];
+    const result = await withPluginsDir((pluginsDir) => {
       mkdirSync(join(pluginsDir, "gloomberb-substack"), { recursive: true });
       return seedExtractedPlugins(config(), async (ref) => { installs.push(ref); }, pluginsDir);
     });
 
-    expect(installs).not.toContain("gloom-sh/gloomberb-substack");
+    expect(installs).not.toContain("gloom-sh/gloom-substack");
     expect(result.seeded).toContain("substack");
   });
 
@@ -78,7 +95,7 @@ describe("seedExtractedPlugins", () => {
       const result = await withPluginsDir((dir) => seedExtractedPlugins(
         config({ disabledPlugins: [owner] }), async (ref) => { installs.push(ref); }, dir,
       ));
-      expect(installs).not.toContain("gloom-sh/gloomberb-tv");
+      expect(installs).not.toContain("gloom-sh/gloom-tv");
       expect(result.seeded).toContain("tv");
     }
   });
