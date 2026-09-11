@@ -89,6 +89,7 @@ function outputSeries(
     panelId: spec.panelId,
     interpolation: options.interpolation ?? "none",
     timeBasis: input.timeBasis,
+    observationKind: input.observationKind,
     points: options.points,
   };
 }

@@ -46,7 +46,7 @@ import {
 } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
-import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, resolvePriceComparison } from "./price-comparison";
+import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, resolvePriceComparison, type PriceComparison } from "./price-comparison";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
@@ -354,6 +354,16 @@ function filterPoints(points: readonly TimeSeriesPoint[], bounds: DateBounds): T
   });
 }
 
+function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceComparison | null): DateBounds {
+  if (comparison?.alignment !== "session-date" || comparison.start === null || comparison.end === null) return bounds;
+  // A date-only selection can include a local session that began on the prior
+  // UTC day. Keep its original timestamp visible in the rendering viewport.
+  return {
+    start: bounds.start === null ? null : Math.min(bounds.start, comparison.start),
+    end: bounds.end === null ? null : Math.max(bounds.end, comparison.end),
+  };
+}
+
 function followLatestMarketObservation(
   bounds: DateBounds,
   series: readonly ResolvedSeries[],
@@ -399,7 +409,9 @@ export function seedChartResolutionResult(
     for (const point of entry.points) latest = Math.max(latest, point.date.getTime());
   }
   const bounds = requestedBounds(spec, referenceNow ?? new Date(latest));
-  const priceComparison = resolvePriceComparison(spec, series, bounds);
+  const resolution = requestResolution(spec, bounds, new Set(series.map((entry) => entry.id)), {}, []);
+  const priceComparison = resolvePriceComparison(spec, series, bounds, resolution);
+  const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
@@ -408,12 +420,13 @@ export function seedChartResolutionResult(
   const studies = resolveStudies(series, spec.studies);
   const bufferedSeries = [
     ...baseSeries,
-    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds),
+    ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds, undefined, priceComparison),
   ].map((entry) => clipPriceComparison(entry, priceComparison));
   const visible = bufferedSeries.map((entry) => {
-    const clipped = bounds.start !== null && bounds.end !== null
-      ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
-      : { ...entry, points: filterPoints(entry.points, bounds) };
+    const entryBounds = presentationBounds(entry, spec.studies, priceComparison, bounds);
+    const clipped = entryBounds.start !== null && entryBounds.end !== null
+      ? clipSeriesToWindow(entry, new Date(entryBounds.start), new Date(entryBounds.end))
+      : { ...entry, points: filterPoints(entry.points, entryBounds) };
     return clipPriceComparison(limitSeriesObservations(spec, clipped), priceComparison);
   });
   return {
@@ -422,14 +435,12 @@ export function seedChartResolutionResult(
     legendSeries: visible,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
     ...((explicitBounds(spec) !== null || spec.viewport.maxPoints === undefined)
-      && bounds.start !== null && bounds.end !== null
-      ? { viewport: { start: new Date(bounds.start), end: new Date(bounds.end) } } : {}),
+      && displayBounds.start !== null && displayBounds.end !== null
+      ? { viewport: { start: new Date(displayBounds.start), end: new Date(displayBounds.end) } } : {}),
     loading: true,
     errors: studies.errors,
     warnings: [...studies.warnings, ...(priceComparison ? [priceComparison.notice] : [])],
-    resolution: spec.viewport.resolution === "auto"
-      ? getPresetResolution(spec.viewport.range)
-      : spec.viewport.resolution,
+    resolution,
   };
 }
 
@@ -742,6 +753,7 @@ function baseSecuritySeries(
     axis: spec.axis === "right" ? "right" : "left",
     panelId: spec.panelId,
     interpolation: spec.interpolation,
+    observationKind: marketField ? "market" : undefined,
     timeBasis: marketTimeZone
       ? {
           kind: "market",
@@ -893,12 +905,25 @@ function studyForOutput(
     .sort((left, right) => right.id.length - left.id.length)[0];
 }
 
+function presentationBounds(
+  series: ResolvedSeries,
+  studies: readonly ChartSpec["studies"][number][],
+  comparison: PriceComparison | null,
+  fallback: DateBounds,
+): DateBounds {
+  const study = studyForOutput(series.id, studies);
+  const sourceId = study && (study.kind === "sma" || study.kind === "ema" || study.kind === "bollinger")
+    ? study.inputSeriesIds[0] : series.id;
+  return (sourceId && comparison?.sourceBounds?.[sourceId]) || fallback;
+}
+
 function applyStudyPresentationTransforms(
   outputs: ResolvedSeries[],
   studies: readonly ChartSpec["studies"][number][],
   rawSeries: readonly ResolvedSeries[],
   visibleBounds: DateBounds,
   fallbackBaselineBounds?: DateBounds,
+  priceComparison?: PriceComparison | null,
 ): ResolvedSeries[] {
   const rawById = new Map(rawSeries.map((series) => [series.id, series] as const));
   return outputs.map((output) => {
@@ -909,10 +934,12 @@ function applyStudyPresentationTransforms(
     const input = rawById.get(study.inputSeriesIds[0] ?? "");
     if (!input || input.transform === "raw") return output;
     const baseline = input.transform === "percent" || input.transform === "index100"
-      ? scalarBaseline(input, visibleBounds)
+      ? scalarBaseline(input, priceComparisonBoundsForSeries(input, priceComparison ?? null) ?? visibleBounds)
         ?? (fallbackBaselineBounds ? scalarBaseline(input, fallbackBaselineBounds) : null)
       : undefined;
-    return applyResolvedSeriesTransform(output, input.transform, { baseline });
+    const transformed = applyResolvedSeriesTransform(output, input.transform, { baseline });
+    const inputBounds = priceComparison?.sourceBounds?.[input.id];
+    return inputBounds ? { ...transformed, points: filterPoints(transformed.points, inputBounds) } : transformed;
   });
 }
 
@@ -1261,7 +1288,8 @@ export async function resolveChartSpecData(
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
     : followLatestMarketObservation(initialVisibleBounds, rawSeries);
-  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, initialResolution);
+  const priceComparison = resolvePriceComparison(spec, rawSeries, bounds, initialResolution, requestBounds ? null : spec.viewport.dateWindow);
+  const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
     ? priceComparison : bounds;
   const resolution = initialResolution;
@@ -1286,6 +1314,7 @@ export async function resolveChartSpecData(
         rawSeries,
         comparisonBounds,
         priceComparison ? undefined : requestVisibleBounds,
+        priceComparison,
       ),
     ];
     warnings.push(...studyResult.warnings);
@@ -1294,11 +1323,12 @@ export async function resolveChartSpecData(
 
   const bufferedSeries = assignAxes(resolved, [...spec.series, ...spec.studies], warnings)
     .map((entry) => clipPriceComparison(entry, priceComparison));
-  resolved = bufferedSeries.map((entry) => (
-    bounds.start !== null && bounds.end !== null
-      ? clipSeriesToWindow(entry, new Date(bounds.start), new Date(bounds.end))
-      : { ...entry, points: filterPoints(entry.points, bounds) }
-  ));
+  resolved = bufferedSeries.map((entry) => {
+    const entryBounds = presentationBounds(entry, spec.studies, priceComparison, bounds);
+    return entryBounds.start !== null && entryBounds.end !== null
+      ? clipSeriesToWindow(entry, new Date(entryBounds.start), new Date(entryBounds.end))
+      : { ...entry, points: filterPoints(entry.points, entryBounds) };
+  });
   resolved = resolved.map((entry) => limitSeriesObservations(spec, entry));
   resolved = resolved.map((entry) => clipPriceComparison(entry, priceComparison));
   if (priceComparison) warnings.push(priceComparison.notice);
@@ -1332,8 +1362,8 @@ export async function resolveChartSpecData(
   }
 
   const exposeViewport = hasExplicitWindow || spec.viewport.maxPoints === undefined;
-  const viewport = exposeViewport && bounds.start !== null && bounds.end !== null
-    ? { start: new Date(bounds.start), end: new Date(bounds.end) }
+  const viewport = exposeViewport && displayBounds.start !== null && displayBounds.end !== null
+    ? { start: new Date(displayBounds.start), end: new Date(displayBounds.end) }
     : undefined;
   return {
     series: resolved,

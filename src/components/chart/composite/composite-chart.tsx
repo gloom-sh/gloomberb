@@ -801,7 +801,11 @@ function CompositePanelSurface({
         endValue,
         startTime,
         endTime,
-        bars: countMeasureBars(scene.dates, startTime, endTime),
+        // Cross-market cursor stops include every listing's observations;
+        // measured bars still follow the primary market's session scale.
+        bars: countMeasureBars(scene.timeScale.kind === "market"
+          ? scene.timeScale.anchors.map(({ timestamp }) => new Date(timestamp))
+          : scene.dates, startTime, endTime),
         domain: measureDomain,
       }),
       startValueLabel: measureDomain && startValue !== null

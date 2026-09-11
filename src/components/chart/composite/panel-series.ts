@@ -38,6 +38,7 @@ function sameSeriesMeta(left: ResolvedSeries, right: ResolvedSeries): boolean {
     && left.interpolation === right.interpolation
     && left.warning === right.warning
     && left.hidden === right.hidden
+    && left.observationKind === right.observationKind
     && left.timeBasis?.kind === right.timeBasis?.kind
     && left.timeBasis?.timeZone === right.timeBasis?.timeZone
     && left.timeBasis?.cadenceMs === right.timeBasis?.cadenceMs;

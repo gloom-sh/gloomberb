@@ -55,18 +55,25 @@ export function resolvePriceComparison(
   series: readonly ResolvedSeries[],
   bounds: { start: number | null; end: number | null },
   resolution: ManualChartResolution | "auto" = spec.viewport.resolution,
+  dateWindow: ChartSpec["viewport"]["dateWindow"] | null = spec.viewport.dateWindow,
 ): PriceComparison | null {
   const seriesIds = priceComparisonSeriesIds(spec);
   if (!seriesIds) return null;
   const byId = new Map(series.map((entry) => [entry.id, entry]));
   const calendarBars = resolution === "1d" || resolution === "1wk" || resolution === "1mo";
+  const calendarWindow = calendarBars && dateWindow
+    && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start)
+    && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end) ? dateWindow : null;
   const observations = seriesIds.map((id) => new Map((byId.get(id)?.points ?? []).flatMap((point) => {
     const time = point.date.getTime();
     const value = scalarPointValue(point);
-    return Number.isFinite(time) && value !== null
-      && (bounds.start === null || time >= bounds.start)
-      && (bounds.end === null || time <= bounds.end)
-      ? [[calendarBars ? observationDate(time, byId.get(id)!) : String(time), point] as const] : [];
+    if (!Number.isFinite(time) || value === null) return [];
+    const key = calendarBars ? observationDate(time, byId.get(id)!) : String(time);
+    const inWindow = calendarWindow
+      ? key >= calendarWindow.start && key <= calendarWindow.end
+      : (bounds.start === null || time >= bounds.start)
+        && (bounds.end === null || time <= bounds.end);
+    return inWindow ? [[key, point] as const] : [];
   })));
   const shared = [...observations[0]!.keys()].filter((key) => observations.every((points) => points.has(key)))
     .sort((a, b) => calendarBars ? a.localeCompare(b) : Number(a) - Number(b));

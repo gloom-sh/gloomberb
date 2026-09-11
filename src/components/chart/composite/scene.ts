@@ -39,6 +39,10 @@ function pointTime(point: TimeSeriesPoint): number | null {
   return Number.isFinite(time) ? time : null;
 }
 
+function isMarketObservationSeries(series: ResolvedSeries): boolean {
+  return series.observationKind === "market" || series.timeBasis?.kind === "market";
+}
+
 function pointTimestampForScale(
   series: ResolvedSeries,
   point: TimeSeriesPoint,
@@ -46,7 +50,7 @@ function pointTimestampForScale(
 ): number | null {
   const timestamp = pointTime(point);
   if (timestamp === null) return null;
-  return timeScale?.kind === "market" && !series.timeBasis
+  return timeScale?.kind === "market" && !isMarketObservationSeries(series)
     ? effectiveTimeSeriesPointTime(point)
     : timestamp;
 }
@@ -96,7 +100,7 @@ function normalizedSourcePoints(
   series: ResolvedSeries,
   timeScale?: CompositeTimeScale,
 ): NormalizedSourcePoint[] {
-  const effectiveTimes = timeScale?.kind === "market" && !series.timeBasis;
+  const effectiveTimes = timeScale?.kind === "market" && !isMarketObservationSeries(series);
   const last = series.points[series.points.length - 1];
   const lastTimestamp = last ? pointTime(last) : null;
   const lastValue = last ? resolveTimeSeriesPointValue(last) : null;
@@ -157,7 +161,7 @@ function scopeSeriesToViewport(
   clipToViewport: boolean,
 ): ResolvedSeries | null {
   const points = normalizedSourcePoints(series, timeScale);
-  const placement = timeScale.kind === "market" && !series.timeBasis
+  const placement = timeScale.kind === "market" && !isMarketObservationSeries(series)
     ? "next-market-slot" as const
     : "timestamp" as const;
   const visible = points.filter(({ timestamp }) => {
@@ -342,7 +346,7 @@ function projectSeries(
 ): CompositeProjectedPoint[] {
   const projected: CompositeProjectedPoint[] = [];
   let breakBefore = true;
-  const placement = timeScale.kind === "market" && !series.timeBasis
+  const placement = timeScale.kind === "market" && !isMarketObservationSeries(series)
     ? "next-market-slot" as const
     : "timestamp" as const;
   const stepSeries = series.interpolation === "step-after" || series.style === "step";
@@ -572,9 +576,17 @@ export function buildCompositeChartScene(
     : scopedSeries;
   const visibleTimes = uniqueTimes.filter((time) => time >= startTime && time <= plotEndTime);
   const marketTimes = timeScale.kind === "market"
-    ? timeScale.anchors
-      .map(({ timestamp }) => timestamp)
+    // The first market controls session spacing, but every plotted market
+    // observation must remain inspectable. Other exchanges can trade before
+    // or after its anchors. Nonmarket source dates stay excluded: filings
+    // retain their availability-based placement on eligible market slots.
+    ? [...new Set([
+      ...timeScale.anchors.map(({ timestamp }) => timestamp),
+      ...scopedSeries.filter(isMarketObservationSeries)
+        .flatMap((entry) => normalizedPoints(entry).map(({ timestamp }) => timestamp)),
+    ])]
       .filter((time) => time >= startTime && time <= plotEndTime)
+      .sort((left, right) => left - right)
     : [];
   const cursorTimes = timeScale.kind === "market" ? marketTimes : visibleTimes;
   const dates = (cursorTimes.length > 0

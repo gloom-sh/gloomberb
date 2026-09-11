@@ -104,6 +104,62 @@ describe("normalized market price comparison", () => {
     expect(result.priceComparison?.sourceBounds?.NEWER.start).toBe(Date.parse("2026-01-07T23:00:00Z"));
   });
 
+  test("Auto cached and network comparisons use the same effective calendar resolution", async () => {
+    const chart = spec();
+    chart.viewport = { range: "1Y", resolution: "auto" };
+    chart.series[0]!.source = { kind: "security", instrument: { symbol: "OLDER", exchange: "CCC" }, fieldId: "market.close" };
+    const data = {
+      OLDER: rows([["2026-09-08", 100], ["2026-09-09", 110]]),
+      NEWER: rows([["2026-09-08T13:30:00Z", 50], ["2026-09-09T13:30:00Z", 60]]),
+    };
+    const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]])), sources(data).now);
+    const network = await resolveChartSpecData(chart, sources(data));
+    expect(seeded?.resolution).toBe("1d");
+    expect(seeded?.resolution).toBe(network.resolution);
+    expect(seeded?.priceComparison).toEqual(network.priceComparison);
+    expect(seeded?.series.map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 10], [0, 20]]);
+  });
+
+  test("date-only windows include prior-UTC sessions but timestamp navigation remains exact", async () => {
+    const chart = spec();
+    chart.viewport.dateWindow = { start: "2026-01-08", end: "2026-01-09" };
+    chart.series[0]!.source = { kind: "security", instrument: { symbol: "OLDER", exchange: "ASX" }, fieldId: "market.close" };
+    const data = {
+      OLDER: rows([["2026-01-06T23:00:00Z", 90], ["2026-01-07T23:00:00Z", 100], ["2026-01-08T23:00:00Z", 110], ["2026-01-09T23:00:00Z", 150]]),
+      NEWER: rows([["2026-01-07T14:30:00Z", 30], ["2026-01-08T14:30:00Z", 50], ["2026-01-09T14:30:00Z", 60], ["2026-01-10T14:30:00Z", 90]]),
+    };
+    chart.studies = [{ id: "sma", kind: "sma", inputSeriesIds: ["OLDER"], parameters: { period: 2 }, panelId: "main", axis: "left" }];
+    const network = await resolveChartSpecData(chart, sources(data));
+    const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), data[entry.id as keyof typeof data]])));
+    for (const result of [network, seeded!]) {
+      expect(result.series.slice(0, 2).map((entry) => entry.points.map((point) => point.value))).toEqual([[0, 10], [0, 20]]);
+      expect(result.viewport?.start.toISOString()).toBe("2026-01-07T23:00:00.000Z");
+      expect(result.viewport?.end.toISOString()).toBe("2026-01-09T23:59:59.999Z");
+      expect(result.series.find((entry) => entry.id === "sma")?.points.map((point) => [point.rawValue, point.value])).toEqual([[95, -5], [105, 5]]);
+    }
+    expect(chart.viewport.dateWindow).toEqual({ start: "2026-01-08", end: "2026-01-09" });
+    const requestViewport = { start: date("2026-01-08"), end: date("2026-01-09T23:59:59.999Z") };
+    const panned = await resolveChartSpecData(chart, sources(data), new ChartResolveCache(), { requestViewport });
+    expect(panned.priceComparison?.start).toBeNull();
+    expect(panned.viewport).toEqual(requestViewport);
+    chart.viewport.dateWindow = { start: requestViewport.start.toISOString(), end: requestViewport.end.toISOString() };
+    const timestamped = await resolveChartSpecData(chart, sources(data));
+    expect(timestamped.priceComparison?.start).toBeNull();
+  });
+
+  test("price overlays normalize against their own compared input rather than the global timestamp envelope", async () => {
+    const chart = spec();
+    chart.viewport.dateWindow = { start: "2026-01-08", end: "2026-01-09" };
+    chart.series[0]!.source = { kind: "security", instrument: { symbol: "OLDER", exchange: "NZX" }, fieldId: "market.close" };
+    chart.studies = [{ id: "sma", kind: "sma", inputSeriesIds: ["NEWER"], parameters: { period: 2 }, panelId: "main", axis: "left" }];
+    const result = await resolveChartSpecData(chart, sources({
+      OLDER: rows([["2026-01-07T21:00:00Z", 100], ["2026-01-08T21:00:00Z", 110]]),
+      NEWER: rows([["2026-01-07T21:00:00Z", 30], ["2026-01-08T21:00:00Z", 50], ["2026-01-09T21:00:00Z", 60]]),
+    }));
+    expect(result.series.find((entry) => entry.id === "sma")?.points.map((point) => [point.rawValue, point.value])).toEqual([[40, -20], [55, 10]]);
+    expect(result.series[1]!.points.map((point) => point.value)).toEqual([0, 20]);
+  });
+
   test("one-leg streamed and snapshot quotes cannot rewrite a shared weekly source bar", async () => {
     const compared = spec("1wk");
     const inputs = sources();
