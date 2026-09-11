@@ -12,7 +12,7 @@ import {
 } from "../../time-series/resolution";
 import { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
-import { canonicalExchange } from "../../utils/exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
@@ -51,11 +51,26 @@ interface HistoryRequestDescriptor {
 function priceHistoryVariantParts(
   parts: Array<[string, string | number | undefined | null]>,
   exchange: string,
+  ticker: string,
 ): Array<[string, string | number | undefined | null]> {
   const unit = resolvePriceHistoryCurrencyUnit(null, exchange);
+  const target = parsePublicTickerKey(ticker);
+  const venue = target.exchange || canonicalExchange(exchange);
+  // Old cloud weekly/monthly JEPQ responses contained prices from 2013, before
+  // this fund existed. Refetch this exact US/bare identity after backend repair;
+  // neither broader cached windows nor saved detailed requests may reuse them.
+  const bar = parts.find(([key]) => key === "resolution" || key === "bar")?.[1];
+  const range = parts.find(([key]) => key === "range")?.[1];
+  const intraday = typeof bar === "string" ? /^\d+(m|min|h)$/.test(bar)
+    : typeof range === "string" && isIntradayRange(range as TimeRange);
+  const inceptionVersion = !intraday && target.symbol === "JEPQ" && (!venue || venue === "NASDAQ") ? 1 : undefined;
+  const monthly = bar === "1mo" || bar === "1month"
+    || (bar == null && parts.some(([key, value]) => key === "range" && value === "ALL"));
   const versionedParts: Array<[string, string | number | undefined | null]> = [
     ...parts,
     ["version", PRICE_HISTORY_CACHE_VERSION],
+    ["inception", inceptionVersion],
+    ["calendar", monthly ? 1 : undefined],
   ];
   return unit.divisor === 1
     ? versionedParts
@@ -77,11 +92,11 @@ function makeHistoryRequestIdentity(
     kind: input.kind,
     ticker: input.ticker,
     context: input.context,
-    variantParts: priceHistoryVariantParts(input.variantParts, input.exchange),
+    variantParts: priceHistoryVariantParts(input.variantParts, input.exchange, input.ticker),
   });
   const cacheVariantKeys = [
     identity.variantKey,
-    buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange)),
+    buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange, input.ticker)),
   ];
   return {
     identity,

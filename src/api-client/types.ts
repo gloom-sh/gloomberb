@@ -1042,6 +1042,15 @@ export interface CloudMarketResponse<T> {
   staleAt?: string;
   stale?: boolean;
   currency?: string;
+  coverage?: {
+    inceptionDate: string;
+    firstAllowedBarDate: string;
+    source: "issuer";
+    sourceUrl: string;
+    firstBarDate: string | null;
+    lastBarDate: string | null;
+    barCount: number;
+  };
   providerMeta?: {
     provider?: string;
     upstream?: string;
