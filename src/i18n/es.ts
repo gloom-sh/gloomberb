@@ -899,6 +899,8 @@ export const es: Record<string, string> = {
   "v{version} available — starting download...": "v{version} disponible — iniciando descarga...",
   "command bar": "barra de comandos",
   "Tidy Windows": "Ordenar ventanas",
+  "Download desktop app": "Descargar la app de escritorio",
+  "Get Gloomberb for Mac or Windows": "Consigue Gloomberb para Mac o Windows",
   "Dismiss": "Descartar",
   "Minimize": "Minimizar",
   "Maximize": "Maximizar",
