@@ -25,7 +25,7 @@ test("daily and monthly coverage excludes earlier bars without altering retained
   expect(applyYahooHistoryCoverage("SHEL.L", meta, "1d", daily).map((p) => p.close)).toEqual([1753, 3533]);
   expect(applyYahooHistoryCoverage("SHEL.L", meta, "1mo", [point("2005-07-01", 1747), point("2005-08-01", 1800)])
     .map((p) => p.close)).toEqual([1800]);
-  expect(applyYahooHistoryCoverage("SHEL.L", meta, "1d", daily.slice(0, 2))).toEqual([]);
+  expect(() => applyYahooHistoryCoverage("SHEL.L", meta, "1d", daily.slice(0, 2))).toThrow("earlier share lineage is unverified");
   expect(daily).toHaveLength(5);
 });
 

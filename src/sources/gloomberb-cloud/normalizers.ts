@@ -1,4 +1,5 @@
 import type { TimeRange } from "../../time-series/range";
+import { verifiedPriceHistorySource } from "../history-coverage";
 import type {
   OptionsChain,
   PricePoint,
@@ -182,6 +183,7 @@ export function mapPricePoint(
 ): PricePoint {
   return {
     date: parseCloudPricePointDate(point.date, exchange),
+    ...(verifiedPriceHistorySource(point.historySource) ? { historySource: verifiedPriceHistorySource(point.historySource) } : {}),
     open: normalizePriceValueByDivisor(point.open, divisor),
     high: normalizePriceValueByDivisor(point.high, divisor),
     low: normalizePriceValueByDivisor(point.low, divisor),

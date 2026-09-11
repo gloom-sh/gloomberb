@@ -16,13 +16,14 @@ import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
 import { shouldLogProviderError } from "../provider-errors";
+import { hasUnverifiedShellHistory, HistoryCoverageError } from "../history-coverage";
 import {
   buildVariantKey,
   compactDate,
   isCurrentHistoryWindow,
   isIntradayRange,
   isStaleIntradayHistory,
-  selectCachedArrayResource,
+  listCachedResources,
   type ProviderRouterCachePolicyKey,
 } from "./cache";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
@@ -35,6 +36,7 @@ type PriceHistoryCachePolicyKey = Extract<
 const PRICE_HISTORY_CACHE_VERSION = 4;
 
 interface HistoryRequestDescriptor {
+  target: { symbol: string; exchange: string };
   identity: RouterRequestIdentity;
   cacheVariantKeys: string[];
   exactCacheVariantKeys: string[];
@@ -87,7 +89,7 @@ function makeHistoryRequestIdentity(
     variantParts: Array<[string, string | number | undefined | null]>;
     fallbackVariantParts: Array<[string, string | number | undefined | null]>;
   },
-): Pick<HistoryRequestDescriptor, "identity" | "cacheVariantKeys" | "exactCacheVariantKeys"> {
+): Pick<HistoryRequestDescriptor, "identity" | "cacheVariantKeys" | "exactCacheVariantKeys" | "target"> {
   const identity = makeRouterRequestIdentity(deps, {
     kind: input.kind,
     ticker: input.ticker,
@@ -99,6 +101,7 @@ function makeHistoryRequestIdentity(
     buildVariantKey(priceHistoryVariantParts(input.fallbackVariantParts, input.exchange, input.ticker)),
   ];
   return {
+    target: { symbol: input.ticker, exchange: input.exchange },
     identity,
     cacheVariantKeys,
     exactCacheVariantKeys: cacheVariantKeys,
@@ -350,14 +353,16 @@ export class ProviderRouterHistoryRoutes {
       ...brokerCandidates.map((candidate) => this.deps.brokerSourceKey(candidate)),
       ...this.deps.getProviderSourceKeys(),
     ];
-    const cached = selectCachedArrayResource<PricePoint>(
+    const cachedRecords = listCachedResources<PricePoint[]>(
       this.deps.resources,
       request.identity.kind,
       request.identity.entityKey,
       request.cacheVariantKeys,
       sourceKeys,
       false,
-    );
+    ).filter((record) => request.cachePolicyKey === "priceHistoryIntraday"
+      || !hasUnverifiedShellHistory(record.value, request.target, record.sourceKey));
+    const cached = cachedRecords.find((record) => record.value.length > 0) ?? cachedRecords[0] ?? null;
     const cachedValue = cached ? normalizeRequestHistory(cached.value, request) : [];
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
@@ -375,13 +380,19 @@ export class ProviderRouterHistoryRoutes {
     const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates));
     if (brokerResult && brokerResult.value.length > 0) return brokerResult.value;
 
-    const providerResult = await this.fetchProviderHistory(request);
+    let coverageError: HistoryCoverageError | null = null;
+    const providerResult = await this.fetchProviderHistory(request).catch((error: unknown) => {
+      if (!(error instanceof HistoryCoverageError)) throw error;
+      coverageError = error;
+      return null;
+    });
     if (providerResult && providerResult.value.length > 0) return providerResult.value;
     if (cachedValue.length > 0 && !cachedHistoryStale) {
       return request.requestedRange
         ? clipPriceHistoryToRange(cachedValue, request.requestedRange)
         : cachedValue;
     }
+    if (coverageError) throw coverageError;
     if (!providerResult && request.missingProviderError) {
       throw new Error(request.missingProviderError);
     }
@@ -424,6 +435,8 @@ export class ProviderRouterHistoryRoutes {
     return this.firstProviderArrayResult(async (provider) => {
       const fetched = await request.fetchProvider(provider);
       if (fetched === null) return null;
+      if (request.cachePolicyKey !== "priceHistoryIntraday"
+        && hasUnverifiedShellHistory(fetched, request.target, this.deps.providerSourceKey(provider))) return null;
       const value = normalizeRequestHistory(fetched, request);
       if (request.isFetchedValueStale(value)) return null;
       this.deps.cacheResource(
@@ -460,6 +473,7 @@ export class ProviderRouterHistoryRoutes {
   ): Promise<SourceResult<T[]> | null> {
     const providers = this.deps.providersInPriorityOrder();
     let firstEmptyResult: SourceResult<T[]> | null = null;
+    let coverageError: HistoryCoverageError | null = null;
     const tryProvider = async (provider: DataProvider): Promise<SourceResult<T[]> | null> => {
       try {
         const value = await fetch(provider);
@@ -468,6 +482,7 @@ export class ProviderRouterHistoryRoutes {
         if (value.length === 0) firstEmptyResult ??= result;
         return result;
       } catch (error) {
+        if (error instanceof HistoryCoverageError) coverageError ??= error;
         if (shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);
         }
@@ -480,6 +495,7 @@ export class ProviderRouterHistoryRoutes {
         const result = await tryProvider(provider);
         if (result && result.value.length > 0) return result;
       }
+      if (coverageError) throw coverageError;
       return firstEmptyResult;
     }
 
@@ -491,7 +507,7 @@ export class ProviderRouterHistoryRoutes {
     if (first !== "timeout" && first && first.value.length > 0) return first;
 
     const remaining = providers.slice(1).map((provider) => tryProvider(provider));
-    return await new Promise((resolve) => {
+    return await new Promise((resolve, reject) => {
       let settled = false;
       const finish = (result: SourceResult<T[]> | null) => {
         if (settled || !result || result.value.length === 0) return;
@@ -505,7 +521,10 @@ export class ProviderRouterHistoryRoutes {
         void pending.then(finish);
       }
       void Promise.all([preferred, ...remaining]).then(() => {
-        if (!settled) resolve(firstEmptyResult);
+        if (!settled) {
+          if (coverageError) reject(coverageError);
+          else resolve(firstEmptyResult);
+        }
       });
     });
   }

@@ -5,6 +5,7 @@ import type { Quote, TickerFinancials } from "../../types/financials";
 import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 import { shouldLogProviderError } from "../provider-errors";
+import { sanitizeShellFinancialHistory } from "../history-coverage";
 import {
   dropUnusableProviderQuote,
   hasDetailedStatementRows,
@@ -74,6 +75,7 @@ export class ProviderRouterPrimaryRoutes {
           const attempt = value.statementHistory;
           value = { ...mergeFinancials(value, previous?.value ?? null)!, statementHistory: attempt };
         }
+        value = sanitizeShellFinancialHistory(value, { symbol: ticker, exchange }, sourceKey);
         const cacheValue = primaryResult
           ? {
             financialCurrency: value.financialCurrency,

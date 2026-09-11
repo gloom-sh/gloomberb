@@ -1,4 +1,5 @@
 import { financialHistoryVariants, hasReusableExtendedHistory } from "./statement-history";
+import { sanitizeShellFinancialHistory } from "../history-coverage";
 import type {
   CachedFinancialsTarget,
   MarketDataRequestContext,
@@ -298,7 +299,10 @@ export class ProviderRouterFinancialRoutes {
         variantKeys,
         providerSourceKeys,
         allowExpired,
-      )),
+      ).map((record) => {
+        const value = sanitizeShellFinancialHistory(record.value, { symbol: ticker, exchange }, record.sourceKey);
+        return value === record.value ? record : { ...record, value, stale: true };
+      })),
       variantKeys,
       providerSourceKeys,
     );

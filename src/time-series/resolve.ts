@@ -1,5 +1,6 @@
 import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
+import { HistoryCoverageError, historyCoverageNotice, isShellLondonTarget } from "../sources/history-coverage";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financial-statements";
 import { appendLiveQuotePoint } from "./chart-data";
 import {
@@ -599,6 +600,12 @@ async function loadPriceHistory(
   request: PriceHistoryRequest,
 ): Promise<TickerFinancials["priceHistory"]> {
   const context = requestContext(source);
+  let coverageNotice: string | null = null;
+  const observeCoverage = (points: TickerFinancials["priceHistory"]) => {
+    if (isShellLondonTarget(source.instrument.symbol, source.instrument.exchange)) {
+      coverageNotice ??= historyCoverageNotice(points, request.visibleBounds.start);
+    }
+  };
   const detailStart = request.bounds.start === null ? null : new Date(request.bounds.start);
   const detailEnd = exclusiveEnd(request.bounds);
   if (request.explicitWindow && detailStart && detailEnd && provider.getDetailedPriceHistory) {
@@ -611,8 +618,10 @@ async function loadPriceHistory(
         request.resolution,
         context,
       );
+      observeCoverage(detailed);
       if (historyIntersectsBounds(detailed, request.visibleBounds)) return detailed;
-    } catch {
+    } catch (error) {
+      if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
       // Fall through to trailing history when a provider cannot serve the exact window.
     }
   }
@@ -625,6 +634,7 @@ async function loadPriceHistory(
         request.resolution,
         context,
       );
+      observeCoverage(resolved);
       if (
         resolved.length > 0
         && (!request.explicitWindow || historyIntersectsBounds(resolved, request.visibleBounds))
@@ -640,7 +650,8 @@ async function loadPriceHistory(
         );
         return resolved;
       }
-    } catch {
+    } catch (error) {
+      if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
       // Some providers expose the resolution API but only support a subset.
     }
   }
@@ -648,7 +659,7 @@ async function loadPriceHistory(
     // getPriceHistory chooses its own interval, so using it here would make a
     // manual interval label claim a granularity the provider did not honor.
     throw new Error(
-      `Requested ${request.resolution} price history is unavailable for ${instrumentLabel(source)}. Choose Auto or a supported interval.`,
+      coverageNotice ?? `Requested ${request.resolution} price history is unavailable for ${instrumentLabel(source)}. Choose Auto or a supported interval.`,
     );
   }
   const fallback = await provider.getPriceHistory(
@@ -656,13 +667,17 @@ async function loadPriceHistory(
     source.instrument.exchange ?? "",
     request.fallbackRange,
     context,
-  );
+  ).catch((error: unknown) => {
+    if (coverageNotice) throw new Error(coverageNotice);
+    throw error;
+  });
+  observeCoverage(fallback);
   if (
     request.explicitWindow
     && fallback.length > 0
     && !historyIntersectsBounds(fallback, request.visibleBounds)
   ) {
-    throw new Error(`Price history for the requested window is unavailable for ${instrumentLabel(source)}.`);
+    throw new Error(coverageNotice ?? `Price history for the requested window is unavailable for ${instrumentLabel(source)}.`);
   }
   return fallback;
 }
@@ -1080,6 +1095,9 @@ export async function resolveChartSpecData(
       cache.priceHistoryByRequest.set(key, pending);
     }
     const history = await pending;
+    const coverageNotice = isShellLondonTarget(source.instrument.symbol, source.instrument.exchange)
+      ? historyCoverageNotice(history, request.visibleBounds.start) : null;
+    if (coverageNotice) priorityWarnings.push(coverageNotice);
     const accumulationKey = `${instrumentKey(source)}|${request.resolution}`;
     const previousHistory = cache.accumulatedPriceHistory.get(accumulationKey) ?? [];
     if (
