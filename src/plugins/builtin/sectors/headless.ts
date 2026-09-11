@@ -6,7 +6,7 @@ import type {
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { loadSectorRows, type SectorRowOutcome } from "./client";
 import { getSectorCollection, type SectorCollectionId, type SectorDef } from "./sector-data";
-import { DEFAULT_SORT_PREFERENCE, sortRows, type SectorRow } from "./sector-model";
+import { DEFAULT_SORT_PREFERENCE, sectorRowIssues, sortRows, type SectorRow } from "./sector-model";
 
 const COLUMNS = [
   { key: "name", header: "Sector" },
@@ -31,6 +31,10 @@ export function projectSectorRows(
     currency: byEtf.get(definition.etf)?.currency ?? "USD",
     loading: false,
     quoteUnavailable: !byEtf.get(definition.etf) || byEtf.get(definition.etf)?.quoteUnavailable === true,
+    quoteSessionDate: byEtf.get(definition.etf)?.quoteSessionDate ?? null,
+    quoteIssue: byEtf.get(definition.etf)?.quoteIssue ?? null,
+    lastReportedPrice: byEtf.get(definition.etf)?.lastReportedPrice ?? null,
+    returnIntegrity: byEtf.get(definition.etf)?.returnIntegrity ?? {},
     returnAsOfDate: byEtf.get(definition.etf)?.returnAsOfDate ?? null,
     return1MStartDate: byEtf.get(definition.etf)?.return1MStartDate ?? null,
     return1YStartDate: byEtf.get(definition.etf)?.return1YStartDate ?? null,
@@ -71,10 +75,11 @@ export function createSectorsHeadless(
       const rows = projectSectorRows(definitions, outcomes);
       const unavailableQuotes = rows.filter((row) => row.quoteUnavailable).map((row) => row.etf);
       const unavailableReturns = rows.filter((row) => row.return1M == null || row.return1Y == null).map((row) => row.etf);
-      const unavailableSymbols = [...new Set([...unavailableQuotes, ...unavailableReturns])];
+      const unavailableDailyChanges = rows.filter((row) => row.changePercent == null).map((row) => row.etf);
+      const unavailableSymbols = [...new Set([...unavailableQuotes, ...unavailableReturns, ...unavailableDailyChanges])];
       return {
         unavailableSymbols: unavailableSymbols.length > 0 ? unavailableSymbols : undefined,
-        errors: unavailableReturns.map((symbol) => `${symbol}: price history does not cover one or more requested calendar windows.`),
+        errors: rows.flatMap((row) => sectorRowIssues(row).map((issue) => `${row.etf}: ${issue}.`)),
         rows: rows.map((row) => ({ ...row })),
         metadata: {
           collection: collectionId,
@@ -82,6 +87,7 @@ export function createSectorsHeadless(
           requested: definitions.length,
           unavailableQuotes,
           unavailableReturns,
+          unavailableDailyChanges,
           returnDefinition: "ETF price returns in listing currency; cash distributions are not reinvested. Shared ending session and calendar-month/year boundaries; prior close used for holidays.",
           returnWindows: rows.map((row) => ({ symbol: row.etf, asOfDate: row.returnAsOfDate, monthStartDate: row.return1MStartDate, yearStartDate: row.return1YStartDate })),
         },

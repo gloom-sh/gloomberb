@@ -6,6 +6,7 @@ import type { PluginModule } from "../plugin-module";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { wrapTextLines } from "../../../utils/text-wrap";
 import { useAssetData, useDebouncedPluginPaneState, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
 import { SectorMoveBar } from "./move-bar";
@@ -24,6 +25,7 @@ import {
   buildSectorColumns,
   nextSortPreference,
   normalizeRowsForCollection,
+  sectorRowIssues,
   sortRows,
   updateRowsForCollection,
   type SectorColumn,
@@ -58,11 +60,11 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
     [activeCollection.id, savedIndustryEtfs, savedSectorEtfs],
   );
   const [rowsByCollection, setRowsByCollection] = useDebouncedPluginPaneState<SectorRowsByCollection>(
-    "rowsByCollection:v2",
+    "rowsByCollection:v3",
     INITIAL_ROWS_BY_COLLECTION,
   );
   const [lastRefreshByCollection, setLastRefreshByCollection] = useDebouncedPluginPaneState<SectorRefreshByCollection>(
-    "lastRefreshByCollection:v1",
+    "lastRefreshByCollection:v2",
     INITIAL_REFRESH_BY_COLLECTION,
   );
   const [selectedEtf, setSelectedEtf] = usePluginPaneState<string | null>("selectedEtf", null);
@@ -108,17 +110,11 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
       if (fetchGenRef.current !== gen) return;
       const loadedByEtf = new Map(outcomes.map((outcome) => [outcome.etf, outcome.row]));
       setRowsByCollection((prev) => updateRowsForCollection(prev, collectionId, sectorDefs, (rows) => (
-        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, return1M: null, return1Y: null, returnAsOfDate: null, return1MStartDate: null, return1YStartDate: null, quoteUnavailable: true }), loading: false }))
+        rows.map((row) => ({ ...row, ...(loadedByEtf.get(row.etf) ?? { price: null, changePercent: null, return1M: null, return1Y: null, returnAsOfDate: null, return1MStartDate: null, return1YStartDate: null, quoteUnavailable: true, quoteSessionDate: null, quoteIssue: "quote unavailable", lastReportedPrice: null, returnIntegrity: {} }), loading: false }))
       )));
 
       const loadedCount = outcomes.filter((outcome) => outcome.row).length;
-      const missingQuotes = outcomes.filter((outcome) => !outcome.row || outcome.row.quoteUnavailable).length;
-      const missingReturns = outcomes.filter((outcome) => outcome.row && (outcome.row.return1M == null || outcome.row.return1Y == null)).length;
-      const warnings = [
-        ...(missingQuotes > 0 ? [`${missingQuotes} quotes unavailable`] : []),
-        ...(missingReturns > 0 ? [`${missingReturns} return windows incomplete`] : []),
-      ];
-      setLoadError(loadedCount === 0 ? "Sector data unavailable" : warnings.join(" · ") || null);
+      setLoadError(loadedCount === 0 ? "Sector data unavailable" : null);
       // A refresh that returned nothing must not claim the board is current.
       if (loadedCount === 0) return;
       setLastRefreshByCollection((prev) => ({ ...prev, [collectionId]: Date.now() }));
@@ -212,18 +208,27 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
 
   const updatedAgo = useUpdatedAgo(lastRefreshMs);
   const returnAsOfDate = rows.map((row) => row.returnAsOfDate).filter((date): date is string => !!date).sort().at(-1);
+  const incompleteRows = rows.filter((row) => !row.loading && sectorRowIssues(row).length > 0).length;
+  const selectedRow = rows.find((row) => row.etf === selectedEtf);
+  const selectedIssues = selectedRow && !selectedRow.loading ? sectorRowIssues(selectedRow) : [];
+  const selectedIssue = selectedIssues.length > 0 ? `${selectedEtf}: ${selectedIssues.join(" · ")}` : null;
+  const noticeWidth = Math.max(1, width - 2);
+  const definition = "ETF price returns; cash distributions excluded.";
+  const noticeHeight = 1 + wrapTextLines(definition, noticeWidth).length
+    + (selectedIssue ? wrapTextLines(selectedIssue, noticeWidth).length : 0);
 
   usePaneFooter("sectors", () => {
     const info: PaneFooterSegment[] = [];
     if (loading) info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
     if (loadError) info.push({ id: "error", parts: [{ text: loadError, tone: "warning" }] });
+    if (incompleteRows) info.push({ id: "incomplete", parts: [{ text: `${incompleteRows} ETFs have unavailable values`, tone: "warning" }] });
     if (returnAsOfDate) info.push({ id: "return-as-of", parts: [{ text: `returns as of ${returnAsOfDate}`, tone: "muted" }] });
-    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" }] });
+    if (updatedAgo) info.push({ id: "updated", parts: [{ text: `checked ${updatedAgo}`, tone: "muted" }] });
     return { info };
-  }, [loadError, loading, returnAsOfDate, updatedAgo]);
+  }, [loadError, loading, incompleteRows, returnAsOfDate, updatedAgo]);
 
   const rootBefore = (
-    <Box height={2} paddingX={1} flexDirection="column">
+    <Box height={noticeHeight} flexShrink={0} paddingX={1} flexDirection="column">
       <Tabs
         tabs={tabs}
         activeValue={activeCollection.id}
@@ -236,7 +241,8 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
         variant="bare"
         focused={focused}
       />
-      <Notice tone="muted">ETF price returns; cash distributions excluded.</Notice>
+      <Notice tone="muted">{definition}</Notice>
+      {selectedIssue ? <Notice tone="warning">{selectedIssue}</Notice> : null}
     </Box>
   );
 

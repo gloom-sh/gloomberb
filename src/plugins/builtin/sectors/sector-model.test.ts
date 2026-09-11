@@ -36,4 +36,24 @@ describe("sector calendar price returns", () => {
     const rows = [{ etf: "missing", return1Y: null }, { etf: "loss", return1Y: -5 }, { etf: "gain", return1Y: 10 }] as SectorRow[];
     expect(sortRows(rows, { columnId: "return1Y", direction }).at(-1)?.etf).toBe("missing");
   });
+
+  test("rejects inconsistent endpoints without substituting an older bar or live quote", () => {
+    const baseline = { ...point("2026-08-10", 100), high: 99, low: 98 };
+    const end = point("2026-09-10", 110);
+    const badStart = computeTrailingReturn([point("2026-08-07", 90), baseline, end], "1M");
+    expect(badStart).toMatchObject({ value: null, startDate: "2026-08-10" });
+    expect(badStart?.integrity?.sourcePoints[0]?.close).toBe(100);
+    const badEnd = computeTrailingReturn([point("2026-08-10", 100), { ...end, high: 105, low: 99 }], "1M", 112);
+    expect(badEnd?.value).toBeNull();
+    expect(badEnd?.integrity?.sourcePoints[0]?.close).toBe(110);
+    // A point-to-point price return does not depend on intermediate closes.
+    const cleanEndpoints = computeTrailingReturn([point("2026-08-10", 100),
+      { ...point("2026-08-20", 120), high: 105, low: 99 }, end], "1M");
+    expect(cleanEndpoints?.value).toBeCloseTo(10);
+  });
+
+  test("an invalid newest close cannot reveal an older duplicate or baseline", () => {
+    const history = [point("2026-08-07", 90), point("2026-08-10", 100), point("2026-08-10", NaN), point("2026-09-10", 110)];
+    expect(computeTrailingReturn(history, "1M")).toBeNull();
+  });
 });
