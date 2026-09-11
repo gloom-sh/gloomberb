@@ -84,7 +84,7 @@ export function toDividendPayment(
   if (!Number.isFinite(amount) || amount <= 0) return null;
   const unit = resolveCurrencyUnit(currency);
   const parsed = new Date(`${exDate}T00:00:00.000Z`);
-  if (Number.isNaN(parsed.getTime())) return null;
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== exDate) return null;
   return {
     exDate: parsed,
     recordDate: null,
@@ -161,7 +161,7 @@ async function fetchDividendDataForSymbol(
 
   const payments: DividendPayment[] = [];
   if (chartResult.status === "fulfilled") {
-    for (const dividend of mapYahooDividends(chartResult.value.events)) {
+    for (const dividend of mapYahooDividends(chartResult.value.events, chartResult.value.meta)) {
       const payment = toDividendPayment(dividend.exDate, dividend.amount, rawCurrency);
       if (payment) payments.push(payment);
     }
@@ -211,8 +211,8 @@ export function buildDividendMetrics(
     ? eligible.filter((payment) => payment.exDate > cutoff).reduce((sum, payment) => sum + payment.amount, 0)
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
   const forwardRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
-  const growth1Y = computeGrowth(eligible, 1, now);
-  const growth3Y = computeGrowth(eligible, 3, now);
+  const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;
+  const growth3Y = options.historyAvailable !== false ? computeGrowth(eligible, 3, now) : null;
 
   const exDividendDate = quoteFields?.exDividendDate != null
     ? new Date(quoteFields.exDividendDate * 1000)
@@ -257,7 +257,7 @@ function computeGrowth(payments: DividendPayment[], years: number, now: Date): n
   if (!payments.some((payment) => payment.exDate <= priorStart)) return null;
   const recent = payments.filter((p) => p.exDate > recentStart && p.exDate <= now).reduce((sum, p) => sum + p.amount, 0);
   const prior = payments.filter((p) => p.exDate > priorStart && p.exDate <= priorEnd).reduce((sum, p) => sum + p.amount, 0);
-  return prior > 0 && recent > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null;
+  return prior > 0 ? Math.pow(recent / prior, 1 / years) - 1 : null;
 }
 
 function inferFrequency(payments: DividendPayment[], now: Date): DividendMetrics["paymentFrequency"] {

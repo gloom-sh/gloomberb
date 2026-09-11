@@ -12,21 +12,25 @@ export function buildTrailingCashChartPoints(payments: DividendPayment[], now = 
     .sort((a, b) => a.exDate.getTime() - b.exDate.getTime());
   const firstDate = sorted[0]?.exDate;
   if (!firstDate) return [];
-  const points: ProjectedChartPoint[] = [];
+  // Rolling cash changes both on ex-dates and when payments leave the window.
+  // Date rollover deliberately expires February 29 on March 1 in a non-leap
+  // year, when the clamped trailing-year cutoff first reaches that payment.
+  const dates = new Set<number>([now.getTime()]);
   for (const payment of sorted) {
-    const cutoff = calendarYearsBefore(payment.exDate, 1);
+    dates.add(payment.exDate.getTime());
+    const expiry = new Date(payment.exDate);
+    expiry.setUTCFullYear(expiry.getUTCFullYear() + 1);
+    if (expiry <= now) dates.add(expiry.getTime());
+  }
+  const points: ProjectedChartPoint[] = [];
+  for (const timestamp of [...dates].sort((a, b) => a - b)) {
+    const date = new Date(timestamp);
+    const cutoff = calendarYearsBefore(date, 1);
     // Avoid drawing the first partial year of a fund's history as a full-year cash rate.
     if (cutoff < firstDate) continue;
-    const cash = sorted.filter((p) => p.exDate > cutoff && p.exDate <= payment.exDate)
+    const cash = sorted.filter((p) => p.exDate > cutoff && p.exDate <= date)
       .reduce((sum, p) => sum + p.amount, 0);
-    points.push({ date: payment.exDate, open: cash, high: cash, low: cash, close: cash, volume: 0 });
-  }
-  // A suspended payer still needs a current point: otherwise its chart stops
-  // at the final payout and suggests that historical cash rate remains current.
-  const currentCutoff = calendarYearsBefore(now, 1);
-  if (now > sorted.at(-1)!.exDate && currentCutoff >= firstDate) {
-    const cash = sorted.filter((payment) => payment.exDate > currentCutoff).reduce((sum, payment) => sum + payment.amount, 0);
-    points.push({ date: now, open: cash, high: cash, low: cash, close: cash, volume: 0 });
+    points.push({ date, open: cash, high: cash, low: cash, close: cash, volume: 0 });
   }
   return points;
 }

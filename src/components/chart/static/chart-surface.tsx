@@ -30,7 +30,9 @@ export interface StaticChartSurfaceProps {
   points: ProjectedChartPoint[];
   width: number;
   height: number;
-  mode?: ChartRenderMode;
+  mode?: ChartRenderMode | "step";
+  /** Preserve elapsed calendar time between irregular observations. */
+  calendarSpaced?: boolean;
   colors: StaticChartPalette;
   overlays?: readonly StaticChartOverlay[];
   showTimeAxis?: boolean;
@@ -45,9 +47,10 @@ export interface StaticChartSurfaceProps {
   formatYAxisValue?: (value: number) => string;
 }
 
-const STYLE_BY_MODE: Record<ChartRenderMode, ResolvedSeries["style"]> = {
+const STYLE_BY_MODE: Record<ChartRenderMode | "step", ResolvedSeries["style"]> = {
   area: "area",
   line: "line",
+  step: "step",
   candles: "candles",
   ohlc: "ohlc",
   hlc: "hlc",
@@ -57,9 +60,10 @@ const PANELS = [{ id: "main" }];
 
 export function buildStaticChartSeries(
   points: readonly ProjectedChartPoint[],
-  mode: ChartRenderMode,
+  mode: ChartRenderMode | "step",
   color: string,
   overlays: readonly StaticChartOverlay[] = [],
+  calendarSpaced = false,
 ): ResolvedSeries[] {
   const ohlc = mode === "candles" || mode === "ohlc" || mode === "hlc";
   const primary = staticSeries(
@@ -71,14 +75,14 @@ export function buildStaticChartSeries(
         ? { open: point.open, high: point.high, low: point.low, close: point.close, volume: point.volume }
         : {}),
     })),
-    { id: "primary", color, style: STYLE_BY_MODE[mode], dataShape: ohlc ? "ohlcv" : "scalar" },
+    { id: "primary", color, style: STYLE_BY_MODE[mode], dataShape: ohlc ? "ohlcv" : "scalar", calendarSpaced },
   );
   const overlaySeries = overlays.map((overlay) => staticSeries(
     overlay.points.flatMap(({ index, value }) => {
       const anchor = points[index];
       return anchor && Number.isFinite(value) ? [scalarPoint(anchor.date, value)] : [];
     }),
-    { id: overlay.id, color: overlay.color },
+    { id: overlay.id, color: overlay.color, calendarSpaced },
   ));
   return [primary, ...overlaySeries];
 }
@@ -88,6 +92,7 @@ export function StaticChartSurface({
   width,
   height,
   mode = "line",
+  calendarSpaced = false,
   colors,
   overlays,
   showTimeAxis = false,
@@ -104,8 +109,8 @@ export function StaticChartSurface({
   const totalHeight = Math.max(1, Math.floor(height));
   const labelRows = yAxisLabel ? 1 : 0;
   const series = useMemo(
-    () => buildStaticChartSeries(points, mode, colors.lineColor, overlays),
-    [colors.lineColor, mode, overlays, points],
+    () => buildStaticChartSeries(points, mode, colors.lineColor, overlays, calendarSpaced),
+    [colors.lineColor, mode, overlays, points, calendarSpaced],
   );
   const chartColors = useMemo(() => ({
     background: colors.bgColor,

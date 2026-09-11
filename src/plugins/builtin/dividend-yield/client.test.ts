@@ -69,6 +69,37 @@ describe("extractDividendFields", () => {
 });
 
 describe("cash distribution calculations", () => {
+  test("native income keeps the listing's ex-date when its session starts on the previous UTC date", async () => {
+    const timestamp = Date.parse("2026-01-01T23:00:00Z") / 1000;
+    setHttpFetchTransport(async (url) => {
+      if (url.includes("fc.yahoo.com")) return new Response("", { headers: { "set-cookie": "test=fixture" } });
+      if (url.includes("getcrumb")) return new Response("fixture-crumb");
+      if (url.includes("/chart/")) return Response.json({ chart: { result: [{
+        meta: { currency: "AUD", exchangeTimezoneName: "Australia/Sydney", regularMarketPrice: 100, dataGranularity: "1mo" },
+        timestamp: [timestamp], indicators: { quote: [{ close: [100] }] },
+        events: { dividends: { one: { date: timestamp, amount: 0.25 } } },
+      }] } });
+      return Response.json({ quoteSummary: { result: [{ summaryDetail: { currency: "AUD" } }] } });
+    });
+    const data = await fetchDividendData("FIXTURE.AX", null);
+    expect(data.payments[0]).toMatchObject({ exDate: new Date("2026-01-02"), amount: 0.25, currency: "AUD" });
+  });
+
+  test("a complete cash suspension is a full decline from a positive baseline", () => {
+    const history = [payment("2020-08-01", 1), payment("2021-08-01", 1), payment("2022-08-01", 1), payment("2023-08-01", 1)];
+    const afterSuspension = new Date("2024-09-10T12:00:00Z");
+    expect(buildDividendMetrics(history, null, 100, { now: afterSuspension })).toMatchObject({
+      trailingRate: 0, growth1Y: -1, growth3Y: -1,
+    });
+    // With no cash in either annual window, percentage growth is undefined.
+    expect(buildDividendMetrics(history, null, 100, { now }).growth1Y).toBeNull();
+    expect(buildDividendMetrics(history, null, 100, { now: afterSuspension, historyAvailable: false })).toMatchObject({
+      trailingRate: null, growth1Y: null, growth3Y: null,
+    });
+    // An incomplete initial year must not turn missing observations into a cut.
+    expect(buildDividendMetrics([payment("2023-08-01")], null, 100, { now: afterSuspension }).growth1Y).toBeNull();
+  });
+
   test.each([
     ["SHY:XNAS", "", "SHY", "USD", 0.244],
     ["LQD:ARCX", "NASDAQ", "LQD", "USD", 0.444],
