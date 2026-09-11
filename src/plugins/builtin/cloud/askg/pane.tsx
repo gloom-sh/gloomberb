@@ -41,6 +41,7 @@ import type { PaneProps } from "../../../../types/plugin";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { usePluginAppActions, usePluginTickerActions } from "../../../runtime";
 import { usePlanAccess } from "../../shared/plan-access";
+import { SignInWall } from "../auth-actions";
 import { ASKGSessionController, type ASKGControllerManifest } from "./controller";
 import {
   createASKGRendererToolExecutor,
@@ -643,20 +644,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   if (!planAccess.emailVerified) {
     return (
-      <Box flexDirection="column" paddingX={1} paddingTop={1}>
-        <EmptyState
-          title="Ask Gloom needs a verified Gloom Cloud account."
-          hint="Sign in, then ask questions about any pane in the terminal."
-        />
-        <Box paddingTop={1}>
-          <Button
-            label="Sign in"
-            variant="primary"
-            shortcut="s"
-            onPress={() => openCommandBar("Sign In")}
-          />
-        </Box>
-      </Box>
+      <SignInWall
+        action="ask questions about any pane in the terminal"
+        needsVerification={planAccess.signedIn}
+      />
     );
   }
 

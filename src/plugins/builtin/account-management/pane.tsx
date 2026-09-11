@@ -10,7 +10,7 @@ import { useDialog, type AlertContext, type PromptContext } from "../../../ui/di
 import type { SelectControl } from "../../../components/ui/select-button";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
-import { CloudAuthNotice } from "../cloud/auth-actions";
+import { SignInWall } from "../cloud/auth-actions";
 import {
   AccountTextField,
   CheckboxRow,
@@ -825,11 +825,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   });
 
   if (!hasSession && !apiClient.isSignedIn()) {
-    return (
-      <Box padding={1}>
-        <CloudAuthNotice message={t("Log in to manage your Gloom Cloud account.")} />
-      </Box>
-    );
+    return <SignInWall action="manage your Gloom Cloud account" />;
   }
 
   return (

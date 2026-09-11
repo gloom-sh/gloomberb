@@ -26,7 +26,7 @@ import {
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { CloudAuthNotice } from "../cloud/auth-actions";
+import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../shared/plan-access";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
@@ -570,14 +570,11 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     ],
   );
 
-  if (signInRequired) {
-    return <CloudAuthNotice message="Sign in to browse earnings call transcripts." />;
-  }
-  if (verificationRequired) {
+  if (signInRequired || verificationRequired) {
     return (
-      <CloudAuthNotice
-        needsVerification
-        message="Verify your email to browse earnings call transcripts."
+      <SignInWall
+        action="browse earnings call transcripts"
+        needsVerification={verificationRequired}
       />
     );
   }

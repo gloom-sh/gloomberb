@@ -1,7 +1,7 @@
 import { Button, EmptyState } from "../../../components";
 import { t } from "../../../i18n";
 import { Box } from "../../../ui";
-import { CloudAuthNotice } from "../cloud/auth-actions";
+import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 
 /**
@@ -13,7 +13,7 @@ export function ScannerDeniedState({ reason }: { reason: string | null }) {
   const openPlan = useCloudPlanAction();
 
   if (reason === "auth_required") {
-    return <CloudAuthNotice message={t("Sign in to stream the market scanners.")} />;
+    return <SignInWall action="stream the market scanners" />;
   }
 
   return (

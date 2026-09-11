@@ -15,7 +15,7 @@ import { usePluginAppActions } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { formatTimeAgo } from "../../../utils/format";
 import { colors } from "../../../theme/colors";
-import { CloudAuthNotice } from "../cloud/auth-actions";
+import { SignInWall } from "../cloud/auth-actions";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import {
   buildTweetColumns,
@@ -332,7 +332,7 @@ export function TweetSearchTable({
   // Owns the whole empty body so loading, failure, and "nothing found" each get
   // their own rows instead of the table's single run-on empty line.
   const emptyContent = error && isAuthError(error)
-    ? <CloudAuthNotice message={error} showSignup />
+    ? <SignInWall action="search X" needsVerification={/verification/i.test(error)} />
     : (
       <PaneStatusBody
         loading={loading}
