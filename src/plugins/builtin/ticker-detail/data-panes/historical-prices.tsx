@@ -13,7 +13,8 @@ import { TIME_RANGES, type TimeRange } from "../../../../time-series/range";
 import type { PaneProps } from "../../../../types/plugin";
 import type { PricePoint } from "../../../../types/financials";
 import { colors, priceColor } from "../../../../theme/colors";
-import { formatCompact, formatNumber, formatPercent } from "../../../../utils/format";
+import { formatCompact, formatPercent } from "../../../../utils/format";
+import { formatMarketPrice } from "../../../../market-data/market/format";
 import {
   useAssetData,
   useDebouncedPluginPaneState,
@@ -39,8 +40,9 @@ function pricePointDate(point: PricePoint): Date | null {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-function formatMaybePrice(value: number | undefined): string {
-  return value == null ? "-" : formatNumber(value, 2);
+function formatMaybePrice(value: number | null | undefined, width: number): string {
+  return value == null || !Number.isFinite(value) ? "-"
+    : formatMarketPrice(value, { minimumFractionDigits: 2, maxWidth: width });
 }
 
 function formatMaybePercent(value: number | null): string {
@@ -142,15 +144,15 @@ export function HistoricalPricesPane({ focused, width, height }: PaneProps) {
       case "date":
         return { text: row.date, color: selectedColor ?? colors.textDim };
       case "open":
-        return { text: formatMaybePrice(row.point.open), color: selectedColor ?? colors.text };
+        return { text: formatMaybePrice(row.point.open, column.width), color: selectedColor ?? colors.text };
       case "high":
-        return { text: formatMaybePrice(row.point.high), color: selectedColor ?? colors.text };
+        return { text: formatMaybePrice(row.point.high, column.width), color: selectedColor ?? colors.text };
       case "low":
-        return { text: formatMaybePrice(row.point.low), color: selectedColor ?? colors.text };
+        return { text: formatMaybePrice(row.point.low, column.width), color: selectedColor ?? colors.text };
       case "close":
-        return { text: formatNumber(row.point.close, 2), color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
+        return { text: formatMaybePrice(row.point.close, column.width), color: selectedColor ?? colors.textBright, attributes: TextAttributes.BOLD };
       case "change":
-        return { text: row.change == null ? "-" : formatNumber(row.change, 2), color: selectedColor ?? priceColor(row.change ?? 0) };
+        return { text: formatMaybePrice(row.change, column.width), color: selectedColor ?? priceColor(row.change ?? 0) };
       case "changePercent":
         return { text: formatMaybePercent(row.changePercent), color: selectedColor ?? priceColor(row.changePercent ?? 0) };
       case "volume":

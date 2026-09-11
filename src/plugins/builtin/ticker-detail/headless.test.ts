@@ -97,6 +97,21 @@ test("historical prices use remembered exchanges and clip and sort the full OHLC
   expect(result.rows[1]).toEqual({ date: "2026-03-09T00:00:00.000Z", open: 20, high: 23, low: 19, close: 22, volume: 100 });
 });
 
+test("historical price exports preserve tiny OHLC values without changing raw data", async () => {
+  const point = { date: new Date("2026-09-10"), open: 0.00000531, high: 0.00000542, low: 0.00000501, close: 0.00000532, volume: 123456 };
+  const ctx = { marketData: createTestDataProvider({ getPriceHistory: async () => [point] }) } as HeadlessPaneContext;
+  const result = await historicalPricesHeadless.load(args(["SHIB-USD:CCC"]), ctx);
+  const row = result.rows[0]!;
+  for (const key of ["open", "high", "low", "close"] as const) {
+    const column = historicalPricesHeadless.columns!.find((column) => column.key === key)!;
+    expect(row[key]).toBe(point[key]);
+    expect(Number(column.format!(row[key], row))).toBe(point[key]);
+    expect(column.format!(0, row)).toBe("0.00");
+    expect(column.format!(null, row)).toBe("-");
+    expect(column.format!(123.45, row)).toBe("123.45");
+  }
+});
+
 test("financial JSON exports preserve selected metric availability separately from fiscal-period evidence", async () => {
   const fieldAvailability = { totalRevenue: "2018-08-03", netIncome: "2018-08-03", capitalExpenditure: "2017-08-02" };
   const dateEvidence = { accessionNumber: "0001564590-17-014900", filed: "2017-08-02", startDate: "2016-07-01" };
