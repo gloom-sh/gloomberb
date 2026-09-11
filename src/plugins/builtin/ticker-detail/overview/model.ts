@@ -15,6 +15,7 @@ import {
   formatMarketQuantity,
 } from "../../../../market-data/market/format";
 import type { PositionTableRow, StatField } from "./types";
+import { getPortfolioPositionMetrics, signedPositionDirection } from "../../portfolio-list/position-metrics";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -25,7 +26,7 @@ function compactPositionAccount(position: TickerPosition): string {
     ? rawAccount.split(":").filter(Boolean).at(-1) || rawAccount
     : rawAccount;
   const prefix = !isBrokerPortfolio && position.broker && position.broker !== "manual" ? `${position.broker} ` : "";
-  const suffix = position.side === "short" ? " SHORT" : "";
+  const suffix = signedPositionDirection(position) < 0 ? " SHORT" : "";
   return `${prefix}${account}${suffix}`;
 }
 
@@ -116,39 +117,46 @@ export function buildPositionRows({
 }): PositionTableRow[] {
   return ticker.metadata.positions.map((position) => {
     const positionCurrency = position.currency || quoteCurrency;
-    const costBasis = position.shares * position.avgCost * (position.multiplier || 1);
-    const costBasisBase = toBase(costBasis, positionCurrency);
-    const fallbackMarkPrice = position.markPrice ?? quote?.price;
-    const fallbackMarkCurrency = position.markPrice != null ? positionCurrency : quoteCurrency;
-    const marketValueBase = position.marketValue != null
-      ? toBase(position.marketValue, positionCurrency)
-      : fallbackMarkPrice != null
-        ? toBase(Math.abs(position.shares) * fallbackMarkPrice * (position.multiplier || 1), fallbackMarkCurrency)
-        : null;
-    const pnlValue = position.unrealizedPnl != null
-      ? toBase(position.unrealizedPnl, positionCurrency)
+    const metrics = getPortfolioPositionMetrics(
+      { ...ticker, metadata: { ...ticker.metadata, positions: [position] } },
+      undefined,
+      quoteCurrency,
+      { currency: baseCurrency, convert: toBase },
+    );
+    const finiteValue = (value: number | null): number | null => value != null && Number.isFinite(value) ? value : null;
+    const costBasisBase = finiteValue(metrics.totalCost);
+    const hasBrokerMark = Number.isFinite(position.markPrice);
+    const fallbackMarkPrice = hasBrokerMark ? position.markPrice : quote?.price;
+    const fallbackMarkCurrency = hasBrokerMark ? positionCurrency : quoteCurrency;
+    const marketValueBase = finiteValue(metrics.hasBrokerMktValue
+      ? metrics.brokerMktValue
+      : Number.isFinite(quote?.price)
+        ? toBase(metrics.grossPriceUnits * quote!.price, quoteCurrency)
+        : null);
+    const pnlValue = finiteValue(metrics.hasBrokerPnl
+      ? metrics.brokerPnl
       : marketValueBase != null
-        ? marketValueBase - costBasisBase
-        : null;
-    const returnPercent = pnlValue != null && costBasisBase !== 0
+        ? signedPositionDirection(position) * marketValueBase - metrics.signedCost
+        : null);
+    const returnPercent = pnlValue != null && costBasisBase != null && costBasisBase !== 0
       ? formatPercentRaw((pnlValue / Math.abs(costBasisBase)) * 100)
       : "—";
-    const unit = position.multiplier && position.multiplier > 1 ? " ct" : " sh";
+    const unit = metrics.multiplierHint > 1 ? " ct" : " sh";
 
     return {
       account: compactPositionAccount(position),
-      qty: `${formatMarketQuantity(position.shares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier })}${unit}`,
+      qty: `${formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier })}${unit}`,
       avg: formatMarketCostWithCurrency(position.avgCost, positionCurrency, {
         assetCategory: ticker.metadata.assetCategory,
         multiplier: position.multiplier,
       }),
-      mark: fallbackMarkPrice != null
+      mark: fallbackMarkPrice != null && Number.isFinite(fallbackMarkPrice)
         ? formatMarketPriceWithCurrency(fallbackMarkPrice, fallbackMarkCurrency, {
             assetCategory: ticker.metadata.assetCategory,
             multiplier: position.multiplier,
           })
         : "—",
-      cost: formatCurrency(costBasisBase, baseCurrency),
+      cost: costBasisBase != null ? formatCurrency(costBasisBase, baseCurrency) : "—",
       value: marketValueBase != null ? formatCurrency(marketValueBase, baseCurrency) : "—",
       pnl: pnlValue != null ? `${pnlValue >= 0 ? "+" : ""}${formatCurrency(pnlValue, baseCurrency)}` : "—",
       ret: returnPercent,
