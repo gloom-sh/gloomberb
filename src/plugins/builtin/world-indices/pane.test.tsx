@@ -6,7 +6,9 @@ import { createDefaultConfig } from "../../../types/config";
 import type { QuoteBatchResult } from "../../../types/data-provider";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { worldIndicesModule } from "./index";
-import { TestPaneProvider } from "../../../test-support/pane";
+import { Box } from "../../../ui";
+import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
+import { TestPaneProvider, createTestPaneConfig } from "../../../test-support/pane";
 
 const WorldIndicesPane = worldIndicesModule.panes![0]!.component as (props: {
   paneId: string;
@@ -111,4 +113,44 @@ describe("WorldIndicesPane", () => {
     expect(frame).toContain("6,812.44");
     expect(frame).toContain("SPX");
   });
+});
+
+// Saved selections share one live pane, so removed regions must leave no status behind.
+test.each([80, 120])("saved index selection prunes unavailable counts and source times at %i cells", async (width) => {
+  const times = { "^GSPC": Date.parse("2026-09-11T20:46:00Z"), "^FTSE": Date.parse("2026-09-11T15:35:00Z") };
+  let selectSymbols!: (symbols: string[]) => void;
+  const provider = { getQuotesBatch: async (targets: Array<{ symbol: string }>) => targets.map((target) => ({
+    target, quote: target.symbol === "DX-Y.NYB" ? null : {
+      symbol: target.symbol, price: PRICES[target.symbol], change: 12.5, changePercent: 0.42,
+      currency: "USD", marketState: "CLOSED", lastUpdated: times[target.symbol as keyof typeof times],
+    },
+  })) };
+  const runtime = { getMarketData: () => provider } as unknown as PluginRuntimeAccess;
+  function SelectionHarness() {
+    const [symbols, setSymbols] = useState(["^GSPC", "^FTSE", "DX-Y.NYB"]);
+    selectSymbols = setSymbols;
+    const config = createTestPaneConfig("/tmp/gloomberb-wei-selection-test", {
+      paneId: "world-indices", instanceId: "world-indices", settings: { symbols },
+    });
+    const state = createInitialState(config);
+    return <TestPaneProvider state={state} paneId="world-indices" runtime={runtime} pluginId="market-overview">
+      <PaneFooterProvider>{(footer) => <Box width={width} height={24} flexDirection="column">
+        <Box width={width} height={23}><WorldIndicesPane paneId="world-indices" paneType="world-indices" focused width={width} height={23} /></Box>
+        <PaneFooterBar footer={footer} focused width={width} />
+      </Box>}</PaneFooterProvider>
+    </TestPaneProvider>;
+  }
+  await act(async () => { testSetup = await testRender(<SelectionHarness />, { width, height: 24 }); });
+  await settle();
+  const formatTime = (value: number) => new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  expect(testSetup!.captureCharFrame()).toContain("1 unavailable");
+  expect(testSetup!.captureCharFrame()).toContain(formatTime(times["^GSPC"]));
+  await act(async () => selectSymbols(["^FTSE"]));
+  await settle();
+  const frame = testSetup!.captureCharFrame();
+  expect(frame).toContain("FTSE");
+  expect(frame).not.toContain("DXY");
+  expect(frame).not.toContain("unavailable");
+  expect(frame).toContain(formatTime(times["^FTSE"]));
+  expect(frame).not.toContain(formatTime(times["^GSPC"]));
 });

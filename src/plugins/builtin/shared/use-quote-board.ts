@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PaneFooterSegment } from "../../../components";
 import { colors } from "../../../theme/colors";
 import type { MarketState, Quote } from "../../../types/financials";
@@ -25,7 +25,7 @@ function errorMessage(value: unknown): string {
  * ago: keep the last good quote and mark it stale instead.
  */
 function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuoteMap {
-  const next = new Map(previous);
+  const next: BoardQuoteMap = new Map();
   for (const [symbol, state] of loaded) {
     const retained = state.quote ?? previous.get(symbol)?.quote ?? null;
     next.set(symbol, {
@@ -39,11 +39,11 @@ function mergeQuotes(previous: BoardQuoteMap, loaded: BoardQuoteMap): BoardQuote
 }
 
 /**
- * Polls a fixed symbol list for a quote board (world indices, futures).
+ * Polls the active symbol list for a quote board (world indices, futures).
  *
  * Boards differ only in which symbols they watch, so the batch/serial fallback
  * and the stale-response guard live here instead of in each pane. `symbols`
- * must be a stable reference; boards build theirs from module-level catalogs.
+ * must keep a stable reference until the catalog or saved selection changes.
  *
  * The first load may serve the provider cache, which is what makes a board
  * paint instantly on open. Every load after it is a refresh the user asked for
@@ -58,20 +58,25 @@ export function useQuoteBoard(symbols: string[], refreshIntervalMs: number): {
   // A manual refresh can land after an in-flight poll, so only the newest
   // request is allowed to write.
   const fetchGenRef = useRef(0);
+  // Settings changes must affect rows and footer status in the same render,
+  // including the frame before the next request effect starts.
+  const activeQuotes = useMemo(() => new Map(symbols.flatMap((symbol) => {
+    const state = quotes.get(symbol);
+    return state ? [[symbol, state] as const] : [];
+  })), [quotes, symbols]);
 
   const load = useCallback((forceRefresh: boolean) => {
-    if (!dataProvider) return;
-
     fetchGenRef.current += 1;
     const gen = fetchGenRef.current;
 
     setQuotes((prev) => {
-      const next = new Map(prev);
+      const next: BoardQuoteMap = new Map();
       for (const symbol of symbols) {
-        next.set(symbol, { ...(prev.get(symbol) ?? EMPTY_STATE), loading: true });
+        next.set(symbol, { ...(prev.get(symbol) ?? EMPTY_STATE), loading: !!dataProvider });
       }
       return next;
     });
+    if (!dataProvider || symbols.length === 0) return;
 
     const loadQuotes = async (): Promise<BoardQuoteMap> => {
       const next: BoardQuoteMap = new Map();
@@ -124,10 +129,13 @@ export function useQuoteBoard(symbols: string[], refreshIntervalMs: number): {
   useEffect(() => {
     load(false);
     const interval = setInterval(() => load(true), refreshIntervalMs);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      fetchGenRef.current += 1;
+    };
   }, [load, refreshIntervalMs]);
 
-  return { quotes, refresh };
+  return { quotes: activeQuotes, refresh };
 }
 
 export interface QuoteBoardStatus {
