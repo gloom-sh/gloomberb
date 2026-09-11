@@ -592,7 +592,9 @@ export function buildCompositeChartScene(
     ? [...new Set([
       ...timeScale.anchors.map(({ timestamp }) => timestamp),
       ...scopedSeries.filter(isMarketObservationSeries)
-        .flatMap((entry) => normalizedPoints(entry).map(({ timestamp }) => timestamp)),
+        .flatMap((entry) => normalizedSourcePoints(entry)
+          .filter(({ value, point }) => value !== null || point.provenance?.priceHistoryIntegrity)
+          .map(({ timestamp }) => timestamp)),
     ])]
       .filter((time) => time >= startTime && time <= plotEndTime)
       .sort((left, right) => left - right)

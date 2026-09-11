@@ -4,6 +4,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { resolveChartSpecData } from "../../../time-series/resolve";
 import { applyCompositeChartCursor, buildCompositeChartScene, resolveAdjacentCompositeCursorDate, resolveCompositeCursorDate } from "./scene";
 import { countMeasureBars } from "./tools";
+import { pricePointIntegrity } from "../../../utils/price-history-integrity";
 import { reuseResolvedSeriesIdentity } from "./panel-series";
 
 function market(id: string, zone: string, dates: string[], values: number[]): ResolvedSeries {
@@ -127,4 +128,21 @@ test("resolved crypto weekend observations and their studies keep exact timestam
   const onlyCrypto = buildCompositeChartScene([crypto, average], spec.panels, { width: 101, height: 20 })!;
   expect(onlyCrypto.timeScale.kind).toBe("calendar");
   expect(onlyCrypto.dates.map(date => date.toISOString())).toEqual(history["BTC-USD"]!.map(point => point.date.toISOString()));
+});
+
+
+test("a quarantined crypto observation stays selectable beside an exchange session", () => {
+  const crypto = { ...asx(), id: "BTC", observationKind: "market" as const, timeBasis: undefined };
+  const invalidDate = new Date("2026-01-09T00:00:00Z");
+  const integrity = pricePointIntegrity({ date: invalidDate, open: 120, high: 110, low: 90, close: 100 })!;
+  crypto.points = [
+    { date: new Date("2026-01-08"), value: 100 },
+    { date: invalidDate, value: null, provenance: { priceHistoryIntegrity: integrity } },
+  ];
+  const scene = buildCompositeChartScene([us(), crypto], [{ id: "main" }], { width: 101, height: 20 })!;
+  expect(scene.dates.some(date => date.getTime() === invalidDate.getTime())).toBe(true);
+  const selected = applyCompositeChartCursor(scene, invalidDate);
+  expect(selected.cursorDate?.getTime()).toBe(invalidDate.getTime());
+  expect(selected.cursorValues.find(value => value.seriesId === "BTC")?.value).toBeNull();
+  expect(selected.cursorValues.find(value => value.seriesId === "BTC")?.point?.provenance?.priceHistoryIntegrity).toEqual(integrity);
 });
