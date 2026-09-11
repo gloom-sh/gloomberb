@@ -1615,6 +1615,7 @@ export function CompositeChart({
   focused = false,
   cursorDate,
   viewport,
+  clipToViewport = false,
   viewportResetKey,
   colors,
   interactive = true,
@@ -1851,10 +1852,12 @@ export function CompositeChart({
       width: 1,
       height: Math.max(panelCount, 1),
       viewport: effectiveViewport ?? undefined,
+      clipToViewport,
       timelineSeries: marketTimelineSeries,
       rightOffsetRatio,
     });
   }, [
+    clipToViewport,
     effectiveViewport,
     lastTickKey,
     marketTimelineSeries,

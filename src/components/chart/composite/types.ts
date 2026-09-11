@@ -127,6 +127,8 @@ export interface BuildCompositeChartSceneOptions {
     start: Date;
     end: Date;
   };
+  /** Keep displayed observations and cursor dates inside the active window. */
+  clipToViewport?: boolean;
   /** Authored series order retained even when the primary anchor is hidden. */
   timelineSeries?: ResolvedSeries[];
   /**
@@ -179,6 +181,8 @@ export interface CompositeChartProps {
     start: Date;
     end: Date;
   };
+  /** An explicit research window bounds marks and hover, including right padding. */
+  clipToViewport?: boolean;
   /**
    * Stable identity for the authored viewport. Changing it resets user navigation;
    * viewport updates under the same key are treated as adaptive data refreshes.

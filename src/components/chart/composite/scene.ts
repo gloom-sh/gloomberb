@@ -154,6 +154,7 @@ function scopeSeriesToViewport(
   startTime: number,
   endTime: number,
   timeScale: CompositeTimeScale,
+  clipToViewport: boolean,
 ): ResolvedSeries | null {
   const points = normalizedSourcePoints(series, timeScale);
   const placement = timeScale.kind === "market" && !series.timeBasis
@@ -161,6 +162,7 @@ function scopeSeriesToViewport(
     : "timestamp" as const;
   const visible = points.filter(({ timestamp }) => {
     if (timestamp >= startTime && timestamp <= endTime) return true;
+    if (clipToViewport) return false;
     const projected = projectCompositeTimestamp(timeScale, timestamp, placement);
     return !!projected && projected.ratio >= 0 && projected.ratio <= 1;
   });
@@ -463,11 +465,10 @@ function nearestDate(dates: Date[], requested: Date): Date | null {
 
 function cursorPointForSeries(
   series: CompositePanelScene["series"][number],
-  cursorTime: number | null,
+  cursorTime: number,
 ): CompositeProjectedPoint | null {
   const points = series.points;
   if (points.length === 0) return null;
-  if (cursorTime === null) return points.at(-1) ?? null;
 
   let low = 0;
   let high = points.length;
@@ -482,10 +483,15 @@ function cursorPointForSeries(
 function buildCursorValues(
   panels: CompositePanelScene[],
   cursorDate: Date | null,
+  viewport: Pick<CompositeChartScene, "startTime" | "endTime">,
 ): CompositeCursorValue[] {
-  const cursorTime = cursorDate?.getTime() ?? null;
+  const cursorTime = cursorDate?.getTime() ?? viewport.endTime;
   return panels.flatMap((panel) => panel.series.map((entry) => {
-    const projected = cursorPointForSeries(entry, cursorTime);
+    let projected = cursorPointForSeries(entry, cursorTime);
+    // The drawn navigation buffer can include observations after the chosen
+    // end. An unarmed legend describes the active window, including when the
+    // pointer leaves; explicitly inspected cursor dates keep their own behavior.
+    if (!cursorDate && projected && projected.timestamp < viewport.startTime) projected = null;
     return {
       seriesId: entry.source.id,
       label: entry.source.label,
@@ -518,7 +524,7 @@ export function applyCompositeChartCursor(
     ...scene,
     cursorDate,
     cursorXRatio,
-    cursorValues: buildCursorValues(scene.panels, cursorDate),
+    cursorValues: buildCursorValues(scene.panels, cursorDate, scene),
   };
 }
 
@@ -550,13 +556,13 @@ export function buildCompositeChartScene(
   // The plot reaches past the viewport by the reserved right offset. Panned
   // back into history that space holds real observations, so navigation and
   // the cursor follow the drawn edge rather than the viewport end.
-  const plotEndTime = Math.max(endTime, unprojectCompositeTimestamp(timeScale, 1));
+  const plotEndTime = options.clipToViewport ? endTime : Math.max(endTime, unprojectCompositeTimestamp(timeScale, 1));
   // A step holds its level to the newest observation and no further: the space
   // reserved after it stays empty. With data still ahead of the window, the
   // level runs to the drawn edge instead.
   const stepTrailingTime = Math.min(plotEndTime, Math.max(lastTime, endTime));
   const scopedSeries = viewport
-    ? dataSeries.flatMap((entry) => scopeSeriesToViewport(entry, startTime, endTime, timeScale) ?? [])
+    ? dataSeries.flatMap((entry) => scopeSeriesToViewport(entry, startTime, endTime, timeScale, options.clipToViewport === true) ?? [])
     : dataSeries;
   // A range without observations still has a chart: keep the panels, axes and
   // grid and simply draw no points, instead of blanking the whole surface.
@@ -632,7 +638,7 @@ export function buildCompositeChartScene(
     panels: panelScenes,
     cursorDate,
     cursorXRatio,
-    cursorValues: buildCursorValues(panelScenes, cursorDate),
+    cursorValues: buildCursorValues(panelScenes, cursorDate, { startTime, endTime }),
   };
 }
 
