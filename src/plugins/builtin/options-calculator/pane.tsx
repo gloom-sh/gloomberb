@@ -9,7 +9,8 @@ import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { InlineField } from "../kelly-sizer/fields";
 import { InlineFieldView, truncateText } from "../kelly-sizer/view";
-import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, solveImpliedVolatility, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
+import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, solveImpliedVolatility, updateOptionCalcDraft, valueOption, type OptionCalcDraft, type OptionSide } from "./model";
+import { OptionQuoteContext, optionQuoteContextHeight } from "../options/quote-context";
 
 const SIDE_OPTIONS = [
   { label: "Call", value: "call" },
@@ -23,13 +24,15 @@ function formatSigned(value: number, decimals: number): string {
 export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const ui = useUiHost();
   const paneInstance = usePaneInstance();
-  const [draft, setDraft] = usePaneStateValue<OptionCalcDraft>("draft", draftFromParams(paneInstance?.params));
+  const seed = useMemo(() => draftFromParams(paneInstance?.params), [paneInstance?.params]);
+  const [storedDraft, setDraft] = usePaneStateValue<OptionCalcDraft>("draft", seed);
+  const draft = useMemo(() => reconcileOptionCalcDraft(storedDraft, seed), [storedDraft, seed]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [activeFieldId, setActiveFieldId] = useState<string | null>(null);
 
   const updateDraft = useCallback((patch: Partial<OptionCalcDraft>) => {
-    setDraft((current) => ({ ...current, ...patch }));
-  }, [setDraft]);
+    setDraft((current) => updateOptionCalcDraft(reconcileOptionCalcDraft(current, seed), patch));
+  }, [seed, setDraft]);
 
   const fields = useMemo<InlineField[]>(() => [
     { id: "spot", label: "Spot", value: draft.spot, valueText: String(draft.spot), onValue: (value) => updateDraft({ spot: value }) },
@@ -53,7 +56,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     { id: "dividendYield", label: "Div yld", value: draft.dividendYield, percent: true, onValue: (value) => updateDraft({ dividendYield: value }) },
     {
       id: "marketPrice",
-      label: draft.marketPriceSource === "mid" ? "Mid" : draft.marketPriceSource === "last" ? "Last" : "Market",
+      label: draft.marketPriceSource === "mid" ? "Mid" : draft.marketPriceSource === "last" ? "Last" : draft.marketPrice > 0 ? "Input" : "Market",
       value: draft.marketPrice,
       valueText: String(Number(draft.marketPrice.toPrecision(12))),
       // Clearing the field is how a standalone user says "no market price".
@@ -126,7 +129,8 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const pairMetrics = width >= 50;
   const metricWidth = pairMetrics ? Math.floor((width - 2) / 2) : Math.max(1, width - 2);
   const trailingMetricWidth = pairMetrics ? Math.max(1, width - 2 - metricWidth) : metricWidth;
-  const showGreeks = height >= 1 + rows + 1 + (pairMetrics ? 1 : 2) + (pairMetrics ? 3 : 5) + 1;
+  const referenceHeight = optionQuoteContextHeight(draft.marketReference, width - 2, Math.max(1, height - rows - 5), true);
+  const showGreeks = height >= 1 + rows + 1 + (pairMetrics ? 1 : 2) + (pairMetrics ? 3 : 5) + 1 + referenceHeight;
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -170,6 +174,10 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
 
       <Box height={1} />
 
+      {draft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
+        <OptionQuoteContext reference={draft.marketReference} width={width - 2} height={referenceHeight} snapshot />
+      </Box>}
+
       <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
         <KeyValueRow
           label="Model"
@@ -181,7 +189,8 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
         <KeyValueRow
           label="Implied IV"
           value={implied.volatility != null ? `${formatNumber(implied.volatility * 100, 2)}%` : "—"}
-          detail={implied.volatility != null ? "from market" : undefined}
+          detail={implied.volatility != null ? draft.marketPriceSource === "mid" ? "from mid"
+            : draft.marketPriceSource === "last" ? "from last" : "from input" : undefined}
           color={implied.volatility != null ? colors.positive : colors.textDim}
           width={trailingMetricWidth}
         />

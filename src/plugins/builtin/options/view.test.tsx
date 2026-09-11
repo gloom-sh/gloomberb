@@ -77,11 +77,13 @@ function OptionsHarness({
   ticker,
   quotePrice,
   width = 122,
+  height = 14,
   onCapture = () => { },
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
   width?: number;
+  height?: number;
   onCapture?: (capturing: boolean) => void;
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
@@ -99,7 +101,7 @@ function OptionsHarness({
 
   return (
     <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-      <OptionsView width={width} height={14} focused onCapture={onCapture} />
+      <OptionsView width={width} height={height} focused onCapture={onCapture} />
     </TestPaneProvider>
   );
 }
@@ -107,7 +109,7 @@ function OptionsHarness({
 function RealtimeOptionsHarness({ ticker }: { ticker: TickerRecord }) {
   const [quotePrice, setQuotePrice] = useState(120.2);
   setOptionsQuotePrice = setQuotePrice;
-  return <OptionsHarness ticker={ticker} quotePrice={quotePrice} />;
+  return <OptionsHarness ticker={ticker} quotePrice={quotePrice} height={20} />;
 }
 
 async function renderSettled() {
@@ -181,6 +183,39 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
+test("keeps table geometry steady while a cold expiry has no contract context", async () => {
+  const firstExpiry = 1_782_345_600;
+  const nextExpiry = firstExpiry + 7 * 86400;
+  const initial = makeChain(Array.from({ length: 100 }, (_, index) => 50 + index), 120, [firstExpiry, nextExpiry]);
+  let finishNext!: (chain: OptionsChain) => void;
+  const next = new Promise<OptionsChain>((resolve) => { finishNext = resolve; });
+  const provider = createTestDataProvider({
+    getOptionsChain: async (_symbol, _exchange, expiration) => expiration === nextExpiry ? next : initial,
+  });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  await act(async () => {
+    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={120} />, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  const tableHeight = () => (testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).height;
+  const before = tableHeight();
+  await act(async () => { testSetup!.mockInput.pressEnter(); });
+  await renderSettled();
+  await act(async () => { testSetup!.mockInput.pressKey("l"); });
+  await renderSettled();
+  expect(testSetup!.captureCharFrame()).toContain("Loading strikes");
+  expect(testSetup!.captureCharFrame()).not.toContain("AAPL260619C");
+  expect(tableHeight()).toBe(before);
+  await act(async () => { finishNext({ ...initial,
+    calls: initial.calls.map((c) => ({ ...c, expiration: nextExpiry, contractSymbol: c.contractSymbol.replace("260619", "260626") })),
+    puts: initial.puts.map((c) => ({ ...c, expiration: nextExpiry, contractSymbol: c.contractSymbol.replace("260619", "260626") })),
+  }); });
+  await renderSettled();
+  expect(tableHeight()).toBe(before);
+  expect(testSetup!.captureCharFrame()).toContain("AAPL260626C00120000");
+  expect((testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
+});
+
 test("shows volatility statistics and mirrored default Greeks", async () => {
   const provider = createTestDataProvider({
     getOptionsChain: async () => makeChain([100, 101], 101),
@@ -227,7 +262,7 @@ test("streams live quotes without resetting manual scroll", async () => {
       <RealtimeOptionsHarness ticker={makeTicker("AAPL")} />,
       {
         width: 124,
-        height: 16,
+        height: 22,
       },
     );
   });

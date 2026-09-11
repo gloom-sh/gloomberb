@@ -312,6 +312,18 @@ test("fulfills a center request after rows are laid out and then leaves manual s
   await renderSettled();
   expect(body.scrollTop).toBe(50);
   expect(scrollSources.at(-1)).toBe("user");
+
+  await act(async () => { setDeferredRows!([]); });
+  await renderSettled();
+  expect(body.scrollTop).toBe(0);
+  expect(scrollSources.at(-1)).toBe("programmatic");
+  expect(testSetup.captureCharFrame()).toContain("Loading rows");
+  await act(async () => { setDeferredRows!(largeRows); });
+  await renderSettled();
+  expect(body.scrollTop).toBe(500 - Math.floor(body.viewport.height / 2));
+  await act(async () => { body.scrollTo(50); });
+  await renderSettled();
+  expect(scrollSources.at(-1)).toBe("user");
 });
 
 

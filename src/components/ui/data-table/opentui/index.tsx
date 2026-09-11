@@ -419,6 +419,17 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   }, [columns.length, headerScrollRef, horizontalScrollbarVisible, items.length, measuredViewportHeight, scrollRef]);
 
   useEffect(() => {
+    if (items.length === 0) {
+      lastAppliedScrollRequestRef.current = null;
+      const body = scrollRef.current;
+      if (body && body.scrollTop !== 0) {
+        // Removing a scrolled dataset is a layout reset, not user navigation.
+        // Reveal its loading state and let the next dataset center normally.
+        body.scrollTo(0);
+        controlledScrollTopRef.current = body.scrollTop;
+      }
+      return;
+    }
     if (scrollToIndex == null) {
       lastAppliedScrollRequestRef.current = null;
       return;
@@ -440,7 +451,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     // completed requests remain consumed while users scroll or rows append.
   }, [
     applyScrollToIndex,
+    items.length,
     measuredViewportHeight,
+    scrollRef,
     scrollToIndex,
     scrollToIndexAlign,
     scrollToIndexVersion,

@@ -87,6 +87,10 @@ describe("buildChainCalcParams", () => {
     });
 
     expect(draftFromParams(params!)).toMatchObject({marketPrice: 7.5, marketPriceSource: "mid"});
+    expect(draftFromParams(params!).marketReference).toMatchObject({
+      contractSymbol: "AAPL260919C00230000", expiration: EXPIRATION, bid: 7, ask: 8,
+      lastPrice: 12, lastTradeDate: 0,
+    });
   });
 
   test("returns nothing without a contract or a trustworthy underlying spot", () => {

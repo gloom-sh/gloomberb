@@ -14,7 +14,7 @@ export const optionsCalculatorModule: PluginModule = {
       component: OptionsCalculatorPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      defaultFloatingSize: { width: 76, height: 16 },
+      defaultFloatingSize: { width: 76, height: 20 },
     },
   ],
 

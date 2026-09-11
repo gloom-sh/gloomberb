@@ -1,4 +1,5 @@
 import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
+import { optionMarketReference, parseOptionMarketReference, type OptionMarketReference } from "../options/market-reference";
 
 export const OPTIONS_CALCULATOR_PANE_ID = "options-calculator";
 export const OPTIONS_CALCULATOR_TEMPLATE_ID = "options-calculator-pane";
@@ -23,6 +24,26 @@ export interface OptionCalcDraft {
   /** 0 means "not supplied", which is also the only price no option can trade at. */
   marketPrice: number;
   marketPriceSource?: "mid" | "last";
+  marketReference?: OptionMarketReference;
+}
+
+/** Edited contracts retain numeric what-if inputs, but lose the old contract's market attribution. */
+export function updateOptionCalcDraft(current: OptionCalcDraft, patch: Partial<OptionCalcDraft>): OptionCalcDraft {
+  const changedContract = (["symbol", "side", "strike", "daysToExpiry"] as const)
+    .some((key) => patch[key] !== undefined && patch[key] !== current[key]);
+  const changedPrice = Object.hasOwn(patch, "marketPrice");
+  return { ...current, ...patch, ...(changedContract || changedPrice
+    ? { marketPriceSource: undefined, marketReference: undefined } : {}) };
+}
+
+/** Repair already-saved edited drafts from clients that retained the seed's attribution. */
+export function reconcileOptionCalcDraft(current: OptionCalcDraft, seed: OptionCalcDraft): OptionCalcDraft {
+  const sameContract = (["symbol", "side", "strike", "daysToExpiry"] as const)
+    .every((key) => current[key] === seed[key]);
+  if (!sameContract || current.marketPrice !== seed.marketPrice || current.marketPriceSource !== seed.marketPriceSource) {
+    return { ...current, marketPriceSource: undefined, marketReference: undefined };
+  }
+  return { ...current, marketReference: optionMarketReference(current.marketReference) };
 }
 
 export const DEFAULT_OPTION_CALC_DRAFT: OptionCalcDraft = {
@@ -268,6 +289,7 @@ function numberParam(params: Record<string, string>, key: string, fallback: numb
 
 export function draftFromParams(params: Record<string, string> | undefined): OptionCalcDraft {
   if (!params) return DEFAULT_OPTION_CALC_DRAFT;
+  const marketReference = parseOptionMarketReference(params.marketReference);
   return {
     symbol: params.symbol ?? DEFAULT_OPTION_CALC_DRAFT.symbol,
     side: params.side === "put" ? "put" : "call",
@@ -280,5 +302,6 @@ export function draftFromParams(params: Record<string, string> | undefined): Opt
     marketPrice: numberParam(params, "marketPrice", DEFAULT_OPTION_CALC_DRAFT.marketPrice),
     ...(params.marketPriceSource === "mid" || params.marketPriceSource === "last"
       ? { marketPriceSource: params.marketPriceSource } : {}),
+    ...(marketReference ? { marketReference } : {}),
   };
 }
