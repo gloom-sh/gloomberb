@@ -50,7 +50,6 @@ const EDITORIAL: Record<
   "market-overview": { categories: ["markets"] },
   news: { categories: ["news"] },
   notes: { categories: ["productivity"] },
-  polls: { categories: ["data"] },
   portfolio: { categories: ["portfolio"] },
   "prediction-markets": { categories: ["markets"] },
   "research-search": { categories: ["research", "news"] },

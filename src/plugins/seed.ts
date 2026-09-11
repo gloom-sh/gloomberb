@@ -24,6 +24,14 @@ export const EXTRACTED_PLUGINS = [
   { id: "public", repo: "gloom-sh/gloom-public", directory: "gloom-public" },
   { id: "robinhood", repo: "gloom-sh/gloom-robinhood", directory: "gloom-robinhood" },
   { id: "simplefin", repo: "gloom-sh/gloom-simplefin", directory: "gloom-simplefin" },
+  // Each of these was a module inside Market Overview or Macro, so a user who
+  // turned that plugin off was turning these off with it. `previousOwnerIds`
+  // keeps that choice: the seeder does not restore what someone disabled.
+  { id: "polls", repo: "gloom-sh/gloom-polls", directory: "gloom-polls" },
+  { id: "fear-greed", repo: "gloom-sh/gloom-fear-greed", directory: "gloom-fear-greed", previousOwnerIds: ["market-overview"] },
+  { id: "market-halts", repo: "gloom-sh/gloom-market-halts", directory: "gloom-market-halts", previousOwnerIds: ["market-overview"] },
+  { id: "market-heatmap", repo: "gloom-sh/gloom-market-heatmap", directory: "gloom-market-heatmap", previousOwnerIds: ["market-overview"] },
+  { id: "ipo-calendar", repo: "gloom-sh/gloom-ipo-calendar", directory: "gloom-ipo-calendar", previousOwnerIds: ["macro"] },
 ] as const;
 
 export interface SeedResult {

@@ -1,9 +1,7 @@
 import { apiClient } from "../../api-client";
 import type { CliCommandDef } from "../../types/plugin";
-import { withCliServices, withConfigData } from "../context";
+import { withCliServices } from "../context";
 import { formatCompact } from "../../utils/format";
-import { attachFearGreedPersistence, loadFearGreed, resetFearGreedPersistence } from "../../plugins/builtin/fear-greed/cache";
-import { createPluginPersistence } from "../../plugins/plugin-persistence";
 import {
   fetchScreener,
   fetchTrending,
@@ -83,34 +81,6 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
         { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
       ],
     });
-  });
-}
-
-async function runFearGreed(_args: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  await withConfigData(ctx, async (context) => {
-    attachFearGreedPersistence(createPluginPersistence(
-      context.persistence.pluginState,
-      context.persistence.resources,
-      "plugin:fear-greed",
-      "fear-greed",
-    ));
-    try {
-      const { data } = await loadFearGreed(ctx.cliOptions.refresh);
-      ctx.printResult({
-        data: [{
-          score: data.overall.score,
-          rating: data.overall.rating,
-          updatedAt: data.overall.updatedAt?.toISOString() ?? "",
-          previousClose: data.overall.previousClose,
-          previousWeek: data.overall.previousWeek,
-          previousMonth: data.overall.previousMonth,
-          previousYear: data.overall.previousYear,
-        }],
-        metadata: { indicators: data.indicators.map((indicator) => ({ id: indicator.definition.id, score: indicator.score, rating: indicator.rating })) },
-      });
-    } finally {
-      resetFearGreedPersistence();
-    }
   });
 }
 
@@ -202,7 +172,6 @@ export const overviewCliCommands: CliCommandDef[] = [
   { name: "movers", description: "Fetch gainers, losers, active, or trending market movers", help: { usage: ["movers [gainers|losers|active|trending]"] }, execute: runMoverCommand },
   { name: "indices", description: "Fetch major US index quotes", execute: (_args, ctx) => runQuoteBasket([...MARKET_SUMMARY_SYMBOLS], ctx, { group: "indices" }) },
   { name: "sectors", description: "Fetch SPDR sector ETF quotes", execute: (_args, ctx) => runQuoteBasket(SECTOR_ETFS, ctx, { group: "sectors" }) },
-  { name: "fear-greed", description: "Fetch CNN Fear & Greed gauge data", execute: runFearGreed },
   { name: "econ", description: "Fetch economic calendar events", help: { usage: ["econ [--country US|G7|EU|all] [--impact high|medium|low|all]"] }, execute: runEcon },
   { name: "fred", description: "Fetch a FRED series through the configured cloud session", help: { usage: ["fred <series-id> [--start yyyy-mm-dd]"] }, execute: runFred },
   { name: "yield-curve", description: "Fetch standard Treasury yield FRED series", help: { usage: ["yield-curve [--start yyyy-mm-dd]"] }, execute: runYieldCurve },

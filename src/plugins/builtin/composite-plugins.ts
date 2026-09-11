@@ -15,15 +15,11 @@ import { economicCalendarModule } from "./econ";
 import { econStatisticsModule } from "./econ-statistics";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
-import { ipoCalendarModule } from "./ipo-calendar";
-import { fearGreedModule } from "./fear-greed";
 import { futuresModule } from "./futures";
 import { fxMatrixModule } from "./fx-matrix";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
 import { layoutManagerModule } from "./layout-manager";
-import { marketHaltsModule } from "./market-halts";
-import { marketHeatmapModule } from "./market-heatmap";
 import { marketMoversModule } from "./market-movers";
 import { volatilityModule } from "./volatility";
 import { composeBuiltinPlugin, type PluginModule } from "./plugin-module";
@@ -80,17 +76,14 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
   id: "market-overview",
   name: "Market Overview",
   version: "1.0.0",
-  description: "Global indices, movers, scanners, sectors, FX, futures, sentiment, and correlations.",
+  description: "Global indices, movers, scanners, sectors, FX, futures, and correlations.",
   toggleable: true,
   modules: [
     correlationModule,
     worldIndicesModule,
     worldVenueMapModule,
-    marketHeatmapModule,
     marketMoversModule,
-    marketHaltsModule,
     scannerModule,
-    fearGreedModule,
     sectorsModule,
     fxMatrixModule,
     futuresModule,
@@ -101,7 +94,7 @@ export const macroPlugin = composeBuiltinPlugin({
   id: "macro",
   name: "Macro",
   version: "1.0.0",
-  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, earnings, and IPOs.",
+  description: "Economic calendar, rates, volatility, credit spreads, single-name CDS, Treasury auctions, and earnings.",
   toggleable: true,
   modules: [
     macroSharedResourcesModule,
@@ -115,6 +108,5 @@ export const macroPlugin = composeBuiltinPlugin({
     treasuryAuctionsModule,
     earningsModule,
     earningsCallsModule,
-    ipoCalendarModule,
   ],
 });
