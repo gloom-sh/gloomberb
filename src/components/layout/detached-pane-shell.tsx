@@ -5,7 +5,7 @@ import { useShortcut, useViewport } from "../../react/input";
 import { resolveTickerForPane, useAppDispatch, useAppSelector } from "../../state/app/context";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { findPaneInstance } from "../../types/config";
-import { isPaneLocked } from "../../pane-settings";
+import { isPaneLocked, PANE_LOCK_SETTING_KEY } from "../../pane-settings";
 import type { PluginRegistry } from "../../plugins/registry";
 import { floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
@@ -172,6 +172,19 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     void sharePane();
   });
 
+  const togglePaneLock = useCallback(() => {
+    void pluginRegistry.applyPaneSettingValueFn(
+      desktopWindowBridge.paneId,
+      { key: PANE_LOCK_SETTING_KEY, label: "Lock Pane", type: "toggle" },
+      !locked,
+    ).catch((error) => {
+      pluginRegistry.notify({
+        body: error instanceof Error ? error.message : "Could not update pane setting.",
+        type: "error",
+      });
+    });
+  }, [desktopWindowBridge.paneId, locked, pluginRegistry]);
+
   const openActions = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     focusPane();
@@ -189,6 +202,12 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       accelerator: PANE_MANAGEMENT_ACCELERATORS.share,
       onSelect: sharePane,
     });
+    items.push({
+      id: "toggle-pane-lock",
+      // The label carries the state: the terminal menu has no checkmark column.
+      label: locked ? "Unlock Pane" : "Lock Pane",
+      onSelect: togglePaneLock,
+    });
     void showContextMenu({
       kind: "pane",
       paneId: desktopWindowBridge.paneId,
@@ -199,7 +218,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       if (!shown && hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
       else if (!shown && sharePayload) void sharePane();
     });
-  }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, pluginRegistry, sharePane, sharePayload, showContextMenu, title]);
+  }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, locked, pluginRegistry, sharePane, sharePayload, showContextMenu, title, togglePaneLock]);
   const toggleQuickSetting = useCallback((key: string, event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     focusPane();

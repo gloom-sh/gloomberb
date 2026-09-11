@@ -177,6 +177,8 @@ export const es: Record<string, string> = {
 
   // ── Confirm / workflow ───────────────────────────────────────
   "Close Pane": "Cerrar panel",
+  "Lock Pane": "Bloquear panel",
+  "Unlock Pane": "Desbloquear panel",
   "Close All Floating Panes": "Cerrar todos los paneles flotantes",
   "Close Floating Panes": "Cerrar paneles flotantes",
   "Portfolio Name": "Nombre de la cartera",

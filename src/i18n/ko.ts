@@ -176,6 +176,8 @@ export const ko: Record<string, string> = {
 
   // ── Confirm / workflow ───────────────────────────────────────
   "Close Pane": "패널 닫기",
+  "Lock Pane": "패널 잠금",
+  "Unlock Pane": "패널 잠금 해제",
   "Close All Floating Panes": "모든 플로팅 패널 닫기",
   "Close Floating Panes": "플로팅 패널 닫기",
   "Portfolio Name": "포트폴리오 이름",

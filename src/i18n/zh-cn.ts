@@ -178,6 +178,8 @@ export const zhCN: Record<string, string> = {
 
   // ── Confirm / workflow ───────────────────────────────────────
   "Close Pane": "关闭面板",
+  "Lock Pane": "锁定面板",
+  "Unlock Pane": "解锁面板",
   "Close All Floating Panes": "关闭所有浮动面板",
   "Close Floating Panes": "关闭浮动面板",
   "Portfolio Name": "组合名称",

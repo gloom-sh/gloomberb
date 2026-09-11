@@ -178,6 +178,8 @@ export const ja: Record<string, string> = {
 
   // ── Confirm / workflow ───────────────────────────────────────
   "Close Pane": "ペインを閉じる",
+  "Lock Pane": "ペインをロック",
+  "Unlock Pane": "ペインのロックを解除",
   "Close All Floating Panes": "すべてのフローティング ペインを閉じる",
   "Close Floating Panes": "フローティング ペインを閉じる",
   "Portfolio Name": "ポートフォリオ名",
