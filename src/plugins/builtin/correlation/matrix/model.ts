@@ -153,7 +153,7 @@ export function buildStatusSummary(
 
   if (sampleMin != null && sampleMax != null) {
     parts.push(sampleMin === sampleMax ? `obs ${sampleMin}` : `obs ${sampleMin}-${sampleMax}`);
-  } else if (symbols.length >= 2) {
+  } else if (symbols.length >= 2 && invalid.length === 0) {
     parts.push("No paired dates yet");
   }
 
