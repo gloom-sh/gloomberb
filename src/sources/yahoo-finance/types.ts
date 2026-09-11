@@ -9,6 +9,7 @@ export type ChartResult = {
     regularMarketPrice?: number; chartPreviousClose?: number;
     fiftyTwoWeekHigh?: number; fiftyTwoWeekLow?: number;
     exchangeName?: string; fullExchangeName?: string;
+    exchangeTimezoneName?: string;
     regularMarketTime?: number;
     currentTradingPeriod?: { pre?: TradingPeriod; regular?: TradingPeriod; post?: TradingPeriod };
     preMarketPrice?: number; postMarketPrice?: number;

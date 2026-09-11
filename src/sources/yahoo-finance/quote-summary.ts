@@ -172,8 +172,8 @@ export async function loadYahooCorporateActions({
         name: result?.price?.shortName ?? result?.price?.longName,
         currency: dividendUnit.currency || undefined,
         exchange: result?.price?.exchangeName ?? result?.quoteType?.exchange,
-        dividends: mapYahooDividends(chart?.events).map((dividend) => ({ ...dividend, amount: dividend.amount / dividendUnit.divisor })),
-        splits: mapYahooSplits(chart?.events),
+        dividends: mapYahooDividends(chart?.events, chart?.meta).map((dividend) => ({ ...dividend, amount: dividend.amount / dividendUnit.divisor })),
+        splits: mapYahooSplits(chart?.events, chart?.meta),
         earnings: [
           ...mapYahooCalendarEarnings(result ?? {}),
           ...mapYahooEarningsHistory(result ?? {}),

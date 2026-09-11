@@ -9,6 +9,7 @@ import type {
   SplitAction,
 } from "../../types/financials";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { zonedDateTimeParts } from "../../utils/zoned-date-time";
 import type { ChartResult, YahooEarningsTrend, YahooQuoteSummaryResult } from "./types";
 
 export type ExtendedHoursData = {
@@ -175,20 +176,20 @@ export function mapYahooAnalystResearchResponse(
   };
 }
 
-export function mapYahooDividends(events: ChartResult["events"]): DividendAction[] {
+export function mapYahooDividends(events: ChartResult["events"], meta?: ChartResult["meta"]): DividendAction[] {
   return Object.values(events?.dividends ?? {})
     .map((dividend): DividendAction | null => {
-      const date = yahooTimestampDate(dividend.date);
+      const date = yahooTimestampDate(dividend.date, meta?.exchangeTimezoneName);
       if (!date || dividend.amount == null || !Number.isFinite(dividend.amount)) return null;
       return { exDate: date, amount: dividend.amount };
     })
     .filter((dividend): dividend is DividendAction => dividend !== null);
 }
 
-export function mapYahooSplits(events: ChartResult["events"]): SplitAction[] {
+export function mapYahooSplits(events: ChartResult["events"], meta?: ChartResult["meta"]): SplitAction[] {
   return Object.values(events?.splits ?? {})
     .map((split): SplitAction | null => {
-      const date = yahooTimestampDate(split.date);
+      const date = yahooTimestampDate(split.date, meta?.exchangeTimezoneName);
       if (!date) return null;
       const numerator = split.numerator;
       const denominator = split.denominator;
@@ -413,10 +414,21 @@ function mapYahooEstimate(
   };
 }
 
-function yahooTimestampDate(value: number | undefined): string | undefined {
+function yahooTimestampDate(value: number | undefined, exchangeTimeZone?: string): string | undefined {
   if (value == null || !Number.isFinite(value)) return undefined;
   const date = new Date(value * 1000);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString().slice(0, 10);
+  if (Number.isNaN(date.getTime())) return undefined;
+  // Chart action timestamps are instants. Use the historical exchange-local date,
+  // not today's GMT offset, which can differ because of daylight saving time.
+  if (exchangeTimeZone) {
+    try {
+      const { year, month, day } = zonedDateTimeParts(date.getTime(), exchangeTimeZone);
+      return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    } catch {
+      // Preserve the existing UTC fallback when the provider supplies no usable timezone.
+    }
+  }
+  return date.toISOString().slice(0, 10);
 }
 
 function computeExtendedHoursChange(
