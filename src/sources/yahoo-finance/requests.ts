@@ -18,6 +18,7 @@ import type {
   TimeseriesResponse,
 } from "./types";
 import type { YahooHttpClient } from "./http";
+import { applyYahooHistoryCoverage } from "../history-coverage";
 
 export async function fetchYahooChart(
   http: YahooHttpClient,
@@ -58,7 +59,9 @@ export async function fetchYahooChart(
       volume: quote.volume?.[i] ?? undefined,
     });
   }
-  return { meta: result.meta || {}, history, events: result.events };
+  return { meta: result.meta || {},
+    history: applyYahooHistoryCoverage(symbol, result.meta || {}, interval, history),
+    events: result.events };
 }
 
 export async function fetchYahooExtendedHoursData(
