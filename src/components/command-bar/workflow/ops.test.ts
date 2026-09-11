@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig } from "../../../types/config";
 import { createInitialState } from "../../../state/app/context";
+import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
@@ -407,6 +408,65 @@ describe("applyPaneSettingFieldValue", () => {
     expect(findPaneInstance(persisted[0]!, pane.instanceId)?.settings).toEqual({
       canonical: { mode: "area" },
     });
+  });
+
+  test("stores the pane lock on the instance instead of routing it through pane settings", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
+    const layout = cloneLayout(config.layout);
+    const pane = findPaneInstance(layout, "portfolio-list:main");
+    if (!pane) throw new Error("missing test pane");
+    pane.settings = { canonical: { mode: "line" } };
+    const state = createInitialState({ ...config, layout });
+    const persisted: LayoutConfig[] = [];
+    const applied: unknown[] = [];
+
+    await applyPaneSettingFieldValue(pane.instanceId, {
+      key: PANE_LOCK_SETTING_KEY,
+      label: "Lock Pane",
+      type: "toggle",
+    }, true, {
+      dataProvider: makeDataProvider() as any,
+      tickerRepository: makeTickerRepository() as any,
+      dispatch: () => {},
+      getState: () => state,
+      persistLayout: (nextLayout) => { persisted.push(nextLayout); },
+      pluginRegistry: {
+        resolvePaneSettings: () => ({
+          paneId: pane.instanceId,
+          pane,
+          paneDef: {
+            id: pane.paneId,
+            name: "Portfolio List",
+            component: () => null,
+            defaultPosition: "left",
+          },
+          rawSettings: pane.settings,
+          settingsDef: {
+            fields: [],
+            applyValue: (settings: Record<string, unknown>, field: unknown, value: unknown) => {
+              applied.push([settings, field, value]);
+              return { canonical: { mode: value } };
+            },
+          },
+          context: {
+            config: state.config,
+            layout: state.config.layout,
+            paneId: pane.instanceId,
+            paneType: pane.paneId,
+            pane,
+            settings: { ...pane.settings },
+            paneState: {},
+            activeTicker: null,
+            activeCollectionId: null,
+          },
+        }),
+      } as any,
+    });
+
+    expect(applied).toHaveLength(0);
+    const updated = findPaneInstance(persisted[0]!, pane.instanceId);
+    expect(updated?.locked).toBe(true);
+    expect(updated?.settings).toEqual({ canonical: { mode: "line" } });
   });
 
   test("atomically clears dependent plugin settings when a selector changes", async () => {

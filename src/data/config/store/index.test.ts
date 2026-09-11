@@ -86,6 +86,24 @@ describe("sanitizeLayout", () => {
     });
   });
 
+  test("keeps the pane lock across a save/load round trip", () => {
+    const layout = sanitizeLayout({
+      dockRoot: { kind: "pane", instanceId: "portfolio-list:locked" },
+      instances: [
+        {
+          instanceId: "portfolio-list:locked",
+          paneId: "portfolio-list",
+          binding: { kind: "none" },
+          locked: true,
+        },
+      ],
+      floating: [],
+      detached: [],
+    }, DEFAULT_LAYOUT);
+
+    expect(layout.instances[0]?.locked).toBe(true);
+  });
+
   test("prunes abandoned panes while retaining a hidden follow source", () => {
     const layout = sanitizeLayout({
       dockRoot: { kind: "pane", instanceId: "ticker-research:visible" },

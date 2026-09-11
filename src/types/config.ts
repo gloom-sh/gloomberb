@@ -66,6 +66,8 @@ export interface PaneInstanceConfig {
   params?: Record<string, string>;
   settings?: Record<string, unknown>;
   placementMemory?: PanePlacementMemory;
+  /** Pinned by the user: the keyboard close shortcuts leave this pane alone. */
+  locked?: boolean;
 }
 
 interface DockPaneNode {
@@ -558,6 +560,7 @@ export function createPaneInstance(
     params: options.params ? { ...options.params } : undefined,
     settings: clonePaneSettings(options.settings),
     placementMemory: clonePlacementMemory(options.placementMemory),
+    locked: options.locked === true ? true : undefined,
   };
 }
 

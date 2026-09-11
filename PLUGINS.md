@@ -664,6 +664,8 @@ Available field types:
 - `multi-select`
 - `ordered-multi-select`
 
+Every pane also gets a built-in **Lock Pane** toggle, so a pane with no `settings` of its own still opens a settings dialog. A locked pane stays in the layout when the close shortcut (`CmdOrCtrl+W`, `CmdOrCtrl+Alt+W`, or double `Esc`) is pressed; explicit closes still work. It is stored on the pane instance under the reserved `pane.locked` key, never in pane settings, so `applyValue` never sees it and a published layout never carries it. Do not register a field with a `pane.`-prefixed key.
+
 Imperative pane settings access is available on the plugin context:
 
 ```typescript

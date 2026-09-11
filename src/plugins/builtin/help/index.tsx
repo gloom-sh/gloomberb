@@ -203,11 +203,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
             <Section title="Pane Management">
               <ShortcutRow
                 badges={[platformShortcut("W")]}
-                description="Close the focused pane, docked or floating."
+                description="Close the focused pane, docked or floating. Locked panes stay open."
               />
               <ShortcutRow
                 badges={[platformShortcut(["Alt", "W"])]}
-                description="Close all floating panes."
+                description="Close all floating panes except locked ones."
               />
               <ShortcutRow
                 badges={[platformShortcut(",")]}

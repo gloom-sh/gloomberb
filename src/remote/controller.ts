@@ -9,7 +9,7 @@ import {
 } from "../plugins/pane-manager";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
-import { setPaneSettings } from "../pane-settings";
+import { PANE_LOCK_SETTING_KEY, setPaneSettings } from "../pane-settings";
 import type { DesktopWindowBridge } from "../types/desktop-window";
 import { applyJsonPatch } from "./json-patch";
 import { revisionFor } from "./revision";
@@ -340,8 +340,10 @@ export function createAppRemoteController({
         } else {
           const instanceId = descriptor?.paneId ?? paneId;
           const current = pluginRegistry.resolvePaneSettings(instanceId)?.context.settings ?? {};
+          // The lock is resolved into the settings view but lives on the instance.
+          const { [PANE_LOCK_SETTING_KEY]: _locked, ...currentSettings } = current;
           pluginRegistry.updateLayoutFn(setPaneSettings(getState().config.layout, instanceId, {
-            ...current,
+            ...currentSettings,
             [key]: input.value,
           }));
         }

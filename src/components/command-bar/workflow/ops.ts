@@ -3,7 +3,7 @@ import type { PaneSettingField, PaneTemplateContext, PaneTemplateCreateOptions, 
 import { getFocusedCollectionId, getFocusedTickerSymbol } from "../../../state/app/context";
 import type { PluginRegistry } from "../../../plugins/registry";
 import { formatTickerListInput } from "../../../tickers/list";
-import { updatePaneInstance, setPaneSettings } from "../../../pane-settings";
+import { PANE_LOCK_SETTING_KEY, setPaneLocked, updatePaneInstance, setPaneSettings } from "../../../pane-settings";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { cleanPortfolioPaneSettings, resolvePortfolioPaneCollectionId } from "../../../plugins/builtin/portfolio-list/settings";
 import {
@@ -264,6 +264,17 @@ export async function applyPaneSettingFieldValue(
 
   const state = deps.getState();
   const shouldPushHistory = options?.pushHistory !== false;
+
+  // The lock lives on the pane instance, not in pane settings, so it never
+  // reaches a plugin's `applyValue`.
+  if (field.key === PANE_LOCK_SETTING_KEY) {
+    deps.persistLayout(
+      setPaneLocked(state.config.layout, targetId, value === true),
+      { pushHistory: shouldPushHistory },
+    );
+    return;
+  }
+
   const clearOnChange = !Object.is(descriptor.context.settings[field.key], value)
     ? Object.fromEntries((field.clearOnChange ?? []).map((key) => [key, ""]))
     : {};

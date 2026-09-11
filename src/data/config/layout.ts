@@ -155,6 +155,7 @@ function sanitizePaneInstances(
           : undefined,
         settings: migrateChartPaneSettings(originalPaneId, binding, settings, chartMigration),
         placementMemory: sanitizePlacementMemory(entry.placementMemory),
+        locked: entry.locked === true ? true : undefined,
       };
     });
   return instances;

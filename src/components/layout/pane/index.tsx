@@ -14,6 +14,7 @@ interface PaneWrapperProps {
   width?: number;
   height?: number | `${number}%` | "auto";
   flexGrow?: number;
+  locked?: boolean;
   showActions?: boolean;
   quickSettings?: PaneHeaderQuickSetting[];
   onMouseDown?: (event: any) => void;
@@ -36,6 +37,7 @@ export function PaneWrapper({
   width = 0,
   height,
   flexGrow,
+  locked = false,
   showActions = false,
   quickSettings,
   onMouseDown,
@@ -88,6 +90,7 @@ export function PaneWrapper({
           width={width}
           focused={focused}
           windowModeSelected={windowModeSelected}
+          locked={locked}
           showActions={showActions}
           quickSettings={quickSettings}
           onHeaderMouseMove={onHeaderMouseMove}
