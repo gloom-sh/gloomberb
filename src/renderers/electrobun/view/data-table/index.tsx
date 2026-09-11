@@ -362,7 +362,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
             emptyContent ?? (
               <div
                 style={{
-                  width: "100%",
+                  width: viewportWidth > 0 ? viewportWidth * WEB_CELL_WIDTH : "100%",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
+                  position: "sticky",
+                  left: 0,
                   padding: `${WEB_CELL_HEIGHT}px ${WEB_CELL_WIDTH}px`,
                   color: CSS_TEXT_DIM,
                   lineHeight: "var(--cell-h)",
@@ -370,11 +374,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
               >
                 {/* cellTextStyle is inline-block for real cells, so the title and
                     hint would share one line and read as a single run-on string. */}
-                <div style={{ ...cellTextStyle(CSS_TEXT_BRIGHT, TextAttributes.BOLD), display: "block" }}>
+                <div style={{ ...cellTextStyle(CSS_TEXT_BRIGHT, TextAttributes.BOLD), display: "block", whiteSpace: "normal", overflowWrap: "anywhere" }}>
                   {emptyStateTitle}
                 </div>
                 {emptyStateHint ? (
-                  <div style={{ ...cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE), display: "block" }}>
+                  <div style={{ ...cellTextStyle(CSS_TEXT_DIM, TextAttributes.NONE), display: "block", whiteSpace: "normal", overflowWrap: "anywhere" }}>
                     {emptyStateHint}
                   </div>
                 ) : null}
