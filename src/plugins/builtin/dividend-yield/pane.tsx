@@ -17,6 +17,8 @@ import { Box, Text, TextAttributes } from "../../../ui";
 import { formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
+import { SignInWall } from "../cloud/auth-actions";
+import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { dividendReferencePrice, fetchDividendData, repriceDividendMetrics } from "./client";
 import { buildTrailingCashChartPoints, formatDividendYield } from "./view";
 import {
@@ -174,6 +176,7 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData;
 }) {
   const { symbol, ticker, financials } = usePaneTicker();
+  const cloudSession = useResearchCloudSession();
   const quoteCurrency = financials?.quote?.currency;
   const exchange = ticker?.metadata.exchange ?? "";
   const quotePrice = financials?.quote?.price ?? null;
@@ -185,18 +188,19 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const quoteRef = useRef({ price: quotePrice, currency: quoteCurrency });
   quoteRef.current = { price: quotePrice, currency: quoteCurrency };
 
-  const request = useCallback(() => loadData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, symbol]);
+  const request = useCallback(() => loadData(symbol!, quoteRef.current.price, exchange, quoteRef.current.currency), [exchange, loadData, symbol, cloudSession.requestKey]);
   const { data, loading, error, updatedAt, reload: refresh } = useAsyncResource(symbol ? request : null);
+  const authWall = !data && isCloudSessionRequired(error);
   useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
   usePaneFooter("dividend-yield", () => ({
     info: [
-      ...loadingErrorFooterInfo(loading, error),
+      ...loadingErrorFooterInfo(loading, authWall ? null : error),
       ...(data?.fetchedAt ? [{ id: "history-as-of", parts: [{
         text: `History fetched ${data.fetchedAt}`, tone: "muted" as const,
       }] }] : []),
     ],
-  }), [data?.fetchedAt, error, loading]);
+  }), [authWall, data?.fetchedAt, error, loading]);
 
   const payments = data?.payments ?? [];
   const currency = data?.currency ?? payments[0]?.currency ?? resolveCurrencyUnit(ticker?.metadata.currency).currency;
@@ -229,6 +233,8 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
     : loading
       ? "Loading dividends..."
       : error ?? (data?.historyAvailable ? "No cash distributions reported." : "Dividend history unavailable.");
+
+  if (authWall) return <SignInWall action="view dividend history" needsVerification={cloudSession.needsVerification} />;
 
   return (
     <DataTableView<DividendRow, DividendColumn>

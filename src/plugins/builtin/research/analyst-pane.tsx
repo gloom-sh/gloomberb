@@ -11,6 +11,8 @@ import { blendHex, colors, priceColor } from "../../../theme/colors";
 import { formatCurrency, formatPercent } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
+import { SignInWall } from "../cloud/auth-actions";
+import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
 import { loadAnalystResearch } from "./client";
 import {
@@ -83,6 +85,7 @@ function AnalystSummary({ data }: { data: AnalystResearchData | null }) {
 
 export function AnalystResearchView({ focused, width, height }: { focused: boolean; width: number; height: number }) {
   const dataProvider = useAssetData();
+  const cloudSession = useResearchCloudSession();
   const { symbol, exchange } = useSymbolBinding();
   const [sortPreference, setSortPreference] = useState<RatingSortPreference>(DEFAULT_RATING_SORT);
   const loader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
@@ -93,8 +96,9 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
       nextExchange,
       forceRefresh ? { cacheMode: "refresh" } : undefined,
     );
-  }, [dataProvider]);
+  }, [dataProvider, cloudSession.requestKey]);
   const { data, loading, error, reload } = useTickerRequest<AnalystResearchData>(loader, symbol, exchange);
+  const authWall = !data && isCloudSessionRequired(error);
   const rows = useMemo(() => sortRatingRows(data?.ratings ?? [], sortPreference), [data?.ratings, sortPreference]);
   const ratingCurrency = data?.priceTarget?.currency ?? data?.currency ?? "USD";
   const columns = useMemo(
@@ -141,8 +145,10 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   }, []);
 
   usePaneFooter("analyst-research", () => ({
-    info: loadingErrorFooterInfo(loading, error),
-  }), [error, loading]);
+    info: loadingErrorFooterInfo(loading, authWall ? null : error),
+  }), [authWall, error, loading]);
+
+  if (authWall) return <SignInWall action="view analyst research" needsVerification={cloudSession.needsVerification} />;
 
   return (
     <DataTableView<AnalystResearchData["ratings"][number], RatingColumn>
