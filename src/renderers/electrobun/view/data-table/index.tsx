@@ -211,6 +211,15 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   useEffect(() => {
     if (scrollToIndex == null || items.length === 0) {
       lastAppliedScrollRequestRef.current = null;
+      if (items.length === 0 && bodyElementRef.current) {
+        // Loading a different dataset removes the rows and the browser clamps
+        // the old vertical offset to zero. Treat that ensuing scroll like our
+        // own centering, so it cannot become a user's manual selection lock.
+        controlledScrollOffsetRef.current = {
+          top: 0,
+          left: bodyElementRef.current.scrollLeft,
+        };
+      }
       return;
     }
     const scrollRequestKey = `${scrollToIndex}:${scrollToIndexVersion}:${scrollToIndexAlign}`;
