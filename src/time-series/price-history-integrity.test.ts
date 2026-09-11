@@ -157,9 +157,27 @@ test("rolling and recursive studies restart after a corrupt row instead of calcu
     for (const output of result.series) {
       expect(output.points.find((point) => point.date.getTime() === reported.date.getTime())?.value).toBeNull();
       expect(output.points.some((point) => point.date.getTime() === history[2]!.date.getTime() && point.value !== null)).toBe(false);
+      const warmup = output.points.find((point) => point.date.getTime() === history[2]!.date.getTime());
+      expect(warmup?.provenance?.priceHistoryIntegrity?.sourcePoints[0]?.date).toBe(reported.date.toISOString());
     }
     if (kind === "sma" || kind === "ema") expect(result.series[0]!.points.at(-1)?.value).toBe(760.5);
   }
+});
+
+test("a study retains integrity attribution while warming up after a gap outside the visible window", async () => {
+  const chart = spec();
+  chart.viewport.dateWindow = { start: "2026-09-11", end: "2026-09-15" };
+  chart.studies = [{ id: "sma", kind: "sma", inputSeriesIds: ["price"], parameters: { period: 2 }, panelId: "main", axis: "left" }];
+  const model = await loadChartPaneModel(chart, {
+    marketData: createTestDataProvider({ getPriceHistory: async () => history, getPriceHistoryForResolution: async () => history }),
+  } as HeadlessPaneContext);
+  const study = model.series.find((entry) => entry.id === "sma")!;
+  expect(study.points[0]).toMatchObject({ date: history[2]!.date, value: null });
+  expect(study.points[0]!.provenance?.priceHistoryIntegrity?.sourcePoints[0]?.date).toBe(reported.date.toISOString());
+  expect(study.points[1]).toMatchObject({ value: 760.5 });
+  expect(study.points[1]!.provenance?.priceHistoryIntegrity).toBeUndefined();
+  expect(model.complete).toBe(false);
+  expect(model.chart.warnings.some((warning) => warning.startsWith("SMA") && warning.includes("inconsistent OHLC"))).toBe(true);
 });
 
 test("pair studies keep the corrupt observation as a gap and retain valid peer levels on recovery", () => {
@@ -169,4 +187,8 @@ test("pair studies keep the corrupt observation as a gap and retain valid peer l
     const output = resolveStudies([input, peer], [{ id: kind, kind, inputSeriesIds: [input.id, peer.id], parameters: {}, panelId: "main", axis: "left" }]).series[0]!;
     expect(output.points.map((point) => point.value)).toEqual(kind === "ratio" ? [75.7, null, 76, 76.1] : [747, null, 750, 751]);
   }
+  const constantPeer = { ...peer, points: resolved(history.map((point) => ({ date: point.date, close: 10 }))).points };
+  const correlation = resolveStudies([input, constantPeer], [{ id: "corr", kind: "correlation", inputSeriesIds: [input.id, peer.id], parameters: { period: 2, returns: 0 }, panelId: "main", axis: "left" }]).series[0]!;
+  expect(correlation.points.at(-1)?.value).toBeNull(); // Zero variance after enough valid observations.
+  expect(correlation.points.at(-1)?.provenance?.priceHistoryIntegrity).toBeUndefined();
 });

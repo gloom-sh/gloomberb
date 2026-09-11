@@ -559,6 +559,18 @@ function resolveInterruptedStudy(
     const segment = resolveStudies(segmentInputs, [spec]);
     for (const output of segment.series) {
       const points = output.points.filter((point) => effectiveTimeSeriesPointTime(point) > start);
+      const gap = gaps.get(start);
+      if (gap && spec.kind !== "ratio" && spec.kind !== "spread" && spec.kind !== "volume") {
+        // A gap just outside the visible window still invalidates the next
+        // warmup observations. Keep those nulls and their original diagnostic
+        // explicit so clipping cannot hide why a study is unavailable.
+        const firstComputed = points[0] ? effectiveTimeSeriesPointTime(points[0]) : Number.POSITIVE_INFINITY;
+        points.unshift(...segmentInputs[0]!.points.filter((point) => effectiveTimeSeriesPointTime(point) < firstComputed).map((point) => ({
+          date: new Date(point.date), observedAt: new Date(point.observedAt),
+          availableAt: point.availableAt ? new Date(point.availableAt) : undefined,
+          value: null, provenance: gap.provenance,
+        })));
+      }
       const previous = outputs.get(output.id);
       outputs.set(output.id, { ...output, points: [...(previous?.points ?? []), ...points] });
     }
