@@ -46,11 +46,19 @@ export async function loadSectorRows(
     let history: PricePoint[] = histories.get(sector.etf) ?? [];
     const quote = quotes.get(sector.etf) ?? null;
     if (!quote && history.length === 0) return { etf: sector.etf, row: null };
-    const price = quote && Number.isFinite(quote.price) && quote.price > 0 ? quote.price : null;
-    const currentPrice = quoteDates.get(sector.etf) === asOfDate ? price : null;
+    const lastReportedPrice = quote && Number.isFinite(quote.price) && quote.price > 0 ? quote.price : null;
+    const sessionDate = quoteDates.get(sector.etf) ?? null;
+    const priceIssue = !quote || lastReportedPrice == null ? "quote unavailable"
+      : !sessionDate ? "quote session unknown"
+      : quote.stale ? `stale quote from ${sessionDate}`
+      : sessionDate !== asOfDate ? `quote from ${sessionDate}; shared session is ${asOfDate}`
+      : null;
+    const price = priceIssue ? null : lastReportedPrice;
+    const changePercent = price != null && Number.isFinite(quote?.changePercent) ? quote!.changePercent : null;
+    const quoteIssue = priceIssue ?? (changePercent == null ? "1D change unavailable" : null);
     // A strict trailing request may begin after the prior year's weekend or
     // holiday. Ask for a small boundary buffer when the provider supports it.
-    if (asOfDate && !computeTrailingReturn(history, "1Y", currentPrice, asOfDate)
+    if (asOfDate && computeTrailingReturn(history, "1Y", price, asOfDate)?.value == null
       && provider.getDetailedPriceHistory) {
       const start = new Date(`${sectorReturnTargetDate(asOfDate, "1Y")}T00:00:00Z`);
       start.setUTCDate(start.getUTCDate() - 7);
@@ -59,19 +67,26 @@ export async function loadSectorRows(
       const extended = await provider.getDetailedPriceHistory(sector.etf, "", start, end, "1d").catch(() => []);
       if (extended.length > 0) history = [...history, ...extended];
     }
-    const month = computeTrailingReturn(history, "1M", currentPrice, asOfDate);
-    const year = computeTrailingReturn(history, "1Y", currentPrice, asOfDate);
+    const month = computeTrailingReturn(history, "1M", price, asOfDate);
+    const year = computeTrailingReturn(history, "1Y", price, asOfDate);
     return {
       etf: sector.etf,
       row: {
         price,
         quoteUnavailable: price == null,
-        changePercent: quote?.changePercent ?? null,
+        quoteSessionDate: sessionDate,
+        quoteIssue,
+        lastReportedPrice,
+        changePercent,
         return1M: month?.value ?? null,
         return1Y: year?.value ?? null,
         returnAsOfDate: asOfDate,
         return1MStartDate: month?.startDate ?? null,
         return1YStartDate: year?.startDate ?? null,
+        returnIntegrity: {
+          ...(month?.integrity ? { "1M": month.integrity } : {}),
+          ...(year?.integrity ? { "1Y": year.integrity } : {}),
+        },
         currency: quote?.currency ?? "USD",
       },
     };
@@ -92,6 +107,7 @@ function quoteSessionDate(quote: Quote): string | null {
   const declared = quote.changeSessionDate;
   if (typeof declared === "string" && /^\d{4}-\d{2}-\d{2}$/.test(declared)
     && Number.isFinite(Date.parse(declared)) && new Date(declared).toISOString().slice(0, 10) === declared) return declared;
+  if (declared != null) return null;
   if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return null;
   // Every instrument in these collections is a US-listed ETF. quote.price is
   // the regular-session price; prefer its declared session when supplied.

@@ -2,6 +2,7 @@ import type { DataTableColumn } from "../../../components";
 import type { PricePoint } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { getPricePointTimestamp } from "../../../utils/price-history";
+import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import {
   getSectorCollection,
   type SectorCollectionId,
@@ -19,6 +20,10 @@ export interface SectorRow extends SectorDef {
   currency: string;
   loading: boolean;
   quoteUnavailable?: boolean;
+  quoteSessionDate?: string | null;
+  quoteIssue?: string | null;
+  lastReportedPrice?: number | null;
+  returnIntegrity?: Partial<Record<SectorReturnRange, PriceHistoryIntegrity>>;
   returnAsOfDate?: string | null;
   return1MStartDate?: string | null;
   return1YStartDate?: string | null;
@@ -86,6 +91,10 @@ export function normalizeRowsForCollection(
       currency: existing?.currency ?? "USD",
       loading: existing?.loading ?? true,
       quoteUnavailable: existing?.quoteUnavailable ?? false,
+      quoteSessionDate: existing?.quoteSessionDate ?? null,
+      quoteIssue: existing?.quoteIssue ?? null,
+      lastReportedPrice: existing?.lastReportedPrice ?? null,
+      returnIntegrity: existing?.returnIntegrity ?? {},
       returnAsOfDate: existing?.returnAsOfDate ?? null,
       return1MStartDate: existing?.return1MStartDate ?? null,
       return1YStartDate: existing?.return1YStartDate ?? null,
@@ -106,18 +115,20 @@ export function updateRowsForCollection(
 }
 
 function getSortedHistory(history: readonly PricePoint[]): Array<{ point: PricePoint; timestamp: number }> {
-  return history
-    .map((point) => ({ point, timestamp: getPricePointTimestamp(point) }))
-    .filter(({ point, timestamp }) => (
-      Number.isFinite(timestamp)
-      && Number.isFinite(point.close)
-      && point.close > 0
-    ))
+  // Later responses may correct a cached observation. Keep the last report at
+  // each timestamp, including invalid closes, so they cannot expose an older one.
+  const byTimestamp = new Map<number, PricePoint>();
+  for (const point of history) {
+    const timestamp = getPricePointTimestamp(point);
+    if (Number.isFinite(timestamp)) byTimestamp.set(timestamp, point);
+  }
+  return [...byTimestamp].map(([timestamp, point]) => ({ point, timestamp }))
     .sort((left, right) => left.timestamp - right.timestamp);
 }
 
 export function latestHistoryClose(history: readonly PricePoint[]): number | null {
-  return getSortedHistory(history).at(-1)?.point.close ?? null;
+  const point = getSortedHistory(history).at(-1)?.point;
+  return point && !pricePointIntegrity(point) && Number.isFinite(point.close) && point.close > 0 ? point.close : null;
 }
 
 export function latestHistoryDate(history: readonly PricePoint[]): string | null {
@@ -143,7 +154,7 @@ export function computeTrailingReturn(
   range: SectorReturnRange,
   latestPrice?: number | null,
   asOfDate = latestHistoryDate(history),
-): { value: number; startDate: string; endDate: string } | null {
+): { value: number | null; startDate: string; endDate: string; integrity?: PriceHistoryIntegrity } | null {
   if (!asOfDate) return null;
   const points = getSortedHistory(history);
   const target = sectorReturnTargetDate(asOfDate, range);
@@ -154,11 +165,29 @@ export function computeTrailingReturn(
   const startDate = new Date(baseline.timestamp).toISOString().slice(0, 10);
   if (Date.parse(target) - Date.parse(startDate) > 7 * DAY_MS) return null;
   const end = points.findLast(({ timestamp }) => new Date(timestamp).toISOString().slice(0, 10) === asOfDate);
+  const integrity = [pricePointIntegrity(baseline.point), end && pricePointIntegrity(end.point)]
+    .filter((entry): entry is PriceHistoryIntegrity => !!entry);
+  if (integrity.length > 0) return {
+    value: null, startDate, endDate: asOfDate, integrity: mergePriceHistoryIntegrity(...integrity),
+  };
   const endPrice = latestPrice != null && Number.isFinite(latestPrice) && latestPrice > 0
     ? latestPrice
     : end?.point.close;
-  if (endPrice == null || !Number.isFinite(endPrice) || endPrice <= 0) return null;
-  return { value: (endPrice / baseline.point.close - 1) * 100, startDate, endDate: asOfDate };
+  if (endPrice == null || !Number.isFinite(endPrice) || endPrice <= 0
+    || !Number.isFinite(baseline.point.close) || baseline.point.close <= 0) return null;
+  const value = (endPrice / baseline.point.close - 1) * 100;
+  return Number.isFinite(value) ? { value, startDate, endDate: asOfDate } : null;
+}
+
+export function sectorRowIssues(row: SectorRow): string[] {
+  const issues: string[] = [];
+  if (row.quoteIssue) issues.push(row.quoteIssue);
+  else if (row.quoteUnavailable) issues.push("quote unavailable");
+  for (const range of ["1M", "1Y"] as const) {
+    if (row.returnIntegrity?.[range]) issues.push(`${range}: inconsistent OHLC at return endpoint`);
+    else if (row[range === "1M" ? "return1M" : "return1Y"] == null) issues.push(`${range}: history does not cover the shared window`);
+  }
+  return issues;
 }
 
 export function buildSectorColumns(width: number): SectorColumn[] {
