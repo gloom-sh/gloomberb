@@ -1,6 +1,8 @@
 import { existsSync, lstatSync, mkdirSync, readlinkSync, rmSync, symlinkSync } from "fs";
 import { dirname, join, resolve } from "path";
 
+import { isPluginPackageName, pluginDirectoryNames } from "./plugin-names";
+
 /**
  * External plugins live in `~/.gloomberb/plugins/<name>/`, outside any
  * `node_modules` chain that could reach the running Gloomberb install. Left
@@ -76,16 +78,18 @@ function linkPeerPlugins(pluginDir: string, pluginsDir: string): string[] {
   let peers: string[] = [];
   try {
     const pkg = JSON.parse(require("fs").readFileSync(join(pluginDir, "package.json"), "utf-8"));
-    peers = Object.keys(pkg.peerDependencies ?? {}).filter((name) => name.startsWith("gloomberb-"));
+    peers = Object.keys(pkg.peerDependencies ?? {}).filter(isPluginPackageName);
   } catch {
     return linked;
   }
 
   for (const peer of peers) {
-    // Installed directories are named after the repository, which is the package
-    // name for every plugin in the registry.
-    const target = join(pluginsDir, peer);
-    if (!existsSync(target)) continue;
+    // Declared by package name, installed under a directory named for the repo:
+    // the two disagree while the plugin is mid-rename.
+    const target = pluginDirectoryNames(peer)
+      .map((name) => join(pluginsDir, name))
+      .find((candidate) => existsSync(candidate));
+    if (!target) continue;
     const linkPath = join(pluginDir, "node_modules", peer);
     if (alreadyLinked(linkPath, target)) {
       linked.push(peer);
