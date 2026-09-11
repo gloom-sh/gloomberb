@@ -88,7 +88,7 @@ afterEach(async () => {
   }
 });
 
-test("narrow results keep assumptions visible while scrolling Greeks and editing fixed inputs", async () => {
+test("narrow results keep contract context reachable while scrolling Greeks and editing fixed inputs", async () => {
   await render({
     symbol: "COST:XNAS", side: "call", spot: "902.63", strike: "905", days: "14.1784",
     volatility: "0.269", rate: "0.04", marketPrice: "18.075", marketPriceSource: "mid",
@@ -96,13 +96,11 @@ test("narrow results keep assumptions visible while scrolling Greeks and editing
       currency: "USD", bid: 17.2, ask: 18.95, lastPrice: 18.67, lastTradeDate: 1789139450 }),
   }, 48, 16);
   expect(testSetup!.captureCharFrame()).toContain("COST260925C00905000");
-  expect(testSetup!.captureCharFrame()).toContain("discrete dividends.");
   await emitKeypress(testSetup!, { name: "end", sequence: "\u001B[F" });
   const bottom = testSetup!.captureCharFrame();
   expect(bottom).toMatch(/Theta\s+-[\d.]+\s+per day/);
   expect(bottom).toMatch(/Vega\s+[\d.]+\s+per vol pt/);
   expect(bottom).toMatch(/Rho\s+[+\d.]+\s+per rate pt/);
-  expect(bottom).toContain("discrete dividends.");
 
   // Inputs stay reachable while the researcher reads the bottom of the results.
   await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
@@ -131,7 +129,6 @@ test("prices the seeded contract and solves its implied volatility", async () =>
   expect(frame).toContain("5.5735");
   // The seeded market price is exactly the model put value, so IV solves back to 20%.
   expect(frame).toMatch(/Implied IV\s+20\.00%/);
-  expect(frame).toContain("European exercise");
 });
 
 test("shows the remaining fraction of a day for a live near-expiry contract", async () => {

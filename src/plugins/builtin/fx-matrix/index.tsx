@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   DataTableView,
-  Prose,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -117,7 +116,6 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
         getId: (row) => row,
         onChange: (id) => setSelectedCurrency(id),
       }}
-      rootBefore={<Prose width={Math.max(1, width - 2)} text="One unit of the row currency buys the column amount. Indicative cross rates use USD legs; observation times may differ." color={colors.textDim} />}
       rootWidth={width}
       rootHeight={height}
       columns={columns}

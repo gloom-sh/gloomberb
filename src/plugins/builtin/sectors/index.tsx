@@ -213,8 +213,7 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
   const selectedIssues = selectedRow && !selectedRow.loading ? sectorRowIssues(selectedRow) : [];
   const selectedIssue = selectedIssues.length > 0 ? `${selectedEtf}: ${selectedIssues.join(" · ")}` : null;
   const noticeWidth = Math.max(1, width - 2);
-  const definition = "ETF price returns; cash distributions excluded.";
-  const noticeHeight = 1 + wrapTextLines(definition, noticeWidth).length
+  const noticeHeight = 1
     + (selectedIssue ? wrapTextLines(selectedIssue, noticeWidth).length : 0);
 
   usePaneFooter("sectors", () => {
@@ -241,7 +240,6 @@ function SectorPerformancePane({ focused, width, height }: PaneProps) {
         variant="bare"
         focused={focused}
       />
-      <Notice tone="muted">{definition}</Notice>
       {selectedIssue ? <Notice tone="warning">{selectedIssue}</Notice> : null}
     </Box>
   );

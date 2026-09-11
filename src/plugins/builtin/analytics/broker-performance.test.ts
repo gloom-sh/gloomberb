@@ -12,7 +12,6 @@ test("missing NAV never substitutes a percentage and deposit growth remains a va
   expect(buildPerformanceChartPoints(performance).map((point) => point.close)).toEqual([10000, 21000]);
   expect(buildHistoryAxisLabel({ performance, activePortfolio: null, baseCurrency: "EUR" })).toBe("Value (USD)");
   expect(performanceHistoryNote(performance)).toContain("1 missing value observation omitted");
-  expect(performanceHistoryNote(performance)).toContain("deposits and withdrawals");
 });
 
 test("a lone or duplicated NAV cannot change a usable return series into a currency chart", () => {

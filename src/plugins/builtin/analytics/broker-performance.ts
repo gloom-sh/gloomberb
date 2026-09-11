@@ -88,10 +88,9 @@ export function performanceHistoryNote(performance: BrokerPortfolioPerformance |
   if (!performance) return null;
   const metric = resolvePerformanceMetric(performance);
   const missing = performance.points.filter((point) => finitePointValue(point, metric) == null).length;
-  const basis = metric === "value"
-    ? "Account value includes deposits and withdrawals. Investment returns require cash-flow adjustments."
-    : "Broker-reported return; calculation method not supplied.";
-  return `${basis}${missing ? ` ${missing} missing ${metric === "value" ? "value" : "return"} observation${missing === 1 ? "" : "s"} omitted.` : ""}`;
+  return missing
+    ? `${missing} missing ${metric === "value" ? "value" : "return"} observation${missing === 1 ? "" : "s"} omitted.`
+    : null;
 }
 
 export function useBrokerPortfolioPerformance(

@@ -73,7 +73,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `PF` | Portfolios and watchlists |
 | `HELP` | Commands and keyboard shortcuts |
 
-Use `Tab` to switch panes and `j` / `k` to navigate lists. The [user guide](docs/usage.md) covers charts, broker setup, keyboard shortcuts, and the full command reference.
+Use `Tab` to switch panes and `j` / `k` to navigate lists. The [user guide](docs/usage.md) covers charts, broker setup, keyboard shortcuts, and the full command reference. See [research data conventions](docs/research-data.md) for return definitions, financial sources, and model assumptions.
 
 ## CLI
 

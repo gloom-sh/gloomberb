@@ -2,6 +2,7 @@
 
 [Back to README](../README.md) · [Installation](installation.md) · [Browser app](browser.md)
 
+- [Research data conventions](research-data.md)
 - [Keyboard shortcuts](#keyboard)
 - [Command reference and chart composer](#command-reference)
 - [CLI commands and output formats](#cli)
