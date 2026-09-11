@@ -15,6 +15,7 @@ const items = Array.from({ length: 100 }, (_, index) => index);
 
 test("controlled centering keeps following late quotes until the user scrolls", async () => {
   let updateQuoteTarget: (index: number) => void = () => {};
+  let updateItems: (next: number[]) => void = () => {};
   let userScrolls = 0;
   let controlledScrolls = 0;
   let paginationChecks = 0;
@@ -26,6 +27,8 @@ test("controlled centering keeps following late quotes until the user scrolls", 
     const scrollRef = useRef<ScrollBoxRenderable | null>(null);
     const userScrolled = useRef(false);
     const [targetIndex, setTargetIndex] = useState(0);
+    const [currentItems, setCurrentItems] = useState(items);
+    updateItems = setCurrentItems;
     // Options waits for the underlying quote, then follows it until an actual
     // user scroll. The renderer must not turn its own centering into that lock.
     updateQuoteTarget = (index) => {
@@ -46,7 +49,7 @@ test("controlled centering keeps following late quotes until the user scrolls", 
     return (
       <AppContext value={{ state, dispatch: () => {} }}>
         <WebDataTable
-          items={items}
+          items={currentItems}
           columns={[{ id: "strike", label: "Strike", width: 10, align: "right" }]}
           sortColumnId={null}
           sortDirection="asc"
@@ -92,6 +95,21 @@ test("controlled centering keeps following late quotes until the user scrolls", 
   expect(userScrolls).toBe(0);
   expect(controlledScrolls).toBe(2);
 
+  // An uncached options expiry empties the table while loading. The browser
+  // clamps the old scroll offset to zero when its scrollable content vanishes.
+  // That native scroll event must not lock out the next expiry's ATM selection.
+  await act(async () => { updateItems([]); });
+  await act(async () => {
+    body.scrollTop = 0;
+    emitScroll();
+    await settle();
+  });
+  expect(userScrolls).toBe(0);
+  await act(async () => { updateItems(items); updateQuoteTarget(60); });
+  await act(async () => { emitScroll(); await settle(); });
+  expect(body.scrollTop).toBe(55 * WEB_CELL_HEIGHT);
+  expect(userScrolls).toBe(0);
+
   await act(async () => {
     body.dispatchEvent(new testWindow.WheelEvent("wheel", { bubbles: true, deltaY: -50 }) as unknown as Event);
     body.scrollTop = 0;
@@ -99,9 +117,9 @@ test("controlled centering keeps following late quotes until the user scrolls", 
     await settle();
   });
   expect(userScrolls).toBe(1);
-  expect(paginationChecks).toBe(3);
+  expect(paginationChecks).toBe(4);
   expect(ranges.at(-1)).toEqual({ start: 0, end: 10 });
 
-  await act(async () => { updateQuoteTarget(60); await settle(); });
+  await act(async () => { updateQuoteTarget(70); await settle(); });
   expect(body.scrollTop).toBe(0);
 });
