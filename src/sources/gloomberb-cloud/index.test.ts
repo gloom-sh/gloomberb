@@ -120,6 +120,26 @@ afterEach(() => {
 });
 
 describe("GloomberbCloudProvider", () => {
+  test("stale items in a successful quote batch cannot bypass single-quote freshness checks", async () => {
+    const targets = [{ symbol: "VOD", exchange: "NASDAQ" }, { symbol: "VOD:XLON", exchange: "LSE" }];
+    const quote = { symbol: "VOD", price: 118, currency: "GBp", change: 1, changePercent: 0.85, lastUpdated: 1, stale: false };
+    for (const status of ["success", "partial"] as const) {
+      apiClient.getCloudQuotesBatch = async () => ({ status: "success", stale: false, data: { items: [
+        { symbol: "VOD", exchange: "LSE", status, stale: true, data: quote },
+        { symbol: "VOD", exchange: "NASDAQ", status: "success", stale: false, data: { ...quote, price: 15, currency: "USD" } },
+      ] } });
+      apiClient.getCloudQuote = async () => ({ status, stale: true, data: quote });
+      const provider = new GloomberbCloudProvider();
+      const results = await provider.getQuotesBatch(targets);
+      expect(results[0]?.target).toBe(targets[1]!);
+      expect(results[0]?.quote).toBeNull();
+      expect(results[0]?.error?.message).toContain("stale");
+      expect(results[1]?.target).toBe(targets[0]!);
+      expect(results[1]?.quote).toMatchObject({ symbol: "VOD", currency: "USD", price: 15 });
+      await expect(provider.getQuote("VOD:XLON", "LSE")).rejects.toThrow("stale");
+    }
+  });
+
   test("splits saved listing keys for cloud requests while preserving returned ticker identity", async () => {
     const calls: Array<[string, string, string | undefined]> = [];
     const quote = { symbol: "VOD", price: 118, currency: "GBp", change: 1, changePercent: 0.85, lastUpdated: 1 };
