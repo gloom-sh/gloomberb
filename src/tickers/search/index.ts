@@ -37,7 +37,7 @@ export {
 export { upsertTickerFromSearchResult } from "./upsert";
 
 export class AmbiguousTickerError extends Error {
-  constructor(readonly query: string, readonly listings: readonly string[]) {
+  constructor(readonly query: string, readonly listings: readonly string[], readonly listingNames: Readonly<Record<string, string>> = {}) {
     super(`Multiple listings match ${query}. Choose an exchange in search or use ${listings.slice(0, 3).join(", ")}.`);
     this.name = "AmbiguousTickerError";
   }
@@ -253,7 +253,9 @@ export async function resolveTickerSearch({
       // An unavailable quote cannot establish the default listing.
     }
     if (new Set(verified.map((item) => publicTickerKey(item.symbol, listingExchange(item.result!)))).size !== 1) {
-      throw new AmbiguousTickerError(symbol, [...listings]);
+      throw new AmbiguousTickerError(symbol, [...listings], Object.fromEntries(matches.map((item) => [
+        publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.name,
+      ])));
     }
     exactMatch = verified[0]!;
   }

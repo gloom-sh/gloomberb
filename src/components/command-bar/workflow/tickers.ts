@@ -138,6 +138,7 @@ export async function resolveTickerInput(
   activeTicker: string | null,
   collectionId: string | null,
   deps: SharedWorkflowDeps,
+  options: { preserveAmbiguity?: boolean } = {},
 ): Promise<ResolvedTickerInput | null> {
   const state = deps.getState();
   let resolvedTicker;
@@ -151,7 +152,7 @@ export async function resolveTickerInput(
     });
   } catch (error) {
     // Interactive callers already open a listing picker for unresolved input.
-    if (error instanceof AmbiguousTickerError) return null;
+    if (error instanceof AmbiguousTickerError && !options.preserveAmbiguity) return null;
     throw error;
   }
   if (!resolvedTicker) return null;
@@ -164,7 +165,7 @@ export async function resolveTickerInputOrThrow(
   collectionId: string | null,
   deps: SharedWorkflowDeps,
 ): Promise<ResolvedTickerInput> {
-  const resolved = await resolveTickerInput(rawInput, activeTicker, collectionId, deps);
+  const resolved = await resolveTickerInput(rawInput, activeTicker, collectionId, deps, { preserveAmbiguity: true });
   if (!resolved) {
     throw new Error(`No ticker match found for "${rawInput ?? activeTicker ?? ""}".`);
   }

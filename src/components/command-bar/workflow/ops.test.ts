@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { cloneLayout, createDefaultConfig, findPaneInstance, type LayoutConfig } from "../../../types/config";
 import { createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput } from "./ops";
+import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
 
 function makeDataProvider() {
@@ -591,5 +591,23 @@ test("interactive ambiguous ticker input returns to the picker without mutating 
     dataProvider: createTestDataProvider({ search: async () => ["BYMA", "NYSE"].map((exchange) => ({ providerId: "cloud", symbol: "GLD", exchange, name: "SPDR", type: "ETF" })) }),
   });
   expect(resolved).toBeNull();
+  expect(writes).toBe(0);
+});
+
+test("form ticker resolution preserves competing listing identities instead of claiming no match", async () => {
+  const state = createInitialState(createDefaultConfig(":memory:"));
+  let writes = 0;
+  const deps = {
+    getState: () => state, dispatch: () => { writes++; }, pluginRegistry: {} as any,
+    tickerRepository: { createTicker: async () => { writes++; throw new Error("Must not create ticker"); } } as any,
+    dataProvider: createTestDataProvider({ search: async () => [
+      { providerId: "cloud", symbol: "COST", exchange: "NASDAQ", name: "Costco Wholesale", type: "Common Stock" },
+      { providerId: "cloud", symbol: "COST", exchange: "LSE", name: "Costain Group", type: "Common Stock" },
+    ] }),
+  };
+  const error = await resolveTickerInputOrThrow("COST", null, null, deps).catch((error) => error);
+  expect(error.name).toBe("AmbiguousTickerError");
+  expect(error.listings).toEqual(["COST:XNAS", "COST:XLON"]);
+  expect(error.listingNames).toEqual({ "COST:XNAS": "Costco Wholesale", "COST:XLON": "Costain Group" });
   expect(writes).toBe(0);
 });
