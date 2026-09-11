@@ -503,13 +503,22 @@ function ChartComposerSurface({
   const vintageNoticeHeight = showVintageNotice ? wrapTextLines(financialNotice, Math.max(8, width - 2)).length : 0;
   const comparisonNotice = resolution.priceComparison?.notice;
   const comparisonNoticeHeight = comparisonNotice ? wrapTextLines(comparisonNotice, Math.max(8, width - 2)).length : 0;
-  const statusWarning = resolution.warnings.find((warning) => warning !== FINANCIAL_VINTAGE_NOTICE && warning !== SEC_EPS_BASIS_NOTICE && warning !== comparisonNotice);
-
-  const statusNotice = resolution.errors[0] ?? statusWarning;
+  const statusError = resolution.errors[0];
+  // Failed series use their authored id in errors and their display label in warnings.
+  const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
+  const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;
+  const errorSeriesLabel = legendSeries?.find((entry) => entry.id === errorSeries?.id)?.label;
+  const duplicateErrorNotices = new Set([statusError, errorMessage,
+    errorSeriesLabel && errorMessage ? `${errorSeriesLabel}: ${errorMessage}` : undefined]);
+  const statusWarnings = resolution.warnings.filter((warning) => (
+    warning !== FINANCIAL_VINTAGE_NOTICE && warning !== SEC_EPS_BASIS_NOTICE && warning !== comparisonNotice
+    && !duplicateErrorNotices.has(warning)
+  ));
+  const statusNotices = [...new Set([...(statusError ? [statusError] : []), ...statusWarnings])];
   // Leave one cell for a scrollbar when a short pane cannot show the full notice.
   const statusNoticeWidth = Math.max(8, width - 3);
-  const statusNoticeHeight = statusNotice
-    ? Math.min(wrapTextLines(statusNotice, statusNoticeWidth).length,
+  const statusNoticeHeight = statusNotices.length > 0
+    ? Math.min(statusNotices.reduce((lines, notice) => lines + wrapTextLines(notice, statusNoticeWidth).length, 0),
       Math.max(1, height - 2 - vintageNoticeHeight - comparisonNoticeHeight - 4))
     : 0;
 
@@ -612,9 +621,11 @@ function ChartComposerSurface({
       {comparisonNotice && <Box paddingX={1} flexShrink={0}>
         <Prose text={comparisonNotice} width={Math.max(8, width - 2)} color={colors.textDim} />
       </Box>}
-      {statusNotice && <ScrollBox key={statusNotice} height={statusNoticeHeight} flexShrink={0} scrollY focusable={false}>
-        <Box paddingX={1} flexShrink={0}>
-          <Prose text={statusNotice} width={statusNoticeWidth} color={colors.warning} />
+      {statusNotices.length > 0 && <ScrollBox key={statusNotices.join("\n")} height={statusNoticeHeight} flexShrink={0} scrollY focusable={false}>
+        <Box flexDirection="column" paddingX={1} flexShrink={0}>
+          {statusNotices.map((notice) => (
+            <Prose key={notice} text={notice} width={statusNoticeWidth} color={colors.warning} />
+          ))}
         </Box>
       </ScrollBox>}
       <Box flexGrow={1} minHeight={4}>

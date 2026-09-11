@@ -524,6 +524,97 @@ describe("resolveChartSpecData", () => {
     ]);
   });
 
+  test.each([
+    { selected: "1wk", maxRange: "ALL", range: "ALL", expected: "1wk" },
+    { selected: "1mo", maxRange: "ALL", range: "ALL", expected: "1mo" },
+    { selected: "1wk", maxRange: "5Y", range: "ALL", expected: "1mo" },
+    { selected: "5m", maxRange: "1W", range: "ALL", expected: "1mo" },
+    { selected: "1wk", maxRange: "5Y", range: "1Y", expected: "1wk" },
+  ] as const)("honors $selected/$range only within the provider's $maxRange limit", async ({ selected, maxRange, range, expected }) => {
+    const requests: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [
+        { resolution: selected, maxRange },
+        { resolution: "1mo", maxRange: "ALL" },
+      ],
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requests.push(resolution);
+        return [{ date: new Date("2026-08-03"), close: resolution === "1wk" ? 35 : 33 }];
+      },
+    });
+    const spec = chartSpec({
+      viewport: { range, resolution: selected },
+      series: [chartSeries({ source: {
+        kind: "security", instrument: { symbol: "TEST", exchange: "LSE" }, fieldId: "market.close",
+      } })],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider, now: new Date("2026-09-11"), loadFredSeries: async () => fredLoad(),
+    });
+
+    expect(requests).toEqual([expected]);
+    expect(result.resolution).toBe(expected);
+    expect(result.series[0]?.points.at(-1)?.value).toBe(expected === "1wk" ? 35 : 33);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((warning) => warning.includes("Auto resolution was used instead")))
+      .toBe(expected !== selected);
+  });
+
+  test.each(["ALL", "5Y"] as const)("checks explicit long date windows against the %s manual limit", async (maxRange) => {
+    const requests: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [
+        { resolution: "1wk", maxRange },
+        { resolution: "1mo", maxRange: "ALL" },
+      ],
+      getDetailedPriceHistory: async (_symbol, _exchange, _start, _end, resolution) => {
+        requests.push(resolution);
+        return [{ date: new Date("1997-07-01"), close: 10 }];
+      },
+    });
+    const spec = chartSpec({
+      viewport: { range: "ALL", resolution: "1wk", dateWindow: { start: "1997-01-01", end: "2026-09-11" } },
+      series: [chartSeries({ source: {
+        kind: "security", instrument: { symbol: "TEST", exchange: "LSE" }, fieldId: "market.close",
+      } })],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider, now: new Date("2026-09-11"), loadFredSeries: async () => fredLoad(),
+    });
+    expect(requests).toEqual([maxRange === "ALL" ? "1wk" : "1mo"]);
+    expect(result.errors).toEqual([]);
+  });
+
+  test("requires every comparison source to support the manual ALL interval", async () => {
+    const requests: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: (symbol) => [
+        { resolution: "1wk", maxRange: symbol === "UNLIMITED" ? "ALL" : "5Y" },
+        { resolution: "1mo", maxRange: "ALL" },
+      ],
+      getPriceHistoryForResolution: async (symbol, _exchange, _range, resolution) => {
+        requests.push(`${symbol}:${resolution}`);
+        return [{ date: new Date("2026-08-03"), close: 33 }];
+      },
+    });
+    const spec = chartSpec({
+      viewport: { range: "ALL", resolution: "1wk" },
+      series: ["UNLIMITED", "LIMITED"].map((symbol) => chartSeries({ id: symbol, source: {
+        kind: "security", instrument: { symbol, exchange: "LSE" }, fieldId: "market.close",
+      } })),
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider, now: new Date("2026-09-11"), loadFredSeries: async () => fredLoad(),
+    });
+    expect(requests.sort()).toEqual(["LIMITED:1mo", "UNLIMITED:1mo"]);
+    expect(result.resolution).toBe("1mo");
+    expect(result.resolutionSupport).toContainEqual({ resolution: "1wk", maxRange: "5Y" });
+    expect(result.warnings).toContain("1WK data is unavailable for this range. Auto resolution was used instead.");
+  });
+
   test("keeps the snapshot exchange when a newer quote omits it", async () => {
     const historyExchanges: string[] = [];
     const source = {
