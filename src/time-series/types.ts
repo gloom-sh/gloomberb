@@ -112,6 +112,8 @@ export interface TimeSeriesPoint {
     secEpsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
     providerId?: string;
     quality?: "reported" | "derived" | "estimated";
+    /** Reporting currency of this monetary statement observation. */
+    currency?: string;
   };
 }
 

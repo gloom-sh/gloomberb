@@ -4,7 +4,8 @@ import type {
   TickerFinancials,
 } from "../types/financials";
 import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvailability } from "../utils/financial-statements";
-import { canonicalTimeSeriesFieldId } from "./field-catalog";
+import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
+import { reportingCurrencySeries } from "./reporting-currency";
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 
 type NumericStatementField =
@@ -601,6 +602,7 @@ function pointForStatement(
     provenance: {
       quality: derived || (metric === "eps" && statement.epsBasis?.factor !== undefined && statement.epsBasis.factor !== 1) ? "derived" : "reported",
       ...((metric === "eps" || metric === "trailingPE") && statement.epsBasis ? { secEpsBasis: statement.epsBasis } : {}),
+      currency: statement.currency,
     },
   };
 }
@@ -821,7 +823,9 @@ export function extractFundamentalSeries(
       );
       return point ? [point] : [];
     });
-    return dedupeFundamentalPeriods(points);
+    const deduped = dedupeFundamentalPeriods(points);
+    return getTimeSeriesField(canonicalId)?.unit.startsWith("currency")
+      ? reportingCurrencySeries(deduped, financials.financialCurrency).points : deduped;
   }
 
   if (namespace !== "valuation" || !VALUATION_IDS.has(metric)) return [];
