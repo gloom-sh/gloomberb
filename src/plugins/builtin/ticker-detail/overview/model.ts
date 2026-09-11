@@ -96,7 +96,9 @@ export function buildOverviewStats({
       valueColor: priceColor(fundamentals.revenueGrowth),
     });
   }
-  if (fundamentals?.enterpriseValue != null) {
+  if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
+    stats.push({ label: "EV", value: "—" });
+  } else if (fundamentals?.enterpriseValue != null) {
     stats.push({ label: "EV", value: formatCompactCurrency(fundamentals.enterpriseValue, quoteCurrency) });
   }
 

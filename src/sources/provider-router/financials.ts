@@ -3,6 +3,7 @@ import type { AnalystResearchData, CorporateActionsData, FinancialStatement, Fun
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../../utils/financial-statements";
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
+import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
 import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import {
   mergeQuoteContributionMaps,
@@ -13,6 +14,7 @@ import {
 
 export interface CachedFinancialsSelection {
   brokerRecord: CachedResourceRecord<TickerFinancials> | null;
+  providerRecords?: CachedResourceRecord<TickerFinancials>[];
   providerValue: TickerFinancials | null;
   value: TickerFinancials | null;
   stale: boolean;
@@ -66,6 +68,7 @@ export function sanitizeCachedFinancials(
 ): TickerFinancials {
   financials = excludeNonCompanyFinancials({
     ...financials,
+    fundamentals: redactUnavailableFundamentals(financials.fundamentals),
     annualStatements: coalesceFinancialPeriodAliases(financials.annualStatements),
     quarterlyStatements: coalesceFinancialPeriodAliases(financials.quarterlyStatements),
   });
@@ -251,11 +254,22 @@ function mergeDefinedObject<T extends object>(preferred: T | null | undefined, f
 }
 
 function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamentals | undefined): Fundamentals | undefined {
+  primary = redactUnavailableFundamentals(primary);
+  fallback = redactUnavailableFundamentals(fallback);
   if (primary?.financialCurrency && fallback?.financialCurrency && primary.financialCurrency !== fallback.financialCurrency) {
     // Revenue and cash flows must come from the same reporting currency.
     return primary;
   }
   const merged = mergeDefinedObject(primary, fallback);
+  if (merged) {
+    const unavailable = new Set(fallback?.unavailableFields ?? []);
+    for (const field of RETRACTABLE_VALUATION_FIELDS) {
+      if (primary?.unavailableFields?.includes(field)) unavailable.add(field);
+      else if (typeof primary?.[field] === "number" && Number.isFinite(primary[field])) unavailable.delete(field);
+    }
+    if (unavailable.size) merged.unavailableFields = [...unavailable];
+    else delete merged.unavailableFields;
+  }
   const dividend = primary?.dividendYield != null ? primary : fallback;
   if (merged && dividend) {
     // A yield's source and basis must come from the same observation as its
@@ -269,14 +283,16 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
     // A fallback cannot retrospectively denominate an older cached snapshot.
     delete merged.financialCurrency;
   }
-  return merged;
+  return redactUnavailableFundamentals(merged);
 }
 
 export function mergeFinancials(primary: TickerFinancials | null, fallback: TickerFinancials | null): TickerFinancials | null {
   if (!primary || !fallback) {
     const single = primary ?? fallback;
     const resolved = single ? resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(single)) : null;
-    return resolved ? excludeNonCompanyFinancials(resolved) : null;
+    return resolved ? excludeNonCompanyFinancials({ ...resolved,
+      fundamentals: redactUnavailableFundamentals(resolved.fundamentals),
+    }) : null;
   }
 
   const preferFallbackPriceData = hasLikelyQuoteUnitMismatch(primary.quote, fallback.quote);
@@ -306,6 +322,21 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
   });
+}
+
+/** Enrichment keeps existing quote/field priorities, but new valuation decisions
+ * must supersede the older cache that caused this provider fetch. */
+export function mergeRefreshedFinancials(cached: TickerFinancials, fresh: TickerFinancials | null): TickerFinancials {
+  const merged = mergeFinancials(cached, fresh)!;
+  const statistics = redactUnavailableFundamentals(fresh?.fundamentals);
+  if (!statistics) return merged;
+  const update: Fundamentals = { unavailableFields: statistics.unavailableFields };
+  const currencyConflict = cached.fundamentals?.financialCurrency && statistics.financialCurrency
+    && cached.fundamentals.financialCurrency !== statistics.financialCurrency;
+  for (const field of RETRACTABLE_VALUATION_FIELDS) {
+    if (!currencyConflict && typeof statistics[field] === "number" && Number.isFinite(statistics[field])) update[field] = statistics[field];
+  }
+  return { ...merged, fundamentals: mergeFundamentals(update, merged.fundamentals) };
 }
 
 export function mergeCachedFinancialRecords(

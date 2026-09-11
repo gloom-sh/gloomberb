@@ -22,6 +22,7 @@ import {
   hasShallowStatementHistory,
   mergeCachedFinancialRecords,
   mergeFinancials,
+  mergeRefreshedFinancials,
   quoteWithFreshnessExchange,
   sanitizeCachedFinancials,
   selectCachedQuoteRecord,
@@ -29,7 +30,7 @@ import {
   type CachedFinancialsSelection,
 } from "./financials";
 import type { ProviderRouterPrimaryRoutes } from "./primary";
-import type { ProviderRouterCoreDeps } from "./route-types";
+import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
 
 export interface ProviderRouterFinancialRouteDeps extends Pick<
   ProviderRouterCoreDeps,
@@ -58,6 +59,26 @@ function withoutSessionState(quote: Quote): Quote {
 
 export class ProviderRouterFinancialRoutes {
   constructor(private readonly deps: ProviderRouterFinancialRouteDeps) {}
+
+  private mergeProviderEnrichment(cached: CachedFinancialsSelection, fresh: SourceResult<TickerFinancials> | null): TickerFinancials {
+    const merged = mergeFinancials(cached.value, fresh?.value ?? null)!;
+    if (!fresh) return merged;
+    const sources = this.deps.getProviderSourceKeys();
+    const rank = (source: string) => sources.includes(source) ? sources.indexOf(source) : Number.MAX_SAFE_INTEGER;
+    const contributions = (cached.providerRecords ?? []).map((record) => ({ sourceKey: record.sourceKey,
+      value: record.sourceKey === fresh.sourceKey ? mergeRefreshedFinancials(record.value, fresh.value) : record.value,
+    }));
+    if (!contributions.some((entry) => entry.sourceKey === fresh.sourceKey)) contributions.push(fresh);
+    contributions.sort((a, b) => rank(a.sourceKey) - rank(b.sourceKey));
+    let providerValue: TickerFinancials | null = null;
+    for (const contribution of contributions) {
+      providerValue = mergeFinancials(providerValue, sanitizeCachedFinancials(contribution.value));
+    }
+    const authoritative = mergeFinancials(cached.brokerRecord?.value ?? null, providerValue);
+    // Keep the existing quote and statement merge, including standalone live
+    // quotes; valuation corrections follow their provider/broker contribution.
+    return { ...merged, fundamentals: authoritative?.fundamentals };
+  }
 
   getCachedFinancialsForTargets(
     targets: CachedFinancialsTarget[],
@@ -124,14 +145,14 @@ export class ProviderRouterFinancialRoutes {
       }
       if (context?.statementHistory !== "extended" && !cached.stale && hasMeaningfulProfile(cached.value) && hasShallowStatementHistory(cached.value)) {
         const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
-        return mergeFinancials(cached.value, providerResult?.value ?? null) ?? cached.value;
+        return this.mergeProviderEnrichment(cached, providerResult);
       }
       if (!cached.stale && hasMeaningfulProfile(cached.value)) {
         return cached.value;
       }
       if (!hasMeaningfulProfile(cached.value) && !cached.stale) {
         const providerResult = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
-        return mergeFinancials(cached.value, providerResult?.value ?? null) ?? cached.value;
+        return this.mergeProviderEnrichment(cached, providerResult);
       }
     }
 
@@ -305,6 +326,7 @@ export class ProviderRouterFinancialRoutes {
       : mergedValue;
     return {
       brokerRecord: sanitizedBrokerRecord,
+      providerRecords,
       providerValue: providerSelection.value,
       value,
       stale: (sanitizedBrokerRecord?.stale ?? false) || providerSelection.stale || quoteSelection.stale,

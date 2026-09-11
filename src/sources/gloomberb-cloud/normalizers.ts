@@ -16,6 +16,7 @@ import { normalizePriceValueByDivisor, resolveCurrencyUnit } from "../../utils/c
 import { resolveExchangeTimeZone } from "../../utils/exchanges";
 import { createProviderMiss } from "../provider-errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
+import { redactUnavailableFundamentals } from "../../utils/fundamentals";
 
 export const GLOOMBERB_CLOUD_PROVIDER_ID = "gloomberb-cloud" as const;
 
@@ -201,7 +202,7 @@ export function mapCloudFinancials(
     quote,
     quoteContributions: financials.quoteContributions,
     profile: financials.profile,
-    fundamentals: financials.fundamentals,
+    fundamentals: redactUnavailableFundamentals(financials.fundamentals),
     financialCurrency: financials.financialCurrency,
     statementHistory: financials.statementHistory,
     annualStatements: financials.annualStatements ?? [],

@@ -95,6 +95,8 @@ export interface Fundamentals {
   pegRatio?: number;
   enterpriseValue?: number;
   enterpriseToRevenue?: number;
+  /** Explicit provider retractions; omitted fields alone remain eligible for fallback. */
+  unavailableFields?: Array<"enterpriseValue" | "enterpriseToRevenue">;
   operatingCashFlow?: number;
   freeCashFlow?: number;
   dividendYield?: number;
