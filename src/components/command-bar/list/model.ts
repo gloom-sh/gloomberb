@@ -1,4 +1,5 @@
 import type { CommandBarResultLine } from "../../../types/plugin";
+import type { TickerRecord } from "../../../types/ticker";
 import {
   buildSections,
   type CommandBarCategoryPriorities,
@@ -25,6 +26,8 @@ export interface ResultItem {
   right?: string;
   /** Provider type retained for symbol/alias identity checks. */
   instrumentType?: string;
+  /** Materialize this exact listing when another command consumes the row. */
+  resolveTicker?: () => Promise<TickerRecord>;
   shortcutQuery?: string;
   searchText?: string;
   /** Tints the trailing marker and the section heading with the AI accent. */

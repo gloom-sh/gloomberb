@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import type { AppState } from "../../../../state/app/context";
 import type { AppTickerRepositoryPort } from "../../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../../plugins/registry";
+import type { InstrumentSearchResult } from "../../../../types/instrument";
+import { publicTickerKey } from "../../../../utils/exchanges";
 import {
   rankTickerSearchItems,
   upsertTickerFromSearchResult,
@@ -34,17 +36,22 @@ export function useCommandBarTickerSearchActions({
 }: UseCommandBarTickerSearchActionsOptions) {
   const tickerSearchCacheRef = useRef<Map<string, TickerSearchCandidate[]>>(new Map());
 
-  const openTickerResearch = useCallback((result: any, options?: { forceNewPane?: boolean }) => {
+  const resolveSearchTicker = useCallback(async (result: InstrumentSearchResult, tickerSymbol?: string) => {
+    const { ticker, created } = await upsertTickerFromSearchResult(tickerRepository, result, { tickerSymbol });
+    dispatch({ type: "UPDATE_TICKER", ticker });
+    if (created) {
+      pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
+    }
+    return ticker;
+  }, [dispatch, pluginRegistry.events, tickerRepository]);
+
+  const openTickerResearch = useCallback((result: InstrumentSearchResult, options?: { forceNewPane?: boolean }) => {
     (async () => {
-      const { ticker, created } = await upsertTickerFromSearchResult(tickerRepository, result);
-      dispatch({ type: "UPDATE_TICKER", ticker });
-      if (created) {
-        pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
-      }
+      const ticker = await resolveSearchTicker(result);
       focusTicker(ticker.metadata.ticker, options);
       closeAll({ revertThemePreview: false });
     })();
-  }, [closeAll, dispatch, focusTicker, pluginRegistry.events, tickerRepository]);
+  }, [closeAll, focusTicker, resolveSearchTicker]);
 
   const mapTickerSearchCandidateToResultItem = useCallback((candidate: TickerSearchCandidate): ResultItem => {
     const detail = formatTickerSearchDetail(candidate);
@@ -66,6 +73,7 @@ export function useCommandBarTickerSearchActions({
         right,
         category: candidate.category,
         kind: "ticker",
+        resolveTicker: async () => candidate.ticker!,
         secondaryAction: () => {
           focusTicker(candidate.ticker!.metadata.ticker, { forceNewPane: true });
           closeAll({ revertThemePreview: false });
@@ -86,10 +94,15 @@ export function useCommandBarTickerSearchActions({
       right,
       category: candidate.category,
       kind: "search",
+      resolveTicker: () => resolveSearchTicker(candidate.result!, publicTickerKey(
+        candidate.symbol,
+        candidate.result!.exchange === "SMART" ? candidate.result!.primaryExchange
+          : candidate.result!.exchange || candidate.result!.primaryExchange,
+      )),
       secondaryAction: () => openTickerResearch(candidate.result!, { forceNewPane: true }),
       action: () => openTickerResearch(candidate.result!),
     };
-  }, [closeAll, focusTicker, openTickerResearch]);
+  }, [closeAll, focusTicker, openTickerResearch, resolveSearchTicker]);
 
   const buildTickerSearchResultItems = useCallback((candidates: TickerSearchCandidate[], query: string): ResultItem[] => (
     candidates.length > 0

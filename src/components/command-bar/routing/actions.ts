@@ -137,6 +137,7 @@ export function useCommandBarRouteActions({
     commandId: CollectionCommandId,
     rawInput?: string,
     explicitTargetId?: string | null,
+    selectedTicker?: TickerRecord,
   ) => executeCollectionCommandAction({
     activeCollectionId,
     activeTickerSymbol,
@@ -150,6 +151,7 @@ export function useCommandBarRouteActions({
     openModeRoute,
     pushRoute,
     rawInput,
+    selectedTicker,
   }), [
     activeCollectionId,
     activeTickerSymbol,
@@ -232,4 +234,3 @@ export function useCommandBarRouteActions({
     tickerActionItems,
   };
 }
-

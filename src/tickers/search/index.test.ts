@@ -385,9 +385,30 @@ describe("ticker-search utilities", () => {
       ],
     });
 
-    expect(results[0]?.symbol).toBe("AAPLC.BA");
-    expect(results.find((item) => item.symbol === "AAPL")?.primaryExchangeLabel).toBeUndefined();
+    expect(results.find((item) => item.id === "goto:AAPL")?.primaryExchangeLabel).toBeUndefined();
+    expect(results.find((item) => item.kind === "search" && item.symbol === "AAPL")?.primaryExchangeLabel).toBe("BUE");
   });
+
+  for (const savedSymbol of ["SHOP", "SHOP:XNAS"]) {
+    test(`saved ${savedSymbol} deduplicates venue aliases while retaining the unsaved TSX listing`, () => {
+      const results = buildTickerSearchCandidates({
+        query: "Shopify",
+        tickers: new Map([[savedSymbol, makeTicker(savedSymbol, "Shopify Inc.", { exchange: "NASDAQ" })]]),
+        providerResults: [
+          makeSearchResult("SHOP", "Shopify Inc.", { exchange: "XNAS", currency: "USD" }),
+          makeSearchResult("SHOP", "Shopify Inc.", { exchange: "NASDAQ", currency: "USD" }),
+          makeSearchResult("SHOP", "Shopify Inc.", { exchange: "TSX", currency: "CAD" }),
+          makeSearchResult("SHOP", "Shopify Inc.", { exchange: "SMART", primaryExchange: "XTSE", currency: "CAD" }),
+        ],
+      });
+      expect(results).toHaveLength(2);
+      expect(results.find((item) => item.kind === "ticker")?.id).toBe(`goto:${savedSymbol}`);
+      const foreign = results.find((item) => item.kind === "search")!;
+      expect(foreign.saved).toBe(false);
+      expect(foreign.category).not.toBe("Saved");
+      expect(foreign.result?.currency).toBe("CAD");
+    });
+  }
 
   test("uses provider ordering to prefer the canonical saved listing for company-name queries", () => {
     const tickers = new Map<string, TickerRecord>([

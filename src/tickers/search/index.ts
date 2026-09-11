@@ -104,7 +104,10 @@ function createProviderTickerSearchCandidates(
     const symbol = getSearchResultSymbol(result);
     const currency = result.currency || getForexQuoteCurrency(symbol);
     if (currency && !result.currency) result = { ...result, currency };
-    const saved = localTickers.has(symbol);
+    const listingKey = publicTickerKey(symbol, listingExchange(result));
+    const savedTicker = localTickers.get(listingKey) ?? localTickers.get(symbol);
+    const saved = !!savedTicker
+      && publicTickerKey(savedTicker.metadata.ticker, savedTicker.metadata.exchange) === listingKey;
     return [{
       id: buildProviderCandidateId(result, symbol),
       label: symbol,
