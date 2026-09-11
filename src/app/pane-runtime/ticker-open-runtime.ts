@@ -5,6 +5,7 @@ import {
   addPaneToLayout,
   getDockedPaneIds,
   isPaneInLayout,
+  isPaneDocked,
 } from "../../plugins/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
 import { findFixedTickerPaneForSymbol } from "../../plugins/ticker-navigation";
@@ -145,7 +146,7 @@ export function useAppTickerOpenRuntime({
         currentLayout,
         instance,
         {
-          relativeTo: currentState.focusedPaneId && isPaneInLayout(currentLayout, currentState.focusedPaneId)
+          relativeTo: currentState.focusedPaneId && isPaneDocked(currentLayout, currentState.focusedPaneId)
             ? currentState.focusedPaneId
             : (getDockedPaneIds(currentLayout).at(-1) ?? instance.instanceId),
           position: "right",
