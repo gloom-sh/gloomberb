@@ -1,4 +1,4 @@
-import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { isFundamentalFieldId } from "../../../time-series/field-catalog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -556,10 +556,11 @@ function ChartComposerSurface({
 
   const showVintageNotice = spec.series.some((entry) => entry.visible !== false
     && entry.source.kind === "security" && isFundamentalFieldId(entry.source.fieldId));
-  const vintageNoticeHeight = showVintageNotice ? wrapTextLines(FINANCIAL_VINTAGE_NOTICE, Math.max(8, width - 2)).length : 0;
+  const financialNotice = [FINANCIAL_VINTAGE_NOTICE, ...(resolution.warnings.includes(SEC_EPS_BASIS_NOTICE) ? [SEC_EPS_BASIS_NOTICE] : [])].join(" ");
+  const vintageNoticeHeight = showVintageNotice ? wrapTextLines(financialNotice, Math.max(8, width - 2)).length : 0;
   const comparisonNotice = resolution.priceComparison?.notice;
   const comparisonNoticeHeight = comparisonNotice ? wrapTextLines(comparisonNotice, Math.max(8, width - 2)).length : 0;
-  const statusWarning = resolution.warnings.find((warning) => warning !== FINANCIAL_VINTAGE_NOTICE && warning !== comparisonNotice);
+  const statusWarning = resolution.warnings.find((warning) => warning !== FINANCIAL_VINTAGE_NOTICE && warning !== SEC_EPS_BASIS_NOTICE && warning !== comparisonNotice);
 
   usePaneFooter(footerId, () => ({
     info: [
@@ -678,7 +679,7 @@ function ChartComposerSurface({
       />
 
       {showVintageNotice && <Box paddingX={1} flexShrink={0}>
-        <Prose text={FINANCIAL_VINTAGE_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} />
+        <Prose text={financialNotice} width={Math.max(8, width - 2)} color={colors.textDim} />
       </Box>}
       {comparisonNotice && <Box paddingX={1} flexShrink={0}>
         <Prose text={comparisonNotice} width={Math.max(8, width - 2)} color={colors.textDim} />

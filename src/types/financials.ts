@@ -255,6 +255,8 @@ export interface CompanyProfile {
 }
 
 export interface FinancialStatement {
+  /** SEC EPS share basis; raw source values remain available in the evidence. */
+  epsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
   date: string;
   /** Source of the fiscal period date; does not establish metric publication dates. */
   dateSource?: "sec" | "provider";

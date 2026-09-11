@@ -21,10 +21,11 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
       expandAll: true,
     });
     const statementCurrency = financialStatementCurrency(financials, table?.statements ?? []);
-    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability }) => ({
+    const dates = table?.statements.map(({ date, currency, dateSource, providerDate, dateEvidence, availableAt, fieldAvailability, epsBasis }) => ({
       date, currency: currency ?? statementCurrency ?? null,
       availableAt: availableAt ?? null,
       fieldAvailability: fieldAvailability ? { ...fieldAvailability } : null,
+      ...(epsBasis ? { epsBasis } : {}),
       dateSource: date === "TTM" ? "derived" : dateSource ?? "provider",
       providerDate: date === "TTM" ? null : providerDate ?? null,
       dateEvidence: date === "TTM" || dateSource !== "sec" ? null : dateEvidence ?? null,

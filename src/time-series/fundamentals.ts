@@ -117,6 +117,7 @@ function statementTime(statement: FinancialStatement): number {
 }
 
 function statementNumber(statement: FinancialStatement, field: NumericStatementField): number | null {
+  if (field === "eps" && statement.epsBasis?.status === "unresolved") return null;
   const value = statement[field];
   return finiteNumber(value) ? value : null;
 }
@@ -216,9 +217,16 @@ function mergeStatementPeriodGroup(statements: readonly InternalStatement[]): In
         derived: statement.__timeSeriesDerivedFields?.includes(field) === true,
       }];
     });
+    const verifiedEps = field === "eps" ? candidates.filter((candidate) => candidate.statement.epsBasis?.status === "split-adjusted") : [];
+    const unresolvedEps = field === "eps" ? compatibleStatements.find((statement) => statement.epsBasis?.status === "unresolved") : undefined;
+    if (unresolvedEps && verifiedEps.length === 0) {
+      merged.epsBasis = unresolvedEps.epsBasis;
+      continue;
+    }
     if (candidates.length === 0) continue;
-    const selected = selectFieldCandidate(candidates);
+    const selected = selectFieldCandidate(verifiedEps.length ? verifiedEps : candidates);
     record[field] = selected.value;
+    if (field === "eps" && selected.statement.epsBasis) merged.epsBasis = selected.statement.epsBasis;
     if (selected.availableAt) fieldAvailability[field] = selected.availableAt;
     if (selected.derived) derivedFields.push(field);
   }
@@ -303,9 +311,11 @@ export function deriveQuarterlyStatements(
   for (const annualStatement of mergeStatementsByPeriod(annualStatements)) {
     let target: InternalStatement = byDate.get(annualStatement.date) ?? { date: annualStatement.date, currency: annualStatement.currency };
     if (target.currency !== annualStatement.currency) continue;
+    if (annualStatement.epsBasis?.status === "unresolved" && target.eps === undefined) target.epsBasis = annualStatement.epsBasis;
     let changed = false;
 
     for (const field of [...QUARTERLY_FLOW_FIELDS, ...QUARTERLY_AVERAGE_FIELDS]) {
+      if (field === "eps" && target.epsBasis?.status === "unresolved") continue;
       if (statementNumber(target, field) !== null) continue;
       const annualValue = statementNumber(annualStatement, field);
       if (annualValue === null) continue;
@@ -361,6 +371,8 @@ function buildTtmStatements(statements: readonly FinancialStatement[]): Internal
       __timeSeriesTtm: true,
       __timeSeriesDerivedFields: [],
     };
+    const unresolvedEps = window.find((statement) => statement.epsBasis?.status === "unresolved");
+    if (unresolvedEps) ttm.epsBasis = unresolvedEps.epsBasis;
 
     for (const field of [...QUARTERLY_FLOW_FIELDS, ...QUARTERLY_AVERAGE_FIELDS]) {
       const values = window.map((statement) => statementNumber(statement, field));
@@ -469,6 +481,7 @@ function selectedCash(statement: FinancialStatement): SelectedStatementField | n
 function selectedEps(
   statement: FinancialStatement,
 ): { value: number; dependencies: NumericStatementField[] } | null {
+  if (statement.epsBasis?.status === "unresolved") return null;
   if (finiteNumber(statement.eps) && statement.eps !== 0) {
     return { value: statement.eps, dependencies: ["eps"] };
   }
@@ -585,7 +598,10 @@ function pointForStatement(
     // Providers do not supply a reliable issuer fiscal-year/quarter identity.
     // Calendar-month numbering would mislabel non-calendar fiscal years.
     periodLabel: `${period === "annual" ? "Year" : period === "ttm" ? "TTM" : "Quarter"} ended ${statement.date}`,
-    provenance: { quality: derived ? "derived" : "reported" },
+    provenance: {
+      quality: derived || (metric === "eps" && statement.epsBasis?.factor !== undefined && statement.epsBasis.factor !== 1) ? "derived" : "reported",
+      ...((metric === "eps" || metric === "trailingPE") && statement.epsBasis ? { secEpsBasis: statement.epsBasis } : {}),
+    },
   };
 }
 

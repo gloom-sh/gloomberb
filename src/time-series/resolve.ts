@@ -1,6 +1,6 @@
 import { resolveAssetDisplayKind } from "../market-data/market/format";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
-import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financial-statements";
 import { appendLiveQuotePoint } from "./chart-data";
 import {
   getTimeRangeForDateWindow,
@@ -1189,6 +1189,10 @@ export async function resolveChartSpecData(
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;
       if (!merged) throw new Error(`No financial data is available for ${instrumentLabel(source)}.`);
+      if ((source.fieldId === "fundamental.eps" || source.fieldId === "valuation.trailingPE")
+        && [...merged.annualStatements, ...merged.quarterlyStatements].some((row) => row.epsBasis)) {
+        warnings.push(SEC_EPS_BASIS_NOTICE);
+      }
       const resolvedSpec = resolvedSource === source ? seriesSpec : { ...seriesSpec, source: resolvedSource };
       sources.onSecurityData?.(resolvedSpec, merged, history !== null);
       const result = baseSecuritySeries(

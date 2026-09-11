@@ -1,5 +1,5 @@
 import { financialPeriodCoverage } from "../../../time-series/financial-period-coverage";
-import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
@@ -112,7 +112,7 @@ export async function loadChartPaneModel(
     metadata: {
       viewport: spec.viewport, panels: spec.panels, warnings: chart.warnings,
       ...(periodCoverage.length ? { periodCoverage } : {}),
-      notices: chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === chart.priceComparison?.notice),
+      notices: chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice),
       priceComparison: chart.priceComparison ?? null,
       summaries: chart.series.map((series) => ({ id: series.id, ...summarizeResolvedSeries(series) })),
     },
