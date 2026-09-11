@@ -129,7 +129,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   const pairMetrics = width >= 50;
   const metricWidth = pairMetrics ? Math.floor((width - 2) / 2) : Math.max(1, width - 2);
   const trailingMetricWidth = pairMetrics ? Math.max(1, width - 2 - metricWidth) : metricWidth;
-  const referenceHeight = optionQuoteContextHeight(draft.marketReference, width - 2, Math.max(1, height - rows - 5));
+  const referenceHeight = optionQuoteContextHeight(draft.marketReference, width - 2, Math.max(1, height - rows - 5), true);
   const showGreeks = height >= 1 + rows + 1 + (pairMetrics ? 1 : 2) + (pairMetrics ? 3 : 5) + 1 + referenceHeight;
 
   return (

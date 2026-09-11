@@ -186,7 +186,7 @@ test("defaults the table around the nearest strike to the current quote", async 
 test("keeps table geometry steady while a cold expiry has no contract context", async () => {
   const firstExpiry = 1_782_345_600;
   const nextExpiry = firstExpiry + 7 * 86400;
-  const initial = makeChain([100, 101], 101, [firstExpiry, nextExpiry]);
+  const initial = makeChain(Array.from({ length: 100 }, (_, index) => 50 + index), 120, [firstExpiry, nextExpiry]);
   let finishNext!: (chain: OptionsChain) => void;
   const next = new Promise<OptionsChain>((resolve) => { finishNext = resolve; });
   const provider = createTestDataProvider({
@@ -194,7 +194,7 @@ test("keeps table geometry steady while a cold expiry has no contract context", 
   });
   setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   await act(async () => {
-    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} />, { width: 124, height: 16 });
+    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={120} />, { width: 124, height: 16 });
   });
   await renderSettled();
   const tableHeight = () => (testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).height;
@@ -212,7 +212,8 @@ test("keeps table geometry steady while a cold expiry has no contract context", 
   }); });
   await renderSettled();
   expect(tableHeight()).toBe(before);
-  expect(testSetup!.captureCharFrame()).toContain("AAPL260626C00101000");
+  expect(testSetup!.captureCharFrame()).toContain("AAPL260626C00120000");
+  expect((testSetup!.renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
 });
 
 test("shows volatility statistics and mirrored default Greeks", async () => {

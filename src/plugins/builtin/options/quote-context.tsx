@@ -4,9 +4,9 @@ import { colors } from "../../../theme/colors";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { optionMarketReferenceLines, type OptionMarketReference } from "./market-reference";
 
-export function optionQuoteContextHeight(reference: OptionMarketReference | undefined, width: number, maximum: number): number {
+export function optionQuoteContextHeight(reference: OptionMarketReference | undefined, width: number, maximum: number, snapshot = false): number {
   return reference ? Math.min(Math.max(1, maximum), optionMarketReferenceLines(reference)
-    .reduce((height, line) => height + wrapTextLines(line, Math.max(8, width)).length, 0)) : 0;
+    .reduce((height, line, index) => height + wrapTextLines(snapshot && index === 0 ? `Snapshot: ${line}` : line, Math.max(8, width)).length, 0)) : 0;
 }
 
 /** Shared source context for the selected chain contract and its calculator snapshot. */
