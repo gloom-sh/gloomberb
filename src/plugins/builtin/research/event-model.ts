@@ -40,6 +40,9 @@ export interface EventRow {
   epsBasis?: "provider-unspecified";
   providerId?: string;
   fetchedAt?: string;
+  /** Keep the supplied ranges and comparison inputs available in detail/export. */
+  estimateInputs?: { eps?: AnalystEstimateRecord; revenue?: AnalystEstimateRecord };
+  estimateGrowthMetric?: "eps" | "revenue";
   fiscalPeriodEnd?: string;
   periodDateSource?: FinancialStatement["dateSource"];
   providerPeriodDate?: string;
@@ -233,6 +236,13 @@ export function buildEventRows(
       status: isFiscal ? "FY Est" : "Q Est",
       period: formatPeriod(pair.period),
       detail: formatEstimateDetail(pair),
+      providerId: estimates?.providerId,
+      fetchedAt: estimates?.fetchedAt,
+      estimateInputs: {
+        ...(pair.eps ? { eps: { ...pair.eps } } : {}),
+        ...(pair.revenue ? { revenue: { ...pair.revenue } } : {}),
+      },
+      estimateGrowthMetric: pair.eps?.growth != null ? "eps" : pair.revenue?.growth != null ? "revenue" : undefined,
       epsCurrency: pair.eps?.currency,
       revenueCurrency: pair.revenue?.currency,
       qEps: isFiscal ? undefined : pair.eps?.average,

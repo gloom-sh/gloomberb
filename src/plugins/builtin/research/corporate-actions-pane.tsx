@@ -16,6 +16,7 @@ import type {
 import { blendHex, colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { wrapTextLines } from "../../../utils/text-wrap";
+import { formatPercent } from "../../../utils/format";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
@@ -194,6 +195,26 @@ export function buildEventDetailBody({
   primaryContent: string | null | undefined;
   primaryContentLoading: boolean;
 }): string {
+  if (row.status === "Q Est" || row.status === "FY Est") {
+    const lines = ["Forecast for the stated fiscal period end; this is not an earnings announcement date."];
+    for (const [key, label] of [["eps", "EPS"], ["revenue", "Revenue"]] as const) {
+      const estimate = row.estimateInputs?.[key];
+      if (!estimate) continue;
+      const amount = (value: number | undefined) => earningsInput(value, estimate.currency);
+      lines.push("", `${label} consensus${estimate.currency ? "" : " (currency unavailable)"}`,
+        `Average: ${amount(estimate.average)}`,
+        `Low: ${amount(estimate.low)} | High: ${amount(estimate.high)}`,
+        `Prior-year comparison: ${amount(estimate.yearAgo)} (provider input; may be a forecast)`,
+        `Provider growth: ${estimate.growth == null ? "-" : formatPercent(estimate.growth)}`,
+        `Contributing analysts: ${estimate.analysts ?? "-"}`);
+    }
+    if (!row.estimateInputs) lines.push("", eventSummaryLine(row), "Detailed estimate inputs are unavailable.");
+    if (row.estimateGrowthMetric) lines.push("", `The table growth value refers to ${row.estimateGrowthMetric === "eps" ? "EPS" : "revenue"}.`);
+    lines.push("", "Consensus is a forecast. EPS accounting and adjustment basis are unspecified; statement EPS may differ.",
+      `Source: ${row.providerId ?? "unavailable"}`,
+      row.fetchedAt ? `Fetched: ${row.fetchedAt} (retrieval time, not an estimate revision date).` : "Retrieval time unavailable.");
+    return lines.join("\n");
+  }
   const lines: string[] = ["Summary", eventSummaryLine(row)];
   if (row.status === "Factor") {
     lines.push("", "Provider split/adjustment factor",
@@ -427,6 +448,9 @@ export function CorporateActionsView({
       })
     : "";
   const detailTextWidth = Math.max(width - 2, 12);
+  const detailLines = openRow?.status === "Q Est" || openRow?.status === "FY Est"
+    ? detailBody.split(/\r?\n/).flatMap((line) => line ? wrapTextLines(line, detailTextWidth) : [""])
+    : wrapTextLines(detailBody, detailTextWidth);
   const scrollDetailBy = useCallback((delta: number) => {
     const scrollBox = detailScrollRef.current;
     if (!scrollBox?.viewport) return;
@@ -468,7 +492,7 @@ export function CorporateActionsView({
         focusable={false}
       >
         <Box flexDirection="column">
-          {wrapTextLines(detailBody, detailTextWidth).map((line, index) => (
+          {detailLines.map((line, index) => (
             <Box key={`event-detail-${index}`} height={1}>
               <Text fg={colors.text}>{line}</Text>
             </Box>

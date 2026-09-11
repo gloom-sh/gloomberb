@@ -181,6 +181,22 @@ describe("analyst summary", () => {
 });
 
 describe("event rows", () => {
+  test("estimate drilldown and JSON retain distinct EPS/revenue inputs, currencies and attribution", () => {
+    const eps = { date: "2026-09-30", period: "current quarter", currency: "USD", average: 4.4, low: 4, high: 5, yearAgo: 0, growth: 0, analysts: 12 };
+    const revenue = { date: eps.date, period: eps.period, currency: "TWD", average: 1.45e12, low: 1.4e12, high: 1.5e12, yearAgo: 1e12, growth: .45, analysts: 20 };
+    const rows = buildEventRows(null, { symbol: "TSM", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z",
+      recommendations: [], ratings: [], earningsEstimates: [eps], revenueEstimates: [revenue] }, null, "USD");
+    const row = JSON.parse(JSON.stringify(rows[0]));
+    expect(row).toMatchObject({ estimateInputs: { eps, revenue }, estimateGrowthMetric: "eps", providerId: "yahoo", fetchedAt: "2026-09-11T12:00:00Z" });
+    const detail = buildEventDetailBody({ row, secFilingsLoading: false, filing: null, documents: [], documentsLoading: false,
+      inlineContent: new Map(), primaryContent: null, primaryContentLoading: false });
+    expect(detail).toContain("Low: 4 USD | High: 5 USD");
+    expect(detail).toContain("Low: 1,400,000,000,000 TWD | High: 1,500,000,000,000 TWD");
+    expect(detail).toContain("Prior-year comparison: 0 USD");
+    expect(detail).toContain("Provider growth: 0.00%");
+    expect(detail).toContain("Provider growth: +45.00%");
+  });
+
   test("combines EPS and revenue estimates into one estimate row", () => {
     const rows = buildEventRows(null, {
       symbol: "AAPL",
