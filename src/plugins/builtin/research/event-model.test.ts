@@ -38,6 +38,22 @@ test("same-day announcements and fiscal periods retain independent detail identi
   expect(reordered.find((row) => row.earningsState === "pending")?.id).toBe(pending.id);
 });
 
+test("multiple reported records and exact duplicates retain unique same-provenance identities", () => {
+  const first = { date: "2026-09-30", dateType: "announcement" as const, epsActual: 2, epsEstimate: 1.8 };
+  const second = { ...first, epsActual: 3, epsEstimate: 2.7 };
+  for (const dateType of ["announcement", "fiscal-period-end", undefined] as const) {
+    const actions = { symbol: "TEST", dividends: [], splits: [], earnings: [first, second, first].map((earning) => ({ ...earning, dateType })) };
+    const rows = buildEventRows(actions, null, null, "USD");
+    expect(new Set(rows.map((row) => row.id)).size).toBe(3);
+    const selected = rows.find((row) => row.epsActual === 3)!;
+    expect(rows.find((row) => row.id === selected.id)?.epsEstimate).toBe(2.7);
+    const reordered = buildEventRows({ ...actions, earnings: [actions.earnings[1]!, actions.earnings[2]!, actions.earnings[0]!] }, null, null, "USD");
+    expect(reordered.find((row) => row.id === selected.id)?.epsActual).toBe(3);
+    expect(new Set(reordered.map((row) => row.id))).toEqual(new Set(rows.map((row) => row.id)));
+    expect(rows.every((row) => row.fiscalPeriodEnd === undefined)).toBe(true);
+  }
+});
+
 test("ADRs keep independent consensus EPS and revenue currencies and never infer missing ones", () => {
   const rows = buildEventRows(null, { symbol: "TSM", currency: "USD", recommendations: [], ratings: [],
     earningsEstimates: [{ date: "2026-09-30", period: "current_quarter", average: 4.46, currency: "USD" }],
