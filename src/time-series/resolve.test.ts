@@ -145,8 +145,34 @@ describe("resolveChartSpecData", () => {
     expect(seeded?.bufferedSeries?.find((entry) => entry.panelId === "volume")?.points).toHaveLength(1);
   });
 
+  test("a currency-only live quote still loads security type without replacing its price", async () => {
+    let quoteCalls = 0;
+    let financialCalls = 0;
+    const source = { kind: "security" as const, instrument: { symbol: "NVDA", exchange: "XNAS" }, fieldId: "market.close" };
+    const history = [{ date: new Date("2026-01-15T14:30:00Z"), close: 77.53, volume: 1234 }];
+    const provider = createTestDataProvider({
+      getQuote: async () => { quoteCalls++; return { symbol: "NVDA", currency: "USD", instrumentType: "Common Stock", price: 999, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-16T16:00:00Z") }; },
+      getTickerFinancials: async () => { financialCalls++; return emptyFinancials(); },
+      getPriceHistory: async () => history,
+      getPriceHistoryForResolution: async () => history,
+    });
+    const spec = chartSpec({ viewport: { range: "1M", resolution: "1d" }, series: [chartSeries({ source })],
+      studies: [{ id: "volume", kind: "volume", inputSeriesIds: ["price"], parameters: {}, panelId: "main", axis: "left" }] });
+    const sources = { dataProvider: provider, loadFredSeries: async () => fredLoad(), now: new Date("2026-01-16T16:00:00Z"),
+      quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source), { symbol: "NVDA", currency: "USD", price: 78, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-16T16:00:00Z") }]]) };
+    const cache = new ChartResolveCache();
+    const result = await resolveChartSpecData(spec, sources, cache);
+    expect(result.series[0]).toMatchObject({ unit: "USD/share", volumeUnit: "shares" });
+    expect(result.series.find((series) => series.id === "volume")?.unit).toBe("shares");
+    expect(result.series[0]?.points.map((point) => point.value)).toEqual([77.53, 78]);
+    expect(result.warnings.some((warning) => warning.includes("Volume unit unknown"))).toBe(false);
+    await resolveChartSpecData(spec, sources, cache);
+    expect(quoteCalls).toBe(1);
+    expect(financialCalls).toBe(0);
+  });
+
   test("direct volume fields and volume studies retain established units without labeling crypto volume as shares", async () => {
-    for (const [instrumentType, expectedUnit] of [["EQUITY", "shares"], ["FUTURE", "contracts"], ["CRYPTOCURRENCY", ""], [undefined, ""]] as const) {
+    for (const [instrumentType, expectedUnit] of [["EQUITY", "shares"], ["Common Stock", "shares"], ["FUTURE", "contracts"], ["CRYPTOCURRENCY", ""], [undefined, ""]] as const) {
       const history = [{ date: new Date("2026-01-15"), close: 1, volume: 1234 }];
       const financials = { ...emptyFinancials(), quote: { symbol: "TEST", currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-15"), instrumentType }, priceHistory: history };
       const provider = createTestDataProvider({

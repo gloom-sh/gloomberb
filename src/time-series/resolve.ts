@@ -1241,7 +1241,7 @@ export async function resolveChartSpecData(
       // Qualified price charts avoid loading company statements. They still
       // need listing metadata when no streamed quote has supplied it. Retain
       // only currency/type: a metadata fetch must not append an old price.
-      const quoteMetadataPromise = !needsFinancials && !quoteOverride?.currency
+      const quoteMetadataPromise = !needsFinancials && (!quoteOverride?.currency || !quoteOverride?.instrumentType)
         ? loadQuoteMetadata(source) : Promise.resolve(null);
       let resolvedSource = source;
       let financials: TickerFinancials | null;

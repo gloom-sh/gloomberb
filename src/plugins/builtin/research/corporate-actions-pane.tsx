@@ -23,6 +23,8 @@ import { usePaneTicker } from "../../../state/app/context";
 import { isUsEquityTicker } from "../../../utils/sec";
 import { useAssetData } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
+import { SignInWall } from "../cloud/auth-actions";
+import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
 import {
   documentContentKey,
@@ -307,17 +309,18 @@ export function CorporateActionsView({
   variant?: "corporate-actions" | "earnings-estimates";
 }) {
   const dataProvider = useAssetData();
+  const cloudSession = useResearchCloudSession();
   const { symbol, ticker, exchange, currency } = useSymbolBinding();
   // The shared ticker snapshot already subscribes to financials for this pane.
   const { financials: financialsData } = usePaneTicker();
   const actionsLoader = useCallback((nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getCorporateActions) throw new Error("Corporate actions source unavailable");
     return dataProvider.getCorporateActions(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  }, [dataProvider]);
+  }, [dataProvider, cloudSession.requestKey]);
   const analystLoader = useCallback(async (nextSymbol: string, nextExchange: string, forceRefresh: boolean) => {
     if (!dataProvider?.getAnalystResearch) return null;
     return dataProvider.getAnalystResearch(nextSymbol, nextExchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
-  }, [dataProvider]);
+  }, [dataProvider, cloudSession.requestKey]);
   const {
     data: actionsData,
     loading: actionsLoading,
@@ -358,9 +361,10 @@ export function CorporateActionsView({
   const todayKey = todayDateKey();
   const futureRowBackground = blendHex(colors.bg, colors.positive, 0.16);
   const loading = actionsLoading || analystLoading;
+  const authWall = !loading && !actionsData && !analystData && (isCloudSessionRequired(actionsError) || isCloudSessionRequired(analystError));
   // Parallel requests fail with the same message ("No ticker selected"), so the
   // footer must report each distinct reason once.
-  const error = [...new Set([actionsError, analystError].filter((value): value is string => !!value))]
+  const error = [...new Set([actionsError, analystError].filter((value): value is string => !!value && !isCloudSessionRequired(value)))]
     .join(" | ") || null;
   const reload = useCallback(() => {
     reloadActions();
@@ -537,6 +541,11 @@ export function CorporateActionsView({
   usePaneFooter(footerPaneId, () => ({
     info: loadingErrorFooterInfo(loading, error),
   }), [error, footerPaneId, loading]);
+
+  if (authWall) return <SignInWall
+    action={variant === "earnings-estimates" ? "view earnings estimates" : "view corporate actions"}
+    needsVerification={cloudSession.needsVerification}
+  />;
 
   return (
     <DataTableStackView<EventRow, EventColumn>

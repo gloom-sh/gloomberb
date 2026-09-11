@@ -106,6 +106,7 @@ function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): b
   return next.lastUpdated !== current.lastUpdated
     || next.price !== current.price
     || next.currency !== current.currency
+    || next.instrumentType !== current.instrumentType
     || next.providerId !== current.providerId
     || next.marketState !== current.marketState
     || next.preMarketPrice !== current.preMarketPrice

@@ -151,7 +151,7 @@ describe("live chart quotes", () => {
     expect(snapshots).toHaveLength(2);
   });
 
-  test("does not refresh resolved charts for receivedAt-only quote updates", async () => {
+  test("ignores receipt-only updates but refreshes changed price or security type", async () => {
     const spec = specWithSeries([securitySeries("price", "AAPL", "market.close")]);
     let handler: Parameters<NonNullable<ReturnType<typeof createTestDataProvider>["subscribeQuotes"]>>[1]
       | undefined;
@@ -182,6 +182,8 @@ describe("live chart quotes", () => {
 
     handler!(target!, { ...quote("AAPL", 101, 100), receivedAt: 102 });
     await waitFor(() => refreshCalls === 2);
+    handler!(target!, { ...quote("AAPL", 101, 100), receivedAt: 103, instrumentType: "Common Stock" });
+    await waitFor(() => refreshCalls === 3);
     dispose();
   });
 
