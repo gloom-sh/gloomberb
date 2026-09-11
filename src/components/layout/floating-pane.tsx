@@ -16,6 +16,7 @@ interface FloatingPaneWrapperProps {
   zIndex: number;
   focused: boolean;
   windowModeSelected?: boolean;
+  locked?: boolean;
   showActions?: boolean;
   quickSettings?: PaneHeaderQuickSetting[];
   onMouseDown?: (event: any) => void;
@@ -63,6 +64,7 @@ export function FloatingPaneWrapper({
   zIndex,
   focused,
   windowModeSelected = false,
+  locked = false,
   showActions = false,
   quickSettings,
   onMouseDown,
@@ -116,6 +118,7 @@ export function FloatingPaneWrapper({
         focused={focused}
         windowModeSelected={windowModeSelected}
         floating
+        locked={locked}
         showActions={showActions}
         quickSettings={quickSettings}
         onHeaderMouseMove={onHeaderMouseMove}

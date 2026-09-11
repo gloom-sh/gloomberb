@@ -178,6 +178,8 @@ export const zhTW: Record<string, string> = {
 
   // ── Confirm / workflow ───────────────────────────────────────
   "Close Pane": "關閉面板",
+  "Lock Pane": "鎖定面板",
+  "Unlock Pane": "解鎖面板",
   "Close All Floating Panes": "關閉所有浮動面板",
   "Close Floating Panes": "關閉浮動面板",
   "Portfolio Name": "投資組合名稱",

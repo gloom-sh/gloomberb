@@ -71,3 +71,27 @@ export function deletePaneSetting(
   delete nextSettings[key];
   return setPaneSettings(layout, paneId, Object.keys(nextSettings).length > 0 ? nextSettings : undefined);
 }
+
+/**
+ * Reserved settings key for the pane lock. The value lives on the instance
+ * rather than in pane settings so a plugin's `applyValue` never sees it and a
+ * published layout never carries someone else's lock.
+ */
+export const PANE_LOCK_SETTING_KEY = "pane.locked";
+
+export function isPaneLocked(instance: PaneInstanceConfig | null | undefined): boolean {
+  return instance?.locked === true;
+}
+
+export function isPaneLockedInLayout(layout: LayoutConfig, paneId: string): boolean {
+  return isPaneLocked(findPaneInstance(layout, paneId));
+}
+
+export function setPaneLocked(layout: LayoutConfig, paneId: string, locked: boolean): LayoutConfig {
+  const current = findPaneInstance(layout, paneId);
+  if (!current || isPaneLocked(current) === locked) return layout;
+  return updatePaneInstance(layout, paneId, (instance) => ({
+    ...instance,
+    locked: locked ? true : undefined,
+  }));
+}

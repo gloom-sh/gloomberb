@@ -11,12 +11,17 @@ import {
 } from "../../../../plugins/pane-manager";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import type { LayoutConfig } from "../../../../types/config";
+import { isPaneLockedInLayout } from "../../../../pane-settings";
 import type { RendererHost } from "../../../../ui";
 import { capturePaneScreenshotPngBase64 } from "../../../../utils/dom-screenshot";
 import {
   exportPaneTableCsv,
   hasPaneTableExporter,
 } from "../../../../state/pane-table-export-registry";
+
+function notifyPaneLocked(pluginRegistry: PluginRegistry): void {
+  pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
+}
 
 function removedFocusRestoreOptions(
   layout: LayoutConfig,
@@ -103,17 +108,29 @@ export function useShellPaneActions({
 
   const closeFocusedPane = useCallback(() => {
     if (!focusedPaneId || !isPaneInLayout(visibleLayout, focusedPaneId)) return false;
+    if (isPaneLockedInLayout(visibleLayout, focusedPaneId)) {
+      notifyPaneLocked(pluginRegistry);
+      // Handled, so the keypress never reaches the host's own close shortcut.
+      return true;
+    }
     const nextLayout = removePane(visibleLayout, focusedPaneId);
     persistLayout(nextLayout, removedFocusRestoreOptions(nextLayout, focusedPaneId, previousFocusedPaneId));
     return true;
-  }, [focusedPaneId, persistLayout, previousFocusedPaneId, visibleLayout]);
+  }, [focusedPaneId, persistLayout, pluginRegistry, previousFocusedPaneId, visibleLayout]);
 
   const closeAllFloatingPanes = useCallback(() => {
     if (visibleLayout.floating.length === 0) return false;
-    const nextLayout = removeFloatingPanes(visibleLayout);
+    const lockedIds = new Set(visibleLayout.floating
+      .map((entry) => entry.instanceId)
+      .filter((instanceId) => isPaneLockedInLayout(visibleLayout, instanceId)));
+    if (lockedIds.size === visibleLayout.floating.length) {
+      notifyPaneLocked(pluginRegistry);
+      return true;
+    }
+    const nextLayout = removeFloatingPanes(visibleLayout, { keepInstanceIds: lockedIds });
     persistLayout(nextLayout, removedFocusRestoreOptions(nextLayout, focusedPaneId, previousFocusedPaneId));
     return true;
-  }, [focusedPaneId, persistLayout, previousFocusedPaneId, visibleLayout]);
+  }, [focusedPaneId, persistLayout, pluginRegistry, previousFocusedPaneId, visibleLayout]);
 
   const copyFocusedPaneScreenshot = useCallback(() => {
     if (!focusedPaneId || !nativePaneChrome || !rendererHost.copyPngImage) return false;

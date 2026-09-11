@@ -20,7 +20,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+P` | Open command mode |
 | `` ` `` | Open ticker search |
 | `Ctrl+,` | Open focused pane settings |
-| `Ctrl+W` | Close focused pane |
+| `Ctrl+W` | Close focused pane (unless it is locked) |
 | `Ctrl+Shift+M` | Move focused window (`WIN resize` starts resize mode) |
 | `Ctrl+Shift+D` | Dock or float focused pane |
 | `Ctrl+Shift+E` | Export focused pane table as CSV |

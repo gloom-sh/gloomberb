@@ -3,7 +3,7 @@ import {
   resolveCollectionForPane,
   resolveTickerForPane,
 } from "../../core/state/app/state";
-import { getPaneSettings } from "../../pane-settings";
+import { getPaneSettings, isPaneLocked, PANE_LOCK_SETTING_KEY } from "../../pane-settings";
 import type { AppConfig, LayoutConfig, PaneInstanceConfig } from "../../types/config";
 import type {
   PaneDef,
@@ -80,7 +80,7 @@ export function resolveRegistryPaneSettings({
   if (!pane) return null;
 
   const paneDef = paneDefs.get(pane.paneId);
-  if (!paneDef || (!paneDef.settings && !paneDef.tableExport)) return null;
+  if (!paneDef) return null;
 
   const pluginId = paneOwners.get(pane.paneId);
   const paneSettings = getPaneSettings(pane);
@@ -106,13 +106,12 @@ export function resolveRegistryPaneSettings({
   const baseSettingsDef = typeof paneDef.settings === "function"
     ? paneDef.settings(context)
     : paneDef.settings;
-  if (!baseSettingsDef && !paneDef.tableExport) return null;
-  const settingsDef: PaneSettingsDef = paneDef.tableExport
-    ? {
-      ...(baseSettingsDef ?? {}),
-      fields: [
-        ...(baseSettingsDef?.fields ?? []),
-        {
+  const settingsDef: PaneSettingsDef = {
+    ...(baseSettingsDef ?? {}),
+    fields: [
+      ...(baseSettingsDef?.fields ?? []),
+      ...(paneDef.tableExport
+        ? [{
           key: "tableExport.csv",
           label: "Export CSV",
           description: "Export the current table as an Excel-compatible CSV file.",
@@ -125,15 +124,22 @@ export function resolveRegistryPaneSettings({
             pane.title ?? paneDef.name,
             actionContext.notify,
           ),
-        },
-      ],
-    }
-    : baseSettingsDef!;
+        } satisfies PaneSettingField]
+        : []),
+      {
+        key: PANE_LOCK_SETTING_KEY,
+        label: "Lock Pane",
+        description: "Keep this pane in the layout when the close shortcut is pressed.",
+        type: "toggle",
+      },
+    ],
+  };
 
   const rawSettings = { ...paneSettings };
-  const resolvedSettings = {
+  const resolvedSettings: Record<string, unknown> = {
     ...paneSettings,
     ...(settingsDef.values ?? {}),
+    [PANE_LOCK_SETTING_KEY]: isPaneLocked(pane),
   };
   if (pluginId) {
     for (const field of settingsDef.fields) {

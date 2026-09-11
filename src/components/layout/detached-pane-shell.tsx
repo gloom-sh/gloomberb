@@ -5,6 +5,7 @@ import { useShortcut, useViewport } from "../../react/input";
 import { resolveTickerForPane, useAppDispatch, useAppSelector } from "../../state/app/context";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { findPaneInstance } from "../../types/config";
+import { isPaneLocked, PANE_LOCK_SETTING_KEY } from "../../pane-settings";
 import type { PluginRegistry } from "../../plugins/registry";
 import { floatingPaneBg, floatingPaneTitleBg, paneTitleText } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
@@ -66,6 +67,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     ? getTitlebarLeadingInset({ windowFullscreen })
     : 0;
   const instance = useAppSelector((state) => findPaneInstance(state.config.layout, desktopWindowBridge.paneId) ?? null);
+  const locked = isPaneLocked(instance);
   const paneDef = instance ? pluginRegistry.panes.get(instance.paneId) ?? null : null;
   const hasPaneSettings = !!instance && pluginRegistry.hasPaneSettings(instance.instanceId);
   const titleState = useMemo(
@@ -121,7 +123,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       if (recordDoubleEscapeClose(doubleEscapeState, desktopWindowBridge.paneId, Date.now())) {
         event.preventDefault();
         event.stopPropagation();
-        void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
+        if (!locked) void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
       }
       return;
     }
@@ -132,8 +134,14 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   useShortcut((event) => {
     if (event.name !== "w" || (!event.ctrl && !event.meta && !event.super)) return;
     if (inputCaptured && event.ctrl && !event.meta && !event.super) return;
+    // Swallowed either way, so a locked pane never falls through to the
+    // window's own close accelerator.
     event.preventDefault();
     event.stopPropagation();
+    if (locked) {
+      pluginRegistry.notify({ body: "Pane is locked. Unlock it in pane settings.", type: "info" });
+      return;
+    }
     void desktopWindowBridge.closeDetachedPane?.(desktopWindowBridge.paneId);
   });
 
@@ -164,6 +172,19 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     void sharePane();
   });
 
+  const togglePaneLock = useCallback(() => {
+    void pluginRegistry.applyPaneSettingValueFn(
+      desktopWindowBridge.paneId,
+      { key: PANE_LOCK_SETTING_KEY, label: "Lock Pane", type: "toggle" },
+      !locked,
+    ).catch((error) => {
+      pluginRegistry.notify({
+        body: error instanceof Error ? error.message : "Could not update pane setting.",
+        type: "error",
+      });
+    });
+  }, [desktopWindowBridge.paneId, locked, pluginRegistry]);
+
   const openActions = useCallback((event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     focusPane();
@@ -181,6 +202,12 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       accelerator: PANE_MANAGEMENT_ACCELERATORS.share,
       onSelect: sharePane,
     });
+    items.push({
+      id: "toggle-pane-lock",
+      // The label carries the state: the terminal menu has no checkmark column.
+      label: locked ? "Unlock Pane" : "Lock Pane",
+      onSelect: togglePaneLock,
+    });
     void showContextMenu({
       kind: "pane",
       paneId: desktopWindowBridge.paneId,
@@ -191,7 +218,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       if (!shown && hasPaneSettings) pluginRegistry.openPaneSettingsFn(desktopWindowBridge.paneId);
       else if (!shown && sharePayload) void sharePane();
     });
-  }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, pluginRegistry, sharePane, sharePayload, showContextMenu, title]);
+  }, [desktopWindowBridge.paneId, focusPane, hasPaneSettings, instance?.paneId, locked, pluginRegistry, sharePane, sharePayload, showContextMenu, title, togglePaneLock]);
   const toggleQuickSetting = useCallback((key: string, event?: { stopPropagation?: () => void; preventDefault?: () => void }) => {
     stopMouse(event);
     focusPane();
@@ -297,6 +324,26 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
                   </Box>
                 ))}
                 <Box flexGrow={1} minWidth={0} />
+                {locked && (
+                  <Box
+                    height={1}
+                    minWidth={20}
+                    paddingLeft={1}
+                    paddingRight={1}
+                    alignItems="center"
+                    justifyContent="center"
+                    data-gloom-role="pane-lock"
+                    aria-label="Locked: the close shortcut leaves this pane open"
+                    title="Locked: the close shortcut leaves this pane open"
+                  >
+                    <Span style={{ display: "inline-flex", width: 12, height: 12, color: colors.textDim }}>
+                      <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                        <rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="currentColor" />
+                        <path d="M4.25 5.5V4a1.75 1.75 0 0 1 3.5 0v1.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                      </svg>
+                    </Span>
+                  </Box>
+                )}
                 {(hasPaneSettings || sharePayload) && (
                   <Text
                     fg={paneTitleText(focused, true, colors)}

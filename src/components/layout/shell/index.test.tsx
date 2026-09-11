@@ -61,6 +61,7 @@ function createShellPluginRegistry(options?: {
     getPluginPaneIds: () => [],
     getPluginPaneTemplateIds: () => [],
     hasPaneSettings: (paneId: string) => paneId === "portfolio-list:main",
+    notify: () => {},
     openPaneSettingsFn: () => {},
     openCommandBar: () => {},
     showPane: () => {},
@@ -1290,6 +1291,87 @@ describe("Shell", () => {
     expect(updateLayout?.layout.instances.map((instance: { instanceId: string }) => instance.instanceId)).toEqual(["portfolio-list:main"]);
     expect(updateLayout?.layout.floating).toEqual([]);
     expect(updateLayout?.layout.dockRoot).toEqual({ kind: "pane", instanceId: "portfolio-list:main" });
+  });
+
+  test("keeps a locked pane when Ctrl+W is pressed", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
+    if (!mainPane) throw new Error("missing default portfolio pane");
+
+    const lockedLayout = {
+      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
+      instances: [{ ...mainPane, locked: true }],
+      floating: [],
+      detached: [],
+    };
+    const state = createShellStateWithLayout(
+      { ...config, layout: cloneLayout(lockedLayout) },
+      cloneLayout(lockedLayout),
+      "portfolio-list:main",
+    );
+    const actions: Array<any> = [];
+
+    testSetup = await testRender(
+      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+        <TestDialogProvider>
+          <Shell pluginRegistry={createShellPluginRegistry()} />
+        </TestDialogProvider>
+      </AppContext>,
+      { width: 40, height: 10 },
+    );
+
+    await testSetup.renderOnce();
+    await emitKeypress({ name: "w", ctrl: true });
+    expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
+
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
+  });
+
+  test("closes only the unlocked floating panes with Ctrl+Alt+W", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const mainPane = config.layout.instances.find((instance) => instance.instanceId === "portfolio-list:main");
+    const detailPane = config.layout.instances.find((instance) => instance.instanceId === "ticker-detail:main");
+    if (!mainPane || !detailPane) throw new Error("missing default panes");
+
+    const mixedLayout = {
+      dockRoot: { kind: "pane" as const, instanceId: "portfolio-list:main" },
+      instances: [
+        { ...mainPane },
+        { ...detailPane, locked: true },
+        { ...detailPane, instanceId: "ticker-detail:secondary" },
+      ],
+      floating: [
+        { instanceId: "ticker-detail:main", x: 4, y: 2, width: 30, height: 8 },
+        { instanceId: "ticker-detail:secondary", x: 8, y: 3, width: 30, height: 8 },
+      ],
+      detached: [],
+    };
+    const state = createShellStateWithLayout(
+      { ...config, layout: cloneLayout(mixedLayout) },
+      cloneLayout(mixedLayout),
+      "portfolio-list:main",
+    );
+    const actions: Array<any> = [];
+
+    testSetup = await testRender(
+      <AppContext value={{ state, dispatch: (action) => actions.push(action) }}>
+        <TestDialogProvider>
+          <Shell pluginRegistry={createShellPluginRegistry()} />
+        </TestDialogProvider>
+      </AppContext>,
+      { width: 40, height: 12 },
+    );
+
+    await testSetup.renderOnce();
+    await emitKeypress({ name: "w", ctrl: true, alt: true });
+
+    const updateLayout = actions.find((action) => action.type === "UPDATE_LAYOUT");
+    expect(updateLayout?.layout.instances.map((instance: { instanceId: string }) => instance.instanceId))
+      .toEqual(["portfolio-list:main", "ticker-detail:main"]);
+    expect(updateLayout?.layout.floating.map((entry: { instanceId: string }) => entry.instanceId))
+      .toEqual(["ticker-detail:main"]);
   });
 
 });

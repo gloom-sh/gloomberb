@@ -7,6 +7,7 @@ import {
 } from "../../../plugins/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
+import { isPaneLocked, setPaneLocked } from "../../../pane-settings";
 import { contextMenuDivider, type ContextMenuItem } from "../../../types/context-menu";
 import {
   formatPlatformShortcutLabel,
@@ -102,6 +103,14 @@ export function menuForPane(
       },
     });
   }
+
+  const locked = isPaneLocked(pane.instance);
+  baseActions.push({
+    id: "toggle-pane-lock",
+    // The label carries the state: the terminal menu has no checkmark column.
+    label: locked ? "Unlock Pane" : "Lock Pane",
+    onSelect: () => persistLayout(setPaneLocked(layout, pane.instance.instanceId, !locked)),
+  });
 
   baseActions.push({
     id: "close-pane",

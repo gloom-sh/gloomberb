@@ -131,6 +131,7 @@ export function ShellPaneLayers({
                     focused={focused}
                     width={rect.width}
                     height={rect.height}
+                    locked={pane.instance.locked === true}
                     showActions={showActions}
                     quickSettings={getPaneQuickSettings(leaf.instanceId)}
                     windowModeSelected={windowModeSelected}
@@ -193,6 +194,7 @@ export function ShellPaneLayers({
                   zIndex={pane.floating?.zIndex ?? 50}
                   focused={focused}
                   windowModeSelected={windowModeSelected}
+                  locked={pane.instance.locked === true}
                   showActions={showActions}
                   quickSettings={getPaneQuickSettings(pane.instance.instanceId)}
                   footer={footer}

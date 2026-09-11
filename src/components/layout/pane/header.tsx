@@ -8,6 +8,7 @@ const PANE_HEADER_HEIGHT = 1;
 const PANE_HEADER_GRIP = ":: ";
 export const PANE_HEADER_ACTION = " ... ";
 export const PANE_HEADER_CLOSE = " x ";
+export const PANE_HEADER_LOCK = " 🔒 ";
 
 interface PaneHeaderProps {
   title: string;
@@ -15,6 +16,7 @@ interface PaneHeaderProps {
   focused: boolean;
   windowModeSelected?: boolean;
   floating?: boolean;
+  locked?: boolean;
   showActions?: boolean;
   quickSettings?: PaneHeaderQuickSetting[];
   onHeaderMouseMove?: (event: any) => void;
@@ -117,6 +119,7 @@ export function PaneHeader({
   focused,
   windowModeSelected = false,
   floating = false,
+  locked = false,
   showActions = false,
   quickSettings = [],
   onHeaderMouseMove,
@@ -134,7 +137,9 @@ export function PaneHeader({
   const backgroundColor = floating ? floatingPaneTitleBg(visuallyFocused) : paneTitleBg(visuallyFocused);
   const actionText = showActions ? PANE_HEADER_ACTION : "     ";
   const closeText = floating ? PANE_HEADER_CLOSE : "";
-  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(" ⚡ "), 0);
+  const lockText = locked ? PANE_HEADER_LOCK : "";
+  const terminalQuickSettingsWidth = quickSettings.reduce((total) => total + displayWidth(" ⚡ "), 0)
+    + displayWidth(lockText);
   const textColor = paneTitleText(visuallyFocused, floating);
   const handleTerminalHeaderMouseDown = useCallback((event: any) => {
     capturePointerDrag(nativeRenderer, terminalHeaderRef.current);
@@ -202,6 +207,25 @@ export function PaneHeader({
           </Box>
         ))}
         <Box flexGrow={1} minWidth={0} />
+        {locked && (
+          <Box data-gloom-role="pane-lock">
+            <DesktopPaneButton
+              color={colors.textMuted}
+              label="Locked: the close shortcut leaves this pane open"
+              icon={(
+                <svg viewBox="0 0 12 12" width="12" height="12" fill="none" aria-hidden="true">
+                  <rect x="2.5" y="5.5" width="7" height="5" rx="1.2" fill="currentColor" />
+                  <path
+                    d="M4.25 5.5V4a1.75 1.75 0 0 1 3.5 0v1.5"
+                    stroke="currentColor"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
+            />
+          </Box>
+        )}
         <Box data-gloom-role="pane-action">
           {showActions ? (
             <DesktopPaneButton
@@ -272,6 +296,9 @@ export function PaneHeader({
           />
         ))}
         <Text fg={borderColor} selectable={false}>{fill}</Text>
+        {locked && (
+          <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
+        )}
         <TerminalPaneButton
           text={actionText}
           fg={textColor}
@@ -319,6 +346,9 @@ export function PaneHeader({
           onMouseDown={setting.onMouseDown}
         />
       ))}
+      {locked && (
+        <TerminalPaneButton text={lockText} fg={colors.textMuted} role="pane-lock" />
+      )}
       <TerminalPaneButton
         text={actionText}
         fg={textColor}
