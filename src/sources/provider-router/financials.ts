@@ -28,12 +28,34 @@ export interface CachedQuoteSelection {
   stale: boolean;
 }
 
+function researchInstrumentType(quote: Quote | undefined): string | undefined {
+  return quote?.instrumentType?.toLowerCase().replace(/[\s_-]/g, "");
+}
+
+function isFundQuote(quote: Quote | undefined): boolean {
+  return ["etf", "exchangetradedfund", "mutualfund", "fund"].includes(researchInstrumentType(quote) ?? "");
+}
+
 function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinancials {
-  const type = financials.quote?.instrumentType?.toLowerCase().replace(/[\s_-]/g, "");
+  const type = researchInstrumentType(financials.quote);
   if (!type || !["etf", "exchangetradedfund", "mutualfund", "fund", "index", "currency", "forex", "fx", "future", "futures", "cryptocurrency", "crypto", "digitalcurrency"].includes(type)) return financials;
   // An empty company response for a confirmed fund or other non-equity must
   // not inherit stale issuer accounts from a former symbol collision.
-  return { ...financials, financialCurrency: undefined, fundamentals: undefined, profile: undefined, annualStatements: [], quarterlyStatements: [] };
+  const fund = isFundQuote(financials.quote);
+  const statistics = financials.fundamentals;
+  return {
+    ...financials,
+    financialCurrency: undefined,
+    fundamentals: fund && statistics?.dividendYield != null ? {
+      dividendYield: statistics.dividendYield,
+      source: statistics.source,
+      fetchedAt: statistics.fetchedAt,
+      stale: statistics.stale,
+    } : undefined,
+    profile: fund && financials.profile?.description ? { description: financials.profile.description } : undefined,
+    annualStatements: [],
+    quarterlyStatements: [],
+  };
 }
 
 export function sanitizeCachedFinancials(
@@ -256,6 +278,11 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
     seedQuoteContributions(fallback),
   );
   const resolvedQuote = resolveCanonicalQuote(quoteContributions).quote;
+  // A fund's distribution yield or description must not be borrowed from an
+  // old company response for a colliding symbol. Only classified fund sources
+  // can contribute those fields when the resolved security is a fund.
+  const primaryResearch = isFundQuote(resolvedQuote) && !isFundQuote(primary.quote) ? undefined : primary;
+  const fallbackResearch = isFundQuote(resolvedQuote) && !isFundQuote(fallback.quote) ? undefined : fallback;
 
   return excludeNonCompanyFinancials({
     ...fallback,
@@ -264,8 +291,8 @@ export function mergeFinancials(primary: TickerFinancials | null, fallback: Tick
     financialCurrency: primary.financialCurrency ?? (hasStatementRows(primary) ? undefined : fallback.financialCurrency),
     quote: resolvedQuote,
     quoteContributions,
-    profile: mergeDefinedObject(primary.profile, fallback.profile),
-    fundamentals: mergeFundamentals(primary.fundamentals, fallback.fundamentals),
+    profile: mergeDefinedObject(primaryResearch?.profile, fallbackResearch?.profile),
+    fundamentals: mergeFundamentals(primaryResearch?.fundamentals, fallbackResearch?.fundamentals),
     priceHistory: normalizePriceHistory(dominant.priceHistory.length > 0 ? dominant.priceHistory : secondary.priceHistory),
     annualStatements: mergeFinancialStatementRows(primary.annualStatements, fallback.annualStatements),
     quarterlyStatements: mergeFinancialStatementRows(primary.quarterlyStatements, fallback.quarterlyStatements),
