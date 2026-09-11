@@ -178,6 +178,7 @@ test("a study retains integrity attribution while warming up after a gap outside
   expect(study.points[1]!.provenance?.priceHistoryIntegrity).toBeUndefined();
   expect(model.complete).toBe(false);
   expect(model.chart.warnings.some((warning) => warning.startsWith("SMA") && warning.includes("inconsistent OHLC"))).toBe(true);
+  expect(model.chart.priceHistoryIntegrity?.map((entry) => [entry.seriesId, entry.scope])).toEqual([["sma", "visible-calculation"]]);
 });
 
 test("pair studies keep the corrupt observation as a gap and retain valid peer levels on recovery", () => {

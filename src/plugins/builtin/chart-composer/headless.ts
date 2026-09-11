@@ -1,7 +1,7 @@
 import { financialPeriodCoverage } from "../../../time-series/financial-period-coverage";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
-import { priceHistoryIntegrityNotices } from "../../../time-series/market";
+import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, resolveChartSpecData } from "../../../time-series/resolve";
@@ -70,7 +70,8 @@ export async function loadChartPaneModel(
   spec = { ...spec, series: spec.series.map((series) => resolvedSeries.get(series.id) ?? series) };
   const ids = new Set(spec.series.map((series) => series.id));
   const periodCoverage = financialPeriodCoverage(spec, chart.series);
-  const integrityNotices = priceHistoryIntegrityNotices(chart.series);
+  const integrityNotices = chart.priceHistoryIntegrity
+    ? chartPriceHistoryIntegrityNotices(chart.priceHistoryIntegrity) : priceHistoryIntegrityNotices(chart.series);
   return {
     chart,
     spec,
@@ -114,6 +115,7 @@ export async function loadChartPaneModel(
     }),
     metadata: {
       viewport: spec.viewport, panels: spec.panels, warnings: chart.warnings,
+      ...(chart.priceHistoryIntegrity?.length ? { priceHistoryIntegrity: chart.priceHistoryIntegrity } : {}),
       ...(periodCoverage.length ? { periodCoverage } : {}),
       notices: [...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice), ...integrityNotices],
       priceComparison: chart.priceComparison ?? null,

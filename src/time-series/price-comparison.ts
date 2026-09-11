@@ -1,6 +1,6 @@
 import { scalarPointValue } from "./alignment";
 import { getTimeSeriesField } from "./field-catalog";
-import type { ChartSpec, ResolvedSeries } from "./types";
+import type { ChartSpec, ResolvedSeries, TimeSeriesPoint } from "./types";
 import type { ManualChartResolution } from "./resolution";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 
@@ -23,6 +23,26 @@ function observationDate(time: number, series: ResolvedSeries): string {
   if (time % 86_400_000 === 0 || !series.timeBasis) return date.toISOString().slice(0, 10);
   const { year, month, day } = zonedDateTimeParts(time, series.timeBasis.timeZone);
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/** Date-only research windows select local sessions; runtime timestamps remain exact. */
+export function priceObservationWindowFilter(
+  series: ResolvedSeries,
+  bounds: { start: number | null; end: number | null },
+  resolution: ManualChartResolution | "auto",
+  dateWindow: ChartSpec["viewport"]["dateWindow"] | null,
+): (time: number) => boolean {
+  const calendarBars = resolution === "1d" || resolution === "1wk" || resolution === "1mo";
+  const calendarWindow = calendarBars && dateWindow
+    && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start)
+    && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end) ? dateWindow : null;
+  return (time) => {
+    if (!Number.isFinite(time)) return false;
+    const key = calendarWindow ? observationDate(time, series) : null;
+    return key !== null
+      ? key >= calendarWindow!.start && key <= calendarWindow!.end
+      : (bounds.start === null || time >= bounds.start) && (bounds.end === null || time <= bounds.end);
+  };
 }
 
 export function priceComparisonBoundsForSeries(series: ResolvedSeries, comparison: PriceComparison | null) {
@@ -61,20 +81,16 @@ export function resolvePriceComparison(
   if (!seriesIds) return null;
   const byId = new Map(series.map((entry) => [entry.id, entry]));
   const calendarBars = resolution === "1d" || resolution === "1wk" || resolution === "1mo";
-  const calendarWindow = calendarBars && dateWindow
-    && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start)
-    && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end) ? dateWindow : null;
-  const observations = seriesIds.map((id) => new Map((byId.get(id)?.points ?? []).flatMap((point) => {
-    const time = point.date.getTime();
-    const value = scalarPointValue(point);
-    if (!Number.isFinite(time) || value === null) return [];
-    const key = calendarBars ? observationDate(time, byId.get(id)!) : String(time);
-    const inWindow = calendarWindow
-      ? key >= calendarWindow.start && key <= calendarWindow.end
-      : (bounds.start === null || time >= bounds.start)
-        && (bounds.end === null || time <= bounds.end);
-    return inWindow ? [[key, point] as const] : [];
-  })));
+  const observations = seriesIds.map((id) => {
+    const entry = byId.get(id);
+    if (!entry) return new Map<string, TimeSeriesPoint>();
+    const inWindow = priceObservationWindowFilter(entry, bounds, resolution, dateWindow);
+    return new Map(entry.points.flatMap((point) => {
+      const time = point.date.getTime();
+      if (!inWindow(time) || scalarPointValue(point) === null) return [];
+      return [[calendarBars ? observationDate(time, entry) : String(time), point] as const];
+    }));
+  });
   const shared = [...observations[0]!.keys()].filter((key) => observations.every((points) => points.has(key)))
     .sort((a, b) => calendarBars ? a.localeCompare(b) : Number(a) - Number(b));
   const start = shared.find((key) => observations.every((points) => {

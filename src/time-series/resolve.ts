@@ -38,7 +38,7 @@ import {
   fundamentalSeriesUsesAvailabilityFallback,
   valuationSeriesUsesLiveQuote,
 } from "./fundamentals";
-import { extractSecuritySeries, priceHistoryIntegrityNotices } from "./market";
+import { extractSecuritySeries, collectPriceHistoryIntegrity, chartPriceHistoryIntegrityNotices } from "./market";
 import {
   activeStudyInputSeriesIds,
   maxStudyWarmupPoints,
@@ -46,7 +46,7 @@ import {
 } from "./studies";
 import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
-import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, resolvePriceComparison, type PriceComparison } from "./price-comparison";
+import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, priceObservationWindowFilter, resolvePriceComparison, type PriceComparison } from "./price-comparison";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { chartQuoteOverrideKeyForSource } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
@@ -354,6 +354,26 @@ function filterPoints(points: readonly TimeSeriesPoint[], bounds: DateBounds): T
   });
 }
 
+function resolvePriceHistoryIntegrity(
+  spec: ChartSpec,
+  requestedSeries: readonly ResolvedSeries[],
+  visibleSeries: readonly ResolvedSeries[],
+  bounds: DateBounds,
+  resolution: ManualChartResolution,
+  dateWindow: ChartSpec["viewport"]["dateWindow"] | null,
+) {
+  const filters = new Map(requestedSeries.map((entry) => [entry.id, priceObservationWindowFilter(entry, bounds, resolution, dateWindow)]));
+  const requestedIds = activeStudyInputSeriesIds(spec.studies);
+  spec.series.filter((entry) => entry.visible !== false).forEach((entry) => requestedIds.add(entry.id));
+  const selected = requestedSeries.filter((entry) => requestedIds.has(entry.id)).map((entry) => limitSeriesObservations(spec, {
+    ...entry, points: entry.points.filter((point) => filters.get(entry.id)!(point.date.getTime())),
+  }));
+  return [
+    ...collectPriceHistoryIntegrity(selected, "requested-observation", (id, time) => filters.get(id)!(time)),
+    ...collectPriceHistoryIntegrity(visibleSeries, "visible-calculation"),
+  ];
+}
+
 function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceComparison | null): DateBounds {
   if (comparison?.alignment !== "session-date" || comparison.start === null || comparison.end === null) return bounds;
   // A date-only selection can include a local session that began on the prior
@@ -429,8 +449,10 @@ export function seedChartResolutionResult(
       : { ...entry, points: filterPoints(entry.points, entryBounds) };
     return clipPriceComparison(limitSeriesObservations(spec, clipped), priceComparison);
   });
+  const priceHistoryIntegrity = resolvePriceHistoryIntegrity(spec, series, visible, bounds, resolution, spec.viewport.dateWindow ?? null);
   return {
     series: visible,
+    ...(priceHistoryIntegrity.length ? { priceHistoryIntegrity } : {}),
     ...(priceComparison ? { priceComparison } : {}),
     legendSeries: visible,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
@@ -439,7 +461,7 @@ export function seedChartResolutionResult(
       ? { viewport: { start: new Date(displayBounds.start), end: new Date(displayBounds.end) } } : {}),
     loading: true,
     errors: studies.errors,
-    warnings: [...studies.warnings, ...priceHistoryIntegrityNotices(visible), ...(priceComparison ? [priceComparison.notice] : [])],
+    warnings: [...studies.warnings, ...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity), ...(priceComparison ? [priceComparison.notice] : [])],
     resolution,
   };
 }
@@ -1331,8 +1353,12 @@ export async function resolveChartSpecData(
   });
   resolved = resolved.map((entry) => limitSeriesObservations(spec, entry));
   resolved = resolved.map((entry) => clipPriceComparison(entry, priceComparison));
+  const priceHistoryIntegrity = resolvePriceHistoryIntegrity(
+    spec, rawSeries, resolved,
+    bounds, resolution, requestBounds ? null : spec.viewport.dateWindow ?? null,
+  );
   if (priceComparison) warnings.push(priceComparison.notice);
-  warnings.push(...priceHistoryIntegrityNotices(resolved));
+  warnings.push(...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity));
   warnings.push(...financialPeriodCoverageWarnings(financialPeriodCoverage(spec, resolved)));
   const resolvedById = new Map(resolved.map((entry) => [entry.id, entry] as const));
   const hiddenBaseSeries = rawSeries
@@ -1368,6 +1394,7 @@ export async function resolveChartSpecData(
     : undefined;
   return {
     series: resolved,
+    ...(priceHistoryIntegrity.length ? { priceHistoryIntegrity } : {}),
     ...(priceComparison ? { priceComparison } : {}),
     ...(sharedSupport.length > 0 ? { resolutionSupport: sharedSupport } : {}),
     legendSeries,

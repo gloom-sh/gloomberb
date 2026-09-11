@@ -2,7 +2,7 @@ import type { PricePoint, TickerFinancials } from "../types/financials";
 import { pricePointIntegrity, pricePointValues, priceHistoryIntegrityNotice, mergePriceHistoryIntegrity, type PriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
-import type { ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
+import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
@@ -122,6 +122,35 @@ export function priceHistoryIntegrityNotices(series: readonly Pick<ResolvedSerie
     const notice = priceHistoryIntegrityNotice(dates.size);
     return notice ? [`${entry.label}: ${notice}`] : [];
   });
+}
+
+export function collectPriceHistoryIntegrity(
+  series: readonly Pick<ResolvedSeries, "id" | "label" | "points">[],
+  scope: ChartSeriesPriceHistoryIntegrity["scope"],
+  includeSource?: (seriesId: string, sourceTime: number) => boolean,
+): ChartSeriesPriceHistoryIntegrity[] {
+  return series.flatMap((entry) => {
+    const sources = new Map<string, PriceHistoryIntegrity["sourcePoints"][number]>();
+    for (const point of entry.points) {
+      for (const source of point.provenance?.priceHistoryIntegrity?.sourcePoints ?? []) {
+        if (!includeSource || includeSource(entry.id, Date.parse(source.date))) sources.set(JSON.stringify(source), source);
+      }
+    }
+    return sources.size ? [{
+      seriesId: entry.id, label: entry.label, scope,
+      integrity: mergePriceHistoryIntegrity({ reason: "inconsistent-ohlc", sourcePoints: [...sources.values()] }),
+    }] : [];
+  });
+}
+
+export function chartPriceHistoryIntegrityNotices(entries: readonly ChartSeriesPriceHistoryIntegrity[]): string[] {
+  const bySeries = new Map<string, { label: string; dates: Set<string> }>();
+  for (const entry of entries) {
+    const group = bySeries.get(entry.seriesId) ?? { label: entry.label, dates: new Set<string>() };
+    entry.integrity.sourcePoints.forEach((source) => group.dates.add(source.date));
+    bySeries.set(entry.seriesId, group);
+  }
+  return [...bySeries.values()].map(({ label, dates }) => `${label}: ${priceHistoryIntegrityNotice(dates.size)}`);
 }
 
 /** Pure security-source coordinator used by runtime hooks after data loading. */
