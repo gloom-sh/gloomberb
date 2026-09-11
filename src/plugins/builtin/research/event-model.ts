@@ -201,7 +201,7 @@ export function buildEventRows(
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
     rows.push({
-      id: `earn:${earning.date}`,
+      id: `earn:${earning.date}${earning.dateType ? `:${earning.dateType}` : ""}`,
       date: statement?.date ?? earning.date,
       dateType: earning.dateType,
       status: "Earnings",
@@ -323,7 +323,9 @@ export function eventSourceNotice(state: EventSourceState): EventSourceNotice | 
     notices.push(`${actionsLabel} unavailable: ${state.actionsError}`);
   } else if (unavailableSections.length > 0) {
     notices.push(`Unavailable: ${unavailableSections.join(", ")}`);
-  } else if (state.actions && !hasCorporateActionRows(state.actions)) {
+  } else if (state.actions && !(state.variant === "earnings-estimates"
+    ? state.actions.earnings.some((earning) => earning.epsActual != null)
+    : hasCorporateActionRows(state.actions))) {
     notices.push(state.variant === "earnings-estimates"
       ? `No reported earnings for ${state.symbol}`
       : `No dividends, splits, or reported earnings for ${state.symbol}`);

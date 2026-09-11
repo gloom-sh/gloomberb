@@ -289,7 +289,7 @@ describe("event rows", () => {
     };
     const rows = buildEventRows(actions, null, financials, "USD");
 
-    const earnings = rows.find((row) => row.id === "earn:2026-03-31");
+    const earnings = rows.find((row) => row.status === "Earnings" && row.date === "2026-03-31");
     const ttm = rows.find((row) => row.status === "TTM");
 
     expect(earnings).toMatchObject({

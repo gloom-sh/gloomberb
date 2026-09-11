@@ -577,7 +577,7 @@ export function CorporateActionsView({
       )}
       emptyStateTitle={loading
         ? (variant === "earnings-estimates" ? "Loading earnings estimates..." : "Loading events...")
-        : error ?? (variant === "earnings-estimates" ? "No earnings estimates" : "No events")}
+        : error ?? sourceNotice?.text ?? (variant === "earnings-estimates" ? "No earnings estimates" : "No events")}
     />
   );
 }
