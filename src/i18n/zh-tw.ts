@@ -914,6 +914,8 @@ export const zhTW: Record<string, string> = {
   "v{version} available — starting download...": "v{version} 可用 — 開始下載...",
   "command bar": "命令列",
   "Tidy Windows": "整理視窗",
+  "Download desktop app": "下載桌面應用程式",
+  "Get Gloomberb for Mac or Windows": "取得 Mac 或 Windows 版 Gloomberb",
   "Dismiss": "忽略",
   "Minimize": "最小化",
   "Maximize": "最大化",

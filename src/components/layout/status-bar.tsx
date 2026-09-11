@@ -1,4 +1,12 @@
-import { Box, Text, TextAttributes, contextMenuDivider, useContextMenu, useUiCapabilities } from "../../ui";
+import {
+  Box,
+  Text,
+  TextAttributes,
+  contextMenuDivider,
+  useContextMenu,
+  useRendererHost,
+  useUiCapabilities,
+} from "../../ui";
 import { useDialog, type PromptContext } from "../../ui/dialog";
 import { useCallback, useMemo, useState } from "react";
 import { blendHex, hoverBg } from "../../theme/colors";
@@ -12,6 +20,7 @@ import {
   selectStatusBarVisible,
 } from "../../state/selectors-ui";
 import { useViewport } from "../../react/input";
+import { getCurrentPluginTarget } from "../../plugins/current-target";
 import { getSharedRegistry } from "../../plugins/registry";
 import {
   gridlockAllPanes,
@@ -34,6 +43,11 @@ type SetHoveredControl = (updater: (current: HoveredControl) => HoveredControl) 
 const TIDY_WINDOWS_COLUMNS = 15;
 /** Space held back for the `status:widget` plugin slot, which sizes itself. */
 const STATUS_WIDGET_COLUMNS = 20;
+/**
+ * Where term.gloom.sh sends people who want the installed app. The route
+ * picks the installer for the visitor's OS, so one link serves every platform.
+ */
+const DESKTOP_DOWNLOAD_URL = "https://gloom.sh/download/desktop";
 
 type LayoutTabItem = {
   label: string;
@@ -399,9 +413,10 @@ function StatusBarLayoutControl({
 }
 
 /**
- * The version chip, dropped when the row runs out of room. Live market status
- * lives at the header's right edge, not here, so nothing in the status bar
- * repeats it.
+ * The version chip and, on the hosted web app, a link to the desktop app.
+ * The link goes first when the row runs out of room, then the version. Live
+ * market status lives at the header's right edge, not here, so nothing in the
+ * status bar repeats it.
  */
 function StatusBarSummary({
   hoveredControl,
@@ -413,43 +428,87 @@ function StatusBarSummary({
   StatusBarViewProps,
   "hoveredControl" | "openChangelog" | "rightAvailableWidth" | "setHoveredControl"
 > & { nativePaneChrome: boolean }) {
+  const rendererHost = useRendererHost();
   const versionLabel = `v${VERSION}`;
-  if (rightAvailableWidth < versionLabel.length + 1) return null;
+  const downloadLabel = t("Download desktop app");
+  const showVersion = rightAvailableWidth >= versionLabel.length + 1;
+  const showDownload = getCurrentPluginTarget() === "web"
+    && rightAvailableWidth >= versionLabel.length + 1 + downloadLabel.length + 1;
+  if (!showVersion) return null;
   return (
-    <VersionChip
-      hoveredControl={hoveredControl}
-      label={versionLabel}
-      nativePaneChrome={nativePaneChrome}
-      openChangelog={openChangelog}
-      setHoveredControl={setHoveredControl}
-    />
+    <>
+      <StatusBarChip
+        hoveredControl={hoveredControl}
+        id="version"
+        label={versionLabel}
+        nativePaneChrome={nativePaneChrome}
+        onPress={openChangelog}
+        role="button"
+        setHoveredControl={setHoveredControl}
+        title={openChangelog ? tf("Open changelog for {version}", { version: versionLabel }) : undefined}
+      />
+      {showDownload && (
+        <StatusBarChip
+          hoveredControl={hoveredControl}
+          id="desktop-download"
+          label={downloadLabel}
+          nativePaneChrome={nativePaneChrome}
+          onPress={() => { void rendererHost.openExternal(DESKTOP_DOWNLOAD_URL); }}
+          role="link"
+          setHoveredControl={setHoveredControl}
+          title={t("Get Gloomberb for Mac or Windows")}
+        />
+      )}
+    </>
   );
 }
 
-function VersionChip({
+/** Dim text at the row's right edge that lights up when it can be pressed. */
+function StatusBarChip({
   hoveredControl,
+  id,
   label,
   nativePaneChrome,
-  openChangelog,
+  onPress,
+  role,
   setHoveredControl,
-}: Pick<StatusBarViewProps, "hoveredControl" | "openChangelog" | "setHoveredControl"> & {
+  title,
+}: Pick<StatusBarViewProps, "hoveredControl" | "setHoveredControl"> & {
+  id: string;
   label: string;
   nativePaneChrome: boolean;
+  onPress?: (event?: StatusBarEvent) => void;
+  role: "button" | "link";
+  title?: string;
 }) {
   const colors = useThemeColors();
-  const hovered = hoveredControl === "version";
+  const hovered = hoveredControl === id;
+  const press = onPress
+    ? (event?: StatusBarEvent) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      onPress(event);
+    }
+    : undefined;
   return (
     <Box paddingRight={1} flexShrink={0}>
       <Text
-        fg={hovered && openChangelog ? colors.text : colors.textDim}
-        {...(!nativePaneChrome ? { bg: hovered && openChangelog ? hoverBg(colors) : undefined } : {})}
-        title={openChangelog ? tf("Open changelog for {version}", { version: label }) : undefined}
-        aria-label={openChangelog ? tf("Open changelog for {version}", { version: label }) : undefined}
-        role={openChangelog ? "button" : undefined}
-        onMouseOver={() => setHoveredControl((current) => (current === "version" ? current : "version"))}
-        onMouseDown={openChangelog}
-        {...(nativePaneChrome && openChangelog ? { "data-gloom-interactive": "true" } : {})}
-        style={openChangelog ? { cursor: "pointer" } : undefined}
+        fg={hovered && press ? colors.text : colors.textDim}
+        {...(!nativePaneChrome ? { bg: hovered && press ? hoverBg(colors) : undefined } : {})}
+        title={press ? title : undefined}
+        aria-label={press ? title : undefined}
+        role={press ? role : undefined}
+        tabIndex={press ? 0 : undefined}
+        onMouseOver={() => setHoveredControl((current) => (current === id ? current : id))}
+        onMouseOut={() => setHoveredControl((current) => (current === id ? null : current))}
+        onMouseDown={press}
+        onKeyDown={press
+          ? (event: StatusBarEvent & { key?: string }) => {
+            if (event.key === "Enter") press(event);
+          }
+          : undefined}
+        {...(nativePaneChrome && press ? { "data-gloom-interactive": "true" } : {})}
+        style={press ? { cursor: "pointer" } : undefined}
       >
         {label}
       </Text>

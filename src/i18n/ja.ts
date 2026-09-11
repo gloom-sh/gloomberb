@@ -914,6 +914,8 @@ export const ja: Record<string, string> = {
   "v{version} available — starting download...": "v{version} が利用可能 — ダウンロードを開始しています...",
   "command bar": "コマンド バー",
   "Tidy Windows": "ウィンドウを整理",
+  "Download desktop app": "デスクトップアプリをダウンロード",
+  "Get Gloomberb for Mac or Windows": "Mac または Windows 向けの Gloomberb を入手",
   "Dismiss": "閉じる",
   "Minimize": "最小化",
   "Maximize": "最大化",

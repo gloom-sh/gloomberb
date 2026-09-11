@@ -912,6 +912,8 @@ export const ko: Record<string, string> = {
   "v{version} available — starting download...": "v{version} 사용 가능 — 다운로드 시작 중...",
   "command bar": "명령 팔레트",
   "Tidy Windows": "창 정리",
+  "Download desktop app": "데스크톱 앱 다운로드",
+  "Get Gloomberb for Mac or Windows": "Mac 또는 Windows용 Gloomberb 받기",
   "Dismiss": "닫기",
   "Minimize": "최소화",
   "Maximize": "최대화",
