@@ -56,7 +56,7 @@ const SPEC: ChartSpec = {
     id: "price",
     source: {
       kind: "security",
-      instrument: { symbol: "TEST", exchange: "NASDAQ" },
+      instrument: { symbol: "RESOLUTION-HOOK-TEST", exchange: "NASDAQ" },
       fieldId: "market.ohlcv",
     },
     style: "candles",
@@ -253,7 +253,7 @@ describe("useChartResolution", () => {
 
     await act(async () => {
       quoteHandler!(quoteTarget!, {
-        symbol: "TEST",
+        symbol: "RESOLUTION-HOOK-TEST",
         price: 105,
         currency: "USD",
         change: 1,
@@ -318,7 +318,7 @@ describe("useChartResolution", () => {
 
     await act(async () => {
       quoteHandler!(quoteTarget!, {
-        symbol: "TEST",
+        symbol: "RESOLUTION-HOOK-TEST",
         price: 105,
         currency: "USD",
         change: 1,

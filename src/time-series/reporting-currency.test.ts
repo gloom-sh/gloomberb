@@ -12,7 +12,7 @@ const source = (fieldId = "fundamental.totalRevenue"): SecuritySeriesSource => (
 });
 const financials = (): TickerFinancials => ({
   financialCurrency: "USD",
-  quote: { symbol: "SHEL", currency: "GBP", price: 35.37, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-02") },
+  quote: { symbol: "SHEL", currency: "GBP", instrumentType: "EQUITY", price: 35.37, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-02") },
   priceHistory: [{ date: new Date("2025-12-31"), close: 35 }],
   quarterlyStatements: [],
   annualStatements: [2024, 2025].map((year, i) => ({

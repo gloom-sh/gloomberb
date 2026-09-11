@@ -104,7 +104,7 @@ describe("resolveChartSpecData", () => {
     const withoutMetadata = await resolveChartSpecData(spec, { ...sources, dataProvider: unavailable });
     expect(withoutMetadata.errors).toEqual([]);
     expect(withoutMetadata.series[0]?.points.map((point) => point.value)).toEqual([77.53]);
-    expect(withoutMetadata.series[0]?.unit).toBe("currency/share");
+    expect(withoutMetadata.series[0]?.unit).toBe("currency");
   });
 
   test("seeds study series so their panels survive the wait for real data", async () => {
