@@ -1,6 +1,27 @@
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
+export type { StaticChartOverlay } from "./chart/static/chart-surface";
+// The time-series chart: one or more panels of resolved series with axes,
+// a cursor, and range selection. Ticker overview, polls, econ statistics,
+// and prediction markets all draw with it.
+export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
+export type {
+  CompositeAxisDomain,
+  CompositeAxisSide,
+  CompositeChartColors,
+  CompositeChartProps,
+  CompositeChartScene,
+  CompositeCursorValue,
+  CompositePanelScene,
+  CompositeProjectedPoint,
+  CompositeProjectedSeries,
+  PricePointsToResolvedSeriesOptions,
+} from "./chart/composite";
+// A static chart's callers project their own points and pick a palette; these
+// are the same helpers the host's gauges and sparklines use to do that.
+export type { ProjectedChartPoint } from "./chart/core/data";
+export { resolveChartPalette } from "./chart/core/palette";
 export {
   buildMetricTreemapNavigationTiles,
   findMetricTreemapNeighbor,
@@ -28,6 +49,10 @@ export type { FeedDataTableItem } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";
 export type { StackSortPreference } from "./feed-stack-controller";
 export { PaneFooterScope, usePaneFooter } from "./layout/pane/footer";
+// The common footer shapes on top of `usePaneFooter`: a status segment that
+// changes with loading/error state, and one that also carries a link.
+export { usePaneStatusFooter, usePaneStatusLinkFooter } from "../plugins/builtin/shared/pane-footer";
+export { loadingErrorFooterInfo } from "../plugins/builtin/shared/table-pane";
 export type { PaneFooterPressEvent, PaneFooterSegment, PaneHint } from "./layout/pane/footer";
 export {
   getPaneSidebarWidth,

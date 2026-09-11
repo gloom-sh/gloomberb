@@ -7,8 +7,8 @@
  * when a real plugin needs it, and prefer widening later over exporting
  * speculatively.
  *
- * `scripts/check-public-api.ts` pins the exported names so the surface cannot
- * grow by accident during an unrelated refactor.
+ * `src/public/public-api.test.ts` checks that every subpath resolves and that a
+ * bundled plugin shares the host's module instances.
  */
 
 export { createThrottledFetch } from "../utils/throttled-fetch";
@@ -75,3 +75,21 @@ export { splitLongTextSegmentByDisplayWidth, truncateWithEllipsis, wrapTextLines
 export { httpFetch, setHttpFetchTransport } from "../utils/http-transport";
 export type { HttpFetchTransport } from "../utils/http-transport";
 export { debugLog } from "../utils/debug-log";
+
+// A pane that fetches on its own schedule and wants to survive restarts: a
+// persisted cache keyed by the plugin, with a TTL and a stale-while-refresh
+// read. The Fear & Greed and IPO calendar plugins both keep their last good
+// payload this way so the pane has something to show before the first fetch.
+export { createPluginCache } from "../data/plugin-cache";
+export type { PluginCacheResult } from "../data/plugin-cache";
+
+// Table sorting, so a plugin table cycles its sort the same way built-in ones
+// do and orders mixed null/number/string columns identically.
+export { compareSortValues, cycleSortPreference } from "../utils/sort-values";
+export type { SortDirection, SortPreference } from "../utils/sort-values";
+
+// Exchange schedules are published as wall-clock times in a named zone.
+export { zonedDateTimeParts, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
+
+// A list pane with a search field hands the arrow keys between the two.
+export { isPlainArrowUp, stopSearchFocusNavigation } from "../utils/search-focus-navigation";

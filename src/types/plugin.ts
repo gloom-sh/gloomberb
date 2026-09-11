@@ -687,6 +687,18 @@ export interface GloomPlugin {
   cliCommands?: CliCommandDef[];
   /** Defaults to every target when omitted. */
   targets?: readonly PluginTarget[];
+  /**
+   * Third-party hosts the plugin fetches from, as bare domains
+   * (`"api.example.com"`; a parent domain also covers its subdomains).
+   *
+   * Terminal and desktop reach anything, so this is informational there and
+   * is what the plugin directory shows under "Network access". On the web the
+   * browser cannot call a host that sends no CORS headers, so the hosted app
+   * proxies exactly the hosts the bundled plugins declare here and refuses
+   * the rest. A plugin that leaves a host out works on the desktop and fails
+   * on the web.
+   */
+  hosts?: readonly string[];
   /** Shown in the marketplace pane and on the website. */
   homepage?: string;
 

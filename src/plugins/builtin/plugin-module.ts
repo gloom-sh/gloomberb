@@ -26,6 +26,7 @@ const HANDLED_MODULE_KEYS = [
   "broker",
   "capabilities",
   "slots",
+  "hosts",
 ] as const satisfies readonly (keyof PluginModule)[];
 
 type MissingModuleKey = Exclude<keyof PluginModule, typeof HANDLED_MODULE_KEYS[number]>;
@@ -76,6 +77,8 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
   const capabilities = modules.flatMap((module) => module.capabilities ?? []);
   const brokers = modules.flatMap((module) => module.broker ? [module.broker] : []);
   const slots = composeSlots(modules);
+  // The plugin reaches every host any of its modules reaches.
+  const hosts = [...new Set(modules.flatMap((module) => module.hosts ?? []))];
   let startedModules: PluginModule[] = [];
 
   return {
@@ -85,6 +88,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
     ...(paneTemplates.length > 0 ? { paneTemplates } : {}),
     ...(capabilities.length > 0 ? { capabilities } : {}),
     ...(slots ? { slots } : {}),
+    ...(hosts.length > 0 ? { hosts } : {}),
 
     async setup(ctx: GloomPluginContext) {
       startedModules = [];

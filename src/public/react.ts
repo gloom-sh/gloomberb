@@ -62,3 +62,17 @@ export {
 
 // Keyboard handling for plugin panes; the renderer decides how events arrive.
 export { useShortcut } from "../react/input";
+
+// Loading one thing asynchronously into a pane: data, loading, error, reload.
+// Every data pane needs this, and a plugin that hand-rolls it drifts from the
+// host's cancellation and stale-response handling.
+export { useAsyncResource } from "../react/async-resource";
+
+// Periodic refresh tied to app activity, and the "updated 2m ago" label that
+// goes with it, so plugin panes refresh on the same cadence as built-ins and
+// stop while the app is in the background.
+export { useAutoRefresh, useUpdatedAgo } from "../plugins/builtin/shared/auto-refresh";
+
+// The class behind `useConnectionHealth()`. A value export so a plugin test
+// can construct one to exercise its own connection-status registration.
+export { ConnectionHealthRegistry } from "../core/connection-health";
