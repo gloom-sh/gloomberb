@@ -166,3 +166,50 @@ test("annual balance sheets show the latest dated snapshot with comparable year-
   financials.quarterlyStatements = [{ date: "2025-12-31", currency: "USD", totalAssets: 200 }];
   expect(buildFinancialTableModel(financials, { period: "annual", statement: "balance" })?.statements.map(({ date }) => date)).toEqual(["2025-12-31"]);
 });
+
+test("an EPS-only quarter cannot replace the latest available balance sheet", () => {
+  // Reduced from the public BAC capture: June coverage has EPS but no balance sheet.
+  const financials: TickerFinancials = {
+    annualStatements: [{ date: "2025-12-31", currency: "USD", totalAssets: 3_411_738_000_000 }],
+    quarterlyStatements: [
+      { date: "2025-03-31", currency: "USD", totalAssets: 3_349_424_000_000 },
+      { date: "2026-03-31", currency: "USD", totalAssets: 3_496_186_000_000 },
+      { date: "2026-06-30", currency: "USD", eps: 1.21 },
+    ],
+    priceHistory: [],
+  };
+  const source = structuredClone(financials);
+  const balance = buildFinancialTableModel(financials, { period: "annual", statement: "balance" })!;
+  expect(balance.statements.map(({ date }) => date)).toEqual(["2026-03-31", "2025-12-31"]);
+  const assets = balance.rows.find(({ summaryKey }) => summaryKey === "totalAssets")!.cells[0]!;
+  expect(assets.value).toBe(3_496_186_000_000);
+  expect(assets.growth).toBeCloseTo(3_496_186_000_000 / 3_349_424_000_000 - 1);
+  const income = buildFinancialTableModel(financials, { period: "quarterly", statement: "income", expandAll: true })!;
+  expect(income.statements[0]!.date).toBe("2026-06-30");
+  expect(income.rows.find(({ key }) => key === "eps")!.cells[0]!.value).toBe(1.21);
+  expect(financials).toEqual(source);
+
+  // Missing/non-finite fields are not balance coverage, but a reported zero is.
+  financials.quarterlyStatements.at(-1)!.totalAssets = NaN;
+  expect(buildFinancialTableModel(financials, { period: "annual", statement: "balance" })!.statements[0]!.date).toBe("2026-03-31");
+  financials.quarterlyStatements.at(-1)!.totalDebt = 0;
+  const zero = buildFinancialTableModel(financials, { period: "annual", statement: "balance", expandAll: true })!;
+  expect(zero.statements[0]!.date).toBe("2026-06-30");
+  expect(zero.rows.find(({ key }) => key === "totalDebt")!.cells[0]!.value).toBe(0);
+});
+
+test("liabilities plus equity requires its own components and cannot copy total assets", () => {
+  const table = buildFinancialTableModel({
+    annualStatements: [
+      { date: "2022-12-31", totalAssets: 100, totalLiabilities: 60, totalEquityGrossMinorityInterest: 35 },
+      { date: "2023-12-31", totalAssets: 110, totalLiabilities: 70, totalEquity: 40 },
+      { date: "2024-12-31", totalAssets: 120, totalLiabilities: 80, totalEquityGrossMinorityInterest: 0 },
+      { date: "2025-12-31", totalAssets: 130 },
+    ],
+    quarterlyStatements: [],
+  }, { period: "annual", statement: "balance" })!;
+  const total = table.rows.find(({ id }) => id === "balance:liabilities-equity:0")!;
+  expect(total.cells.map(({ value }) => value)).toEqual([undefined, 80, undefined, 95]);
+  expect(total.cells[0]!.valueText.trim()).toBe("—");
+  expect(table.rows.find(({ summaryKey }) => summaryKey === "totalAssets")!.cells.map(({ value }) => value)).toEqual([130, 120, 110, 100]);
+});
