@@ -664,6 +664,26 @@ export function rebindChartSecuritySymbol(spec: ChartSpec, previous: string, nex
   return changed ? { ...spec, series } : spec;
 }
 
+/** Follow the research listing, including its venue, while keeping comparisons. */
+export function rebindResearchChartSpec(spec: ChartSpec, previous: string | null, next: string | null): ChartSpec {
+  const nextInstrument = next ? normalizeInstrument(next, true) : null;
+  if (!nextInstrument) return spec;
+  const previousInstrument = previous ? normalizeInstrument(previous, true) : null;
+  const previousKey = previousInstrument && publicTickerKey(previousInstrument.symbol, previousInstrument.exchange);
+  const nextKey = publicTickerKey(nextInstrument.symbol, nextInstrument.exchange);
+  const securityKeys = spec.series.flatMap((entry) => entry.source.kind === "security"
+    ? [publicTickerKey(entry.source.instrument.symbol, entry.source.instrument.exchange)]
+    : []);
+  if (previousKey && securityKeys.includes(previousKey)) {
+    return rebindChartSecuritySymbol(spec, previousKey, nextKey);
+  }
+  // A restored chart can already contain the target after its old context was
+  // lost. Do not replace an unrelated first comparison in that case.
+  if (securityKeys.includes(nextKey)) return spec;
+  const primary = securityKeys[0];
+  return primary ? rebindChartSecuritySymbol(spec, primary, nextKey) : spec;
+}
+
 export function buildIntradayPriceChartPreset(symbol: string): ChartSpec {
   const normalized = normalizeInstrument(symbol, true);
   if (!normalized) return buildEmptyChartPreset();

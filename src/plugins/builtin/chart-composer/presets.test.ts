@@ -22,6 +22,7 @@ import {
   parseChartExpression,
   parseSeriesExpression,
   rebindChartSecuritySymbol,
+  rebindResearchChartSpec,
   resolveChartFieldAlias,
   setBuiltinStudies,
   setPairStudies,
@@ -415,6 +416,40 @@ describe("chart composer presets and formulas", () => {
       source: { instrument: { symbol: "NVDA" } },
     });
     expect(rebound.series[1]).toEqual(customized.series[1]);
+  });
+
+  test("research follows the exact listing while preserving other venues and authored chart state", () => {
+    for (const [previous, next, exchange] of [["ASML:XAMS", "ASML:NASDAQ", "NASDAQ"], ["ASML:XNAS", "ASML:AMS", "AMS"]]) {
+      const comparison = buildComparisonChartPreset([previous!, next!, "SPY:ARCX"]);
+      const customized = setBuiltinStudies({ ...comparison,
+        viewport: { range: "3M", resolution: "1h" },
+        series: comparison.series.map((entry, index) => ({ ...entry, label: index === 0 ? "My primary listing" : entry.label })),
+      }, ["sma20"]);
+      const rebound = rebindResearchChartSpec(customized, previous!, next!);
+      expect(rebound.series[0]).toMatchObject({ id: customized.series[0]!.id, label: "My primary listing", transform: "percent",
+        source: { instrument: { symbol: "ASML", exchange } } });
+      expect(rebound.series.slice(1)).toEqual(customized.series.slice(1));
+      expect(rebound.viewport).toEqual(customized.viewport);
+      expect(rebound.panels).toEqual(customized.panels);
+      expect(rebound.studies).toEqual(customized.studies);
+    }
+  });
+
+  test("research repairs a persisted qualified primary once and keeps equivalent aliases unchanged", () => {
+    const stored = buildPriceChartPreset("ASML:XAMS");
+    const restored = rebindResearchChartSpec(stored, "ASML:XNAS", "ASML:XNAS");
+    expect(restored.series[0]?.source).toMatchObject({ instrument: { symbol: "ASML", exchange: "NASDAQ" } });
+    expect(rebindResearchChartSpec(restored, "ASML:XNAS", "ASML:NASDAQ")).toBe(restored);
+    expect(rebindResearchChartSpec(stored, "ASML:XAMS", "ASML:AMS")).toBe(stored);
+    const labelled = { ...stored, series: stored.series.map((entry) => ({ ...entry, label: "ASML:XAMS" })) };
+    expect(rebindResearchChartSpec(labelled, "ASML:AMS", "ASML:XNAS").series[0]?.label).toBe("ASML:XNAS");
+  });
+
+  test("a restored target or economic-only chart does not replace unrelated comparisons", () => {
+    const comparison = buildComparisonChartPreset(["SPY:ARCX", "ASML:XNAS"]);
+    expect(rebindResearchChartSpec(comparison, "ASML:XAMS", "ASML:NASDAQ")).toBe(comparison);
+    const economic = buildCustomChartPreset("FRED:CPIAUCSL");
+    expect(rebindResearchChartSpec(economic, "ASML:XAMS", "ASML:XNAS")).toBe(economic);
   });
 
   test("binds pair formulas to the first two visible series after reordering", () => {
