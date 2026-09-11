@@ -328,7 +328,6 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
                 period={brokerPerformance.performance?.period}
                 stale={brokerPerformance.performance?.stale}
                 note={historyNote}
-                manual={!activePortfolio?.brokerInstanceId}
                 formatAxisValue={formatHistoryAxis}
               />
 

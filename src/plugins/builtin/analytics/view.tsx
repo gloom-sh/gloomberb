@@ -61,7 +61,6 @@ export function PortfolioHistorySection({
   period,
   stale,
   note,
-  manual,
   formatAxisValue,
 }: {
   show: boolean;
@@ -75,7 +74,6 @@ export function PortfolioHistorySection({
   period: string | undefined;
   stale: boolean | undefined;
   note: string | null;
-  manual: boolean;
   formatAxisValue: (value: number) => string;
 }) {
   if (show) {
@@ -128,11 +126,7 @@ export function PortfolioHistorySection({
     );
   }
 
-  return manual ? (
-    <Box paddingX={1} flexDirection="column" flexShrink={0}>
-      <Notice tone="muted">Account history unavailable for manual portfolios.</Notice>
-    </Box>
-  ) : null;
+  return null;
 }
 
 export function SectorAllocationTable({
