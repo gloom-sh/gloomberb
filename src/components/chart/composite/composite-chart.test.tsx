@@ -435,6 +435,33 @@ describe("CompositeChart", () => {
     expect(accessoryStart - lastLegendEnd).toBeGreaterThan(1);
   });
 
+  test("leaving a historical chart restores its window's legend value instead of the navigation buffer", async () => {
+    let setCursor: (date: Date | null) => void = () => {};
+    const margin: ResolvedSeries = {
+      ...series("margin", "main", "left", "%", []), label: "MSFT Operating Margin",
+      style: "line", interpolation: "none",
+      points: [point("2024-06-30", 44.64), point("2025-06-30", 45.62), point("2026-06-30", 46.78)],
+    };
+    function HistoricalChart() {
+      const [cursor, updateCursor] = useState<Date | null>(null);
+      setCursor = updateCursor;
+      return <CompositeChart width={100} height={12} panels={[{ id: "main" }]} series={[margin]} clipToViewport
+        viewport={{ start: new Date("2016-01-01"), end: new Date("2025-12-31T23:59:59.999Z") }} cursorDate={cursor} />;
+    }
+    testSetup = await testRender(<HistoricalChart />, { width: 102, height: 14 });
+    await act(async () => { await testSetup!.renderOnce(); await testSetup!.renderOnce(); });
+    const legend = () => testSetup!.captureCharFrame().split("\n")[0]!;
+    expect(legend()).toContain("45.6%");
+    expect(legend()).not.toContain("46.8%");
+    await act(async () => { setCursor(new Date("2024-06-30")); });
+    await act(async () => { await testSetup!.renderOnce(); });
+    expect(legend()).toContain("44.6%");
+    await act(async () => { setCursor(null); });
+    await act(async () => { await testSetup!.renderOnce(); });
+    expect(legend()).toContain("45.6%");
+    expect(legend()).not.toContain("46.8%");
+  });
+
   test("retains financial values and negative signs when long legend names need truncation", async () => {
     testSetup = await testRender(
       <CompositeChart width={100} height={12} panels={[{ id: "main" }]} series={[

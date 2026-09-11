@@ -41,6 +41,63 @@ function series(overrides: Partial<ResolvedSeries> & Pick<ResolvedSeries, "id" |
 }
 
 describe("composite chart scene", () => {
+  test("default legend stays inside the viewport when the right buffer contains a newer observation", () => {
+    const margin = series({ id: "margin", unit: "%", unitGroup: "percent", points: [
+      point("2024-06-30", 44.64), point("2025-06-30", 45.62), point("2026-06-30", 46.78),
+    ] });
+    const options = { width: 100, height: 20, viewport: {
+      start: new Date("2016-01-01"), end: new Date("2025-12-31T23:59:59.999Z"),
+    } };
+    const scene = buildCompositeChartScene([margin], [{ id: "main" }], options)!;
+    // The navigation buffer remains available to draw and inspect explicitly.
+    expect(scene.panels[0]?.series[0]?.points.at(-1)?.value).toBe(46.78);
+    expect(scene.cursorValues[0]?.value).toBe(45.62);
+    const hovered = applyCompositeChartCursor(scene, new Date("2024-06-30"));
+    expect(hovered.cursorValues[0]?.value).toBe(44.64);
+    const cleared = applyCompositeChartCursor(hovered, null);
+    expect(cleared.cursorValues[0]?.value).toBe(45.62);
+    expect(cleared.panels).toBe(scene.panels);
+    const navigated = buildCompositeChartScene([margin], [{ id: "main" }], {
+      ...options, viewport: { start: new Date("2025-01-01"), end: new Date("2026-12-31") },
+    })!;
+    expect(navigated.cursorValues[0]?.value).toBe(46.78);
+    expect(margin.points).toHaveLength(3);
+  });
+
+  test("an empty default window cannot borrow a value from either side of its bounds", () => {
+    const options = { width: 100, height: 20, viewport: {
+      start: new Date("2016-01-01"), end: new Date("2025-12-31T23:59:59.999Z"),
+    } };
+    for (const date of ["2015-12-31", "2026-06-30"]) {
+      const scene = buildCompositeChartScene([series({ id: "outside", points: [point(date, 99)] })], [{ id: "main" }], options)!;
+      expect(scene.cursorValues.every((entry) => entry.value === null)).toBe(true);
+      const hovered = applyCompositeChartCursor(scene, new Date("2020-01-01"));
+      expect(applyCompositeChartCursor(hovered, null).cursorValues.every((entry) => entry.value === null)).toBe(true);
+    }
+  });
+
+  test("explicit research windows bound marks and hover while keeping source data available for navigation", () => {
+    const margin = series({ id: "margin", style: "columns", points: [
+      point("2025-06-30", 45.62), point("2026-06-30", 46.78),
+    ] });
+    const options = { width: 100, height: 20, clipToViewport: true, viewport: {
+      start: new Date("2016-01-01"), end: new Date("2025-12-31T23:59:59.999Z"),
+    } };
+    const scene = buildCompositeChartScene([margin], [{ id: "main" }], options)!;
+    expect(scene.panels[0]?.series[0]?.points.map((entry) => entry.value)).toEqual([45.62]);
+    expect(scene.dates.every((date) => date <= options.viewport.end)).toBe(true);
+    expect(applyCompositeChartCursor(scene, new Date("2026-06-30")).cursorValues[0]?.value).toBe(45.62);
+    const navigated = buildCompositeChartScene([margin], [{ id: "main" }], {
+      ...options, viewport: { start: new Date("2025-01-01"), end: new Date("2026-12-31") },
+    })!;
+    expect(navigated.panels[0]?.series[0]?.points.map((entry) => entry.value)).toEqual([45.62, 46.78]);
+    expect(margin.points).toHaveLength(2);
+    // Ordinary market charts retain their right offset and newest observation.
+    const ordinary = buildCompositeChartScene([margin], [{ id: "main" }], { width: 100, height: 20 })!;
+    expect(ordinary.panels[0]?.series[0]?.points.at(-1)?.value).toBe(46.78);
+    expect(ordinary.panels[0]?.series[0]?.points.at(-1)?.xRatio).toBeCloseTo(NEWEST_X_RATIO);
+  });
+
   test("keeps a panel and its height while its series has no observations in view", () => {
     const price = series({
       id: "price",

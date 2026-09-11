@@ -691,6 +691,7 @@ function ChartComposerSurface({
           timelineSeries={resolution.timelineSeries}
           panels={spec.panels}
           viewport={viewport}
+          clipToViewport={!!spec.viewport.dateWindow}
           viewportResetKey={authoredViewportKey}
           width={Math.max(1, width)}
           height={Math.max(4, height - 1 - vintageNoticeHeight - comparisonNoticeHeight)}
