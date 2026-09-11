@@ -442,6 +442,54 @@ test("clicking the option table focuses expiration tabs for arrow navigation", a
   expect(requestedExpirations).toContain(expirationDates[1]);
 });
 
+test("starts at a held contract's expiry and preserves a researcher-selected roll expiry", async () => {
+  const expirationDates = [Date.UTC(2026, 8, 18), Date.UTC(2026, 9, 16), Date.UTC(2026, 10, 20)]
+    .map((ms) => ms / 1000);
+  const requestedExpirations: Array<number | undefined> = [];
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => makeFinancials(326.72),
+    getOptionsChain: async (_ticker, _exchange, expirationDate) => {
+      requestedExpirations.push(expirationDate);
+      const expiry = expirationDate ?? expirationDates[0]!;
+      const chain = makeChain([330 + expirationDates.indexOf(expiry) * 10], 340, expirationDates);
+      for (const contract of [...chain.calls, ...chain.puts]) contract.expiration = expiry;
+      return chain;
+    },
+  });
+  const coordinator = new MarketDataCoordinator(provider);
+  setSharedMarketDataCoordinator(coordinator);
+  const ticker = makeTicker("AAPL 261016C00340000");
+  ticker.metadata.assetCategory = "OPT";
+  ticker.metadata.positions = [
+    { portfolio: "fixture", shares: 2, side: "short", avgCost: 5.52, broker: "manual", multiplier: 100 },
+    { portfolio: "fixture", shares: -1, avgCost: 5.52, broker: "manual", multiplier: 100 },
+    { portfolio: "fixture", shares: 1, side: "long", avgCost: 5.52, broker: "manual", multiplier: 100 },
+  ];
+  await act(async () => {
+    testSetup = await testRender(<OptionsHarness ticker={ticker} />, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  expect(requestedExpirations.at(-1)).toBe(expirationDates[1]);
+  expect(testSetup!.captureCharFrame()).toContain("Position: -2 call contracts (SHORT)");
+
+  await act(async () => { testSetup!.mockInput.pressEnter(); });
+  await renderSettled();
+  await act(async () => { testSetup!.mockInput.pressArrow("right"); });
+  await renderSettled();
+  expect(requestedExpirations.at(-1)).toBe(expirationDates[2]);
+  expect(testSetup!.captureCharFrame()).toContain("350");
+
+  // A refreshed expiry catalogue must not undo the user's chosen roll date.
+  await act(async () => {
+    await coordinator.loadOptions({ instrument: { symbol: "AAPL", exchange: "" } }, { forceRefresh: true });
+  });
+  await renderSettled();
+  expect(testSetup!.captureCharFrame()).toContain("350");
+  await act(async () => { testSetup!.mockInput.pressArrow("left"); });
+  await renderSettled();
+  expect(testSetup!.captureCharFrame()).toContain("340");
+});
+
 test("keeps the selected chain visible when its refresh fails", async () => {
   let failRefresh = false;
   const provider = createTestDataProvider({

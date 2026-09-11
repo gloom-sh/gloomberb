@@ -3,12 +3,12 @@ import type { TickerRecord } from "../types/ticker";
 
 const MONTH_ABBREV = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** Format a unix timestamp (seconds) as "Mon DD 'YY" */
+/** Chain timestamps encode an expiry calendar date in UTC, not a local instant. */
 export function formatExpDate(ts: number): string {
   const d = new Date(ts * 1000);
-  const month = MONTH_ABBREV[d.getMonth()] || String(d.getMonth() + 1);
-  const yy = String(d.getFullYear()).slice(2);
-  return `${month} ${d.getDate()} '${yy}`;
+  const month = MONTH_ABBREV[d.getUTCMonth()] || String(d.getUTCMonth() + 1);
+  const yy = String(d.getUTCFullYear()).slice(2);
+  return `${month} ${d.getUTCDate()} '${yy}`;
 }
 
 /**

@@ -44,6 +44,7 @@ import {
 } from "./live-quotes";
 import { useOptionsAccessFooter } from "./footer";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
+import { signedPositionDirection } from "../portfolio-list/position-metrics";
 
 type SummaryMetric = { label: string; value: string };
 
@@ -102,12 +103,14 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   } | null>(null);
   const [interactive, setInteractive] = useState(false);
   const userSelectedStrikeRef = useRef(false);
+  const initializedExpiryTargetRef = useRef<string | null>(null);
   const onCaptureRef = useRef(onCapture);
   const target = resolveOptionsTarget(ticker);
   const isOpt = target?.isOptionTicker ?? false;
   const parsed = target?.parsedOption ?? null;
   const effectiveTicker = target?.effectiveTicker ?? "";
   const effectiveExchange = target?.effectiveExchange ?? "";
+  const selectionTargetKey = `${ticker?.metadata.ticker ?? ""}|${target?.cacheKey ?? ""}`;
   const underlyingQuoteTarget = isOpt
     ? effectiveTicker ? { symbol: effectiveTicker, exchange: effectiveExchange, route: "provider" as const } : null
     : quoteSubscriptionTargetFromTicker(ticker, effectiveTicker, "provider");
@@ -155,6 +158,13 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     ?? (selectedExpiration == null || initialChainExpiration === selectedExpiration ? initialChain : null);
   const strikesLoading = strikeChain === null;
   const expirationCount = chain?.expirationDates.length ?? 0;
+  // Keep the date strip stable while a mouse press focuses this pane. A new
+  // tab list asks the web host to reveal the active tab and can move the date
+  // being clicked before mouse-up, cancelling selection of an offscreen expiry.
+  const expirationTabs = useMemo(() => (chain?.expirationDates ?? []).map((ts, i) => ({
+    label: formatExpDate(ts),
+    value: String(i),
+  })), [chain?.expirationDates]);
   const loading = (initialChainEntry?.phase === "loading" || initialChainEntry?.phase === "refreshing") && !chain
     || (expirationChainEntry?.phase === "loading" || expirationChainEntry?.phase === "refreshing");
   // Refresh failures keep a ready entry with last-good data and an error.
@@ -194,16 +204,19 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     setExpIdx(0);
     setStrikeIdx(0);
     setCalcSide(null);
-  }, [effectiveTicker]);
+  }, [selectionTargetKey]);
 
   useEffect(() => {
-    if (!parsed || !initialChain || initialChain.expirationDates.length === 0) return;
+    if (initializedExpiryTargetRef.current === selectionTargetKey) return;
+    if (!initialChain || initialChain.expirationDates.length === 0) return;
+    initializedExpiryTargetRef.current = selectionTargetKey;
+    if (!parsed) return;
+    // The holding chooses the initial expiry only. Reapplying it after every
+    // selection or catalogue refresh prevents researching another expiry.
     const bestExpIdx = initialChain.expirationDates.reduce((best, ts, i) =>
       Math.abs(ts - parsed.expTs) < Math.abs(initialChain.expirationDates[best]! - parsed.expTs) ? i : best, 0);
-    if (bestExpIdx !== expIdx) {
-      setExpIdx(bestExpIdx);
-    }
-  }, [expIdx, initialChain, parsed]);
+    setExpIdx(bestExpIdx);
+  }, [initialChain, parsed, selectionTargetKey]);
 
   useEffect(() => {
     userSelectedStrikeRef.current = false;
@@ -451,8 +464,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     return <EmptyState title={`No options available for ${effectiveTicker}.`} />;
   }
 
-  const posShares = isOpt && parsed
-    ? ticker.metadata.positions.reduce((sum, p) => sum + p.shares, 0)
+  const positionContracts = isOpt && parsed
+    ? ticker.metadata.positions.reduce((sum, p) => sum + Math.abs(p.shares) * signedPositionDirection(p), 0)
     : 0;
   const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
   const summaryRowCount = height >= 10 ? 2 : height >= 7 ? 1 : 0;
@@ -471,10 +484,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
         <Text fg={colors.textDim}>Exp:</Text>
         <Box width={expirationTabsWidth} height={1} overflow="hidden">
           <Tabs
-            tabs={chain.expirationDates.map((ts, i) => ({
-              label: formatExpDate(ts),
-              value: String(i),
-            }))}
+            tabs={expirationTabs}
             activeValue={String(expIdx)}
             onSelect={(value) => {
               enterInteractive();
@@ -494,7 +504,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       {isOpt && parsed && (
         <Box height={1}>
           <Text fg={colors.textBright}>
-            {`Position: ${posShares} ${parsed.side === "C" ? "call" : "put"} contract${posShares !== 1 ? "s" : ""} @ $${parsed.strike}`}
+            {`Position: ${positionContracts} ${parsed.side === "C" ? "call" : "put"} contract${Math.abs(positionContracts) !== 1 ? "s" : ""}${positionContracts < 0 ? " (SHORT)" : ""} @ $${parsed.strike}`}
           </Text>
         </Box>
       )}
