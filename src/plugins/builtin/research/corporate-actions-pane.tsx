@@ -447,7 +447,8 @@ export function CorporateActionsView({
         primaryContentLoading,
       })
     : "";
-  const detailTextWidth = Math.max(width - 2, 12);
+  // Leave room for both horizontal padding cells and the vertical scrollbar.
+  const detailTextWidth = Math.max(width - 3, 12);
   const detailLines = openRow?.status === "Q Est" || openRow?.status === "FY Est"
     ? detailBody.split(/\r?\n/).flatMap((line) => line ? wrapTextLines(line, detailTextWidth) : [""])
     : wrapTextLines(detailBody, detailTextWidth);
