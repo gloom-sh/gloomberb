@@ -31,6 +31,7 @@ export async function executeCollectionCommandAction(options: {
   commandId: CollectionCommandId;
   rawInput?: string;
   explicitTargetId?: string | null;
+  selectedTicker?: TickerRecord;
   activeTickerSymbol: string | null;
   activeCollectionId: string | null;
   getState: () => AppState;
@@ -45,12 +46,14 @@ export async function executeCollectionCommandAction(options: {
   const kind = getCollectionCommandKind(options.commandId);
   const action = getCollectionCommandAction(options.commandId);
   const deps = options.buildWorkflowDeps();
-  const resolvedTicker = await resolveTickerInput(
-    options.rawInput,
-    options.activeTickerSymbol,
-    options.activeCollectionId,
-    deps,
-  );
+  const resolvedTicker = options.selectedTicker
+    ? { symbol: options.selectedTicker.metadata.ticker, ticker: options.selectedTicker }
+    : await resolveTickerInput(
+      options.rawInput,
+      options.activeTickerSymbol,
+      options.activeCollectionId,
+      deps,
+    );
 
   if (!resolvedTicker) {
     options.openModeRoute("ticker-search", options.rawInput?.trim() || "", {

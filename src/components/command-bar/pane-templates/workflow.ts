@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import type { AppState } from "../../../state/app/context";
+import type { TickerRecord } from "../../../types/ticker";
 import type {
   PaneTemplateCreateOptions,
   PaneTemplateDef,
@@ -43,6 +44,7 @@ type ExecuteCollectionCommandFn = (
   commandId: CollectionCommandId,
   rawInput?: string,
   explicitTargetId?: string | null,
+  selectedTicker?: TickerRecord,
 ) => void | Promise<void>;
 
 interface UseCommandBarPaneTemplateActionsOptions {
@@ -184,13 +186,24 @@ export function useCommandBarPaneTemplateActions({
     routePayload: Record<string, unknown> | undefined,
   ): ResultItem => {
     const routeAction = String(routePayload?.action ?? "");
+    if (!item.resolveTicker) return item;
     if (routeAction === "pane-template") {
       const templateId = String(routePayload?.templateId ?? "");
       const template = pluginRegistry.paneTemplates.get(templateId);
       if (!template) return item;
       return {
         ...item,
-        action: () => { void runPaneTemplateShortcut(template, item.label); },
+        secondaryAction: undefined,
+        action: async () => {
+          try {
+            const ticker = await item.resolveTicker!();
+            await openPaneTemplateDirect(template, {
+              arg: ticker.metadata.ticker, symbol: ticker.metadata.ticker, ticker,
+            });
+          } catch (error) {
+            notify(error instanceof Error ? error.message : "Could not open the selected listing.", { type: "error" });
+          }
+        },
       };
     }
     if (routeAction === "collection-command") {
@@ -198,11 +211,19 @@ export function useCommandBarPaneTemplateActions({
       if (!isCollectionCommand(commandId)) return item;
       return {
         ...item,
-        action: () => { void executeCollectionCommand(commandId, item.label); },
+        secondaryAction: undefined,
+        action: async () => {
+          try {
+            const ticker = await item.resolveTicker!();
+            await executeCollectionCommand(commandId, ticker.metadata.ticker, undefined, ticker);
+          } catch (error) {
+            notify(error instanceof Error ? error.message : "Could not open the selected listing.", { type: "error" });
+          }
+        },
       };
     }
     return item;
-  }, [executeCollectionCommand, pluginRegistry.paneTemplates, runPaneTemplateShortcut]);
+  }, [executeCollectionCommand, notify, openPaneTemplateDirect, pluginRegistry.paneTemplates]);
 
   const getAvailablePaneTemplates = useCallback((
     options?: PaneTemplateCreateOptions,

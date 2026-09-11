@@ -146,8 +146,11 @@ function matchesQualifiedTicker(
   return exchanges.some((exchange) => getYahooSymbol(candidate.symbol, exchange).toUpperCase() === normalized);
 }
 
-function getTickerSearchListingKey(item: TickerSearchRankableItem): string {
-  return `${normalizeTickerSymbol(item.symbol || item.label)}|${canonicalExchange(item.exchangeLabel || item.primaryExchangeLabel || item.right)}`;
+function getTickerSearchListingKey(item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>): string {
+  const parsed = parsePublicTickerKey(normalizeTickerSymbol(item.symbol || item.label));
+  const exchange = parsed.exchange || (item.exchangeLabel === "SMART" ? item.primaryExchangeLabel
+    : item.exchangeLabel || item.primaryExchangeLabel || item.right);
+  return `${parsed.symbol}|${canonicalExchange(exchange)}`;
 }
 
 export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "id" | "label" | "detail" | "kind" | "category" | "right"> & Partial<TickerSearchRankableItem>>(
@@ -209,19 +212,18 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
       };
     });
 
-  const matchedLocalSymbols = new Set(
+  // A saved symbol replaces its own source listing, not every exchange using it.
+  const matchedLocalListings = new Set(
     ranked
       .filter(({ item, textScore }) => textScore > 0 && item.kind === "ticker")
-      .map(({ item, normalizedSymbol }) => isQualifiedTickerQuery(query) || isCryptoInstrumentType(item.instrumentType)
-        ? getTickerSearchListingKey(item) : normalizedSymbol),
+      .map(({ item }) => getTickerSearchListingKey(item)),
   );
 
-  const filtered = ranked.filter(({ item, normalizedSymbol, textScore }) => {
+  const filtered = ranked.filter(({ item, textScore }) => {
     if (textScore <= 0) return false;
     if (isExplicitMarketSymbol(query) && !isExplicitMarketSymbol(item.symbol || item.label)) return false;
     if (item.kind !== "search") return true;
-    return !matchedLocalSymbols.has(isQualifiedTickerQuery(query) || isCryptoInstrumentType(item.instrumentType)
-      ? getTickerSearchListingKey(item) : normalizedSymbol);
+    return !matchedLocalListings.has(getTickerSearchListingKey(item));
   });
 
   type RankedEntry = (typeof ranked)[number];
@@ -596,6 +598,5 @@ function scoreSearchField(query: string, value: string, weights: { exact: number
 
 function getTickerSearchDedupKey(item: Pick<TickerSearchRankableItem, "id" | "kind" | "label" | "detail" | "right"> & Partial<TickerSearchRankableItem>): string {
   if (item.kind !== "ticker" && item.kind !== "search") return item.id;
-  const qualifier = normalizeSearchText(item.right || item.detail.split("|").at(-1) || "");
-  return `${normalizeSearchText(item.symbol || item.label)}|${qualifier}`;
+  return getTickerSearchListingKey(item);
 }
