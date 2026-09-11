@@ -191,7 +191,7 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   );
 
   const beta = useMemo(
-    () => (portfolioReturnSeries && spyReturnSeries ? computeDatedBeta(portfolioReturnSeries, spyReturnSeries) : null),
+    () => (portfolioReturnSeries ? computeDatedBeta(portfolioReturnSeries, spyReturnSeries.returns) : null),
     [portfolioReturnSeries, spyReturnSeries],
   );
 
@@ -243,8 +243,10 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
       missingCount: returnSeriesResult.missingCount,
       unvaluedCount: returnSeriesResult.unvaluedCount,
       unsupportedReason: returnSeriesResult.unsupportedReason,
+      historyIntegrity: returnSeriesResult.historyIntegrity,
+      benchmarkIntegrity: spyReturnSeries.integrity,
     }),
-    [beta, returnSeriesResult.coverage, returnSeriesResult.missingCount, returnSeriesResult.unvaluedCount, returnSeriesResult.unsupportedReason, sharpe],
+    [beta, returnSeriesResult, spyReturnSeries.integrity, sharpe],
   );
   const metricsHeight = summaryRows.length + riskRows.length + 5;
   const historyNote = performanceHistoryNote(brokerPerformance.performance);

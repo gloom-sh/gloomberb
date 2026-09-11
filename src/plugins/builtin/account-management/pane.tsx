@@ -475,7 +475,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     [portfolioReturnSeries],
   );
   const beta = useMemo(
-    () => (portfolioReturnSeries && spyReturnSeries ? computeDatedBeta(portfolioReturnSeries, spyReturnSeries) : null),
+    () => (portfolioReturnSeries ? computeDatedBeta(portfolioReturnSeries, spyReturnSeries.returns) : null),
     [portfolioReturnSeries, spyReturnSeries],
   );
   const localAnalyticsPreview = useMemo(
