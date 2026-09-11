@@ -2,6 +2,22 @@
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
 export type { StaticChartOverlay } from "./chart/static/chart-surface";
+// The time-series chart: one or more panels of resolved series with axes,
+// a cursor, and range selection. Ticker overview, polls, econ statistics,
+// and prediction markets all draw with it.
+export { CompositeChart, pricePointsToResolvedSeries } from "./chart/composite";
+export type {
+  CompositeAxisDomain,
+  CompositeAxisSide,
+  CompositeChartColors,
+  CompositeChartProps,
+  CompositeChartScene,
+  CompositeCursorValue,
+  CompositePanelScene,
+  CompositeProjectedPoint,
+  CompositeProjectedSeries,
+  PricePointsToResolvedSeriesOptions,
+} from "./chart/composite";
 // A static chart's callers project their own points and pick a palette; these
 // are the same helpers the host's gauges and sparklines use to do that.
 export type { ProjectedChartPoint } from "./chart/core/data";

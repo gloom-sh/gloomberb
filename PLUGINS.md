@@ -866,7 +866,7 @@ Choose the existing control that owns the interaction you need:
 |------|------------|
 | Sortable/selectable rows | `DataTableView`, `TickerListTableView` |
 | Table with a detail stack | `DataTableStackView`, `FeedDataTableStackView` |
-| Charts | `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
+| Charts | `CompositeChart` (time series), `StaticChartSurface`, `MetricTreemapSurface`, `SpeedometerGauge` |
 | Navigation and choices | `Tabs`, `SegmentedControl`, `SelectButton`, `Checkbox` |
 | Actions and inputs | `Button`, `TextField`, `NumberField`, `InputSearchBar` |
 | Clickable/expandable summaries | `ActionRow` |
