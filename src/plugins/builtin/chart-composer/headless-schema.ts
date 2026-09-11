@@ -134,7 +134,7 @@ export const paneSchemas = {
     discovery: {
       id: "price-comparison",
       aliases: ["stock comparison", "price performance comparison", "returns comparison", "compare stock prices"],
-      limitations: ["Compares market prices or percentage returns, never company financial statements."],
+      limitations: ["Compares closing-price changes in each listing's currency over shared observation dates. Cash distributions and FX conversion are excluded; these are not reinvested total returns."],
       screenshotReadiness: "ready",
     },
   },

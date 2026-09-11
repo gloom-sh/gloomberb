@@ -291,7 +291,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     id: "comparison-chart-pane",
     prefix: "CMP",
     label: "Comparison Chart",
-    description: "Compare percentage performance for two or more tickers.",
+    description: "Compare price returns over shared observation dates for two or more tickers.",
     argKind: "ticker-list",
     minimumSymbols: 2,
     build: buildComparisonChartPreset,

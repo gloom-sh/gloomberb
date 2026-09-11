@@ -168,6 +168,8 @@ export interface TimeSeriesFieldDefinition {
 
 export interface ChartResolutionResult {
   series: ResolvedSeries[];
+  /** Method and exact shared source dates for normalized closing-price comparisons. */
+  priceComparison?: import("./price-comparison").PriceComparison;
   /** Provider capabilities shared by every active market series. */
   resolutionSupport?: ChartResolutionSupport[];
   /** Series available to the legend, including hidden base series that can be restored. */
