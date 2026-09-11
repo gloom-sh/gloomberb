@@ -1,3 +1,4 @@
+import { comparablePriceEarnings } from "../../../utils/price-earnings";
 import type { TickerFinancials } from "../../../types/financials";
 
 export function relativeValuationValues(financials: TickerFinancials | null) {
@@ -5,13 +6,18 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
   const fundamentals = financials?.fundamentals;
   const compatibleCurrency = !!fundamentals?.financialCurrency && !!quote?.currency
     && fundamentals.financialCurrency === quote.currency;
+  const reportedMultiples = {
+    trailingPE: fundamentals?.trailingPE != null && Number.isFinite(fundamentals.trailingPE) ? fundamentals.trailingPE : null,
+    forwardPE: fundamentals?.forwardPE != null && Number.isFinite(fundamentals.forwardPE) ? fundamentals.forwardPE : null,
+  };
   return {
     price: quote?.price ?? null,
     currency: quote?.currency ?? null,
     changePercent: quote?.changePercent ?? null,
     marketCap: quote?.marketCap ?? null,
-    trailingPE: fundamentals?.trailingPE ?? null,
-    forwardPE: fundamentals?.forwardPE ?? null,
+    trailingPE: comparablePriceEarnings(reportedMultiples.trailingPE),
+    forwardPE: comparablePriceEarnings(reportedMultiples.forwardPE),
+    reportedMultiples,
     // Vendor ADR ratios can mix unverified valuation and reporting units too.
     evSales: !compatibleCurrency ? null
       : fundamentals?.enterpriseToRevenue != null && Number.isFinite(fundamentals.enterpriseToRevenue)

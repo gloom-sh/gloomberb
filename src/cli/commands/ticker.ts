@@ -1,3 +1,4 @@
+import { formatPriceEarnings } from "../../utils/price-earnings";
 import {
   formatCompact,
   formatCurrency,
@@ -276,8 +277,8 @@ export async function buildTickerReport({
   appendMetricSection(lines, "Fundamentals", [
     ["Market Cap", marketCapText],
     ["Enterprise Value", formatNullableCompact(fundamentals?.enterpriseValue)],
-    ["P/E (TTM)", fundamentals?.trailingPE != null ? formatNumber(fundamentals.trailingPE, 2) : "—"],
-    ["Forward P/E", fundamentals?.forwardPE != null ? formatNumber(fundamentals.forwardPE, 2) : "—"],
+    ["P/E (TTM)", formatPriceEarnings(fundamentals?.trailingPE, 2)],
+    ["Forward P/E", formatPriceEarnings(fundamentals?.forwardPE, 2)],
     ["PEG", fundamentals?.pegRatio != null ? formatNumber(fundamentals.pegRatio, 2) : "—"],
     ["EPS", fundamentals?.eps != null ? formatCurrency(fundamentals.eps, quote.currency) : "—"],
     [`Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`, fundamentals?.dividendYield != null ? formatPercent(fundamentals.dividendYield) : "—"],

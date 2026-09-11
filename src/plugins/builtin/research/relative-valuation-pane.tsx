@@ -1,7 +1,9 @@
+import { formatPriceEarnings, PRICE_EARNINGS_NOTICE } from "../../../utils/price-earnings";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TextAttributes } from "../../../ui";
+import { Box, TextAttributes } from "../../../ui";
 import {
   DataTableView,
+  Prose,
   usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
@@ -19,7 +21,7 @@ import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { comparableMarketCap, relativeValuationValues } from "./relative-valuation-model";
 
-type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency">;
+type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency" | "reportedMultiples">;
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
 type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
@@ -150,6 +152,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const missingFx = rows.some((row, index) => row.marketCap != null && comparableRows[index]?.marketCap == null);
   const sortedRows = useMemo(() => sortRelativeRows(comparableRows, sortPreference), [comparableRows, sortPreference]);
 
+  const hasNonComparablePE = rows.some((row) => Object.values(row.reportedMultiples).some((value) => value != null && value <= 0));
+
   useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
 
   const renderCell = useCallback((row: RelativeRow, column: RelativeColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
@@ -164,9 +168,9 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined), color: selectedColor ?? colors.textDim };
       case "trailingPE":
-        return { text: formatNumber(row.trailingPE ?? undefined, 1), color: selectedColor ?? colors.text };
+        return { text: formatPriceEarnings(row.reportedMultiples.trailingPE), color: selectedColor ?? colors.text };
       case "forwardPE":
-        return { text: formatNumber(row.forwardPE ?? undefined, 1), color: selectedColor ?? colors.text };
+        return { text: formatPriceEarnings(row.reportedMultiples.forwardPE), color: selectedColor ?? colors.text };
       case "evSales":
         return { text: formatNumber(row.evSales ?? undefined, 1), color: selectedColor ?? colors.text };
       case "fcfYield":
@@ -206,6 +210,9 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       onRootKeyDown={handleKeyDown}
       rootWidth={width}
       rootHeight={height}
+      rootBefore={hasNonComparablePE ? <Box paddingX={1} flexShrink={0}>
+        <Prose text={PRICE_EARNINGS_NOTICE} width={Math.max(8, width - 2)} color={colors.textDim} />
+      </Box> : undefined}
       columns={columns}
       items={sortedRows}
       sortColumnId={sortPreference.columnId}

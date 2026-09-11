@@ -674,7 +674,7 @@ function providerCurrentValuationPoint(
     : metric === "pegRatio"
       ? financials.fundamentals?.pegRatio
       : undefined;
-  if (!finiteNumber(value)) return null;
+  if (!finiteNumber(value) || (metric === "forwardPE" && value <= 0)) return null;
   const quoteTime = financials.quote?.lastUpdated;
   const date = validDate(finiteNumber(quoteTime) && quoteTime > 0 ? quoteTime : null);
   if (!date) return null;

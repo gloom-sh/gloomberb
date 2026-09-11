@@ -1,3 +1,4 @@
+import { formatPriceEarnings } from "../../../utils/price-earnings";
 import { convertCurrency, formatCompact, formatCompactCurrency, formatCurrency, formatPercent } from "../../../utils/format";
 import { formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { TickerFinancials } from "../../../types/financials";
@@ -35,8 +36,8 @@ export function buildTickerAiContext(
   }
 
   if (fundamentals) {
-    if (fundamentals.trailingPE) lines.push(`P/E (TTM): ${fundamentals.trailingPE.toFixed(1)}`);
-    if (fundamentals.forwardPE) lines.push(`Forward P/E: ${fundamentals.forwardPE.toFixed(1)}`);
+    if (fundamentals.trailingPE != null) lines.push(`P/E (TTM): ${formatPriceEarnings(fundamentals.trailingPE)}${fundamentals.trailingPE <= 0 ? " (not meaningful; non-positive reported multiple)" : ""}`);
+    if (fundamentals.forwardPE != null) lines.push(`Forward P/E: ${formatPriceEarnings(fundamentals.forwardPE)}${fundamentals.forwardPE <= 0 ? " (not meaningful; non-positive reported multiple)" : ""}`);
     if (fundamentals.pegRatio) lines.push(`PEG: ${fundamentals.pegRatio.toFixed(2)}`);
     if (fundamentals.revenue) lines.push(`Revenue: ${formatCompact(fundamentals.revenue)}`);
     if (fundamentals.netIncome) lines.push(`Net Income: ${formatCompact(fundamentals.netIncome)}`);

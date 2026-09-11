@@ -1,3 +1,4 @@
+import { formatPriceEarnings } from "../../../../utils/price-earnings";
 import { priceColor } from "../../../../theme/colors";
 import type { Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
@@ -59,10 +60,10 @@ export function buildOverviewStats({
     stats.push({ label: "Shares Out", value: formatCompact(fundamentals.sharesOutstanding) });
   }
   if (fundamentals?.trailingPE != null) {
-    stats.push({ label: "P/E (TTM)", value: formatNumber(fundamentals.trailingPE, 1) });
+    stats.push({ label: "P/E (TTM)", value: formatPriceEarnings(fundamentals.trailingPE) });
   }
   if (fundamentals?.forwardPE != null) {
-    stats.push({ label: "Fwd P/E", value: formatNumber(fundamentals.forwardPE, 1) });
+    stats.push({ label: "Fwd P/E", value: formatPriceEarnings(fundamentals.forwardPE) });
   }
   if (fundamentals?.eps != null) {
     stats.push({ label: "EPS", value: financialCurrency ? formatCurrency(fundamentals.eps, financialCurrency) : formatNumber(fundamentals.eps, 2) });

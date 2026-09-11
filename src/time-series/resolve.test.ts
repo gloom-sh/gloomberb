@@ -2184,3 +2184,23 @@ test("financial charts disclose snapshot vintages once without changing period o
     expect(result.series[0]?.points[0]).toMatchObject({ value: 96_571_000_000, observedAt: new Date("2017-06-30T00:00:00Z"), availableAt: new Date("2018-08-03T00:00:00Z"), date: new Date(timestampMode === "period-end" ? "2017-06-30T00:00:00Z" : "2018-08-03T00:00:00Z") });
   }
 });
+
+test.each([-9, 0, 12])("forward P/E chart handles reported multiple %s without inventing comparable points", async (forwardPE) => {
+  const now = new Date("2026-06-01T16:00:00Z");
+  const financials = { ...emptyFinancials(), fundamentals: { forwardPE },
+    quote: { symbol: "TEST", price: 20, currency: "USD", change: 0, changePercent: 0, lastUpdated: now.getTime() } };
+  const provider = createTestDataProvider({ getTickerFinancials: async () => financials });
+  const spec = chartSpec({ viewport: { range: "1Y", resolution: "auto" }, series: [chartSeries({
+    source: { kind: "security", instrument: { symbol: "TEST" }, fieldId: "valuation.forwardPE" },
+  })] });
+  const result = await resolveChartSpecData(spec, { dataProvider: provider, now, loadFredSeries: async () => fredLoad() });
+  expect(result.errors).toEqual([]);
+  if (forwardPE > 0) {
+    expect(result.series[0]?.points.map((point) => point.value)).toEqual([12]);
+    expect(result.series[0]?.warning).toBeUndefined();
+  } else {
+    expect(result.series[0]?.points).toEqual([]);
+    expect(result.series[0]?.warning).toContain("not meaningful");
+  }
+  expect(financials.fundamentals.forwardPE).toBe(forwardPE);
+});
