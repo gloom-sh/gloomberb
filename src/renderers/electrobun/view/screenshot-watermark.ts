@@ -4,12 +4,18 @@ import { setScreenshotWatermarkVisible } from "../../../utils/screenshot-waterma
 
 /**
  * How long the watermark stays after the last screenshot signal. Cmd+Shift+4
- * still needs a region drag and Cmd+Shift+5 shows a toolbar first; both
- * happen in a system overlay the page never hears about, so time is the only
- * cue left. A mistaken chord costs a few seconds of faint wordmark, nothing
- * more.
+ * still needs a region drag in a system overlay the page never hears about,
+ * so time is the only cue left. A mistaken chord costs a few seconds of faint
+ * wordmark, nothing more.
  */
-export const SCREENSHOT_WATERMARK_LINGER_MS = 6_000;
+export const SCREENSHOT_WATERMARK_LINGER_MS = 10_000;
+
+/**
+ * Grace after the window regains focus. Cmd+Shift+5 and Win+Shift+S hand
+ * focus to a capture app; the shot is taken while we are blurred, and focus
+ * comes back right after, so the mark only has to survive that hand-back.
+ */
+const REFOCUS_GRACE_MS = 1_500;
 
 export type ScreenshotKeySignal = "show" | "hide" | "keep";
 
@@ -34,20 +40,28 @@ export function screenshotKeySignal(event: ScreenshotKeyEventLike): ScreenshotKe
 }
 
 export function installScreenshotWatermark(target: Window = window): () => void {
-  let lingerTimer: ReturnType<typeof setTimeout> | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let visible = false;
+  let blurredWhileVisible = false;
 
+  const clearTimer = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
   const hide = () => {
-    if (lingerTimer !== null) {
-      clearTimeout(lingerTimer);
-      lingerTimer = null;
-    }
+    clearTimer();
+    visible = false;
+    blurredWhileVisible = false;
     setScreenshotWatermarkVisible(false);
   };
-
+  const hideAfter = (ms: number) => {
+    clearTimer();
+    timer = setTimeout(hide, ms);
+  };
   const show = () => {
-    if (lingerTimer !== null) clearTimeout(lingerTimer);
+    visible = true;
     setScreenshotWatermarkVisible(true);
-    lingerTimer = setTimeout(hide, SCREENSHOT_WATERMARK_LINGER_MS);
+    hideAfter(SCREENSHOT_WATERMARK_LINGER_MS);
   };
 
   const onKeyDown = (event: KeyboardEvent) => {
@@ -62,16 +76,30 @@ export function installScreenshotWatermark(target: Window = window): () => void 
   // Pointer input means the user is back in the app; system capture overlays
   // keep their own mouse events.
   const onPointer = () => hide();
+  // A capture app stealing focus is the screenshot in progress: hold the mark
+  // for as long as it keeps focus, then let it fade once we are back.
+  const onBlur = () => {
+    if (!visible) return;
+    blurredWhileVisible = true;
+    clearTimer();
+  };
+  const onFocus = () => {
+    if (blurredWhileVisible) hideAfter(REFOCUS_GRACE_MS);
+  };
 
   target.addEventListener("keydown", onKeyDown, true);
   target.addEventListener("keyup", onKeyUp, true);
   target.addEventListener("mousedown", onPointer, true);
   target.addEventListener("wheel", onPointer, { capture: true, passive: true });
+  target.addEventListener("blur", onBlur);
+  target.addEventListener("focus", onFocus);
   return () => {
     hide();
     target.removeEventListener("keydown", onKeyDown, true);
     target.removeEventListener("keyup", onKeyUp, true);
     target.removeEventListener("mousedown", onPointer, true);
     target.removeEventListener("wheel", onPointer, { capture: true } as EventListenerOptions);
+    target.removeEventListener("blur", onBlur);
+    target.removeEventListener("focus", onFocus);
   };
 }
