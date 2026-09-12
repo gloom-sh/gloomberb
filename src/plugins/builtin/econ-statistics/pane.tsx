@@ -227,6 +227,10 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const tableHeight = split
     ? Math.max(3, height - 2)
     : Math.min(rows.length + 2, Math.max(3, height - 12));
+  // The stacked list consumes real rows. Giving its detail scroller the whole
+  // pane height leaves its lower content clipped outside the scroll viewport.
+  const bodyHeight = Math.max(1, height - (error ? 1 : 0));
+  const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight - 1);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -276,7 +280,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
           </Box>
         </Box>
 
-        <Box flexDirection="column" flexGrow={1} width={detailWidth} overflow="hidden">
+        <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
           <Box flexDirection="row" height={1} paddingX={1} overflow="hidden" justifyContent="flex-end">
             <SegmentedControl
               options={RANGE_OPTIONS}
@@ -284,7 +288,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
               onChange={(value) => setRange(value as StatRangeId)}
             />
           </Box>
-          <ScrollBox flexGrow={1} scrollY focusable={false}>
+          <ScrollBox height={Math.max(1, detailHeight - 1)} scrollY focusable={false}>
             <Box flexDirection="column" paddingBottom={1}>
               <StatDetail
                 view={selected}

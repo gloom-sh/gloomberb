@@ -49,7 +49,10 @@ export interface StatDef {
   reference: { value: number; label: string } | null;
   /** How old the newest print may get before the pane flags it stale. */
   staleAfterMs: number;
+  /** Searchable description; the long-form reference lives in docs/economics-reference.md. */
   note: string;
+  /** Concise measurement identity that must remain beside the values. */
+  measurementBasis?: string;
   limit: number;
 }
 

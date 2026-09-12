@@ -1,6 +1,7 @@
+import { Box } from "../../../ui";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { act } from "react";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { act, useReducer } from "react";
+import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
 import {
   attachValuationPersistence,
   hydrateValuationSeries,
@@ -8,7 +9,7 @@ import {
 } from "./cache";
 import { testRender } from "../../../renderers/opentui/test-utils";
 import {
-  AppContext,
+  AppContext, appReducer,
   createInitialState,
   PaneInstanceProvider,
 } from "../../../state/app/context";
@@ -22,7 +23,7 @@ function obs(values: Array<[string, number]>) {
   return values.map(([date, value]) => ({ date, value }));
 }
 
-/** Wilshire 76.2T over GDP 32.5T is 235%; the Z.1 pair is 38.0T / 40.0T, or 0.95. */
+/** Synthetic cache includes the legacy index-points input; Z.1 is 38.0T / 40.0T. */
 const LEGS: Array<[string, Array<{ date: string; value: number }>]> = [
   ["W5000", obs([
     ["2024-01-02", 60_000],
@@ -99,7 +100,7 @@ async function settle() {
 
 const TEST_PANE_ID = "valuation:test";
 
-async function renderPane(settings: Record<string, unknown> = {}, width = 128) {
+async function renderPane(settings: Record<string, unknown> = {}, width = 128, height = 40) {
   const layout = {
     dockRoot: { kind: "pane" as const, instanceId: TEST_PANE_ID },
     instances: [{ instanceId: TEST_PANE_ID, paneId: "market-valuation", settings }],
@@ -111,24 +112,19 @@ async function renderPane(settings: Record<string, unknown> = {}, width = 128) {
     layout,
     layouts: [{ name: "Default", layout: cloneLayout(layout) }],
   });
-  setup = await testRender(
-    <AppContext value={{ state, dispatch: () => {} }}>
+  state.focusedPaneId = TEST_PANE_ID;
+  function Harness() {
+    const [current, dispatch] = useReducer(appReducer, state);
+    return <AppContext value={{ state: current, dispatch }}>
       <PaneInstanceProvider paneId={TEST_PANE_ID}>
-        <PaneFooterProvider>
-          {() => (
-            <MarketValuationPane
-              paneId={TEST_PANE_ID}
-              paneType="market-valuation"
-              focused
-              width={width}
-              height={40}
-            />
-          )}
-        </PaneFooterProvider>
+        <PaneFooterProvider>{footer => <Box width={width} height={height + 1} flexDirection="column">
+          <Box height={height}><MarketValuationPane paneId={TEST_PANE_ID} paneType="market-valuation" focused width={width} height={height}/></Box>
+          <PaneFooterBar footer={footer} focused width={width}/>
+        </Box>}</PaneFooterProvider>
       </PaneInstanceProvider>
-    </AppContext>,
-    { width, height: 40 },
-  );
+    </AppContext>;
+  }
+  setup = await testRender(<Harness/>, { width, height: height + 1 });
   await settle();
   return setup.captureCharFrame();
 }
@@ -147,45 +143,29 @@ afterEach(async () => {
   resetValuationPersistence();
 });
 
+
 describe("MarketValuationPane", () => {
-  test("summarizes every indicator in one table, each in its own units", async () => {
+  test("retired index-point ratios stay unavailable beside valid monetary and direct measures", async () => {
     const frame = await renderPane();
     // A percent, a bare multiple, and two yields all sit in one VALUE column.
     for (const label of ["Buffett", "CAPE", "Tobin Q", "Equity alloc", "Div yield", "Cap / M2"]) {
       expect(frame).toContain(label);
     }
-    expect(frame).toContain("234%");
+    expect(frame).not.toContain("234%");
+    expect(frame).toMatch(/Buffett\s+--\s+Unavailable/);
     expect(frame).toContain("41.2");
     expect(frame).toContain("0.95");
-    expect(frame).toContain("329%");
-  });
-
-  test("wide panes put the list beside the detail, narrow ones stack it", async () => {
-    const split = await renderPane({}, 128);
-    // In the split the chart shares a line with the list rows.
-    expect(split).toMatch(/Buffett.*\n/);
-    const stacked = await renderPane({}, 92);
-    expect(stacked).toContain("Buffett");
-    expect(stacked).toContain("Cap / M2");
-  });
-
-  test("the filter narrows the list without blanking the detail", async () => {
-    const frame = await renderPane();
-    expect(frame).toContain("filter indicators");
-  });
-
-  test("a yield reads cheap when it is high, unlike a price ratio", async () => {
-    const frame = await renderPane();
-    // Both Buffett at 234% and an excess CAPE yield of 1.0% mean expensive.
-    expect(frame).toMatch(/Buffett\s+234%\s+Sig\. over/);
-    expect(frame).toMatch(/ERP \(ECY\)\s+1\.0%\s+Sig\. over/);
+    expect(frame).not.toContain("329%");
+    expect(frame).toMatch(/Cap \/ profits\s+--\s+Unavailable/);
+    expect(frame).toMatch(/Cap \/ M2\s+--\s+Unavailable/);
+    expect(frame).toContain("index points; dollar market capitalization is unavailable");
   });
 
   test("detail follows the selected indicator without repeating the row", async () => {
     const frame = await renderPane({ indicator: "tobins-q" });
     expect(frame).toContain("Equities");
     expect(frame).toContain("Net worth");
-    expect(frame).toContain("replacement cost");
+    expect(frame).toContain("equities = net worth");
     expect(frame).not.toContain("Mkt cap");
     // The row above already names the indicator and its zone.
     expect(frame).not.toContain("Fair Valued");
@@ -193,14 +173,14 @@ describe("MarketValuationPane", () => {
 
   test("a direct indicator shows no dollar levels row", async () => {
     const frame = await renderPane({ indicator: "shiller-cape" });
-    expect(frame).toContain("ten years of real earnings");
+    expect(frame).toContain("ten-year mean real earnings");
     expect(frame).not.toContain("Mkt cap");
     expect(frame).not.toContain("Equities");
   });
 
   test("draws the mean apart from the reference line", async () => {
-    const frame = await renderPane();
-    expect(frame).toContain("parity");
+    const frame = await renderPane({ indicator: "tobins-q" });
+    expect(frame).toContain("equities = net worth");
     expect(frame).toContain("mean");
   });
 });
@@ -244,4 +224,37 @@ describe("shouldPersistSelection", () => {
       knownIds,
     })).toBe(false);
   });
+});
+
+
+test("unavailable rows remain selectable alongside usable indicators", async () => {
+  await renderPane({ indicator: "buffett" }, 80);
+  const lines = setup!.captureCharFrame().split("\n");
+  const y = lines.findIndex((line) => /CAPE\s+41.2/.test(line));
+  expect(y).toBeGreaterThan(0);
+  await act(async () => { await setup!.mockMouse.click(3, y); });
+  await settle();
+  expect(setup!.captureCharFrame()).not.toContain("Buffett Indicator unavailable");
+  expect(setup!.captureCharFrame()).toContain("ten-year mean real earnings");
+  await act(async () => {
+    await setup!.mockInput.pressArrow("up");
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  });
+  await settle();
+  expect(setup!.captureCharFrame()).toContain("Buffett Indicator unavailable");
+});
+
+test("a short stacked pane scrolls to monetary basis, extrema dates and source", async () => {
+  await renderPane({ indicator: "tobins-q" }, 48, 25);
+  for (let i = 0; i < 10; i += 1) {
+    await act(async () => { await setup!.mockMouse.scroll(47, 20, "down"); });
+  }
+  await settle();
+  const frame = setup!.captureCharFrame();
+  expect(frame).toContain("38.0T");
+  expect(frame).toContain("40.0T");
+  expect(frame).toContain("Net worth as of 2026Q1");
+  expect(frame).toContain("2024-01-01");
+  expect(frame).toContain("2026-01-01");
+  expect(frame).toContain("Tobin's q, Wikipedia");
 });

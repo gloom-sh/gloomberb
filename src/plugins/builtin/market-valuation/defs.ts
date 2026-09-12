@@ -27,6 +27,8 @@ export interface SeriesDef {
   /** Multiplier that brings a raw observation into billions of dollars. */
   scaleToBillions: number;
   source: SeriesSource;
+  /** A verified source-basis failure; also blocks persisted observations of this leg. */
+  unavailableReason?: string;
 }
 
 export type ValuationZoneId =
@@ -81,6 +83,7 @@ export interface IndicatorDef {
   label: string;
   /** Fits the summary table's INDICATOR column. */
   shortLabel: string;
+  /** Concise formula/input basis; interpretation lives in docs/valuation-reference.md. */
   description: string;
   input: IndicatorInput;
   /** Multiplies the raw value: 100 renders a quotient as a percent. */
@@ -107,7 +110,6 @@ export interface IndicatorDef {
   trendModel: "log" | "linear";
   /** How old the newest observation may get before the pane flags it stale. */
   staleAfterMs: number;
-  notes: string[];
   link: { url: string; label: string } | null;
 }
 
@@ -248,4 +250,9 @@ export function indicatorSeries(indicator: IndicatorDef): SeriesDef[] {
   return indicator.input.kind === "ratio"
     ? [indicator.input.numerator, indicator.input.denominator]
     : [indicator.input.series];
+}
+
+/** A known input failure must survive caching, injected loaders, and chart resolution. */
+export function indicatorUnavailableReason(indicator: IndicatorDef): string | null {
+  return indicatorSeries(indicator).find((def) => def.unavailableReason)?.unavailableReason ?? null;
 }

@@ -128,26 +128,25 @@ export function StatDetail({
           <Text fg={colors.textDim}>{"  %ile "}</Text>
           <Text fg={colors.textBright}>{formatNumber(view.percentile, 0)}</Text>
         </Box>
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={colors.textDim}>High </Text>
-          <Text fg={colors.text}>{`${stat.formatValue(view.high.value)} ${view.high.date}`}</Text>
-          <Text fg={colors.textDim}>{"  Low "}</Text>
-          <Text fg={colors.text}>{`${stat.formatValue(view.low.value)} ${view.low.date}`}</Text>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+          <Box flexDirection="row" flexShrink={0} height={1}>
+            <Text fg={colors.textDim}>High </Text>
+            <Text fg={colors.text}>{`${stat.formatValue(view.high.value)} ${view.high.date}`}</Text>
+          </Box>
+          <Box flexDirection="row" flexShrink={0} height={1}>
+            <Text fg={colors.textDim}>Low </Text>
+            <Text fg={colors.text}>{`${stat.formatValue(view.low.value)} ${view.low.date}`}</Text>
+          </Box>
         </Box>
         <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={colors.textDim}>{`${categoryLabel(stat.category)} · FRED ${stat.seriesId}`}</Text>
-        </Box>
-      </Box>
-
-      <Box flexDirection="column" gap={1} width={Math.max(1, width - 2)}>
-        <Text fg={colors.textDim} wrapMode="word" wrapText>{stat.note}</Text>
-        <Box flexDirection="row" height={1} overflow="hidden">
+          <Text fg={colors.textDim}>{`${categoryLabel(stat.category)} · `}</Text>
           <ExternalLinkText
             url={`https://fred.stlouisfed.org/series/${stat.seriesId}`}
-            label={`${stat.label}, FRED`}
+            label={`FRED ${stat.seriesId}`}
             color={colors.text}
           />
         </Box>
+        {stat.measurementBasis && <Text fg={colors.textDim} wrapMode="word" wrapText>{stat.measurementBasis}</Text>}
       </Box>
     </Box>
   );

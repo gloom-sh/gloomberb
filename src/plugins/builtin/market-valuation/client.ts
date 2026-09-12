@@ -1,6 +1,6 @@
 import { buildValuationSeries } from "./align";
 import { getCachedSeries, loadCachedSeries } from "./cache";
-import { indicatorSeries, type IndicatorDef, type SeriesDef } from "./defs";
+import { indicatorUnavailableReason, indicatorSeries, type IndicatorDef, type SeriesDef } from "./defs";
 import { INDICATORS } from "./indicators";
 import type { DatedSeries } from "./series";
 import {
@@ -20,6 +20,7 @@ export function requiredSeries(
 ): SeriesDef[] {
   const seen = new Map<string, SeriesDef>();
   for (const indicator of indicators) {
+    if (indicatorUnavailableReason(indicator)) continue;
     for (const def of indicatorSeries(indicator)) {
       if (!seen.has(def.key)) seen.set(def.key, def);
     }
@@ -30,11 +31,14 @@ export function requiredSeries(
 /** Cache-first around the cloud sources; exported so Bun-side tooling can reuse it. */
 export function createValuationSeriesLoader(deps: ValuationSourceDeps): ValuationSeriesLoader {
   const cloudLoader = createSourceLoader(deps);
-  return async (def) => ({
-    seriesId: def.key,
-    observations: await loadCachedSeries(def.key, async () => (await cloudLoader(def)).observations),
-    provenance: provenanceFor(def),
-  });
+  return async (def) => {
+    if (def.unavailableReason) throw new Error(def.unavailableReason);
+    return {
+      seriesId: def.key,
+      observations: await loadCachedSeries(def.key, async () => (await cloudLoader(def)).observations),
+      provenance: provenanceFor(def),
+    };
+  };
 }
 
 export const defaultValuationSeriesLoader = createValuationSeriesLoader(cloudSourceDeps);
@@ -53,8 +57,9 @@ export function getCachedValuationBundle(
       provenance: provenanceFor(def),
     });
   }
-  const builds = buildIndicators(legs, [], indicators);
-  return builds.length > 0 ? { builds, errors: [], fetchedAt: Date.now() } : null;
+  const errors: string[] = [];
+  const builds = buildIndicators(legs, errors, indicators);
+  return builds.length > 0 || errors.length > 0 ? { builds, errors, fetchedAt: Date.now() } : null;
 }
 
 function buildIndicators(
@@ -64,6 +69,11 @@ function buildIndicators(
 ): IndicatorBuild[] {
   const builds: IndicatorBuild[] = [];
   for (const indicator of indicators) {
+    const unavailable = indicatorUnavailableReason(indicator);
+    if (unavailable) {
+      errors.push(`${indicator.label}: ${unavailable}`);
+      continue;
+    }
     if (indicatorSeries(indicator).some((def) => !legs.has(def.key))) continue;
     try {
       const series = buildValuationSeries(indicator, legs);
@@ -82,8 +92,8 @@ function buildIndicators(
 function summarizeErrors(errors: readonly string[]): string {
   if (errors.length === 0) return "Market valuation data unavailable";
   const reasons = new Set(errors.map((entry) => entry.replace(/^[^:]+:\s*/, "")));
-  const reason = reasons.size === 1 ? [...reasons][0]! : `${errors.length} series failed`;
-  return errors.length > 1 ? `${reason} (${errors.length} series)` : reason;
+  if (reasons.size === 1) return [...reasons][0]!;
+  return `${errors[0]} (${errors.length - 1} other failures)`;
 }
 
 export async function loadValuationBundle(options?: {
