@@ -418,9 +418,7 @@ function sourceStatements(
   if (normalized === "ttm" || valuationMetric) {
     const ttm = buildTtmStatements(quarterly);
     if (normalized === "ttm" && ttm.length > 0) return { statements: ttm, period: "ttm" };
-    if (valuationMetric && ttm.some((statement) => (
-      valuationAtPrice(statement, valuationMetric, 1) !== null
-    ))) {
+    if (valuationMetric && ttm.some((statement) => hasValuationInputs(statement, valuationMetric))) {
       return { statements: ttm, period: "ttm" };
     }
     if (normalized === "ttm") return { statements: [], period: "ttm" };
@@ -623,6 +621,20 @@ function historicalValuation(
   return { value: comparablePrice === null ? null : valuationAtPrice(statement, metric, comparablePrice), integrity: price.integrity, issue: price.issue };
 }
 
+function hasValuationInputs(statement: FinancialStatement, metric: string): boolean {
+  if (metric === "trailingPE") {
+    return statement.epsBasis?.status === "unresolved"
+      || finiteNumber(statement.eps)
+      || (finiteNumber(statement.netIncome) && selectedShares(statement) !== null);
+  }
+  if (!selectedShares(statement)) return false;
+  if (metric === "priceSales") return finiteNumber(statement.totalRevenue);
+  if (metric === "priceFcf") return freeCashFlow(statement).value !== null;
+  if (!finiteNumber(statement.totalDebt) || !selectedCash(statement)) return false;
+  return metric === "evSales" ? finiteNumber(statement.totalRevenue)
+    : metric === "evEbitda" && finiteNumber(statement.ebitda);
+}
+
 function valuationAtPrice(
   statement: FinancialStatement,
   metric: string,
@@ -685,14 +697,13 @@ function currentDerivedValuationPoint(
   const quoteDate = validDate(quote?.lastUpdated);
   if (!quoteDate || !finiteNumber(quote?.price) || quote.price <= 0) return null;
   const quoteTime = quoteDate.getTime();
+  // Select the latest known period first. Missing inputs, a loss or incompatible
+  // currency cannot make an older period's denominator current again.
   const statement = statements
     .flatMap((candidate) => {
-      const comparablePrice = currencies.priceInStatementUnits(candidate, quote.price);
-      if (comparablePrice === null) return [];
       const availableAt = validDate(metricAvailability(candidate, metric) ?? candidate.date);
       const observedAt = validDate(candidate.date);
       if (!availableAt || !observedAt || availableAt.getTime() > quoteTime) return [];
-      if (valuationAtPrice(candidate, metric, comparablePrice) === null) return [];
       return [{ candidate, observedAt: observedAt.getTime(), availableAt: availableAt.getTime() }];
     })
     .sort((left, right) => (

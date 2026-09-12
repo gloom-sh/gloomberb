@@ -28,6 +28,8 @@ Chart-derived P/E, price/sales, EV/sales, EV/EBITDA and price/free-cash-flow req
 
 These derived multiples omit the Current observation when its quote is explicitly stale or has an invalid price or timestamp; valid historical ratios remain available. Historical calculations select the latest source price at or before the statement's availability date, then validate it. An invalid selected price leaves a gap instead of borrowing an older close. Contradictory OHLC values and rejected quote inputs remain in export diagnostics, and affected exports are marked incomplete. A quote's regular-session high/low does not constrain a valid after-hours price.
 
+Current multiples use the latest available reporting period before evaluating the ratio. A loss, missing denominator, or incompatible currency cannot substitute an older profitable period. Automatic period selection uses TTM input coverage rather than whether the resulting ratio is meaningful; known nonpositive TTM earnings do not trigger an annual fallback. Valid historical ratios retain their original reporting dates.
+
 SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable. Nonpositive P/E values display as **N/M** and are excluded from meaningful P/E rankings.
 
 Market capitalization can come from a financial snapshot when a current quote does not supply it. Its retrieval time is not its valuation date. Source and freshness details remain attached to the affected value; market-cap comparisons require a valid currency conversion.
