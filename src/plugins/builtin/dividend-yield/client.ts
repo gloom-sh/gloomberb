@@ -1,6 +1,7 @@
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { YahooHttpClient } from "../../../sources/yahoo-finance/http";
-import { financeRawNumber, mapYahooDividends } from "../../../sources/yahoo-finance/mappers";
+import { deriveMarketState, financeRawNumber, mapYahooDividends } from "../../../sources/yahoo-finance/mappers";
+import { isTimestampStaleForExchangeSession } from "../../../market-data/market/freshness";
 import { fetchYahooChart } from "../../../sources/yahoo-finance/requests";
 import { getYahooSymbolsToTry } from "../../../sources/yahoo-finance/symbols";
 import type { QuoteSummaryResponse } from "../../../sources/yahoo-finance/types";
@@ -8,6 +9,7 @@ import type { DividendMetrics, DividendPayment } from "./types";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { calendarYearsBefore } from "./calendar";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { dividendPriceAsOf } from "./reference-price";
 
 export const YAHOO_DIVIDENDS_CONNECTION_ID = "yahoo-dividends";
 const yahoo = new YahooHttpClient();
@@ -169,8 +171,15 @@ async function fetchDividendDataForSymbol(
   }
 
   const chartPrice = chartResult.status === "fulfilled" ? chartResult.value.meta.regularMarketPrice : null;
-  const resolvedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency)
+  const suppliedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency);
+  const resolvedPrice = suppliedPrice
     ?? (chartPrice != null && Number.isFinite(chartPrice) && chartPrice > 0 ? chartPrice / divisor : null);
+  const selectedChart = suppliedPrice == null && resolvedPrice != null && chartResult.status === "fulfilled"
+    ? chartResult.value.meta : null;
+  const priceAsOf = selectedChart ? dividendPriceAsOf((selectedChart.regularMarketTime ?? NaN) * 1000) : undefined;
+  const priceStale = selectedChart && priceAsOf
+    ? isTimestampStaleForExchangeSession(Date.parse(priceAsOf), selectedChart.exchangeName, Date.now(), deriveMarketState(selectedChart))
+    : undefined;
 
   const historyAvailable = chartResult.status === "fulfilled";
   // Yahoo annual-rate fields can use a different denomination from its pence
@@ -184,7 +193,7 @@ async function fetchDividendDataForSymbol(
     throw new Error(`No dividend data found for ${symbol}`);
   }
 
-  return { payments, metrics, price: resolvedPrice, currency, historyAvailable,
+  return { payments, metrics, price: resolvedPrice, priceAsOf, priceStale, currency, historyAvailable,
     providerId: "yahoo", ...(historyAvailable ? { fetchedAt: new Date().toISOString() } : {}),
     notes: ["Cash yield excludes taxes and reinvestment. SEC yield, tax components and future payments are not modeled."],
   };

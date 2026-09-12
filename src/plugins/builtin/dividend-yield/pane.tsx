@@ -32,6 +32,7 @@ import {
   type DividendSortPreference,
 } from "./model";
 import type { DividendMetrics } from "./types";
+import { dividendPriceAsOf, dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 
 function formatRate(value: number | null, currency: string): string {
   if (value == null) return "—";
@@ -193,23 +194,31 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const authWall = !data && isCloudSessionRequired(error);
   useEffect(() => { if (updatedAt !== null) setSelectedIdx(0); }, [updatedAt]);
 
-  usePaneFooter("dividend-yield", () => ({
-    info: [
-      ...loadingErrorFooterInfo(loading, authWall ? null : error),
-      ...(data?.fetchedAt ? [{ id: "history-as-of", parts: [{
-        text: `History fetched ${data.fetchedAt}`, tone: "muted" as const,
-      }] }] : []),
-    ],
-  }), [authWall, data?.fetchedAt, error, loading]);
-
   const payments = data?.payments ?? [];
   const currency = data?.currency ?? payments[0]?.currency ?? resolveCurrencyUnit(ticker?.metadata.currency).currency;
   const paneReferencePrice = dividendReferencePrice(quotePrice, quoteCurrency, currency);
   const currentPrice = paneReferencePrice ?? data?.price ?? null;
-  const referencePriceStale = paneReferencePrice != null ? financials?.quote?.stale : data?.priceStale;
+  const priceMetadata = paneReferencePrice != null && financials?.quote
+    ? dividendQuotePriceMetadata(financials.quote) : data;
+  const priceAsOf = dividendPriceAsOf(Date.parse(priceMetadata?.priceAsOf ?? ""));
+  const priceStatus = dividendPriceStatus(currentPrice, priceAsOf, priceMetadata?.priceStale);
+
+  usePaneFooter("dividend-yield", () => {
+    const active = loadingErrorFooterInfo(loading, authWall ? null : error);
+    if (active.length > 0) return { info: active };
+    const priceText = priceStatus === "unknown-time" ? "Reference price time unavailable"
+      : priceStatus === "stale" ? `Stale price${priceAsOf ? ` ${priceAsOf}` : ""}`
+      : currentPrice != null && priceAsOf ? `Price ${priceAsOf}` : "";
+    const historyText = data?.fetchedAt ? `History fetched ${data.fetchedAt}` : "";
+    const showHistory = historyText && (!priceText || priceText.length + historyText.length + 3 <= width - 4);
+    return { info: priceText || showHistory ? [{ id: "source-time", parts: [
+      ...(priceText ? [{ text: priceText, tone: priceStatus ? "warning" as const : "muted" as const }] : []),
+      ...(showHistory ? [{ text: `${priceText ? " · " : ""}${historyText}`, tone: "muted" as const }] : []),
+    ] }] : [] };
+  }, [authWall, currentPrice, data?.fetchedAt, error, loading, priceAsOf, priceStatus, width]);
+
   const sourceWarnings = [
     ...(data?.stale ? ["Stale cash history; recent distributions may be missing."] : []),
-    ...(referencePriceStale ? ["Stale reference price; cash yield may be out of date."] : []),
   ];
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
   const rows = useMemo(() => toDividendRows(payments), [payments]);

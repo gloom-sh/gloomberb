@@ -8,6 +8,8 @@ import { dividendReferencePrice, fetchDividendData, type DividendData } from "./
 import type { DividendPayment } from "./types";
 import { formatDividendYield, toDividendRows } from "./view";
 import { formatDistributionAmount } from "../../../utils/format";
+import type { Quote } from "../../../types/financials";
+import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 
 const PAYMENT_COLUMNS = [
   { key: "exDate", header: "Ex-date" },
@@ -24,23 +26,20 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
   async loadData(symbol, context) {
     let currentPrice: number | null = null;
     let currentPriceCurrency: string | undefined;
-    let quoteAsOf: string | undefined;
-    let quoteStale: boolean | undefined;
+    let referenceQuote: Quote | undefined;
     const instrument = await context.resolveInstrument?.(symbol);
     const exchange = instrument?.exchange ?? "";
     try {
       const quote = await context.marketData.getQuote(symbol, exchange);
       currentPrice = quote.price ?? null;
       currentPriceCurrency = quote.currency;
-      quoteAsOf = Number.isFinite(quote.lastUpdated) ? new Date(quote.lastUpdated).toISOString() : undefined;
-      quoteStale = quote.stale;
+      referenceQuote = quote;
     } catch {
       currentPrice = null;
     }
     const data = await fetchDividendData(symbol, currentPrice, exchange, currentPriceCurrency);
-    if (dividendReferencePrice(currentPrice, currentPriceCurrency, data.currency ?? "USD") != null) {
-      data.priceAsOf = quoteAsOf;
-      data.priceStale = quoteStale;
+    if (referenceQuote && dividendReferencePrice(currentPrice, currentPriceCurrency, data.currency ?? "USD") != null) {
+      Object.assign(data, dividendQuotePriceMetadata(referenceQuote));
     }
     return data;
   },
@@ -70,6 +69,7 @@ export function projectDividendYieldHeadless(
   });
   const metrics = data.metrics;
   const currency = data.currency ?? data.payments[0]?.currency ?? "USD";
+  const priceStatus = dividendPriceStatus(data.price, data.priceAsOf, data.priceStale);
 
   return {
     sections: [
@@ -78,7 +78,9 @@ export function projectDividendYieldHeadless(
         entries: [
           { label: "Price", value: data.price },
           ...(data.stale ? [{ label: "History status", value: "Stale cash history; recent distributions may be missing." }] : []),
-          ...(data.priceStale ? [{ label: "Price status", value: "Stale reference price; cash yield may be out of date." }] : []),
+          ...(priceStatus ? [{ label: "Price status", value: priceStatus === "stale"
+            ? "Stale reference price; cash yield may be out of date."
+            : "Reference price time unavailable; cash yield may be out of date." }] : []),
           { label: "Trailing yield", value: metrics.trailingYield, formatted: formatDividendYield(metrics.trailingYield) },
           { label: "Forward yield", value: metrics.forwardYield, formatted: formatDividendYield(metrics.forwardYield) },
           { label: "Trailing rate", value: metrics.trailingRate, formatted: formatDistributionAmount(metrics.trailingRate ?? undefined, currency) },
