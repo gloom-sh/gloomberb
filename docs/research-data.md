@@ -56,6 +56,12 @@ Sector and industry ETF returns are price returns in the listing currency, witho
 
 One unit of the row currency buys the amount in the column currency. Indicative cross rates are calculated through USD legs, whose observation times can differ. Missing, stale, or unknown observation times appear as current status.
 
+## Credit spreads
+
+CRD shows daily closing option-adjusted spreads for the ICE BofA US Corporate (US IG), US High Yield (US HY), and AAA, AA, A, and BBB US Corporate indices from FRED. Source percentages are converted to basis points; 1D is the change from the previous available observation. These are spreads, not bond yields.
+
+Each series keeps its own observation date. A shared date appears in the footer when all displayed observations agree; otherwise an AS OF column identifies each row's date. Refresh time does not change an observation date. Headless reports retain each FRED series identifier, title, units, frequency, and date.
+
 ## Options
 
 OVME uses a European-exercise Black–Scholes model. It does not model early exercise or discrete dividends. Theta is per day; vega is per volatility percentage point; rho is per rate percentage point. The UI keeps these units beside their values.

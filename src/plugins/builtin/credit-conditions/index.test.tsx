@@ -1,12 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import { act } from "react";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { apiClient } from "../../../api-client";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import {
   attachFredSeriesPersistence,
   resetFredSeriesPersistence,
   type FredSeriesCacheEntry,
 } from "../../../data/fred-series";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { createTestControls, testRender } from "../../../renderers/opentui/test-utils";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   AppContext,
@@ -14,10 +15,13 @@ import {
   PaneInstanceProvider,
 } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
+import { Box } from "../../../ui";
 import { CREDIT_SERIES } from "./model";
 import { CreditConditionsPane } from "./index";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
+let persistence: MemoryPluginPersistence;
+let requestSpy: ReturnType<typeof spyOn> | undefined;
 
 function entry(seriesId: string, index: number): FredSeriesCacheEntry {
   return {
@@ -58,7 +62,7 @@ async function settle() {
 
 beforeEach(() => {
   resetFredSeriesPersistence();
-  const persistence = new MemoryPluginPersistence();
+  persistence = new MemoryPluginPersistence();
   for (const [index, { seriesId }] of CREDIT_SERIES.entries()) {
     persistence.seedResource(
       "fred-series",
@@ -76,42 +80,59 @@ afterEach(async () => {
     setup = undefined;
   }
   resetFredSeriesPersistence();
+  requestSpy?.mockRestore();
+  requestSpy = undefined;
 });
 
-describe("CreditConditionsPane", () => {
-  test("selects credit rows with keyboard and mouse", async () => {
-    const state = createInitialState(createDefaultConfig("/tmp/gloomberb-credit-test"));
-    setup = await testRender(
-      <AppContext value={{ state, dispatch: () => {} }}>
-        <PaneInstanceProvider paneId="credit:test">
-          <PaneFooterProvider>
-            {() => <CreditConditionsPane paneId="credit:test" paneType="credit-conditions" focused width={72} height={18} />}
-          </PaneFooterProvider>
-        </PaneInstanceProvider>
-      </AppContext>,
-      { width: 72, height: 18 },
-    );
-    await settle();
-
-    expect(setup.captureCharFrame()).toContain(`${CREDIT_SERIES[0].seriesId} Option-Adjusted Spread`);
-
-    await act(async () => {
-      setup!.mockInput.pressArrow("up");
-      setup!.mockInput.pressEnter();
-      await setup!.renderOnce();
-    });
-    await settle();
-    const keyboardTitle = `${CREDIT_SERIES[5].seriesId} Option-Adjusted Spread`;
-    expect(setup.captureCharFrame()).toContain(keyboardTitle);
-
-    let mouseSelected = false;
-    for (let row = 3; row < 9 && !mouseSelected; row += 1) {
-      await act(async () => {
-        await setup!.mockMouse.click(2, row);
-        await setup!.renderOnce();
-      });
-      mouseSelected = !setup.captureCharFrame().includes(keyboardTitle);
-    }
-    expect(mouseSelected).toBe(true);
+test.each([80, 120])("mixed cached observation dates stay attached to credit values at %i columns", async (width) => {
+  const old = entry("BAMLC0A4CBBB", 4).data;
+  old.observations = old.observations.slice(0, 1);
+  persistence.seedResource("fred-series", "BAMLC0A4CBBB:limit=45:sort=desc", old,
+    { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
+  requestSpy = spyOn(apiClient, "getCloudFredSeries").mockImplementation(async (seriesId) => {
+    const index = CREDIT_SERIES.findIndex((definition) => definition.seriesId === seriesId);
+    if (index < 0) throw new Error("Unknown fixture series");
+    return entry(seriesId, index).data;
   });
+  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-credit-test"));
+  setup = await testRender(
+    <AppContext value={{ state, dispatch: () => {} }}>
+      <PaneInstanceProvider paneId="credit:test">
+        <PaneFooterProvider>
+          {(footer) => <Box width={width} height={18} flexDirection="column">
+            <Box width={width} height={17}>
+              <CreditConditionsPane paneId="credit:test" paneType="credit-conditions" focused width={width} height={17} />
+            </Box>
+            <PaneFooterBar footer={footer} focused width={width} />
+          </Box>}
+        </PaneFooterProvider>
+      </PaneInstanceProvider>
+    </AppContext>,
+    { width, height: 18 },
+  );
+  await settle();
+
+  const mixed = setup.captureCharFrame();
+  expect(mixed).toContain("mixed dates");
+  expect(mixed).not.toContain("as of 2026-08-18");
+  expect(mixed).toContain("AS OF");
+  expect(mixed.split("\n").find((line) => line.includes("BBB"))).toContain("2026-08-17");
+  expect(mixed.split("\n").find((line) => line.includes("AAA"))).toContain("2026-08-18");
+  expect(requestSpy).not.toHaveBeenCalled();
+
+  const controls = createTestControls(() => setup!);
+  await controls.clickFrameText("AS OF");
+  await settle();
+  await controls.clickFrameText("AS OF");
+  await settle();
+  const sorted = setup.captureCharFrame();
+  expect(sorted.indexOf("BBB")).toBeLessThan(sorted.indexOf("AAA"));
+
+  await act(async () => { setup!.mockInput.pressKey("r"); });
+  await settle();
+  const common = setup.captureCharFrame();
+  expect(requestSpy).toHaveBeenCalledTimes(CREDIT_SERIES.length);
+  expect(common).toContain("as of 2026-08-18");
+  expect(common).not.toContain("mixed dates");
+  expect(common).not.toContain("AS OF");
 });
