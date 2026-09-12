@@ -12,6 +12,8 @@ Daily, weekly, and monthly comparisons use shared calendar dates, with each mark
 
 Correlation and relationship views calculate close-to-close returns between shared observations. Missing dates are not filled to manufacture a sample. Returns use local prices without currency conversion; different exchanges can close at different times. Correlation requires enough shared returns and nonzero variance.
 
+Relationship graph controls stay in the footer: `t` cycles the time range, `p` cycles the rolling observation window, `c` toggles correlation, and `f` toggles the fit line. Each action is clickable and shows its current state. In narrow panes, `+` means enabled and `−` means disabled.
+
 Contradictory OHLC bars are unavailable rather than silently repaired. Charts leave gaps and dependent risk calculations can be unavailable. These are current data problems and remain visible in the terminal.
 
 Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `t` opens the interval picker. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.

@@ -1,6 +1,5 @@
 import { Box, Text } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
-import { Checkbox } from "../../../../components/ui/checkbox";
 
 export function RelationshipMetricsTable({
   rows,
@@ -26,19 +25,5 @@ export function RelationshipMetricsTable({
         </Box>
       ))}
     </Box>
-  );
-}
-
-export function RelationshipToggle({
-  checked,
-  label,
-  onPress,
-}: {
-  checked: boolean;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Checkbox label={label} checked={checked} width={label.length + 6} onChange={onPress} />
   );
 }

@@ -156,7 +156,7 @@ export function financialStatementLimitations(financials: TickerFinancials | nul
     return typeof value === "number" && Number.isFinite(value);
   }));
   if (/\breit\b/i.test(industry) && !hasMetric(["fundsFromOperations", "adjustedFundsFromOperations", "ffo", "affo"])) {
-    return ["FFO/AFFO are unavailable. Operating cash flow is not a substitute for these REIT measures."];
+    return ["FFO/AFFO are unavailable."];
   }
   if (/\bbanks?\b/i.test(industry) && !hasMetric(["commonEquityTier1Ratio", "cet1Ratio", "riskWeightedAssets"])) {
     return ["Bank capital measures, including CET1 and risk-weighted assets, are unavailable."];

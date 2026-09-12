@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, PaneStatusBody, usePaneFooter } from "../../../../components";
+import { PaneStatusBody, usePaneFooter } from "../../../../components";
 import { resolveChartPalette } from "../../../../components/chart/core/palette";
 import { StaticMultiLineChartSurface, StaticScatterChartSurface } from "../../../../components/chart/static";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
@@ -11,7 +11,7 @@ import { Box, Text } from "../../../../ui";
 import { formatNumber } from "../../../../utils/format";
 import { usePluginPaneState } from "../../../runtime";
 import { formatDateTime, useBoundTicker } from "../../shared/ticker-request";
-import { RelationshipMetricsTable, RelationshipToggle } from "./controls";
+import { RelationshipMetricsTable } from "./controls";
 import { useRelationshipHistories } from "./history";
 import {
   DEFAULT_RELATIONSHIP_CORRELATION_WINDOW,
@@ -97,7 +97,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   const chartWidth = Math.max(20, width - 2);
   // Panels are allocated in priority order out of the rows that actually exist, so
   // a short pane drops the lowest-priority chart instead of clipping every axis.
-  const headerRows = 2;
+  const headerRows = 1;
   const availableChartRows = Math.max(0, height - headerRows);
   const railWidth = chartWidth >= 68 ? Math.min(34, Math.floor(chartWidth * 0.3)) : 0;
   const statsBelowRows = railWidth === 0 ? 1 : 0;
@@ -218,19 +218,18 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
   });
 
   usePaneFooter("relationship-graph", () => ({
-    info: [
-      { id: "summary", parts: [{ text: footerSummary, tone: "muted" as const }] },
-      ...(loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-      ...(!loading && analysis && !analysis.unavailableReason && analysis.returns.length < correlationWindow
-        ? [{ id: "correlation-history", parts: [{ text: `Correlation needs ${correlationWindow} shared returns; ${analysis.returns.length} available`, tone: "warning" as const }] }]
-        : []),
-    ],
+    info: error
+      ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }]
+      : loading
+        ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
+        : analysis && !analysis.unavailableReason && analysis.returns.length < correlationWindow
+          ? [{ id: "correlation-history", parts: [{ text: `Correlation needs ${correlationWindow} shared returns; ${analysis.returns.length} available`, tone: "warning" as const }] }]
+          : [{ id: "summary", parts: [{ text: footerSummary, tone: "muted" as const }] }],
     hints: [
-      { id: "range", key: "t", label: "ime range", onPress: cycleRange },
-      { id: "window", key: "p", label: "eriod", onPress: cycleWindow },
-      { id: "correlation", key: "c", label: "orr", onPress: toggleCorrelation },
-      { id: "regression", key: "f", label: "it line", onPress: toggleRegression },
+      { id: "range", key: "t", label: width < 80 ? range : `ime ${range}`, onPress: cycleRange },
+      { id: "window", key: "p", label: width < 80 ? `${correlationWindow}obs` : `eriod ${correlationWindow} obs`, onPress: cycleWindow },
+      { id: "correlation", key: "c", label: width < 60 ? `orr${showCorrelation ? "+" : "−"}` : `orr ${showCorrelation ? "on" : "off"}`, onPress: toggleCorrelation },
+      { id: "regression", key: "f", label: width < 60 ? `it${showRegression ? "+" : "−"}` : `it ${showRegression ? "on" : "off"}`, onPress: toggleRegression },
     ],
   }), [
     cycleRange,
@@ -240,6 +239,10 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     error,
     footerSummary,
     loading,
+    range,
+    showCorrelation,
+    showRegression,
+    width,
     toggleCorrelation,
     toggleRegression,
   ]);
@@ -264,12 +267,6 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
       overflow="hidden"
       paddingX={1}
     >
-      <Box height={1} flexDirection="row" gap={2}>
-        <RelationshipToggle checked={showCorrelation} label="Correlation" onPress={toggleCorrelation} />
-        <RelationshipToggle checked={showRegression} label="Fit line" onPress={toggleRegression} />
-        <Button label={`Range ${range}`} variant="ghost" onPress={cycleRange} />
-        <Button label={`Window ${correlationWindow} obs`} variant="ghost" onPress={cycleWindow} />
-      </Box>
       <Box height={1} flexDirection="row" gap={2}>
         {priceSeries.map((series) => (
           <Box key={series.id} flexDirection="row" gap={1}>
