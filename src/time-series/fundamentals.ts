@@ -6,6 +6,7 @@ import type {
 import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvailability } from "../utils/financial-statements";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
 import { reportingCurrencySeries } from "./reporting-currency";
+import { createValuationCurrencyContext, type ValuationCurrencyContext } from "./valuation-currency";
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 
 type NumericStatementField =
@@ -633,11 +634,12 @@ function historicalValuation(
   financials: TickerFinancials,
   statement: FinancialStatement,
   metric: string,
+  currencies: ValuationCurrencyContext,
 ): number | null {
-  if (statement.currency && financials.quote?.currency && statement.currency !== financials.quote.currency) return null;
   const priceDate = metricAvailability(statement, metric) ?? statement.date;
   const price = priceAtOrBefore(financials.priceHistory, priceDate);
-  return price === null ? null : valuationAtPrice(statement, metric, price);
+  const comparablePrice = price === null ? null : currencies.priceInStatementUnits(statement, price);
+  return comparablePrice === null ? null : valuationAtPrice(statement, metric, comparablePrice);
 }
 
 function valuationAtPrice(
@@ -695,6 +697,7 @@ function currentDerivedValuationPoint(
   financials: TickerFinancials,
   statements: readonly FinancialStatement[],
   metric: string,
+  currencies: ValuationCurrencyContext,
 ): TimeSeriesPoint | null {
   const quote = financials.quote;
   const quoteDate = validDate(quote?.lastUpdated);
@@ -702,11 +705,12 @@ function currentDerivedValuationPoint(
   const quoteTime = quoteDate.getTime();
   const statement = statements
     .flatMap((candidate) => {
-      if (candidate.currency && quote.currency && candidate.currency !== quote.currency) return [];
+      const comparablePrice = currencies.priceInStatementUnits(candidate, quote.price);
+      if (comparablePrice === null) return [];
       const availableAt = validDate(metricAvailability(candidate, metric) ?? candidate.date);
       const observedAt = validDate(candidate.date);
       if (!availableAt || !observedAt || availableAt.getTime() > quoteTime) return [];
-      if (valuationAtPrice(candidate, metric, quote.price) === null) return [];
+      if (valuationAtPrice(candidate, metric, comparablePrice) === null) return [];
       return [{ candidate, observedAt: observedAt.getTime(), availableAt: availableAt.getTime() }];
     })
     .sort((left, right) => (
@@ -714,7 +718,9 @@ function currentDerivedValuationPoint(
     ))
     .at(-1)?.candidate;
   if (!statement) return null;
-  const value = valuationAtPrice(statement, metric, quote.price);
+  const comparablePrice = currencies.priceInStatementUnits(statement, quote.price);
+  if (comparablePrice === null) return null;
+  const value = valuationAtPrice(statement, metric, comparablePrice);
   if (value === null) return null;
   return {
     date: quoteDate,
@@ -835,8 +841,9 @@ export function extractFundamentalSeries(
   }
 
   const selected = sourceStatements(financials, source.period, metric);
+  const currencies = createValuationCurrencyContext(financials);
   const historical = selected.statements.flatMap((statement) => {
-    const value = historicalValuation(financials, statement, metric);
+    const value = historicalValuation(financials, statement, metric, currencies);
     if (value === null) return [];
     const point = pointForStatement(
       statement,
@@ -848,7 +855,7 @@ export function extractFundamentalSeries(
     );
     return point ? [point] : [];
   });
-  const current = currentDerivedValuationPoint(financials, selected.statements, metric);
+  const current = currentDerivedValuationPoint(financials, selected.statements, metric, currencies);
   const dedupedHistorical = dedupeFundamentalPeriods(historical);
   return dedupeAndSortPoints(current ? [...dedupedHistorical, current] : dedupedHistorical);
 }
@@ -860,4 +867,14 @@ export function fundamentalSeriesUsesAvailabilityFallback(
   if (!financials || source.timestampMode === "period-end") return false;
   const points = extractFundamentalSeries(financials, source);
   return points.some((point) => point.availableAt === undefined);
+}
+
+/** Explains withheld currency-dependent values through chart and export metadata. */
+export function valuationCurrencyWarning(financials: TickerFinancials, source: SecuritySeriesSource): string | undefined {
+  const [namespace, metric = ""] = canonicalTimeSeriesFieldId(source.fieldId).split(".");
+  if (namespace !== "valuation" || !QUOTE_DERIVED_VALUATION_IDS.has(metric)) return undefined;
+  const selected = sourceStatements(financials, source.period, metric);
+  return createValuationCurrencyContext(financials).warning(selected.statements.filter((row) => (
+    valuationAtPrice(row, metric, 1) !== null
+  )));
 }

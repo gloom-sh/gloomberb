@@ -36,6 +36,7 @@ import {
 } from "./field-catalog";
 import {
   fundamentalSeriesUsesAvailabilityFallback,
+  valuationCurrencyWarning,
   valuationSeriesUsesLiveQuote,
 } from "./fundamentals";
 import { extractSecuritySeries, collectPriceHistoryIntegrity, chartPriceHistoryIntegrityNotices } from "./market";
@@ -764,7 +765,7 @@ function baseSecuritySeries(
     unitGroup: currencyUnitGroup,
     volumeUnit,
     warning: field.id === "market.volume" && !volumeUnit && points.length > 0
-      ? "Volume unit unknown." : statementCurrency?.warning,
+      ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source),
     nativeFrequency: spec.source.period && spec.source.period !== "auto"
       ? spec.source.period
       : field.nativeFrequency,

@@ -24,6 +24,8 @@ Statements are the latest available source snapshots and may include restatement
 
 Financial table headers retain reporting currencies and date-source markers: **P** means a provider period date, which may be approximate; **S** means a SEC-corroborated fiscal date. Filing evidence identifies the period without establishing a publication date for every metric. Mixed or missing reporting currencies are not silently converted.
 
+Chart-derived P/E, price/sales, EV/sales, EV/EBITDA and price/free-cash-flow require compatible price and statement currencies. A statement's own currency takes precedence; aggregate reporting currency fills missing row metadata only when the other statements do not contradict it. Explicit minor units such as GBp/GBX convert to GBP without an FX assumption. Foreign or unknown currency pairs remain unavailable with a chart and export warning. Separately converted summary fundamentals do not establish historical statement units, and this conversion does not change provider share or depositary-receipt bases.
+
 SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable. Nonpositive P/E values display as **N/M** and are excluded from meaningful P/E rankings.
 
 Market capitalization can come from a financial snapshot when a current quote does not supply it. Its retrieval time is not its valuation date. Source and freshness details remain attached to the affected value; market-cap comparisons require a valid currency conversion.
