@@ -25,7 +25,9 @@ export function limitSeriesObservations(spec: ChartSpec, series: ResolvedSeries)
   }
   // Count usable observations, but retain missing periods within the selected
   // history and at its end so charts cannot draw through absent financial data.
-  return { ...series, points: points.slice(start) };
+  // If coverage is short, retain leading gaps too: they explain which requested
+  // periods failed, including the case where every observation is unavailable.
+  return { ...series, points: points.slice(remaining > 0 ? 0 : start) };
 }
 
 export interface FinancialPeriodCoverage {

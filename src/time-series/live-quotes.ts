@@ -95,16 +95,32 @@ export function liveChartQuoteTargetSignature(spec: ChartSpec): string {
     .join("\n");
 }
 
+/** A malformed timestamp cannot outrank a usable source observation forever. */
+export function compareChartQuoteRecency(next: Quote, current: Quote): number {
+  const sourceTime = (quote: Quote) => Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
+    && Number.isFinite(new Date(quote.lastUpdated).getTime()) ? quote.lastUpdated : -Infinity;
+  const nextTime = sourceTime(next);
+  const currentTime = sourceTime(current);
+  if (nextTime !== currentTime) return nextTime > currentTime ? 1 : -1;
+  const receipt = (quote: Quote) => Number.isFinite(quote.receivedAt) ? quote.receivedAt! : 0;
+  return receipt(next) - receipt(current);
+}
+
 function isNewerQuote(next: Quote, current: Quote | undefined): boolean {
   if (!current) return true;
-  if (next.lastUpdated !== current.lastUpdated) return next.lastUpdated > current.lastUpdated;
-  return (next.receivedAt ?? 0) > (current.receivedAt ?? 0);
+  const order = compareChartQuoteRecency(next, current);
+  // Providers can change status while retaining the original source/receipt
+  // timestamps. At that same observation, the incoming status is authoritative.
+  // An older source observation or receipt still cannot replace newer data.
+  return order > 0 || (order === 0 && next.lastUpdated === current.lastUpdated
+    && (next.stale === true) !== (current.stale === true));
 }
 
 function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): boolean {
   if (!current) return true;
   return next.lastUpdated !== current.lastUpdated
     || next.price !== current.price
+    || next.stale !== current.stale
     || next.currency !== current.currency
     || next.instrumentType !== current.instrumentType
     || next.providerId !== current.providerId

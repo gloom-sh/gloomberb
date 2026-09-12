@@ -7,6 +7,7 @@ import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
+  futuresContractName,
   nextFuturesSort,
   type FuturesColumnId,
   type FuturesTableRow,
@@ -29,6 +30,30 @@ function quoteMap(entries: Record<string, Partial<Quote>>): BoardQuoteMap {
 }
 
 describe("buildFuturesRows search", () => {
+  test("search and name sorting follow the quoted contract while its alias and catalog search remain stable", () => {
+    const quotes = quoteMap({
+      "CL=F": { symbol: "CL=F", name: "Crude Oil Oct 26" },
+      "BZ=F": { symbol: "BZ=F", name: "Brent Crude Oil Dec 26" },
+    });
+    const filtered = buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "oct 26" });
+    expect(rowIds(filtered)).toEqual(["header:energy", "CL=F"]);
+    expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "WTI" })))
+      .toEqual(["header:energy", "CL=F"]);
+    const contract = contractsBySector.get("energy")!.find((row) => row.symbol === "CL=F")!;
+    expect(futuresContractName(contract, quotes.get("CL=F")!.quote)).toBe("Crude Oil Oct 26");
+    quotes.get("CL=F")!.quote!.name = "Crude Oil Nov 26";
+    expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "oct 26" }))).toEqual([]);
+    expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, quotes, { query: "nov 26" })))
+      .toEqual(["header:energy", "CL=F"]);
+    // Reverse catalog/name order explicitly to catch sorting by the old labels.
+    quotes.get("CL=F")!.quote!.name = "A contract";
+    quotes.get("BZ=F")!.quote!.name = "Z contract";
+    expect(rowIds(buildFuturesRows(contractsBySector, { columnId: "name", direction: "asc" }, quotes, { query: "contract" })))
+      .toEqual(["header:energy", "CL=F", "BZ=F"]);
+    expect(futuresContractName(contract, { symbol: "OTHER", name: "Wrong contract" } as Quote)).toBe(contract.name);
+    expect(futuresContractName(contract, { symbol: "CL=F", name: " " } as Quote)).toBe(contract.name);
+  });
+
   test("matches contract code, name, and Yahoo symbol case-insensitively", () => {
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "gc" })))
       .toEqual(["header:metals", "GC=F"]);

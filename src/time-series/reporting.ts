@@ -104,14 +104,16 @@ export function limitGraphRowsBySymbol(
 
 /** Export raw endpoints even when a chart displays percentages, indices, or logs. */
 export function summarizeResolvedSeries(series: ResolvedSeries) {
-  if (series.points.some((point) => point.provenance?.priceHistoryIntegrity)) {
+  const inconsistentOhlc = series.points.some((point) => point.provenance?.priceHistoryIntegrity);
+  if (inconsistentOhlc || series.points.some((point) => point.provenance?.valuationPriceIssues?.length)) {
     return {
       startDate: series.points[0]?.date.toISOString() ?? null,
       endDate: series.points.at(-1)?.date.toISOString() ?? null,
       startValue: null, endValue: null, return: null,
       unit: series.rawUnit ?? series.unit,
       pointCount: series.points.length,
-      unavailableReason: "Inconsistent OHLC history in the selected observations.",
+      unavailableReason: inconsistentOhlc ? "Inconsistent OHLC history in the selected observations."
+        : "Invalid valuation price in the selected observations.",
     };
   }
   const observations = series.points.flatMap((point) => {

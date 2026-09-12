@@ -7,7 +7,7 @@ import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/fo
 import { marketStatusDot, type BoardQuoteMap } from "../shared/use-quote-board";
 import { formatQuoteTime } from "../world-indices/table";
 import { tickDecimals, type FuturesContract } from "./contracts";
-import type { FuturesColumnId, FuturesTableRow } from "./model";
+import { futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
 
@@ -196,7 +196,7 @@ export function renderFuturesCell(
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: contract.name, color: selectedColor };
+      return { text: futuresContractName(contract, quote), color: selectedColor };
     case "price":
       if (loadingCell) return { text: "…", color: dimmed };
       if (!quote) return { text: "—", color: dimmed };

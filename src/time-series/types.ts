@@ -110,6 +110,7 @@ export interface TimeSeriesPoint {
   periodLabel?: string;
   provenance?: {
     priceHistoryIntegrity?: import("../utils/price-history-integrity").PriceHistoryIntegrity;
+    valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
     secEpsBasis?: import("../utils/sec-eps-basis").SecEpsBasis;
     providerId?: string;
     quality?: "reported" | "derived" | "estimated";
@@ -153,6 +154,8 @@ export interface ResolvedSeries {
   /** Regular-session move supplied with the latest market quote. */
   latestChangePercent?: number;
   points: TimeSeriesPoint[];
+  /** Rejected valuation price inputs, retained independently of usable observations. */
+  valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
   warning?: string;
   /** Listed in the legend so it can be restored, but not drawn. */
   hidden?: boolean;
