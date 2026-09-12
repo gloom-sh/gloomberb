@@ -26,7 +26,7 @@ export type EarningsColumn = DataTableColumn & { id: EarningsColumnId };
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 function formatDate(date: Date): string {
-  return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
+  return `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}`;
 }
 
 function formatTime(date: Date | null | undefined): string {
@@ -48,10 +48,10 @@ function formatRange(
 }
 
 function formatRevisionSummary(event: EarningsEvent): string {
-  const up = event.epsRevisionUp30d ?? event.epsRevisionUp7d;
-  const down = event.epsRevisionDown30d ?? event.epsRevisionDown7d;
+  const up = event.epsRevisionUp30d;
+  const down = event.epsRevisionDown30d;
   if (up == null && down == null) return "—";
-  return `${up ?? 0}/${down ?? 0}`;
+  return `${up ?? "—"}/${down ?? "—"}`;
 }
 
 function formatAnalystSummary(event: EarningsEvent): string {
@@ -98,7 +98,7 @@ export function buildEarningsColumns(width: number): EarningsColumn[] {
     { id: "epsRange", label: "EPS RNG", width: epsRangeWidth, align: "right" },
     { id: "epsGrowth", label: "EPS YOY", width: growthWidth, align: "right" },
     { id: "epsTrend", label: "EPS 30D", width: trendWidth, align: "right" },
-    { id: "epsRevisions", label: "REV", width: revisionsWidth, align: "right" },
+    { id: "epsRevisions", label: "REV 30D", width: revisionsWidth, align: "right" },
     { id: "revenueEstimate", label: "SALES", width: revenueWidth, align: "right" },
     { id: "revenueRange", label: "SALES RNG", width: revenueRangeWidth, align: "right" },
     { id: "revenueGrowth", label: "SALES YOY", width: growthWidth, align: "right" },
@@ -167,7 +167,7 @@ export function renderEarningsCell(
       };
     case "epsTrend": {
       const current = row.event.epsEstimate;
-      const prior = row.event.epsTrend30dAgo ?? row.event.epsTrend7dAgo;
+      const prior = row.event.epsTrend30dAgo;
       const change = current != null && prior != null ? current - prior : null;
       return {
         text: change != null ? formatNumber(change, 2) : "—",
@@ -175,11 +175,12 @@ export function renderEarningsCell(
       };
     }
     case "epsRevisions": {
-      const net = (row.event.epsRevisionUp30d ?? row.event.epsRevisionUp7d ?? 0)
-        - (row.event.epsRevisionDown30d ?? row.event.epsRevisionDown7d ?? 0);
+      const up = row.event.epsRevisionUp30d;
+      const down = row.event.epsRevisionDown30d;
+      const net = up != null && down != null ? up - down : null;
       return {
         text: formatRevisionSummary(row.event),
-        color: selectedColor ?? (net > 0 ? colors.positive : net < 0 ? colors.negative : colors.textDim),
+        color: selectedColor ?? (net != null && net > 0 ? colors.positive : net != null && net < 0 ? colors.negative : colors.textDim),
       };
     }
     case "revenueEstimate":
