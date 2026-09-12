@@ -1,4 +1,5 @@
 import type { PricePoint, Quote } from "../types/financials";
+import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { mergePriceHistoryIntegrity, pricePointIntegrity } from "../utils/price-history-integrity";
 
 export type ValuationPriceIssue = ({
@@ -13,14 +14,14 @@ export type ValuationPriceIssue = ({
 
 export function valuationQuoteIssue(quote: Quote | undefined): ValuationPriceIssue | undefined {
   if (!quote) return undefined;
+  const validObservationTime = hasValidQuoteObservationTime(quote);
   const reason = quote.stale === true ? "stale"
     : !Number.isFinite(quote.price) || quote.price <= 0 ? "invalid-price"
-      : !Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0
-        || !Number.isFinite(new Date(quote.lastUpdated).getTime()) ? "invalid-timestamp" : null;
+      : !validObservationTime ? "invalid-timestamp" : null;
   if (!reason) return undefined;
   const { symbol, currency, price, lastUpdated, stale, providerId } = quote;
   return { kind: "quote", reason, quote: { symbol, currency, price, lastUpdated, stale, providerId },
-    ...(Number.isFinite(lastUpdated) && lastUpdated > 0 && Number.isFinite(new Date(lastUpdated).getTime())
+    ...(validObservationTime
       ? { affectedAt: new Date(lastUpdated).toISOString() } : {}) };
 }
 

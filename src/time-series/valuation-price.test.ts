@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import type { TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { createDefaultConfig } from "../types/config";
@@ -126,6 +126,37 @@ test("actual resolver/export retain stale-source diagnostics and historical valu
   expect(recovered.complete).not.toBe(false);
 });
 
+test("future Current quote times retain invalid-time provenance without changing historical multiples", async () => {
+  const now = Date.parse("2026-09-12T04:00:00Z");
+  const clock = spyOn(Date, "now").mockReturnValue(now);
+  const data = fixture();
+  const future = now + 86_400_000;
+  data.quote!.lastUpdated = future;
+  const original = JSON.stringify(data);
+  try {
+    for (const field of fields) {
+      expect(extractFundamentalSeries(data, source(field)).some(point => point.periodLabel === "Current")).toBe(false);
+      expect(valuationPriceIssues(data, source(field))).toEqual([expect.objectContaining({ reason: "invalid-timestamp", quote: expect.objectContaining({ lastUpdated: future, price: 60 }) })]);
+    }
+    const model = await load(data);
+    expect(model.series[0]?.points.map(point => point.value)).toEqual([5.5]);
+    expect(model.complete).toBe(false);
+    expect(model.metadata?.warnings).toEqual(expect.arrayContaining([expect.stringContaining("source quote timestamp is unavailable")]));
+    expect(model.metadata?.valuationPriceIssues).toEqual([expect.objectContaining({ issues: [expect.objectContaining({ reason: "invalid-timestamp", quote: expect.objectContaining({ lastUpdated: future }) })] })]);
+    expect(JSON.stringify(data)).toBe(original);
+    for (const viewport of [{ dateWindow: { start: "2026-09-10T13:00:00Z", end: "2026-09-10T20:00:00Z" } }, { maxPoints: 1 }]) {
+      const historical = await load(data, viewport);
+      expect(historical.complete).not.toBe(false);
+      expect(historical.metadata?.valuationPriceIssues).toBeUndefined();
+    }
+    data.quote!.lastUpdated = now - 60_000;
+    const recovered = await load(data);
+    expect(recovered.series[0]?.points.at(-1)).toMatchObject({ periodLabel: "Current", value: 6 });
+    expect(recovered.metadata?.valuationPriceIssues).toBeUndefined();
+    expect(recovered.complete).not.toBe(false);
+  } finally { clock.mockRestore(); }
+});
+
 test("actual resolver/export count a null corrupt valuation as unavailable and retain the original candle", async () => {
   const data = fixture(); data.quote!.stale = true; data.priceHistory[1]!.open = 70;
   const model = await load(data);
@@ -189,7 +220,7 @@ test("invalid non-OHLC prices interrupt studies and retain the reason during lat
   expect(warmup.chart.warnings.some((warning) => warning.includes("inconsistent OHLC"))).toBe(false);
 });
 
-test("actual live quote status changes and timestamp recovery recompute Current valuations", async () => {
+test.each(["NaN", "future"] as const)("actual live quote status and %s timestamp recovery recompute Current valuations", async invalidKind => {
   const data = fixture();
   const spec: ChartSpec = { version: CHART_SPEC_VERSION, viewport: { range: "5Y", resolution: "1d" }, panels: [{ id: "main" }],
     studies: [], series: [{ id: "pe", source: source(), style: "line", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }] };
@@ -208,7 +239,7 @@ test("actual live quote status changes and timestamp recovery recompute Current 
   }
   const valid = { ...data.quote!, stale: false };
   try {
-    emit(target, { ...valid, lastUpdated: NaN, receivedAt: 1 });
+    emit(target, { ...valid, lastUpdated: invalidKind === "NaN" ? NaN : Date.now() + 86_400_000, receivedAt: 1 });
     await waitForCount(1);
     // A valid timestamp must dislodge the malformed prior stream observation.
     emit(target, { ...valid, receivedAt: 2 });
@@ -223,7 +254,7 @@ test("actual live quote status changes and timestamp recovery recompute Current 
     expect(results.at(-1)?.series[0]?.points.at(-1)?.value).toBe(6);
     expect(results.at(-1)?.warnings.some((warning) => warning.includes("source quote is stale"))).toBe(false);
   } finally { stop(); }
-  for (const invalid of [NaN, Infinity, 0, -1, 9e20]) {
+  for (const invalid of [NaN, Infinity, 0, -1, 9e20, Date.now() + 86_400_000]) {
     data.quote!.lastUpdated = invalid;
     const recovered = await resolveChartSpecData(spec, { dataProvider: provider, now: new Date("2026-09-12"),
       quoteOverrides: new Map([[chartQuoteOverrideKeyForSource(source()), valid]]) });

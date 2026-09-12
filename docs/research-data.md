@@ -4,6 +4,8 @@
 
 This reference describes how the terminal calculates and labels research data. Pane bodies show the data and current failures; recurring methodology belongs here. Headless reports and shared chart metadata retain source details and limitations.
 
+A quote needs a finite, positive observation timestamp that is no later than the current clock. Missing, invalid or future source times cannot establish a current price, chart update or quote-derived valuation. Receipt time does not replace source time. Retained observations keep their values and existing stale/error status until valid data arrives; historical statement-price observations remain separate.
+
 ## Charts, comparisons, and correlations
 
 Normalized price charts show closing-price returns in each listing's currency. They exclude cash distributions, reinvestment, and FX conversion. They are not total-return or investor-currency performance charts.

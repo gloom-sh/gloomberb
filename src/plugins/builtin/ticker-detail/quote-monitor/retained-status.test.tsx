@@ -99,6 +99,21 @@ test("explicit stale cached quote is identified while its provider refresh is pe
   expect(recovered).not.toContain("Stale quote");
 });
 
+test.each(["NaN", "Infinity", "future"] as const)("retained quote with %s source time stays visibly stale until a valid observation arrives", async kind => {
+  let complete!: (value: Quote) => void;
+  const pending = new Promise<Quote>(resolve => { complete = resolve; });
+  const invalidTime = kind === "NaN" ? NaN : kind === "Infinity" ? Infinity : Date.now() + 86_400_000;
+  const cached = { ...quote(), lastUpdated: invalidTime, receivedAt: Date.now() };
+  const retained = await render(80, () => pending, cached);
+  expect(retained).toContain("$1.160227");
+  expect(retained).toContain("Stale quote");
+  expect(Object.is(cached.lastUpdated, invalidTime)).toBe(true);
+  await act(async () => { complete(quote(1.170227)); });
+  const recovered = await frame();
+  expect(recovered).toContain("$1.170227");
+  expect(recovered).not.toContain("Stale quote");
+});
+
 // Dense boards can allocate only three rows to a narrow card. The failure must
 // remain visible there without pushing the retained quote off the card.
 test.each(["error", "stale"] as const)("compact retained card identifies %s without wrapping a long symbol", async (kind) => {
