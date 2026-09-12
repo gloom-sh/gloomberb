@@ -127,35 +127,54 @@ public struct GloomberbPoint {
 "@
 
 function Get-VisibleWindows {
+  param([switch]$IncludeHiddenAndBounds)
+
   $Windows = New-Object System.Collections.Generic.List[object]
   $Callback = [GloomberbWin32+EnumWindowsProc]{
     param([IntPtr]$Handle, [IntPtr]$Param)
 
-    if (-not [GloomberbWin32]::IsWindowVisible($Handle)) {
+    $IsVisible = [GloomberbWin32]::IsWindowVisible($Handle)
+    if (-not $IncludeHiddenAndBounds -and -not $IsVisible) {
       return $true
     }
 
     $TextLength = [GloomberbWin32]::GetWindowTextLength($Handle)
-    if ($TextLength -le 0) {
+    if (-not $IncludeHiddenAndBounds -and $TextLength -le 0) {
       return $true
     }
 
     $TitleBuilder = New-Object System.Text.StringBuilder ($TextLength + 1)
     [void][GloomberbWin32]::GetWindowText($Handle, $TitleBuilder, $TitleBuilder.Capacity)
     $Title = $TitleBuilder.ToString()
-    if ([string]::IsNullOrWhiteSpace($Title)) {
+    if (-not $IncludeHiddenAndBounds -and [string]::IsNullOrWhiteSpace($Title)) {
       return $true
     }
 
     $ProcessIdValue = [uint32]0
     [void][GloomberbWin32]::GetWindowThreadProcessId($Handle, [ref]$ProcessIdValue)
     $Process = Get-Process -Id ([int]$ProcessIdValue) -ErrorAction SilentlyContinue
-    $Windows.Add([pscustomobject]@{
+    $Window = [pscustomobject]@{
       Id = [int]$ProcessIdValue
       ProcessName = if ($Process) { $Process.ProcessName } else { "" }
       MainWindowTitle = $Title
       Handle = $Handle.ToInt64()
-    })
+    }
+    if ($IncludeHiddenAndBounds) {
+      $Bounds = $null
+      $BoundsError = $null
+      try {
+        $Bounds = Get-WindowBounds $Window
+      } catch {
+        $BoundsError = $_.Exception.Message
+      }
+      $Window | Add-Member -NotePropertyMembers @{
+        IsVisible = $IsVisible
+        IsMinimized = [GloomberbWin32]::IsIconic($Handle)
+        Bounds = $Bounds
+        BoundsError = $BoundsError
+      }
+    }
+    $Windows.Add($Window)
     return $true
   }
 
@@ -1214,7 +1233,7 @@ function Restore-EnvironmentVariable {
   param(
     [string]$Name,
     [AllowNull()]
-    [string]$Value
+    [object]$Value
   )
 
   if ($null -eq $Value) {
@@ -1222,6 +1241,55 @@ function Restore-EnvironmentVariable {
   } else {
     Set-Item -Path "Env:$Name" -Value $Value
   }
+}
+
+function Save-OnboardingFailureDiagnostics {
+  param(
+    [object[]]$TrackedProcesses,
+    [string]$FailureMessage
+  )
+
+  # Read retained process handles before cleanup. Looking up only a PID after exit
+  # loses the exit code and can accidentally inspect a reused PID.
+  $ProcessStates = @(
+    foreach ($Tracked in $TrackedProcesses) {
+      $State = [ordered]@{
+        Id = $Tracked.Id
+        ProcessName = $Tracked.ProcessName
+        HasExited = $null
+        ExitCode = $null
+        StateError = $Tracked.StateError
+      }
+      if ($Tracked.Process) {
+        try {
+          $Tracked.Process.Refresh()
+          $State.HasExited = $Tracked.Process.HasExited
+          if ($State.HasExited) {
+            $State.ExitCode = $Tracked.Process.ExitCode
+          }
+        } catch {
+          $State.StateError = $_.Exception.Message
+        }
+      }
+      [pscustomobject]$State
+    }
+  )
+  $Windows = @()
+  $WindowInventoryError = $null
+  try {
+    $Windows = @(Get-VisibleWindows -IncludeHiddenAndBounds)
+  } catch {
+    $WindowInventoryError = $_.Exception.Message
+  }
+  [pscustomobject]@{
+    CapturedAt = [DateTime]::UtcNow.ToString("o")
+    Stage = "onboarding-failure-before-cleanup"
+    Failure = $FailureMessage
+    Processes = $ProcessStates
+    Windows = $Windows
+    WindowInventoryError = $WindowInventoryError
+  } | ConvertTo-Json -Depth 8 | Set-Content `
+    -Path (Join-Path $GuiArtifactDir "windows-onboarding-failure.json") -Encoding UTF8
 }
 
 function Capture-OnboardingScreenshot {
@@ -1233,6 +1301,7 @@ function Capture-OnboardingScreenshot {
   $OnboardingHome = Join-Path $env:TEMP "GloomberbOnboardingHome-$PID"
   $OnboardingProcess = $null
   $OnboardingWindowProcessIds = @()
+  $TrackedProcesses = New-Object System.Collections.Generic.List[object]
   $PreviousHome = $env:HOME
   $PreviousUserProfile = $env:USERPROFILE
   $PreviousElectrobunConsole = $env:ELECTROBUN_CONSOLE
@@ -1254,13 +1323,38 @@ function Capture-OnboardingScreenshot {
     $OnboardingProcess = Start-Process `
       -FilePath (Join-Path $InstallDir "bin\launcher.exe") `
       -WorkingDirectory (Join-Path $InstallDir "bin") `
+      -RedirectStandardOutput (Join-Path $GuiArtifactDir "windows-onboarding-stdout.log") `
+      -RedirectStandardError (Join-Path $GuiArtifactDir "windows-onboarding-stderr.log") `
       -PassThru
+    $TrackedProcesses.Add([pscustomobject]@{
+      Id = $OnboardingProcess.Id
+      ProcessName = "launcher"
+      Process = $OnboardingProcess
+      StateError = $null
+    })
     $OnboardingWindows = @(Wait-ForNewWindows `
       -KnownHandles $InitialWindowHandles `
       -MinimumCount 1 `
       -Label "Gloomberb onboarding window")
     $OnboardingWindowProcessIds += $OnboardingProcess.Id
     $OnboardingWindowProcessIds += @($OnboardingWindows | Select-Object -ExpandProperty Id | Where-Object { $_ })
+    foreach ($WindowProcessId in @($OnboardingWindowProcessIds | Select-Object -Unique)) {
+      if ($WindowProcessId -eq $OnboardingProcess.Id) { continue }
+      $Tracked = [pscustomobject]@{
+        Id = $WindowProcessId
+        ProcessName = ($OnboardingWindows | Where-Object Id -eq $WindowProcessId | Select-Object -First 1).ProcessName
+        Process = $null
+        StateError = $null
+      }
+      $TrackedProcesses.Add($Tracked)
+      try {
+        $Tracked.Process = Get-Process -Id $WindowProcessId -ErrorAction Stop
+        # Force a process handle to be opened while the window is still alive.
+        $Tracked.Process.EnableRaisingEvents = $true
+      } catch {
+        $Tracked.StateError = $_.Exception.Message
+      }
+    }
 
     Save-WindowInventory (Join-Path $GuiArtifactDir "windows-onboarding-after-launch.txt")
     $null = Capture-WindowScreenshotByTitle `
@@ -1268,11 +1362,35 @@ function Capture-OnboardingScreenshot {
       -Path $OutputPath `
       -Label "Onboarding window" `
       -InitialDelaySeconds 8
+  } catch {
+    $OnboardingFailure = $_
+    try {
+      Save-OnboardingFailureDiagnostics `
+        -TrackedProcesses $TrackedProcesses.ToArray() `
+        -FailureMessage $OnboardingFailure.Exception.Message
+    } catch {
+      Write-Host "Could not save onboarding failure diagnostics: $($_.Exception.Message)"
+    }
+    try {
+      Capture-DesktopScreenshot (Join-Path $GuiArtifactDir "windows-onboarding-failure.png")
+    } catch {
+      Write-Host "Could not capture onboarding failure screenshot: $($_.Exception.Message)"
+    }
+    throw $OnboardingFailure
   } finally {
     Stop-ProcessIds $OnboardingWindowProcessIds
 
     if ($OnboardingProcess -and -not $OnboardingProcess.HasExited) {
       Stop-Process -Id $OnboardingProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($Tracked in $TrackedProcesses) {
+      if ($Tracked.Process) {
+        try {
+          $Tracked.Process.Dispose()
+        } catch {
+          Write-Host "Could not dispose onboarding process handle $($Tracked.Id): $($_.Exception.Message)"
+        }
+      }
     }
 
     Restore-EnvironmentVariable "HOME" $PreviousHome
