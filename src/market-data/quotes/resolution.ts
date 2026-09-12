@@ -10,7 +10,8 @@ import type {
 } from "../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { debugLog } from "../../utils/debug-log";
-import { hasFreshQuoteForCurrentSession, isQuoteStaleForCurrentSession } from "./freshness";
+import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "./freshness";
+import { activeUsExtendedHoursSession, isTimestampStaleForExchangeSession } from "../market/freshness";
 import {
   finalizeSessionFields,
   getQuoteContributionKey,
@@ -269,11 +270,22 @@ function buildAcceptedPriceCandidates(contributions: QuoteContribution[]): {
   return { accepted, rejectedProviders };
 }
 
+export function isQuoteContributionStaleForCurrentSession(contribution: Quote, now = Date.now()): boolean {
+  if (contribution.marketState != null) return isQuoteStaleForCurrentSession(contribution, now);
+  // A price-only source can be combined with independent session metadata.
+  // Its observation must still belong to the current active session.
+  const timestamp = contribution.lastUpdated;
+  if (contribution.stale === true || !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now) return true;
+  const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now) : null;
+  if (activeSession && activeUsExtendedHoursSession(timestamp) !== activeSession) return true;
+  return isTimestampStaleForExchangeSession(timestamp, contribution.listingExchangeName || contribution.exchangeName, now);
+}
+
 function filterFreshQuoteCandidates(
   contributions: QuoteContribution[],
   now: number,
 ): { accepted: QuoteContribution[]; rejectedProviders: string[] } {
-  if (!hasFreshQuoteForCurrentSession(contributions, now)) {
+  if (!contributions.some((contribution) => !isQuoteContributionStaleForCurrentSession(contribution, now))) {
     return { accepted: contributions, rejectedProviders: [] };
   }
 
@@ -281,7 +293,7 @@ function filterFreshQuoteCandidates(
   const rejectedProviders = new Set<string>();
 
   for (const contribution of contributions) {
-    if (isQuoteStaleForCurrentSession(contribution, now)) {
+    if (isQuoteContributionStaleForCurrentSession(contribution, now)) {
       rejectedProviders.add(contribution.providerId);
       quoteResolutionLog.warn("Rejected stale quote contribution for the current session", {
         providerId: contribution.providerId,
@@ -499,7 +511,7 @@ export function upsertQuoteContributionMap(
   const normalized = normalizeQuoteContribution(quote);
   if (!normalized) return current ?? {};
   const now = options.now ?? Date.now();
-  if (isQuoteStaleForCurrentSession(normalized, now) && hasFreshQuoteForCurrentSession(quoteContributionValues(current), now)) {
+  if (isQuoteContributionStaleForCurrentSession(normalized, now) && quoteContributionValues(current).some((contribution) => !isQuoteContributionStaleForCurrentSession(contribution, now))) {
     quoteResolutionLog.warn("Rejected incoming stale quote contribution for the current session", {
       incomingProviderId: normalized.providerId,
       incomingPrice: normalized.price,

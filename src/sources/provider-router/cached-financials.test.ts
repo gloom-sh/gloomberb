@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { AppPersistence } from "../../data/app-persistence";
 import type { DataProvider } from "../../types/data-provider";
 import { AssetDataRouter } from "./index";
@@ -11,7 +11,10 @@ import {
   makeQuote,
 } from "./test-support";
 
+let clock: ReturnType<typeof spyOn> | undefined;
 afterEach(() => {
+  clock?.mockRestore();
+  clock = undefined;
   cleanupProviderRouterTestFiles();
 });
 
@@ -165,6 +168,7 @@ describe("AssetDataRouter cached financials", () => {
   });
 
   test("drops cached premarket cloud quotes that lack an active-session price", () => {
+    clock = spyOn(Date, "now").mockReturnValue(Date.parse("2026-09-14T11:00:00Z"));
     const dbPath = createTempDbPath("stale-cloud-premarket-cache");
     const persistence = new AppPersistence(dbPath);
     const now = Date.now();

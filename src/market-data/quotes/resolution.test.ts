@@ -81,6 +81,36 @@ describe("quote-resolution", () => {
     expect(quote?.routingExchangeName).toBe("SMART");
     expect(quote?.provenance?.price?.providerId).toBe("ibkr");
     expect(quote?.provenance?.session?.providerId).toBe("yahoo");
+
+    const streamed = upsertQuoteContributionMap({ yahoo: contributions.yahoo! }, contributions.ibkr!, { now });
+    expect(streamed.ibkr?.price).toBe(100);
+    expect(resolveCanonicalQuote(streamed, now).quote).toMatchObject({ price: 100, marketState: "PRE", preMarketPrice: 101 });
+  });
+
+  test("admits incomplete price contributions only from the current extended session", () => {
+    for (const [nowIso, marketState] of [["2026-09-14T11:00:00Z", "PRE"], ["2026-09-14T22:00:00Z", "POST"]] as const) {
+      const now = Date.parse(nowIso);
+      const yahoo = { symbol: "AMD", providerId: "yahoo", price: 99, currency: "USD", change: 0, changePercent: 0,
+        lastUpdated: now - 60_000, listingExchangeName: "NASDAQ", marketState,
+        ...(marketState === "PRE" ? { preMarketPrice: 101 } : { postMarketPrice: 102 }) };
+      const ibkr = { ...yahoo, providerId: "ibkr", dataSource: "live" as const, price: 100,
+        marketState: undefined, preMarketPrice: undefined, postMarketPrice: undefined };
+      const good = resolveCanonicalQuote({ yahoo, ibkr }, now).quote;
+      expect(good).toMatchObject({ price: 100, marketState });
+      for (const overrides of [
+        { stale: true }, { lastUpdated: now - 86_400_000 }, { lastUpdated: NaN }, { lastUpdated: Infinity },
+        { lastUpdated: 0 }, { lastUpdated: now + 60_000 },
+        { lastUpdated: Date.parse(marketState === "PRE" ? "2026-09-14T07:59:00Z" : "2026-09-14T11:00:00Z") },
+        { marketState: marketState === "PRE" ? "POST" as const : "PRE" as const, preMarketPrice: 101, postMarketPrice: 102 },
+      ]) {
+        const rejected = { ...ibkr, ...overrides };
+        expect(resolveCanonicalQuote({ yahoo, ibkr: rejected }, now).quote?.price).toBe(99);
+        expect(upsertQuoteContributionMap({ yahoo }, rejected, { now }).ibkr).toBeUndefined();
+      }
+      // Price-only contributions remain useful as retained data; they cannot
+      // establish a complete current-session quote without session metadata.
+      expect(resolveCanonicalQuote({ ibkr }, now).quote?.marketState).toBeUndefined();
+    }
   });
 
   test("uses provider previous close with the live broker price for daily change", () => {

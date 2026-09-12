@@ -154,9 +154,14 @@ function usSessionState(timestampMs: number): UsSessionState {
 }
 
 /** Provider session labels may outlive the active session they described. */
-export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null {
+export function activeUsMarketSession(now: number): "PRE" | "REGULAR" | "POST" | null {
   if (!Number.isFinite(new Date(now).getTime())) return null;
   const session = usSessionState(now);
+  return session === "PRE" || session === "REGULAR" || session === "POST" ? session : null;
+}
+
+export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null {
+  const session = activeUsMarketSession(now);
   return session === "PRE" || session === "POST" ? session : null;
 }
 

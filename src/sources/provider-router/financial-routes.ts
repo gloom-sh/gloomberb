@@ -10,7 +10,7 @@ import type {
 } from "../../types/financials";
 import { parseOptionSymbol } from "../../utils/options";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
-import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
+import { isQuoteContributionStaleForCurrentSession, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 import {
   listCachedResources,
   normalizeTicker,
@@ -193,7 +193,10 @@ export class ProviderRouterFinancialRoutes {
       ...this.deps.getProviderSourceKeys(),
     ];
     const rawCached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, false);
-    const cached = rawCached && !isQuoteStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, exchange))
+    const cachedIsStale = rawCached && (brokerSourceKeys.includes(rawCached.sourceKey)
+      ? isQuoteContributionStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, exchange))
+      : isQuoteStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, exchange)));
+    const cached = rawCached && !cachedIsStale
       ? rawCached
       : null;
     const forceRefresh = context?.cacheMode === "refresh";
@@ -206,7 +209,7 @@ export class ProviderRouterFinancialRoutes {
     }
 
     const brokerQuote = await withBrokerTimeout(this.deps.primaryRoutes.fetchBrokerQuote(ticker, exchange, context));
-    if (brokerQuote && !isQuoteStaleForCurrentSession(quoteWithFreshnessExchange(brokerQuote.value, exchange))) {
+    if (brokerQuote && !isQuoteContributionStaleForCurrentSession(quoteWithFreshnessExchange(brokerQuote.value, exchange))) {
       return this.mergeBrokerQuoteWithProviderReference(
         brokerQuote.value,
         await this.getProviderReferenceQuote(ticker, exchange, context),
@@ -284,7 +287,7 @@ export class ProviderRouterFinancialRoutes {
       ? selectCachedResource<TickerFinancials>(this.deps.resources, "financials", entityKey, quoteVariantKeys, brokerSourceKeys, allowExpired)
       : null;
     const sanitizedBrokerRecord = brokerRecord
-      ? { ...brokerRecord, value: sanitizeCachedFinancials(brokerRecord.value, options) }
+      ? { ...brokerRecord, value: sanitizeCachedFinancials(brokerRecord.value, { ...options, allowIncompleteSession: true }) }
       : null;
     const providerSourceKeys = this.deps.getProviderSourceKeys();
     const includeSymbolProviderFallback = options.includeSymbolProviderFallback !== false;
@@ -323,7 +326,7 @@ export class ProviderRouterFinancialRoutes {
       quoteVariantKeys,
       quoteSourceKeys,
     );
-    const quoteSelection = selectCachedQuoteRecord(quoteRecords, exchange, options);
+    const quoteSelection = selectCachedQuoteRecord(quoteRecords, exchange, options, brokerSourceKeys);
     const mergedValue = mergeFinancials(sanitizedBrokerRecord?.value ?? null, providerSelection.value);
     const value = quoteSelection.quote
       ? resolveTickerFinancialsQuoteState(mergedValue, quoteSelection.quote)

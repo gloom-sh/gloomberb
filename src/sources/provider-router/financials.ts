@@ -5,8 +5,10 @@ import { coalesceFinancialPeriodAliases, mergeFinancialStatementRows } from "../
 import { normalizePriceHistory, normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { redactUnavailableFundamentals, RETRACTABLE_VALUATION_FIELDS } from "../../utils/fundamentals";
 import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
+import { activeUsMarketSession } from "../../market-data/market/freshness";
 import {
   mergeQuoteContributionMaps,
+  isQuoteContributionStaleForCurrentSession,
   resolveCanonicalQuote,
   resolveTickerFinancialsQuoteState,
   seedQuoteContributions,
@@ -64,7 +66,7 @@ function excludeNonCompanyFinancials(financials: TickerFinancials): TickerFinanc
 
 export function sanitizeCachedFinancials(
   financials: TickerFinancials,
-  options: { includeStaleQuotes?: boolean } = {},
+  options: { includeStaleQuotes?: boolean; allowIncompleteSession?: boolean } = {},
 ): TickerFinancials {
   financials = excludeNonCompanyFinancials({
     ...financials,
@@ -72,7 +74,10 @@ export function sanitizeCachedFinancials(
     annualStatements: coalesceFinancialPeriodAliases(financials.annualStatements),
     quarterlyStatements: coalesceFinancialPeriodAliases(financials.quarterlyStatements),
   });
-  if (options.includeStaleQuotes || !isQuoteStaleForCurrentSession(financials.quote)) return financials;
+  const stale = financials.quote && (options.allowIncompleteSession
+    ? isQuoteContributionStaleForCurrentSession(financials.quote)
+    : isQuoteStaleForCurrentSession(financials.quote));
+  if (options.includeStaleQuotes || !stale) return financials;
   return {
     ...financials,
     quote: undefined,
@@ -104,15 +109,15 @@ const ACTIVE_DELAYED_PROVIDER_QUOTE_MAX_AGE_MS = 30 * 60_000;
  * regular hours. Yahoo reports POST for Tokyo or Sydney for hours after the
  * close, and that closing quote is exactly what a world board should show.
  */
-function isQuoteInActiveSession(quote: Quote): boolean {
+function isQuoteInActiveSession(quote: Quote, now: number): boolean {
+  if (isExtendedHoursExchange(quote)) return activeUsMarketSession(now) != null;
   const state = quote.marketState ?? "";
   if (state === "REGULAR") return true;
-  if (state === "PRE" || state === "POST") return isExtendedHoursExchange(quote);
   return false;
 }
 
 function isActiveProviderQuoteTooOld(quote: Quote, now = Date.now()): boolean {
-  if (!isQuoteInActiveSession(quote)) return false;
+  if (!isQuoteInActiveSession(quote, now)) return false;
   if (!Number.isFinite(quote.lastUpdated)) return false;
   const maxAge =
     quote.dataSource === "delayed"
@@ -151,10 +156,13 @@ export function dropUnusableProviderQuote(value: TickerFinancials, exchange?: st
 function sanitizeCachedQuote(
   quote: Quote,
   exchange: string | undefined,
-  options: { includeStaleQuotes?: boolean } = {},
+  options: { includeStaleQuotes?: boolean; allowIncompleteSession?: boolean } = {},
 ): Quote | null {
   const normalized = quoteWithFreshnessExchange(quote, exchange);
-  return options.includeStaleQuotes || !isQuoteStaleForCurrentSession(normalized)
+  const stale = options.allowIncompleteSession
+    ? isQuoteContributionStaleForCurrentSession(normalized)
+    : isQuoteStaleForCurrentSession(normalized);
+  return options.includeStaleQuotes || !stale
     ? normalized
     : null;
 }
@@ -361,12 +369,15 @@ export function selectCachedQuoteRecord(
   records: CachedResourceRecord<Quote>[],
   exchange: string | undefined,
   options: { includeStaleQuotes?: boolean } = {},
+  brokerSourceKeys: readonly string[] = [],
 ): CachedQuoteSelection {
   let stale = false;
 
   for (const record of records) {
     stale ||= record.stale === true;
-    const quote = sanitizeCachedQuote(record.value, exchange, options);
+    const quote = sanitizeCachedQuote(record.value, exchange, {
+      ...options, allowIncompleteSession: brokerSourceKeys.includes(record.sourceKey),
+    });
     if (quote) return { quote, stale };
   }
 

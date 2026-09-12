@@ -9,7 +9,7 @@ function quoteFixture(overrides: Partial<Quote> = {}): Quote {
     currency: "USD",
     change: 0,
     changePercent: 0,
-    lastUpdated: Date.parse("2026-05-15T20:30:00Z"),
+    lastUpdated: Date.parse("2026-05-15T19:30:00Z"),
     listingExchangeName: "NASDAQ",
     marketState: "REGULAR",
     ...overrides,
@@ -58,12 +58,12 @@ describe("appendLiveQuotePoint", () => {
     const extended = appendLiveQuotePoint(
       history,
       quoteFixture(),
-      { now: Date.parse("2026-05-15T21:00:00Z") },
+      { now: Date.parse("2026-05-15T19:45:00Z") },
     );
 
     expect(extended).toHaveLength(3);
     expect(extended.at(-1)).toEqual({
-      date: new Date("2026-05-15T20:30:00Z"),
+      date: new Date("2026-05-15T19:30:00Z"),
       close: 129,
     });
   });
@@ -71,7 +71,7 @@ describe("appendLiveQuotePoint", () => {
   test("merges a quote into the active OHLC bucket", () => {
     const history: PricePoint[] = [
       {
-        date: new Date("2026-05-15T20:25:00Z"),
+        date: new Date("2026-05-15T19:25:00Z"),
         open: 124,
         high: 130,
         low: 122,
@@ -82,9 +82,9 @@ describe("appendLiveQuotePoint", () => {
 
     const extended = appendLiveQuotePoint(
       history,
-      quoteFixture({ lastUpdated: Date.parse("2026-05-15T20:29:00Z") }),
+      quoteFixture({ lastUpdated: Date.parse("2026-05-15T19:29:00Z") }),
       {
-        now: Date.parse("2026-05-15T20:30:00Z"),
+        now: Date.parse("2026-05-15T19:30:00Z"),
         mode: "ohlc",
         resolution: "5m",
       },
@@ -92,7 +92,7 @@ describe("appendLiveQuotePoint", () => {
 
     expect(extended).toHaveLength(1);
     expect(extended[0]).toEqual({
-      date: new Date("2026-05-15T20:25:00Z"),
+      date: new Date("2026-05-15T19:25:00Z"),
       open: 124,
       high: 130,
       low: 122,
@@ -104,7 +104,7 @@ describe("appendLiveQuotePoint", () => {
   test("seeds a new OHLC bucket from the live price instead of prior-bar extremes", () => {
     const history: PricePoint[] = [
       {
-        date: new Date("2026-05-15T20:25:00Z"),
+        date: new Date("2026-05-15T19:25:00Z"),
         open: 124,
         high: 180,
         low: 80,
@@ -115,9 +115,9 @@ describe("appendLiveQuotePoint", () => {
 
     const extended = appendLiveQuotePoint(
       history,
-      quoteFixture({ lastUpdated: Date.parse("2026-05-15T20:30:00Z") }),
+      quoteFixture({ lastUpdated: Date.parse("2026-05-15T19:30:00Z") }),
       {
-        now: Date.parse("2026-05-15T20:31:00Z"),
+        now: Date.parse("2026-05-15T19:31:00Z"),
         mode: "ohlc",
         resolution: "5m",
       },
@@ -125,7 +125,7 @@ describe("appendLiveQuotePoint", () => {
 
     expect(extended).toHaveLength(2);
     expect(extended[1]).toEqual({
-      date: new Date("2026-05-15T20:30:00Z"),
+      date: new Date("2026-05-15T19:30:00Z"),
       open: 129,
       high: 129,
       low: 129,
