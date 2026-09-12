@@ -40,7 +40,7 @@ export interface FilingEventsFeed {
   entries: FilingEventEntry[];
 }
 
-function formatFiled(value: string): string {
+function formatInstant(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString("en-US", {
@@ -48,6 +48,19 @@ function formatFiled(value: string): string {
     day: "2-digit",
     year: "2-digit",
   });
+}
+
+function formatCalendarDate(value: string | null | undefined): string | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) return null;
+  return date.toLocaleDateString("en-US", {
+    month: "short", day: "2-digit", year: "2-digit", timeZone: "UTC",
+  });
+}
+
+function formatFiled(event: CloudFilingEventPayload): string {
+  return formatCalendarDate(event.filingDate) ?? formatInstant(event.filedAt);
 }
 
 function itemsLabel(event: CloudFilingEventPayload): string {
@@ -60,7 +73,7 @@ function personDetail(person: CloudFilingEventPayload["people"][number]): string
   return [
     person.role,
     person.action,
-    person.effective ? `effective ${formatFiled(person.effective)}` : null,
+    person.effective ? `effective ${formatCalendarDate(person.effective) ?? "—"}` : null,
   ].filter(Boolean).join(", ");
 }
 
@@ -92,7 +105,7 @@ function buildEntry(
   for (const person of people) lines += proseLines(person.detail, proseWidth, `${person.name}  `);
   return {
     id: event.id,
-    filedLabel: formatFiled(event.filedAt),
+    filedLabel: formatFiled(event),
     itemsLabel: itemsLabel(event),
     docUrl: event.docUrl,
     material: event.material,
@@ -105,7 +118,7 @@ function buildEntry(
 
 function summaryLine(events: CloudFilingEventPayload[], newsCount: number): string {
   const oldest = events[events.length - 1];
-  const since = oldest ? ` since ${formatFiled(oldest.filedAt)}` : "";
+  const since = oldest ? ` since ${formatFiled(oldest)}` : "";
   const news = newsCount === 0
     ? "none carry news"
     : newsCount === 1

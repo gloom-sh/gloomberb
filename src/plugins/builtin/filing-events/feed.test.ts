@@ -22,6 +22,50 @@ function filingEvent(overrides: Partial<CloudFilingEventPayload> = {}): CloudFil
 }
 
 describe("buildFilingEventsFeed", () => {
+  test("keeps explicit filing and personnel calendar dates across time zones while legacy instants stay local", () => {
+    const event = filingEvent({
+      filedAt: "2026-09-01T01:30:00Z",
+      read: true,
+      headline: "Officer appointment",
+      people: [{ name: "Officer", role: "CEO", action: "joined", effective: "2026-09-01" }],
+    });
+    const events = [
+      { ...event, filingDate: "2026-09-01" },
+      event,
+      { ...event, filingDate: "2026-02-29" },
+    ];
+    for (const [timezone, filed] of [
+      ["America/Los_Angeles", "Aug 31, 26"],
+      ["Europe/Berlin", "Sep 01, 26"],
+      ["Pacific/Auckland", "Sep 01, 26"],
+    ]) {
+      const result = Bun.spawnSync([process.execPath, "--eval", `
+        import { buildFilingEventsFeed } from ${JSON.stringify(new URL("./feed.ts", import.meta.url).href)};
+        console.log(JSON.stringify(buildFilingEventsFeed(${JSON.stringify(events)}, 80)));
+      `], { env: { ...process.env, TZ: timezone! } });
+      expect(result.exitCode).toBe(0);
+      const feed = JSON.parse(result.stdout.toString());
+      expect(feed.entries.map((entry: { filedLabel: string }) => entry.filedLabel)).toEqual(["Sep 01, 26", filed, filed]);
+      expect(feed.entries[0].people[0].detail).toBe("CEO, joined, effective Sep 01, 26");
+      expect(feed.summaryLine).toContain(`since ${filed}`);
+    }
+  });
+
+  test("validates source calendar dates without normalizing an invalid day into another month", () => {
+    const feed = buildFilingEventsFeed([filingEvent({
+      read: true, headline: "Appointment", filingDate: "2024-02-29",
+      people: [
+        { name: "Valid", role: "CEO", action: "joined", effective: "2024-02-29" },
+        { name: "Invalid", role: "CFO", action: "joined", effective: "2026-02-29" },
+      ],
+    })], 80);
+    expect(feed.entries[0]?.filedLabel).toBe("Feb 29, 24");
+    expect(feed.summaryLine).toContain("since Feb 29, 24");
+    expect(feed.entries[0]?.people.map((person) => person.detail)).toEqual([
+      "CEO, joined, effective Feb 29, 24", "CFO, joined, effective —",
+    ]);
+  });
+
   test("puts what a model read first and leaves the rest below", () => {
     const feed = buildFilingEventsFeed([
       filingEvent({ id: "routine", filedAt: "2026-07-22T00:00:00.000Z" }),
