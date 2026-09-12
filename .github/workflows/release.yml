@@ -249,3 +249,18 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           node -e "const p=require('./package.json'); p.version='$VERSION'; require('fs').writeFileSync('./package.json', JSON.stringify(p,null,2)+'\n')"
           npm publish --access public --provenance
+
+      # The website re-captures its function screenshots against this release
+      # and opens a PR there when a pane's layout changed.
+      - name: Ask the website to refresh screenshots
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.PLATFORM_DISPATCH_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "PLATFORM_DISPATCH_TOKEN is not configured; skipping screenshot refresh."
+            exit 0
+          fi
+          gh api repos/vincelwt/gloomberb-platform/dispatches \
+            -f event_type=gloomberb-release \
+            -f "client_payload[ref]=${GITHUB_REF_NAME}"
