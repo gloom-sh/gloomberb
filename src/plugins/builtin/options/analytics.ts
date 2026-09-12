@@ -1,3 +1,4 @@
+import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
 import {
   DEFAULT_OPTION_CALC_DRAFT,
@@ -13,6 +14,8 @@ const HISTORICAL_VOLATILITY_SESSIONS = 30;
 export interface OptionsSummary {
   atmImpliedVolatility: number | null;
   historicalVolatility30d: number | null;
+  historicalVolatilityUnavailableReason?: string;
+  historicalVolatilityIntegrity?: PriceHistoryIntegrity;
   impliedHistoricalRatio: number | null;
   expirationVolume: number;
   putCallVolumeRatio: number | null;
@@ -45,23 +48,53 @@ function atmImpliedVolatility(chain: OptionsChain, spot: number | undefined): nu
   return atTheMoney.reduce((total, value) => total + value, 0) / atTheMoney.length;
 }
 
-/** Annualized standard deviation of the latest 30 daily log returns. */
-export function historicalVolatility30d(points: readonly PricePoint[]): number | null {
-  const closes = points
-    .map((point) => ({
-      close: point.close,
-      time: point.date instanceof Date ? point.date.getTime() : Date.parse(String(point.date)),
-    }))
-    .filter((point) => positive(point.close) && Number.isFinite(point.time))
-    .sort((a, b) => a.time - b.time)
-    .slice(-(HISTORICAL_VOLATILITY_SESSIONS + 1))
-    .map((point) => point.close);
-  if (closes.length < HISTORICAL_VOLATILITY_SESSIONS + 1) return null;
+interface HistoricalVolatilityResult {
+  value: number | null;
+  unavailableReason?: string;
+  integrity?: PriceHistoryIntegrity;
+}
 
-  const returns = closes.slice(1).map((close, index) => Math.log(close / closes[index]!));
+/** Select observations before validating prices; a rejected close must never be bridged. */
+function historicalVolatilityResult(points: readonly PricePoint[]): HistoricalVolatilityResult {
+  const observations = new Map<number, PricePoint>();
+  for (const point of points) {
+    const time = new Date(point.date).getTime();
+    if (!Number.isFinite(time)) {
+      return { value: null, unavailableReason: "HV30 unavailable: invalid history date" };
+    }
+    // Persisted corrections replace the same observation, not an extra return.
+    observations.set(time, point);
+  }
+  const selected = [...observations.entries()]
+    .sort(([a], [b]) => a - b)
+    .slice(-(HISTORICAL_VOLATILITY_SESSIONS + 1))
+    .map(([, point]) => point);
+  const rejected = selected.flatMap((point) => {
+    const integrity = pricePointIntegrity(point);
+    return integrity ? [integrity] : [];
+  });
+  if (rejected.length > 0) {
+    return {
+      value: null,
+      unavailableReason: "HV30 unavailable: inconsistent OHLC history",
+      integrity: mergePriceHistoryIntegrity(...rejected),
+    };
+  }
+  if (selected.some((point) => !positive(point.close))) {
+    return { value: null, unavailableReason: "HV30 unavailable: missing or nonpositive close" };
+  }
+  if (selected.length < HISTORICAL_VOLATILITY_SESSIONS + 1) return { value: null };
+  // Subtract logs instead of taking a ratio that can overflow for finite prices.
+  const logs = selected.map((point) => Math.log(point.close));
+  const returns = logs.slice(1).map((log, index) => log - logs[index]!);
   const mean = returns.reduce((total, value) => total + value, 0) / returns.length;
   const variance = returns.reduce((total, value) => total + (value - mean) ** 2, 0) / (returns.length - 1);
-  return Math.sqrt(variance * TRADING_DAYS_PER_YEAR);
+  return { value: Math.sqrt(variance * TRADING_DAYS_PER_YEAR) };
+}
+
+/** Annualized sample standard deviation of the latest 30 daily log returns. */
+export function historicalVolatility30d(points: readonly PricePoint[]): number | null {
+  return historicalVolatilityResult(points).value;
 }
 
 export function calculateOptionsSummary(
@@ -70,7 +103,8 @@ export function calculateOptionsSummary(
   priceHistory: readonly PricePoint[],
 ): OptionsSummary {
   const atmIv = atmImpliedVolatility(chain, spot);
-  const historicalVolatility = historicalVolatility30d(priceHistory);
+  const historical = historicalVolatilityResult(priceHistory);
+  const historicalVolatility = historical.value;
   const callVolume = sum(chain.calls, "volume");
   const putVolume = sum(chain.puts, "volume");
   const callOpenInterest = sum(chain.calls, "openInterest");
@@ -79,6 +113,8 @@ export function calculateOptionsSummary(
   return {
     atmImpliedVolatility: atmIv,
     historicalVolatility30d: historicalVolatility,
+    ...(historical.unavailableReason ? { historicalVolatilityUnavailableReason: historical.unavailableReason } : {}),
+    ...(historical.integrity ? { historicalVolatilityIntegrity: historical.integrity } : {}),
     impliedHistoricalRatio: atmIv != null && historicalVolatility != null && historicalVolatility > 0
       ? atmIv / historicalVolatility
       : null,

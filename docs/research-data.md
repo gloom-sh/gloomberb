@@ -54,6 +54,10 @@ One unit of the row currency buys the amount in the column currency. Indicative 
 
 OVME uses a European-exercise Black–Scholes model. It does not model early exercise or discrete dividends. Theta is per day; vega is per volatility percentage point; rho is per rate percentage point. The UI keeps these units beside their values.
 
+OMON HV30 is the annualized sample standard deviation of 30 daily log returns from 31 distinct reported observations, using 252 trading days per year. A later correction replaces the same timestamp. Missing or nonpositive closes and contradictory OHLC inside that window make HV30 and IV/HV unavailable; they are not skipped to bridge a return. A quote explicitly marked stale cannot seed underlying-dependent Greeks, ATM selection, or the calculator. Contract quotes remain visible with their own timestamps.
+
+OVME values are per underlying unit, not a position or contract total. Rates and continuous dividend yield are entered in percent; time uses calendar days, retaining fractional days. A chain expiry date is seeded at 16:00 New York with historical daylight-saving offsets. Verify and edit the time for other settlement schedules or early closes, especially index options. The calculator does not resolve adjusted deliverables or contract multipliers, model multi-leg payoffs, or compute assignment outcomes.
+
 A calculator opened from a chain uses a saved contract observation. Its quote and last-trade timestamps are separate; neither makes a saved quote executable. The market reference identifies midpoint, last, or manual input. Crossed or one-sided quotes do not supply a valid midpoint.
 
 ## Earnings and corporate actions

@@ -81,3 +81,45 @@ test("derives call and put Greeks from the chain IV", () => {
   expect(call?.gamma).toBeCloseTo(put!.gamma, 10);
   expect(call?.vegaPerPoint).toBeCloseTo(put!.vegaPerPoint, 10);
 });
+
+
+test("rejects bad observations inside the selected HV window instead of bridging them", () => {
+  const good = priceHistory();
+  const extended = [{ date: new Date(Date.UTC(2025, 11, 31)), close: 100 }, ...good];
+  for (const bad of [{ high: 90, low: 110 }, { high: 99 }, { close: 0 }, { close: Number.NaN }]) {
+    const points = extended.map((point, i) => i === 15 ? { ...point, ...bad } : point);
+    expect(historicalVolatility30d(points)).toBeNull();
+    const summary = calculateOptionsSummary({ underlyingSymbol: "AAPL", expirationDates: [], calls: [contract(100, .2, 100, 200)], puts: [] }, 100, points);
+    expect(summary.historicalVolatilityUnavailableReason).toBeTruthy();
+    expect(summary.impliedHistoricalRatio).toBeNull();
+    expect(summary.atmImpliedVolatility).toBe(.2);
+  }
+  // An excluded earlier bad bar cannot contaminate a complete later window.
+  expect(historicalVolatility30d([{ ...extended[0]!, high: 90, low: 110 }, ...good])).toBeCloseTo(historicalVolatility30d(good)!, 12);
+});
+
+test("deduplicates corrections before selecting 31 observations and retains immutable rejected source data", () => {
+  const good = priceHistory();
+  expect(historicalVolatility30d(good.slice(1).flatMap((point) => [point, point]))).toBeNull();
+  const broken = { ...good[15]!, high: 90, low: 110 };
+  const corrected = [...good.slice(0, 15), broken, ...good.slice(16), good[15]!];
+  expect(historicalVolatility30d(corrected)).toBeCloseTo(historicalVolatility30d(good)!, 12);
+  const chain = { underlyingSymbol: "AAPL", expirationDates: [], calls: [], puts: [] };
+  const summary = calculateOptionsSummary(chain, 100, [...good, broken]);
+  expect(summary.historicalVolatility30d).toBeNull();
+  const diagnostic = summary.historicalVolatilityIntegrity!;
+  expect(diagnostic.sourcePoints).toHaveLength(1);
+  expect(diagnostic.sourcePoints[0]!.date).toBe(good[15]!.date.toISOString());
+  broken.high = 120;
+  expect(diagnostic.sourcePoints[0]!.high).toBe(90);
+  expect(Object.isFrozen(diagnostic.sourcePoints)).toBe(true);
+  expect(Object.isFrozen(diagnostic.sourcePoints[0])).toBe(true);
+});
+
+test("validates chronology without requiring full OHLC and handles finite extreme prices", () => {
+  const good = priceHistory();
+  expect(historicalVolatility30d([...good].reverse())).toBeCloseTo(historicalVolatility30d(good)!, 12);
+  expect(historicalVolatility30d([...good, { date: new Date(Number.NaN), close: 100 }])).toBeNull();
+  expect(historicalVolatility30d(good.map((point, i) => ({ ...point, close: i % 2 ? 1e300 : 1e-300 })))).toBeFinite();
+  expect(historicalVolatility30d(good.map((point) => ({ ...point, close: 100 })))).toBe(0);
+});
