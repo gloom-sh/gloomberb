@@ -195,7 +195,9 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         if (!model.snapshot.financials.some(([candidate]) => candidate === key)) {
           model.snapshot.financials.push([key, { annualStatements: [], quarterlyStatements: [], priceHistory: points }]);
         }
-        if (unavailableReason && !model.chart.errors.includes(unavailableReason)) model.chart.errors.push(unavailableReason);
+        if (unavailableReason && !model.chart.errors.some((error) => error === unavailableReason || error.endsWith(`: ${unavailableReason}`))) {
+          model.chart.errors.push(unavailableReason);
+        }
       }
       return model;
     },

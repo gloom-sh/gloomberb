@@ -18,6 +18,14 @@ export interface SnapshotMarketData {
   optionsChains?: ReadonlyArray<readonly [string, OptionsChain]>;
 }
 
+/** A captured result is authoritative; trying another interval cannot repair it. */
+export class SnapshotHistoryUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SnapshotHistoryUnavailableError";
+  }
+}
+
 const SNAPSHOT_RESOLUTIONS = normalizeChartResolutionSupport(
   TIME_RANGE_ORDER.map((maxRange) => ({ resolution: getPresetResolution(maxRange), maxRange })),
 );
@@ -48,7 +56,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
   const intraday = lookup((snapshot.intradayHistories ?? []).map((history) => [canonicalTickerKey(history.symbol, history.exchange), history]));
   const history = (symbol: string, exchange?: string, resolution?: string) => {
     const captured = intraday(symbol, exchange);
-    if (captured?.unavailableReason) throw new Error(captured.unavailableReason);
+    if (captured?.unavailableReason) throw new SnapshotHistoryUnavailableError(captured.unavailableReason);
     if (captured && resolution && captured.resolution !== resolution) return [];
     return captured?.points ?? financials(symbol, exchange)?.priceHistory;
   };
