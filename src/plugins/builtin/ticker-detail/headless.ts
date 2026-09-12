@@ -1,4 +1,5 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
+import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -88,7 +89,10 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   async load({ symbols }, ctx) {
     const loaded = await loadHeadlessSymbols(symbols, ctx, async (key) => {
       const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
-      return ctx.marketData.getQuote(symbol, exchange);
+      const quote = await ctx.marketData.getQuote(symbol, exchange);
+      if (!quote) throw new Error(`Quote is unavailable for ${key}`);
+      if (!hasValidQuoteObservationTime(quote)) throw new Error(`Quote observation time is unavailable for ${key}`);
+      return quote;
     });
     return {
       rows: loaded.entries.map(({ symbol, data: quote }) => ({

@@ -4,6 +4,14 @@ import { activeUsExtendedHoursSession, isTimestampStaleForExchangeSession } from
 
 const EXTENDED_HOURS_EXCHANGES = new Set(["NASDAQ", "NYSE", "AMEX", "ARCA", "BATS"]);
 
+/** Receipt time cannot establish when the source observed a quoted price. */
+export function hasValidQuoteObservationTime(quote: Pick<Quote, "lastUpdated">, now = Date.now()): boolean {
+  const timestamp = quote.lastUpdated;
+  return typeof timestamp === "number" && Number.isFinite(timestamp) && timestamp > 0
+    && Number.isFinite(now) && timestamp <= now
+    && Number.isFinite(new Date(timestamp).getTime()) && Number.isFinite(new Date(now).getTime());
+}
+
 export function isExtendedHoursExchange(quote: Quote): boolean {
   return EXTENDED_HOURS_EXCHANGES.has(canonicalExchange(quote.listingExchangeName || quote.exchangeName));
 }
@@ -19,6 +27,7 @@ function isQuoteMissingActiveSessionPrice(quote: Quote, now: number): boolean {
 export function isQuoteStaleForCurrentSession(quote: Quote | null | undefined, now = Date.now()): boolean {
   if (!quote) return false;
   if (quote.stale === true) return true;
+  if (!hasValidQuoteObservationTime(quote, now)) return true;
   if (isQuoteMissingActiveSessionPrice(quote, now)) return true;
 
   return isTimestampStaleForExchangeSession(

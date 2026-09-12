@@ -5,6 +5,7 @@ import type { BrokerContractRef } from "../types/instrument";
 import type { ChartSeriesSpec, ChartSpec, SecuritySeriesSource } from "./types";
 import { activeStudyInputSeriesIds } from "./studies";
 import { valuationSeriesUsesLiveQuote } from "./fundamentals";
+import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 
 export const LIVE_CHART_REFRESH_INTERVAL_MS = 1_000;
 
@@ -97,8 +98,8 @@ export function liveChartQuoteTargetSignature(spec: ChartSpec): string {
 
 /** A malformed timestamp cannot outrank a usable source observation forever. */
 export function compareChartQuoteRecency(next: Quote, current: Quote): number {
-  const sourceTime = (quote: Quote) => Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
-    && Number.isFinite(new Date(quote.lastUpdated).getTime()) ? quote.lastUpdated : -Infinity;
+  const now = Date.now();
+  const sourceTime = (quote: Quote) => hasValidQuoteObservationTime(quote, now) ? quote.lastUpdated : -Infinity;
   const nextTime = sourceTime(next);
   const currentTime = sourceTime(current);
   if (nextTime !== currentTime) return nextTime > currentTime ? 1 : -1;

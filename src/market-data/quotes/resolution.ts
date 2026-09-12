@@ -10,7 +10,7 @@ import type {
 } from "../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { debugLog } from "../../utils/debug-log";
-import { isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "./freshness";
+import { hasValidQuoteObservationTime, isExtendedHoursExchange, isQuoteStaleForCurrentSession } from "./freshness";
 import { activeUsExtendedHoursSession, isTimestampStaleForExchangeSession } from "../market/freshness";
 import {
   finalizeSessionFields,
@@ -275,7 +275,7 @@ export function isQuoteContributionStaleForCurrentSession(contribution: Quote, n
   // A price-only source can be combined with independent session metadata.
   // Its observation must still belong to the current active session.
   const timestamp = contribution.lastUpdated;
-  if (contribution.stale === true || !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > now) return true;
+  if (contribution.stale === true || !hasValidQuoteObservationTime(contribution, now)) return true;
   const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now) : null;
   if (activeSession && activeUsExtendedHoursSession(timestamp) !== activeSession) return true;
   return isTimestampStaleForExchangeSession(timestamp, contribution.listingExchangeName || contribution.exchangeName, now);

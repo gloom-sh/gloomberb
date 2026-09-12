@@ -1,4 +1,5 @@
 import { resolveAssetDisplayKind } from "../market-data/market/format";
+import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { HistoryCoverageError, historyCoverageNotice, isShellLondonTarget } from "../sources/history-coverage";
@@ -757,7 +758,8 @@ function baseSecuritySeries(
     ? resolveExchangeTimeZone(marketExchange)
     : null;
   const latestChangePercent = marketField && field.unit.startsWith("currency")
-    ? financials.quote?.changePercent
+    && financials.quote && hasValidQuoteObservationTime(financials.quote)
+    ? financials.quote.changePercent
     : undefined;
   const priceIssues = valuationPriceIssues(financials, spec.source);
   return {
@@ -999,7 +1001,8 @@ export async function resolveChartSpecData(
     return { series: [], loading: false, errors: ["Market data is unavailable."], warnings };
   }
 
-  const referenceNow = sources.now ?? new Date();
+  const resolutionStartedAt = Date.now();
+  const referenceNow = sources.now ?? new Date(resolutionStartedAt);
   const comparedSeriesIds = new Set(priceComparisonSeriesIds(spec) ?? []);
   const initialVisibleBounds = requestedBounds(spec, referenceNow);
 
@@ -1265,11 +1268,16 @@ export async function resolveChartSpecData(
       // Display style does not change the sampling interval: line and candle
       // charts must merge a live quote into the same active price bar.
       const liveBarResolution = initialResolution;
+      // The viewport's initial reference stays fixed while a source request
+      // runs. Validate a newly arrived quote against the elapsed clock.
+      const observationNow = referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt);
       const merged = history
         // A streamed quote may update only one leg, even inside the same weekly
         // bar. Comparison endpoints therefore use source history observations;
         // quotes still provide currency/type without rewriting their prices.
-        ? mergeHistory(financials, history, quoteOverride, referenceNow.getTime(), liveBarResolution, resolvedSource.instrument.exchange, !comparedSeriesIds.has(seriesSpec.id))
+        ? mergeHistory(financials, history, quoteOverride,
+          observationNow,
+          liveBarResolution, resolvedSource.instrument.exchange, !comparedSeriesIds.has(seriesSpec.id))
         : quoteOverride && financials
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;

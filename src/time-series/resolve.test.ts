@@ -1,5 +1,5 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../utils/financial-statements";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { chartSeriesSourceKey } from "../capabilities";
 import type { FredSeriesData, FredSeriesLoadResult } from "../data/fred-series";
 import { buildCustomChartPreset } from "../plugins/builtin/chart-composer/presets";
@@ -1628,9 +1628,10 @@ describe("resolveChartSpecData", () => {
     expect(sma.points.at(-1)?.value).toBeCloseTo(15.5);
   });
 
-  test("keeps a quote received after resolution starts inside the latest viewport", async () => {
-    const now = Date.parse("2026-08-05T14:00:00Z");
+  test.each([0, 60_000])("validates a quote received after resolution starts against %i ms elapsed", async (elapsed) => {
+    const now = Date.parse("2026-08-05T22:00:00Z");
     const quoteTime = now + 60_000;
+    const clock = spyOn(Date, "now").mockReturnValue(now);
     const provider = createTestDataProvider({
       getTickerFinancials: async () => ({
         ...emptyFinancials(),
@@ -1648,10 +1649,13 @@ describe("resolveChartSpecData", () => {
           postMarketChangePercent: -0.77,
         },
       }),
-      getPriceHistoryForResolution: async () => [
-        { date: new Date(now - 2 * 86_400_000), open: 99, high: 102, low: 98, close: 100 },
-        { date: new Date(now - 86_400_000), open: 100, high: 101, low: 99, close: 100 },
-      ],
+      getPriceHistoryForResolution: async () => {
+        clock.mockReturnValue(now + elapsed);
+        return [
+          { date: new Date(now - 2 * 86_400_000), open: 99, high: 102, low: 98, close: 100 },
+          { date: new Date(now - 86_400_000), open: 100, high: 101, low: 99, close: 100 },
+        ];
+      },
     });
     const spec: ChartSpec = chartSpec({
       viewport: { range: "6M", resolution: "1d" },
@@ -1673,40 +1677,42 @@ describe("resolveChartSpecData", () => {
       }],
     });
 
-    const result = await resolveChartSpecData(spec, {
-      dataProvider: provider,
-      now: new Date(now),
-      quoteOverrides: new Map([[
-        chartQuoteOverrideKeyForSource({
-          kind: "security",
-          instrument: { symbol: "FRESH", exchange: "XNAS" },
-          fieldId: "market.ohlcv",
-        }),
-        {
-          symbol: "FRESH",
-          price: 130,
-          currency: "USD",
-          change: 30,
-          changePercent: 30,
-          lastUpdated: quoteTime,
-          listingExchangeName: "XNAS",
-          marketState: "POST",
-          postMarketPrice: 129,
-          postMarketChange: -1,
-          postMarketChangePercent: -0.77,
-        },
-      ]]),
-      loadFredSeries: async () => fredLoad(),
-    });
+    try {
+      const result = await resolveChartSpecData(spec, {
+        dataProvider: provider,
+        now: new Date(now),
+        quoteOverrides: new Map([[
+          chartQuoteOverrideKeyForSource({
+            kind: "security",
+            instrument: { symbol: "FRESH", exchange: "XNAS" },
+            fieldId: "market.ohlcv",
+          }),
+          {
+            symbol: "FRESH",
+            price: 130,
+            currency: "USD",
+            change: 30,
+            changePercent: 30,
+            lastUpdated: quoteTime,
+            listingExchangeName: "XNAS",
+            marketState: "POST",
+            postMarketPrice: 129,
+            postMarketChange: -1,
+            postMarketChangePercent: -0.77,
+          },
+        ]]),
+        loadFredSeries: async () => fredLoad(),
+      });
 
-    expect(result.errors).toEqual([]);
-    expect(result.viewport?.end.getTime()).toBe(quoteTime);
-    const price = result.series.find((entry) => entry.id === "price");
-    const sma = result.series.find((entry) => entry.id === "sma");
-    expect(price?.points.at(-1)?.date.getTime()).toBe(quoteTime);
-    expect(price?.points.at(-1)?.close).toBe(129);
-    expect(price?.latestChangePercent).toBe(30);
-    expect(sma?.points.at(-1)?.date.getTime()).toBe(quoteTime);
+      expect(result.errors).toEqual([]);
+      expect(result.viewport?.end.getTime()).toBe(elapsed ? quoteTime : now);
+      const price = result.series.find((entry) => entry.id === "price");
+      const sma = result.series.find((entry) => entry.id === "sma");
+      expect(price?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
+      expect(price?.points.at(-1)?.close).toBe(elapsed ? 129 : 100);
+      expect(price?.latestChangePercent).toBe(elapsed ? 30 : undefined);
+      expect(sma?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
+    } finally { clock.mockRestore(); }
   });
 
   test.each(["line", "candles"] as const)("keeps one daily bar when a live quote updates a %s chart", async (style) => {

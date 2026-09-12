@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -34,6 +34,7 @@ let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 let harnessDispatch: React.Dispatch<AppAction> | null = null;
 let sharedCoordinator: MarketDataCoordinator | null = null;
 let harnessState: ReturnType<typeof createInitialState> | null = null;
+let quoteClock: ReturnType<typeof spyOn> | undefined;
 const tempPaths: string[] = [];
 const tempPersistences: AppPersistence[] = [];
 
@@ -465,6 +466,8 @@ afterEach(async () => {
   for (const path of tempPaths.splice(0)) {
     if (existsSync(path)) rmSync(path, { force: true });
   }
+  quoteClock?.mockRestore();
+  quoteClock = undefined;
 });
 
 describe("PortfolioListPane cash and margin UI", () => {
@@ -1372,6 +1375,8 @@ describe("PortfolioListPane cash and margin UI", () => {
   });
 
   test("updates a non-selected broker-linked row from streamed quotes", async () => {
+    let observationNow = Date.parse("2026-09-14T11:00:00Z");
+    quoteClock = spyOn(Date, "now").mockImplementation(() => observationNow);
     const config = createPortfolioConfigWithColumns(
       "broker:ibkr-live:DU12345",
       ["ticker", "price", "change_pct", "latency"],
@@ -1409,6 +1414,8 @@ describe("PortfolioListPane cash and margin UI", () => {
             change: 2,
             changePercent: 0.64,
             previousClose: 313,
+            marketState: "PRE",
+            preMarketPrice: 315,
             name: "Microsoft",
           }),
         };
@@ -1431,6 +1438,8 @@ describe("PortfolioListPane cash and margin UI", () => {
             change: 2,
             changePercent: 0.64,
             previousClose: 313,
+            marketState: "PRE",
+            preMarketPrice: 315,
             name: "Microsoft",
           });
       },
@@ -1504,6 +1513,7 @@ describe("PortfolioListPane cash and margin UI", () => {
     });
     await flushFrame();
 
+    observationNow += 1_000;
     await act(async () => {
       streamed?.(
         {
@@ -1532,7 +1542,7 @@ describe("PortfolioListPane cash and margin UI", () => {
           preMarketPrice: 126.5,
           preMarketChange: 6.5,
           preMarketChangePercent: 5.41,
-          lastUpdated: Date.now() + 1_000,
+          lastUpdated: Date.now(),
         }),
       );
       await Promise.resolve();
