@@ -41,6 +41,10 @@ jobs:
 
       - uses: ./.github/actions/setup-bun
 
+      - name: Test Windows verification diagnostics
+        shell: pwsh
+        run: ./scripts/verify-windows-diagnostics.test.ps1
+
       - name: Build Windows desktop package
         shell: pwsh
         run: ./scripts/build-windows-desktop-package.ps1
