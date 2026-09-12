@@ -1,8 +1,12 @@
 {
   "hosts": [
+    "api.elections.kalshi.com",
     "api.nasdaq.com",
     "api.votehub.com",
+    "clob.polymarket.com",
+    "data-api.polymarket.com",
     "fc.yahoo.com",
+    "gamma-api.polymarket.com",
     "nasdaqtrader.com",
     "production.dataviz.cnn.io",
     "query1.finance.yahoo.com",

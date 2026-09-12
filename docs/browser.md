@@ -14,7 +14,7 @@ Open [term.gloom.sh](https://term.gloom.sh) and sign in with a free Gloom Cloud 
 
 ## Plugins
 
-Every web-capable plugin is compiled into the build, so Fear & Greed, the IPO calendar, Market Halts, Market Heatmap, and Polls are there on first load with nothing to install. Disable any of them from the plugin directory as you would a built-in.
+Every web-capable plugin is compiled into the build, so Fear & Greed, the IPO calendar, Market Halts, Market Heatmap, Polls, and Prediction Markets are there on first load with nothing to install. Disable any of them from the plugin directory as you would a built-in.
 
 The browser app does not install plugins. Code you pick would run on the origin holding your session, and a plugin is a React component sharing the app's own modules, so there is nothing to sandbox it with. Installing belongs to the desktop app and the terminal, which run on your machine. The plugin directory still lists everything and says where each plugin runs.
 
@@ -22,6 +22,6 @@ The browser app does not install plugins. Code you pick would run on the origin 
 
 The browser build omits brokers and native integrations, filesystem notes, local AI, plugin installation, updater/debug tools, application menus, native window controls, pop-out native windows, and native context menus.
 
-Modules whose feeds the build has no path to are also unavailable: RSS/Substack, prediction markets, market movers, dividend/ownership/SEC panes, earnings, and TV.
+Modules whose feeds the build has no path to are also unavailable: RSS/Substack, market movers, dividend/ownership/SEC panes, earnings, and TV.
 
 For local development, validation, and deployment details, see [Contributing](../CONTRIBUTING.md#browser-development).
