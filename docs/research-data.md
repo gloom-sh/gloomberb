@@ -12,6 +12,8 @@ Daily, weekly, and monthly comparisons use shared calendar dates, with each mark
 
 Correlation and relationship views calculate close-to-close returns between shared observations. Missing dates are not filled to manufacture a sample. Returns use local prices without currency conversion; different exchanges can close at different times. Correlation requires enough shared returns and nonzero variance.
 
+Relationship graph controls stay in the footer: `t` cycles the time range, `p` cycles the rolling observation window, `c` toggles correlation, and `f` toggles the fit line. Each action is clickable and shows its current state. In narrow panes, `+` means enabled and `−` means disabled.
+
 Contradictory OHLC bars are unavailable rather than silently repaired. Charts leave gaps and dependent risk calculations can be unavailable. These are current data problems and remain visible in the terminal.
 
 Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `t` opens the interval picker. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.
@@ -34,7 +36,7 @@ Bank capital metrics and REIT FFO/AFFO depend on source coverage. Operating cash
 
 GC plots constant-maturity Treasury yields against elapsed maturity, with month/year axis and cursor labels. The table retains each tenor's published observation date. The 10Y−2Y spread is measured in basis points; a negative value indicates inversion. Missing tenors remain unavailable, and a curve requires matching dates.
 
-Use the existing Date footer action (`d`) to enter an as-of date, then Enter to submit. Latest (`l`) returns to the latest published curve. A holiday or weekend request uses the latest preceding published session within the lookup window; the requested date and observation date remain distinct. Refresh time is not the observation date.
+Use the existing Date footer action (`d`) to enter an as-of date, then Enter or View to submit. Latest (`l`) returns to the latest published curve. A holiday or weekend request uses the latest preceding published session within the lookup window; the requested date and observation date remain distinct. Refresh time is not the observation date.
 
 ## Portfolio analytics
 
@@ -42,7 +44,7 @@ P&L for manual portfolios covers current holdings. Manual portfolios have no cas
 
 Sector weights use gross position values and exclude cash. Fund constituents and ETF overlap are not available; funds are grouped separately. Missing position prices or FX prevent complete weights.
 
-Sharpe and beta are estimates for a basket of current holdings and weights, rather than a reconstruction of historical account performance. They require usable price histories; a contradictory holding history suppresses the basket estimates. An invalid benchmark history suppresses beta independently of Sharpe.
+Sharpe and beta are estimates for a basket of current holdings and weights, rather than a reconstruction of historical account performance. They use price returns and exclude cash, fees, distributions and historical trades. Sharpe assumes a fixed 5% annual risk-free rate and 252 trading sessions per year; beta uses SPY as the benchmark. They require usable price histories; a contradictory holding history suppresses the basket estimates. An invalid benchmark history suppresses beta independently of Sharpe.
 
 Broker account-value history includes deposits and withdrawals. Investment returns require cash-flow adjustments. Broker-reported return series may not specify their calculation method. Currency values and percentage returns retain distinct axis labels; missing observations and cached data remain identified in the UI.
 

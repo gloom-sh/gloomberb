@@ -138,6 +138,18 @@ test("does not publish portfolio risk from just the valued portion when FX is mi
   expect(leveraged.unsupportedReason).toContain("Leveraged account");
 
   const supported = buildAnalyticsRiskRows({ ...buildPortfolioReturnSeries(input), sharpe: 2, beta: 1 });
-  expect(supported.every((row) => row.label.startsWith("Est.") && row.detail?.includes("Current weights"))).toBe(true);
-  expect(supported[0]!.detail).toContain("5% Rf, 252 sessions");
+  expect(supported.map((row) => row.value)).toEqual(["2.00", "1.00"]);
+});
+
+
+test("risk row detail reflects partial or unavailable inputs while retaining valid zero estimates", () => {
+  const healthy = buildAnalyticsRiskRows({ sharpe: 0, beta: 0 });
+  expect(healthy.map((row) => [row.label, row.value, row.detail])).toEqual([
+    ["Est. Sharpe", "0.00", undefined], ["Est. Beta (SPY)", "0.00", undefined],
+  ]);
+  const partial = buildAnalyticsRiskRows({ sharpe: 0, beta: null, coverage: .7, missingCount: 2 });
+  expect(partial[0]).toMatchObject({ value: "0.00", detail: "Partial: +70.00% of value, 2 holdings pending" });
+  expect(partial[1]).toMatchObject({ value: "—", detail: "Insufficient history for basket estimate" });
+  const unavailable = buildAnalyticsRiskRows({ sharpe: 0, beta: 0, coverage: .7, missingCount: 2, unvaluedCount: 1 });
+  expect(unavailable.every((row) => row.value === "—" && row.detail?.includes("check prices and FX"))).toBe(true);
 });

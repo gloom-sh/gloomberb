@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, type PaneFooterSegment } from "../../../components";
+import { Button, DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, type PaneFooterSegment } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -121,14 +121,15 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {editing ? <Box flexDirection="row" paddingX={1} flexShrink={0}>
+      {editing ? <Box flexDirection="row" paddingX={1} gap={1} alignItems="flex-end" flexShrink={0}>
         <TextField label="As-of date" type="date" value={draftDate} width={12}
           placeholder="YYYY-MM-DD" inputRef={dateInput} focused={focused && editing}
           onChange={setDraftDate} onSubmit={selectDate}
-          onMouseDown={() => setEditing(true)} onBlur={() => setEditing(false)}
+          onMouseDown={() => setEditing(true)}
           onKeyDown={(event) => {
             if (event.name === "escape") { setEditing(false); dateInput.current?.blur?.(); }
           }} />
+        <Button label="View" onPress={() => selectDate(draftDate)} compact />
       </Box> : null}
       {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
       <PaneStatusBody loading={loading && points.length === 0} error={points.length === 0 ? error : null}

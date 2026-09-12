@@ -209,8 +209,6 @@ async function showCollectionWithMarketData(
     ));
     console.log("");
     console.log(renderStat("Total P&L", unavailablePnl.size > 0 ? "—" : colorBySign(formatSignedCurrency(totalPnl, baseCurrency), totalPnl)));
-    console.log(cliStyles.muted(accountingBasis));
-    if (manualAccounting) console.log(cliStyles.muted(manualAccounting));
     if (unavailablePnl.size > 0) console.log(cliStyles.muted(`P&L unavailable for ${[...unavailablePnl].join(", ")}: a quote, broker value or currency conversion is missing.`));
   } else {
     const rows: string[][] = [];
