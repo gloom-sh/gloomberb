@@ -39,11 +39,9 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
   const refresh = useCallback(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator) return;
-    // A rate that is still fresh is left alone by the coordinator; a failed one
-    // is retried, which is the case that matters here.
     for (const currency of currencies) {
       if (currency === "USD") continue;
-      void coordinator.loadFxRate(currency).catch(() => {});
+      void coordinator.loadFxRate(currency, { forceRefresh: true }).catch(() => {});
     }
   }, [currencies]);
 
