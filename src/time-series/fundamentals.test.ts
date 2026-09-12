@@ -12,7 +12,11 @@ function financials(
   annualStatements: FinancialStatement[],
   priceHistory: TickerFinancials["priceHistory"] = [],
 ): TickerFinancials {
-  return { quarterlyStatements, annualStatements, priceHistory };
+  return {
+    quarterlyStatements, annualStatements, priceHistory, financialCurrency: "USD",
+    // Price metadata establishes historical USD units without adding a current observation.
+    quote: { symbol: "TEST", currency: "USD", price: 0, change: 0, changePercent: 0, lastUpdated: 0 },
+  };
 }
 
 function source(

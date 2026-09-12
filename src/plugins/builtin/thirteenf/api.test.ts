@@ -4,9 +4,11 @@ import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
   attachThirteenFApiPersistence,
   lookupThirteenFTickers,
+  mapForm,
   resetThirteenFApiPersistence,
   searchThirteenFFunds,
 } from "./api";
+import { buildPeriodReports } from "./model";
 
 afterEach(() => {
   setHttpFetchTransport(null);
@@ -14,6 +16,23 @@ afterEach(() => {
 });
 
 describe("13F API", () => {
+  test("preserves amendment semantics when the source provides only the supported form_type alias", () => {
+    const base = {
+      cik: "1067983", period_of_report: "2026-06-30", accession_number: "original",
+      filed_as_of_date: "2026-08-14", form_type: "13F-HR", table_value_total: 100, table_entry_total: 1,
+    };
+    const original = mapForm(base)!;
+    const addition = mapForm({
+      ...base, accession_number: "addition", filed_as_of_date: "2026-08-20", form_type: "13F-HR/A",
+      amendment_type: "NEW HOLDINGS", table_value_total: 50,
+    })!;
+    expect(original.isAmendment).toBe(false);
+    expect(addition).toMatchObject({ submissionType: "13F-HR/A", isAmendment: true });
+    expect(buildPeriodReports([original, addition])[0]).toMatchObject({ complete: true, tableValueTotal: 150, tableEntryTotal: 2 });
+    const unknown = mapForm({ ...base, accession_number: "unknown", form_type: "13F-HR/A" })!;
+    expect(buildPeriodReports([unknown])[0]).toMatchObject({ complete: false, tableValueTotal: null });
+  });
+
   test("uses the shared HTTP transport", async () => {
     const urls: string[] = [];
     setHttpFetchTransport(async (url) => {

@@ -1892,6 +1892,7 @@ describe("resolveChartSpecData", () => {
       getTickerFinancials: async () => ({
         ...emptyFinancials(),
         quarterlyStatements: statements,
+        financialCurrency: "USD",
         quote: {
           symbol: "LIVE",
           price: 50,

@@ -1,5 +1,5 @@
 import type { DataProvider } from "../types/data-provider";
-import type { PricePoint } from "../types/financials";
+import type { PricePoint, Quote } from "../types/financials";
 import type { TimeRange } from "./range";
 import {
   getPresetResolution,
@@ -8,6 +8,7 @@ import {
 } from "./resolution";
 import { resolveExchangeTimeZone } from "../utils/exchanges";
 import { getPricePointTimestamp } from "../utils/price-history";
+import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 
 export type IntradayRangePreset = "1D" | "1W";
@@ -23,6 +24,20 @@ export interface IntradayWindow {
   sessionDates: string[];
   start: Date | null;
   end: Date | null;
+}
+
+export interface IntradayPriceDomainFailure {
+  readonly reason: "nonpositive-price";
+  readonly instrumentType: string | null;
+  /** Rejected observations from the selected window or its calculation buffer. */
+  readonly sourcePoints: ReadonlyArray<Readonly<Omit<PricePoint, "date"> & { date: string }>>;
+}
+
+export interface LoadedIntradayWindow extends IntradayWindow {
+  bufferedPoints: PricePoint[];
+  unavailableReason: string | null;
+  quote?: Quote;
+  priceDomainFailure?: IntradayPriceDomainFailure;
 }
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -101,7 +116,9 @@ function normalizedPoints(points: readonly PricePoint[]): PricePoint[] {
   const byTimestamp = new Map<number, PricePoint>();
   for (const point of points) {
     const timestamp = getPricePointTimestamp(point);
-    if (!Number.isFinite(timestamp) || !Number.isFinite(point.close) || point.close <= 0) continue;
+    // Session selection is independent of the asset's price domain. In
+    // particular, a zero/negative futures close is still an observation.
+    if (!Number.isFinite(timestamp) || (!Number.isFinite(point.close) && !pricePointIntegrity(point))) continue;
     byTimestamp.set(timestamp, {
       ...point,
       date: point.date instanceof Date ? point.date : new Date(timestamp),
@@ -261,7 +278,7 @@ export async function loadIntradayWindow(options: {
   exchange: string;
   request: IntradayRequest;
   now?: Date;
-}): Promise<IntradayWindow & { bufferedPoints: PricePoint[]; unavailableReason: string | null }> {
+}): Promise<LoadedIntradayWindow> {
   const timeZone = resolveExchangeTimeZone(options.exchange) ?? "UTC";
   let raw = options.request.session
     ? await loadHistoricalFallback(
@@ -336,5 +353,33 @@ export async function loadIntradayWindow(options: {
       unavailableReason: unavailableReason(options.symbol, options.request, "not-intraday"),
     };
   }
-  return { ...window, bufferedPoints: normalizedPoints(raw), unavailableReason: null };
+  const bufferedPoints = normalizedPoints(raw);
+  // Earlier rows feed study warmup; later rows cannot affect this window.
+  const nonpositive = bufferedPoints.filter((point) => point.close <= 0
+    && getPricePointTimestamp(point) <= window.end!.getTime());
+  if (nonpositive.length) {
+    // Metadata is needed only at this boundary. Do not infer a futures domain
+    // from a ticker suffix, a contract multiplier, or an option security type.
+    const reportedQuote = await options.provider.getQuote(options.symbol, options.exchange).catch(() => undefined);
+    const quote = reportedQuote?.symbol.trim().toUpperCase() === options.symbol.trim().toUpperCase()
+      ? reportedQuote : undefined;
+    const instrumentType = quote?.instrumentType?.trim().toUpperCase() || null;
+    if (instrumentType === "FUTURE" || instrumentType === "FUTURES" || instrumentType === "FUT") {
+      return { ...window, bufferedPoints, unavailableReason: null, quote };
+    }
+    const priceDomainFailure: IntradayPriceDomainFailure = Object.freeze({
+      reason: "nonpositive-price",
+      instrumentType,
+      sourcePoints: Object.freeze(nonpositive.map((point) => Object.freeze({
+        ...point,
+        date: new Date(point.date).toISOString(),
+        ...(point.historySource ? { historySource: Object.freeze({ ...point.historySource }) } : {}),
+      }))),
+    });
+    return {
+      ...window, points: [], bufferedPoints: [], quote, priceDomainFailure,
+      unavailableReason: `Intraday history for ${options.symbol} is unavailable: ${nonpositive.length} nonpositive close${nonpositive.length === 1 ? "" : "s"} in the selected window or its calculation buffer require verified futures metadata (type: ${instrumentType ?? "unknown"}).`,
+    };
+  }
+  return { ...window, bufferedPoints, unavailableReason: null };
 }

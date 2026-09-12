@@ -126,16 +126,22 @@ export function buildBrowserRows(options: {
   const funds = options.funds ?? options.topFunds ?? [];
   return funds.map((fund) => {
     const topFund = topByCik.get(fund.cik);
-    const form = options.forms?.get(fund.cik);
+    const latestForm = options.forms?.get(fund.cik);
+    // Performance belongs to its supplied quarter; a later (or stale) filing
+    // cannot supply that quarter's portfolio value or filing date.
+    const periodOfReport = options.source === "performance"
+      ? topFund?.periodOfReport ?? latestForm?.periodOfReport
+      : latestForm?.periodOfReport ?? topFund?.periodOfReport;
+    const form = latestForm?.periodOfReport === periodOfReport ? latestForm : undefined;
     return {
       id: `${options.source}:${fund.cik}`,
       cik: fund.cik,
       name: fund.name,
-      periodOfReport: form?.periodOfReport ?? topFund?.periodOfReport,
+      periodOfReport,
       filedAsOfDate: form?.filedAsOfDate,
       tableValueTotal: form?.tableValueTotal,
       tableEntryTotal: form?.tableEntryTotal,
-      estQuarterReturn: topFund?.pnl ?? null,
+      estQuarterReturn: topFund && topFund.periodOfReport === periodOfReport ? topFund.pnl : null,
       source: options.source,
     };
   });

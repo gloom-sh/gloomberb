@@ -659,6 +659,8 @@ export interface CloudFilingEventPayload {
     shortName: string;
   };
   filedAt: string;
+  /** Verified SEC filing calendar date; filedAt may instead be an acceptance instant. */
+  filingDate?: string | null;
   docUrl: string;
   items: string[];
   labels: string[];
