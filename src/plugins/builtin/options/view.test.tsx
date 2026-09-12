@@ -1,5 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
+import { Box } from "../../../ui";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
@@ -76,12 +78,18 @@ function makeFinancials(price: number): TickerFinancials {
 function OptionsHarness({
   ticker,
   quotePrice,
+  quoteStale,
+  history,
+  showFooter = false,
   width = 122,
   height = 14,
   onCapture = () => { },
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
+  quoteStale?: boolean;
+  history?: TickerFinancials["priceHistory"];
+  showFooter?: boolean;
   width?: number;
   height?: number;
   onCapture?: (capturing: boolean) => void;
@@ -96,12 +104,18 @@ function OptionsHarness({
   state.focusedPaneId = TEST_PANE_ID;
   state.tickers = new Map([[ticker.metadata.ticker, ticker]]);
   if (quotePrice != null) {
-    state.financials = new Map([[ticker.metadata.ticker, makeFinancials(quotePrice)]]);
+    const financials = makeFinancials(quotePrice);
+    financials.quote.stale = quoteStale;
+    if (history) financials.priceHistory = history;
+    state.financials = new Map([[ticker.metadata.ticker, financials]]);
   }
 
   return (
     <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
-      <OptionsView width={width} height={height} focused onCapture={onCapture} />
+      {showFooter ? <PaneFooterProvider>{(footer) => <Box width={width} height={height} flexDirection="column">
+        <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused onCapture={onCapture} /></Box>
+        <PaneFooterBar footer={footer} focused width={width} />
+      </Box>}</PaneFooterProvider> : <OptionsView width={width} height={height} focused onCapture={onCapture} />}
     </TestPaneProvider>
   );
 }
@@ -568,4 +582,61 @@ test("keeps the selected chain visible when its refresh fails", async () => {
   expect(frame).toContain("C LAST");
   expect(frame).toContain("101");
   expect(frame).not.toContain("Options chain unavailable.");
+});
+
+
+test("stale underlying preserves contract observations but cannot seed current Greeks or calculator", async () => {
+  const provider = createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  let setStale!: (value: boolean) => void;
+  function FreshnessHarness() {
+    const [stale, updateStale] = useState(true);
+    setStale = updateStale;
+    return <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} quoteStale={stale} showFooter height={20} width={160} />;
+  }
+  await act(async () => {
+    testSetup = await testRender(<FreshnessHarness />, { width: 160, height: 20 });
+  });
+  await renderSettled();
+  const frame = testSetup!.captureCharFrame();
+  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/stale-underlying.txt`, frame);
+  expect(frame).toContain("ATM IV —");
+  expect(frame).toContain("Underlying quote stale");
+  expect(frame).not.toContain("[c]alc");
+  await exportPaneTable(TEST_PANE_ID, "stale-options.csv");
+  const saved = takeSavedTextFile()!.text;
+  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/stale-underlying.csv`, saved);
+  const lines = saved.trim().split("\n").map((line) => line.split(","));
+  const deltaColumns = lines[0]!.flatMap((cell, i) => cell.includes("Δ") ? [i] : []);
+  expect(deltaColumns).toHaveLength(2);
+  for (const row of lines.slice(1)) for (const i of deltaColumns) expect(row[i]).toBe("—");
+  expect(saved).toContain("10.05,10.15,10.1");
+  await act(async () => { setStale(false); });
+  await renderSettled();
+  const recovered = testSetup!.captureCharFrame();
+  expect(recovered).toContain("ATM IV 20.0%");
+  expect(recovered).toContain("[c]alc");
+  expect(recovered).not.toContain("Underlying quote stale");
+  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/underlying-recovery.txt`, recovered);
+});
+
+
+test("rejected history disables HV and IV/HV without discarding healthy chain analytics", async () => {
+  const provider = createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  const history = Array.from({ length: 31 }, (_, i) => ({
+    date: new Date(Date.UTC(2026, 0, i + 1)), close: 100 + i % 2,
+    ...(i === 15 ? { high: 90, low: 110 } : {}),
+  }));
+  await act(async () => {
+    testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} history={history} showFooter height={20} width={160} />, { width: 160, height: 20 });
+  });
+  await renderSettled();
+  const frame = testSetup!.captureCharFrame();
+  if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/rejected-history.txt`, frame);
+  expect(frame).toContain("ATM IV 20.0%");
+  expect(frame).toContain("HV30 —");
+  expect(frame).toContain("IV/HV —");
+  expect(frame).toContain("HV30 unavailable: inconsistent OHLC history");
+  expect(frame).toContain("[c]alc");
 });

@@ -348,14 +348,20 @@ export function selectFinancialStatements(
 
   // A balance sheet is a dated snapshot. It needs neither a four-quarter sum
   // nor four reports before the latest position can be compared with year end.
-  const latest = quarterlyStatements.at(-1);
-  if (period === "annual" && statement === "balance" && latest && latest.date > (annualStatements.at(-1)?.date ?? "")) {
-    statements.unshift(latest);
-    const previous = [...quarterlyStatements].reverse().find((candidate) => {
-      const days = (Date.parse(latest.date) - Date.parse(candidate.date)) / 86_400_000;
-      return days >= 350 && days <= 380 && candidate.currency === latest.currency;
-    });
-    if (previous) previousStatementMap.set(latest.date, previous);
+  if (period === "annual" && statement === "balance") {
+    const balanceRows = FINANCIAL_SUB_TABS.find((tab) => tab.key === "balance")!.rows;
+    // Coverage arrives by metric: a newer EPS-only row is not a balance sheet.
+    const latest = quarterlyStatements.findLast((candidate) => (
+      balanceRows.some((row) => hasFinancialRowValue(row, [candidate]))
+    ));
+    if (latest && latest.date > (annualStatements.at(-1)?.date ?? "")) {
+      statements.unshift(latest);
+      const previous = [...quarterlyStatements].reverse().find((candidate) => {
+        const days = (Date.parse(latest.date) - Date.parse(candidate.date)) / 86_400_000;
+        return days >= 350 && days <= 380 && candidate.currency === latest.currency;
+      });
+      if (previous) previousStatementMap.set(latest.date, previous);
+    }
   }
   return { statements, previousStatementMap };
 }

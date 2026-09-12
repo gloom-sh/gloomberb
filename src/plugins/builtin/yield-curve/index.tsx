@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, type PaneFooterSegment } from "../../../components";
-import type { ProjectedChartPoint } from "../../../components/chart/core/data";
+import { DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, type PaneFooterSegment } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
@@ -9,13 +8,13 @@ import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
-import { useAutoRefresh, useUpdatedAgo } from "../shared/auto-refresh";
+import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { yieldCurveHeadless } from "./headless";
+import { buildYieldCurveChart } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
 import {
   curveAsOf,
-  isInverted,
   loadYieldCurve,
   parseYieldPoints,
   spreadBasisPoints,
@@ -46,6 +45,7 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   const [dateError, setDateError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const dateInput = useRef<InputRenderable>(null);
+  useEffect(() => { if (editing) dateInput.current?.focus?.(); }, [editing]);
   useEffect(() => { setDraftDate(requestedDate); }, [requestedDate]);
   const loadCurve = useCallback(async () => ({
     requestedDate,
@@ -58,7 +58,6 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
   const points = data?.requestedDate === requestedDate ? data.points : EMPTY_POINTS;
   const refreshLatest = useCallback(() => { if (!requestedDate) void load(); }, [requestedDate, load]);
   useAutoRefresh(lastUpdated, refreshLatest);
-  const updatedAgo = useUpdatedAgo(points.length ? lastUpdated : null);
   const selectDate = (value: string) => {
     try {
       const nextDate = yieldCurveDate(value);
@@ -80,7 +79,6 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     if (ev.name === "d") {
       ev.preventDefault();
       setEditing(true);
-      dateInput.current?.focus?.();
     } else if (ev.name === "r") {
       void load();
     } else if (ev.name === "l") {
@@ -88,27 +86,28 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     }
   });
 
-  const inverted = isInverted(points);
   const bp = spreadBasisPoints(points);
   // Treasury series are daily closes, so which session the curve represents is
   // status the user needs; "updated Xm ago" only says when we last fetched it.
   const asOf = curveAsOf(points);
 
   const yieldStatus = useMemo<PaneFooterSegment[]>(() => [
-      ...(inverted ? [{ id: "inverted", parts: [{ text: "INVERTED", tone: "warning" as const, bold: true }] }] : []),
-      ...(bp != null ? [{ id: "spread", parts: [{ text: `10Y − 2Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
+      ...(bp != null ? [{ id: "spread", parts: [{ text: `10Y−2Y ${bp >= 0 ? "+" : ""}${bp}bp`, tone: bp < 0 ? "warning" as const : "muted" as const }] }] : []),
       ...(asOf ? [{ id: "as-of", parts: [{ text: `as of ${asOf}`, tone: "muted" as const }] }] : []),
-      ...(requestedDate && asOf && requestedDate !== asOf ? [{ id: "requested", parts: [{ text: `requested ${requestedDate} · prior published session`, tone: "muted" as const }] }] : []),
+      ...(requestedDate && requestedDate !== asOf ? [{ id: "requested", parts: [{ text: `requested ${requestedDate}`, tone: "muted" as const }] }] : []),
       ...(!asOf && points.length ? [{ id: "mixed-dates", parts: [{ text: "Mixed or unknown observation dates", tone: "warning" as const }] }] : []),
       ...(points.some((point) => point.yield == null) ? [{ id: "missing", parts: [{ text: "Some tenors unavailable", tone: "warning" as const }] }] : []),
       ...(points.some((point) => point.stale) ? [{ id: "stale", parts: [{ text: "Cached source · refresh failed", tone: "warning" as const }] }] : []),
-      ...(updatedAgo ? [{ id: "updated", parts: [{ text: `updated ${updatedAgo}`, tone: "muted" as const }] }] : []),
-  ], [asOf, bp, inverted, updatedAgo, points, requestedDate]);
+  ], [asOf, bp, points, requestedDate]);
   usePaneStatusFooter({
     registrationId: "yield-curve",
     loading,
     error,
     info: yieldStatus,
+    hints: [
+      { id: "date", key: "d", label: "ate", onPress: () => setEditing(true) },
+      ...(requestedDate ? [{ id: "latest", key: "l", label: "atest", onPress: () => selectDate("") }] : []),
+    ],
   });
 
   const validPoints = asOf ? parseYieldPoints(points) : [];
@@ -118,19 +117,11 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
 
   const palette = resolveChartPalette(colors, "positive");
 
-  // Map yield points to chart points: use epoch + maturityYears*365*86400000 to space them on the x-axis
-  const chartPoints: ProjectedChartPoint[] = validPoints.map((p) => ({
-    date: new Date(p.maturityYears * 365 * 86400000),
-    open: p.yield!,
-    high: p.yield!,
-    low: p.yield!,
-    close: p.yield!,
-    volume: 0,
-  }));
+  const chart = buildYieldCurveChart(validPoints, Math.max(1, chartWidth - 8));
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      <Box flexDirection="row" paddingX={1} gap={1} alignItems="flex-end" flexShrink={0}>
+      {editing ? <Box flexDirection="row" paddingX={1} flexShrink={0}>
         <TextField label="As-of date" type="date" value={draftDate} width={12}
           placeholder="YYYY-MM-DD" inputRef={dateInput} focused={focused && editing}
           onChange={setDraftDate} onSubmit={selectDate}
@@ -138,12 +129,7 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
           onKeyDown={(event) => {
             if (event.name === "escape") { setEditing(false); dateInput.current?.blur?.(); }
           }} />
-        <Button label="View" onPress={() => selectDate(draftDate)} compact />
-        <Button label="Latest" shortcut="l" onPress={() => selectDate("")} compact />
-        <Button label="Edit date" displayLabel="Date" shortcut="d" compact onPress={() => {
-          setEditing(true); dateInput.current?.focus?.();
-        }} />
-      </Box>
+      </Box> : null}
       {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
       <PaneStatusBody loading={loading && points.length === 0} error={points.length === 0 ? error : null}
         loadingLabel="Loading yield curve..." subject="yield curve">
@@ -151,10 +137,13 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       <ScrollBox flexGrow={1} scrollY focusable={false}>
         <Box flexDirection="column">
           {/* Chart */}
-          {chartPoints.length >= 2 ? (
+          {chart.points.length >= 2 ? (
             <Box flexDirection="column" paddingX={1} marginTop={1}>
               <StaticChartSurface
-                points={chartPoints}
+                points={chart.points}
+                calendarSpaced
+                xAxisTicks={chart.ticks}
+                formatXAxisCursorValue={chart.formatCursor}
                 width={chartWidth}
                 height={chartHeight}
                 mode="line"

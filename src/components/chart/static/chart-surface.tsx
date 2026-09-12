@@ -39,6 +39,8 @@ export interface StaticChartSurfaceProps {
   timeAxisColor?: string;
   /** Evenly spread labels for an x that is not time; implies an axis row. */
   xAxisLabels?: readonly string[];
+  /** Numeric-domain ticks at their actual plot ratios; implies an axis row. */
+  xAxisTicks?: CompositeChartXAxis["ticks"];
   xAxisColor?: string;
   formatXAxisCursorValue?: (xRatio: number) => string;
   xMarkers?: readonly StaticChartXMarker[];
@@ -98,6 +100,7 @@ export function StaticChartSurface({
   showTimeAxis = false,
   timeAxisColor,
   xAxisLabels,
+  xAxisTicks,
   xAxisColor,
   formatXAxisCursorValue,
   xMarkers,
@@ -125,10 +128,10 @@ export function StaticChartSurface({
     [formatYAxisValue],
   );
   const xAxis = useMemo<CompositeChartXAxis | undefined>(() => (
-    xAxisLabels || xMarkers || formatXAxisCursorValue
-      ? { labels: xAxisLabels, markers: xMarkers, formatCursor: formatXAxisCursorValue }
+    xAxisLabels || xAxisTicks || xMarkers || formatXAxisCursorValue
+      ? { labels: xAxisLabels, ticks: xAxisTicks, markers: xMarkers, formatCursor: formatXAxisCursorValue }
       : undefined
-  ), [formatXAxisCursorValue, xAxisLabels, xMarkers]);
+  ), [formatXAxisCursorValue, xAxisLabels, xAxisTicks, xMarkers]);
 
   return (
     <Box flexDirection="column" width={totalWidth} height={totalHeight}>
@@ -145,7 +148,7 @@ export function StaticChartSurface({
         colors={chartColors}
         navigable={false}
         showLegend={false}
-        showTimeAxis={showTimeAxis || (xAxisLabels?.length ?? 0) > 0}
+        showTimeAxis={showTimeAxis || (xAxisLabels?.length ?? 0) > 0 || (xAxisTicks?.length ?? 0) > 0}
         formatAxisValue={formatAxisValue}
         xAxis={xAxis}
         remoteKind="static-chart"

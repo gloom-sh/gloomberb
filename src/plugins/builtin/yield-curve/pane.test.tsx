@@ -1,18 +1,28 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { act, useReducer } from "react";
+import { act, useEffect, useReducer } from "react";
+import { RemoteUiRegistryProvider, useRemoteUiRegistry, type RemoteUiRegistry } from "../../../remote/semantic-tree";
 import { apiClient } from "../../../api-client";
-import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
+import { createTestControls, emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { AppContext, PaneInstanceProvider, appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import { PluginRenderProvider } from "../../runtime";
 import { YieldCurvePane } from "./index";
 import { TREASURY_MATURITIES } from "./treasury-data";
+import { PaneFooterProvider, PaneFooterBar } from "../../../components/layout/pane/footer";
+import { Box } from "../../../ui";
 
 const id = "yield-curve:test";
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 let latestSpy: ReturnType<typeof spyOn> | undefined;
 let historySpy: ReturnType<typeof spyOn> | undefined;
+let registry: RemoteUiRegistry | null = null;
+
+function RegistryProbe() {
+  const value = useRemoteUiRegistry();
+  useEffect(() => { registry = value; }, [value]);
+  return null;
+}
 
 function Harness() {
   const config = createDefaultConfig("/tmp/gloom-curve-test");
@@ -23,7 +33,10 @@ function Harness() {
   const [state, dispatch] = useReducer(appReducer, initial);
   return <AppContext value={{state, dispatch}}><PaneInstanceProvider paneId={id}>
     <PluginRenderProvider pluginId="macro" runtime={createTestPluginRuntime()}>
-      <YieldCurvePane paneId={id} paneType="yield-curve" focused width={70} height={30} />
+      <PaneFooterProvider>{(footer) => <Box width={70} height={30} flexDirection="column">
+        <YieldCurvePane paneId={id} paneType="yield-curve" focused width={70} height={29} />
+        <PaneFooterBar footer={footer} focused width={70} />
+      </Box>}</PaneFooterProvider>
     </PluginRenderProvider>
   </PaneInstanceProvider></AppContext>;
 }
@@ -35,7 +48,20 @@ async function frame() {
 afterEach(async () => {
   if (setup) await act(async () => { setup!.renderer.destroy(); });
   setup = undefined;
+  registry = null;
   latestSpy?.mockRestore(); historySpy?.mockRestore();
+});
+
+test("Treasury curve axis and cursor use maturity rather than synthetic calendar dates", async () => {
+  latestSpy = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue(TREASURY_MATURITIES.map(({ maturity, years }, index) => ({ maturity, maturityYears: years, yield: 4 + index / 10, asOf: "2026-09-10" })));
+  await act(async () => { setup = await testRender(<RemoteUiRegistryProvider><RegistryProbe /><Harness /></RemoteUiRegistryProvider>, { width: 70, height: 30 }); });
+  await frame(); await frame();
+  expect(setup!.captureCharFrame()).toMatch(/1M.*5Y.*10Y.*20Y.*30Y/);
+  const chart = registry!.snapshot().find((node) => node.metadata?.kind === "static-chart")!;
+  await act(async () => { await registry!.invoke(chart.id, "moveCursor", { x: 30, y: 4 }); });
+  await frame(); await frame();
+  expect(setup!.captureCharFrame()).toMatch(/\d+\.\dY/);
+  expect(setup!.captureCharFrame()).not.toMatch(/19[789]\d/);
 });
 
 test("date submission hides the previous curve while pending and keeps controls available after failure", async () => {
@@ -56,9 +82,12 @@ test("date submission hides the previous curve while pending and keeps controls 
   await act(async () => { rejectHistory(new Error("offline")); });
   await frame();
   expect(setup!.captureCharFrame()).toContain("No Treasury observations");
+  const controls = createTestControls(() => setup!);
+  await act(async () => { await controls.clickFrameText("[d]ate"); });
+  await frame();
   expect(setup!.captureCharFrame()).toContain("As-of date");
-  expect(setup!.captureCharFrame()).toContain("Latest");
-  await emitKeypress(setup!, { name: "l" });
+  await emitKeypress(setup!, { name: "escape" });
+  await act(async () => { await controls.clickFrameText("[l]atest"); });
   await frame();
   expect(setup!.captureCharFrame()).toContain("2026-09-08");
 });

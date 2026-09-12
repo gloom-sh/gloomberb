@@ -2314,8 +2314,8 @@ export function CompositeChart({
         <Box flexDirection="row" width={totalWidth} height={1}>
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXAxisLabels
-            labels={xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
-            positionedLabels={xAxis?.labels ? undefined : timeAxisLayout.ticks}
+            labels={xAxis?.ticks ? [] : xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
+            positionedLabels={xAxis?.ticks ?? (xAxis?.labels ? undefined : timeAxisLayout.ticks)}
             width={plotWidth}
             color={resolvedColors.textDim}
             cursorColumn={timeAxisCursorColumn}

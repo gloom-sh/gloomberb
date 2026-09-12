@@ -87,17 +87,18 @@ export function QuoteMonitorCard({
   const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
   const changeAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.NONE;
   const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
+  const assetCategory = quote?.instrumentType ?? ticker?.metadata.assetCategory;
   const stacked = width < 31;
   const priceText = display
-    ? formatMarketPriceWithCurrency(display.price, currency, { assetCategory: ticker?.metadata.assetCategory })
+    ? formatMarketPriceWithCurrency(display.price, currency, { assetCategory })
     : "";
   const changePercentText = display ? formatPercentRaw(display.changePercent) : "";
-  const changeValueText = display ? formatSignedMarketPrice(display.change, { assetCategory: ticker?.metadata.assetCategory }) : "";
+  const changeValueText = display ? formatSignedMarketPrice(display.change, { assetCategory }) : "";
   const priceColumnWidth = Math.max(priceText.length, changePercentText.length + changeValueText.length + 1);
   const nameMaxWidth = Math.max(10, width - priceColumnWidth - (nativePaneChrome ? 5 : 3));
   const sparklineRange = resolvePriceSparklineRange(priceHistory, chartPeriod);
   const rangeLabel = sparklineRange
-    ? `${chartPeriod} ${formatMarketPriceWithCurrency(sparklineRange.min, currency, { assetCategory: ticker?.metadata.assetCategory })}-${formatMarketPriceWithCurrency(sparklineRange.max, currency, { assetCategory: ticker?.metadata.assetCategory })}`
+    ? `${chartPeriod} ${formatMarketPriceWithCurrency(sparklineRange.min, currency, { assetCategory })}-${formatMarketPriceWithCurrency(sparklineRange.max, currency, { assetCategory })}`
     : "";
   const sparklineWidth = Math.max(8, width - (nativePaneChrome ? rangeLabel.length + 5 : 2));
   const trend = quoteTrend(display?.change);

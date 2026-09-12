@@ -104,11 +104,13 @@ export function StaticXAxisLabels({
         ? visiblePositionedLabels.map((entry) => entry.label)
         : visibleLabels).join(" ")}
     >
-      {uiHost.kind === "desktop-web" && visiblePositionedLabels.length > 0 ? (
+      {visiblePositionedLabels.length > 0 && (uiHost.kind === "desktop-web" || visibleLabels.length === 0) ? (
         <Box position="absolute" left={0} top={0} width={width} height={1}>
           {visiblePositionedLabels.map((entry, index) => {
             const ratio = clampRatio(entry.ratio);
-            const edgeStyle = ratio <= 0
+            const edgeStyle = uiHost.kind !== "desktop-web"
+              ? { left: Math.max(0, Math.min(width - entry.label.length, markerColumn(ratio, width) - Math.floor(entry.label.length / 2))) }
+              : ratio <= 0
               ? { left: 0 }
               : ratio >= 1
                 ? { right: 0 }

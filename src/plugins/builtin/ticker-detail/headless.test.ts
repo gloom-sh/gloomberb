@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless } from "./headless";
 
 function args(symbols: string[], options: HeadlessPaneLoadArgs["options"] = {}): HeadlessPaneLoadArgs {
@@ -74,6 +75,24 @@ test("quote comparison retains successful exchange-qualified inputs when a peer 
   expect(result.rows).toEqual([{ symbol: "ABC", name: "Company", price: 105, change: 5, changePercent: 5, currency: "USD", marketCap: null, updatedAt: 123 }]);
   expect(result.unavailableSymbols).toEqual(["MISSING"]);
   expect(result.errors).toEqual(["MISSING: No quote"]);
+});
+
+test("quote monitor exports retain FX precision and small changes without altering raw values", async () => {
+  // Retained public EUR/USD quote fields; provider retrieval is not replayed here.
+  const quote = { symbol: "EURUSD=X", name: "EUR/USD", instrumentType: "CURRENCY",
+    price: 1.1602274179458618, change: -0.0010778820541381684,
+    changePercent: -0.09281642425451501, currency: "USD", lastUpdated: 1789162140000 };
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async () => quote }) } as HeadlessPaneContext;
+  const input = args([quote.symbol]);
+  const result = await quoteComparisonHeadless.load(input, ctx);
+  expect(result.rows[0]).toMatchObject({ price: quote.price, change: quote.change, instrumentType: "CURRENCY" });
+  const text = renderHeadlessPaneText(quoteComparisonHeadless, result, input, "Quote Monitor");
+  expect(text).toContain("$1.160227");
+  expect(text).toContain("-$0.001078");
+  expect(text).not.toContain("-$0.00 ");
+  const priceColumn = quoteComparisonHeadless.columns!.find(({ key }) => key === "price")!;
+  expect(priceColumn.format!(0.00651236716657877, { instrumentType: "CURRENCY", currency: "USD" })).toBe("$0.006512");
+  expect(priceColumn.format!(null, { currency: "USD" })).toBe("—");
 });
 
 test("historical prices use remembered exchanges and clip and sort the full OHLCV history", async () => {

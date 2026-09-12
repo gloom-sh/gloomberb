@@ -124,7 +124,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   }] : [], { liveStreaming });
   const underlyingFinancials = useTickerFinancials(isOpt ? effectiveTicker : null, null);
   const underlying = isOpt ? underlyingFinancials : financials;
-  const spot = underlying?.quote?.price;
+  const underlyingStale = underlying?.quote?.stale === true;
+  const spot = underlyingStale ? undefined : underlying?.quote?.price;
   const dividendYield = underlying?.fundamentals?.dividendYield;
   const instrument = target?.instrument ?? null;
   const baseRequest = target
@@ -356,7 +357,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
 
   useOptionsAccessFooter({
     chain,
-    error,
+    error: [error, underlyingStale ? "Underlying quote stale: Greeks and calculator unavailable" : null,
+      summary?.historicalVolatilityUnavailableReason].filter(Boolean).join(" · ") || null,
     focused,
     hints: footerHints,
     loading,

@@ -3,9 +3,9 @@ import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Static charts read left to right by observation, not by wall clock: a yield
- * curve's tenors, a Kelly curve's fractions, and a sparse economic release are
- * all indices in disguise. Declaring a one-day market cadence gives every
+ * Static charts default to reading left to right by observation. Callers with
+ * unequal numeric or calendar gaps opt into calendarSpaced to preserve them.
+ * Declaring a one-day market cadence gives every
  * observation one slot on the composite time scale, matching the legacy
  * index-spaced renderer, while real dates still label the axis.
  */

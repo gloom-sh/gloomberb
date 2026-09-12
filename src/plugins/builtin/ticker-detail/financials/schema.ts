@@ -376,7 +376,6 @@ export const FINANCIAL_SUB_TABS: FinancialSubTab[] = [
         label: "Liab + Equity",
         id: "balance:liabilities-equity",
         compute: (statement) => {
-          if (statement.totalAssets != null) return statement.totalAssets;
           if (statement.totalLiabilities == null || statement.totalEquityGrossMinorityInterest == null) return undefined;
           return statement.totalLiabilities + statement.totalEquityGrossMinorityInterest;
         },

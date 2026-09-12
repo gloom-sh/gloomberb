@@ -22,7 +22,7 @@ import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { comparableMarketCap, relativeValuationValues } from "./relative-valuation-model";
 
-type RelativeColumnId = "symbol" | Exclude<keyof ReturnType<typeof relativeValuationValues>, "currency" | "reportedMultiples" | "marketCapCurrency" | "marketCapProvenance">;
+type RelativeColumnId = "symbol" | "price" | "changePercent" | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
 type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
@@ -153,6 +153,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const missingFx = rows.some((row, index) => row.marketCap != null && comparableRows[index]?.marketCap == null);
   const sortedRows = useMemo(() => sortRelativeRows(comparableRows, sortPreference), [comparableRows, sortPreference]);
 
+  const staleSymbols = rows.filter((row) => row.quoteStale).map((row) => row.symbol);
+  const rowErrors = rows.filter((row) => row.error).map((row) => `${row.symbol}: ${row.error}`);
+  const status = [error, ...rowErrors, staleSymbols.length ? `Stale quotes: ${staleSymbols.join(", ")}` : null,
+    missingFx ? "Market-cap FX unavailable" : null].filter(Boolean).join(" · ") || null;
   const selectedRow = sortedRows[selectedIdx];
   const selectedCapNotice = selectedRow?.marketCapProvenance?.kind === "fundamentals"
     ? `${selectedRow.symbol} cap: ${describeFundamentalMarketCap(selectedRow.marketCapProvenance)}.` : undefined;
@@ -163,7 +167,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
     switch (column.id) {
       case "symbol":
-        return { text: row.symbol, color: selectedColor ?? (row.error ? colors.warning : colors.textBright), attributes: TextAttributes.BOLD };
+        return { text: row.symbol, color: selectedColor ?? (row.error || row.quoteStale ? colors.warning : colors.textBright), attributes: TextAttributes.BOLD };
       case "price":
         return { text: row.price != null ? formatCurrency(row.price, row.currency ?? "USD") : "-", color: selectedColor ?? colors.text };
       case "changePercent":
@@ -198,8 +202,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   }, []);
 
   usePaneFooter("relative-valuation", () => ({
-    info: loadingErrorFooterInfo(loading, error ?? (missingFx ? "Market-cap FX unavailable" : null)),
-  }), [error, loading, missingFx]);
+    info: loadingErrorFooterInfo(loading, status),
+  }), [status, loading]);
 
   return (
     <DataTableView<RelativeRow, RelativeColumn>
