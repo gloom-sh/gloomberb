@@ -325,6 +325,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
       series: series.label,
       latest: latest ? displayValue(latest.date) : "-",
       value: latest?.value ?? latest?.close ?? null,
+      unit: series.unit?.trim() || null,
       points: series.points.length,
     };
   });
@@ -332,6 +333,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
     { key: "series", header: "Series" },
     { key: "latest", header: "Latest" },
     { key: "value", header: "Value", align: "right" },
+    ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
     { key: "points", header: "Points", align: "right" },
   ];
   const lines = [renderRows(rows, columns, undefined)];

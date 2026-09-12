@@ -138,6 +138,8 @@ export interface HeadlessSeriesPoint extends HeadlessPaneRow {
 export interface HeadlessSeries {
   id: string;
   label: string;
+  /** Explicit unit of the point values; report formatting does not rescale them. */
+  unit?: string;
   points: HeadlessSeriesPoint[];
 }
 

@@ -7,7 +7,7 @@ import type {
 import { dividendReferencePrice, fetchDividendData, type DividendData } from "./client";
 import type { DividendPayment } from "./types";
 import { formatDividendYield, toDividendRows } from "./view";
-import { formatDistributionAmount } from "../../../utils/format";
+import { formatDistributionAmount, formatPercent } from "../../../utils/format";
 import type { Quote } from "../../../types/financials";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 
@@ -85,9 +85,9 @@ export function projectDividendYieldHeadless(
           { label: "Forward yield", value: metrics.forwardYield, formatted: formatDividendYield(metrics.forwardYield) },
           { label: "Trailing rate", value: metrics.trailingRate, formatted: formatDistributionAmount(metrics.trailingRate ?? undefined, currency) },
           { label: "Forward rate", value: metrics.forwardRate, formatted: formatDistributionAmount(metrics.forwardRate ?? undefined, currency) },
-          { label: "Payout ratio", value: metrics.payoutRatio },
-          { label: "1Y growth", value: metrics.growth1Y },
-          { label: "3Y growth", value: metrics.growth3Y },
+          { label: "Earnings Payout", value: metrics.payoutRatio, formatted: formatDividendYield(metrics.payoutRatio) },
+          { label: "1Y Cash Growth", value: metrics.growth1Y, formatted: formatPercent(metrics.growth1Y ?? undefined) },
+          { label: "3Y Cash CAGR", value: metrics.growth3Y, formatted: formatPercent(metrics.growth3Y ?? undefined) },
           { label: "Frequency", value: metrics.paymentFrequency },
           { label: "Ex-dividend", value: metrics.exDividendDate },
           { label: "Next pay", value: metrics.nextPayDate },

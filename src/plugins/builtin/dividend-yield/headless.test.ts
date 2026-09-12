@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { DividendData } from "./client";
 import { createDividendYieldHeadless } from "./headless";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import { serializeCliResult } from "../../../cli/result";
+import { DEFAULT_CLI_OPTIONS } from "../../../cli/options";
 
 const fixture: DividendData = {
   price: 200,
@@ -85,4 +88,35 @@ describe("dividend yield headless", () => {
     });
     expect(result.metadata).toMatchObject({ totalPayments: 1, returnedPayments: 1 });
   });
+});
+
+
+test("cash growth and payout text use percentages while JSON and CSV keep fractional values", async () => {
+  for (const [growth, formatted] of [[-0.152317880794702, "-15.23%"], [0.11248149975332988, "+11.25%"], [0, "0.00%"], [null, "—"]] as const) {
+    const data = { ...fixture, metrics: { ...fixture.metrics, payoutRatio: growth, growth1Y: growth, growth3Y: growth } };
+    const definition = createDividendYieldHeadless({ loadData: async () => data });
+    const request = args({ type: "all", limit: 40 });
+    const result = await definition.load(request, context);
+    const text = renderHeadlessPaneText(definition, result, request, "DVD");
+    const section = result.sections[0]!;
+    const entries = "entries" in section ? section.entries : [];
+    expect(entries.filter((entry) => entry.label === "1Y Cash Growth" || entry.label === "3Y Cash CAGR")).toEqual([
+      { label: "1Y Cash Growth", value: growth, formatted },
+      { label: "3Y Cash CAGR", value: growth, formatted },
+    ]);
+    expect(text).toContain("1Y Cash Growth");
+    expect(text).toContain("3Y Cash CAGR");
+    expect(text).toContain(formatted);
+    // Controlled provider ratio contract; these finite values are not asserted to be live ETF payouts.
+    expect(entries.find((entry) => entry.label === "Earnings Payout")).toEqual({ label: "Earnings Payout", value: growth, formatted: formatted.replace(/^\+/, "") });
+    const serialized = serializeHeadlessPaneResult(definition, result);
+    const json = JSON.parse(serializeCliResult({ data: serialized }, { ...DEFAULT_CLI_OPTIONS, format: "json" }));
+    const raw = json.data.sections[0].entries.filter((entry: { label: string }) => ["Earnings Payout", "1Y Cash Growth", "3Y Cash CAGR"].includes(entry.label));
+    expect(raw.map((entry: { value: unknown }) => entry.value)).toEqual([growth, growth, growth]);
+    // fn CSV retains nested sections as JSON cells; display strings cannot replace numeric values.
+    const csv = serializeCliResult({ data: serialized }, { ...DEFAULT_CLI_OPTIONS, format: "csv" });
+    expect(csv).toContain(`""label"":""1Y Cash Growth"",""value"":${JSON.stringify(growth)},""formatted"":""${formatted}""`);
+    expect(csv).toContain(`""label"":""Earnings Payout"",""value"":${JSON.stringify(growth)}`);
+    expect(data.metrics.growth1Y).toBe(growth);
+  }
 });
