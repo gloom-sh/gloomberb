@@ -18,7 +18,10 @@ import { webNativeRenderer } from "./native-renderer";
 import { WebToastHostProvider } from "./toast-host";
 import { webUiHost } from "./ui-host";
 import { getLoadablePlugins } from "../../../plugins/catalog";
+import { setCurrentPluginTarget } from "../../../plugins/current-target";
+import type { LoadedExternalPlugin } from "../../../plugins/loader";
 import type { PluginRegistry } from "../../../plugins/registry";
+import { loadDesktopExternalPlugins } from "./external-plugins";
 import {
   RemoteUiRegistryProvider,
   useRemoteUiRegistry,
@@ -42,13 +45,14 @@ import type {
   Quote,
   QuoteMetadata,
 } from "../../../types/financials";
+import type { NewsCapability } from "../../../capabilities/types";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import type { AppState } from "../../../core/state/app/state";
 import { canonicalTickerKey, parsePublicTickerKey } from "../../../utils/exchanges";
 import { hydrateValuationSeries } from "../../../plugins/builtin/market-valuation/cache";
 import { statsCache } from "../../../plugins/builtin/econ-statistics/cache";
 import { apiClient, setCloudApiFetchTransport } from "../../../api-client";
-import { createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
+import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 
 declare global {
   interface Window {
@@ -379,11 +383,11 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
   });
 }
 
-function createShotAppServices(payload: DesktopPaneShotPayload) {
+function createShotAppServices(payload: DesktopPaneShotPayload, externalPlugins: LoadedExternalPlugin[]) {
   const dataProvider = createShotDataProvider(payload);
   return createAppRuntime({
     config: payload.config,
-    plugins: getLoadablePlugins(),
+    plugins: getLoadablePlugins(externalPlugins),
     dataProvider,
     persistence: new JsonPersistence(),
     tickerRepository: new JsonTickerRepository(undefined, payload.tickers),
@@ -391,8 +395,15 @@ function createShotAppServices(payload: DesktopPaneShotPayload) {
       enableCapabilityHandlers: false,
       connectionHealth: createCliPaneShotConnectionHealth(),
     },
-    configure({ pluginRegistry, marketData }) {
+    configure({ pluginRegistry, marketData, newsService }) {
       pluginRegistry.getPaneRuntimeStateFn = (paneId) => payload.paneState[paneId] ?? null;
+      // Capability handlers are off, so nothing registers a news source and
+      // every news pane rendered its empty state. The desktop view registers
+      // the cloud feed by hand for the same reason; the proxied session makes
+      // it the same feed the signed-in app shows.
+      for (const capability of createGloomberbCloudCapabilities()) {
+        if (capability.kind === "news") newsService.register(capability as NewsCapability);
+      }
       marketData.primeCachedFinancials(payload.tickers.flatMap((ticker) => {
         const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker);
         const instrumentKey = instrument
@@ -506,7 +517,12 @@ async function render() {
   installShotHttpFetchTransport();
   hydrateValuationSeries(payload.valuationSeries ?? []);
   statsCache.hydrate(payload.statSeries ?? []);
-  const services = createShotAppServices(payload);
+  // This page is the desktop view's renderer, so installed plugins run here
+  // the way they do in the app: compiled by the Bun process, evaluated from
+  // the payload. A broken plugin is reported and skipped, not fatal.
+  setCurrentPluginTarget("desktop");
+  const externalPlugins = await loadDesktopExternalPlugins(payload.externalPlugins ?? []);
+  const services = createShotAppServices(payload, externalPlugins);
   window.addEventListener("pagehide", () => services.destroy(), { once: true });
   // Panes contributed from an async setup() only exist once every plugin has
   // finished registering, so the tree cannot mount before that resolves.

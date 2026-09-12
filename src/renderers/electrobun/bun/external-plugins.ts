@@ -121,7 +121,13 @@ export async function collectExternalPluginBundles(): Promise<DesktopExternalPlu
         continue;
       }
 
-      const result = await bundleExternalPlugin(pluginDir, join(outDir, entry.name));
+      // The view is compiled for production, so its React only ships the
+      // production JSX runtime. A bundle built from a process without
+      // NODE_ENV set targets jsx-dev-runtime instead and fails on first
+      // render with "jsxDEV is not a function".
+      const result = await bundleExternalPlugin(pluginDir, join(outDir, entry.name), {
+        define: { "process.env.NODE_ENV": "\"production\"" },
+      });
       const code = await Bun.file(result.outputPath).text();
       bundleCache.set(pluginDir, { mtimeMs, code });
       log.info(`Bundled ${plugin.id} (${Math.round(code.length / 1024)}KB, shared: ${result.shared.join(", ")})`);

@@ -32,7 +32,9 @@ export function syntheticPositionUnsupportedReason(ticker: TickerRecord, quoteCu
   if (positions.some((position) => position.side === "short" || position.shares < 0)) {
     return "Short positions: signed exposure history required";
   }
-  const equityCategories = new Set(["", "STK", "STOCK", "EQUITY", "ETF", "ETN", "FUND", "ADR", "REIT"]);
+  // "Common Stock" is the category provider search hands a ticker added from
+  // the command bar, so a plain equity must not read as unsupported.
+  const equityCategories = new Set(["", "STK", "STOCK", "COMMON STOCK", "EQUITY", "ETF", "ETN", "FUND", "ADR", "REIT"]);
   if (!equityCategories.has((ticker.metadata.assetCategory ?? "").toUpperCase())
     || positions.some((position) => position.multiplier != null && position.multiplier !== 1)
     || /=[A-Z]+$|-[A-Z]{3,4}$|\d{6}[CP]\d{8}$/.test(ticker.metadata.ticker)) {

@@ -59,6 +59,7 @@ import { defaultStatLoader } from "../../plugins/builtin/econ-statistics/client"
 import { STATS } from "../../plugins/builtin/econ-statistics/stats";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { getCloudApiBaseUrl } from "../../api-client/request";
+import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import type { ResolvedSeries } from "../../time-series/types";
 import {
   collectShotSymbols,
@@ -501,7 +502,7 @@ export async function buildDesktopShotPayload(
     intradayHistories.push(...chartModel.snapshot.intradayHistories.map((history) => ({
       ...history, start: history.start?.toISOString() ?? null, end: history.end?.toISOString() ?? null,
     })));
-  } else for (const symbol of collectShotSymbols(resolved, rawArg)) {
+  } else for (const symbol of await collectShotSymbolsWithCollections(resolved, context, rawArg)) {
     const entry = await fetchTickerFinancials(context, symbol);
     const requestedRange = shotPriceHistoryRange(resolved);
     let data = entry.financials;
@@ -517,6 +518,12 @@ export async function buildDesktopShotPayload(
       } catch {
         data = await withShotPriceHistory(context, symbol, entry.tickerFile, data);
       }
+    } else {
+      // The cloud's financials carry no price history. The snapshot provider
+      // treats a captured dataset as authoritative, so an empty history here
+      // left the overview chart and quote monitor sparklines blank instead of
+      // letting the pane fetch them.
+      data = await withShotPriceHistory(context, symbol, entry.tickerFile, data);
     }
     tickers.push(entry.tickerFile ?? createFallbackTicker(symbol, data, context));
     financials.push([symbol, data]);
@@ -545,9 +552,31 @@ export async function buildDesktopShotPayload(
     valuationSeries,
     statSeries,
     paneState,
+    externalPlugins: await collectExternalPluginBundles(),
   };
   if (chartModel) payload.chartModel = chartModel.chart;
   return payload;
+}
+
+/** Panes that render the user's portfolio or watchlist rather than an argument. */
+const COLLECTION_PANE_IDS = new Set(["portfolio-list", "analytics", "kelly-sizer"]);
+
+/**
+ * The page only knows the tickers the payload carries, so a collection pane
+ * captured with just the argument symbol showed an empty portfolio. Portfolio
+ * and watchlist members ride along for the panes that display them.
+ */
+async function collectShotSymbolsWithCollections(
+  resolved: ResolvedPaneFunction,
+  context: MarketContext,
+  rawArg: string,
+): Promise<string[]> {
+  const symbols = collectShotSymbols(resolved, rawArg);
+  if (!COLLECTION_PANE_IDS.has(resolved.pane.id)) return symbols;
+  const members = (await context.store.loadAllTickers())
+    .filter(({ metadata }) => metadata.portfolios.length > 0 || metadata.watchlists.length > 0)
+    .map(({ metadata }) => metadata.ticker);
+  return [...new Set([...symbols, ...members])];
 }
 
 function resolveShotTheme(requested: string): string {
