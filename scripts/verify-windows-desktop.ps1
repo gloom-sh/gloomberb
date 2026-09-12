@@ -206,12 +206,14 @@ function Wait-ForNewWindows {
     [hashtable]$KnownHandles,
     [int]$MinimumCount,
     [string]$Label,
-    [int]$TimeoutSeconds = 35
+    [int]$TimeoutSeconds = 35,
+    [scriptblock]$OnDiscovered
   )
 
   $Deadline = (Get-Date).AddSeconds($TimeoutSeconds)
   do {
     $Windows = @(Get-VisibleWindows | Where-Object { -not $KnownHandles.ContainsKey([string]$_.Handle) })
+    if ($OnDiscovered) { $null = & $OnDiscovered $Windows }
     if ($Windows.Count -ge $MinimumCount) {
       return $Windows
     }
@@ -1243,10 +1245,51 @@ function Restore-EnvironmentVariable {
   }
 }
 
-function Save-OnboardingFailureDiagnostics {
+function Add-TrackedWindowProcesses {
+  param(
+    [System.Collections.Generic.List[object]]$TrackedProcesses,
+    [object[]]$Windows
+  )
+
+  # Retain a handle on first sight, even if another required window never opens.
+  foreach ($Window in $Windows) {
+    if (-not $Window.Id -or $TrackedProcesses.Id -contains $Window.Id) { continue }
+    $Tracked = [pscustomobject]@{
+      Id = $Window.Id
+      ProcessName = $Window.ProcessName
+      Process = $null
+      StateError = $null
+    }
+    $TrackedProcesses.Add($Tracked)
+    try {
+      $Tracked.Process = Get-Process -Id $Window.Id -ErrorAction Stop
+      $Tracked.Process.EnableRaisingEvents = $true
+    } catch {
+      $Tracked.StateError = $_.Exception.Message
+    }
+  }
+}
+
+function Close-TrackedProcessHandles {
+  param([object[]]$TrackedProcesses)
+
+  foreach ($Tracked in $TrackedProcesses) {
+    if ($Tracked.Process) {
+      try {
+        $Tracked.Process.Dispose()
+      } catch {
+        Write-Host "Could not dispose process handle $($Tracked.Id): $($_.Exception.Message)"
+      }
+    }
+  }
+}
+
+function Save-LaunchFailureDiagnostics {
   param(
     [object[]]$TrackedProcesses,
-    [string]$FailureMessage
+    [string]$FailureMessage,
+    [string]$Stage,
+    [string]$OutputPath
   )
 
   # Read retained process handles before cleanup. Looking up only a PID after exit
@@ -1283,13 +1326,13 @@ function Save-OnboardingFailureDiagnostics {
   }
   [pscustomobject]@{
     CapturedAt = [DateTime]::UtcNow.ToString("o")
-    Stage = "onboarding-failure-before-cleanup"
+    Stage = $Stage
     Failure = $FailureMessage
     Processes = $ProcessStates
     Windows = $Windows
     WindowInventoryError = $WindowInventoryError
   } | ConvertTo-Json -Depth 8 | Set-Content `
-    -Path (Join-Path $GuiArtifactDir "windows-onboarding-failure.json") -Encoding UTF8
+    -Path $OutputPath -Encoding UTF8
 }
 
 function Capture-OnboardingScreenshot {
@@ -1332,29 +1375,18 @@ function Capture-OnboardingScreenshot {
       Process = $OnboardingProcess
       StateError = $null
     })
+    try {
+      $OnboardingProcess.EnableRaisingEvents = $true
+    } catch {
+      $TrackedProcesses[0].StateError = $_.Exception.Message
+    }
     $OnboardingWindows = @(Wait-ForNewWindows `
       -KnownHandles $InitialWindowHandles `
       -MinimumCount 1 `
-      -Label "Gloomberb onboarding window")
+      -Label "Gloomberb onboarding window" `
+      -OnDiscovered { param($Windows) Add-TrackedWindowProcesses $TrackedProcesses $Windows })
     $OnboardingWindowProcessIds += $OnboardingProcess.Id
     $OnboardingWindowProcessIds += @($OnboardingWindows | Select-Object -ExpandProperty Id | Where-Object { $_ })
-    foreach ($WindowProcessId in @($OnboardingWindowProcessIds | Select-Object -Unique)) {
-      if ($WindowProcessId -eq $OnboardingProcess.Id) { continue }
-      $Tracked = [pscustomobject]@{
-        Id = $WindowProcessId
-        ProcessName = ($OnboardingWindows | Where-Object Id -eq $WindowProcessId | Select-Object -First 1).ProcessName
-        Process = $null
-        StateError = $null
-      }
-      $TrackedProcesses.Add($Tracked)
-      try {
-        $Tracked.Process = Get-Process -Id $WindowProcessId -ErrorAction Stop
-        # Force a process handle to be opened while the window is still alive.
-        $Tracked.Process.EnableRaisingEvents = $true
-      } catch {
-        $Tracked.StateError = $_.Exception.Message
-      }
-    }
 
     Save-WindowInventory (Join-Path $GuiArtifactDir "windows-onboarding-after-launch.txt")
     $null = Capture-WindowScreenshotByTitle `
@@ -1365,9 +1397,11 @@ function Capture-OnboardingScreenshot {
   } catch {
     $OnboardingFailure = $_
     try {
-      Save-OnboardingFailureDiagnostics `
+      Save-LaunchFailureDiagnostics `
         -TrackedProcesses $TrackedProcesses.ToArray() `
-        -FailureMessage $OnboardingFailure.Exception.Message
+        -FailureMessage $OnboardingFailure.Exception.Message `
+        -Stage "onboarding-failure-before-cleanup" `
+        -OutputPath (Join-Path $GuiArtifactDir "windows-onboarding-failure.json")
     } catch {
       Write-Host "Could not save onboarding failure diagnostics: $($_.Exception.Message)"
     }
@@ -1383,15 +1417,7 @@ function Capture-OnboardingScreenshot {
     if ($OnboardingProcess -and -not $OnboardingProcess.HasExited) {
       Stop-Process -Id $OnboardingProcess.Id -Force -ErrorAction SilentlyContinue
     }
-    foreach ($Tracked in $TrackedProcesses) {
-      if ($Tracked.Process) {
-        try {
-          $Tracked.Process.Dispose()
-        } catch {
-          Write-Host "Could not dispose onboarding process handle $($Tracked.Id): $($_.Exception.Message)"
-        }
-      }
-    }
+    Close-TrackedProcessHandles $TrackedProcesses.ToArray()
 
     Restore-EnvironmentVariable "HOME" $PreviousHome
     Restore-EnvironmentVariable "USERPROFILE" $PreviousUserProfile
@@ -1462,6 +1488,7 @@ $InstallLog = Join-Path $env:TEMP "gloomberb-install-$PID.log"
 $UninstallLog = Join-Path $env:TEMP "gloomberb-uninstall-$PID.log"
 $GuiProcess = $null
 $LaunchedWindowProcessIds = @()
+$TrackedGuiProcesses = New-Object System.Collections.Generic.List[object]
 $SeededDesktopConfig = $null
 
 try {
@@ -1512,11 +1539,25 @@ try {
   $GuiProcess = Start-Process `
     -FilePath (Join-Path $InstallDir "bin\launcher.exe") `
     -WorkingDirectory (Join-Path $InstallDir "bin") `
+    -RedirectStandardOutput (Join-Path $GuiArtifactDir "windows-main-stdout.log") `
+    -RedirectStandardError (Join-Path $GuiArtifactDir "windows-main-stderr.log") `
     -PassThru
+  $TrackedGuiProcesses.Add([pscustomobject]@{
+    Id = $GuiProcess.Id
+    ProcessName = "launcher"
+    Process = $GuiProcess
+    StateError = $null
+  })
+  try {
+    $GuiProcess.EnableRaisingEvents = $true
+  } catch {
+    $TrackedGuiProcesses[0].StateError = $_.Exception.Message
+  }
   $LaunchedWindows = @(Wait-ForNewWindows `
     -KnownHandles $InitialWindowHandles `
     -MinimumCount 2 `
-    -Label "Gloomberb main and detached windows")
+    -Label "Gloomberb main and detached windows" `
+    -OnDiscovered { param($Windows) Add-TrackedWindowProcesses $TrackedGuiProcesses $Windows })
   $LaunchedWindowProcessIds += $GuiProcess.Id
   $LaunchedWindowProcessIds += @($LaunchedWindows | Select-Object -ExpandProperty Id)
 
@@ -1616,6 +1657,18 @@ try {
     throw "Windows GUI exited during smoke test with code $($GuiProcess.ExitCode)"
   }
 } catch {
+  $GuiFailure = $_
+  if ($GuiProcess) {
+    try {
+      Save-LaunchFailureDiagnostics `
+        -TrackedProcesses $TrackedGuiProcesses.ToArray() `
+        -FailureMessage $GuiFailure.Exception.Message `
+        -Stage "main-and-detached-failure-before-cleanup" `
+        -OutputPath (Join-Path $GuiArtifactDir "windows-main-failure.json")
+    } catch {
+      Write-Host "Could not save Windows GUI failure diagnostics: $($_.Exception.Message)"
+    }
+  }
   try {
     Capture-DesktopScreenshot (Join-Path $GuiArtifactDir "windows-gui-failure.png")
   } catch {
@@ -1626,13 +1679,14 @@ try {
   } catch {
     Write-Host "Could not capture Windows GUI failure window inventory: $($_.Exception.Message)"
   }
-  throw
+  throw $GuiFailure
 } finally {
   Stop-ProcessIds $LaunchedWindowProcessIds
 
   if ($GuiProcess -and -not $GuiProcess.HasExited) {
     Stop-Process -Id $GuiProcess.Id -Force -ErrorAction SilentlyContinue
   }
+  Close-TrackedProcessHandles $TrackedGuiProcesses.ToArray()
 
   if ($SeededDesktopConfig) {
     Remove-Item -Path $SeededDesktopConfig.GlobalConfigPath -Force -ErrorAction SilentlyContinue
