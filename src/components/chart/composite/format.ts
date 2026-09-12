@@ -38,16 +38,16 @@ function currencyPrefix(unit: string): string {
   return currency ? CURRENCY_SYMBOLS[currency] ?? "" : "";
 }
 
-function formatFullCurrencyValue(value: number, unit: string): string | null {
+function formatFullCurrencyValue(value: number, unit: string, assetCategory?: string): string | null {
   const currency = unitCurrencyCode(unit);
-  return currency ? formatMarketPriceWithCurrency(value, currency) : null;
+  return currency ? formatMarketPriceWithCurrency(value, currency, { assetCategory }) : null;
 }
 
 export function formatCompositeSeriesValue(value: number, series: ResolvedSeries): string {
-  return formatChartLegendValue(value, series.unit, series.unitGroup);
+  return formatChartLegendValue(value, series.unit, series.unitGroup, series.priceAssetCategory);
 }
 
-export function formatChartLegendValue(value: number, unit: string, unitGroup = ""): string {
+export function formatChartLegendValue(value: number, unit: string, unitGroup = "", assetCategory?: string): string {
   const trimmed = unit.trim();
   const group = unitGroup.toLowerCase();
   const compact = compactNumber(value);
@@ -65,7 +65,7 @@ export function formatChartLegendValue(value: number, unit: string, unitGroup = 
       return prefix ? `${prefix}${amount}` : `${amount} ${trimmed}`.trim();
     }
   }
-  const fullPrice = formatFullCurrencyValue(value, trimmed);
+  const fullPrice = formatFullCurrencyValue(value, trimmed, assetCategory);
   if (fullPrice) return fullPrice;
   return trimmed && trimmed.length <= 6 ? `${compact}${trimmed.startsWith("/") ? "" : " "}${trimmed}` : compact;
 }
@@ -87,7 +87,13 @@ export function formatCompositeCursorValue(value: number, domain: CompositeAxisD
   if (group.split(":")[0] === "currency-total") {
     return formatChartLegendValue(value, domain.unit, domain.unitGroup);
   }
-  const fullPrice = formatFullCurrencyValue(value, domain.unit);
+  // An axis can serve several price series. Keep the most precise value the
+  // shared formatter produces, rather than inheriting the first asset's rounding.
+  const categories = domain.priceAssetCategories?.length ? domain.priceAssetCategories : [undefined];
+  const fullPrice = categories.reduce<string>((best, category) => {
+    const formatted = formatFullCurrencyValue(value, domain.unit, category) ?? "";
+    return formatted.length > best.length ? formatted : best;
+  }, "");
   if (fullPrice) return fullPrice;
   return formatCompositeAxisValue(value, domain);
 }

@@ -135,6 +135,8 @@ export interface ResolvedSeries {
   /** Unit of rawValue, retained when presentation transforms change unit. */
   rawUnit?: string;
   unitGroup: string;
+  /** Source instrument category used only for monetary market-price precision. */
+  priceAssetCategory?: string;
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;

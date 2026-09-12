@@ -28,6 +28,7 @@ function sameSeriesMeta(left: ResolvedSeries, right: ResolvedSeries): boolean {
     && left.color === right.color
     && left.unit === right.unit
     && left.unitGroup === right.unitGroup
+    && left.priceAssetCategory === right.priceAssetCategory
     && left.nativeFrequency === right.nativeFrequency
     && left.timestampMode === right.timestampMode
     && left.dataShape === right.dataShape

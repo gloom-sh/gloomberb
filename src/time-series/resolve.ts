@@ -769,6 +769,8 @@ function baseSecuritySeries(
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
+    priceAssetCategory: marketField && field.unitGroup === "price"
+      ? financials.quote?.instrumentType || quoteMetadata?.instrumentType : undefined,
     volumeUnit,
     ...(priceIssues.length ? { valuationPriceIssues: priceIssues } : {}),
     warning: field.id === "market.volume" && !volumeUnit && points.length > 0

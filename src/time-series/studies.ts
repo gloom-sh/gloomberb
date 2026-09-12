@@ -82,6 +82,8 @@ function outputSeries(
     color: options.color,
     unit: options.unit ?? input.unit,
     unitGroup: options.unitGroup ?? input.unitGroup,
+    priceAssetCategory: (options.unit ?? input.unit) === input.unit
+      && (options.unitGroup ?? input.unitGroup) === input.unitGroup ? input.priceAssetCategory : undefined,
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
     dataShape: "scalar",
     style: options.style ?? "line",

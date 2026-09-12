@@ -299,6 +299,7 @@ function buildAxisDomain(
     scale,
     unit: first.unit,
     unitGroup: first.unitGroup,
+    priceAssetCategories: [...new Set(axisSeries.flatMap((entry) => entry.priceAssetCategory ? [entry.priceAssetCategory] : []))],
     seriesIds: axisSeries.map((entry) => entry.id),
   };
 }
