@@ -1,6 +1,7 @@
 import type { DataProvider } from "../../../types/data-provider";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { buildDividendMetrics, dividendReferencePrice, toDividendPayment, type DividendData } from "./client";
+import { dividendQuotePriceMetadata } from "./reference-price";
 
 /** Hosted browsers use their configured provider instead of cross-origin Yahoo requests. */
 export async function fetchProviderDividendData(
@@ -32,11 +33,7 @@ export async function fetchProviderDividendData(
     providerId: actions.providerId,
     fetchedAt: actions.fetchedAt,
     stale: actions.stale,
-    ...(suppliedPrice == null && price != null ? {
-      priceAsOf: quote?.lastUpdated != null && Number.isFinite(quote.lastUpdated)
-        ? new Date(quote.lastUpdated).toISOString() : undefined,
-      priceStale: quote?.stale,
-    } : {}),
+    ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     metrics: buildDividendMetrics(payments, null, price),
     notes: ["Cash yield excludes taxes and reinvestment. SEC yield, tax components and future payments are not modeled.",
       "This source supplies ex-dates; indicated annual rates and payment dates are unavailable."],

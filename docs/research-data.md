@@ -60,6 +60,8 @@ Broker account-value history includes deposits and withdrawals. Investment retur
 
 Dividend cash yield excludes taxes and reinvestment. SEC yield, tax components, and future payments are not modeled. Forward yield is an estimate rather than a guaranteed distribution. Dividend amounts and reference prices must use compatible listing currencies and units.
 
+Dividend reference prices retain their own source timestamp, including Yahoo's regular-session price when a separate quote is unavailable. The footer prioritizes that timestamp and shows the separate history retrieval time when space permits; exports retain both. Stale prices and missing price timestamps remain explicit. Fetching cash history does not refresh the time of its reference price.
+
 TTM cash/share sums reported cash with ex-dates within the trailing calendar year. The chart changes on ex-dates and when earlier payments leave that window, holding each level between changes. Cash growth compares complete trailing-year windows; a positive baseline followed by no cash gives −100%, while a zero or incomplete baseline has no defined growth rate. Special distributions remain part of reported cash.
 
 Sector and industry ETF returns are price returns in the listing currency, without reinvested distributions. Rankings use a shared ending session and calendar-month/year boundaries, using a prior close for holidays. Missing or inconsistent endpoints remain unavailable. A successful refresh does not make an old quote current.
