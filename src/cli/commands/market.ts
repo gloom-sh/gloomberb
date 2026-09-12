@@ -13,6 +13,7 @@ import type {
 import { formatMarketPriceWithCurrency } from "../../market-data/market/format";
 import { formatCompact } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
+import { createBaseConverter } from "../base-converter";
 import { isoDate, parsePositiveInt, requireArg, takeOption } from "./command-utils";
 
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
@@ -419,10 +420,12 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 }
 
 async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
-  const currency = requireArg(rawArgs[0]?.toUpperCase(), "Usage: gloomberb fx <currency>", ctx);
+  const currency = requireArg(rawArgs[0]?.trim().toUpperCase(), "Usage: gloomberb fx <currency>", ctx);
   await withMarketData(ctx, async (market) => {
-    const rate = await market.dataProvider.getExchangeRate(currency);
-    ctx.printResult({ data: [{ currency, baseCurrency: market.config.baseCurrency, rate }] }, {
+    const baseCurrency = market.config.baseCurrency.trim().toUpperCase();
+    const rate = await createBaseConverter(market.dataProvider, baseCurrency)(1, currency);
+    if (!Number.isFinite(rate) || rate <= 0) ctx.fail(`Exchange rate unavailable for ${currency}/${baseCurrency}`);
+    ctx.printResult({ data: [{ currency, baseCurrency, rate }] }, {
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },

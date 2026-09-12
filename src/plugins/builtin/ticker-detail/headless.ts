@@ -1,8 +1,8 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
-import { formatCurrency, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { formatMarketPrice } from "../../../market-data/market/format";
+import { formatNumber, formatPercentRaw } from "../../../utils/format";
+import { formatMarketPrice, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import { pricePointValues, priceHistoryIntegrityNotice } from "../../../utils/price-history-integrity";
 import { buildFinancialTableModel, financialStatementCurrency, financialStatementDateNotice, financialStatementLimitations, formatFinancialHeader } from "./financials/model";
 import { paneSchemas } from "./headless-schema";
@@ -65,6 +65,15 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   },
 };
 
+function quoteAmount(value: unknown, row: Record<string, unknown>, signed = false): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+  const options = { assetCategory: typeof row.instrumentType === "string" ? row.instrumentType : undefined, minimumFractionDigits: 2 };
+  const amount = typeof row.currency === "string" && row.currency.trim()
+    ? formatMarketPriceWithCurrency(value, row.currency, options)
+    : formatMarketPrice(value, options);
+  return `${signed && value >= 0 ? "+" : ""}${amount}`;
+}
+
 export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["quote-monitor-pane"],
   shape: "rows",
@@ -72,8 +81,8 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   columns: [
     { key: "symbol", header: "Ticker" },
     { key: "name", header: "Name" },
-    { key: "price", header: "Last", align: "right", format: (value, row) => formatCurrency(Number(value), String(row.currency)) },
-    { key: "change", header: "Change", align: "right", format: (value, row) => `${Number(value) >= 0 ? "+" : ""}${formatCurrency(Number(value), String(row.currency))}` },
+    { key: "price", header: "Last", align: "right", format: (value, row) => quoteAmount(value, row) },
+    { key: "change", header: "Change", align: "right", format: (value, row) => quoteAmount(value, row, true) },
     { key: "changePercent", header: "Change %", align: "right", format: (value) => formatPercentRaw(Number(value)) },
   ],
   async load({ symbols }, ctx) {
@@ -84,6 +93,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows: loaded.entries.map(({ symbol, data: quote }) => ({
         symbol, name: quote.name ?? "", price: quote.price, currency: quote.currency,
+        ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
         change: quote.change, changePercent: quote.changePercent,
         marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
       })),

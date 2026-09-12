@@ -98,6 +98,7 @@ function makeFinancials(
 }
 
 function createQuoteMonitorHarness(options: {
+  width?: number;
   symbols?: string[];
   financials?: Map<string, TickerFinancials>;
   pinCalls?: PinTickerCall[];
@@ -138,7 +139,7 @@ function createQuoteMonitorHarness(options: {
       pinCalls: options.pinCalls,
       settingsCalls: options.settingsCalls,
     })}>
-      <QuoteMonitorPane paneId="quote-monitor:test" paneType="quote-monitor" focused width={72} height={7} />
+      <QuoteMonitorPane paneId="quote-monitor:test" paneType="quote-monitor" focused width={options.width ?? 72} height={7} />
     </TestPaneProvider>
   );
 }
@@ -170,6 +171,17 @@ async function flushFrames(count: number) {
 }
 
 describe("QuoteMonitorPane", () => {
+  test.each([80, 120])("uses returned FX instrument type when no ticker metadata exists at %s columns", async (width) => {
+    const symbol = "EURUSD=X";
+    const financials = makeFinancials(symbol, 1.1602274179458618, -0.0010778820541381684, -0.09281642425451501, []);
+    financials.quote!.instrumentType = "CURRENCY";
+    await renderHarness(createQuoteMonitorHarness({ width, symbols: [symbol], financials: new Map([[symbol, financials]]) }), { width, height: 7 });
+    await renderOnce();
+    const frame = testSetup!.captureCharFrame();
+    expect(frame).toContain("$1.160227");
+    expect(frame).toContain("-0.001078");
+  });
+
   test("opens a Ticker Research pane on the second card click", async () => {
     const pinCalls: PinTickerCall[] = [];
     await renderHarness(createQuoteMonitorHarness({ pinCalls }), {
