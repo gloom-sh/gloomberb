@@ -159,17 +159,18 @@ export function mapForm(raw: any): ThirteenFFormSummary | null {
   const accessionNumber = normalizeAccessionNumber(raw.accession_number, raw.url);
   const periodOfReport = stringOrEmpty(raw.period_of_report);
   if (!cik || !accessionNumber || !periodOfReport) return null;
+  const submissionType = stringOrEmpty(raw.submission_type || raw.form_type);
   return {
     url: stringOrEmpty(raw.url),
     accessionNumber,
-    submissionType: stringOrEmpty(raw.submission_type || raw.form_type),
+    submissionType,
     periodOfReport,
     filedAsOfDate: stringOrEmpty(raw.filed_as_of_date),
     cik,
     companyName: stringOrEmpty(raw.company_name),
     tableValueTotal: numberOrNull(raw.table_value_total),
     tableEntryTotal: numberOrNull(raw.table_entry_total),
-    isAmendment: boolOrFalse(raw.is_amendment) || stringOrEmpty(raw.submission_type).includes("/A"),
+    isAmendment: boolOrFalse(raw.is_amendment) || submissionType.includes("/A"),
     amendmentType: stringOrEmpty(raw.amendment_type) || undefined,
   };
 }
