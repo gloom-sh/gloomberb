@@ -10,6 +10,7 @@ import type { TickerRecord } from "../types/ticker";
 import type { PaneRuntimeState } from "../core/state/app/state";
 import type { RemoteUiNodeSnapshot } from "../remote/types";
 import type { DatedObservation } from "../plugins/builtin/market-valuation/series";
+import type { DesktopExternalPluginBundle } from "../renderers/electrobun/shared/protocol";
 import {
   electrobunViewPath,
   writeElectrobunViewPage,
@@ -47,6 +48,12 @@ export interface DesktopPaneShotPayload {
   statSeries: Array<[string, DatedObservation[]]>;
   chartModel?: ChartResolutionResult;
   paneState: Record<string, PaneRuntimeState>;
+  /**
+   * Installed plugins compiled for the browser, the same way the desktop view
+   * receives them. Without these a pane from `~/.gloomberb/plugins` resolves in
+   * the CLI but is unknown to the page that renders it.
+   */
+  externalPlugins?: DesktopExternalPluginBundle[];
 }
 
 /** Kept in Bun memory and never serialized into the browser page or CLI result. */

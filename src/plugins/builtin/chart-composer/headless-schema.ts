@@ -199,7 +199,8 @@ export const paneSchemas = {
           { value: "evEbitda", aliases: ["ev ebitda", "ev/ebitda"] },
           { value: "priceFcf", aliases: ["price fcf", "price to free cash flow", "p/fcf"] },
         ],
-        defaultValue: "priceSales",
+        // The same metric the GE template opens with in the app.
+        defaultValue: "trailingPE",
       },
       FINANCIAL_PERIOD_OPTION,
       FINANCIAL_PERIOD_COUNT_OPTION,
