@@ -116,3 +116,52 @@ test("a foreign fundamental capitalization converts in its own currency, indepen
   expect(comparableMarketCap(row.marketCap, row.marketCapCurrency, "USD", new Map([["TWD", 0.03]]))).toBe(30);
   expect(comparableMarketCap(row.marketCap, row.marketCapCurrency, "USD", new Map())).toBeNull();
 });
+
+test("stale quotes cannot rank as current prices or seed quote-based cash-flow yields", async () => {
+  const observed = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    // Condensed source boundary from the captured PLD financials response: the
+    // financials envelope succeeded while its embedded quote was explicitly stale.
+    quote: { symbol: "PLD", price: 135.75, change: 1.34, changePercent: .9969496317, currency: "USD",
+      lastUpdated: 1789167600002, stale: true, marketCap: 131961405440, providerId: "gloomberb-cloud", dataSource: "delayed" as const },
+    fundamentals: { trailingPE: 30.233854, freeCashFlow: 5406941184, financialCurrency: "USD", operatingMargin: .4,
+      source: "yahoo" as const, fetchedAt: "2026-09-11T23:52:16.139Z", stale: false } };
+  const raw = structuredClone(observed);
+  const values = relativeValuationValues(observed);
+  expect(values).toMatchObject({ price: null, changePercent: null, marketCap: null, fcfYield: null,
+    quoteStale: true, quoteAsOf: observed.quote.lastUpdated, trailingPE: 30.233854, operatingMargin: .4,
+    reportedQuote: { price: 135.75, stale: true, marketCap: observed.quote.marketCap, lastUpdated: observed.quote.lastUpdated },
+    fundamentalsProvenance: { source: "yahoo", retrievedAt: observed.fundamentals.fetchedAt, stale: false } });
+  expect(observed).toEqual(raw);
+  const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
+    getTickerFinancials: async (symbol) => symbol === "MISSING" ? Promise.reject(new Error("source unavailable"))
+      : { ...observed, quote: { ...observed.quote, symbol, stale: symbol === "PLD" } },
+  }) } as HeadlessPaneContext;
+  const symbols = ["PLD", "FRESH", "MISSING"];
+  const result = await relativeValuationHeadless.load({ symbols, argument: symbols, rawArgument: symbols.join(","), options: {} }, ctx);
+  expect(result.complete).toBe(false);
+  expect(result.errors).toContain("PLD: Quote stale: quote-based values unavailable");
+  expect(result.errors).toContain("MISSING: source unavailable");
+  expect(result.unavailableSymbols).toEqual(["MISSING"]);
+  expect(result.metadata?.staleSymbols).toEqual(["PLD"]);
+  expect(result.rows[1]).toMatchObject({ price: 135.75, changePercent: observed.quote.changePercent,
+    marketCap: observed.quote.marketCap, quoteStale: false });
+  expect(Number(result.rows[1]!.fcfYield)).toBeCloseTo(observed.fundamentals.freeCashFlow / observed.quote.marketCap, 12);
+  const priceColumn = relativeValuationHeadless.columns!.find((column) => column.key === "price")!;
+  expect(priceColumn.format!(result.rows[0]!.price, result.rows[0]!)).toBe("-");
+  expect(relativeValuationHeadless.columns!.find((column) => column.key === "trailingPE")!.format!(values.trailingPE, values)).toBe("30.2");
+});
+
+test("a stale quote may use an independent fundamental cap with its own source and currency", async () => {
+  const financials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    quote: { symbol: "DUAL", price: 50, change: 1, changePercent: 2, currency: "USD", lastUpdated: 1789167600002, stale: true, marketCap: 500 },
+    fundamentals: { marketCap: 100, marketCapCurrency: "EUR", freeCashFlow: 5, financialCurrency: "EUR", source: "yahoo" as const,
+      fetchedAt: "2026-09-11T23:52:16.139Z", stale: false } };
+  const values = relativeValuationValues(financials);
+  expect(values).toMatchObject({ price: null, marketCap: 100, marketCapCurrency: "EUR", fcfYield: .05,
+    marketCapProvenance: { kind: "fundamentals", source: "yahoo", retrievedAt: financials.fundamentals.fetchedAt, stale: false } });
+  const recovered = relativeValuationValues({ ...financials, quote: { ...financials.quote, stale: false } });
+  expect(recovered).toMatchObject({ price: 50, marketCap: 500, marketCapCurrency: "USD", fcfYield: null, quoteStale: false });
+  const unknown = relativeValuationValues({ ...financials, quote: { ...financials.quote, stale: undefined } });
+  expect(unknown.quoteStale).toBeNull();
+  expect(unknown.reportedQuote?.stale).toBeNull();
+});
