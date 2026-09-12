@@ -118,10 +118,10 @@ describe("mergeCatalog", () => {
     expect(unsupportedLabel(entry!)).toBeNull();
   });
 
-  test("flags every external plugin on the web, whatever it declares", () => {
-    // term.gloom.sh loads only the built-ins compiled into it. A plugin that
-    // lists "web" in its targets is describing where its code could run, not
-    // where the web app will load it from, so it must not look installable.
+  test("flags an external plugin the web app did not compile in, whatever it declares", () => {
+    // term.gloom.sh installs nothing. A plugin that lists "web" in its targets
+    // is describing where its code could run, not where the web app will load it
+    // from, so until the build carries it, it must not look installable.
     const [external, bundled] = mergeCatalog({
       registry: [
         registryPlugin({ id: "hackernews", targets: ["cli", "tui", "desktop", "web"] }),
@@ -134,6 +134,22 @@ describe("mergeCatalog", () => {
     expect(external?.unsupportedHere).toBe(true);
     expect(unsupportedLabel(external!)).toBe("Desktop and terminal");
     expect(bundled?.unsupportedHere).toBe(false);
+  });
+
+  test("treats a plugin compiled into the web build as running here", () => {
+    // The web app compiles every web-capable plugin into itself, so these arrive
+    // as loaded external plugins on a renderer that installs nothing. Reading
+    // "web cannot run external plugins" off the target alone would label a pane
+    // the user is looking at as unavailable, and offer no way to turn it off.
+    const [entry] = mergeCatalog({
+      registry: [registryPlugin({ id: "polls", targets: ["cli", "tui", "desktop", "web"] })],
+      installed: [installedPlugin({ id: "polls" })],
+      target: "web",
+    });
+
+    expect(entry?.installed).toBe(true);
+    expect(entry?.unsupportedHere).toBe(false);
+    expect(isInstallable(entry!)).toBe(false);
   });
 
   test("surfaces a load error so a broken install is visible rather than missing", () => {

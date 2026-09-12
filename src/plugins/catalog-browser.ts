@@ -3,6 +3,7 @@ import {
   resetFredSeriesPersistence,
 } from "../data/fred-series";
 import type { GloomPlugin } from "../types/plugin";
+import type { LoadedExternalPlugin } from "./loader";
 import { portfolioAnalyticsModule } from "./builtin/analytics";
 import { earningsCallsModule } from "./builtin/earnings-calls";
 import { browserDividendYieldModule } from "./builtin/dividend-yield/browser";
@@ -157,4 +158,21 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
 
 export function getBrowserBuiltinPlugins(): readonly GloomPlugin[] {
   return browserBuiltinPlugins;
+}
+
+/**
+ * The plugin list the hosted web app runs: the reviewed built-ins above plus the
+ * plugins compiled into the build from their own repositories, which arrive as
+ * loaded modules rather than imports (see `renderers/browser/bundled-plugins.ts`).
+ *
+ * A plugin that failed to load is dropped here and reported by the marketplace,
+ * so one broken bundle cannot take the app down with it.
+ */
+export function getBrowserPlugins(
+  bundledPlugins: readonly LoadedExternalPlugin[] = [],
+): readonly GloomPlugin[] {
+  return [
+    ...browserBuiltinPlugins,
+    ...bundledPlugins.filter((entry) => !entry.error && !entry.unsupportedTarget).map((entry) => entry.plugin),
+  ];
 }
