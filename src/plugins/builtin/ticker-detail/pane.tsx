@@ -30,6 +30,7 @@ import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../shared/plan-access";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { tickerHasYahooSuffix } from "../../../sources/yahoo-finance/symbols";
+import { tickerQuoteFooterInfo } from "./quote-footer";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 
@@ -160,8 +161,12 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   });
   usePaneFooter(
     "ticker-research-access",
-    () => quoteFooterActive && cloudAccess.segment ? { info: [cloudAccess.segment], order: -1 } : null,
-    [cloudAccess.segment, quoteFooterActive],
+    () => quoteFooterActive ? {
+      // Chart owns additional footer actions, so keep its parent status compact.
+      info: tickerQuoteFooterInfo(financials?.quote, cloudAccess.segment, resolvedTabId === "overview" ? width : undefined),
+      order: -1,
+    } : null,
+    [cloudAccess.segment, financials?.quote, quoteFooterActive, resolvedTabId, width],
   );
 
   const tabBarHeight = paneSettings.hideTabs ? 0 : 1;
