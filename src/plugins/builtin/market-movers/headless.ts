@@ -48,6 +48,7 @@ export function createMarketMoversHeadless(
         { value: "trending" },
       ],
       defaultValue: "actives",
+      pluginState: { pluginId: "market-overview", key: "activeTab" },
     }],
     columns: COLUMNS,
     describe: (args) => `Market Movers | ${String(args.options.list)}`,

@@ -7,7 +7,7 @@ import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { priceColor } from "../../../theme/colors";
 import { formatPercentRaw } from "../../../utils/format";
 import { useAppSelector, usePaneSettingValue } from "../../../state/app/context";
-import { useAssetData, usePluginTickerActions } from "../../runtime";
+import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useQuoteBoard } from "../shared/use-quote-board";
@@ -63,7 +63,9 @@ function MarketMoversPane({ focused, width, height }: PaneProps) {
   // One cadence, the one the user configured, instead of a private 60s timer.
   const refreshIntervalMinutes = useAppSelector((state) => state.config.refreshIntervalMinutes);
   const refreshIntervalMs = Math.max(1, refreshIntervalMinutes || 1) * 60_000;
-  const [activeTab, setActiveTab] = useState<TabId>(tabs[0]!.id);
+  // Pane state rather than local state, so `--list` on the CLI and a restored
+  // layout open on the same tab the user (or the screenshot) asked for.
+  const [activeTab, setActiveTab] = usePluginPaneState<TabId>("activeTab", tabs[0]!.id);
   const [quotes, setQuotes] = useState<ScreenerQuote[]>([]);
   // The first load starts before the effect runs; an empty board is not "no data".
   const [loading, setLoading] = useState(true);
