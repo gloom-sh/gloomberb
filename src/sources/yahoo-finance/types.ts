@@ -100,6 +100,7 @@ export type QuoteSummaryResponse = {
             growth?: { raw?: number } | number | null;
           };
           epsTrend?: {
+            epsTrendCurrency?: string;
             current?: { raw?: number } | number | null;
             "7daysAgo"?: { raw?: number } | number | null;
             "30daysAgo"?: { raw?: number } | number | null;
