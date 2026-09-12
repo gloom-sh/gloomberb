@@ -24,6 +24,8 @@ export interface CompositeAxisDomain {
   scale: PanelScale;
   unit: string;
   unitGroup: string;
+  /** Each source's price category, retained when different assets share an axis. */
+  priceAssetCategories?: string[];
   seriesIds: string[];
 }
 
