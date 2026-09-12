@@ -91,3 +91,24 @@ test("date submission hides the previous curve while pending and keeps controls 
   await frame();
   expect(setup!.captureCharFrame()).toContain("2026-09-08");
 });
+
+test("the transient date editor can be submitted with the mouse", async () => {
+  latestSpy = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue(TREASURY_MATURITIES.map(({ maturity, years }) => ({ maturity, maturityYears: years, yield: 4.5, asOf: "2026-09-08" })));
+  historySpy = spyOn(apiClient, "getCloudFredSeries").mockResolvedValue({
+    observations: [{ date: "2024-03-01", value: 4.2 }],
+    info: { id: "DGS10", title: "Treasury yield", units: "Percent", frequency: "Daily", seasonalAdjustment: "", source: "FRED", notes: "" },
+  });
+  await act(async () => { setup = await testRender(<Harness />, { width: 70, height: 30 }); });
+  await frame(); await frame();
+  const controls = createTestControls(() => setup!);
+  await act(async () => { await controls.clickFrameText("[d]ate"); });
+  await frame();
+  await act(async () => { await setup!.mockInput.typeText("2024-03-02"); });
+  await frame();
+  await act(async () => { await controls.clickFrameText("View"); });
+  await frame(); await frame();
+  expect(historySpy).toHaveBeenCalledTimes(10);
+  expect(setup!.captureCharFrame()).toContain("2024-03-01");
+  expect(setup!.captureCharFrame()).toContain("requested 2024-03-02");
+  expect(setup!.captureCharFrame()).not.toContain("As-of date");
+});
