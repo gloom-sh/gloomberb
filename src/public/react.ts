@@ -63,6 +63,15 @@ export {
 // Keyboard handling for plugin panes; the renderer decides how events arrive.
 export { useShortcut } from "../react/input";
 
+// The size of the surface the app is drawing into. A pane that pages or
+// virtualizes its own rows needs it, and it has to come from the renderer:
+// terminal cells, desktop pixels, and a browser tab are all different.
+export { useViewport } from "../react/input";
+
+// The pane's own instance record, for a pane whose template seeds `params`
+// (a CLI launch or a shortcut argument) and has to read them back on mount.
+export { usePaneInstance } from "../state/app/context";
+
 // Loading one thing asynchronously into a pane: data, loading, error, reload.
 // Every data pane needs this, and a plugin that hand-rolls it drifts from the
 // host's cancellation and stale-response handling.

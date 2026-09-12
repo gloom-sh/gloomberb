@@ -44,6 +44,11 @@ export type {
   DataTableSelectionChangeReason,
 } from "./data-table/view";
 export { DataTableStackView } from "./data-table/stack-view";
+// Row cells that cost real work to derive (formatting, unit resolution,
+// per-row lookups) recomputed only when that row's data version changes, so a
+// table re-render on selection or scroll does not redo all of it.
+export { createRowValueCache } from "./ui/row-value-cache";
+export type { RowValueCache } from "./ui/row-value-cache";
 export { FeedDataTableStackView } from "./feed-data-table/stack-view";
 export type { FeedDataTableItem } from "./feed-data-table/stack-view";
 export { activeStackIndex, sortStackItems } from "./feed-stack-controller";

@@ -92,4 +92,10 @@ export type { SortDirection, SortPreference } from "../utils/sort-values";
 export { zonedDateTimeParts, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 
 // A list pane with a search field hands the arrow keys between the two.
-export { isPlainArrowUp, stopSearchFocusNavigation } from "../utils/search-focus-navigation";
+export { isPlainArrowDown, isPlainArrowUp, stopSearchFocusNavigation } from "../utils/search-focus-navigation";
+
+// Timing for the work a pane does on the main thread: parsing a large payload,
+// rebuilding rows, re-sorting a table. Slow samples are logged by the host's
+// perf logger, so a plugin's hot paths show up in the same trace as the app's
+// instead of being invisible.
+export { measurePerf, measurePerfAsync } from "../utils/perf-marks";

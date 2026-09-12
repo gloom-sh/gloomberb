@@ -1,19 +1,25 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { createTestRenderer } from "@opentui/core/testing";
-import { createOpenTuiTestRoot as createRoot } from "../../renderers/opentui/test-utils";
 import { act, useEffect, useReducer, useRef } from "react";
+import { createOpenTuiTestRoot as createRoot } from "../../../renderers/opentui/test-utils";
 import {
   AppContext,
   PaneInstanceProvider,
   appReducer,
   createInitialState,
-} from "../../state/app/context";
-import { createDefaultConfig } from "../../types/config";
-import { getNativeSurfaceManager } from "../../components/chart/native/surface/manager";
-import { PredictionMarketChart } from "./chart";
+} from "../../../state/app/context";
+import { colors } from "../../../theme/colors";
+import { createDefaultConfig } from "../../../types/config";
+import { getNativeSurfaceManager } from "../native/surface/manager";
+import { CompositeChart, pricePointsToResolvedSeries } from "./index";
 
-const TEST_PANE_ID = "prediction-scroll:test";
+/**
+ * A kitty chart draws into a native surface positioned over the terminal grid,
+ * so it has to be created and destroyed as the chart scrolls in and out of its
+ * ScrollBox. A surface left behind paints over whatever is now in that row.
+ */
+const TEST_PANE_ID = "composite-scroll:test";
 
 let testSetup: Awaited<ReturnType<typeof createTestRenderer>> | undefined;
 let root: ReturnType<typeof createRoot> | undefined;
@@ -21,6 +27,16 @@ let scrollBoxRef: ScrollBoxRenderable | null = null;
 const actEnvironment = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean;
 };
+
+const PRICE_SERIES = pricePointsToResolvedSeries(
+  [
+    { date: new Date("2026-04-01T00:00:00Z"), close: 0.45 },
+    { date: new Date("2026-04-02T00:00:00Z"), close: 0.48 },
+    { date: new Date("2026-04-03T00:00:00Z"), close: 0.51 },
+    { date: new Date("2026-04-04T00:00:00Z"), close: 0.49 },
+  ],
+  { id: "scroll-price", label: "Price", color: colors.positive, unit: "USD", style: "area", panelId: "price" },
+);
 
 function ChartScrollHarness() {
   const [state, dispatch] = useReducer(
@@ -47,17 +63,15 @@ function ChartScrollHarness() {
             <box height={14}>
               <text>filler</text>
             </box>
-            <PredictionMarketChart
-              history={[
-                { date: new Date("2026-04-01T00:00:00Z"), close: 0.45 },
-                { date: new Date("2026-04-02T00:00:00Z"), close: 0.48 },
-                { date: new Date("2026-04-03T00:00:00Z"), close: 0.51 },
-                { date: new Date("2026-04-04T00:00:00Z"), close: 0.49 },
-              ]}
+            <CompositeChart
               width={60}
-              height={12}
-              range="1M"
-              onRangeSelect={() => {}}
+              height={11}
+              focused
+              interactive
+              series={[PRICE_SERIES]}
+              panels={[{ id: "price" }]}
+              axisWidth={8}
+              showLegend={false}
             />
           </box>
         </scrollbox>
@@ -91,7 +105,7 @@ afterEach(() => {
   actEnvironment.IS_REACT_ACT_ENVIRONMENT = false;
 });
 
-describe("PredictionMarketChart kitty scrolling", () => {
+describe("CompositeChart kitty scrolling", () => {
   test("creates a native chart surface when scrolled into view", async () => {
     actEnvironment.IS_REACT_ACT_ENVIRONMENT = true;
     testSetup = await createTestRenderer({ width: 100, height: 24 });
@@ -122,10 +136,9 @@ describe("PredictionMarketChart kitty scrolling", () => {
       >;
     };
 
-    const findPredictionSurface = () => [...manager.surfaces.values()]
+    const findChartSurface = () => [...manager.surfaces.values()]
       .find((surface) => surface.snapshot.paneId === TEST_PANE_ID);
-    const hiddenSurface = findPredictionSurface();
-    expect(hiddenSurface).toBeUndefined();
+    expect(findChartSurface()).toBeUndefined();
 
     act(() => {
       scrollBoxRef!.scrollTop = 14;
@@ -133,9 +146,8 @@ describe("PredictionMarketChart kitty scrolling", () => {
 
     await flushFrames();
 
-    const visibleSurface = findPredictionSurface();
+    const visibleSurface = findChartSurface();
     expect(visibleSurface).toBeDefined();
     expect(visibleSurface?.snapshot.visibleRect).not.toBeNull();
-    expect(testSetup.captureCharFrame()).toContain("1M");
   });
 });

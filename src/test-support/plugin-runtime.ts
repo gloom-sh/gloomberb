@@ -15,6 +15,10 @@ export function createTestPluginRuntime(
     getMarketData: () => null,
     getConnectionHealth: () => connectionHealth,
     getCapability: () => null,
+    capabilityManifests: () => [],
+    invokeCapability: async () => {
+      throw new Error("This test plugin runtime registers no capabilities.");
+    },
     getBrokerAdapter: () => null,
     connectBrokerInstance: async () => {},
     updateBrokerInstance: async () => {},

@@ -382,6 +382,13 @@ interface CliLaunchEnvironment {
   terminalHeight: number;
 }
 
+/**
+ * The resume state the app writes at exit and reads at startup. A plugin whose
+ * CLI command launches the UI seeds it so the pane opens on what was asked for
+ * rather than on what the last session left behind.
+ */
+export type { AppSessionSnapshot } from "../core/state/session-persistence";
+
 export interface CliLaunchConfigResult<TLaunchState = unknown> {
   config: AppConfig;
   launchState?: TLaunchState;

@@ -92,7 +92,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
 | `FLOW` | Unusual options activity: sweeps, blocks, and large premium |
-| `PM <query>` | Polymarket and Kalshi prediction data |
+| `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
 | `NI` | Sector news |
@@ -188,7 +188,7 @@ Human-readable output is the default. Automation can opt into structured output 
 | `gloomberb config\|cache\|plugin\|layout\|pane\|debug\|doctor\|version\|changelog` | Inspect and manage local app state |
 | `gloomberb fn [...]` | Run a pane-backed report command |
 | `gloomberb shot [...]` | Capture a pane-backed screenshot |
-| `gloomberb predictions [...]` | Launch Prediction Markets |
+| `gloomberb predictions [...]` | Launch Prediction Markets ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `gloomberb plugins` | List installed plugins |
 | `gloomberb install <user/repo>` | Install a plugin from GitHub |
 | `gloomberb remove <name>` | Remove an installed plugin |

@@ -210,24 +210,6 @@
       }
     },
     {
-      "id": "prediction-markets",
-      "name": "Prediction Markets",
-      "description": "Browse prediction markets (Polymarket and Kalshi).",
-      "categories": [
-        "markets"
-      ],
-      "toggleable": true,
-      "contributes": {
-        "panes": [
-          "prediction-markets"
-        ],
-        "capabilities": [
-          "prediction-markets.series"
-        ],
-        "broker": false
-      }
-    },
-    {
       "id": "research-search",
       "name": "Research Search",
       "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",

@@ -32,6 +32,7 @@ export const EXTRACTED_PLUGINS = [
   { id: "market-halts", repo: "gloom-sh/gloom-market-halts", directory: "gloom-market-halts", previousOwnerIds: ["market-overview"] },
   { id: "market-heatmap", repo: "gloom-sh/gloom-market-heatmap", directory: "gloom-market-heatmap", previousOwnerIds: ["market-overview"] },
   { id: "ipo-calendar", repo: "gloom-sh/gloom-ipo-calendar", directory: "gloom-ipo-calendar", previousOwnerIds: ["macro"] },
+  { id: "prediction-markets", repo: "gloom-sh/gloom-prediction-markets", directory: "gloom-prediction-markets" },
 ] as const;
 
 export interface SeedResult {
