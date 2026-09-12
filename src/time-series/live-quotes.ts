@@ -95,16 +95,27 @@ export function liveChartQuoteTargetSignature(spec: ChartSpec): string {
     .join("\n");
 }
 
+/** A malformed timestamp cannot outrank a usable source observation forever. */
+export function compareChartQuoteRecency(next: Quote, current: Quote): number {
+  const sourceTime = (quote: Quote) => Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0
+    && Number.isFinite(new Date(quote.lastUpdated).getTime()) ? quote.lastUpdated : -Infinity;
+  const nextTime = sourceTime(next);
+  const currentTime = sourceTime(current);
+  if (nextTime !== currentTime) return nextTime > currentTime ? 1 : -1;
+  const receipt = (quote: Quote) => Number.isFinite(quote.receivedAt) ? quote.receivedAt! : 0;
+  return receipt(next) - receipt(current);
+}
+
 function isNewerQuote(next: Quote, current: Quote | undefined): boolean {
   if (!current) return true;
-  if (next.lastUpdated !== current.lastUpdated) return next.lastUpdated > current.lastUpdated;
-  return (next.receivedAt ?? 0) > (current.receivedAt ?? 0);
+  return compareChartQuoteRecency(next, current) > 0;
 }
 
 function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): boolean {
   if (!current) return true;
   return next.lastUpdated !== current.lastUpdated
     || next.price !== current.price
+    || next.stale !== current.stale
     || next.currency !== current.currency
     || next.instrumentType !== current.instrumentType
     || next.providerId !== current.providerId

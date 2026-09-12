@@ -72,6 +72,8 @@ export async function loadChartPaneModel(
   const periodCoverage = financialPeriodCoverage(spec, chart.series);
   const integrityNotices = chart.priceHistoryIntegrity
     ? chartPriceHistoryIntegrityNotices(chart.priceHistoryIntegrity) : priceHistoryIntegrityNotices(chart.series);
+  const valuationPriceIssues = chart.series.flatMap((series) => series.valuationPriceIssues?.length
+    ? [{ seriesId: series.id, label: series.label, issues: series.valuationPriceIssues }] : []);
   return {
     chart,
     spec,
@@ -79,7 +81,7 @@ export async function loadChartPaneModel(
       complete: periodCoverage.every((entry) => entry.complete),
       stats: periodCoverage.map((entry) => ({ label: `${entry.label} observations`, value: `${entry.returned}/${entry.requested} ${entry.period}${entry.complete ? "" : " (partial)"}` })),
     } : {}),
-    ...(integrityNotices.length ? { complete: false } : {}),
+    ...(integrityNotices.length || valuationPriceIssues.length ? { complete: false } : {}),
     snapshot: {
       financials: [...financials].map(([key, data]) => [key, { ...data, priceHistory: histories.get(key) ?? data.priceHistory }]),
       intradayHistories: [],
@@ -106,7 +108,7 @@ export async function loadChartPaneModel(
     }),
     errors: chart.errors,
     unavailableSymbols: spec.series.filter((series) => series.visible !== false).flatMap((series) => {
-      if (chart.series.some((output) => output.id === series.id && output.points.length)) return [];
+      if (chart.series.some((output) => output.id === series.id && output.points.some((point) => point.value !== null && Number.isFinite(point.value)))) return [];
       const source = series.source;
       return [source.kind === "security"
         ? publicTickerKey(source.instrument.symbol, source.instrument.exchange)
@@ -116,6 +118,7 @@ export async function loadChartPaneModel(
     metadata: {
       viewport: spec.viewport, panels: spec.panels, warnings: chart.warnings,
       ...(chart.priceHistoryIntegrity?.length ? { priceHistoryIntegrity: chart.priceHistoryIntegrity } : {}),
+      ...(valuationPriceIssues.length ? { valuationPriceIssues } : {}),
       ...(periodCoverage.length ? { periodCoverage } : {}),
       notices: [...chart.warnings.filter((warning) => warning === FINANCIAL_VINTAGE_NOTICE || warning === SEC_EPS_BASIS_NOTICE || warning === chart.priceComparison?.notice), ...integrityNotices],
       priceComparison: chart.priceComparison ?? null,

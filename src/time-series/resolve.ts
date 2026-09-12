@@ -38,8 +38,10 @@ import {
 import {
   fundamentalSeriesUsesAvailabilityFallback,
   valuationCurrencyWarning,
+  valuationPriceIssues,
   valuationSeriesUsesLiveQuote,
 } from "./fundamentals";
+import { valuationPriceWarning } from "./valuation-price";
 import { extractSecuritySeries, collectPriceHistoryIntegrity, chartPriceHistoryIntegrityNotices } from "./market";
 import {
   activeStudyInputSeriesIds,
@@ -50,7 +52,7 @@ import { applyResolvedSeriesTransform } from "./transforms";
 import { clipSeriesToWindow } from "./alignment";
 import { clipPriceComparison, priceComparisonBoundsForSeries, priceComparisonSeriesIds, priceObservationWindowFilter, resolvePriceComparison, type PriceComparison } from "./price-comparison";
 import { reportingCurrencySeries } from "./reporting-currency";
-import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { chartQuoteOverrideKeyForSource, compareChartQuoteRecency } from "./live-quotes";
 import { chartSeriesSourceKey } from "../capabilities/chart-series";
 import { resolutionForExplicitMarketPeriods } from "./market-resolution";
 import {
@@ -607,10 +609,7 @@ function clampHistoryBoundsToSupport(
 function latestQuote(snapshot: Quote | undefined, override: Quote | undefined): Quote | undefined {
   if (!snapshot) return override;
   if (!override) return snapshot;
-  if (override.lastUpdated !== snapshot.lastUpdated) {
-    return override.lastUpdated > snapshot.lastUpdated ? override : snapshot;
-  }
-  return (override.receivedAt ?? 0) >= (snapshot.receivedAt ?? 0) ? override : snapshot;
+  return compareChartQuoteRecency(override, snapshot) >= 0 ? override : snapshot;
 }
 
 function mergeHistory(
@@ -760,6 +759,7 @@ function baseSecuritySeries(
   const latestChangePercent = marketField && field.unit.startsWith("currency")
     ? financials.quote?.changePercent
     : undefined;
+  const priceIssues = valuationPriceIssues(financials, spec.source);
   return {
     id: spec.id,
     label: spec.label?.trim() || `${symbol} ${field.shortLabel}`,
@@ -767,6 +767,7 @@ function baseSecuritySeries(
     unit,
     unitGroup: currencyUnitGroup,
     volumeUnit,
+    ...(priceIssues.length ? { valuationPriceIssues: priceIssues } : {}),
     warning: field.id === "market.volume" && !volumeUnit && points.length > 0
       ? "Volume unit unknown." : statementCurrency?.warning ?? valuationCurrencyWarning(financials, spec.source),
     nativeFrequency: spec.source.period && spec.source.period !== "auto"
@@ -1357,6 +1358,22 @@ export async function resolveChartSpecData(
   });
   resolved = resolved.map((entry) => limitSeriesObservations(spec, entry));
   resolved = resolved.map((entry) => clipPriceComparison(entry, priceComparison));
+  resolved = resolved.map((entry) => {
+    const visibleIssues = entry.points.flatMap((point) => point.provenance?.valuationPriceIssues ?? []);
+    if (!entry.valuationPriceIssues?.length && !visibleIssues.length) return entry;
+    const dates = new Set(entry.points.map((point) => point.date.getTime()));
+    const requestedIssues = (entry.valuationPriceIssues ?? []).filter((issue) => {
+      const time = issue.affectedAt ? Date.parse(issue.affectedAt) : NaN;
+      if (issue.kind === "history") return dates.has(time);
+      // Explicit financial-period requests exclude Current observations entirely.
+      if (spec.viewport.maxPoints !== undefined) return false;
+      if (!Number.isFinite(time)) return !hasExplicitWindow || bounds.end === null || bounds.end >= referenceNow.getTime();
+      return (bounds.start === null || time >= bounds.start) && (bounds.end === null || time <= bounds.end);
+    });
+    const issues = [...new Map([...requestedIssues, ...visibleIssues].map((issue) => [JSON.stringify(issue), issue])).values()];
+    return { ...entry, valuationPriceIssues: issues.length ? issues : undefined,
+      warning: [entry.warning, valuationPriceWarning(issues)].filter(Boolean).join(" ") || undefined };
+  });
   const priceHistoryIntegrity = resolvePriceHistoryIntegrity(
     spec, rawSeries, resolved,
     bounds, resolution, requestBounds ? null : spec.viewport.dateWindow ?? null,

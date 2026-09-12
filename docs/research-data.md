@@ -26,6 +26,8 @@ Financial table headers retain reporting currencies and date-source markers: **P
 
 Chart-derived P/E, price/sales, EV/sales, EV/EBITDA and price/free-cash-flow require compatible price and statement currencies. A statement's own currency takes precedence; aggregate reporting currency fills missing row metadata only when the other statements do not contradict it. Explicit minor units such as GBp/GBX convert to GBP without an FX assumption. Foreign or unknown currency pairs remain unavailable with a chart and export warning. Separately converted summary fundamentals do not establish historical statement units, and this conversion does not change provider share or depositary-receipt bases.
 
+These derived multiples omit the Current observation when its quote is explicitly stale or has an invalid price or timestamp; valid historical ratios remain available. Historical calculations select the latest source price at or before the statement's availability date, then validate it. An invalid selected price leaves a gap instead of borrowing an older close. Contradictory OHLC values and rejected quote inputs remain in export diagnostics, and affected exports are marked incomplete. A quote's regular-session high/low does not constrain a valid after-hours price.
+
 SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable. Nonpositive P/E values display as **N/M** and are excluded from meaningful P/E rankings.
 
 Market capitalization can come from a financial snapshot when a current quote does not supply it. Its retrieval time is not its valuation date. Source and freshness details remain attached to the affected value; market-cap comparisons require a valid currency conversion.

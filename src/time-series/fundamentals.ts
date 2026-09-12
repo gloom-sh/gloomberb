@@ -1,12 +1,12 @@
 import type {
   FinancialStatement,
-  PricePoint,
   TickerFinancials,
 } from "../types/financials";
 import { areNearbyFinancialPeriodEnds, completeAvailability, statementFieldAvailability } from "../utils/financial-statements";
 import { canonicalTimeSeriesFieldId, getTimeSeriesField } from "./field-catalog";
 import { reportingCurrencySeries } from "./reporting-currency";
 import { createValuationCurrencyContext, type ValuationCurrencyContext } from "./valuation-currency";
+import { valuationPriceAtOrBefore, valuationQuoteIssue, type ValuationPriceIssue } from "./valuation-price";
 import type { SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
 
 type NumericStatementField =
@@ -582,7 +582,7 @@ function fundamentalValue(
 function pointForStatement(
   statement: FinancialStatement,
   metric: string,
-  value: number,
+  value: number | null,
   period: "annual" | "quarterly" | "ttm",
   timestampMode: SecuritySeriesSource["timestampMode"],
   derived: boolean,
@@ -608,38 +608,19 @@ function pointForStatement(
   };
 }
 
-/**
- * `PricePoint.date` is typed as a `Date`, but history that has crossed a JSON
- * boundary (persisted caches, the screenshot payload) arrives as a string. Read
- * it defensively so a serialized round trip cannot crash valuation history.
- */
-function pointTime(point: PricePoint): number {
-  const date = point.date;
-  return date instanceof Date ? date.getTime() : Date.parse(date as unknown as string);
-}
-
-function priceAtOrBefore(priceHistory: readonly PricePoint[], date: string): number | null {
-  const target = Date.parse(date);
-  if (!Number.isFinite(target)) return null;
-  let closest: { time: number; close: number } | undefined;
-  for (const point of priceHistory) {
-    const time = pointTime(point);
-    if (!Number.isFinite(time) || time > target || !finiteNumber(point.close) || point.close <= 0) continue;
-    if (!closest || time > closest.time) closest = { time, close: point.close };
-  }
-  return closest?.close ?? null;
-}
-
 function historicalValuation(
   financials: TickerFinancials,
   statement: FinancialStatement,
   metric: string,
   currencies: ValuationCurrencyContext,
-): number | null {
+) {
+  // A price failure cannot make absent financial inputs appear available.
+  if (currencies.priceInStatementUnits(statement, 1) === null || valuationAtPrice(statement, metric, 1) === null) return null;
   const priceDate = metricAvailability(statement, metric) ?? statement.date;
-  const price = priceAtOrBefore(financials.priceHistory, priceDate);
-  const comparablePrice = price === null ? null : currencies.priceInStatementUnits(statement, price);
-  return comparablePrice === null ? null : valuationAtPrice(statement, metric, comparablePrice);
+  const price = valuationPriceAtOrBefore(financials.priceHistory, priceDate);
+  if (!price) return null;
+  const comparablePrice = price.price === null ? null : currencies.priceInStatementUnits(statement, price.price);
+  return { value: comparablePrice === null ? null : valuationAtPrice(statement, metric, comparablePrice), integrity: price.integrity, issue: price.issue };
 }
 
 function valuationAtPrice(
@@ -700,6 +681,7 @@ function currentDerivedValuationPoint(
   currencies: ValuationCurrencyContext,
 ): TimeSeriesPoint | null {
   const quote = financials.quote;
+  if (valuationQuoteIssue(quote)) return null;
   const quoteDate = validDate(quote?.lastUpdated);
   if (!quoteDate || !finiteNumber(quote?.price) || quote.price <= 0) return null;
   const quoteTime = quoteDate.getTime();
@@ -843,16 +825,19 @@ export function extractFundamentalSeries(
   const selected = sourceStatements(financials, source.period, metric);
   const currencies = createValuationCurrencyContext(financials);
   const historical = selected.statements.flatMap((statement) => {
-    const value = historicalValuation(financials, statement, metric, currencies);
-    if (value === null) return [];
+    const historical = historicalValuation(financials, statement, metric, currencies);
+    if (historical === null) return [];
     const point = pointForStatement(
       statement,
       metric,
-      value,
+      historical.value,
       selected.period,
       source.timestampMode,
       true,
     );
+    if (point && historical.integrity) point.provenance = { ...point.provenance, priceHistoryIntegrity: historical.integrity };
+    if (point && historical.issue) point.provenance = { ...point.provenance,
+      valuationPriceIssues: [{ ...historical.issue, affectedAt: point.date.toISOString() }] };
     return point ? [point] : [];
   });
   const current = currentDerivedValuationPoint(financials, selected.statements, metric, currencies);
@@ -877,4 +862,23 @@ export function valuationCurrencyWarning(financials: TickerFinancials, source: S
   return createValuationCurrencyContext(financials).warning(selected.statements.filter((row) => (
     valuationAtPrice(row, metric, 1) !== null
   )));
+}
+
+/** Structured failures preserve source values independently of the chart's ratios. */
+export function valuationPriceIssues(financials: TickerFinancials, source: SecuritySeriesSource): ValuationPriceIssue[] {
+  if (!valuationSeriesUsesLiveQuote(source.fieldId)) return [];
+  const metric = canonicalTimeSeriesFieldId(source.fieldId).split(".")[1]!;
+  const currencies = createValuationCurrencyContext(financials);
+  const selected = sourceStatements(financials, source.period, metric);
+  const rows = selected.statements.filter((row) => (
+    currencies.priceInStatementUnits(row, 1) !== null && valuationAtPrice(row, metric, 1) !== null
+  ));
+  if (!rows.length) return [];
+  const quoteIssue = valuationQuoteIssue(financials.quote);
+  const issues = rows.flatMap((row) => {
+    const price = valuationPriceAtOrBefore(financials.priceHistory, metricAvailability(row, metric) ?? row.date);
+    const date = pointForStatement(row, metric, null, selected.period, source.timestampMode, true)?.date;
+    return price?.issue && date ? [{ ...price.issue, affectedAt: date.toISOString() }] : [];
+  });
+  return [...(quoteIssue ? [quoteIssue] : []), ...new Map(issues.map((issue) => [JSON.stringify(issue), issue])).values()];
 }

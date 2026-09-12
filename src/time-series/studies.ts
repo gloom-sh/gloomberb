@@ -513,14 +513,18 @@ function resolveInterruptedStudy(
   for (const input of inputs) {
     for (const point of input.points) {
       const integrity = point.provenance?.priceHistoryIntegrity;
-      if (!integrity) continue;
+      const priceIssues = point.provenance?.valuationPriceIssues;
+      if (!integrity && !priceIssues?.length) continue;
       const timestamp = effectiveTimeSeriesPointTime(point);
-      const previous = gaps.get(timestamp)?.provenance?.priceHistoryIntegrity;
+      const previous = gaps.get(timestamp)?.provenance;
       gaps.set(timestamp, {
         date: new Date(timestamp), observedAt: new Date(timestamp), value: null,
         provenance: {
           quality: "derived",
-          priceHistoryIntegrity: previous ? mergePriceHistoryIntegrity(previous, integrity) : integrity,
+          ...(integrity || previous?.priceHistoryIntegrity ? { priceHistoryIntegrity: previous?.priceHistoryIntegrity && integrity
+            ? mergePriceHistoryIntegrity(previous.priceHistoryIntegrity, integrity) : integrity ?? previous?.priceHistoryIntegrity } : {}),
+          ...(priceIssues?.length || previous?.valuationPriceIssues?.length
+            ? { valuationPriceIssues: [...(previous?.valuationPriceIssues ?? []), ...(priceIssues ?? [])] } : {}),
         },
       });
     }
@@ -552,7 +556,7 @@ function resolveInterruptedStudy(
       // A valid unaffected peer remains usable for as-of ratio/spread levels.
       // Correlations instead restart their shared observations and returns.
       if (spec.kind === "ratio" || spec.kind === "spread") {
-        if (previous && !previous.provenance?.priceHistoryIntegrity) points.unshift(previous);
+        if (previous && !previous.provenance?.priceHistoryIntegrity && !previous.provenance?.valuationPriceIssues?.length) points.unshift(previous);
       }
       return { ...cursor.input, points };
     });
