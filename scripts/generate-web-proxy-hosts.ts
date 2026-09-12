@@ -1,14 +1,22 @@
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
+
 import { getBrowserBuiltinPlugins } from "../src/plugins/catalog-browser";
+import type { GloomPlugin } from "../src/types/plugin";
+import { compileWebBundledPlugins } from "./web-plugins";
 
 /**
  * Writes `src/utils/plugin-proxy-hosts.json`: the hosts the web worker will
- * proxy for plugins, derived from what the browser catalog's plugins declare.
+ * proxy for plugins, derived from what the plugins in the web build declare:
+ * the browser catalog's built-ins, and the plugins compiled in from their own
+ * repositories (`plugins/web-bundled.ts`).
  *
  * The worker cannot import the catalog (it would pull the whole app into the
  * worker bundle), so the list is generated and committed. Run with --check in
- * CI to fail when the committed file no longer matches the catalog, which is
- * how a plugin that adds a host without regenerating gets caught before it
- * ships broken on the web.
+ * CI to fail when the committed file no longer matches, which is how a plugin
+ * that adds a host without regenerating gets caught before it ships broken on
+ * the web.
  */
 
 const OUT = new URL("../src/utils/plugin-proxy-hosts.json", import.meta.url);
@@ -23,8 +31,21 @@ function normalizeHost(host: string, pluginId: string): string {
   return trimmed;
 }
 
+/**
+ * Compiled to a scratch directory, then thrown away: this only needs each
+ * plugin's declaration, and the real artifacts belong to `web:build`.
+ */
+async function webBundledPlugins(): Promise<GloomPlugin[]> {
+  const scratch = await mkdtemp(join(tmpdir(), "gloom-web-plugins-"));
+  try {
+    return (await compileWebBundledPlugins(scratch)).map((entry) => entry.plugin);
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
+}
+
 const byHost = new Map<string, string[]>();
-for (const plugin of getBrowserBuiltinPlugins()) {
+for (const plugin of [...getBrowserBuiltinPlugins(), ...await webBundledPlugins()]) {
   for (const host of plugin.hosts ?? []) {
     const normalized = normalizeHost(host, plugin.id);
     byHost.set(normalized, [...(byHost.get(normalized) ?? []), plugin.id]);
@@ -38,7 +59,7 @@ if (process.argv.includes("--check")) {
   const current = await Bun.file(OUT).text().catch(() => "");
   if (current !== next) {
     console.error(
-      "src/utils/plugin-proxy-hosts.json is out of date with the browser catalog.\n" +
+      "src/utils/plugin-proxy-hosts.json is out of date with the plugins in the web build.\n" +
         "Run: bun run web:proxy-hosts",
     );
     process.exit(1);

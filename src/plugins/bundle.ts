@@ -1,6 +1,8 @@
+import { readFileSync } from "fs";
 import { mkdir } from "fs/promises";
 import { join } from "path";
 
+import { findHostPackageRoot } from "./host-link";
 import { resolvePluginBrowserEntry } from "./loader";
 import { PLUGIN_HOST_GLOBAL, SHARED_SPECIFIERS } from "./host-contract";
 
@@ -44,6 +46,41 @@ export function buildSharedModuleSource(specifier: string, exportNames: readonly
   return lines.join("\n");
 }
 
+let hostExportMap: Map<string, string> | null = null;
+
+/**
+ * Resolves a `gloomberb/*` specifier that is not shared to the host's own file.
+ *
+ * Those get bundled into the plugin, which is the intent: `gloomberb/types/config`
+ * is constants, and a second copy of it costs nothing. Finding them is the
+ * problem. A plugin installed under `~/.gloomberb/plugins` has a symlinked
+ * `node_modules/gloomberb` (see host-link.ts), but one compiled straight out of
+ * this repo's `node_modules` has none, and linking it there would point a nested
+ * `node_modules` back at the repo root. Reading the host's own export map
+ * resolves both without writing anything to disk.
+ */
+function hostModulePath(specifier: string): string | null {
+  if (!hostExportMap) {
+    hostExportMap = new Map();
+    const root = findHostPackageRoot();
+    if (root) {
+      try {
+        const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8")) as {
+          exports?: Record<string, unknown>;
+        };
+        for (const [key, target] of Object.entries(pkg.exports ?? {})) {
+          if (typeof target !== "string" || !key.startsWith(".")) continue;
+          hostExportMap.set(key === "." ? "gloomberb" : `gloomberb/${key.slice(2)}`, join(root, target));
+        }
+      } catch {
+        // An unreadable host package.json leaves the map empty, and the
+        // specifier falls through to normal resolution, which reports it.
+      }
+    }
+  }
+  return hostExportMap.get(specifier) ?? null;
+}
+
 export interface BundlePluginResult {
   /** Absolute path of the emitted ES module. */
   outputPath: string;
@@ -70,9 +107,13 @@ export function createSharedModuleResolver(
     name: "gloomberb-host-modules",
     setup(build) {
       build.onResolve({ filter: /.*/ }, (args) => {
-        if (!shared.has(args.path)) return undefined;
-        onShared?.(args.path);
-        return { path: args.path, namespace };
+        if (shared.has(args.path)) {
+          onShared?.(args.path);
+          return { path: args.path, namespace };
+        }
+        if (!args.path.startsWith("gloomberb/") && args.path !== "gloomberb") return undefined;
+        const hostPath = hostModulePath(args.path);
+        return hostPath ? { path: hostPath } : undefined;
       });
 
       build.onLoad({ filter: /.*/, namespace }, async (args) => ({
@@ -96,7 +137,16 @@ async function hostExportNames(specifier: string): Promise<readonly string[]> {
 export async function bundleExternalPlugin(
   pluginDir: string,
   outDir: string,
-  options: { exportNamesFor?: (specifier: string) => Promise<readonly string[]> } = {},
+  options: {
+    exportNamesFor?: (specifier: string) => Promise<readonly string[]>;
+    /**
+     * Production output. The desktop compiles on every launch and reads the
+     * result straight from memory, so it stays unminified; the hosted web app
+     * compiles once and serves it over the network, where size is what counts.
+     */
+    minify?: boolean;
+    define?: Record<string, string>;
+  } = {},
 ): Promise<BundlePluginResult> {
   // The browser entry when the plugin ships one, so a plugin with a native
   // half can still present its UI and metadata in the view.
@@ -112,8 +162,9 @@ export async function bundleExternalPlugin(
     target: "browser",
     format: "esm",
     splitting: false,
-    minify: false,
+    minify: options.minify === true,
     sourcemap: "none",
+    ...(options.define ? { define: options.define } : {}),
     plugins: [
       createSharedModuleResolver(
         options.exportNamesFor ?? hostExportNames,

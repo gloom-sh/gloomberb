@@ -108,20 +108,42 @@ rather than reporting a compile error.
 
 ### Where plugins run
 
-Plugins run in the terminal and in the desktop app. The hosted web app at
-term.gloom.sh ships only the built-ins compiled into it (`catalog-browser.ts`)
-and does not load plugins from outside the build.
+Plugins run in the terminal, in the desktop app, and on the hosted web app at
+term.gloom.sh. What the web app never does is *install* one: it ships the
+built-ins compiled into it (`catalog-browser.ts`) plus the web-capable plugins
+compiled into the build from their own repositories (`plugins/web-bundled.ts`),
+and nothing else.
 
-That is a product decision rather than a gap. Third-party code on the web
-would run on the origin that holds the user's session, and there is no
-sandbox that can contain a plugin written as a React component sharing the
-host's module registry. The desktop app and the terminal run on the user's own
-machine, where installing a plugin is an explicit choice with a bounded blast
-radius.
+Not installing is a product decision rather than a gap. Code the visitor chose
+would run on the origin that holds their session, and there is no sandbox that
+can contain a plugin written as a React component sharing the host's module
+registry. The desktop app and the terminal run on the user's own machine, where
+installing a plugin is an explicit choice with a bounded blast radius.
 
-The marketplace still lists every plugin on the web, labelled with where it
-runs, so the web app works as a storefront. Listing `"web"` in `targets` is
-harmless but has no effect today.
+So a web user gets a bundled plugin with no install step and nothing to opt
+into: it is part of the build, listed as installed in the marketplace, and
+switched off from there like any other plugin. Everything else is listed with
+where it runs, so the web app still works as a storefront.
+
+To be bundled, a plugin has to be web-capable in practice, not just in its
+`targets`:
+
+- every request goes through `httpFetch` from `gloomberb/utils`. A raw `fetch`
+  to a third-party host is blocked by CORS in a browser, and headers such as
+  `Referer` and `User-Agent` are dropped. `httpFetch` reaches the API directly
+  in the terminal, hands it to the Bun process on the desktop, and routes it
+  through the web app's worker proxy.
+- `hosts` lists every host the plugin reaches, including ones reached on its
+  behalf by a host client such as `YahooHttpClient` (which collects a cookie
+  from `fc.yahoo.com` before any screener call). The worker proxies exactly
+  what the bundled plugins declare and refuses the rest, so a missing host
+  works on the desktop and fails on the web.
+- no `node:*` imports on the path the browser entry pulls in.
+
+Bundling one is a change to this repository: add the plugin as a devDependency,
+add its package name to `WEB_BUNDLED_PLUGIN_PACKAGES`, and run
+`bun run web:proxy-hosts` so the worker allowlist covers its hosts. The web
+build fails rather than shipping a pane that cannot fetch.
 
 ## What plugins can do
 

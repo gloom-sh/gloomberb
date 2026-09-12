@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "../../app";
 import { loadConfig } from "../../data/config/store";
 import { applyLanguageFromConfig } from "../../i18n";
-import { getBrowserBuiltinPlugins } from "../../plugins/catalog-browser";
+import { getBrowserPlugins } from "../../plugins/catalog-browser";
 import { UiHostProvider } from "../../ui/host";
 import { WebDialogHostProvider } from "../electrobun/view/dialog-host";
 import { BrowserErrorBoundary } from "./error-boundary";
@@ -18,6 +18,7 @@ import {
   installBrowserFetchTransports,
   restoreBrowserCloudSession,
 } from "./cloud-transport";
+import { loadWebBundledPlugins } from "./bundled-plugins";
 import { BROWSER_DATA_DIR, installBrowserConfigStore } from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
@@ -46,10 +47,17 @@ async function boot(): Promise<void> {
   installBrowserFetchTransports();
   initializeBrowserResearchActivity();
   installFocusScopeRelease();
+  // Started before the session restore so the plugin modules download while
+  // that request is in flight, and awaited before the first render so their
+  // panes are registered by the time a saved layout asks for one. A failure
+  // here must not stop the app: the built-in catalog is enough to run on, and
+  // the marketplace reports what broke.
+  const bundledPlugins = loadWebBundledPlugins().catch(() => []);
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
   const config = await loadConfig(BROWSER_DATA_DIR);
   applyLanguageFromConfig(config);
+  const externalPlugins = await bundledPlugins;
   const deepLinkBridge = createBrowserDeepLinkBridge();
   root.render(
     <BrowserErrorBoundary>
@@ -60,7 +68,8 @@ async function boot(): Promise<void> {
               <App
                 config={config}
                 servicesFactory={createBrowserAppServices}
-                plugins={getBrowserBuiltinPlugins()}
+                externalPlugins={externalPlugins}
+                plugins={getBrowserPlugins(externalPlugins)}
                 desktopDeepLinkBridge={deepLinkBridge}
                 updatesEnabled={false}
               />

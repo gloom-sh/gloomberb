@@ -154,6 +154,26 @@ describe("bundleExternalPlugin", () => {
     }
   });
 
+  test("resolves a host module that is not shared without a linked node_modules", async () => {
+    // `gloomberb/types/config` is constants, so it is bundled in rather than
+    // shared. A plugin on disk finds it through the symlinked node_modules the
+    // installer writes; one compiled out of this repo's node_modules has no such
+    // link, and before the export map was read it failed to compile at all.
+    const dir = scratchPlugin(`
+      import { TICKER_RESEARCH_PANE_ID } from "gloomberb/types/config";
+      export default { id: "scratch", name: "Scratch", version: "1.0.0", pane: TICKER_RESEARCH_PANE_ID };
+    `);
+    try {
+      const result = await bundleExternalPlugin(dir, join(dir, "out"), { exportNamesFor: fakeExports });
+      const code = await Bun.file(result.outputPath).text();
+
+      expect(result.shared).toEqual([]);
+      expect(code).toContain("ticker-research");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("rejects a directory with no entry file", async () => {
     const dir = mkdtempSync(join(tmpdir(), "gloom-bundle-empty-"));
     mkdirSync(join(dir, "src"), { recursive: true });

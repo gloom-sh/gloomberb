@@ -122,10 +122,13 @@ export function mergeCatalog(options: {
       availableVersion: plugin.ref,
       contributes: plugin.contributes,
       loadError: local?.loadError,
-      // A bundled plugin is part of the build and runs wherever the build
-      // does. Anything else needs a renderer that loads external code, which
-      // the web app does not, whatever the plugin declares.
-      unsupportedHere: plugin.bundled
+      // Part of the build, or loaded here: either way it runs wherever the
+      // build does, and only its own targets can say otherwise. The web app
+      // compiles the web-capable plugins into itself, so a local entry is the
+      // answer to "does this run here" even for one the feed calls installable.
+      // Anything absent needs a renderer that loads plugins from outside the
+      // build, which the web app does not, whatever the plugin declares.
+      unsupportedHere: plugin.bundled || (!!local && !local.unsupportedTarget)
         ? !plugin.targets.includes(target)
         : !runsExternalPlugins(target) || !plugin.targets.includes(target),
     });

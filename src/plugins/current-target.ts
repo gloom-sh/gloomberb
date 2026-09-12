@@ -28,13 +28,17 @@ export function canInstallPlugins(): boolean {
 }
 
 /**
- * Whether this renderer runs plugins from outside the build at all.
+ * Whether this renderer loads plugins that are not part of its build.
  *
- * term.gloom.sh ships only the curated built-ins in `catalog-browser.ts`.
- * Third-party code there would run on the origin that holds the session, so
- * it is a product decision, not a missing feature: plugins live in the desktop
- * app and the terminal. The marketplace still lists them on the web so it
- * works as a storefront, but it says where they run instead of how to install.
+ * term.gloom.sh does not. It ships the built-ins in `catalog-browser.ts` plus
+ * the web-capable plugins compiled into the build (`plugins/web-bundled.ts`),
+ * and nothing else: a plugin is a React component sharing the host's module
+ * registry on the origin that holds the user's session, so there is nothing to
+ * sandbox code a visitor chose with. That is a product decision, not a missing
+ * feature: installing plugins belongs to the desktop app and the terminal,
+ * which run on the user's own machine. The marketplace still lists every plugin
+ * on the web so it works as a storefront, saying where each one runs instead of
+ * how to install it.
  */
 export function runsExternalPlugins(target: PluginTarget = currentTarget): boolean {
   return target !== "web";
