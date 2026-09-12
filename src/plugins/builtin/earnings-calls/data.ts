@@ -1,5 +1,6 @@
 import {
   apiClient,
+  type CloudEarningsCallListPayload,
   type CloudEarningsCallPayload,
   type CloudEarningsTranscriptPayload,
 } from "../../../api-client";
@@ -15,6 +16,7 @@ const LIST_KIND = "calls";
 const TRANSCRIPT_KIND = "transcript";
 const CACHE_SOURCE = "earnings-calls";
 const CACHE_SCHEMA_VERSION = 1;
+const LIST_CACHE_SCHEMA_VERSION = 2;
 
 /** The call list changes as new transcripts publish. */
 const LIST_CACHE_POLICY = {
@@ -42,6 +44,10 @@ export interface EarningsCallsResult {
   pending?: boolean;
   /** The symbol is not one the SEC knows, so there is nothing to look for. */
   unknownTicker?: boolean;
+  /** Maximum rows requested from the server, which supplies no total/hasMore. */
+  sourceLimit?: number;
+  /** The response filled its request; additional calls may exist. */
+  sourceLimitReached?: boolean;
 }
 
 /** A call that has been found but whose transcript is not produced yet. */
@@ -84,8 +90,13 @@ export function statusOf(error: unknown): number | undefined {
   return error instanceof ApiRequestError ? error.status : undefined;
 }
 
-function listKey(ticker: string | null): string {
-  return ticker ? ticker.toUpperCase() : "__all__";
+function listLimit(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value)
+    ? Math.max(1, Math.min(200, Math.floor(value))) : 50;
+}
+
+function listKey(ticker: string | null, limit: number): string {
+  return JSON.stringify([ticker, limit]);
 }
 
 export async function loadEarningsCallsWithClient(
@@ -93,15 +104,22 @@ export async function loadEarningsCallsWithClient(
   ticker: string | null,
   options?: { force?: boolean; limit?: number },
 ): Promise<EarningsCallsResult> {
-  const key = listKey(ticker);
+  const normalizedTicker = ticker?.trim().toUpperCase() || null;
+  const limit = listLimit(options?.limit);
+  const key = listKey(normalizedTicker, limit);
   const force = options?.force ?? false;
+  const store = persistence;
+  const sourceScope = (calls: CloudEarningsCallPayload[]) => ({
+    sourceLimit: limit,
+    sourceLimitReached: calls.length >= limit,
+  });
 
-  const cached = persistence?.getResource<CloudEarningsCallPayload[]>(LIST_KIND, key, {
+  const cached = store?.getResource<CloudEarningsCallListPayload>(LIST_KIND, key, {
     sourceKey: CACHE_SOURCE,
-    schemaVersion: CACHE_SCHEMA_VERSION,
+    schemaVersion: LIST_CACHE_SCHEMA_VERSION,
   });
   if (!force && cached && !cached.stale) {
-    return { calls: cached.value, fetchedAt: cached.fetchedAt, stale: false };
+    return { ...cached.value, ...sourceScope(cached.value.calls), fetchedAt: cached.fetchedAt, stale: false };
   }
 
   const active = activeListFetches.get(key);
@@ -109,27 +127,31 @@ export async function loadEarningsCallsWithClient(
 
   const request = client
     .getCloudEarningsCalls({
-      ticker: ticker ?? undefined,
-      limit: options?.limit ?? 50,
+      ticker: normalizedTicker ?? undefined,
+      limit,
     })
     .then((payload) => {
       const calls = payload.calls ?? [];
+      const value = { calls, pending: payload.pending === true, unknownTicker: payload.unknownTicker === true };
       // A list with calls still being produced changes by the minute, so it
       // is not worth keeping; a list of finished transcripts is.
-      const settled = calls.every((call) => call.hasTranscript);
-      if (settled) {
-        persistence?.setResource(LIST_KIND, key, calls, {
+      const settled = !value.pending && calls.every((call) => call.hasTranscript);
+      // Only the latest request for this scope may change persistence. A slow
+      // earlier load must not rewind a force refresh or a new plugin session.
+      if (activeListFetches.get(key) === request && persistence === store && settled) {
+        store?.setResource(LIST_KIND, key, value, {
           sourceKey: CACHE_SOURCE,
-          schemaVersion: CACHE_SCHEMA_VERSION,
+          schemaVersion: LIST_CACHE_SCHEMA_VERSION,
           cachePolicy: LIST_CACHE_POLICY,
         });
+      } else if (activeListFetches.get(key) === request && persistence === store) {
+        store?.deleteResource(LIST_KIND, key, { sourceKey: CACHE_SOURCE });
       }
       return {
-        calls,
+        ...value,
+        ...sourceScope(calls),
         fetchedAt: Date.now(),
         stale: false,
-        pending: payload.pending === true,
-        unknownTicker: payload.unknownTicker === true,
       };
     })
     .catch((error: unknown) => {
@@ -137,14 +159,15 @@ export async function loadEarningsCallsWithClient(
       const errorStatus = statusOf(error);
       // An auth failure must surface its gate rather than silently showing
       // a cached list the user is no longer entitled to refresh.
-      const expired = persistence?.getResource<CloudEarningsCallPayload[]>(LIST_KIND, key, {
+      const expired = store?.getResource<CloudEarningsCallListPayload>(LIST_KIND, key, {
         sourceKey: CACHE_SOURCE,
-        schemaVersion: CACHE_SCHEMA_VERSION,
+        schemaVersion: LIST_CACHE_SCHEMA_VERSION,
         allowExpired: true,
       });
       if (expired && errorStatus !== 401 && errorStatus !== 402 && errorStatus !== 403) {
         return {
-          calls: expired.value,
+          ...expired.value,
+          ...sourceScope(expired.value.calls),
           fetchedAt: expired.fetchedAt,
           stale: true,
           refreshError,
@@ -187,8 +210,9 @@ export async function loadTranscriptWithClient(
   options?: { force?: boolean },
 ): Promise<CloudEarningsTranscriptPayload> {
   const force = options?.force ?? false;
+  const store = persistence;
 
-  const cached = persistence?.getResource<CloudEarningsTranscriptPayload>(
+  const cached = store?.getResource<CloudEarningsTranscriptPayload>(
     TRANSCRIPT_KIND,
     callId,
     { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION },
@@ -201,17 +225,22 @@ export async function loadTranscriptWithClient(
   const request = client
     .getCloudEarningsTranscript(callId)
     .then((transcript) => {
-      if (isPendingTranscript(transcript)) return transcript;
-      persistence?.setResource(TRANSCRIPT_KIND, callId, transcript, {
-        sourceKey: CACHE_SOURCE,
-        schemaVersion: CACHE_SCHEMA_VERSION,
-        cachePolicy: TRANSCRIPT_CACHE_POLICY,
-      });
+      if (activeTranscriptFetches.get(callId) === request && persistence === store) {
+        if (isPendingTranscript(transcript)) {
+          store?.deleteResource(TRANSCRIPT_KIND, callId, { sourceKey: CACHE_SOURCE });
+        } else {
+          store?.setResource(TRANSCRIPT_KIND, callId, transcript, {
+            sourceKey: CACHE_SOURCE,
+            schemaVersion: CACHE_SCHEMA_VERSION,
+            cachePolicy: TRANSCRIPT_CACHE_POLICY,
+          });
+        }
+      }
       return transcript;
     })
     .catch((error: unknown) => {
       const status = statusOf(error);
-      const expired = persistence?.getResource<CloudEarningsTranscriptPayload>(
+      const expired = store?.getResource<CloudEarningsTranscriptPayload>(
         TRANSCRIPT_KIND,
         callId,
         {

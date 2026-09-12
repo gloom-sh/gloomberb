@@ -96,11 +96,14 @@ export function projectEarningsCallsHeadless(
   const matching = sortCallsNewest(result.calls)
     .filter((call) => availabilityMatches(call, availability));
   const rows = matching.slice(0, limit).map(callRow);
+  const sourceLimit = result.sourceLimit ?? 200;
+  const sourceLimitReached = result.sourceLimitReached ?? result.calls.length >= sourceLimit;
 
   return {
     columns: CALL_COLUMNS,
     rows,
     errors: result.refreshError ? [result.refreshError] : undefined,
+    ...(sourceLimitReached || result.pending ? { complete: false } : {}),
     metadata: {
       fetchedAt: result.fetchedAt,
       stale: result.stale,
@@ -108,8 +111,11 @@ export function projectEarningsCallsHeadless(
       unknownTicker: result.unknownTicker ?? false,
       availability,
       total: matching.length,
+      sourceLimit,
+      sourceLimitReached,
+      totalIsExact: !sourceLimitReached && !result.pending && !result.stale,
       returned: rows.length,
-      truncated: rows.length < matching.length,
+      truncated: sourceLimitReached || rows.length < matching.length,
     },
   };
 }
@@ -285,6 +291,9 @@ export function createEarningsTranscriptHeadless(
       if (!selected) {
         if (calls.unknownTicker) throw new Error(`${ticker} is not a known listed company.`);
         if (calls.pending) throw new Error(`Earnings call discovery for ${ticker} is still pending.`);
+        if (calls.sourceLimitReached ?? calls.calls.length >= (calls.sourceLimit ?? 200)) {
+          throw new Error(`No ${quarter} earnings call found among the latest ${calls.sourceLimit ?? 200} loaded calls for ${ticker}; earlier calls may exist.`);
+        }
         throw new Error(`No ${quarter} earnings call found for ${ticker}.`);
       }
       const transcript = await dependencies.loadTranscript(selected.id, context);
