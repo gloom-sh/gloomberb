@@ -21,6 +21,7 @@ const originalGetChannels = apiClient.getChannels.bind(apiClient);
 const originalGetChatPresence = apiClient.getChatPresence.bind(apiClient);
 const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(apiClient);
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
+const testControllers = new Set<ChatController>();
 
 export type ChatTestSetup = Awaited<ReturnType<typeof testRender>>;
 
@@ -45,6 +46,16 @@ export function installChatApiTestDefaults(): void {
 }
 
 export async function cleanupChatTest(testSetup: ChatTestSetup | undefined): Promise<void> {
+  if (testSetup) {
+    await act(async () => {
+      testSetup.renderer.destroy();
+    });
+  }
+  // Unmounting the view does not dispose its separately owned controller.
+  // Release every fixture's channels and timers before restoring shared APIs.
+  for (const controller of testControllers) controller.dispose();
+  testControllers.clear();
+
   setSharedRegistryForTests(undefined);
   setSharedMarketDataForTests(undefined);
   apiClient.connectChannel = originalConnectChannel;
@@ -53,12 +64,6 @@ export async function cleanupChatTest(testSetup: ChatTestSetup | undefined): Pro
   apiClient.updateChatChannelState = originalUpdateChatChannelState;
   apiClient.editMessage = originalEditMessage;
   apiClient.setSessionToken(null);
-
-  if (testSetup) {
-    await act(async () => {
-      testSetup.renderer.destroy();
-    });
-  }
 }
 
 export function installServerChannels(controller: ChatController, channels = TEST_CHAT_CHANNELS): void {
@@ -119,6 +124,7 @@ export function createController(options: {
   const messages = options.messages ?? [];
   const persistence = new MemoryPluginPersistence();
   const controller = new ChatController();
+  testControllers.add(controller);
   const user = Object.prototype.hasOwnProperty.call(options, "user")
     ? options.user ?? null
     : { id: "u0", username: "vince", emailVerified: true };
