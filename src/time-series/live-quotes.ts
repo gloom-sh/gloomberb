@@ -108,7 +108,12 @@ export function compareChartQuoteRecency(next: Quote, current: Quote): number {
 
 function isNewerQuote(next: Quote, current: Quote | undefined): boolean {
   if (!current) return true;
-  return compareChartQuoteRecency(next, current) > 0;
+  const order = compareChartQuoteRecency(next, current);
+  // Providers can change status while retaining the original source/receipt
+  // timestamps. At that same observation, the incoming status is authoritative.
+  // An older source observation or receipt still cannot replace newer data.
+  return order > 0 || (order === 0 && next.lastUpdated === current.lastUpdated
+    && (next.stale === true) !== (current.stale === true));
 }
 
 function hasResolutionRelevantChange(next: Quote, current: Quote | undefined): boolean {
