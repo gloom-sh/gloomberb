@@ -9,6 +9,7 @@ import { colors, priceColor } from "../../../../theme/colors";
 import { formatPercentRaw } from "../../../../utils/format";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice } from "../../../../market-data/market/format";
 import { getActiveQuoteDisplay } from "../../../../market-data/market/status";
+import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
 import {
   PriceAreaSparklineBackground,
@@ -29,15 +30,17 @@ const UNKNOWN_SYMBOL_REASONS = new Set(["NOT_FOUND", "BAD_MAPPING"]);
 interface QuoteStatus {
   failed: boolean;
   text: string;
+  stale?: boolean;
 }
 
-function resolveQuoteStatus(entry: QueryEntry<Quote> | null, symbol: string): QuoteStatus {
+function resolveQuoteStatus(entry: QueryEntry<Quote> | null, symbol: string, quote: Quote | null | undefined): QuoteStatus {
   const error = entry?.error;
   if (error) {
     return UNKNOWN_SYMBOL_REASONS.has(error.reasonCode)
       ? { failed: true, text: `${symbol} not recognized` }
       : { failed: true, text: error.message || "Quote unavailable" };
   }
+  if (isQuoteStaleForCurrentSession(quote)) return { failed: true, text: "Stale quote", stale: true };
   if (entry?.phase === "ready") return { failed: false, text: "No quote data" };
   return { failed: false, text: "Loading quote..." };
 }
@@ -81,7 +84,7 @@ export function QuoteMonitorCard({
   );
   const flashDirection = useQuoteFlashDirection(flashFinancials, valueFlashingEnabled);
   const display = getActiveQuoteDisplay(quote);
-  const quoteStatus = resolveQuoteStatus(quoteEntry, symbol);
+  const quoteStatus = resolveQuoteStatus(quoteEntry, symbol, quote);
   const quoteFailed = quoteStatus.failed && !!display;
   const changeColor = quoteFailed ? colors.textDim : priceColor(display?.change ?? 0);
   const priceAttributes = flashDirection ? TextAttributes.DIM : TextAttributes.BOLD;
@@ -89,6 +92,7 @@ export function QuoteMonitorCard({
   const currency = quote?.currency ?? ticker?.metadata.currency ?? "USD";
   const assetCategory = quote?.instrumentType ?? ticker?.metadata.assetCategory;
   const stacked = width < 31;
+  const compactQuoteFailure = quoteFailed && stacked && height <= 3;
   const priceText = display
     ? formatMarketPriceWithCurrency(display.price, currency, { assetCategory })
     : "";
@@ -103,6 +107,7 @@ export function QuoteMonitorCard({
   const sparklineWidth = Math.max(8, width - (nativePaneChrome ? rangeLabel.length + 5 : 2));
   const trend = quoteTrend(display?.change);
   const terminalSparklineHeight = !nativePaneChrome && !stacked && height >= 4 ? 2 : 1;
+  const showTerminalSparkline = !quoteFailed || height >= (stacked ? 3 : 2) + 1 + terminalSparklineHeight;
   const desktopPriceStyle = nativePaneChrome
     ? {
         fontSize: "22px",
@@ -272,7 +277,7 @@ export function QuoteMonitorCard({
               </Text>
               <Box flexDirection="column">
                 <Text attributes={priceAttributes} fg={changeColor} style={desktopPriceStyle}>
-                  {priceText}
+                  {compactQuoteFailure ? `${priceText} · ${quoteStatus.stale ? "STALE" : "ERROR"}` : priceText}
                 </Text>
                 <Box flexDirection="row" gap={1}>
                   <Text fg={changeColor} attributes={changeAttributes} style={desktopChangeStyle}>{changePercentText}</Text>
@@ -323,7 +328,10 @@ export function QuoteMonitorCard({
             </Box>
           )}
 
-          <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>
+          {quoteFailed && !compactQuoteFailure && (
+            <Box height={1} overflow="hidden"><Text fg={colors.negative}>{quoteStatus.text}</Text></Box>
+          )}
+          {showTerminalSparkline && <Box height={terminalSparklineHeight} flexDirection="row" alignItems="center" gap={1}>
             <PriceSparkline
               priceHistory={priceHistory}
               width={sparklineWidth}
@@ -337,7 +345,7 @@ export function QuoteMonitorCard({
                 {rangeLabel}
               </Text>
             )}
-          </Box>
+          </Box>}
         </Box>
       )}
     </Box>
