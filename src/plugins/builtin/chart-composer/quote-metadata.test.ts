@@ -96,6 +96,34 @@ test("direct and captured metadata cannot cross identities or lose known fields 
   }
 });
 
+test("legacy and optional metadata paths reject wrong or absent listing identity equally", async () => {
+  for (const optional of [false, true]) {
+    for (const [symbol, listingExchangeName, currency, expected] of [
+      ["EURUSD=X", "CCY", "USD", "USD"],
+      ["JPY=X", "CCY", "JPY", "currency"],
+      ["EURUSD=X", "NASDAQ", "USD", "currency"],
+      ["EURUSD=X", undefined, "USD", "currency"],
+    ] as const) {
+      const history = [{ date: new Date("2026-01-15"), close: 1.16 }];
+      const quote = { symbol, listingExchangeName, currency, instrumentType: "CURRENCY",
+        price: 999, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-01-15") };
+      const provider = createTestDataProvider({ getQuote: async () => quote,
+        ...(optional ? { getQuoteMetadata: async () => ({ symbol, listingExchangeName, currency,
+          instrumentType: "CURRENCY", source: { lastUpdated: quote.lastUpdated } }) } : {}),
+        getDetailedPriceHistory: async () => history });
+      const spec = buildPriceChartPreset("EURUSD=X:CCY");
+      spec.viewport = { range: "1M", resolution: "1d", dateWindow: { start: "2026-01-15", end: "2026-01-16" } };
+      const model = await loadChartPaneModel(spec, { marketData: provider, apiClient: {} as HeadlessPaneContext["apiClient"],
+        config: createDefaultConfig("/tmp/metadata-identity-unused"), signal: new AbortController().signal });
+      expect(model.series[0]?.unit).toBe(expected);
+      expect(model.series[0]?.points.map(point => point.value)).toEqual([1.16]);
+      expect(model.snapshot.financials[0]?.[1].quote).toBeUndefined();
+      if (expected === "USD") expect(model.snapshot.financials[0]?.[1].quoteMetadata?.source.lastUpdated).toBe(quote.lastUpdated);
+      else expect(model.snapshot.financials[0]?.[1].quoteMetadata).toBeUndefined();
+    }
+  }
+});
+
 test("existing complete quote facts avoid an additional metadata request", async () => {
   let metadataCalls = 0;
   const history = [{ date: new Date("2026-01-15"), close: 100 }];

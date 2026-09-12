@@ -17,7 +17,7 @@ function bars(values: number[], date = "2020-04-20"): PricePoint[] {
 }
 
 function quote(instrumentType?: string, symbol = "CL=F"): Quote {
-  return { symbol, instrumentType, price: 999, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() };
+  return { symbol, listingExchangeName: "NYMEX", instrumentType, price: 999, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() };
 }
 
 const request = { rangePreset: "1D", resolution: "1m", session: "2020-04-20" } as const;

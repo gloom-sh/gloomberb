@@ -25,6 +25,9 @@ test("metadata validates the requested listing and preserves normalized minor un
   for (const [ticker, exchange, symbol, listing, currency, accepted] of [
     ["ASML:XAMS", "NASDAQ", "ASML", "XAMS", "EUR", true],
     ["ASML", "AMS", "ASML", "NASDAQ", "USD", false],
+    ["ASML", "AMS", "ASML", "", "EUR", false],
+    ["CL=F", "NYMEX", "CL=F", "NY MERCANTILE", "USD", true],
+    ["CL=F", "COMEX", "CL=F", "NY MERCANTILE", "USD", false],
     ["ASML", "AMS", "ASML:XNAS", "AMS", "EUR", false],
     ["ASML", "AMS", "OTHER", "AMS", "EUR", false],
     ["VOD:XLON", "NASDAQ", "VOD.L", "LSE", "GBp", true],

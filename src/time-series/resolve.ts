@@ -1041,9 +1041,9 @@ export async function resolveChartSpecData(
     if (!pending) {
       const provider = sources.dataProvider!;
       pending = Promise.resolve().then(() => provider.getQuoteMetadata
-        ? provider.getQuoteMetadata(source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source)).then((metadata) =>
-          metadata && quoteMetadataMatchesTarget(metadata, source.instrument.symbol, source.instrument.exchange) ? metadata : null)
+        ? provider.getQuoteMetadata(source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source))
         : provider.getQuote(source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source)).then(quoteMetadataFromQuote))
+        .then((metadata) => metadata && quoteMetadataMatchesTarget(metadata, source.instrument.symbol, source.instrument.exchange) ? metadata : null)
         .then((metadata) => { if (!metadata) cache.quoteMetadataByInstrument.delete(key); return metadata; })
         .catch(() => { cache.quoteMetadataByInstrument.delete(key); return null; });
       cache.quoteMetadataByInstrument.set(key, pending);
