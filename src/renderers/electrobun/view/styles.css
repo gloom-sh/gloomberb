@@ -582,3 +582,13 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
     0 14px 34px color-mix(in srgb, var(--gloom-bg) 42%, transparent),
     inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
 }
+/* Chart screenshot watermark: mounted by every chart, revealed together by
+   html[data-gloom-screenshot] (pane capture, OS screenshot chords, CLI shots). */
+[data-gloom-role="chart-watermark"] {
+  visibility: hidden;
+  pointer-events: none;
+  opacity: 0.1;
+}
+html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
+  visibility: visible;
+}
