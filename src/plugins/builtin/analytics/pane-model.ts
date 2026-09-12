@@ -342,15 +342,15 @@ export function buildAnalyticsRiskRows({
     : unsupportedReason;
   const partial = formatRiskCoverage(coverage, missingCount);
   return [
-    { id: "sharpe", label: "Est. Sharpe", value: sharpe, method: "Current weights; price returns; 5% Rf, 252 sessions" },
-    { id: "beta", label: "Est. Beta (SPY)", value: beta, method: "Current weights; excludes cash, fees and trades" },
+    { id: "sharpe", label: "Est. Sharpe", value: sharpe },
+    { id: "beta", label: "Est. Beta (SPY)", value: beta },
   ].map((row) => {
     const reason = unavailable ?? (row.id === "beta" && benchmarkIntegrity ? "SPY benchmark: inconsistent OHLC history" : null);
     return {
       id: row.id,
       label: row.label,
       value: reason ? "—" : formatNumber(row.value ?? undefined, 2),
-      detail: reason ?? (row.value == null ? "Insufficient history for basket estimate" : `${row.method}${partial ? `; partial: ${partial}` : ""}`),
+      detail: reason ?? (row.value == null ? "Insufficient history for basket estimate" : partial ? `Partial: ${partial}` : undefined),
       color: colors.textMuted,
     };
   });

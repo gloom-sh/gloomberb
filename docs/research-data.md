@@ -42,7 +42,7 @@ P&L for manual portfolios covers current holdings. Manual portfolios have no cas
 
 Sector weights use gross position values and exclude cash. Fund constituents and ETF overlap are not available; funds are grouped separately. Missing position prices or FX prevent complete weights.
 
-Sharpe and beta are estimates for a basket of current holdings and weights, rather than a reconstruction of historical account performance. They require usable price histories; a contradictory holding history suppresses the basket estimates. An invalid benchmark history suppresses beta independently of Sharpe.
+Sharpe and beta are estimates for a basket of current holdings and weights, rather than a reconstruction of historical account performance. They use price returns and exclude cash, fees, distributions and historical trades. Sharpe assumes a fixed 5% annual risk-free rate and 252 trading sessions per year; beta uses SPY as the benchmark. They require usable price histories; a contradictory holding history suppresses the basket estimates. An invalid benchmark history suppresses beta independently of Sharpe.
 
 Broker account-value history includes deposits and withdrawals. Investment returns require cash-flow adjustments. Broker-reported return series may not specify their calculation method. Currency values and percentage returns retain distinct axis labels; missing observations and cached data remain identified in the UI.
 
