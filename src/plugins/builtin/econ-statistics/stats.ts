@@ -24,6 +24,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Inflation -------------------------------------------------------
   stat({
     id: "cpi-yoy",
+    measurementBasis: "Not seasonally adjusted",
     label: "CPI",
     shortLabel: "CPI y/y",
     category: "inflation",
@@ -39,6 +40,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "core-cpi-yoy",
+    measurementBasis: "NSA · excludes food & energy",
     label: "Core CPI",
     shortLabel: "Core CPI y/y",
     category: "inflation",
@@ -69,6 +71,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "core-pce-yoy",
+    measurementBasis: "Excludes food & energy",
     label: "Core PCE Prices",
     shortLabel: "Core PCE y/y",
     category: "inflation",
@@ -84,6 +87,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "ppi-yoy",
+    measurementBasis: "Final demand · not seasonally adjusted",
     label: "Producer Prices",
     shortLabel: "PPI y/y",
     category: "inflation",
@@ -131,6 +135,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "initial-claims",
+    measurementBasis: "Weekly",
     label: "Initial Jobless Claims",
     shortLabel: "Claims",
     category: "labor",
@@ -163,6 +168,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Growth ----------------------------------------------------------
   stat({
     id: "real-gdp",
+    measurementBasis: "q/q annualized",
     label: "Real GDP",
     shortLabel: "Real GDP q/q",
     category: "growth",
@@ -178,6 +184,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "industrial-production",
+    measurementBasis: "y/y",
     label: "Industrial Production",
     shortLabel: "Ind. prod.",
     category: "growth",
@@ -240,6 +247,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Consumer --------------------------------------------------------
   stat({
     id: "retail-sales",
+    measurementBasis: "Not adjusted for prices",
     label: "Retail Sales",
     shortLabel: "Retail y/y",
     category: "consumer",
@@ -255,6 +263,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "core-retail-sales",
+    measurementBasis: "y/y · excludes motor vehicles",
     label: "Core Retail Sales",
     shortLabel: "Core retail",
     category: "consumer",
@@ -270,6 +279,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "consumer-sentiment",
+    measurementBasis: "Michigan survey",
     label: "Consumer Sentiment",
     shortLabel: "Sentiment",
     category: "consumer",
@@ -285,6 +295,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "personal-income",
+    measurementBasis: "Before tax",
     label: "Personal Income",
     shortLabel: "Income m/m",
     category: "consumer",
@@ -317,6 +328,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Housing ---------------------------------------------------------
   stat({
     id: "housing-starts",
+    measurementBasis: "Annual rate",
     label: "Housing Starts",
     shortLabel: "Starts",
     category: "housing",
@@ -347,6 +359,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "new-home-sales",
+    measurementBasis: "Annual rate",
     label: "New Home Sales",
     shortLabel: "New homes",
     category: "housing",
@@ -363,6 +376,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Rates & money ---------------------------------------------------
   stat({
     id: "fed-funds",
+    measurementBasis: "Monthly average · overnight",
     label: "Effective Federal Funds Rate",
     shortLabel: "Effective fed funds",
     category: "rates",
@@ -408,6 +422,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "curve-spread",
+    measurementBasis: "10Y minus 2Y",
     label: "10Y minus 2Y Spread",
     shortLabel: "2s10s",
     category: "rates",
@@ -423,6 +438,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "real-ten-year",
+    measurementBasis: "Inflation-protected",
     label: "10-Year Real Yield",
     shortLabel: "10Y real",
     category: "rates",
@@ -455,6 +471,7 @@ export const STATS: readonly StatDef[] = [
   // ---- Trade & costs ---------------------------------------------------
   stat({
     id: "trade-balance",
+    measurementBasis: "Goods & services · exports minus imports",
     label: "Trade Balance",
     shortLabel: "Trade balance",
     category: "trade",
@@ -471,6 +488,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "productivity",
+    measurementBasis: "q/q annualized · output per hour",
     label: "Nonfarm Productivity",
     shortLabel: "Productivity",
     category: "trade",
@@ -486,6 +504,7 @@ export const STATS: readonly StatDef[] = [
   }),
   stat({
     id: "unit-labor-costs",
+    measurementBasis: "q/q annualized",
     label: "Unit Labor Costs",
     shortLabel: "Labor costs",
     category: "trade",
