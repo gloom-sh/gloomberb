@@ -18,6 +18,7 @@ import {
 } from "../../../../market-data/market/format";
 import type { PositionTableRow, StatField } from "./types";
 import { getPortfolioPositionMetrics, signedPositionDirection } from "../../portfolio-list/position-metrics";
+import { resolveCurrencyUnit } from "../../../../utils/currency-units";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -47,10 +48,17 @@ export function buildOverviewStats({
   marketCapExchangeRates?: ReadonlyMap<string, number>;
 }): StatField[] {
   const stats: StatField[] = [];
-  const financialCurrency = fundamentals?.financialCurrency;
-  const money = (value: number) => financialCurrency
-    ? formatCompactCurrency(value, financialCurrency)
-    : formatCompact(value);
+  const financialCurrency = fundamentals?.financialCurrency?.trim();
+  const money = (value: number, perShare = false) => {
+    if (!Number.isFinite(value)) return "—";
+    const amount = perShare ? formatNumber(value, 2) : formatCompact(value);
+    if (!financialCurrency) return `${amount} (ccy?)`;
+    // Intl uppercases currency codes: GBp must not become GBP without scaling.
+    if (perShare && resolveCurrencyUnit(financialCurrency).divisor === 1) {
+      return formatCurrency(value, financialCurrency);
+    }
+    return `${amount} ${financialCurrency}`;
+  };
 
   if (quote?.volume != null) {
     stats.push({ label: "Volume", value: formatCompact(quote.volume) });
@@ -70,7 +78,7 @@ export function buildOverviewStats({
     stats.push({ label: "Fwd P/E", value: formatPriceEarnings(fundamentals.forwardPE) });
   }
   if (fundamentals?.eps != null) {
-    stats.push({ label: "EPS", value: financialCurrency ? formatCurrency(fundamentals.eps, financialCurrency) : formatNumber(fundamentals.eps, 2) });
+    stats.push({ label: "EPS", value: money(fundamentals.eps, true) });
   }
   if (fundamentals?.pegRatio != null) {
     stats.push({ label: "PEG", value: formatNumber(fundamentals.pegRatio, 2) });
