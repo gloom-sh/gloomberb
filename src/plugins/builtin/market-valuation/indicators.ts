@@ -23,11 +23,13 @@ function ratio(value: number): string {
 }
 
 /**
- * Total US market value. FRED discontinued the WILL5000* family, so this comes
- * from the cloud's own price history rather than the econ proxy.
+ * Retained source identity for saved indicators and old caches. Price-index points
+ * are not dollar market capitalization: a historical divisor would be required.
+ * Never scale these observations into a monetary ratio (see valuation-reference.md).
  */
 const WILSHIRE_5000: SeriesDef = {
   key: "W5000",
+  unavailableReason: "^W5000 provides index points; dollar market capitalization is unavailable.",
   scaleToBillions: 1,
   source: {
     kind: "market-history",
@@ -57,7 +59,7 @@ export const BUFFETT_INDICATOR: IndicatorDef = {
   id: "buffett",
   label: "Buffett Indicator",
   shortLabel: "Buffett",
-  description: "US total market cap over nominal GDP.",
+  description: "Market capitalization / nominal GDP (annual rate), %.",
   input: {
     kind: "ratio",
     numerator: WILSHIRE_5000,
@@ -79,10 +81,6 @@ export const BUFFETT_INDICATOR: IndicatorDef = {
   chartGridStep: 150,
   trendModel: "log",
   staleAfterMs: DAILY_STALE_MS,
-  notes: [
-    "Total US market value against one year of economic output. Warren Buffett called it probably the best single measure of where valuations stand at any given moment, in a December 2001 Fortune essay written with Carol Loomis.",
-    "Rates, buybacks, and a larger listed share of the economy have all raised what fair looks like since 2001, so read the trend deviation alongside the absolute zone.",
-  ],
   link: {
     url: "https://en.wikipedia.org/wiki/Buffett_indicator",
     label: "Buffett indicator, Wikipedia",
@@ -93,7 +91,7 @@ export const TOBINS_Q: IndicatorDef = {
   id: "tobins-q",
   label: "Tobin's Q",
   shortLabel: "Tobin Q",
-  description: "Corporate equity market value over replacement cost of net assets.",
+  description: "Nonfinancial corporate equities / net worth; quarterly Z.1.",
   input: {
     kind: "ratio",
     numerator: {
@@ -120,14 +118,10 @@ export const TOBINS_Q: IndicatorDef = {
     { max: null, id: "significantly-overvalued", label: "Significantly Overvalued" },
   ],
   zoneScale: { min: 0, max: 2, edges: [0, 0.55, 0.8, 1.1, 1.4, 2], ticks: [0, 0.55, 1, 1.4, 2] },
-  reference: { value: 1, label: "replacement cost" },
+  reference: { value: 1, label: "equities = net worth" },
   chartGridStep: 0.5,
   trendModel: "log",
   staleAfterMs: QUARTERLY_STALE_MS,
-  notes: [
-    "Equity market value against what it would cost to rebuild the assets behind it. Q above 1 means the market pays more than replacement cost.",
-    "Built from the Fed's quarterly Z.1 financial accounts for nonfinancial corporate business, so it moves in quarterly steps and revises with each release.",
-  ],
   link: { url: "https://en.wikipedia.org/wiki/Tobin%27s_q", label: "Tobin's q, Wikipedia" },
 };
 
@@ -135,7 +129,7 @@ export const SHILLER_CAPE: IndicatorDef = {
   id: "shiller-cape",
   label: "Shiller CAPE",
   shortLabel: "CAPE",
-  description: "S&P 500 price over ten years of inflation-adjusted earnings.",
+  description: "Price / ten-year mean real earnings; Shiller monthly CAPE.",
   input: { kind: "direct", series: shillerSeries("SHILLER_CAPE", "cape") },
   ratioScale: 1,
   formatValue: (value) => formatNumber(value, 1),
@@ -153,10 +147,6 @@ export const SHILLER_CAPE: IndicatorDef = {
   chartGridStep: 10,
   trendModel: "log",
   staleAfterMs: MONTHLY_STALE_MS,
-  notes: [
-    "Price divided by the average of ten years of real earnings, which smooths away the profit cycle that makes a one-year P/E swing hardest exactly when it matters most.",
-    "Robert Shiller's series runs back to 1881. It has spent decades above its own median without mean-reverting, so treat it as a long-horizon return signal rather than a timing tool.",
-  ],
   link: {
     url: "https://en.wikipedia.org/wiki/Cyclically_adjusted_price-to-earnings_ratio",
     label: "CAPE ratio, Wikipedia",
@@ -167,7 +157,7 @@ export const EXCESS_CAPE_YIELD: IndicatorDef = {
   id: "excess-cape-yield",
   label: "Excess CAPE Yield",
   shortLabel: "ERP (ECY)",
-  description: "CAPE earnings yield over the real 10-year Treasury yield.",
+  description: "1/CAPE − real 10Y Treasury yield; Shiller monthly (%).",
   input: { kind: "direct", series: shillerSeries("SHILLER_ECY", "excessCapeYield") },
   // Shiller publishes it as a decimal fraction; show it as a percent.
   ratioScale: 100,
@@ -188,10 +178,6 @@ export const EXCESS_CAPE_YIELD: IndicatorDef = {
   // The spread has been negative, so a log fit would silently drop those years.
   trendModel: "linear",
   staleAfterMs: MONTHLY_STALE_MS,
-  notes: [
-    "What stocks yield over inflation-protected bonds: the CAPE earnings yield minus the real ten-year Treasury yield. It is the equity risk premium in the form Shiller publishes.",
-    "Unlike a price ratio, higher is cheaper. It went negative before the 1929 and 2000 peaks, when bonds out-yielded stocks outright.",
-  ],
   link: {
     url: "https://en.wikipedia.org/wiki/Equity_premium_puzzle",
     label: "Equity risk premium, Wikipedia",
@@ -202,7 +188,7 @@ export const SP500_DIVIDEND_YIELD: IndicatorDef = {
   id: "sp500-dividend-yield",
   label: "S&P 500 Dividend Yield",
   shortLabel: "Div yield",
-  description: "Index dividend over index price.",
+  description: "Annual dividends / price; Shiller monthly series (%).",
   input: {
     kind: "ratio",
     numerator: shillerSeries("SHILLER_DIVIDEND", "dividend"),
@@ -224,10 +210,6 @@ export const SP500_DIVIDEND_YIELD: IndicatorDef = {
   chartGridStep: 4,
   trendModel: "log",
   staleAfterMs: MONTHLY_STALE_MS,
-  notes: [
-    "What the index pays out against what it costs. Buybacks have moved a large share of shareholder return off this line since the 1980s, so the modern level is structurally lower than the pre-1990 record.",
-    "Read it against its own recent decades rather than the full history for that reason.",
-  ],
   link: { url: "https://en.wikipedia.org/wiki/Dividend_yield", label: "Dividend yield, Wikipedia" },
 };
 
@@ -235,7 +217,7 @@ export const HOUSEHOLD_EQUITY_ALLOCATION: IndicatorDef = {
   id: "household-equity-allocation",
   label: "Investor Equity Allocation",
   shortLabel: "Equity alloc",
-  description: "Share of household financial assets held in equities.",
+  description: "Household and nonprofit direct/indirect equities / financial assets, %.",
   input: {
     kind: "direct",
     series: {
@@ -261,10 +243,6 @@ export const HOUSEHOLD_EQUITY_ALLOCATION: IndicatorDef = {
   chartGridStep: 10,
   trendModel: "log",
   staleAfterMs: QUARTERLY_STALE_MS,
-  notes: [
-    "How much of what households own sits in stocks. When investors are already all-in there is little cash left to bid prices higher, which is why this has tracked ten-year forward returns more closely than any price ratio.",
-    "From the Fed's quarterly Z.1 accounts, counting equities held directly and through funds.",
-  ],
   link: {
     url: "https://fred.stlouisfed.org/series/BOGZ1FL153064486Q",
     label: "Household equity share, FRED",
@@ -275,7 +253,7 @@ export const MARKET_CAP_TO_M2: IndicatorDef = {
   id: "market-cap-m2",
   label: "Market Cap to M2",
   shortLabel: "Cap / M2",
-  description: "US total market cap against the money supply.",
+  description: "Market capitalization / M2 money stock, %.",
   input: {
     kind: "ratio",
     numerator: WILSHIRE_5000,
@@ -298,10 +276,6 @@ export const MARKET_CAP_TO_M2: IndicatorDef = {
   chartGridStep: 100,
   trendModel: "log",
   staleAfterMs: DAILY_STALE_MS,
-  notes: [
-    "Market value measured against the money supply rather than output, which is the liquidity-adjusted read on the same question the Buffett indicator asks.",
-    "It falls when the Fed expands M2 faster than equities rise, so the 2020 surge shows up here as cheapening even while price ratios were climbing.",
-  ],
   link: { url: "https://fred.stlouisfed.org/series/M2SL", label: "M2 money stock, FRED" },
 };
 
@@ -309,7 +283,7 @@ export const MARGIN_DEBT_TO_GDP: IndicatorDef = {
   id: "margin-debt-gdp",
   label: "Margin Debt to GDP",
   shortLabel: "Margin debt",
-  description: "Borrowing against securities, against the size of the economy.",
+  description: "Margin loans and other customer receivables / nominal GDP (annual rate), %.",
   input: {
     kind: "ratio",
     numerator: {
@@ -336,10 +310,6 @@ export const MARGIN_DEBT_TO_GDP: IndicatorDef = {
   chartGridStep: 1,
   trendModel: "log",
   staleAfterMs: QUARTERLY_STALE_MS,
-  notes: [
-    "How much investors have borrowed against their holdings. Leverage is what turns a decline into forced selling, so it is froth rather than value, but it peaks where valuations do.",
-    "Its two highest readings are the first quarter of 2000 and the third of 2008. From the Fed's Z.1 accounts, which reach further back than FINRA's own margin table.",
-  ],
   link: {
     url: "https://fred.stlouisfed.org/series/BOGZ1FL663067003Q",
     label: "Margin account receivables, FRED",
@@ -350,7 +320,7 @@ export const MARKET_CAP_TO_PROFITS: IndicatorDef = {
   id: "market-cap-profits",
   label: "Market Cap to Corporate Profits",
   shortLabel: "Cap / profits",
-  description: "US total market cap over after-tax corporate profits.",
+  description: "Market capitalization / corporate profits (IVA/CCAdj, annual rate).",
   input: {
     kind: "ratio",
     numerator: WILSHIRE_5000,
@@ -377,13 +347,9 @@ export const MARKET_CAP_TO_PROFITS: IndicatorDef = {
   chartGridStep: 5,
   trendModel: "log",
   staleAfterMs: DAILY_STALE_MS,
-  notes: [
-    "A price-to-earnings ratio for the whole economy rather than the index, using what every US corporation actually earned after tax.",
-    "Profits are near a record share of GDP, so this asks whether the market is dear even against unusually good earnings. Its highest reading is March 2000.",
-  ],
   link: {
     url: "https://fred.stlouisfed.org/series/CPROFIT",
-    label: "Corporate profits after tax, FRED",
+    label: "Corporate profits (IVA/CCAdj), FRED",
   },
 };
 

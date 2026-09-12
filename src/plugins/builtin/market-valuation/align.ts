@@ -1,4 +1,4 @@
-import type { IndicatorDef, SeriesDef } from "./defs";
+import { indicatorUnavailableReason, type IndicatorDef, type SeriesDef } from "./defs";
 import type { DatedSeries } from "./series";
 
 export interface ScaledObs {
@@ -33,6 +33,7 @@ export function vintageLabel(prefix: string, vintageDate: string): string {
 }
 
 export function scaleObservations(def: SeriesDef, data: DatedSeries): ScaledObs[] {
+  if (def.unavailableReason) throw new Error(def.unavailableReason);
   const points: ScaledObs[] = [];
   for (const obs of data.observations) {
     if (obs.value == null || !Number.isFinite(obs.value)) continue;
@@ -94,6 +95,8 @@ export function buildValuationSeries(
   indicator: IndicatorDef,
   legs: ReadonlyMap<string, DatedSeries>,
 ): ValuationSeries {
+  const unavailable = indicatorUnavailableReason(indicator);
+  if (unavailable) throw new Error(unavailable);
   if (indicator.input.kind === "direct") {
     const def = indicator.input.series;
     const data = legs.get(def.key);

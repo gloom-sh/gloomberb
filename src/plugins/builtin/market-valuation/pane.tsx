@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
-  EmptyState,
+  EmptyState, ExternalLinkText,
   InputSearchBar, Notice, PaneStatusBody, SegmentedControl, type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent,
@@ -13,15 +13,16 @@ import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, type InputRenderable } from "../../../ui";
+import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { getCachedValuationBundle, loadValuationBundle } from "./client";
-import { shortZoneLabel, type ValuationRangeId } from "./defs";
+import { indicatorUnavailableReason, shortZoneLabel, type IndicatorDef, type ValuationRangeId } from "./defs";
 import { IndicatorDetail } from "./detail";
+import { INDICATORS } from "./indicators";
 import { RANGE_OPTIONS, VALUATION_DEFAULTS } from "./settings";
 import {
   formatSigma,
@@ -38,13 +39,19 @@ const LIST_WIDTH = 46;
 type ColumnId = "name" | "value" | "zone" | "percentile" | "sigma";
 interface Column extends DataTableColumn { id: ColumnId }
 
-function matchesQuery(view: IndicatorViewModel, query: string): boolean {
+interface IndicatorRow {
+  indicator: IndicatorDef;
+  view: IndicatorViewModel | null;
+  error: string | null;
+}
+
+function matchesQuery(row: IndicatorRow, query: string): boolean {
   if (!query) return true;
   const haystack = [
-    view.indicator.label,
-    view.indicator.shortLabel,
-    view.indicator.description,
-    view.zone.label,
+    row.indicator.label,
+    row.indicator.shortLabel,
+    row.indicator.description,
+    row.view?.zone.label,
   ].join(" ").toLowerCase();
   return query.split(/\s+/).every((token) => haystack.includes(token));
 }
@@ -66,7 +73,17 @@ function buildColumns(width: number, stacked: boolean): Column[] {
   ];
 }
 
-function cellsFor(view: IndicatorViewModel): Record<ColumnId, DataTableCell> {
+function cellsFor(row: IndicatorRow): Record<ColumnId, DataTableCell> {
+  const view = row.view;
+  if (!view) {
+    return {
+      name: { text: row.indicator.shortLabel, color: colors.textBright },
+      value: { text: "--", color: colors.textDim },
+      zone: { text: "Unavailable", color: colors.warning },
+      percentile: { text: "--", color: colors.textDim },
+      sigma: { text: "--", color: colors.textDim },
+    };
+  }
   return {
     name: { text: view.indicator.shortLabel, color: colors.textBright },
     value: { text: view.indicator.formatValue(view.current.ratio), color: view.zone.color },
@@ -144,14 +161,20 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     () => (bundle ? selectValuationViews(bundle, range) : []),
     [bundle, range],
   );
+  const rows = useMemo<IndicatorRow[]>(() => bundle ? INDICATORS.flatMap((indicator) => {
+    const view = views.find((entry) => entry.indicator.id === indicator.id) ?? null;
+    const error = indicatorUnavailableReason(indicator);
+    return view || error ? [{ indicator, view, error }] : [];
+  }) : [], [bundle, views]);
   const normalizedQuery = query.trim().toLowerCase();
   const visible = useMemo(
-    () => views.filter((view) => matchesQuery(view, normalizedQuery)),
-    [normalizedQuery, views],
+    () => rows.filter((row) => matchesQuery(row, normalizedQuery)),
+    [normalizedQuery, rows],
   );
   // Filtering narrows the list, but the detail keeps showing the chosen indicator
   // until the user picks another, so typing never blanks the chart.
-  const selected = views.find((view) => view.indicator.id === indicatorId) ?? views[0] ?? null;
+  const selected = rows.find((row) => row.indicator.id === indicatorId) ?? rows[0] ?? null;
+  const selectedView = selected?.view;
   const selectionOnScreen = visible.some((view) => view.indicator.id === selected?.indicator.id);
 
   const chooseIndicator = useCallback((
@@ -162,26 +185,34 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
       id,
       reason,
       selectionOnScreen,
-      knownIds: views.map((view) => view.indicator.id),
+      knownIds: rows.map((row) => row.indicator.id),
     })) return;
     setIndicatorId(id);
-  }, [selectionOnScreen, setIndicatorId, views]);
+  }, [selectionOnScreen, setIndicatorId, rows]);
 
-  const error = resource.error ?? bundle?.errors[0] ?? null;
+  const basisErrors = new Set(INDICATORS.flatMap((indicator) => {
+    const reason = indicatorUnavailableReason(indicator);
+    return reason ? [`${indicator.label}: ${reason}`] : [];
+  }));
+  const sourceError = bundle?.errors.find((entry) => !basisErrors.has(entry));
+  const unavailableCount = bundle?.errors.filter((entry) => basisErrors.has(entry)).length ?? 0;
+  const bodyError = resource.error ?? sourceError ?? null;
+  const error = bodyError ?? selected?.error
+    ?? (unavailableCount ? `${unavailableCount} unavailable` : null);
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
-    if (!selected) return [];
+    if (!selectedView) return [];
     const info: PaneFooterSegment[] = [
-      { id: "as-of", parts: [{ text: `as of ${selected.asOf}`, tone: "muted" }] },
-      { id: "delayed", parts: [{ text: "delayed", tone: "muted" }] },
+      { id: "as-of", parts: [{ text: `as of ${selectedView.asOf}`, tone: "muted" }] },
+      ...(width >= 80 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
     ];
-    if (selected.observationStale) {
+    if (selectedView.observationStale) {
       info.push({ id: "stale", parts: [{ text: "STALE", tone: "warning", bold: true }] });
     }
     if (normalizedQuery) {
       info.push({ id: "filter", parts: [{ text: `filter: ${normalizedQuery}`, tone: "value" }] });
     }
     return info;
-  }, [normalizedQuery, selected]);
+  }, [normalizedQuery, selectedView, width]);
 
   usePaneStatusFooter({
     registrationId: "market-valuation",
@@ -212,6 +243,9 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   const tableHeight = split
     ? Math.max(3, height - 2)
     : Math.min(visible.length + 2, Math.max(3, height - 12));
+  // The stacked table consumes rows outside the detail scroll viewport.
+  const bodyHeight = Math.max(1, height - (bodyError ? 1 : 0));
+  const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight - 1);
 
   const list = (
     <Box flexDirection="column" width={listWidth} flexShrink={0}>
@@ -229,7 +263,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
         onQueryChange={setQuery}
       />
       <Box flexDirection="column" width={listWidth} height={tableHeight} flexShrink={0} overflow="hidden">
-        <DataTableView<IndicatorViewModel, Column>
+        <DataTableView<IndicatorRow, Column>
           focused={focused && !searchFocused}
           rootWidth={listWidth}
           rootHeight={tableHeight}
@@ -254,7 +288,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
   );
 
   const detail = (
-    <Box flexDirection="column" flexGrow={1} width={detailWidth} overflow="hidden">
+    <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
       <Box flexDirection="row" height={1} paddingX={1} overflow="hidden" justifyContent="flex-end">
         <SegmentedControl
           options={RANGE_OPTIONS}
@@ -262,14 +296,24 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
           onChange={(value) => setRange(value as ValuationRangeId)}
         />
       </Box>
-      <ScrollBox flexGrow={1} scrollY focusable={false}>
+      <ScrollBox height={Math.max(1, detailHeight - 1)} scrollY focusable={false}>
         <Box flexDirection="column" paddingBottom={1}>
-          <IndicatorDetail
-            view={selected}
+          {selectedView ? <IndicatorDetail
+            view={selectedView}
             width={detailWidth}
             height={Math.max(12, height - (split ? 3 : tableHeight + 3))}
             focused={focused && !searchFocused}
-          />
+          /> : (
+            <Box flexDirection="column" padding={1} gap={1}>
+              <EmptyState status="error" title={`${selected.indicator.label} unavailable`} message={selected.error ?? undefined} />
+              <Text fg={colors.textDim} wrapMode="word" wrapText>{selected.indicator.description}</Text>
+              {selected.indicator.link ? <ExternalLinkText
+                url={selected.indicator.link.url}
+                label={selected.indicator.link.label}
+                color={colors.textDim}
+              /> : null}
+            </Box>
+          )}
         </Box>
       </ScrollBox>
     </Box>
@@ -281,9 +325,9 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
         {list}
         {detail}
       </Box>
-      {error ? (
+      {bodyError ? (
         <Box height={1} paddingX={1} overflow="hidden">
-          <Notice>{error}</Notice>
+          <Notice>{bodyError}</Notice>
         </Box>
       ) : null}
     </Box>

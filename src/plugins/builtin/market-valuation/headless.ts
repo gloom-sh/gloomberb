@@ -24,6 +24,8 @@ function detailEntries(view: IndicatorViewModel): HeadlessPaneEntry[] {
   const format = view.indicator.formatValue;
   return [
     { label: "Current", value: view.current.ratio, formatted: format(view.current.ratio) },
+    { label: "Basis", value: view.indicator.description },
+    { label: "Unit", value: view.indicator.axisUnit || "x" },
     {
       label: "1Y ago",
       value: view.ratioOneYearAgo,
@@ -66,6 +68,8 @@ export function projectValuationHeadlessBundle(
     indicator: view.indicator.label,
     value: view.current.ratio,
     formattedValue: view.indicator.formatValue(view.current.ratio),
+    basis: view.indicator.description,
+    unit: view.indicator.axisUnit || "x",
     zone: view.zone.label,
     richPercentile: view.richPercentile,
     richSigma: view.richSigma,

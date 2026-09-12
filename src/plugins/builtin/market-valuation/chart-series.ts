@@ -4,7 +4,7 @@ import { colors } from "../../../theme/colors";
 import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
 import { buildValuationSeries } from "./align";
 import { defaultValuationSeriesLoader, type ValuationSeriesLoader } from "./client";
-import { indicatorSeries, type IndicatorDef } from "./defs";
+import { indicatorUnavailableReason, indicatorSeries, type IndicatorDef } from "./defs";
 import { findIndicator, INDICATORS } from "./indicators";
 import type { DatedSeries } from "./series";
 
@@ -59,6 +59,8 @@ export async function resolveValuationSeries(
     throw new Error(`Unknown valuation series ${seriesId}`);
   }
 
+  const unavailable = indicatorUnavailableReason(indicator);
+  if (unavailable) throw new Error(unavailable);
   const legs = new Map<string, DatedSeries>();
   await Promise.all(indicatorSeries(indicator).map(async (def) => {
     legs.set(def.key, await loader(def));
@@ -74,9 +76,9 @@ export async function resolveValuationSeries(
     id: `market-valuation:${indicator.id}`,
     label: indicator.label,
     color: colors.textBright,
-    // Percent-scaled ratios share an axis with each other, never with a price.
-    unit: indicator.ratioScale === 100 ? "%" : "x",
-    unitGroup: indicator.ratioScale === 100 ? "valuation-percent" : "valuation-ratio",
+    // Source percentages need the same units as ratios scaled into percentages.
+    unit: indicator.axisUnit === "%" ? "%" : "x",
+    unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation-ratio",
     nativeFrequency: "daily",
     dataShape: "scalar",
     style: "line",

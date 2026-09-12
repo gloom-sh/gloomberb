@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
-import { attachValuationPersistence, resetValuationPersistence } from "./cache";
-import { loadValuationBundle, requiredSeries, type ValuationSeriesLoader } from "./client";
+import { attachValuationPersistence, loadCachedSeries, resetValuationPersistence } from "./cache";
+import { createValuationSeriesLoader, getCachedValuationBundle, loadValuationBundle, requiredSeries, type ValuationSeriesLoader } from "./client";
 import { BUFFETT_INDICATOR, INDICATORS, SHILLER_CAPE, TOBINS_Q } from "./indicators";
 import type { DatedObservation, DatedSeries } from "./series";
+import { buildValuationSeries } from "./align";
+import { resolveValuationSeries } from "./chart-series";
 import { createSourceLoader, shillerObservations } from "./sources";
 
 function obs(values: Array<[string, number]>): DatedObservation[] {
@@ -39,32 +41,44 @@ afterEach(resetValuationPersistence);
 
 describe("requiredSeries", () => {
   test("fetches a leg shared by two indicators only once", () => {
-    // Buffett and Cap/M2 share the Wilshire leg.
-    const keys = requiredSeries(INDICATORS).map((def) => def.key);
-    expect(keys.filter((key) => key === "W5000")).toHaveLength(1);
+    const keys = requiredSeries([TOBINS_Q, TOBINS_Q, BUFFETT_INDICATOR]).map((def) => def.key);
+    expect(keys.filter((key) => key === "NCBEILQ027S")).toHaveLength(1);
+    expect(keys).not.toContain("W5000");
     expect(new Set(keys).size).toBe(keys.length);
   });
 });
 
 describe("loadValuationBundle", () => {
-  test("builds every registered indicator", async () => {
-    const bundle = await loadValuationBundle({ loader: everyLeg });
-    expect(bundle.builds.map((build) => build.indicator.id))
-      .toEqual(INDICATORS.map((indicator) => indicator.id));
+  test("does not fetch or compute unsupported monetary inputs, leaving six independent measures", async () => {
+    const requested: string[] = [];
+    const bundle = await loadValuationBundle({ loader: async (def) => {
+      requested.push(def.key);
+      return everyLeg(def);
+    } });
+    expect(requested).not.toContain("W5000");
+    expect(requested).not.toContain("CPROFIT");
+    expect(requested).not.toContain("M2SL");
+    expect(bundle.builds.map((build) => build.indicator.id)).toEqual([
+      "shiller-cape", "excess-cape-yield", "tobins-q", "household-equity-allocation",
+      "sp500-dividend-yield", "margin-debt-gdp",
+    ]);
+    expect(bundle.builds.find((build) => build.indicator.id === "shiller-cape")!.series.points.at(-1)!.ratio).toBe(38.1);
+    expect(bundle.builds.find((build) => build.indicator.id === "tobins-q")!.series.points.at(-1)!.ratio).toBeCloseTo(64 / 41);
+    expect(bundle.errors).toHaveLength(3);
+    expect(bundle.errors.every((error) => error.includes("index points"))).toBe(true);
   });
 
   test("one broken leg only drops the indicators that need it", async () => {
     const bundle = await loadValuationBundle({
       loader: async (def) => {
-        if (def.key === "W5000") throw new Error("history unavailable");
+        if (def.key === "NCBEILQ027S") throw new Error("FRED unavailable");
         return everyLeg(def);
       },
     });
     const ids = bundle.builds.map((build) => build.indicator.id);
-    expect(ids).not.toContain("buffett");
-    expect(ids).not.toContain("market-cap-m2");
+    expect(ids).not.toContain("tobins-q");
     expect(ids).toContain("shiller-cape");
-    expect(bundle.errors.join(" ")).toContain("W5000");
+    expect(bundle.errors.join(" ")).toContain("FRED unavailable");
   });
 
   test("throws when nothing builds", async () => {
@@ -137,5 +151,38 @@ describe("shillerObservations", () => {
       sourceUrl: "x",
       fetchedAt: "y",
     }, "earnings")).toThrow("no earnings observations");
+  });
+});
+
+
+describe("market-capitalization source basis", () => {
+  test("legacy persisted index closes cannot revive any of the three monetary ratios", async () => {
+    await Promise.all(Object.entries(LEGS).map(([key, observations]) => loadCachedSeries(key, async () => observations)));
+    const cached = getCachedValuationBundle()!;
+    expect(cached.builds).toHaveLength(6);
+    expect(cached.errors).toHaveLength(3);
+    const legs = new Map(Object.entries(LEGS).map(([seriesId, observations]) => [seriesId, { seriesId, observations, provenance: "fred" as const }]));
+    for (const id of ["buffett", "market-cap-profits", "market-cap-m2"]) {
+      const indicator = INDICATORS.find((entry) => entry.id === id)!;
+      expect(() => buildValuationSeries(indicator, legs)).toThrow("index points");
+      await expect(loadValuationBundle({ loader: everyLeg, indicators: [indicator] })).rejects.toThrow("dollar market capitalization");
+      let calls = 0;
+      await expect(resolveValuationSeries(id, async (def) => { calls += 1; return everyLeg(def); })).rejects.toThrow("index points");
+      expect(calls).toBe(0);
+    }
+    const loader = createValuationSeriesLoader({
+      loadFred: async () => { throw new Error("unexpected transport"); },
+      loadMarketHistory: async () => { throw new Error("unexpected transport"); },
+      loadShiller: async () => { throw new Error("unexpected transport"); },
+    });
+    if (BUFFETT_INDICATOR.input.kind !== "ratio") throw new Error("ratio expected");
+    await expect(loader(BUFFETT_INDICATOR.input.numerator)).rejects.toThrow("index points");
+    const cape = await resolveValuationSeries("shiller-cape", everyLeg);
+    expect(cape.points.at(-1)!.value).toBe(38.1);
+    const allocation = await resolveValuationSeries("household-equity-allocation", everyLeg);
+    expect(allocation.points.at(-1)!.value).toBe(45.8);
+    expect(allocation.unit).toBe("%");
+    expect(allocation.unitGroup).toBe("valuation-percent");
+    expect(cape.unit).toBe("x");
   });
 });

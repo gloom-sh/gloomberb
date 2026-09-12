@@ -107,53 +107,41 @@ export function IndicatorDetail({
         </Box>
       )}
 
-      <Box flexDirection="column" gap={0}>
+      <Text fg={colors.textDim} wrapMode="word" wrapText>{indicator.description}</Text>
+
+      <Box flexDirection="column" gap={0} width={Math.max(1, width - 2)}>
         {levels && view.current.numeratorBillions != null
           && view.current.denominatorBillions != null ? (
-          <Box flexDirection="row" height={1} overflow="hidden">
-            <Text fg={colors.textDim}>{`${levels.numeratorLabel} `}</Text>
-            <Text fg={colors.textBright}>{formatTrillions(view.current.numeratorBillions)}</Text>
-            <Text fg={colors.textDim}>{`  ${levels.denominatorLabel} `}</Text>
-            <Text fg={colors.textBright}>{formatTrillions(view.current.denominatorBillions)}</Text>
-            {view.vintageLabel ? (
-              <Text fg={colors.textDim}>{`  ${view.vintageLabel}`}</Text>
-            ) : null}
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2} rowGap={0}>
+            <Box flexDirection="row" flexShrink={0}>
+              <Text fg={colors.textDim}>{`${levels.numeratorLabel} `}</Text>
+              <Text fg={colors.textBright}>{formatTrillions(view.current.numeratorBillions)}</Text>
+            </Box>
+            <Box flexDirection="row" flexShrink={0}>
+              <Text fg={colors.textDim}>{`${levels.denominatorLabel} `}</Text>
+              <Text fg={colors.textBright}>{formatTrillions(view.current.denominatorBillions)}</Text>
+            </Box>
+            {view.vintageLabel ? <Text fg={colors.textDim}>{view.vintageLabel}</Text> : null}
           </Box>
         ) : null}
-        <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={colors.textDim}>1Y ago </Text>
-          <Text fg={colors.text}>
-            {view.ratioOneYearAgo == null ? "--" : indicator.formatValue(view.ratioOneYearAgo)}
-          </Text>
-          <Text fg={colors.textDim}>{"  mean "}</Text>
-          <Text fg={colors.text}>{indicator.formatValue(view.mean)}</Text>
-          <Text fg={colors.textDim}>{"  ATH "}</Text>
-          <Text fg={colors.text}>
-            {`${indicator.formatValue(view.allTimeHigh.ratio)} ${view.allTimeHigh.date}`}
-          </Text>
-          <Text fg={colors.textDim}>{"  ATL "}</Text>
-          <Text fg={colors.text}>
-            {`${indicator.formatValue(view.allTimeLow.ratio)} ${view.allTimeLow.date}`}
-          </Text>
+        <Box flexDirection="row" flexWrap="wrap" columnGap={2} rowGap={0}>
+          {[
+            ["1Y ago", view.ratioOneYearAgo == null ? "--" : indicator.formatValue(view.ratioOneYearAgo)],
+            ["mean", indicator.formatValue(view.mean)],
+            ["ATH", `${indicator.formatValue(view.allTimeHigh.ratio)} ${view.allTimeHigh.date}`],
+            ["ATL", `${indicator.formatValue(view.allTimeLow.ratio)} ${view.allTimeLow.date}`],
+          ].map(([label, value]) => (
+            <Box key={label} flexDirection="row" flexShrink={0}>
+              <Text fg={colors.textDim}>{`${label} `}</Text>
+              <Text fg={colors.text}>{value}</Text>
+            </Box>
+          ))}
         </Box>
       </Box>
 
-      <Box flexDirection="column" gap={1} width={Math.max(1, width - 2)}>
-        {indicator.notes.map((note) => (
-          <Text key={note.slice(0, 24)} fg={colors.textDim} wrapMode="word" wrapText>
-            {note}
-          </Text>
-        ))}
-        {indicator.link ? (
-          <Box flexDirection="row" height={1} overflow="hidden">
-            <ExternalLinkText
-              url={indicator.link.url}
-              label={indicator.link.label}
-              color={colors.text}
-            />
-          </Box>
-        ) : null}
-      </Box>
+      {indicator.link ? (
+        <ExternalLinkText url={indicator.link.url} label={indicator.link.label} color={colors.text} />
+      ) : null}
     </Box>
   );
 }

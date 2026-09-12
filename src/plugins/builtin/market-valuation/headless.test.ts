@@ -51,8 +51,16 @@ describe("market valuation headless model", () => {
       "Shiller CAPE",
     ]);
     expect(result.sections[0]).toMatchObject({
-      rows: [{ id: "shiller-cape", value: 39, formattedValue: "39.0" }],
+      rows: [{ id: "shiller-cape", value: 39, formattedValue: "39.0", unit: "x" }],
     });
+    expect(result.sections[1]).toMatchObject({ entries: expect.arrayContaining([
+      { label: "Basis", value: expect.stringContaining("real earnings") },
+    ]) });
+    for (const indicator of ["buffett", "market-cap-profits", "market-cap-m2"]) {
+      await expect(marketValuationHeadless.load({ ...loadArgs(), argument: indicator }, context))
+        .rejects.toThrow("dollar market capitalization");
+    }
+    expect(shillerCalls).toBe(1);
     expect(result.metadata).toMatchObject({ range: "10Y", selected: "shiller-cape" });
   });
 });
