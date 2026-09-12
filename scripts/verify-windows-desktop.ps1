@@ -1233,7 +1233,7 @@ function Restore-EnvironmentVariable {
   param(
     [string]$Name,
     [AllowNull()]
-    [string]$Value
+    [object]$Value
   )
 
   if ($null -eq $Value) {

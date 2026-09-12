@@ -20,6 +20,24 @@ function Assert-Condition {
   if (-not $Condition) { throw $Message }
 }
 
+# PowerShell 7.5 distinguishes an absent variable from a present empty value.
+# A string-typed restoration argument would coerce the former to the latter.
+$RestoreTestName = "GLOOM_DIAGNOSTICS_RESTORE_$([Guid]::NewGuid().ToString('N'))"
+try {
+  foreach ($ExpectedValue in @($null, "", "original")) {
+    Set-Item -Path "Env:$RestoreTestName" -Value "temporary"
+    Restore-EnvironmentVariable $RestoreTestName $ExpectedValue
+    $Restored = Get-Item -Path "Env:$RestoreTestName" -ErrorAction SilentlyContinue
+    if ($null -eq $ExpectedValue) {
+      Assert-Condition ($null -eq $Restored) "Restoration created an originally absent variable"
+    } else {
+      Assert-Condition ($null -ne $Restored -and $Restored.Value -ceq $ExpectedValue) "Restoration changed an existing variable"
+    }
+  }
+} finally {
+  Remove-Item -Path "Env:$RestoreTestName" -ErrorAction SilentlyContinue
+}
+
 function New-TestProcess {
   param([int]$ProcessId, [string]$Name)
   $Process = [pscustomobject]@{
