@@ -28,6 +28,12 @@ Market capitalization can come from a financial snapshot when a current quote do
 
 Bank capital metrics and REIT FFO/AFFO depend on source coverage. Operating cash flow is not a substitute for FFO/AFFO. Missing measures are identified in the financial view.
 
+## Treasury curve
+
+GC plots constant-maturity Treasury yields against elapsed maturity, with month/year axis and cursor labels. The table retains each tenor's published observation date. The 10Y−2Y spread is measured in basis points; a negative value indicates inversion. Missing tenors remain unavailable, and a curve requires matching dates.
+
+Use the existing Date footer action (`d`) to enter an as-of date, then Enter to submit. Latest (`l`) returns to the latest published curve. A holiday or weekend request uses the latest preceding published session within the lookup window; the requested date and observation date remain distinct. Refresh time is not the observation date.
+
 ## Portfolio analytics
 
 P&L for manual portfolios covers current holdings. Manual portfolios have no cash-flow performance history; reconcile corporate actions through **PF → Set position**. Distributions are not automatically credited.
