@@ -87,3 +87,7 @@ Event EPS and consensus can use an unspecified accounting basis, while TTM value
 Consensus estimates are forecasts for the stated fiscal period. The provider's prior-year input can itself be an estimate; it does not establish a reported result. Fetched timestamps identify retrieval, not when consensus was revised. Filing evidence corroborates a fiscal period without verifying every reported metric.
 
 Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered. Source failures and unavailable event data remain visible rather than appearing as an empty event calendar.
+
+## Earnings estimate comparisons
+
+ERN groups and displays announcement dates on the same UTC calendar day. Exact call times, when supplied without a market-session label, use your local time. EPS 30D is the current estimate minus the estimate from thirty days earlier; a seven-day observation cannot fill a missing thirty-day value. REV 30D shows upward/downward revision counts over that same thirty-day window. An unknown count remains unavailable rather than becoming zero, and a directional color requires both counts. The CLI retains separately named seven-day and thirty-day source fields.
