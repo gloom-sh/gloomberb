@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AsciiText,
   Box,
   ChartSurface,
   ScrollBox,
@@ -17,6 +18,7 @@ import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
+import { CHART_WATERMARK_ROLE } from "../../../utils/screenshot-watermark";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { downsampleCompositeChartScene } from "./downsample";
 import { reuseResolvedSeriesList } from "./panel-series";
@@ -2292,6 +2294,23 @@ export function CompositeChart({
           showTextFallback={showTextFallback}
         />
       ))}
+      {isDesktopWeb ? (
+        // Hidden until a screenshot reveals it (see utils/screenshot-watermark).
+        // Above the opaque bitmaps, below drawings, crosshair and readouts.
+        <Box
+          position="absolute"
+          left={leftPadding}
+          top={legendRows}
+          width={plotWidth}
+          height={plotHeight}
+          zIndex={5}
+          alignItems="center"
+          justifyContent="center"
+          data-gloom-role={CHART_WATERMARK_ROLE}
+        >
+          <AsciiText text="Gloomberb" font="wordmark" color={resolvedColors.textDim} />
+        </Box>
+      ) : null}
       {xMarkers.length > 0 ? (
         <Box
           position="absolute"

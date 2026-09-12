@@ -114,6 +114,7 @@ export function WebAsciiText({
     <div
       {...cleanDomProps(props)}
       data-gloom-role={(props["data-gloom-role"] as string | undefined) ?? "ascii-text"}
+      data-gloom-wordmark={wordmarkVariant ?? undefined}
       style={{
         ...commonStyle({ ...props, fg: resolvedColor, bg: resolvedBackground }),
         display: isLegacyWordmark ? "flex" : "block",

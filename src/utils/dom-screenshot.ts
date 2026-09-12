@@ -1,5 +1,7 @@
 /// <reference lib="dom" />
 
+import { isScreenshotWatermarkVisible, setScreenshotWatermarkVisible } from "./screenshot-watermark";
+
 export interface PngScreenshot {
   pngBase64: string;
   width: number;
@@ -355,7 +357,15 @@ async function captureElementPngBase64(element: HTMLElement): Promise<PngScreens
   if (!context) throw new Error("Could not create pane screenshot.");
   context.scale(scale, scale);
   context.clearRect(0, 0, width, height);
-  drawElement(context, element, { left: rect.left, top: rect.top });
+  // Reveal the chart watermark only for the synchronous paint below: the
+  // browser never gets a frame in between, so the live UI does not flicker.
+  const watermarkWasVisible = isScreenshotWatermarkVisible();
+  setScreenshotWatermarkVisible(true);
+  try {
+    drawElement(context, element, { left: rect.left, top: rect.top });
+  } finally {
+    if (!watermarkWasVisible) setScreenshotWatermarkVisible(false);
+  }
 
   return {
     pngBase64: await blobToBase64(await canvasToPngBlob(canvas)),

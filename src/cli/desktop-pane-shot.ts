@@ -190,6 +190,8 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
         const style = document.createElement("style");
         style.textContent = ${JSON.stringify(SHOT_MODE_CSS)};
         document.head.appendChild(style);
+        // Same brand mark charts show for in-app pane captures and OS screenshots.
+        document.documentElement.setAttribute("data-gloom-screenshot", "true");
         const watermark = ${JSON.stringify(payload.watermark ?? null)};
         if (watermark) {
           const mark = document.createElement("div");
