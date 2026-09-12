@@ -1,6 +1,7 @@
 import { readdir, readFile, stat } from "fs/promises";
 import { join, relative } from "path";
 import { WEB_BUNDLED_PLUGIN_PACKAGES } from "../src/plugins/web-bundled";
+import { isProxiedHost } from "../src/utils/plugin-proxy-hosts";
 
 const root = join(process.cwd(), "dist", "web");
 
@@ -21,11 +22,21 @@ const NATIVE_OR_FORK = /kohor\.st|__GLOOM_CLOUD_HOSTED|\/_gloomberb\/rpc|receive
  *
  * A host that sends no CORS headers can still ship here: that is how every
  * bundled plugin reaches its data, by declaring the host and letting the worker
- * proxy it (`src/utils/plugin-proxy-hosts.json`). The hosts below belong to
- * panes deliberately left out of the browser catalog, so finding one means a
- * pane got in that cannot fetch anything once it renders.
+ * proxy it. So the list below is filtered by the committed allowlist rather
+ * than checked as written: a host a bundled plugin declares is reachable by
+ * definition, and leaving it here would fail the build the day that plugin
+ * ships. What remains belongs to panes deliberately left out of the browser
+ * catalog, where finding one means a pane got in that cannot fetch anything
+ * once it renders.
  */
-const UNSUPPORTED_PROVIDER = /api\.thebuildout\.ai|api\.elections\.kalshi\.com|forms13f\.com/;
+const UNSUPPORTED_PROVIDER_HOSTS = [
+  "api.thebuildout.ai",
+  "api.elections.kalshi.com",
+  "forms13f.com",
+].filter((host) => !isProxiedHost(host));
+const UNSUPPORTED_PROVIDER = UNSUPPORTED_PROVIDER_HOSTS.length > 0
+  ? new RegExp(UNSUPPORTED_PROVIDER_HOSTS.map((host) => host.replaceAll(".", "\\.")).join("|"))
+  : null;
 
 const failures: string[] = [];
 for (const path of outputFiles) {
@@ -35,7 +46,7 @@ for (const path of outputFiles) {
   const content = await readFile(path, "utf8");
   if (/sourceMappingURL=/.test(content)) failures.push(`${name}: source map reference`);
   if (NATIVE_OR_FORK.test(content)) failures.push(`${name}: forbidden native or fork code`);
-  if (UNSUPPORTED_PROVIDER.test(content)) failures.push(`${name}: unsupported provider code`);
+  if (UNSUPPORTED_PROVIDER?.test(content)) failures.push(`${name}: unsupported provider code`);
   if (name.endsWith(".html")) {
     if (/<script(?![^>]*\bsrc=)[^>]*>/i.test(content)) failures.push(`${name}: inline script`);
     if (/<style\b/i.test(content)) failures.push(`${name}: inline style block`);

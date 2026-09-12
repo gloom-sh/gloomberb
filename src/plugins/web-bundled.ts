@@ -23,6 +23,7 @@ export const WEB_BUNDLED_PLUGIN_PACKAGES = [
   "gloom-market-halts",
   "gloom-market-heatmap",
   "gloom-polls",
+  "gloom-prediction-markets",
 ] as const;
 
 /**

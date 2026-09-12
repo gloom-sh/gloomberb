@@ -92,6 +92,7 @@
     "gloom-market-halts": "github:gloom-sh/gloom-market-halts",
     "gloom-market-heatmap": "github:gloom-sh/gloom-market-heatmap",
     "gloom-polls": "github:gloom-sh/gloom-polls",
+    "gloom-prediction-markets": "gloom-sh/gloom-prediction-markets",
     "happy-dom": "^20.11.1",
     "png-to-ico": "^2.1.8",
     "rcedit": "^4.0.1",
