@@ -123,7 +123,7 @@ export const openTuiUiHost: UiHost = {
   ImageSurface: OpenTuiImageSurface,
   MediaSurface: OpenTuiMediaSurface as UiHost["MediaSurface"],
   SpinnerMark: OpenTuiSpinnerMark as UiHost["SpinnerMark"],
-  AsciiText: ({ text, font = "tiny", color, fg, bg, backgroundColor, selectable = false, ...props }) => {
+  AsciiText: ({ text, font = "tiny", color, fg, bg, backgroundColor, selectable = false, scale: _scale, ...props }) => {
     const resolvedColor = color ?? fg;
     const resolvedBackground = backgroundColor ?? bg;
     if (font === "wordmark") {

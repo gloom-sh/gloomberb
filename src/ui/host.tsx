@@ -261,6 +261,12 @@ interface SpinnerMarkProps extends BoxProps {
 export interface AsciiTextProps extends BoxProps {
   text: string;
   font?: AsciiFontName;
+  /**
+   * Multiplier on the glyph cell. When set, DOM hosts paint the block glyphs
+   * themselves at that size instead of relying on a font that has them, so
+   * the art looks the same on every platform. Terminals ignore it.
+   */
+  scale?: number;
   color?: string;
   fg?: string;
   bg?: string;

@@ -463,6 +463,24 @@ const ARMED_TOOL_BY_INTERACTION = {
 
 const COMPOSITE_PANEL_ROLE = "composite-chart-panel";
 
+// Wordmark cell grid at scale 1 (27 columns of 8px, 4 rows of 12px).
+const WATERMARK_BASE_WIDTH_PX = 216;
+const WATERMARK_BASE_HEIGHT_PX = 48;
+
+/**
+ * Size the screenshot wordmark to roughly half the plot width, capped so it
+ * stays a mark rather than a poster. Plots too small for a legible mark get
+ * none: a clipped wordmark reads as a glitch.
+ */
+export function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number | null {
+  const scale = Math.min(
+    (plotWidthPx * 0.5) / WATERMARK_BASE_WIDTH_PX,
+    (plotHeightPx * 0.4) / WATERMARK_BASE_HEIGHT_PX,
+    3,
+  );
+  return scale >= 1 ? Math.round(scale * 4) / 4 : null;
+}
+
 let nextDrawingSequence = 1;
 
 function nextDrawingId(): string {
@@ -1668,7 +1686,7 @@ export function CompositeChart({
   isSeriesToggleable,
 }: CompositeChartProps) {
   const activeThemeColors = useThemeColors();
-  const { cellWidthPx = 8, pixelRatio = 1 } = useUiCapabilities();
+  const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
   const isDesktopWeb = useUiHost().kind === "desktop-web";
   const showTextFallback = useShowChartTextFallback();
   const [internalCursorDate, setInternalCursorDate] = useState<Date | null>(null);
@@ -1932,6 +1950,9 @@ export function CompositeChart({
   const horizontalReserved = leftAxisWidth + rightAxisWidth
     + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0));
   const plotWidth = Math.max(1, totalWidth - horizontalReserved);
+  const watermarkScale = isDesktopWeb
+    ? chartWatermarkScale(plotWidth * cellWidthPx, plotHeight * cellHeightPx)
+    : null;
   const downsampleWidth = Math.max(
     1,
     Math.round(plotWidth * cellWidthPx * Math.max(1, pixelRatio)),
@@ -2294,7 +2315,7 @@ export function CompositeChart({
           showTextFallback={showTextFallback}
         />
       ))}
-      {isDesktopWeb ? (
+      {watermarkScale ? (
         // Hidden until a screenshot reveals it (see utils/screenshot-watermark).
         // Above the opaque bitmaps, below drawings, crosshair and readouts.
         <Box
@@ -2308,7 +2329,7 @@ export function CompositeChart({
           justifyContent="center"
           data-gloom-role={CHART_WATERMARK_ROLE}
         >
-          <AsciiText text="Gloomberb" font="wordmark" color={resolvedColors.textDim} />
+          <AsciiText text="Gloomberb" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />
         </Box>
       ) : null}
       {xMarkers.length > 0 ? (

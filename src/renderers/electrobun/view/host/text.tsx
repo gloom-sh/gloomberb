@@ -7,7 +7,9 @@ import {
   type TextProps,
 } from "../../../../ui/host";
 import { WEB_CELL_WIDTH } from "../input-host";
+import { renderAsciiText } from "../../../../ui/ascii-font";
 import { webAsciiTextLines, webAsciiTextWordmarkVariant } from "./ascii-text";
+import { BlockGlyphCanvas } from "./block-glyph-canvas";
 import { mouseHandlers } from "./mouse";
 import { cleanDomProps, commonStyle, textStyle } from "./style";
 
@@ -15,6 +17,10 @@ import { cleanDomProps, commonStyle, textStyle } from "./style";
 function wordmarkCharWidthPx(): number {
   return Math.max(10, WEB_CELL_WIDTH);
 }
+
+// Matches the legacy wordmark text rendering: one cell per glyph, 12px rows.
+const BLOCK_GLYPH_CELL_WIDTH = 8;
+const BLOCK_GLYPH_CELL_HEIGHT = 12;
 
 interface WebAsciiTextProps extends AsciiTextProps {
   desktopPlatform?: string;
@@ -98,8 +104,30 @@ export function WebAsciiText({
   backgroundColor,
   selectable = false,
   desktopPlatform,
+  scale,
   ...props
 }: WebAsciiTextProps) {
+  if (scale != null) {
+    return (
+      <div
+        {...cleanDomProps(props)}
+        data-gloom-role={(props["data-gloom-role"] as string | undefined) ?? "ascii-text"}
+        style={{
+          ...commonStyle({ ...props, bg: bg ?? backgroundColor }),
+          flexShrink: 0,
+          backgroundColor: bg ?? backgroundColor,
+          ...(props.style as CSSProperties | undefined),
+        }}
+      >
+        <BlockGlyphCanvas
+          lines={renderAsciiText(text, font)}
+          color={color ?? fg}
+          cellWidth={BLOCK_GLYPH_CELL_WIDTH * scale}
+          cellHeight={BLOCK_GLYPH_CELL_HEIGHT * scale}
+        />
+      </div>
+    );
+  }
   const wordmarkVariant = webAsciiTextWordmarkVariant(text, font, desktopPlatform);
   const isCompatWordmark = wordmarkVariant === "compat";
   const isLegacyWordmark = wordmarkVariant === "legacy";
@@ -114,7 +142,6 @@ export function WebAsciiText({
     <div
       {...cleanDomProps(props)}
       data-gloom-role={(props["data-gloom-role"] as string | undefined) ?? "ascii-text"}
-      data-gloom-wordmark={wordmarkVariant ?? undefined}
       style={{
         ...commonStyle({ ...props, fg: resolvedColor, bg: resolvedBackground }),
         display: isLegacyWordmark ? "flex" : "block",

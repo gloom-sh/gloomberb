@@ -587,16 +587,8 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 [data-gloom-role="chart-watermark"] {
   visibility: hidden;
   pointer-events: none;
-  opacity: 0.28;
-  container-type: size;
+  opacity: 0.4;
 }
 html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   visibility: visible;
-}
-/* A clipped wordmark reads as a glitch; small plots stay clean instead. */
-@container (width < 280px) or (height < 96px) {
-  [data-gloom-role="chart-watermark"] > [data-gloom-role="ascii-text"] { display: none; }
-}
-@container (width < 600px) {
-  [data-gloom-role="chart-watermark"] > [data-gloom-role="ascii-text"][data-gloom-wordmark="compat"] { display: none; }
 }
