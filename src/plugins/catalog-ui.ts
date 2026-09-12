@@ -4,7 +4,6 @@ import { newsPlugin } from "./builtin/news";
 import { notesPlugin } from "./builtin/notes";
 import { aiPlugin } from "./builtin/ai";
 import { gloomberbCloudPlugin } from "./builtin/cloud";
-import { predictionMarketsPlugin } from "./prediction-markets";
 import { alertsPlugin } from "./builtin/alerts";
 import { researchSearchPlugin } from "./builtin/research-search";
 import {
@@ -25,7 +24,6 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   newsPlugin,
   notesPlugin,
   aiPlugin,
-  predictionMarketsPlugin,
   marketOverviewPlugin,
   macroPlugin,
   alertsPlugin,

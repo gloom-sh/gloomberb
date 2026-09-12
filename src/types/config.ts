@@ -345,7 +345,7 @@ const DEFAULT_MONITOR_LAYOUT: LayoutConfig = {
       axis: "horizontal",
       ratio: 0.42,
       first: { kind: "pane", instanceId: "news-top:main" },
-      second: { kind: "pane", instanceId: "prediction-markets:main" },
+      second: { kind: "pane", instanceId: "market-movers:main" },
     },
     second: {
       kind: "split",
@@ -362,8 +362,8 @@ const DEFAULT_MONITOR_LAYOUT: LayoutConfig = {
       binding: { kind: "none" },
     },
     {
-      instanceId: "prediction-markets:main",
-      paneId: "prediction-markets",
+      instanceId: "market-movers:main",
+      paneId: "market-movers",
       binding: { kind: "none" },
     },
     {

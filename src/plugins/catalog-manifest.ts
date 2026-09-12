@@ -51,7 +51,6 @@ const EDITORIAL: Record<
   news: { categories: ["news"] },
   notes: { categories: ["productivity"] },
   portfolio: { categories: ["portfolio"] },
-  "prediction-markets": { categories: ["markets"] },
   "research-search": { categories: ["research", "news"] },
   "ticker-research": { categories: ["research"] },
   yahoo: { categories: ["data"] },

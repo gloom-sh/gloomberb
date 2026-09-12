@@ -28,6 +28,7 @@ export async function installPluginHostModules(): Promise<void> {
     dialog,
     marketData,
     timeSeries,
+    layout,
     quotes,
   ] = await Promise.all([
     import("react"),
@@ -46,6 +47,7 @@ export async function installPluginHostModules(): Promise<void> {
     import("../ui/dialog"),
     import("../public/market-data"),
     import("../public/time-series"),
+    import("../public/layout"),
     import("../public/quotes"),
   ]);
 
@@ -65,6 +67,7 @@ export async function installPluginHostModules(): Promise<void> {
     "gloomberb/dialog": dialog,
     "gloomberb/market-data": marketData,
     "gloomberb/time-series": timeSeries,
+    "gloomberb/layout": layout,
     "gloomberb/quotes": quotes,
   };
 

@@ -6,3 +6,8 @@
  */
 export * from "../time-series/range";
 export * from "../time-series/resolution";
+
+// The resolved shape itself: what a chart-series capability returns and what
+// the composite chart draws. A plugin that answers `chartSeriesProvider`
+// builds one of these.
+export * from "../time-series/types";

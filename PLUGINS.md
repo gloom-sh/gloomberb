@@ -426,6 +426,43 @@ return {
 };
 ```
 
+A command that launches into its own pane leaves the app on what the arguments
+asked for, in two places: the layout in `applyConfig`, and the pane's own state
+in `applySessionSnapshot`, which otherwise restores whatever the last session
+left. `gloomberb/layout` does both, so a plugin does not reimplement the host's
+placement rules:
+
+```typescript
+import { openPaneForLaunch, seedPaneLaunchSession } from "gloomberb/layout";
+
+return {
+  kind: "launch-ui",
+  request: {
+    applyConfig(config, env) {
+      const { config: next, paneInstanceId } = openPaneForLaunch(config, {
+        paneId: "my-pane",
+        instanceId: "my-pane:main",
+        paneDef: MY_PANE_DEF,
+        params: { query },
+        terminalSize: { width: env.terminalWidth, height: env.terminalHeight },
+      });
+      return { config: next, launchState: { paneInstanceId } };
+    },
+    applySessionSnapshot(config, snapshot, launchState) {
+      return seedPaneLaunchSession(config, snapshot, {
+        paneInstanceId: launchState?.paneInstanceId ?? "my-pane:main",
+        pluginId: "my-plugin",
+        pluginState: { query, selectedRowKey: null },
+      });
+    },
+  },
+};
+```
+
+`openPaneForLaunch` reuses the instance the user already has rather than adding
+a second one, re-places it when it was closed but its settings were kept, and
+brings it to the front when it is already floating behind something.
+
 ### Data access
 
 | Method | Returns |

@@ -25,6 +25,7 @@
     "./types/ticker": "./src/types/ticker.ts",
     "./types/trading": "./src/types/trading.ts",
     "./time-series": "./src/public/time-series.ts",
+    "./layout": "./src/public/layout.ts",
     "./market-data": "./src/public/market-data.ts",
     "./quotes": "./src/public/quotes.ts",
     "./dialog": "./src/ui/dialog.tsx",

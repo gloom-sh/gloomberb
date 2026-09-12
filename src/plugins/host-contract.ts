@@ -41,6 +41,10 @@ export const SHARED_SPECIFIERS = [
   "gloomberb/dialog",
   "gloomberb/market-data",
   "gloomberb/time-series",
+  // Layout placement reads and rewrites the app's own layout rules; a bundled
+  // copy would drag the whole pane manager into every plugin that has a launch
+  // command, and diverge from the host the next time those rules change.
+  "gloomberb/layout",
   // Quote subscriptions live in host state; a bundled copy would open its own
   // feed and never see the host's updates.
   "gloomberb/quotes",
