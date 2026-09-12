@@ -6,6 +6,7 @@ const REQUEST_METHODS = new Set([
   "getTickerFinancialsBatch",
   "getTickerFinancials",
   "getQuote",
+  "getQuoteMetadata",
   "getExchangeRate",
   "search",
   "getNews",

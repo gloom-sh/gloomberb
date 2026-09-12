@@ -3,6 +3,7 @@ import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types
 import { canonicalTickerKey, parsePublicTickerKey } from "../utils/exchanges";
 import { clipPriceHistoryToRange } from "../time-series/history-window";
 import { getPresetResolution, normalizeChartResolutionSupport, TIME_RANGE_ORDER, type ManualChartResolution } from "../time-series/resolution";
+import { quoteMetadataFromQuote } from "./quotes/metadata";
 
 export interface SnapshotMarketData {
   financials: ReadonlyArray<readonly [string, TickerFinancials]>;
@@ -86,6 +87,14 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     },
     async getQuote(symbol, exchange, context) {
       return intraday(symbol, exchange)?.quote ?? financials(symbol, exchange)?.quote ?? fallback.getQuote(symbol, exchange, context);
+    },
+    async getQuoteMetadata(symbol, exchange, context) {
+      const captured = financials(symbol, exchange);
+      if (captured?.quoteMetadata) return captured.quoteMetadata;
+      const quote = intraday(symbol, exchange)?.quote ?? captured?.quote;
+      if (quote) return quoteMetadataFromQuote(quote);
+      return fallback.getQuoteMetadata?.(symbol, exchange, context)
+        ?? fallback.getQuote(symbol, exchange, context).then(quoteMetadataFromQuote);
     },
     getQuotesBatch(targets, settings) {
       return seededBatch(targets, (target): QuoteBatchResult | undefined => {

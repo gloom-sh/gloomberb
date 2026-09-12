@@ -31,6 +31,7 @@ const assetDataPayloads: Record<string, PayloadBuilder> = {
   getTickerFinancialsBatch: (targets, options) => ({ targets, options }),
   getTickerFinancials: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getQuote: (ticker, exchange, context) => ({ ticker, exchange, context }),
+  getQuoteMetadata: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getExchangeRate: (fromCurrency) => ({ fromCurrency }),
   search: (query, context) => ({ query, context }),
   getSecFilings: (ticker, count, exchange, context) => ({ ticker, count, exchange, context }),

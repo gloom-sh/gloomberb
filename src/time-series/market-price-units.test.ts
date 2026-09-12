@@ -19,7 +19,7 @@ const spec = (transform: SeriesTransform = "raw"): ChartSpec => ({
 const resolve = (instrumentType?: string, transform: SeriesTransform = "raw") => resolveChartSpecData(spec(transform), {
   now: new Date("2026-09-11"),
   dataProvider: createTestDataProvider({
-    getQuote: async () => ({ symbol: "SHIB-USD", currency: "USD", instrumentType, price: 999, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") }),
+    getQuote: async () => ({ symbol: "SHIB-USD", listingExchangeName: "CCC", currency: "USD", instrumentType, price: 999, change: 0, changePercent: 0, lastUpdated: Date.parse("2026-09-11") }),
     getPriceHistory: async () => history,
     getPriceHistoryForResolution: async () => history,
   }),

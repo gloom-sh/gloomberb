@@ -18,7 +18,8 @@ import type {
 } from "../../types/data-provider";
 import type { CapabilityRouteSource } from "../../types/capability-route-source";
 import { routeSourcePriority } from "../../types/capability-route-source";
-import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteMetadata, TickerFinancials } from "../../types/financials";
+import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { NewsArticle, NewsQuery } from "../../news/types";
 import type { BrokerContractRef, InstrumentSearchResult } from "../../types/instrument";
 import type { TimeRange } from "../../time-series/range";
@@ -195,6 +196,26 @@ export class AssetDataRouter implements DataProvider {
 
   async getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote> {
     return this.financialRoutes.getQuote(ticker, exchange, context);
+  }
+
+  async getQuoteMetadata(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<QuoteMetadata | null> {
+    const cached = this.getCachedFinancialsForTargets([{ ...context, symbol: ticker, exchange }], { allowExpired: true, includeStaleQuotes: true })
+      .get(ticker.trim().toUpperCase());
+    const stored = cached?.quote ? quoteMetadataFromQuote(cached.quote) : cached?.quoteMetadata;
+    let known = stored && quoteMetadataMatchesTarget(stored, ticker, exchange) ? stored : undefined;
+    if (known?.currency && known.instrumentType) return known;
+    for (const provider of this.providersInPriorityOrder()) {
+      try {
+        const metadata = provider.getQuoteMetadata
+          ? await provider.getQuoteMetadata(ticker, exchange, context)
+          : quoteMetadataFromQuote(await provider.getQuote(ticker, exchange, context));
+        if (metadata && (metadata.currency || metadata.instrumentType) && quoteMetadataMatchesTarget(metadata, ticker, exchange)) {
+          known = mergeQuoteMetadata(known, metadata);
+          if (known?.currency && known.instrumentType) return known;
+        }
+      } catch { /* Optional listing metadata must not prevent historical research. */ }
+    }
+    return known ?? null;
   }
 
   async getExchangeRate(fromCurrency: string): Promise<number> {

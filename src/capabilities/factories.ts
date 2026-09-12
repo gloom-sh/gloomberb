@@ -1,4 +1,5 @@
 import type { AssetDataProvider } from "../types/data-provider";
+import { quoteMetadataFromQuote } from "../market-data/quotes/metadata";
 import type { NewsDataProvider } from "../types/capability-route-source";
 import {
   chartSeriesCatalogOutputSchema,
@@ -39,6 +40,8 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
       getTickerFinancialsBatch: op((input: any) => provider.getTickerFinancialsBatch?.(input.targets ?? [], input.options) ?? Promise.resolve([])),
       getTickerFinancials: op((input: any) => provider.getTickerFinancials(input.ticker, input.exchange, input.context)),
       getQuote: op((input: any) => provider.getQuote(input.ticker, input.exchange, input.context)),
+      getQuoteMetadata: op((input: any) => provider.getQuoteMetadata?.(input.ticker, input.exchange, input.context)
+        ?? provider.getQuote(input.ticker, input.exchange, input.context).then(quoteMetadataFromQuote)),
       getExchangeRate: op((input: any) => provider.getExchangeRate(input.fromCurrency)),
       search: op((input: any) => provider.search(input.query, input.context), "query"),
       getSecFilings: op((input: any) => {
