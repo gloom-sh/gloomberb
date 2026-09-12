@@ -5,7 +5,7 @@ import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from 
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, resolveChartSpecData } from "../../../time-series/resolve";
-import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow } from "../../../time-series/session-history";
+import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "../../../time-series/session-history";
 import { createSnapshotDataProvider } from "../../../market-data/snapshot-provider";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import { createChartSeriesResolver } from "../../../capabilities";
@@ -19,7 +19,7 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
   spec: ChartSpec;
   snapshot: {
     financials: Array<[string, TickerFinancials]>;
-    intradayHistories: Array<IntradayWindow & {
+    intradayHistories: Array<IntradayWindow & Pick<LoadedIntradayWindow, "quote" | "priceDomainFailure"> & {
       symbol: string;
       exchange: string;
       rangePreset: IntradayRequest["rangePreset"];
@@ -184,6 +184,12 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }
       }
       model.snapshot.intradayHistories = intradayHistories;
+      const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
+        priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
+      if (priceDomainFailures.length) {
+        model.complete = false;
+        model.metadata = { ...model.metadata, intradayPriceDomainFailures: priceDomainFailures };
+      }
       for (const { symbol, exchange, points, unavailableReason } of intradayHistories) {
         const key = publicTickerKey(symbol, exchange);
         if (!model.snapshot.financials.some(([candidate]) => candidate === key)) {

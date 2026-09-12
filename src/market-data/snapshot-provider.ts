@@ -1,5 +1,5 @@
 import type { DataProvider, CachedFinancialsTarget, TickerFinancialsBatchResult, QuoteBatchResult } from "../types/data-provider";
-import type { OptionsChain, PricePoint, TickerFinancials } from "../types/financials";
+import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../types/financials";
 import { canonicalTickerKey, parsePublicTickerKey } from "../utils/exchanges";
 import { clipPriceHistoryToRange } from "../time-series/history-window";
 import { getPresetResolution, normalizeChartResolutionSupport, TIME_RANGE_ORDER, type ManualChartResolution } from "../time-series/resolution";
@@ -12,6 +12,8 @@ export interface SnapshotMarketData {
     resolution: ManualChartResolution;
     points: PricePoint[];
     unavailableReason: string | null;
+    /** Metadata already fetched to validate the captured history's price domain. */
+    quote?: Quote;
   }>;
   optionsChains?: ReadonlyArray<readonly [string, OptionsChain]>;
 }
@@ -75,11 +77,11 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
       }))));
     },
     async getQuote(symbol, exchange, context) {
-      return financials(symbol, exchange)?.quote ?? fallback.getQuote(symbol, exchange, context);
+      return intraday(symbol, exchange)?.quote ?? financials(symbol, exchange)?.quote ?? fallback.getQuote(symbol, exchange, context);
     },
     getQuotesBatch(targets, settings) {
       return seededBatch(targets, (target): QuoteBatchResult | undefined => {
-        const quote = financials(target.symbol, target.exchange)?.quote;
+        const quote = intraday(target.symbol, target.exchange)?.quote ?? financials(target.symbol, target.exchange)?.quote;
         return quote ? { target, quote } : undefined;
       }, (missing) => fallback.getQuotesBatch?.(missing, settings) ?? Promise.all(missing.map(async (target) => ({
         target, quote: await fallback.getQuote(target.symbol, target.exchange, target.context),
