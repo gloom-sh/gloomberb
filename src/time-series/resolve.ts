@@ -1,4 +1,5 @@
 import { resolveAssetDisplayKind } from "../market-data/market/format";
+import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { HistoryCoverageError, historyCoverageNotice, isShellLondonTarget } from "../sources/history-coverage";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financial-statements";
@@ -656,6 +657,7 @@ async function loadPriceHistory(
       observeCoverage(detailed);
       if (historyIntersectsBounds(detailed, request.visibleBounds)) return detailed;
     } catch (error) {
+      if (error instanceof SnapshotHistoryUnavailableError) throw error;
       if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
       // Fall through to trailing history when a provider cannot serve the exact window.
     }
@@ -686,6 +688,7 @@ async function loadPriceHistory(
         return resolved;
       }
     } catch (error) {
+      if (error instanceof SnapshotHistoryUnavailableError) throw error;
       if (error instanceof HistoryCoverageError) coverageNotice ??= error.message;
       // Some providers expose the resolution API but only support a subset.
     }

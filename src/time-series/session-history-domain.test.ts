@@ -3,7 +3,7 @@ import type { PricePoint, Quote } from "../types/financials";
 import { createDefaultConfig } from "../types/config";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { createSnapshotDataProvider } from "../market-data/snapshot-provider";
-import { chartHeadless, type ChartPaneModel } from "../plugins/builtin/chart-composer/headless";
+import { chartHeadless, loadChartPaneModel, type ChartPaneModel } from "../plugins/builtin/chart-composer/headless";
 import { buildIntradayPriceChartPreset } from "../plugins/builtin/chart-composer/presets";
 import { loadIntradayWindow, resolveIntradaySessionWindow } from "./session-history";
 
@@ -130,5 +130,31 @@ describe("intraday price domains", () => {
     expect((await provider.getQuotesBatch!([{ symbol: "CL=F", exchange: "NYMEX" }]))[0]?.quote).toBe(captured);
     await expect(provider.getTickerFinancials("CL=F", "NYMEX")).rejects.toThrow("unused");
     await expect(provider.getQuote("CL=F", "OTHER")).rejects.toThrow("unused");
+  });
+
+  test("captured GIP domain failures survive the chart reload used by rendered screenshots", async () => {
+    const { model } = await modelFor(bars([17.73, 0, -37.63, 1.5]), quote("EQUITY"));
+    const reason = model.snapshot.intradayHistories[0]!.unavailableReason!;
+    expect(model.errors).toHaveLength(1);
+    for (const exactWindow of [true, false]) {
+      let calls = 0;
+      const snapshot = createSnapshotDataProvider(model.snapshot, createTestDataProvider({
+        getPriceHistoryForResolution: async () => { calls++; return bars([10, 11]); },
+        getDetailedPriceHistory: async () => { calls++; return bars([10, 11]); },
+      }));
+      const spec = { ...model.spec, viewport: { ...model.spec.viewport } };
+      if (!exactWindow) delete spec.viewport.dateWindow;
+      const reloaded = await loadChartPaneModel(spec, {
+        marketData: snapshot, apiClient: {} as never,
+        config: createDefaultConfig("/tmp/gloom-session-domain-reload"),
+        signal: new AbortController().signal,
+      });
+      expect(reloaded.errors).toHaveLength(1);
+      expect(reloaded.errors?.[0]).toContain(reason);
+      expect(reloaded.chart.warnings.some((warning) => warning.includes(reason))).toBe(true);
+      expect(reloaded.chart.warnings.join(" ")).not.toContain("Choose Auto");
+      expect(reloaded.series.every(({ points }) => points.length === 0)).toBe(true);
+      expect(calls).toBe(0);
+    }
   });
 });
