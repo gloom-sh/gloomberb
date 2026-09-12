@@ -14,6 +14,36 @@ afterEach(() => {
 });
 
 describe("13F data cache", () => {
+  test("keeps performance returns and latest filing metadata in their own reporting periods", async () => {
+    let reportedPeriod = "2026-09-30";
+    setHttpFetchTransport(async (url) => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/funds")) return json([{ cik: "1067983", name: "Fund" }]);
+      if (path.endsWith("/topfunds")) return json([{
+        cik: "1067983", name: "Fund", period_of_report: "2026-06-30", pnl: 12,
+      }]);
+      if (path.endsWith("/forms")) return json([{
+        accession_number: "filing", cik: "1067983", company_name: "Fund", submission_type: "13F-HR",
+        period_of_report: reportedPeriod, filed_as_of_date: "2026-10-15", table_value_total: 100, table_entry_total: 2,
+      }]);
+      return json([]);
+    });
+    const performance = await loadBrowserRows("performance", "");
+    expect(performance.rows[0]).toMatchObject({ periodOfReport: "2026-06-30", estQuarterReturn: 12 });
+    expect(performance.rows[0]?.tableValueTotal).toBeUndefined();
+    expect(performance.rows[0]?.filedAsOfDate).toBeUndefined();
+    expect(performance.rows[0]?.tableEntryTotal).toBeUndefined();
+
+    const funds = await loadBrowserRows("funds", "Fund");
+    expect(funds.rows[0]).toMatchObject({ periodOfReport: "2026-09-30", tableValueTotal: 100, estQuarterReturn: null });
+
+    reportedPeriod = "2026-06-30";
+    for (const tab of ["performance", "funds"] as const) {
+      const matching = await loadBrowserRows(tab, "Fund");
+      expect(matching.rows[0]).toMatchObject({ periodOfReport: "2026-06-30", tableValueTotal: 100, estQuarterReturn: 12 });
+    }
+  });
+
   test("loads all additive filings, uses their combined denominator, and detects truncated holdings", async () => {
     const fetched: string[] = [];
     const forms = [
