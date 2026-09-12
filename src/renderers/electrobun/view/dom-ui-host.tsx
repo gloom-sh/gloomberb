@@ -68,8 +68,10 @@ export function createDomUiHost(
       publicSharing: options.publicSharing ?? false,
       precisePointer: true,
       fractionalViewport: true,
-      cellWidthPx: WEB_CELL_WIDTH,
-      cellHeightPx: WEB_CELL_HEIGHT,
+      // Live: the grid resizes with the configured font size (theme/font-scale),
+      // and pixel measurements derived from cells must follow it.
+      get cellWidthPx() { return WEB_CELL_WIDTH; },
+      get cellHeightPx() { return WEB_CELL_HEIGHT; },
       pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
       canvasCharts: true,
       nativeContextMenu: options.nativeContextMenu ?? false,

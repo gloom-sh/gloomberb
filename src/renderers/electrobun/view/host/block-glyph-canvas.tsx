@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { memo, useEffect, useRef, type CSSProperties } from "react";
+import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
 
 /**
  * Quadrant coverage for the 2x2 block glyphs the ascii fonts are built from,
@@ -53,6 +53,22 @@ export function blockGlyphPath(
   return path;
 }
 
+/**
+ * Page zoom and moving between displays change the ratio after mount; without
+ * following it the canvas keeps its old backing size and goes blurry.
+ */
+function useDevicePixelRatio(): number {
+  const [ratio, setRatio] = useState(() => globalThis.devicePixelRatio || 1);
+  useEffect(() => {
+    if (typeof matchMedia !== "function") return;
+    const query = matchMedia(`(resolution: ${ratio}dppx)`);
+    const update = () => setRatio(globalThis.devicePixelRatio || 1);
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, [ratio]);
+  return ratio;
+}
+
 export const BlockGlyphCanvas = memo(function BlockGlyphCanvas({
   lines,
   color,
@@ -67,6 +83,7 @@ export const BlockGlyphCanvas = memo(function BlockGlyphCanvas({
   style?: CSSProperties;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pixelRatio = useDevicePixelRatio();
   const columns = Math.max(0, ...lines.map((line) => [...line].length));
   const width = columns * cellWidth;
   const height = lines.length * cellHeight;
@@ -76,7 +93,7 @@ export const BlockGlyphCanvas = memo(function BlockGlyphCanvas({
     if (!canvas) return;
     const context = canvas.getContext("2d");
     if (!context) return;
-    const scale = Math.max(1, Math.min(globalThis.devicePixelRatio || 1, 3));
+    const scale = Math.max(1, Math.min(pixelRatio, 3));
     canvas.width = Math.ceil(width * scale);
     canvas.height = Math.ceil(height * scale);
     context.setTransform(scale, 0, 0, scale, 0, 0);
@@ -86,7 +103,7 @@ export const BlockGlyphCanvas = memo(function BlockGlyphCanvas({
     // One path for every cell: a union has no anti-aliased seams between
     // neighbouring quadrants, separate fills would.
     context.fill(blockGlyphPath(lines, cellWidth, cellHeight));
-  }, [cellHeight, cellWidth, color, height, lines, width]);
+  }, [cellHeight, cellWidth, color, height, lines, pixelRatio, width]);
 
   return (
     <canvas

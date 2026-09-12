@@ -587,7 +587,7 @@ body.gloom-dragging [data-gloom-role="chart-surface"] {
 [data-gloom-role="chart-watermark"] {
   visibility: hidden;
   pointer-events: none;
-  opacity: 0.32;
+  opacity: 0.28;
 }
 html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   visibility: visible;
