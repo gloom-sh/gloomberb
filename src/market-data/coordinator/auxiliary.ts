@@ -185,6 +185,7 @@ export function loadArticleSummaryEntry(options: {
 export function loadFxRateEntry(options: {
   dataProvider: DataProvider;
   currency: string;
+  forceRefresh?: boolean;
   store: QueryStore<number>;
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<number>> {
@@ -192,7 +193,7 @@ export function loadFxRateEntry(options: {
   const normalizedCurrency = options.currency.trim().toUpperCase();
   const key = buildFxKey(normalizedCurrency);
   const current = store.get(key);
-  if (hasFreshEntryData(current, FX_CACHE_TTL_MS) && !current.error
+  if (!options.forceRefresh && hasFreshEntryData(current, FX_CACHE_TTL_MS) && !current.error
     && (current.staleAt == null || current.staleAt > Date.now())) {
     return Promise.resolve(current);
   }

@@ -350,10 +350,11 @@ export class MarketDataCoordinator {
     });
   }
 
-  async loadFxRate(currency: string): Promise<QueryEntry<number>> {
-    return this.loadCachedQuery("getExchangeRate", [currency], buildFxKey(currency), this.fxStore) ?? loadFxRateEntry({
+  async loadFxRate(currency: string, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<number>> {
+    return this.loadCachedQuery("getExchangeRate", [currency], buildFxKey(currency), this.fxStore, options.forceRefresh) ?? loadFxRateEntry({
       dataProvider: this.dataProvider,
       currency,
+      forceRefresh: options.forceRefresh,
       store: this.fxStore,
       runSingleFlight: (key, task) => this.runSingleFlight(key, task),
     });

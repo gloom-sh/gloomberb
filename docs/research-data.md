@@ -68,6 +68,8 @@ Sector and industry ETF returns are price returns in the listing currency, witho
 
 ## FX matrix
 
+`r` refreshes the selected currencies through the provider, and automatic refresh follows the configured interval. Ordinary renders reuse cached rates. A refresh can still return the provider's cached observation; its source date and any stale or failure status remain visible.
+
 One unit of the row currency buys the amount in the column currency. Indicative cross rates are calculated through USD legs, whose observation times can differ. Missing, stale, or unknown observation times appear as current status.
 
 ## Credit spreads
