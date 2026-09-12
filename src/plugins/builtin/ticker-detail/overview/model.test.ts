@@ -1,7 +1,41 @@
 import { describe, expect, test } from "bun:test";
-import type { Quote } from "../../../../types/financials";
+import type { Fundamentals, Quote } from "../../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../../types/ticker";
-import { buildPositionRows } from "./model";
+import { buildOverviewStats, buildPositionRows } from "./model";
+
+function overview(fundamentals: Fundamentals) {
+  return Object.fromEntries(buildOverviewStats({
+    quote: undefined, fundamentals, quoteCurrency: "HKD", baseCurrency: "USD", toBase: (value) => value,
+  }).map(({ label, value }) => [label, value]));
+}
+
+test("summary money keeps unknown units explicit without borrowing listing currency or changing source values", () => {
+  const fundamentals: Fundamentals = {
+    eps: 4.22, revenue: 1.22e12, netIncome: 85.7e9, freeCashFlow: -96.6e9,
+    sharesOutstanding: 19.19e9, profitMargin: 0.0704, trailingPE: 25.3,
+  };
+  const original = structuredClone(fundamentals);
+  expect(overview(fundamentals)).toMatchObject({
+    EPS: "4.22 (ccy?)", Revenue: "1.22T (ccy?)", "Net Income": "85.7B (ccy?)", FCF: "-96.6B (ccy?)",
+    "Shares Out": "19.19B", "Profit Marg": "+7.04%", "P/E (TTM)": "25.3",
+  });
+  expect(fundamentals).toEqual(original);
+  expect(overview({ ...fundamentals, financialCurrency: "CNY" })).toMatchObject({
+    EPS: "CN¥4.22", Revenue: "1.22T CNY", "Net Income": "85.7B CNY", FCF: "-96.6B CNY",
+  });
+  expect(overview({ financialCurrency: " ", eps: 0, revenue: 0, netIncome: NaN, freeCashFlow: Infinity }))
+    .toEqual({ EPS: "0.00 (ccy?)", Revenue: "0 (ccy?)", "Net Income": "—", FCF: "—" });
+  expect(overview({})).toEqual({});
+});
+
+test("declaring minor currency units preserves the reported amount and case-sensitive unit", () => {
+  for (const financialCurrency of ["GBp", "GBX", "ILA", "ZAc"]) {
+    expect(overview({ financialCurrency, eps: 100, revenue: 100, freeCashFlow: -100 }))
+      .toEqual({ EPS: `100.00 ${financialCurrency}`, Revenue: `100 ${financialCurrency}`, FCF: `-100 ${financialCurrency}` });
+  }
+  expect(overview({ financialCurrency: "GBP", eps: 100, revenue: 100 }))
+    .toEqual({ EPS: "£100.00", Revenue: "100 GBP" });
+});
 
 function row(position: Partial<TickerPosition>, options: {
   quotePrice?: number | null;

@@ -55,6 +55,8 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `EE <ticker>` | Events view with earnings and revenue estimates |
 | `EM [tickers]` | Earnings monitor |
 | `SRCH [query]` | Full-text search across earnings call transcripts, news, and SEC filings |
+| `CALLS` | Browse earnings calls |
+| `ECT <ticker>` | Company earnings call transcripts |
 | `QQ <tickers>` | Ticker quote monitor |
 | `CMP <tickers>` | Normalized price comparison |
 | `CORR <tickers>` | Ticker return correlations |
@@ -70,6 +72,8 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `INS <ticker>` | Insider activity |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |
 | `RV <tickers>` | Relative valuation |
+
+Earnings-call data exports and fiscal-quarter lookup inspect at most the latest 200 calls in the requested scope; the interactive list loads 50. The server does not supply a total or a `hasMore` marker. When a response fills its source limit, exports report `sourceLimitReached: true`, `complete: false`, and `truncated: true`: additional calls may exist. `total` counts matching loaded calls; `totalIsExact: false` marks capped, pending, or stale results. A missing quarter in a capped lookup is not proof that the company has no such call. Pending discovery remains pending when reopening or refreshing the pane. Full-text documents can be read and searched without structured turns, but Q&A requires source segmentation.
 
 ### Chart Composer
 

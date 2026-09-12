@@ -163,6 +163,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const [listStatus, setListStatus] = useState<"idle" | "loading" | "loaded" | "error">("idle");
   const [listError, setListError] = useState<{ message: string; status?: number } | null>(null);
   const [stale, setStale] = useState(false);
+  const listRequestVersion = useRef(0);
+  const [listCompletedRequest, setListCompletedRequest] = useState(0);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -201,9 +203,11 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const fetchCalls = useCallback(
     (force: boolean) => {
       if (!access.emailVerified || !access.hasProAccess) return;
+      const request = ++listRequestVersion.current;
       setListStatus((current) => (current === "loaded" ? current : "loading"));
       loadEarningsCalls(ticker, { force })
         .then((result) => {
+          if (request !== listRequestVersion.current) return;
           setCalls(result.calls);
           setStale(result.stale);
           setListPending(result.pending === true && result.calls.length === 0);
@@ -211,8 +215,11 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
             result.refreshError ? { message: result.refreshError, status: result.errorStatus } : null,
           );
           setListStatus("loaded");
+          setListCompletedRequest(request);
         })
         .catch((error: unknown) => {
+          if (request !== listRequestVersion.current) return;
+          setListPending(false);
           setListError({
             message: error instanceof Error ? error.message : String(error),
             status: statusOf(error),
@@ -224,7 +231,22 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   );
 
   useEffect(() => {
+    setCalls([]);
+    setListStatus("idle");
+    setListPending(false);
+    setStale(false);
+    setListError(null);
+    setLookup(null);
+    setSelectedId(null);
+    setDetailOpen(false);
+    setTranscript(null);
+    setTranscriptLoading(false);
+    setTranscriptError(null);
+    setProducing(false);
+    setSearchQuery("");
+    setReaderTab("summary");
     fetchCalls(false);
+    return () => { listRequestVersion.current++; };
   }, [fetchCalls]);
 
   // A research tab whose company is still being searched checks back until
@@ -233,7 +255,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     if (!listPending) return;
     const timer = setTimeout(() => fetchCalls(true), LOOKUP_POLL_MS);
     return () => clearTimeout(timer);
-  }, [listPending, fetchCalls, calls.length]);
+  }, [listPending, fetchCalls, listCompletedRequest]);
 
   // On the shelf, a query that looks like a symbol we do not have becomes a
   // request for that company's calls.
@@ -253,7 +275,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       : "loading";
 
   useEffect(() => {
-    if (!lookupTicker) return;
+    if (!lookupTicker || !access.emailVerified || !access.hasProAccess) return;
     const answered = lookup?.ticker === lookupTicker;
     if (answered && lookup.status !== "pending") return;
     let cancelled = false;
@@ -283,7 +305,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [lookupTicker, lookup]);
+  }, [lookupTicker, lookup, access.emailVerified, access.hasProAccess]);
 
   const allCalls = useMemo(() => {
     if (!lookup || lookup.calls.length === 0) return calls;
@@ -322,6 +344,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   );
   const selectedCallId = selected?.id ?? null;
   const selectedHasTranscript = selected?.hasTranscript ?? false;
+  const selectedTranscript = transcript?.id === selectedCallId ? transcript : null;
 
   // Marks a call as transcribed in whichever list holds it, once it is.
   const markTranscribed = useCallback((callId: string) => {
@@ -337,7 +360,10 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   // a call that has none asks the server to produce it, then checks back
   // until it arrives.
   useEffect(() => {
-    if (!detailOpen || !selectedCallId) return;
+    if (!detailOpen || !selectedCallId || !access.emailVerified || !access.hasProAccess) return;
+    // A binding change clears selection in an effect; do not start a request
+    // for that previous selection during the same render's effect pass.
+    if (ticker && selected?.ticker.toUpperCase() !== ticker) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     setTranscriptError(null);
@@ -382,7 +408,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     };
     // The call's identity is what matters; list refreshes must not restart this.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [detailOpen, selectedCallId]);
+  }, [detailOpen, selectedCallId, ticker, access.emailVerified, access.hasProAccess]);
 
   const scrollTranscriptBy = useCallback((delta: number) => {
     const scrollBox = transcriptScrollRef.current;
@@ -526,8 +552,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       if (stale) {
         info.push({ id: "stale", parts: [{ text: "stale cache", tone: "warning" }] });
       }
-      if (listError && listStatus === "error") {
-        info.push({ id: "error", parts: [{ text: "error", tone: "warning" }] });
+      if (listError) {
+        info.push({ id: "error", parts: [{ text: listError.message, tone: "warning" }] });
       }
       if (proRequired || transcriptProRequired) {
         info.push({ id: "pro", parts: [{ text: "pro required", tone: "warning" }] });
@@ -630,7 +656,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         </>}
       />
     </Box>
-  ) : selected && !transcript && (producing || (!selected.hasTranscript && !transcriptError)) ? (
+  ) : selected && !selectedTranscript && (producing || (!selected.hasTranscript && !transcriptError)) ? (
     <Box flexDirection="column" flexGrow={1} paddingX={1} gap={1}>
       <Box height={1}>
         <Text fg={colors.textDim}>
@@ -661,7 +687,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
         onQueryChange={setSearchQuery}
       />
       <TranscriptView
-        transcript={transcript}
+        transcript={selectedTranscript}
         loading={transcriptLoading}
         error={transcriptError?.message ?? null}
         tab={readerTab}
@@ -713,6 +739,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
       onActivate={() => {
         blurSearch();
         setSearchQuery("");
+        setTranscript((current) => current?.id === selectedCallId ? current : null);
+        setTranscriptError(null);
         setDetailOpen(true);
       }}
       rootWidth={width}

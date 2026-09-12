@@ -204,3 +204,45 @@ describe("earnings transcript headless", () => {
     expect(second.rows[0]?.index).toBe(1);
   });
 });
+
+describe("bounded call discovery", () => {
+  const capped = Array.from({ length: 200 }, (_, index) => ({ ...calls[0]!, id: `bounded-${index}` }));
+
+  test("a full source page remains bounded even when every returned row fits the export", async () => {
+    const deps = dependencies();
+    deps.loadCalls = async () => ({ calls: capped, fetchedAt: 123, stale: false, sourceLimit: 200, sourceLimitReached: true });
+    const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
+    expect(result.rows).toHaveLength(200);
+    expect(result.complete).toBe(false);
+    expect(result.metadata).toMatchObject({ total: 200, returned: 200, truncated: true, sourceLimitReached: true, totalIsExact: false });
+  });
+
+  test("filtering a capped source to no matches does not imply exhaustive absence", async () => {
+    const deps = dependencies();
+    // Existing injected/snapshot loaders can omit new metadata; the known 200-row request still bounds this path.
+    deps.loadCalls = async () => ({ calls: capped, fetchedAt: 123, stale: false });
+    const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200, availability: "pending" }), context);
+    expect(result.rows).toEqual([]);
+    expect(result.complete).toBe(false);
+    expect(result.metadata).toMatchObject({ total: 0, truncated: true, totalIsExact: false });
+    await expect(createEarningsTranscriptHeadless(deps).load(transcriptArgs({ quarter: "FQ1-1990" }), context))
+      .rejects.toThrow("among the latest 200 loaded calls");
+  });
+
+  test("an uncapped response keeps exact loaded totals and ordinary missing-quarter behavior", async () => {
+    const deps = dependencies();
+    const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
+    expect(result.complete).not.toBe(false);
+    expect(result.metadata).toMatchObject({ total: 2, truncated: false, sourceLimitReached: false, totalIsExact: true });
+    await expect(createEarningsTranscriptHeadless(deps).load(transcriptArgs({ quarter: "FQ1-1990" }), context))
+      .rejects.toThrow("No FQ1-1990 earnings call found for AMD.");
+  });
+});
+
+test("pending discovery is not reported as a complete empty export", async () => {
+  const deps = dependencies();
+  deps.loadCalls = async () => ({ calls: [], fetchedAt: 123, stale: false, pending: true });
+  const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
+  expect(result.complete).toBe(false);
+  expect(result.metadata).toMatchObject({ total: 0, pending: true, totalIsExact: false, sourceLimitReached: false });
+});

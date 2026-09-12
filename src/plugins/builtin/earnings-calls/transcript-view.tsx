@@ -21,7 +21,7 @@ import {
   formatSentiment,
   formatTimestamp,
 } from "./format";
-import { filterTranscriptTurns } from "./model";
+import { buildTranscriptSegments, filterTranscriptTurns } from "./model";
 import { splitParagraphs, splitSentences } from "./prose";
 
 export type ReaderTab = "summary" | "transcript" | "qa";
@@ -192,6 +192,10 @@ export function TranscriptView({
       }),
     [transcript, tab, query],
   );
+  const fullTextSegments = useMemo(() => (
+    transcript && tab === "transcript" && !transcript.turns?.length
+      ? buildTranscriptSegments(transcript, "transcript", { search: query }) : []
+  ), [transcript, tab, query]);
 
   if (loading && !transcript) {
     return (
@@ -327,13 +331,19 @@ export function TranscriptView({
                   width={proseWidth}
                 />
               ))}
-              {turns.length === 0 && (
+              {fullTextSegments.map((segment) => (
+                <Box key={segment.index} marginTop={1}>
+                  <Prose text={segment.text} width={proseWidth} color={colors.text} />
+                </Box>
+              ))}
+              {turns.length === 0 && fullTextSegments.length === 0 && (
                 <Box marginTop={1}>
                   <Prose
                     text={
                       query?.trim()
                         ? `Nothing matching "${query.trim()}" in this call.`
-                        : "No question and answer section in this call."
+                        : tab === "qa" ? "No question and answer section in this call."
+                          : "Transcript text is unavailable."
                     }
                     width={proseWidth}
                     color={colors.textDim}
