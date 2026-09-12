@@ -1,6 +1,6 @@
 # Research data conventions
 
-[User guide](usage.md) · [Price comparisons](price-comparisons.md)
+[User guide](usage.md) · [Price comparisons](price-comparisons.md) · [Economic statistics](economics-reference.md) · [Market valuation](valuation-reference.md)
 
 This reference describes how the terminal calculates and labels research data. Pane bodies show the data and current failures; recurring methodology belongs here. Headless reports and shared chart metadata retain source details and limitations.
 
