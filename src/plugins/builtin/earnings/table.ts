@@ -1,9 +1,10 @@
 import { TextAttributes } from "../../../ui";
 import type { DataTableCell, DataTableColumn } from "../../../components";
-import type { EarningsEvent } from "../../../types/data-provider";
+import type { EarningsEstimateField, EarningsEvent } from "../../../types/data-provider";
 import { colors } from "../../../theme/colors";
 import { formatCompact, formatNumber, formatPercent } from "../../../utils/format";
 import type { EarningsDisplayRow } from "./model";
+import { coherentEarningsValue, earningsEpsChange30d, earningsForecastPeriod } from "./estimate-basis";
 
 type EarningsColumnId =
   | "date"
@@ -11,6 +12,7 @@ type EarningsColumnId =
   | "status"
   | "symbol"
   | "name"
+  | "forecastEnd"
   | "epsEstimate"
   | "epsRange"
   | "epsGrowth"
@@ -34,29 +36,34 @@ function formatTime(date: Date | null | undefined): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatMaybeNumber(value: number | null | undefined, decimals = 2): string {
-  return value == null ? "—" : formatNumber(value, decimals);
+function formatEstimate(event: EarningsEvent, field: EarningsEstimateField, formatter: (value: number) => string): string {
+  const value = coherentEarningsValue(event, field);
+  return value == null ? "—" : `${event.estimateBasis?.[field]?.currency ?? "?"} ${formatter(value)}`;
 }
 
-function formatRange(
-  low: number | null | undefined,
-  high: number | null | undefined,
+function formatEstimateRange(
+  event: EarningsEvent, lowField: EarningsEstimateField, highField: EarningsEstimateField,
   formatter: (value: number) => string,
 ): string {
+  const low = coherentEarningsValue(event, lowField);
+  const high = coherentEarningsValue(event, highField);
   if (low == null && high == null) return "—";
-  return `${low == null ? "—" : formatter(low)}-${high == null ? "—" : formatter(high)}`;
+  const lowCurrency = event.estimateBasis?.[lowField]?.currency ?? "?";
+  const highCurrency = event.estimateBasis?.[highField]?.currency ?? "?";
+  if (lowCurrency === highCurrency) return `${lowCurrency} ${low == null ? "—" : formatter(low)}-${high == null ? "—" : formatter(high)}`;
+  return `${formatEstimate(event, lowField, formatter)}-${formatEstimate(event, highField, formatter)}`;
 }
 
 function formatRevisionSummary(event: EarningsEvent): string {
-  const up = event.epsRevisionUp30d;
-  const down = event.epsRevisionDown30d;
+  const up = coherentEarningsValue(event, "epsRevisionUp30d");
+  const down = coherentEarningsValue(event, "epsRevisionDown30d");
   if (up == null && down == null) return "—";
   return `${up ?? "—"}/${down ?? "—"}`;
 }
 
 function formatAnalystSummary(event: EarningsEvent): string {
-  const eps = event.epsAnalysts;
-  const revenue = event.revenueAnalysts;
+  const eps = coherentEarningsValue(event, "epsAnalysts");
+  const revenue = coherentEarningsValue(event, "revenueAnalysts");
   if (eps == null && revenue == null) return "—";
   if (eps === revenue || revenue == null) return String(eps);
   if (eps == null) return String(revenue);
@@ -74,16 +81,17 @@ export function buildEarningsColumns(width: number): EarningsColumn[] {
   const whenWidth = 8;
   const statusWidth = 4;
   const symbolWidth = 8;
-  const epsWidth = 8;
-  const epsRangeWidth = 11;
+  const epsWidth = 11;
+  const forecastEndWidth = 10;
+  const epsRangeWidth = 20;
   const growthWidth = 8;
-  const trendWidth = 8;
+  const trendWidth = 11;
   const revisionsWidth = 7;
-  const revenueWidth = 9;
-  const revenueRangeWidth = 13;
+  const revenueWidth = 12;
+  const revenueRangeWidth = 23;
   const analystsWidth = 7;
-  const columnCount = 14;
-  const fixedWidth = dateWidth + whenWidth + statusWidth + symbolWidth + epsWidth
+  const columnCount = 15;
+  const fixedWidth = dateWidth + whenWidth + statusWidth + symbolWidth + epsWidth + forecastEndWidth
     + epsRangeWidth + growthWidth + trendWidth + revisionsWidth + revenueWidth
     + revenueRangeWidth + growthWidth + analystsWidth;
   const nameWidth = Math.max(14, width - 2 - columnCount - fixedWidth);
@@ -94,6 +102,7 @@ export function buildEarningsColumns(width: number): EarningsColumn[] {
     { id: "status", label: "ST", width: statusWidth, align: "left" },
     { id: "symbol", label: "TICKER", width: symbolWidth, align: "left" },
     { id: "name", label: "NAME", width: nameWidth, align: "left" },
+    { id: "forecastEnd", label: "EST END", width: forecastEndWidth, align: "left" },
     { id: "epsEstimate", label: "EPS", width: epsWidth, align: "right" },
     { id: "epsRange", label: "EPS RNG", width: epsRangeWidth, align: "right" },
     { id: "epsGrowth", label: "EPS YOY", width: growthWidth, align: "right" },
@@ -150,33 +159,33 @@ export function renderEarningsCell(
       };
     case "name":
       return { text: row.event.name, color: selectedColor ?? colors.text };
+    case "forecastEnd":
+      return { text: earningsForecastPeriod(row.event)?.periodEndDate ?? "—", color: selectedColor ?? colors.textDim };
     case "epsEstimate":
       return {
-        text: formatMaybeNumber(row.event.epsEstimate),
+        text: formatEstimate(row.event, "epsEstimate", value => formatNumber(value, 2)),
         color: selectedColor ?? colors.textDim,
       };
     case "epsRange":
       return {
-        text: formatRange(row.event.epsLow, row.event.epsHigh, (value) => formatNumber(value, 2)),
+        text: formatEstimateRange(row.event, "epsLow", "epsHigh", value => formatNumber(value, 2)),
         color: selectedColor ?? colors.textDim,
       };
     case "epsGrowth":
       return {
-        text: row.event.epsGrowth != null ? formatPercent(row.event.epsGrowth) : "—",
-        color: estimateColor(row.event.epsGrowth, selectedColor),
+        text: coherentEarningsValue(row.event, "epsGrowth") != null ? formatPercent(coherentEarningsValue(row.event, "epsGrowth")!) : "—",
+        color: estimateColor(coherentEarningsValue(row.event, "epsGrowth"), selectedColor),
       };
     case "epsTrend": {
-      const current = row.event.epsEstimate;
-      const prior = row.event.epsTrend30dAgo;
-      const change = current != null && prior != null ? current - prior : null;
+      const change = earningsEpsChange30d(row.event);
       return {
-        text: change != null ? formatNumber(change, 2) : "—",
+        text: change != null ? `${row.event.estimateBasis?.epsEstimate?.currency} ${formatNumber(change, 2)}` : "—",
         color: estimateColor(change, selectedColor),
       };
     }
     case "epsRevisions": {
-      const up = row.event.epsRevisionUp30d;
-      const down = row.event.epsRevisionDown30d;
+      const up = coherentEarningsValue(row.event, "epsRevisionUp30d");
+      const down = coherentEarningsValue(row.event, "epsRevisionDown30d");
       const net = up != null && down != null ? up - down : null;
       return {
         text: formatRevisionSummary(row.event),
@@ -185,18 +194,18 @@ export function renderEarningsCell(
     }
     case "revenueEstimate":
       return {
-        text: row.event.revenueEstimate != null ? formatCompact(row.event.revenueEstimate) : "—",
+        text: formatEstimate(row.event, "revenueEstimate", formatCompact),
         color: selectedColor ?? colors.textDim,
       };
     case "revenueRange":
       return {
-        text: formatRange(row.event.revenueLow, row.event.revenueHigh, formatCompact),
+        text: formatEstimateRange(row.event, "revenueLow", "revenueHigh", formatCompact),
         color: selectedColor ?? colors.textDim,
       };
     case "revenueGrowth":
       return {
-        text: row.event.revenueGrowth != null ? formatPercent(row.event.revenueGrowth) : "—",
-        color: estimateColor(row.event.revenueGrowth, selectedColor),
+        text: coherentEarningsValue(row.event, "revenueGrowth") != null ? formatPercent(coherentEarningsValue(row.event, "revenueGrowth")!) : "—",
+        color: estimateColor(coherentEarningsValue(row.event, "revenueGrowth"), selectedColor),
       };
     case "analysts":
       return {

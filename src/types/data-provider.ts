@@ -53,12 +53,31 @@ export interface SecFilingDocument {
   isPrimary: boolean;
 }
 
+export type EarningsEstimateField =
+  | "epsEstimate" | "epsLow" | "epsHigh" | "epsYearAgo" | "epsGrowth" | "epsAnalysts"
+  | "epsTrend7dAgo" | "epsTrend30dAgo"
+  | "epsRevisionUp7d" | "epsRevisionUp30d" | "epsRevisionDown7d" | "epsRevisionDown30d"
+  | "revenueEstimate" | "revenueLow" | "revenueHigh" | "revenueYearAgo" | "revenueGrowth" | "revenueAnalysts";
+
+export interface EarningsEstimateBasis {
+  source: "earningsTrend" | "calendarEvents";
+  /** Selected provider number before any explicit minor-unit normalization. */
+  sourceValue: number;
+  /** Provider forecast label, not a derived fiscal quarter or announcement date. */
+  period: string | null;
+  periodEndDate: string | null;
+  /** Explicit currency for monetary values only; ratios/counts have none. */
+  currency?: string | null;
+  sourceCurrency?: string | null;
+}
+
 export interface EarningsEvent {
   symbol: string;
   name: string;
   earningsDate: Date;
   earningsCallDate?: Date | null;
   isDateEstimate?: boolean | null;
+  estimateBasis?: Partial<Record<EarningsEstimateField, EarningsEstimateBasis>>;
   epsEstimate: number | null;
   epsLow?: number | null;
   epsHigh?: number | null;

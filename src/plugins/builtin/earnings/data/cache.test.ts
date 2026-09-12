@@ -77,7 +77,7 @@ describe("loadEarningsCalendar", () => {
       earningsDate: "2026-05-01T12:00:00.000Z",
     }], {
       sourceKey: "earnings",
-      schemaVersion: 2,
+      schemaVersion: 3,
       stale: true,
     });
 
@@ -93,5 +93,25 @@ describe("loadEarningsCalendar", () => {
     // Cached events after a provider failure are stale, not a fresh load.
     expect(result.stale).toBe(true);
     expect(result.refreshError).toContain("offline");
+  });
+
+  test("refreshes old snapshots that discarded estimate units instead of treating them as current data", async () => {
+    const persistence = new MemoryPluginPersistence();
+    attachEarningsCalendarPersistence(persistence);
+    persistence.seedResource("calendar", "AAPL", [{
+      ...eventFor("AAPL"), earningsDate: "2026-05-01T12:00:00.000Z",
+    }], { sourceKey: "earnings", schemaVersion: 2 });
+    await expect(loadEarningsCalendar(makeProvider(async () => {
+      throw new Error("offline");
+    }), ["AAPL"])).rejects.toThrow("offline");
+
+    const fresh = eventFor("AAPL");
+    fresh.estimateBasis = { epsEstimate: {
+      source: "earningsTrend", sourceValue: 1.23,
+      period: "0q", periodEndDate: "2026-03-31", currency: "USD", sourceCurrency: "USD",
+    } };
+    const result = await loadEarningsCalendar(makeProvider(async () => [fresh]), ["AAPL"]);
+    expect(result.stale).toBe(false);
+    expect(result.events[0]?.estimateBasis).toEqual(fresh.estimateBasis);
   });
 });

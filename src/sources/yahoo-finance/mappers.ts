@@ -1,4 +1,4 @@
-import type { EarningsEvent } from "../../types/data-provider";
+import type { EarningsEstimateBasis, EarningsEstimateField, EarningsEvent } from "../../types/data-provider";
 import type {
   AnalystEstimateRecord,
   AnalystResearchData,
@@ -254,34 +254,67 @@ export function mapYahooEarningsCalendarEvent(
   const epsTrend = currentQtr?.epsTrend;
   const epsRevisions = currentQtr?.epsRevisions;
 
+  const estimateBasis: NonNullable<EarningsEvent["estimateBasis"]> = {};
+  const period = currentQtr?.period?.trim() || null;
+  const rawEnd = currentQtr?.endDate;
+  const periodEndDate = typeof rawEnd === "string" && /^\d{4}-\d{2}-\d{2}$/.test(rawEnd)
+    && Number.isFinite(Date.parse(rawEnd)) && new Date(rawEnd).toISOString().slice(0, 10) === rawEnd
+    ? rawEnd : null;
+  const estimateValue = (
+    field: EarningsEstimateField,
+    trendValue: unknown,
+    calendarValue?: unknown,
+    sourceCurrency?: string,
+    monetary = false,
+  ): number | null => {
+    // Keep the existing selection rule, but never attach trend metadata to a
+    // value selected from the independent calendar module.
+    const fromTrend = trendValue != null;
+    const raw = financeRawNumber(fromTrend ? trendValue : calendarValue);
+    if (raw == null) return null;
+    const rawCurrency = fromTrend ? sourceCurrency?.trim() || null : null;
+    const unit = resolveCurrencyUnit(rawCurrency);
+    const currency = /^[A-Z]{3}$/.test(unit.currency) && unit.currency !== "XXX" ? unit.currency : null;
+    const basis: EarningsEstimateBasis = {
+      source: fromTrend ? "earningsTrend" : "calendarEvents",
+      sourceValue: raw,
+      period: fromTrend ? period : null,
+      periodEndDate: fromTrend ? periodEndDate : null,
+      ...(monetary ? { currency, sourceCurrency: rawCurrency } : {}),
+    };
+    estimateBasis[field] = basis;
+    return monetary ? raw / unit.divisor : raw;
+  };
+
   return {
     symbol,
     name: result.quoteType?.shortName || result.quoteType?.longName || symbol,
     earningsDate,
     earningsCallDate: yahooRawDateTime(cal.earningsCallDate?.[0]),
     isDateEstimate: cal.isEarningsDateEstimate ?? null,
-    epsEstimate: financeRawNumberOrNull(earningsEstimate?.avg ?? cal.earningsAverage),
-    epsLow: financeRawNumberOrNull(earningsEstimate?.low ?? cal.earningsLow),
-    epsHigh: financeRawNumberOrNull(earningsEstimate?.high ?? cal.earningsHigh),
-    epsYearAgo: financeRawNumberOrNull(earningsEstimate?.yearAgoEps),
-    epsGrowth: financeRawNumberOrNull(earningsEstimate?.growth),
-    epsAnalysts: financeRawNumberOrNull(earningsEstimate?.numberOfAnalysts),
-    epsTrend7dAgo: financeRawNumberOrNull(epsTrend?.["7daysAgo"]),
-    epsTrend30dAgo: financeRawNumberOrNull(epsTrend?.["30daysAgo"]),
-    epsRevisionUp7d: financeRawNumberOrNull(epsRevisions?.upLast7days),
-    epsRevisionUp30d: financeRawNumberOrNull(epsRevisions?.upLast30days),
-    epsRevisionDown7d: financeRawNumberOrNull(epsRevisions?.downLast7Days),
-    epsRevisionDown30d: financeRawNumberOrNull(epsRevisions?.downLast30days),
+    epsEstimate: estimateValue("epsEstimate", earningsEstimate?.avg, cal.earningsAverage, earningsEstimate?.earningsCurrency, true),
+    epsLow: estimateValue("epsLow", earningsEstimate?.low, cal.earningsLow, earningsEstimate?.earningsCurrency, true),
+    epsHigh: estimateValue("epsHigh", earningsEstimate?.high, cal.earningsHigh, earningsEstimate?.earningsCurrency, true),
+    epsYearAgo: estimateValue("epsYearAgo", earningsEstimate?.yearAgoEps, undefined, earningsEstimate?.earningsCurrency, true),
+    epsGrowth: estimateValue("epsGrowth", earningsEstimate?.growth),
+    epsAnalysts: estimateValue("epsAnalysts", earningsEstimate?.numberOfAnalysts),
+    epsTrend7dAgo: estimateValue("epsTrend7dAgo", epsTrend?.["7daysAgo"], undefined, epsTrend?.epsTrendCurrency, true),
+    epsTrend30dAgo: estimateValue("epsTrend30dAgo", epsTrend?.["30daysAgo"], undefined, epsTrend?.epsTrendCurrency, true),
+    epsRevisionUp7d: estimateValue("epsRevisionUp7d", epsRevisions?.upLast7days),
+    epsRevisionUp30d: estimateValue("epsRevisionUp30d", epsRevisions?.upLast30days),
+    epsRevisionDown7d: estimateValue("epsRevisionDown7d", epsRevisions?.downLast7Days),
+    epsRevisionDown30d: estimateValue("epsRevisionDown30d", epsRevisions?.downLast30days),
     epsActual: null,
-    revenueEstimate: financeRawNumberOrNull(revenueEstimate?.avg ?? cal.revenueAverage),
-    revenueLow: financeRawNumberOrNull(revenueEstimate?.low ?? cal.revenueLow),
-    revenueHigh: financeRawNumberOrNull(revenueEstimate?.high ?? cal.revenueHigh),
-    revenueYearAgo: financeRawNumberOrNull(revenueEstimate?.yearAgoRevenue),
-    revenueGrowth: financeRawNumberOrNull(revenueEstimate?.growth),
-    revenueAnalysts: financeRawNumberOrNull(revenueEstimate?.numberOfAnalysts),
+    revenueEstimate: estimateValue("revenueEstimate", revenueEstimate?.avg, cal.revenueAverage, revenueEstimate?.revenueCurrency, true),
+    revenueLow: estimateValue("revenueLow", revenueEstimate?.low, cal.revenueLow, revenueEstimate?.revenueCurrency, true),
+    revenueHigh: estimateValue("revenueHigh", revenueEstimate?.high, cal.revenueHigh, revenueEstimate?.revenueCurrency, true),
+    revenueYearAgo: estimateValue("revenueYearAgo", revenueEstimate?.yearAgoRevenue, undefined, revenueEstimate?.revenueCurrency, true),
+    revenueGrowth: estimateValue("revenueGrowth", revenueEstimate?.growth),
+    revenueAnalysts: estimateValue("revenueAnalysts", revenueEstimate?.numberOfAnalysts),
     revenueActual: null,
     surprise: null,
     timing: inferEarningsTiming(earningsDate),
+    estimateBasis,
   };
 }
 

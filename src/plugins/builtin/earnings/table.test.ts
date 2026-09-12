@@ -1,14 +1,22 @@
 import { describe, expect, test } from "bun:test";
 import { colors } from "../../../theme/colors";
 import type { EarningsEvent } from "../../../types/data-provider";
+import { EARNINGS_ESTIMATE_FIELDS } from "./estimate-basis";
 import { buildEarningsColumns, renderEarningsCell, type EarningsColumn } from "./table";
 
 function event(values: Partial<EarningsEvent> = {}): EarningsEvent {
-  return {
+  const result: EarningsEvent = {
     symbol: "TEST", name: "Controlled estimate", earningsDate: new Date("2026-09-12T00:00:00Z"),
     epsEstimate: 4, epsActual: null, revenueEstimate: null, revenueActual: null,
     surprise: null, timing: "", ...values,
   };
+  result.estimateBasis ??= Object.fromEntries(EARNINGS_ESTIMATE_FIELDS
+    .filter(field => typeof result[field] === "number")
+    .map(field => [field, {
+      source: "earningsTrend", sourceValue: result[field], period: "0q", periodEndDate: "2026-09-30",
+      ...(["epsEstimate", "epsTrend7dAgo", "epsTrend30dAgo"].includes(field) ? { currency: "USD" } : {}),
+    }]));
+  return result;
 }
 
 function cell(id: EarningsColumn["id"], values: Partial<EarningsEvent>) {
@@ -19,8 +27,8 @@ function cell(id: EarningsColumn["id"], values: Partial<EarningsEvent>) {
 describe("earnings estimate comparison basis", () => {
   test("30-day changes do not substitute 7-day observations", () => {
     expect(cell("epsTrend", { epsTrend7dAgo: 3, epsTrend30dAgo: null }).text).toBe("—");
-    expect(cell("epsTrend", { epsTrend7dAgo: 3, epsTrend30dAgo: 2 }).text).toBe("2.00");
-    expect(cell("epsTrend", { epsEstimate: 0, epsTrend30dAgo: 2 }).text).toBe("-2.00");
+    expect(cell("epsTrend", { epsTrend7dAgo: 3, epsTrend30dAgo: 2 }).text).toBe("USD 2.00");
+    expect(cell("epsTrend", { epsEstimate: 0, epsTrend30dAgo: 2 }).text).toBe("USD -2.00");
     expect(cell("epsTrend", { epsEstimate: null, epsTrend30dAgo: 2 }).text).toBe("—");
   });
 

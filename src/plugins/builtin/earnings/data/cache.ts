@@ -3,7 +3,7 @@ import type { DataProvider, EarningsEvent } from "../../../../types/data-provide
 
 const CACHE_KIND = "calendar";
 const CACHE_SOURCE = "earnings";
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 
 export const EARNINGS_CALENDAR_CACHE_POLICY = {
   staleMs: 30 * 60 * 1000,

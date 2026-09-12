@@ -16,7 +16,7 @@ Relationship graph controls stay in the footer: `t` cycles the time range, `p` c
 
 Contradictory OHLC bars are unavailable rather than silently repaired. Charts leave gaps and dependent risk calculations can be unavailable. These are current data problems and remain visible in the terminal.
 
-Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `t` opens the interval picker. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.
+Chart controls: select ranges and intervals above the plot; click a legend entry to hide or restore a series; use **+ add series** to add one. In a narrow legend, scroll over the row or use `[` / `]` to reveal each series; Space toggles the selected series. The existing footer offers **Series**, **Indicators**, **Formulas**, and **Share**, also available with `s`, `i`, `f`, and `y`. `t` opens the interval picker. Sharing publishes a chart snapshot; pane sharing is available from the pane menu.
 
 ## Financial statements and valuation
 
@@ -95,3 +95,7 @@ Split-feed factors may include spinoff price adjustments. Merger terms, spinoff 
 ## Earnings estimate comparisons
 
 ERN groups and displays announcement dates on the same UTC calendar day. Exact call times, when supplied without a market-session label, use your local time. EPS 30D is the current estimate minus the estimate from thirty days earlier; a seven-day observation cannot fill a missing thirty-day value. REV 30D shows upward/downward revision counts over that same thirty-day window. An unknown count remains unavailable rather than becoming zero, and a directional color requires both counts. The CLI retains separately named seven-day and thirty-day source fields.
+
+EPS and revenue retain their own explicit forecast currencies; neither inherits the listing currency or the other's currency. A `?` currency is unknown. Explicit minor-unit codes such as GBp/GBX normalize once to GBP; no exchange-rate or ADR conversion is inferred. EPS 30D requires both values to have the same known currency and forecast period. EST END is the provider's fiscal-period end when the available estimates agree, distinct from the announcement date; an unspecified or mixed period remains unavailable. Scroll horizontally to reach the remaining estimate columns in a narrow pane.
+
+Calendar fallback values keep their own unknown currency and fiscal period. Trend-only ranges, growth, counts, and revisions are withheld from the displayed fallback's context; range endpoints from incompatible sources are not combined. The CLI's `estimateBasis` records each selected field's source, period, explicit currency code, and original `sourceValue`. `sourceEstimates` preserves all source-selected values after minor-unit normalization, including values withheld from the comparable top-level fields.
