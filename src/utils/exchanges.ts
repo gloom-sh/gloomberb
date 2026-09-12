@@ -4,6 +4,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   XNAS: "NASDAQ",
   NMS: "NASDAQ",
   NGM: "NASDAQ",
+  NASDAQGM: "NASDAQ",
   NCM: "NASDAQ",
   NYQ: "NYSE",
   NYS: "NYSE",

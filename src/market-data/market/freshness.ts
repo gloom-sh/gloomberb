@@ -153,6 +153,18 @@ function usSessionState(timestampMs: number): UsSessionState {
   return "POSTPOST";
 }
 
+/** Provider session labels may outlive the active session they described. */
+export function activeUsMarketSession(now: number): "PRE" | "REGULAR" | "POST" | null {
+  if (!Number.isFinite(new Date(now).getTime())) return null;
+  const session = usSessionState(now);
+  return session === "PRE" || session === "REGULAR" || session === "POST" ? session : null;
+}
+
+export function activeUsExtendedHoursSession(now: number): "PRE" | "POST" | null {
+  const session = activeUsMarketSession(now);
+  return session === "PRE" || session === "POST" ? session : null;
+}
+
 export function isTimestampStaleForExchangeSession(
   timestampMs: number,
   exchange?: string,
@@ -186,7 +198,7 @@ function isTimestampStaleForExchangeSessionUnsafe(
 
   if (isUsExtendedHoursExchange(canonical)) {
     const session = usSessionState(now);
-    if (session === "PRE" || session === "REGULAR" || session === "POST") {
+    if (session === "PRE" || session === "REGULAR" || session === "POST" || session === "POSTPOST") {
       return true;
     }
   }
