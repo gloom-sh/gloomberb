@@ -151,6 +151,7 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
   "getHolders",
   "getPriceHistory",
   "getQuote",
+  "getQuoteMetadata",
   "getQuotesBatch",
   "getSecFilings",
 ]);

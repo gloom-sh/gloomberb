@@ -27,7 +27,8 @@ import {
 } from "./resolution";
 import type { TimeRange } from "./range";
 import type { DataProvider, MarketDataRequestContext } from "../types/data-provider";
-import type { Quote, TickerFinancials } from "../types/financials";
+import type { Quote, QuoteMetadata, TickerFinancials } from "../types/financials";
+import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../market-data/quotes/metadata";
 import type { FredSeriesLoadResult, FredSeriesRequest } from "../data/fred-series";
 import { extractFredSeries, fredCreditCoverageNotice } from "./economic";
 import {
@@ -117,7 +118,7 @@ export interface ChartResolveOptions {
 /** Raw source data retained while live quotes recompute the chart tail. */
 export class ChartResolveCache {
   readonly financialsByInstrument = new Map<string, Promise<TickerFinancials | null>>();
-  readonly quoteMetadataByInstrument = new Map<string, Promise<Pick<Quote, "currency" | "instrumentType"> | null>>();
+  readonly quoteMetadataByInstrument = new Map<string, Promise<QuoteMetadata | null>>();
   readonly priceHistoryByRequest = new Map<string, Promise<TickerFinancials["priceHistory"]>>();
   readonly accumulatedPriceHistory = new Map<string, TickerFinancials["priceHistory"]>();
   readonly resolutionSupportByInstrument = new Map<string, Promise<ChartResolutionSupport[]>>();
@@ -726,7 +727,7 @@ function baseSecuritySeries(
   financials: TickerFinancials,
   index: number,
   marketResolution?: ManualChartResolution,
-  quoteMetadata?: Pick<Quote, "currency" | "instrumentType"> | null,
+  quoteMetadata: QuoteMetadata | null | undefined = financials.quoteMetadata,
 ): ResolvedSeries | null {
   if (spec.source.kind !== "security") return null;
   const field = getTimeSeriesField(spec.source.fieldId);
@@ -1038,9 +1039,12 @@ export async function resolveChartSpecData(
     const key = instrumentKey(source);
     let pending = cache.quoteMetadataByInstrument.get(key);
     if (!pending) {
-      pending = Promise.resolve().then(() => sources.dataProvider!.getQuote(
-        source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source),
-      )).then(({ currency, instrumentType }) => ({ currency, instrumentType }))
+      const provider = sources.dataProvider!;
+      pending = Promise.resolve().then(() => provider.getQuoteMetadata
+        ? provider.getQuoteMetadata(source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source)).then((metadata) =>
+          metadata && quoteMetadataMatchesTarget(metadata, source.instrument.symbol, source.instrument.exchange) ? metadata : null)
+        : provider.getQuote(source.instrument.symbol, source.instrument.exchange ?? "", requestContext(source)).then(quoteMetadataFromQuote))
+        .then((metadata) => { if (!metadata) cache.quoteMetadataByInstrument.delete(key); return metadata; })
         .catch(() => { cache.quoteMetadataByInstrument.delete(key); return null; });
       cache.quoteMetadataByInstrument.set(key, pending);
     }
@@ -1246,11 +1250,6 @@ export async function resolveChartSpecData(
         ? sources.quoteOverrides?.get(chartQuoteOverrideKeyForSource(source))
         : undefined;
       const financialsPromise = needsFinancials ? loadFinancials(source) : Promise.resolve(null);
-      // Qualified price charts avoid loading company statements. They still
-      // need listing metadata when no streamed quote has supplied it. Retain
-      // only currency/type: a metadata fetch must not append an old price.
-      const quoteMetadataPromise = !needsFinancials && (!quoteOverride?.currency || !quoteOverride?.instrumentType)
-        ? loadQuoteMetadata(source) : Promise.resolve(null);
       let resolvedSource = source;
       let financials: TickerFinancials | null;
       let history: TickerFinancials["priceHistory"] | null;
@@ -1271,7 +1270,7 @@ export async function resolveChartSpecData(
       // The viewport's initial reference stays fixed while a source request
       // runs. Validate a newly arrived quote against the elapsed clock.
       const observationNow = referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt);
-      const merged = history
+      let merged = history
         // A streamed quote may update only one leg, even inside the same weekly
         // bar. Comparison endpoints therefore use source history observations;
         // quotes still provide currency/type without rewriting their prices.
@@ -1282,6 +1281,16 @@ export async function resolveChartSpecData(
           ? { ...financials, quote: latestQuote(financials.quote, quoteOverride) }
           : financials;
       if (!merged) throw new Error(`No financial data is available for ${instrumentLabel(source)}.`);
+      // Historical labels can retain listing facts after the live price is
+      // unavailable. Reuse existing facts before requesting a price-free snapshot.
+      const existingMetadata = merged.quoteMetadata && quoteMetadataMatchesTarget(merged.quoteMetadata, resolvedSource.instrument.symbol, resolvedSource.instrument.exchange)
+        ? merged.quoteMetadata : undefined;
+      const needsMetadata = marketField && (
+        !(merged.quote?.currency || existingMetadata?.currency)
+        || !(merged.quote?.instrumentType || existingMetadata?.instrumentType)
+      );
+      const quoteMetadata = mergeQuoteMetadata(existingMetadata, needsMetadata ? await loadQuoteMetadata(resolvedSource) : null);
+      if (quoteMetadata || merged.quoteMetadata) merged = { ...merged, quoteMetadata };
       if ((source.fieldId === "fundamental.eps" || source.fieldId === "valuation.trailingPE")
         && [...merged.annualStatements, ...merged.quarterlyStatements].some((row) => row.epsBasis)) {
         warnings.push(SEC_EPS_BASIS_NOTICE);
@@ -1293,7 +1302,7 @@ export async function resolveChartSpecData(
         merged,
         index,
         initialResolution,
-        await quoteMetadataPromise,
+        quoteMetadata,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
       const reportedForwardPE = merged.fundamentals?.forwardPE;

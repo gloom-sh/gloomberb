@@ -8,6 +8,8 @@ A quote needs a finite, positive observation timestamp that is no later than the
 
 ## Charts, comparisons, and correlations
 
+Historical price charts retain explicit listing currency and instrument type independently of a current quote. A rejected stale quote can supply those static facts, with its original source timestamp and stale flag in exported `quoteMetadata`; it cannot add a price observation or daily change. Snapshot reloads retain those facts without a live lookup. When optional enrichment supplies a missing field, `fieldSources` preserves that field's separate provenance. Missing or mismatched metadata remains unknown; no currency, FX conversion, or share/contract basis is inferred from a price's magnitude.
+
 Normalized price charts show closing-price returns in each listing's currency. They exclude cash distributions, reinvestment, and FX conversion. They are not total-return or investor-currency performance charts.
 
 Daily, weekly, and monthly comparisons use shared calendar dates, with each market retaining its source timestamps. Intraday comparisons require exact shared timestamps. Exchange closing times may differ; weekly and monthly bars can cover a partial period. See [comparison alignment and baselines](price-comparisons.md).

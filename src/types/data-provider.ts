@@ -3,6 +3,7 @@ import type {
   AnalystResearchData,
   CorporateActionsData,
   Quote,
+  QuoteMetadata,
   TickerFinancials,
   PricePoint,
   OptionsChain,
@@ -174,6 +175,8 @@ export interface AssetDataProvider {
   getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean }): Promise<TickerFinancialsBatchResult[]>;
   getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials>;
   getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote>;
+  /** Listing facts may outlive the quote price; this method never returns price/session values. */
+  getQuoteMetadata?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<QuoteMetadata | null>;
   getExchangeRate(fromCurrency: string): Promise<number>;
   getExchangeRateSnapshot?(fromCurrency: string): Promise<ExchangeRateSnapshot>;
   search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]>;

@@ -40,6 +40,7 @@ import type {
   HolderData,
   PricePoint,
   Quote,
+  QuoteMetadata,
 } from "../../../types/financials";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import type { AppState } from "../../../core/state/app/state";
@@ -328,6 +329,7 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
   const cloudProvider = createGloomberbCloudProvider();
   const bridge: Partial<DataProvider> = {
     getQuote: (symbol, exchange) => requestShotMarketData<Quote>("getQuote", [symbol, exchange]),
+    getQuoteMetadata: (symbol, exchange, context) => requestShotMarketData<QuoteMetadata | null>("getQuoteMetadata", [symbol, exchange, context]),
     getQuotesBatch: (targets) => requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [targets])
       .catch(() => targets.map((target) => ({ target, quote: null }))),
     getPriceHistory: (symbol, exchange, range) => requestShotMarketData<PricePoint[]>("getPriceHistory", [symbol, exchange, range])

@@ -19,6 +19,24 @@ export interface QuoteProvenance {
   rejectedPriceProviders?: string[];
 }
 
+/** Static listing facts from a quote observation, without an investable price. */
+export interface QuoteMetadataSource {
+  providerId?: string;
+  lastUpdated?: number;
+  stale?: boolean;
+  provenance?: QuoteProvenance;
+}
+
+export interface QuoteMetadata {
+  symbol: string;
+  currency?: string;
+  instrumentType?: string;
+  listingExchangeName?: string;
+  source: QuoteMetadataSource;
+  /** Overrides only when a missing field was supplied by another observation. */
+  fieldSources?: Partial<Record<"currency" | "instrumentType", QuoteMetadataSource>>;
+}
+
 export interface Quote {
   symbol: string;
   /** Provider-reported security type, independent of the company profile. */
@@ -449,6 +467,7 @@ export interface TickerFinancials {
   statementHistory?: StatementHistoryAttempt;
   financialCurrency?: string;
   quote?: Quote;
+  quoteMetadata?: QuoteMetadata;
   quoteContributions?: QuoteContributionMap;
   fundamentals?: Fundamentals;
   profile?: CompanyProfile;

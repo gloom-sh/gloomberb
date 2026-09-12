@@ -19,7 +19,8 @@ import type {
   SearchRequestContext,
   TickerFinancialsBatchResult,
 } from "../../types/data-provider";
-import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteMetadata, TickerFinancials } from "../../types/financials";
+import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import {
   apiClient,
@@ -283,6 +284,15 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       },
       `Cloud quotes are unavailable for ${ticker}`,
     );
+  }
+
+  async getQuoteMetadata(ticker: string, exchange = ""): Promise<QuoteMetadata | null> {
+    const target = cloudInstrumentTarget(ticker, exchange);
+    const response = await apiClient.getCloudQuote(target.symbol, target.exchange);
+    const quote = mapQuote(unwrapRequiredCloudResponse(response, `Cloud quote metadata is unavailable for ${ticker}`), response.providerMeta);
+    const metadata = quoteMetadataFromQuote(quote);
+    if (isStaleCloudResponse(response)) metadata.source.stale = true;
+    return quoteMetadataMatchesTarget(metadata, ticker, exchange) ? metadata : null;
   }
 
   async getQuotesBatch(
