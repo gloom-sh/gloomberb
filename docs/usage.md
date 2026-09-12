@@ -105,7 +105,7 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `CG` | Congress trading disclosures |
 | `WEI` | Global equity indices |
 | `MAP` | Live world venue map with local market status and clocks |
-| `FUT` | Front-month futures across index, rates, energy, metals, grains, and FX |
+| `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [YYYY-MM-DD]` | Treasury yield curve for the latest session or a historical date; CLI also accepts `--date YYYY-MM-DD` |
@@ -121,6 +121,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
+
+`FUT` keeps each rolling quote alias as its symbol and displays the provider's contract name when available. Search also matches that name. A month in this label describes the captured quote; the app does not derive an expiry date or establish the roll-adjustment basis of the alias's historical series.
 
 ### Workspace and App Controls
 

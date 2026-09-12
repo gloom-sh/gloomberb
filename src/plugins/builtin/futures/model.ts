@@ -1,3 +1,4 @@
+import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "./contracts";
@@ -31,12 +32,20 @@ export function futuresRowId(row: FuturesTableRow): string {
   return row.type === "header" ? `header-${row.sector}` : row.contract.symbol;
 }
 
-function matchesFuturesSearch(contract: FuturesContract, query: string): boolean {
+/** The alias stays the row identity while its provider-selected contract can roll. */
+export function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
+  return quote?.symbol?.trim().toUpperCase() === contract.symbol.toUpperCase()
+    ? quote.name?.trim() || contract.name
+    : contract.name;
+}
+
+function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: Quote | null): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
   return (
     contract.code.toLowerCase().includes(normalized)
     || contract.name.toLowerCase().includes(normalized)
+    || futuresContractName(contract, quote).toLowerCase().includes(normalized)
     || contract.symbol.toLowerCase().includes(normalized)
   );
 }
@@ -53,7 +62,7 @@ function getSortValue(
     case "code":
       return contract.code;
     case "name":
-      return contract.name;
+      return futuresContractName(contract, quote);
     case "price":
       return quote?.price ?? null;
     case "change":
@@ -116,7 +125,7 @@ export function buildFuturesRows(
   const collapsed = effectiveCollapsedSectors(options?.collapsed, query);
   for (const sector of FUTURES_SECTOR_ORDER) {
     const contracts = sortContracts(contractsBySector.get(sector) ?? [], sortPreference, quotes)
-      .filter((contract) => matchesFuturesSearch(contract, query));
+      .filter((contract) => matchesFuturesSearch(contract, query, quotes.get(contract.symbol)?.quote));
     if (contracts.length === 0) continue;
     rows.push({ type: "header", sector });
     if (collapsed.has(sector)) continue;
