@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { t, tf } from "../../i18n";
-import { useThemeColors } from "../../theme/theme-context";
+import { useThemeTokens } from "../../theme/theme-context";
 import { Box, Text } from "../../ui";
 import { Spinner } from "./loading";
 
@@ -13,13 +13,13 @@ export interface EmptyStateProps {
 }
 
 export function EmptyState({ title, message, hint, actions, status = "empty" }: EmptyStateProps) {
-  const colors = useThemeColors();
+  const tokens = useThemeTokens();
   // Provider messages must wrap at narrow pane widths rather than lose their tail.
   return (
     <Box flexDirection="column" data-gloom-status={status} data-gloom-ui="empty-state">
-      <Box><Text fg={status === "error" ? colors.negative : colors.textDim} wrapText>{t(title)}</Text></Box>
-      {message && <Box><Text fg={colors.textMuted} wrapText>{t(message)}</Text></Box>}
-      {hint && <Box><Text fg={colors.textMuted} wrapText>{t(hint)}</Text></Box>}
+      <Box><Text fg={status === "error" ? tokens.text.negative : tokens.text.dim} wrapText>{t(title)}</Text></Box>
+      {message && <Box><Text fg={tokens.text.muted} wrapText>{t(message)}</Text></Box>}
+      {hint && <Box><Text fg={tokens.text.muted} wrapText>{t(hint)}</Text></Box>}
       {actions && <Box flexDirection="row" gap={1} marginTop={1}>{actions}</Box>}
     </Box>
   );
@@ -32,10 +32,10 @@ export interface NoticeProps {
 
 /** Inline feedback leaves existing content visible, including stale data after a refresh failure. */
 export function Notice({ children, tone = "warning" }: NoticeProps) {
-  const colors = useThemeColors();
+  const tokens = useThemeTokens();
   return (
     <Box data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice">
-      <Text fg={tone === "muted" ? colors.textDim : colors[tone]} wrapText>{children}</Text>
+      <Text fg={tone === "muted" ? tokens.text.dim : tokens.text[tone]} wrapText>{children}</Text>
     </Box>
   );
 }
@@ -83,6 +83,7 @@ export function PaneStatusBody({
   height,
   children,
 }: PaneStatusBodyProps) {
+  const { pane } = useThemeTokens();
   const status = error ? "error" : loading ? "loading" : empty ? "empty" : null;
   if (!status) return <>{children}</>;
   return (
@@ -90,8 +91,8 @@ export function PaneStatusBody({
       width={width}
       height={height}
       flexGrow={align === "center" ? 1 : undefined}
-      paddingX={1}
-      paddingY={1}
+      paddingX={pane.chrome.padding.x}
+      paddingY={Math.max(1, pane.chrome.padding.y)}
       alignItems={align === "center" ? "center" : undefined}
       justifyContent={align === "center" ? "center" : undefined}
       data-gloom-status={status}

@@ -7,6 +7,7 @@ import {
   focusPaneState,
   getActiveSavedPaneState,
   getEffectiveThemeId,
+  getEffectiveThemeStyleId,
   getFocusedCollectionId,
   getFocusedTickerSymbol,
   getPaneOrder,
@@ -27,6 +28,7 @@ import type { AppSessionSnapshot } from "../session-persistence";
 export {
   clonePaneStateMap,
   getEffectiveThemeId,
+  getEffectiveThemeStyleId,
   getFocusedCollectionId,
   getFocusedTickerSymbol,
   resolveCollectionForPane,
@@ -42,7 +44,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
     case "SET_CONFIG":
       return withFocusedPane(
-        { ...state, themePreview: null, layoutHistory: {} },
+        { ...state, themePreview: null, themeStylePreview: null, layoutHistory: {} },
         action.config,
         {
           paneState: {
@@ -129,7 +131,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case "TOGGLE_COMMAND_BAR":
       return state.commandBarOpen
-        ? { ...state, commandBarOpen: false, commandBarQuery: "", commandBarLaunchRequest: null, themePreview: null }
+        ? { ...state, commandBarOpen: false, commandBarQuery: "", commandBarLaunchRequest: null, themePreview: null, themeStylePreview: null }
         : { ...state, commandBarOpen: true, commandBarQuery: "", commandBarLaunchRequest: null };
 
     case "SET_COMMAND_BAR": {
@@ -145,6 +147,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         commandBarQuery: action.open ? (action.query ?? "") : "",
         commandBarLaunchRequest: launchRequest,
         themePreview: action.open ? state.themePreview : null,
+        themeStylePreview: action.open ? state.themeStylePreview : null,
       };
     }
 
@@ -173,13 +176,28 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "TOGGLE_STATUS_BAR":
       return { ...state, statusBarVisible: !state.statusBarVisible };
 
-    case "SET_THEME":
-      if (state.config.theme === action.theme && state.themePreview == null) return state;
-      return { ...state, themePreview: null, config: { ...state.config, theme: action.theme } };
+    case "SET_THEME": {
+      const style = action.style ?? state.config.themeStyle;
+      const unchanged = state.config.theme === action.theme
+        && state.config.themeStyle === style
+        && state.themePreview == null
+        && state.themeStylePreview == null;
+      if (unchanged) return state;
+      return {
+        ...state,
+        themePreview: null,
+        themeStylePreview: null,
+        config: { ...state.config, theme: action.theme, themeStyle: style },
+      };
+    }
 
-    case "PREVIEW_THEME":
-      if (state.themePreview === action.theme) return state;
-      return { ...state, themePreview: action.theme };
+    case "PREVIEW_THEME": {
+      // A preview with no style named keeps the committed style, so previewing
+      // a scheme from the `colors` picker never changes the structure too.
+      const style = action.style === undefined ? state.themeStylePreview : action.style;
+      if (state.themePreview === action.theme && state.themeStylePreview === style) return state;
+      return { ...state, themePreview: action.theme, themeStylePreview: style };
+    }
 
     case "SET_UPDATE_AVAILABLE":
       return { ...state, updateAvailable: action.release, updateNotice: action.release ? null : state.updateNotice };
@@ -346,6 +364,7 @@ export function createInitialState(config: AppConfig, sessionSnapshot: AppSessio
     commandBarQuery: "",
     commandBarLaunchRequest: null,
     themePreview: null,
+    themeStylePreview: null,
     refreshing: new Set(),
     initialized: false,
     statusBarVisible: sessionSnapshot?.statusBarVisible !== false,

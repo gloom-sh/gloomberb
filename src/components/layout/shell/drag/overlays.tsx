@@ -1,5 +1,5 @@
 import { Box } from "../../../../ui";
-import { colors } from "../../../../theme/colors";
+import { colors, tokens } from "../../../../theme/colors";
 import type { FloatingRect } from "../../../../plugins/pane-manager";
 import type { DragPreview, HoverOverlay } from "./index";
 
@@ -32,7 +32,7 @@ export function ShellDragOverlays({
             width={cell.rect.width}
             height={cell.rect.height}
             border
-            borderStyle="single"
+            borderStyle={tokens.pane.chrome.boxBorderStyle}
             borderColor={active ? colors.borderFocused : colors.border}
             backgroundColor={active ? colors.header : colors.panel}
             zIndex={cell.position === "center" ? 98 : 97}
@@ -52,7 +52,7 @@ export function ShellDragOverlays({
             width={dragFloatingRect.rect.width}
             height={dragFloatingRect.rect.height}
             border
-            borderStyle="single"
+            borderStyle={tokens.pane.chrome.boxBorderStyle}
             borderColor={colors.borderFocused}
             backgroundColor={colors.panel}
             zIndex={95}
@@ -67,7 +67,7 @@ export function ShellDragOverlays({
           width={effectiveDockPreview.rect.width}
           height={effectiveDockPreview.rect.height}
           border
-          borderStyle="single"
+          borderStyle={tokens.pane.chrome.boxBorderStyle}
           borderColor={colors.borderFocused}
           backgroundColor={colors.panel}
           zIndex={96}

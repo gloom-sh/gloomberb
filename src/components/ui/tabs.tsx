@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShortcut } from "../../react/input";
 import { Box, ScrollBox, Text, useNativeRenderer, useUiHost } from "../../ui";
 import { TextAttributes, type BoxRenderable, type ScrollBoxRenderable } from "../../ui";
-import { hoverBg } from "../../theme/colors";
-import { useThemeColors } from "../../theme/theme-context";
+import { useThemeColors, useThemeTokens } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { displayWidth } from "../../utils/format";
@@ -63,6 +62,7 @@ export function Tabs({
 }: TabsProps) {
   const language = useAppLanguage();
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
   const tabs = useMemo(() => rawTabs.map((tab) => (
     { ...tab, label: t(tab.label) }
   )), [language, rawTabs]);
@@ -82,7 +82,7 @@ export function Tabs({
     activeUnderline: focused ? colors.textBright : colors.borderFocused,
     inactiveUnderline: colors.bg,
     hoverUnderline: colors.border,
-    hoverBg: hoverBg(colors),
+    hoverBg: tokens.surface.hover,
     activeBg: colors.selected,
     activePillFg: colors.selectedText,
     closeFg: colors.textMuted,

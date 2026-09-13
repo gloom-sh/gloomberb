@@ -17,7 +17,9 @@ import { useCommandBarListNavigation } from "../list/navigation";
 import type { ListScreenState, ResultItem } from "../list/model";
 import { useCommandBarMultiSelectRuntime } from "../multi-select-runtime";
 import { useCommandBarPanelState } from "./state";
-import type { ThemePickerHandle } from "../theme-picker";
+import { DEFAULT_STYLE } from "../../../theme/styles";
+import type { ThemePickerHandle, ThemePickerMode } from "../theme-picker";
+import type { ThemeSelection } from "../theme-preview";
 import type {
   CommandBarFieldValue,
   CommandBarRoute,
@@ -34,11 +36,11 @@ interface CommandBarPanelRuntimeOptions {
   acceptRootShortcutTab: () => boolean;
   acceptSelectedShortcutTab: () => boolean;
   activateListSelection: (options?: { secondary?: boolean; item?: ResultItem }) => void;
-  applyThemePreview: (themeId: string | null) => void;
+  applyThemePreview: (selection: ThemeSelection | null) => void;
   cellHeightPx: number;
   cellWidthPx: number;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
-  commitTheme: (themeId: string) => void;
+  commitTheme: (selection: ThemeSelection) => void;
   committedThemeId: string;
   confirmCurrentRoute: () => void | Promise<void>;
   currentRoute: CommandBarRoute | null;
@@ -76,7 +78,9 @@ interface CommandBarPanelRuntimeOptions {
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
+  themePickerMode: ThemePickerMode;
   themePickerFilter: string;
+  committedStyleId: string;
   themePickerRef: RefObject<ThemePickerHandle | null>;
   titleBarOverlay: boolean | undefined;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
@@ -129,8 +133,10 @@ export function useCommandBarPanelRuntime({
   termHeight,
   termWidth,
   themePickerActive,
+  themePickerMode,
   themePickerFilter,
   themePickerRef,
+  committedStyleId,
   titleBarOverlay,
   updateTopRoute,
   updateWorkflowValue,
@@ -220,18 +226,21 @@ export function useCommandBarPanelRuntime({
     termHeight,
     termWidth,
     themePickerActive,
+    themePickerMode,
     themePickerFilter,
     titleBarOverlay,
     updateTopRoute,
     visibleListStateRef,
   });
 
-  const handleThemeCommit = useCallback((themeId: string) => {
+  const handleThemeCommit = useCallback((selection: ThemeSelection) => {
+    const styleId = selection.styleId ?? stateRef.current.config.themeStyle ?? DEFAULT_STYLE;
     const nextConfig = {
       ...stateRef.current.config,
-      theme: themeId,
+      theme: selection.themeId,
+      themeStyle: styleId,
     };
-    commitTheme(themeId);
+    commitTheme({ themeId: selection.themeId, styleId });
     persistConfig(nextConfig);
     closeAll({ revertThemePreview: false });
   }, [closeAll, commitTheme, persistConfig, stateRef]);
@@ -278,8 +287,10 @@ export function useCommandBarPanelRuntime({
     termHeight,
     termWidth,
     themePickerActive,
+    themePickerMode,
     themePickerFilter,
     themePickerRef,
+    committedStyleId,
     trailingWidth: panelLayout.trailingWidth,
     visibleListState,
     workflowScrollRef,

@@ -11,7 +11,7 @@ import {
   type PaneFooterSegment
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { colors, getChartIndicatorColor } from "../../../theme/colors";
+import { colors, getChartIndicatorColor, glyphs } from "../../../theme/colors";
 import {
   Box,
   ScrollBox,
@@ -108,7 +108,7 @@ function PayMixBar({
       <Box height={1} flexDirection="row">
         {parts.map((part, index) => (
           <Text key={part.key} fg={part.color}>
-            {"█".repeat(cells[index]!)}
+            {glyphs.bar.full.repeat(cells[index]!)}
           </Text>
         ))}
       </Box>
@@ -464,7 +464,7 @@ export function ExecutivesPane({
                     text={point}
                     width={proseWidth}
                     color={colors.text}
-                    prefix="• "
+                    prefix={`${glyphs.bullet} `}
                   />
                 ))}
               </Box>

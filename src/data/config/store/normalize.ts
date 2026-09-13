@@ -15,6 +15,8 @@ import {
 import type { Portfolio, Watchlist } from "../../../types/ticker";
 import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
+import { hasScheme } from "../../../theme/schemes";
+import { DEFAULT_STYLE, hasStyle, requestedExperimentalStyle } from "../../../theme/styles";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig } from "./migrations";
 
@@ -55,7 +57,7 @@ export function normalizeLoadedConfig(saved: Record<string, unknown>, dataDir: s
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
-    theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,
+    ...sanitizeThemeSelection(candidate.theme, candidate.themeStyle, defaults),
     chartPreferences: sanitizeChartPreferences(candidate.chartPreferences, defaults.chartPreferences),
     valueFlashingEnabled: typeof candidate.valueFlashingEnabled === "boolean" ? candidate.valueFlashingEnabled : defaults.valueFlashingEnabled,
     fontSize: sanitizeFontSize(candidate.fontSize, defaults.fontSize),
@@ -126,6 +128,35 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
 function sanitizeFontSize(value: unknown, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return clampFontSize(value);
+}
+
+/**
+ * `theme` predates styles, so a config that only carries it means a colour
+ * scheme under the terminal style, which is what the app looked like then.
+ * A `theme` that names a style instead of a scheme is read as the style, so a
+ * hand-edited config saying `"theme": "paper"` does the obvious thing once
+ * that style ships.
+ *
+ * An experimental style is not accepted from the file. It has to come from
+ * GLOOMBERB_THEME_STYLE, so a config written while a style was being
+ * developed cannot strand someone in it later.
+ */
+function sanitizeThemeSelection(
+  theme: unknown,
+  themeStyle: unknown,
+  defaults: AppConfig,
+): { theme: string; themeStyle: string } {
+  const requestedStyle = typeof themeStyle === "string" ? themeStyle.trim() : "";
+  const requestedScheme = typeof theme === "string" ? theme.trim() : "";
+  const fallbackStyle = requestedExperimentalStyle()
+    ?? (hasStyle(defaults.themeStyle ?? "") ? defaults.themeStyle! : DEFAULT_STYLE);
+  if (requestedScheme && !hasScheme(requestedScheme) && hasStyle(requestedScheme)) {
+    return { theme: defaults.theme, themeStyle: requestedScheme };
+  }
+  return {
+    theme: hasScheme(requestedScheme) ? requestedScheme : defaults.theme,
+    themeStyle: hasStyle(requestedStyle) ? requestedStyle : fallbackStyle,
+  };
 }
 
 const ONBOARDING_STAGES = new Set<OnboardingProgress["stage"]>([

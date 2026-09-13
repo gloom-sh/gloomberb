@@ -6,7 +6,7 @@ import type {
   LayoutBounds,
   ResolvedPane,
 } from "../../../../plugins/pane-manager";
-import { colors } from "../../../../theme/colors";
+import { tokens } from "../../../../theme/colors";
 import { constrainFloatingRectToBounds } from "../drag";
 import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
@@ -241,12 +241,12 @@ export function ShellPaneLayers({
             width={rect.width}
             height={rect.height}
             zIndex={active ? 2 : 1}
-            backgroundColor={active ? colors.borderFocused : colors.border}
+            backgroundColor={active ? tokens.pane.divider.active : tokens.pane.divider.idle}
             {...(nativePaneChrome ? {
               "data-gloom-role": "dock-divider",
               "data-axis": divider.axis,
               "data-active": active ? "true" : "false",
-              style: { "--divider-color": active ? colors.borderFocused : colors.border } as any,
+              style: { "--divider-color": active ? tokens.pane.divider.active : tokens.pane.divider.idle } as any,
             } : {})}
             onMouseDown={nativePaneChrome ? (event: any) => startNativeDividerDrag(divider, event) : undefined}
             onMouseDrag={nativePaneChrome ? handleNativeDrag : undefined}

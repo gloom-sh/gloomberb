@@ -161,7 +161,10 @@ export interface AppConfig {
   seededPlugins?: string[];
   disabledSources: string[];
   pluginConfig: Record<string, Record<string, unknown>>;
+  /** Colour scheme id. Named `theme` since before styles existed. */
   theme: string;
+  /** Structural style id. Absent means the terminal style, which is the old look. */
+  themeStyle?: string;
   chartPreferences: ChartPreferences;
   valueFlashingEnabled: boolean;
   fontSize: number;
@@ -780,6 +783,7 @@ export function createDefaultConfig(dataDir: string): AppConfig {
     disabledSources: [],
     pluginConfig: {},
     theme: "amber",
+    themeStyle: "terminal",
     chartPreferences: {
       renderer: "auto",
     },

@@ -18,6 +18,8 @@ import { openUrl } from "../../ui/external-link";
 import { useRouteListState } from "../routing/list-state";
 import { useCommandBarRootRuntime } from "../routes/root/runtime";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
+import { DEFAULT_STYLE } from "../../../theme/styles";
+import type { ThemePickerMode } from "../theme-picker";
 import { useCommandBarThemePreview } from "../theme-preview";
 import { CommandBarPanel } from "../panel";
 import { useCommandBarNavigationState } from "../routing/navigation-state";
@@ -54,6 +56,7 @@ export function CommandBar({
     cellHeightPx,
     cellWidthPx,
     dispatch,
+    getCommittedStyleId,
     getCommittedThemeId,
     nativeListScrollRef,
     nativePaneChrome,
@@ -80,6 +83,7 @@ export function CommandBar({
   } = useCommandBarThemePreview({
     dispatch,
     getCommittedThemeId,
+    getCommittedStyleId,
     themePickerRef,
   });
   const {
@@ -351,7 +355,9 @@ export function CommandBar({
     tickerActionItems,
     writeTickerSearchCache,
   });
-  const themePickerActive = !currentRoute && activeMatch?.command.id === "theme";
+  const themePickerMode: ThemePickerMode = activeMatch?.command.id === "colors" ? "colors" : "theme";
+  const themePickerActive = !currentRoute
+    && (activeMatch?.command.id === "theme" || activeMatch?.command.id === "colors");
   const themePickerFilter = themePickerActive ? activeMatch.arg : "";
 
   const {
@@ -470,8 +476,10 @@ export function CommandBar({
     termHeight,
     termWidth,
     themePickerActive,
+    themePickerMode,
     themePickerFilter,
     themePickerRef,
+    committedStyleId: state.config.themeStyle ?? DEFAULT_STYLE,
     titleBarOverlay,
     updateTopRoute,
     updateWorkflowValue,

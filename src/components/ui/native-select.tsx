@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 
-import { useThemeColors } from "../../theme/theme-context";
+import { useThemeColors, useThemeTokens } from "../../theme/theme-context";
 
 import { type CSSProperties } from "react";
-import { blendHex } from "../../theme/colors";
+
 import { WEB_CELL_HEIGHT } from "../../theme/font-scale";
 import { Box } from "../../ui";
 
@@ -62,6 +62,7 @@ export function NativeSelect({
   onChange,
 }: NativeSelectProps) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
   const inline = variant === "inline";
   const hasCurrentValue = options.some((option) => option.value === value);
   const resolvedWidth = width ?? (inline ? "auto" : 184);
@@ -70,11 +71,11 @@ export function NativeSelect({
     width: resolvedWidth,
     height: resolvedHeight,
     color: disabled ? colors.textMuted : colors.text,
-    backgroundColor: inline ? "transparent" : blendHex(colors.panel, colors.textBright, 0.06),
+    backgroundColor: inline ? "transparent" : tokens.surface.raised,
     border: inline ? "none" : `1px solid ${colors.border}`,
     borderRadius: inline ? 0 : 6,
     padding: inline ? 0 : "0 8px",
-    boxShadow: inline ? "none" : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
+    boxShadow: inline ? "none" : "var(--gloom-shadow-popover, none)",
     cursor: disabled ? "default" : "pointer",
     font: "inherit",
     letterSpacing: 0,

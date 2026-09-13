@@ -6,7 +6,7 @@ import type {
   LayoutBounds,
   ResolvedPane,
 } from "../../../../plugins/pane-manager";
-import { colors } from "../../../../theme/colors";
+import { colors, glyphs, tokens } from "../../../../theme/colors";
 import { constrainFloatingRectToBounds } from "../drag";
 import {
   getFloatingResizeCornerPosition,
@@ -103,7 +103,7 @@ export function ShellWindowModeOverlays({
           height={windowModeDockMovePreview.rect.height}
           zIndex={MENU_Z_INDEX - 2}
           border
-          borderStyle="single"
+          borderStyle={tokens.pane.chrome.boxBorderStyle}
           borderColor={colors.borderFocused}
           backgroundColor={colors.panel}
           data-gloom-role="window-mode-drop-preview"
@@ -128,7 +128,7 @@ export function ShellWindowModeOverlays({
             )}
             {selectedInWindowMode && bottomWidth > 0 && (
               <Box key={`focus-b:${highlightedPaneId}`} position="absolute" left={highlightedRect.x + 1} top={highlightedRect.y + highlightedRect.height - 1} width={bottomWidth} height={1} zIndex={highlightedZIndex} backgroundColor={borderColor}>
-                <Text fg={borderColor} selectable={false}>{"─".repeat(bottomWidth)}</Text>
+                <Text fg={borderColor} selectable={false}>{glyphs.border.horizontal.repeat(bottomWidth)}</Text>
               </Box>
             )}
           </>

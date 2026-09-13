@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useNativeRenderer } from "../../../../ui";
-import { hoverBg } from "../../../../theme/colors";
-import { useThemeColors } from "../../../../theme/theme-context";
+import { useGlyphs, useThemeColors, useThemeTokens } from "../../../../theme/theme-context";
 import { useAppDispatch, usePaneInstance } from "../../../../state/app/context";
 import { useViewport } from "../../../../react/input";
 import { measurePerf } from "../../../../utils/perf-marks";
@@ -25,6 +24,7 @@ import type {
 } from "../types";
 import { resolveDataTableVisibleRange } from "../visible-range";
 import {
+  dataTableTopRow,
   resolveDataTableScrollTop,
   resolveDataTableVisibleWindow,
 } from "./model";
@@ -54,6 +54,7 @@ function OpenTuiDataTableRowInner<
   C extends DataTableColumn,
 >({
   colors,
+  tokens,
   columnGap,
   contentWidth,
   displayColumns,
@@ -73,6 +74,7 @@ function OpenTuiDataTableRowInner<
   selected,
 }: {
   colors: ReturnType<typeof useThemeColors>;
+  tokens: ReturnType<typeof useThemeTokens>;
   columnGap: number;
   contentWidth: number;
   displayColumns: C[];
@@ -124,13 +126,16 @@ function OpenTuiDataTableRowInner<
 
   const rowState = { selected };
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
-  const rowBg = selected ? colors.selected : rowBackgroundColor ?? colors.bg;
-  const rowHoverBg = selected ? undefined : hoverBg(colors);
-
+  // A striping style tints alternate rows; a ruled one leaves them flat and
+  // relies on the rule under each row instead.
+  const stripe = tokens.table.row.stripe;
+  const restingBg = stripe && index % 2 === 1 ? stripe : colors.bg;
+  const rowBg = selected ? colors.selected : rowBackgroundColor ?? restingBg;
+  const rowHoverBg = selected ? undefined : tokens.table.row.hover;
   return (
     <Box
       flexDirection="row"
-      height={1}
+      height={tokens.table.layout.rowHeight}
       {...tableContentWidthProps(contentWidth)}
       paddingX={horizontalPadding}
       backgroundColor={rowBg}
@@ -175,6 +180,10 @@ function OpenTuiDataTableRowInner<
               cell.content
             ) : (
               <Text
+                // A right-aligned column in a finance table is a number, and
+                // numbers keep tabular figures in every style so the column
+                // still aligns on the digit.
+                typeRole={column.align === "right" ? "numeric" : "body"}
                 attributes={cell.attributes ?? TextAttributes.NONE}
                 fg={cell.color ?? (selected ? colors.selectedText : colors.text)}
               >
@@ -221,8 +230,8 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   emptyStateHint,
   virtualize = true,
   overscan = 3,
-  columnGap = 1,
-  horizontalPadding = 1,
+  columnGap: columnGapProp,
+  horizontalPadding: horizontalPaddingProp,
   fillAvailableWidth = true,
   showHorizontalScrollbar = true,
   scrollToIndex,
@@ -230,6 +239,11 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   scrollToIndexVersion = 0,
 }: DataTableProps<T, C>) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
+  const glyphs = useGlyphs();
+  // Column rhythm follows the style unless a table asks for its own.
+  const columnGap = columnGapProp ?? tokens.table.layout.columnGap;
+  const horizontalPadding = horizontalPaddingProp ?? tokens.table.layout.padX;
   const dispatch = useAppDispatch();
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const appViewport = useViewport();
@@ -253,6 +267,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         overscan,
         scrollTop,
         virtualize,
+        rowHeight: tokens.table.layout.rowHeight,
       }),
       {
         itemCount: items.length,
@@ -295,9 +310,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     const scrollBox = scrollRef.current;
     const range = resolveDataTableVisibleRange({
       itemCount: items.length,
-      rowSize: 1,
+      rowSize: tokens.table.layout.rowHeight,
       scrollOffset: scrollBox?.scrollTop ?? scrollTop,
-      viewportSize: scrollBox?.viewport?.height ?? viewportHeight,
+      viewportSize: scrollBox?.viewport?.height ?? viewportHeight * tokens.table.layout.rowHeight,
     });
     const previous = lastVisibleRangeRef.current;
     if (
@@ -308,7 +323,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     ) return;
     lastVisibleRangeRef.current = { key: visibleRangeKey, range };
     onVisibleRangeChange(range);
-  }, [items.length, onVisibleRangeChange, scrollRef, scrollTop, viewportHeight, visibleRangeKey]);
+  }, [items.length, onVisibleRangeChange, scrollRef, scrollTop, tokens.table.layout.rowHeight, viewportHeight, visibleRangeKey]);
   const handleRowMouseDown =
     useDoubleClickActivation<DataTableRowPointerTarget<T>>({
       onSelect: ({ item, index }) => {
@@ -366,19 +381,22 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
       || scrollBox.viewport.height <= 0
       || scrollBox.scrollHeight < items.length) return false;
 
+    // The scroll box measures in cells and the alignment maths is in rows, so
+    // convert in, solve, and convert back out.
+    const rowSize = tokens.table.layout.rowHeight;
     const targetIndex = Math.max(0, Math.min(scrollToIndex, items.length - 1));
-    const visibleHeight = Math.max(
+    const visibleRows = Math.max(
       1,
-      Math.min(scrollBox.viewport.height, Math.ceil(appViewport.height)),
+      Math.floor(Math.min(scrollBox.viewport.height, Math.ceil(appViewport.height)) / rowSize),
     );
     const currentTop = scrollBox.scrollTop;
     const nextTop = resolveDataTableScrollTop(
       targetIndex,
-      currentTop,
-      visibleHeight,
+      dataTableTopRow(currentTop, rowSize),
+      visibleRows,
       items.length,
       scrollToIndexAlign,
-    );
+    ) * rowSize;
 
     if (nextTop === currentTop) return true;
     scrollBox.scrollTo(nextTop);
@@ -390,6 +408,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     scrollRef,
     scrollToIndex,
     scrollToIndexAlign,
+    tokens.table.layout.rowHeight,
   ]);
 
   useEffect(() => {
@@ -474,7 +493,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
         ref={headerScrollRef}
         width="100%"
         height={1}
-        backgroundColor={colors.panel}
+        backgroundColor={tokens.table.headerBg}
         scrollX={showHorizontalScrollbar}
         focusable={false}
         onSizeChange={measureContentWidth}
@@ -484,14 +503,12 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           height={1}
           {...tableContentWidthProps(contentWidth)}
           paddingX={horizontalPadding}
-          backgroundColor={colors.panel}
+          backgroundColor={tokens.table.headerBg}
         >
           {displayColumns.map((column, columnIndex) => {
             const isSorted = sortColumnId === column.id;
             const indicator = isSorted
-              ? sortDirection === "asc"
-                ? " ▲"
-                : " ▼"
+              ? ` ${sortDirection === "asc" ? glyphs.triangle.up : glyphs.triangle.down}`
               : "";
             const labelText = fitTableHeaderText(
               column.label + indicator,
@@ -503,7 +520,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
               <Box
                 key={column.id}
                 width={column.width + columnGap}
-                backgroundColor={column.headerBackgroundColor ?? colors.panel}
+                backgroundColor={column.headerBackgroundColor ?? tokens.table.headerBg}
                 onMouseDown={(event: any) => {
                   focusPane();
                   onTableMouseDown?.(event);
@@ -512,8 +529,11 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                 }}
               >
                 <Text
+                  typeRole="label"
                   attributes={TextAttributes.BOLD}
-                  fg={isSorted ? colors.text : column.headerColor ?? colors.textDim}
+                  fg={isSorted
+                    ? tokens.table.headerText
+                    : column.headerColor ?? tokens.table.headerText}
                 >
                   {labelText}
                 </Text>
@@ -557,6 +577,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                   <OpenTuiDataTableRow<T, C>
                     key={itemKey}
                     colors={colors}
+                    tokens={tokens}
                     columnGap={columnGap}
                     contentWidth={contentWidth}
                     displayColumns={displayColumns}

@@ -82,6 +82,8 @@ export function resolveCommandBarMode(query: string, commandList?: Command[]): C
       return { kind: "search", badge: match.prefix, hint: t("Open security details for a ticker") };
     case "theme":
       return { kind: "themes", badge: "THEMES", hint: t("Preview with arrows, Enter to save, Esc to revert") };
+    case "colors":
+      return { kind: "themes", badge: "COLORS", hint: t("Preview with arrows, Enter to save, Esc to revert") };
     case "layout":
       return { kind: "layout", badge: "LAYOUT", hint: t("Organize panes, history, and saved layouts") };
     default:

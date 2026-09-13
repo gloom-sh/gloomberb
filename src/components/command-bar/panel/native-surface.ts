@@ -11,8 +11,9 @@ import { blendHex, commandBarPanelBg, type ThemeColors } from "../../../theme/co
 export const NATIVE_COMMAND_SURFACE = {
   paddingXPx: 14,
   paddingYPx: 14,
-  radiusPx: 8,
-  shadow: "0 10px 18px color-mix(in srgb, var(--gloom-bg) 34%, transparent)",
+  /** Read from the style so a square style keeps the surface square. */
+  radius: "var(--gloom-radius-pane, 8px)",
+  shadow: "var(--gloom-shadow-popover, none)",
 } as const;
 
 /**

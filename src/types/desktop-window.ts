@@ -18,6 +18,8 @@ export interface DesktopDockPreviewState {
 
 export interface DesktopThemePreviewState {
   theme: string | null;
+  /** Style half of the preview. Absent keeps the window's committed style. */
+  style?: string | null;
 }
 
 export interface DesktopWindowBridge {

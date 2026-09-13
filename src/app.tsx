@@ -22,7 +22,7 @@ import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
 import type { LoadedExternalPlugin } from "./plugins/loader";
 import type { AppServicesFactory, AppTickerRepositoryPort } from "./core/app-service-ports";
-import { useThemeColors } from "./theme/theme-context";
+import { useThemeTokens } from "./theme/theme-context";
 import type { AppConfig } from "./types/config";
 import type { DesktopDeepLinkBridge } from "./types/desktop-deeplink";
 import type { CliLaunchRequest, GloomPlugin } from "./types/plugin";
@@ -79,7 +79,7 @@ interface AppInnerProps {
 }
 
 function ThemedAppRoot({ children }: { children: ReactNode }) {
-  const themeColors = useThemeColors();
+  const { surface } = useThemeTokens();
   return (
     <Box
       flexDirection="column"
@@ -89,7 +89,7 @@ function ThemedAppRoot({ children }: { children: ReactNode }) {
       minWidth={0}
       minHeight={0}
       overflow="hidden"
-      backgroundColor={themeColors.bg}
+      backgroundColor={surface.backdrop}
     >
       {children}
     </Box>

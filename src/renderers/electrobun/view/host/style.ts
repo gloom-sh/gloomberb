@@ -66,9 +66,15 @@ export function commonStyle(props: Record<string, unknown>): CSSProperties {
 export function textStyle(props: TextProps): CSSProperties {
   const attributes = props.attributes;
   const shouldWrap = props.wrapText || props.wrapMode === "word" || props.wrapMode === "char";
+  // Reverse video swaps the pair, the way a terminal cell attribute does. A
+  // photographic invert would also change the hue, which is not what INVERSE
+  // means and left inverted headers a different colour in each renderer.
+  const inverse = props.inverse || hasAttribute(attributes, TextAttributes.INVERSE);
+  const foreground = inverse ? props.bg ?? "var(--gloom-bg)" : props.fg;
+  const background = inverse ? props.fg ?? "var(--gloom-text)" : props.bg;
   return {
-    color: props.fg,
-    backgroundColor: props.bg,
+    color: foreground,
+    backgroundColor: background,
     display: "inline-block",
     lineHeight: "var(--cell-h)",
     fontWeight: props.bold || hasAttribute(attributes, TextAttributes.BOLD) ? 700 : undefined,
@@ -78,7 +84,6 @@ export function textStyle(props: TextProps): CSSProperties {
       props.strikethrough || hasAttribute(attributes, TextAttributes.STRIKETHROUGH) ? "line-through" : "",
     ].filter(Boolean).join(" ") || undefined,
     opacity: props.dim || hasAttribute(attributes, TextAttributes.DIM) ? 0.65 : undefined,
-    filter: props.inverse || hasAttribute(attributes, TextAttributes.INVERSE) ? "invert(1)" : undefined,
     whiteSpace: shouldWrap ? "pre-wrap" : "pre",
     overflowWrap: shouldWrap ? "break-word" : undefined,
     overflow: "visible",

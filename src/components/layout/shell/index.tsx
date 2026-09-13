@@ -29,7 +29,7 @@ import {
   selectLayout,
   selectStatusBarVisible,
 } from "../../../state/selectors-ui";
-import { useThemeColors } from "../../../theme/theme-context";
+import { useThemeColors, useThemeStyle } from "../../../theme/theme-context";
 import { tf } from "../../../i18n";
 import { getPaneDisplayTitle } from "../pane/title";
 import type { PaneHeaderQuickSetting } from "../pane/header";
@@ -113,7 +113,7 @@ export function Shell({
   const { setTransientLayout } = useTransientLayout();
   const uiKind = useUiHost().kind;
   const shortcutDisplayMode = getShortcutDisplayMode(uiKind);
-  const { nativePaneChrome = false, nativeContextMenu, precisePointer, publicSharing, titleBarOverlay, cellHeightPx } = useUiCapabilities();
+  const { nativePaneChrome = false, nativeContextMenu, precisePointer, publicSharing, titleBarOverlay, cellHeightPx, cellWidthPx } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
   const { width, height } = useViewport();
   const shellRef = useRef<BoxRenderable | null>(null);
@@ -163,15 +163,36 @@ export function Shell({
     layout,
     pluginRegistry,
   });
-  const dockGeometryOptions = useMemo<DockGeometryOptions>(() => (
-    nativePaneChrome ? {
+  const themeStyle = useThemeStyle();
+  const gutterPx = themeStyle.effects.gutter;
+  // Cards and frames need air on every side, not only between each other,
+  // so a raised or framed style insets the whole dock by its gutter and
+  // pulls each leaf back from its divider. Only on the DOM: the terminal has
+  // no fractional cell to spend and its panes sit flush on the grid.
+  const raisedInset = nativePaneChrome
+    && (themeStyle.chrome.surface === "raised" || themeStyle.chrome.focus === "frame");
+  const dockGeometryOptions = useMemo<DockGeometryOptions>(() => {
+    if (!nativePaneChrome) return { reserveDividerGutters: true };
+    const gutterCells = { horizontal: gutterPx / (cellWidthPx ?? 8), vertical: gutterPx / (cellHeightPx ?? 18) };
+    return {
       precise: true,
       // A whole text row overlaps the next pane's header buttons. Keep the
       // visible divider centered and share its smaller hit rect with the host.
       dividerSize: { horizontal: 1, vertical: Math.min(1, 8 / (cellHeightPx ?? 18)) },
-    } : { reserveDividerGutters: true }
-  ), [nativePaneChrome, cellHeightPx]);
-  const bounds = useMemo<LayoutBounds>(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+      ...(raisedInset ? { leafInset: { horizontal: gutterCells.horizontal / 2, vertical: gutterCells.vertical / 2 } } : {}),
+    };
+  }, [nativePaneChrome, cellHeightPx, cellWidthPx, gutterPx, raisedInset]);
+  const bounds = useMemo<LayoutBounds>(() => {
+    if (!raisedInset) return { x: 0, y: 0, width, height: contentHeight };
+    const insetX = gutterPx / (cellWidthPx ?? 8);
+    const insetY = gutterPx / (cellHeightPx ?? 18);
+    return {
+      x: insetX,
+      y: insetY,
+      width: Math.max(1, width - insetX * 2),
+      height: Math.max(1, contentHeight - insetY * 2),
+    };
+  }, [cellHeightPx, cellWidthPx, contentHeight, gutterPx, raisedInset, width]);
 
   const persistLayout = useCallback((nextLayout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => {
     if (options?.pushHistory !== false) {

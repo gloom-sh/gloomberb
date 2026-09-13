@@ -29,6 +29,7 @@ import {
   normalizeCapabilityOptions,
 } from "./capabilities";
 import { withPersistedCloudSession } from "./cloud-session";
+import { renderWorkspaceShot, WORKSPACE_SHOT_TOKEN } from "./workspace-shot";
 
 async function withPaneRuntime<T>(
   ctx: CliCommandContext,
@@ -85,6 +86,29 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
 
 export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
+    const parsed = parsePaneFunctionArgs(args, ctx.cliOptions);
+    if (normalizeLookupToken(parsed.target) === WORKSPACE_SHOT_TOKEN) {
+      const outputPath = parsed.outputPath
+        ? resolve(process.cwd(), ensurePngExtension(parsed.outputPath))
+        : resolve(process.cwd(), `gloomberb-workspace${parsed.theme ? `-${parsed.theme}` : ""}.png`);
+      await withMarketData(ctx, async (context) => {
+        const registry = await createPaneCatalog(context, ctx.plugins);
+        try {
+          const result = await renderWorkspaceShot({ registry, context, parsed, outputPath });
+          ctx.printResult({ data: result }, {
+            text: (data) => [
+              `Saved workspace screenshot to ${data.outputPath}`,
+              `Panes: ${data.panes.join(", ")}${data.theme ? `; theme=${data.theme}` : ""}`,
+              ...(data.loadingStateDetected ? ["Warning: a pane was still loading."] : []),
+              ...(data.errorStateDetected ? ["Warning: a pane rendered an error state."] : []),
+            ].join("\n"),
+          });
+        } finally {
+          registry.destroy();
+        }
+      });
+      return;
+    }
     await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
       if (parsed.requireBotSafe && (
         !resolved.capability.botSafe || resolved.capability.screenshotReadiness !== "ready"

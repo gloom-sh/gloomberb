@@ -1,3 +1,4 @@
+import { glyphs } from "../../../theme/colors";
 import { Box, Text, useUiCapabilities, useUiHost } from "../../../ui";
 import type { CompositeChartXMarker } from "./types";
 
@@ -270,7 +271,7 @@ export function StaticXMarkerOverlay({
           >
             {Array.from({ length: height }, (_, row) => (
               <Text key={row} fg={marker.color}>
-                {marker.lineChar ?? "│"}
+                {marker.lineChar ?? glyphs.line.vertical}
               </Text>
             ))}
           </Box>

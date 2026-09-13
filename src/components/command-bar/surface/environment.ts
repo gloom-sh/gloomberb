@@ -11,6 +11,7 @@ import {
 } from "../../../state/app/context";
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import { commands } from "../commands/registry";
+import { DEFAULT_STYLE } from "../../../theme/styles";
 import type { ThemePickerHandle } from "../theme-picker";
 import type { ListScreenState } from "../list/model";
 
@@ -103,6 +104,7 @@ export function useCommandBarEnvironment() {
   const activeCollectionId = getFocusedCollectionId(state);
   const activePortfolio = state.config.portfolios.find((portfolio) => portfolio.id === activeCollectionId);
   const getCommittedThemeId = useCallback(() => stateRef.current.config.theme, []);
+  const getCommittedStyleId = useCallback(() => stateRef.current.config.themeStyle ?? DEFAULT_STYLE, []);
 
   return {
     activeCollectionId,
@@ -114,6 +116,7 @@ export function useCommandBarEnvironment() {
     cellHeightPx,
     cellWidthPx,
     dispatch,
+    getCommittedStyleId,
     getCommittedThemeId,
     nativeListScrollRef,
     nativePaneChrome,

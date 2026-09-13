@@ -12,6 +12,7 @@ import {
   type CompositeColumnGroupCenter,
   type CompositeColumnLayout,
 } from "./column-layout";
+import { getCurrentStyle } from "../../../theme/colors";
 import { projectCompositeValue } from "./scene";
 import type {
   CompositeAxisDomain,
@@ -254,6 +255,7 @@ function drawOhlc(
   negative: RgbaColor,
 ): void {
   const candleWidth = resolveCompositeOhlcWidth(series.points, width);
+  const candleTreatment = getCurrentStyle().charts.candles;
   for (const projected of series.points) {
     const source = projected.point;
     const halfWidth = Math.min(candleWidth / 2, Math.max(width - 1, 0) / 2);
@@ -271,22 +273,29 @@ function drawOhlc(
     const openY = pixelY(open, domain, height);
     const closeY = pixelY(close, domain, height);
     if (highY === null || lowY === null || closeY === null) continue;
-    const candleColor = close >= open ? color : negative;
+    const rising = close >= open;
+    const candleColor = rising ? color : negative;
     drawLine(data, width, height, x, highY, x, lowY, candleColor, 1.1);
-    if (series.source.style === "candles" && openY !== null) {
-      fillRect(
-        data,
-        width,
-        height,
-        x - candleWidth / 2,
-        Math.min(openY, closeY),
-        x + candleWidth / 2,
-        Math.max(openY, closeY) + 1,
-        candleColor,
-      );
+    // The theme decides what a candle is made of: a filled body, a hollow
+    // body for a rising bar (the printed-chart convention, where ink means
+    // down), or open and close ticks with no body at all.
+    const treatment = series.source.style === "candles" ? candleTreatment : "filled";
+    if (series.source.style === "candles" && openY !== null && treatment !== "ohlc") {
+      const left = x - candleWidth / 2;
+      const right = x + candleWidth / 2;
+      const top = Math.min(openY, closeY);
+      const bottom = Math.max(openY, closeY) + 1;
+      if (treatment === "hollow" && rising && right - left >= 3 && bottom - top >= 3) {
+        drawLine(data, width, height, left, top, right, top, candleColor, 1);
+        drawLine(data, width, height, left, bottom - 1, right, bottom - 1, candleColor, 1);
+        drawLine(data, width, height, left, top, left, bottom - 1, candleColor, 1);
+        drawLine(data, width, height, right, top, right, bottom - 1, candleColor, 1);
+        continue;
+      }
+      fillRect(data, width, height, left, top, right, bottom, candleColor);
       continue;
     }
-    if (series.source.style === "ohlc" && openY !== null) {
+    if ((series.source.style === "ohlc" || treatment === "ohlc") && openY !== null) {
       drawLine(data, width, height, x - candleWidth / 2, openY, x, openY, candleColor, 1.2);
     }
     drawLine(data, width, height, x, closeY, x + candleWidth / 2, closeY, candleColor, 1.2);

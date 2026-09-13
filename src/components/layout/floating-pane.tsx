@@ -1,6 +1,6 @@
 import { Box, Text, useUiCapabilities } from "../../ui";
 import type { ReactNode } from "react";
-import { colors, floatingPaneBg } from "../../theme/colors";
+import { useGlyphs, useThemeTokens } from "../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./pane/header";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./pane/footer";
@@ -35,19 +35,25 @@ interface FloatingPaneWrapperProps {
   children: ReactNode;
 }
 
-function TerminalFloatingPaneBorder({ width, height }: { width: number; height: number }) {
+function TerminalFloatingPaneBorder({ width, height, focused }: { width: number; height: number; focused: boolean }) {
+  const glyphs = useGlyphs();
+  const { pane } = useThemeTokens();
   const borderWidth = Math.max(0, Math.floor(width));
   const borderHeight = Math.max(0, Math.floor(height));
   const bodyHeight = Math.max(0, borderHeight - 2);
-  if (borderWidth < 2 || bodyHeight <= 0) return null;
+  if (!pane.chrome.drawsBorder || pane.chrome.ruleHeader || borderWidth < 2 || bodyHeight <= 0) return null;
+  const rule = glyphs.border.vertical.repeat(bodyHeight);
+  // A framed style lights the whole frame on focus; a border-focus style
+  // only reaches here for an idle pane, whose sides stay quiet.
+  const color = focused && pane.chrome.framed ? pane.border.focused : pane.border.idle;
 
   return (
     <>
       <Box position="absolute" top={1} left={0} width={1} height={bodyHeight}>
-        <Text fg={colors.border} selectable={false}>{"│".repeat(bodyHeight)}</Text>
+        <Text fg={color} selectable={false}>{rule}</Text>
       </Box>
       <Box position="absolute" top={1} left={borderWidth - 1} width={1} height={bodyHeight}>
-        <Text fg={colors.border} selectable={false}>{"│".repeat(bodyHeight)}</Text>
+        <Text fg={color} selectable={false}>{rule}</Text>
       </Box>
     </>
   );
@@ -83,7 +89,9 @@ export function FloatingPaneWrapper({
   children,
 }: FloatingPaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
-  const bg = floatingPaneBg(focused);
+  const glyphs = useGlyphs();
+  const { pane } = useThemeTokens();
+  const bg = pane.floatingBody.bg[focused ? "focused" : "idle"];
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
   const renderFooter = reserveFooter || showFooter;
@@ -144,7 +152,8 @@ export function FloatingPaneWrapper({
         />
       )}
 
-      {!nativePaneChrome && !focused && <TerminalFloatingPaneBorder width={width} height={height} />}
+      {!nativePaneChrome && (!focused || pane.chrome.focusMode !== "border")
+        && <TerminalFloatingPaneBorder width={width} height={height} focused={focused} />}
 
       {nativePaneChrome ? (
         <Box
@@ -160,7 +169,9 @@ export function FloatingPaneWrapper({
         />
       ) : (
         <Box position="absolute" bottom={0} right={0} width={2} height={1}>
-          <Text fg={focused ? colors.borderFocused : colors.border} selectable={false}>{"─◢"}</Text>
+          <Text fg={focused ? pane.border.focused : pane.border.idle} selectable={false}>
+            {`${pane.chrome.drawsBorder ? glyphs.border.horizontal : " "}${glyphs.resizeGrip}`}
+          </Text>
         </Box>
       )}
     </Box>

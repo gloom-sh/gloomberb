@@ -1,4 +1,6 @@
 import { createElement, forwardRef, useCallback, useRef, type ComponentProps, type ForwardedRef } from "react";
+import { tokens } from "../theme/colors";
+import type { TypeRole } from "../theme/styles";
 import { useForwardedScrollBoxRef, useRegisterPaneScrollBox } from "../state/pane-scroll-registry";
 import { useUiHost, type UiHost } from "./host";
 import { useRemoteUiNode } from "../remote/semantic-tree";
@@ -81,9 +83,40 @@ export const Box = forwardRef<any, ComponentProps<UiHost["Box"]>>((props, ref) =
 });
 Box.displayName = "Box";
 
-export const Text = forwardRef<any, ComponentProps<UiHost["Text"]>>((props, ref) => {
+/**
+ * Resolves a semantic type role onto a text run: cell attributes and case in
+ * both renderers, plus a `data-gloom-type` hook the DOM sizes in CSS.
+ *
+ * Reads the module-level token view rather than the context hook on purpose.
+ * `Text` is the hottest component in the tree, and a theme switch re-renders
+ * the whole subtree through `ThemeProvider` anyway, so the live view is both
+ * cheaper and correct.
+ */
+function upperCaseContent(value: unknown): unknown {
+  if (typeof value === "string") return value.toUpperCase();
+  if (Array.isArray(value)) return value.map(upperCaseContent);
+  return value;
+}
+
+function applyTypeRole(props: Record<string, unknown>): Record<string, unknown> {
+  const role = props.typeRole as TypeRole | undefined;
+  if (!role) return props;
+  const treatment = tokens.type?.[role];
+  const next: Record<string, unknown> = { ...props, "data-gloom-type": role };
+  delete next.typeRole;
+  if (!treatment) return next;
+  const passed = typeof props.attributes === "number" ? props.attributes : 0;
+  if (treatment.attributes || passed) next.attributes = passed | treatment.attributes;
+  if (treatment.transform === "upper") {
+    if (next.children !== undefined) next.children = upperCaseContent(next.children);
+    if (typeof next.content === "string") next.content = upperCaseContent(next.content);
+  }
+  return next;
+}
+
+export const Text = forwardRef<any, ComponentProps<UiHost["Text"]> & { typeRole?: TypeRole }>((props, ref) => {
   const { Text: HostText } = useUiHost();
-  const rawProps = props as Record<string, unknown>;
+  const rawProps = applyTypeRole(props as Record<string, unknown>);
   const onMouseDown = rawProps.onMouseDown as ((event?: unknown) => unknown) | undefined;
   const label = remotePropLabel(rawProps)
     ?? (typeof rawProps.children === "string" ? rawProps.children : undefined)
@@ -99,7 +132,7 @@ export const Text = forwardRef<any, ComponentProps<UiHost["Text"]>>((props, ref)
       }
       : null,
   );
-  return createElement(HostText as any, { ...props, ref, "data-gloom-remote-node-id": remoteNodeId ?? undefined });
+  return createElement(HostText as any, { ...rawProps, ref, "data-gloom-remote-node-id": remoteNodeId ?? undefined });
 });
 Text.displayName = "Text";
 

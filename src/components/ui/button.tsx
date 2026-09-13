@@ -1,8 +1,8 @@
 import { Box, Text, useUiHost } from "../../ui";
 import { TextAttributes } from "../../ui";
 import { type ComponentType, type ReactNode } from "react";
-import type { ThemeColors } from "../../theme/colors";
-import { useThemeColors } from "../../theme/theme-context";
+import type { ThemeTokens } from "../../theme/tokens";
+import { useThemeColors, useThemeTokens } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 
@@ -26,25 +26,10 @@ export interface ButtonProps {
   stopPropagation?: boolean;
 }
 
-function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors) {
-  if (disabled) {
-    return { bg: colors.panel, fg: colors.textMuted };
-  }
-  if (active) {
-    return { bg: colors.selected, fg: colors.selectedText };
-  }
-
-  switch (variant) {
-    case "primary":
-      return { bg: colors.borderFocused, fg: colors.bg };
-    case "danger":
-      return { bg: colors.negative, fg: colors.bg };
-    case "ghost":
-      return { bg: colors.bg, fg: colors.textDim };
-    case "secondary":
-    default:
-      return { bg: colors.panel, fg: colors.text };
-  }
+function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, tokens: ThemeTokens) {
+  if (disabled) return tokens.button.disabled;
+  if (active) return { bg: tokens.surface.selected, fg: tokens.surface.selectedText };
+  return tokens.button[variant];
 }
 
 export function Button({
@@ -63,6 +48,7 @@ export function Button({
   stopPropagation = false,
 }: ButtonProps) {
   const colors = useThemeColors();
+  const tokens = useThemeTokens();
   const label = t(rawLabel);
   useRemoteUiNode({
     role: "button",
@@ -95,7 +81,7 @@ export function Button({
     );
   }
 
-  const palette = resolveButtonColors(variant, active, disabled, colors);
+  const palette = resolveButtonColors(variant, active, disabled, tokens);
 
   return (
     <Box

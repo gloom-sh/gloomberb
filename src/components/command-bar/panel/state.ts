@@ -10,7 +10,7 @@ import {
   resolveCommandBarPanelLayout,
 } from "./layout";
 import { useWindowFullscreen } from "../../layout/window-fullscreen";
-import { matchThemeOptions } from "../theme-picker";
+import { matchThemeOptions, type ThemePickerMode } from "../theme-picker";
 import type { CommandBarRoute } from "../workflow/types";
 
 type RefLike<T> = { current: T };
@@ -28,6 +28,7 @@ interface UseCommandBarPanelStateOptions {
   termHeight: number;
   termWidth: number;
   themePickerActive: boolean;
+  themePickerMode: ThemePickerMode;
   themePickerFilter: string;
   titleBarOverlay: boolean | undefined;
   updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
@@ -47,6 +48,7 @@ export function useCommandBarPanelState({
   termHeight,
   termWidth,
   themePickerActive,
+  themePickerMode,
   themePickerFilter,
   titleBarOverlay,
   updateTopRoute,
@@ -108,8 +110,8 @@ export function useCommandBarPanelState({
   const hasRootFeedback = visibleListState?.kind === "root" && rootShortcutFeedback !== null;
   // One row per matching theme, or the one row the empty message occupies.
   const themePickerRowCount = useMemo(
-    () => (themePickerActive ? Math.max(1, matchThemeOptions(themePickerFilter).length) : 0),
-    [themePickerActive, themePickerFilter],
+    () => (themePickerActive ? Math.max(1, matchThemeOptions(themePickerFilter, themePickerMode).length) : 0),
+    [themePickerActive, themePickerFilter, themePickerMode],
   );
   const panelLayout = useMemo(() => resolveCommandBarPanelLayout({
     cellHeightPx,

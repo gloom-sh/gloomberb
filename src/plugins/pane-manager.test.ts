@@ -115,6 +115,37 @@ describe("pane-manager split-tree drops", () => {
     }
   });
 
+  test("a leaf inset pulls panes back from their dividers without moving the divider", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-test");
+    const layout: LayoutConfig = { ...config.layout, dockRoot: {
+      kind: "split", axis: "horizontal", ratio: 0.5,
+      first: { kind: "split", axis: "vertical", ratio: 0.5,
+        first: { kind: "pane", instanceId: "top" }, second: { kind: "pane", instanceId: "bottom" } },
+      second: { kind: "pane", instanceId: "right" },
+    } };
+    const flush = { precise: true, dividerSize: { horizontal: 1, vertical: 0.5 } };
+    const inset = { ...flush, leafInset: { horizontal: 0.75, vertical: 0.25 } };
+    const before = Object.fromEntries(getDockLeafLayouts(layout, BOUNDS, flush).map((leaf) => [leaf.instanceId, leaf.rect]));
+    const after = Object.fromEntries(getDockLeafLayouts(layout, BOUNDS, inset).map((leaf) => [leaf.instanceId, leaf.rect]));
+    // The gap between the two columns grows by twice the inset; the outer edges stay put.
+    expect(after.top!.x).toBe(before.top!.x);
+    expect(after.top!.width).toBeCloseTo(before.top!.width - 0.75);
+    expect(after.right!.x).toBeCloseTo(before.right!.x + 0.75);
+    expect(after.right!.x + after.right!.width).toBeCloseTo(before.right!.x + before.right!.width);
+    // Same for the rows inside the left column.
+    expect(after.top!.height).toBeCloseTo(before.top!.height - 0.25);
+    expect(after.bottom!.y).toBeCloseTo(before.bottom!.y + 0.25);
+    // The dividers are where they were along their axis, so their hit rects
+    // still sit in the gap; a nested divider spans its inset column, no more.
+    const dividersBefore = getDockDividerLayouts(layout, BOUNDS, flush);
+    const dividersAfter = getDockDividerLayouts(layout, BOUNDS, inset);
+    expect(dividersAfter.map((divider) => [divider.axis, divider.axis === "horizontal" ? divider.rect.x : divider.rect.y]))
+      .toEqual(dividersBefore.map((divider) => [divider.axis, divider.axis === "horizontal" ? divider.rect.x : divider.rect.y]));
+    // The terminal never insets: cells cannot be split.
+    expect(getDockLeafLayouts(layout, BOUNDS, { reserveDividerGutters: true, leafInset: 1 }))
+      .toEqual(getDockLeafLayouts(layout, BOUNDS, { reserveDividerGutters: true }));
+  });
+
   test("splits the hovered pane on leaf drops and matches the preview", () => {
     const config = createDefaultConfig("/tmp/gloomberb-test");
     const notesPane = createPaneInstance("chat");

@@ -1,5 +1,6 @@
 import { RGBA, StyledText as OpenTuiStyledText, SyntaxStyle, TextAttributes as OpenTuiTextAttributes } from "@opentui/core";
 import { createElement, forwardRef, useEffect, useState, type ReactNode } from "react";
+import { glyphs } from "../../theme/colors";
 import { TextAttributes, type UiHost, type TextProps } from "../../ui/host";
 import { renderAsciiText } from "../../ui/ascii-font";
 import { OpenTuiImageSurface } from "./image/surface";
@@ -61,20 +62,21 @@ const OpenTuiInput = createOpenTuiPrimitive("input");
 const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
 const OpenTuiMediaSurface = createOpenTuiPrimitive("box");
 
-const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 
 const OpenTuiSpinnerMark = forwardRef<unknown, OpenTuiPrimitiveProps & { name?: string; color?: string }>(
   function OpenTuiSpinnerMark({ name: _name, color, ...props }, ref) {
+    const frames = glyphs.spinner;
     const [frame, setFrame] = useState(0);
     useEffect(() => {
-      const timer = setInterval(() => setFrame((current) => (current + 1) % SPINNER_FRAMES.length), 80);
+      const timer = setInterval(() => setFrame((current) => current + 1), 80);
       return () => clearInterval(timer);
     }, []);
     return createElement("text" as any, {
       ...props,
       ref,
       fg: color,
-      content: SPINNER_FRAMES[frame],
+      content: frames[frame % frames.length],
     });
   },
 );

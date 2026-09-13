@@ -155,7 +155,8 @@ The toolbar controls preset or exact date ranges, intervals from one minute thro
 | `GL` | Tidy all windows |
 | `SB` | Toggle the status bar |
 | `VF` | Toggle quote value flashing |
-| `TH <theme>` | Change color theme |
+| `TH <theme>` | Change theme: a style (Terminal, Phosphor, Rounded, Modern, Paper, Minimal) paired with a color scheme |
+| `CO <scheme>` | Change the color scheme, keeping the current style |
 | `FONT+` / `FONT-` | Increase or decrease desktop font size |
 | `CONN` | Connection health |
 | `POLL` | Political polls from VoteHub ([Polls plugin](https://github.com/gloom-sh/gloom-polls)) |

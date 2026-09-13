@@ -29,9 +29,21 @@ export interface DesktopPaneShotIntradayHistory {
   unavailableReason: string | null;
 }
 
+/**
+ * A capture of the whole app rather than one pane: the header, every docked
+ * pane in `config.layout`, and the status bar. This is what a theme review
+ * needs, since a style is a decision about how panes sit next to each other
+ * and a single floating pane cannot show that.
+ */
+export interface DesktopWorkspaceShot {
+  /** Open the command bar over the workspace with this query typed. */
+  commandBarQuery?: string | null;
+}
+
 export interface DesktopPaneShotPayload {
   config: AppConfig;
   paneId: string;
+  workspace?: DesktopWorkspaceShot | null;
   widthCells: number;
   heightCells: number;
   widthPx: number;
@@ -127,12 +139,14 @@ type PendingCdpCall = {
   reject: (error: Error) => void;
 };
 
-const SHOT_MODE_CSS = [
+const SHOT_HIDDEN_CHROME_CSS = [
   "[data-gloom-role='composite-chart-toolbar']",
   "[data-gloom-role='chart-series-quick-add']",
   "[data-gloom-role='pane-close']",
   "[data-gloom-role='resize-handle']",
-].join(", ") + " { display: none !important; }\n"
+].join(", ") + " { display: none !important; }\n";
+
+const SHOT_MODE_CSS = SHOT_HIDDEN_CHROME_CSS
   // The pane fills the viewport and has rounded corners. With the page painted
   // in the theme background, the PNG carried square theme-coloured corners
   // that showed on any other backdrop; a transparent page keeps only the pane.
@@ -140,6 +154,13 @@ const SHOT_MODE_CSS = [
   + "[data-gloom-role='pane-window'][data-floating='true'] { box-shadow: none !important; }\n"
   // Sits where the hidden close button was: one cell high, right-aligned in the title bar.
   + "[data-gloom-role='shot-watermark'] { position: fixed; top: 1px; right: 10px; height: var(--cell-h);"
+  + " line-height: var(--cell-h); font-size: 12px; letter-spacing: 0.02em; color: var(--gloom-text-dim, #888);"
+  + " pointer-events: none; z-index: 1000; }";
+
+// A workspace is the app, so it keeps its own background and hides only the
+// affordances that make no sense in a still image.
+const WORKSPACE_SHOT_MODE_CSS = SHOT_HIDDEN_CHROME_CSS
+  + "[data-gloom-role='shot-watermark'] { position: fixed; bottom: 2px; right: 10px; height: var(--cell-h);"
   + " line-height: var(--cell-h); font-size: 12px; letter-spacing: 0.02em; color: var(--gloom-text-dim, #888);"
   + " pointer-events: none; z-index: 1000; }";
 
@@ -201,7 +222,7 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
         // A screenshot cannot be interacted with, so drawing tools, the
         // quick-add input and the close button only add noise to the image.
         const style = document.createElement("style");
-        style.textContent = ${JSON.stringify(SHOT_MODE_CSS)};
+        style.textContent = ${JSON.stringify(payload.workspace ? WORKSPACE_SHOT_MODE_CSS : SHOT_MODE_CSS)};
         document.head.appendChild(style);
         // Same brand mark charts show for in-app pane captures and OS screenshots.
         document.documentElement.setAttribute("data-gloom-screenshot", "true");

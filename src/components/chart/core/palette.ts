@@ -1,5 +1,6 @@
 import type { ChartColors } from "./types";
 import { blendHex } from "../../../theme/color-utils";
+import { getCurrentStyle } from "../../../theme/colors";
 
 interface ChartPaletteInput {
   bg: string;
@@ -33,7 +34,11 @@ export function resolveChartPalette(
     fillColor: blendHex(baseColors.bg, lineColor, 0.22),
     volumeUp: blendHex(baseColors.bg, baseColors.positive, 0.35),
     volumeDown: blendHex(baseColors.bg, baseColors.negative, 0.35),
-    gridColor: blendHex(baseColors.bg, baseColors.border, 0.55),
+    // A style that asks for no grid gets the background, which keeps every
+    // grid-drawing call site working without a per-caller branch.
+    gridColor: getCurrentStyle().charts.grid === "none"
+      ? baseColors.bg
+      : blendHex(baseColors.bg, baseColors.border, getCurrentStyle().charts.grid === "lines" ? 0.7 : 0.55),
     crosshairColor: baseColors.borderFocused,
     bgColor: baseColors.bg,
     axisColor: baseColors.textDim,

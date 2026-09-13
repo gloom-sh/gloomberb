@@ -85,3 +85,18 @@ export { useAutoRefresh, useUpdatedAgo } from "../plugins/builtin/shared/auto-re
 // The class behind `useConnectionHealth()`. A value export so a plugin test
 // can construct one to exercise its own connection-status registration.
 export { ConnectionHealthRegistry } from "../core/connection-health";
+
+/**
+ * The active theme, resolved. A pane that draws its own domain content reads
+ * these rather than recombining palette entries, so it follows a style change
+ * the same way the shared kit does.
+ */
+export {
+  useGlyphs,
+  useResolvedTheme,
+  useThemeColors,
+  useThemeId,
+  useThemeStyle,
+  useThemeStyleId,
+  useThemeTokens,
+} from "../theme/theme-context";

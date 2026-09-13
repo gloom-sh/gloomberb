@@ -1,7 +1,7 @@
 import { Box, Text, TextAttributes, useUiHost } from "../../ui";
 import { useShortcut } from "../../react/input";
 import { useCallback, type ComponentType, type ReactNode } from "react";
-import { colors } from "../../theme/colors";
+import { colors, glyphs } from "../../theme/colors";
 import {
   isDetailBackNavigationKey,
   isMouseBackNavigationEvent,
@@ -110,7 +110,7 @@ function OpenTuiPageStackView({
             bg={colors.selected}
             attributes={TextAttributes.BOLD}
           >
-            {`← ${backLabel}`}
+            {`${glyphs.arrow.left} ${backLabel}`}
           </Text>
         </Box>
         {detailTitle ? (

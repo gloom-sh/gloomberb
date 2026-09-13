@@ -1,6 +1,6 @@
 import { t } from "../../i18n";
 import { Box, Text, useUiHost } from "../../ui";
-import { useThemeColors } from "../../theme/theme-context";
+import { useGlyphs, useThemeColors } from "../../theme/theme-context";
 import { Button, type ButtonProps } from "./button";
 
 export type ActionRowProps = Pick<ButtonProps, "label" | "children" | "onPress" | "active" | "disabled" | "expanded" | "width" | "height">;
@@ -8,6 +8,7 @@ export type ActionRowProps = Pick<ButtonProps, "label" | "children" | "onPress" 
 /** A summary row with one action. Put independent actions beside it, not inside it. */
 export function ActionRow({ label, children, expanded, active, disabled, ...props }: ActionRowProps) {
   const colors = useThemeColors();
+  const glyphs = useGlyphs();
   const desktop = useUiHost().kind === "desktop-web";
   const foreground = disabled ? colors.textMuted : active ? colors.selectedText : colors.text;
   return (
@@ -17,7 +18,7 @@ export function ActionRow({ label, children, expanded, active, disabled, ...prop
           <Box width={1} style={{ flexShrink: 0 }}>
             <Box style={{ width: 6, height: 6, borderRight: `1px solid ${foreground}`, borderBottom: `1px solid ${foreground}`, transform: `rotate(${expanded ? 45 : -45}deg)` }} />
           </Box>
-        ) : <Text fg={foreground}>{expanded ? "▾" : "▸"}</Text>)}
+        ) : <Text fg={foreground}>{expanded ? glyphs.caret.expanded : glyphs.caret.collapsed}</Text>)}
         <Text fg={foreground}>{t(label)}</Text>
         {children}
       </Box>

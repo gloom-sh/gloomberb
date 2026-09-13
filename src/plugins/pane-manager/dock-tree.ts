@@ -44,6 +44,12 @@ export interface DockGeometryOptions {
   precise?: boolean;
   dividerSize?: number | { horizontal: number; vertical: number };
   reserveDividerGutters?: boolean;
+  /**
+   * Precise mode only. Pull each leaf back from the divider by this much on
+   * either side, so panes that are cards do not touch: the divider keeps its
+   * hit rect over the gap, and the gap shows the backdrop.
+   */
+  leafInset?: number | { horizontal: number; vertical: number };
 }
 
 export function clampRatio(ratio: number): number {
@@ -172,22 +178,25 @@ function collectDockGeometry(
   const dividerSize = typeof options.dividerSize === "object"
     ? options.dividerSize[node.axis]
     : options.dividerSize ?? 1;
+  const leafInset = precise
+    ? (typeof options.leafInset === "object" ? options.leafInset[node.axis] : options.leafInset ?? 0)
+    : 0;
   const reserveDividerGutters = options.reserveDividerGutters === true && !precise;
 
   if (node.axis === "horizontal") {
     const reserveDividerGutter = reserveDividerGutters && bounds.width > dividerSize;
     const splitWidth = reserveDividerGutter ? bounds.width - dividerSize : bounds.width;
     const [firstWidth, secondWidth] = resolveSplitSizes(splitWidth, node.ratio, MIN_PANE_WIDTH, precise);
-    const firstBounds = { x: bounds.x, y: bounds.y, width: firstWidth, height: bounds.height };
+    const firstBounds = { x: bounds.x, y: bounds.y, width: Math.max(1, firstWidth - leafInset), height: bounds.height };
     const dividerX = reserveDividerGutter
       ? bounds.x + firstWidth
       : precise
         ? bounds.x + firstWidth - (dividerSize / 2)
         : bounds.x + firstWidth - 1;
     const secondBounds = {
-      x: reserveDividerGutter ? bounds.x + firstWidth + dividerSize : bounds.x + firstWidth,
+      x: (reserveDividerGutter ? bounds.x + firstWidth + dividerSize : bounds.x + firstWidth) + leafInset,
       y: bounds.y,
-      width: secondWidth,
+      width: Math.max(1, secondWidth - leafInset),
       height: bounds.height,
     };
     dividers.push({
@@ -210,7 +219,7 @@ function collectDockGeometry(
   const reserveDividerGutter = reserveDividerGutters && bounds.height > dividerSize;
   const splitHeight = reserveDividerGutter ? bounds.height - dividerSize : bounds.height;
   const [firstHeight, secondHeight] = resolveSplitSizes(splitHeight, node.ratio, MIN_DOCKED_HEIGHT, precise);
-  const firstBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: firstHeight };
+  const firstBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: Math.max(1, firstHeight - leafInset) };
   const dividerY = reserveDividerGutter
     ? bounds.y + firstHeight
     : precise
@@ -218,9 +227,9 @@ function collectDockGeometry(
       : bounds.y + firstHeight - 1;
   const secondBounds = {
     x: bounds.x,
-    y: reserveDividerGutter ? bounds.y + firstHeight + dividerSize : bounds.y + firstHeight,
+    y: (reserveDividerGutter ? bounds.y + firstHeight + dividerSize : bounds.y + firstHeight) + leafInset,
     width: bounds.width,
-    height: secondHeight,
+    height: Math.max(1, secondHeight - leafInset),
   };
   dividers.push({
     path,

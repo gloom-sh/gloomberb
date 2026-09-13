@@ -1,5 +1,5 @@
 import { Box, Text } from "../../../../ui";
-import { colors } from "../../../../theme/colors";
+import { colors, glyphs } from "../../../../theme/colors";
 import { zoneScaleColumnValue } from "../defs";
 import { zoneScaleGeometry, type ZoneScaleProps } from "./model";
 
@@ -41,7 +41,7 @@ export function TerminalZoneColorScale({ indicator, value, width, markerColor }:
     const band = geometry.bands.find((entry) => columnValue >= entry.from && columnValue < entry.to)
       ?? geometry.bands[geometry.bands.length - 1]!;
     bar.push({
-      char: column === marker ? "●" : "━",
+      char: column === marker ? glyphs.circle.filled : glyphs.border.horizontal,
       color: column === marker ? markerColor : band.color,
     });
   }

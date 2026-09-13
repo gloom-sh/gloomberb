@@ -1,0 +1,202 @@
+import { describe, expect, test } from "bun:test";
+import { contrastRatio } from "./color-utils";
+import { getSchemeIds } from "./schemes";
+import { getAllStyleIds, getStyle } from "./styles";
+import { auditContrast, resolveTheme } from "./tokens";
+
+/** One dark, one light, one mid-tone, so a recipe cannot pass by luck. */
+const SAMPLE_SCHEMES = ["amber", "catppuccin", "paper", "github-light"];
+
+describe("resolveTheme", () => {
+  test("gives every style and scheme pair readable tokens", () => {
+    const failures: string[] = [];
+    for (const styleId of getAllStyleIds()) {
+      for (const schemeId of getSchemeIds()) {
+        for (const failure of auditContrast(resolveTheme(schemeId, styleId).tokens)) {
+          failures.push(`${styleId}/${schemeId} ${failure.label} ${failure.ratio.toFixed(2)}:1 < ${failure.min}:1`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
+  });
+
+  test("memoizes per scheme and style pair", () => {
+    expect(resolveTheme("amber", "terminal")).toBe(resolveTheme("amber", "terminal"));
+    expect(resolveTheme("amber", "terminal")).not.toBe(resolveTheme("amber", "phosphor"));
+    expect(resolveTheme("amber", "terminal").id).toBe("terminal:amber");
+  });
+
+  test("keeps the scheme palette untouched by the style", () => {
+    const terminal = resolveTheme("nord", "terminal");
+    const modern = resolveTheme("nord", "modern");
+    expect(terminal.palette).toEqual(modern.palette);
+    expect(terminal.tokens.pane.body.bg.idle).not.toBe(modern.tokens.pane.body.bg.idle);
+  });
+
+  test("an embedded header sits in the frame and lights with it", () => {
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const { tokens } = resolveTheme(schemeId, "phosphor");
+      const { title, body, border, chrome } = tokens.pane;
+      expect(chrome.framed).toBe(true);
+      expect(chrome.headerMode).toBe("embedded");
+      // The title is type on the body, not a plate; focus moves the frame
+      // and the title's ink together.
+      expect(title.bg.idle).toBe(body.bg.idle);
+      expect(title.text.idle).not.toBe(title.text.focused);
+      expect(border.idle).not.toBe(border.focused);
+      expect(contrastRatio(title.text.focused, title.bg.focused)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
+  test("a running head trails a rule that takes the accent on focus", () => {
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const { tokens, palette } = resolveTheme(schemeId, "paper");
+      const { title, chrome } = tokens.pane;
+      expect(chrome.ruleHeader).toBe(true);
+      expect(title.rule.idle).not.toBe(title.rule.focused);
+      expect(contrastRatio(title.rule.focused, title.bg.focused)).toBeGreaterThanOrEqual(3.0);
+      expect(contrastRatio(title.rule.focused, palette.bg)).toBeGreaterThan(contrastRatio(title.rule.idle, palette.bg));
+    }
+  });
+
+  test("a raised surface puts a card above a darker backdrop", () => {
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const { tokens, dark } = resolveTheme(schemeId, "modern");
+      expect(tokens.pane.chrome.surface).toBe("raised");
+      expect(tokens.surface.backdrop).not.toBe(tokens.pane.body.bg.idle);
+      // A dark scheme's cards are lighter than the field they sit on; a light
+      // scheme's cards are whiter. Either way the card is the lighter one.
+      expect(contrastRatio("#ffffff", tokens.surface.backdrop)).toBeGreaterThan(contrastRatio("#ffffff", tokens.pane.body.bg.idle));
+      expect(typeof dark).toBe("boolean");
+      // The gutter is the backdrop itself, not a line across it.
+      expect(tokens.pane.divider.idle).toBe(tokens.surface.backdrop);
+    }
+    // A flat style leaves the backdrop on the app background.
+    expect(resolveTheme("amber", "terminal").tokens.surface.backdrop).toBe(resolveTheme("amber", "terminal").palette.bg);
+  });
+
+  test("a plain header sits flush on the pane body", () => {
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const { tokens } = resolveTheme(schemeId, "modern");
+      expect(tokens.pane.title.bg.idle).toBe(tokens.pane.body.bg.idle);
+      expect(tokens.pane.title.bg.focused).toBe(tokens.pane.body.bg.focused);
+    }
+  });
+
+  test("a bar header keeps its own tinted strip", () => {
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const { tokens } = resolveTheme(schemeId, "terminal");
+      expect(tokens.pane.title.bg.focused).not.toBe(tokens.pane.body.bg.focused);
+    }
+  });
+
+  test("header-carried focus leaves the border alone and vice versa", () => {
+    const headerFocus = resolveTheme("paper", "paper").tokens.pane;
+    expect(getStyle("paper").chrome.focus).toBe("header");
+    expect(headerFocus.border.idle).toBe(headerFocus.border.focused);
+    expect(headerFocus.title.text.idle).not.toBe(headerFocus.title.text.focused);
+
+    const borderFocus = resolveTheme("amber", "terminal").tokens.pane;
+    expect(borderFocus.border.idle).not.toBe(borderFocus.border.focused);
+  });
+
+  test("whitespace separators stripe tables instead of ruling them", () => {
+    expect(resolveTheme("catppuccin", "modern").tokens.table.row.stripe).toBeString();
+    expect(resolveTheme("amber", "terminal").tokens.table.row.stripe).toBeNull();
+  });
+
+  test("density and border kind land on the chrome tokens", () => {
+    const modern = resolveTheme("catppuccin", "modern").tokens.pane.chrome;
+    expect(modern.drawsBorder).toBe(false);
+    expect(modern.padding).toEqual({ x: 2, y: 1 });
+
+    const terminal = resolveTheme("amber", "terminal").tokens.pane.chrome;
+    expect(terminal.drawsBorder).toBe(true);
+    expect(terminal.framed).toBe(false);
+    expect(terminal.padding).toEqual({ x: 1, y: 0 });
+    expect(terminal.boxBorderStyle).toBe("single");
+    expect(resolveTheme("amber", "phosphor").tokens.pane.chrome.boxBorderStyle).toBe("double");
+    expect(resolveTheme("amber", "rounded").tokens.pane.chrome.boxBorderStyle).toBe("rounded");
+  });
+
+  test("chart indicators stay clear of the price line colours", () => {
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const { palette, tokens } = resolveTheme(schemeId, "terminal");
+      for (const indicator of tokens.chart.indicator) {
+        expect(contrastRatio(indicator, palette.bg)).toBeGreaterThanOrEqual(3.0);
+        expect(indicator).not.toBe(palette.positive);
+        expect(indicator).not.toBe(palette.negative);
+      }
+    }
+  });
+
+  test("the content tier moves, not just the frame", () => {
+    // The whole point of the content tier: a style has to change the rhythm and
+    // emphasis of what fills a pane, not only the box around it.
+    const terminal = resolveTheme("catppuccin", "terminal").tokens;
+    const modern = resolveTheme("catppuccin", "modern").tokens;
+
+    // Rows keep the grid's height in every style: a positions table that
+    // shows half as many holdings is a different product, not a theme.
+    expect(modern.spacing.rowHeight).toBe(terminal.spacing.rowHeight);
+    expect(modern.spacing.columnGap).toBeGreaterThan(terminal.spacing.columnGap);
+    expect(modern.spacing.padX).toBeGreaterThan(terminal.spacing.padX);
+    expect(modern.spacing.sectionGap).toBeGreaterThan(terminal.spacing.sectionGap);
+    expect(modern.table.layout.rowHeight).toBe(modern.spacing.rowHeight);
+    expect(modern.table.row.stripe).toBeString();
+    expect(terminal.table.row.stripe).toBeNull();
+    expect(modern.type.label.transform).toBe("upper");
+    expect(terminal.type.label.transform).toBe("none");
+  });
+
+  test("every style fills every type role", () => {
+    const roles = ["display", "heading", "label", "body", "value", "caption", "numeric"] as const;
+    for (const styleId of getAllStyleIds()) {
+      const { type } = resolveTheme("amber", styleId).tokens;
+      for (const role of roles) {
+        expect(type[role], `${styleId}.${role}`).toBeDefined();
+        expect(typeof type[role].attributes, `${styleId}.${role}`).toBe("number");
+      }
+      // Body and numeric stay unstyled: they are the baseline every other role
+      // is read against, and a transform on them would shout the whole pane.
+      expect(type.body).toEqual({ attributes: 0, transform: "none" });
+      expect(type.numeric).toEqual({ attributes: 0, transform: "none" });
+    }
+  });
+
+  test("a heading treatment picks exactly one emphasis, never two", () => {
+    const emphasis = (bits: number) => [1, 2, 4, 8].filter((bit) => (bits & bit) !== 0).length;
+    for (const styleId of getAllStyleIds()) {
+      const { heading } = resolveTheme("amber", styleId).tokens.type;
+      expect(emphasis(heading.attributes), styleId).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("no two styles resolve to the same chrome on the same scheme", () => {
+    // The point of the split: a style has to change something a user can see,
+    // not just carry a different id.
+    for (const schemeId of SAMPLE_SCHEMES) {
+      const signatures = getAllStyleIds().map((styleId) => {
+        const { tokens, glyphs } = resolveTheme(schemeId, styleId);
+        return JSON.stringify([
+          tokens.pane.chrome.borderKind,
+          tokens.pane.chrome.headerMode,
+          tokens.pane.chrome.focusMode,
+          tokens.pane.chrome.density,
+          tokens.pane.chrome.separators,
+          glyphs.mode,
+          tokens.pane.body.bg.idle,
+          tokens.pane.title.bg.focused,
+          tokens.pane.title.text.focused,
+        ]);
+      });
+      expect(new Set(signatures).size, schemeId).toBe(getAllStyleIds().length);
+    }
+  });
+
+  test("an unknown scheme or style falls back rather than throwing", () => {
+    const resolved = resolveTheme("not-a-scheme", "not-a-style");
+    expect(resolved.palette).toEqual(resolveTheme("amber", "terminal").palette);
+    expect(resolved.style.id).toBe("terminal");
+  });
+});

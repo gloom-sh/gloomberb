@@ -28,6 +28,13 @@ import {
 } from "../../../remote/semantic-tree";
 import type { RemoteUiNodeSnapshot } from "../../../remote/types";
 import { FloatingPaneWrapper } from "../../../components/layout/floating-pane";
+import { Header } from "../../../components/layout/header";
+import { Shell } from "../../../components/layout/shell";
+import { StatusBar } from "../../../components/layout/status-bar";
+import { TransientLayoutProvider } from "../../../components/layout/transient-layout";
+import { CommandBar } from "../../../components/command-bar/surface";
+import { Box, ContextMenuProvider } from "../../../ui";
+import { useThemeTokens } from "../../../theme/theme-context";
 import { PaneContent } from "../../../components/layout/pane/content";
 import { resolvePaneBodyFrame } from "../../../components/layout/pane/sizing";
 import { getPaneDisplayTitle } from "../../../components/layout/pane/title";
@@ -507,6 +514,59 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   );
 }
 
+/**
+ * The app as the user sees it: header, docked panes and status bar, with the
+ * command bar open on request. The pieces are the ones `App` composes; only
+ * the runtimes that need a live process (updates, sync, brokers) are left out.
+ */
+function ShotWorkspace({
+  payload,
+  registry,
+  services,
+}: {
+  payload: DesktopPaneShotPayload;
+  registry: PluginRegistry;
+  services: ReturnType<typeof createShotAppServices>;
+}) {
+  const { surface } = useThemeTokens();
+  const dispatch = useAppDispatch();
+  const commandBarQuery = payload.workspace?.commandBarQuery ?? null;
+
+  useEffect(() => {
+    if (commandBarQuery === null) return;
+    dispatch({ type: "SET_COMMAND_BAR", open: true, query: commandBarQuery });
+  }, [commandBarQuery, dispatch]);
+
+  return (
+    <ContextMenuProvider pluginRegistry={registry}>
+      <Box
+        flexDirection="column"
+        flexGrow={1}
+        flexShrink={1}
+        flexBasis={0}
+        minWidth={0}
+        minHeight={0}
+        overflow="hidden"
+        backgroundColor={surface.backdrop}
+      >
+        <Header onOpenHelp={() => {}} />
+        <TransientLayoutProvider>
+          <Shell pluginRegistry={registry} />
+          <StatusBar onOpenChangelog={() => {}} />
+        </TransientLayoutProvider>
+        {commandBarQuery !== null && (
+          <CommandBar
+            dataProvider={services.dataProvider}
+            tickerRepository={services.tickerRepository}
+            pluginRegistry={registry}
+            quitApp={() => {}}
+          />
+        )}
+      </Box>
+    </ContextMenuProvider>
+  );
+}
+
 async function render() {
   const payload = decodeRpcValue<DesktopPaneShotPayload | undefined>(window.__GLOOM_CLI_SHOT_PAYLOAD__);
   if (!payload) throw new Error("Missing CLI pane screenshot payload.");
@@ -543,11 +603,13 @@ async function render() {
                 paneState: payload.paneState,
                 focusedPaneId: payload.paneId,
                 activePanel: "right",
-                statusBarVisible: false,
+                statusBarVisible: !!payload.workspace,
               }}>
                 <HydratePayload payload={payload}>
                   <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
-                    <ShotPane payload={payload} registry={services.pluginRegistry} />
+                    {payload.workspace
+                      ? <ShotWorkspace payload={payload} registry={services.pluginRegistry} services={services} />
+                      : <ShotPane payload={payload} registry={services.pluginRegistry} />}
                   </ChartSnapshotContext.Provider>
                 </HydratePayload>
               </AppProvider>

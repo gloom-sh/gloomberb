@@ -11,7 +11,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
-import { colors, hoverBg } from "../../../theme/colors";
+import { colors, glyphs, hoverBg } from "../../../theme/colors";
 import {
   Box,
   ScrollBox,
@@ -83,7 +83,7 @@ function FilingEntry({
           text={point}
           width={proseWidth}
           color={colors.text}
-          prefix="• "
+          prefix={`${glyphs.bullet} `}
         />
       ))}
       {entry.people.map((person) => (

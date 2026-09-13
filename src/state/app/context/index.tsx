@@ -34,6 +34,7 @@ import {
   appReducer,
   createInitialState,
   getEffectiveThemeId,
+  getEffectiveThemeStyleId,
   getFocusedTickerSymbol,
   type PaneRuntimeState,
   resolveCollectionForPane,
@@ -47,6 +48,7 @@ export {
   appReducer,
   createInitialState,
   getEffectiveThemeId,
+  getEffectiveThemeStyleId,
   getFocusedCollectionId,
   getFocusedTickerSymbol,
   resolveCollectionForPane,
@@ -389,11 +391,16 @@ export function AppProvider({
         ? appReducer(baseState, { type: "HYDRATE_DESKTOP_SNAPSHOT", snapshot: initialDesktopSnapshot })
         : baseState;
       return initialDesktopThemePreview
-        ? appReducer(nextState, { type: "PREVIEW_THEME", theme: initialDesktopThemePreview.theme })
+        ? appReducer(nextState, {
+          type: "PREVIEW_THEME",
+          theme: initialDesktopThemePreview.theme,
+          style: initialDesktopThemePreview.style ?? null,
+        })
         : nextState;
     },
   );
   const effectiveThemeId = getEffectiveThemeId(state);
+  const effectiveThemeStyleId = getEffectiveThemeStyleId(state);
   const previousRecentTickers = useRef(state.recentTickers);
   const stateRef = useRef(state);
   const listenersRef = useRef(new Set<() => void>());
@@ -511,15 +518,16 @@ export function AppProvider({
 
   useEffect(() => {
     if (desktopBridge?.kind !== "main" || !desktopBridge.syncThemePreview) return;
-    if (lastThemePreviewSyncRef.current === state.themePreview) return;
-    lastThemePreviewSyncRef.current = state.themePreview;
-    void desktopBridge.syncThemePreview({ theme: state.themePreview });
-  }, [desktopBridge, state.themePreview]);
+    const signature = `${state.themePreview ?? ""}:${state.themeStylePreview ?? ""}`;
+    if (lastThemePreviewSyncRef.current === signature) return;
+    lastThemePreviewSyncRef.current = signature;
+    void desktopBridge.syncThemePreview({ theme: state.themePreview, style: state.themeStylePreview });
+  }, [desktopBridge, state.themePreview, state.themeStylePreview]);
 
   useEffect(() => {
     if (desktopBridge?.kind !== "detached" || !desktopBridge.subscribeThemePreview) return;
     return desktopBridge.subscribeThemePreview((preview) => {
-      dispatch({ type: "PREVIEW_THEME", theme: preview.theme });
+      dispatch({ type: "PREVIEW_THEME", theme: preview.theme, style: preview.style ?? null });
     });
   }, [desktopBridge, dispatch]);
 
@@ -550,7 +558,7 @@ export function AppProvider({
   usePersistSessionSnapshot(sessionStore, state, APP_SESSION_ID, APP_SESSION_SCHEMA_VERSION);
 
   return (
-    <ThemeProvider themeId={effectiveThemeId}>
+    <ThemeProvider themeId={effectiveThemeId} styleId={effectiveThemeStyleId}>
       <AppContext.Provider value={storeRef.current}>{children}</AppContext.Provider>
     </ThemeProvider>
   );

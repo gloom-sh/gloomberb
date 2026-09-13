@@ -1,5 +1,5 @@
 import { Box, Text, useUiHost } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { colors, glyphs } from "../../../theme/colors";
 import { moveBarRatio } from "./sector-model";
 
 export interface SectorMoveBarProps {
@@ -38,6 +38,6 @@ export function SectorMoveBar({ changePercent, width }: SectorMoveBarProps) {
   const cells = ratio * width;
   const full = Math.floor(cells);
   const half = cells - full >= 0.5;
-  const bar = `${"█".repeat(full)}${half ? "▌" : ""}`;
+  const bar = `${glyphs.bar.full.repeat(full)}${half ? glyphs.bar.half : ""}`;
   return <Text fg={color}>{bar}</Text>;
 }

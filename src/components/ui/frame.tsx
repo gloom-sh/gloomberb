@@ -2,8 +2,10 @@ import { Box, Text, useUiHost } from "../../ui";
 import { TextAttributes } from "../../ui";
 import { type ComponentType, type ReactNode } from "react";
 import { t } from "../../i18n";
-import { blendHex, type ThemeColors } from "../../theme/colors";
-import { useThemeColors } from "../../theme/theme-context";
+import { type ThemeColors } from "../../theme/colors";
+import { resolveTokensForPalette } from "../../theme/tokens";
+import { getCurrentStyleId } from "../../theme/colors";
+import { useThemeColors, useThemeTokens } from "../../theme/theme-context";
 
 export interface ModalSurfaceOptions {
   width?: string;
@@ -18,15 +20,16 @@ export interface ModalSurfaceOptions {
  * terminal's sign-in gate sit at the same elevation as a real dialog.
  */
 export function modalSurfaceStyle(colors: ThemeColors, options: ModalSurfaceOptions = {}) {
+  const { dialog } = resolveTokensForPalette(colors, getCurrentStyleId());
   return {
     width: options.width ?? "min(540px, 100%)",
     height: "auto",
     maxHeight: options.maxHeight ?? "calc(100vh - 88px)",
     padding: options.padding ?? 14,
-    backgroundColor: blendHex(colors.panel, colors.bg, 0.12),
-    border: `1px solid ${blendHex(colors.border, colors.borderFocused, 0.18)}`,
-    borderRadius: 6,
-    boxShadow: `0 18px 48px color-mix(in srgb, ${colors.bg} 46%, transparent), inset 0 1px 0 color-mix(in srgb, ${colors.textBright} 5%, transparent)`,
+    backgroundColor: dialog.surfaceBg,
+    border: `1px solid ${dialog.surfaceBorder}`,
+    borderRadius: "var(--gloom-radius-pane, 6px)",
+    boxShadow: "var(--gloom-shadow-floating, none)",
     boxSizing: "border-box" as const,
     overflowY: "auto" as const,
   };
@@ -42,7 +45,7 @@ export interface DialogFrameProps {
 export function DialogFrame({ title: rawTitle, children, footer: rawFooter, showTitleDivider = false }: DialogFrameProps) {
   const title = t(rawTitle);
   const footer = rawFooter === undefined ? undefined : t(rawFooter);
-  const colors = useThemeColors();
+  const tokens = useThemeTokens();
   const HostDialogFrame = useUiHost().DialogFrame as ComponentType<DialogFrameProps> | undefined;
   if (HostDialogFrame) {
     return (
@@ -55,7 +58,7 @@ export function DialogFrame({ title: rawTitle, children, footer: rawFooter, show
   return (
     <Box flexDirection="column">
       <Box height={1}>
-        <Text fg={colors.text} attributes={TextAttributes.BOLD}>{title}</Text>
+        <Text fg={tokens.dialog.titleText} attributes={TextAttributes.BOLD}>{title}</Text>
       </Box>
       <Box height={1} />
       {children}
@@ -63,7 +66,7 @@ export function DialogFrame({ title: rawTitle, children, footer: rawFooter, show
         <>
           <Box height={1} />
           <Box height={1}>
-            <Text fg={colors.textMuted}>{footer}</Text>
+            <Text fg={tokens.dialog.subtleText}>{footer}</Text>
           </Box>
         </>
       )}
