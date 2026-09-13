@@ -172,6 +172,8 @@ Running `gloomberb` with no arguments launches the terminal UI. Normal commands 
 
 Human-readable output is the default. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
 
+Headless chart text includes a Unit column when a series supplies one; values keep that unit's scale (for example, `2.7 %` versus `270 bp`). DVD text labels cash growth, CAGR and earnings payout as percentages, while their structured `value` fields remain fractional ratios (`0.03` means 3%). `fn --csv` preserves the report fields and encodes nested sections or series as JSON cells, retaining raw numeric values alongside any separate display strings; it does not flatten or rescale those observations.
+
 | Command | Use |
 |---------|-----|
 | `gloomberb` | Launch the terminal UI |

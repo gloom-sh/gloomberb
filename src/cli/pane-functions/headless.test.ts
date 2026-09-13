@@ -288,3 +288,27 @@ test("headless text preserves applicable coverage notices once before the export
   expect(text.indexOf("Historical versions unavailable.")).toBeLessThan(text.indexOf("VALUE"));
   expect(text).toContain("96571000000");
 });
+
+
+test("series text distinguishes explicit percent, basis-point and index units without scaling exports", () => {
+  const definition: HeadlessPaneDefinition<"series"> = { shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [] }) };
+  const result: HeadlessSeriesResult = { series: [
+    { id: "percent", label: "Credit percent", unit: "%", points: [{ date: "2026-09-10", value: 2.7 }] },
+    { id: "bp", label: "Credit basis points", unit: "bp", points: [{ date: "2026-09-10", value: 270 }] },
+    { id: "index", label: "Indexed value", unit: "index", points: [{ date: "2026-09-10", value: 102.5 }] },
+    { id: "missing", label: "Unknown unit", points: [{ date: "2026-09-10", value: 0 }] },
+    { id: "empty", label: "Missing value", unit: "%", points: [] },
+  ] };
+  const text = renderHeadlessPaneText(definition, result, args, "Research");
+  expect(text).toContain("UNIT");
+  expect(text.split("\n").find(line => line.includes("Credit percent"))).toMatch(/2\.7\s+%/);
+  expect(text.split("\n").find(line => line.includes("Credit basis points"))).toMatch(/270\s+bp/);
+  expect(text.split("\n").find(line => line.includes("Indexed value"))).toMatch(/102\.5\s+index/);
+  expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(/0\s+-/);
+  expect(text.split("\n").find(line => line.includes("Missing value"))).toMatch(/-\s+%/);
+  expect(jsonData(definition, result)).toMatchObject({ data: { series: result.series } });
+  const csv = serializeCliResult({ data: serializeHeadlessPaneResult(definition, result) }, { ...DEFAULT_CLI_OPTIONS, format: "csv" });
+  expect(csv).toContain('""unit"":""%"",""points"":[{""date"":""2026-09-10"",""value"":2.7}]');
+  expect(csv).toContain('""unit"":""bp"",""points"":[{""date"":""2026-09-10"",""value"":270}]');
+  expect(renderHeadlessPaneText(definition, { series: [result.series[3]!] }, args, "Unknown")).not.toContain("UNIT");
+});
