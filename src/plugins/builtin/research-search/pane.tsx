@@ -346,7 +346,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
               symbols={[hit.ticker]}
               width={column.width}
               fallbackColor={selectedColor ?? colors.textBright}
-              liveQuote={false}
             />
           ),
         };

@@ -47,7 +47,6 @@ export function renderCongressTradeCell(
             symbols={[trade.ticker]}
             width={column.width}
             fallbackColor={selectedColor ?? colors.positive}
-            liveQuote={false}
           />
         ) : undefined,
         color: selectedColor ?? (trade.ticker ? colors.positive : colors.textDim),

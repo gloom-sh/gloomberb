@@ -361,7 +361,6 @@ export function TweetSearchTable({
               symbols={tickers}
               width={column.width}
               fallbackColor={selectedColor ?? colors.positive}
-              liveQuote={false}
             />
           ),
           color: selectedColor ?? colors.positive,

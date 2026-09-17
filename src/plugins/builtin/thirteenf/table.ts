@@ -72,7 +72,6 @@ export function renderHoldingCell(
             symbols: [row.ticker],
             width: column.width,
             fallbackColor: selectedColor ?? colors.textBright,
-            liveQuote: false,
           }),
           color: selectedColor ?? colors.textBright,
         };
@@ -126,7 +125,6 @@ export function renderFilingPositionCell(
             symbols: [row.ticker],
             width: column.width,
             fallbackColor: selectedColor ?? colors.textBright,
-            liveQuote: false,
           }),
           color: selectedColor ?? colors.textBright,
         };
