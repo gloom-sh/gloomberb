@@ -150,6 +150,11 @@ beforeEach(() => {
   });
   apiClient.setSessionToken("thesis-board-session");
   apiClient.restoreCachedUser({ id: "u0", username: "vince", emailVerified: true, plan: "pro" });
+  // The store is a module singleton, and the cloud plugin's setup starts it.
+  // Whatever ran earlier in the process may have left it started, which would
+  // make `start()` below a no-op and the board load nothing.
+  thesisStore.dispose();
+  expect(apiClient.isVerified()).toBe(true);
 });
 
 afterEach(async () => {
