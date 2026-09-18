@@ -20,7 +20,7 @@ const FIELD_LABELS: Record<PositionFieldId, string> = {
 };
 
 const FIELD_PLACEHOLDERS: Record<PositionFieldId, string> = {
-  ticker: "AAPL",
+  ticker: "e.g. AAPL",
   shares: "optional",
   avgCost: "current price",
 };
@@ -124,6 +124,7 @@ function DesktopPositionsPanel({
   inputRef,
   editing,
   shortcut,
+  hasBrokers,
 }: PositionsPanelProps) {
   const colors = useThemeColors();
   const fieldProps = (field: PositionFieldId, index: number) => ({
@@ -178,7 +179,9 @@ function DesktopPositionsPanel({
       </Box>
       <Box style={{ marginTop: 10 }}>
         <Text fg={colors.textMuted} wrapText>
-          {tf("Later: {shortcut}, then AP adds a position from anywhere. Broker import is available once your first position is in.", { shortcut })}
+          {hasBrokers
+            ? tf("Later: {shortcut}, then AP adds a position from anywhere. Broker import is available once your first position is in.", { shortcut })
+            : tf("Later: {shortcut}, then AP adds a position from anywhere.", { shortcut })}
         </Text>
       </Box>
     </Box>
