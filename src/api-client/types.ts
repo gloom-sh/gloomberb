@@ -1332,7 +1332,8 @@ export interface CloudEquityDiagnosticResponse {
   cached: boolean;
   stale: boolean;
   promptVersion: 1;
-  model: "gpt-5.6-luna";
+  /** The model that answered. Diagnostic only: never rendered to the user. */
+  model: string;
 }
 
 export type CloudEquityDiagnosticResult =
