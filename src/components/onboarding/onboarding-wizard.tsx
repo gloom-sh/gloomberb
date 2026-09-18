@@ -33,9 +33,10 @@ import { chatController } from "../../plugins/builtin/chat/controller";
 import { formatCloudMonthlyPrice } from "../../plugins/builtin/account-management/model";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { usePlanAccess } from "../../plugins/builtin/shared/plan-access";
-import type { ListViewItem } from "../ui";
+import { Button, type ListViewItem } from "../ui";
 import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
 import {
+  ONBOARDING_DESKTOP,
   OnboardingActions,
   OnboardingButton,
   OnboardingCoach,
@@ -45,10 +46,11 @@ import {
   OnboardingTitle,
   type OnboardingSectionId,
 } from "./onboarding-frame";
-import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
 import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { POSITION_FIELDS, useOnboardingPositions } from "./wizard-positions";
+import { applyFirstRunLayout, buildFirstRunLayout, planFirstRunWatchlist } from "./first-run-workspace";
+import { debugLog } from "../../utils/debug-log";
 import {
   getConnectableBrokerOptions,
   getOnboardingProgress,
@@ -57,6 +59,8 @@ import {
   withOnboardingProgress,
   type BrokerOption,
 } from "./wizard-model";
+
+const onboardingLog = debugLog.createLogger("onboarding");
 
 interface OnboardingWizardProps {
   pluginRegistry: PluginRegistry;
@@ -182,6 +186,50 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     if (stage === "portfolio" && portfolioSub === "positions") setEditingField(true);
   }, [portfolioSub, stage]);
 
+  /**
+   * Seeds the watchlist and swaps Home for the first-run workspace built
+   * around `symbol`. The config comes back for the caller to persist with its
+   * own progress patch.
+   */
+  const buildFirstRunWorkspace = useCallback(async (
+    baseConfig: AppConfig,
+    symbol: string,
+    portfolioId: string,
+  ): Promise<AppConfig> => {
+    let config = baseConfig;
+    let watchlistId = config.watchlists[0]?.id;
+    if (!watchlistId) {
+      watchlistId = "watchlist";
+      config = { ...config, watchlists: [{ id: watchlistId, name: "Watchlist" }] };
+    }
+    for (const metadata of planFirstRunWatchlist(stateRef.current.tickers, watchlistId)) {
+      try {
+        const ticker = await pluginRegistry.tickerRepository.createTicker(metadata);
+        dispatch({ type: "UPDATE_TICKER", ticker });
+        pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
+      } catch (error) {
+        onboardingLog.error("First-run watchlist seed failed", { symbol: metadata.ticker, error: String(error) });
+      }
+    }
+    const home = buildFirstRunLayout({
+      symbol,
+      portfolioId,
+      watchlistId,
+      hasPane: (paneId) => pluginRegistry.panes?.has(paneId) ?? false,
+    });
+    return applyFirstRunLayout(config, home);
+  }, [dispatch, pluginRegistry, stateRef]);
+
+  const commitWorkspaceProgress = useCallback(async (
+    nextConfig: AppConfig,
+    patch: Partial<OnboardingProgress> & Pick<OnboardingProgress, "stage">,
+  ) => {
+    const withProgress = withOnboardingProgress(nextConfig, patch);
+    await saveConfigImmediately(withProgress);
+    dispatch({ type: "SET_CONFIG", config: withProgress });
+    pluginRegistry.events.emit("config:changed", { config: withProgress });
+  }, [dispatch, pluginRegistry.events]);
+
   const continueFromPositions = useCallback(() => {
     const largest = pickLargestPosition(positions.positions);
     if (!largest) {
@@ -189,15 +237,24 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       return;
     }
     setEditingField(false);
-    saveProgressInBackground({
-      stage: "research",
-      path: "manual",
-      portfolioId: positions.portfolioId,
-      tickerSymbol: largest.symbol,
-      positionsImported: positions.positions.length,
-      brokerName: undefined,
-    });
-  }, [positions, saveProgressInBackground]);
+    setPersistenceError(null);
+    void (async () => {
+      try {
+        const nextConfig = await buildFirstRunWorkspace(stateRef.current.config, largest.symbol, positions.portfolioId);
+        if (finishingRef.current) return;
+        await commitWorkspaceProgress(nextConfig, {
+          stage: "research",
+          path: "manual",
+          portfolioId: positions.portfolioId,
+          tickerSymbol: largest.symbol,
+          positionsImported: positions.positions.length,
+          brokerName: undefined,
+        });
+      } catch (error) {
+        setPersistenceError(error instanceof Error ? error.message : String(error));
+      }
+    })();
+  }, [buildFirstRunWorkspace, commitWorkspaceProgress, positions, stateRef]);
 
   const handleBrokerSynced = useCallback(async (
     result: SyncBrokerInstanceResult,
@@ -208,21 +265,22 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       ?? result.addedTickers[0]?.metadata.ticker
       ?? result.updatedTickers[0]?.metadata.ticker;
     const brokerName = brokerOptions.find((option) => option.id === selectedBrokerId)?.name;
-    const nextConfig = withOnboardingProgress(syncedConfig, {
+    const portfolioId = tickerSymbol ? (result.portfolioIds[0] ?? "main") : "main";
+    dispatch({ type: "SET_TICKERS", tickers: result.tickers });
+    const workspaceConfig = tickerSymbol
+      ? await buildFirstRunWorkspace(syncedConfig, tickerSymbol, portfolioId)
+      : syncedConfig;
+    await commitWorkspaceProgress(workspaceConfig, {
       stage: tickerSymbol ? "research" : "portfolio",
       path: "broker",
-      portfolioId: tickerSymbol ? (result.portfolioIds[0] ?? "main") : "main",
+      portfolioId,
       tickerSymbol,
       brokerName,
       positionsImported: result.positions.length,
     });
-    await saveConfigImmediately(nextConfig);
-    dispatch({ type: "SET_CONFIG", config: nextConfig });
-    dispatch({ type: "SET_TICKERS", tickers: result.tickers });
-    pluginRegistry.events.emit("config:changed", { config: nextConfig });
     setEditingField(false);
     setPortfolioSub("positions");
-  }, [brokerOptions, dispatch, pluginRegistry.events, selectedBrokerId]);
+  }, [brokerOptions, buildFirstRunWorkspace, commitWorkspaceProgress, dispatch, selectedBrokerId]);
 
   const {
     isBrokerSyncing,
@@ -293,9 +351,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   useEffect(() => {
     if (stage !== "research" || !progress.tickerSymbol || researchOpenedRef.current === progress.tickerSymbol) return;
     researchOpenedRef.current = progress.tickerSymbol;
-    pluginRegistry.navigateTicker(progress.tickerSymbol, { sourcePaneId: "ticker-detail:main" });
     recordResearchActivity("ticker_saved");
-  }, [stage, progress.tickerSymbol, pluginRegistry]);
+  }, [stage, progress.tickerSymbol]);
 
   useEffect(() => {
     if (stage !== "upgrade" || pricing) return;
@@ -457,29 +514,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setEditingField(false);
   }, [portfolioSub, resetBrokerSync]);
 
-  const activateAccountChoice = useCallback((index: number) => {
-    const choice = ACCOUNT_CHOICE_IDS[index];
-    if (!choice || choice === "skip") {
-      saveProgressInBackground({ stage: "ready", accountStatus: "skipped" });
-      return;
-    }
-    if (choice === "qr") {
-      account.beginQrSignIn();
-      return;
-    }
-    account.beginAccountMode(choice);
-  }, [account.beginAccountMode, account.beginQrSignIn, saveProgressInBackground]);
-
   const submitAccountField = useCallback(() => {
     setEditingField(false);
     account.submitAccountField();
   }, [account.submitAccountField]);
 
   const continueAccount = useCallback(() => {
-    if (account.accountSub === "choose") {
-      activateAccountChoice(account.accountChoiceIdx);
-      return;
-    }
     // The QR panel owns enter (retry after a denial); approval advances itself.
     if (account.accountSub === "qr") return;
     if (account.accountSub === "signed-in") {
@@ -487,13 +527,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       return;
     }
     submitAccountField();
-  }, [
-    account.accountChoiceIdx,
-    account.accountSub,
-    activateAccountChoice,
-    saveProgressInBackground,
-    submitAccountField,
-  ]);
+  }, [account.accountSub, saveProgressInBackground, submitAccountField]);
+
+  // The account step opens on the email form with the cursor in it.
+  useEffect(() => {
+    if (stage === "account" && (account.accountSub === "signup" || account.accountSub === "login")) setEditingField(true);
+  }, [account.accountSub, stage]);
 
   const startUpgrade = useCallback(() => {
     void persistProgress({
@@ -525,20 +564,18 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     if (finishingRef.current || isBrokerCommitting) return;
     setEditingField(false);
     if (section === "portfolio") {
-      account.returnToAccountChooser();
       setPortfolioSub("positions");
       saveProgressInBackground({ stage: "portfolio" });
       return;
     }
     if (section === "cloud") {
-      account.returnToAccountChooser();
       saveProgressInBackground({ stage: "account" });
       return;
     }
     if (planAccess.signedIn) {
       saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
     }
-  }, [account.returnToAccountChooser, isBrokerCommitting, planAccess.signedIn, saveProgressInBackground]);
+  }, [isBrokerCommitting, planAccess.signedIn, saveProgressInBackground]);
 
   const sectionAvailability: Partial<Record<OnboardingSectionId, boolean>> = {
     portfolio: !isBrokerCommitting,
@@ -608,8 +645,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       } else if (name === "escape") {
         consume();
         setEditingField(false);
-        if (stage === "account") account.returnToAccountChooser();
-        else if (stage === "portfolio") backPortfolio();
+        if (stage === "portfolio") backPortfolio();
       }
       return;
     }
@@ -646,14 +682,11 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         continueAccount();
       } else if (escape) {
         consume();
-        if (account.accountSub !== "choose") account.returnToAccountChooser();
+        if (account.accountSub === "qr" || account.accountSub === "login") account.returnToAccountForm();
         else goToSection("portfolio");
-      } else if (account.accountSub === "choose" && (name === "up" || name === "k")) {
+      } else if (name === "b" && account.accountSub !== "qr" && account.accountSub !== "signed-in") {
         consume();
-        account.setAccountChoiceIdx((index) => Math.max(0, index - 1));
-      } else if (account.accountSub === "choose" && (name === "down" || name === "j")) {
-        consume();
-        account.setAccountChoiceIdx((index) => Math.min(ACCOUNT_CHOICE_IDS.length - 1, index + 1));
+        account.beginQrSignIn();
       }
       return;
     }
@@ -684,16 +717,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   if (stage === "research") {
     const ticker = progress.tickerSymbol ?? t("your company");
-    return <OnboardingCoach step={t("YOUR RESEARCH WORKSPACE")}
+    return <OnboardingCoach step={t("YOUR WORKSPACE")}
       title={tf("Built around {ticker}", { ticker })}
       actions={<><OnboardingButton label="Keep exploring" variant="ghost" onPress={() => { void finish(); }} />
         <OnboardingButton label="Connect free Cloud" variant="primary" onPress={() => saveProgressInBackground({ stage: "account" })} /></>}>
-      <Text fg={colors.textDim} wrapText>{progress.brokerName
-        ? tf("{count} positions from {broker}. Chart, financials, filings and calls are one tab away.", {
-          count: progress.positionsImported ?? 0,
-          broker: progress.brokerName,
-        })
-        : t("Chart, financials, filings and calls are one tab away.")}</Text>
+      <Text fg={colors.textDim} wrapText>{tf("Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.", {
+        ticker,
+        shortcut: commandBarShortcut,
+      })}</Text>
     </OnboardingCoach>;
   }
 
@@ -767,7 +798,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             {persistenceError}
           </Text>
         ) : null}
-        <OnboardingActions>
+        <OnboardingActions hint={portfolioSub === "positions" && desktop ? tf("Later: {shortcut}, then AP.", { shortcut: commandBarShortcut }) : undefined}>
           {portfolioSub === "positions" ? (
             <>
               {brokerOptions.length > 0 && positionCount > 0 ? (
@@ -805,20 +836,16 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         ? t("Log in")
         : t("Continue");
     const accountTitle = account.accountSub === "signup"
-      ? t("Continue with email")
+      ? t("Connect Gloom Cloud")
       : account.accountSub === "login"
         ? t("Log in")
         : account.accountSub === "qr"
           ? t("Continue in browser")
-          : account.accountSub === "signed-in"
-            ? t("Connected")
-            : t("Sync across apps");
-    const accountDescription = account.accountSub === "choose"
-      ? t("Sync layouts and portfolio. Search calls, news and filings.")
-      : account.accountSub === "qr"
-        ? t("Open the sign-in link, or scan the code with your phone.")
-        : account.accountSub === "signup"
-        ? t("New or existing account.")
+          : t("Connected");
+    const accountDescription = account.accountSub === "qr"
+      ? t("Open the sign-in link, or scan the code with your phone.")
+      : account.accountSub === "signup"
+        ? t("Gloom Cloud adds the data layer: quotes, news, filings and Ask Gloom, synced to every device. Free account.")
         : account.accountSub === "login"
           ? t("Enter the password for this account.")
           : t("Next: real-time Pro data.");
@@ -827,13 +854,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       : 0;
     // The QR grid is the tallest thing this wizard ever shows; DeviceSignInPanel
     // degrades to the code plus URL when the terminal cannot give it these rows.
-    const accountModalHeight = account.accountSub === "choose"
-      ? 19
-      : account.accountSub === "qr"
-        ? 32
-        : account.accountSub === "signed-in"
-          ? 12
-          : 16 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows;
+    const accountModalHeight = account.accountSub === "qr"
+      ? 32
+      : account.accountSub === "signed-in"
+        ? 12
+        : 17 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows;
+    const browserSignIn = account.accountSub === "signup" || account.accountSub === "login";
     // OnboardingModal clamps the card to the viewport, so the panel has to size
     // off the clamped height or the QR overflows a short terminal.
     const accountPanelHeight = Math.max(4, Math.min(accountModalHeight, viewportHeight - 2) - 9);
@@ -857,9 +883,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         <Box minHeight={0}>
           <AccountStep
             sub={account.accountSub}
-            choiceIdx={account.accountChoiceIdx}
-            onChoiceSelect={account.setAccountChoiceIdx}
-            onChoiceActivate={activateAccountChoice}
             email={account.accountEmail}
             password={account.accountPassword}
             fieldIdx={account.accountFieldIdx}
@@ -881,13 +904,22 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             {persistenceError}
           </Text>
         ) : null}
-        <OnboardingActions>
+        {!desktop && browserSignIn ? (
+          <Box height={1}>
+            <Text fg={colors.textMuted}>{t("b: sign in with the browser instead")}</Text>
+          </Box>
+        ) : null}
+        <OnboardingActions
+          hint={desktop && browserSignIn ? (
+            <Button label="Sign in with the browser instead" variant="plain" compact onPress={account.beginQrSignIn} />
+          ) : undefined}
+        >
           <OnboardingButton
             label="Back"
             variant="ghost"
-            onPress={account.accountSub === "choose" ? () => goToSection("portfolio") : account.returnToAccountChooser}
+            onPress={account.accountSub === "qr" || account.accountSub === "login" ? account.returnToAccountForm : () => goToSection("portfolio")}
           />
-          {account.accountSub !== "qr" && (!desktop || account.accountSub !== "choose") ? (
+          {account.accountSub !== "qr" ? (
             <OnboardingButton
               label={accountActionLabel}
               variant="primary"
@@ -905,7 +937,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     const monthlyPrice = formatCloudMonthlyPrice(pricing);
     const ticker = progress.tickerSymbol;
     return (
-      <OnboardingModal width={70} height={24}>
+      <OnboardingModal width={70} height={26}>
         <OnboardingHeader
           active="pro"
           available={sectionAvailability}
@@ -927,28 +959,31 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             ? t("This account already has real-time Cloud data.")
             : t("7 days free. Card required. Cancel anytime.")}
         />
-        <Box flexDirection="column" style={desktop ? { marginTop: 14, gap: 8 } : undefined}>
+        {/* Ranked by what a new account asks for first. */}
+        <Box flexDirection="column" style={desktop ? { marginTop: ONBOARDING_DESKTOP.afterHeader, gap: 10 } : undefined}>
           <OnboardingFeature
-            title={ticker
-              ? tf("Real-time {ticker}, options and news wire", { ticker })
-              : t("Real-time quotes, options and news wire")}
-            description={t("Free: quotes 15m late, news 12h late.")}
+            title={t("MCP server")}
+            description={t("Claude Code, Codex or Cursor call Gloom's research tools.")}
           />
           <OnboardingFeature
-            title={t("Gloomberb AI")}
+            title={t("Ask Gloom")}
             description={t("Answers cite filings, calls and news.")}
           />
           <OnboardingFeature
-            title={t("Earnings transcripts and scores")}
-            description={t("Every call, scored and searchable.")}
+            title={ticker ? tf("Real-time {ticker}, options, news wire, X", { ticker }) : t("Real-time quotes, options, news wire, X")}
+            description={t("Free is 15 minutes behind on quotes and 12 hours on news.")}
+          />
+          <OnboardingFeature
+            title={t("Earnings calls")}
+            description={t("Transcripts, summaries, guidance and scores.")}
           />
           <OnboardingFeature
             title={t("Equity Diagnostic")}
-            description={t("Red and green flags from filings, with evidence.")}
+            description={t("Full report: red and green flags with evidence.")}
           />
           <OnboardingFeature
-            title={t("Hiring data")}
-            description={t("Job postings by company.")}
+            title={t("Search, theses and flow")}
+            description={t("Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.")}
           />
         </Box>
         {persistenceError ? (

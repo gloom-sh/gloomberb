@@ -20,6 +20,12 @@ export interface TextFieldProps {
   /** DOM autofill hint, e.g. "email" or "current-password"; terminal hosts ignore it. */
   autoComplete?: string;
   variant?: "default" | "plain";
+  /**
+   * `comfortable` is the form-page size on the DOM renderer: a taller field
+   * with a tight label gap, for dialogs a user fills in rather than dense pane
+   * chrome. Terminal hosts have one cell height and ignore it.
+   */
+  size?: "default" | "comfortable";
   backgroundColor?: string;
   textColor?: string;
   placeholderColor?: string;
@@ -53,6 +59,7 @@ export function TextField({
   type = "text",
   autoComplete,
   variant = "default",
+  size = "default",
   backgroundColor,
   textColor,
   placeholderColor,
@@ -96,6 +103,7 @@ export function TextField({
         type={type}
         autoComplete={autoComplete}
         variant={variant}
+        size={size}
         backgroundColor={backgroundColor}
         textColor={textColor}
         placeholderColor={placeholderColor}

@@ -5,10 +5,23 @@ import { blendHex } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
 import { Button, ListView, type ListViewItem } from "../ui";
-import { modalSurfaceStyle } from "../ui/frame";
 import type { ButtonProps } from "../ui/button";
-import { Tabs } from "../ui/tabs";
 import { TITLEBAR_OVERLAY_HEIGHT_PX } from "../layout/titlebar-overlay";
+
+/**
+ * Spacing for the DOM card, in px. The card is a form the user fills in, not
+ * pane chrome, so it does not sit on the terminal cell grid: an 8px rhythm with
+ * one larger break before the footer.
+ */
+export const ONBOARDING_DESKTOP = {
+  padding: "26px 28px 24px",
+  radius: 10,
+  afterProgress: 22,
+  afterTitle: 6,
+  afterHeader: 20,
+  beforeFooter: 24,
+  buttonHeight: "28px",
+} as const;
 
 export function OnboardingModal({
   children,
@@ -47,7 +60,19 @@ export function OnboardingModal({
       >
         <Box
           flexDirection="column"
-          style={modalSurfaceStyle(colors, desktopWidth ? { width: desktopWidth } : {})}
+          style={{
+            width: desktopWidth ?? "min(560px, 100%)",
+            height: "auto",
+            maxHeight: "calc(100vh - 88px)",
+            padding: ONBOARDING_DESKTOP.padding,
+            backgroundColor: blendHex(colors.panel, colors.bg, 0.12),
+            borderRadius: ONBOARDING_DESKTOP.radius,
+            // A hairline of light instead of a drawn border: the card reads as
+            // a raised surface, not a box inside a box.
+            boxShadow: `0 24px 64px color-mix(in srgb, ${colors.bg} 55%, transparent), 0 0 0 1px color-mix(in srgb, ${colors.textBright} 5%, transparent)`,
+            boxSizing: "border-box",
+            overflowY: "auto",
+          }}
           data-gloom-role="onboarding-modal"
         >
           {children}
@@ -203,11 +228,12 @@ export function OnboardingTitle({
 
   if (desktop) {
     return (
-      <Box flexDirection="column" style={{ marginTop: 14 }}>
+      <Box flexDirection="column" style={{ marginTop: ONBOARDING_DESKTOP.afterProgress }}>
         {step ? (
           <Text
             fg={colors.borderFocused}
             attributes={TextAttributes.BOLD}
+            style={{ fontSize: 11, letterSpacing: 0.6 }}
           >
             {step}
           </Text>
@@ -215,15 +241,15 @@ export function OnboardingTitle({
         <Box
           flexDirection="row"
           alignItems="baseline"
-          gap={titlePrefix || titleSuffix ? 1 : 0}
           minWidth={0}
-          style={{ marginTop: step ? 4 : 0 }}
+          style={{ marginTop: step ? 6 : 0, gap: 8 }}
         >
           {titlePrefix}
           <Text
             fg={colors.textBright}
             attributes={TextAttributes.BOLD}
             wrapText
+            style={{ fontSize: 15, lineHeight: "20px" }}
           >
             {title}
           </Text>
@@ -233,7 +259,7 @@ export function OnboardingTitle({
           <Text
             fg={colors.textDim}
             wrapText
-            style={{ marginTop: 6 }}
+            style={{ marginTop: ONBOARDING_DESKTOP.afterTitle }}
           >
             {description}
           </Text>
@@ -310,34 +336,48 @@ export function OnboardingHeader({
     );
   }
 
+  // Progress, not navigation: three segments, the current one lit, the ones
+  // behind it filled. A filled segment is still a way back.
+  const activeIndex = sections.findIndex((section) => section.id === active);
   return (
-    <Box flexDirection="row" alignItems="center" justifyContent="space-between" minWidth={0}>
-      <Box flexDirection="row" alignItems="center" flexGrow={1} minWidth={0}>
-        {active ? (
-          <Tabs
-            tabs={sections.map((section) => ({
-              label: section.label,
-              value: section.id,
-              disabled: available?.[section.id] === false,
-            }))}
-            activeValue={active}
-            onSelect={(value) => onNavigate?.(value as OnboardingSectionId)}
-            dense
-            variant="underline"
-            keyboardNavigation={false}
-            scrollable={false}
-          />
-        ) : (
-          <Text fg={colors.textMuted} attributes={TextAttributes.BOLD}>
-            {t("GLOOMBERB SETUP")}
-          </Text>
-        )}
+    <Box flexDirection="row" alignItems="flex-start" justifyContent="space-between" minWidth={0}>
+      <Box flexDirection="row" style={{ gap: 10, width: 288, flexShrink: 0 }} data-gloom-role="onboarding-progress">
+        {sections.map((section, index) => {
+          const state = index === activeIndex ? "current" : index < activeIndex ? "done" : "upcoming";
+          const clickable = state !== "current" && available?.[section.id] !== false && !!onNavigate;
+          const bar = state === "current"
+            ? colors.borderFocused
+            : state === "done"
+              ? colors.textDim
+              : blendHex(colors.border, colors.bg, 0.3);
+          const label = state === "current"
+            ? colors.textBright
+            : state === "done"
+              ? colors.text
+              : colors.textMuted;
+          return (
+            <Box
+              key={section.id}
+              flexDirection="column"
+              flexGrow={1}
+              minWidth={0}
+              data-gloom-interactive={clickable ? "true" : undefined}
+              onMouseDown={clickable ? () => onNavigate?.(section.id) : undefined}
+              style={{ gap: 6, cursor: clickable ? "pointer" : "default" }}
+            >
+              <Box style={{ height: 2, borderRadius: 1, backgroundColor: bar }} />
+              <Text fg={label} style={{ fontSize: 11, lineHeight: "14px", fontWeight: state === "current" ? 700 : 500 }}>
+                {section.label}
+              </Text>
+            </Box>
+          );
+        })}
       </Box>
       {showDismiss ? (
-        <Box flexDirection="row" style={{ marginLeft: 12, flexShrink: 0 }}>
+        <Box flexDirection="row" style={{ marginLeft: 12, marginTop: -6, flexShrink: 0 }}>
           <Button
             label={dismissing ? "Closing..." : "Skip setup"}
-            variant="ghost"
+            variant="plain"
             height={1}
             disabled={dismissing || dismissDisabled}
             onPress={onDismiss}
@@ -348,15 +388,38 @@ export function OnboardingHeader({
   );
 }
 
-export function OnboardingActions({ children }: { children: ReactNode }) {
+/**
+ * Footer row. On the DOM renderer the hint sits on the left and the buttons
+ * on the right of the same line, so nothing floats. Terminal steps print
+ * their hints in the body and ignore `hint`.
+ */
+export function OnboardingActions({ children, hint }: { children: ReactNode; hint?: ReactNode }) {
   const desktop = useUiHost().kind === "desktop-web";
+  const colors = useThemeColors();
+  if (desktop) {
+    return (
+      <Box
+        flexDirection="row"
+        justifyContent="space-between"
+        alignItems="center"
+        minWidth={0}
+        style={{ marginTop: ONBOARDING_DESKTOP.beforeFooter, gap: 16 }}
+      >
+        <Box flexGrow={1} minWidth={0} overflow="hidden">
+          {typeof hint === "string" ? <Text fg={colors.textMuted}>{hint}</Text> : hint}
+        </Box>
+        <Box flexDirection="row" alignItems="center" style={{ gap: 8, flexShrink: 0 }}>
+          {children}
+        </Box>
+      </Box>
+    );
+  }
   return (
     <Box
       flexDirection="row"
-      justifyContent={desktop ? "flex-end" : "flex-start"}
+      justifyContent="flex-start"
       alignItems="center"
       gap={1}
-      style={desktop ? { marginTop: 14 } : undefined}
     >
       {children}
     </Box>
@@ -364,7 +427,8 @@ export function OnboardingActions({ children }: { children: ReactNode }) {
 }
 
 export function OnboardingButton(props: ButtonProps) {
-  return <Button {...props} height={props.height ?? 1} />;
+  const desktop = useUiHost().kind === "desktop-web";
+  return <Button {...props} height={props.height ?? (desktop ? ONBOARDING_DESKTOP.buttonHeight : 1)} />;
 }
 
 export function OnboardingChoiceList({

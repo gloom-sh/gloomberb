@@ -1,11 +1,12 @@
 import { useState, type RefObject } from "react";
 import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
-import { priceColor } from "../../../theme/colors";
+import { blendHex, priceColor } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import { formatPercentRaw } from "../../../utils/format";
-import { Button, Divider, NumberField, TextField } from "../../ui";
+import { Button, NumberField, TextField } from "../../ui";
+import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 import {
   POSITION_FIELDS,
   type OnboardingPositionRow,
@@ -91,24 +92,29 @@ function DesktopPositionRow({
       minWidth={0}
       onMouseOver={() => setHovered(true)}
       onMouseOut={() => setHovered(false)}
-      style={{ padding: "6px 8px", borderRadius: 4, backgroundColor: hovered ? colors.panel : "transparent" }}
+      style={{
+        height: 32,
+        padding: "0 10px",
+        borderRadius: 6,
+        backgroundColor: hovered ? blendHex(colors.panel, colors.textBright, 0.05) : "transparent",
+      }}
       data-gloom-role="onboarding-position"
     >
-      <Box width="72px" flexShrink={0}>
+      <Box style={{ width: 64, flexShrink: 0 }}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{row.symbol}</Text>
       </Box>
       <Box flexGrow={1} minWidth={0} overflow="hidden">
         <Text fg={colors.textDim}>{row.name}</Text>
       </Box>
-      <Box flexShrink={0} style={{ marginLeft: 12 }}>
+      <Box flexShrink={0} style={{ marginLeft: 16 }}>
         <Text fg={colors.text}>{positionSummary(row)}</Text>
       </Box>
-      <Box width="96px" flexShrink={0} justifyContent="flex-end" flexDirection="row">
+      <Box flexShrink={0} justifyContent="flex-end" flexDirection="row" style={{ width: 96 }}>
         <Text fg={row.value === null ? colors.textMuted : colors.textBright}>
           {row.value === null ? "" : formatWholeCurrency(row.value, row.currency)}
         </Text>
       </Box>
-      <Box width="64px" flexShrink={0} justifyContent="flex-end" flexDirection="row" style={{ marginLeft: 8 }}>
+      <Box flexShrink={0} justifyContent="flex-end" flexDirection="row" style={{ width: 64, marginLeft: 8 }}>
         {hovered ? (
           <Button label="Remove" variant="plain" compact stopPropagation onPress={() => onRemove(row.symbol)} />
         ) : null}
@@ -121,7 +127,6 @@ function DesktopPositionsPanel({
   state,
   inputRef,
   editing,
-  shortcut,
 }: PositionsPanelProps) {
   const colors = useThemeColors();
   const fieldProps = (field: PositionFieldId, index: number) => ({
@@ -130,6 +135,7 @@ function DesktopPositionsPanel({
     value: state.draft[field],
     placeholder: t(FIELD_PLACEHOLDERS[field]),
     focused: editing && index === state.fieldIdx && !state.submitting,
+    size: "comfortable" as const,
     backgroundColor: colors.panel,
     textColor: colors.text,
     placeholderColor: colors.textDim,
@@ -137,44 +143,37 @@ function DesktopPositionsPanel({
   });
 
   return (
-    <Box flexDirection="column" style={{ marginTop: 14 }}>
-      <Box flexDirection="row" alignItems="flex-end" style={{ gap: 8 }}>
+    <Box flexDirection="column" style={{ marginTop: ONBOARDING_DESKTOP.afterHeader }}>
+      <Box flexDirection="row" alignItems="flex-end" style={{ gap: 10 }}>
         <Box flexGrow={1} minWidth={0}>
           <TextField {...fieldProps("ticker", 0)} onChange={(value) => state.setField("ticker", value)} />
         </Box>
         <Box style={{ width: 96, flexShrink: 0 }}>
           <NumberField {...fieldProps("shares", 1)} onChange={(value) => state.setField("shares", value)} />
         </Box>
-        <Box style={{ width: 120, flexShrink: 0 }}>
+        <Box style={{ width: 128, flexShrink: 0 }}>
           <NumberField {...fieldProps("avgCost", 2)} onChange={(value) => state.setField("avgCost", value)} />
         </Box>
         <Box style={{ flexShrink: 0 }}>
           <Button
             label={state.submitting ? "Adding..." : "Add"}
             variant="secondary"
-            height={1}
+            height="32px"
             disabled={state.submitting}
             onPress={() => { void state.addPosition(); }}
           />
         </Box>
       </Box>
-      <Box minHeight="18px" style={{ marginTop: 8 }}>
+      <Box style={{ minHeight: 18, marginTop: 8 }}>
         <PreviewLine preview={state.preview} error={state.error} />
       </Box>
-
-      <Box style={{ marginTop: 14 }}>
-        <Divider />
-      </Box>
       {state.positions.length > 0 ? (
-        <Box flexDirection="column" style={{ marginTop: 6, maxHeight: 176, overflowY: "auto" }}>
+        <Box flexDirection="column" style={{ marginTop: 16, maxHeight: 200, overflowY: "auto" }}>
           {state.positions.map((row) => (
             <DesktopPositionRow key={row.symbol} row={row} onRemove={(symbol) => { void state.removePosition(symbol); }} />
           ))}
         </Box>
       ) : null}
-      <Box style={{ marginTop: 10 }}>
-        <Text fg={colors.textMuted}>{tf("Later: {shortcut}, then AP.", { shortcut })}</Text>
-      </Box>
     </Box>
   );
 }

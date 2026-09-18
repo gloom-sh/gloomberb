@@ -4,6 +4,7 @@ import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { TextField } from "../../ui";
 import type { AccountMode, AccountSubmitError } from "../../../plugins/builtin/cloud/auth-model";
+import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 
 function TuiFieldRow({
   label,
@@ -14,7 +15,6 @@ function TuiFieldRow({
   editing,
   inputRef,
   onChange,
-  onSubmit,
 }: {
   label: string;
   active: boolean;
@@ -24,7 +24,6 @@ function TuiFieldRow({
   editing: boolean;
   inputRef: RefObject<InputRenderable | null>;
   onChange: (value: string) => void;
-  onSubmit?: () => void;
 }) {
   if (!active) {
     return (
@@ -52,7 +51,6 @@ function TuiFieldRow({
             textColor={colors.text}
             placeholderColor={colors.textDim}
             onChange={onChange}
-            onSubmit={() => onSubmit?.()}
           />
         ) : (
           <Text fg={value ? colors.text : colors.textMuted}>
@@ -77,7 +75,6 @@ export function AccountFormPanel({
   onEmailChange,
   onPasswordChange,
   onFieldFocus,
-  onSubmitField,
 }: {
   mode: AccountMode;
   email: string;
@@ -91,20 +88,25 @@ export function AccountFormPanel({
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onFieldFocus: (index: 0 | 1) => void;
-  onSubmitField?: () => void;
 }) {
   const desktop = useUiHost().kind === "desktop-web";
   const onEmail = fieldIdx <= 0;
 
   if (desktop) {
+    const status = submitting
+      ? { color: colors.text, text: mode === "signup" ? t("Creating your account...") : t("Signing you in...") }
+      : validationError || submitError
+        ? { color: colors.negative, text: validationError ?? submitError?.message ?? "" }
+        : null;
     return (
-      <Box flexDirection="column" style={{ marginTop: 14, gap: 10 }}>
+      <Box flexDirection="column" style={{ marginTop: ONBOARDING_DESKTOP.afterHeader, gap: 14 }}>
         <TextField
           label={t("Email")}
           inputRef={onEmail ? inputRef : undefined}
           value={email}
           type="email"
           autoComplete="email"
+          size="comfortable"
           placeholder="email@example.com"
           focused={onEmail && editing && !submitting}
           backgroundColor={colors.panel}
@@ -112,7 +114,6 @@ export function AccountFormPanel({
           placeholderColor={colors.textDim}
           onMouseDown={() => onFieldFocus(0)}
           onChange={onEmailChange}
-          onSubmit={() => onSubmitField?.()}
         />
         <TextField
           label={t("Password")}
@@ -120,6 +121,7 @@ export function AccountFormPanel({
           value={password}
           type="password"
           autoComplete={mode === "signup" ? "new-password" : "current-password"}
+          size="comfortable"
           placeholder={mode === "signup" ? t("At least 8 characters") : t("Your password")}
           focused={!onEmail && editing && !submitting}
           backgroundColor={colors.panel}
@@ -127,29 +129,10 @@ export function AccountFormPanel({
           placeholderColor={colors.textDim}
           onMouseDown={() => onFieldFocus(1)}
           onChange={onPasswordChange}
-          onSubmit={() => onSubmitField?.()}
         />
-        <Box minHeight="40px" style={{ paddingTop: 2 }}>
-          {submitting ? (
-            <Text fg={colors.text} wrapText>
-              {mode === "signup" ? t("Creating your account...") : t("Signing you in...")}
-            </Text>
-          ) : validationError || submitError ? (
-            <Text fg={colors.negative} wrapText>
-              {validationError ?? submitError?.message ?? ""}
-            </Text>
-          ) : (
-            <Text fg={colors.textMuted} wrapText>
-              {mode === "signup"
-                ? t("New accounts get a verification email.")
-                : t("This signs the app in to your Gloom Cloud account.")}
-            </Text>
-          )}
-          {!submitting && submitError?.kind === "switch-to-login" ? (
-            <Text fg={colors.textDim} wrapText style={{ marginTop: 3 }}>
-              {t("Use Log in with this email instead.")}
-            </Text>
-          ) : null}
+        {/* Reserved so the footer does not jump when a message appears. */}
+        <Box style={{ minHeight: 18 }}>
+          {status ? <Text fg={status.color} wrapText>{status.text}</Text> : null}
         </Box>
       </Box>
     );
@@ -166,7 +149,6 @@ export function AccountFormPanel({
         editing={editing}
         inputRef={inputRef}
         onChange={onEmailChange}
-        onSubmit={onSubmitField}
       />
 
       {!onEmail ? (
@@ -181,7 +163,6 @@ export function AccountFormPanel({
             editing={editing && !submitting}
             inputRef={inputRef}
             onChange={onPasswordChange}
-            onSubmit={onSubmitField}
           />
         </>
       ) : null}

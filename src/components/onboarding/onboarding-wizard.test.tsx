@@ -6,7 +6,6 @@ import { act } from "react";
 import { apiClient } from "../../api-client";
 import { useBrokerImportRuntime, type AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
-import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { EventBus } from "../../plugins/event-bus";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -85,6 +84,7 @@ function createPluginRegistry(options: {
     events: new EventBus(),
     tickerRepository: options.tickerRepository ?? createTickerRepository(),
     marketData: createMarketData(),
+    panes: new Map(["portfolio-list", "chart-composer", "ticker-news", "world-indices"].map((id) => [id, {}])),
     persistence: { resources: undefined },
     openCommandBar: () => {},
     navigateTicker: () => {},
@@ -255,8 +255,6 @@ describe("OnboardingWizard", () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
     const tickerRepository = createTickerRepository();
     const pluginRegistry = createPluginRegistry({ tickerRepository });
-    const opened: string[] = [];
-    pluginRegistry.navigateTicker = ((symbol: string) => { opened.push(symbol); }) as PluginRegistry["navigateTicker"];
     testSetup = await testRender(
       <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
       { width: 100, height: 32 },
@@ -287,11 +285,21 @@ describe("OnboardingWizard", () => {
       tickerSymbol: "AAPL",
       positionsImported: 2,
     });
-    expect(opened).toEqual(["AAPL"]);
     const saved = await tickerRepository.loadTicker("AAPL");
     expect(saved?.metadata.positions).toEqual([
       { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
     ]);
+
+    // The workspace behind the coach is the first-run layout, built around the
+    // largest holding, with the watchlist seeded around what the user holds.
+    const instances = capturedConfig?.layout.instances ?? [];
+    expect(instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "AAPL" });
+    expect(instances.filter((instance) => instance.paneId === "portfolio-list").map((instance) => instance.settings?.viewMode)).toEqual(["grid", "table"]);
+    expect(capturedConfig?.layouts[0]?.layout).toEqual(capturedConfig?.layout);
+    const watching = (await tickerRepository.loadAllTickers())
+      .filter((ticker) => ticker.metadata.watchlists.includes("watchlist"))
+      .map((ticker) => ticker.metadata.ticker);
+    expect(watching).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
   });
 
   test("a blank share count follows the company and prices a missing cost from the quote", async () => {
@@ -402,7 +410,7 @@ describe("OnboardingWizard", () => {
     await pressEnter();
 
     const frame = await waitForFrame("Connect free Cloud");
-    expect(frame).toContain("Demo Broker");
+    expect(frame).toContain("Built around MSFT");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
       stage: "research",
       path: "broker",
@@ -410,7 +418,12 @@ describe("OnboardingWizard", () => {
       brokerName: "Demo Broker",
       positionsImported: 2,
     });
-    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT", "NVDA"]);
+    const held = (await tickerRepository.loadAllTickers())
+      .filter((ticker) => ticker.metadata.portfolios.length > 0)
+      .map((ticker) => ticker.metadata.ticker)
+      .sort();
+    expect(held).toEqual(["AAPL", "MSFT", "NVDA"]);
+    expect(capturedConfig?.layout.instances.find((instance) => instance.paneId === "chart-composer")?.binding).toEqual({ kind: "fixed", symbol: "MSFT" });
   });
 
   test("Back prevents a delayed broker import from committing config, accounts, or positions", async () => {
@@ -559,7 +572,11 @@ describe("OnboardingWizard", () => {
     });
 
     await waitForFrame("Connect free Cloud");
-    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT", "NVDA"]);
+    const held = (await tickerRepository.loadAllTickers())
+      .filter((ticker) => ticker.metadata.portfolios.length > 0)
+      .map((ticker) => ticker.metadata.ticker)
+      .sort();
+    expect(held).toEqual(["AAPL", "MSFT", "NVDA"]);
     expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
   });
 
@@ -667,12 +684,10 @@ describe("OnboardingWizard", () => {
       };
       testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
       await testSetup.renderOnce();
-      const chooser = testSetup.captureCharFrame();
-      expect(chooser).toContain("Continue with email");
-      expect(chooser).not.toContain("Sign up free");
+      const form = await waitForFrame("Email");
+      expect(form).toContain("Connect Gloom Cloud");
+      expect(form).not.toContain("Sign up free");
 
-      await pressEnter();
-      await waitForFrame("Email");
       await typeText("research@example.com");
       await pressEnter();
       await typeText("longenough1");
@@ -715,7 +730,6 @@ describe("OnboardingWizard", () => {
       testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
       await testSetup.renderOnce();
 
-      await pressEnter();
       await waitForFrame("Email");
       await typeText("returning@example.com");
       await pressEnter();
@@ -769,14 +783,16 @@ describe("OnboardingWizard", () => {
       const frame = await waitForFrame("$39/mo");
       expect(frame).toContain("$49/mo");
       expect(frame).toContain("Founding price");
-      expect(frame).toContain("Gloomberb AI");
+      expect(frame).toContain("MCP server");
+      expect(frame).toContain("Ask Gloom");
+      expect(frame).not.toContain("Gloomberb AI");
       expect(frame).not.toContain("coming soon");
     } finally {
       apiClient.getCloudPricing = getCloudPricing;
     }
   });
 
-  test("Not now skips Pro and moves directly to ready", async () => {
+  test("skipping from the account step finishes onboarding without an account", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-cloud-skip-"));
     const pluginRegistry = createPluginRegistry();
     const config = {
@@ -789,24 +805,25 @@ describe("OnboardingWizard", () => {
         tickerSymbol: "MSFT",
       },
     };
+    let completed: AppConfig | null = null;
     testSetup = await testRender(
-      <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
+      <WizardHarness config={config} pluginRegistry={pluginRegistry} onComplete={(next) => { completed = next; }} />,
       { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
+    const form = await waitForFrame("Email");
+    expect(form).toContain("Skip setup");
+    expect(form).toContain("b: sign in with the browser instead");
 
-    for (let index = 0; index < ACCOUNT_CHOICE_IDS.indexOf("skip"); index += 1) {
-      await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "f10" });
+    for (let index = 0; index < 30 && !completed; index += 1) {
+      await act(async () => {
+        await Bun.sleep(0);
+        await testSetup!.renderOnce();
+      });
     }
-    await pressEnter();
-
-    const frame = await waitForFrame("Your workspace is ready");
-    expect(frame).not.toContain("GLOOM CLOUD PRO");
-    expect(frame).not.toContain("Skip setup");
-    expect(capturedConfig?.onboardingProgress).toMatchObject({
-      stage: "ready",
-      accountStatus: "skipped",
-    });
+    expect(completed?.onboardingComplete).toBe(true);
+    expect(completed?.onboardingProgress).toBeUndefined();
   });
 
   test("returning from Pro shows the connected account instead of signup choices", async () => {
@@ -836,7 +853,8 @@ describe("OnboardingWizard", () => {
     await pressEscape();
 
     const frame = await waitForFrame("Connected");
-    expect(frame).not.toContain("Continue with email");
+    expect(frame).not.toContain("Connect Gloom Cloud");
+    expect(frame).not.toContain("Password");
     expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
   });
 

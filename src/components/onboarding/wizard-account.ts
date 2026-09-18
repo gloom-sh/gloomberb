@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useRef, useState } from "react";
 import { apiClient } from "../../api-client";
 import { t } from "../../i18n";
 import { debugLog } from "../../utils/debug-log";
@@ -18,7 +18,6 @@ const onboardingLog = debugLog.createLogger("onboarding");
 
 export interface OnboardingAccountState {
   accountSub: AccountSub;
-  accountChoiceIdx: number;
   accountEmail: string;
   accountPassword: string;
   accountFieldIdx: number;
@@ -26,14 +25,13 @@ export interface OnboardingAccountState {
   accountSubmitError: AccountSubmitError | null;
   accountValidationError: string | null;
   accountOutcome: AccountOutcome | null;
-  setAccountChoiceIdx: Dispatch<SetStateAction<number>>;
   setAccountEmail: (value: string) => void;
   setAccountPassword: (value: string) => void;
   focusAccountField: (index: 0 | 1) => void;
   beginAccountMode: (mode: AccountMode) => void;
   beginQrSignIn: () => void;
   completeQrSignIn: (email: string) => void;
-  returnToAccountChooser: () => void;
+  returnToAccountForm: () => void;
   switchToAccountLogin: () => void;
   submitAccountField: () => void;
   submitAccount: () => void;
@@ -57,8 +55,7 @@ export function useOnboardingAccount({
   // error the same keypress just produced.
   const emailRef = useRef("");
   const passwordRef = useRef("");
-  const [accountSub, setAccountSub] = useState<AccountSub>("choose");
-  const [accountChoiceIdx, setAccountChoiceIdx] = useState(0);
+  const [accountSub, setAccountSub] = useState<AccountSub>("signup");
   const [accountEmail, setAccountEmailValue] = useState("");
   const [accountPassword, setAccountPasswordValue] = useState("");
   const [accountFieldIdx, setAccountFieldIdx] = useState(0);
@@ -126,13 +123,14 @@ export function useOnboardingAccount({
     nextStep();
   }, [nextStep, resetAccountPassword]);
 
-  const returnToAccountChooser = useCallback(() => {
+  /** Back to the email form from QR or the login fall-through, ready to type. */
+  const returnToAccountForm = useCallback(() => {
     attemptRef.current += 1;
     clearErrors();
     setAccountSubmitting(false);
     setAccountFieldIdx(0);
-    setAccountSub("choose");
-    setEditingField(false);
+    setAccountSub("signup");
+    setEditingField(true);
   }, [clearErrors, setEditingField]);
 
   const switchToAccountLogin = useCallback(() => {
@@ -240,7 +238,7 @@ export function useOnboardingAccount({
   }, [accountEmail, accountFieldIdx, accountPassword, accountSub, setEditingField, submitAccount]);
 
   const syncExistingAccountSession = useCallback(() => {
-    if (accountSub !== "choose" || !apiClient.isSignedIn()) return;
+    if (accountSub === "signed-in" || !apiClient.isSignedIn()) return;
     const user = apiClient.getCurrentUser();
     setAccountOutcome((current) => current ?? {
       mode: "login",
@@ -251,7 +249,6 @@ export function useOnboardingAccount({
 
   return {
     accountSub,
-    accountChoiceIdx,
     accountEmail,
     accountPassword,
     accountFieldIdx,
@@ -259,14 +256,13 @@ export function useOnboardingAccount({
     accountSubmitError,
     accountValidationError,
     accountOutcome,
-    setAccountChoiceIdx,
     setAccountEmail,
     setAccountPassword,
     focusAccountField,
     beginAccountMode,
     beginQrSignIn,
     completeQrSignIn,
-    returnToAccountChooser,
+    returnToAccountForm,
     switchToAccountLogin,
     submitAccountField,
     submitAccount,

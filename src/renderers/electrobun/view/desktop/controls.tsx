@@ -242,6 +242,7 @@ export function WebTextField({
   type = "text",
   autoComplete,
   variant = "default",
+  size = "default",
   backgroundColor,
   textColor,
   placeholderColor,
@@ -257,21 +258,22 @@ export function WebTextField({
   const renderer = useRendererHost();
   const { nativeContextMenu } = useUiCapabilities();
   const plain = variant === "plain";
+  const comfortable = size === "comfortable";
 
   return (
-    <Box flexDirection="column" gap={plain ? 0 : 1}>
+    <Box flexDirection="column" gap={plain || comfortable ? 0 : 1} style={comfortable ? { gap: 6 } : undefined}>
       {label && (
-        <Box height={1}>
+        <Box height={comfortable ? undefined : 1} style={comfortable ? { height: 16 } : undefined}>
           <Text
             fg={focused ? colors.textBright : resolvedPlaceholderColor}
-            style={{ fontWeight: 600 }}
+            style={{ fontWeight: 600, ...(comfortable ? { fontSize: 11.5, lineHeight: "16px", letterSpacing: 0.2 } : {}) }}
           >
             {label}
           </Text>
         </Box>
       )}
       <Box
-        height={1}
+        height={comfortable ? undefined : 1}
         width={width}
         alignItems="center"
         backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
@@ -288,6 +290,7 @@ export function WebTextField({
         }}
         data-gloom-role="desktop-text-field"
         style={{
+          height: comfortable ? 32 : undefined,
           border: plain ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
           borderRadius: plain ? 0 : CONTROL_RADIUS,
           boxShadow: plain ? undefined : controlShadow(focused, colors),
