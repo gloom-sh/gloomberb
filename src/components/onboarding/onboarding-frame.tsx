@@ -405,7 +405,7 @@ export function OnboardingActions({ children, hint }: { children: ReactNode; hin
         minWidth={0}
         style={{ marginTop: ONBOARDING_DESKTOP.beforeFooter, gap: 16 }}
       >
-        <Box flexGrow={1} minWidth={0} overflow="hidden">
+        <Box flexDirection="row" alignItems="center" flexGrow={1} minWidth={0} overflow="hidden">
           {typeof hint === "string" ? <Text fg={colors.textMuted}>{hint}</Text> : hint}
         </Box>
         <Box flexDirection="row" alignItems="center" style={{ gap: 8, flexShrink: 0 }}>
