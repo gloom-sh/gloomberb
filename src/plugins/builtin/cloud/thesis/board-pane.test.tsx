@@ -94,12 +94,20 @@ function respond(path: string, method: string): { status: number; body: unknown 
   return { status: 200, body: {} };
 }
 
-async function flush() {
-  for (let i = 0; i < 4; i += 1) {
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    });
+const tick = () => act(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+});
+
+/**
+ * The board fills from the store's first refresh, which crosses a request.
+ * A fixed number of ticks is enough on a fast machine and not on a loaded CI
+ * runner, so wait for that request to land before letting the render settle.
+ */
+async function flush(untilRequest: string | null = "GET /theses") {
+  for (let i = 0; i < 200 && untilRequest && !requests.includes(untilRequest); i += 1) {
+    await tick();
   }
+  for (let i = 0; i < 4; i += 1) await tick();
 }
 
 function Harness({ focused = true }: { focused?: boolean }) {
