@@ -1299,4 +1299,10 @@ export const ja: Record<string, string> = {
   "b: sign in with the browser instead": "b: ブラウザーでサインイン",
   "Sign in with the browser instead": "ブラウザーでサインイン",
   "Real-time market data": "リアルタイム市場データ",
+  "Monthly": "月払い",
+  "Yearly": "年払い",
+  "Yearly, {months} months free": "年払い、{months} か月無料",
+  "{months} months free": "{months} か月無料",
+  "{amount}/yr": "{amount}/年",
+  "$490/yr": "$490/年",
 };

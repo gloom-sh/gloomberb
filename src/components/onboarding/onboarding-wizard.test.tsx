@@ -84,7 +84,7 @@ function createPluginRegistry(options: {
     events: new EventBus(),
     tickerRepository: options.tickerRepository ?? createTickerRepository(),
     marketData: createMarketData(),
-    panes: new Map(["portfolio-list", "chart-composer", "ticker-news", "world-indices"].map((id) => [id, {}])),
+    panes: new Map(["portfolio-list", "chart-composer", "news-top", "world-indices"].map((id) => [id, {}])),
     persistence: { resources: undefined },
     openCommandBar: () => {},
     navigateTicker: () => {},
@@ -783,12 +783,55 @@ describe("OnboardingWizard", () => {
       const frame = await waitForFrame("$39/mo");
       expect(frame).toContain("$49/mo");
       expect(frame).toContain("Founding price");
+      expect(frame).toContain("Yearly, 2 months free");
       expect(frame).toContain("MCP server");
       expect(frame).toContain("Ask Gloom");
       expect(frame).not.toContain("Gloomberb AI");
       expect(frame).not.toContain("coming soon");
+
+      // Right arrow moves the billing toggle to yearly; the price follows.
+      await emitKeypress({ name: "right", sequence: "\u001b[C" });
+      const yearly = await waitForFrame("$390/yr");
+      expect(yearly).toContain("$490/yr");
+      expect(yearly).toContain("2 months free");
+      expect(yearly).not.toContain("$39/mo");
     } finally {
       apiClient.getCloudPricing = getCloudPricing;
+    }
+  });
+
+  test("the trial button opens checkout for the chosen billing interval", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-checkout-"));
+    apiClient.setSessionToken("onboarding-checkout-session");
+    apiClient.restoreCachedUser({ id: "user-2", email: "trial@example.com", emailVerified: false, plan: "free" });
+    const originalCheckout = apiClient.createCloudCheckout;
+    const checkouts: Array<{ returnTo?: string; interval: string }> = [];
+    apiClient.createCloudCheckout = (async (returnTo?: string, interval: "month" | "year" = "month") => {
+      checkouts.push({ returnTo, interval });
+      return { url: `https://checkout.example/${interval}` };
+    }) as typeof apiClient.createCloudCheckout;
+    try {
+      const config = {
+        ...createDefaultConfig(tempDataDir),
+        onboardingProgress: { version: 1 as const, stage: "upgrade" as const, accountStatus: "signed-in" as const },
+      };
+      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await testSetup.renderOnce();
+      await waitForFrame("Start 7-day free trial");
+
+      await emitKeypress({ name: "right", sequence: "\u001b[C" });
+      await pressEnter();
+      for (let index = 0; index < 30 && checkouts.length === 0; index += 1) {
+        await act(async () => {
+          await Bun.sleep(5);
+          await testSetup!.renderOnce();
+        });
+      }
+      // Unverified accounts go straight to checkout too; the status bar keeps asking for the email.
+      expect(checkouts).toEqual([{ returnTo: undefined, interval: "year" }]);
+      expect(capturedConfig?.onboardingProgress?.checkoutOpenedAt).toBeTruthy();
+    } finally {
+      apiClient.createCloudCheckout = originalCheckout;
     }
   });
 

@@ -324,8 +324,8 @@ class GloomApiClient {
   createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
 
   /** Creates a Stripe checkout session for Cloud Pro; the URL opens in a browser. */
-  async createCloudCheckout(returnTo?: string): Promise<{ url: string }> {
-    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo }) });
+  async createCloudCheckout(returnTo?: string, interval: "month" | "year" = "month"): Promise<{ url: string }> {
+    return this.request<{ url: string }>("/stripe/checkout", { method: "POST", body: JSON.stringify({ returnTo, interval }) });
   }
 
   async recordResearchActivity(payload: {

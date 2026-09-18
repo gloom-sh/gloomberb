@@ -1297,4 +1297,10 @@ export const ko: Record<string, string> = {
   "b: sign in with the browser instead": "b: 브라우저로 로그인",
   "Sign in with the browser instead": "브라우저로 로그인",
   "Real-time market data": "실시간 시장 데이터",
+  "Monthly": "월간",
+  "Yearly": "연간",
+  "Yearly, {months} months free": "연간, {months}개월 무료",
+  "{months} months free": "{months}개월 무료",
+  "{amount}/yr": "{amount}/년",
+  "$490/yr": "$490/년",
 };

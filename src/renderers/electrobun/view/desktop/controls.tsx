@@ -228,6 +228,9 @@ export function WebCheckbox({
   );
 }
 
+/** Outer height of a `size="comfortable"` field, border included. */
+const COMFORTABLE_FIELD_HEIGHT = 26;
+
 export function WebTextField({
   label,
   value,
@@ -275,6 +278,7 @@ export function WebTextField({
       <Box
         height={comfortable ? undefined : 1}
         width={width}
+        flexDirection="row"
         alignItems="center"
         backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
         onMouseDown={() => {
@@ -290,7 +294,7 @@ export function WebTextField({
         }}
         data-gloom-role="desktop-text-field"
         style={{
-          height: comfortable ? 32 : undefined,
+          height: comfortable ? COMFORTABLE_FIELD_HEIGHT : undefined,
           border: plain ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
           borderRadius: plain ? 0 : CONTROL_RADIUS,
           boxShadow: plain ? undefined : controlShadow(focused, colors),
@@ -312,9 +316,12 @@ export function WebTextField({
           focusedBackgroundColor={plain ? "transparent" : resolvedBackgroundColor}
           cursorColor={colors.textBright}
           style={{
-            paddingLeft: plain ? 0 : 10,
-            paddingRight: plain ? 0 : 10,
+            paddingLeft: plain ? 0 : comfortable ? 8 : 10,
+            paddingRight: plain ? 0 : comfortable ? 8 : 10,
             borderRadius: plain ? 0 : CONTROL_RADIUS,
+            // The field is taller than a cell, so the input takes the inner
+            // height and centers its text on the box's own line.
+            ...(comfortable ? { height: COMFORTABLE_FIELD_HEIGHT - 2, lineHeight: `${COMFORTABLE_FIELD_HEIGHT - 2}px` } : {}),
           }}
           onInput={onChange}
           onKeyDown={onKeyDown}

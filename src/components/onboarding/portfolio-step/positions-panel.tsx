@@ -158,7 +158,7 @@ function DesktopPositionsPanel({
           <Button
             label={state.submitting ? "Adding..." : "Add"}
             variant="secondary"
-            height="32px"
+            height="26px"
             disabled={state.submitting}
             onPress={() => { void state.addPosition(); }}
           />

@@ -1299,4 +1299,10 @@ export const zhCN: Record<string, string> = {
   "b: sign in with the browser instead": "b：改用浏览器登录",
   "Sign in with the browser instead": "改用浏览器登录",
   "Real-time market data": "实时市场数据",
+  "Monthly": "按月",
+  "Yearly": "按年",
+  "Yearly, {months} months free": "按年，免费 {months} 个月",
+  "{months} months free": "免费 {months} 个月",
+  "{amount}/yr": "{amount}/年",
+  "$490/yr": "$490/年",
 };

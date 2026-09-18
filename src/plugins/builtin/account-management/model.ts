@@ -101,26 +101,40 @@ function formatUsdCents(cents: number): string {
   return Number.isInteger(dollars) ? `$${dollars}` : `$${dollars.toFixed(2)}`;
 }
 
+export type CloudBillingInterval = "month" | "year";
+
 /**
- * Monthly Pro price for the plan comparison. Falls back to the list price when
+ * Pro price for one billing interval. Falls back to the list price when
  * `/pricing` is unreachable so the table never renders a blank cell.
  */
-export function formatCloudMonthlyPrice(pricing: CloudPricing | null | undefined): PlanPriceDisplay {
-  if (!pricing) return { price: t("$49/mo"), anchor: null, note: null };
-  const monthly = pricing.monthly;
+export function formatCloudPrice(
+  pricing: CloudPricing | null | undefined,
+  interval: CloudBillingInterval = "month",
+): PlanPriceDisplay {
+  const yearly = interval === "year";
+  const suffix = (amount: string) => (yearly ? tf("{amount}/yr", { amount }) : tf("{amount}/mo", { amount }));
+  if (!pricing) return { price: yearly ? t("$490/yr") : t("$49/mo"), anchor: null, note: null };
+  const tier = yearly ? pricing.yearly : pricing.monthly;
   // Without the founding discount the list price is the price, shown plainly.
-  if (!pricing.founding || monthly.anchorAmount <= monthly.amount) {
-    return {
-      price: tf("{amount}/mo", { amount: formatUsdCents(monthly.anchorAmount) }),
-      anchor: null,
-      note: null,
-    };
+  if (!pricing.founding || tier.anchorAmount <= tier.amount) {
+    return { price: suffix(formatUsdCents(tier.anchorAmount)), anchor: null, note: null };
   }
   return {
-    price: tf("{amount}/mo", { amount: formatUsdCents(monthly.amount) }),
-    anchor: tf("{amount}/mo", { amount: formatUsdCents(monthly.anchorAmount) }),
+    price: suffix(formatUsdCents(tier.amount)),
+    anchor: suffix(formatUsdCents(tier.anchorAmount)),
     note: t("Founding price"),
   };
+}
+
+export function formatCloudMonthlyPrice(pricing: CloudPricing | null | undefined): PlanPriceDisplay {
+  return formatCloudPrice(pricing, "month");
+}
+
+/** Whole months of the monthly price the yearly price leaves unpaid, e.g. 3. */
+export function monthsFreeYearly(pricing: CloudPricing | null | undefined): number {
+  if (!pricing || pricing.monthly.amount <= 0) return 0;
+  const saved = (pricing.monthly.amount * 12 - pricing.yearly.amount) / pricing.monthly.amount;
+  return saved > 0 ? Math.round(saved) : 0;
 }
 
 /** Short calendar date for the trial countdown, e.g. "Aug 11". */

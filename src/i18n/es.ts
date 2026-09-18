@@ -1303,4 +1303,10 @@ export const es: Record<string, string> = {
   "b: sign in with the browser instead": "b: iniciar sesión con el navegador",
   "Sign in with the browser instead": "Iniciar sesión con el navegador",
   "Real-time market data": "Datos de mercado en tiempo real",
+  "Monthly": "Mensual",
+  "Yearly": "Anual",
+  "Yearly, {months} months free": "Anual, {months} meses gratis",
+  "{months} months free": "{months} meses gratis",
+  "{amount}/yr": "{amount}/año",
+  "$490/yr": "$490/año",
 };

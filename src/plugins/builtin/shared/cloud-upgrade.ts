@@ -28,19 +28,27 @@ let cloudUpgradeOpener: (() => void) | null = null;
  * re-buys a subscription they already hold. Both URLs are account-bound, so no
  * session handoff is needed.
  */
-export async function resolveCloudUpgradeUrl(): Promise<string> {
+export interface CloudUpgradeOptions {
+  /** Billing interval for a fresh checkout; ignored when the account already has Pro. */
+  interval?: "month" | "year";
+}
+
+export async function resolveCloudUpgradeUrl(options: CloudUpgradeOptions = {}): Promise<string> {
   recordResearchActivity("upgrade_intent");
   const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
   if (!apiClient.isSignedIn()) return researchUpgradeUrl(returnTo);
   const { url } = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
     ? await apiClient.createBillingPortal()
-    : await apiClient.createCloudCheckout(returnTo);
+    : await apiClient.createCloudCheckout(returnTo, options.interval ?? "month");
   return url;
 }
 
 /** Opens checkout or the billing portal in the user's browser. */
-export async function openCloudUpgrade(rendererHost: Pick<RendererHost, "openExternal">): Promise<void> {
-  await rendererHost.openExternal(await resolveCloudUpgradeUrl());
+export async function openCloudUpgrade(
+  rendererHost: Pick<RendererHost, "openExternal">,
+  options: CloudUpgradeOptions = {},
+): Promise<void> {
+  await rendererHost.openExternal(await resolveCloudUpgradeUrl(options));
 }
 
 /** Opens the checkout page when any cloud UI has published an opener. */
@@ -50,11 +58,20 @@ export function openCloudUpgradeUrl(): boolean {
   return true;
 }
 
-/** Opens the Pro checkout page in the user's browser. */
-export function useCloudUpgradeAction(): () => void {
+function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
+  return !!value && typeof value === "object" && "interval" in value;
+}
+
+/**
+ * Opens the Pro checkout page in the user's browser. The action doubles as a
+ * press handler for buttons and footer segments, which hand it their event,
+ * so only an explicit options object changes the checkout.
+ */
+export function useCloudUpgradeAction(): (options?: unknown) => void {
   const rendererHost = useRendererHost();
-  const openUpgrade = useCallback(() => {
-    void openCloudUpgrade(rendererHost).catch(async () => {
+  const openUpgrade = useCallback((options?: unknown) => {
+    const checkout = isCloudUpgradeOptions(options) ? options : {};
+    void openCloudUpgrade(rendererHost, checkout).catch(async () => {
       // Keep the Cloud page reachable when checkout cannot be created; a native
       // session still rides along on the server's one-time handoff URL.
       const url = await apiClient.createBrowserHandoff()

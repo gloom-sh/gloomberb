@@ -30,7 +30,7 @@ export const FIRST_RUN_PANE_IDS = {
   heatmap: "portfolio-list:home-heatmap",
   watchlist: "portfolio-list:home-watchlist",
   chart: "chart-composer:home",
-  news: "ticker-news:home",
+  news: "news-top:home",
   indices: "world-indices:home",
   sentiment: "fear-greed:home",
 } as const;
@@ -96,9 +96,9 @@ export function planFirstRunWatchlist(
 
 /**
  * The workspace a first run lands on: the holdings as a mark-to-market
- * heatmap, a watchlist, and the largest position's chart and news. One small
- * floating pane shows that panes are windows. Anything the host cannot render
- * is left out rather than shown as a placeholder.
+ * heatmap, a watchlist, the largest position's chart, and the top news wire.
+ * One small floating pane shows that panes are windows. Anything the host
+ * cannot render is left out rather than shown as a placeholder.
  */
 export function buildFirstRunLayout({
   symbol,
@@ -142,11 +142,15 @@ export function buildFirstRunLayout({
       binding: { kind: "fixed", symbol },
     },
   ];
-  const secondary = hasPane("ticker-news")
-    ? { instanceId: FIRST_RUN_PANE_IDS.news, paneId: "ticker-news", binding: { kind: "fixed" as const, symbol } }
-    : hasPane("world-indices")
-      ? { instanceId: FIRST_RUN_PANE_IDS.indices, paneId: "world-indices", binding: { kind: "none" as const } }
-      : null;
+  // Top news is the curated wire; the per-ticker feed is the fallback when the
+  // wire pane is not registered.
+  const secondary = hasPane("news-top")
+    ? { instanceId: FIRST_RUN_PANE_IDS.news, paneId: "news-top", binding: { kind: "none" as const } }
+    : hasPane("ticker-news")
+      ? { instanceId: "ticker-news:home", paneId: "ticker-news", binding: { kind: "fixed" as const, symbol } }
+      : hasPane("world-indices")
+        ? { instanceId: FIRST_RUN_PANE_IDS.indices, paneId: "world-indices", binding: { kind: "none" as const } }
+        : null;
   if (secondary) instances.push(secondary);
 
   // The float is a market read that stands on its own: sentiment when the

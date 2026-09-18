@@ -30,10 +30,14 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { chatController } from "../../plugins/builtin/chat/controller";
-import { formatCloudMonthlyPrice } from "../../plugins/builtin/account-management/model";
+import {
+  type CloudBillingInterval,
+  formatCloudPrice,
+  monthsFreeYearly,
+} from "../../plugins/builtin/account-management/model";
 import { useCloudUpgradeAction } from "../../plugins/builtin/shared/cloud-upgrade";
 import { usePlanAccess } from "../../plugins/builtin/shared/plan-access";
-import { Button, type ListViewItem } from "../ui";
+import { Button, SegmentedControl, type ListViewItem } from "../ui";
 import { AccountStep, PortfolioStep, type PortfolioSub } from "./onboarding-steps";
 import {
   ONBOARDING_DESKTOP,
@@ -91,6 +95,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const [isFinishing, setIsFinishing] = useState(false);
   const researchOpenedRef = useRef<string | null>(null);
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
+  const [billingInterval, setBillingInterval] = useState<CloudBillingInterval>("month");
 
   const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("positions");
   const [portfolioOptionIdx, setPortfolioOptionIdx] = useState(0);
@@ -548,8 +553,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       stage: "upgrade",
       accountStatus: progress.accountStatus,
       checkoutOpenedAt: new Date().toISOString(),
-    }).then(() => openUpgrade()).catch(() => {});
-  }, [openUpgrade, persistProgress, progress.accountStatus]);
+    }).then(() => openUpgrade({ interval: billingInterval })).catch(() => {});
+  }, [billingInterval, openUpgrade, persistProgress, progress.accountStatus]);
 
   const primaryUpgradeAction = useCallback(() => {
     if (planAccess.hasProAccess) {
@@ -943,9 +948,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
   if (stage === "upgrade") {
     const primaryLabel = planAccess.hasProAccess ? t("Continue with Pro") : t("Start 7-day free trial");
-    const monthlyPrice = formatCloudMonthlyPrice(pricing);
+    const price = formatCloudPrice(pricing, billingInterval);
+    const monthsFree = monthsFreeYearly(pricing);
+    const yearlyLabel = monthsFree > 0 ? tf("Yearly, {months} months free", { months: monthsFree }) : t("Yearly");
+    const priceNote = [price.note, billingInterval === "year" && monthsFree > 0 ? tf("{months} months free", { months: monthsFree }) : null]
+      .filter((part): part is string => !!part)
+      .join(" \u00b7 ");
     return (
-      <OnboardingModal width={70} height={26}>
+      <OnboardingModal width={70} height={28}>
         <OnboardingHeader
           active="pro"
           available={sectionAvailability}
@@ -956,17 +966,30 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         />
         <OnboardingTitle
           step={desktop ? undefined : t("GLOOM CLOUD PRO")}
-          title={planAccess.hasProAccess ? t("Pro is active") : monthlyPrice.price}
-          titlePrefix={!planAccess.hasProAccess && monthlyPrice.anchor ? (
+          title={planAccess.hasProAccess ? t("Pro is active") : price.price}
+          titlePrefix={!planAccess.hasProAccess && price.anchor ? (
             <Text fg={colors.textMuted} attributes={TextAttributes.STRIKETHROUGH}>
-              {monthlyPrice.anchor}
+              {price.anchor}
             </Text>
           ) : undefined}
-          titleSuffix={!planAccess.hasProAccess && monthlyPrice.note ? monthlyPrice.note : undefined}
+          titleSuffix={!planAccess.hasProAccess && priceNote ? priceNote : undefined}
           description={planAccess.hasProAccess
             ? t("This account already has real-time Cloud data.")
             : t("7 days free. Card required. Cancel anytime.")}
         />
+        {!planAccess.hasProAccess ? (
+          <Box flexDirection="row" style={desktop ? { marginTop: 12 } : undefined} paddingTop={desktop ? undefined : 1}>
+            <SegmentedControl
+              options={[
+                { label: t("Monthly"), value: "month" },
+                { label: yearlyLabel, value: "year" },
+              ]}
+              value={billingInterval}
+              onChange={(value) => setBillingInterval(value === "year" ? "year" : "month")}
+              focused={!desktop}
+            />
+          </Box>
+        ) : null}
         {/* Ranked: the data itself first, then what reads it. */}
         <Box flexDirection="column" style={desktop ? { marginTop: ONBOARDING_DESKTOP.afterHeader, gap: 10 } : undefined}>
           <OnboardingFeature

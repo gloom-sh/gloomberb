@@ -1299,4 +1299,10 @@ export const zhTW: Record<string, string> = {
   "b: sign in with the browser instead": "b：改用瀏覽器登入",
   "Sign in with the browser instead": "改用瀏覽器登入",
   "Real-time market data": "即時市場資料",
+  "Monthly": "按月",
+  "Yearly": "按年",
+  "Yearly, {months} months free": "按年，免費 {months} 個月",
+  "{months} months free": "免費 {months} 個月",
+  "{amount}/yr": "{amount}/年",
+  "$490/yr": "$490/年",
 };
