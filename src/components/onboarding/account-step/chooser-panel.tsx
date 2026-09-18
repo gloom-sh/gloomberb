@@ -21,13 +21,13 @@ export function AccountChooserPanel({
     {
       id: "signup",
       label: t("Continue with email"),
-      description: t("New or existing account, one form"),
+      description: t("New or existing account"),
       detail: t("Free"),
     },
     {
       id: "qr",
       label: t("Continue in browser"),
-      description: t("Sign in on gloom.sh, or scan the code with your phone"),
+      description: t("gloom.sh, or scan with your phone"),
     },
     {
       id: "skip",

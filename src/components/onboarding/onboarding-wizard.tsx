@@ -689,11 +689,11 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       actions={<><OnboardingButton label="Keep exploring" variant="ghost" onPress={() => { void finish(); }} />
         <OnboardingButton label="Connect free Cloud" variant="primary" onPress={() => saveProgressInBackground({ stage: "account" })} /></>}>
       <Text fg={colors.textDim} wrapText>{progress.brokerName
-        ? tf("{count} positions came in from {broker}. Your largest opens first: chart, financials, filings and calls are one tab away. Connect Cloud to sync this workspace and unlock Pro research.", {
+        ? tf("{count} positions from {broker}. Chart, financials, filings and calls are one tab away.", {
           count: progress.positionsImported ?? 0,
           broker: progress.brokerName,
         })
-        : tf("Your largest position opens first. Chart, financials, filings and calls are one tab away. {shortcut}, then AP, adds a position from anywhere. Connect Cloud to sync this workspace and unlock Pro research.", { shortcut: commandBarShortcut })}</Text>
+        : t("Chart, financials, filings and calls are one tab away.")}</Text>
     </OnboardingCoach>;
   }
 
@@ -718,9 +718,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           ? tf("Connect {broker}", { broker: selectedBrokerName })
           : t("Set up a portfolio");
     const description = portfolioSub === "positions"
-      ? t("Add each position with its size and average cost. The largest one becomes your first research workspace.")
+      ? undefined
       : portfolioSub === "choose"
-        ? t("Import positions from a supported broker. Credentials stay on this device.")
+        ? t("Credentials stay on this device.")
         : t("Enter the connection details for this broker. Credentials stay on this device.");
     return (
       <OnboardingModal width={76} height={portfolioModalHeight} desktopWidth="min(620px, 100%)">
@@ -814,14 +814,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             ? t("Connected")
             : t("Sync across apps");
     const accountDescription = account.accountSub === "choose"
-      ? t("Free account. Your layouts and portfolio follow you across the terminal, desktop and phone, and Cloud search covers calls, news and filings.")
+      ? t("Sync layouts and portfolio. Search calls, news and filings.")
       : account.accountSub === "qr"
         ? t("Open the sign-in link, or scan the code with your phone.")
         : account.accountSub === "signup"
-        ? t("New here? This creates your free account. Already have one? The same form logs you in.")
+        ? t("New or existing account.")
         : account.accountSub === "login"
-          ? t("This email already has an account. Enter its password to log in.")
-          : t("Your account is ready. Next, choose whether you want the real-time Pro data plan.");
+          ? t("Enter the password for this account.")
+          : t("Next: real-time Pro data.");
     const accountStatusRows = account.accountSubmitting || account.accountValidationError || account.accountSubmitError
       ? 1
       : 0;
@@ -925,30 +925,30 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           titleSuffix={!planAccess.hasProAccess && monthlyPrice.note ? monthlyPrice.note : undefined}
           description={planAccess.hasProAccess
             ? t("This account already has real-time Cloud data.")
-            : t("7 days free, then the price above. Card required. Cancel anytime.")}
+            : t("7 days free. Card required. Cancel anytime.")}
         />
         <Box flexDirection="column" style={desktop ? { marginTop: 14, gap: 8 } : undefined}>
           <OnboardingFeature
             title={ticker
               ? tf("Real-time {ticker}, options and news wire", { ticker })
               : t("Real-time quotes, options and news wire")}
-            description={t("Free: quotes 15m late, news 12h late. Pro: live.")}
+            description={t("Free: quotes 15m late, news 12h late.")}
           />
           <OnboardingFeature
             title={t("Gloomberb AI")}
-            description={t("Ask anything about a company. Answers cite its filings, calls and news.")}
+            description={t("Answers cite filings, calls and news.")}
           />
           <OnboardingFeature
             title={t("Earnings transcripts and scores")}
-            description={t("Every call in full, scored, searchable across companies.")}
+            description={t("Every call, scored and searchable.")}
           />
           <OnboardingFeature
             title={t("Equity Diagnostic")}
-            description={t("Red and green flags pulled from filings, with the evidence.")}
+            description={t("Red and green flags from filings, with evidence.")}
           />
           <OnboardingFeature
             title={t("Hiring data")}
-            description={t("Job postings by company, a leading signal on growth.")}
+            description={t("Job postings by company.")}
           />
         </Box>
         {persistenceError ? (
@@ -976,7 +976,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   }
 
   const readyDescription = progress.tickerSymbol
-    ? tf("{ticker} is your research workspace. Add positions any time with {shortcut}, then AP.", {
+    ? tf("{ticker} is open. {shortcut}, then AP, adds more.", {
       ticker: progress.tickerSymbol,
       shortcut: commandBarShortcut,
     })

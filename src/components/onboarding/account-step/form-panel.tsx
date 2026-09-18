@@ -141,7 +141,7 @@ export function AccountFormPanel({
           ) : (
             <Text fg={colors.textMuted} wrapText>
               {mode === "signup"
-                ? t("New accounts get a verification email. Keep working while it arrives.")
+                ? t("New accounts get a verification email.")
                 : t("This signs the app in to your Gloom Cloud account.")}
             </Text>
           )}

@@ -29,9 +29,7 @@ const FIELD_PLACEHOLDERS: Record<PositionFieldId, string> = {
 function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview" | "error">) {
   const colors = useThemeColors();
   if (error) return <Text fg={colors.negative} wrapText>{error}</Text>;
-  if (preview.status === "idle") {
-    return <Text fg={colors.textMuted}>{t("Leave shares blank to follow a company without a position.")}</Text>;
-  }
+  if (preview.status === "idle") return null;
   if (preview.status === "checking") {
     return <Text fg={colors.textDim}>{tf("{query} checking...", { query: preview.query })}</Text>;
   }
@@ -44,7 +42,7 @@ function PreviewLine({ preview, error }: Pick<OnboardingPositionsState, "preview
       {preview.name ? <Text fg={colors.textDim}>{`  ${preview.name}`}</Text> : null}
       {price != null ? <Text fg={colors.text}>{`  ${formatMarketPrice(price, { maxWidth: 12 })}`}</Text> : null}
       {change != null ? <Text fg={priceColor(change, colors)}>{` ${formatPercentRaw(change)}`}</Text> : null}
-      {preview.duplicate ? <Text fg={colors.textMuted}>{t("  already added, saving replaces it")}</Text> : null}
+      {preview.duplicate ? <Text fg={colors.textMuted}>{t("  already added")}</Text> : null}
     </Box>
   );
 }
@@ -124,7 +122,6 @@ function DesktopPositionsPanel({
   inputRef,
   editing,
   shortcut,
-  hasBrokers,
 }: PositionsPanelProps) {
   const colors = useThemeColors();
   const fieldProps = (field: PositionFieldId, index: number) => ({
@@ -168,21 +165,15 @@ function DesktopPositionsPanel({
       <Box style={{ marginTop: 14 }}>
         <Divider />
       </Box>
-      <Box flexDirection="column" style={{ marginTop: 6, maxHeight: 176, overflowY: "auto" }}>
-        {state.positions.length === 0 ? (
-          <Box style={{ padding: "6px 8px" }}>
-            <Text fg={colors.textMuted}>{t("Nothing yet. Your first position unlocks the workspace.")}</Text>
-          </Box>
-        ) : state.positions.map((row) => (
-          <DesktopPositionRow key={row.symbol} row={row} onRemove={(symbol) => { void state.removePosition(symbol); }} />
-        ))}
-      </Box>
+      {state.positions.length > 0 ? (
+        <Box flexDirection="column" style={{ marginTop: 6, maxHeight: 176, overflowY: "auto" }}>
+          {state.positions.map((row) => (
+            <DesktopPositionRow key={row.symbol} row={row} onRemove={(symbol) => { void state.removePosition(symbol); }} />
+          ))}
+        </Box>
+      ) : null}
       <Box style={{ marginTop: 10 }}>
-        <Text fg={colors.textMuted} wrapText>
-          {hasBrokers
-            ? tf("Later: {shortcut}, then AP adds a position from anywhere. Broker import is available once your first position is in.", { shortcut })
-            : tf("Later: {shortcut}, then AP adds a position from anywhere.", { shortcut })}
-        </Text>
+        <Text fg={colors.textMuted}>{tf("Later: {shortcut}, then AP.", { shortcut })}</Text>
       </Box>
     </Box>
   );
@@ -253,10 +244,10 @@ function TuiPositionsPanel({ state, inputRef, editing, shortcut, hasBrokers }: P
         ) : (
           <Text fg={colors.textMuted}>
             {editing
-              ? t("Enter moves on, adds from the last field. Shares blank = follow only.")
+              ? t("Enter: next field, then add.")
               : state.positions.length > 0
                 ? tf("Enter continues · a adds another{broker}", { broker: hasBrokers ? t(" · b connects a broker") : "" })
-                : t("Enter starts typing a ticker.")}
+                : t("Enter to add a ticker.")}
           </Text>
         )}
       </Box>
@@ -266,11 +257,7 @@ function TuiPositionsPanel({ state, inputRef, editing, shortcut, hasBrokers }: P
           {tf("Positions ({count})", { count: state.positions.length })}
         </Text>
       </Box>
-      {rows.length === 0 ? (
-        <Box height={1}>
-          <Text fg={colors.textMuted}>{t("Nothing yet. Your first position unlocks the workspace.")}</Text>
-        </Box>
-      ) : rows.map((row) => (
+      {rows.map((row) => (
         <Box key={row.symbol} height={1} flexDirection="row" overflow="hidden">
           <Box width={8} flexShrink={0}>
             <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{row.symbol}</Text>
@@ -285,7 +272,7 @@ function TuiPositionsPanel({ state, inputRef, editing, shortcut, hasBrokers }: P
       ))}
       <Box height={1} />
       <Box height={1} overflow="hidden">
-        <Text fg={colors.textMuted}>{tf("Later: {shortcut}, then AP adds a position.", { shortcut })}</Text>
+        <Text fg={colors.textMuted}>{tf("Later: {shortcut}, then AP.", { shortcut })}</Text>
       </Box>
     </Box>
   );
