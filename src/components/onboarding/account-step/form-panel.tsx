@@ -141,7 +141,7 @@ export function AccountFormPanel({
           ) : (
             <Text fg={colors.textMuted} wrapText>
               {mode === "signup"
-                ? t("We will email you a verification link. Cloud features unlock after verification.")
+                ? t("New accounts get a verification email. Keep working while it arrives.")
                 : t("This signs the app in to your Gloom Cloud account.")}
             </Text>
           )}
@@ -200,7 +200,7 @@ export function AccountFormPanel({
         ) : (
           <Text fg={colors.textDim}>
             {mode === "signup"
-              ? t("We email a link to verify your address.")
+              ? t("New accounts get a verification email.")
               : t("Signs this terminal in to your account.")}
           </Text>
         )}

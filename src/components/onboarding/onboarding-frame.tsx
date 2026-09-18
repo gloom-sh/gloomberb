@@ -14,10 +14,15 @@ export function OnboardingModal({
   children,
   width = 66,
   height = 18,
+  desktopWidth,
 }: {
   children: ReactNode;
+  /** Terminal card width in cells. */
   width?: number;
+  /** Terminal card height in rows; the DOM card sizes to its content. */
   height?: number;
+  /** CSS width for the DOM card when a step needs more than the default surface. */
+  desktopWidth?: string;
 }) {
   const colors = useThemeColors();
   const desktop = useUiHost().kind === "desktop-web";
@@ -42,7 +47,7 @@ export function OnboardingModal({
       >
         <Box
           flexDirection="column"
-          style={modalSurfaceStyle(colors)}
+          style={modalSurfaceStyle(colors, desktopWidth ? { width: desktopWidth } : {})}
           data-gloom-role="onboarding-modal"
         >
           {children}
@@ -183,11 +188,14 @@ export function OnboardingTitle({
   step,
   title,
   titlePrefix,
+  titleSuffix,
   description,
 }: {
   step?: string;
   title: string;
   titlePrefix?: ReactNode;
+  /** Short qualifier after the title, e.g. why a struck-through anchor price differs. */
+  titleSuffix?: string;
   description?: string;
 }) {
   const colors = useThemeColors();
@@ -207,7 +215,7 @@ export function OnboardingTitle({
         <Box
           flexDirection="row"
           alignItems="baseline"
-          gap={titlePrefix ? 1 : 0}
+          gap={titlePrefix || titleSuffix ? 1 : 0}
           minWidth={0}
           style={{ marginTop: step ? 4 : 0 }}
         >
@@ -219,6 +227,7 @@ export function OnboardingTitle({
           >
             {title}
           </Text>
+          {titleSuffix ? <Text fg={colors.textMuted}>{titleSuffix}</Text> : null}
         </Box>
         {description ? (
           <Text
@@ -240,9 +249,10 @@ export function OnboardingTitle({
           <Text fg={colors.borderFocused} attributes={TextAttributes.BOLD}>{step}</Text>
         </Box>
       ) : null}
-      <Box height={1} flexDirection="row" gap={titlePrefix ? 1 : 0}>
+      <Box height={1} flexDirection="row" gap={titlePrefix || titleSuffix ? 1 : 0}>
         {titlePrefix}
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{title}</Text>
+        {titleSuffix ? <Text fg={colors.textMuted}>{titleSuffix}</Text> : null}
       </Box>
       {description ? (
         <>

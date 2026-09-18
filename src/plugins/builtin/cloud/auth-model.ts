@@ -15,8 +15,12 @@ export type AccountMode = "signup" | "login";
 
 export type AccountChoiceId = AccountMode | "qr" | "skip";
 
-/** Order matches the chooser list, so the selected index maps straight onto an id. */
-export const ACCOUNT_CHOICE_IDS: AccountChoiceId[] = ["qr", "signup", "login", "skip"];
+/**
+ * Order matches the chooser list, so the selected index maps straight onto an
+ * id. Email leads: one form serves new and returning accounts (a duplicate
+ * email falls through to login), so the chooser does not split them.
+ */
+export const ACCOUNT_CHOICE_IDS: AccountChoiceId[] = ["signup", "qr", "skip"];
 
 export interface AccountOutcome {
   mode: AccountMode;

@@ -2,11 +2,17 @@ import type { RefObject } from "react";
 import type { InputRenderable } from "../../../ui";
 import type { BrokerConfigField } from "../../../types/broker";
 import type { ListViewItem } from "../../ui";
+import type { OnboardingPositionsState } from "../wizard-positions";
 
-export type PortfolioSub = "choose" | "broker-setup" | "broker-fields" | "broker-sync";
+/** `positions` is the manual entry form; the rest is the optional broker import. */
+export type PortfolioSub = "positions" | "choose" | "broker-setup" | "broker-fields" | "broker-sync";
 
 export interface PortfolioStepProps {
   sub: PortfolioSub;
+  positions: OnboardingPositionsState;
+  positionsInputRef: RefObject<InputRenderable | null>;
+  positionsEditing: boolean;
+  commandBarShortcut: string;
   choices: ListViewItem[];
   optionIdx: number;
   onOptionSelect: (idx: number) => void;

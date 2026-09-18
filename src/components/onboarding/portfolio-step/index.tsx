@@ -2,11 +2,24 @@ import { BrokerFieldsPanel } from "./broker-fields-panel";
 import { BrokerSetupPanel } from "./broker-setup-panel";
 import { BrokerSyncPanel } from "./broker-sync-panel";
 import { PortfolioChoicePanel } from "./choose-panel";
+import { PositionsPanel } from "./positions-panel";
 import type { PortfolioStepProps, PortfolioSub } from "./types";
 
 export type { PortfolioSub };
 
 export function PortfolioStep(props: PortfolioStepProps) {
+  if (props.sub === "positions") {
+    return (
+      <PositionsPanel
+        state={props.positions}
+        inputRef={props.positionsInputRef}
+        editing={props.positionsEditing}
+        shortcut={props.commandBarShortcut}
+        hasBrokers={props.choices.length > 0}
+      />
+    );
+  }
+
   if (props.sub === "choose") {
     return (
       <PortfolioChoicePanel

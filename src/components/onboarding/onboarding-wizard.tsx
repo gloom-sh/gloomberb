@@ -5,8 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { CloudVerificationPanel } from "../../plugins/builtin/cloud/verification-panel";
-import { recordResearchActivity } from "../../api-client/research-activity";
+import { recordResearchActivity, type ResearchActivity } from "../../api-client/research-activity";
 import { apiClient, type CloudPricing } from "../../api-client";
 import type { AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import type { SyncBrokerInstanceResult } from "../../brokers/sync-broker-instance";
@@ -15,6 +14,7 @@ import {
   type AppConfig,
   findPaneInstance,
   type OnboardingProgress,
+  type OnboardingStage,
 } from "../../types/config";
 import { resolveBrokerConfigFields, type BrokerConfigField } from "../../types/broker";
 import { useShortcut, useViewport } from "../../react/input";
@@ -24,7 +24,7 @@ import {
   useAppStateRef,
 } from "../../state/app/context";
 import { useAppActive } from "../../state/app/activity";
-import { Box, Text, TextAttributes, useUiHost, type InputRenderable } from "../../ui";
+import { Box, Text, TextAttributes, useCommandBarShortcut, useUiHost, type InputRenderable } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
@@ -48,9 +48,12 @@ import {
 import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
 import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
+import { POSITION_FIELDS, useOnboardingPositions } from "./wizard-positions";
 import {
   getConnectableBrokerOptions,
   getOnboardingProgress,
+  pickLargestBrokerPosition,
+  pickLargestPosition,
   withOnboardingProgress,
   type BrokerOption,
 } from "./wizard-model";
@@ -61,15 +64,23 @@ interface OnboardingWizardProps {
   onComplete: (config: AppConfig) => void | Promise<void>;
 }
 
+/** One funnel milestone per stage the user reaches; the account step reports sign-in itself. */
+const STAGE_ACTIVITY: Partial<Record<OnboardingStage, ResearchActivity>> = {
+  portfolio: "onboarding_started",
+  research: "onboarding_research_opened",
+  account: "onboarding_account_viewed",
+  upgrade: "onboarding_pro_viewed",
+};
+
 export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete }: OnboardingWizardProps) {
   const language = useAppLanguage();
   const colors = useThemeColors();
   const desktop = useUiHost().kind === "desktop-web";
+  const commandBarShortcut = useCommandBarShortcut();
   const { height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const config = useAppSelector((state) => state.config);
-  const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const progress = getOnboardingProgress(config);
   const stage = progress.stage;
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
@@ -77,7 +88,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const researchOpenedRef = useRef<string | null>(null);
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
 
-  const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("choose");
+  const [portfolioSub, setPortfolioSub] = useState<PortfolioSub>("positions");
   const [portfolioOptionIdx, setPortfolioOptionIdx] = useState(0);
   const [brokerValues, setBrokerValues] = useState<Record<string, Record<string, string>>>({});
   const [selectedBrokerId, setSelectedBrokerId] = useState<string | null>(null);
@@ -88,23 +99,18 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   const progressSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const finishingRef = useRef(false);
 
+  // Enter inside every form is handled once, by the shortcut below: the
+  // fields deliberately get no onSubmit, because the host input fires it in
+  // the same keystroke and the two paths used to submit twice.
   const brokerOptions = useMemo(
     (): BrokerOption[] => getConnectableBrokerOptions(pluginRegistry.brokers),
     [pluginRegistry.brokers],
   );
-  const portfolioChoices = useMemo<ListViewItem[]>(() => [
-    {
-      id: "manual",
-      label: t("Research a company"),
-      description: t("Add one company with the command bar"),
-      detail: t("Recommended"),
-    },
-    ...brokerOptions.map((broker) => ({
-      id: broker.id,
-      label: tf("Connect {broker}", { broker: broker.name }),
-      description: tf("Import positions from {broker}", { broker: broker.name }),
-    })),
-  ], [brokerOptions, language]);
+  const brokerChoices = useMemo<ListViewItem[]>(() => brokerOptions.map((broker) => ({
+    id: broker.id,
+    label: tf("Connect {broker}", { broker: broker.name }),
+    description: tf("Import positions from {broker}", { broker: broker.name }),
+  })), [brokerOptions, language]);
   const activeBrokerFields = useMemo((): BrokerConfigField[] => {
     if (!selectedBrokerId) return [];
     const broker = brokerOptions.find((option) => option.id === selectedBrokerId);
@@ -149,24 +155,61 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     void persistProgress(patch, baseConfig).catch(() => {});
   }, [persistProgress]);
 
+  // Pro follows sign-in directly. Email verification continues in the status
+  // bar, so an unread inbox never stalls the first session.
   const account = useOnboardingAccount({
     nextStep: () => {
-      saveProgressInBackground({ stage: apiClient.getCurrentUser()?.emailVerified ? "upgrade" : "verify", accountStatus: "signed-in" });
+      recordResearchActivity("onboarding_signed_in");
+      saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
     },
     setEditingField,
   });
+
+  const positions = useOnboardingPositions({ pluginRegistry, onFieldEditing: setEditingField });
+  const positionCount = positions.positions.length;
+
+  useEffect(() => {
+    const activity = STAGE_ACTIVITY[stage];
+    if (activity) recordResearchActivity(activity);
+  }, [stage]);
+
+  useEffect(() => {
+    if (stage === "portfolio" && positionCount > 0) recordResearchActivity("onboarding_position_added");
+  }, [positionCount, stage]);
+
+  // The portfolio step opens straight into the ticker field.
+  useEffect(() => {
+    if (stage === "portfolio" && portfolioSub === "positions") setEditingField(true);
+  }, [portfolioSub, stage]);
+
+  const continueFromPositions = useCallback(() => {
+    const largest = pickLargestPosition(positions.positions);
+    if (!largest) {
+      positions.focusField(0);
+      return;
+    }
+    setEditingField(false);
+    saveProgressInBackground({
+      stage: "research",
+      path: "manual",
+      portfolioId: positions.portfolioId,
+      tickerSymbol: largest.symbol,
+      positionsImported: positions.positions.length,
+      brokerName: undefined,
+    });
+  }, [positions, saveProgressInBackground]);
 
   const handleBrokerSynced = useCallback(async (
     result: SyncBrokerInstanceResult,
     syncedConfig: AppConfig,
   ) => {
     if (finishingRef.current) return;
-    const tickerSymbol = result.positions.find((position) => position.ticker)?.ticker
+    const tickerSymbol = pickLargestBrokerPosition(result.positions)?.ticker
       ?? result.addedTickers[0]?.metadata.ticker
       ?? result.updatedTickers[0]?.metadata.ticker;
     const brokerName = brokerOptions.find((option) => option.id === selectedBrokerId)?.name;
     const nextConfig = withOnboardingProgress(syncedConfig, {
-      stage: tickerSymbol ? "research" : "add-ticker",
+      stage: tickerSymbol ? "research" : "portfolio",
       path: "broker",
       portfolioId: tickerSymbol ? (result.portfolioIds[0] ?? "main") : "main",
       tickerSymbol,
@@ -178,7 +221,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     dispatch({ type: "SET_TICKERS", tickers: result.tickers });
     pluginRegistry.events.emit("config:changed", { config: nextConfig });
     setEditingField(false);
-    setPortfolioSub("choose");
+    setPortfolioSub("positions");
   }, [brokerOptions, dispatch, pluginRegistry.events, selectedBrokerId]);
 
   const {
@@ -198,7 +241,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setPortfolioSub,
   });
 
-  const finish = useCallback(async () => {
+  const finish = useCallback(async (skipped = false) => {
     if (finishingRef.current) return;
     if (!resetBrokerSync()) return;
     finishingRef.current = true;
@@ -217,6 +260,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         complete: true,
         progress: undefined,
       });
+      recordResearchActivity(skipped ? "onboarding_skipped" : "onboarding_completed");
       await Promise.resolve(onComplete(nextConfig));
     } catch (error) {
       setPersistenceError(error instanceof Error ? error.message : String(error));
@@ -224,6 +268,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       setIsFinishing(false);
     }
   }, [dispatch, onComplete, resetBrokerSync, stateRef]);
+  const skipSetup = useCallback(() => { void finish(true); }, [finish]);
 
   useEffect(() => {
     if (!selectedBrokerId) return;
@@ -238,26 +283,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     if (!editingField) return;
     const timer = setTimeout(() => inputRef.current?.focus?.(), 10);
     return () => clearTimeout(timer);
-  }, [account.accountFieldIdx, account.accountSub, brokerFieldIdx, editingField, portfolioSub]);
+  }, [account.accountFieldIdx, account.accountSub, brokerFieldIdx, editingField, portfolioSub, positions.fieldIdx]);
 
   useEffect(() => {
     if (stage !== "account") return;
     account.syncExistingAccountSession();
   }, [account.syncExistingAccountSession, stage]);
-
-  useEffect(() => pluginRegistry.events.on(
-    "command-bar:portfolio-membership-persisted",
-    ({ symbol, portfolioId }) => {
-      const current = getOnboardingProgress(stateRef.current.config);
-      if (current.stage !== "add-ticker" || portfolioId !== current.portfolioId) return;
-      saveProgressInBackground({
-        stage: "research",
-        path: current.path,
-        portfolioId,
-        tickerSymbol: symbol,
-      });
-    },
-  ), [pluginRegistry.events, saveProgressInBackground, stateRef]);
 
   useEffect(() => {
     if (stage !== "research" || !progress.tickerSymbol || researchOpenedRef.current === progress.tickerSymbol) return;
@@ -295,37 +326,34 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     }));
   }, [resetBrokerSync]);
 
-  const choosePortfolioPath = useCallback((choiceIndex = portfolioOptionIdx) => {
-    const choice = portfolioChoices[choiceIndex];
-    if (!choice || choice.id === "manual") {
-      resetBrokerSync();
-      setSelectedBrokerId(null);
-      saveProgressInBackground({
-        stage: "add-ticker",
-        path: "manual",
-        portfolioId: config.portfolios.find((portfolio) => !portfolio.brokerInstanceId)?.id ?? "main",
-      });
-      return;
-    }
-
+  const selectBroker = useCallback((brokerId: string) => {
     resetBrokerSync();
-    setSelectedBrokerId(choice.id);
+    setSelectedBrokerId(brokerId);
     setBrokerFieldIdx(0);
     setPortfolioSub("broker-fields");
-    const broker = brokerOptions.find((option) => option.id === choice.id);
+    const broker = brokerOptions.find((option) => option.id === brokerId);
     const firstField = broker
-      ? resolveBrokerConfigFields(broker.adapter, brokerValues[choice.id] ?? {}).filter((field) => field.required)[0]
+      ? resolveBrokerConfigFields(broker.adapter, brokerValues[brokerId] ?? {}).filter((field) => field.required)[0]
       : null;
     setEditingField(firstField?.type !== "select");
-  }, [
-    brokerOptions,
-    brokerValues,
-    config.portfolios,
-    portfolioChoices,
-    portfolioOptionIdx,
-    resetBrokerSync,
-    saveProgressInBackground,
-  ]);
+  }, [brokerOptions, brokerValues, resetBrokerSync]);
+
+  const chooseBroker = useCallback((choiceIndex = portfolioOptionIdx) => {
+    const choice = brokerChoices[choiceIndex];
+    if (choice) selectBroker(choice.id);
+  }, [brokerChoices, portfolioOptionIdx, selectBroker]);
+
+  /** Broker import is the secondary path: one broker goes straight to its fields. */
+  const openBrokerConnect = useCallback(() => {
+    if (brokerOptions.length === 0) return;
+    setEditingField(false);
+    if (brokerOptions.length === 1) {
+      selectBroker(brokerOptions[0]!.id);
+      return;
+    }
+    setPortfolioOptionIdx(0);
+    setPortfolioSub("choose");
+  }, [brokerOptions, selectBroker]);
 
   const submitBrokerField = useCallback(() => {
     if (!selectedBrokerId || isBrokerSyncing) return;
@@ -390,8 +418,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   ]);
 
   const continuePortfolio = useCallback(() => {
+    if (portfolioSub === "positions") {
+      continueFromPositions();
+      return;
+    }
     if (portfolioSub === "choose") {
-      choosePortfolioPath();
+      chooseBroker();
       return;
     }
     if (portfolioSub === "broker-setup") {
@@ -408,7 +440,8 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     activeBrokerFields,
     brokerFieldIdx,
     brokerSyncError,
-    choosePortfolioPath,
+    chooseBroker,
+    continueFromPositions,
     isBrokerSyncing,
     portfolioSub,
     submitBrokerField,
@@ -416,9 +449,10 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   ]);
 
   const backPortfolio = useCallback(() => {
-    if (portfolioSub === "choose") return;
+    if (portfolioSub === "positions") return;
     if (portfolioSub === "broker-sync" && !resetBrokerSync()) return;
-    setPortfolioSub("choose");
+    setPortfolioSub("positions");
+    setSelectedBrokerId(null);
     setBrokerFieldIdx(0);
     setEditingField(false);
   }, [portfolioSub, resetBrokerSync]);
@@ -449,19 +483,13 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     // The QR panel owns enter (retry after a denial); approval advances itself.
     if (account.accountSub === "qr") return;
     if (account.accountSub === "signed-in") {
-      saveProgressInBackground({ stage: apiClient.getCurrentUser()?.emailVerified ? "upgrade" : "verify", accountStatus: "signed-in" });
-      return;
-    }
-    if (account.accountSubmitError?.kind === "switch-to-login") {
-      account.switchToAccountLogin();
+      saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
       return;
     }
     submitAccountField();
   }, [
     account.accountChoiceIdx,
     account.accountSub,
-    account.accountSubmitError?.kind,
-    account.switchToAccountLogin,
     activateAccountChoice,
     saveProgressInBackground,
     submitAccountField,
@@ -498,7 +526,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     setEditingField(false);
     if (section === "portfolio") {
       account.returnToAccountChooser();
-      setPortfolioSub("choose");
+      setPortfolioSub("positions");
       saveProgressInBackground({ stage: "portfolio" });
       return;
     }
@@ -513,7 +541,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   }, [account.returnToAccountChooser, isBrokerCommitting, planAccess.signedIn, saveProgressInBackground]);
 
   const sectionAvailability: Partial<Record<OnboardingSectionId, boolean>> = {
-    portfolio: !isBrokerCommitting && stage !== "welcome",
+    portfolio: !isBrokerCommitting,
     cloud: !isBrokerCommitting && (stage === "account" || stage === "upgrade" || stage === "ready" || !!progress.tickerSymbol),
     pro: !isBrokerCommitting && planAccess.signedIn && (
       stage === "upgrade"
@@ -523,7 +551,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   };
 
   useShortcut((event) => {
-    if (helpFocused || commandBarOpen) return;
+    if (helpFocused) return;
     const name = event.name ?? event.key ?? "";
     const enter = name === "enter" || name === "return";
     const escape = name === "escape" || name === "backspace";
@@ -534,10 +562,40 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
 
     if (name === "f10") {
       consume();
-      if (stage === "portfolio" || stage === "add-ticker") return;
+      if (stage === "portfolio") return;
       if (!isBrokerCommitting) {
         if (stage === "upgrade" && !planAccess.hasProAccess) continueFree();
-        else void finish();
+        else void finish(true);
+      }
+      return;
+    }
+
+    if (stage === "portfolio" && portfolioSub === "positions") {
+      if (editingField) {
+        if (enter) {
+          consume();
+          positions.submitField();
+        } else if (name === "tab") {
+          consume();
+          positions.setFieldIdx((index) => (
+            event.shift ? Math.max(0, index - 1) : Math.min(POSITION_FIELDS.length - 1, index + 1)
+          ));
+        } else if (name === "escape") {
+          consume();
+          setEditingField(false);
+        }
+        return;
+      }
+      if (enter) {
+        consume();
+        if (positionCount > 0) continueFromPositions();
+        else positions.focusField(0);
+      } else if (name === "a") {
+        consume();
+        positions.focusField(0);
+      } else if (name === "b" && positionCount > 0) {
+        consume();
+        openBrokerConnect();
       }
       return;
     }
@@ -551,28 +609,11 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         consume();
         setEditingField(false);
         if (stage === "account") account.returnToAccountChooser();
-        else if (stage === "portfolio") setPortfolioSub("choose");
+        else if (stage === "portfolio") backPortfolio();
       }
       return;
     }
 
-    if (stage === "welcome") {
-      if (enter) {
-        consume();
-        saveProgressInBackground({ stage: "portfolio" });
-      } else if (name === "escape") {
-        consume();
-        void finish();
-      }
-      return;
-    }
-    if (stage === "add-ticker") {
-      if (name === "escape" || name === "backspace") {
-        consume();
-        goToSection("portfolio");
-      }
-      return;
-    }
     if (stage === "portfolio") {
       if (enter) {
         consume();
@@ -586,7 +627,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         else if (activeBrokerFields[brokerFieldIdx]?.type === "select") setBrokerSelectIdx((index) => Math.max(0, index - 1));
       } else if (name === "down" || name === "j") {
         consume();
-        if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(portfolioChoices.length - 1, index + 1));
+        if (portfolioSub === "choose") setPortfolioOptionIdx((index) => Math.min(brokerChoices.length - 1, index + 1));
         else if (activeBrokerFields[brokerFieldIdx]?.type === "select") {
           const optionCount = activeBrokerFields[brokerFieldIdx]?.options?.length ?? 0;
           setBrokerSelectIdx((index) => Math.min(Math.max(0, optionCount - 1), index + 1));
@@ -637,126 +678,77 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     }
   }, { phase: "before", allowEditable: true });
 
-  const portfolioActionLabel = portfolioSub === "broker-sync"
-      ? (isBrokerSyncing ? t("Importing...") : t("Retry"))
-      : t("Continue");
-
-  if (helpFocused || (stage === "add-ticker" && commandBarOpen)) {
+  if (helpFocused) {
     return null;
   }
 
   if (stage === "research") {
-    return <OnboardingCoach step={t("YOUR FIRST RESEARCH WORKSPACE")}
-      title={tf("Explore {ticker}", { ticker: progress.tickerSymbol ?? "your company" })}
+    const ticker = progress.tickerSymbol ?? t("your company");
+    return <OnboardingCoach step={t("YOUR RESEARCH WORKSPACE")}
+      title={tf("Built around {ticker}", { ticker })}
       actions={<><OnboardingButton label="Keep exploring" variant="ghost" onPress={() => { void finish(); }} />
         <OnboardingButton label="Connect free Cloud" variant="primary" onPress={() => saveProgressInBackground({ stage: "account" })} /></>}>
-      <Text fg={colors.textDim} wrapText>{t("Your company is saved. Explore the chart and financials now. Connect Cloud when you're ready for synced layouts, news and Pro research.")}</Text>
+      <Text fg={colors.textDim} wrapText>{progress.brokerName
+        ? tf("{count} positions came in from {broker}. Your largest opens first: chart, financials, filings and calls are one tab away. Connect Cloud to sync this workspace and unlock Pro research.", {
+          count: progress.positionsImported ?? 0,
+          broker: progress.brokerName,
+        })
+        : tf("Your largest position opens first. Chart, financials, filings and calls are one tab away. {shortcut}, then AP, adds a position from anywhere. Connect Cloud to sync this workspace and unlock Pro research.", { shortcut: commandBarShortcut })}</Text>
     </OnboardingCoach>;
-  }
-
-  if (stage === "verify") {
-    return <OnboardingModal width={66} height={14}>
-      <OnboardingTitle step={t("CONNECT CLOUD")} title={t("Check your email")}
-        description={apiClient.getCurrentUser()?.email ?? account.accountEmail} />
-      <CloudVerificationPanel onVerified={() => {
-        void chatController.refreshSession();
-        saveProgressInBackground({ stage: "upgrade", accountStatus: "signed-in" });
-      }} onContinueFree={() => { void finish(); }} />
-    </OnboardingModal>;
-  }
-
-  if (stage === "add-ticker") {
-    return (
-      <OnboardingCoach
-        step={t("PORTFOLIO SETUP")}
-        title={t("Add one company you follow")}
-        actions={(
-          <>
-            <OnboardingButton label="Back" variant="ghost" onPress={() => goToSection("portfolio")} />
-            <OnboardingButton
-              label="Open command bar"
-              variant="primary"
-              shortcut="AP"
-              onPress={() => pluginRegistry.openCommandBar("AP ")}
-            />
-          </>
-        )}
-      >
-        <Text fg={colors.textDim} wrapText>
-          {t("Use AP in the real command bar and choose any ticker. Setup continues as soon as the company is saved to your portfolio.")}
-        </Text>
-      </OnboardingCoach>
-    );
-  }
-
-  if (stage === "welcome") {
-    return (
-      <OnboardingModal width={64} height={12}>
-        <OnboardingHeader
-          onDismiss={() => { void finish(); }}
-          dismissing={isFinishing}
-        />
-        <OnboardingTitle
-          step={t("WELCOME")}
-          title={t("Make Gloomberb yours")}
-          description={t("Pick a company. Explore its chart and financials. Keep your workspace free, or add Pro research when you need it.")}
-        />
-        {persistenceError ? (
-          <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>
-            {persistenceError}
-          </Text>
-        ) : null}
-        <OnboardingActions>
-          <OnboardingButton
-            label="Research my first company"
-            variant="primary"
-            onPress={() => saveProgressInBackground({ stage: "portfolio" })}
-          />
-        </OnboardingActions>
-      </OnboardingModal>
-    );
   }
 
   if (stage === "portfolio") {
     const selectedBrokerName = selectedBrokerId
       ? brokerOptions.find((option) => option.id === selectedBrokerId)?.name
       : null;
-    const portfolioModalHeight = portfolioSub === "choose"
-      ? 18
-      : portfolioSub === "broker-setup"
-        ? 21
-        : portfolioSub === "broker-sync"
-          ? 14
-          : 20;
+    const portfolioModalHeight = portfolioSub === "positions"
+      ? 22
+      : portfolioSub === "choose"
+        ? 16
+        : portfolioSub === "broker-setup"
+          ? 21
+          : portfolioSub === "broker-sync"
+            ? 14
+            : 20;
+    const title = portfolioSub === "positions"
+      ? t("What do you hold?")
+      : portfolioSub === "choose"
+        ? t("Connect a broker")
+        : selectedBrokerName
+          ? tf("Connect {broker}", { broker: selectedBrokerName })
+          : t("Set up a portfolio");
+    const description = portfolioSub === "positions"
+      ? t("Add each position with its size and average cost. The largest one becomes your first research workspace.")
+      : portfolioSub === "choose"
+        ? t("Import positions from a supported broker. Credentials stay on this device.")
+        : t("Enter the connection details for this broker. Credentials stay on this device.");
     return (
-      <OnboardingModal width={70} height={portfolioModalHeight}>
+      <OnboardingModal width={76} height={portfolioModalHeight} desktopWidth="min(620px, 100%)">
         <OnboardingHeader
           active="portfolio"
           available={sectionAvailability}
           onNavigate={goToSection}
-          onDismiss={() => { void finish(); }}
+          onDismiss={skipSetup}
           dismissing={isFinishing}
           dismissDisabled={isBrokerCommitting}
           showDismiss={false}
         />
         <OnboardingTitle
           step={desktop ? undefined : t("PORTFOLIO")}
-          title={portfolioSub === "choose"
-            ? t("How do you want to start?")
-            : selectedBrokerName
-              ? tf("Connect {broker}", { broker: selectedBrokerName })
-              : t("Set up a portfolio")}
-          description={portfolioSub === "choose"
-            ? t("Create a manual portfolio and add one ticker, or import positions from a supported broker.")
-            : t("Enter the connection details for this broker. Credentials stay on this device.")}
+          title={title}
+          description={description}
         />
         <Box minHeight={0}>
           <PortfolioStep
             sub={portfolioSub}
-            choices={portfolioChoices}
+            positions={positions}
+            positionsInputRef={inputRef}
+            positionsEditing={editingField}
+            commandBarShortcut={commandBarShortcut}
+            choices={brokerChoices}
             optionIdx={portfolioOptionIdx}
             onOptionSelect={setPortfolioOptionIdx}
-            onOptionActivate={choosePortfolioPath}
+            onOptionActivate={chooseBroker}
             selectedBrokerId={selectedBrokerId}
             brokerFields={activeBrokerFields}
             brokerFieldIdx={brokerFieldIdx}
@@ -764,7 +756,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             onBrokerSelect={setBrokerSelectIdx}
             brokerValues={brokerValues}
             onBrokerFieldChange={setBrokerFieldValue}
-            onSubmitBrokerField={submitBrokerField}
             editing={editingField}
             inputRef={inputRef}
             brokerSyncing={isBrokerSyncing}
@@ -777,17 +768,31 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           </Text>
         ) : null}
         <OnboardingActions>
-          {portfolioSub !== "choose" ? (
-            <OnboardingButton label="Back" variant="ghost" disabled={isBrokerCommitting} onPress={backPortfolio} />
-          ) : null}
-          {!desktop || portfolioSub !== "choose" ? (
-            <OnboardingButton
-              label={portfolioActionLabel}
-              variant="primary"
-              disabled={isBrokerSyncing}
-              onPress={continuePortfolio}
-            />
-          ) : null}
+          {portfolioSub === "positions" ? (
+            <>
+              {brokerOptions.length > 0 && positionCount > 0 ? (
+                <OnboardingButton label="Connect a broker" variant="ghost" onPress={openBrokerConnect} />
+              ) : null}
+              <OnboardingButton
+                label="Continue"
+                variant="primary"
+                disabled={positionCount === 0 || positions.submitting}
+                onPress={continueFromPositions}
+              />
+            </>
+          ) : (
+            <>
+              <OnboardingButton label="Back" variant="ghost" disabled={isBrokerCommitting} onPress={backPortfolio} />
+              {!desktop || portfolioSub !== "choose" ? (
+                <OnboardingButton
+                  label={portfolioSub === "broker-sync" ? (isBrokerSyncing ? t("Importing...") : t("Retry")) : t("Continue")}
+                  variant="primary"
+                  disabled={isBrokerSyncing}
+                  onPress={continuePortfolio}
+                />
+              ) : null}
+            </>
+          )}
         </OnboardingActions>
       </OnboardingModal>
     );
@@ -798,11 +803,9 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       ? t("See Pro plans")
       : account.accountSub === "login"
         ? t("Log in")
-        : account.accountSub === "signup"
-          ? (account.accountFieldIdx > 0 ? t("Sign up free") : t("Continue"))
-          : t("Continue");
+        : t("Continue");
     const accountTitle = account.accountSub === "signup"
-      ? t("Create your free account")
+      ? t("Continue with email")
       : account.accountSub === "login"
         ? t("Log in")
         : account.accountSub === "qr"
@@ -811,27 +814,26 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             ? t("Connected")
             : t("Sync across apps");
     const accountDescription = account.accountSub === "choose"
-      ? t("Sync your layouts. Search calls, news and filings.")
+      ? t("Free account. Your layouts and portfolio follow you across the terminal, desktop and phone, and Cloud search covers calls, news and filings.")
       : account.accountSub === "qr"
         ? t("Open the sign-in link, or scan the code with your phone.")
         : account.accountSub === "signup"
-        ? t("Create the free account now. Cloud features unlock after you verify your email.")
+        ? t("New here? This creates your free account. Already have one? The same form logs you in.")
         : account.accountSub === "login"
-          ? t("Use the account that should own this workspace and its synced data.")
+          ? t("This email already has an account. Enter its password to log in.")
           : t("Your account is ready. Next, choose whether you want the real-time Pro data plan.");
     const accountStatusRows = account.accountSubmitting || account.accountValidationError || account.accountSubmitError
       ? 1
       : 0;
-    const accountSwitchRows = account.accountSubmitError?.kind === "switch-to-login" ? 1 : 0;
     // The QR grid is the tallest thing this wizard ever shows; DeviceSignInPanel
     // degrades to the code plus URL when the terminal cannot give it these rows.
     const accountModalHeight = account.accountSub === "choose"
-      ? 21
+      ? 19
       : account.accountSub === "qr"
         ? 32
         : account.accountSub === "signed-in"
           ? 12
-          : 16 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows + accountSwitchRows;
+          : 16 + (account.accountFieldIdx > 0 ? 2 : 0) + accountStatusRows;
     // OnboardingModal clamps the card to the viewport, so the panel has to size
     // off the clamped height or the QR overflows a short terminal.
     const accountPanelHeight = Math.max(4, Math.min(accountModalHeight, viewportHeight - 2) - 9);
@@ -844,7 +846,7 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           active="cloud"
           available={sectionAvailability}
           onNavigate={goToSection}
-          onDismiss={() => { void finish(); }}
+          onDismiss={skipSetup}
           dismissing={isFinishing}
         />
         <OnboardingTitle
@@ -870,7 +872,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             onEmailChange={account.setAccountEmail}
             onPasswordChange={account.setAccountPassword}
             onFieldFocus={account.focusAccountField}
-            onSubmitField={submitAccountField}
             onQrApproved={account.completeQrSignIn}
             height={accountPanelHeight}
           />
@@ -902,13 +903,14 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   if (stage === "upgrade") {
     const primaryLabel = planAccess.hasProAccess ? t("Continue with Pro") : t("Start 7-day free trial");
     const monthlyPrice = formatCloudMonthlyPrice(pricing);
+    const ticker = progress.tickerSymbol;
     return (
-      <OnboardingModal width={66} height={17}>
+      <OnboardingModal width={70} height={24}>
         <OnboardingHeader
           active="pro"
           available={sectionAvailability}
           onNavigate={goToSection}
-          onDismiss={() => { void finish(); }}
+          onDismiss={skipSetup}
           dismissing={isFinishing}
           showDismiss={false}
         />
@@ -920,22 +922,33 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
               {monthlyPrice.anchor}
             </Text>
           ) : undefined}
+          titleSuffix={!planAccess.hasProAccess && monthlyPrice.note ? monthlyPrice.note : undefined}
           description={planAccess.hasProAccess
             ? t("This account already has real-time Cloud data.")
             : t("7 days free, then the price above. Card required. Cancel anytime.")}
         />
         <Box flexDirection="column" style={desktop ? { marginTop: 14, gap: 8 } : undefined}>
           <OnboardingFeature
-            title={t("Worldwide equities and options")}
-            description={t("Free: 15m delayed. Pro: real-time.")}
+            title={ticker
+              ? tf("Real-time {ticker}, options and news wire", { ticker })
+              : t("Real-time quotes, options and news wire")}
+            description={t("Free: quotes 15m late, news 12h late. Pro: live.")}
           />
           <OnboardingFeature
-            title={t("News wire")}
-            description={t("Free: 12h delayed. Pro: real-time.")}
+            title={t("Gloomberb AI")}
+            description={t("Ask anything about a company. Answers cite its filings, calls and news.")}
           />
           <OnboardingFeature
-            title={t("Earnings transcripts and instant search")}
-            description={t("Read calls. Search transcripts, news and filings. Ask Gloomberb AI coming soon.")}
+            title={t("Earnings transcripts and scores")}
+            description={t("Every call in full, scored, searchable across companies.")}
+          />
+          <OnboardingFeature
+            title={t("Equity Diagnostic")}
+            description={t("Red and green flags pulled from filings, with the evidence.")}
+          />
+          <OnboardingFeature
+            title={t("Hiring data")}
+            description={t("Job postings by company, a leading signal on growth.")}
           />
         </Box>
         {persistenceError ? (
@@ -962,16 +975,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
     );
   }
 
-  const readyDescription = progress.brokerName
-    ? tf("Imported {count} positions from {broker}. Your workspace is ready to explore.", {
-      count: progress.positionsImported ?? 0,
-      broker: progress.brokerName,
+  const readyDescription = progress.tickerSymbol
+    ? tf("{ticker} is your research workspace. Add positions any time with {shortcut}, then AP.", {
+      ticker: progress.tickerSymbol,
+      shortcut: commandBarShortcut,
     })
-    : progress.tickerSymbol
-      ? tf("{ticker} is in your portfolio, and its research is ready in the workspace.", {
-        ticker: progress.tickerSymbol,
-      })
-      : t("Your local workspace is ready. You can connect Cloud or add a portfolio later.");
+    : t("Your local workspace is ready. You can connect Cloud or add a portfolio later.");
 
   return (
     <OnboardingModal width={66} height={12}>
@@ -979,11 +988,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
         active={progress.accountStatus === "signed-in" ? "pro" : "cloud"}
         available={sectionAvailability}
         onNavigate={goToSection}
-        onDismiss={() => { void finish(); }}
+        onDismiss={skipSetup}
         dismissing={isFinishing}
+        showDismiss={false}
       />
       <OnboardingTitle
-        step={t("READY")}
+        step={desktop ? undefined : t("READY")}
         title={t("Your workspace is ready")}
         description={readyDescription}
       />

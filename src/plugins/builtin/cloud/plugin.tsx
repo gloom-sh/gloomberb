@@ -25,6 +25,7 @@ import { askGloomQuestion } from "./askg/pending-question";
 import { registerCloudAuthCommands } from "./auth-commands";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
+import { CloudVerificationStatusWidget } from "./verification-status-widget";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { teamChannelId } from "./team/model";
 import { teamModule, teamStore } from "./team/module";
@@ -168,7 +169,12 @@ const accountModule: PluginModule = {
     createInstance: () => ({ placement: "floating" }),
   }],
   slots: {
-    "status:widget": () => <CloudUpgradeStatusWidget />,
+    "status:widget": () => (
+      <>
+        <CloudVerificationStatusWidget />
+        <CloudUpgradeStatusWidget />
+      </>
+    ),
   },
   setup: (ctx) => {
     registerCloudAuthCommands(ctx);

@@ -22,14 +22,16 @@ let cloudUpgradeOpener: (() => void) | null = null;
 
 /**
  * Signed-out users get the public Cloud page. Signed-in free accounts go
- * straight to Stripe checkout, and accounts that already have Pro (paying or
- * trialing) get the billing portal, so nobody re-buys a subscription they
- * already hold. Both URLs are account-bound, so no session handoff is needed.
+ * straight to Stripe checkout, verified or not (the trial only activates once
+ * the email is confirmed, which the status bar keeps asking for), and accounts
+ * that already have Pro (paying or trialing) get the billing portal, so nobody
+ * re-buys a subscription they already hold. Both URLs are account-bound, so no
+ * session handoff is needed.
  */
 export async function resolveCloudUpgradeUrl(): Promise<string> {
   recordResearchActivity("upgrade_intent");
   const returnTo = getCurrentPluginTarget() === "web" ? window.location.href : undefined;
-  if (!apiClient.isSignedIn() || !apiClient.getCurrentUser()?.emailVerified) return researchUpgradeUrl(returnTo);
+  if (!apiClient.isSignedIn()) return researchUpgradeUrl(returnTo);
   const { url } = resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess
     ? await apiClient.createBillingPortal()
     : await apiClient.createCloudCheckout(returnTo);

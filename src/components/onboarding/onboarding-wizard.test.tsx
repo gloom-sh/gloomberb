@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -7,6 +7,7 @@ import { apiClient } from "../../api-client";
 import { useBrokerImportRuntime, type AppBrokerImportRuntime } from "../../app/runtime/broker-import";
 import { syncBrokerInstance } from "../../brokers/sync-broker-instance";
 import { ACCOUNT_CHOICE_IDS } from "../../plugins/builtin/cloud/auth-model";
+import { chatController } from "../../plugins/builtin/chat/controller";
 import { EventBus } from "../../plugins/event-bus";
 import type { PluginRegistry } from "../../plugins/registry";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
@@ -21,6 +22,7 @@ import {
   createDefaultConfig,
   type AppConfig,
 } from "../../types/config";
+import type { DataProvider } from "../../types/data-provider";
 import type { TickerRecord } from "../../types/ticker";
 import { OnboardingWizard } from "./onboarding-wizard";
 
@@ -51,6 +53,27 @@ function createTickerRepository(
   };
 }
 
+const KNOWN_COMPANIES: Record<string, string> = {
+  AAPL: "Apple Inc.",
+  MSFT: "Microsoft Corp.",
+  NVDA: "NVIDIA Corp.",
+};
+
+/** Exact-symbol search plus a flat $100 quote, enough to resolve and value a position. */
+function createMarketData(): DataProvider {
+  return {
+    id: "test-market",
+    async search(query: string) {
+      const symbol = query.trim().toUpperCase();
+      const name = KNOWN_COMPANIES[symbol];
+      return name ? [{ providerId: "test-market", symbol, name, exchange: "NASDAQ", type: "STK", currency: "USD" }] : [];
+    },
+    async getQuote(symbol: string) {
+      return { symbol, price: 100, currency: "USD", change: 1, changePercent: 1, lastUpdated: Date.now() };
+    },
+  } as unknown as DataProvider;
+}
+
 function createPluginRegistry(options: {
   brokers?: Map<string, BrokerAdapter>;
   tickerRepository?: ReturnType<typeof createTickerRepository>;
@@ -61,6 +84,7 @@ function createPluginRegistry(options: {
     paneTemplates: new Map(),
     events: new EventBus(),
     tickerRepository: options.tickerRepository ?? createTickerRepository(),
+    marketData: createMarketData(),
     persistence: { resources: undefined },
     openCommandBar: () => {},
     navigateTicker: () => {},
@@ -158,28 +182,64 @@ function RuntimeWizardHarness({
 }
 
 const emitKeypress = (event: TestKeyEvent) => emitTuiKeypress(testSetup!, event);
+const pressEnter = () => emitKeypress({ name: "return", sequence: "\r" });
+const pressEscape = () => emitKeypress({ name: "escape", sequence: "\u001b" });
 
-async function waitForFrame(text: string, attempts = 40): Promise<string> {
+async function typeText(text: string): Promise<void> {
+  await act(async () => {
+    await testSetup!.mockInput.typeText(text);
+    await testSetup!.renderOnce();
+  });
+}
+
+async function waitForFrame(text: string, attempts = 60): Promise<string> {
   for (let index = 0; index < attempts; index += 1) {
     const frame = testSetup!.captureCharFrame();
     if (frame.includes(text)) return frame;
     await act(async () => {
       // Sleeping zero only drains the task queue. These steps wait on real
-      // filesystem writes, so once the fast path has not settled the retries
-      // need actual elapsed time; otherwise a loaded machine runs out of
-      // attempts while the write is still in flight.
-      await Bun.sleep(index < 5 ? 0 : 5);
+      // filesystem writes and debounced lookups, so once the fast path has not
+      // settled the retries need actual elapsed time.
+      await Bun.sleep(index < 5 ? 0 : 10);
       await testSetup!.renderOnce();
     });
   }
   throw new Error(`Timed out waiting for "${text}".`);
 }
 
+let expectedPositionCount = 0;
+
+/** Types a position through the three fields; blank shares follows the company only. */
+async function addManualPosition(symbol: string, shares = "", avgCost = ""): Promise<void> {
+  await typeText(symbol);
+  await pressEnter();
+  if (shares) await typeText(shares);
+  await pressEnter();
+  if (shares) {
+    if (avgCost) await typeText(avgCost);
+    await pressEnter();
+  }
+  // The typed symbol also sits in the ticker field, so wait for the row count.
+  expectedPositionCount += 1;
+  await waitForFrame(`Positions (${expectedPositionCount})`);
+}
+
+// Milestones and pricing go to the network; neither belongs in a render test.
+const originalRecordResearchActivity = apiClient.recordResearchActivity;
+const originalGetCloudPricing = apiClient.getCloudPricing;
+beforeEach(() => {
+  expectedPositionCount = 0;
+  apiClient.recordResearchActivity = (async () => {}) as typeof apiClient.recordResearchActivity;
+  apiClient.getCloudPricing = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudPricing;
+});
+
 afterEach(async () => {
   if (testSetup) {
     await act(async () => testSetup!.renderer.destroy());
     testSetup = undefined;
   }
+  apiClient.recordResearchActivity = originalRecordResearchActivity;
+  apiClient.getCloudPricing = originalGetCloudPricing;
   apiClient.setSessionToken(null);
   apiClient.restoreCachedUser(null);
   capturedConfig = null;
@@ -191,109 +251,99 @@ afterEach(async () => {
 });
 
 describe("OnboardingWizard", () => {
-  test("enters the real workspace task immediately after manual setup", async () => {
+  test("saves manual positions and opens the largest one as the research workspace", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-"));
+    const tickerRepository = createTickerRepository();
+    const pluginRegistry = createPluginRegistry({ tickerRepository });
+    const opened: string[] = [];
+    pluginRegistry.navigateTicker = ((symbol: string) => { opened.push(symbol); }) as PluginRegistry["navigateTicker"];
+    testSetup = await testRender(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 32 },
+    );
+    await testSetup.renderOnce();
+
+    const first = testSetup.captureCharFrame();
+    expect(first).toContain("What do you hold?");
+    expect(first).not.toContain("Skip setup");
+    expect(first).not.toContain("Recommended");
+
+    await addManualPosition("MSFT", "4", "400");
+    await addManualPosition("AAPL", "10", "180");
+    const listed = testSetup.captureCharFrame();
+    expect(listed).toContain("Positions (2)");
+    expect(listed).toContain("10 @ 180");
+    expect(listed).toContain("$1,000");
+
+    await pressEscape();
+    await pressEnter();
+
+    const frame = await waitForFrame("Connect free Cloud");
+    expect(frame).toContain("Built around AAPL");
+    expect(capturedConfig?.onboardingProgress).toMatchObject({
+      stage: "research",
+      path: "manual",
+      portfolioId: "main",
+      tickerSymbol: "AAPL",
+      positionsImported: 2,
+    });
+    expect(opened).toEqual(["AAPL"]);
+    const saved = await tickerRepository.loadTicker("AAPL");
+    expect(saved?.metadata.positions).toEqual([
+      { portfolio: "main", shares: 10, avgCost: 180, currency: "USD", broker: "manual" },
+    ]);
+  });
+
+  test("a blank share count follows the company and prices a missing cost from the quote", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-follow-"));
+    const tickerRepository = createTickerRepository();
+    const pluginRegistry = createPluginRegistry({ tickerRepository });
+    testSetup = await testRender(
+      <WizardHarness config={createDefaultConfig(tempDataDir)} pluginRegistry={pluginRegistry} />,
+      { width: 100, height: 32 },
+    );
+    await testSetup.renderOnce();
+
+    await addManualPosition("NVDA");
+    expect(testSetup.captureCharFrame()).toContain("following");
+    expect((await tickerRepository.loadTicker("NVDA"))?.metadata).toMatchObject({ portfolios: ["main"], positions: [] });
+
+    await addManualPosition("AAPL", "3");
+    expect((await tickerRepository.loadTicker("AAPL"))?.metadata.positions).toEqual([
+      { portfolio: "main", shares: 3, avgCost: 100, currency: "USD", broker: "manual" },
+    ]);
+
+    await pressEscape();
+    await pressEnter();
+    await waitForFrame("Built around AAPL");
+  });
+
+  test("cannot be skipped or continued before the first position", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
     const pluginRegistry = createPluginRegistry();
+    let completionCount = 0;
     testSetup = await testRender(
       <WizardHarness
         config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
-      />,
-      { width: 100, height: 30 },
-    );
-    await testSetup.renderOnce();
-
-    expect(testSetup.captureCharFrame()).toContain("Make Gloomberb yours");
-    await emitKeypress({ name: "return", sequence: "\r" });
-    await waitForFrame("How do you want to start?");
-    await emitKeypress({ name: "return", sequence: "\r" });
-
-    const frame = await waitForFrame("Add one company you follow");
-    expect(frame).toContain("Add one company you follow");
-    expect(frame).toContain("AP");
-    expect(capturedConfig?.onboardingProgress).toMatchObject({
-      stage: "add-ticker",
-      path: "manual",
-      portfolioId: "main",
-    });
-  });
-
-  test("requires portfolio setup before onboarding can be skipped", async () => {
-    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-required-portfolio-"));
-    const pluginRegistry = createPluginRegistry();
-    let completionCount = 0;
-    const config = {
-      ...createDefaultConfig(tempDataDir),
-      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
-    };
-    testSetup = await testRender(
-      <WizardHarness
-        config={config}
-        pluginRegistry={pluginRegistry}
         onComplete={() => { completionCount += 1; }}
       />,
-      { width: 80, height: 24 },
+      { width: 80, height: 30 },
     );
     await testSetup.renderOnce();
 
     expect(testSetup.captureCharFrame()).not.toContain("Skip setup");
     await emitKeypress({ name: "f10" });
     expect(completionCount).toBe(0);
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("portfolio");
-
-    await emitKeypress({ name: "escape", sequence: "\u001b" });
-    expect(testSetup.captureCharFrame()).not.toContain("Back");
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("portfolio");
-
-    await emitKeypress({ name: "return", sequence: "\r" });
-    const frame = await waitForFrame("Add one company you follow");
-    expect(frame).not.toContain("Skip setup");
-    await emitKeypress({ name: "f10" });
+    await pressEscape();
+    await pressEnter();
+    await act(async () => { await Bun.sleep(20); await testSetup!.renderOnce(); });
     expect(completionCount).toBe(0);
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("add-ticker");
+    expect(capturedConfig?.onboardingProgress?.stage ?? "portfolio").toBe("portfolio");
+    expect(testSetup.captureCharFrame()).toContain("What do you hold?");
   });
 
-  test("opens research before Cloud after the expected AP save", async () => {
-    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-actions-"));
-    const pluginRegistry = createPluginRegistry();
-    const config = {
-      ...createDefaultConfig(tempDataDir),
-      onboardingProgress: {
-        version: 1 as const,
-        stage: "add-ticker" as const,
-        path: "manual" as const,
-        portfolioId: "main",
-      },
-    };
-    testSetup = await testRender(
-      <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
-      { width: 100, height: 30 },
-    );
-    await testSetup.renderOnce();
-
-    await act(async () => {
-      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
-        symbol: "MSFT",
-        portfolioId: "other",
-      });
-      await testSetup!.renderOnce();
-    });
-    expect(testSetup.captureCharFrame()).toContain("Add one company you follow");
-
-    await act(async () => {
-      pluginRegistry.events.emit("command-bar:portfolio-membership-persisted", {
-        symbol: "AAPL",
-        portfolioId: "main",
-      });
-      await Bun.sleep(0);
-      await testSetup!.renderOnce();
-    });
-    const frame = await waitForFrame("Connect free Cloud");
-    expect(frame).toContain("Connect free Cloud");
-    expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
-  });
-
-  test("imports a broker portfolio before opening research", async () => {
+  test("imports a broker portfolio after the first manual position and opens its largest holding", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-broker-"));
     const tickerRepository = createTickerRepository();
     const broker: BrokerAdapter = {
@@ -302,50 +352,65 @@ describe("OnboardingWizard", () => {
       configSchema: [{ key: "host", label: "Host", type: "text", required: true, defaultValue: "paper" }],
       validate: async () => true,
       listAccounts: async () => [{ accountId: "ACC-1", name: "Primary", currency: "USD" }],
-      importPositions: async () => [{
-        ticker: "AAPL",
-        exchange: "NASDAQ",
-        shares: 7,
-        avgCost: 180,
-        currency: "USD",
-        accountId: "ACC-1",
-        name: "Apple Inc.",
-        assetCategory: "STK",
-      }],
+      importPositions: async () => [
+        {
+          ticker: "AAPL",
+          exchange: "NASDAQ",
+          shares: 7,
+          avgCost: 180,
+          currency: "USD",
+          accountId: "ACC-1",
+          name: "Apple Inc.",
+          assetCategory: "STK",
+        },
+        {
+          ticker: "MSFT",
+          exchange: "NASDAQ",
+          shares: 40,
+          avgCost: 400,
+          currency: "USD",
+          accountId: "ACC-1",
+          name: "Microsoft Corp.",
+          assetCategory: "STK",
+        },
+      ],
     };
     const pluginRegistry = createPluginRegistry({
       brokers: new Map([["demo", broker]]),
       tickerRepository,
     });
-    const config = {
-      ...createDefaultConfig(tempDataDir),
-      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
-    };
     testSetup = await testRender(
       <RuntimeWizardHarness
-        config={config}
+        config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
         tickerRepository={tickerRepository}
       />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress({ name: "down", sequence: "\u001b[B" });
-    await emitKeypress({ name: "return", sequence: "\r" });
+    // The broker path only opens once a manual position exists.
+    await pressEscape();
+    await emitKeypress({ name: "b", sequence: "b" });
+    expect(testSetup.captureCharFrame()).toContain("What do you hold?");
+    await emitKeypress({ name: "a", sequence: "a" });
+
+    await addManualPosition("NVDA", "1", "100");
+    await pressEscape();
+    await emitKeypress({ name: "b", sequence: "b" });
     await waitForFrame("Connect Demo Broker");
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await pressEnter();
 
     const frame = await waitForFrame("Connect free Cloud");
-    expect(frame).toContain("Connect free Cloud");
+    expect(frame).toContain("Demo Broker");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
       stage: "research",
       path: "broker",
-      tickerSymbol: "AAPL",
+      tickerSymbol: "MSFT",
       brokerName: "Demo Broker",
-      positionsImported: 1,
+      positionsImported: 2,
     });
-    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker)).toContain("AAPL");
+    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT", "NVDA"]);
   });
 
   test("Back prevents a delayed broker import from committing config, accounts, or positions", async () => {
@@ -374,29 +439,26 @@ describe("OnboardingWizard", () => {
       set: () => { resourceWrites += 1; },
       delete: () => {},
     } as any;
-    const config = {
-      ...createDefaultConfig(tempDataDir),
-      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
-    };
 
     testSetup = await testRender(
       <RuntimeWizardHarness
-        config={config}
+        config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
         tickerRepository={tickerRepository}
       />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress({ name: "down", sequence: "\u001b[B" });
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await addManualPosition("NVDA", "1", "100");
+    await pressEscape();
+    await emitKeypress({ name: "b", sequence: "b" });
     await waitForFrame("Connect Delayed Broker");
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await pressEnter();
     await waitForFrame("Importing");
 
-    await emitKeypress({ name: "escape", sequence: "\u001b" });
-    await waitForFrame("How do you want to start?");
+    await pressEscape();
+    await waitForFrame("What do you hold?");
 
     await act(async () => {
       resolvePositions([{
@@ -415,7 +477,7 @@ describe("OnboardingWizard", () => {
 
     expect(capturedConfig?.brokerInstances).toEqual([]);
     expect(capturedBrokerAccounts).toEqual({});
-    expect(await tickerRepository.loadAllTickers()).toEqual([]);
+    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker)).toEqual(["NVDA"]);
     expect(resourceWrites).toBe(0);
   });
 
@@ -426,9 +488,9 @@ describe("OnboardingWizard", () => {
     let releaseSecondWrite: () => void = () => {};
     const secondWrite = new Promise<void>((resolve) => { releaseSecondWrite = resolve; });
     const tickerRepository = createTickerRepository([], async (ticker, persist) => {
-      if (ticker.metadata.ticker === "AAPL") {
+      if (ticker.metadata.ticker !== "MSFT") {
         persist();
-        resolveFirstWrite();
+        if (ticker.metadata.ticker === "AAPL") resolveFirstWrite();
         return;
       }
       await secondWrite;
@@ -467,31 +529,28 @@ describe("OnboardingWizard", () => {
       brokers: new Map([["committing", broker]]),
       tickerRepository,
     });
-    const config = {
-      ...createDefaultConfig(tempDataDir),
-      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
-    };
     testSetup = await testRender(
       <RuntimeWizardHarness
-        config={config}
+        config={createDefaultConfig(tempDataDir)}
         pluginRegistry={pluginRegistry}
         tickerRepository={tickerRepository}
       />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress({ name: "down", sequence: "\u001b[B" });
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await addManualPosition("NVDA", "1", "100");
+    await pressEscape();
+    await emitKeypress({ name: "b", sequence: "b" });
     await waitForFrame("Connect Commit Broker");
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await pressEnter();
     await firstWriteStarted;
 
-    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await pressEscape();
     expect(testSetup.captureCharFrame()).toContain("Importing");
     await emitKeypress({ name: "f10" });
     expect(testSetup.captureCharFrame()).toContain("Importing");
-    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker)).toEqual(["AAPL"]);
+    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "NVDA"]);
 
     await act(async () => {
       releaseSecondWrite();
@@ -500,7 +559,7 @@ describe("OnboardingWizard", () => {
     });
 
     await waitForFrame("Connect free Cloud");
-    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT"]);
+    expect((await tickerRepository.loadAllTickers()).map((ticker) => ticker.metadata.ticker).sort()).toEqual(["AAPL", "MSFT", "NVDA"]);
     expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
   });
 
@@ -519,10 +578,7 @@ describe("OnboardingWizard", () => {
       importPositions: async () => [],
     };
     const pluginRegistry = createPluginRegistry({ brokers: new Map([["finalizing", broker]]) });
-    const config = {
-      ...createDefaultConfig(tempDataDir),
-      onboardingProgress: { version: 1 as const, stage: "portfolio" as const },
-    };
+    const config = createDefaultConfig(tempDataDir);
     const importBrokerPositions: AppBrokerImportRuntime["importBrokerPositions"] = async (_instanceId, _tickerMap, options) => {
       options?.onCommitStart?.();
       options?.onCommitEnd?.();
@@ -557,14 +613,15 @@ describe("OnboardingWizard", () => {
         importBrokerPositions={importBrokerPositions}
         onComplete={() => { completionCount += 1; }}
       />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress({ name: "down", sequence: "\u001b[B" });
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await addManualPosition("NVDA", "1", "100");
+    await pressEscape();
+    await emitKeypress({ name: "b", sequence: "b" });
     await waitForFrame("Connect Finalizing Broker");
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await pressEnter();
     await commitEnded;
     await waitForFrame("Importing");
 
@@ -583,32 +640,98 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.onboardingProgress?.stage).toBe("research");
   });
 
-  test("waits for email verification before offering Pro", async () => {
-    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-verify-"));
-    const originalGetSession = apiClient.getSession;
-    let resolveSession!: (user: Awaited<ReturnType<typeof apiClient.getSession>>) => void;
-    apiClient.getSession = () => new Promise((resolve) => { resolveSession = resolve; });
+  test("email sign-up goes straight to Pro without waiting for verification", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-signup-"));
+    const originalSignUp = apiClient.signUp;
+    const originalSendVerification = apiClient.sendVerification;
+    const originalRefresh = chatController.refreshSession;
+    const signUps: string[] = [];
+    apiClient.signUp = (async (email: string) => {
+      signUps.push(email);
+      const user = { id: "new-user", email, emailVerified: false, plan: "free" as const };
+      apiClient.restoreCachedUser(user);
+      return user;
+    }) as typeof apiClient.signUp;
+    apiClient.sendVerification = (async () => {}) as typeof apiClient.sendVerification;
+    chatController.refreshSession = (async () => null) as typeof chatController.refreshSession;
     try {
-      testSetup = await testRender(<WizardHarness config={{
+      const config = {
         ...createDefaultConfig(tempDataDir),
-        onboardingProgress: { version: 1, stage: "verify", accountStatus: "signed-in" },
-      }} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 30 });
+        onboardingProgress: {
+          version: 1 as const,
+          stage: "account" as const,
+          path: "manual" as const,
+          portfolioId: "main",
+          tickerSymbol: "AAPL",
+        },
+      };
+      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
       await testSetup.renderOnce();
-      expect(testSetup.captureCharFrame()).toContain("Check your email");
-      expect(capturedConfig?.onboardingProgress?.stage).toBe("verify");
-      apiClient.setSessionToken("verification-test-session");
-      apiClient.restoreCachedUser({ id: "verified-user", email: "research@example.com", emailVerified: true, plan: "free" });
-      await act(async () => {
-        resolveSession(apiClient.getCurrentUser());
-        await Bun.sleep(0);
-        await testSetup!.renderOnce();
-      });
-      await waitForFrame("Start 7-day free trial");
-      expect(capturedConfig?.onboardingProgress?.stage).toBe("upgrade");
-    } finally { apiClient.getSession = originalGetSession; }
+      const chooser = testSetup.captureCharFrame();
+      expect(chooser).toContain("Continue with email");
+      expect(chooser).not.toContain("Sign up free");
+
+      await pressEnter();
+      await waitForFrame("Email");
+      await typeText("research@example.com");
+      await pressEnter();
+      await typeText("longenough1");
+      await pressEnter();
+
+      const frame = await waitForFrame("Start 7-day free trial");
+      expect(frame).toContain("Real-time AAPL");
+      expect(frame).not.toContain("Check your email");
+      expect(signUps).toEqual(["research@example.com"]);
+      expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "upgrade", accountStatus: "signed-in" });
+    } finally {
+      apiClient.signUp = originalSignUp;
+      apiClient.sendVerification = originalSendVerification;
+      chatController.refreshSession = originalRefresh;
+    }
   });
 
-  test("loads the current Cloud price on the Pro step", async () => {
+  test("an existing email falls through to login with the same password", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-login-fallthrough-"));
+    const originalSignUp = apiClient.signUp;
+    const originalSignIn = apiClient.signIn;
+    const originalRefresh = chatController.refreshSession;
+    const calls: string[] = [];
+    apiClient.signUp = (async () => {
+      calls.push("signup");
+      throw new Error("An account with this email already exists");
+    }) as typeof apiClient.signUp;
+    apiClient.signIn = (async (email: string) => {
+      calls.push("login");
+      const user = { id: "returning-user", email, emailVerified: true, plan: "free" as const };
+      apiClient.restoreCachedUser(user);
+      return user;
+    }) as typeof apiClient.signIn;
+    chatController.refreshSession = (async () => null) as typeof chatController.refreshSession;
+    try {
+      const config = {
+        ...createDefaultConfig(tempDataDir),
+        onboardingProgress: { version: 1 as const, stage: "account" as const, path: "manual" as const, portfolioId: "main" },
+      };
+      testSetup = await testRender(<WizardHarness config={config} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+      await testSetup.renderOnce();
+
+      await pressEnter();
+      await waitForFrame("Email");
+      await typeText("returning@example.com");
+      await pressEnter();
+      await typeText("longenough1");
+      await pressEnter();
+
+      await waitForFrame("Start 7-day free trial");
+      expect(calls).toEqual(["signup", "login"]);
+    } finally {
+      apiClient.signUp = originalSignUp;
+      apiClient.signIn = originalSignIn;
+      chatController.refreshSession = originalRefresh;
+    }
+  });
+
+  test("shows the founding price with its anchor on the Pro step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-pro-price-"));
     const getCloudPricing = apiClient.getCloudPricing;
     let resolvePricing!: (pricing: Awaited<ReturnType<typeof apiClient.getCloudPricing>>) => void;
@@ -628,7 +751,7 @@ describe("OnboardingWizard", () => {
       };
       testSetup = await testRender(
         <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
-        { width: 100, height: 30 },
+        { width: 100, height: 32 },
       );
       await testSetup.renderOnce();
       await act(async () => {
@@ -643,9 +766,11 @@ describe("OnboardingWizard", () => {
         await testSetup!.renderOnce();
       });
 
-      const frame = testSetup.captureCharFrame();
+      const frame = await waitForFrame("$39/mo");
       expect(frame).toContain("$49/mo");
-      expect(frame).not.toContain("$29/mo");
+      expect(frame).toContain("Founding price");
+      expect(frame).toContain("Gloomberb AI");
+      expect(frame).not.toContain("coming soon");
     } finally {
       apiClient.getCloudPricing = getCloudPricing;
     }
@@ -666,18 +791,18 @@ describe("OnboardingWizard", () => {
     };
     testSetup = await testRender(
       <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
-    // qr, signup, login, then "Not now".
     for (let index = 0; index < ACCOUNT_CHOICE_IDS.indexOf("skip"); index += 1) {
       await emitKeypress({ name: "down", sequence: "\u001b[B" });
     }
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await pressEnter();
 
     const frame = await waitForFrame("Your workspace is ready");
     expect(frame).not.toContain("GLOOM CLOUD PRO");
+    expect(frame).not.toContain("Skip setup");
     expect(capturedConfig?.onboardingProgress).toMatchObject({
       stage: "ready",
       accountStatus: "skipped",
@@ -704,15 +829,25 @@ describe("OnboardingWizard", () => {
     };
     testSetup = await testRender(
       <WizardHarness config={config} pluginRegistry={pluginRegistry} />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
-    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await pressEscape();
 
     const frame = await waitForFrame("Connected");
-    expect(frame).not.toContain("Sign up free");
+    expect(frame).not.toContain("Continue with email");
     expect(capturedConfig?.onboardingProgress?.stage).toBe("account");
+  });
+
+  test("a saved verify stage resumes on the Pro step", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-legacy-verify-"));
+    testSetup = await testRender(<WizardHarness config={{
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1, stage: "verify", accountStatus: "signed-in" },
+    }} pluginRegistry={createPluginRegistry()} />, { width: 100, height: 32 });
+    await testSetup.renderOnce();
+    expect(testSetup.captureCharFrame()).toContain("Start 7-day free trial");
   });
 
   test("persists completion only from the ready step", async () => {
@@ -735,12 +870,12 @@ describe("OnboardingWizard", () => {
         pluginRegistry={pluginRegistry}
         onComplete={(nextConfig) => { completed = nextConfig; }}
       />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
     expect(testSetup.captureCharFrame()).toContain("Your workspace is ready");
 
-    await emitKeypress({ name: "return", sequence: "\r" });
+    await pressEnter();
     for (let index = 0; index < 20 && !completed; index += 1) {
       await act(async () => {
         await Bun.sleep(0);
@@ -753,24 +888,28 @@ describe("OnboardingWizard", () => {
     expect(completed?.onboardingProgress).toBeUndefined();
   });
 
-  test("global dismissal wins over an onboarding progress save", async () => {
+  test("finishing wins over an onboarding progress save queued in the same tick", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-dismiss-"));
     const pluginRegistry = createPluginRegistry();
     let completed: AppConfig | null = null;
     testSetup = await testRender(
       <WizardHarness
-        config={createDefaultConfig(tempDataDir)}
+        config={{
+          ...createDefaultConfig(tempDataDir),
+          onboardingProgress: { version: 1, stage: "ready", accountStatus: "skipped", tickerSymbol: "AAPL" },
+        }}
         pluginRegistry={pluginRegistry}
         onComplete={(nextConfig) => { completed = nextConfig; }}
       />,
-      { width: 100, height: 30 },
+      { width: 100, height: 32 },
     );
     await testSetup.renderOnce();
 
     await act(async () => {
+      // Back queues a progress save; Start exploring must still finish.
       testSetup!.renderer.keyInput.emit("keypress", {
-        name: "return",
-        sequence: "\r",
+        name: "escape",
+        sequence: "\u001b",
         ctrl: false,
         meta: false,
         option: false,
@@ -779,8 +918,8 @@ describe("OnboardingWizard", () => {
         repeated: false,
       } as any);
       testSetup!.renderer.keyInput.emit("keypress", {
-        name: "escape",
-        sequence: "\u001b",
+        name: "return",
+        sequence: "\r",
         ctrl: false,
         meta: false,
         option: false,

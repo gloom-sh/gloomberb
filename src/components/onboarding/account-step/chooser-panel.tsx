@@ -16,21 +16,18 @@ export function AccountChooserPanel({
 }) {
   const language = useAppLanguage();
   const desktop = useUiHost().kind === "desktop-web";
+  // Same order as ACCOUNT_CHOICE_IDS.
   const choices = useMemo<ListViewItem[]>(() => [
+    {
+      id: "signup",
+      label: t("Continue with email"),
+      description: t("New or existing account, one form"),
+      detail: t("Free"),
+    },
     {
       id: "qr",
       label: t("Continue in browser"),
-      description: t("Sign in securely, or scan with your phone"),
-    },
-    {
-      id: "signup",
-      label: t("Sign up free"),
-      description: t("Create an account, then verify your email"),
-    },
-    {
-      id: "login",
-      label: t("Log in"),
-      description: t("Use an existing account"),
+      description: t("Sign in on gloom.sh, or scan the code with your phone"),
     },
     {
       id: "skip",

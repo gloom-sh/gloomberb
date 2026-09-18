@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { apiClient } from "../../api-client";
+import { t } from "../../i18n";
 import { debugLog } from "../../utils/debug-log";
 import {
   advanceAccountField,
@@ -172,22 +173,45 @@ export function useOnboardingAccount({
     clearErrors();
 
     void (async () => {
+      let attemptedMode = mode;
       try {
-        await performEmailAuth(mode, email, password);
+        try {
+          await performEmailAuth(mode, email, password);
+        } catch (error) {
+          // One form serves new and returning accounts: an email that already
+          // exists is retried as a login with the same password before the
+          // user sees anything.
+          if (mode !== "signup" || classifyAccountError(error, mode).kind !== "switch-to-login") throw error;
+          if (attemptRef.current !== attemptId) return;
+          attemptedMode = "login";
+          await performEmailAuth("login", email, password);
+        }
 
         if (attemptRef.current !== attemptId) return;
-        onboardingLog.info("Onboarding account step completed", { mode });
+        onboardingLog.info("Onboarding account step completed", { mode: attemptedMode });
         setAccountSubmitting(false);
         resetAccountPassword();
-        setAccountOutcome({ mode, email });
+        setAccountOutcome({ mode: attemptedMode, email });
         setAccountSub("signed-in");
         nextStep();
       } catch (error) {
         if (attemptRef.current !== attemptId) return;
-        const submitError = classifyAccountError(error, mode);
-        onboardingLog.error("Onboarding account step failed", { mode, error: submitError.message });
+        const submitError = attemptedMode === "login" && mode === "signup"
+          ? {
+            kind: "retry" as const,
+            message: t("This email already has an account, and that password did not match."),
+          }
+          : classifyAccountError(error, attemptedMode);
+        onboardingLog.error("Onboarding account step failed", { mode: attemptedMode, error: submitError.message });
         setAccountSubmitting(false);
         setAccountSubmitError(submitError);
+        if (attemptedMode !== mode) {
+          // Stay on the same email, now clearly a login, with the password to redo.
+          resetAccountPassword();
+          setAccountFieldIdx(1);
+          setAccountSub("login");
+          setEditingField(true);
+        }
       }
     })();
   }, [accountEmail, accountPassword, accountSub, accountSubmitting, clearErrors, nextStep, resetAccountPassword, setEditingField]);

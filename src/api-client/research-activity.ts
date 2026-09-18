@@ -7,7 +7,16 @@ export type ResearchActivity =
   | "research_viewed"
   | "ticker_saved"
   | "pro_feature_used"
-  | "upgrade_intent";
+  | "upgrade_intent"
+  // First-run funnel, one per step reached. Keep in sync with the server's list.
+  | "onboarding_started"
+  | "onboarding_position_added"
+  | "onboarding_research_opened"
+  | "onboarding_account_viewed"
+  | "onboarding_signed_in"
+  | "onboarding_pro_viewed"
+  | "onboarding_completed"
+  | "onboarding_skipped";
 export type ResearchFeature =
   | "overview"
   | "chart"
@@ -302,14 +311,19 @@ function attributionPayload(): Record<string, string> | undefined {
   return undefined;
 }
 
-/** Counts milestones once per feature/session/account, never their content. */
+/**
+ * Counts milestones once per feature/session/account, never their content.
+ * Native surfaces report anonymously only with an identifier the website
+ * handed over; they still never mint one of their own.
+ */
 export function recordResearchActivity(
   event: ResearchActivity,
   feature?: ResearchFeature,
 ): void {
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
-  if (target === "web" ? !anonymousId : !user) return;
+  if (!user && !anonymousId) return;
+  if (!user && target !== "web" && target !== "desktop") return;
   const key = `${user?.id ?? "guest"}:${event}:${feature ?? ""}`;
   if (sent.has(key)) return;
   sent.add(key);
