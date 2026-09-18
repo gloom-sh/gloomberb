@@ -202,13 +202,22 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
       watchlistId = "watchlist";
       config = { ...config, watchlists: [{ id: watchlistId, name: "Watchlist" }] };
     }
-    for (const metadata of planFirstRunWatchlist(stateRef.current.tickers, watchlistId)) {
+    const plan = planFirstRunWatchlist(stateRef.current.tickers, watchlistId, portfolioId);
+    for (const metadata of plan.create) {
       try {
         const ticker = await pluginRegistry.tickerRepository.createTicker(metadata);
         dispatch({ type: "UPDATE_TICKER", ticker });
         pluginRegistry.events.emit("ticker:added", { symbol: ticker.metadata.ticker, ticker });
       } catch (error) {
         onboardingLog.error("First-run watchlist seed failed", { symbol: metadata.ticker, error: String(error) });
+      }
+    }
+    for (const ticker of plan.update) {
+      try {
+        await pluginRegistry.tickerRepository.saveTicker(ticker);
+        dispatch({ type: "UPDATE_TICKER", ticker });
+      } catch (error) {
+        onboardingLog.error("First-run watchlist update failed", { symbol: ticker.metadata.ticker, error: String(error) });
       }
     }
     const home = buildFirstRunLayout({

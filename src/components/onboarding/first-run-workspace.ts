@@ -10,9 +10,10 @@ import {
 import type { TickerMetadata, TickerRecord } from "../../types/ticker";
 
 /**
- * The watchlist a first run starts with when the user has not built one: the
- * two index ETFs and the names most people recognize, capped so the pane reads
- * at a glance. Holdings the user already added are skipped.
+ * The watchlist a first run lands with: the two index ETFs and the names most
+ * people recognize, capped so the pane reads at a glance. Startup already
+ * seeds a longer default list; this trims it to the cap and drops anything
+ * the user holds, since holdings live in the heatmap next to it.
  */
 export const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | "name" | "exchange" | "assetCategory">> = [
   { ticker: "SPY", name: "SPDR S&P 500 ETF", exchange: "NYSEARCA", assetCategory: "ETF" },
@@ -34,16 +35,40 @@ export const FIRST_RUN_PANE_IDS = {
   sentiment: "fear-greed:home",
 } as const;
 
-/** Symbols to create so the watchlist has rows; holdings already in the list are left alone. */
+export interface FirstRunWatchlistPlan {
+  /** Tickers that do not exist yet and should be created in the watchlist. */
+  create: TickerMetadata[];
+  /** Existing tickers whose watchlist membership changes (joined or left). */
+  update: TickerRecord[];
+}
+
+/**
+ * What the watchlist should contain: the preferred names first, then whatever
+ * the startup seed left, minus holdings, capped. Returns the writes needed to
+ * get there so the caller persists exactly those.
+ */
 export function planFirstRunWatchlist(
   tickers: ReadonlyMap<string, TickerRecord>,
   watchlistId: string,
-): TickerMetadata[] {
-  const present = [...tickers.values()].filter((ticker) => ticker.metadata.watchlists.includes(watchlistId)).length;
-  const room = Math.max(0, FIRST_RUN_WATCHLIST_SIZE - present);
-  return FIRST_RUN_WATCHLIST
-    .filter((seed) => !tickers.has(seed.ticker))
-    .slice(0, room)
+  portfolioId: string,
+): FirstRunWatchlistPlan {
+  const held = (symbol: string) => {
+    const ticker = tickers.get(symbol);
+    return !!ticker && (ticker.metadata.portfolios.includes(portfolioId)
+      || ticker.metadata.positions.some((position) => position.portfolio === portfolioId));
+  };
+  const preferred = FIRST_RUN_WATCHLIST.map((seed) => seed.ticker);
+  const seeded = [...tickers.values()]
+    .filter((ticker) => ticker.metadata.watchlists.includes(watchlistId))
+    .map((ticker) => ticker.metadata.ticker);
+  const keep = new Set<string>();
+  for (const symbol of [...preferred, ...seeded]) {
+    if (keep.size >= FIRST_RUN_WATCHLIST_SIZE) break;
+    if (!held(symbol)) keep.add(symbol);
+  }
+
+  const create = FIRST_RUN_WATCHLIST
+    .filter((seed) => keep.has(seed.ticker) && !tickers.has(seed.ticker))
     .map((seed) => ({
       ticker: seed.ticker,
       name: seed.name,
@@ -56,6 +81,17 @@ export function planFirstRunWatchlist(
       custom: {},
       tags: [],
     }));
+  const update: TickerRecord[] = [];
+  for (const ticker of tickers.values()) {
+    const symbol = ticker.metadata.ticker;
+    const listed = ticker.metadata.watchlists.includes(watchlistId);
+    if (keep.has(symbol) && !listed) {
+      update.push({ ...ticker, metadata: { ...ticker.metadata, watchlists: [...ticker.metadata.watchlists, watchlistId] } });
+    } else if (!keep.has(symbol) && listed) {
+      update.push({ ...ticker, metadata: { ...ticker.metadata, watchlists: ticker.metadata.watchlists.filter((id) => id !== watchlistId) } });
+    }
+  }
+  return { create, update };
 }
 
 /**
@@ -113,8 +149,10 @@ export function buildFirstRunLayout({
       : null;
   if (secondary) instances.push(secondary);
 
-  // The float is a market read that stands on its own, small enough not to
-  // cover the chart. Sentiment when the plugin is installed, else the indices.
+  // The float is a market read that stands on its own: sentiment when the
+  // plugin is installed, else the indices. The shell clamps floats into the
+  // window, so an off-screen origin lands it in the bottom-right corner on
+  // any size, over the news list rather than the chart.
   const floatingPaneId = hasPane("fear-greed")
     ? "fear-greed"
     : secondary?.paneId !== "world-indices" && hasPane("world-indices")
@@ -124,7 +162,7 @@ export function buildFirstRunLayout({
   if (floatingPaneId) {
     const instanceId = floatingPaneId === "fear-greed" ? FIRST_RUN_PANE_IDS.sentiment : FIRST_RUN_PANE_IDS.indices;
     instances.push({ instanceId, paneId: floatingPaneId, binding: { kind: "none" } });
-    floating.push({ instanceId, x: 70, y: 3, width: 46, height: floatingPaneId === "fear-greed" ? 12 : 11 });
+    floating.push({ instanceId, x: 9999, y: 9999, width: 46, height: floatingPaneId === "fear-greed" ? 12 : 11 });
   }
 
   const layout: LayoutConfig = {

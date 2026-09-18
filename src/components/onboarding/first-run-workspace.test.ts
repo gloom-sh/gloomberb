@@ -8,18 +8,37 @@ import {
   planFirstRunWatchlist,
 } from "./first-run-workspace";
 
-function ticker(symbol: string, watchlists: string[] = []): [string, TickerRecord] {
-  return [symbol, { metadata: { ticker: symbol, watchlists, portfolios: ["main"], positions: [] } } as unknown as TickerRecord];
+function ticker(symbol: string, { held = false, watched = false } = {}): [string, TickerRecord] {
+  return [symbol, {
+    metadata: {
+      ticker: symbol,
+      watchlists: watched ? ["watchlist"] : [],
+      portfolios: held ? ["main"] : [],
+      positions: held ? [{ portfolio: "main", shares: 1, avgCost: 1, currency: "USD", broker: "manual" }] : [],
+    },
+  } as unknown as TickerRecord];
 }
 
 describe("first-run workspace", () => {
-  test("seeds the watchlist around existing holdings, capped at seven rows", () => {
-    const seeds = planFirstRunWatchlist(new Map([ticker("AAPL"), ticker("MSFT")]), "watchlist");
-    expect(seeds.map((seed) => seed.ticker)).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
-    expect(seeds[0]).toMatchObject({ watchlists: ["watchlist"], portfolios: [], positions: [], currency: "USD" });
+  test("creates the preferred names, capped at seven, skipping holdings", () => {
+    const plan = planFirstRunWatchlist(new Map([ticker("AAPL", { held: true }), ticker("MSFT", { held: true })]), "watchlist", "main");
+    expect(plan.create.map((seed) => seed.ticker)).toEqual(["SPY", "QQQ", "NVDA", "AMZN", "TSLA"]);
+    expect(plan.create[0]).toMatchObject({ watchlists: ["watchlist"], portfolios: [], positions: [], currency: "USD" });
+    expect(plan.update).toEqual([]);
+  });
 
-    const nearlyFull = new Map(["A", "B", "C", "D", "E", "F"].map((symbol) => ticker(symbol, ["watchlist"])));
-    expect(planFirstRunWatchlist(nearlyFull, "watchlist").map((seed) => seed.ticker)).toEqual(["SPY"]);
+  test("trims the startup seed to seven and drops holdings from it", () => {
+    // Startup seeds twelve names; the user holds two of them.
+    const seeded = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "TSLA", "META", "BRK.B", "JPM", "V", "BTC-USD", "ETH-USD"];
+    const tickers = new Map(seeded.map((symbol) => ticker(symbol, { watched: true, held: symbol === "AAPL" || symbol === "NVDA" })));
+    const plan = planFirstRunWatchlist(tickers, "watchlist", "main");
+    expect(plan.create.map((seed) => seed.ticker)).toEqual(["SPY", "QQQ"]);
+    const left = plan.update.filter((entry) => !entry.metadata.watchlists.includes("watchlist")).map((entry) => entry.metadata.ticker).sort();
+    expect(left).toEqual(["AAPL", "BRK.B", "BTC-USD", "ETH-USD", "JPM", "NVDA", "V"]);
+    expect(plan.update.every((entry) => !entry.metadata.watchlists.includes("watchlist"))).toBe(true);
+    const kept = seeded.filter((symbol) => !left.includes(symbol));
+    expect(kept).toEqual(["MSFT", "GOOGL", "AMZN", "TSLA", "META"]);
+    expect(kept.length + plan.create.length).toBe(7);
   });
 
   test("lays out heatmap, watchlist, chart and news, floating a market read", () => {
