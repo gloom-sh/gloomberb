@@ -1289,12 +1289,11 @@ export const ja: Record<string, string> = {
   "Gloom Cloud adds the data layer: quotes, news, filings and Ask Gloom, synced to every device. Free account.": "Gloom Cloud はデータ層を追加します: 株価、ニュース、開示、Ask Gloom を全端末で同期。無料アカウント。",
   "Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.": "アラート付き即時検索、テーゼ監視、オプションフロー、採用・報酬データ。",
   "MCP server": "MCP サーバー",
-  "Real-time quotes, options, news wire, X": "リアルタイムの株価、オプション、ニュースワイヤー、X",
-  "Real-time {ticker}, options, news wire, X": "リアルタイムの {ticker}、オプション、ニュースワイヤー、X",
   "Search, theses and flow": "検索、テーゼ、フロー",
   "Transcripts, summaries, guidance and scores.": "書き起こし、要約、ガイダンス、スコア。",
   "YOUR WORKSPACE": "あなたのワークスペース",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "保有銘柄のヒートマップ、ウォッチリスト、{ticker} のチャート。ペインは自由に動かせ、{shortcut} で追加できます。",
   "b: sign in with the browser instead": "b: ブラウザーでサインイン",
   "Sign in with the browser instead": "ブラウザーでサインイン",
+  "Real-time market data": "リアルタイム市場データ",
 };

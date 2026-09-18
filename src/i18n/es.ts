@@ -1293,12 +1293,11 @@ export const es: Record<string, string> = {
   "Gloom Cloud adds the data layer: quotes, news, filings and Ask Gloom, synced to every device. Free account.": "Gloom Cloud añade la capa de datos: cotizaciones, noticias, informes y Ask Gloom, sincronizados en todos tus dispositivos. Cuenta gratuita.",
   "Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.": "Búsqueda instantánea con alertas, seguimiento de tesis, flujo de opciones, datos de contratación y compensación.",
   "MCP server": "Servidor MCP",
-  "Real-time quotes, options, news wire, X": "Cotizaciones, opciones, teletipo de noticias y X en tiempo real",
-  "Real-time {ticker}, options, news wire, X": "{ticker} en tiempo real, opciones, teletipo de noticias, X",
   "Search, theses and flow": "Búsqueda, tesis y flujo",
   "Transcripts, summaries, guidance and scores.": "Transcripciones, resúmenes, guías y puntuaciones.",
   "YOUR WORKSPACE": "TU ESPACIO DE TRABAJO",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "Tus posiciones como mapa de calor, una lista de seguimiento y el gráfico de {ticker}. Cada panel se mueve; {shortcut} añade más.",
   "b: sign in with the browser instead": "b: iniciar sesión con el navegador",
   "Sign in with the browser instead": "Iniciar sesión con el navegador",
+  "Real-time market data": "Datos de mercado en tiempo real",
 };

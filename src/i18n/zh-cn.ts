@@ -1289,12 +1289,11 @@ export const zhCN: Record<string, string> = {
   "Gloom Cloud adds the data layer: quotes, news, filings and Ask Gloom, synced to every device. Free account.": "Gloom Cloud 提供数据层：行情、新闻、公告和 Ask Gloom，同步到所有设备。免费账户。",
   "Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.": "即时搜索与提醒、论点监测、期权资金流、招聘和薪酬数据。",
   "MCP server": "MCP 服务器",
-  "Real-time quotes, options, news wire, X": "实时行情、期权、新闻线和 X",
-  "Real-time {ticker}, options, news wire, X": "实时 {ticker}、期权、新闻线、X",
   "Search, theses and flow": "搜索、论点与资金流",
   "Transcripts, summaries, guidance and scores.": "逐字稿、摘要、业绩指引和评分。",
   "YOUR WORKSPACE": "你的工作区",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "持仓热力图、自选列表和 {ticker} 的图表。每个面板都可移动；{shortcut} 可添加更多。",
   "b: sign in with the browser instead": "b：改用浏览器登录",
   "Sign in with the browser instead": "改用浏览器登录",
+  "Real-time market data": "实时市场数据",
 };

@@ -944,7 +944,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
   if (stage === "upgrade") {
     const primaryLabel = planAccess.hasProAccess ? t("Continue with Pro") : t("Start 7-day free trial");
     const monthlyPrice = formatCloudMonthlyPrice(pricing);
-    const ticker = progress.tickerSymbol;
     return (
       <OnboardingModal width={70} height={26}>
         <OnboardingHeader
@@ -968,8 +967,12 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
             ? t("This account already has real-time Cloud data.")
             : t("7 days free. Card required. Cancel anytime.")}
         />
-        {/* Ranked by what a new account asks for first. */}
+        {/* Ranked: the data itself first, then what reads it. */}
         <Box flexDirection="column" style={desktop ? { marginTop: ONBOARDING_DESKTOP.afterHeader, gap: 10 } : undefined}>
+          <OnboardingFeature
+            title={t("Real-time market data")}
+            description={t("Free is 15 minutes behind on quotes and 12 hours on news.")}
+          />
           <OnboardingFeature
             title={t("MCP server")}
             description={t("Claude Code, Codex or Cursor call Gloom's research tools.")}
@@ -977,10 +980,6 @@ export function OnboardingWizard({ pluginRegistry, importBrokerPositions, onComp
           <OnboardingFeature
             title={t("Ask Gloom")}
             description={t("Answers cite filings, calls and news.")}
-          />
-          <OnboardingFeature
-            title={ticker ? tf("Real-time {ticker}, options, news wire, X", { ticker }) : t("Real-time quotes, options, news wire, X")}
-            description={t("Free is 15 minutes behind on quotes and 12 hours on news.")}
           />
           <OnboardingFeature
             title={t("Earnings calls")}

@@ -694,7 +694,7 @@ describe("OnboardingWizard", () => {
       await pressEnter();
 
       const frame = await waitForFrame("Start 7-day free trial");
-      expect(frame).toContain("Real-time AAPL");
+      expect(frame).toContain("Real-time market data");
       expect(frame).not.toContain("Check your email");
       expect(signUps).toEqual(["research@example.com"]);
       expect(capturedConfig?.onboardingProgress).toMatchObject({ stage: "upgrade", accountStatus: "signed-in" });

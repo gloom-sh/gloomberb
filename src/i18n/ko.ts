@@ -1287,12 +1287,11 @@ export const ko: Record<string, string> = {
   "Gloom Cloud adds the data layer: quotes, news, filings and Ask Gloom, synced to every device. Free account.": "Gloom Cloud는 데이터 계층을 더합니다: 시세, 뉴스, 공시, Ask Gloom을 모든 기기에 동기화. 무료 계정.",
   "Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.": "알림이 있는 즉시 검색, 투자 논지 모니터링, 옵션 플로우, 채용 및 보상 데이터.",
   "MCP server": "MCP 서버",
-  "Real-time quotes, options, news wire, X": "실시간 시세, 옵션, 뉴스 와이어, X",
-  "Real-time {ticker}, options, news wire, X": "실시간 {ticker}, 옵션, 뉴스 와이어, X",
   "Search, theses and flow": "검색, 투자 논지, 플로우",
   "Transcripts, summaries, guidance and scores.": "전문, 요약, 가이던스, 점수.",
   "YOUR WORKSPACE": "내 워크스페이스",
   "Your holdings as a heatmap, a watchlist, and {ticker} charted. Every pane moves; {shortcut} adds more.": "보유 종목 히트맵, 관심 목록, {ticker} 차트. 모든 패널을 옮길 수 있고 {shortcut}로 더 추가합니다.",
   "b: sign in with the browser instead": "b: 브라우저로 로그인",
   "Sign in with the browser instead": "브라우저로 로그인",
+  "Real-time market data": "실시간 시장 데이터",
 };
