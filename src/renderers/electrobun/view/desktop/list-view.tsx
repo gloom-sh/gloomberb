@@ -29,11 +29,16 @@ function DefaultDesktopRow({
       alignItems="center"
       style={{ boxSizing: "border-box" }}
     >
-      <Box flexDirection="row" alignItems="center" minWidth={0} flexShrink={1}>
+      <Box flexDirection="row" alignItems="center" minWidth={0} flexShrink={1} overflow="hidden">
         <Text
           fg={selected ? colors.text : colors.textDim}
           attributes={selected ? TextAttributes.BOLD : 0}
           style={{
+            // The base text style pins flexShrink to 0, which lets a long
+            // label run under the detail instead of shrinking to an ellipsis.
+            flexShrink: 1,
+            minWidth: 0,
+            maxWidth: "100%",
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",

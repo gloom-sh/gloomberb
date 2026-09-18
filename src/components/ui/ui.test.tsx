@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, createRef, useEffect, useRef, useState } from "react";
 import { setLanguage } from "../../i18n";
 import { TestDialogProvider, emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../renderers/opentui/test-utils";
+import { Box } from "../../ui";
 import { AppContext, PaneInstanceProvider, createInitialState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { DataTableView } from "../data-table/view";
@@ -682,6 +683,31 @@ describe("shared UI kit", () => {
     const frame = testSetup.captureCharFrame();
     expect(frame).toContain("Row 9");
     expect(frame).not.toContain("Row 1");
+  });
+
+  test("shortens a long list row label instead of running into its detail", async () => {
+    testSetup = await testRender(
+      <Box width={36} height={3}>
+        <ListView
+          items={[
+            { id: "long", label: "Will another result occur for the next Israeli election?", detail: "Polymarket" },
+            { id: "short", label: "AAPL · Revenue", detail: "Quarterly" },
+          ]}
+          selectedIndex={0}
+          height={2}
+          surface="plain"
+        />
+      </Box>,
+      { width: 36, height: 3 },
+    );
+
+    await act(async () => {
+      await testSetup!.renderOnce();
+    });
+
+    const [first, second] = testSetup.captureCharFrame().split("\n");
+    expect(first).toMatch(/^\u25b8 Will .*\.\.\..* Polymarket$/);
+    expect(second).toBe("  AAPL · Revenue           Quarterly");
   });
 
   test("masks password text fields", async () => {

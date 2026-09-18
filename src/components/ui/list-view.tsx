@@ -64,21 +64,29 @@ function DefaultRow({
   selected: boolean;
 }) {
   const colors = useThemeColors();
+  // The label gives way to the detail: a long label is cut with an ellipsis
+  // instead of wrapping under the row or running into the right column.
   return (
-    <Box flexDirection="row" justifyContent="space-between" width="100%">
-      <Box flexDirection="row">
-        <Text fg={selected ? colors.selectedText : colors.textDim}>
+    <Box flexDirection="row" justifyContent="space-between" width="100%" minWidth={0}>
+      <Box flexDirection="row" flexShrink={1} minWidth={0} overflow="hidden">
+        <Text fg={selected ? colors.selectedText : colors.textDim} flexShrink={0}>
           {selected ? "\u25b8 " : "  "}
         </Text>
         <Text
           fg={selected ? colors.text : colors.textDim}
           attributes={selected ? TextAttributes.BOLD : 0}
+          wrapMode="none"
+          truncate
+          flexShrink={1}
+          minWidth={0}
         >
           {t(item.label)}
         </Text>
       </Box>
       {item.detail && (
-        <Text fg={selected ? colors.textMuted : colors.textMuted}>{t(item.detail)}</Text>
+        <Box flexShrink={0} paddingLeft={1}>
+          <Text fg={colors.textMuted}>{t(item.detail)}</Text>
+        </Box>
       )}
     </Box>
   );

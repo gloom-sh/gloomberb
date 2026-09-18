@@ -203,7 +203,13 @@ export function ChartSeriesQuickAdd({
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query, suggestions.length]);
+  }, [query]);
+
+  // Plugin catalogs land after the securities: only pull a stranded cursor
+  // back into range, so a row the user already moved to stays selected.
+  useEffect(() => {
+    setSelectedIndex((current) => clampSelection(current, suggestions.length));
+  }, [suggestions.length]);
 
   useEffect(() => {
     if (focused || !active) return;

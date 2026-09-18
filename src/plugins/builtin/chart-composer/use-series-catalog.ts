@@ -17,6 +17,7 @@ import {
 
 const EMPTY_TICKERS: ReadonlyMap<string, TickerRecord> = new Map();
 const EMPTY_RECENT: readonly string[] = [];
+const MAX_SERIES_SUGGESTIONS = 8;
 const DEFAULT_CATALOG_INSTRUMENTS: readonly SeriesCatalogInstrument[] = [
   { symbol: "AAPL", exchange: "NASDAQ", name: "Apple Inc." },
   { symbol: "MSFT", exchange: "NASDAQ", name: "Microsoft Corporation" },
@@ -217,7 +218,7 @@ export function useSeriesCatalogSuggestions({
     const controller = new AbortController();
     setProviderSearch({ query: normalizedQuery, suggestions: [], loading: true, error: null });
     const timer = setTimeout(() => {
-      void searchChartSeriesCapabilities(registry, normalizedQuery, 8, controller.signal).then((items) => {
+      void searchChartSeriesCapabilities(registry, normalizedQuery, MAX_SERIES_SUGGESTIONS, controller.signal).then((items) => {
         if (!cancelled) setProviderSearch({
           query: normalizedQuery,
           suggestions: buildCapabilitySeriesSuggestions(items),
@@ -293,10 +294,14 @@ export function useSeriesCatalogSuggestions({
   const instruments = search.query === analysis.instrumentQuery
     ? search.instruments
     : [];
+  // Securities and metrics come first: they are what most searches are after,
+  // and they arrive well before plugin catalogs (which can take seconds), so
+  // late plugin results append below instead of pushing the list around.
   const suggestions = useMemo(() => {
     const builtIn = buildSeriesCatalogSuggestions(query, defaultInstrument, instruments);
     const provider = providerSearch.query === query.trim() ? providerSearch.suggestions : [];
-    return [...provider, ...builtIn.filter((entry) => !provider.some((candidate) => candidate.id === entry.id))].slice(0, 8);
+    return [...builtIn, ...provider.filter((entry) => !builtIn.some((candidate) => candidate.id === entry.id))]
+      .slice(0, MAX_SERIES_SUGGESTIONS);
   }, [defaultInstrument, instruments, providerSearch, query]);
 
   return {

@@ -204,7 +204,13 @@ export function useSeriesEditorController({
 
   useEffect(() => {
     setQuickAddSelection(0);
-  }, [quickAddQuery, quickAddSuggestions.length]);
+  }, [quickAddQuery]);
+
+  // Plugin catalogs land after the securities: only pull a stranded cursor
+  // back into range, so a row the user already moved to stays selected.
+  useEffect(() => {
+    setQuickAddSelection((current) => clampIndex(current, quickAddSuggestions.length));
+  }, [quickAddSuggestions.length]);
 
   useEffect(() => {
     if (!keyboardTargets.includes(keyboardFocus)) updateKeyboardFocus("add");
