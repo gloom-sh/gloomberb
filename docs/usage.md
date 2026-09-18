@@ -151,6 +151,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `DM @user [@user...]` | Open or start a direct or group chat |
 | `ACM` | Gloom Cloud account settings |
 | `NOTE` | Notes |
+| `THESIS [tickers]` | Investment theses board (Gloom Cloud) |
 | `IBKR` | IBKR trading pane |
 | `BR` | Broker connections |
 | `CHG` | Changelog |
@@ -262,6 +263,12 @@ An independent current bond quote must declare its own price basis. A percent-of
 ## Gloom Cloud sign-in
 
 Sign in with email and password, or pick `Log In with QR Code` from the command bar and scan the code with the Gloomberb mobile companion app to sign the terminal in without typing. The onboarding wizard offers the same QR option as the recommended path, with email and password as the alternative.
+
+## Theses
+
+A thesis is why you hold something, written so it can be checked: the instruments it holds, the pillars that must stay true, the kill conditions that would make you sell, and dated catalysts. Every ticker has a Thesis tab next to Notes, and a portfolio or watchlist row's context menu has a Thesis entry; `THESIS` opens the board, sorted by what needs a ruling, with the share of the book sitting on weakening or broken theses and the positions that have no thesis yet, biggest first. `THESIS NVDA AMD` starts one on a basket or a pair; the ticker prompt takes several symbols separated by spaces or commas. On the board, `/` searches by ticker or company, `p` cycles the portfolio in view, and `w` compares conviction with weight.
+
+Theses are stored in Gloom Cloud for any signed-in account, personal or shared with a team; teammates can challenge a pillar. Signals only ever wait for your ruling: accept, dismiss with a reason, or snooze. Resetting a kill condition that fired requires a note on the revision. Drafting a thesis from a sentence, and reviewing it against fundamentals and news (`r`), need Pro.
 
 ## Localized interface
 

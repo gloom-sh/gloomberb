@@ -100,7 +100,8 @@
           "buildout",
           "chat",
           "congress-trades",
-          "team"
+          "team",
+          "thesis-board"
         ],
         "capabilities": [
           "asset-data.gloomberb-cloud",

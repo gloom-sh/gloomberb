@@ -27,6 +27,7 @@ import { CloudApiSocket } from "./socket";
 import { CloudCollectionsApi } from "./collections";
 import { CloudNotesApi } from "./notes";
 import { CloudTeamsApi } from "./teams";
+import { CloudThesesApi } from "./theses";
 import { CloudViewsApi } from "./views";
 import type {
   AssistCommandDescriptor,
@@ -42,6 +43,7 @@ export { ASKGTransportError } from "./askg";
 export type { ASKGToolResultOutcome, ASKGTransport } from "./askg";
 export { setCloudApiFetchTransport } from "./request";
 export { NoteConflictError } from "./notes";
+export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
 export { TEAM_ACCENT_COLORS } from "./types";
 export type * from "./types";
@@ -107,6 +109,7 @@ class GloomApiClient {
   });
   private readonly data: CloudDataApi = new CloudDataApi((path, options) => this.request(path, options));
   private readonly notes: CloudNotesApi = new CloudNotesApi((path, options) => this.request(path, options));
+  private readonly theses: CloudThesesApi = new CloudThesesApi((path, options) => this.request(path, options));
   private readonly collections: CloudCollectionsApi = new CloudCollectionsApi((path, options) => this.request(path, options));
   private readonly views: CloudViewsApi = new CloudViewsApi((path, options) => this.request(path, options));
   readonly askg: CloudASKGApi = new CloudASKGApi({
@@ -627,6 +630,17 @@ class GloomApiClient {
   getCloudNote = this.notes.getNote.bind(this.notes);
   putCloudNote = this.notes.putNote.bind(this.notes);
   deleteCloudNote = this.notes.deleteNote.bind(this.notes);
+  listTheses = this.theses.listTheses.bind(this.theses);
+  getThesis = this.theses.getThesis.bind(this.theses);
+  createThesis = this.theses.createThesis.bind(this.theses);
+  updateThesis = this.theses.updateThesis.bind(this.theses);
+  deleteThesis = this.theses.deleteThesis.bind(this.theses);
+  listThesisRevisions = this.theses.listThesisRevisions.bind(this.theses);
+  listThesisSignals = this.theses.listThesisSignals.bind(this.theses);
+  createThesisSignal = this.theses.createThesisSignal.bind(this.theses);
+  resolveThesisSignal = this.theses.resolveThesisSignal.bind(this.theses);
+  reviewThesis = this.theses.reviewThesis.bind(this.theses);
+  draftThesis = this.theses.draftThesis.bind(this.theses);
   listTeamCollections = this.collections.listTeamCollections.bind(this.collections);
   getTeamCollection = this.collections.getTeamCollection.bind(this.collections);
   createTeamCollection = this.collections.createTeamCollection.bind(this.collections);
