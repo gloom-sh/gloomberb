@@ -162,7 +162,7 @@ export function buildFirstRunLayout({
   if (floatingPaneId) {
     const instanceId = floatingPaneId === "fear-greed" ? FIRST_RUN_PANE_IDS.sentiment : FIRST_RUN_PANE_IDS.indices;
     instances.push({ instanceId, paneId: floatingPaneId, binding: { kind: "none" } });
-    floating.push({ instanceId, x: 9999, y: 9999, width: 46, height: floatingPaneId === "fear-greed" ? 12 : 11 });
+    floating.push({ instanceId, x: 9999, y: 9999, width: floatingPaneId === "fear-greed" ? 46 : 60, height: 12 });
   }
 
   const layout: LayoutConfig = {
