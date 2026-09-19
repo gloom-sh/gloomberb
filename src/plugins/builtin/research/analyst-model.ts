@@ -1,8 +1,10 @@
-import type { DataTableColumn } from "../../../components";
+import type { DataTableColumn, PaneFooterSegment } from "../../../components";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
-import { formatCurrency, formatNumber } from "../../../utils/format";
+import { formatRelativeTime } from "../../../utils/datetime-format";
+import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { loadingErrorFooterInfo } from "../shared/table-pane";
 
 function compactPeriod(period: string): string {
   return period
@@ -19,10 +21,13 @@ export function targetUpside(target: AnalystResearchData["priceTarget"]): number
   return (target.average - target.current) / target.current;
 }
 
+function isCurrentMonthPeriod(period: string | undefined): boolean {
+  return ["current month", "0m"].includes((period ?? "").trim().toLowerCase().replace(/_/g, " "));
+}
+
 export function latestRecommendation(data: AnalystResearchData | null) {
   const rows = data?.recommendations ?? [];
-  return rows.find((row) => ["current month", "0m"].includes(row.period.trim().toLowerCase().replace(/_/g, " ")))
-    ?? rows[0] ?? null;
+  return rows.find((row) => isCurrentMonthPeriod(row.period)) ?? rows[0] ?? null;
 }
 
 function recommendationCount(value: number | undefined): number | null {
@@ -235,7 +240,49 @@ export function nextRatingSortPreference(
   };
 }
 
-export function buildAnalystSummaryLines(data: AnalystResearchData | null): string[] {
+function footerSegmentWidth(segment: PaneFooterSegment): number {
+  return segment.parts.reduce(
+    (total, part, index) => total + displayWidth(part.text) + (index > 0 ? 1 : 0),
+    0,
+  );
+}
+
+/**
+ * A status bar shrinks its segments into each other, which would leave a
+ * reader with `rating 7.` and a label whose value never arrives. Keep whole
+ * segments in falling order of worth instead, and drop the rest.
+ */
+function fitFooterSegments(segments: PaneFooterSegment[], availableWidth: number): PaneFooterSegment[] {
+  const fitted: PaneFooterSegment[] = [];
+  let used = 0;
+  for (const segment of segments) {
+    const width = footerSegmentWidth(segment) + (fitted.length > 0 ? 1 : 0);
+    if (used + width > availableWidth) break;
+    fitted.push(segment);
+    used += width;
+  }
+  return fitted;
+}
+
+/**
+ * The consensus context a reader needs while reading the actions, kept in the
+ * status bar: it belongs to the whole response rather than to any row, so it
+ * would otherwise sit as a fixed block above the table it describes. Loading
+ * and failure come first and keep their room; context fills what is left.
+ */
+export function buildAnalystFooterInfo(
+  data: AnalystResearchData | null,
+  { width, loading, error }: { width: number; loading: boolean; error: string | null },
+): PaneFooterSegment[] {
+  const lead = loadingErrorFooterInfo(loading, error);
+  const leadWidth = lead.reduce((total, segment) => total + footerSegmentWidth(segment) + 1, 0);
+  return [
+    ...lead,
+    ...fitFooterSegments(buildAnalystStatusSegments(data), Math.max(0, width - 2 - leadWidth)),
+  ];
+}
+
+export function buildAnalystStatusSegments(data: AnalystResearchData | null): PaneFooterSegment[] {
   if (!data) return [];
 
   const target = data.priceTarget;
@@ -243,21 +290,137 @@ export function buildAnalystSummaryLines(data: AnalystResearchData | null): stri
   const price = (value: number | undefined) => formatAnalystPrice(value, currency);
   const rec = latestRecommendation(data);
   const total = recommendationTotal(data);
-  const lines: string[] = [];
+  const segments: PaneFooterSegment[] = [];
 
-  if (target) {
-    lines.push(`low ${price(target.low)}   med ${price(target.median)}   high ${price(target.high)}`);
-    if (target.current != null) lines.push(`Upside reference price ${price(target.current)}`);
+  if (data.stale) segments.push({ id: "analyst-stale", parts: [{ text: "stale", tone: "warning" }] });
+
+  if (target && [target.low, target.median, target.high].some((value) => value != null)) {
+    segments.push({
+      id: "analyst-target-range",
+      parts: [
+        { text: "low", tone: "label" }, { text: price(target.low) },
+        { text: "med", tone: "label" }, { text: price(target.median) },
+        { text: "high", tone: "label" }, { text: price(target.high) },
+      ],
+    });
   }
 
-  if (data.fetchedAt || data.stale) lines.push(`${data.stale ? "Stale data" : "Fetched"}${data.fetchedAt ? ` ${data.fetchedAt}` : ""}`);
-  if (data.recommendationRating != null || rec || total != null) {
-    lines.push([
-      data.recommendationRating != null ? `rating ${formatRatingLabel(data.recommendationRating)}` : null,
-      rec ? formatRecommendationMix(data) : null,
-      total != null ? `${total} analysts${rec?.period ? ` (${compactPeriod(rec.period)})` : ""}` : rec?.period ? compactPeriod(rec.period) : null,
-    ].filter(Boolean).join("   "));
+  if (data.recommendationRating != null) {
+    segments.push({
+      id: "analyst-rating",
+      parts: [{ text: "rating", tone: "label" }, { text: formatRatingLabel(data.recommendationRating) }],
+    });
   }
 
-  return lines;
+  // Only an older mix needs its period named; the current one is the default.
+  const period = rec && rec.period && !isCurrentMonthPeriod(rec.period) ? compactPeriod(rec.period) : null;
+  if (rec || total != null) {
+    segments.push({
+      id: "analyst-mix",
+      parts: [
+        ...(rec ? [{ text: formatRecommendationMix(data) }] : []),
+        ...(total != null
+          ? [{ text: `${total} analysts${period ? ` (${period})` : ""}`, tone: "muted" as const }]
+          : period ? [{ text: period, tone: "muted" as const }] : []),
+      ],
+    });
+  }
+
+  // The upside is only as good as the price it was measured against.
+  if (target?.current != null) {
+    segments.push({
+      id: "analyst-reference-price",
+      parts: [{ text: "upside vs", tone: "label" }, { text: price(target.current) }],
+    });
+  }
+
+  if (!data.stale && data.fetchedAt) {
+    segments.push({
+      id: "analyst-fetched",
+      parts: [{ text: `fetched ${formatRelativeTime(data.fetchedAt)} ago`, tone: "muted" }],
+    });
+  }
+
+  return segments;
+}
+
+export interface AnalystTargetHistoryPoint {
+  /** Day a covered firm published, ISO `yyyy-mm-dd`. */
+  date: string;
+  average: number;
+  firms: number;
+}
+
+const TARGET_HISTORY_WINDOW_DAYS = 365;
+const TARGET_HISTORY_SPAN_DAYS = 730;
+const TARGET_HISTORY_MIN_FIRMS = 3;
+const DAY_MS = 86_400_000;
+
+function ratingDayTimestamp(date: string | undefined): number | null {
+  const parsed = Date.parse(`${date?.trim() ?? ""}T00:00:00Z`);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function publishedTarget(row: AnalystRatingRecord): number | null {
+  const target = row.currentPriceTarget;
+  return target != null && Number.isFinite(target) && target > 0 ? target : null;
+}
+
+/**
+ * Rebuilds the target consensus out of the dated targets the ratings history
+ * carries: on each day a firm publishes, the mean of every covered firm's most
+ * recent target. Targets leave the window instead of anchoring the mean
+ * forever, and the prior attached to a rating stays out because the source
+ * never dates it. This is not the provider's own historical mean, which is
+ * never served for a past day: firms absent from the ratings history cannot be
+ * in it, so the last point and the reported average usually differ.
+ *
+ * Older days still build coverage, but only the recent span is returned: a
+ * source that reaches back years on a handful of firms would otherwise spend
+ * the whole chart on a decade nobody is reading it for.
+ */
+export function buildAnalystTargetHistory(
+  ratings: readonly AnalystRatingRecord[],
+  options: { windowDays?: number; spanDays?: number; minFirms?: number } = {},
+): AnalystTargetHistoryPoint[] {
+  const windowMs = Math.max(1, options.windowDays ?? TARGET_HISTORY_WINDOW_DAYS) * DAY_MS;
+  const spanMs = Math.max(1, options.spanDays ?? TARGET_HISTORY_SPAN_DAYS) * DAY_MS;
+  const minFirms = Math.max(1, options.minFirms ?? TARGET_HISTORY_MIN_FIRMS);
+
+  // The source lists the newest action first, so a firm's first entry on a day
+  // is the one that stands for that day.
+  const published = new Map<string, { day: number; firm: string; target: number }>();
+  for (const row of ratings) {
+    const firm = row.firm?.trim().toLocaleLowerCase();
+    const day = ratingDayTimestamp(row.date);
+    const target = publishedTarget(row);
+    if (!firm || day == null || target == null) continue;
+    const key = `${day}:${firm}`;
+    if (!published.has(key)) published.set(key, { day, firm, target });
+  }
+
+  const observations = [...published.values()].sort((left, right) => left.day - right.day);
+  const firstShownDay = (observations.at(-1)?.day ?? 0) - spanMs;
+  const latestByFirm = new Map<string, { day: number; target: number }>();
+  const history: AnalystTargetHistoryPoint[] = [];
+
+  observations.forEach((observation, index) => {
+    latestByFirm.set(observation.firm, { day: observation.day, target: observation.target });
+    // One point per day, after every firm that published that day is in.
+    if (observations[index + 1]?.day === observation.day) return;
+
+    for (const [firm, entry] of latestByFirm) {
+      if (observation.day - entry.day > windowMs) latestByFirm.delete(firm);
+    }
+    if (latestByFirm.size < minFirms || observation.day < firstShownDay) return;
+
+    const total = [...latestByFirm.values()].reduce((sum, entry) => sum + entry.target, 0);
+    history.push({
+      date: new Date(observation.day).toISOString().slice(0, 10),
+      average: total / latestByFirm.size,
+      firms: latestByFirm.size,
+    });
+  });
+
+  return history;
 }

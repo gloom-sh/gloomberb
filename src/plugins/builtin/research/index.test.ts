@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import {
-  buildAnalystSummaryLines,
   buildRatingColumns,
   formatRatingTarget,
   nextRatingSortPreference,
@@ -143,40 +142,6 @@ describe("analyst rating columns", () => {
     expect(formatRatingTarget(narrowPrior, "USD", targetColumn).indexOf("→")).toBe(
       formatRatingTarget(widePrior, "USD", targetColumn).indexOf("→"),
     );
-  });
-});
-
-describe("analyst summary", () => {
-  test("keeps target range and recommendation mix in the body summary", () => {
-    const lines = buildAnalystSummaryLines({
-      providerId: "test",
-      symbol: "AMD",
-      currency: "USD",
-      priceTarget: {
-        current: 467.5,
-        average: 472.17,
-        low: 225,
-        median: 482.5,
-        high: 625,
-        currency: "USD",
-      },
-      recommendationRating: 8.8,
-      recommendations: [{
-        period: "current month",
-        strongBuy: 12,
-        buy: 18,
-        hold: 4,
-        sell: 1,
-        strongSell: 0,
-      }],
-      ratings,
-      earningsEstimates: [],
-      revenueEstimates: [],
-    } satisfies AnalystResearchData);
-
-    expect(lines[0]).toBe("low $225.00   med $482.50   high $625.00");
-    expect(lines[1]).toBe("Upside reference price $467.50");
-    expect(lines[2]).toBe("rating 8.8/10   SB 12  B 18  H 4  S 1   35 analysts (month)");
   });
 });
 

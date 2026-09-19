@@ -1,16 +1,19 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Text, TextAttributes } from "../../../ui";
 import {
   DataTableView,
+  StaticChartSurface,
   usePaneFooter,
   type DataTableCell,
   type DataTableKeyEvent,
 } from "../../../components";
+import type { ProjectedChartPoint } from "../../../components/chart/core/data";
+import { resolveChartPalette } from "../../../components/chart/core/palette";
 import type { AnalystResearchData } from "../../../types/financials";
 import { blendHex, colors, priceColor } from "../../../theme/colors";
-import { formatPercent } from "../../../utils/format";
+import { displayWidth, formatPercent } from "../../../utils/format";
 import { useAssetData } from "../../runtime";
-import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
+import { handleRefreshKey, useClampSelectedIndex } from "../shared/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useBoundTicker as useSymbolBinding, useTickerRequest } from "../shared/ticker-request";
@@ -19,25 +22,31 @@ import {
   DEFAULT_RATING_SORT,
   analystTargetCurrency,
   formatAnalystPrice,
-  buildAnalystSummaryLines,
+  formatPriceTarget,
+  buildAnalystFooterInfo,
+  buildAnalystTargetHistory,
   buildRatingColumns,
   formatRatingTarget,
   nextRatingSortPreference,
   ratingTargetDelta,
   sortRatingRows,
   targetUpside,
+  type AnalystTargetHistoryPoint,
   type RatingColumn,
   type RatingSortPreference,
 } from "./analyst-model";
 
 export {
-  buildAnalystSummaryLines,
   buildRatingColumns,
   formatRatingTarget,
   nextRatingSortPreference,
   sortRatingRows,
   type RatingSortPreference,
 } from "./analyst-model";
+
+/** Enough of the pane to keep a readable table under the chart. */
+const MIN_CHART_PANE_HEIGHT = 16;
+const MIN_CHART_POINTS = 3;
 
 function ratingActionColor(action: string | undefined): string {
   const normalized = action?.toLowerCase() ?? "";
@@ -51,36 +60,89 @@ function ratingTargetBackground(delta: number | null): string | undefined {
   return blendHex(colors.bg, delta > 0 ? colors.positive : colors.negative, 0.42);
 }
 
+function targetHistoryPoints(history: AnalystTargetHistoryPoint[]): ProjectedChartPoint[] {
+  return history.map((point) => ({
+    date: new Date(`${point.date}T00:00:00Z`),
+    open: point.average,
+    high: point.average,
+    low: point.average,
+    close: point.average,
+    volume: 0,
+  }));
+}
+
 /**
- * Price targets and the recommendation mix are pane content, not status, so the
- * summary block owns them and the footer stays empty unless something changed.
+ * The reported target and its upside stay in the body because the chart under
+ * them is a different measure: the rest of the consensus context lives in the
+ * status bar rather than in a fixed block above the actions.
  */
-function AnalystSummary({ data }: { data: AnalystResearchData | null }) {
+function AnalystHeadline({ data, legend, width }: {
+  data: AnalystResearchData | null;
+  legend: string | null;
+  width: number;
+}) {
   const target = data?.priceTarget;
   const upside = targetUpside(target);
   const currency = analystTargetCurrency(data);
-  const lines = buildAnalystSummaryLines(data);
 
   // The table body already reports loading, error, and empty states.
   if (!data) return null;
 
+  const averageText = formatAnalystPrice(target?.average, currency);
+  const upsideText = upside != null ? formatPercent(upside) : "-";
+  const headlineWidth = displayWidth(`${averageText} avg target ${upsideText} upside`);
+  // A legend the row cannot hold would crowd the number it explains.
+  const fittedLegend = legend && width - 2 - headlineWidth - 2 >= displayWidth(legend) ? legend : null;
+
   return (
-    <Box flexDirection="column" paddingX={1} height={1 + lines.length}>
-      <Box height={1} flexDirection="row">
-        <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-          {formatAnalystPrice(target?.average, currency)}
-        </Text>
-        <Text fg={colors.textDim}> avg target </Text>
-        <Text fg={upside == null ? colors.textDim : priceColor(upside)}>
-          {upside != null ? formatPercent(upside) : "-"}
-        </Text>
-        <Text fg={colors.textDim}> upside</Text>
-      </Box>
-      {lines.map((line) => (
-        <Box key={line} height={1}>
-          <Text fg={colors.textDim}>{line}</Text>
-        </Box>
-      ))}
+    <Box flexDirection="row" paddingX={1} height={1} flexShrink={0} overflow="hidden">
+      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{averageText}</Text>
+      <Text fg={colors.textDim}> avg target </Text>
+      <Text fg={upside == null ? colors.textDim : priceColor(upside)}>{upsideText}</Text>
+      <Text fg={colors.textDim}> upside</Text>
+      {fittedLegend ? (
+        <>
+          <Box flexGrow={1} />
+          <Text fg={colors.textMuted}>{fittedLegend}</Text>
+        </>
+      ) : null}
+    </Box>
+  );
+}
+
+function TargetHistoryChart({
+  history,
+  currency,
+  width,
+  height,
+}: {
+  history: AnalystTargetHistoryPoint[];
+  currency: string | undefined;
+  width: number;
+  height: number;
+}) {
+  const points = useMemo(() => targetHistoryPoints(history), [history]);
+  const first = history[0]?.average;
+  const last = history.at(-1)?.average;
+  // Read the line the way the table reads a raise or a cut.
+  const palette = resolveChartPalette(colors, first == null || last == null || last === first
+    ? "neutral"
+    : last > first ? "positive" : "negative");
+
+  return (
+    <Box flexDirection="column" paddingX={1} height={height} flexShrink={0}>
+      <StaticChartSurface
+        points={points}
+        width={Math.max(10, width - 2)}
+        height={height}
+        mode="step"
+        calendarSpaced
+        colors={palette}
+        showTimeAxis
+        timeAxisColor={colors.textDim}
+        yAxisColor={colors.textDim}
+        formatYAxisValue={(value) => formatPriceTarget(value, currency)}
+      />
     </Box>
   );
 }
@@ -107,6 +169,14 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
     () => buildRatingColumns(data?.ratings ?? [], ratingCurrency),
     [data?.ratings, ratingCurrency],
   );
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  useEffect(() => { setSelectedIdx(0); }, [symbol, exchange]);
+  useClampSelectedIndex(rows.length, selectedIdx, setSelectedIdx);
+
+  const targetHistory = useMemo(() => buildAnalystTargetHistory(data?.ratings ?? []), [data?.ratings]);
+  const showChart = targetHistory.length >= MIN_CHART_POINTS && height >= MIN_CHART_PANE_HEIGHT;
+  const chartHeight = showChart ? Math.min(10, Math.max(5, Math.floor((height - 1) * 0.3))) : 0;
+  const chartFirms = targetHistory.at(-1)?.firms ?? 0;
 
   const renderCell = useCallback((
     row: AnalystResearchData["ratings"][number],
@@ -147,18 +217,42 @@ export function AnalystResearchView({ focused, width, height }: { focused: boole
   }, []);
 
   usePaneFooter("analyst-research", () => ({
-    info: loadingErrorFooterInfo(loading, authWall ? null : error),
-  }), [authWall, error, loading]);
+    info: buildAnalystFooterInfo(authWall ? null : data, {
+      width,
+      loading,
+      error: authWall ? null : error,
+    }),
+  }), [authWall, data, error, loading, width]);
 
   if (authWall) return <SignInWall action="view analyst research" needsVerification={cloudSession.needsVerification} />;
 
   return (
     <DataTableView<AnalystResearchData["ratings"][number], RatingColumn>
       focused={focused}
-      selection={{ kind: "none" }}
+      selection={{
+        kind: "index",
+        selectedIndex: rows.length > 0 ? selectedIdx : -1,
+        onChange: (index) => setSelectedIdx(index),
+      }}
       rootWidth={width}
       rootHeight={height}
-      rootBefore={<AnalystSummary data={data} />}
+      rootBefore={(
+        <>
+          <AnalystHeadline
+            data={data}
+            width={width}
+            legend={showChart ? `mean of ${chartFirms} rated firms' latest targets` : null}
+          />
+          {showChart ? (
+            <TargetHistoryChart
+              history={targetHistory}
+              currency={ratingCurrency}
+              width={width}
+              height={chartHeight}
+            />
+          ) : null}
+        </>
+      )}
       onRootKeyDown={handleKeyDown}
       columns={columns}
       items={rows}

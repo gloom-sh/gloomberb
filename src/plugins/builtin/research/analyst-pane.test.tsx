@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { act } from "react";
-import { testRender } from "../../../renderers/opentui/test-utils";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { emitKeypress, testRender } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import type { AnalystResearchData } from "../../../types/financials";
+import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
 import type { DataProvider } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box } from "../../../ui";
@@ -58,7 +59,7 @@ function makeTicker(symbol: string): TickerRecord {
   });
 }
 
-function AnalystHarness({ provider }: { provider: DataProvider }) {
+function AnalystHarness({ provider, height }: { provider: DataProvider; height: number }) {
   const config = createTestPaneConfig("/tmp/gloomberb-analyst-pane-test", {
     instanceId: TEST_PANE_ID,
     paneId: "analyst-research",
@@ -71,16 +72,28 @@ function AnalystHarness({ provider }: { provider: DataProvider }) {
 
   return (
     <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime({ getMarketData: () => provider })}>
-      <Box flexDirection="column" width={WIDTH} height={HEIGHT}>
-        <AnalystResearchView width={WIDTH} height={HEIGHT} focused />
-      </Box>
+      <PaneFooterProvider>
+        {(footer) => (
+          <Box flexDirection="column" width={WIDTH} height={height}>
+            <Box width={WIDTH} height={height - 1}>
+              <AnalystResearchView width={WIDTH} height={height - 1} focused />
+            </Box>
+            <PaneFooterBar footer={footer} focused width={WIDTH} />
+          </Box>
+        )}
+      </PaneFooterProvider>
     </TestPaneProvider>
   );
 }
 
-async function renderHarness(provider: DataProvider): Promise<void> {
+async function renderHarness(data: AnalystResearchData, height = HEIGHT): Promise<void> {
+  const provider = {
+    id: "test",
+    name: "Test",
+    getAnalystResearch: async () => data,
+  } as unknown as DataProvider;
   await act(async () => {
-    testSetup = await testRender(<AnalystHarness provider={provider} />, { width: WIDTH, height: HEIGHT });
+    testSetup = await testRender(<AnalystHarness provider={provider} height={height} />, { width: WIDTH, height });
   });
   for (let attempt = 0; attempt < 6; attempt += 1) {
     await act(async () => {
@@ -103,11 +116,7 @@ afterEach(async () => {
  * header that advertised an average target.
  */
 test("renders each rating's price target and only dashes the rows without one", async () => {
-  await renderHarness({
-    id: "test",
-    name: "Test",
-    getAnalystResearch: async () => research,
-  } as unknown as DataProvider);
+  await renderHarness(research);
 
   const frame = testSetup!.captureCharFrame();
   expect(frame).toContain("$50.46 avg target");
@@ -117,4 +126,38 @@ test("renders each rating's price target and only dashes the rows without one", 
   expect(noTargetRow).toBeDefined();
   expect(noTargetRow).not.toMatch(/\$\d/);
   expect(noTargetRow).toContain("-");
+});
+
+/**
+ * The consensus context used to sit in a fixed block above a table that could
+ * not be moved through at all, because the pane declared no row selection.
+ */
+test("arrows walk the actions while the consensus context stays in the status bar", async () => {
+  // Newest first, one action a day, so row order follows the firm number.
+  const ratings: AnalystRatingRecord[] = Array.from({ length: 40 }, (_, index) => ({
+    date: new Date(Date.UTC(2026, 7, 26) - index * 86_400_000).toISOString().slice(0, 10),
+    firm: `Firm ${String(index).padStart(2, "0")}`,
+    action: "Raises",
+    current: "Buy",
+    currentPriceTarget: 40 + index,
+  }));
+  await renderHarness({ ...research, ratings, fetchedAt: "2026-08-27T10:00:00Z" }, 24);
+
+  const before = testSetup!.captureCharFrame();
+  expect(before).toContain("low $23.00 med $46.50 high $94.00");
+  expect(before).toContain("rating 6.1/10");
+  expect(before).toContain("upside vs $38.40");
+  // Body keeps the headline and the chart it labels, not the whole summary.
+  expect(before).toContain("$50.46 avg target");
+  expect(before).toContain("latest targets");
+  expect(before).not.toContain("Upside reference price");
+
+  const offscreenFirm = "Firm 20";
+  expect(before).toContain("Firm 00");
+  expect(before).not.toContain(offscreenFirm);
+  for (let step = 0; step < 20; step += 1) {
+    await emitKeypress(testSetup!, { name: "down", sequence: "\u001b[B" }, { frames: 2 });
+  }
+  await act(async () => { await Bun.sleep(200); await testSetup!.renderOnce(); });
+  expect(testSetup!.captureCharFrame()).toContain(offscreenFirm);
 });

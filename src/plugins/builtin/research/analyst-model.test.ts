@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { AnalystResearchData } from "../../../types/financials";
-import { analystTargetCurrency, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
+import type { AnalystRatingRecord, AnalystResearchData } from "../../../types/financials";
+import { analystTargetCurrency, buildAnalystFooterInfo, buildAnalystStatusSegments, buildAnalystTargetHistory, formatAnalystPrice, formatRecommendationMix, latestRecommendation, recommendationMix, recommendationTotal, targetUpside } from "./analyst-model";
 const data: AnalystResearchData = { symbol: "FIX", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] };
 const complete = { period: "current month", strongBuy: 2, buy: 3, hold: 4, sell: 0, strongSell: 0 };
 
@@ -24,6 +24,72 @@ test("consensus total requires every finite nonnegative integer bucket", () => {
     expect(formatRecommendationMix(incomplete)).toBe("SB 2  B 3  H 4  S -");
   }
   expect(recommendationTotal({ ...data, recommendations: [{ ...complete, strongBuy: 0, buy: 0, hold: 0 }] })).toBe(0);
+});
+
+test("status segments name an older mix's period and never claim fresh stale data", () => {
+  const research: AnalystResearchData = {
+    ...data,
+    currency: "USD",
+    priceTarget: { current: 467.5, average: 472.17, low: 225, median: 482.5, high: 625, currency: "USD" },
+    recommendationRating: 8.8,
+    fetchedAt: new Date(Date.now() - 7_200_000).toISOString(),
+    recommendations: [complete],
+  };
+  const text = (research: AnalystResearchData) => buildAnalystStatusSegments(research)
+    .map((segment) => segment.parts.map((part) => part.text).join(" ")).join(" · ");
+
+  expect(text(research)).toBe(
+    "low $225.00 med $482.50 high $625.00 · rating 8.8/10 · SB 2  B 3  H 4  S 0 9 analysts"
+    + " · upside vs $467.50 · fetched 2h ago",
+  );
+  expect(text({ ...research, recommendations: [{ ...complete, period: "previous month" }] }))
+    .toContain("9 analysts (prev month)");
+  const stale = text({ ...research, stale: true });
+  expect(stale.startsWith("stale · ")).toBe(true);
+  expect(stale).not.toContain("fetched");
+
+  // A narrow pane drops whole segments instead of shrinking them into stubs,
+  // and a failure keeps its room ahead of the context.
+  const info = (width: number, error: string | null = null) =>
+    buildAnalystFooterInfo(research, { width, loading: false, error })
+      .map((segment) => segment.parts.map((part) => part.text).join(" "));
+  expect(info(200)).toHaveLength(5);
+  expect(info(60)).toEqual(["low $225.00 med $482.50 high $625.00", "rating 8.8/10"]);
+  expect(info(60, "provider down")).toEqual(["provider down", "low $225.00 med $482.50 high $625.00"]);
+});
+
+test("rebuilt target history dates one point per publishing day and ages firms out", () => {
+  const rating = (date: string, firm: string, currentPriceTarget?: number): AnalystRatingRecord => ({
+    date,
+    firm,
+    ...(currentPriceTarget == null ? {} : { currentPriceTarget }),
+    // An undated prior must never reach the mean.
+    priorPriceTarget: 999,
+  });
+  // Newest first, the order the source serves.
+  const ratings = [
+    rating("2026-05-10", "Zenith", 120),
+    rating("2026-05-10", "zenith ", 110),
+    rating("2026-05-10", "Beta", 60),
+    rating("2026-03-01", "No Target"),
+    rating("2026-03-01", "Zenith", 90),
+    rating("2026-02-01", "Beta", 30),
+    rating("2025-03-01", "Alpha", 300),
+  ];
+
+  // Alpha holds its target until it leaves the window before 2026-05-10, and
+  // Zenith's two rows of one day collapse into the one served first.
+  expect(buildAnalystTargetHistory(ratings, { minFirms: 2 })).toEqual([
+    { date: "2026-02-01", average: 165, firms: 2 },
+    { date: "2026-03-01", average: 140, firms: 3 },
+    { date: "2026-05-10", average: 90, firms: 2 },
+  ]);
+  expect(buildAnalystTargetHistory(ratings, { minFirms: 3 })).toEqual([
+    { date: "2026-03-01", average: 140, firms: 3 },
+  ]);
+  expect(buildAnalystTargetHistory(ratings, { minFirms: 2, windowDays: 7 })).toEqual([
+    { date: "2026-05-10", average: 90, firms: 2 },
+  ]);
 });
 
 test("explicit current month is selected without inventing an observation date", () => {
