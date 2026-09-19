@@ -906,7 +906,6 @@ export const ko: Record<string, string> = {
   "force refresh": "강제 새로고침",
   "dit": "편집",
   "syncing": "동기화 중",
-  "{count} online": "{count}명 온라인",
   "reply": "답장",
   "Someone": "누군가",
   "@{author} mentioned you in chat.": "@{author}님이 채팅에서 나를 멘션했습니다.",

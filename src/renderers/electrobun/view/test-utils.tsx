@@ -19,16 +19,25 @@ const renderer: RendererHost = {
   notify() {},
 };
 
-const ui = {
-  kind: "desktop-web",
-  capabilities: { cellWidthPx: 8, cellHeightPx: 18, fractionalViewport: true },
-  Box: WebBox, Text: WebText, Span: WebSpan, ScrollBox: WebScrollBox,
-  Button: WebButton, Input: WebInput, TextField: WebTextField,
-  SpinnerMark: () => null,
-} as unknown as UiHost;
+const BASE_CAPABILITIES = { cellWidthPx: 8, cellHeightPx: 18, fractionalViewport: true };
+
+function createUi(capabilities: UiHost["capabilities"]): UiHost {
+  return {
+    kind: "desktop-web",
+    capabilities: { ...BASE_CAPABILITIES, ...capabilities },
+    Box: WebBox, Text: WebText, Span: WebSpan, ScrollBox: WebScrollBox,
+    Button: WebButton, Input: WebInput, TextField: WebTextField,
+    SpinnerMark: () => null,
+  } as unknown as UiHost;
+}
 
 /** Each suite owns its DOM, including roots and globals even when an assertion fails. */
-export function createDomTestHarness({ withUi = true } = {}) {
+export function createDomTestHarness({ withUi = true, capabilities }: {
+  withUi?: boolean;
+  /** Merged over the defaults, for surfaces that only exist on desktop chrome. */
+  capabilities?: UiHost["capabilities"];
+} = {}) {
+  const ui = createUi(capabilities);
   const window = new Window({ url: "http://localhost" });
   const roots = new Set<Root>();
   const globals = {

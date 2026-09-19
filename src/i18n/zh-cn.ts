@@ -908,7 +908,6 @@ export const zhCN: Record<string, string> = {
   "force refresh": "强制刷新",
   "dit": "编辑",
   "syncing": "同步中",
-  "{count} online": "{count} 人在线",
   "reply": "回复",
   "Someone": "某人",
   "@{author} mentioned you in chat.": "@{author} 在聊天中提到了你。",

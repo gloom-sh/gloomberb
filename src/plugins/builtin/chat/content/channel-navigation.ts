@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import type { MutableRefObject } from "react";
 import type { ChatChannel } from "../../../../api-client";
 import { useThrottledCommitValue } from "../../../../react/use-throttled-commit-value";
 import { teamIdFromChannelId } from "../../cloud/team/model";
 import { teamStore } from "../../cloud/team/store";
+import { chatSidebarStore } from "../sidebar-store";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
   normalizeChannelId,
@@ -39,40 +40,48 @@ export function useChatChannelNavigation({
   showChannelSidebar: boolean;
 }): {
   cycleChannel: (direction: 1 | -1) => boolean;
-  directExpanded: boolean;
+  expandDirectSection: () => void;
   focusChannelSidebar: () => boolean;
   focusChatContent: () => boolean;
   moveSidebarChannelSelection: (direction: "up" | "down") => boolean;
   selectSidebarChannel: (channelId: string) => void;
-  setDirectExpanded: Dispatch<SetStateAction<boolean>>;
   setSidebarFocused: (nextFocused: boolean) => void;
   sidebarCursorChannelId: string;
   sidebarFocused: boolean;
   sidebarFocusedRef: MutableRefObject<boolean>;
 } {
   const [sidebarFocused, setSidebarFocusedState] = useState(false);
-  const [directExpanded, setDirectExpanded] = useState(true);
   const sidebarFocusedRef = useRef(false);
   const setSidebarFocused = useCallback((nextFocused: boolean) => {
     sidebarFocusedRef.current = nextFocused;
     setSidebarFocusedState((current) => (current === nextFocused ? current : nextFocused));
   }, []);
+  const expandDirectSection = useCallback(() => {
+    chatSidebarStore.setSectionCollapsed("direct", false);
+  }, []);
   const collapsedTeams = useSyncExternalStore(
     (onChange) => teamStore.subscribe(onChange),
     () => teamStore.getSnapshot().collapsedTeams,
   );
-  // Mirrors the sidebar's order: public, then each team's channels unless the
-  // team is folded, then DMs when expanded.
+  const collapsedSections = useSyncExternalStore(
+    (onChange) => chatSidebarStore.subscribe(onChange),
+    () => chatSidebarStore.getSnapshot().collapsedSections,
+  );
+  // Mirrors the sidebar's order: public unless folded, then each team's
+  // channels unless the team is folded, then DMs when expanded. Keyboard
+  // navigation has to skip whatever the sidebar is not drawing.
   const sidebarNavigationChannels = useMemo(() => {
-    const publicChannels = channels.filter((channel) => (channel.kind ?? "public") === "public");
+    const publicChannels = collapsedSections.has("public")
+      ? []
+      : channels.filter((channel) => (channel.kind ?? "public") === "public");
     const teamChannels = channels.filter((channel) =>
       channel.kind === "team" && !collapsedTeams.has(teamIdFromChannelId(channel.id) ?? channel.id),
     );
-    const conversationChannels = channels.filter((channel) => channel.kind === "direct" || channel.kind === "group");
-    return directExpanded
-      ? [...publicChannels, ...teamChannels, ...conversationChannels]
-      : [...publicChannels, ...teamChannels];
-  }, [channels, collapsedTeams, directExpanded]);
+    const conversationChannels = collapsedSections.has("direct")
+      ? []
+      : channels.filter((channel) => channel.kind === "direct" || channel.kind === "group");
+    return [...publicChannels, ...teamChannels, ...conversationChannels];
+  }, [channels, collapsedSections, collapsedTeams]);
 
   const changeChannel = useCallback((nextChannelId: string) => {
     const normalized = normalizeChannelId(nextChannelId);
@@ -104,9 +113,9 @@ export function useChatChannelNavigation({
   useEffect(() => {
     const activeChannel = channels.find((channel) => channel.id === channelId);
     if (activeChannel?.kind === "direct" || activeChannel?.kind === "group") {
-      setDirectExpanded(true);
+      expandDirectSection();
     }
-  }, [channelId, channels]);
+  }, [channelId, channels, expandDirectSection]);
 
   const cycleChannel = useCallback((direction: 1 | -1) => {
     if (channels.length <= 1 || !onChannelChange) return false;
@@ -175,12 +184,11 @@ export function useChatChannelNavigation({
 
   return {
     cycleChannel,
-    directExpanded,
+    expandDirectSection,
     focusChannelSidebar,
     focusChatContent,
     moveSidebarChannelSelection,
     selectSidebarChannel,
-    setDirectExpanded,
     setSidebarFocused,
     sidebarCursorChannelId,
     sidebarFocused,

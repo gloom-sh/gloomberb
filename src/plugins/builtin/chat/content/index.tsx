@@ -1,5 +1,5 @@
 import { Box, Text, useUiCapabilities } from "../../../../ui";
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
 import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -18,6 +18,7 @@ import { ChatTranscript } from "./transcript";
 import {
   ChannelSidebar,
 } from "../sidebar";
+import { chatSidebarStore } from "../sidebar-store";
 import { useChatSnapshotState } from "./snapshot";
 import { useChatContentShortcuts } from "./shortcuts";
 import type { ChatContentController } from "./types";
@@ -92,11 +93,16 @@ export function ChatContent({
   const prependAnchorRef = useRef<ChatPrependAnchor | null>(null);
   const previousEditingChannelIdRef = useRef(channelId);
   const useDefaultControllerChannel = channelId === DEFAULT_CHAT_CHANNEL_ID && !onChannelChange;
+  const sidebarWidth = useSyncExternalStore(
+    (onChange) => chatSidebarStore.subscribe(onChange),
+    () => chatSidebarStore.getSnapshot().width,
+  );
   const initialWidthMetrics = resolveChatContentWidthMetrics({
     width,
     height,
     channelCount: initialSnapshot.channels.length,
     nativePaneChrome,
+    sidebarWidth,
   });
   const composerTextWidthRef = useRef(initialWidthMetrics.composerTextWidth);
   const inputValueRef = useRef(initialSnapshot.draft);
@@ -130,7 +136,6 @@ export function ChatContent({
     loadingOlderMessages,
     messages,
     messagesError,
-    onlineCount,
     replyTo,
     setReplyTo,
     user,
@@ -162,6 +167,7 @@ export function ChatContent({
     height,
     channelCount: channels.length,
     nativePaneChrome,
+    sidebarWidth,
   });
   composerTextWidthRef.current = composerTextWidth;
   const canSend = !!user?.emailVerified;
@@ -286,12 +292,11 @@ export function ChatContent({
 
   const {
     cycleChannel,
-    directExpanded,
+    expandDirectSection,
     focusChannelSidebar,
     focusChatContent,
     moveSidebarChannelSelection,
     selectSidebarChannel,
-    setDirectExpanded,
     setSidebarFocused,
     sidebarCursorChannelId,
     sidebarFocused,
@@ -334,11 +339,11 @@ export function ChatContent({
     const channel = usernames.length === 1
       ? await controller.openDirectChannel({ username: usernames[0] })
       : await controller.openGroupChannel({ usernames });
-    setDirectExpanded(true);
+    expandDirectSection();
     selectSidebarChannel(channel.id);
     setSidebarFocused(false);
     closeNewDmDialog();
-  }, [closeNewDmDialog, controller, selectSidebarChannel, setDirectExpanded, setSidebarFocused]);
+  }, [closeNewDmDialog, controller, expandDirectSection, selectSidebarChannel, setSidebarFocused]);
 
   useEffect(() => {
     if (!focused && newDmOpen) {
@@ -380,7 +385,7 @@ export function ChatContent({
     latestEditableMessageId,
     replyTo,
     setEditingMessage,
-    setDirectExpanded,
+    expandDirectSection,
     setFollowMessages,
     setReplyTo,
     setSelectedIdx,
@@ -531,8 +536,8 @@ export function ChatContent({
           channels={channels}
           channelStates={channelStates}
           activeChannelId={sidebarFocused ? sidebarCursorChannelId : channelId}
-          onlineCount={onlineCount}
           width={channelSidebarWidth}
+          paneWidth={width}
           height={height}
           focused={focused}
           keyboardFocused={sidebarFocused}
@@ -541,14 +546,12 @@ export function ChatContent({
           canCreateConversation={!!user?.emailVerified}
           needsProfileSetup={!!user?.id && ownProfileConfigured === false}
           onOpenProfile={openProfileSetup}
-          directExpanded={directExpanded}
           onSelect={selectSidebarChannel}
           onFocusRequest={() => setSidebarFocused(true)}
           onCreateConversation={openNewDmDialog}
           onToggleNotifications={(nextChannelId, enabled) => {
             controller.setChannelNotificationsEnabled(nextChannelId, enabled);
           }}
-          onToggleDirectExpanded={() => setDirectExpanded((expanded) => !expanded)}
           onCreateTeamChannel={(teamId) => openTeamPane(createPaneFromTemplate, { teamId, section: "channels" })}
         />
       )}

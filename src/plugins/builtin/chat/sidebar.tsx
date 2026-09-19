@@ -2,6 +2,7 @@ import { ActionRow } from "../../../components/ui/action-row";
 import { useMemo, useSyncExternalStore } from "react";
 import {
   getPaneSidebarWidth,
+  getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
   PaneSidebarRow,
@@ -10,11 +11,12 @@ import {
 import { Box, Span, Text, useUiCapabilities } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import { colors } from "../../../theme/colors";
-import { t, tf } from "../../../i18n";
+import { t } from "../../../i18n";
 import type { ChatChannel, TeamSummary } from "../../../api-client";
 import { sortTeamChannels, teamAccentHex, teamPrefix } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import type { ChatController } from "./controller";
+import { chatSidebarStore } from "./sidebar-store";
 import {
   channelPrefix,
   formatChannelLabel,
@@ -22,14 +24,21 @@ import {
 } from "./channels";
 
 const DESKTOP_NOTIFICATION_ICON_WIDTH = 3;
-const DESKTOP_ONLINE_COUNT_PADDING_X = 1;
+/** Leading gutter plus the one-column active marker every channel row carries. */
+const CHANNEL_ROW_INDENT = 2;
+/** Width of a header's trailing action, so its label truncates clear of it. */
+const SECTION_ACTION_WIDTH = 3;
 
 export function shouldShowChannelSidebar(channelCount: number, width: number, height: number): boolean {
   return shouldShowPaneSidebar(channelCount, width, height);
 }
 
-export function getChannelSidebarWidth(width: number, nativePaneChrome: boolean): number {
-  return getPaneSidebarWidth(width, nativePaneChrome);
+export function getChannelSidebarWidth(
+  width: number,
+  nativePaneChrome: boolean,
+  preferredWidth?: number | null,
+): number {
+  return getPaneSidebarWidth(width, nativePaneChrome, preferredWidth);
 }
 
 function ChannelNotificationIcon({
@@ -144,56 +153,58 @@ export function ChannelSidebar({
   channels,
   channelStates,
   activeChannelId,
-  onlineCount,
   width,
+  paneWidth,
   height,
   focused,
   keyboardFocused,
   loading,
   canManageNotifications,
   canCreateConversation,
-  directExpanded,
   needsProfileSetup = false,
   onSelect,
   onFocusRequest,
   onCreateConversation,
   onOpenProfile,
   onToggleNotifications,
-  onToggleDirectExpanded,
   onCreateTeamChannel,
 }: {
   channels: ChatChannel[];
   channelStates: ReturnType<ChatController["getSnapshot"]>["channelStates"];
   activeChannelId: string;
-  onlineCount: number;
   width: number;
+  /** Width of the whole chat pane, which caps how far the sidebar can grow. */
+  paneWidth: number;
   height: number;
   focused: boolean;
   keyboardFocused: boolean;
   loading: boolean;
   canManageNotifications: boolean;
   canCreateConversation: boolean;
-  directExpanded: boolean;
   needsProfileSetup?: boolean;
   onSelect?: (channelId: string) => void;
   onFocusRequest?: () => void;
   onCreateConversation?: () => void;
   onOpenProfile?: () => void;
   onToggleNotifications?: (channelId: string, enabled: boolean) => void;
-  onToggleDirectExpanded?: () => void;
   onCreateTeamChannel?: (teamId: string) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   const notificationWidth = canManageNotifications ? (nativePaneChrome ? DESKTOP_NOTIFICATION_ICON_WIDTH : 2) : 0;
-  const onlineCountPaddingX = nativePaneChrome ? DESKTOP_ONLINE_COUNT_PADDING_X : 0;
   const channelStateById = useMemo(() => new Map(channelStates.map((state) => [state.channelId, state])), [channelStates]);
   const publicChannels = useMemo(() => channels.filter((channel) => (channel.kind ?? "public") === "public"), [channels]);
   const conversationChannels = useMemo(() => channels.filter((channel) => channel.kind === "direct" || channel.kind === "group"), [channels]);
-  const conversationUnread = conversationChannels.some((channel) => (channelStateById.get(channel.id)?.unreadCount ?? 0) > 0);
+  const hasUnread = (section: ChatChannel[]) => section.some((channel) => (channelStateById.get(channel.id)?.unreadCount ?? 0) > 0);
   const teamSnapshot = useSyncExternalStore(
     (onChange) => teamStore.subscribe(onChange),
     () => teamStore.getSnapshot(),
   );
+  const sidebarSnapshot = useSyncExternalStore(
+    (onChange) => chatSidebarStore.subscribe(onChange),
+    () => chatSidebarStore.getSnapshot(),
+  );
+  const publicExpanded = !sidebarSnapshot.collapsedSections.has("public");
+  const directExpanded = !sidebarSnapshot.collapsedSections.has("direct");
   // Team channels sit between the public channels and DMs, one section per
   // team in the team's accent. A channel whose team is not loaded yet still
   // shows, under its own id, so nothing disappears while the store refreshes.
@@ -207,20 +218,22 @@ export function ChannelSidebar({
       byTeam.set(teamId, entry);
     }
     return [...byTeam.entries()]
-      .map(([teamId, entry]) => ({ teamId, ...entry }))
+      .map(([teamId, entry]) => ({ teamId, ...entry, channels: sortTeamChannels(entry.channels) }))
       .sort((a, b) => (a.team?.name ?? "").localeCompare(b.team?.name ?? ""));
   }, [channels, teamSnapshot.teams]);
   const sidebarRows = useMemo(() => [
-    ...publicChannels.map((channel) => ({ kind: "channel" as const, channel })),
+    ...(publicChannels.length > 0 ? [{ kind: "public-header" as const, channels: publicChannels }] : []),
+    ...(publicExpanded ? publicChannels.map((channel) => ({ kind: "channel" as const, channel })) : []),
     ...teamSections.flatMap((section) => [
       { kind: "team-header" as const, teamId: section.teamId, team: section.team, channels: section.channels },
       ...(teamSnapshot.collapsedTeams.has(section.teamId)
         ? []
         : section.channels.map((channel) => ({ kind: "channel" as const, channel }))),
     ]),
-    ...(conversationChannels.length > 0 || canCreateConversation ? [{ kind: "direct-header" as const }] : []),
+    ...(conversationChannels.length > 0 || canCreateConversation ? [{ kind: "direct-header" as const, channels: conversationChannels }] : []),
     ...(directExpanded ? conversationChannels.map((channel) => ({ kind: "channel" as const, channel })) : []),
-  ], [canCreateConversation, conversationChannels, directExpanded, publicChannels, teamSections, teamSnapshot.collapsedTeams]);
+  ], [canCreateConversation, conversationChannels, directExpanded, publicChannels, publicExpanded, teamSections, teamSnapshot.collapsedTeams]);
+  const widthRange = getPaneSidebarWidthRange(paneWidth);
 
   return (
     <PaneSidebar
@@ -228,71 +241,97 @@ export function ChannelSidebar({
       height={height}
       focused={focused}
       keyboardFocused={keyboardFocused}
+      resize={{
+        min: widthRange.min,
+        max: widthRange.max,
+        onResize: (nextWidth) => chatSidebarStore.setWidth(nextWidth),
+        onResizeEnd: (nextWidth) => chatSidebarStore.commitWidth(nextWidth),
+      }}
     >
       {({ backgroundColor: sidebarBg, listWidth }) => {
-        const labelWidth = Math.max(listWidth - 3 - notificationWidth, 1);
+        const labelWidth = Math.max(listWidth - CHANNEL_ROW_INDENT - notificationWidth, 1);
+        // Every section reads the same: a caret, a label, and an optional
+        // trailing action, so their channels can all share one indent.
+        const sectionHeader = ({ key, label, fg, unread, expanded, onToggle, action }: {
+          key: string;
+          label: string;
+          fg?: string;
+          unread: boolean;
+          expanded: boolean;
+          onToggle: () => void;
+          action?: { ariaLabel: string; onPress: () => void };
+        }) => {
+          const rowWidth = Math.max(1, listWidth - (action ? SECTION_ACTION_WIDTH : 0));
+          return (
+            <Box
+              key={key}
+              height={1}
+              width={listWidth}
+              flexDirection="row"
+              backgroundColor={sidebarBg}
+            >
+              <ActionRow
+                label={truncateChannelLabel(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
+                active={unread}
+                expanded={expanded}
+                fg={fg}
+                width={rowWidth}
+                onPress={onToggle}
+              />
+              {action ? (
+                <PaneSidebarAction
+                  width={SECTION_ACTION_WIDTH}
+                  ariaLabel={action.ariaLabel}
+                  onPress={action.onPress}
+                >
+                  {({ foregroundColor, onMouseDown }) => (
+                    <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>+</Text>
+                  )}
+                </PaneSidebarAction>
+              ) : null}
+            </Box>
+          );
+        };
         return (
           <>
             {sidebarRows.map((row) => {
+              if (row.kind === "public-header") {
+                return sectionHeader({
+                  key: "public-header",
+                  label: "Channels",
+                  unread: hasUnread(row.channels),
+                  expanded: publicExpanded,
+                  onToggle: () => chatSidebarStore.toggleSectionCollapsed("public"),
+                });
+              }
               if (row.kind === "team-header") {
-                const unread = row.channels.some((channel) => (channelStateById.get(channel.id)?.unreadCount ?? 0) > 0);
-                const accent = row.team ? teamAccentHex(row.team.accentColor) : colors.textDim;
-                const label = row.team ? `${teamPrefix(row.team)} ${row.team.name}` : "Team";
-                const expanded = !teamSnapshot.collapsedTeams.has(row.teamId);
                 const canAddChannel = !!row.team && !!onCreateTeamChannel;
-                return (
-                  <Box
-                    key={`team-header:${row.teamId}`}
-                    height={1}
-                    width={listWidth}
-                    flexDirection="row"
-                    backgroundColor={sidebarBg}
-                  >
-                    <ActionRow
-                      label={truncateChannelLabel(label, Math.max(1, listWidth - 2 - (canAddChannel ? 3 : 0)))}
-                      active={unread}
-                      expanded={expanded}
-                      fg={accent}
-                      width={Math.max(1, listWidth - (canAddChannel ? 3 : 0))}
-                      onPress={() => teamStore.toggleTeamCollapsed(row.teamId)}
-                    />
-                    {canAddChannel ? (
-                      <PaneSidebarAction
-                        width={3}
-                        ariaLabel={`New channel in ${row.team?.name ?? "team"}`}
-                        onPress={() => onCreateTeamChannel?.(row.teamId)}
-                      >
-                        {({ foregroundColor, onMouseDown }) => (
-                          <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>+</Text>
-                        )}
-                      </PaneSidebarAction>
-                    ) : null}
-                  </Box>
-                );
+                return sectionHeader({
+                  key: `team-header:${row.teamId}`,
+                  label: row.team ? `${teamPrefix(row.team)} ${row.team.name}` : "Team",
+                  fg: row.team ? teamAccentHex(row.team.accentColor) : colors.textDim,
+                  unread: hasUnread(row.channels),
+                  expanded: !teamSnapshot.collapsedTeams.has(row.teamId),
+                  onToggle: () => teamStore.toggleTeamCollapsed(row.teamId),
+                  action: canAddChannel
+                    ? {
+                      ariaLabel: `New channel in ${row.team?.name ?? "team"}`,
+                      onPress: () => onCreateTeamChannel?.(row.teamId),
+                    }
+                    : undefined,
+                });
               }
               if (row.kind === "direct-header") {
-                return (
-                  <Box
-                    key="direct-header"
-                    height={1}
-                    width={listWidth}
-                    flexDirection="row"
-                    backgroundColor={sidebarBg}
-                  >
-                    <ActionRow label="DMs" active={conversationUnread} expanded={directExpanded} width={Math.max(1, listWidth - (canCreateConversation ? 3 : 0))} onPress={onToggleDirectExpanded} />
-                    {canCreateConversation ? (
-                      <PaneSidebarAction
-                        width={3}
-                        ariaLabel="New DM"
-                        onPress={onCreateConversation}
-                      >
-                        {({ foregroundColor, onMouseDown }) => (
-                          <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>+</Text>
-                        )}
-                      </PaneSidebarAction>
-                    ) : null}
-                  </Box>
-                );
+                return sectionHeader({
+                  key: "direct-header",
+                  label: "DMs",
+                  unread: hasUnread(row.channels),
+                  expanded: directExpanded,
+                  onToggle: () => chatSidebarStore.toggleSectionCollapsed("direct"),
+                  action: canCreateConversation
+                    ? { ariaLabel: "New DM", onPress: () => onCreateConversation?.() }
+                    : undefined,
+                });
               }
               const channel = row.channel;
               const active = channel.id === activeChannelId;
@@ -361,12 +400,6 @@ export function ChannelSidebar({
                 <Text fg={colors.textDim}>{` ${t("syncing")}`}</Text>
               </Box>
             )}
-            <Box height={1} width={listWidth} flexDirection="row" paddingX={onlineCountPaddingX}>
-              <Text fg={colors.positive}>●</Text>
-              <Text fg={colors.textDim}>
-                {` ${truncateChannelLabel(tf("{count} online", { count: onlineCount }), Math.max(listWidth - 2 - onlineCountPaddingX * 2, 1))}`}
-              </Text>
-            </Box>
           </>
         );
       }}

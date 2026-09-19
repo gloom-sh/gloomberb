@@ -893,7 +893,6 @@ export const es: Record<string, string> = {
   "force refresh": "forzar actualización",
   "dit": "ditar",
   "syncing": "sincronizando",
-  "{count} online": "{count} en línea",
   "reply": "responder",
   "Someone": "Alguien",
   "@{author} mentioned you in chat.": "@{author} te mencionó en el chat.",

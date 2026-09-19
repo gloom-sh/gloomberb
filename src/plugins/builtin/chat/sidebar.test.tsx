@@ -231,6 +231,55 @@ describe("ChatContent channel sidebar", () => {
     expect(setup().captureCharFrame()).not.toContain("#options");
   });
 
+  test("folding the Channels header hides public channels and keeps arrows out of them", async () => {
+    const controller = createController({
+      sessionToken: "token-123",
+      user: { id: "u1", username: "vince", emailVerified: true },
+    });
+    installServerChannels(controller, [
+      { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
+      { id: "equities", name: "equities", created_at: "2026-05-09T00:00:00.000Z" },
+      { id: "dm:bob", name: "@bob", kind: "direct", dmUser: { id: "u2", username: "bob" }, created_at: "2026-05-09T00:00:00.000Z" },
+      { id: "dm:carol", name: "@carol", kind: "direct", dmUser: { id: "u3", username: "carol" }, created_at: "2026-05-09T00:00:00.000Z" },
+    ] as any);
+    controller.refreshChannels = async () => {};
+    controller.refreshChannelMessages = async () => {};
+    const selected: string[] = [];
+    const ChannelPane = createChannelPane(controller, "everyone", (channelId) => selected.push(channelId));
+
+    await act(async () => {
+      testSetup = await testRender(<ChannelPane />, { width: 90, height: 14 });
+    });
+    await flushFrame();
+    expect(setup().captureCharFrame()).toContain("▾ Channels");
+
+    const lines = setup().captureCharFrame().split("\n");
+    const row = lines.findIndex((line) => line.includes("Channels"));
+    await act(async () => {
+      await setup().mockMouse.click(2, row);
+      await setup().renderOnce();
+      await setup().renderOnce();
+    });
+    await flushFrame();
+
+    const folded = setup().captureCharFrame();
+    expect(folded).toContain("▸ Channels");
+    expect(folded).not.toContain("equities");
+    expect(folded).toContain("@bob");
+
+    // Keyboard navigation walks the same list the sidebar draws, so arrows
+    // must never land on a row inside a folded section.
+    await emitKeypress({ name: "left", sequence: "[D" });
+    await emitKeypress({ name: "down", sequence: "[B" });
+    await emitKeypress({ name: "up", sequence: "[A" });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      await setup().renderOnce();
+    });
+    expect(selected.length).toBeGreaterThan(0);
+    expect(selected.every((channelId) => channelId.startsWith("dm:"))).toBe(true);
+  });
+
   test("opens a new direct-message dialog from the DMs header", async () => {
     const controller = createController({
       messages: [{
@@ -299,25 +348,6 @@ describe("ChatContent channel sidebar", () => {
     } finally {
       apiClient.openDirectChannel = originalOpenDirectChannel;
     }
-  });
-
-  test("shows the sidebar online count footer", async () => {
-    const controller = createController({ sessionToken: "token-123" });
-    installServerChannels(controller);
-    controller.refreshChannels = async () => {};
-    controller.refreshChannelMessages = async () => {};
-    (controller as any).channelCatalog.onlineCount = 6;
-
-    await act(async () => {
-      testSetup = await testRender(createHarness(controller, { width: 90, height: 12 }), {
-        width: 90,
-        height: 12,
-      });
-    });
-
-    await flushFrame();
-
-    expect(setup().captureCharFrame()).toContain("● 6 online");
   });
 
   test("offers a sidebar profile shortcut only until the account profile is filled in", async () => {

@@ -908,7 +908,6 @@ export const zhTW: Record<string, string> = {
   "force refresh": "強制重新整理",
   "dit": "編輯",
   "syncing": "同步中",
-  "{count} online": "{count} 人線上",
   "reply": "回覆",
   "Someone": "某人",
   "@{author} mentioned you in chat.": "@{author} 在聊天中提及你。",

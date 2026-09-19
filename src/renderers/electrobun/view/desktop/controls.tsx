@@ -39,6 +39,7 @@ export function WebButton({
   width,
   height,
   compact = false,
+  flush = false,
   stopPropagation = false,
 }: ButtonProps) {
   const colors = useThemeColors();
@@ -82,9 +83,9 @@ export function WebButton({
         color: palette.fg,
         font: "inherit",
         fontWeight: active || variant === "primary" ? 700 : 600,
-        border: `1px solid ${palette.border}`,
+        border: flush ? "none" : `1px solid ${palette.border}`,
         borderRadius: CONTROL_RADIUS,
-        padding: compact ? "0 2px" : "0 8px",
+        padding: flush ? 0 : compact ? "0 2px" : "0 8px",
         boxShadow: variant === "plain" ? "none" : controlShadow(active, colors),
         cursor: disabled ? "default" : "pointer",
       }}

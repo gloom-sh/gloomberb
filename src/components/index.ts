@@ -67,6 +67,7 @@ export { loadingErrorFooterInfo } from "../plugins/builtin/shared/table-pane";
 export type { PaneFooterPressEvent, PaneFooterSegment, PaneHint } from "./layout/pane/footer";
 export {
   getPaneSidebarWidth,
+  getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
   PaneSidebarRow,
@@ -75,6 +76,7 @@ export {
 export type {
   PaneSidebarActionRenderState,
   PaneSidebarRenderState,
+  PaneSidebarResize,
   PaneSidebarRowRenderState,
 } from "./layout/pane/sidebar";
 export { useExternalLinkFooter } from "./use-external-link-footer";

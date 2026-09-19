@@ -4,6 +4,7 @@ import { apiClient } from "../../../api-client";
 import { createGloomberbCloudCapabilities, createGloomberbCloudProvider } from "../../../sources/gloomberb-cloud";
 import { AccountManagementPane } from "../account-management/pane";
 import { chatController } from "../chat/controller";
+import { chatSidebarStore } from "../chat/sidebar-store";
 import {
   buildDmCommandResults,
   formatChatPaneTitle,
@@ -115,6 +116,7 @@ function createChatModule(
     },
     setup(ctx) {
       chatController.attachPersistence(ctx.persistence, ctx.resume);
+      chatSidebarStore.attach(ctx.persistence);
       chatController.setNotifier(ctx.notify, (channelId, messageId) => {
         ctx.createPaneFromTemplate("new-chat-pane", { arg: channelId, values: { messageId } });
       });

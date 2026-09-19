@@ -11,6 +11,7 @@ import { PluginRenderProvider, type PluginRuntimeAccess } from "../../runtime";
 import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
 import { ChatController } from "./controller";
+import { chatSidebarStore } from "./sidebar-store";
 
 const TRANSCRIPT_KIND = "channel-transcript";
 const TRANSCRIPT_KEY = "everyone";
@@ -56,6 +57,8 @@ export async function cleanupChatTest(testSetup: ChatTestSetup | undefined): Pro
   for (const controller of testControllers) controller.dispose();
   testControllers.clear();
 
+  // The sidebar's width and folded sections are a process-wide singleton.
+  chatSidebarStore.reset();
   setSharedRegistryForTests(undefined);
   setSharedMarketDataForTests(undefined);
   apiClient.connectChannel = originalConnectChannel;

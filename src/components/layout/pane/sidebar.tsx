@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
+import { Box, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable } from "../../../ui";
+import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { blendHex, colors, hoverBg } from "../../../theme/colors";
 
 const PANE_SIDEBAR_MIN_WIDTH = 18;
@@ -9,6 +10,12 @@ const DESKTOP_PANE_SIDEBAR_MAX_WIDTH = 19;
 const DESKTOP_PANE_SIDEBAR_WIDTH_RATIO = 0.192;
 const PANE_SIDEBAR_BREAKPOINT = 72;
 const PANE_SIDEBAR_MOUSE_HANDLED = "__gloomberbPaneSidebarHandled";
+// Dragging leaves the automatic width behind, so it may go narrower than the
+// responsive floor and as wide as half the pane before the list starves it.
+const PANE_SIDEBAR_DRAG_MIN_WIDTH = 10;
+const PANE_SIDEBAR_DRAG_MAX_RATIO = 0.5;
+/** Pixels of grab area around the divider; the divider itself stays 1px. */
+const DESKTOP_RESIZE_HANDLE_PADDING_PX = 3;
 
 export function shouldShowPaneSidebar(
   itemCount: number,
@@ -19,7 +26,19 @@ export function shouldShowPaneSidebar(
   return itemCount >= minimumItemCount && width >= PANE_SIDEBAR_BREAKPOINT && height >= 8;
 }
 
-export function getPaneSidebarWidth(width: number, nativePaneChrome: boolean): number {
+/** The width range a dragged sidebar may take inside a pane of `width` cells. */
+export function getPaneSidebarWidthRange(width: number): { min: number; max: number } {
+  return {
+    min: PANE_SIDEBAR_DRAG_MIN_WIDTH,
+    max: Math.max(PANE_SIDEBAR_DRAG_MIN_WIDTH, Math.floor(width * PANE_SIDEBAR_DRAG_MAX_RATIO)),
+  };
+}
+
+export function getPaneSidebarWidth(width: number, nativePaneChrome: boolean, preferredWidth?: number | null): number {
+  if (preferredWidth != null && Number.isFinite(preferredWidth)) {
+    const range = getPaneSidebarWidthRange(width);
+    return Math.min(range.max, Math.max(range.min, Math.round(preferredWidth)));
+  }
   const minimumWidth = nativePaneChrome ? DESKTOP_PANE_SIDEBAR_MIN_WIDTH : PANE_SIDEBAR_MIN_WIDTH;
   const maximumWidth = nativePaneChrome ? DESKTOP_PANE_SIDEBAR_MAX_WIDTH : PANE_SIDEBAR_MAX_WIDTH;
   const widthRatio = nativePaneChrome ? DESKTOP_PANE_SIDEBAR_WIDTH_RATIO : 0.24;
@@ -44,20 +63,81 @@ function usePaneSidebarContext(): PaneSidebarContextValue {
   return context;
 }
 
+export interface PaneSidebarResize {
+  /** Narrowest and widest the divider may be dragged to, in cells. */
+  min: number;
+  max: number;
+  /** Fires on every frame of the drag with the clamped width. */
+  onResize: (width: number) => void;
+  /** Fires once the pointer is released, for callers that persist the width. */
+  onResizeEnd?: (width: number) => void;
+}
+
+interface PaneSidebarPointerEvent {
+  x?: number;
+  preciseX?: number;
+  preventDefault?: () => void;
+  stopPropagation?: () => void;
+}
+
 export function PaneSidebar({
   width,
   height,
   focused,
   keyboardFocused = false,
+  resize,
   children,
 }: {
   width: number;
   height: number;
   focused: boolean;
   keyboardFocused?: boolean;
+  /** Makes the divider a drag handle; omit to keep the sidebar a fixed width. */
+  resize?: PaneSidebarResize;
   children: ReactNode | ((state: PaneSidebarRenderState) => ReactNode);
 }) {
   const { nativePaneChrome } = useUiCapabilities();
+  const nativeRenderer = useNativeRenderer();
+  const dividerRef = useRef<BoxRenderable>(null);
+  const dragOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
+  const [resizing, setResizing] = useState(false);
+  const [dividerHovered, setDividerHovered] = useState(false);
+
+  const resolveDragWidth = useCallback((event?: PaneSidebarPointerEvent) => {
+    const origin = dragOriginRef.current;
+    if (!origin || !resize) return null;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const pointerX = event?.preciseX ?? event?.x ?? origin.pointerX;
+    const next = Math.round(origin.width + (pointerX - origin.pointerX));
+    return Math.min(resize.max, Math.max(resize.min, next));
+  }, [resize]);
+
+  const beginResize = useCallback((event?: PaneSidebarPointerEvent) => {
+    if (!resize) return;
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    dragOriginRef.current = { pointerX: event?.preciseX ?? event?.x ?? 0, width };
+    setResizing(true);
+    capturePointerDrag(nativeRenderer, dividerRef.current);
+  }, [nativeRenderer, resize, width]);
+
+  const continueResize = useCallback((event?: PaneSidebarPointerEvent) => {
+    const next = resolveDragWidth(event);
+    if (next !== null) resize?.onResize(next);
+  }, [resize, resolveDragWidth]);
+
+  const endResize = useCallback((event?: PaneSidebarPointerEvent) => {
+    const next = resolveDragWidth(event);
+    const origin = dragOriginRef.current;
+    dragOriginRef.current = null;
+    setResizing(false);
+    // A click that never moved is not a resize: leave the width as it was,
+    // so tapping the divider does not pin a sidebar that still follows the pane.
+    if (next === null || next === origin?.width) return;
+    (resize?.onResizeEnd ?? resize?.onResize)?.(next);
+  }, [resize, resolveDragWidth]);
+
   const borderWidth = nativePaneChrome ? 0 : width > 1 ? 1 : 0;
   const listWidth = Math.max(width - borderWidth, 1);
   const dividerColor = focused ? colors.borderFocused : colors.border;
@@ -70,6 +150,14 @@ export function PaneSidebar({
   const sidebarLayoutHeight = nativePaneChrome ? "100%" : height;
   const nativeFillStyle = nativePaneChrome ? { minHeight: 0 } : undefined;
   const renderState = { backgroundColor, listWidth };
+  const dividerActive = resizing || dividerHovered;
+  const resizeHandlers = resize && {
+    onMouseDown: beginResize,
+    onMouseDrag: continueResize,
+    onMouseDragEnd: endResize,
+    onMouseOver: () => setDividerHovered(true),
+    onMouseOut: () => setDividerHovered(false),
+  };
 
   return (
     <PaneSidebarContext.Provider value={{ ...renderState, activeBackgroundColor, keyboardFocused }}>
@@ -91,9 +179,15 @@ export function PaneSidebar({
           {typeof children === "function" ? children(renderState) : children}
         </Box>
         {borderWidth > 0 && (
-          <Box width={1} height={height} flexDirection="column">
+          <Box
+            ref={dividerRef}
+            width={1}
+            height={height}
+            flexDirection="column"
+            {...resizeHandlers}
+          >
             {Array.from({ length: height }, (_, index) => (
-              <Text key={index} fg={dividerColor} selectable={false}>│</Text>
+              <Text key={index} fg={dividerActive ? colors.borderFocused : dividerColor} selectable={false}>│</Text>
             ))}
           </Box>
         )}
@@ -107,8 +201,26 @@ export function PaneSidebar({
             style={{
               width: 1,
               height: "100%",
-              backgroundColor: dividerColor,
+              backgroundColor: dividerActive ? colors.borderFocused : dividerColor,
               pointerEvents: "none",
+            }}
+          />
+        )}
+        {nativePaneChrome && resize && (
+          // A 1px line is too thin to grab, so the handle straddles it.
+          <Box
+            ref={dividerRef}
+            position="absolute"
+            top={0}
+            right={0}
+            width={1}
+            height={sidebarLayoutHeight}
+            {...resizeHandlers}
+            style={{
+              width: 1 + DESKTOP_RESIZE_HANDLE_PADDING_PX * 2,
+              right: -DESKTOP_RESIZE_HANDLE_PADDING_PX,
+              height: "100%",
+              cursor: "col-resize",
             }}
           />
         )}

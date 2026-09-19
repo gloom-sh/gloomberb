@@ -11,15 +11,18 @@ export function resolveChatContentWidthMetrics({
   height,
   channelCount,
   nativePaneChrome,
+  sidebarWidth,
 }: {
   width: number;
   height: number;
   channelCount: number;
   nativePaneChrome: boolean | undefined;
+  /** Width the person dragged the sidebar to; null follows the pane width. */
+  sidebarWidth?: number | null;
 }) {
   const showChannelSidebar = shouldShowChannelSidebar(channelCount, width, height);
   const channelSidebarWidth = showChannelSidebar
-    ? getChannelSidebarWidth(width, nativePaneChrome === true)
+    ? getChannelSidebarWidth(width, nativePaneChrome === true, sidebarWidth)
     : 0;
   const chatWidth = Math.max(width - channelSidebarWidth, 1);
   const contentWidth = Math.max(chatWidth - 2, 1);

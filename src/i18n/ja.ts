@@ -908,7 +908,6 @@ export const ja: Record<string, string> = {
   "force refresh": "強制リフレッシュ",
   "dit": "編集",
   "syncing": "同期中",
-  "{count} online": "オンライン {count}",
   "reply": "返信",
   "Someone": "誰か",
   "@{author} mentioned you in chat.": "@{author} がチャットであなたのことを言及しました。",

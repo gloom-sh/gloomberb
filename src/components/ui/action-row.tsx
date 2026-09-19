@@ -21,7 +21,7 @@ export function ActionRow({ label, children, expanded, active, disabled, fg, ...
   const desktop = useUiHost().kind === "desktop-web";
   const foreground = disabled ? colors.textMuted : fg ?? (active ? colors.textBright : colors.text);
   return (
-    <Button {...props} label={label} active={active} disabled={disabled} expanded={expanded} variant="plain" compact stopPropagation>
+    <Button {...props} label={label} active={active} disabled={disabled} expanded={expanded} variant="plain" compact flush stopPropagation>
       <Box flexDirection="row" width="100%" alignItems="center" gap={1}>
         {expanded !== undefined && (desktop ? (
           <Box width={1} style={{ flexShrink: 0 }}>

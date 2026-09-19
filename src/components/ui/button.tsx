@@ -29,6 +29,12 @@ export interface ButtonProps {
   width?: number;
   height?: number | string;
   compact?: boolean;
+  /**
+   * Drop the control inset so the label starts flush with the plain text
+   * around it. For `plain` buttons that stand in for a row or a line of copy,
+   * where a few pixels of button padding would break the column they sit in.
+   */
+  flush?: boolean;
   /** Keep an action inside a row from also activating that row. */
   stopPropagation?: boolean;
 }
@@ -70,6 +76,7 @@ export function Button({
   width,
   height,
   compact = false,
+  flush = false,
   stopPropagation = false,
 }: ButtonProps) {
   const colors = useThemeColors();
@@ -100,6 +107,7 @@ export function Button({
         width={width}
         height={height}
         compact={compact}
+        flush={flush}
         stopPropagation={stopPropagation}
       >{children}</HostButton>
     );

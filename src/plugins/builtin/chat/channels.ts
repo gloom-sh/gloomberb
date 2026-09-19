@@ -147,11 +147,13 @@ export function buildDmCommandResults(ctx: GloomPluginContext, arg: string): Com
   }));
 }
 
+/**
+ * The one column before a channel's label. Every section now has a header, so
+ * every row sits at the same indent and only the active marker differs.
+ */
 export function channelPrefix(channel: ChatChannel | undefined, active: boolean) {
   if (channel?.kind === "direct") return " ";
   if (channel?.kind === "group") return active ? "+" : " ";
-  // Team channels are indented under their team header.
-  if (channel?.kind === "team") return active ? " #" : "  ";
   return active ? "#" : " ";
 }
 

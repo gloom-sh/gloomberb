@@ -34,7 +34,7 @@ export function useChatComposerRuntime({
   latestEditableMessageId,
   replyTo,
   setEditingMessage,
-  setDirectExpanded,
+  expandDirectSection,
   setFollowMessages,
   setReplyTo,
   setSelectedIdx,
@@ -60,7 +60,7 @@ export function useChatComposerRuntime({
   latestEditableMessageId: string | null;
   replyTo: ChatMessage | null;
   setEditingMessage: Dispatch<SetStateAction<ChatMessage | null>>;
-  setDirectExpanded: Dispatch<SetStateAction<boolean>>;
+  expandDirectSection: () => void;
   setFollowMessages: Dispatch<SetStateAction<boolean>>;
   setReplyTo: Dispatch<SetStateAction<ChatMessage | null>>;
   setSelectedIdx: Dispatch<SetStateAction<number>>;
@@ -235,7 +235,7 @@ export function useChatComposerRuntime({
     const composerCommand = parseChatComposerCommand(content);
     if (composerCommand?.kind === "direct") {
       void controller.openDirectChannel({ username: composerCommand.username }).then((channel) => {
-        setDirectExpanded(true);
+        expandDirectSection();
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
         clearLocalComposer();
@@ -250,7 +250,7 @@ export function useChatComposerRuntime({
         usernames: composerCommand.usernames,
         name: composerCommand.name,
       }).then((channel) => {
-        setDirectExpanded(true);
+        expandDirectSection();
         channelIdRef.current = channel.id;
         onChannelChange?.(channel.id);
         clearLocalComposer();
@@ -275,8 +275,8 @@ export function useChatComposerRuntime({
     controller,
     inputValueRef,
     onChannelChange,
+    expandDirectSection,
     persistDraft,
-    setDirectExpanded,
     setEditingMessage,
     setFollowMessages,
     setSelectedIdx,
