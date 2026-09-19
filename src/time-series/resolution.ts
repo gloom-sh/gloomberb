@@ -114,6 +114,34 @@ export function getPresetResolution(range: TimeRange): ManualChartResolution {
   return RANGE_PRESET_RESOLUTION[range];
 }
 
+/**
+ * The range preset, or the nearest coarser interval the sources actually serve
+ * for that window. A 1D chart on a source without 1m bars gets 5m instead of
+ * a request that can only fail. Empty support means unknown, so the preset
+ * stands.
+ */
+export function getSupportedPresetResolution(
+  range: TimeRange,
+  support: readonly ChartResolutionSupport[],
+  window?: { start: Date | null; end: Date | null } | null,
+): ManualChartResolution {
+  const preset = RANGE_PRESET_RESOLUTION[range];
+  if (support.length === 0) return preset;
+  const start = window?.start ?? null;
+  const end = window?.end ?? null;
+  const covers = (maxRange: TimeRange) => (
+    start && end && Number.isFinite(start.getTime()) && Number.isFinite(end.getTime())
+      ? isDateWindowWithinTimeRange(start, end, maxRange)
+      : isTimeRangeAtOrBelow(range, maxRange)
+  );
+  const presetMaxRange = getSupportMaxRange(support, preset);
+  if (presetMaxRange !== null && covers(presetMaxRange)) return preset;
+  const presetIndex = CHART_RESOLUTION_ORDER.indexOf(preset);
+  const coarser = sortChartResolutionSupport(normalizeChartResolutionSupport(support))
+    .find((entry) => CHART_RESOLUTION_ORDER.indexOf(entry.resolution) > presetIndex && covers(entry.maxRange));
+  return coarser?.resolution ?? preset;
+}
+
 export function getNextBufferRange(range: TimeRange): TimeRange {
   return RANGE_PRELOAD_BUFFER[range];
 }

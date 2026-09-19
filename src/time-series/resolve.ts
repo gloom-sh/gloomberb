@@ -16,7 +16,7 @@ import {
   DEFAULT_CHART_RESOLUTION_SUPPORT,
   getBestSupportedResolutionForVisibleWindow,
   getNextBufferRange,
-  getPresetResolution,
+  getSupportedPresetResolution,
   getSupportMaxRange,
   intersectChartResolutionSupport,
   isIntradayResolution,
@@ -313,7 +313,13 @@ function requestResolution(
       )
     : null;
   const preferred = adaptive
-    ?? getPresetResolution(explicitBounds(spec) ? boundsRange(bounds) : spec.viewport.range);
+    ?? getSupportedPresetResolution(
+      explicitBounds(spec) ? boundsRange(bounds) : spec.viewport.range,
+      sharedSupport,
+      bounds.start !== null && bounds.end !== null
+        ? { start: new Date(bounds.start), end: new Date(bounds.end) }
+        : null,
+    );
   const activeSeries = spec.series.filter((entry) => calculationSeriesIds.has(entry.id));
   return resolutionForExplicitMarketPeriods(preferred, activeSeries);
 }
@@ -1165,6 +1171,7 @@ export async function resolveChartSpecData(
       instrumentKey(source),
       request.resolution,
       request.fallbackRange,
+      request.allowProviderDefaultFallback ? "auto" : "manual",
       ...(request.explicitWindow
         ? [request.bounds.start ?? "open", request.bounds.end ?? "open"]
         : []),
@@ -1173,6 +1180,12 @@ export async function resolveChartSpecData(
     if (!pending) {
       pending = loadPriceHistory(sources.dataProvider!, source, request);
       cache.priceHistoryByRequest.set(key, pending);
+      // A failed load must not answer the next resolve with the same key; the
+      // pane retries after switching to Auto and a stale rejection would keep
+      // the chart empty.
+      pending.catch(() => {
+        if (cache.priceHistoryByRequest.get(key) === pending) cache.priceHistoryByRequest.delete(key);
+      });
     }
     const history = await pending;
     const coverageNotice = isShellLondonTarget(source.instrument.symbol, source.instrument.exchange)

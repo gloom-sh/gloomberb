@@ -2,8 +2,9 @@ import type { DataProvider, MarketDataRequestContext } from "../types/data-provi
 import type { PricePoint, Quote } from "../types/financials";
 import type { TimeRange } from "./range";
 import {
-  getPresetResolution,
+  getSupportedPresetResolution,
   isIntradayResolution,
+  type ChartResolutionSupport,
   type ManualChartResolution,
 } from "./resolution";
 import { resolveExchangeTimeZone } from "../utils/exchanges";
@@ -190,6 +191,8 @@ export function resolveIntradayRequest(options: {
   rangePreset?: unknown;
   chartResolution?: unknown;
   session?: unknown;
+  /** Intervals the sources serve; Auto steps down from 1m when it is missing. */
+  support?: readonly ChartResolutionSupport[];
 }): IntradayRequest {
   const session = typeof options.session === "string" && options.session.trim()
     ? options.session.trim()
@@ -202,7 +205,7 @@ export function resolveIntradayRequest(options: {
     ? options.chartResolution
     : "auto";
   const resolution = requestedResolution === "auto"
-    ? getPresetResolution(rangePreset)
+    ? getSupportedPresetResolution(rangePreset, options.support ?? [])
     : requestedResolution as ManualChartResolution;
   if (!isIntradayResolution(resolution)) {
     throw new Error(`GIP requires an intraday chart resolution, got "${requestedResolution}".`);

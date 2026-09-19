@@ -5,6 +5,7 @@ import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from 
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, resolveChartSpecData } from "../../../time-series/resolve";
+import { intersectChartResolutionSupport, normalizeChartResolutionSupport } from "../../../time-series/resolution";
 import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "../../../time-series/session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
@@ -154,13 +155,21 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         })),
       } : parsed;
       if (template === "graph-intraday-price-pane" && !spec.viewport.dateWindow) {
+        const instruments = new Map(spec.series.flatMap(({ source }) => source.kind === "security"
+          ? [[snapshotInstrumentKey(source.instrument), source.instrument] as const] : []));
+        const support = spec.viewport.resolution === "auto" && context.marketData.getChartResolutionSupport
+          ? intersectChartResolutionSupport(await Promise.all([...instruments.values()].map(async (target) => (
+            normalizeChartResolutionSupport(await Promise.resolve(context.marketData.getChartResolutionSupport!(
+              target.symbol, target.exchange ?? "", { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument },
+            )).catch(() => []))
+          ))))
+          : [];
         const request = resolveIntradayRequest({
           rangePreset: spec.viewport.range,
           chartResolution: spec.viewport.resolution,
           session: args.options.session,
+          support,
         });
-        const instruments = new Map(spec.series.flatMap(({ source }) => source.kind === "security"
-          ? [[snapshotInstrumentKey(source.instrument), source.instrument] as const] : []));
         const histories = await Promise.all([...instruments.values()].map(async (target) => ({
           target, symbol: target.symbol, exchange: target.exchange ?? "", resolution: request.resolution, rangePreset: request.rangePreset, requestedSession: request.session,
           ...await loadIntradayWindow({ provider: context.marketData, symbol: target.symbol, exchange: target.exchange ?? "", request, context: { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument } }),

@@ -177,6 +177,21 @@ describe("GIP session windows", () => {
     expect(() => resolveIntradayRequest({ session: "2026-02-30" }))
       .toThrow("real calendar date");
   });
+
+  test("Auto steps down to the finest interval the source serves", () => {
+    const support = [
+      { resolution: "5m", maxRange: "1W" },
+      { resolution: "15m", maxRange: "1M" },
+      { resolution: "1d", maxRange: "5Y" },
+    ] as const;
+    expect(resolveIntradayRequest({ rangePreset: "1D", chartResolution: "auto", support }))
+      .toEqual({ rangePreset: "1D", resolution: "5m", session: null });
+    expect(resolveIntradayRequest({ rangePreset: "1W", chartResolution: "auto", support }))
+      .toEqual({ rangePreset: "1W", resolution: "5m", session: null });
+    // A manual pick is honored as requested.
+    expect(resolveIntradayRequest({ rangePreset: "1D", chartResolution: "1m", support }))
+      .toEqual({ rangePreset: "1D", resolution: "1m", session: null });
+  });
 });
 
 describe("GIP screenshot payload", () => {

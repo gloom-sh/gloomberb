@@ -607,6 +607,97 @@ describe("resolveChartSpecData", () => {
     ]);
   });
 
+  test("picks a supported interval when the range preset is unsupported", async () => {
+    const requestedResolutions: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [
+        { resolution: "5m", maxRange: "1W" },
+        { resolution: "15m", maxRange: "1M" },
+        { resolution: "1h", maxRange: "3M" },
+      ],
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requestedResolutions.push(resolution);
+        if (resolution === "1m") throw new Error("1m unsupported");
+        return [{ date: new Date("2026-07-30T15:00:00Z"), close: 100 }];
+      },
+    });
+    const series = chartSeries({
+      source: {
+        kind: "security",
+        instrument: { symbol: "NVDA", exchange: "XNAS" },
+        fieldId: "market.ohlcv",
+      },
+      style: "candles",
+    });
+    const sources = {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00Z"),
+      loadFredSeries: async () => fredLoad(),
+    };
+    const cache = new ChartResolveCache();
+
+    // GIP opens on a hard 1m interval; the provider only serves 5m and coarser.
+    const manual = await resolveChartSpecData(
+      chartSpec({ viewport: { range: "1D", resolution: "1m" }, series: [series] }),
+      sources,
+      cache,
+    );
+    expect(manual.errors).toEqual([]);
+    expect(manual.warnings).toContain(
+      "1M data is unavailable for this range. Auto resolution was used instead.",
+    );
+
+    // The pane then flips the spec to Auto, reusing the same cache.
+    const auto = await resolveChartSpecData(
+      chartSpec({ viewport: { range: "1D", resolution: "auto" }, series: [series] }),
+      sources,
+      cache,
+    );
+    expect(auto.errors).toEqual([]);
+    expect(auto.resolution).toBe("5m");
+    expect(new Set(requestedResolutions)).toEqual(new Set(["5m"]));
+  });
+
+  test("a failed manual interval request does not poison the Auto retry", async () => {
+    let calls = 0;
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getPriceHistoryForResolution: async () => {
+        calls += 1;
+        throw new Error("resolution api unsupported");
+      },
+      getPriceHistory: async () => [{ date: new Date("2026-07-30T15:00:00Z"), close: 100 }],
+    });
+    const series = chartSeries({
+      source: { kind: "security", instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.close" },
+    });
+    const sources = {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00Z"),
+      loadFredSeries: async () => fredLoad(),
+    };
+    const cache = new ChartResolveCache();
+
+    const manual = await resolveChartSpecData(
+      chartSpec({ viewport: { range: "1D", resolution: "1m" }, series: [series] }),
+      sources,
+      cache,
+    );
+    expect(manual.errors).toEqual([
+      "price: Requested 1m price history is unavailable for TEST:XNAS. Choose Auto or a supported interval.",
+    ]);
+
+    const auto = await resolveChartSpecData(
+      chartSpec({ viewport: { range: "1D", resolution: "auto" }, series: [series] }),
+      sources,
+      cache,
+    );
+    expect(auto.errors).toEqual([]);
+    expect(auto.series[0]?.points).toHaveLength(1);
+    expect(calls).toBe(2);
+  });
+
   test.each([
     { selected: "1wk", maxRange: "ALL", range: "ALL", expected: "1wk" },
     { selected: "1mo", maxRange: "ALL", range: "ALL", expected: "1mo" },
