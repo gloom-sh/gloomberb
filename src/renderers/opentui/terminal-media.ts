@@ -32,6 +32,57 @@ export function terminalMediaStateFile(): string {
   return join(getGloomberbHome(), "terminal-media.pid");
 }
 
+export interface TerminalMediaArgsOptions {
+  url: string;
+  title?: string;
+  muted?: boolean;
+  /** Defaults to the running platform; injectable so the choice stays testable. */
+  platform?: NodeJS.Platform;
+}
+
+/**
+ * Best variant at or below this bitrate, roughly 480p on YouTube's live ladder.
+ * A pane is a few hundred pixels wide, so the default (highest variant, often
+ * 1080p60) decodes detail the terminal throws away.
+ */
+const HLS_BITRATE_CAP = 1_500_000;
+
+/**
+ * Frames sent to the terminal, not frames in the source, are the bottleneck:
+ * each one is scaled, base64'd, written to the tty, then parsed again by the
+ * multiplexer and the terminal.
+ */
+const RENDER_FPS = 15;
+
+/**
+ * `vo=kitty` is a software path from decode to tty write, and it is paid three
+ * times over: by the player, by tmux, and by the terminal emulator. These options
+ * keep the work proportional to what a text grid can actually display.
+ */
+export function buildTerminalMediaArgs(options: TerminalMediaArgsOptions): string[] {
+  const { url, title, muted, platform = process.platform } = options;
+  return [
+    "--no-config",
+    "--profile=sw-fast",
+    "--vo=kitty",
+    "--vo-kitty-auto-multiplexer-passthrough=yes",
+    // YouTube's HLS needs a generous probe before it exposes its streams.
+    "--demuxer-lavf-probe-info=yes",
+    "--demuxer-lavf-analyzeduration=10",
+    "--demuxer-lavf-probesize=25000000",
+    `--hls-bitrate=${HLS_BITRATE_CAP}`,
+    // The kitty output reads frames from system memory, so only a copy-back
+    // decoder helps here. An unavailable one degrades to software decoding.
+    ...(platform === "darwin" ? ["--hwdec=videotoolbox-copy"] : []),
+    `--vf=fps=${RENDER_FPS}`,
+    "--ytdl=no",
+    `--mute=${muted === false ? "no" : "yes"}`,
+    ...(title ? [`--title=${title}`] : []),
+    "--",
+    url,
+  ];
+}
+
 function defaultIsPlayerProcess(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 1) return false;
   try {

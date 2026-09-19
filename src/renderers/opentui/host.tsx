@@ -6,7 +6,7 @@ import type { KeyEventLike } from "../../react/input";
 import type { NativeRendererHost, PixelResolution, RendererHost } from "../../ui/host";
 import { colors } from "../../theme/colors";
 import { safeExternalUrl } from "../../utils/external-url";
-import { createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
+import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFile } from "./terminal-media";
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
 
@@ -157,18 +157,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
       try {
         const proc = Bun.spawn([
           mpv,
-          "--no-config",
-          "--profile=sw-fast",
-          "--vo=kitty",
-          "--vo-kitty-auto-multiplexer-passthrough=yes",
-          "--demuxer-lavf-probe-info=yes",
-          "--demuxer-lavf-analyzeduration=10",
-          "--demuxer-lavf-probesize=25000000",
-          "--ytdl=no",
-          `--mute=${options?.muted === false ? "no" : "yes"}`,
-          ...(title ? [`--title=${title}`] : []),
-          "--",
-          url,
+          ...buildTerminalMediaArgs({ url, title, muted: options?.muted }),
         ], {
           stdin: "inherit",
           stdout: "inherit",

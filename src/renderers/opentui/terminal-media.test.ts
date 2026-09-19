@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createTerminalMediaReaper, type TerminalMediaChild } from "./terminal-media";
+import { buildTerminalMediaArgs, createTerminalMediaReaper, type TerminalMediaChild } from "./terminal-media";
 
 const dirs: string[] = [];
 
@@ -81,6 +81,31 @@ test("replacing a player kills the previous one and records the new pid", () => 
   expect(first.killed).toBe(true);
   expect(second.killed).toBe(false);
   expect(readFileSync(file, "utf8")).toBe("22");
+});
+
+test("caps the stream the terminal has to decode and draw", () => {
+  const args = buildTerminalMediaArgs({ url: "https://example.com/live.m3u8", platform: "darwin" });
+
+  // Without a cap mpv takes the top rendition, so a text grid costs a 1080p60 decode.
+  expect(args).toContain("--hls-bitrate=1500000");
+  expect(args).toContain("--vf=fps=15");
+  // The probe stays generous: YouTube's HLS needs it to expose its streams at all.
+  expect(args).toContain("--demuxer-lavf-probesize=25000000");
+});
+
+test("offers the copy-back decoder only where it exists", () => {
+  const base = { url: "https://example.com/live.m3u8" };
+
+  expect(buildTerminalMediaArgs({ ...base, platform: "darwin" })).toContain("--hwdec=videotoolbox-copy");
+  expect(buildTerminalMediaArgs({ ...base, platform: "linux" }).join(" ")).not.toContain("--hwdec");
+});
+
+test("keeps the url last and behind a separator so it is never read as an option", () => {
+  const args = buildTerminalMediaArgs({ url: "-not-an-option.m3u8", title: "CNBC", muted: false, platform: "linux" });
+
+  expect(args.slice(-2)).toEqual(["--", "-not-an-option.m3u8"]);
+  expect(args).toContain("--mute=no");
+  expect(args).toContain("--title=CNBC");
 });
 
 test("a player that exits on its own clears the recorded pid", async () => {

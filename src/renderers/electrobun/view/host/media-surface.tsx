@@ -152,6 +152,9 @@ export const WebMediaSurface = forwardRef<HTMLVideoElement, MediaSurfaceProps>(f
         backBufferLength: 30,
         enableWorker: true,
         lowLatencyMode: true,
+        // A pane is a fraction of the screen, so the top rendition would be
+        // decoded and then scaled away. Re-evaluated when the pane is resized.
+        capLevelToPlayerSize: true,
       });
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
