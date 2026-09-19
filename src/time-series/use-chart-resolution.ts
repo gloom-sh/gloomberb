@@ -129,6 +129,10 @@ export function useChartResolution(
   const resultRef = useRef(displayed);
   resultRef.current = displayed;
   const [revision, setRevision] = useState(0);
+  // Bumped when a chart painted with the placeholder interval list and the
+  // real one has since landed. Unlike a reload it keeps the cache, so the
+  // pass only re-picks Auto and refreshes the interval tabs.
+  const [supportRevision, setSupportRevision] = useState(0);
   const generationRef = useRef(0);
   const liveSubscriptionGenerationRef = useRef(0);
   const liveQuoteOverridesRef = useRef<ReadonlyMap<string, Quote>>(new Map());
@@ -160,11 +164,13 @@ export function useChartResolution(
   // Read at resolve time only: hysteresis breaks ties when the viewport moves,
   // and echoing the chosen resolution back must not trigger another resolve.
   const currentResolution = validAutoViewport ? options.currentResolution ?? null : null;
+  const onResolutionSupportSettled = useCallback(() => setSupportRevision((current) => current + 1), []);
   const resolveOptions: ChartResolveOptions = {
     autoViewport: validAutoViewport,
     requestViewport: validRequestViewport,
     targetPointCount: adaptiveTargetPointCount,
     currentResolution,
+    onResolutionSupportSettled,
   };
   const latestRequestRef = useRef({ spec, sources, options: resolveOptions });
   latestRequestRef.current = { spec, sources, options: resolveOptions };
@@ -220,6 +226,7 @@ export function useChartResolution(
     revision,
     sources,
     specKey,
+    supportRevision,
   ]);
 
   const liveTargetSignature = liveChartQuoteTargetSignature(spec);

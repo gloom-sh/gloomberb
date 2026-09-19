@@ -659,6 +659,88 @@ describe("resolveChartSpecData", () => {
     expect(new Set(requestedResolutions)).toEqual(new Set(["5m"]));
   });
 
+  test("price-only charts paint with a placeholder list, then adopt the source's real intervals", async () => {
+    let resolveSupport: ((value: Array<{ resolution: "1m" | "5m" | "30m" | "1d"; maxRange: "1W" | "1M" | "6M" | "5Y" }>) => void) | null = null;
+    const supportGate = new Promise<Array<{ resolution: "1m" | "5m" | "30m" | "1d"; maxRange: "1W" | "1M" | "6M" | "5Y" }>>((resolve) => {
+      resolveSupport = resolve;
+    });
+    const requestedResolutions: string[] = [];
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => supportGate,
+      getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => {
+        requestedResolutions.push(resolution);
+        return [{ date: new Date("2026-07-30T15:00:00Z"), close: 100 }];
+      },
+    });
+    const spec = chartSpec({
+      viewport: { range: "1D", resolution: "auto" },
+      series: [chartSeries({
+        source: { kind: "security", instrument: { symbol: "NVDA", exchange: "XNAS" }, fieldId: "market.ohlcv" },
+        style: "candles",
+      })],
+    });
+    const sources = {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00Z"),
+      loadFredSeries: async () => fredLoad(),
+    };
+    const cache = new ChartResolveCache();
+    let settledNotifications = 0;
+
+    const first = await resolveChartSpecData(spec, sources, cache, {
+      onResolutionSupportSettled: () => { settledNotifications += 1; },
+    });
+    // The placeholder omits 1m, but it must not talk Auto out of the 1D preset.
+    expect(first.errors).toEqual([]);
+    expect(first.resolution).toBe("1m");
+    expect(first.resolutionSupport?.map((entry) => entry.resolution)).toEqual(["5m", "15m", "1h", "1d", "1wk", "1mo"]);
+    expect(settledNotifications).toBe(0);
+
+    resolveSupport!([
+      { resolution: "1m", maxRange: "1W" },
+      { resolution: "5m", maxRange: "1M" },
+      { resolution: "30m", maxRange: "6M" },
+      { resolution: "1d", maxRange: "5Y" },
+    ]);
+    await supportGate;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(settledNotifications).toBe(1);
+
+    const second = await resolveChartSpecData(spec, sources, cache, {
+      onResolutionSupportSettled: () => { settledNotifications += 1; },
+    });
+    expect(second.resolution).toBe("1m");
+    expect(second.resolutionSupport?.map((entry) => entry.resolution)).toEqual(["1m", "5m", "30m", "1d"]);
+    expect(settledNotifications).toBe(1);
+    expect(new Set(requestedResolutions)).toEqual(new Set(["1m"]));
+  });
+
+  test("one-shot loaders wait for the real interval list", async () => {
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: async () => [
+        { resolution: "5m" as const, maxRange: "1W" as const },
+        { resolution: "1d" as const, maxRange: "5Y" as const },
+      ],
+      getPriceHistoryForResolution: async () => [{ date: new Date("2026-07-30T15:00:00Z"), close: 100 }],
+    });
+    const spec = chartSpec({
+      viewport: { range: "1D", resolution: "auto" },
+      series: [chartSeries({
+        source: { kind: "security", instrument: { symbol: "NVDA", exchange: "XNAS" }, fieldId: "market.ohlcv" },
+        style: "candles",
+      })],
+    });
+    const result = await resolveChartSpecData(spec, {
+      dataProvider: provider,
+      now: new Date("2026-07-30T16:00:00Z"),
+      loadFredSeries: async () => fredLoad(),
+    }, undefined, { awaitResolutionSupport: true });
+    expect(result.resolution).toBe("5m");
+    expect(result.resolutionSupport?.map((entry) => entry.resolution)).toEqual(["5m", "1d"]);
+  });
+
   test("a failed manual interval request does not poison the Auto retry", async () => {
     let calls = 0;
     const provider = createTestDataProvider({

@@ -72,7 +72,7 @@ export async function loadChartPaneModel(
       stale: false,
       source: "network",
     }),
-  });
+  }, undefined, { awaitResolutionSupport: true });
   spec = { ...spec, series: spec.series.map((series) => resolvedSeries.get(series.id) ?? series) };
   const ids = new Set(spec.series.map((series) => series.id));
   const periodCoverage = financialPeriodCoverage(spec, chart.series);

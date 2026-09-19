@@ -115,6 +115,13 @@ export interface ChartResolveOptions {
   targetPointCount?: number;
   /** Resolution currently on screen, kept through small Auto zooms. */
   currentResolution?: ManualChartResolution | null;
+  /**
+   * Price-only charts paint before slow broker support answers and stand in a
+   * placeholder list meanwhile. One-shot loaders wait for the real list.
+   */
+  awaitResolutionSupport?: boolean;
+  /** Fired once the real support list lands after a placeholder was used. */
+  onResolutionSupportSettled?: () => void;
 }
 
 /** Raw source data retained while live quotes recompute the chart tail. */
@@ -124,6 +131,8 @@ export class ChartResolveCache {
   readonly priceHistoryByRequest = new Map<string, Promise<TickerFinancials["priceHistory"]>>();
   readonly accumulatedPriceHistory = new Map<string, TickerFinancials["priceHistory"]>();
   readonly resolutionSupportByInstrument = new Map<string, Promise<ChartResolutionSupport[]>>();
+  readonly settledResolutionSupport = new Map<string, ChartResolutionSupport[]>();
+  readonly rejectedResolutionSupport = new Set<string>();
   readonly fredSeriesByRequest = new Map<string, Promise<FredSeriesLoadResult>>();
   readonly capabilitySeriesByRequest = new Map<string, Promise<ResolvedSeries>>();
 }
@@ -286,10 +295,14 @@ function requestResolution(
   calculationSeriesIds: ReadonlySet<string>,
   options: ChartResolveOptions,
   sharedSupport: readonly ChartResolutionSupport[],
+  provisionalSupport = false,
 ): ManualChartResolution {
   if (spec.viewport.resolution !== "auto") {
     const maxRange = getSupportMaxRange(sharedSupport, spec.viewport.resolution);
+    // A placeholder list cannot rule out a manual pick; the real list decides
+    // on the next pass.
     const supported = sharedSupport.length === 0
+      || provisionalSupport
       || maxRange === "ALL"
       || (
         maxRange !== null
@@ -315,7 +328,7 @@ function requestResolution(
   const preferred = adaptive
     ?? getSupportedPresetResolution(
       explicitBounds(spec) ? boundsRange(bounds) : spec.viewport.range,
-      sharedSupport,
+      provisionalSupport ? [] : sharedSupport,
       bounds.start !== null && bounds.end !== null
         ? { start: new Date(bounds.start), end: new Date(bounds.end) }
         : null,
@@ -480,24 +493,6 @@ export function seedChartResolutionResult(
   };
 }
 
-function isThenable<T>(value: unknown): value is Promise<T> {
-  return typeof value === "object" && value !== null && "then" in value;
-}
-
-function readImmediateResolutionSupport(
-  provider: DataProvider,
-  source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
-): ChartResolutionSupport[] {
-  if (!provider.getChartResolutionSupport) return DEFAULT_CHART_RESOLUTION_SUPPORT;
-  const result = provider.getChartResolutionSupport(
-    source.instrument.symbol,
-    source.instrument.exchange ?? "",
-    requestContext(source),
-  );
-  if (Array.isArray(result)) return normalizeChartResolutionSupport(result);
-  if (isThenable(result)) return DEFAULT_CHART_RESOLUTION_SUPPORT;
-  return DEFAULT_CHART_RESOLUTION_SUPPORT;
-}
 
 function chartIsPriceOnly(spec: ChartSpec, calculationSeriesIds: ReadonlySet<string>): boolean {
   return spec.series.every((entry) => {
@@ -1067,25 +1062,71 @@ export async function resolveChartSpecData(
     }
     return pending;
   };
-  const loadResolutionSupport = (
+  // True when a price-only chart painted with the placeholder list because the
+  // real one had not answered yet. The placeholder must not narrow Auto's
+  // choices: it is Yahoo-shaped and omits 1m and 30m that other sources serve.
+  let provisionalSupport = false;
+  const notifiedSupportKeys = new Set<string>();
+  const startResolutionSupport = (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
-    immediate: boolean,
-  ) => {
+  ): Promise<ChartResolutionSupport[]> => {
     const provider = sources.dataProvider!;
-    if (!provider.getChartResolutionSupport) return Promise.resolve([]);
-    const key = `${provider.id}|${instrumentKey(source)}|${immediate ? "immediate" : "live"}`;
+    const key = `${provider.id}|${instrumentKey(source)}`;
     let pending = cache.resolutionSupportByInstrument.get(key);
     if (!pending) {
-      pending = immediate
-        ? Promise.resolve().then(() => readImmediateResolutionSupport(provider, source))
-        : Promise.resolve(provider.getChartResolutionSupport(
+      let result: ReturnType<NonNullable<DataProvider["getChartResolutionSupport"]>>;
+      try {
+        result = provider.getChartResolutionSupport!(
           source.instrument.symbol,
           source.instrument.exchange ?? "",
           requestContext(source),
-        )).catch(() => []);
+        );
+      } catch (error) {
+        // A synchronous throw is a programming error, not a missing answer;
+        // let the resolve fail the way it always has.
+        pending = Promise.reject(error);
+        cache.resolutionSupportByInstrument.set(key, pending);
+        cache.rejectedResolutionSupport.add(key);
+        return pending;
+      }
+      if (Array.isArray(result)) {
+        const settled = normalizeChartResolutionSupport(result);
+        cache.settledResolutionSupport.set(key, settled);
+        pending = Promise.resolve(settled);
+      } else {
+        // An unanswered source narrows nothing: empty support leaves the
+        // preset in charge, the same as a source without the capability.
+        pending = Promise.resolve(result)
+          .then((value) => normalizeChartResolutionSupport(value))
+          .catch(() => [] as ChartResolutionSupport[]);
+        const settledPending = pending;
+        settledPending.then((settled) => {
+          if (cache.resolutionSupportByInstrument.get(key) === settledPending) cache.settledResolutionSupport.set(key, settled);
+        });
+      }
       cache.resolutionSupportByInstrument.set(key, pending);
     }
     return pending;
+  };
+  const loadResolutionSupport = (
+    source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+    immediate: boolean,
+  ): Promise<ChartResolutionSupport[]> => {
+    const provider = sources.dataProvider!;
+    if (!provider.getChartResolutionSupport) return Promise.resolve([]);
+    const pending = startResolutionSupport(source);
+    if (!immediate || options.awaitResolutionSupport) return pending;
+    const key = `${provider.id}|${instrumentKey(source)}`;
+    if (cache.rejectedResolutionSupport.has(key)) return pending;
+    const settled = cache.settledResolutionSupport.get(key);
+    if (settled) return Promise.resolve(settled);
+    provisionalSupport = true;
+    const notify = options.onResolutionSupportSettled;
+    if (notify && !notifiedSupportKeys.has(key)) {
+      notifiedSupportKeys.add(key);
+      pending.then(() => notify());
+    }
+    return Promise.resolve(DEFAULT_CHART_RESOLUTION_SUPPORT);
   };
   const sourceWithResolvedExchange = (
     source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
@@ -1128,6 +1169,7 @@ export async function resolveChartSpecData(
     calculationSeriesIds,
     options,
     sharedSupport,
+    provisionalSupport,
   );
   if (
     spec.viewport.resolution !== "auto"
