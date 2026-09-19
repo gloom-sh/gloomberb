@@ -24,8 +24,20 @@ export function ActionRow({ label, children, expanded, active, disabled, fg, ...
     <Button {...props} label={label} active={active} disabled={disabled} expanded={expanded} variant="plain" compact flush stopPropagation>
       <Box flexDirection="row" width="100%" alignItems="center" gap={1}>
         {expanded !== undefined && (desktop ? (
-          <Box width={1} style={{ flexShrink: 0 }}>
-            <Box style={{ width: 6, height: 6, borderRight: `1px solid ${foreground}`, borderBottom: `1px solid ${foreground}`, transform: `rotate(${expanded ? 45 : -45}deg)` }} />
+          // A square spun 45° does not keep its ink inside the box it spins
+          // in: open, the arms reach past both sides and lean over whatever
+          // the row starts against; closed, they sit off to one side. Draw
+          // the chevron on its marks instead, centred in one cell either way.
+          <Box width={1} style={{ flexShrink: 0, alignItems: "center", justifyContent: "center" }}>
+            <svg viewBox="0 0 12 12" width="100%" fill="none" aria-hidden="true" style={{ display: "block", aspectRatio: "1" }}>
+              <path
+                d={expanded ? "M2 4 6 8 10 4" : "M4 2 8 6 4 10"}
+                stroke={foreground}
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
           </Box>
         ) : <Text fg={foreground}>{expanded ? "▾" : "▸"}</Text>)}
         <Text fg={foreground} attributes={active ? TextAttributes.BOLD : 0}>{t(label)}</Text>
