@@ -58,19 +58,7 @@ describe("core sync contributors", () => {
 
   test("normalizes legacy built-in ownership in pulled config", () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-test");
-    const layouts = config.layouts.map((savedLayout, index) => index === 0
-      ? {
-        ...savedLayout,
-        paneState: {
-          "portfolio-list:main": {
-            pluginState: {
-              analytics: { metric: "beta", shared: "legacy" },
-              portfolio: { shared: "canonical" },
-            },
-          },
-        },
-      }
-      : savedLayout);
+    const layouts = config.layouts.map((savedLayout) => savedLayout);
 
     const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
       disabledPlugins: ["analytics", "kelly-sizer", "changelog", "macro-tv"],
@@ -89,9 +77,64 @@ describe("core sync contributors", () => {
       portfolio: { metric: "beta", shared: "canonical" },
       application: { section: "shortcuts" },
     });
-    expect(merged?.layouts[0]?.paneState?.["portfolio-list:main"]?.pluginState).toEqual({
-      portfolio: { metric: "beta", shared: "canonical" },
+  });
+
+  // Two signed-in clients used to hand each other their view on every poll:
+  // the pull replaced live pane state with the other device's, the apply
+  // pushed this device's back, and an open detail or a scrolled tab strip
+  // reset every few seconds.
+  test("a pulled layout keeps this device's session state", () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-session-state-test");
+    const localPaneState = { "jobs:home": { pluginState: { jobs: { "jobs:open": "NVDA" } } } };
+    config.layouts = [{
+      ...config.layouts[0]!,
+      paneState: localPaneState,
+      focusedPaneId: "jobs:home",
+    }];
+    const remoteLayout = {
+      ...config.layout,
+      instances: [...config.layout.instances, {
+        instanceId: "help:remote",
+        paneId: "help",
+        binding: { kind: "none" as const },
+      }],
+    };
+
+    const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
+      layout: remoteLayout,
+      layouts: [{
+        ...config.layouts[0]!,
+        layout: remoteLayout,
+        paneState: { "jobs:home": { pluginState: { jobs: { "jobs:open": null } } } },
+        focusedPaneId: "help:remote",
+      }],
+      activeLayoutIndex: 0,
     });
+
+    expect(merged?.layout).toEqual(remoteLayout);
+    expect(merged?.layouts[0]?.layout).toEqual(remoteLayout);
+    expect(merged?.layouts[0]?.paneState).toBe(localPaneState);
+    expect(merged?.layouts[0]?.focusedPaneId).toBe("jobs:home");
+  });
+
+  test("the synced config payload carries no session state", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-session-payload-test");
+    config.layouts = [{
+      ...config.layouts[0]!,
+      paneState: { "jobs:home": { cursorSymbol: "NVDA", pluginState: { jobs: { "jobs:open": "NVDA" } } } },
+      focusedPaneId: "jobs:home",
+      activePanel: "right",
+    }];
+
+    const payload = await coreConfigSyncContributor.collect({
+      state: createInitialState(config),
+    }) as any;
+
+    expect(payload.layouts[0].layout).toBeDefined();
+    expect(payload.layouts[0]).not.toHaveProperty("paneState");
+    expect(payload.layouts[0]).not.toHaveProperty("focusedPaneId");
+    expect(payload.layouts[0]).not.toHaveProperty("activePanel");
+    expect(JSON.stringify(payload)).not.toContain("jobs:open");
   });
 
   test("emits legacy aliases for mixed-version config sync", async () => {
@@ -99,16 +142,6 @@ describe("core sync contributors", () => {
     config.disabledPlugins = ["portfolio"];
     config.pluginConfig = {
       portfolio: { "commonAssumptions:v1": { kellyFraction: 0.5 } },
-    };
-    config.layouts[0] = {
-      ...config.layouts[0]!,
-      paneState: {
-        "portfolio-list:main": {
-          pluginState: {
-            portfolio: { mode: "scenario" },
-          },
-        },
-      },
     };
 
     const payload = await coreConfigSyncContributor.collect({
@@ -123,9 +156,6 @@ describe("core sync contributors", () => {
     ]);
     for (const pluginId of ["portfolio", "portfolio-list", "analytics", "kelly-sizer"]) {
       expect(payload.pluginConfig[pluginId]).toEqual(config.pluginConfig.portfolio);
-      expect(
-        payload.layouts[0].paneState["portfolio-list:main"].pluginState[pluginId],
-      ).toEqual({ mode: "scenario" });
     }
   });
 

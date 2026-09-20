@@ -1,6 +1,7 @@
 import { scheduleConfigSave } from "../state/config-save-scheduler";
+import { debugLog } from "../utils/debug-log";
 import { stableStringify } from "../remote/revision";
-import type { AppConfig, BrokerInstanceConfig } from "../types/config";
+import type { AppConfig, BrokerInstanceConfig, SavedLayout } from "../types/config";
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { Portfolio, TickerMetadata, TickerPosition, TickerRecord, Watchlist } from "../types/ticker";
 import type { BrokerAccount } from "../types/trading";
@@ -21,14 +22,23 @@ import {
 } from "./profile-analytics";
 import {
   addLegacyBuiltinDisabledPluginAliases,
-  addLegacyBuiltinPaneStatePluginAliases,
   addLegacyBuiltinPluginOwnerAliases,
   normalizeBuiltinDisabledPluginIds,
-  normalizeBuiltinPaneStatePluginOwners,
   normalizeBuiltinPluginStateMap,
 } from "../plugins/ownership";
 
+/**
+ * What a saved layout mirrors from the live session rather than from the
+ * workspace the user arranged. None of it crosses the network: it is the view
+ * this device is looking at right now, not a layout two devices should agree
+ * on. Syncing it made every poll hand each client the other's open detail,
+ * cursor and scroll position, and each apply pushed the view straight back.
+ */
+const SESSION_SAVED_LAYOUT_KEYS = ["paneState", "focusedPaneId", "activePanel"] as const;
+
 const SENSITIVE_KEY_PATTERN = /(token|secret|password|credential|private|api[_-]?key|access[_-]?key|refresh[_-]?key|session|cookie|dataDir|path|directory|localPath)/i;
+
+const log = debugLog.createLogger("sync");
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
@@ -308,14 +318,7 @@ function collectCoreConfigPayload(config: AppConfig) {
     portfolios: config.portfolios.map(sanitizePortfolio),
     watchlists: config.watchlists.map(sanitizeWatchlist),
     layout: config.layout,
-    layouts: config.layouts.map((savedLayout) => (
-      savedLayout.paneState
-        ? {
-          ...savedLayout,
-          paneState: addLegacyBuiltinPaneStatePluginAliases(savedLayout.paneState),
-        }
-        : savedLayout
-    )),
+    layouts: config.layouts.map(withoutSessionLayoutState),
     activeLayoutIndex: config.activeLayoutIndex,
     brokerInstances: config.brokerInstances.map(sanitizeBrokerInstance),
     disabledPlugins: addLegacyBuiltinDisabledPluginAliases(config.disabledPlugins),
@@ -510,13 +513,33 @@ function isPluginStateMap(value: unknown): value is Record<string, Record<string
   return isPlainObject(value) && Object.values(value).every(isPlainObject);
 }
 
-function normalizeSyncedLayouts(layouts: AppConfig["layouts"]): AppConfig["layouts"] {
-  return layouts.map((savedLayout) => {
+function withoutSessionLayoutState(savedLayout: SavedLayout): SavedLayout {
+  if (!isPlainObject(savedLayout)) return savedLayout;
+  if (!SESSION_SAVED_LAYOUT_KEYS.some((key) => key in savedLayout)) return savedLayout;
+  const { paneState: _paneState, focusedPaneId: _focusedPaneId, activePanel: _activePanel, ...rest } = savedLayout;
+  return rest;
+}
+
+/**
+ * A pulled layout list describes the workspace; the session state stays with
+ * this device. Entries are matched by name first so a renamed or reordered
+ * list still hands each layout back its own pane state.
+ */
+function withLocalSessionLayoutState(
+  pulled: SavedLayout[],
+  local: SavedLayout[],
+): SavedLayout[] {
+  const localByName = new Map(local.map((savedLayout) => [savedLayout?.name, savedLayout]));
+  return pulled.map((savedLayout, index) => {
     if (!isPlainObject(savedLayout)) return savedLayout;
-    if (!isPluginStateMap(savedLayout.paneState)) return savedLayout;
+    const stripped = withoutSessionLayoutState(savedLayout);
+    const source = localByName.get(savedLayout.name) ?? local[index];
+    if (!source) return stripped;
     return {
-      ...savedLayout,
-      paneState: normalizeBuiltinPaneStatePluginOwners(savedLayout.paneState),
+      ...stripped,
+      paneState: source.paneState,
+      focusedPaneId: source.focusedPaneId,
+      activePanel: source.activePanel,
     };
   });
 }
@@ -594,7 +617,7 @@ function mergeConfigPayload(
     && Array.isArray(payload.layouts)
   ) {
     next.layout = payload.layout as unknown as AppConfig["layout"];
-    next.layouts = normalizeSyncedLayouts(payload.layouts as AppConfig["layouts"]);
+    next.layouts = withLocalSessionLayoutState(payload.layouts as AppConfig["layouts"], config.layouts);
     next.activeLayoutIndex = payload.activeLayoutIndex as number;
   }
 
@@ -652,6 +675,15 @@ export const coreConfigSyncContributor: SyncContributor = {
   apply: (payload, { baselinePayload, baselineState, state, dispatch }) => {
     const nextConfig = mergeConfigPayload(state.config, payload, baselineState.config, baselinePayload);
     if (!nextConfig || valuesEqual(nextConfig, state.config)) return;
+    // Adopting another device's workspace rearranges the screen under the
+    // user, so it is worth a line in the log when a report says "my panes
+    // moved on their own".
+    if (nextConfig.layout !== state.config.layout) {
+      log.info("config.layout.adopted", {
+        panes: nextConfig.layout.instances.length,
+        activeLayoutIndex: nextConfig.activeLayoutIndex,
+      });
+    }
     dispatch({ type: "SET_CONFIG", config: nextConfig });
     scheduleConfigSave(nextConfig);
   },

@@ -56,6 +56,8 @@ export interface InitializeAppStateArgs {
   dataProvider: DataProvider;
   sessionSnapshot?: AppSessionSnapshot | null;
   paneState?: Record<string, PaneRuntimeState>;
+  /** Live pane state, read when the seed is dispatched rather than when it was built. */
+  getPaneState?: () => Record<string, PaneRuntimeState>;
   dispatch: Dispatch<AppAction>;
   primeCachedFinancials?: (entries: Array<{ ticker: TickerRecord; instrument: InstrumentRef; financials: TickerFinancials }>) => void;
   refreshTicker: (symbol: string, exchange?: string, tickerOverride?: TickerRecord | null, priority?: number, instrument?: InstrumentRef) => void;
@@ -229,6 +231,7 @@ export async function initializeAppState({
   dataProvider,
   sessionSnapshot,
   paneState,
+  getPaneState,
   dispatch,
   primeCachedFinancials,
   refreshTicker,
@@ -338,7 +341,12 @@ export async function initializeAppState({
   });
 
   measurePerf("startup.dispatch-pane-state-seed", () => {
+    // Loading tickers and priming caches takes long enough for the user to
+    // have picked a row already. A seed only fills a cursor that is still
+    // empty; it never moves one the user has put somewhere.
+    const livePaneState = getPaneState?.();
     for (const [paneId, patch] of Object.entries(paneStateSeed) as Array<[string, PaneRuntimeState]>) {
+      if (livePaneState && typeof livePaneState[paneId]?.cursorSymbol === "string") continue;
       dispatch({ type: "UPDATE_PANE_STATE", paneId, patch });
     }
   }, { paneStateSeedCount: Object.keys(paneStateSeed).length });

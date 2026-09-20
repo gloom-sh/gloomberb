@@ -134,15 +134,4 @@ export function normalizeBuiltinPaneStatePluginOwners(
   );
 }
 
-export function addLegacyBuiltinPaneStatePluginAliases(
-  paneState: Record<string, Record<string, unknown>>,
-): Record<string, Record<string, unknown>> {
-  return Object.fromEntries(
-    Object.entries(paneState).map(([paneId, state]) => [
-      paneId,
-      isPluginStateMap(state.pluginState)
-        ? { ...state, pluginState: addLegacyBuiltinPluginOwnerAliases(state.pluginState) }
-        : state,
-    ]),
-  );
-}
+

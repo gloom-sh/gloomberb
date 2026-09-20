@@ -319,17 +319,29 @@ function OpenTuiTabs({
     }
   }, [dragTargetValue, onReorder, resolveDragTarget]);
 
+  // Revealing the active tab must not fight a user who scrolled the strip to
+  // look for another one. Callers rebuild the tab array on every render, and a
+  // pane re-renders on every quote tick, so depending on those objects re-snaps
+  // the viewport several times a second. Only a change of the active tab or of
+  // the strip geometry is allowed to move it.
+  const revealKey = `${activeValue ?? ""}|${tabs.map((tab, index) => `${tab.value}:${tabWidths[index]}`).join(",")}`;
+  const revealRef = useRef({ tabWidths, totalWidth, activeIndex: -1 });
+  revealRef.current = {
+    tabWidths,
+    totalWidth,
+    activeIndex: tabs.findIndex((tab) => tab.value === activeValue),
+  };
   useEffect(() => {
     const scrollBox = scrollRef.current;
-    const activeIndex = tabs.findIndex((tab) => tab.value === activeValue);
+    const { tabWidths: widths, totalWidth: stripWidth, activeIndex } = revealRef.current;
     const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
     if (!scrollBox || activeIndex < 0 || viewportWidth <= 0) return;
 
-    const activeLeft = tabWidths.slice(0, activeIndex).reduce((sum, width) => sum + width, 0);
-    const activeRight = activeLeft + tabWidths[activeIndex]!;
+    const activeLeft = widths.slice(0, activeIndex).reduce((sum, width) => sum + width, 0);
+    const activeRight = activeLeft + widths[activeIndex]!;
     const currentLeft = scrollBox.scrollLeft ?? 0;
     const currentRight = currentLeft + viewportWidth;
-    const maxScrollLeft = Math.max(0, totalWidth - viewportWidth);
+    const maxScrollLeft = Math.max(0, stripWidth - viewportWidth);
     const scrollToLeft = (left: number) => {
       scrollBox.scrollLeft = left;
       scrollBox.scrollTo({ x: left, y: scrollBox.scrollTop });
@@ -340,7 +352,7 @@ function OpenTuiTabs({
     } else if (activeRight > currentRight) {
       scrollToLeft(Math.min(activeRight - viewportWidth, maxScrollLeft));
     }
-  }, [activeValue, tabWidths, tabs, totalWidth]);
+  }, [revealKey]);
 
   const handleMouseScroll = (event?: {
     preventDefault?: () => void;

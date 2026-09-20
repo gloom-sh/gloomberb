@@ -382,6 +382,94 @@ test("keeps the latest layout when switching away and back during a pull", async
   expect(pushedConfig.activeLayoutIndex).toBe(0);
 });
 
+// Two clients on one account used to trade views: a pull replaced live pane
+// state with the other device's, the resulting config change pushed this
+// device's view straight back, and an open detail or a scrolled tab strip
+// reset every few seconds on both.
+test("another device's layout never replaces this device's view", async () => {
+  let state = createInitialState(createDefaultConfig("/tmp/gloomberb-sync-view-test"));
+  const dispatch = (action: AppAction) => {
+    state = appReducer(state, action);
+  };
+  dispatch({
+    type: "UPDATE_PLUGIN_PANE_STATE",
+    paneId: "portfolio-list:main",
+    pluginId: "jobs",
+    key: "jobs:open",
+    value: "NVDA",
+  });
+  dispatch({ type: "UPDATE_PANE_STATE", paneId: "ticker-detail:main", patch: { activeTabId: "filings" } });
+
+  const remoteConfig = createDefaultConfig("/remote/path-is-not-synced");
+  remoteConfig.theme = "green";
+  const remotePayload = __syncContributorInternalsForTests.collectCoreConfigPayload(remoteConfig) as {
+    layouts: Array<Record<string, unknown>>;
+  };
+  // A device on an older build still sends the view it is looking at.
+  remotePayload.layouts[0] = {
+    ...remotePayload.layouts[0],
+    paneState: {
+      "portfolio-list:main": { pluginState: { jobs: { "jobs:open": null } } },
+      "ticker-detail:main": { activeTabId: "overview" },
+    },
+    focusedPaneId: "chat:main",
+  };
+  const pushes: SyncSnapshot[] = [];
+  const transport: SyncTransport = {
+    id: "remote-view",
+    isAvailable: () => true,
+    pullSnapshot: async () => ({
+      snapshot: {
+        schemaVersion: SYNC_SNAPSHOT_SCHEMA_VERSION,
+        appId: "gloomberb",
+        clientId: "remote-client",
+        createdAt: "2026-09-20T10:00:00.000Z",
+        contributors: {
+          "core.config": {
+            schemaVersion: 1,
+            updatedAt: "2026-09-20T10:00:00.000Z",
+            payload: remotePayload,
+          },
+        },
+      },
+      revision: 3,
+      updatedAt: "2026-09-20T10:00:00.000Z",
+    }),
+    pushSnapshot: async (snapshot) => {
+      pushes.push(snapshot);
+      return { revision: 4, updatedAt: "2026-09-20T10:00:01.000Z" };
+    },
+  };
+  const controller = new CloudSyncController();
+  controller.setRuntime({
+    getState: () => state,
+    dispatch,
+    tickerRepository: {} as TickerRepository,
+    getContributors: () => [{ pluginId: "core", contributor: coreConfigSyncContributor }],
+    getTransport: () => ({ pluginId: "test", transport }),
+  });
+
+  await controller.requestSync({ reason: "startup" });
+
+  expect(state.config.theme).toBe("green");
+  expect(state.paneState["portfolio-list:main"]?.pluginState?.jobs?.["jobs:open"]).toBe("NVDA");
+  expect(state.paneState["ticker-detail:main"]?.activeTabId).toBe("filings");
+
+  // Looking at something else is not a reason to talk to the cloud again.
+  const pushesAfterFirstSync = pushes.length;
+  dispatch({
+    type: "UPDATE_PLUGIN_PANE_STATE",
+    paneId: "portfolio-list:main",
+    pluginId: "jobs",
+    key: "jobs:open",
+    value: "AMD",
+  });
+  await controller.requestSync({ reason: "state-change" });
+
+  expect(pushes).toHaveLength(pushesAfterFirstSync);
+  expect(state.paneState["portfolio-list:main"]?.pluginState?.jobs?.["jobs:open"]).toBe("AMD");
+});
+
 test("pulls remote changes on later syncs instead of only once per session", async () => {
   const applied: unknown[] = [];
   const contributor: SyncContributor = {

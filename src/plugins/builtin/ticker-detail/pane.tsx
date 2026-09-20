@@ -179,6 +179,13 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const tabBarHeight = paneSettings.hideTabs ? 0 : 1;
   const contentHeight = Math.max(1, height - tabBarHeight);
   const visibleTabIdKey = allTabs.map((tab) => tab.id).join("\0");
+  // A quote tick re-renders this pane; the tab strip only has to re-render
+  // when a tab appears, disappears, or is renamed.
+  const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}`).join("\0");
+  const tabItems = useMemo(
+    () => allTabs.map((tab) => ({ label: t(tab.name), value: tab.id })),
+    [tabItemsKey],
+  );
   const visibleTabIds = useMemo(() => new Set(allTabs.map((tab) => tab.id)), [visibleTabIdKey]);
   const renderedTabIds = useMemo(() => {
     const next = new Set<string>();
@@ -232,7 +239,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     <Box flexDirection="column" flexGrow={1} flexBasis={0} overflow="hidden">
       {!paneSettings.hideTabs && (
         <Tabs
-          tabs={allTabs.map((tab) => ({ label: t(tab.name), value: tab.id }))}
+          tabs={tabItems}
           activeValue={resolvedTabId}
           onSelect={setActiveTabId}
           focused={focused && !pluginCaptured}

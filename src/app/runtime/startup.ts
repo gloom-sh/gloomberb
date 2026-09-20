@@ -31,6 +31,7 @@ interface UseAppStartupRuntimeOptions {
   dispatch: Dispatch<AppAction>;
   externalPlugins: readonly LoadedExternalPlugin[];
   focusedTickerSymbol: string | null;
+  getState: () => AppState;
   isDetachedWindow?: boolean;
   marketData: MarketDataCoordinator;
   pluginRegistry: PluginRegistry;
@@ -51,6 +52,7 @@ export function useAppStartupRuntime({
   dispatch,
   externalPlugins,
   focusedTickerSymbol,
+  getState,
   isDetachedWindow = false,
   marketData,
   pluginRegistry,
@@ -93,6 +95,7 @@ export function useAppStartupRuntime({
           dataProvider,
           sessionSnapshot,
           paneState: state.paneState,
+          getPaneState: () => getState().paneState,
           dispatch,
           primeCachedFinancials,
           refreshTicker,
@@ -114,6 +117,7 @@ export function useAppStartupRuntime({
     autoImportBrokerPositions,
     dataProvider,
     dispatch,
+    getState,
     pluginRegistry.brokers,
     pluginRegistry.persistence.resources,
     primeCachedFinancials,

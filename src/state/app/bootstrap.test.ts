@@ -147,6 +147,48 @@ describe("initializeAppState", () => {
     persistence.close();
   });
 
+  // Loading tickers and priming caches runs while the app is already on
+  // screen, so the row a user picks during startup must outlive the seed that
+  // was computed before they picked it.
+  test("a cursor chosen during startup survives the pane-state seed", async () => {
+    const dbPath = createTempDbPath("app-bootstrap-seed-race");
+    const persistence = new AppPersistence(dbPath);
+    const repository = new TickerRepository(persistence.tickers);
+    const config = createDefaultConfig(dbPath);
+    config.recentTickers = [];
+    for (const ticker of ["AAPL", "NVDA"]) {
+      await repository.createTicker({
+        ticker, exchange: "NASDAQ", currency: "USD", name: ticker,
+        portfolios: [], watchlists: [config.watchlists[0]?.id ?? "watchlist"],
+        positions: [], broker_contracts: [], custom: {}, tags: [],
+      });
+    }
+    const seeded: Array<[string, unknown]> = [];
+    // The user clicked NVDA while startup was still reading the ticker store.
+    const livePaneState = { "portfolio-list:main": { cursorSymbol: "NVDA" } };
+
+    try {
+      await initializeAppState({
+        config,
+        tickerRepository: repository,
+        dataProvider: {} as any,
+        sessionSnapshot: null,
+        paneState: {},
+        getPaneState: () => livePaneState,
+        dispatch: (action) => {
+          if (action.type === "UPDATE_PANE_STATE") seeded.push([action.paneId, action.patch.cursorSymbol]);
+        },
+        refreshTicker: () => {},
+        refreshQuote: () => {},
+        autoImportBrokerPositions: async () => {},
+      });
+
+      expect(seeded).toEqual([]);
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("hydrates persisted broker account snapshots into app state before broker sync", async () => {
     const dbPath = createTempDbPath("app-bootstrap");
     const persistence = new AppPersistence(dbPath);

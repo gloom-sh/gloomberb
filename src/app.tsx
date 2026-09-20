@@ -293,6 +293,7 @@ function AppInner({
     dispatch,
     externalPlugins,
     focusedTickerSymbol,
+    getState: getRemoteState,
     isDetachedWindow,
     marketData,
     pluginRegistry,
