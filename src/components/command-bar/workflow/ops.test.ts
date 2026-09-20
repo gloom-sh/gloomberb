@@ -198,6 +198,73 @@ describe("createPaneTemplateOrThrow", () => {
     expect(createdSymbol).toBe("MSFT");
   });
 
+  // JOBS, CALLS and CDS open market-wide when nothing was named, so an empty
+  // arg must neither fail to resolve nor quietly inherit the focused ticker.
+  test("opens an optional-ticker template unbound, ignoring the focused ticker", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
+    const layout = cloneLayout(config.layout);
+    layout.instances = [{
+      instanceId: "quote-monitor:1",
+      paneId: "quote-monitor",
+      binding: { kind: "fixed", symbol: "TSLA" },
+    }] as never;
+    const state = createInitialState({ ...config, layout });
+    state.focusedPaneId = "quote-monitor:1";
+    const tsla: TickerRecord = {
+      metadata: {
+        ticker: "TSLA",
+        exchange: "NASDAQ",
+        currency: "USD",
+        name: "Tesla",
+        portfolios: [],
+        watchlists: [],
+        positions: [],
+        broker_contracts: [],
+        custom: {},
+        tags: [],
+      },
+    };
+    state.tickers.set("TSLA", tsla);
+    let createdOptions: { symbol?: string } | undefined | null = null;
+    let createdBinding: unknown = "unset";
+
+    await createPaneTemplateOrThrow("jobs-pane", undefined, {
+      dataProvider: makeDataProvider() as any,
+      tickerRepository: makeTickerRepository() as any,
+      dispatch: () => {},
+      getState: () => state,
+      pluginRegistry: {
+        paneTemplates: new Map([["jobs-pane", {
+          id: "jobs-pane",
+          paneId: "jobs",
+          label: "Hiring",
+          description: "Hiring",
+          shortcut: { prefix: "JOBS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+          createInstance: (_context: unknown, options: { symbol?: string } | undefined) => {
+            createdOptions = options;
+            return { instanceId: "jobs:home", title: "Hiring", placement: "floating" };
+          },
+        }]]),
+        panes: new Map([["jobs", {
+          id: "jobs",
+          name: "Hiring",
+          component: () => null,
+          defaultPosition: "right",
+        }]]),
+        getPaneTemplatePluginId: () => undefined,
+        events: { emit: () => {} },
+      } as any,
+      buildPaneInstance: (_paneType: string, options?: { binding?: unknown }) => {
+        createdBinding = options?.binding;
+        return { instanceId: "jobs:home", paneId: "jobs" } as any;
+      },
+      placePaneInstance: () => {},
+    });
+
+    expect(createdOptions?.symbol).toBeUndefined();
+    expect(createdBinding).toBeUndefined();
+  });
+
   test("passes pane template instance ids through to pane creation", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-test");
     const state = createInitialState(config);

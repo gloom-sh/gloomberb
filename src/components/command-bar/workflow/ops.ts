@@ -159,7 +159,14 @@ async function resolvePaneTemplateOptions(
   };
 
   let resolvedOptions = options;
-  if (template.shortcut?.argPlaceholder === "ticker") {
+  // Templates whose ticker is optional (JOBS, CALLS, CDS) open market-wide when
+  // nothing was named, so they must not resolve a ticker at all: there is no
+  // input to match, and silently falling back to the active ticker would bind a
+  // pane the caller deliberately left unbound.
+  const tickerNamed = !!(resolvedOptions?.symbol?.trim() || resolvedOptions?.arg?.trim() || resolvedOptions?.ticker);
+  const resolvesTicker = template.shortcut?.argPlaceholder === "ticker"
+    && (tickerNamed || !template.shortcut.argOptional);
+  if (resolvesTicker) {
     if (resolvedOptions?.instrument === null && !resolvedOptions.ticker) {
       const publicTarget = await resolveTickerOpenTarget({ query: resolvedOptions.symbol ?? resolvedOptions.arg ?? baseContext.activeTicker ?? "",
         tickers: state.tickers, tickerRepository: deps.tickerRepository, dataProvider: deps.dataProvider, publicOnly: true });
