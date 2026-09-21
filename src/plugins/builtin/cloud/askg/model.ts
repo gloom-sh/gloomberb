@@ -1,4 +1,8 @@
-import type { ASKGClientErrorCode } from "../../../../api-client/askg";
+import type {
+  ASKGClientErrorCode,
+  ASKGConversationDetail,
+  ASKGConversationTool,
+} from "../../../../api-client/askg";
 import type {
   ASKGLimits,
   ASKGSseEvent,
@@ -75,6 +79,8 @@ export interface ASKGTurn {
 
 export interface ASKGConversationState {
   sessionId: string | null;
+  /** The stored conversation these turns belong to, once the server names it. */
+  conversationId: string | null;
   model: string | null;
   limits: ASKGLimits | null;
   /** Tool names the session negotiated; anything else is refused locally. */
@@ -86,6 +92,7 @@ export interface ASKGConversationState {
 
 export const EMPTY_ASKG_CONVERSATION: ASKGConversationState = {
   sessionId: null,
+  conversationId: null,
   model: null,
   limits: null,
   acceptedTools: [],
@@ -111,6 +118,8 @@ export type ASKGAction =
   | { type: "turn-failed"; turnId: string; error: ASKGErrorState }
   | { type: "turn-cancelled"; turnId: string }
   | { type: "drop-turn"; turnId: string }
+  | { type: "conversation-opened"; conversation: ASKGConversationDetail }
+  | { type: "conversation-started" }
   | { type: "reset" };
 
 /**
@@ -224,7 +233,13 @@ function applyEvent(
   switch (event.type) {
     case "session":
       return patchTurn(
-        { ...next, sessionId: event.sessionId, model: event.model },
+        {
+          ...next,
+          sessionId: event.sessionId,
+          model: event.model,
+          // A turn that named no conversation learns here where it was filed.
+          conversationId: event.conversationId ?? next.conversationId,
+        },
         null,
         (turn) => (turn.remoteTurnId ? turn : { ...turn, remoteTurnId: event.turnId }),
       );
@@ -392,6 +407,15 @@ export function askgReducer(
       if (turns.length === state.turns.length) return state;
       return { ...state, turns };
     }
+    case "conversation-opened":
+      return {
+        ...state,
+        conversationId: action.conversation.id,
+        turns: turnsFromConversation(action.conversation),
+        lastSeq: 0,
+      };
+    case "conversation-started":
+      return { ...state, conversationId: null, turns: [], lastSeq: 0 };
     case "reset":
       return {
         ...EMPTY_ASKG_CONVERSATION,
@@ -401,6 +425,76 @@ export function askgReducer(
         acceptedTools: state.acceptedTools,
       };
   }
+}
+
+/**
+ * A stored tool as a timeline row. `result` is deliberately absent: the
+ * platform keeps what Gloom ran, not the rows it returned, and a row with no
+ * result already renders as one that cannot be expanded.
+ */
+function rowFromStoredTool(tool: ASKGConversationTool): ASKGToolRow {
+  return {
+    toolCallId: tool.toolCallId,
+    name: tool.name,
+    argumentSummary: tool.args
+      ? summarizeToolArguments(tool.args as Record<string, JsonValue>)
+      : (tool.note ?? ""),
+    writeTier: "read",
+    origin: tool.origin,
+    status: (tool.status as ASKGToolRowStatus) ?? "ok",
+    requiresConfirmation: false,
+    ...(tool.rowCount === undefined ? {} : { rowCount: tool.rowCount }),
+    ...(tool.elapsedMs === undefined ? {} : { elapsedMs: tool.elapsedMs }),
+    ...(tool.note ? { note: tool.note } : {}),
+    expanded: false,
+  };
+}
+
+/**
+ * Rebuilds the transcript of a reopened conversation. Messages arrive oldest
+ * first as alternating question and answer, and each pair becomes one turn, so
+ * a conversation read from the platform renders through exactly the same view
+ * as one that just streamed.
+ */
+export function turnsFromConversation(
+  conversation: ASKGConversationDetail,
+): ASKGTurn[] {
+  const turns: ASKGTurn[] = [];
+  for (const message of conversation.messages) {
+    const startedAt = Date.parse(message.createdAt) || 0;
+    if (message.role === "user") {
+      turns.push({
+        id: `stored:${conversation.id}:${message.seq}`,
+        remoteTurnId: message.turnId,
+        prompt: message.text,
+        answer: "",
+        tools: [],
+        status: "complete",
+        error: null,
+        startedAt,
+      });
+      continue;
+    }
+    // An answer belongs to the question above it; one that lost its question
+    // still shows rather than being dropped on the floor.
+    const turn = turns[turns.length - 1];
+    const tools = message.tools.map(rowFromStoredTool);
+    if (!turn || turn.answer) {
+      turns.push({
+        id: `stored:${conversation.id}:${message.seq}`,
+        remoteTurnId: message.turnId,
+        prompt: "",
+        answer: message.text,
+        tools,
+        status: "complete",
+        error: null,
+        startedAt,
+      });
+      continue;
+    }
+    turns[turns.length - 1] = { ...turn, answer: message.text, tools };
+  }
+  return turns;
 }
 
 /** The tool call the pane is currently blocking on, if any. */

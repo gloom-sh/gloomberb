@@ -1,5 +1,6 @@
 import {
   ASKGTransportError,
+  type ASKGConversationDetail,
   type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
@@ -172,8 +173,13 @@ export class ASKGSessionController {
     }
   }
 
-  /** Prior questions and answers, oldest first, for the next turn's context. */
+  /**
+   * Prior questions and answers, oldest first, for the next turn's context.
+   * Only sent while no conversation is open: once the platform holds the
+   * transcript it is the context, and it sends nothing to disagree with.
+   */
   private history(): ASKGTurnRequest["history"] {
+    if (this.state.conversationId) return undefined;
     return this.state.turns
       .filter((turn) => turn.answer.trim().length > 0)
       .slice(-MAX_HISTORY_TURNS)
@@ -192,6 +198,7 @@ export class ASKGSessionController {
     // re-attaches to the same turn instead of asking again.
     const turnId = this.createId();
     const history = this.history();
+    const conversationId = this.state.conversationId;
     this.dispatch({ type: "prompt", turnId, prompt: trimmed, at: this.now() });
 
     const abort = new AbortController();
@@ -220,6 +227,9 @@ export class ASKGSessionController {
       await this.options.transport.streamTurn(session.sessionId, {
         protocolVersion: ASKG_PROTOCOL_VERSION,
         turnId,
+        // Absent on the first question, so the platform opens a conversation
+        // and names it in the stream's session frame.
+        ...(conversationId ? { conversationId } : {}),
         input: trimmed,
         ...(this.options.getContext ? { context: this.options.getContext() } : {}),
         ...(history && history.length > 0 ? { history } : {}),
@@ -251,6 +261,24 @@ export class ASKGSessionController {
         });
       }
     }
+  }
+
+  /**
+   * Replaces the open transcript with a stored one. The conversation becomes
+   * the one the next question continues, and its turns render through the
+   * same view as a conversation that just streamed.
+   */
+  openConversation(conversation: ASKGConversationDetail): void {
+    if (this.disposed) return;
+    this.cancel();
+    this.dispatch({ type: "conversation-opened", conversation });
+  }
+
+  /** Clears the pane for a new conversation without dropping the session. */
+  startConversation(): void {
+    if (this.disposed) return;
+    this.cancel();
+    this.dispatch({ type: "conversation-started" });
   }
 
   /**

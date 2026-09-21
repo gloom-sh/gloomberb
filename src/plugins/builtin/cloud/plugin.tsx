@@ -21,6 +21,7 @@ import {
 import { congressHeadless } from "../congress-trades/headless";
 import { registerTwitterFeedFeature } from "../cloud-tweets/registration";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
+import { askgConversationListStore } from "./askg/conversation-store";
 import { ASKG_PANE_ID, ASKGPane } from "./askg/pane";
 import { askGloomQuestion } from "./askg/pending-question";
 import { registerCloudAuthCommands } from "./auth-commands";
@@ -186,6 +187,11 @@ const accountModule: PluginModule = {
 };
 
 const askgModule: PluginModule = {
+  setup(ctx) {
+    // Only the dragged sidebar width is per device; the conversations
+    // themselves belong to the account and are read from the cloud.
+    askgConversationListStore.attach(ctx.persistence);
+  },
   panes: [{
     id: ASKG_PANE_ID,
     name: "Ask Gloom",

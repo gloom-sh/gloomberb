@@ -9,6 +9,7 @@ import {
   rowSymbol,
   summarizeToolArguments,
   toolResultTables,
+  turnsFromConversation,
   type ASKGConversationState,
 } from "./model";
 import type { ASKGSseEvent } from "./protocol";
@@ -269,5 +270,80 @@ describe("failure handling", () => {
     const dropped = askgReducer(failed, { type: "drop-turn", turnId: "turn-1" });
     expect(dropped.turns).toHaveLength(0);
     expect(askgReducer(dropped, { type: "drop-turn", turnId: "turn-1" })).toBe(dropped);
+  });
+});
+
+describe("stored conversations", () => {
+  test("a stored conversation rebuilds as question and answer turns", () => {
+    const at = "2026-09-20T10:00:00.000Z";
+    const turns = turnsFromConversation({
+      id: "conv-1",
+      title: "Bonds",
+      messageCount: 5,
+      lastMessageAt: at,
+      createdAt: at,
+      updatedAt: at,
+      messages: [
+        { seq: 1, role: "user", text: "5y bonds?", tools: [], turnId: "t1", createdAt: at },
+        {
+          seq: 2,
+          role: "assistant",
+          text: "About 4.2%.",
+          tools: [{
+            toolCallId: "call-1",
+            name: "econ.series",
+            origin: "server",
+            status: "ok",
+            args: { symbol: "DGS5" },
+            rowCount: 12,
+          }],
+          turnId: "t1",
+          createdAt: at,
+        },
+        { seq: 3, role: "user", text: "and 10y?", tools: [], turnId: "t2", createdAt: at },
+        { seq: 4, role: "assistant", text: "About 4.4%.", tools: [], turnId: "t2", createdAt: at },
+        // Trimming can drop a question and leave its answer behind; the answer
+        // still shows rather than being attached to an unrelated question.
+        { seq: 5, role: "assistant", text: "Orphan.", tools: [], turnId: "t3", createdAt: at },
+      ],
+    });
+
+    expect(turns).toHaveLength(3);
+    expect(turns[0]).toMatchObject({ prompt: "5y bonds?", answer: "About 4.2%.", status: "complete" });
+    expect(turns[0]?.tools[0]).toMatchObject({
+      name: "econ.series",
+      origin: "server",
+      argumentSummary: "DGS5",
+      rowCount: 12,
+    });
+    // No result means the row renders as one that cannot be expanded.
+    expect(turns[0]?.tools[0]?.result).toBeUndefined();
+    expect(turns[1]).toMatchObject({ prompt: "and 10y?", answer: "About 4.4%." });
+    expect(turns[2]).toMatchObject({ prompt: "", answer: "Orphan." });
+  });
+
+  test("opening a conversation replaces the turns and starting one clears them", () => {
+    const at = "2026-09-20T10:00:00.000Z";
+    const opened = askgReducer(withTurn(), {
+      type: "conversation-opened",
+      conversation: {
+        id: "conv-2",
+        title: null,
+        messageCount: 2,
+        lastMessageAt: at,
+        createdAt: at,
+        updatedAt: at,
+        messages: [
+          { seq: 1, role: "user", text: "stored", tools: [], turnId: "t1", createdAt: at },
+          { seq: 2, role: "assistant", text: "answer", tools: [], turnId: "t1", createdAt: at },
+        ],
+      },
+    });
+    expect(opened.conversationId).toBe("conv-2");
+    expect(opened.turns.map((turn) => turn.prompt)).toEqual(["stored"]);
+
+    const started = askgReducer(opened, { type: "conversation-started" });
+    expect(started.conversationId).toBeNull();
+    expect(started.turns).toEqual([]);
   });
 });

@@ -154,8 +154,15 @@ export interface ASKGTurnRequest {
   protocolVersion?: typeof ASKG_PROTOCOL_VERSION;
   /** Client generated id, reused verbatim to re-attach to a running turn. */
   turnId: string;
+  /** Omitted to start a conversation; the stream reports the one it opened. */
+  conversationId?: string;
   input: string;
   context?: ASKGSessionContext;
+  /**
+   * Only read for a turn that named no conversation. The platform stores the
+   * transcript, so once there is one it is the context, and two clients on one
+   * conversation cannot disagree about what was said.
+   */
   history?: Array<{ role: "user" | "assistant"; text: string }>;
 }
 
@@ -171,6 +178,8 @@ export interface ASKGSessionEvent extends ASKGEventBase {
   turnId: string;
   model: string;
   promptVersion: string;
+  /** The stored conversation this turn was recorded in. */
+  conversationId?: string;
 }
 
 /** Appends model text to the visible answer. */

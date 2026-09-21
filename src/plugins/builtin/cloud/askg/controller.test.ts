@@ -115,6 +115,7 @@ function createHarness(options: {
       return options.toolResultOutcome ?? "accepted";
     },
     async cancelTurn() {},
+    ...noConversations,
   };
 
   const controller = new ASKGSessionController({
@@ -168,6 +169,22 @@ function executorReturning(payload: Partial<ToolResultPayload>): {
 async function settle(): Promise<void> {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 }
+
+/** The conversation surface a turn-focused double never exercises. */
+const noConversations = {
+  async listConversations() {
+    return [];
+  },
+  async loadConversation() {
+    return null;
+  },
+  async renameConversation() {
+    return null;
+  },
+  async deleteConversation() {
+    return false;
+  },
+};
 
 describe("ASKGSessionController", () => {
   test("runs a read tool through the executor and posts the result back", async () => {
@@ -302,6 +319,7 @@ describe("ASKGSessionController", () => {
         return "accepted";
       },
       async cancelTurn() {},
+      ...noConversations,
     };
     const controller = new ASKGSessionController({
       transport,
@@ -332,6 +350,145 @@ describe("ASKGSessionController", () => {
     ]);
   });
 
+  test("a conversation is named by the stream and continued by the next question", async () => {
+    const requests: ASKGTurnRequest[] = [];
+    const transport: ASKGTransport = {
+      isStreamingSupported: () => true,
+      async startSession() {
+        return sessionResponse();
+      },
+      async streamTurn(_sessionId, request, streamOptions) {
+        requests.push(request);
+        streamOptions.onEvent({
+          seq: 1,
+          type: "session",
+          sessionId: "s1",
+          turnId: request.turnId,
+          model: "gloom-1",
+          promptVersion: "v1",
+          conversationId: "conv-1",
+        });
+        streamOptions.onEvent({
+          seq: 2,
+          type: "text-delta",
+          turnId: request.turnId,
+          delta: "Answered.",
+        });
+        streamOptions.onEvent({ seq: 3, type: "done", turnId: request.turnId, reason: "complete" });
+        return "complete";
+      },
+      async postToolResult() {
+        return "accepted";
+      },
+      async cancelTurn() {},
+      ...noConversations,
+    };
+    let ids = 0;
+    const controller = new ASKGSessionController({
+      transport,
+      loadManifest: async () => MANIFEST,
+      getExecutor: () => null,
+      client: { kind: "tui", version: "1" },
+      createId: () => `turn-${(ids += 1)}`,
+    });
+
+    await controller.ask("first question");
+    expect(controller.getState().conversationId).toBe("conv-1");
+    // The first question cannot name a conversation and carries its own
+    // history; the second names one and lets the platform own the context.
+    expect(requests[0]?.conversationId).toBeUndefined();
+
+    await controller.ask("second question");
+    expect(requests[1]?.conversationId).toBe("conv-1");
+    expect(requests[1]?.history).toBeUndefined();
+  });
+
+  test("opening a stored conversation replaces the transcript and continues it", async () => {
+    const requests: ASKGTurnRequest[] = [];
+    const transport: ASKGTransport = {
+      isStreamingSupported: () => true,
+      async startSession() {
+        return sessionResponse();
+      },
+      async streamTurn(_sessionId, request, streamOptions) {
+        requests.push(request);
+        streamOptions.onEvent({ seq: 1, type: "done", turnId: request.turnId, reason: "complete" });
+        return "complete";
+      },
+      async postToolResult() {
+        return "accepted";
+      },
+      async cancelTurn() {},
+      ...noConversations,
+    };
+    const controller = new ASKGSessionController({
+      transport,
+      loadManifest: async () => MANIFEST,
+      getExecutor: () => null,
+      client: { kind: "tui", version: "1" },
+      createId: () => "turn-live",
+    });
+
+    controller.openConversation({
+      id: "conv-7",
+      title: "Bonds",
+      messageCount: 2,
+      lastMessageAt: "2026-09-20T10:00:00.000Z",
+      createdAt: "2026-09-20T10:00:00.000Z",
+      updatedAt: "2026-09-20T10:00:00.000Z",
+      messages: [
+        {
+          seq: 1,
+          role: "user",
+          text: "what does a 5y bond return",
+          tools: [],
+          turnId: "turn-a",
+          createdAt: "2026-09-20T10:00:00.000Z",
+        },
+        {
+          seq: 2,
+          role: "assistant",
+          text: "About 4.2%.",
+          tools: [
+            {
+              toolCallId: "call-1",
+              name: "econ.series",
+              origin: "server",
+              status: "ok",
+              rowCount: 12,
+              elapsedMs: 30,
+            },
+          ],
+          turnId: "turn-a",
+          createdAt: "2026-09-20T10:00:01.000Z",
+        },
+      ],
+    });
+
+    const state = controller.getState();
+    expect(state.conversationId).toBe("conv-7");
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0]).toMatchObject({
+      prompt: "what does a 5y bond return",
+      answer: "About 4.2%.",
+      status: "complete",
+    });
+    // A stored row names the tool without pretending its rows are still there.
+    expect(state.turns[0]?.tools[0]).toMatchObject({
+      name: "econ.series",
+      origin: "server",
+      rowCount: 12,
+    });
+    expect(state.turns[0]?.tools[0]?.result).toBeUndefined();
+
+    await controller.ask("and 10y");
+    expect(requests[0]?.conversationId).toBe("conv-7");
+
+    controller.startConversation();
+    expect(controller.getState().conversationId).toBeNull();
+    expect(controller.getState().turns).toEqual([]);
+  });
+
   test("a turn that did not fail is not re-asked", async () => {
     const inputs: string[] = [];
     const transport: ASKGTransport = {
@@ -348,6 +505,7 @@ describe("ASKGSessionController", () => {
         return "accepted";
       },
       async cancelTurn() {},
+      ...noConversations,
     };
     const controller = new ASKGSessionController({
       transport,

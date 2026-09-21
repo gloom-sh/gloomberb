@@ -50,7 +50,18 @@ import {
   loadASKGClientManifest,
   resolveToolPaneTarget,
 } from "./host";
+import {
+  askgConversationLabel,
+  askgConversationListStore,
+} from "./conversation-store";
+import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
+import { useDialog, type PromptContext } from "../../../../ui/dialog";
 import { subscribeASKGQuestions } from "./pending-question";
+import {
+  ASKGConversationSidebar,
+  getASKGSidebarWidth,
+  shouldShowASKGSidebar,
+} from "./sidebar";
 import {
   activeTurn,
   canRetryASKGError,
@@ -439,6 +450,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const activeSymbol = useAppSelector((state) => state.recentTickers[0] ?? null);
   const { pinTicker } = usePluginTickerActions();
   const { createPaneFromTemplate, showPane, openCommandBar } = usePluginAppActions();
+  const dialog = useDialog();
 
   const configRef = useRef(config);
   configRef.current = config;
@@ -485,6 +497,31 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const inputRef = useRef<TextareaRenderable | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [queuedQuestion, setQueuedQuestion] = useState<string | null>(null);
+  const [sidebarFocused, setSidebarFocused] = useState(false);
+  // The row the keyboard is on while the sidebar has focus. Arrows move it and
+  // Enter opens it, so walking the list does not load a transcript per keypress.
+  const [sidebarCursorId, setSidebarCursorId] = useState<string | null>(null);
+
+  const conversations = useSyncExternalStore(
+    useCallback((listener) => askgConversationListStore.subscribe(listener), []),
+    useCallback(() => askgConversationListStore.getSnapshot(), []),
+    useCallback(() => askgConversationListStore.getSnapshot(), []),
+  );
+
+  useEffect(() => {
+    if (!planAccess.emailVerified) return;
+    askgConversationListStore.useTransport(apiClient.askg);
+    askgConversationListStore.ensureLoaded();
+  }, [planAccess.emailVerified]);
+
+  const showSidebar = shouldShowASKGSidebar(
+    conversations.conversations.length,
+    width,
+    height,
+  );
+  const sidebarWidth = showSidebar
+    ? getASKGSidebarWidth(width, !!nativePaneChrome, conversations.width)
+    : 0;
 
   const running = isTurnRunning(state);
   const confirmation = pendingConfirmation(state);
@@ -509,6 +546,48 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (!trimmed) return;
     void controller.ask(trimmed);
   }, [controller]);
+
+  const openConversation = useCallback(async (conversationId: string) => {
+    if (conversationId === state.conversationId) return;
+    const conversation = await apiClient.askg.loadConversation(conversationId);
+    // A row the sidebar still shows may be gone; the refresh drops it.
+    if (!conversation) {
+      void askgConversationListStore.refresh();
+      return;
+    }
+    setSelectedToolCallId(null);
+    setExpandedToolCallId(null);
+    controller.openConversation(conversation);
+  }, [controller, state.conversationId]);
+
+  const newConversation = useCallback(() => {
+    setSelectedToolCallId(null);
+    setExpandedToolCallId(null);
+    controller.startConversation();
+  }, [controller]);
+
+  // A transcript has no undo, so it is never one click from gone.
+  const deleteConversation = useCallback(async (conversationId: string) => {
+    const row = conversations.conversations.find(
+      (conversation) => conversation.id === conversationId,
+    );
+    const label = row ? askgConversationLabel(row) : "this conversation";
+    const confirmed = await dialog.prompt<boolean>({
+      closeOnClickOutside: true,
+      content: (context: unknown) => (
+        <ConfirmDialog
+          {...(context as PromptContext<boolean>)}
+          title="Delete conversation"
+          body={[`Delete "${label}"? This cannot be undone.`]}
+          confirmLabel="Delete conversation"
+          width={48}
+        />
+      ),
+    }).catch(() => false);
+    if (confirmed !== true) return;
+    if (conversationId === state.conversationId) controller.startConversation();
+    void askgConversationListStore.delete(conversationId);
+  }, [controller, conversations.conversations, dialog, state.conversationId]);
 
   const focusInput = useCallback(() => {
     setInputFocused(true);
@@ -546,6 +625,34 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (!scroll?.viewport) return;
     scroll.scrollTo({ x: 0, y: Math.max(0, scroll.scrollHeight - scroll.viewport.height) });
   }, [state.turns]);
+
+  // A conversation the platform just opened belongs in the sidebar straight
+  // away, titled by the question that opened it.
+  useEffect(() => {
+    if (!state.conversationId) return;
+    const first = state.turns[0];
+    askgConversationListStore.note(
+      state.conversationId,
+      first?.prompt?.trim() ? first.prompt : null,
+    );
+  }, [state.conversationId]);
+
+  // The stored title and message count only settle once the turn is recorded,
+  // so the list is reread exactly when one finishes.
+  const wasRunningRef = useRef(false);
+  useEffect(() => {
+    const finished = wasRunningRef.current && !running;
+    wasRunningRef.current = running;
+    if (finished) void askgConversationListStore.refresh();
+  }, [running]);
+
+  // A list that shrank below the point of switching leaves nothing to focus.
+  useEffect(() => {
+    if (!showSidebar && sidebarFocused) {
+      setSidebarFocused(false);
+      setSidebarCursorId(null);
+    }
+  }, [showSidebar, sidebarFocused]);
 
   const submitInput = useCallback(() => {
     const value = inputRef.current?.editBuffer.getText() ?? inputValue;
@@ -592,6 +699,21 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (confirmation && inputFocused) blurInput();
   }, [blurInput, confirmation, inputFocused]);
 
+  const leaveSidebar = useCallback(() => {
+    setSidebarFocused(false);
+    setSidebarCursorId(null);
+  }, []);
+
+  const moveSidebarCursor = useCallback((direction: -1 | 1) => {
+    const rows = conversations.conversations;
+    if (rows.length === 0) return;
+    const index = rows.findIndex((row) => row.id === sidebarCursorId);
+    const nextIndex = index < 0
+      ? 0
+      : (index + direction + rows.length) % rows.length;
+    setSidebarCursorId(rows[nextIndex]?.id ?? null);
+  }, [conversations.conversations, sidebarCursorId]);
+
   useShortcut((event) => {
     if (!focused) return;
     if (confirmation) {
@@ -604,8 +726,41 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         return;
       }
     }
+    // The sidebar owns the keyboard while it has focus, so the same arrows
+    // that walk the tool timeline walk the conversation list instead.
+    if (sidebarFocused && showSidebar) {
+      if (event.name === "escape" || event.name === "right") {
+        leaveSidebar();
+        return;
+      }
+      if (event.name === "enter" || event.name === "return") {
+        const target = sidebarCursorId ?? state.conversationId;
+        leaveSidebar();
+        if (target) void openConversation(target);
+        return;
+      }
+      if (event.name === "j" || event.name === "down") {
+        moveSidebarCursor(1);
+        return;
+      }
+      if (event.name === "k" || event.name === "up") {
+        moveSidebarCursor(-1);
+        return;
+      }
+      if (event.name === "n") {
+        leaveSidebar();
+        newConversation();
+        return;
+      }
+      return;
+    }
     if (inputFocused) {
       if (event.name === "escape") blurInput();
+      return;
+    }
+    if (event.name === "left" && showSidebar) {
+      setSidebarFocused(true);
+      setSidebarCursorId(state.conversationId);
       return;
     }
     if (event.name === "enter" || event.name === "return") {
@@ -680,8 +835,22 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       ...(selectedToolCallId
         ? [{ id: "expand", key: "x", label: "pand rows", onPress: () => toggleExpanded(selectedToolCallId) }]
         : []),
+      ...(showSidebar && !sidebarFocused
+        ? [{
+          id: "conversations",
+          key: "←",
+          label: " conversations",
+          onPress: () => {
+            setSidebarFocused(true);
+            setSidebarCursorId(state.conversationId);
+          },
+        }]
+        : []),
+      ...(showSidebar && sidebarFocused
+        ? [{ id: "new", key: "n", label: "ew conversation", onPress: newConversation }]
+        : []),
     ],
-  }), [confirmation, controller, retryableTurn, running, selectedToolCallId, state.limits, toggleExpanded]);
+  }), [confirmation, controller, newConversation, retryableTurn, running, selectedToolCallId, showSidebar, sidebarFocused, state.conversationId, state.limits, toggleExpanded]);
 
   if (!planAccess.emailVerified) {
     return (
@@ -692,7 +861,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     );
   }
 
-  const contentWidth = Math.max(24, width - (nativePaneChrome ? 2 : 4));
+  const bodyWidth = Math.max(24, width - sidebarWidth);
+  const contentWidth = Math.max(24, bodyWidth - (nativePaneChrome ? 2 : 4));
   const composerHeight = nativePaneChrome ? 3 : 2;
   const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
   // The conversation keeps a readable slice no matter what else is open.
@@ -703,11 +873,40 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   return (
     <Box
-      flexDirection="column"
+      flexDirection="row"
       width={nativePaneChrome ? "100%" : width}
       height={nativePaneChrome ? "100%" : height}
       overflow="hidden"
     >
+      {showSidebar ? (
+        <ASKGConversationSidebar
+          activeConversationId={
+            sidebarFocused ? sidebarCursorId ?? state.conversationId : state.conversationId
+          }
+          width={sidebarWidth}
+          paneWidth={width}
+          height={height}
+          focused={focused}
+          keyboardFocused={focused && sidebarFocused}
+          onSelect={(conversationId) => void openConversation(conversationId)}
+          onFocusRequest={() => {
+            if (inputFocused) blurInput();
+            setSidebarFocused(true);
+          }}
+          onNewConversation={newConversation}
+          onDelete={(conversationId) => void deleteConversation(conversationId)}
+        />
+      ) : null}
+
+      <Box
+        flexDirection="column"
+        width={nativePaneChrome ? undefined : bodyWidth}
+        height={nativePaneChrome ? "100%" : height}
+        flexGrow={nativePaneChrome ? 1 : undefined}
+        minWidth={0}
+        overflow="hidden"
+        onMouseDown={() => setSidebarFocused(false)}
+      >
       <ScrollBox ref={scrollRef} flexGrow={1} minHeight={0} scrollY focusable={false} paddingX={1}>
         {state.turns.length === 0 ? (
           <EmptyState
@@ -770,6 +969,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         onSubmit={submitInput}
         wrapText
       />
+      </Box>
     </Box>
   );
 }

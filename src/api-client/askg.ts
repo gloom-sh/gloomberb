@@ -57,6 +57,45 @@ export interface ASKGStreamOptions {
   lastEventId?: number;
 }
 
+/** A stored conversation as the sidebar lists it. */
+export interface ASKGConversationSummary {
+  id: string;
+  title: string | null;
+  messageCount: number;
+  lastMessageAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * One tool a stored answer was built from. The platform keeps the call and its
+ * outcome, never its rows, so a reopened conversation names what Gloom ran
+ * without pretending the table is still there to open.
+ */
+export interface ASKGConversationTool {
+  toolCallId: string;
+  name: string;
+  origin: "client" | "server";
+  status: string;
+  args?: Record<string, unknown>;
+  rowCount?: number;
+  elapsedMs?: number;
+  note?: string;
+}
+
+export interface ASKGConversationMessage {
+  seq: number;
+  role: "user" | "assistant";
+  text: string;
+  tools: ASKGConversationTool[];
+  turnId: string | null;
+  createdAt: string;
+}
+
+export interface ASKGConversationDetail extends ASKGConversationSummary {
+  messages: ASKGConversationMessage[];
+}
+
 export interface ASKGTransport {
   isStreamingSupported(): boolean;
   startSession(
@@ -78,6 +117,23 @@ export interface ASKGTransport {
     turnId: string,
     options?: { signal?: AbortSignal },
   ): Promise<void>;
+  listConversations(options?: {
+    signal?: AbortSignal;
+  }): Promise<ASKGConversationSummary[]>;
+  /** Null when the conversation is gone, which a stale sidebar row can be. */
+  loadConversation(
+    id: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<ASKGConversationDetail | null>;
+  renameConversation(
+    id: string,
+    title: string | null,
+    options?: { signal?: AbortSignal },
+  ): Promise<ASKGConversationSummary | null>;
+  deleteConversation(
+    id: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<boolean>;
 }
 
 /** One decoded server-sent event frame. */
@@ -538,6 +594,71 @@ export class CloudASKGApi implements ASKGTransport {
         },
       );
     } catch (error) {
+      throw classifyASKGRequestError(error);
+    }
+  }
+
+  async listConversations(
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ASKGConversationSummary[]> {
+    try {
+      const response = await this.options.request<{
+        items?: ASKGConversationSummary[];
+      }>("/askg/conversations", { signal: options.signal });
+      return response?.items ?? [];
+    } catch (error) {
+      throw classifyASKGRequestError(error);
+    }
+  }
+
+  async loadConversation(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ASKGConversationDetail | null> {
+    try {
+      return await this.options.request<ASKGConversationDetail>(
+        `/askg/conversations/${encodeURIComponent(id)}`,
+        { signal: options.signal },
+      );
+    } catch (error) {
+      // A row the sidebar still shows may already be gone elsewhere.
+      if (error instanceof ApiRequestError && error.status === 404) return null;
+      throw classifyASKGRequestError(error);
+    }
+  }
+
+  async renameConversation(
+    id: string,
+    title: string | null,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ASKGConversationSummary | null> {
+    try {
+      return await this.options.request<ASKGConversationSummary>(
+        `/askg/conversations/${encodeURIComponent(id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ title }),
+          signal: options.signal,
+        },
+      );
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) return null;
+      throw classifyASKGRequestError(error);
+    }
+  }
+
+  async deleteConversation(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<boolean> {
+    try {
+      await this.options.request<void>(
+        `/askg/conversations/${encodeURIComponent(id)}`,
+        { method: "DELETE", signal: options.signal },
+      );
+      return true;
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) return false;
       throw classifyASKGRequestError(error);
     }
   }
