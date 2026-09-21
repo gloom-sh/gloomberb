@@ -2,7 +2,7 @@ import type {
   ASKGConversationSummary,
   ASKGTransport,
 } from "../../../../api-client/askg";
-import { readStoredPaneSidebarWidth } from "../../../../components";
+import { readStoredPaneSidebarWidth } from "../../../../components/layout/pane/sidebar-metrics";
 import type { PluginPersistence } from "../../../../types/plugin";
 
 const WIDTH_STATE_KEY = "askg-sidebar-width";
