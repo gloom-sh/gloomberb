@@ -19,6 +19,7 @@ import {
   toMarketDataContext,
 } from "../selectors";
 import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
+import { measurePerf } from "../../utils/perf-marks";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
 import { hasUsablePriceHistory, normalizePriceHistory } from "../../utils/price-history";
 import {
@@ -61,6 +62,11 @@ import {
   type QuoteSubscriptionRequest,
 } from "./quotes";
 
+/** How long a streamed tick may reuse the quote fields read from the cache. */
+const STREAM_QUOTE_BASELINE_TTL_MS = 60_000;
+/** Keeps a long session of browsing from holding a baseline per visited symbol. */
+const STREAM_QUOTE_BASELINE_LIMIT = 256;
+
 // A store hands out a fresh idle entry for every key it has never seen, so
 // two idle reads of the same key must count as the same entry.
 function sameQueryEntry<T>(left: QueryEntry<T>, right: QueryEntry<T>): boolean {
@@ -74,6 +80,7 @@ export class MarketDataCoordinator {
   private readonly quoteSubscriptionManager: QuoteSubscriptionManager;
   private destroyed = false;
   private readonly cachedQueries = new Map<string, { query: CachedQueryHandle<unknown>; dispose: () => void }>();
+  private readonly streamQuoteBaselines = new Map<string, { baseline: TickerFinancials | null; readAt: number }>();
 
   private readonly quoteStore = new QueryStore<Quote>((key) => this.events.bump(key));
   private readonly snapshotStore = new QueryStore<TickerFinancials>((key) => this.events.bump(key));
@@ -462,6 +469,7 @@ export class MarketDataCoordinator {
     this.destroyed = true;
     for (const { dispose } of this.cachedQueries.values()) dispose();
     this.cachedQueries.clear();
+    this.streamQuoteBaselines.clear();
   }
 
   subscribeQuotes(targets: QuoteSubscriptionRequest[]): QuoteSubscriptionHandle {
@@ -492,24 +500,60 @@ export class MarketDataCoordinator {
         return snapshot.quote;
       }
     }
-    const cachedFinancials = snapshot ?? this.readCachedFinancialsForInstrument(instrument);
+    const cachedFinancials = snapshot ?? this.streamQuoteBaseline(instrument);
     return resolveTickerFinancialsQuoteState(cachedFinancials, quote)?.quote ?? quote;
+  }
+
+  /**
+   * What a streamed tick is merged onto before a real snapshot exists. Reading
+   * it from the resource cache costs a query, a parse and a sanitize of the
+   * whole financial record, and a batch of ticks used to pay that per symbol,
+   * per tick: a burst after subscribing to a pane froze the app for as long as
+   * it took to walk every record. Only the quote fields survive the read, and
+   * one read per instrument per minute is enough, because a snapshot takes
+   * over as soon as one loads and the record on disk is not moving meanwhile.
+   */
+  private streamQuoteBaseline(instrument: InstrumentRef): TickerFinancials | null {
+    const key = buildSnapshotKey(instrument);
+    const now = Date.now();
+    const memo = this.streamQuoteBaselines.get(key);
+    if (memo && now - memo.readAt < STREAM_QUOTE_BASELINE_TTL_MS) return memo.baseline;
+
+    const cached = this.readCachedFinancialsForInstrument(instrument);
+    const baseline: TickerFinancials | null = cached && {
+      annualStatements: [],
+      quarterlyStatements: [],
+      priceHistory: [],
+      quote: cached.quote,
+      quoteMetadata: cached.quoteMetadata,
+      quoteContributions: cached.quoteContributions,
+    };
+    if (this.streamQuoteBaselines.size >= STREAM_QUOTE_BASELINE_LIMIT) {
+      for (const [staleKey, entry] of this.streamQuoteBaselines) {
+        if (now - entry.readAt >= STREAM_QUOTE_BASELINE_TTL_MS) this.streamQuoteBaselines.delete(staleKey);
+      }
+      if (this.streamQuoteBaselines.size >= STREAM_QUOTE_BASELINE_LIMIT) this.streamQuoteBaselines.clear();
+    }
+    this.streamQuoteBaselines.set(key, { baseline, readAt: now });
+    return baseline;
   }
 
   private readCachedFinancialsForInstrument(instrument: InstrumentRef): TickerFinancials | null {
     if (!this.dataProvider.getCachedFinancialsForTargets) return null;
-    const result = this.dataProvider.getCachedFinancialsForTargets([{
-      symbol: instrument.symbol,
-      exchange: instrument.exchange,
-      brokerId: instrument.brokerId,
-      brokerInstanceId: instrument.brokerInstanceId,
-      instrument: instrument.instrument ?? null,
-    }], {
-      allowExpired: true,
-      includeStaleQuotes: true,
-    });
-    if (result instanceof Promise) return null;
-    return result.get(instrument.symbol.trim().toUpperCase()) ?? null;
+    return measurePerf("market-data.quote-baseline-read", () => {
+      const result = this.dataProvider.getCachedFinancialsForTargets!([{
+        symbol: instrument.symbol,
+        exchange: instrument.exchange,
+        brokerId: instrument.brokerId,
+        brokerInstanceId: instrument.brokerInstanceId,
+        instrument: instrument.instrument ?? null,
+      }], {
+        allowExpired: true,
+        includeStaleQuotes: true,
+      });
+      if (result instanceof Promise) return null;
+      return result.get(instrument.symbol.trim().toUpperCase()) ?? null;
+    }, { symbol: instrument.symbol });
   }
 }
 

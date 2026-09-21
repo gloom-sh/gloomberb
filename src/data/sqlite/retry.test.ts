@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isSqliteBusyError, trySqliteBusyOperation, withSqliteBusyRetry } from "./retry";
+import { debugLog } from "../../utils/debug-log";
 
 function createBusyError(): Error & { code: string; errno: number } {
   const error = new Error("database is locked") as Error & { code: string; errno: number };
@@ -12,6 +13,26 @@ describe("sqlite busy retry", () => {
   test("recognizes Bun SQLite busy errors", () => {
     expect(isSqliteBusyError(createBusyError())).toBe(true);
     expect(isSqliteBusyError(new Error("other failure"))).toBe(false);
+  });
+
+  // A contended statement parks the whole app inside SQLite's busy handler.
+  // The freeze is invisible unless the statement that caused it is named.
+  test("reports a statement that blocked the app", () => {
+    const entries: Array<{ source: string; message: string; data?: unknown }> = [];
+    const unsubscribe = debugLog.subscribe((entry) => { entries.push(entry); });
+    try {
+      withSqliteBusyRetry("save cached resource", () => {
+        const until = Date.now() + 60;
+        while (Date.now() < until) { /* stand in for a lock wait */ }
+        return "ok";
+      }, { attempts: 1 });
+    } finally {
+      unsubscribe();
+    }
+
+    const blocked = entries.find((entry) => entry.message === "sqlite.blocked");
+    expect(blocked?.source).toBe("perf");
+    expect(blocked?.data).toMatchObject({ operation: "save cached resource", attempts: 1 });
   });
 
   test("retries busy errors until the operation succeeds", () => {

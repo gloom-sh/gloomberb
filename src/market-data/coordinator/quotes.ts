@@ -6,6 +6,7 @@ import { mergeQuoteSubscriptionTargets } from "../quote-subscription-target";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
 import { buildQuoteKey, toMarketDataContext } from "../selectors";
+import { measurePerf } from "../../utils/perf-marks";
 import {
   EXPECTED_EMPTY,
   SNAPSHOT_CACHE_TTL_MS,
@@ -435,12 +436,17 @@ export class QuoteSubscriptionManager {
     if (pendingQuotes.length === 0) return;
 
     this.lastStreamQuoteBatchAppliedAt = Date.now();
-    for (const [key, pending] of pendingQuotes) {
-      const subscription = this.quoteSubscriptions.get(key);
-      if (subscription?.targets.size) {
-        this.applyQuote(pending.instrument, pending.quote);
+    // One mark for the whole batch: a single tick is never slow, but a batch
+    // applies every subscribed symbol in one synchronous pass, so this is the
+    // section that can hold the frame.
+    measurePerf("market-data.stream-quote-flush", () => {
+      for (const [key, pending] of pendingQuotes) {
+        const subscription = this.quoteSubscriptions.get(key);
+        if (subscription?.targets.size) {
+          this.applyQuote(pending.instrument, pending.quote);
+        }
       }
-    }
+    }, { count: pendingQuotes.length });
   }
 
   private clearPendingStreamQuote(key: string): void {

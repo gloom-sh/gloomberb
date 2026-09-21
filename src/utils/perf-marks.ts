@@ -20,11 +20,27 @@ function now(): number {
     : Date.now();
 }
 
+// Two scalars rather than an object: every measured section writes them, and
+// only the stall monitor ever reads them.
+let lastSampleName: string | null = null;
+let lastSampleEndedAt = 0;
+
+/**
+ * The most recent measured section and when it ended. The stall monitor reads
+ * it so a report of "the app froze" carries the last thing the app is known to
+ * have been doing.
+ */
+export function lastPerfSample(): { name: string; endedAt: number } | null {
+  return lastSampleName == null ? null : { name: lastSampleName, endedAt: lastSampleEndedAt };
+}
+
 function logSlowPerfSample(
   name: string,
   durationMs: number,
   metadata?: Record<string, unknown>,
 ): void {
+  lastSampleName = name;
+  lastSampleEndedAt = now();
   const payload = {
     durationMs: Math.round(durationMs * 10) / 10,
     ...(metadata ?? {}),

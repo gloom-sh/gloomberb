@@ -99,10 +99,16 @@ export function useSavedLayoutWarmup({
     void (async () => {
       await whenMainThreadQuiet(signal);
       if (signal.cancelled) return;
+      // Waiting for a quiet main thread is the point of this effect, so the
+      // sample measures the work only. Reporting the wait as elapsed time
+      // filed a multi-second entry in the perf log on every launch and buried
+      // the sections that really did hold the thread.
+      const collectStartedAt = performance.now();
       const { config: currentConfig, tickers: currentTickers } = latest.current;
       const instruments = collectSavedLayoutInstruments(currentConfig, currentTickers);
-      recordPerfSample("startup.saved-layout-warmup", performance.now() - startedAt, {
+      recordPerfSample("startup.saved-layout-warmup", performance.now() - collectStartedAt, {
         count: instruments.length,
+        waitedMs: Math.round(collectStartedAt - startedAt),
         symbols: instruments.map((instrument) => instrument.symbol),
       });
       for (const instrument of instruments) {

@@ -20,6 +20,7 @@ import {
 import type { DataProvider } from "../../types/data-provider";
 import type { BrokerAccount } from "../../types/trading";
 import { debugLog } from "../../utils/debug-log";
+import { startMainThreadStallMonitor } from "../../utils/main-thread-stall";
 import { measurePerfAsync } from "../../utils/perf-marks";
 
 const appLog = debugLog.createLogger("app");
@@ -69,6 +70,10 @@ export function useAppStartupRuntime({
     chatController.setAppActive(appActive);
     appLog.info("app activity propagated", { active: appActive });
   }, [appActive]);
+
+  // Runs for the life of the app: a freeze is only reportable if something
+  // was watching the clock while it happened.
+  useEffect(() => startMainThreadStallMonitor(), []);
 
   useEffect(() => {
     if (state.initialized || (globalThis as any).__gloomInitStarted) return;

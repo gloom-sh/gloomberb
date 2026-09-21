@@ -1,3 +1,4 @@
+import { recordPerfSample } from "../../utils/perf-marks";
 
 const SQLITE_BUSY_RETRY_ATTEMPTS = 4;
 const SQLITE_BUSY_RETRY_INITIAL_DELAY_MS = 25;
@@ -5,6 +6,19 @@ const SQLITE_BUSY_RETRY_MAX_DELAY_MS = 250;
 const SQLITE_BUSY_SLEEP_BUFFER = new Int32Array(new SharedArrayBuffer(4));
 
 export const SQLITE_BUSY_TIMEOUT_MS = 2000;
+/**
+ * SQLite is synchronous here, so a contended statement parks the whole app:
+ * the busy handler waits inside the call, and the retry loop sleeps on top of
+ * it. Anything above this is a freeze the user felt, and it is worth a line
+ * naming the statement that caused it rather than leaving a mystery pause.
+ */
+const SQLITE_BLOCKING_REPORT_MS = 50;
+
+function now(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now();
+}
 
 export interface SqliteBusyRetryOptions {
   attempts?: number;
@@ -37,12 +51,21 @@ export function withSqliteBusyRetry<T>(
   const attempts = Math.max(1, Math.floor(options.attempts ?? SQLITE_BUSY_RETRY_ATTEMPTS));
   const maxDelayMs = Math.max(0, options.maxDelayMs ?? SQLITE_BUSY_RETRY_MAX_DELAY_MS);
   let delayMs = Math.max(0, options.initialDelayMs ?? SQLITE_BUSY_RETRY_INITIAL_DELAY_MS);
+  const startedAt = now();
+  const reportIfBlocking = (attempt: number) => {
+    const elapsedMs = now() - startedAt;
+    if (elapsedMs < SQLITE_BLOCKING_REPORT_MS) return;
+    recordPerfSample("sqlite.blocked", elapsedMs, { operation: operationName, attempts: attempt });
+  };
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      return operation();
+      const result = operation();
+      reportIfBlocking(attempt);
+      return result;
     } catch (error) {
       if (!isSqliteBusyError(error) || attempt >= attempts) {
+        reportIfBlocking(attempt);
         throw error;
       }
       sleepSync(delayMs);

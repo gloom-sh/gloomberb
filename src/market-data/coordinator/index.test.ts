@@ -6,6 +6,7 @@ import type { InstrumentSearchResult } from "../../types/instrument";
 import type { PricePoint, Quote, TickerFinancials } from "../../types/financials";
 import type { NewsArticle } from "../../news/types";
 import { createTestDataProvider } from "../../test-support/data-provider";
+import { QUOTE_STREAM_UPDATE_THROTTLE_MS } from "../quotes/cadence";
 
 useRegularMarketSession();
 
@@ -488,6 +489,67 @@ describe("MarketDataCoordinator", () => {
     expect(quote?.previousClose).toBe(282.95);
     expect(quote?.changePercent).toBeCloseTo(((293.07 - 282.95) / 282.95) * 100, 10);
     expect(quote?.provenance?.fields?.previousClose?.providerId).toBe("yahoo");
+  });
+
+  // Reading the cache costs a query, a parse and a sanitize of the whole
+  // financial record. Paying that per tick, for every symbol in a batch, is
+  // what made a burst of quotes hold the main thread for seconds.
+  it("reads the cached day reference once for a burst of stream quotes", async () => {
+    let streamed: ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null = null;
+    let cacheReads = 0;
+    const provider = createProvider({
+      getCachedFinancialsForTargets: () => {
+        cacheReads += 1;
+        return new Map([[
+          "VICR",
+          {
+            quote: {
+              symbol: "VICR",
+              providerId: "gloomberb-cloud",
+              price: 292.83,
+              currency: "USD",
+              previousClose: 282.95,
+              change: 9.88,
+              changePercent: 3.49,
+              lastUpdated: Date.parse("2026-07-06T16:54:30Z"),
+              marketState: "REGULAR",
+              dataSource: "live",
+            },
+            annualStatements: [],
+            quarterlyStatements: [],
+            priceHistory: [],
+          },
+        ]]);
+      },
+      subscribeQuotes: (_targets, onQuote) => {
+        streamed = onQuote as typeof streamed;
+        return () => {};
+      },
+    });
+    const coordinator = new MarketDataCoordinator(provider);
+    const instrument = { symbol: "VICR", exchange: "NASDAQ" };
+
+    coordinator.subscribeQuotes([{ instrument }]);
+    const onStreamed = streamed as ((target: QuoteSubscriptionTarget, quote: Quote) => void) | null;
+    if (!onStreamed) throw new Error("expected streaming callback");
+    // Separate flushes: batching already collapses ticks that arrive together,
+    // so the reads under test are the ones a stream produces over time.
+    for (let tick = 0; tick < 3; tick += 1) {
+      onStreamed({ symbol: "VICR", exchange: "NASDAQ" }, {
+        symbol: "VICR",
+        providerId: "gloomberb-cloud",
+        price: 293 + tick / 100,
+        currency: "USD",
+        lastUpdated: Date.parse("2026-07-06T17:17:00Z") + tick * 1000,
+        marketState: "REGULAR",
+        dataSource: "live",
+      });
+      await Bun.sleep(QUOTE_STREAM_UPDATE_THROTTLE_MS + 20);
+    }
+
+    expect(cacheReads).toBe(1);
+    // The day reference the cache supplied still reaches the resolved quote.
+    expect(coordinator.getQuoteEntry(instrument).data?.previousClose).toBe(282.95);
   });
 
   it("reconciles batch quote loads with cached provider day references before a snapshot loads", async () => {
