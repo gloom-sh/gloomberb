@@ -1,3 +1,4 @@
+import { readStoredPaneSidebarWidth } from "../../../components";
 import type { PluginPersistence } from "../../../types/plugin";
 
 const WIDTH_STATE_KEY = "chat-sidebar-width";
@@ -48,10 +49,9 @@ export class ChatSidebarStore {
 
   attach(persistence: PluginPersistence): void {
     this.persistence = persistence;
-    const width = persistence.getState<number>(WIDTH_STATE_KEY);
     const collapsed = persistence.getState<string[]>(COLLAPSED_SECTIONS_STATE_KEY);
     this.update({
-      width: typeof width === "number" && Number.isFinite(width) ? width : null,
+      width: readStoredPaneSidebarWidth(persistence.getState(WIDTH_STATE_KEY)),
       collapsedSections: new Set(Array.isArray(collapsed) ? collapsed.filter(isSection) : []),
     });
   }

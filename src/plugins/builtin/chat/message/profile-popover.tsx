@@ -4,7 +4,7 @@ import { TextAttributes } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
 import { formatNumber } from "../../../../utils/format";
-import { truncateChannelLabel } from "../channels";
+import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 
 export const PROFILE_POPOVER_CLOSE_DELAY_MS = 40;
 
@@ -111,9 +111,9 @@ function HeaderAnalyticsStats({
         const valueWidth = Math.max(1, metricWidth - labelWidth - 1);
         return (
           <Box key={metric.id} width={metricWidth} height={1} flexDirection="row" gap={1}>
-            <Text fg={colors.textMuted}>{truncateChannelLabel(label, labelWidth)}</Text>
+            <Text fg={colors.textMuted}>{truncateWithEllipsis(label, labelWidth)}</Text>
             <Text fg={analyticsValueColor(metric.id, metric.rawValue)} attributes={TextAttributes.BOLD}>
-              {truncateChannelLabel(metric.value, valueWidth)}
+              {truncateWithEllipsis(metric.value, valueWidth)}
             </Text>
           </Box>
         );
@@ -168,7 +168,7 @@ export function UserProfilePopover({
       <Box height={1} width={headerWidth} flexDirection="row">
         <Box width={usernameWidth}>
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>
-            {truncateChannelLabel(user.username ? `@${user.username}` : user.displayName, usernameWidth)}
+            {truncateWithEllipsis(user.username ? `@${user.username}` : user.displayName, usernameWidth)}
           </Text>
         </Box>
         {statsWidth > 0 ? (
@@ -179,7 +179,7 @@ export function UserProfilePopover({
         ) : null}
         <Box flexGrow={1} />
       </Box>
-      {meta ? <Text fg={colors.textDim}>{truncateChannelLabel(meta, popoverWidth - 2)}</Text> : null}
+      {meta ? <Text fg={colors.textDim}>{truncateWithEllipsis(meta, popoverWidth - 2)}</Text> : null}
       {bio ? (
         <Text fg={colors.text} wrapText width={popoverWidth - 2}>
           {bio}

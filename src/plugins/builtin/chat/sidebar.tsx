@@ -13,6 +13,7 @@ import { TextAttributes } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import type { ChatChannel, TeamSummary } from "../../../api-client";
+import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { sortTeamChannels, teamAccentHex, teamPrefix } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import type { ChatController } from "./controller";
@@ -20,7 +21,6 @@ import { chatSidebarStore } from "./sidebar-store";
 import {
   channelPrefix,
   formatChannelLabel,
-  truncateChannelLabel,
 } from "./channels";
 
 const DESKTOP_NOTIFICATION_ICON_WIDTH = 3;
@@ -271,7 +271,7 @@ export function ChannelSidebar({
               backgroundColor={sidebarBg}
             >
               <ActionRow
-                label={truncateChannelLabel(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
+                label={truncateWithEllipsis(label, Math.max(1, rowWidth - CHANNEL_ROW_INDENT))}
                 active={unread}
                 expanded={expanded}
                 fg={fg}
@@ -357,7 +357,7 @@ export function ChannelSidebar({
                     <>
                       <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
                       <Text fg={foregroundColor} attributes={unread ? TextAttributes.BOLD : 0} selectable={false} onMouseDown={onMouseDown}>{channelPrefix(channel, active)}</Text>
-                      <Text fg={foregroundColor} attributes={unread ? TextAttributes.BOLD : 0} selectable={false} onMouseDown={onMouseDown}>{truncateChannelLabel(label, labelWidth)}</Text>
+                      <Text fg={foregroundColor} attributes={unread ? TextAttributes.BOLD : 0} selectable={false} onMouseDown={onMouseDown}>{truncateWithEllipsis(label, labelWidth)}</Text>
                       <Box flexGrow={1} onMouseDown={onMouseDown} />
                       {canManageNotifications && (
                         <PaneSidebarAction
@@ -388,7 +388,7 @@ export function ChannelSidebar({
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
                     <ProfileIcon color={foregroundColor} onMouseDown={onMouseDown} />
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}>
-                      {` ${truncateChannelLabel(t("Profile"), Math.max(listWidth - 3, 1))}`}
+                      {` ${truncateWithEllipsis(t("Profile"), Math.max(listWidth - 3, 1))}`}
                     </Text>
                     <Box flexGrow={1} onMouseDown={onMouseDown} />
                   </>

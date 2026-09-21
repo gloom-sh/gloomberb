@@ -80,6 +80,7 @@ export {
   PaneSidebar,
   PaneSidebarAction,
   PaneSidebarRow,
+  readStoredPaneSidebarWidth,
   shouldShowPaneSidebar,
 } from "./layout/pane/sidebar";
 export type {

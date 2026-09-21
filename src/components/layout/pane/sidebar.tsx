@@ -34,6 +34,15 @@ export function getPaneSidebarWidthRange(width: number): { min: number; max: num
   };
 }
 
+/**
+ * A persisted sidebar width as a usable one. Anything that is not a finite
+ * number reads as "follow the pane", which is what an absent, corrupted or
+ * older stored value should mean rather than a zero width sidebar.
+ */
+export function readStoredPaneSidebarWidth(stored: unknown): number | null {
+  return typeof stored === "number" && Number.isFinite(stored) ? stored : null;
+}
+
 export function getPaneSidebarWidth(width: number, nativePaneChrome: boolean, preferredWidth?: number | null): number {
   if (preferredWidth != null && Number.isFinite(preferredWidth)) {
     const range = getPaneSidebarWidthRange(width);

@@ -21,9 +21,11 @@ import {
   Button,
   DataTableView,
   EmptyState,
+  getPaneSidebarWidth,
   MessageComposer,
   Prose,
   SegmentedControl,
+  shouldShowPaneSidebar,
   Spinner,
   usePaneFooter,
   type DataTableCell,
@@ -57,11 +59,7 @@ import {
 import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
 import { useDialog, type PromptContext } from "../../../../ui/dialog";
 import { subscribeASKGQuestions } from "./pending-question";
-import {
-  ASKGConversationSidebar,
-  getASKGSidebarWidth,
-  shouldShowASKGSidebar,
-} from "./sidebar";
+import { ASKGConversationSidebar } from "./sidebar";
 import {
   activeTurn,
   canRetryASKGError,
@@ -514,13 +512,15 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     askgConversationListStore.ensureLoaded();
   }, [planAccess.emailVerified]);
 
-  const showSidebar = shouldShowASKGSidebar(
+  // The same gate chat uses: at least two things to switch between, in a pane
+  // wide enough to spare the width. One conversation is the one on screen.
+  const showSidebar = shouldShowPaneSidebar(
     conversations.conversations.length,
     width,
     height,
   );
   const sidebarWidth = showSidebar
-    ? getASKGSidebarWidth(width, !!nativePaneChrome, conversations.width)
+    ? getPaneSidebarWidth(width, !!nativePaneChrome, conversations.width)
     : 0;
 
   const running = isTurnRunning(state);

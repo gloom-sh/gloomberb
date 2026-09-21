@@ -2,6 +2,7 @@ import type {
   ASKGConversationSummary,
   ASKGTransport,
 } from "../../../../api-client/askg";
+import { readStoredPaneSidebarWidth } from "../../../../components";
 import type { PluginPersistence } from "../../../../types/plugin";
 
 const WIDTH_STATE_KEY = "askg-sidebar-width";
@@ -59,9 +60,8 @@ export class ASKGConversationListStore {
 
   attach(persistence: PluginPersistence): void {
     this.persistence = persistence;
-    const width = persistence.getState<number>(WIDTH_STATE_KEY);
     this.update({
-      width: typeof width === "number" && Number.isFinite(width) ? width : null,
+      width: readStoredPaneSidebarWidth(persistence.getState(WIDTH_STATE_KEY)),
     });
   }
 

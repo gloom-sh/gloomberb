@@ -156,11 +156,3 @@ export function channelPrefix(channel: ChatChannel | undefined, active: boolean)
   if (channel?.kind === "group") return active ? "+" : " ";
   return active ? "#" : " ";
 }
-
-export function truncateChannelLabel(label: string, width: number) {
-  if (width <= 0) return "";
-  if (label.length <= width) return label;
-  if (width <= 1) return label.slice(0, width);
-  if (width <= 3) return label.slice(0, width);
-  return `${label.slice(0, width - 3)}...`;
-}

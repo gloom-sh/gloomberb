@@ -6,10 +6,10 @@ import { t } from "../../../../i18n";
 import { Box, Text, TextAttributes, type InputRenderable } from "../../../../ui";
 import type { ChatUserSummary } from "../../../../api-client";
 import { isPlainKey } from "../../../../utils/keyboard";
+import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import {
   hasOnlyDmUsernameArgs,
   parseDmUsernames,
-  truncateChannelLabel,
 } from "../channels";
 
 const MAX_RECENT_USERS = 6;
@@ -55,7 +55,7 @@ function setUsernameSelected(value: string, username: string, selected: boolean)
 }
 
 function usernamesLabel(usernames: string[], width: number): string {
-  return truncateChannelLabel(usernames.map((username) => `@${username}`).join(" "), width);
+  return truncateWithEllipsis(usernames.map((username) => `@${username}`).join(" "), width);
 }
 
 export function NewDmDialog({
@@ -230,18 +230,18 @@ export function NewDmDialog({
               fg={state.selected ? colors.text : colors.textMuted}
               attributes={state.selected ? TextAttributes.BOLD : 0}
             >
-              {truncateChannelLabel(item.label, Math.max(1, contentWidth - 12))}
+              {truncateWithEllipsis(item.label, Math.max(1, contentWidth - 12))}
             </Text>
             <Box flexGrow={1} />
             {item.detail ? (
-              <Text fg={colors.textDim}>{truncateChannelLabel(item.detail, 10)}</Text>
+              <Text fg={colors.textDim}>{truncateWithEllipsis(item.detail, 10)}</Text>
             ) : null}
           </Box>
         )}
       />
       <Box height={1} flexDirection="row">
         {error ? (
-          <Text fg={colors.negative}>{truncateChannelLabel(error, contentWidth)}</Text>
+          <Text fg={colors.negative}>{truncateWithEllipsis(error, contentWidth)}</Text>
         ) : (
           <Text fg={colors.textDim}>{selectedUsernames.length > 1 ? t("Group chat") : t("Direct message")}</Text>
         )}

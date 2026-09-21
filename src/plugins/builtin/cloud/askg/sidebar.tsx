@@ -1,11 +1,9 @@
 import { useSyncExternalStore } from "react";
 import {
-  getPaneSidebarWidth,
   getPaneSidebarWidthRange,
   PaneSidebar,
   PaneSidebarAction,
   PaneSidebarRow,
-  shouldShowPaneSidebar,
 } from "../../../../components";
 import { t } from "../../../../i18n";
 import { colors } from "../../../../theme/colors";
@@ -20,27 +18,6 @@ import {
 const ROW_INDENT = 2;
 /** Width of the delete affordance, so a label truncates clear of it. */
 const ROW_ACTION_WIDTH = 3;
-
-/**
- * The sidebar earns its space once there is more than one thing to switch
- * between. A single conversation is the one already on screen, so listing it
- * would only narrow the answer.
- */
-export function shouldShowASKGSidebar(
-  conversationCount: number,
-  width: number,
-  height: number,
-): boolean {
-  return shouldShowPaneSidebar(conversationCount, width, height);
-}
-
-export function getASKGSidebarWidth(
-  width: number,
-  nativePaneChrome: boolean,
-  preferredWidth?: number | null,
-): number {
-  return getPaneSidebarWidth(width, nativePaneChrome, preferredWidth);
-}
 
 export function ASKGConversationSidebar({
   activeConversationId,
