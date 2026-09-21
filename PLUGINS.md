@@ -1302,6 +1302,8 @@ export default {
 
 ## UI guidelines for plugins
 
+The full set of pane conventions (anatomy, where actions and status go, table + detail stacks, load-more lists, tabs, forms, density, and a checklist) is in [`.agents/skills/pane-conventions/SKILL.md`](.agents/skills/pane-conventions/SKILL.md). The short version:
+
 - Basic UI must use the shared components listed above. Extend the kit for a missing reusable pattern.
 - Support both mouse and keyboard for anything interactive.
 - Put changing pane status in `usePaneFooter()`. Keep keyboard hints on their shared controls; do not add fixed footer labels, row counts, or generic hints.
