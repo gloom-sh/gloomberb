@@ -40,11 +40,18 @@ export interface CloudApiFetchTransportOptions {
    * server-sent events on it would never see a first token.
    */
   streaming?: boolean;
+  /**
+   * A second transport for responses that must be read as they arrive, used
+   * when the main one buffers. The desktop has exactly this shape: JSON goes
+   * through a buffered RPC call, and a live body is forwarded chunk by chunk.
+   */
+  streamFetch?: CloudApiStreamFetch;
 }
 
 let cloudApiFetchTransport: CloudApiFetchTransport = httpFetch;
 let cloudApiTransportInstalled = false;
 let cloudApiFetchStreaming = true;
+let cloudApiStreamFetch: CloudApiStreamFetch | null = null;
 
 export function setCloudApiFetchTransport(
   transport: CloudApiFetchTransport | null,
@@ -53,6 +60,7 @@ export function setCloudApiFetchTransport(
   cloudApiFetchTransport = transport ?? httpFetch;
   cloudApiTransportInstalled = !!transport;
   cloudApiFetchStreaming = transport ? (options.streaming ?? false) : true;
+  cloudApiStreamFetch = transport ? options.streamFetch ?? null : null;
 }
 
 /**
@@ -61,6 +69,7 @@ export function setCloudApiFetchTransport(
  */
 export function getCloudApiStreamFetch(): CloudApiStreamFetch | null {
   if (cloudApiTransportInstalled) {
+    if (cloudApiStreamFetch) return cloudApiStreamFetch;
     // A transport that declares streaming returns a real Response.
     return cloudApiFetchStreaming
       ? (cloudApiFetchTransport as CloudApiStreamFetch)

@@ -1,9 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import {
   ConnectionHealthRegistry,
   registerGloomCloudConnectionSources,
 } from "../core/connection-health";
-import { CloudApiRequestTransport } from "./request";
+import {
+  CloudApiRequestTransport,
+  setCloudApiFetchTransport,
+} from "./request";
 
 function responseWithBody(body: () => Promise<string>): Response {
   return {
@@ -52,6 +55,46 @@ describe("CloudApiRequestTransport connection reporting", () => {
 
     dispose();
     expect(health.getSnapshot().sources).toEqual([]);
+  });
+});
+
+describe("CloudApiRequestTransport streaming", () => {
+  afterEach(() => setCloudApiFetchTransport(null));
+
+  test("a buffered transport with a stream fetch can still open a live body", async () => {
+    const opened: Array<{ url: string; method?: string }> = [];
+    setCloudApiFetchTransport(
+      async () => responseWithBody(async () => "{}"),
+      {
+        streamFetch: async (url, init) => {
+          opened.push({ url, ...(init?.method ? { method: init.method } : {}) });
+          return {
+            ok: true,
+            status: 200,
+            statusText: "OK",
+            headers: new Headers({ "content-type": "text/event-stream" }),
+            body: new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.close();
+              },
+            }),
+          } as unknown as Response;
+        },
+      },
+    );
+    const transport = new CloudApiRequestTransport();
+
+    expect(transport.isStreamingSupported()).toBe(true);
+    const response = await transport.openStream("/askg/session/s1/turn", { method: "POST" });
+    expect(response.body).toBeTruthy();
+    expect(opened).toEqual([
+      { url: `${transport.baseUrl}/askg/session/s1/turn`, method: "POST" },
+    ]);
+  });
+
+  test("a buffered transport with no stream fetch still refuses to stream", () => {
+    setCloudApiFetchTransport(async () => responseWithBody(async () => "{}"));
+    expect(new CloudApiRequestTransport().isStreamingSupported()).toBe(false);
   });
 });
 

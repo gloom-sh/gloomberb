@@ -36,6 +36,14 @@ export interface ProseProps {
   text: string;
   width: number;
   color?: string;
+  /**
+   * Numbers set in bold and brightened. Turn it off for text that carries its
+   * own meaning in its colour, such as an error, where a brightened figure
+   * would read as a separate thing.
+   */
+  figures?: boolean;
+  /** Applied to the whole paragraph, e.g. bold for a question. */
+  attributes?: number;
   /** Put before the first line; later lines are indented by its width. */
   prefix?: string;
   prefixColor?: string;
@@ -45,7 +53,13 @@ const NATIVE_STRETCH_STYLE = { minWidth: 0 };
 const NATIVE_TEXT_STYLE = { display: "block" };
 
 /** Figures set in bold, the rest in the given colour. */
-function styledRuns(text: string, color: string, figureColor: string, attributes = 0): StyledText {
+function styledRuns(
+  text: string,
+  color: string,
+  figureColor: string | null,
+  attributes = 0,
+): StyledText {
+  if (!figureColor) return new StyledText([{ text, fg: color, attributes }]);
   return new StyledText(
     splitFigures(text).map((run) => ({
       text: run.text,
@@ -65,12 +79,15 @@ export function Prose({
   text,
   width,
   color,
+  figures = true,
+  attributes = 0,
   prefix = "",
   prefixColor,
 }: ProseProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const foreground = color ?? colors.text;
+  const figureColor = figures ? colors.textBright : null;
   const prefixForeground = prefixColor ?? colors.textDim;
   if (!text.trim()) return null;
   if (nativePaneChrome) {
@@ -85,7 +102,7 @@ export function Prose({
           wrapText
           width="100%"
           style={NATIVE_TEXT_STYLE}
-          content={styledRuns(text, foreground, colors.textBright)}
+          content={styledRuns(text, foreground, figureColor, attributes)}
         />
       </Box>
     );
@@ -103,7 +120,7 @@ export function Prose({
             {index === 0 ? prefix : indent}
           </Text>
         ) : null}
-        <Text content={styledRuns(line, foreground, colors.textBright)} />
+        <Text content={styledRuns(line, foreground, figureColor, attributes)} />
       </Box>
     ),
   );

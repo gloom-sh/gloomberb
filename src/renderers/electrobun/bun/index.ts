@@ -37,6 +37,7 @@ import {
 } from "./window/frame";
 import { MAIN_WINDOW_RPC_KEY } from "./window/focus";
 import { handleHttpFetch } from "./desktop/http-fetch";
+import { DesktopHttpStreamBridge } from "./desktop/http-stream";
 import {
   activateExternalPlugin,
   bundleExternalPluginDirectory,
@@ -174,6 +175,9 @@ const {
 
 const capabilityBridge = new DesktopCapabilityBridge<DesktopRpc>({
   getRegistry: () => requireServices().pluginRegistry.capabilities,
+  getWindowKey: getRpcWindowKey,
+});
+const httpStreamBridge = new DesktopHttpStreamBridge<DesktopRpc>({
   getWindowKey: getRpcWindowKey,
 });
 const desktopStateBroadcaster = new DesktopStateBroadcaster<DesktopRpc>({
@@ -331,11 +335,13 @@ function clearDockPreview(paneId?: string): void {
 
 function disposeWindowScopedResources(windowKey: string): void {
   capabilityBridge.disposeWindow(windowKey);
+  httpStreamBridge.disposeWindow(windowKey);
 }
 
 function teardownServices(): void {
   stopDesktopRemoteControlServer();
   capabilityBridge.disposeAll();
+  httpStreamBridge.disposeAll();
   services?.destroy();
   services = null;
 }
@@ -470,6 +476,9 @@ async function handleBackendRequest(
       return initialize(rpc, request.payload);
     case "http.fetch":
       return handleHttpFetch(request.payload);
+    case "http.stream.open":
+    case "http.stream.cancel":
+      return httpStreamBridge.handle(rpc, request);
     case "remote.forward":
       return forwardRemoteControlRequest(request.payload.request);
     case "capability.invoke":

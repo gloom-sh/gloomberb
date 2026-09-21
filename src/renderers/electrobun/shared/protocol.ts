@@ -71,6 +71,41 @@ export interface DesktopHttpFetchResponse {
   body: string;
 }
 
+/**
+ * A response the view must read while it arrives, such as the Ask Gloom turn
+ * stream. `http.fetch` buffers the whole body, which would hold every token
+ * back until the answer finished, so the Bun process keeps the body open and
+ * forwards it as `http.stream.chunk` messages keyed by `streamId`.
+ */
+export interface DesktopHttpStreamOpenRequest {
+  streamId: string;
+  url: string;
+  init?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  };
+}
+
+/** The response head. Its body follows as `http.stream.chunk` messages. */
+export interface DesktopHttpStreamOpenResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  setCookie?: string[];
+}
+
+/**
+ * One slice of a streamed body. Exactly one terminal message ends a stream:
+ * `done` when the body completed, `error` when reading it failed.
+ */
+export interface DesktopHttpStreamChunkMessage {
+  streamId: string;
+  chunk?: string;
+  done?: boolean;
+  error?: string;
+}
+
 export interface DesktopCapabilityInvokeRequest {
   capabilityId: string;
   operationId: string;
@@ -134,6 +169,11 @@ export interface DesktopBackendRequestMap {
     response: ElectrobunBackendInit;
   };
   "http.fetch": { request: DesktopHttpFetchRequest; response: DesktopHttpFetchResponse };
+  "http.stream.open": {
+    request: DesktopHttpStreamOpenRequest;
+    response: DesktopHttpStreamOpenResponse;
+  };
+  "http.stream.cancel": { request: { streamId: string }; response: null };
   "remote.forward": { request: { request: RemoteControlRequest }; response: RemoteControlResponse };
   "capability.invoke": { request: DesktopCapabilityInvokeRequest; response: unknown };
   "capability.cancel": { request: { invocationId: string }; response: null };
@@ -220,6 +260,7 @@ export type DesktopBackendRequestArgs<K extends DesktopBackendRequestMethod> =
     : [payload: DesktopBackendRequestPayload<K>];
 
 export type DesktopCapabilityRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `capability.${string}`>>;
+export type DesktopHttpStreamRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `http.stream.${string}`>>;
 export type DesktopWorkspaceRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `desktop.${string}`>>;
 export type DesktopPluginStateRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `pluginState.${string}`>>;
 export type DesktopHostRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `host.${string}`>>;
@@ -262,6 +303,8 @@ export interface CapabilityEventMessage {
   event: unknown;
 }
 
+export type HttpStreamChunkMessage = DesktopHttpStreamChunkMessage;
+
 export interface DesktopDeepLinkMessage {
   url: string;
 }
@@ -298,6 +341,7 @@ export interface ElectrobunDesktopRpcSchema {
       "desktop.deepLink": DesktopDeepLinkMessage;
       "update.progress": UpdateProgressMessage;
       "capability.event": CapabilityEventMessage;
+      "http.stream.chunk": HttpStreamChunkMessage;
     };
   };
 }

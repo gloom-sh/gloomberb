@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   askgReducer,
+  canRetryASKGError,
+  describeASKGError,
   describeToolStatus,
   EMPTY_ASKG_CONVERSATION,
   requiresLocalConfirmation,
@@ -218,5 +220,54 @@ describe("timeline row helpers", () => {
   test("finds the symbol a result row is about", () => {
     expect(rowSymbol({ ticker: "aapl", note: "x" })).toBe("AAPL");
     expect(rowSymbol({ name: "Apple Inc" })).toBeNull();
+  });
+});
+
+describe("failure handling", () => {
+  test("offers a retry only where asking again could answer", () => {
+    const failure = (code: Parameters<typeof canRetryASKGError>[0]["code"]) => (
+      canRetryASKGError({ code, message: "", retryable: false })
+    );
+    expect(failure("network")).toBe(true);
+    expect(failure("turn_timeout")).toBe(true);
+    expect(failure("rate_limited")).toBe(true);
+    expect(failure("model_unavailable")).toBe(true);
+    expect(failure("internal")).toBe(true);
+    expect(failure("tool_budget_exhausted")).toBe(true);
+
+    expect(failure("transport_unsupported")).toBe(false);
+    expect(failure("tier_required")).toBe(false);
+    expect(failure("unauthorized")).toBe(false);
+    expect(failure("daily_turn_cap")).toBe(false);
+    expect(failure("model_usage_limit")).toBe(false);
+    expect(failure("protocol")).toBe(false);
+    expect(failure("turn_already_recorded")).toBe(false);
+  });
+
+  test("keeps the whole reason in the message rather than a title alone", () => {
+    expect(describeASKGError({
+      code: "rate_limited",
+      message: "Too many requests.",
+      retryable: true,
+      retryAfterMs: 12_000,
+    })).toBe("Rate limited: Too many requests. Try again in 12s.");
+    expect(describeASKGError({
+      code: "network",
+      message: "Connection lost",
+      retryable: true,
+    })).toBe("Connection lost.");
+  });
+
+  test("a retried turn leaves no trace of the attempt it replaces", () => {
+    const failed = askgReducer(withTurn(), {
+      type: "turn-failed",
+      turnId: "turn-1",
+      error: { code: "network", message: "dropped", retryable: true },
+    });
+    expect(failed.turns).toHaveLength(1);
+
+    const dropped = askgReducer(failed, { type: "drop-turn", turnId: "turn-1" });
+    expect(dropped.turns).toHaveLength(0);
+    expect(askgReducer(dropped, { type: "drop-turn", turnId: "turn-1" })).toBe(dropped);
   });
 });

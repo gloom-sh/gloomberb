@@ -22,6 +22,7 @@ import {
   DataTableView,
   EmptyState,
   MessageComposer,
+  Prose,
   SegmentedControl,
   Spinner,
   usePaneFooter,
@@ -52,6 +53,7 @@ import {
 import { subscribeASKGQuestions } from "./pending-question";
 import {
   activeTurn,
+  canRetryASKGError,
   describeASKGError,
   describeToolStatus,
   formatCellValue,
@@ -173,8 +175,13 @@ function ToolTimelineRow({
         </Box>
       ) : null}
       {row.note && row.status !== "ok" ? (
-        <Box paddingLeft={2}>
-          <Text fg={statusColor(row)}>{truncateWithEllipsis(row.note, Math.max(10, width - 3))}</Text>
+        <Box flexDirection="column" paddingLeft={2}>
+          <Prose
+            text={row.note}
+            width={Math.max(10, width - 3)}
+            color={statusColor(row)}
+            figures={false}
+          />
         </Box>
       ) : null}
     </Box>
@@ -345,6 +352,7 @@ function TurnView({
   onSelectTool,
   onToggleTool,
   onUndo,
+  onRetry,
   onUpgrade,
 }: {
   turn: ASKGTurn;
@@ -356,11 +364,18 @@ function TurnView({
   onSelectTool: (toolCallId: string) => void;
   onToggleTool: (toolCallId: string) => void;
   onUndo: (toolCallId: string) => void;
+  onRetry: () => void;
   onUpgrade: () => void;
 }) {
   return (
     <Box flexDirection="column" paddingTop={1}>
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{turn.prompt}</Text>
+      <Prose
+        text={turn.prompt}
+        width={width}
+        color={colors.textBright}
+        figures={false}
+        attributes={TextAttributes.BOLD}
+      />
       {turn.tools.length > 0 ? (
         <Box flexDirection="column" paddingTop={1}>
           {turn.tools.map((row) => (
@@ -392,10 +407,21 @@ function TurnView({
       ) : null}
       {turn.error ? (
         <Box flexDirection="column" paddingTop={1}>
-          <Text fg={colors.negative}>{describeASKGError(turn.error)}</Text>
+          {/* A failure that loses its tail tells the user nothing, so it wraps
+              rather than running off the edge of the pane. */}
+          <Prose
+            text={describeASKGError(turn.error)}
+            width={width}
+            color={colors.negative}
+            figures={false}
+          />
           {turn.error.code === "tier_required" ? (
             <Box paddingTop={1}>
               <Button label="Upgrade to Pro" variant="primary" onPress={onUpgrade} />
+            </Box>
+          ) : canRetryASKGError(turn.error) ? (
+            <Box paddingTop={1}>
+              <Button label="Retry" variant="primary" shortcut="r" onPress={onRetry} />
             </Box>
           ) : null}
         </Box>
@@ -470,6 +496,13 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     () => timelineRows.find((row) => row.toolCallId === expandedToolCallId) ?? null,
     [expandedToolCallId, timelineRows],
   );
+  // The last question is the one a retry would repeat; an older failure is
+  // already history the user moved past.
+  const retryableTurn = useMemo(() => {
+    const turn = activeTurn(state);
+    if (!turn || turn.status !== "error" || !turn.error) return null;
+    return canRetryASKGError(turn.error) ? turn : null;
+  }, [state]);
 
   const ask = useCallback((question: string) => {
     const trimmed = question.trim();
@@ -600,6 +633,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       void controller.undo(selected.toolCallId);
       return;
     }
+    if (event.name === "r" && retryableTurn) {
+      void controller.retryTurn(retryableTurn.id);
+      return;
+    }
     if (event.name === "c" && running) controller.cancel();
   }, { allowEditable: true });
 
@@ -637,11 +674,14 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       ...(running
         ? [{ id: "cancel", key: "c", label: "ancel", onPress: () => controller.cancel() }]
         : []),
+      ...(retryableTurn
+        ? [{ id: "retry", key: "r", label: "etry", onPress: () => void controller.retryTurn(retryableTurn.id) }]
+        : []),
       ...(selectedToolCallId
         ? [{ id: "expand", key: "x", label: "pand rows", onPress: () => toggleExpanded(selectedToolCallId) }]
         : []),
     ],
-  }), [confirmation, controller, running, selectedToolCallId, state.limits, toggleExpanded]);
+  }), [confirmation, controller, retryableTurn, running, selectedToolCallId, state.limits, toggleExpanded]);
 
   if (!planAccess.emailVerified) {
     return (
@@ -686,6 +726,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             onSelectTool={setSelectedToolCallId}
             onToggleTool={toggleExpanded}
             onUndo={(toolCallId) => void controller.undo(toolCallId)}
+            onRetry={() => void controller.retryTurn(turn.id)}
             onUpgrade={() => openCommandBar("Upgrade to Pro")}
           />
         ))}

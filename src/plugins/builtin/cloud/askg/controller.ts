@@ -253,6 +253,19 @@ export class ASKGSessionController {
     }
   }
 
+  /**
+   * Asks a failed question again. The failed turn is dropped rather than kept
+   * above the retry, so a transcript reads as the conversation the user had
+   * rather than as a list of attempts.
+   */
+  async retryTurn(turnId: string): Promise<void> {
+    if (this.disposed || isTurnRunning(this.state)) return;
+    const turn = this.state.turns.find((entry) => entry.id === turnId);
+    if (!turn || turn.status !== "error") return;
+    this.dispatch({ type: "drop-turn", turnId });
+    await this.ask(turn.prompt);
+  }
+
   private handleEvent(event: ASKGSseEvent): void {
     this.dispatch({ type: "event", event });
     if (event.type === "done") {

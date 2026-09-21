@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ASKGTransportError } from "../../../../api-client/askg";
 import type {
   ASKGStreamOptions,
   ASKGToolResultOutcome,
@@ -271,5 +272,96 @@ describe("ASKGSessionController", () => {
     const turn = harness.controller.getState().turns[0];
     expect(turn?.status).toBe("cancelled");
     expect(turn?.tools[0]?.status).toBe("cancelled");
+  });
+
+  test("retrying a failed question asks it again in place of the attempt that failed", async () => {
+    const inputs: string[] = [];
+    let turnIds = 0;
+    let attempts = 0;
+    const transport: ASKGTransport = {
+      isStreamingSupported: () => true,
+      async startSession() {
+        return sessionResponse();
+      },
+      async streamTurn(_sessionId, request, streamOptions) {
+        inputs.push(request.input);
+        attempts += 1;
+        if (attempts === 1) {
+          throw new ASKGTransportError("network", "The connection dropped.", { retryable: true });
+        }
+        streamOptions.onEvent({
+          seq: 1,
+          type: "text-delta",
+          turnId: request.turnId,
+          delta: "About 4.2%.",
+        });
+        streamOptions.onEvent({ seq: 2, type: "done", turnId: request.turnId, reason: "complete" });
+        return "complete";
+      },
+      async postToolResult() {
+        return "accepted";
+      },
+      async cancelTurn() {},
+    };
+    const controller = new ASKGSessionController({
+      transport,
+      loadManifest: async () => MANIFEST,
+      getExecutor: () => null,
+      client: { kind: "tui", version: "1" },
+      createId: () => `turn-${(turnIds += 1)}`,
+    });
+
+    await controller.ask("what does a 5y bond return");
+    expect(controller.getState().turns).toHaveLength(1);
+    expect(controller.getState().turns[0]).toMatchObject({ id: "turn-1", status: "error" });
+    expect(controller.getState().turns[0]?.error?.code).toBe("network");
+
+    await controller.retryTurn("turn-1");
+
+    const turns = controller.getState().turns;
+    expect(turns).toHaveLength(1);
+    expect(turns[0]).toMatchObject({
+      id: "turn-2",
+      prompt: "what does a 5y bond return",
+      status: "complete",
+      answer: "About 4.2%.",
+    });
+    expect(inputs).toEqual([
+      "what does a 5y bond return",
+      "what does a 5y bond return",
+    ]);
+  });
+
+  test("a turn that did not fail is not re-asked", async () => {
+    const inputs: string[] = [];
+    const transport: ASKGTransport = {
+      isStreamingSupported: () => true,
+      async startSession() {
+        return sessionResponse();
+      },
+      async streamTurn(_sessionId, request, streamOptions) {
+        inputs.push(request.input);
+        streamOptions.onEvent({ seq: 1, type: "done", turnId: request.turnId, reason: "complete" });
+        return "complete";
+      },
+      async postToolResult() {
+        return "accepted";
+      },
+      async cancelTurn() {},
+    };
+    const controller = new ASKGSessionController({
+      transport,
+      loadManifest: async () => MANIFEST,
+      getExecutor: () => null,
+      client: { kind: "tui", version: "1" },
+      createId: () => "turn-1",
+    });
+
+    await controller.ask("what is open");
+    await controller.retryTurn("turn-1");
+    await controller.retryTurn("missing-turn");
+
+    expect(inputs).toEqual(["what is open"]);
+    expect(controller.getState().turns).toHaveLength(1);
   });
 });

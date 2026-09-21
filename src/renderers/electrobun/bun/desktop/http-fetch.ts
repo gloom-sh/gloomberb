@@ -13,7 +13,7 @@ function isGloomCloudUrl(url: URL): boolean {
   }
 }
 
-function reportCloudRequest(
+export function reportCloudRequest(
   url: URL,
   method: string,
   latencyMs: number,
@@ -33,7 +33,7 @@ function reportCloudRequest(
   }
 }
 
-function normalizeHttpFetchHeaders(headers: unknown): Record<string, string> {
+export function normalizeHttpFetchHeaders(headers: unknown): Record<string, string> {
   if (!headers || typeof headers !== "object" || Array.isArray(headers)) {
     return {};
   }
@@ -46,14 +46,7 @@ function normalizeHttpFetchHeaders(headers: unknown): Record<string, string> {
 export async function handleHttpFetch(
   payload: DesktopBackendRequestPayload<"http.fetch">,
 ): Promise<DesktopHttpFetchResponse> {
-  if (typeof payload.url !== "string") {
-    throw new Error("http.fetch requires a URL.");
-  }
-
-  const url = new URL(payload.url);
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new Error(`Unsupported http.fetch protocol: ${url.protocol}`);
-  }
+  const url = requireProxyableUrl(payload.url, "http.fetch");
 
   const init =
     payload.init && typeof payload.init === "object" && !Array.isArray(payload.init)
@@ -100,21 +93,40 @@ export async function handleHttpFetch(
     response.ok,
     response.ok ? undefined : new Error(`${response.status} ${response.statusText}`.trim()),
   );
-  const responseHeaders: Record<string, string> = {};
-  response.headers.forEach((value, key) => {
-    responseHeaders[key] = value;
-  });
-  const setCookieHeaders = [...(response.headers.getSetCookie?.() ?? [])];
-  const fallbackSetCookie = response.headers.get("set-cookie");
-  if (fallbackSetCookie && setCookieHeaders.length === 0) {
-    setCookieHeaders.push(fallbackSetCookie);
-  }
+  const { headers, setCookie } = collectResponseHeaders(response);
 
   return {
     status: response.status,
     statusText: response.statusText,
-    headers: responseHeaders,
-    setCookie: setCookieHeaders,
+    headers,
+    setCookie,
     body: await response.text(),
   };
+}
+
+/** Plain header map plus the `Set-Cookie` list the view replays itself. */
+export function collectResponseHeaders(response: Response): {
+  headers: Record<string, string>;
+  setCookie: string[];
+} {
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  const setCookie = [...(response.headers.getSetCookie?.() ?? [])];
+  const fallback = response.headers.get("set-cookie");
+  if (fallback && setCookie.length === 0) setCookie.push(fallback);
+  return { headers, setCookie };
+}
+
+/** Rejects anything the desktop must not proxy on the app's behalf. */
+export function requireProxyableUrl(rawUrl: unknown, method: string): URL {
+  if (typeof rawUrl !== "string") {
+    throw new Error(`${method} requires a URL.`);
+  }
+  const url = new URL(rawUrl);
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error(`Unsupported ${method} protocol: ${url.protocol}`);
+  }
+  return url;
 }

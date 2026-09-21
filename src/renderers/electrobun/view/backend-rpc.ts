@@ -13,6 +13,7 @@ import {
   type DesktopStateMessage,
   type DesktopThemePreviewMessage,
   type ElectrobunBackendInit,
+  type HttpStreamChunkMessage,
   type RemoteControlRequestMessage,
   type ElectrobunDesktopRpcSchema,
   type UpdateProgressMessage,
@@ -28,6 +29,7 @@ type DesktopDockPreviewListener = (message: DesktopDockPreviewMessage) => void;
 type DesktopThemePreviewListener = (message: DesktopThemePreviewMessage) => void;
 type UpdateProgressListener = (message: UpdateProgressMessage) => void;
 type CapabilityEventListener = (message: CapabilityEventMessage) => void;
+type HttpStreamChunkListener = (message: HttpStreamChunkMessage) => void;
 type RemoteControlRequestHandler = (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
 
 let initSnapshot: ElectrobunBackendInit | null = null;
@@ -41,6 +43,7 @@ const desktopDockPreviewListeners = new Set<DesktopDockPreviewListener>();
 const desktopThemePreviewListeners = new Set<DesktopThemePreviewListener>();
 const updateProgressListeners = new Set<UpdateProgressListener>();
 const capabilityEventListeners = new Map<string, Set<CapabilityEventListener>>();
+const httpStreamChunkListeners = new Map<string, Set<HttpStreamChunkListener>>();
 
 function dispatch<T>(
   listeners: Map<string, Set<(value: T) => void>>,
@@ -141,6 +144,10 @@ const rpc = Electroview.defineRPC<ElectrobunDesktopRpcSchema>({
           event: decodeRpcValue(message.event),
         });
       },
+      "http.stream.chunk": (message) => {
+        if (typeof message?.streamId !== "string") return;
+        dispatch(httpStreamChunkListeners, message.streamId, message);
+      },
     },
   },
 });
@@ -215,6 +222,18 @@ export function onCapabilityEvent(
   listener: (message: CapabilityEventMessage) => void,
 ): () => void {
   return subscribe(capabilityEventListeners, subscriptionId, listener);
+}
+
+/**
+ * Body slices of one proxied streaming response. Subscribe before opening the
+ * stream: the Bun process starts forwarding as soon as `http.stream.open`
+ * returns its head, and a late listener would miss the first tokens.
+ */
+export function onHttpStreamChunk(
+  streamId: string,
+  listener: HttpStreamChunkListener,
+): () => void {
+  return subscribe(httpStreamChunkListeners, streamId, listener);
 }
 
 export function onContextMenuSelect(

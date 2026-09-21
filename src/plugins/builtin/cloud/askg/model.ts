@@ -110,6 +110,7 @@ export type ASKGAction =
   | { type: "undo"; toolCallId: string; undo: ASKGUndoState }
   | { type: "turn-failed"; turnId: string; error: ASKGErrorState }
   | { type: "turn-cancelled"; turnId: string }
+  | { type: "drop-turn"; turnId: string }
   | { type: "reset" };
 
 /**
@@ -386,6 +387,11 @@ export function askgReducer(
             : row
         )),
       }));
+    case "drop-turn": {
+      const turns = state.turns.filter((turn) => turn.id !== action.turnId);
+      if (turns.length === state.turns.length) return state;
+      return { ...state, turns };
+    }
     case "reset":
       return {
         ...EMPTY_ASKG_CONVERSATION,
@@ -583,6 +589,25 @@ const ERROR_TITLES: Record<ASKGClientErrorCode, string> = {
   protocol: "Version mismatch",
   internal: "Ask Gloom failed",
 };
+
+/**
+ * Failures a fresh turn could still answer. A cap, a refusal, and a version
+ * mismatch all need something else to change first, so asking again would
+ * only reproduce them; everything else is worth one more attempt.
+ */
+const UNRETRYABLE_ERROR_CODES = new Set<ASKGClientErrorCode>([
+  "daily_turn_cap",
+  "model_usage_limit",
+  "turn_already_recorded",
+  "transport_unsupported",
+  "tier_required",
+  "unauthorized",
+  "protocol",
+]);
+
+export function canRetryASKGError(error: ASKGErrorState): boolean {
+  return !UNRETRYABLE_ERROR_CODES.has(error.code);
+}
 
 /** Specific, actionable one line description of a failure. */
 export function describeASKGError(error: ASKGErrorState): string {
