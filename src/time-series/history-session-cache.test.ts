@@ -218,3 +218,33 @@ test("GIP captures preserve source session metadata separately from requested se
     expect(calls).toBe(1);
   }
 });
+
+test("GIP snapshot replay retains study warmup outside the visible session", async () => {
+  setSystemTime(NOW);
+  for (const explicitWindow of [false, true]) {
+    let calls = 0;
+    const dataProvider = provider(async () => { calls++; return result(); });
+    dataProvider.getDetailedPriceHistoryWithMetadata = async () => { calls++; return result(); };
+    const spec = chart();
+    spec.studies.push({ id: "ema", kind: "ema", inputSeriesIds: ["close"], parameters: { period: 20 }, panelId: "main", axis: "left" });
+    spec.viewport.range = explicitWindow ? "1D" : "1W";
+    if (explicitWindow) spec.viewport.dateWindow = { start: "2026-09-21T13:30:00Z", end: "2026-09-21T19:45:00Z" };
+    const context: HeadlessPaneContext = { marketData: dataProvider, settings: { chartSpec: spec },
+      apiClient: {} as HeadlessPaneContext["apiClient"], config: createDefaultConfig(":memory:"), signal: new AbortController().signal };
+    const args = { argument: "AAPL:NASDAQ", rawArgument: "AAPL:NASDAQ", symbols: ["AAPL:NASDAQ"], options: {} };
+    const definition = chartHeadless("graph-intraday-price-pane");
+    const model = await definition.load(args, context) as ChartPaneModel;
+    expect(model.errors).toEqual([]);
+    expect(model.chart.series.find(series => series.id === "sma")!.points).toHaveLength(explicitWindow ? 26 : 35);
+    expect(model.chart.series.find(series => series.id === "sma")!.points.at(-1)!.value).toBe(233.5);
+    expect(model.chart.series.find(series => series.id === "ema")!.points).toHaveLength(explicitWindow ? 26 : 130);
+    expect(model.snapshot.intradayHistories[0]!.points).toHaveLength(explicitWindow ? 26 : 130);
+    const replay = await definition.load(args, { ...context, settings: { chartSpec: model.spec },
+      marketData: createSnapshotDataProvider(JSON.parse(JSON.stringify(model.snapshot)), dataProvider) }) as ChartPaneModel;
+    expect(replay.errors).toEqual([]);
+    expect(replay.chart.series.map(series => series.points)).toEqual(model.chart.series.map(series => series.points));
+    expect(replay.snapshot.financials[0]![1].priceHistorySession).toEqual(session());
+    expect(replay.snapshot.financials[0]![1].priceHistorySourceKey).toBe("provider:actual-history-source");
+    expect(calls).toBe(1);
+  }
+});

@@ -24,7 +24,7 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
     financials: Array<[string, TickerFinancials]>;
     instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
     historyVariants?: SnapshotMarketData["historyVariants"];
-    intradayHistories: Array<IntradayWindow & Pick<LoadedIntradayWindow, "quote" | "priceDomainFailure" | "session" | "sourceKey"> & {
+    intradayHistories: Array<IntradayWindow & Pick<LoadedIntradayWindow, "bufferedPoints" | "quote" | "priceDomainFailure" | "session" | "sourceKey"> & {
       symbol: string;
       exchange: string;
       target?: InstrumentRef;
@@ -211,7 +211,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           ...await loadIntradayWindow({ provider: context.marketData, symbol: target.symbol, exchange: target.exchange ?? "", request, context: { brokerId: target.brokerId, brokerInstanceId: target.brokerInstanceId, instrument: target.instrument } }),
         })));
         context.signal.throwIfAborted();
-        intradayHistories.push(...histories.map(({ bufferedPoints: _buffer, ...history }) => history));
+        intradayHistories.push(...histories);
         const starts = histories.flatMap(({ start }) => start ? [start.getTime()] : []);
         const ends = histories.flatMap(({ end }) => end ? [end.getTime()] : []);
         spec = { ...spec, viewport: {
@@ -223,7 +223,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         } };
         context = { ...context, marketData: createSnapshotDataProvider({
           financials: [],
-          intradayHistories: histories.map((history) => ({ ...history, points: history.bufferedPoints })),
+          intradayHistories: histories,
         }, context.marketData) };
       }
       const model = await loadChartPaneModel(spec, context);
@@ -238,7 +238,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           const { symbol, exchange = "" } = target;
           const points = data.priceHistory.filter(({ date }) => date >= start && date <= end);
           intradayHistories.push({
-            target, symbol, exchange, points, start, end, session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey,
+            target, symbol, exchange, points, bufferedPoints: data.priceHistory, start, end, session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey,
             rangePreset: spec.viewport.range === "1W" ? "1W" : "1D",
             resolution: historyResolution, requestedSession: null,
             sessionDates: intradaySessionDates(points, resolveExchangeTimeZone(exchange) ?? "UTC"),

@@ -29,6 +29,7 @@ export interface DesktopPaneShotIntradayHistory {
   requestedSession: string | null;
   sessionDates: string[];
   points: PricePoint[];
+  bufferedPoints?: PricePoint[];
   start: string | null;
   end: string | null;
   unavailableReason: string | null;

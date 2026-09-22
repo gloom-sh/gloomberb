@@ -146,6 +146,32 @@ test("an ordinary captured snapshot cannot satisfy an explicit extended history 
  expect(requests).toBe(2);
 });
 
+test("saved intraday calculation buffers retain leading bars but never substitute a failed, empty or different acquisition", async () => {
+  const points = [0, 1, 2, 3].map(index => ({ date: new Date(Date.UTC(2026, 8, 21, 13, 30 + index * 15)), close: 100 + index }));
+  const target = { symbol: "TEST", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "A", instrument: { brokerId: "ibkr", brokerInstanceId: "A", conId: 11 } };
+  const captured = { target, symbol: target.symbol, exchange: target.exchange, resolution: "15m" as const,
+    points: points.slice(1, 3), bufferedPoints: points, unavailableReason: null as string | null };
+  let liveCalls = 0;
+  const fallback = createTestDataProvider({ getDetailedPriceHistory: async () => { liveCalls++; return []; } });
+  const replay = (history: typeof captured) => createSnapshotDataProvider(JSON.parse(JSON.stringify({
+    financials: [["TEST:NASDAQ", { ...financials("TEST", 100), priceHistory: points }]], intradayHistories: [history],
+  })), fallback);
+  const provider = replay(captured);
+  const start = points[1]!.date, end = points[3]!.date;
+  const expected = JSON.parse(JSON.stringify(points.slice(0, 3)));
+  expect(await provider.getDetailedPriceHistory!("TEST", "NASDAQ", start, end, "15m", target)).toEqual(expected);
+  expect((await provider.getDetailedPriceHistoryWithMetadata!("TEST", "NASDAQ", start, end, "15m", target)).points).toEqual(expected);
+  expect(await provider.getDetailedPriceHistory!("TEST", "NASDAQ", start, end, "1d", target)).toEqual([]);
+  expect(await replay({ ...captured, bufferedPoints: [] }).getDetailedPriceHistory!("TEST", "NASDAQ", start, end, "15m", target)).toEqual([]);
+  const legacyNull = replay(JSON.parse(JSON.stringify({ ...captured, points, bufferedPoints: null })));
+  expect(await legacyNull.getDetailedPriceHistory!("TEST", "NASDAQ", start, end, "15m", target)).toEqual(expected.slice(1));
+  await expect(replay({ ...captured, unavailableReason: "Session unavailable" })
+    .getDetailedPriceHistory!("TEST", "NASDAQ", start, end, "15m", target)).rejects.toThrow("Session unavailable");
+  expect(liveCalls).toBe(0);
+  await provider.getDetailedPriceHistory!("TEST", "NASDAQ", start, end, "15m", { ...target, instrument: { ...target.instrument, conId: 12 } });
+  expect(liveCalls).toBe(1);
+});
+
 test("settled captured statement extensions replay without live reads while failed extensions retain retry behavior", async () => {
   let liveCalls = 0;
   const recovered = { ...financials("TEST", 100), annualStatements: [{ date: "2025-12-31", eps: 10 }] };

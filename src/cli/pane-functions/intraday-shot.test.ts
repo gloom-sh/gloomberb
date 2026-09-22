@@ -10,6 +10,8 @@ import type { MarketContext } from "../types";
 import { chartHeadless } from "../../plugins/builtin/chart-composer/headless";
 import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart-composer/cli-options";
 import { createTestDataProvider } from "../../test-support/data-provider";
+import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
+import { resolveChartSpecData } from "../../time-series/resolve";
 import {
   buildDesktopShotPayload,
   intradayChartEvidenceMismatchesFor,
@@ -372,15 +374,26 @@ describe("GIP screenshot payload", () => {
     let historyCalls = 0;
     const spec = buildIntradayPriceChartPreset("AAPL");
     spec.viewport = { range: "1W", resolution: "5m", dateWindow: { start: "2020-01-02T13:30:00Z", end: "2020-01-03T13:35:00Z" } };
+    spec.studies.push({ id: "sma", kind: "sma", inputSeriesIds: [spec.series[0]!.id], parameters: { period: 3 }, panelId: "main", axis: "left" });
     const points = [...sessionBars("2020-01-02", 100), ...sessionBars("2020-01-03", 105)];
+    const bufferedPoints = [...sessionBars("2019-12-31", 95), ...points];
     const payload = await payloadFor(resolvedChart("intraday-price-chart", spec, {}), createTestDataProvider({
-      getDetailedPriceHistory: async () => { historyCalls += 1; return points; },
+      getDetailedPriceHistory: async () => { historyCalls += 1; return bufferedPoints; },
     }));
     expect(historyCalls).toBe(1);
     expect(payload.chartModel?.series[0]?.points).toHaveLength(4);
     expect(payload.intradayHistories[0]).toMatchObject({
-      sessionDates: ["2020-01-02", "2020-01-03"], points, resolution: "5m", unavailableReason: null,
+      sessionDates: ["2020-01-02", "2020-01-03"], points, bufferedPoints, resolution: "5m", unavailableReason: null,
     });
-    expect((payload.config.layout.instances[0]!.settings!.chartSpec as typeof spec).viewport.dateWindow).toEqual(spec.viewport.dateWindow);
+    const savedSpec = payload.config.layout.instances[0]!.settings!.chartSpec as typeof spec;
+    expect(savedSpec.viewport.dateWindow).toEqual(spec.viewport.dateWindow);
+    expect(payload.chartModel?.series.find(series => series.id === "sma")?.points).toHaveLength(4);
+    const replay = await resolveChartSpecData(savedSpec, {
+      dataProvider: createSnapshotDataProvider(JSON.parse(JSON.stringify(payload)), createTestDataProvider({
+        getDetailedPriceHistory: async () => { throw new Error("Replay must use captured history"); },
+      })),
+    });
+    expect(replay.errors).toEqual([]);
+    expect(replay.series.map(series => series.points)).toEqual(payload.chartModel!.series.map(series => series.points));
   });
 });

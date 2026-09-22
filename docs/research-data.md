@@ -26,6 +26,8 @@ Bond history currently has no source-declared price convention. Charts retain it
 
 Local chart snapshots retain the full selected instrument with its captured quote and history, including multiple contracts that share one public symbol. Reconstruction uses only observations captured for that exact contract; older public-symbol snapshots remain usable for public listings. A missing contract capture may be loaded from the corresponding market source, but another contract’s capture does not supply it.
 
+Intraday chart captures retain the earlier observations used to calculate studies separately from the visible session. Replaying an authored chart window uses that captured calculation history without adding later prices. Older captures without this buffer can leave studies unavailable when they lack enough observations.
+
 Historical price charts retain explicit listing currency and instrument type independently of a current quote. A rejected stale quote can supply those static facts, with its original source timestamp and stale flag in exported `quoteMetadata`; it cannot add a price observation or daily change. Snapshot reloads retain those facts without a live lookup. When optional enrichment supplies a missing field, `fieldSources` preserves that field's separate provenance. Missing or mismatched metadata remains unknown; no currency, FX conversion, or share/contract basis is inferred from a price's magnitude.
 
 Normalized price charts show closing-price returns in each listing's currency. They exclude cash distributions, reinvestment, and FX conversion. They are not total-return or investor-currency performance charts.

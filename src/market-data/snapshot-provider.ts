@@ -24,6 +24,8 @@ export interface SnapshotMarketData {
     exchange: string;
     resolution: ManualChartResolution;
     points: PricePoint[];
+    /** Acquired source bars including study warmup; points retains the visible window. */
+    bufferedPoints?: PricePoint[];
     session?: HistorySession;
     sourceKey?: string;
     unavailableReason: string | null;
@@ -141,7 +143,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     const captured = intraday(symbol, exchange, context);
     if (captured?.unavailableReason) throw new SnapshotHistoryUnavailableError(captured.unavailableReason);
     if (captured && resolution && captured.resolution !== resolution) return missing;
-    if (captured) return captured;
+    if (captured) return { ...captured, points: captured.bufferedPoints ?? captured.points };
     const alternatives = historyVariants(symbol, exchange, context);
     if (alternatives?.length) {
       const requested = context?.historyRequestKey
@@ -168,6 +170,14 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     const valid = normalizeHistoryResult({ ...captured, resolution: captured.resolution ?? null }, { symbol, exchange: exchange ?? "" });
     if (!valid) throw new SnapshotHistoryUnavailableError("Captured price history has invalid acquisition metadata.");
     return { ...valid, resolution: captured.resolution };
+  };
+  const detailedPoints = (points: PricePoint[], start: Date, end: Date, symbol: string, exchange?: string, context?: MarketDataRequestContext) => {
+    // A saved chart's leading bars are calculation input, including the seed
+    // for recursive studies. Re-clipping them to a nominal warmup duration can
+    // change the saved result across exchange closures. The resolver still
+    // clips displayed output to its viewport; future bars are never included.
+    const hasBuffer = Array.isArray(intraday(symbol, exchange, context)?.bufferedPoints);
+    return points.filter(point => (hasBuffer || getPricePointTimestamp(point) >= +start) && getPricePointTimestamp(point) < +end);
   };
   const overrides: Partial<DataProvider> = {
     async getTickerFinancials(symbol, exchange, context) {
@@ -248,7 +258,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
       const resolution = historyResolutionForInterval(interval);
       const captured = history(symbol, exchange, resolution ?? interval, context);
       if (captured) return { ...captured, resolution,
-        points: captured.points.filter(point => getPricePointTimestamp(point) >= +start && getPricePointTimestamp(point) < +end) };
+        points: detailedPoints(captured.points, start, end, symbol, exchange, context) };
       return await fetchHistoryResult(fallback, symbol, exchange, { kind: "detail", start, end, interval }, context)
         ?? { points: [], resolution };
     },
@@ -260,7 +270,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     async getDetailedPriceHistory(symbol, exchange, start, end, resolution, context) {
       const captured = history(symbol, exchange, resolution, context);
       if (!captured) return (await fetchHistoryResult(fallback, symbol, exchange, { kind: "detail", start, end, interval: resolution }, context))?.points ?? [];
-      return captured.points.filter((point) => getPricePointTimestamp(point) >= start.getTime() && getPricePointTimestamp(point) < end.getTime());
+      return detailedPoints(captured.points, start, end, symbol, exchange, context);
     },
     getChartResolutionSupport(symbol, exchange, context) {
       const captured = intraday(symbol, exchange, context);
