@@ -80,9 +80,9 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
       empty={!!data && !data.contracts.length} subject="futures curve">
       {data ? <>
         <Box flexDirection="column" paddingX={1} flexShrink={0}>
-          {selectedRow ? <KeyValueRow label={selectedRow.symbol} value={curvePrice(selectedRow.price, root)}
+          {selectedRow ? <KeyValueRow labelWidth={16} label={selectedRow.symbol} value={curvePrice(selectedRow.price, root)}
             detail={`${curveTimestamp(selectedRow.asOf)} · ${curveRank(selectedRow.percentile, selectedRow.samples, selectedRow.historyStart, selectedRow.historyEnd)}`} /> : null}
-          <KeyValueRow label="Ann. roll yield" value={signedPercent(data.slope.annualizedRollYield)}
+          <KeyValueRow labelWidth={16} label="Ann. roll yield" value={signedPercent(data.slope.annualizedRollYield)}
             detail={`${curveTimestamp(data.slope.asOf)} · ${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd)}`} />
         </Box>
         {tab === "curve" ? <CurveSurface series={curves} width={width} height={curveHeight}
