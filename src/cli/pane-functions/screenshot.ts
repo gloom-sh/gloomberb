@@ -67,6 +67,8 @@ import { readRealizedVolEvidence, type RealizedVolEvidence } from "../../plugins
 import { selectedWindows } from "../../plugins/builtin/realized-vol/settings";
 import { readVolSurfaceEvidence, type VolSurfaceEvidence } from "../../plugins/builtin/vol-surface/evidence";
 import { readVolatilityEvidence, type VolatilityEvidence } from "../../plugins/builtin/volatility/evidence";
+import { readScenarioEvidence, type ScenarioEvidence } from "../../plugins/builtin/options-scenario/evidence";
+import type { buildScenario, ScenarioPosition, ScenarioControls } from "../../plugins/builtin/options-scenario/model";
 import {
   collectShotSymbols,
   clipPriceHistoryToRange,
@@ -357,7 +359,8 @@ export type PaneScreenshotDataEvidence =
   | PaneScreenshotFinancialStatementEvidence
   | VolSurfaceEvidence
   | RealizedVolEvidence
-  | VolatilityEvidence;
+  | VolatilityEvidence
+  | ScenarioEvidence;
 
 export interface PaneScreenshotReadinessSignals {
   rowCount: number;
@@ -491,7 +494,37 @@ export async function buildDesktopShotPayload(
   ]);
   const includeOptionsChains = resolved.pane.id === OPTIONS_PANE_ID || resolved.template?.paneId === OPTIONS_PANE_ID;
   let chartModel: ChartPaneModel | undefined;
-  if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
+  if (isScenarioScreenshot(resolved)) {
+    // Freeze the same user inputs and market observations used by the report.
+    // A typed strategy with an explicit spot needs no unrelated financials fetch.
+    const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
+    const metadata = loaded.result.metadata as {
+      scenario?: ReturnType<typeof buildScenario> | null;
+      position?: ScenarioPosition | null;
+      controls?: ScenarioControls | null;
+      market?: unknown;
+      inputSource?: string;
+    } | undefined;
+    const position = metadata?.position;
+    const controls = metadata?.controls;
+    shotInstance = { ...shotInstance, settings: { ...shotInstance.settings,
+      scenarioSnapshot: metadata?.scenario ?? null,
+      scenarioMarketSnapshot: metadata?.market ?? null,
+      scenarioSnapshotErrors: loaded.result.errors ?? [],
+      ...(position ? { seedPosition: position } : {}),
+      ...(controls ? { date: new Date(controls.date).toISOString(), volShift: controls.volShift * 100,
+        spotRange: controls.spotRange * 100 } : {}),
+    } };
+    const symbol = position?.symbol ?? loaded.args.symbols[0];
+    if (symbol) {
+      const data: TickerFinancials = { annualStatements: [], quarterlyStatements: [], priceHistory: [],
+        ...(position ? { quote: { symbol, price: position.spot, currency: position.currency,
+          change: 0, changePercent: 0, lastUpdated: position.asOf,
+          providerId: metadata?.inputSource === "user" ? "user-input" : "scenario-snapshot", dataSource: "snapshot" as const } } : {}) };
+      financials.push([symbol, data]);
+      tickers.push(createFallbackTicker(symbol, data, context));
+    }
+  } else if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
     chartModel = loaded.result as ChartPaneModel;
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, chartSpec: chartModel.spec } };
@@ -683,7 +716,8 @@ export async function renderDesktopShot({
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const symbols = payload.financials.map(([symbol]) => symbol);
   const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom"
-    && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved) && !isVolatilityScreenshot(resolved);
+    && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved) && !isVolatilityScreenshot(resolved)
+    && !isScenarioScreenshot(resolved);
   const rowCount = usesLiveDomEvidence
     ? render.rows.length
     : shotSemanticRowCount(resolved, payload, render.semanticUi);
@@ -707,6 +741,7 @@ export async function renderDesktopShot({
     ...volSurfaceEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...realizedVolEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...volatilityEvidenceMismatchesFor(resolved, payload, render.semanticUi),
+    ...scenarioEvidenceMismatchesFor(resolved, payload, render.semanticUi),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -763,7 +798,7 @@ export async function renderDesktopShot({
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {
-  return isVolSurfaceScreenshot(resolved) || isRealizedVolScreenshot(resolved) || isVolatilityScreenshot(resolved) || [
+  return isVolSurfaceScreenshot(resolved) || isRealizedVolScreenshot(resolved) || isVolatilityScreenshot(resolved) || isScenarioScreenshot(resolved) || [
     "price-chart",
     "intraday-price-chart",
     "price-comparison",
@@ -774,6 +809,35 @@ function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean
 
 function isRealizedVolScreenshot(resolved: ResolvedPaneFunction): boolean {
   return resolved.pane?.id === "realized-vol";
+}
+
+function isScenarioScreenshot(resolved: ResolvedPaneFunction): boolean {
+  return resolved.pane?.id === "options-scenario";
+}
+
+function renderedScenarioEvidence(semanticUi: RemoteUiNodeSnapshot[]): ScenarioEvidence | null {
+  return readScenarioEvidence(semanticUi.find((node) => node.role === "chart-data"
+    && node.metadata?.kind === "options-scenario")?.metadata);
+}
+
+/** Validate the active scenario against the immutable inputs consumed by the pane. */
+export function scenarioEvidenceMismatchesFor(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload,
+  semanticUi: RemoteUiNodeSnapshot[]): string[] {
+  if (!isScenarioScreenshot(resolved)) return [];
+  const evidence = renderedScenarioEvidence(semanticUi);
+  if (!evidence) return ["rendered option scenario data evidence is missing or invalid"];
+  const mismatches: string[] = [];
+  const settings = payload.config?.layout?.instances.find((entry) => entry.instanceId === payload.paneId)?.settings
+    ?? resolved.instance?.settings ?? {};
+  const symbol = resolved.createOptions?.symbol ?? payload.financials[0]?.[0];
+  if (symbol && parsePublicTickerKey(evidence.symbol).symbol !== parsePublicTickerKey(symbol).symbol) {
+    mismatches.push("rendered option scenario symbol does not match");
+  }
+  if (evidence.view !== (resolved.options.tab ?? "payoff")) mismatches.push("rendered option scenario view does not match");
+  if (settings.scenarioSnapshot && JSON.stringify(evidence.scenario) !== JSON.stringify(settings.scenarioSnapshot)) {
+    mismatches.push("rendered option scenario inputs or values do not match");
+  }
+  return mismatches;
 }
 
 function renderedRealizedVolEvidence(semanticUi: RemoteUiNodeSnapshot[]): RealizedVolEvidence | null {
@@ -907,6 +971,7 @@ export function shotDataEvidenceFor(
   if (isRealizedVolScreenshot(resolved)) return renderedRealizedVolEvidence(semanticUi);
   if (isVolSurfaceScreenshot(resolved)) return renderedVolSurfaceEvidence(semanticUi);
   if (isVolatilityScreenshot(resolved)) return renderedVolatilityEvidence(semanticUi);
+  if (isScenarioScreenshot(resolved)) return renderedScenarioEvidence(semanticUi);
   const spec = payload.chartModel ? parseChartSpec(payload.config.layout.instances.find((instance) => instance.instanceId === payload.paneId)?.settings?.chartSpec) : null;
   const visibleSeries = payload.chartModel && spec ? spec.series.flatMap((entry) => {
     if (entry.source.kind !== "security" || entry.visible === false) return [];
@@ -1432,6 +1497,10 @@ export function shotUnavailableSymbols(
   payload: DesktopPaneShotPayload,
   semanticUi: RemoteUiNodeSnapshot[] = [],
 ): string[] {
+  if (isScenarioScreenshot(resolved)) {
+    const evidence = renderedScenarioEvidence(semanticUi);
+    return evidence?.complete && !evidence.loading ? [] : [evidence?.symbol ?? resolved.createOptions?.symbol ?? "option scenario"];
+  }
   if (isRealizedVolScreenshot(resolved)) {
     const evidence = renderedRealizedVolEvidence(semanticUi);
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
@@ -1513,6 +1582,7 @@ export function shotSemanticRowCount(
   payload: DesktopPaneShotPayload,
   semanticUi: RemoteUiNodeSnapshot[] = [],
 ): number {
+  if (isScenarioScreenshot(resolved)) return renderedScenarioEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isRealizedVolScreenshot(resolved)) return renderedRealizedVolEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isVolSurfaceScreenshot(resolved)) return renderedVolSurfaceEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isVolatilityScreenshot(resolved)) return renderedVolatilityEvidence(semanticUi)?.plottedValueCount ?? 0;

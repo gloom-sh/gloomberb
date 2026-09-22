@@ -102,6 +102,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `OVDV <ticker>` | Rotatable implied-volatility surface, smiles, term structure, skew and forwards |
 | `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
+| `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
 | `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |
@@ -386,3 +387,18 @@ filed more than 45 days after the transaction. CLI examples:
 `gloomberb fn CG AAPL --owner spouse --assetType option --json`.
 
 Congress Trades includes returns since the transaction and filing close; Members includes party, median stock return and buy hit rate. Open a member for current committee assignments and the return denominators. Missing prices remain blank. See research data for the close-to-latest-close basis and the source access limit that keeps Senate coverage deferred.
+
+## Options scenarios
+
+Open `OSA AAPL`, choose **Add leg** to enter a call or put, or **Chain** to select a quoted contract. In OMON, select the call or put cell and use **Add to OSA** (`a`). Each handoff opens the leg editor in the ticker's existing OSA pane; saving appends the leg to its position. Set buy/sell, contracts, entry premium per unit, annualized IV and units per contract. The default multiplier is 100 and can be changed for a known deliverable.
+
+The Payoff and P&L grid tabs share the scenario-date (`d`) and parallel vol-shift controls. **Inputs** (`i`) edits spot, rate, dividend yield, currency, valuation timestamp and spot range. **Save** (`s`) stores a named snapshot; **Browse saved** (`b`) restores one for the same ticker and listing. The current draft, selected date, vol shift and selected leg also resume with the layout. In Legs, Enter or **Edit** (`e`) edits the selection and **Remove** (`x`) asks before removing it. Named snapshots preserve their original valuation timestamp.
+
+Both `fn` and `shot` accept explicit inputs for reproducible analysis:
+
+```sh
+gloomberb fn OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25' --spot 100 --rate 4 --dividend-yield 1 --currency USD --as-of 2026-09-22 --date 2026-10-22 --vol-shift 3 --json
+gloomberb shot OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-1,2,25' --spot 100 --rate 4 --dividend-yield 1 --currency USD --as-of 2026-09-22 --date 2026-10-22 --vol-shift 3 --tab payoff --output osa-payoff.png
+```
+
+The leg format is `call|put,strike,YYYY-MM-DD,signed contracts,entry price,IV percent[,multiplier]`, separated by semicolons. `--tab` accepts `payoff`, `grid` and `legs`; `--spot-range` is the percentage range either side of spot. Omit market overrides to use current sources, or request `--strategy vertical` or `--strategy straddle` to build an explicit example from complete two-sided quotes. `--expiration` selects that chain's expiry in Unix seconds. Screenshot JSON includes the rendered position and numerical observations, with readiness validated against the shared model. No position is invented when no legs or strategy are supplied.

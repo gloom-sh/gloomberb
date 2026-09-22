@@ -49,6 +49,8 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     let contractPrefix = "AAPL";
     const requests: string[] = [];
     const launches: any[] = [];
+    const scenarios: any[] = [];
+    let footerParts: Array<{ text: string; tone?: string }> = [];
     const raw = (strike: number, side: "C" | "P") => ({
         contractSymbol: `${contractPrefix}280121${side}${String(Math.round(strike * 1000)).padStart(8, "0")}`,
         strike, currency: "USD", lastPrice: 8, bid: 9, ask: 11, impliedVolatility: .25,
@@ -73,9 +75,15 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
     state.focusedPaneId = PANE;
     state.tickers = new Map([["AAPL", ticker]]);
     state.financials = new Map([["AAPL", { quote: { symbol: "AAPL", price: strikes[0], currency: "USD", change: 0, changePercent: 0, lastUpdated: NOW, stale: false }, annualStatements: [], quarterlyStatements: [], priceHistory: [] }]]);
-    const runtime = createTestPluginRuntime({ createPaneFromTemplate: (_id: string, options: any) => launches.push(draftFromParams(options?.values)) });
+    const runtime = createTestPluginRuntime({ createPaneFromTemplate: (id: string, options: any) => {
+        if (id === "options-scenario-pane") scenarios.push(options);
+        else launches.push(draftFromParams(options?.values));
+    } });
     await act(async () => {
-        setup = await testRender(<TestPaneProvider state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime}><PaneFooterProvider>{footer => <Box width={width} height={22} flexDirection="column"><Box height={21}><OptionsView width={width} height={21} focused/></Box><PaneFooterBar footer={footer} focused width={width}/></Box>}</PaneFooterProvider></TestPaneProvider>, { width, height: 22 });
+        setup = await testRender(<TestPaneProvider state={state} paneId={PANE} pluginId="ticker-research" runtime={runtime}><PaneFooterProvider>{footer => {
+            footerParts = footer.info.flatMap(segment => segment.parts);
+            return <Box width={width} height={22} flexDirection="column"><Box height={21}><OptionsView width={width} height={21} focused/></Box><PaneFooterBar footer={footer} focused width={width}/></Box>;
+        }}</PaneFooterProvider></TestPaneProvider>, { width, height: 22 });
     });
     await settle();
     async function key(name: string) {
@@ -98,7 +106,7 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
         await exportPaneTable(PANE, `${name}.csv`);
         const csv = takeSavedTextFile()?.text ?? "";
         const frame = setup!.captureCharFrame();
-        const result = { source, launch: launches.length > n ? launches.at(-1) : null, csv, frame, requests: [...requests] };
+        const result = { source, launch: launches.length > n ? launches.at(-1) : null, csv, frame, footerParts, requests: [...requests] };
         if (out) {
             await Bun.write(`${out}/${width}-${name}.txt`, frame);
             await Bun.write(`${out}/${width}-${name}.csv`, csv);
@@ -135,7 +143,11 @@ async function fixture(strikes: number[], activity: "full" | "missing" | "zero" 
         }
         return value;
     }
-    return { key, capture, refresh, cli, replaceSymbols: () => {
+    return { key, capture, refresh, cli, scenario: async () => {
+            const count = scenarios.length;
+            await key("a");
+            return scenarios.length > count ? scenarios.at(-1) : null;
+        }, replaceSymbols: () => {
             contractPrefix = "AAPL1";
         }, setCalls: (value: boolean) => {
             callsAvailable = value;
@@ -175,6 +187,7 @@ test("preserves call identity across partial chains, and permits an explicit put
     await f.refresh([100]);
     const removed = await f.capture("call-removed");
     expect(removed.launch).toBeNull();
+    expect(await f.scenario()).toBeNull();
     expect(removed.frame).toContain("Selected 100 call unavailable");
     await act(async () => {
         await setup!.mockMouse.click(69, strikeRowY(100));
@@ -182,6 +195,11 @@ test("preserves call identity across partial chains, and permits an explicit put
     await settle();
     const put = await f.capture("put-selected");
     expect(put.launch.side).toBe("put");
+    const scenario = await f.scenario();
+    expect(scenario.symbol).toBe("AAPL:NASDAQ");
+    expect(JSON.parse(scenario.values.seedLeg)).toMatchObject({ side: "put", strike: 100, expiration: EXPIRY,
+        quantity: 1, price: 10, volatility: .25, multiplier: 100 });
+    expect(scenario.values.asOf).toBe(new Date(NOW).toISOString());
     f.setCalls(true);
     await f.refresh([100]);
     expect((await f.capture("put-after-recovery")).launch.side).toBe("put");
@@ -196,7 +214,8 @@ test("keyboard choice and transient failure retain the same contract through rec
     await f.refresh([99, 100, 101, 102]);
     const failed = await f.capture("refresh-failed");
     expect(failed.launch.marketReference.contractSymbol).toBe(picked.launch.marketReference.contractSymbol);
-    expect(failed.frame).toContain("Controlled chain outage");
+    // The full warning survives even when footer actions leave room for only a shortened preview.
+    expect(failed.footerParts.some(part => part.tone === "warning" && part.text.includes("Controlled chain outage"))).toBe(true);
     f.setFailure(false);
     await f.refresh([99, 100, 101, 102]);
     const recovered = await f.capture("refresh-recovered");

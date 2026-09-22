@@ -10,6 +10,7 @@ import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
 import { optionsModule } from "./options";
+import { optionsScenarioModule } from "./options-scenario";
 import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
 import { realizedVolModule } from "./realized-vol";
@@ -33,6 +34,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     congressResearchModule,
     optionsModule,
     optionsCalculatorModule,
+    optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
     researchModule,

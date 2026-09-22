@@ -5,6 +5,7 @@ import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact } from "../../../utils/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
+import { canonicalTickerKey } from "../../../utils/exchanges";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import {
   DataTableView,
@@ -55,6 +56,7 @@ import { signedPositionDirection } from "../portfolio-list/position-metrics";
 import { optionMarketReference } from "./market-reference";
 import { useOptionsEnrichment } from "./enrichment";
 import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
+import { optionMid } from "../shared/volatility";
 
 type SummaryMetric = { label: string; value: string };
 
@@ -395,6 +397,24 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     createPaneFromTemplate(OPTIONS_CALCULATOR_TEMPLATE_ID, { values: calcParams });
   }, [calcParams, createPaneFromTemplate]);
 
+  const scenarioContract = selectedSide === "put" ? selectedRow?.put : selectedSide === "call" ? selectedRow?.call : null;
+  const scenarioMid = scenarioContract ? optionMid(scenarioContract) : null;
+  const scenarioAvailable = !!calcParams && scenarioMid != null && !!scenarioContract
+    && Number.isFinite(scenarioContract.impliedVolatility) && scenarioContract.impliedVolatility >= 0
+    && !!scenarioContract.currency && scenarioContract.currency === underlying?.quote?.currency;
+  const openScenario = useCallback(() => {
+    const contract = scenarioContract;
+    if (!contract || !scenarioAvailable || !selectedSide || scenarioMid == null) return;
+    const leg = { id: crypto.randomUUID(), side: selectedSide, quantity: 1, strike: contract.strike,
+      expiration: contract.expiration, price: scenarioMid, volatility: contract.impliedVolatility, multiplier: 100 };
+    createPaneFromTemplate("options-scenario-pane", { symbol: canonicalTickerKey(effectiveTicker, effectiveExchange),
+      values: { seedLeg: JSON.stringify(leg), spot: String(spot),
+        currency: contract.currency,
+        ...(dividendYield == null ? {} : { dividendYield: String(dividendYield * 100) }),
+        asOf: new Date(underlying?.quote?.lastUpdated ?? Date.now()).toISOString() } });
+  }, [scenarioContract, scenarioAvailable, scenarioMid, createPaneFromTemplate, dividendYield, effectiveTicker,
+    effectiveExchange, selectedSide, spot, underlying?.quote?.lastUpdated]);
+
   const openSurface = useCallback(() => {
     if (!ticker || selectedExpiration == null) return;
     createPaneFromTemplate("vol-surface-pane", { symbol: ticker.metadata.ticker, ticker, instrument,
@@ -404,8 +424,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   }, [createPaneFromTemplate, ticker, instrument, selectedExpiration]);
   const footerHints = useMemo(() => [
     ...(calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : []),
+    ...(scenarioAvailable ? [{ id: "scenario", key: "a", label: "dd to OSA", onPress: openScenario }] : []),
     ...(ticker && selectedExpiration != null ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
-  ], [calcParams, openCalculator, ticker, selectedExpiration, openSurface]);
+  ], [calcParams, openCalculator, scenarioAvailable, openScenario, ticker, selectedExpiration, openSurface]);
 
   const selectContract = useCallback((row: OptionTableRow, index: number, side?: OptionSide, preservePointer = false) => {
     userSelectedStrikeRef.current = true;
@@ -512,6 +533,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       event.stopPropagation();
       openCalculator();
     }
+    if (isPlainKey(event, "a") && scenarioAvailable) {
+      event.preventDefault(); event.stopPropagation(); openScenario();
+    }
   }, { enabled: focused, phase: "before" });
 
   const handleTableKeyDown = useCallback((event: DataTableKeyEvent) => {
@@ -554,6 +578,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       openCalculator();
       return true;
     }
+    if (isPlainKey(event, "a") && scenarioAvailable) {
+      event.preventDefault?.(); event.stopPropagation?.(); openScenario(); return true;
+    }
 
     return false;
   }, [
@@ -562,6 +589,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     exitInteractive,
     interactive,
     openCalculator,
+    openScenario,
+    scenarioAvailable,
     openSurface,
     ticker,
     selectedExpiration,

@@ -16,6 +16,7 @@ import {
   volSurfaceEvidenceMismatchesFor,
   realizedVolEvidenceMismatchesFor,
   volatilityEvidenceMismatchesFor,
+  scenarioEvidenceMismatchesFor,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
@@ -30,6 +31,48 @@ import type { MarketContext } from "../types";
 import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
 import { volatilitySemanticEvidence } from "../../plugins/builtin/volatility/evidence";
 import { buildVolatilityData } from "../../plugins/builtin/volatility/model";
+import { scenarioSemanticEvidence } from "../../plugins/builtin/options-scenario/evidence";
+import { buildScenario, parseLegs } from "../../plugins/builtin/options-scenario/model";
+import { optionsScenarioHeadless } from "../../plugins/builtin/options-scenario/headless";
+
+test("typed option scenario screenshot freezes report inputs without an unrelated market request", async () => {
+  const request = { pane: { id: "options-scenario" }, headless: optionsScenarioHeadless,
+    capability: { id: "options-scenario-pane", options: optionsScenarioHeadless.options },
+    instance: { instanceId: "osa:test", paneId: "options-scenario", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} },
+    createOptions: { symbol: "AAPL" }, options: { legs: "call,100,2026-12-18,1,5,25", spot: "100", rate: "4",
+      dividendYield: "1", currency: "USD", asOf: "2026-09-22", date: "2026-10-22", volShift: "3", spotRange: "30" },
+  } as unknown as ResolvedPaneFunction;
+  const shot = await buildDesktopShotPayload(request, {
+    config: createDefaultConfig("/tmp/option-scenario-shot-test"), store: { loadTicker: async () => null },
+    dataProvider: { id: "unavailable", getTickerFinancials: async () => { throw new Error("Unexpected financials request"); } },
+  } as unknown as MarketContext, "AAPL", {}, 800, 600, null, 1, null);
+  const settings = shot.config.layout.instances[0]!.settings;
+  expect(settings.seedPosition).toMatchObject({ symbol: "AAPL", spot: 100, rate: .04, dividendYield: .01 });
+  expect(settings.scenarioSnapshot).toMatchObject({ position: settings.seedPosition,
+    controls: { date: Date.UTC(2026, 9, 22), volShift: .03, spotRange: .3 } });
+  expect(shot.financials[0]![1].quote).toMatchObject({ price: 100, providerId: "user-input", dataSource: "snapshot" });
+});
+
+test("option scenario screenshots require the active numeric model and consumed strategy inputs", () => {
+  const scenario = buildScenario({ symbol: "AAPL", currency: "USD", spot: 100, rate: .04, dividendYield: .01,
+    asOf: Date.UTC(2026, 8, 22), legs: parseLegs("put,100,2026-12-18,1,5,25") });
+  const request = { ...resolved("options-scenario-pane", { tab: "payoff" }), pane: { id: "options-scenario" },
+    createOptions: { symbol: "AAPL:NASDAQ" } } as ResolvedPaneFunction;
+  const source = payload([["AAPL", { quote: { price: 100 } }]]);
+  source.config = { layout: { instances: [{ instanceId: source.paneId, settings: { scenarioSnapshot: scenario } }] } } as unknown as typeof source.config;
+  const evidence = scenarioSemanticEvidence({ scenario, view: "payoff", loading: false });
+  const nodes = (metadata: unknown = evidence) => [{ id: "scenario-data", role: "chart-data", actions: [], metadata }] as RemoteUiNodeSnapshot[];
+  expect(shotSemanticRowCount(request, source, nodes())).toBe(scenario.payoff.length * 2);
+  expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
+  expect(shotDataEvidenceFor(request, source, nodes())).toEqual(evidence);
+  expect(scenarioEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
+  expect(scenarioEvidenceMismatchesFor({ ...request, options: { tab: "grid" } }, source, nodes())).toHaveLength(1);
+  const changed = buildScenario({ ...scenario.position, legs: scenario.position.legs.map((leg) => ({ ...leg, quantity: -1 })) });
+  expect(scenarioEvidenceMismatchesFor(request, source, nodes(scenarioSemanticEvidence({ scenario: changed, view: "payoff", loading: false })))).toHaveLength(1);
+  expect(shotDataEvidenceFor(request, source, [])).toBeNull();
+  expect(shotSemanticRowCount(request, source, [])).toBe(0);
+  expect(shotUnavailableSymbols(request, source, nodes({ ...evidence, loading: true, complete: false }))).toEqual(["AAPL"]);
+});
 
 test("volatility history screenshot readiness requires dated plotted values and the requested view", () => {
   const request = { ...resolved("volatility-term-structure-pane", {}), pane: { id: "volatility-term-structure" } } as ResolvedPaneFunction;
