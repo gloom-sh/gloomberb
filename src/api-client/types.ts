@@ -1229,6 +1229,8 @@ export interface CloudMarketResponse<T> {
   staleAt?: string;
   stale?: boolean;
   currency?: string;
+  /** Untrusted history-only failure evidence, validated by the history adapter. */
+  historyRetention?: unknown;
   coverage?: {
     inceptionDate: string;
     firstAllowedBarDate: string;

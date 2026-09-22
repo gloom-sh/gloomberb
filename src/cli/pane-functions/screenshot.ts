@@ -500,6 +500,7 @@ export async function buildDesktopShotPayload(
   const financials: Array<[string, TickerFinancials]> = [];
   const intradayHistories: DesktopPaneShotIntradayHistory[] = [];
   let instrumentFinancials: SnapshotMarketData["instrumentFinancials"];
+  let historyVariants: SnapshotMarketData["historyVariants"];
   const optionsChains: Array<[string, OptionsChain]> = [];
   const tapeSnapshots: TapeCapture[] = [];
   const [valuationSeries, statSeries] = await Promise.all([
@@ -564,6 +565,7 @@ export async function buildDesktopShotPayload(
     const authored = parseChartSpec(resolved.instance.settings?.chartSpec);
     const captured = new Map(chartModel.snapshot.financials);
     instrumentFinancials = chartModel.snapshot.instrumentFinancials;
+    historyVariants = chartModel.snapshot.historyVariants;
     const identities = new Map(chartModel.spec.series.flatMap((series) => {
       if (series.source.kind !== "security") return [];
       const key = publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange);
@@ -643,6 +645,7 @@ export async function buildDesktopShotPayload(
     tickers,
     financials,
     ...(instrumentFinancials?.length ? { instrumentFinancials } : {}),
+    ...(historyVariants?.length ? { historyVariants } : {}),
     intradayHistories,
     optionsChains,
     ...(tapeSnapshots.length ? { tapeSnapshots } : {}),

@@ -37,6 +37,8 @@ import { canonicalTickerKey, parsePublicTickerKey } from "../../utils/exchanges"
 import { normalizePriceHistory } from "../../utils/price-history";
 import { createProviderMiss } from "../provider-errors";
 import { publicListingTarget } from "../listing-target";
+import { canonicalHistoryInterval, HistoryRetentionError, parseHistoryRecoveryCandidate, parseHistoryRetention, type HistoryRetention } from "../history-retention";
+import { getRouterEntityKey } from "../provider-router/cache";
 import { tickerHasYahooSuffix } from "../yahoo-finance/symbols";
 import { hasMalformedIntradayHistory } from "../../time-series/history-quality";
 import {
@@ -133,12 +135,23 @@ function mapCloudPriceHistory(
   exchange: string,
   interval: string,
   requestedStart: Date,
+  requestedEnd?: Date,
 ): PricePoint[] {
   if (response.status === "empty" && isShellLondonTarget(ticker, exchange)
     && requestedStart.getTime() < Date.parse(SHELL_VERIFIED_LINEAGE_START)
     && hasShellCoverageRestriction(response.coverage)) throw new HistoryCoverageError(response.coverage.source);
   if (isStaleCloudResponse(response)) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
+  }
+  if (response.status === "unsupported" && response.reasonCode === "HISTORY_RETENTION" && requestedEnd) {
+    const retention = parseHistoryRetention(response.historyRetention);
+    const target = cloudInstrumentTarget(ticker, exchange);
+    if (retention && retention.symbol === target.symbol && retention.exchange === (target.exchange ?? "")
+      && retention.interval === canonicalHistoryInterval(interval)
+      && retention.requestedStart === Math.floor(requestedStart.getTime() / 1000) * 1000
+      && retention.requestedEnd === Math.floor(requestedEnd.getTime() / 1000) * 1000) {
+      throw new HistoryRetentionError(retention);
+    }
   }
   // Cloud history is already in major currency units unless the response
   // explicitly declares a raw subunit. The exchange alone cannot set its scale.
@@ -182,6 +195,29 @@ function cloudResponseTargetKey(key: string, requested: Set<string>): string | u
 }
 
 const cloudInstrumentTarget = publicListingTarget;
+
+function cloudHistoryRecovery(
+  context: MarketDataRequestContext | undefined,
+  ticker: string, symbol: string, exchange: string, interval: string, start: Date, end: Date,
+): HistoryRetention | undefined {
+  if (!context?.historyRecovery) return undefined;
+  const candidate = parseHistoryRecoveryCandidate(context.historyRecovery);
+  const from = start.getTime();
+  const to = end.getTime();
+  if (!candidate || candidate.sourceKey !== `provider:${providerId}`
+    || !Number.isFinite(from) || !Number.isFinite(to)
+    || candidate.request.symbol !== symbol || candidate.request.exchange !== exchange
+    || candidate.request.interval !== canonicalHistoryInterval(interval)
+    || candidate.request.entityKey !== getRouterEntityKey(ticker, context.instrument)
+    || candidate.request.brokerId !== (context.instrument?.brokerId ?? context.brokerId)
+    || candidate.request.brokerInstanceId !== (context.instrument?.brokerInstanceId ?? context.brokerInstanceId)
+    || from < candidate.retention.availableStart || from < candidate.retention.requestedStart
+    || to > candidate.retention.requestedEnd || from >= to
+    || (from === candidate.retention.requestedStart && to === candidate.retention.requestedEnd)) {
+    throw new Error("Invalid history recovery request");
+  }
+  return candidate.retention;
+}
 
 function cloudBatchTargets<T extends { symbol: string; exchange?: string }>(targets: T[]) {
   const valid: Array<{ target: T; request: ReturnType<typeof cloudInstrumentTarget> }> = [];
@@ -472,6 +508,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getPriceHistory(ticker: string, exchange: string, range: TimeRange, _context?: MarketDataRequestContext): Promise<PricePoint[]> {
+    if (_context?.historyRecovery) throw new Error("History recovery requires exact bounds");
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const request = toHistoryRequest(range);
@@ -489,6 +526,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     resolution: ManualChartResolution,
     _context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    if (_context?.historyRecovery) throw new Error("History recovery requires exact bounds");
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(resolution);
@@ -503,7 +541,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       }),
       `Cloud chart data is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, ticker, exchange, interval, startDate);
+    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate);
   }
 
   async getDetailedPriceHistory(
@@ -518,15 +556,17 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(barSize);
     const includeTime = /^\d+(min|h)$/i.test(interval);
+    const historyRecovery = cloudHistoryRecovery(_context, ticker, target.symbol, exchange, interval, startDate, endDate);
     const response = await withCloudFallback(
       () => apiClient.getCloudHistory(target.symbol, exchange, {
         interval,
         startDate: formatCloudDateTime(startDate, includeTime, exchange),
         endDate: formatCloudDateTime(endDate, includeTime, exchange),
+        ...(historyRecovery ? { historyRecovery } : {}),
       }),
       `Cloud detailed chart history is unavailable for ${ticker}`,
     );
-    return mapCloudPriceHistory(response, ticker, exchange, interval, startDate);
+    return mapCloudPriceHistory(response, target.symbol, exchange, interval, startDate, endDate);
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, _context?: MarketDataRequestContext): Promise<OptionsChain> {

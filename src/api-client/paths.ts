@@ -4,6 +4,7 @@ import type {
   CloudTweetQueryType,
 } from "./types";
 import { normalizeSymbol, parsePublicTickerKey, publicTickerKey } from "../utils/exchanges";
+import type { HistoryRetention } from "../sources/history-retention";
 
 export type CloudHistoryParams = {
   interval?: string;
@@ -11,6 +12,7 @@ export type CloudHistoryParams = {
   startDate?: string;
   endDate?: string;
   rangeKey?: string;
+  historyRecovery?: HistoryRetention;
 };
 
 export type CloudFredSeriesParams = {
@@ -169,6 +171,7 @@ export function cloudHistoryPath(
   if (params.startDate) search.set("startDate", params.startDate);
   if (params.endDate) search.set("endDate", params.endDate);
   if (params.rangeKey) search.set("rangeKey", params.rangeKey);
+  if (params.historyRecovery) search.set("historyRecovery", JSON.stringify(params.historyRecovery));
   return appendQuery("/market/history", search);
 }
 

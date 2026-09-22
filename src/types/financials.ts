@@ -602,6 +602,10 @@ export interface TickerFinancials {
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
   priceHistory: PricePoint[];
+  /** Acquired history cadence. Null explicitly marks an opaque provider default; absent on legacy snapshots. */
+  priceHistoryResolution?: import("../time-series/resolution").ManualChartResolution | null;
+  /** Stable original acquisition identity, used to replay distinct opaque history windows. */
+  priceHistoryRequestKey?: string;
   /** Present on extended statement history from the cloud. */
   epsEstimates?: EpsEstimateHistory;
 }

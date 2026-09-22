@@ -50,6 +50,7 @@ export interface DesktopPaneShotPayload {
   tickers: TickerRecord[];
   financials: Array<[string, TickerFinancials]>;
   instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
+  historyVariants?: SnapshotMarketData["historyVariants"];
   intradayHistories: DesktopPaneShotIntradayHistory[];
   optionsChains: NonNullable<SnapshotMarketData["optionsChains"]>;
   tapeSnapshots?: TapeCapture[];

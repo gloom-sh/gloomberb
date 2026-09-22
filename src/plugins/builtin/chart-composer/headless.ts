@@ -5,7 +5,7 @@ import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from 
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
 import { mergePriceHistoryWindows, resolveChartSpecData } from "../../../time-series/resolve";
-import { intersectChartResolutionSupport, normalizeChartResolutionSupport } from "../../../time-series/resolution";
+import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
 import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "../../../time-series/session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
@@ -22,6 +22,7 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
   snapshot: {
     financials: Array<[string, TickerFinancials]>;
     instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
+    historyVariants?: SnapshotMarketData["historyVariants"];
     intradayHistories: Array<IntradayWindow & Pick<LoadedIntradayWindow, "quote" | "priceDomainFailure"> & {
       symbol: string;
       exchange: string;
@@ -39,7 +40,9 @@ export async function loadChartPaneModel(
   context: HeadlessPaneContext,
 ): Promise<ChartPaneModel> {
   const financials = new Map<string, TickerFinancials>();
-  const histories = new Map<string, PricePoint[]>();
+  type CapturedHistory = { resolution: ManualChartResolution | null | undefined; requestKey?: string; points: PricePoint[] };
+  const histories = new Map<string, Map<string, CapturedHistory>>();
+  const primaryHistories = new Map<string, { key: string; rank: number }>();
   const instruments = new Map<string, InstrumentRef>();
   const resolvedSeries = new Map<string, ChartSeriesSpec>();
   const chart = await resolveChartSpecData(spec, {
@@ -51,16 +54,34 @@ export async function loadChartPaneModel(
       const key = snapshotInstrumentKey(source.instrument);
       instruments.set(key, source.instrument);
       const previous = financials.get(key);
+      const statements = previous?.statementHistory && !data.statementHistory ? previous : data;
       financials.set(key, {
         ...previous, ...data,
         quote: data.quote ?? previous?.quote,
         fundamentals: data.fundamentals ?? previous?.fundamentals,
         profile: data.profile ?? previous?.profile,
         quoteContributions: data.quoteContributions ?? previous?.quoteContributions,
-        annualStatements: data.annualStatements.length ? data.annualStatements : previous?.annualStatements ?? [],
-        quarterlyStatements: data.quarterlyStatements.length ? data.quarterlyStatements : previous?.quarterlyStatements ?? [],
+        annualStatements: statements.annualStatements.length ? statements.annualStatements : previous?.annualStatements ?? [],
+        quarterlyStatements: statements.quarterlyStatements.length ? statements.quarterlyStatements : previous?.quarterlyStatements ?? [],
+        statementHistory: statements.statementHistory,
       });
-      if (includesHistory) histories.set(key, mergePriceHistoryWindows(histories.get(key) ?? [], data.priceHistory, "1m"));
+      if (includesHistory) {
+        const variants = histories.get(key) ?? new Map();
+        const resolution = data.priceHistoryResolution;
+        const requestKey = data.priceHistoryRequestKey;
+        const variantKey = JSON.stringify([resolution === undefined ? "legacy" : resolution, resolution === null ? requestKey ?? null : null]);
+        const previous = variants.get(variantKey);
+        // Opaque defaults can change cadence between acquisitions. Preserve
+        // one acquired array; only compatible known bars can be accumulated.
+        variants.set(variantKey, { resolution, requestKey,
+          points: resolution === null ? previous?.points ?? data.priceHistory
+            : mergePriceHistoryWindows(previous?.points ?? [], data.priceHistory, resolution ?? "1m") });
+        histories.set(key, variants);
+        const rank = spec.series.findIndex(entry => entry.id === series.id)
+          + (source.fieldId.startsWith("market.") ? 0 : spec.series.length);
+        const primary = primaryHistories.get(key);
+        if (!primary || rank < primary.rank) primaryHistories.set(key, { key: variantKey, rank });
+      }
     },
     ...(context.capabilities ? { resolveCapabilitySeries: createChartSeriesResolver(context.capabilities) } : {}),
     loadFredSeries: async (request) => ({
@@ -80,6 +101,14 @@ export async function loadChartPaneModel(
     ? chartPriceHistoryIntegrityNotices(chart.priceHistoryIntegrity) : priceHistoryIntegrityNotices(chart.series);
   const valuationPriceIssues = chart.series.flatMap((series) => series.valuationPriceIssues?.length
     ? [{ seriesId: series.id, label: series.label, issues: series.valuationPriceIssues }] : []);
+  const capturedFinancials = (key: string, data: TickerFinancials): TickerFinancials => {
+    const variants = histories.get(key);
+    const primary = primaryHistories.get(key);
+    const history = primary && variants?.get(primary.key);
+    return history ? { ...data, priceHistory: history.points, priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey } : data;
+  };
+  const historyVariants = [...histories].flatMap(([key, variants]) => variants.size > 1
+    ? [...variants.values()].flatMap(({ resolution, requestKey, points }) => resolution === undefined ? [] : [{ target: instruments.get(key)!, resolution, requestKey, points }]) : []);
   return {
     chart,
     spec,
@@ -90,11 +119,12 @@ export async function loadChartPaneModel(
     ...(integrityNotices.length || valuationPriceIssues.length ? { complete: false } : {}),
     snapshot: {
       financials: [...financials].filter(([key]) => !instruments.get(key)?.instrument).map(([key, data]) => [
-        publicTickerKey(instruments.get(key)!.symbol, instruments.get(key)!.exchange), { ...data, priceHistory: histories.get(key) ?? data.priceHistory },
+        publicTickerKey(instruments.get(key)!.symbol, instruments.get(key)!.exchange), capturedFinancials(key, data),
       ]),
       instrumentFinancials: [...financials].filter(([key]) => instruments.get(key)?.instrument).map(([key, data]) => ({
-        instrument: instruments.get(key)!, financials: { ...data, priceHistory: histories.get(key) ?? data.priceHistory },
+        instrument: instruments.get(key)!, financials: capturedFinancials(key, data),
       })),
+      ...(historyVariants.length ? { historyVariants } : {}),
       intradayHistories: [],
     },
     symbols: [...new Set(spec.series.flatMap(({ source }) => source.kind === "security"
@@ -197,12 +227,14 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           ...model.snapshot.financials.map(([key, data]) => ({ target: { ...parsePublicTickerKey(key), instrument: null } as InstrumentRef, data })),
           ...(model.snapshot.instrumentFinancials ?? []).map(({ instrument, financials }) => ({ target: instrument, data: financials })),
         ]) {
+          const historyResolution = data.priceHistoryResolution;
+          if (!historyResolution || !isIntradayResolution(historyResolution)) continue;
           const { symbol, exchange = "" } = target;
           const points = data.priceHistory.filter(({ date }) => date >= start && date <= end);
           intradayHistories.push({
             target, symbol, exchange, points, start, end,
             rangePreset: spec.viewport.range === "1W" ? "1W" : "1D",
-            resolution: model.chart.resolution!, requestedSession: null,
+            resolution: historyResolution, requestedSession: null,
             sessionDates: intradaySessionDates(points, resolveExchangeTimeZone(exchange) ?? "UTC"),
             unavailableReason: points.length ? null : model.chart.errors[0] ?? `No intraday price history is available for ${symbol} for the requested window.`,
           });

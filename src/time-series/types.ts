@@ -145,6 +145,8 @@ export interface ResolvedSeries {
   /** Volume basis established by the source instrument; omitted when unspecified. */
   volumeUnit?: "shares" | "contracts";
   nativeFrequency: SeriesPeriod;
+  /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
+  historyResolution?: ManualChartResolution | null;
   /** Authored time basis retained for layout and cursor semantics. */
   timestampMode?: SeriesTimestampMode;
   dataShape: SeriesDataShape;

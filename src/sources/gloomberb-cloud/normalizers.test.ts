@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { mapCloudFinancials, mapQuote } from "./normalizers";
+import { formatCloudDateTime, mapCloudFinancials, mapQuote } from "./normalizers";
 import type { CloudQuotePayload } from "../../api-client";
+
+test("intraday boundaries use venue time or explicit UTC while daily dates stay UTC calendar dates", () => {
+  const winter = new Date("2026-01-15T01:02:03.456Z");
+  const summer = new Date("2026-07-15T01:02:03.456Z");
+  for (const exchange of ["", "UNKNOWN"]) {
+    expect(formatCloudDateTime(winter, true, exchange)).toBe("2026-01-15T01:02:03Z");
+    expect(formatCloudDateTime(summer, true, exchange)).toBe("2026-07-15T01:02:03Z");
+  }
+  expect(formatCloudDateTime(winter, true, "NASDAQ")).toBe("2026-01-14 20:02:03");
+  expect(formatCloudDateTime(summer, true, "NASDAQ")).toBe("2026-07-14 21:02:03");
+  expect(formatCloudDateTime(summer, true, "CCC")).toBe("2026-07-15 01:02:03");
+  expect(formatCloudDateTime(winter, false, "NASDAQ")).toBe("2026-01-15");
+  expect(formatCloudDateTime(summer, false)).toBe("2026-07-15");
+});
 
 describe("cloud quote wire values", () => {
   test.each([null, undefined, Number.NaN, Infinity, -Infinity])(

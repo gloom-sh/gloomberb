@@ -1,4 +1,7 @@
 import { assertTradingPriceHistory, hasCircleOfferingPriceHistory } from "../listing-history";
+import { ApiRequestError } from "../../api-client/errors";
+import { canonicalHistoryInterval, HistoryRetentionError, isHistoryRetentionError, parseHistoryRecoveryCandidate,
+  type HistoryRecoveryCandidate, type HistoryRetention, type HistorySourceOutcome } from "../history-retention";
 import type { BrokerCandidate } from "./brokers";
 import { withBrokerTimeout } from "./brokers";
 import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
@@ -44,6 +47,9 @@ interface HistoryRequestDescriptor {
   exactCacheVariantKeys: string[];
   requestedRange?: TimeRange;
   requestedStart: number;
+  requestedEnd?: number;
+  interval?: string;
+  method: "getPriceHistory" | "getPriceHistoryForResolution" | "getDetailedPriceHistory";
   context?: MarketDataRequestContext;
   cachePolicyKey: PriceHistoryCachePolicyKey;
   missingProviderError?: string;
@@ -51,6 +57,64 @@ interface HistoryRequestDescriptor {
   isFetchedValueStale(value: PricePoint[]): boolean;
   fetchBroker(candidate: BrokerCandidate): Promise<PricePoint[] | null>;
   fetchProvider(provider: DataProvider): Promise<PricePoint[] | null>;
+}
+
+interface HistoryAttempts {
+  outcomes: Map<string, HistorySourceOutcome>;
+  candidates: Map<string, HistoryRecoveryCandidate>;
+  pending: Set<string>;
+  coverageError?: HistoryCoverageError;
+  retention?: HistoryRetention;
+}
+
+function recordHistoryOutcome(attempts: HistoryAttempts | undefined, sourceKey: string, outcome: HistorySourceOutcome["outcome"], status?: number): void {
+  if (!attempts) return;
+  attempts.pending.delete(sourceKey);
+  attempts.outcomes.set(sourceKey, { sourceKey, outcome, ...(status !== undefined ? { status } : {}) });
+}
+
+function retentionForRequest(request: HistoryRequestDescriptor, sourceKey: string, error: HistoryRetentionError): HistoryRetention | null {
+  if (!sourceKey.startsWith("provider:") || !request.interval) return null;
+  const retention = error.retention;
+  const target = parsePublicTickerKey(request.target.symbol);
+  const exchange = target.exchange || canonicalExchange(request.target.exchange);
+  if (retention.symbol !== target.symbol || retention.exchange !== exchange
+    || retention.interval !== canonicalHistoryInterval(request.interval)) return null;
+  // Trailing providers choose their actual clock bounds themselves. The typed
+  // source owns those bounds; explicit detailed requests additionally match them.
+  if (request.method === "getDetailedPriceHistory"
+    && (retention.requestedStart !== Math.floor(request.requestedStart / 1000) * 1000
+      || retention.requestedEnd !== Math.floor(Number(request.requestedEnd) / 1000) * 1000)) return null;
+  return retention;
+}
+
+function candidateForRequest(request: HistoryRequestDescriptor, sourceKey: string, error: HistoryRetentionError): HistoryRecoveryCandidate | null {
+  const retention = retentionForRequest(request, sourceKey, error);
+  if (!retention) return null;
+  const brokerId = request.context?.instrument?.brokerId ?? request.context?.brokerId;
+  const brokerInstanceId = request.context?.instrument?.brokerInstanceId ?? request.context?.brokerInstanceId;
+  return parseHistoryRecoveryCandidate({ sourceKey, retention, request: {
+    symbol: retention.symbol, exchange: retention.exchange, interval: retention.interval, entityKey: request.identity.entityKey,
+    ...(brokerId !== undefined ? { brokerId } : {}), ...(brokerInstanceId !== undefined ? { brokerInstanceId } : {}),
+    requestedStart: retention.requestedStart, requestedEnd: retention.requestedEnd,
+  } });
+}
+
+function recordHistoryError(attempts: HistoryAttempts | undefined, request: HistoryRequestDescriptor, sourceKey: string, error: unknown): void {
+  if (!attempts) return;
+  if (isHistoryRetentionError(error)) {
+    recordHistoryOutcome(attempts, sourceKey, "retention");
+    attempts.retention ??= retentionForRequest(request, sourceKey, error) ?? undefined;
+    const candidate = candidateForRequest(request, sourceKey, error);
+    if (candidate) attempts.candidates.set(sourceKey, candidate);
+  } else if (error instanceof HistoryCoverageError) {
+    recordHistoryOutcome(attempts, sourceKey, "coverage");
+    attempts.coverageError ??= error;
+  } else {
+    const status = error instanceof ApiRequestError ? error.status : undefined;
+    recordHistoryOutcome(attempts, sourceKey, status === 401 || status === 403 ? "auth" : status === 429 ? "rate-limit"
+      : status === 408 || (status !== undefined && status >= 500) ? "transient" : "failure", status);
+  }
 }
 
 function priceHistoryVariantParts(
@@ -193,6 +257,7 @@ export class ProviderRouterHistoryRoutes {
     range: TimeRange,
     context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
     const identity = makeHistoryRequestIdentity(this.deps, {
       kind: "price-history",
       ticker,
@@ -207,6 +272,7 @@ export class ProviderRouterHistoryRoutes {
       cacheVariantKeys: expandedHistoryCacheVariantKeys(this.deps, { ticker, exchange, context, range }),
       requestedRange: range,
       requestedStart: subtractTimeRange(new Date(), range).getTime(),
+      method: "getPriceHistory",
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No history provider available for ${ticker}`,
@@ -232,6 +298,7 @@ export class ProviderRouterHistoryRoutes {
     resolution: ManualChartResolution,
     context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
     const identity = makeHistoryRequestIdentity(this.deps, {
       kind: "price-history",
       ticker,
@@ -257,6 +324,8 @@ export class ProviderRouterHistoryRoutes {
       }),
       requestedRange: bufferRange,
       requestedStart: subtractTimeRange(new Date(), bufferRange).getTime(),
+      method: "getPriceHistoryForResolution",
+      interval: resolution,
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No resolution-aware history provider available for ${ticker}`,
@@ -351,6 +420,9 @@ export class ProviderRouterHistoryRoutes {
       ["start", calendarBounds ? compactDate(startDate) : startDate.toISOString()],
       ["end", calendarBounds ? compactDate(endDate) : endDate.toISOString()],
       ["bar", barSize],
+      // An ordinary Cloud cache does not identify its internal winning source.
+      // Scoped recovery must only reuse a cache explicitly acquired this way.
+      ["historyRecovery", context?.historyRecovery ? "yahoo" : undefined],
     ];
     const fallbackParts = primaryParts.slice(1);
     const identity = makeHistoryRequestIdentity(this.deps, {
@@ -365,6 +437,9 @@ export class ProviderRouterHistoryRoutes {
     return this.executeHistoryRequest({
       ...identity,
       requestedStart: startDate.getTime(),
+      requestedEnd: endDate.getTime(),
+      method: "getDetailedPriceHistory",
+      interval: barSize,
       context,
       cachePolicyKey: intervalMs != null && intervalMs >= 24 * 60 * 60 * 1000 ? "priceHistoryDaily" : "priceHistoryIntraday",
       isCachedValueStale: (value) => currentWindowAtLookup
@@ -389,8 +464,9 @@ export class ProviderRouterHistoryRoutes {
   }
 
   private async executeHistoryRequest(request: HistoryRequestDescriptor): Promise<PricePoint[]> {
-    const brokerCandidates = this.deps.getBrokerCandidatesForContext(request.context, false);
-    const sourceKeys = [
+    const recovery = this.validateRecovery(request);
+    const brokerCandidates = recovery ? [] : this.deps.getBrokerCandidatesForContext(request.context, false);
+    const sourceKeys = recovery ? [recovery.sourceKey] : [
       ...brokerCandidates.map((candidate) => this.deps.brokerSourceKey(candidate)),
       ...this.deps.getProviderSourceKeys(),
     ];
@@ -431,12 +507,14 @@ export class ProviderRouterHistoryRoutes {
     const onUnavailable = (sourceKey: string, value: PricePoint[]) => {
       if (value.length && !hasUsablePriceHistory(value)) supersededCacheSources.add(sourceKey);
     };
-    const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates, onUnavailable));
+    const attempts: HistoryAttempts = { outcomes: new Map(), candidates: new Map(), pending: new Set() };
+    const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates, onUnavailable, attempts));
+    for (const sourceKey of [...attempts.pending]) recordHistoryOutcome(attempts, sourceKey, "timeout");
     if (brokerResult && hasUsablePriceHistory(brokerResult.value)) return withReportedGaps(brokerResult.value);
     if (brokerResult) reportedGaps.push(brokerResult.value);
 
     let coverageError: HistoryCoverageError | null = null;
-    const providerResult = await this.fetchProviderHistory(request, onUnavailable).catch((error: unknown) => {
+    const providerResult = await this.fetchProviderHistory(request, onUnavailable, attempts).catch((error: unknown) => {
       if (!(error instanceof HistoryCoverageError)) throw error;
       coverageError = error;
       return null;
@@ -453,15 +531,42 @@ export class ProviderRouterHistoryRoutes {
         : withReportedGaps(fallbackValue);
     }
     if (coverageError) throw coverageError;
+    if (attempts.coverageError) throw attempts.coverageError;
+    // Explicit reported gaps and usable original caches retain their existing
+    // precedence. Only original source exhaustion exposes a recovery candidate.
+    if (!reportedGaps.some((value) => value.length > 0) && !recovery && attempts.retention) {
+      const sourceOrder = this.deps.getProviderSourceKeys();
+      const candidates = [...attempts.candidates.values()].sort((a, b) => sourceOrder.indexOf(a.sourceKey) - sourceOrder.indexOf(b.sourceKey));
+      throw new HistoryRetentionError(candidates[0]?.retention ?? attempts.retention, { candidates, outcomes: [...attempts.outcomes.values()] });
+    }
     if (!providerResult && request.missingProviderError && !reportedGaps.some((value) => value.length > 0)) {
       throw new Error(request.missingProviderError);
     }
     return withReportedGaps(providerResult?.value ?? []);
   }
 
+  private validateRecovery(request: HistoryRequestDescriptor): HistoryRecoveryCandidate | null {
+    if (!request.context?.historyRecovery) return null;
+    const candidate = parseHistoryRecoveryCandidate(request.context.historyRecovery);
+    const target = parsePublicTickerKey(request.target.symbol);
+    const brokerId = request.context.instrument?.brokerId ?? request.context.brokerId;
+    const brokerInstanceId = request.context.instrument?.brokerInstanceId ?? request.context.brokerInstanceId;
+    if (!candidate || request.method !== "getDetailedPriceHistory" || candidate.request.symbol !== target.symbol
+      || candidate.request.exchange !== (target.exchange || canonicalExchange(request.target.exchange))
+      || candidate.request.entityKey !== request.identity.entityKey || candidate.request.brokerId !== brokerId
+      || candidate.request.brokerInstanceId !== brokerInstanceId || candidate.request.interval !== canonicalHistoryInterval(request.interval)
+      || request.requestedStart < candidate.retention.availableStart || request.requestedStart >= Number(request.requestedEnd)
+      || Number(request.requestedEnd) > candidate.retention.requestedEnd
+      || !this.deps.providersInPriorityOrder().some((provider) => this.deps.providerSourceKey(provider) === candidate.sourceKey && typeof provider.getDetailedPriceHistory === "function")) {
+      throw new Error("Invalid or unavailable history recovery source");
+    }
+    return candidate;
+  }
+
   private async refreshHistory(request: HistoryRequestDescriptor): Promise<void> {
-    const brokerCandidates = this.deps.getBrokerCandidatesForContext(request.context, false);
     try {
+      const recovery = this.validateRecovery(request);
+      const brokerCandidates = recovery ? [] : this.deps.getBrokerCandidatesForContext(request.context, false);
       const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates));
       if (brokerResult && hasUsablePriceHistory(brokerResult.value)) return;
       await this.fetchProviderHistory(request);
@@ -474,48 +579,66 @@ export class ProviderRouterHistoryRoutes {
     request: HistoryRequestDescriptor,
     candidates: BrokerCandidate[],
     onUnavailable?: (sourceKey: string, value: PricePoint[]) => void,
+    attempts?: HistoryAttempts,
   ): Promise<SourceResult<PricePoint[]> | null> {
     return this.firstBrokerResult(candidates, async (candidate) => {
-      const fetched = await request.fetchBroker(candidate);
-      if (fetched === null) return null;
-      const value = normalizeRequestHistory(fetched, request);
-      if (hasUsablePriceHistory(value) && request.isFetchedValueStale(value)) return null;
-      onUnavailable?.(this.deps.brokerSourceKey(candidate), value);
-      this.deps.cacheResource(
-        request.identity.kind,
-        request.identity.entityKey,
-        request.identity.variantKey,
-        this.deps.brokerSourceKey(candidate),
-        value,
-        this.deps.resolveBrokerPolicy(request.cachePolicyKey, candidate.broker),
-      );
-      return value;
+      const sourceKey = this.deps.brokerSourceKey(candidate);
+      if (typeof candidate.broker[request.method] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
+      attempts?.pending.add(sourceKey);
+      try {
+        const fetched = await request.fetchBroker(candidate);
+        if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
+        if (!Array.isArray(fetched)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
+        const value = normalizeRequestHistory(fetched, request);
+        if (hasUsablePriceHistory(value) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
+        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value) ? "success" : value.length ? "reported-gaps" : "empty");
+        onUnavailable?.(this.deps.brokerSourceKey(candidate), value);
+        this.deps.cacheResource(
+          request.identity.kind,
+          request.identity.entityKey,
+          request.identity.variantKey,
+          this.deps.brokerSourceKey(candidate),
+          value,
+          this.deps.resolveBrokerPolicy(request.cachePolicyKey, candidate.broker),
+        );
+        return value;
+      } catch (error) { recordHistoryError(attempts, request, sourceKey, error); throw error; }
     }, historyCoverage(request));
   }
 
   private fetchProviderHistory(
     request: HistoryRequestDescriptor,
     onUnavailable?: (sourceKey: string, value: PricePoint[]) => void,
+    attempts?: HistoryAttempts,
   ): Promise<SourceResult<PricePoint[]> | null> {
     return this.firstProviderArrayResult(async (provider) => {
-      const fetched = await request.fetchProvider(provider);
-      if (fetched === null) return null;
-      assertTradingPriceHistory(fetched, request.target, this.deps.providerSourceKey(provider));
-      if (request.cachePolicyKey !== "priceHistoryIntraday"
-        && hasUnverifiedShellHistory(fetched, request.target, this.deps.providerSourceKey(provider))) return null;
-      const value = normalizeRequestHistory(fetched, request);
-      if (hasUsablePriceHistory(value) && request.isFetchedValueStale(value)) return null;
-      onUnavailable?.(this.deps.providerSourceKey(provider), value);
-      this.deps.cacheResource(
-        request.identity.kind,
-        request.identity.entityKey,
-        request.identity.variantKey,
-        this.deps.providerSourceKey(provider),
-        value,
-        this.deps.resolveProviderPolicy(request.cachePolicyKey, provider),
-      );
-      return value;
-    }, historyCoverage(request));
+      const sourceKey = this.deps.providerSourceKey(provider);
+      if (typeof provider[request.method] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
+      attempts?.pending.add(sourceKey);
+      try {
+        const fetched = await request.fetchProvider(provider);
+        if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
+        if (!Array.isArray(fetched)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
+        assertTradingPriceHistory(fetched, request.target, this.deps.providerSourceKey(provider));
+        if (request.cachePolicyKey !== "priceHistoryIntraday"
+          && hasUnverifiedShellHistory(fetched, request.target, this.deps.providerSourceKey(provider))) { recordHistoryOutcome(attempts, sourceKey, "coverage"); return null; }
+        const value = normalizeRequestHistory(fetched, request);
+        if (hasUsablePriceHistory(value) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
+        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value) ? "success" : value.length ? "reported-gaps" : "empty");
+        onUnavailable?.(this.deps.providerSourceKey(provider), value);
+        this.deps.cacheResource(
+          request.identity.kind,
+          request.identity.entityKey,
+          request.identity.variantKey,
+          this.deps.providerSourceKey(provider),
+          value,
+          this.deps.resolveProviderPolicy(request.cachePolicyKey, provider),
+        );
+        return value;
+      } catch (error) { recordHistoryError(attempts, request, sourceKey, error); throw error; }
+    }, historyCoverage(request), request.context?.historyRecovery
+      ? this.deps.providersInPriorityOrder().filter((provider) => this.deps.providerSourceKey(provider) === request.context!.historyRecovery!.sourceKey)
+      : undefined);
   }
 
   private async firstBrokerResult<T>(
@@ -544,12 +667,13 @@ export class ProviderRouterHistoryRoutes {
   private async firstProviderArrayResult<T>(
     fetch: (provider: DataProvider) => Promise<T[] | null>,
     coverage?: { isUsable(value: T[]): boolean; merge(value: T[], unavailable: T[][]): T[] },
+    scopedProviders?: DataProvider[],
   ): Promise<SourceResult<T[]> | null> {
     const unavailable: T[][] = [];
     const usable = coverage?.isUsable ?? ((value: T[]) => value.length > 0);
     const withUnavailable = (result: SourceResult<T[]> | null) => result && coverage
       ? { ...result, value: coverage.merge(result.value, unavailable) } : result;
-    const providers = this.deps.providersInPriorityOrder();
+    const providers = scopedProviders ?? this.deps.providersInPriorityOrder();
     let firstEmptyResult: SourceResult<T[]> | null = null;
     let coverageError: HistoryCoverageError | null = null;
     const tryProvider = async (provider: DataProvider): Promise<SourceResult<T[]> | null> => {
@@ -561,7 +685,7 @@ export class ProviderRouterHistoryRoutes {
         return result;
       } catch (error) {
         if (error instanceof HistoryCoverageError) coverageError ??= error;
-        if (shouldLogProviderError(error)) {
+        if (!isHistoryRetentionError(error) && shouldLogProviderError(error)) {
           this.deps.logProviderError(`${provider.id} failed: ${error}`);
         }
         return null;

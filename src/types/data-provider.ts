@@ -109,6 +109,10 @@ export interface MarketDataRequestContext {
   instrument?: BrokerContractRef | null;
   cacheMode?: "default" | "refresh";
   statementHistory?: "extended";
+  /** A validated, same-target detailed retry constrained to one exhausted source. */
+  historyRecovery?: import("../sources/history-retention").HistoryRecoveryCandidate;
+  /** Stable acquisition identity for capture/replay of opaque history responses. */
+  historyRequestKey?: string;
 }
 
 export interface CachedFinancialsTarget {
@@ -196,6 +200,13 @@ export interface AssetDataProvider {
   /** Fetch article summary/description by URL (lazy-loaded on selection) */
   getArticleSummary(url: string): Promise<string | null>;
   getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]>;
+  /** Default history with source-declared cadence, when the provider can retain it. */
+  getPriceHistoryWithMetadata?(
+    ticker: string,
+    exchange: string,
+    range: TimeRange,
+    context?: MarketDataRequestContext,
+  ): Promise<{ points: PricePoint[]; resolution: ManualChartResolution | null }>;
   getPriceHistoryForResolution?(
     ticker: string,
     exchange: string,

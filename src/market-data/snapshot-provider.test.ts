@@ -145,3 +145,81 @@ test("an ordinary captured snapshot cannot satisfy an explicit extended history 
  expect((await provider.getTickerFinancialsBatch!([{ symbol: "MSFT", exchange: "NASDAQ", statementHistory: "extended" }]))[0]?.financials).toBe(extended);
  expect(requests).toBe(2);
 });
+
+test("settled captured statement extensions replay without live reads while failed extensions retain retry behavior", async () => {
+  let liveCalls = 0;
+  const recovered = { ...financials("TEST", 100), annualStatements: [{ date: "2025-12-31", eps: 10 }] };
+  for (const status of ["available", "unsupported", "retryable-failure"] as const) {
+    const captured = { ...financials("TEST", 100),
+      annualStatements: status === "unsupported" ? [] : [{ date: "2024-12-31", eps: 5 }],
+      statementHistory: { mode: "extended" as const, source: "sec" as const, status, fetchedAt: "2026-09-22T12:00:00Z" },
+    };
+    const provider = createSnapshotDataProvider({ financials: [["TEST:NASDAQ", captured]] }, createTestDataProvider({
+      getTickerFinancials: async () => { liveCalls++; return recovered; },
+      getCachedFinancialsForTargets: () => { liveCalls++; return new Map([["TEST", recovered]]); },
+    }));
+    const target = { symbol: "TEST", exchange: "NASDAQ", statementHistory: "extended" as const };
+    const expected = status === "retryable-failure" ? recovered : captured;
+    expect(await provider.getTickerFinancials("TEST", "NASDAQ", target)).toBe(expected);
+    expect((await provider.getTickerFinancialsBatch!([target]))[0]!.financials).toBe(expected);
+    expect((await provider.getCachedFinancialsForTargets!([target]))!.get("TEST")).toBe(expected);
+  }
+  expect(liveCalls).toBe(3);
+});
+
+test("new snapshot cadence metadata preserves opaque defaults without claiming an explicit interval", async () => {
+  const points = [{ date: new Date("2026-09-01"), close: 100 }, { date: new Date("2026-09-02"), close: 102 }];
+  let liveCalls = 0;
+  const live = createTestDataProvider({ getPriceHistory: async () => { liveCalls++; return []; }, getPriceHistoryForResolution: async () => { liveCalls++; return []; } });
+  const captured = { ...financials("BTC-USD", 102), priceHistory: points, priceHistoryResolution: null };
+  const opaque = createSnapshotDataProvider({ financials: [["BTC-USD:CCC", captured]] }, live);
+  expect(await opaque.getChartResolutionSupport!("BTC-USD", "CCC")).toEqual([]);
+  expect(await opaque.getPriceHistoryForResolution!("BTC-USD", "CCC", "1M", "15m")).toEqual([]);
+  expect(await opaque.getDetailedPriceHistory!("BTC-USD", "CCC", points[0]!.date, new Date("2026-09-03"), "1d")).toEqual([]);
+  expect(await opaque.getPriceHistory("BTC-USD", "CCC", "1M")).toEqual(points);
+  expect(await opaque.getPriceHistoryWithMetadata!("BTC-USD", "CCC", "1M")).toEqual({ points, resolution: null });
+  const known = createSnapshotDataProvider({ financials: [["BTC-USD:CCC", { ...captured, priceHistoryResolution: "1d" }]] }, live);
+  expect(await known.getChartResolutionSupport!("BTC-USD", "CCC")).toEqual([{ resolution: "1d", maxRange: "ALL" }]);
+  expect(await known.getPriceHistoryForResolution!("BTC-USD", "CCC", "1M", "15m")).toEqual([]);
+  expect(await known.getPriceHistoryForResolution!("BTC-USD", "CCC", "1M", "1d")).toEqual(points);
+  expect(await known.getPriceHistoryWithMetadata!("BTC-USD", "CCC", "1M")).toEqual({ points, resolution: "1d" });
+  const { priceHistoryResolution: _metadata, ...legacy } = captured;
+  expect(await createSnapshotDataProvider({ financials: [["BTC-USD:CCC", legacy]] }, live).getPriceHistoryForResolution!("BTC-USD", "CCC", "1M", "15m")).toEqual(points);
+  expect(liveCalls).toBe(0);
+});
+
+test("snapshot variants replay each acquired cadence and broker contract separately across JSON serialization", async () => {
+  const fine = [{ date: new Date("2026-09-01T09:00:00Z"), close: 1 }, { date: new Date("2026-09-01T09:15:00Z"), close: 2 }];
+  const daily = [{ date: new Date("2026-09-01"), close: 100 }], unknown = [{ date: new Date("2026-09-01"), close: 200 }];
+  const target = { symbol: "TEST", exchange: "NASDAQ", brokerId: "ibkr", brokerInstanceId: "account-A", instrument: { brokerId: "ibkr", brokerInstanceId: "account-A", conId: 11 } };
+  let liveCalls = 0;
+  const provider = createSnapshotDataProvider(JSON.parse(JSON.stringify({ financials: [], historyVariants: [
+    { target, resolution: "15m", points: fine }, { target, resolution: "1d", points: daily }, { target, resolution: null, points: unknown },
+  ] })), createTestDataProvider({ getDetailedPriceHistory: async () => { liveCalls++; return []; } }));
+  const from = new Date("2026-09-01"), to = new Date("2026-09-02");
+  expect((await provider.getDetailedPriceHistory!("TEST", "NASDAQ", from, to, "15m", target)).map(point => point.close)).toEqual([1, 2]);
+  expect((await provider.getPriceHistoryForResolution!("TEST", "NASDAQ", "1M", "1d", target)).map(point => point.close)).toEqual([100]);
+  expect((await provider.getPriceHistory("TEST", "NASDAQ", "1M", target)).map(point => point.close)).toEqual([200]);
+  expect(await provider.getPriceHistoryForResolution!("TEST", "NASDAQ", "1M", "1wk", target)).toEqual([]);
+  expect(await provider.getChartResolutionSupport!("TEST", "NASDAQ", target)).toEqual([{ resolution: "15m", maxRange: "ALL" }, { resolution: "1d", maxRange: "ALL" }]);
+  expect(liveCalls).toBe(0);
+  await provider.getDetailedPriceHistory!("TEST", "NASDAQ", from, to, "15m", { ...target, instrument: { ...target.instrument, conId: 12 } });
+  expect(liveCalls).toBe(1);
+});
+
+test("opaque snapshot variants remain isolated by their original acquisition request", async () => {
+  const target = { symbol: "TEST", exchange: "NASDAQ" };
+  const market = [{ date: new Date("2026-09-01"), close: 100 }];
+  const valuation = [{ date: new Date("2026-08-01"), close: 90 }, { date: new Date("2026-09-01"), close: 200 }];
+  let liveCalls = 0;
+  const provider = createSnapshotDataProvider({ financials: [], historyVariants: [
+    { target, resolution: null, requestKey: "market-window", points: market },
+    { target, resolution: null, requestKey: "valuation-all", points: valuation },
+  ] }, createTestDataProvider({ getPriceHistory: async () => { liveCalls++; return market; } }));
+  expect(await provider.getPriceHistory("TEST", "NASDAQ", "1M", { historyRequestKey: "market-window" })).toEqual(market);
+  expect(await provider.getPriceHistory("TEST", "NASDAQ", "ALL", { historyRequestKey: "valuation-all" })).toEqual(valuation);
+  expect(await provider.getPriceHistory("TEST", "NASDAQ", "1M", { historyRequestKey: "different-window" })).toEqual([]);
+  expect(await provider.getPriceHistory("TEST", "NASDAQ", "1M")).toEqual([]);
+  expect(await provider.getPriceHistoryForResolution!("TEST", "NASDAQ", "1M", "1d", { historyRequestKey: "market-window" })).toEqual([]);
+  expect(liveCalls).toBe(0);
+});

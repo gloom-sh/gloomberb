@@ -309,20 +309,15 @@ export function formatCloudDateTime(
         "day",
       )} ${parts.get("hour")}:${parts.get("minute")}:${parts.get("second")}`;
     }
+    // Without a venue timezone, an explicit offset keeps host and server clocks
+    // from interpreting the same intraday boundary as different instants.
+    return date.toISOString().replace(/\.\d{3}Z$/, "Z");
   }
 
-  const year = includeTime ? date.getFullYear() : date.getUTCFullYear();
-  const month = padTimePart(
-    (includeTime ? date.getMonth() : date.getUTCMonth()) + 1,
-  );
-  const day = padTimePart(includeTime ? date.getDate() : date.getUTCDate());
-  if (!includeTime) {
-    return `${year}-${month}-${day}`;
-  }
-  const hours = padTimePart(date.getHours());
-  const minutes = padTimePart(date.getMinutes());
-  const seconds = padTimePart(date.getSeconds());
-  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  const year = date.getUTCFullYear();
+  const month = padTimePart(date.getUTCMonth() + 1);
+  const day = padTimePart(date.getUTCDate());
+  return `${year}-${month}-${day}`;
 }
 
 export function getRangeStartDate(

@@ -1,4 +1,5 @@
 import { ApiRequestError } from "../../../api-client/errors";
+import { isHistoryRetentionError, parseHistoryRetentionError } from "../../../sources/history-retention";
 
 const DATE_MARKER = "__gloomDate";
 const MAP_MARKER = "__gloomMap";
@@ -9,6 +10,11 @@ export async function encodeRpcResponse(load: () => unknown | Promise<unknown>):
   try {
     return { [RESPONSE_MARKER]: 1, ok: true, value: encodeRpcValue(await load()) };
   } catch (error) {
+    if (isHistoryRetentionError(error)) return {
+      [RESPONSE_MARKER]: 1,
+      ok: false,
+      error: { kind: "history-retention", retention: error.retention, candidates: error.candidates, outcomes: error.outcomes },
+    };
     if (!(error instanceof ApiRequestError)) throw error;
     return {
       [RESPONSE_MARKER]: 1,
@@ -24,7 +30,13 @@ export function decodeRpcResponse<T = unknown>(value: unknown): T {
     if (response[RESPONSE_MARKER] !== 1) throw new Error("Unsupported desktop response");
     if (response.ok === true) return decodeRpcValue<T>(response.value);
     const error = response.error as Record<string, unknown> | null;
+    if (response.ok === false && error && typeof error === "object" && error.kind === "history-retention") {
+      const retention = parseHistoryRetentionError(error);
+      if (!retention) throw new Error("Invalid desktop response");
+      throw retention;
+    }
     if (response.ok !== false || !error || typeof error !== "object"
+      || (error.kind !== undefined && error.kind !== "api")
       || typeof error.message !== "string"
       || (error.status !== undefined && (!Number.isInteger(error.status) || Number(error.status) < 100 || Number(error.status) > 599))
       || (error.retryAfterMs !== undefined && (typeof error.retryAfterMs !== "number" || !Number.isFinite(error.retryAfterMs) || error.retryAfterMs < 0))) {

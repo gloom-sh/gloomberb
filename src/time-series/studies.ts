@@ -77,8 +77,10 @@ function outputSeries(
     interpolation?: SeriesInterpolation;
     axis?: Exclude<SeriesAxis, "auto">;
     nativeFrequency?: SeriesPeriod;
+    historyResolution?: ManualChartResolution | null;
   },
 ): ResolvedSeries {
+  const historyResolution = options.historyResolution === undefined ? input.historyResolution : options.historyResolution;
   return {
     id: options.id ?? spec.id,
     label: options.label,
@@ -88,13 +90,14 @@ function outputSeries(
     priceAssetCategory: (options.unit ?? input.unit) === input.unit
       && (options.unitGroup ?? input.unitGroup) === input.unitGroup ? input.priceAssetCategory : undefined,
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
+    ...(historyResolution !== undefined ? { historyResolution } : {}),
     dataShape: "scalar",
     style: options.style ?? "line",
     transform: "raw",
     axis: spec.axis === "auto" ? options.axis ?? input.axis : spec.axis,
     panelId: spec.panelId,
     interpolation: options.interpolation ?? "none",
-    timeBasis: input.timeBasis,
+    timeBasis: historyResolution === null && input.timeBasis ? { ...input.timeBasis, cadenceMs: undefined } : input.timeBasis,
     observationKind: input.observationKind,
     points: options.points,
   };
@@ -486,6 +489,10 @@ function pairedFrequency(left: ResolvedSeries, right: ResolvedSeries): SeriesPer
   return left.nativeFrequency === right.nativeFrequency ? left.nativeFrequency : "auto";
 }
 
+function pairedHistoryResolution(left: ResolvedSeries, right: ResolvedSeries): ManualChartResolution | null | undefined {
+  return left.historyResolution === right.historyResolution ? left.historyResolution : null;
+}
+
 function resolvePairStudy(
   spec: ChartStudySpec,
   left: ResolvedSeries,
@@ -520,6 +527,7 @@ function resolvePairStudy(
       interpolation: "step-after",
       axis: "left",
       nativeFrequency: pairedFrequency(left, right),
+      historyResolution: pairedHistoryResolution(left, right),
     })];
   }
 
@@ -563,6 +571,7 @@ function resolvePairStudy(
     unitGroup: "correlation",
     axis: "left",
     nativeFrequency: pairedFrequency(left, right),
+    historyResolution: pairedHistoryResolution(left, right),
   })];
 }
 
@@ -707,8 +716,9 @@ export function resolveStudies(
         errors.push(`${spec.id}: choose a supported volatility estimator and a whole window of at least two sessions.`);
         return;
       }
+      const inputResolution = input.historyResolution === undefined ? marketResolution : input.historyResolution;
       if (input.nativeFrequency !== "daily"
-        || (marketResolution !== undefined && marketResolution !== "1d")
+        || (inputResolution !== undefined && inputResolution !== "1d")
         || (input.timeBasis?.cadenceMs !== undefined && input.timeBasis.cadenceMs !== 86_400_000)
         || !(input.unitGroup === "price" || input.unitGroup.startsWith("price:"))) {
         errors.push(`${spec.id}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);

@@ -3,6 +3,17 @@ import { pricePointIntegrity, pricePointValues, priceHistoryIntegrityNotice, mer
 import { canonicalTimeSeriesFieldId, isFundamentalFieldId, isMarketFieldId } from "./field-catalog";
 import { extractFundamentalSeries } from "./fundamentals";
 import type { ChartSeriesPriceHistoryIntegrity, ResolvedSeries, SecuritySeriesSource, SeriesPeriod, TimeSeriesPoint } from "./types";
+import type { ManualChartResolution } from "./resolution";
+
+/** Field catalogue frequency is a default, not evidence for acquired bars. */
+export function marketSeriesFrequency(source: SecuritySeriesSource, historyResolution: ManualChartResolution | null | undefined): SeriesPeriod {
+  if (historyResolution === null) return "auto";
+  if (source.period && source.period !== "auto") return source.period;
+  if (historyResolution === undefined || historyResolution === "1d") return "daily";
+  if (historyResolution === "1wk") return "weekly";
+  if (historyResolution === "1mo") return "monthly";
+  return "auto";
+}
 
 function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
