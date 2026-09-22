@@ -15,6 +15,7 @@ import {
   stripDesktopShotCredentials,
   volSurfaceEvidenceMismatchesFor,
   realizedVolEvidenceMismatchesFor,
+  volatilityEvidenceMismatchesFor,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
@@ -27,6 +28,28 @@ import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/pre
 import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
 import type { MarketContext } from "../types";
 import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
+import { volatilitySemanticEvidence } from "../../plugins/builtin/volatility/evidence";
+import { buildVolatilityData } from "../../plugins/builtin/volatility/model";
+
+test("volatility history screenshot readiness requires dated plotted values and the requested view", () => {
+  const request = { ...resolved("volatility-term-structure-pane", {}), pane: { id: "volatility-term-structure" } } as ResolvedPaneFunction;
+  const source = payload([]);
+  source.config = { layout: { instances: [{ instanceId: source.paneId, settings: { initialTab: "history" } }] } } as unknown as typeof source.config;
+  const metadata = volatilitySemanticEvidence({ data: buildVolatilityData({ fred: {
+    VIXCLS: { info: null, observations: [{ date: "2026-09-21", value: 20 }] },
+    VXVCLS: { info: null, observations: [{ date: "2026-09-21", value: 24 }] },
+  } }), phase: "partial", loaded: 22, total: 22, stale: false, errors: [] }, "history", null, false);
+  const nodes = [{ id: "volatility-data", role: "chart-data", actions: [], metadata: { ...metadata } }] as RemoteUiNodeSnapshot[];
+  expect(shotSemanticRowCount(request, source, nodes)).toBe(3);
+  expect(shotUnavailableSymbols(request, source, nodes)).toEqual([]);
+  expect(shotDataEvidenceFor(request, source, nodes)).toEqual(metadata);
+  expect(volatilityEvidenceMismatchesFor(request, source, nodes)).toEqual([]);
+  source.config.layout.instances[0]!.settings = { initialTab: "board" };
+  expect(volatilityEvidenceMismatchesFor(request, source, nodes)).toEqual(["rendered volatility index view does not match"]);
+  expect(shotSemanticRowCount(request, source, [])).toBe(0);
+  expect(shotDataEvidenceFor(request, source, [])).toBeNull();
+  expect(volatilityEvidenceMismatchesFor(request, source, [])).toHaveLength(1);
+});
 
 describe("realized volatility screenshot history", () => {
   const request = {
@@ -297,6 +320,22 @@ describe("pane screenshot market bridge", () => {
       ["AAPL", "NASDAQ", 1_790_121_600, context],
       ["AAPL", "NASDAQ", 1_792_108_800, context],
     ]);
+  });
+
+  test("routes exact daily index resolution through the host and never substitutes range history", async () => {
+    const calls: unknown[][] = [];
+    const points = [{ date: new Date("2026-09-22T15:42:16Z"), close: 21.73 }];
+    const provider = {
+      async getPriceHistoryForResolution(...args: unknown[]) { expect(this).toBe(provider); calls.push(args); return points; },
+      async getPriceHistory() { throw new Error("Range-only cadence must not be substituted"); },
+    };
+    const args = ["^VIX1Y", "", "1Y", "1d", { cacheMode: "refresh" }];
+    expect(await createDesktopShotBridge({ dataProvider: provider as any }).marketData("getPriceHistoryForResolution", args)).toEqual(points);
+    expect(calls).toEqual([args]);
+    const absent = createDesktopShotBridge({ dataProvider: { getPriceHistory: provider.getPriceHistory } as any });
+    await expect(absent.marketData("getPriceHistoryForResolution", args)).rejects.toThrow("No provider available for getPriceHistoryForResolution");
+    const failed = createDesktopShotBridge({ dataProvider: { getPriceHistoryForResolution: async () => { throw new Error("Source unavailable"); } } as any });
+    await expect(failed.marketData("getPriceHistoryForResolution", args)).rejects.toThrow("Source unavailable");
   });
 });
 

@@ -34,6 +34,8 @@ export interface DesktopPaneShotIntradayHistory {
 
 export interface DesktopPaneShotPayload {
   config: AppConfig;
+  /** Identity of the host provider serving bridged market requests. */
+  marketDataProviderId?: string;
   paneId: string;
   widthCells: number;
   heightCells: number;

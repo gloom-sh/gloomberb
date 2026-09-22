@@ -12,7 +12,7 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
     ] },
     { title: "Aligned curve observations", columns: [
       { key: "label", header: "Index" }, { key: "tenor", header: "Tenor" },
-      { key: "value", header: "Close", align: "right", format: formattedValue },
+      { key: "value", header: "Level", align: "right", format: formattedValue },
       { key: "sourceId", header: "Source ID" }, { key: "source", header: "Provider" },
     ], rows: data.curve.points.map((point) => ({ ...point, date: data.curve.date })) },
     { title: "FRED 30D/3M history", entries: [
@@ -23,7 +23,7 @@ export function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleR
       rows: data.fred.ratioHistory.map((point) => ({ ...point })) },
     { title: "Cross-asset volatility", columns: [
       { key: "label", header: "Index" }, { key: "symbol", header: "Symbol" },
-      { key: "value", header: "Close", align: "right", format: formattedValue },
+      { key: "value", header: "Level", align: "right", format: formattedValue },
       { key: "date", header: "As of" }, { key: "source", header: "Provider" },
       { key: "change1d", header: "1D points", align: "right", format: formattedValue },
       { key: "change1dPercent", header: "1D %", align: "right", format: formattedValue },
@@ -42,7 +42,7 @@ const defaultDependencies: VolatilityHeadlessDependencies = {
 export function createVolatilityHeadless(dependencies: VolatilityHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"bundle"> {
   return { shape: "bundle", argument: { kind: "none" }, options: [], describe: "VIX curve and volatility board",
     discovery: { screenshotReadiness: "live-dom", limitations: [
-      "Values are dated daily closes, not live quotes.",
+      "Daily histories may contain isolated index observations; sparse coverage has no daily change or annual percentile.",
       "Thin histories do not support daily changes or one-year percentiles.",
       "The existing sources do not supply a VIX futures curve.",
     ] },
@@ -53,7 +53,7 @@ export function createVolatilityHeadless(dependencies: VolatilityHeadlessDepende
         complete: result.phase === "ready" && !result.stale && result.data.warnings.length === 0,
         unavailableSymbols: result.data.board.filter((row) => row.value == null).map((row) => row.symbol),
         metadata: { stale: result.stale, phase: result.phase, loaded: result.loaded, total: result.total,
-          data: result.data, unit: "index points", observations: "daily close",
+          data: result.data, unit: "index points", observations: "daily history or isolated index observation",
           percentile: "Midrank within last calendar year; at least 200 observations spanning 300 days",
           vixFuturesAvailable: false, methodology: "docs/research-data.md#vix-curve-and-cross-asset-volatility-board" },
       };

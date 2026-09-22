@@ -66,6 +66,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import { readRealizedVolEvidence, type RealizedVolEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { selectedWindows } from "../../plugins/builtin/realized-vol/settings";
 import { readVolSurfaceEvidence, type VolSurfaceEvidence } from "../../plugins/builtin/vol-surface/evidence";
+import { readVolatilityEvidence, type VolatilityEvidence } from "../../plugins/builtin/volatility/evidence";
 import {
   collectShotSymbols,
   clipPriceHistoryToRange,
@@ -157,6 +158,7 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
   "getHolders",
   "getOptionsChain",
   "getPriceHistory",
+  "getPriceHistoryForResolution",
   "getQuote",
   "getQuoteMetadata",
   "getQuotesBatch",
@@ -354,7 +356,8 @@ export type PaneScreenshotDataEvidence =
   | PaneScreenshotFundamentalSeriesEvidence
   | PaneScreenshotFinancialStatementEvidence
   | VolSurfaceEvidence
-  | RealizedVolEvidence;
+  | RealizedVolEvidence
+  | VolatilityEvidence;
 
 export interface PaneScreenshotReadinessSignals {
   rowCount: number;
@@ -560,6 +563,7 @@ export async function buildDesktopShotPayload(
 
   const payload: DesktopPaneShotPayload = {
     config,
+    marketDataProviderId: context.dataProvider.id,
     paneId: resolved.instance.instanceId,
     widthCells,
     heightCells,
@@ -678,7 +682,8 @@ export async function renderDesktopShot({
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
   const symbols = payload.financials.map(([symbol]) => symbol);
-  const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom" && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved);
+  const usesLiveDomEvidence = resolved.capability.screenshotReadiness === "live-dom"
+    && !isVolSurfaceScreenshot(resolved) && !isRealizedVolScreenshot(resolved) && !isVolatilityScreenshot(resolved);
   const rowCount = usesLiveDomEvidence
     ? render.rows.length
     : shotSemanticRowCount(resolved, payload, render.semanticUi);
@@ -701,6 +706,7 @@ export async function renderDesktopShot({
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...volSurfaceEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...realizedVolEvidenceMismatchesFor(resolved, payload, render.semanticUi),
+    ...volatilityEvidenceMismatchesFor(resolved, payload, render.semanticUi),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -757,7 +763,7 @@ export async function renderDesktopShot({
 }
 
 function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean {
-  return isVolSurfaceScreenshot(resolved) || isRealizedVolScreenshot(resolved) || [
+  return isVolSurfaceScreenshot(resolved) || isRealizedVolScreenshot(resolved) || isVolatilityScreenshot(resolved) || [
     "price-chart",
     "intraday-price-chart",
     "price-comparison",
@@ -795,6 +801,24 @@ export function realizedVolEvidenceMismatchesFor(
 
 function isVolSurfaceScreenshot(resolved: ResolvedPaneFunction): boolean {
   return resolved.pane?.id === "vol-surface" || resolved.capability.id === "vol-surface-pane";
+}
+
+function isVolatilityScreenshot(resolved: ResolvedPaneFunction): boolean {
+  return resolved.pane?.id === "volatility-term-structure";
+}
+
+function renderedVolatilityEvidence(semanticUi: RemoteUiNodeSnapshot[]): VolatilityEvidence | null {
+  return readVolatilityEvidence(semanticUi.find((node) => node.role === "chart-data"
+    && node.metadata?.kind === "volatility-indices")?.metadata);
+}
+
+export function volatilityEvidenceMismatchesFor(resolved: ResolvedPaneFunction, payload: DesktopPaneShotPayload,
+  semanticUi: RemoteUiNodeSnapshot[]): string[] {
+  if (!isVolatilityScreenshot(resolved)) return [];
+  const evidence = renderedVolatilityEvidence(semanticUi);
+  if (!evidence) return ["rendered volatility index data evidence is missing or invalid"];
+  const tab = payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings?.initialTab ?? "curve";
+  return evidence.view === tab ? [] : ["rendered volatility index view does not match"];
 }
 
 function renderedVolSurfaceEvidence(semanticUi: RemoteUiNodeSnapshot[]): VolSurfaceEvidence | null {
@@ -882,6 +906,7 @@ export function shotDataEvidenceFor(
 ): PaneScreenshotDataEvidence | null {
   if (isRealizedVolScreenshot(resolved)) return renderedRealizedVolEvidence(semanticUi);
   if (isVolSurfaceScreenshot(resolved)) return renderedVolSurfaceEvidence(semanticUi);
+  if (isVolatilityScreenshot(resolved)) return renderedVolatilityEvidence(semanticUi);
   const spec = payload.chartModel ? parseChartSpec(payload.config.layout.instances.find((instance) => instance.instanceId === payload.paneId)?.settings?.chartSpec) : null;
   const visibleSeries = payload.chartModel && spec ? spec.series.flatMap((entry) => {
     if (entry.source.kind !== "security" || entry.visible === false) return [];
@@ -1412,6 +1437,10 @@ export function shotUnavailableSymbols(
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
     return evidence?.complete && !evidence.loading ? [] : [symbol ?? "realized volatility"];
   }
+  if (isVolatilityScreenshot(resolved)) {
+    const evidence = renderedVolatilityEvidence(semanticUi);
+    return evidence?.complete ? [] : evidence?.unavailableSources.length ? evidence.unavailableSources : ["volatility indices"];
+  }
   if (isVolSurfaceScreenshot(resolved)) {
     const evidence = renderedVolSurfaceEvidence(semanticUi);
     const symbol = payload.financials[0]?.[0] ?? resolved.createOptions?.symbol;
@@ -1486,6 +1515,7 @@ export function shotSemanticRowCount(
 ): number {
   if (isRealizedVolScreenshot(resolved)) return renderedRealizedVolEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (isVolSurfaceScreenshot(resolved)) return renderedVolSurfaceEvidence(semanticUi)?.plottedValueCount ?? 0;
+  if (isVolatilityScreenshot(resolved)) return renderedVolatilityEvidence(semanticUi)?.plottedValueCount ?? 0;
   if (resolved.capability.id === "chart-composer") {
     const metadata = semanticUi.find((node) => (
       node.role === "chart-data" && node.metadata?.kind === "chart-composer"

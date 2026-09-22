@@ -274,10 +274,11 @@ function hasUnresolvedChartData(): boolean {
       || node.metadata?.kind === "price-comparison"
       || node.metadata?.kind === "chart-composer"
       || node.metadata?.kind === "realized-volatility"
+      || node.metadata?.kind === "volatility-indices"
     )
     && (
       node.metadata.loading === true
-      || (!["chart-composer", "realized-volatility"].includes(String(node.metadata.kind)) && (
+      || (!["chart-composer", "realized-volatility", "volatility-indices"].includes(String(node.metadata.kind)) && (
         typeof node.metadata.projectedPointCount !== "number"
         || node.metadata.projectedPointCount <= 0
       ))
@@ -333,6 +334,7 @@ function waitForShotReadiness(): () => void {
 function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
   const cloudProvider = createGloomberbCloudProvider();
   const bridge: Partial<DataProvider> = {
+    id: payload.marketDataProviderId ?? cloudProvider.id,
     getQuote: (symbol, exchange, context) => requestShotMarketData<Quote>("getQuote", [symbol, exchange, context]),
     getQuoteMetadata: (symbol, exchange, context) => requestShotMarketData<QuoteMetadata | null>("getQuoteMetadata", [symbol, exchange, context]),
     getQuotesBatch: (targets) => requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [targets])
@@ -340,6 +342,9 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     getOptionsChain: (symbol, exchange, expirationDate, context) => requestShotMarketData<OptionsChain>("getOptionsChain", [symbol, exchange, expirationDate, context]),
     getPriceHistory: (symbol, exchange, range, context) => requestShotMarketData<PricePoint[]>("getPriceHistory", [symbol, exchange, range, context])
       .then(revivePricePoints).catch(() => []),
+    getPriceHistoryForResolution: (symbol, exchange, range, resolution, context) => requestShotMarketData<PricePoint[]>(
+      "getPriceHistoryForResolution", [symbol, exchange, range, resolution, context],
+    ).then(revivePricePoints),
     async getExchangeRate(fromCurrency) {
       // Only identity FX is known offline; don't invent a parity rate.
       if (normalizeSymbol(fromCurrency) === normalizeSymbol(payload.config.baseCurrency)) return 1;

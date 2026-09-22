@@ -11,11 +11,12 @@ import { useAutoRefresh } from "../shared/auto-refresh";
 import { getCachedVolatilityData, loadVolatilityData, type VolatilityLoadResult } from "./client";
 import type { VolatilityBoardRow } from "./model";
 import { VolatilityCurveChart, VolatilityHistoryChart, VolatilityRatioChart, VolatilityIndexHistoryChart } from "./charts";
+import { useVolatilityEvidence } from "./evidence";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "history", label: "History" }, { value: "board", label: "Cross-asset" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "id", label: "Index", width: 12, align: "left" },
-  { id: "value", label: "Close", width: 10, align: "right" },
+  { id: "value", label: "Level", width: 10, align: "right" },
   { id: "change1d", label: "1D pts", width: 10, align: "right" },
   { id: "change1dPercent", label: "1D %", width: 10, align: "right" },
   { id: "percentile1y", label: "1Y %ile", width: 10, align: "right" },
@@ -60,6 +61,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
       * (sort.direction === "asc" ? 1 : -1);
   }), [data?.board, sort]);
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
+  useVolatilityEvidence(result, tab, selected, resource.loading);
   const notices = [resource.error, ...(result?.errors ?? []), ...(data?.warnings ?? []),
     ...(selected?.warnings ?? [])].filter((notice): notice is string => !!notice);
   usePaneNoticeFooter({ registrationId: "volatility-notices", notices, focused });
@@ -73,13 +75,15 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   };
   useShortcut((event) => { if (focused && tab === "history") handleKey(event); });
   const asOf = tab === "history" ? data?.fred.termDate : tab === "board" ? selected?.date : data?.curve.date;
+  const observationTime = selected?.sampleSize === 1 ? selected.history.at(-1)?.observedAt : null;
+  const observationBasis = tab === "history" ? "daily close" : tab === "board" && selected?.sampleSize === 1 ? "observation" : "daily history";
   const source = !data ? null : tab === "history" ? "FRED" : tab === "board" ? selected?.source : data?.curve.source === "fred" ? "FRED" : "market history";
   usePaneFooter("volatility", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading volatility", tone: "muted" as const }] }] : []),
     ...(result?.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
-    ...(source ? [{ id: "source", parts: [{ text: `${source} · daily close`, tone: "muted" as const }] }] : []),
-    ...(asOf ? [{ id: "date", parts: [{ text: asOf, tone: "muted" as const }] }] : []),
-  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, source, asOf, tab]);
+    ...(source ? [{ id: "source", parts: [{ text: `${source} · ${observationBasis}`, tone: "muted" as const }] }] : []),
+    ...(asOf ? [{ id: "date", parts: [{ text: observationTime && tab === "board" ? `${observationTime.slice(0, 16).replace("T", " ")} UTC` : asOf, tone: "muted" as const }] }] : []),
+  ], hints: [{ id: "view", key: "v", label: "iew", onPress: cycleTab }] }), [resource.loading, result?.stale, source, asOf, observationTime, observationBasis, tab]);
   const contentHeight = Math.max(5, height - 1);
   const boardHeight = Math.max(5, Math.floor(contentHeight * 0.62));
   const curveTableHeight = Math.min(8, Math.max(4, Math.floor(contentHeight * 0.3)));
@@ -113,7 +117,7 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
           emptyStateTitle="Volatility indices unavailable." getItemKey={(row) => row.id} selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (row) => row.id, onChange: setSelectedId }}
           onActivate={(row) => setSelectedId(row.id)} onRootKeyDown={handleKey}
           sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort({ id, direction: id === sort.id && sort.direction === "asc" ? "desc" : "asc" })}
-          getExportMetadata={() => [["basis", "daily closes"], ["percentile", "one year, at least 200 observations and 300 calendar days"], ["warnings", ...notices]]}
+          getExportMetadata={() => [["basis", "daily history; sparse observations retain their timestamp"], ["percentile", "one year, at least 200 observations and 300 calendar days"], ["warnings", ...notices]]}
           renderCell={(row, column) => ({ text: column.id === "id" ? row.id.toUpperCase()
             : column.id === "status" ? row.value == null && !row.error && result && result.loaded < result.total ? "loading"
               : row.status === "limited" ? `${row.sampleSize} obs` : row.status
