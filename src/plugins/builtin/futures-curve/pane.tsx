@@ -84,7 +84,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
             detail={`${curveTimestamp(data.slope.asOf)} · ${curveRank(data.slope.rollPercentile, data.slope.samples, data.slope.historyStart, data.slope.historyEnd)}`} />
         </Box>
         {tab === "curve" ? <CurveSurface series={curves} width={width} height={curveHeight}
-          formatValue={(value) => curvePrice(value, root)} formatX={(value) => new Date(value).toISOString().slice(2, 10)}
+          formatValue={(value) => curvePrice(value, root)} formatX={(value) => new Date(Math.round(value / 86_400_000) * 86_400_000).toISOString().slice(2, 10)}
           selectedPointId={selected} onSelectedPointChange={setSelected}
           slope={{ label: `M2-M1 ${data.slope.state}`, value: data.slope.value,
             percentile: data.slope.samples < 2 ? null : data.slope.percentile, window: `${data.slope.samples} obs`,
