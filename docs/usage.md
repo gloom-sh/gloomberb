@@ -155,6 +155,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `WEI` | Global equity indices |
 | `MAP` | Live world venue map with local market status and clocks |
 | `TAS <ticker>` / `QR <ticker>` | Time and sales, observed-window VWAP, large prints and NBBO history |
+| `EM <ticker>` / `EEO <ticker>` / `GUID <ticker>` | EPS estimate revisions, current analyst breadth, surprises and cited guidance; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |

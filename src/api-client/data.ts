@@ -1,5 +1,6 @@
 import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
+import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { FuturesCurvePayload } from "./futures-curve";
@@ -146,6 +147,10 @@ export class CloudDataApi {
       CloudMarketResponse<InstrumentSearchResult[]>
     >(cloudMarketSearchPath(query, limit));
     return response.data ?? [];
+  }
+
+  async getCloudEstimateRevisions(symbol: string, exchange: string): Promise<EstimateRevisionsPayload> {
+    return this.request<EstimateRevisionsPayload>(`/cloud/research/estimates/${encodeURIComponent(symbol)}?exchange=${encodeURIComponent(exchange)}`, { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudQuote(
