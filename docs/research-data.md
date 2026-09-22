@@ -184,6 +184,18 @@ Last move compares the latest level with the preceding distinct observed rate, n
 
 Cloud caches BIS for six hours and FRED for one hour with shared in-flight requests and independent stale fallback. BIS observations more than fourteen days old and FRED observations more than seven days old are stale; expired fallback data remains stale regardless of observation date. A refresh failure preserves the last usable response and its source dates with a warning. An absent endpoint is explicitly unavailable. The source check on September 22, 2026 found delayed India, Indonesia and South Korea observations; the board displays their real dates. Only the maintained, source-verified US FOMC schedule supplies next-meeting dates. Missing dates elsewhere do not mean that no meeting is scheduled. No migration is required.
 
+## Debt maturities (DDIS)
+
+DDIS uses Gloom Cloud's cached SEC EDGAR company facts. The backend selects annual 10-K or 20-F principal-maturity facts from one accession, fiscal period end and native currency. The chart represents relative fiscal buckets: the next twelve months, years two through five, and Thereafter. These are not calendar-year dates. Thereafter is open ended and supplies neither a maturity date nor a duration. No weighted average maturity or weighted coupon is inferred.
+
+Principal total requires all six buckets. Reported zero amounts are retained; absent, negative or contradictory facts are unavailable. The next-three-years amount requires its first three buckets. Concentration ratios require a complete, positive total; they remain unavailable for incomplete or zero totals. These amounts describe reported principal obligations, not balance-sheet carrying debt or a forecast of refinancing needs. Schedule scope may include short-term borrowing and foreign-currency hedges. Native currencies are never converted or mixed.
+
+Headline ranks use a ten-year window ending on the latest source period, with at least five comparable annual cohorts and at most one cohort per period end. Interest expense ranks require the same interest concept; cost ranks also require the same debt concepts. History displays this bounded window, while the headless response retains all source history. Each value's as-of is the fiscal period end. The filing date identifies when that observation became public; later collection does not make it current. Amendments can change historical facts, so this is not a point-in-time trading dataset.
+
+Annual interest expense can include non-debt expenses depending on the reported concept, which the Filing tab exposes. A borrowing-cost accounting proxy is shown only when debt-only annual interest and explicit, matching opening and closing long-term and short-term balances are available. It is annual debt interest divided by average reported debt, multiplied by 100. It is not a weighted coupon, yield to maturity or a current refinancing rate. A missing proxy remains unavailable even when general annual interest expense exists.
+
+Company facts do not cover every maturity disclosure: custom tags and unmapped IFRS statements can leave a partial schedule or no schedule. Current verified examples include USD schedules for MSFT and AAPL and a native EUR principal schedule for ASML. TSM's IFRS reporting is unsupported. Verified examples currently lack the evidence needed for the debt-only cost proxy. Source refresh failures preserve the last dated result with a warning; a missing Cloud endpoint has an explicit unavailable state.
+
 ## Portfolio analytics
 
 P&L for manual portfolios covers current holdings. Manual portfolios have no cash-flow performance history; reconcile corporate actions through **PF → Set position**. Distributions are not automatically credited.

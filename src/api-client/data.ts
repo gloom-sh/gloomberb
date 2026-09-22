@@ -1,3 +1,4 @@
+import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
@@ -357,6 +358,11 @@ export class CloudDataApi {
 
   async getCloudMoneyMarkets(): Promise<MoneyMarketsPayload> {
     return this.request<MoneyMarketsPayload>("/cloud/econ/money-markets", { signal: AbortSignal.timeout(45_000) });
+  }
+
+  async getCloudDebtMaturities(symbol: string): Promise<DebtMaturitiesPayload> {
+    const params = new URLSearchParams({ symbol });
+    return this.request<DebtMaturitiesPayload>(`/cloud/debt-maturities?${params}`, { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {

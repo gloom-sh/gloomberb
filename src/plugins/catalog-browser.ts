@@ -1,3 +1,4 @@
+import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { shortVolumeModule } from "./builtin/short-volume";
 import { timeSalesModule } from "./builtin/time-sales";
 import {
@@ -93,6 +94,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     timeSalesModule,
     researchModule,
     shortVolumeModule,
+    debtMaturitiesModule,
     browserDividendYieldModule,
     earningsCallsModule,
     executivesModule,
