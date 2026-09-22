@@ -1,3 +1,7 @@
+import { Box } from "../../../ui";
+import { Tabs, PaneFooterScope } from "../../../components";
+import { usePluginPaneState } from "../../runtime";
+import { EventAlertsPane } from "./events-pane";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ConfirmDialog,
@@ -61,7 +65,32 @@ const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
   2,
 );
 
-export function AlertsPane({ focused, width, height, close }: PaneProps) {
+export function AlertsPane(props: PaneProps) {
+  const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
+  return (
+    <Box flexDirection="column" width={props.width} height={props.height}>
+      <Tabs
+        tabs={[
+          { label: "Prices", value: "prices" },
+          { label: "Events", value: "events" },
+        ]}
+        activeValue={tab}
+        onSelect={setTab}
+        focused={props.focused}
+        dense
+      />
+      <PaneFooterScope active>
+        {tab === "events" ? (
+          <EventAlertsPane {...props} height={Math.max(1, props.height - 1)} />
+        ) : (
+          <PriceAlertsPane {...props} height={Math.max(1, props.height - 1)} />
+        )}
+      </PaneFooterScope>
+    </Box>
+  );
+}
+
+function PriceAlertsPane({ focused, width, height, close }: PaneProps) {
   const [alertsJson, setAlertsJson] = usePluginConfigState<string>(ALERTS_KEY, "[]");
   const { openPluginCommandWorkflow } = usePluginAppActions();
   const dialog = useDialog();

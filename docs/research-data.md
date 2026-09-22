@@ -340,6 +340,20 @@ Ask AI and ticker attachments in the AI workspace come from the [BYOK AI plugin]
 
 The context includes available source, observation, retrieval, stale-state, and statement-history failure information. Retrieval time does not establish a valuation date. Annual period identity, whole-row availability, and individual field availability remain distinct. This attachment is a snapshot of those inputs, not a complete filing or a guarantee that a provider's data is current.
 
+### Filing alert timing
+
+Filing event alerts observe House disclosures and followed funds' 13F submissions,
+using the existing mobile daily cap, cooldowns, and delivery ledger. A filing that
+matches several rules notifies once. Rules begin on their creation day; resuming
+a paused rule starts a new observation window. The evaluator looks back at most
+14 days and handles up to 40 event rules per user.
+
+House alerts depend on successful PDF parsing and the daily OCR budget, scanning
+up to 240 recent filings per source year. Fund filing checks share the 24-hour
+forms13f cache. Delivery therefore follows source availability and parsing, not
+the transaction date or a guaranteed real-time schedule. Price alerts continue
+to use their existing price conditions.
+
 ## Annual risk-factor reports (RISK)
 
 Risk reports use the filing year of a company's Form 10-K, rather than an assumed fiscal year. The filing date identifies the source document; “Report updated” identifies the derived risk report. Risk headings and source excerpts come from the filing, while the overview and notes are analysis. The available comparison is the report's supplied change analysis; a missing annual filing is not synthesized. Foreign issuers filing Form 20-F are not covered by this 10-K report service.

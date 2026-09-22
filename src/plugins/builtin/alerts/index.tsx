@@ -1,3 +1,4 @@
+import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
 import type { GloomPlugin } from "../../../types/plugin";
@@ -30,7 +31,7 @@ export const alertsPlugin: GloomPlugin = {
   id: "alerts",
   name: "Alerts",
   version: "1.0.0",
-  description: "Price trigger alerts with desktop notifications",
+  description: "Price and filing event alerts",
   toggleable: true,
 
   setup(ctx) {
@@ -90,6 +91,51 @@ export const alertsPlugin: GloomPlugin = {
           body: `Alert set: ${formatAlertDescription(alert)} (current ${formatMarketPrice(quote.price, { minimumFractionDigits: 2 })})`,
           type: "success",
         });
+      },
+    });
+
+    ctx.registerCommand({
+      id: "set-event-alert",
+      label: "Add Event Alert",
+      description: "Follow Congress trades or new fund filings",
+      keywords: ["alert", "event", "congress", "13f", "fund", "member", "follow"],
+      category: "data",
+      wizardLayout: "form",
+      wizard: [
+        {
+          key: "event",
+          label: "Event",
+          type: "select",
+          defaultValue: "congress-watched",
+          options: EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id })),
+        },
+        ...EVENT_ALERT_TEMPLATES.filter((entry) => entry.field != null).map((entry) => ({
+          key: entry.id,
+          label: entry.field!,
+          placeholder: entry.placeholder,
+          type: "text" as const,
+          required: true,
+          dependsOn: { key: "event", value: entry.id },
+        })),
+      ],
+      execute(values = {}) {
+        const event = values?.event || "congress-watched";
+        const result = readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]");
+        if (result.error) throw new Error(result.error);
+        if (result.rules.length >= MAX_EVENT_ALERTS)
+          throw new Error("Keep at most 40 event alerts.");
+        const rule = createEventAlert(event, values?.[event] || "");
+        if (
+          result.rules.some(
+            (existing) =>
+              existing.kind === rule.kind &&
+              existing.target === rule.target &&
+              existing.value.toLowerCase() === rule.value.toLowerCase(),
+          )
+        )
+          throw new Error("This event is already followed.");
+        ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify([...result.rules, rule]));
+        ctx.notify({ body: "Event alert saved.", type: "success" });
       },
     });
 
@@ -197,7 +243,7 @@ export const alertsPlugin: GloomPlugin = {
       id: "alerts-pane",
       paneId: "alerts",
       label: "Alerts",
-      description: "Price trigger alerts with notifications",
+      description: "Price and filing event alerts",
       keywords: ["alerts", "price", "trigger", "alarm", "watch", "notify"],
       shortcut: { prefix: "ALRT" },
     });
