@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { StaticChartSurface, type StaticChartOverlay } from "gloomberb/components";
-import { Box, Text } from "gloomberb/ui";
+import { StaticChartSurface, type StaticChartOverlay } from "../../../components";
+import { Box, Text } from "../../../ui";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { buildScenario } from "./model";

@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
-import { Button, NumberField, TextField, SelectButton, Notice, type SelectControl } from "gloomberb/components";
-import { useInputCapture, useShortcut } from "gloomberb/react";
-import { Box, ScrollBox } from "gloomberb/ui";
+import { Button, NumberField, TextField, SelectButton, Notice, type SelectControl } from "../../../components";
+import { useInputCapture, useShortcut } from "../../../public/react";
+import { Box, ScrollBox } from "../../../ui";
 import { parseScenarioInputFields } from "./state";
 import { parseLegs, type ScenarioLeg, type ScenarioPosition, type ScenarioControls } from "./model";
 

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, KeyValueRow, NumberField,
-  PageStackView, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "gloomberb/components";
+  PageStackView, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type SelectControl } from "../../../components";
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
-  usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "gloomberb/react";
-import { Box, Text, useUiCapabilities } from "gloomberb/ui";
-import { useDialog, type PromptContext } from "gloomberb/dialog";
-import type { PaneProps } from "gloomberb/types/plugin";
+  usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
+import { Box, Text, useUiCapabilities } from "../../../ui";
+import { useDialog, type PromptContext } from "../../../ui/dialog";
+import type { PaneProps } from "../../../types/plugin";
 import { useThemeColors } from "../../../theme/theme-context";
 import { blendHex } from "../../../theme/color-utils";
 import { resolveOptionsTarget } from "../../../utils/options";
