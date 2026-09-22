@@ -158,6 +158,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [YYYY-MM-DD]` | Treasury yield curve for the latest session or a historical date; CLI also accepts `--date YYYY-MM-DD` |
 | `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
+| `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 30-day/3-month implied-volatility curve |
 | `CRD` | Credit spreads |
@@ -172,6 +173,8 @@ Correlation uses matching observation times when inputs have different frequenci
 | `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
 
 `FUT` keeps each rolling quote alias as its symbol and displays the provider's contract name when available. Search also matches that name. A month in this label describes the captured quote; the app does not derive an expiry date or establish the roll-adjustment basis of the alias's historical series.
+
+`BTMM` opens Rates, Bills and Liquidity views. Select a row and press Enter or click it for its dated history, one-year range and source; Back returns to the board. The Bills curve compares common-date discount yields with one week, one month and one year earlier. Liquidity plots the net-liquidity proxy above the component board. `h` and `l` switch views; `o` opens the selected FRED series and `r` refreshes. Reports support `gloomberb fn BTMM --tab rates|bills|liquidity` and `--json`.
 
 ### Workspace and App Controls
 

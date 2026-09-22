@@ -51,6 +51,7 @@ import { volatilityModule } from "./builtin/volatility";
 import { worldIndicesModule } from "./builtin/world-indices";
 import { worldVenueMapModule } from "./builtin/world-venue-map";
 import { yieldCurveModule } from "./builtin/yield-curve";
+import { moneyMarketsModule } from "./builtin/money-markets";
 import { ratePathModule } from "./builtin/rate-path";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
@@ -146,6 +147,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     econStatisticsModule,
     yieldCurveModule,
     ratePathModule,
+    moneyMarketsModule,
     volatilityModule,
     creditConditionsModule,
     marketValuationModule,

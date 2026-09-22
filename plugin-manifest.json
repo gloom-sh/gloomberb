@@ -129,6 +129,7 @@
           "econ-calendar",
           "econ-statistics",
           "market-valuation",
+          "money-markets",
           "rate-path",
           "treasury-auctions",
           "volatility-term-structure",

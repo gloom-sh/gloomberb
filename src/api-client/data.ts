@@ -1,3 +1,4 @@
+import type { MoneyMarketsPayload } from "./money-markets";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { TickerFinancials } from "../types/financials";
@@ -331,6 +332,10 @@ export class CloudDataApi {
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
+  }
+
+  async getCloudMoneyMarkets(): Promise<MoneyMarketsPayload> {
+    return this.request<MoneyMarketsPayload>("/cloud/econ/money-markets", { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudRatePath(): Promise<RatePathPayload> {

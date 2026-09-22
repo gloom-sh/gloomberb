@@ -1,3 +1,4 @@
+export { MarketBoardStack, type MarketBoardRow, type MarketBoardStackProps } from "./market-board";
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
