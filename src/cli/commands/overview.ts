@@ -67,7 +67,7 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
         { forceRefresh: ctx.cliOptions.refresh },
       );
       ctx.printResult({ data: quoteRows(results), metadata: { category } }, {
-        columns: MOVER_COLUMNS.filter((column) => column.key !== "volume"),
+        textColumns: MOVER_COLUMNS.filter((column) => column.key !== "volume"),
       });
     });
     return;
@@ -153,7 +153,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder });
   const rows = data.observations.slice(0, ctx.cliOptions.limit ?? data.observations.length);
   ctx.printResult({ data: rows, metadata: { info: data.info, seriesId, startDate, sortOrder } }, {
-    columns: [
+    textColumns: [
       { key: "date", header: "Date" },
       { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
     ],
@@ -176,7 +176,7 @@ async function runYieldCurve(args: string[], ctx: Parameters<CliCommandDef["exec
     };
   }));
   ctx.printResult({ data: results, metadata: { startDate } }, {
-    columns: [
+    textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
       { key: "value", header: "Yield %", align: "right" },
       { key: "date", header: "Date" },
@@ -207,7 +207,7 @@ async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["exe
       : null;
     ctx.printResult({ data: [{ left, right, samples: pairs.length, correlation }] }, {
       layout: "record",
-      columns: [
+      textColumns: [
         { key: "left", header: "Symbols", value: (row) => `${row.left} / ${row.right}` },
         { key: "correlation", header: "Correlation", format: (value) => typeof value === "number" ? value.toFixed(3) : "n/a" },
         { key: "samples", header: "Trading days" },
@@ -219,7 +219,7 @@ async function runCorrelation(args: string[], ctx: Parameters<CliCommandDef["exe
 export const overviewCliCommands: CliCommandDef[] = [
   {
     name: "movers",
-    description: "Show the day's gainers, losers, most active, or trending stocks",
+    description: "Show gainers, losers, most active, or trending stocks",
     help: {
       group: CLI_COMMAND_GROUPS.markets,
       usage: ["movers [gainers|losers|active|trending]"],

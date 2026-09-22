@@ -57,7 +57,7 @@ export const apiCliCommand: CliCommandDef = {
             operations: manifest.operations.map((operation) => operation.id).join(", "),
           })),
           columns: [
-            { key: "id", header: "Capability" },
+            { key: "id", header: "Capability", shrink: false },
             { key: "kind", header: "Kind" },
             { key: "name", header: "Name" },
             { key: "operations", header: "Operations" },

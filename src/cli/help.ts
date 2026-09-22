@@ -31,8 +31,8 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--json, --csv, --ndjson", "Print machine-readable output instead of text"],
   ["--limit <n>", "Show at most n rows"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],
-  ["--dry-run", "Preview a change without saving it"],
-  ["-q, --quiet", "Print nothing in text mode"],
+  ["--dry-run", "Preview config, cache, notes, alerts, plugin, and remote changes without saving"],
+  ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
   ["--color, --no-color", "Force or turn off colors (NO_COLOR=1 also turns them off)"],
 ];
 
@@ -51,6 +51,12 @@ function commandGroup(entry: CliHelpEntry): string {
 
 function withProgramName(invocation: string): string {
   return invocation.startsWith("gloomberb ") ? invocation : `gloomberb ${invocation}`;
+}
+
+/** A full command line, wrapped with its continuation lines indented under the command. */
+function renderInvocation(invocation: string, width: number): string[] {
+  const [first = "", ...rest] = wrapText(withProgramName(invocation), width - INDENT);
+  return [`${" ".repeat(INDENT)}${first}`, ...rest.map((line) => `${" ".repeat(INDENT + 4)}${line}`)];
 }
 
 function renderParagraph(text: string, width: number): string[] {
@@ -83,7 +89,7 @@ export function renderCliHelp(entries: CliHelpEntry[], version: string, descript
   const nameWidth = Math.max(0, ...listed.map(({ command }) => visibleLength(command.name)));
   const lines = [
     `${cliStyles.bold("gloomberb")} ${cliStyles.muted(version)}`,
-    description,
+    ...wrapText(description, width),
     "",
     renderSection("Usage"),
     ...renderDefinitions([
@@ -114,7 +120,7 @@ export function renderCommandHelp(command: CliCommandDef): string {
     ...wrapText(command.description, width),
     "",
     renderSection("Usage"),
-    ...usage.map((line) => `${" ".repeat(INDENT)}${withProgramName(line)}`),
+    ...usage.flatMap((line) => renderInvocation(line, width)),
   ];
 
   if (command.aliases?.length) {
@@ -133,25 +139,27 @@ export function renderCommandHelp(command: CliCommandDef): string {
     lines.push("", renderSection(section.title));
     for (const line of section.lines ?? []) lines.push(...renderParagraph(line, width));
     if (section.columns && section.rows) {
-      lines.push(renderTable(section.columns, section.rows, { indent: INDENT }));
+      // Reference tables show every value, even past the terminal width.
+      lines.push(renderTable(section.columns, section.rows, { indent: INDENT, maxWidth: null }));
     }
   }
 
   if (help.examples?.length) {
     lines.push("", renderSection("Examples"));
-    lines.push(...help.examples.map((example) => `${" ".repeat(INDENT)}${withProgramName(example)}`));
+    lines.push(...help.examples.flatMap((example) => renderInvocation(example, width)));
   }
 
   return lines.join("\n");
 }
 
 export function describeCliCommand(command: CliCommandDef) {
+  // The first four keys predate groups, options, and examples; exports keep that order.
   return {
     name: command.name,
     aliases: command.aliases ?? [],
     description: command.description,
-    group: command.help?.group ?? null,
     usage: command.help?.usage ?? [],
+    group: command.help?.group ?? null,
     options: command.help?.options ?? [],
     examples: command.help?.examples ?? [],
   };

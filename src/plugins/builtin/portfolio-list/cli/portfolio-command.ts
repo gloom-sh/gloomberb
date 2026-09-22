@@ -153,7 +153,7 @@ async function setPositionCommand(
 
 export const portfolioCliCommand: CliCommandDef = {
   name: "portfolio",
-  description: "List portfolios, show holdings and P&L, and manage manual positions",
+  description: "Show holdings and P&L, and manage manual portfolios",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [

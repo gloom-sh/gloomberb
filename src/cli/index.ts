@@ -72,19 +72,13 @@ function createCoreCliCommands(
           printHelpText(renderCliHelp(helpEntries(), VERSION, CLI_DESCRIPTION), ctx);
           return;
         }
-        ctx.printResult({ data: allCommands().map(describeCliCommand) }, {
-          columns: [
-            { key: "name", header: "Command" },
-            { key: "group", header: "Group" },
-            { key: "description", header: "Description" },
-          ],
-        });
+        ctx.printResult({ data: allCommands().map(describeCliCommand) });
       },
     },
     {
       name: "launch-ui",
       aliases: ["ui"],
-      description: "Open the terminal UI, same as running gloomberb with no command",
+      description: "Open the terminal UI, like plain gloomberb",
       help: {
         group: CLI_COMMAND_GROUPS.app,
         usage: ["launch-ui"],
@@ -110,7 +104,7 @@ function createCoreCliCommands(
     },
     {
       name: "ticker",
-      description: "Show quote, fundamentals, financials, and positions for a symbol",
+      description: "Show the full research report for one symbol",
       help: {
         group: CLI_COMMAND_GROUPS.research,
         usage: ["ticker <symbol>"],
@@ -160,7 +154,7 @@ function createCoreCliCommands(
           "fn HP AAPL",
           "fn CBR --json",
           "fn 13F AAPL --view=ticker-holdings",
-          "fn OVME --model american --spot 100 --strike 100 --days 30 --volatility 25",
+          "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
         ],
       },
       execute: async (args, ctx) => {
@@ -176,7 +170,7 @@ function createCoreCliCommands(
         group: CLI_COMMAND_GROUPS.functions,
         usage: ["shot <function> [argument] [options]"],
         options: [
-          { flags: "--output <path>", description: "PNG to write; defaults to gloomberb-<function>.png in this folder" },
+          { flags: "--output <path>", description: "PNG to write; defaults to gloomberb-<function>-<argument>.png in this folder" },
           { flags: "--width <px>", description: "Image width, 720 to 2400 (default 1280)" },
           { flags: "--height <px>", description: "Image height, 360 to 1800 (default 720)" },
           { flags: "--theme <id>", description: "Render with another theme, such as amber or green" },
@@ -270,9 +264,14 @@ function createCoreCliCommands(
 }
 
 function requirePaneFunctionTarget(args: string[], commandName: string, ctx: CliCommandContext): void {
-  if (!parsePaneFunctionArgs(args).target) {
-    ctx.fail(`Usage: gloomberb ${commandName} <function> [argument] [options]`);
+  let target: string;
+  try {
+    target = parsePaneFunctionArgs(args).target;
+  } catch {
+    // Invalid options are reported by the runner, with its error code.
+    return;
   }
+  if (!target) ctx.fail(`Usage: gloomberb ${commandName} <function> [argument] [options]`);
 }
 
 function printHelpText(text: string, ctx: CliCommandContext): void {
@@ -348,12 +347,12 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   // Help flags never reach the command, where they would read as a symbol, a
   // plugin name, or a note to write.
   const helpOnly = parsed.help && resolved.command.name !== "help";
-  const help = helpOnly ? registry.lookup.get("help")! : resolved;
+  const target = helpOnly ? registry.lookup.get("help")! : resolved;
   const commandArgs = helpOnly ? [resolved.command.name] : parsed.args.slice(1);
   try {
-    const result = await help.command.execute(
+    const result = await target.command.execute(
       commandArgs,
-      createCliCommandContext(help.ownerId, registry, parsed.options),
+      createCliCommandContext(target.ownerId, registry, parsed.options),
     );
     return normalizeCliDispatchResult(result);
   } catch (error) {
@@ -363,8 +362,15 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   }
 }
 
-/** Explains an unknown command, suggesting the closest one. */
-export async function failUnknownCliCommand(token: string, options: DispatchCliOptions = {}): Promise<never> {
+/** Explains why dispatch found no command in `args`, suggesting the closest one. */
+export async function failUnknownCliCommand(args: string[], options: DispatchCliOptions = {}): Promise<never> {
+  let token = args[0] ?? "";
+  try {
+    // Global flags may come first, so name the token dispatch actually looked up.
+    token = parseCliGlobalArgs(args).args[0] ?? token;
+  } catch {
+    // dispatchCli already reported flags that do not parse.
+  }
   const registry = await createRegistry(options);
   return failUnknownCommand(token, registry.commands.map((entry) => entry.command));
 }

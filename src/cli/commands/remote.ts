@@ -13,7 +13,7 @@ interface RemoteArgs {
 
 export const remoteCliCommand: CliCommandDef = {
   name: "remote",
-  description: "Read and drive a running gloomberb app through its remote API",
+  description: "Drive a running gloomberb app through its remote API",
   help: {
     group: CLI_COMMAND_GROUPS.app,
     usage: [

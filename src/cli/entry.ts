@@ -67,7 +67,7 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
     return;
   }
 
-  await failUnknownCliCommand(command, { externalPlugins });
+  await failUnknownCliCommand(rawArgs, { externalPlugins });
 }
 
 runCliEntrypoint().catch((error) => {

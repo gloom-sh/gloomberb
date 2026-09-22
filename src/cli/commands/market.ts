@@ -550,7 +550,7 @@ export const marketDataCliCommands: CliCommandDef[] = [
       await withMarketData(ctx, async (market) => {
         const results = await market.dataProvider.search(query);
         ctx.printResult({ data: results.slice(0, ctx.cliOptions.limit ?? results.length) }, {
-          columns: [
+          textColumns: [
             { key: "symbol", header: "Symbol" },
             { key: "name", header: "Name" },
             { key: "exchange", header: "Exchange" },

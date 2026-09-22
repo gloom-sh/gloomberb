@@ -85,7 +85,7 @@ export const rssCliCommand: CliCommandDef = {
       url: article.url,
       summary: article.summary ?? "",
     })) }, {
-      columns: [
+      textColumns: [
         { key: "publishedAt", header: "Published" },
         { key: "source", header: "Source", maxWidth: 20 },
         { key: "title", header: "Title" },

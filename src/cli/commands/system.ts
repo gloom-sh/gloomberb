@@ -27,6 +27,7 @@ const ALERTS_PLUGIN_ID = "alerts";
 const ALERTS_KEY = "alerts";
 const LOG_LEVELS = new Set<LogLevel>(["debug", "info", "warn", "error"]);
 
+const DOCTOR_COUNT_UNITS: Record<string, string> = { plugins: "loaded", capabilities: "registered" };
 const EDITABLE_CONFIG_KEYS = ["baseCurrency", "refreshIntervalMinutes", "theme", "valueFlashingEnabled"];
 const LOG_LEVEL_STYLES: Partial<Record<LogLevel, (text: string) => string>> = {
   debug: cliStyles.muted,
@@ -37,9 +38,9 @@ const LOG_LEVEL_STYLES: Partial<Record<LogLevel, (text: string) => string>> = {
 function commandRows(commands: CliCommandDef[]) {
   return commands.map((command) => ({
     name: command.name,
-    group: command.help?.group ?? "",
-    aliases: command.aliases?.join(", ") ?? "",
+    aliases: command.aliases?.join(",") ?? "",
     description: command.description,
+    group: command.help?.group ?? "",
   }));
 }
 
@@ -106,16 +107,20 @@ function parseLogLevel(value: string | undefined): LogLevel | undefined {
   return value && LOG_LEVELS.has(value as LogLevel) ? value as LogLevel : undefined;
 }
 
-function resourceCacheStats(services: Awaited<ReturnType<Parameters<CliCommandDef["execute"]>[1]["initServices"]>>) {
+function resourceCacheStats(
+  services: Awaited<ReturnType<Parameters<CliCommandDef["execute"]>[1]["initServices"]>>,
+  namespace?: string,
+) {
+  const where = namespace ? "WHERE namespace = ?1" : "";
   const row = services.persistence.database.connection
-    .query<{ count: number; size: number; expired: number; stale: number }, []>(
+    .query<{ count: number; size: number; expired: number; stale: number }, string[]>(
       `SELECT COUNT(*) as count,
               COALESCE(SUM(size_bytes), 0) as size,
               SUM(CASE WHEN expires_at < strftime('%s','now') * 1000 THEN 1 ELSE 0 END) as expired,
               SUM(CASE WHEN stale_at < strftime('%s','now') * 1000 THEN 1 ELSE 0 END) as stale
-       FROM resource_cache`,
+       FROM resource_cache ${where}`,
     )
-    .get();
+    .get(...(namespace ? [namespace] : []));
   return {
     entries: row?.count ?? 0,
     sizeBytes: row?.size ?? 0,
@@ -151,7 +156,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
 
   const doctorCommand: CliCommandDef = {
     name: "doctor",
-    description: "Check that config, the cache database, plugins, and capabilities load",
+    description: "Check that config, cache, plugins, and capabilities load",
     help: { group: CLI_COMMAND_GROUPS.app, usage: ["doctor"] },
     execute: async (_args, ctx) => {
       const checks: Array<{ check: string; status: string; detail: string }> = [];
@@ -159,8 +164,8 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         await withCliServices(ctx, async (services) => {
           checks.push({ check: "config", status: "ok", detail: services.dataDir });
           checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
-          checks.push({ check: "plugins", status: "ok", detail: `${services.services.pluginRegistry.allPlugins.size} loaded` });
-          checks.push({ check: "capabilities", status: "ok", detail: `${services.services.pluginRegistry.capabilities.manifests().length} registered` });
+          checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
+          checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
         });
       } catch (error) {
         checks.push({ check: "runtime", status: "error", detail: error instanceof Error ? error.message : String(error) });
@@ -169,7 +174,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         columns: [
           { key: "check", header: "Check" },
           { key: "status", header: "Status", format: formatStatusCell },
-          { key: "detail", header: "Detail" },
+          { key: "detail", header: "Detail", format: (value, row) => DOCTOR_COUNT_UNITS[String(row.check)] ? `${value} ${DOCTOR_COUNT_UNITS[String(row.check)]}` : String(value) },
         ],
       });
       if (checks.some((check) => check.status === "error")) process.exitCode = 1;
@@ -178,7 +183,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
 
   const configCommand: CliCommandDef = {
     name: "config",
-    description: "Show or change settings such as base currency, theme, and keybindings",
+    description: "Show or change settings and keybindings",
     help: {
       group: CLI_COMMAND_GROUPS.app,
       usage: [
@@ -215,11 +220,13 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           watchlists: context.config.watchlists.length,
           brokerInstances: context.config.brokerInstances.length,
           [KEYBINDINGS_CONFIG_KEY]: describeKeybindingsForCli(context.config),
+          // Last, so CSV readers that go by position keep their columns.
+          valueFlashingEnabled: context.config.valueFlashingEnabled,
         };
 
         if (action === "list") {
           ctx.printResult({ data: safeConfig }, {
-            columns: Object.keys(safeConfig).map((key) => ({
+            textColumns: Object.keys(safeConfig).map((key) => ({
               key,
               header: key,
               ...(key === KEYBINDINGS_CONFIG_KEY ? { format: summarizeKeybindings } : {}),
@@ -293,7 +300,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         if (action === "status") {
           ctx.printResult({ data: [resourceCacheStats(services)] }, {
             layout: "record",
-            columns: [
+            textColumns: [
               { key: "entries", header: "Entries" },
               { key: "sizeBytes", header: "Size", format: (value) => formatBytes(Number(value)) },
               { key: "staleEntries", header: "Stale" },
@@ -304,9 +311,9 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         }
         if (action === "clear") {
           const namespace = args[1];
-          const before = resourceCacheStats(services);
+          const before = resourceCacheStats(services, namespace);
           if (!ctx.cliOptions.dryRun) services.persistence.resources.clear(namespace);
-          const after = ctx.cliOptions.dryRun ? before : resourceCacheStats(services);
+          const after = ctx.cliOptions.dryRun ? before : resourceCacheStats(services, namespace);
           ctx.printResult({ data: [{ changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, namespace: namespace ?? "all", before: before.entries, after: after.entries }] }, {
             text: ([data]) => {
               const scope = namespace ? ` from ${namespace}` : "";
@@ -335,15 +342,21 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           capability: manifest.id,
           kind: manifest.kind,
           enabled: !disabledSources.has(manifest.sourceId ?? manifest.id),
-          operations: manifest.operations.map((operation) => operation.id).join(", "),
+          operations: manifest.operations.map((operation) => operation.id).join(","),
         }));
         ctx.printResult({ data: rows }, {
           columns: [
             { key: "id", header: "Source" },
-            { key: "capability", header: "Capability" },
             { key: "kind", header: "Kind" },
             { key: "enabled", header: "Enabled" },
             { key: "operations", header: "Operations" },
+          ],
+          textColumns: [
+            { key: "capability", header: "Capability", shrink: false },
+            { key: "id", header: "Source", maxWidth: 20 },
+            { key: "kind", header: "Kind" },
+            { key: "enabled", header: "Enabled" },
+            { key: "operations", header: "Operations", format: (value) => String(value).split(",").join(", ") },
           ],
         });
       });
@@ -352,7 +365,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
 
   const pluginCommand: CliCommandDef = {
     name: "plugin",
-    description: "Inspect, turn on or off, link, or check any plugin, built-in ones included",
+    description: "Inspect, turn on or off, link, or check any plugin",
     help: {
       group: CLI_COMMAND_GROUPS.plugins,
       usage: [
@@ -387,7 +400,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
             detail: check.message,
           }))),
           columns: [
-            { key: "plugin", header: "Plugin" },
+            { key: "plugin", header: "Plugin", shrink: false },
             { key: "check", header: "Check" },
             { key: "status", header: "Status", format: formatStatusCell },
             { key: "detail", header: "Detail" },
@@ -473,7 +486,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
 
   const paneCommand: CliCommandDef = {
     name: "pane",
-    description: "List panes and pane templates with the plugin that owns each",
+    description: "List panes and templates with the plugin that owns each",
     help: { group: CLI_COMMAND_GROUPS.app, usage: ["pane list"] },
     execute: async (_args, ctx) => {
       await withCliServices(ctx, async (services) => {
@@ -494,7 +507,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         ctx.printResult({ data: rows }, {
           columns: [
             { key: "kind", header: "Kind" },
-            { key: "id", header: "ID" },
+            { key: "id", header: "ID", shrink: false },
             { key: "name", header: "Name" },
             { key: "owner", header: "Owner" },
           ],
@@ -571,9 +584,12 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         }
         if (action === "delete" || action === "rm") {
           const symbol = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb notes delete <symbol>", ctx);
+          const existed = !!(await notes.load(symbol))?.trim();
           if (!ctx.cliOptions.dryRun) await notes.delete(symbol);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol } }, {
-            text: (data) => `Deleted the note for ${symbol}.${dryRunNote(data.dryRun)}`,
+            text: (data) => existed
+              ? `Deleted the note for ${symbol}.${dryRunNote(data.dryRun)}`
+              : cliStyles.muted(`No note for ${symbol}.`),
           });
           return;
         }
@@ -612,8 +628,8 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
 
         if (action === "list") {
           ctx.printResult({ data: alerts }, {
-            columns: [
-              { key: "id", header: "ID" },
+            textColumns: [
+              { key: "id", header: "ID", shrink: false },
               { key: "symbol", header: "Symbol" },
               { key: "condition", header: "Condition" },
               { key: "targetPrice", header: "Target", align: "right" },
@@ -734,10 +750,10 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
     execute: (_args, ctx) => {
       ctx.printResult({ data: commandRows(allCommands()) }, {
         columns: [
-          { key: "name", header: "Command" },
-          { key: "group", header: "Group" },
-          { key: "aliases", header: "Aliases" },
+          { key: "name", header: "Command", shrink: false },
+          { key: "aliases", header: "Aliases", format: (value) => String(value).split(",").join(", ") },
           { key: "description", header: "Description" },
+          { key: "group", header: "Group" },
         ],
       });
     },
@@ -745,7 +761,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
 
   const coverageCommand: CliCommandDef = {
     name: "coverage",
-    description: "Show which panes, templates, and capabilities the CLI reaches",
+    description: "Show which panes and capabilities the CLI reaches",
     help: { group: CLI_COMMAND_GROUPS.app, usage: ["coverage"] },
     execute: async (_args, ctx) => {
       const commandNames = new Set(allCommands().map((command) => command.name));
@@ -788,7 +804,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         ctx.printResult({ data: rows }, {
           columns: [
             { key: "surface", header: "Surface" },
-            { key: "id", header: "ID" },
+            { key: "id", header: "ID", shrink: false },
             { key: "coverage", header: "Coverage" },
             { key: "command", header: "Command" },
             { key: "label", header: "Label" },

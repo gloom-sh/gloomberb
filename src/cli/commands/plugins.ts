@@ -669,7 +669,7 @@ async function readInstalledPlugins(options: { check?: boolean }): Promise<Insta
 export async function listPlugins(ctx: CliCommandContext, options: { check?: boolean } = {}) {
   const plugins = await readInstalledPlugins(options);
   const columns = [
-    { key: "name", header: "Plugin" },
+    { key: "name", header: "Plugin", shrink: false },
     { key: "version", header: "Version" },
     { key: "commit", header: "Commit" },
     ...(options.check ? [{ key: "update", header: "Update" }] : []),
@@ -683,7 +683,7 @@ export async function listPlugins(ctx: CliCommandContext, options: { check?: boo
       }
       return [
         renderTable(
-          columns.map(({ header }) => ({ header })),
+          columns.map(({ header, shrink }) => ({ header, shrink })),
           rows.map((row) => columns.map(({ key }) => {
             const value = String(row[key as keyof InstalledPluginRow] ?? "");
             return key === "update" && value && value !== "up to date" ? cliStyles.warning(value) : value;

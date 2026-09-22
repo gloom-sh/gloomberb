@@ -8,6 +8,8 @@ export interface CliTableColumn {
   maxWidth?: number;
   /** Dropped, rightmost first, before other columns are shortened to fit a terminal. */
   optional?: boolean;
+  /** False keeps the column whole when fitting, for identifiers a user types into the next command. */
+  shrink?: boolean;
 }
 
 export interface CliTableOptions {
@@ -20,6 +22,7 @@ export type CliStatEntry = readonly [label: string, value: string];
 
 const ANSI_PATTERN = /\x1b\[[0-9;]*m/g;
 const ANSI_PREFIX = /^\x1b\[[0-9;]*m/;
+const ANSI_SPLIT = /(\x1b\[[0-9;]*m)/;
 const ELLIPSIS = "…";
 const COLUMN_GAP = 2;
 // A shrunk text column keeps at least this many cells, or its header width when wider.
@@ -71,27 +74,28 @@ function padDisplay(text: string, width: number, align: CliAlign = "left"): stri
   return `${text}${" ".repeat(padding)}`;
 }
 
-/** Cuts text to `width` cells, ending in an ellipsis, without breaking escape codes. */
+const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+
+/** Cuts text to `width` cells, ending in an ellipsis, without breaking escape codes or emoji. */
 export function truncateDisplay(text: string, width: number): string {
   if (visibleLength(text) <= width) return text;
   if (width <= 0) return "";
   let output = "";
   let used = 0;
   let styled = false;
-  for (let index = 0; index < text.length;) {
-    const escape = text[index] === "\x1b" ? ANSI_PREFIX.exec(text.slice(index)) : null;
-    if (escape) {
-      output += escape[0];
+  // Escape codes pass through at no width; the text between them is cut on whole graphemes.
+  for (const part of text.split(ANSI_SPLIT)) {
+    if (ANSI_PREFIX.test(part)) {
+      output += part;
       styled = true;
-      index += escape[0].length;
       continue;
     }
-    const char = String.fromCodePoint(text.codePointAt(index)!);
-    const charWidth = visibleLength(char);
-    if (used + charWidth > width - 1) break;
-    output += char;
-    used += charWidth;
-    index += char.length;
+    for (const { segment } of graphemes.segment(part)) {
+      const segmentWidth = visibleLength(segment);
+      if (used + segmentWidth > width - 1) return `${output}${ELLIPSIS}${styled ? "\x1b[0m" : ""}`;
+      output += segment;
+      used += segmentWidth;
+    }
   }
   return `${output}${ELLIPSIS}${styled ? "\x1b[0m" : ""}`;
 }
@@ -161,13 +165,26 @@ export function renderStat(label: string, value: string, labelWidth = 16): strin
   return `${cliStyles.muted(padDisplay(label, Math.max(labelWidth, visibleLength(label) + 1)))} ${value}`.trimEnd();
 }
 
+export interface CliStatsOptions {
+  indent?: number;
+  /** Width the block wraps within. Defaults to the terminal width; null never wraps. */
+  width?: number | null;
+}
+
+/** Cells left for values after a block's labels, for callers that build nested values. */
+export function statValueWidth(entries: readonly CliStatEntry[], options: CliStatsOptions = {}): number | null {
+  const width = options.width === undefined ? cliTerminalWidth() : options.width;
+  if (width == null) return null;
+  const labelWidth = Math.max(0, ...entries.map(([label]) => visibleLength(label)));
+  return Math.max(20, width - (options.indent ?? 0) - labelWidth - COLUMN_GAP);
+}
+
 /** A block of label/value lines aligned on the longest label. Values wrap under themselves. */
-export function renderStats(entries: readonly CliStatEntry[], options: { indent?: number } = {}): string {
+export function renderStats(entries: readonly CliStatEntry[], options: CliStatsOptions = {}): string {
   const indent = " ".repeat(options.indent ?? 0);
   const labelWidth = Math.max(0, ...entries.map(([label]) => visibleLength(label)));
   const valueIndent = `${indent}${" ".repeat(labelWidth + COLUMN_GAP)}`;
-  const terminalWidth = cliTerminalWidth();
-  const valueWidth = terminalWidth == null ? null : Math.max(20, terminalWidth - valueIndent.length);
+  const valueWidth = statValueWidth(entries, options);
   return entries.map(([label, value]) => {
     const valueLines = valueWidth == null ? value.split("\n") : wrapText(value, valueWidth);
     const [first = "", ...rest] = valueLines;
@@ -188,18 +205,31 @@ export interface CliDefinitionOptions {
 }
 
 const DEFINITION_GAP = 3;
+const MIN_DEFINITION_WIDTH = 24;
+const MIN_TERM_WIDTH = 12;
+const MAX_TERM_SHARE = 0.4;
 
 /** Terms on the left and their descriptions wrapped in a column on the right, as in help text. */
 export function renderDefinitions(entries: ReadonlyArray<readonly [string, string]>, options: CliDefinitionOptions): string[] {
   const indent = options.indent ?? 2;
-  const termWidth = options.termWidth ?? Math.max(0, ...entries.map(([term]) => visibleLength(term)));
-  const descriptionIndent = indent + termWidth + DEFINITION_GAP;
-  const descriptionWidth = Math.max(24, options.width - descriptionIndent);
+  const longestTerm = Math.max(0, ...entries.map(([term]) => visibleLength(term)));
+  // One long term (an option listing every accepted value) must not push every description aside.
+  const termWidth = Math.min(options.termWidth ?? longestTerm, Math.max(MIN_TERM_WIDTH, Math.floor(options.width * MAX_TERM_SHARE)));
+  const sideBySide = options.width - (indent + termWidth + DEFINITION_GAP) >= MIN_DEFINITION_WIDTH;
+  const descriptionIndent = sideBySide ? indent + termWidth + DEFINITION_GAP : indent + 4;
+  const descriptionWidth = Math.max(1, options.width - descriptionIndent);
   const lines: string[] = [];
   for (const [term, description] of entries) {
     const styledTerm = options.termStyle ? options.termStyle(term) : term;
-    const padding = " ".repeat(Math.max(1, termWidth - visibleLength(term) + DEFINITION_GAP));
-    const [first = "", ...rest] = wrapText(description, descriptionWidth);
+    const described = wrapText(description, descriptionWidth);
+    if (!sideBySide || visibleLength(term) > termWidth) {
+      // The description goes under its term.
+      lines.push(`${" ".repeat(indent)}${styledTerm}`);
+      for (const line of described) lines.push(`${" ".repeat(descriptionIndent)}${line}`);
+      continue;
+    }
+    const padding = " ".repeat(termWidth - visibleLength(term) + DEFINITION_GAP);
+    const [first = "", ...rest] = described;
     lines.push(`${" ".repeat(indent)}${styledTerm}${padding}${first}`.trimEnd());
     for (const line of rest) lines.push(`${" ".repeat(descriptionIndent)}${line}`);
   }
@@ -214,9 +244,9 @@ function fitColumnWidths(columns: CliTableColumn[], widths: number[], maxWidth: 
   const fitted = [...widths];
   let overflow = tableWidth(fitted) - maxWidth;
   if (overflow <= 0) return fitted;
-  // Fixed and right-aligned (numeric) columns keep their width.
+  // Fixed, right-aligned (numeric), and non-shrinking columns keep their width.
   const floors = columns.map((column, index) => (
-    column.width != null || column.align === "right"
+    column.width != null || column.align === "right" || column.shrink === false
       ? fitted[index]!
       : Math.min(fitted[index]!, Math.max(MIN_SHRUNK_COLUMN_WIDTH, visibleLength(column.header)))
   ));
@@ -265,7 +295,8 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
 
   const renderRow = (cells: string[], style?: (text: string) => string) => {
     const rendered = shown.map(({ column, index, width }, position) => {
-      const cell = truncateDisplay(cells[index] ?? "", width);
+      // Piped output keeps every cell whole, fixed-width columns included.
+      const cell = available == null ? cells[index] ?? "" : truncateDisplay(cells[index] ?? "", width);
       // The last left-aligned column is not padded so lines carry no trailing spaces.
       const padded = position === shown.length - 1 && (column.align ?? "left") === "left"
         ? cell

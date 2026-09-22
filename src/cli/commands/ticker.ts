@@ -90,12 +90,13 @@ function buildStatementMetrics(statement: FinancialStatement, currency?: string)
   ];
 }
 
-function appendTextSection(lines: string[], title: string, content: string | undefined) {
+/** Provider prose is wrapped; `verbatim` keeps the user's own spacing, such as a table in a note. */
+function appendTextSection(lines: string[], title: string, content: string | undefined, verbatim = false) {
   const text = content?.trim();
   if (!text) return;
   lines.push("");
   lines.push(renderSection(title));
-  lines.push(wrapProse(text));
+  lines.push(verbatim ? text : wrapProse(text));
 }
 
 function normalizeTimestamp(value: Date | string | number | undefined): number | null {
@@ -431,7 +432,7 @@ export async function buildTickerReport({
 
   appendTextSection(lines, "Description", profile?.description);
 
-  appendTextSection(lines, "Notes", notes);
+  appendTextSection(lines, "Notes", notes, true);
 
   appendFeedSection(lines, "Recent News", recentNews.map((item) => ({
     title: item.title,

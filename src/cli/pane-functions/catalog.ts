@@ -259,15 +259,24 @@ function catalogArgument(entry: PaneCatalogEntry): string {
   return entry.argKind && entry.argKind !== "none" ? `<${entry.argKind}>` : "";
 }
 
+// Choices longer than this move from the flag into its description, where they can wrap.
+const MAX_INLINE_CHOICES = 24;
+
+function optionChoices(option: PaneFunctionOptionDef): string[] {
+  return option.values?.map(({ value }) => String(value)) ?? [];
+}
+
 function optionFlags(option: PaneFunctionOptionDef): string {
-  const values = option.values?.map(({ value }) => value).join("|");
-  return `--${option.key} <${values || option.type}>`;
+  const choices = optionChoices(option).join("|");
+  return `--${option.key} <${choices && choices.length <= MAX_INLINE_CHOICES ? choices : option.values?.length ? "value" : option.type}>`;
 }
 
 function optionDescription(option: PaneFunctionOptionDef): string {
-  return option.defaultValue !== undefined && option.defaultValue !== ""
-    ? `${option.description.replace(/\.$/, "")} (default ${String(option.defaultValue)})`
-    : option.description;
+  const choices = optionChoices(option);
+  const parts = [option.description.replace(/\.$/, "")];
+  if (choices.join("|").length > MAX_INLINE_CHOICES) parts.push(`One of ${choices.join(", ")}`);
+  if (option.defaultValue !== undefined && option.defaultValue !== "") parts.push(`Default ${String(option.defaultValue)}`);
+  return `${parts.join(". ")}.`;
 }
 
 function renderCatalogEntry(entry: PaneCatalogEntry): string {
@@ -313,8 +322,10 @@ export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: Parse
   if (exact) return renderCatalogEntry(exact);
   if (args.query && entries.length === 1) return renderCatalogEntry(entries[0]!);
 
+  const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
+  const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
-    return cliStyles.muted(args.query
+    return note(args.query
       ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
       : "No functions are available.");
   }
@@ -326,7 +337,7 @@ export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: Parse
     `${renderSection(title)} ${cliStyles.muted(`(${count})`)}`,
     renderTable(
       [
-        { header: "Function" },
+        { header: "Function", shrink: false },
         { header: "Name", maxWidth: 20 },
         { header: "Argument", maxWidth: 14 },
         { header: "Report" },
@@ -341,7 +352,7 @@ export function renderPaneCatalogReport(entries: PaneCatalogEntry[], args: Parse
       ]),
     ),
     "",
-    cliStyles.muted(shown.length < entries.length
+    note(shown.length < entries.length
       ? `gloomberb catalog <function> shows its options and examples. Add --all to list all ${entries.length}.`
       : "gloomberb catalog <function> shows its options and examples."),
   ];

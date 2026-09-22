@@ -4,6 +4,7 @@ import {
   cliTerminalWidth,
   renderStats,
   renderTable,
+  statValueWidth,
   visibleLength,
   type CliStatEntry,
   type CliTableColumn,
@@ -33,6 +34,8 @@ export interface CliResultColumn<Row = Record<string, unknown>> extends CliTable
 export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknown>> {
   text?: (data: T) => string;
   columns?: CliResultColumn<Row>[];
+  /** Columns for text mode only. CSV and the JSON envelope keep `columns`, or the data keys without them. */
+  textColumns?: CliResultColumn<Row>[];
   rows?: (data: T) => Row[];
   /**
    * How text mode lays rows out. "record" prints each row as aligned label/value lines, which
@@ -52,6 +55,7 @@ type TextCellContext = "table" | "record";
 
 const ISO_DATE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?$/;
 const TIME_KEY = /(?:At|Time|Timestamp)$/;
+const IDENTIFIER_KEY = /^id$|Id$/;
 // Epoch milliseconds between 2001 and 2286, so counts and prices are never read as dates.
 const EPOCH_MS_MIN = 1e12;
 const EPOCH_MS_MAX = 1e13;
@@ -108,15 +112,21 @@ function formatLocalDateTime(date: Date): string {
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
 }
 
-// Six significant digits hide float noise (0.9499999999999886) without cutting real precision.
+// Six significant digits hide float noise (0.9499999999999886) without cutting real precision;
+// large values keep cents instead, so 1234567.89 is not rounded to 1234570.
 function formatTextNumber(value: number): string {
   if (!Number.isFinite(value) || Number.isInteger(value)) return String(value);
-  const magnitude = Math.floor(Math.log10(Math.abs(value)));
-  const decimals = Math.min(8, Math.max(2, 5 - magnitude));
-  return String(Number(value.toFixed(decimals)));
+  return String(Math.abs(value) >= 1e5 ? Number(value.toFixed(2)) : Number(value.toPrecision(6)));
 }
 
-function formatTextValue(value: unknown, key: string | undefined, context: TextCellContext, depth = 0): string {
+/** `width` is the room a record value has, so nested blocks wrap inside it. */
+function formatTextValue(
+  value: unknown,
+  key: string | undefined,
+  context: TextCellContext,
+  depth = 0,
+  width: number | null = null,
+): string {
   const missing = context === "record" ? cliStyles.muted("-") : "";
   if (value == null || value === "") return missing;
   if (value instanceof Date) return formatLocalDateTime(value);
@@ -144,10 +154,12 @@ function formatTextValue(value: unknown, key: string | undefined, context: TextC
     const entries = Object.entries(value);
     if (entries.length === 0) return context === "record" ? cliStyles.muted("none") : "";
     if (context === "record" && depth < 2) {
-      return renderStats(entries.map(([entryKey, entryValue]) => [
-        humanizeCliKey(entryKey),
-        formatTextValue(entryValue, entryKey, "record", depth + 1),
-      ]));
+      const labels = entries.map(([entryKey]) => [humanizeCliKey(entryKey), ""] as const);
+      const nestedWidth = statValueWidth(labels, { width });
+      return renderStats(entries.map(([entryKey, entryValue], index) => [
+        labels[index]![0],
+        formatTextValue(entryValue, entryKey, "record", depth + 1, nestedWidth),
+      ]), { width });
     }
     return JSON.stringify(value);
   }
@@ -156,7 +168,7 @@ function formatTextValue(value: unknown, key: string | undefined, context: TextC
 
 function formatInlineObject(value: Record<string, unknown>): string {
   return Object.entries(value)
-    .filter(([, entryValue]) => entryValue != null && entryValue !== "")
+    .filter(([, entryValue]) => !isEmptyTextValue(entryValue) && !(isPlainObject(entryValue) && Object.keys(entryValue).length === 0))
     .map(([entryKey, entryValue]) => `${entryKey}: ${formatTextValue(entryValue, entryKey, "table", 2)}`)
     .join(", ");
 }
@@ -175,20 +187,20 @@ function isEmptyTextValue(value: unknown): boolean {
   return value == null || value === "" || (Array.isArray(value) && value.length === 0);
 }
 
-function inferTextColumns(rows: Record<string, unknown>[], context: TextCellContext): CliResultColumn<Record<string, unknown>>[] {
-  const columns = inferColumns(rows).map((column) => {
+function inferTextColumns(rows: Record<string, unknown>[]): CliResultColumn<Record<string, unknown>>[] {
+  return inferColumns(rows).map((column) => {
     const values = rows.map((row) => row?.[column.key]).filter((value) => !isEmptyTextValue(value));
     const numeric = values.length > 0 && values.every((value) => typeof value === "number" && !(
       TIME_KEY.test(column.key) && value >= EPOCH_MS_MIN && value < EPOCH_MS_MAX
     ));
     return {
-      column: { ...column, header: humanizeCliKey(column.key), ...(numeric ? { align: "right" as const } : {}) },
-      empty: values.length === 0,
+      ...column,
+      header: humanizeCliKey(column.key),
+      ...(numeric ? { align: "right" as const } : {}),
+      // IDs are what a user types into the next command, so they stay whole.
+      ...(IDENTIFIER_KEY.test(column.key) ? { shrink: false } : {}),
     };
   });
-  // A column no row fills is noise in a table; a record still lists the field, and exports keep it.
-  const filled = context === "table" ? columns.filter((entry) => !entry.empty) : columns;
-  return (filled.length > 0 ? filled : columns).map((entry) => entry.column);
 }
 
 function serializeColumns<Row>(columns?: CliResultColumn<Row>[]) {
@@ -217,38 +229,45 @@ function renderCsv<Row extends Record<string, unknown>>(
 
 function textColumns<Row extends Record<string, unknown>>(
   rows: Row[],
-  context: TextCellContext,
   columns?: CliResultColumn<Row>[],
 ): CliResultColumn<Row>[] {
   return columns && columns.length > 0
     ? columns
-    : inferTextColumns(rows as Record<string, unknown>[], context) as CliResultColumn<Row>[];
+    : inferTextColumns(rows as Record<string, unknown>[]) as CliResultColumn<Row>[];
 }
 
 function formatTextCell<Row extends Record<string, unknown>>(
   column: CliResultColumn<Row>,
   row: Row,
   context: TextCellContext,
+  width: number | null = null,
 ): string {
   const value = column.value ? column.value(row) : row?.[column.key];
   if (column.format) return column.format(value, row);
-  return formatTextValue(value, column.key, context);
+  return formatTextValue(value, column.key, context, 0, width);
 }
 
 function renderTextTable<Row extends Record<string, unknown>>(
   rows: Row[],
   columns?: CliResultColumn<Row>[],
 ): string {
-  const resolvedColumns = textColumns(rows, "table", columns);
+  const resolvedColumns = textColumns(rows, columns);
+  const cells = rows.map((row) => resolvedColumns.map((column) => formatTextCell(column, row, "table")));
+  // A column no row fills is noise in a table; exports keep it.
+  const filled = resolvedColumns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column, index }) => column.width != null || cells.some((row) => row[index] !== ""));
+  const shown = filled.length > 0 ? filled : resolvedColumns.map((column, index) => ({ column, index }));
   return renderTable(
-    resolvedColumns.map((column) => ({
+    shown.map(({ column }) => ({
       header: column.header,
       align: column.align,
       width: column.width,
       maxWidth: column.maxWidth,
       optional: column.optional,
+      shrink: column.shrink,
     })),
-    rows.map((row) => resolvedColumns.map((column) => formatTextCell(column, row, "table"))),
+    cells.map((row) => shown.map(({ index }) => row[index]!)),
   );
 }
 
@@ -256,11 +275,12 @@ function renderTextRecords<Row extends Record<string, unknown>>(
   rows: Row[],
   columns?: CliResultColumn<Row>[],
 ): string {
-  const resolvedColumns = textColumns(rows, "record", columns);
+  const resolvedColumns = textColumns(rows, columns);
+  const valueWidth = statValueWidth(resolvedColumns.map((column) => [column.header, ""] as const));
   return rows
     .map((row) => renderStats(resolvedColumns.map((column): CliStatEntry => [
       column.header,
-      formatTextCell(column, row, "record"),
+      formatTextCell(column, row, "record", valueWidth),
     ])))
     .join("\n\n");
 }
@@ -268,7 +288,7 @@ function renderTextRecords<Row extends Record<string, unknown>>(
 function overflowsTerminal<Row extends Record<string, unknown>>(rows: Row[]): boolean {
   const terminalWidth = cliTerminalWidth();
   if (terminalWidth == null) return false;
-  const columns = textColumns(rows, "table");
+  const columns = textColumns(rows);
   const width = columns.reduce((sum, column) => sum + Math.max(
     visibleLength(column.header),
     ...rows.map((row) => visibleLength(formatTextCell(column, row, "table"))),
@@ -307,13 +327,14 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
   }
   const layout = renderOptions.layout
     ?? (!renderOptions.rows && isPlainObject(result.data) ? "record" : "table");
-  if (!renderOptions.layout && rows.length === 1 && !renderOptions.columns?.length && overflowsTerminal(rows as Row[])) {
+  const columns = renderOptions.textColumns ?? renderOptions.columns;
+  if (!renderOptions.layout && rows.length === 1 && !columns?.length && overflowsTerminal(rows as Row[])) {
     // One row that cannot fit as a table reads better as label/value lines than cut off.
     return renderTextRecords(rows as Row[]);
   }
   return layout === "record"
-    ? renderTextRecords(rows as Row[], renderOptions.columns)
-    : renderTextTable(rows as Row[], renderOptions.columns);
+    ? renderTextRecords(rows as Row[], columns)
+    : renderTextTable(rows as Row[], columns);
 }
 
 export function printCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(

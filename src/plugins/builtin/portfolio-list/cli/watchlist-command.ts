@@ -143,7 +143,7 @@ async function listWatchlists(ctx: CliCommandContext) {
     console.log(renderTable(
       [
         { header: "Watchlist" },
-        { header: "ID" },
+        { header: "ID", shrink: false },
         { header: "Tickers", align: "right" },
       ],
       rows.map((watchlist) => [
@@ -158,7 +158,7 @@ async function listWatchlists(ctx: CliCommandContext) {
 export const watchlistCliCommand: CliCommandDef = {
   name: "watchlist",
   aliases: ["watchlists"],
-  description: "List watchlists, show their quotes, and add or remove symbols",
+  description: "Show watchlist quotes, and add or remove symbols",
   help: {
     group: CLI_COMMAND_GROUPS.portfolios,
     usage: [
