@@ -29,6 +29,7 @@ import { sectorsModule } from "./sectors";
 import { treasuryAuctionsModule } from "./treasury-auctions";
 import { worldIndicesModule } from "./world-indices";
 import { worldVenueMapModule } from "./world-venue-map";
+import { bondCalculatorModule } from "./bond-calculator";
 import { yieldCurveModule } from "./yield-curve";
 import { moneyMarketsModule } from "./money-markets";
 import { ratePathModule } from "./rate-path";
@@ -105,6 +106,7 @@ export const macroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,
+    bondCalculatorModule,
     volatilityModule,
     creditConditionsModule,
     marketValuationModule,

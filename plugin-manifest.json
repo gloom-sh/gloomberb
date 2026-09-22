@@ -122,6 +122,7 @@
       "toggleable": true,
       "contributes": {
         "panes": [
+          "bond-calculator",
           "cds",
           "credit-conditions",
           "earnings-calendar",
