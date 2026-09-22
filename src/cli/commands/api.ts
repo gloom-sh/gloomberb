@@ -58,7 +58,7 @@ export const apiCliCommand: CliCommandDef = {
           })),
           columns: [
             { key: "id", header: "Capability", shrink: false },
-            { key: "kind", header: "Kind" },
+            { key: "kind", header: "Kind", shrink: false },
             { key: "name", header: "Name" },
             { key: "operations", header: "Operations" },
           ],

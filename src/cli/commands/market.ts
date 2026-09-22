@@ -436,7 +436,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       rows: optionRows,
       columns: [
         { key: "side", header: "Side" },
-        { key: "contract", header: "Contract" },
+        { key: "contract", header: "Contract", shrink: false },
         { key: "expiration", header: "Expiry" },
         { key: "strike", header: "Strike", align: "right" },
         { key: "last", header: "Last", align: "right" },

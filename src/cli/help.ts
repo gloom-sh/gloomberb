@@ -6,6 +6,7 @@ import {
   renderSection,
   renderTable,
   visibleLength,
+  wrapCommandLine,
   wrapText,
 } from "../utils/cli-output";
 
@@ -31,7 +32,7 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["--json, --csv, --ndjson", "Print machine-readable output instead of text"],
   ["--limit <n>", "Show at most n rows"],
   ["--refresh", "Fetch fresh data instead of reading the cache"],
-  ["--dry-run", "Preview config, cache, notes, alerts, plugin, and remote changes without saving"],
+  ["--dry-run", "Preview config, cache, notes, alerts, plugin on/off, and remote changes without saving"],
   ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
   ["--color, --no-color", "Force or turn off colors (NO_COLOR=1 also turns them off)"],
 ];
@@ -53,10 +54,8 @@ function withProgramName(invocation: string): string {
   return invocation.startsWith("gloomberb ") ? invocation : `gloomberb ${invocation}`;
 }
 
-/** A full command line, wrapped with its continuation lines indented under the command. */
 function renderInvocation(invocation: string, width: number): string[] {
-  const [first = "", ...rest] = wrapText(withProgramName(invocation), width - INDENT);
-  return [`${" ".repeat(INDENT)}${first}`, ...rest.map((line) => `${" ".repeat(INDENT + 4)}${line}`)];
+  return wrapCommandLine(withProgramName(invocation), width, INDENT);
 }
 
 function renderParagraph(text: string, width: number): string[] {

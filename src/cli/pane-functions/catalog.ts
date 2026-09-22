@@ -19,6 +19,7 @@ import {
   renderSection,
   renderStats,
   renderTable,
+  wrapCommandLine,
   wrapText,
   type CliStatEntry,
 } from "../../utils/cli-output";
@@ -310,8 +311,8 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   }
 
   lines.push("", renderSection("Examples"));
-  if (capability.reportReadiness !== "unsupported") lines.push(`  gloomberb fn ${invocation}`);
-  lines.push(`  gloomberb shot ${invocation} --output ${entry.token.toLowerCase()}.png`);
+  if (capability.reportReadiness !== "unsupported") lines.push(...wrapCommandLine(`gloomberb fn ${invocation}`, width));
+  lines.push(...wrapCommandLine(`gloomberb shot ${invocation} --output ${entry.token.toLowerCase()}.png`, width));
   return lines.join("\n");
 }
 

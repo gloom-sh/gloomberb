@@ -195,6 +195,13 @@ export function renderStats(entries: readonly CliStatEntry[], options: CliStatsO
   }).join("\n");
 }
 
+/** A command line wrapped to `width`, continuation lines indented under the command. */
+export function wrapCommandLine(text: string, width: number, indent = 2): string[] {
+  const hanging = indent + 4;
+  const [first = "", ...rest] = wrapText(text, Math.max(1, width - hanging));
+  return [`${" ".repeat(indent)}${first}`, ...rest.map((line) => `${" ".repeat(hanging)}${line}`)];
+}
+
 export interface CliDefinitionOptions {
   /** Total width descriptions wrap within. */
   width: number;
@@ -240,7 +247,24 @@ function tableWidth(widths: number[]): number {
   return widths.reduce((sum, width) => sum + width, 0) + COLUMN_GAP * Math.max(0, widths.length - 1);
 }
 
-function fitColumnWidths(columns: CliTableColumn[], widths: number[], maxWidth: number): number[] {
+/** Takes cells from the widest of `candidates` until `overflow` is gone or they reach their floors. */
+function shrinkWidest(fitted: number[], floors: number[], candidates: number[], overflow: number): number {
+  let remaining = overflow;
+  while (remaining > 0) {
+    let widest = -1;
+    for (const index of candidates) {
+      if (fitted[index]! <= floors[index]!) continue;
+      if (widest < 0 || fitted[index]! > fitted[widest]!) widest = index;
+    }
+    if (widest < 0) break;
+    fitted[widest] = fitted[widest]! - 1;
+    remaining -= 1;
+  }
+  return remaining;
+}
+
+/** Column widths that fit `maxWidth`, or null when even the narrowest allowed widths do not. */
+function fitColumnWidths(columns: CliTableColumn[], widths: number[], maxWidth: number): number[] | null {
   const fitted = [...widths];
   let overflow = tableWidth(fitted) - maxWidth;
   if (overflow <= 0) return fitted;
@@ -250,25 +274,19 @@ function fitColumnWidths(columns: CliTableColumn[], widths: number[], maxWidth: 
       ? fitted[index]!
       : Math.min(fitted[index]!, Math.max(MIN_SHRUNK_COLUMN_WIDTH, visibleLength(column.header)))
   ));
-  // The rightmost text column is usually the free text (a title, description, or message),
-  // so it gives way first and identifiers to its left stay whole.
-  for (let index = fitted.length - 1; index >= 0 && overflow > 0; index -= 1) {
-    const floor = Math.max(floors[index]!, Math.min(fitted[index]!, SOFT_MIN_COLUMN_WIDTH));
-    const cut = Math.min(overflow, Math.max(0, fitted[index]! - floor));
+  // Long text columns (titles, descriptions, messages) give way before short values such as dates,
+  // statuses, and categories lose a single cell. The rightmost long column goes first.
+  const long = fitted.map((width, index) => index).filter((index) => fitted[index]! > SOFT_MIN_COLUMN_WIDTH);
+  for (const index of [...long].reverse()) {
+    if (overflow <= 0) break;
+    const cut = Math.min(overflow, Math.max(0, fitted[index]! - Math.max(floors[index]!, SOFT_MIN_COLUMN_WIDTH)));
     fitted[index] = fitted[index]! - cut;
     overflow -= cut;
   }
-  while (overflow > 0) {
-    let widest = -1;
-    for (let index = 0; index < fitted.length; index += 1) {
-      if (fitted[index]! <= floors[index]!) continue;
-      if (widest < 0 || fitted[index]! > fitted[widest]!) widest = index;
-    }
-    if (widest < 0) break;
-    fitted[widest] = fitted[widest]! - 1;
-    overflow -= 1;
-  }
-  return fitted;
+  overflow = shrinkWidest(fitted, floors, long, overflow);
+  const short = fitted.map((width, index) => index).filter((index) => !long.includes(index));
+  overflow = shrinkWidest(fitted, floors, short, overflow);
+  return overflow > 0 ? null : fitted;
 }
 
 export function renderTable(columns: CliTableColumn[], rows: string[][], options: CliTableOptions = {}): string {
@@ -277,26 +295,30 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
   const available = maxWidth == null ? null : maxWidth - indent.length;
   let shown = columns.map((column, index) => {
     const cellWidths = rows.map((row) => visibleLength(row[index] ?? ""));
-    const natural = column.width ?? Math.max(visibleLength(column.header), ...cellWidths);
-    const capped = available != null && column.maxWidth != null
-      ? Math.min(natural, Math.max(column.maxWidth, visibleLength(column.header)))
-      : natural;
-    return { column, index, width: capped };
+    return { column, index, width: column.width ?? Math.max(visibleLength(column.header), ...cellWidths) };
   });
-  if (available != null) {
+  // Cells are only cut when the table was fitted to a terminal; piped output keeps them whole.
+  let truncate = false;
+  if (available != null && tableWidth(shown.map((entry) => entry.width)) > available) {
     while (tableWidth(shown.map((entry) => entry.width)) > available) {
       const dropped = shown.findLast((entry) => entry.column.optional);
       if (!dropped) break;
       shown = shown.filter((entry) => entry !== dropped);
     }
-    const fitted = fitColumnWidths(shown.map((entry) => entry.column), shown.map((entry) => entry.width), available);
-    shown = shown.map((entry, position) => ({ ...entry, width: fitted[position]! }));
+    const capped = shown.map((entry) => (entry.column.maxWidth == null
+      ? entry.width
+      : Math.min(entry.width, Math.max(entry.column.maxWidth, visibleLength(entry.column.header)))));
+    const fitted = fitColumnWidths(shown.map((entry) => entry.column), capped, available);
+    // A table that cannot fit even at its narrowest keeps every cell whole rather than losing data and overflowing anyway.
+    if (fitted) {
+      shown = shown.map((entry, position) => ({ ...entry, width: fitted[position]! }));
+      truncate = true;
+    }
   }
 
   const renderRow = (cells: string[], style?: (text: string) => string) => {
     const rendered = shown.map(({ column, index, width }, position) => {
-      // Piped output keeps every cell whole, fixed-width columns included.
-      const cell = available == null ? cells[index] ?? "" : truncateDisplay(cells[index] ?? "", width);
+      const cell = truncate ? truncateDisplay(cells[index] ?? "", width) : cells[index] ?? "";
       // The last left-aligned column is not padded so lines carry no trailing spaces.
       const padded = position === shown.length - 1 && (column.align ?? "left") === "left"
         ? cell

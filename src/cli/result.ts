@@ -6,6 +6,7 @@ import {
   renderTable,
   statValueWidth,
   visibleLength,
+  wrapText,
   type CliStatEntry,
   type CliTableColumn,
 } from "../utils/cli-output";
@@ -113,10 +114,10 @@ function formatLocalDateTime(date: Date): string {
 }
 
 // Six significant digits hide float noise (0.9499999999999886) without cutting real precision;
-// large values keep cents instead, so 1234567.89 is not rounded to 1234570.
+// values of 1000 or more keep cents instead, so 46206.69 and 99999.99 stay as they are.
 function formatTextNumber(value: number): string {
   if (!Number.isFinite(value) || Number.isInteger(value)) return String(value);
-  return String(Math.abs(value) >= 1e5 ? Number(value.toFixed(2)) : Number(value.toPrecision(6)));
+  return String(Math.abs(value) >= 1000 ? Number(value.toFixed(2)) : Number(value.toPrecision(6)));
 }
 
 /** `width` is the room a record value has, so nested blocks wrap inside it. */
@@ -146,7 +147,12 @@ function formatTextValue(
       return value.map((item) => formatTextValue(item, undefined, "table")).join(", ");
     }
     if (context === "record" && depth < 2) {
-      return value.map((item) => (isPlainObject(item) ? formatInlineObject(item) : normalizeCell(item))).join("\n");
+      // One bulleted item per object, continuation lines under the item, so items stay apart.
+      return value.flatMap((item) => {
+        const text = isPlainObject(item) ? formatInlineObject(item) : normalizeCell(item);
+        const [first = "", ...rest] = width == null ? [text] : wrapText(text, Math.max(1, width - 2));
+        return [`- ${first}`, ...rest.map((line) => `  ${line}`)];
+      }).join("\n");
     }
     return JSON.stringify(value);
   }

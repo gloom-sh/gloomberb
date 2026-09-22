@@ -15,7 +15,7 @@ import { debugLog, type LogLevel } from "../../utils/debug-log";
 import { withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatBytes, formatStatusCell } from "../helpers";
-import { cliStyles, renderSection, renderTable } from "../../utils/cli-output";
+import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
 import { parsePositiveInt, requireArg, takeOption } from "./command-utils";
 import {
   applyKeybindingCliSet,
@@ -88,7 +88,8 @@ function renderKeybindings(value: unknown): string {
         [{ header: "Keys" }, { header: "Runs" }],
         Object.entries(described.commands).map(([chord, query]) => [chord, query]),
       )
-      : cliStyles.muted("None. Bind one with gloomberb config set keybindings.commands.<keys> <command>."),
+      : wrapText("None. Bind one with gloomberb config set keybindings.commands.<keys> <command>.", cliTerminalWidth() ?? 80)
+        .map((line) => cliStyles.muted(line)).join("\n"),
   ];
   if (described.issues.length > 0) {
     lines.push("", renderSection("Issues"), ...described.issues.map((issue) => cliStyles.warning(issue)));
@@ -354,7 +355,7 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
           textColumns: [
             { key: "capability", header: "Capability", shrink: false },
             { key: "id", header: "Source", maxWidth: 20 },
-            { key: "kind", header: "Kind" },
+            { key: "kind", header: "Kind", shrink: false },
             { key: "enabled", header: "Enabled" },
             { key: "operations", header: "Operations", format: (value) => String(value).split(",").join(", ") },
           ],
@@ -584,7 +585,8 @@ export function createSystemCliCommands(allCommands: () => CliCommandDef[]): Cli
         }
         if (action === "delete" || action === "rm") {
           const symbol = requireArg(args[1]?.toUpperCase(), "Usage: gloomberb notes delete <symbol>", ctx);
-          const existed = !!(await notes.load(symbol))?.trim();
+          // Only picks the message; an unreadable note is still deleted.
+          const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => true);
           if (!ctx.cliOptions.dryRun) await notes.delete(symbol);
           ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol } }, {
             text: (data) => existed
