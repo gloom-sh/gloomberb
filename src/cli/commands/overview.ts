@@ -95,6 +95,7 @@ async function runQuoteBasket(symbols: string[], ctx: Parameters<CliCommandDef["
         { key: "name", header: "Name" },
         { key: "price", header: "Last", align: "right" },
         { key: "changePercent", header: "Chg%", align: "right", format: formatChangePercentCell },
+        { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
       ],
     });
   });
