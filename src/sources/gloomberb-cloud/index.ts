@@ -181,13 +181,16 @@ function mapCloudPriceHistory(
   const matchingInterval = [response.providerMeta?.servedResolution, response.providerMeta?.requestedResolution]
     .every((declared) => declared === undefined || canonicalHistoryInterval(declared) === canonicalHistoryInterval(interval));
   const resolution = matchingInterval ? cloudHistoryResolution(interval) : null;
-  const session = resolution ? parseHistorySession(response.historySession, { symbol: ticker, exchange, interval }) : null;
+  // Metadata this client cannot read (a newer version, a far-off clock) is
+  // absent, not contradictory; only a readable mismatch rejects the history.
+  const declared = parseHistorySession(response.historySession) !== null;
+  const session = declared && resolution ? parseHistorySession(response.historySession, { symbol: ticker, exchange, interval }) : null;
   const matchingSource = [response.providerMeta?.provider, response.providerMeta?.upstream].every((source) =>
     source === undefined || source === "cache" || source === session?.source);
   const matchingIdentity = (response.providerMeta?.normalizedSymbol === undefined || response.providerMeta.normalizedSymbol === ticker)
     && (response.providerMeta?.normalizedExchange === undefined || canonicalExchange(response.providerMeta.normalizedExchange) === canonicalExchange(exchange))
     && [response.currency, response.providerMeta?.currency].every((currency) => currency === undefined || currency === "USD");
-  if (response.historySession !== undefined && (!session || !matchingSource || !matchingIdentity || !matchingInterval)) {
+  if (declared && (!session || !matchingSource || !matchingIdentity || !matchingInterval)) {
     throw createProviderMiss(`Cloud chart session metadata does not match the requested history for ${ticker}`);
   }
   return {

@@ -44,11 +44,11 @@ test("coverage distinguishes published closures from unknown dates, years and Na
     expect(getPublishedUsEquitySession("NYSE", date)).toBeNull();
   }
   expect(getPublishedUsEquitySession("NYSE", "2028-02-29")).toEqual(session("2028-02-29", "14:30", "21:00"));
-  for (const date of ["2025-01-09", "2025-11-28", "2025-12-01", "2027-11-26"]) {
-    expect(getPublishedUsEquitySession("NASDAQ", date)).toBeNull();
+  // Nasdaq publishes the same closures and early closes as NYSE.
+  for (const date of ["2025-01-09", "2025-11-28", "2025-12-01", "2027-11-26", "2028-12-29"]) {
+    expect(getPublishedUsEquitySession("NASDAQ", date)).toEqual(getPublishedUsEquitySession("NYSE", date));
   }
-  // Existing daily analytics can still use the 2025 closure calendar; they
-  // cannot promote it to proof of a variable actual-close timestamp.
+  expect(getPublishedUsEquitySession("NASDAQ", "2029-01-02")).toBeNull();
   expect(getPublishedUsEquityCalendarDay("NASDAQ", "2025-01-09")).toBe("closed");
   expect(getPublishedUsEquityCalendarDay("NASDAQ", "2025-11-28")).toBe("session");
 });

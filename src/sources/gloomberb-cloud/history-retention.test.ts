@@ -69,7 +69,7 @@ test("Cloud validates exact original bounds and rejects malformed or non-retenti
   const cases: Envelope[] = [
     ...[{ symbol: "ETH-USD" }, { exchange: "NASDAQ" }, { interval: "1h" }, { interval: "2min" },
       { requestedStart: data.requestedStart + 1000 }, { requestedEnd: data.requestedEnd + 1000 },
-      { observedAt: data.observedAt + 1000, availableStart: data.availableStart + 1000 },
+      { observedAt: data.observedAt + 301_000, availableStart: data.availableStart + 301_000 },
       { observedAt: data.observedAt - 301_000, availableStart: data.availableStart - 301_000 },
       { availableStart: data.availableStart + 1000 }, { availableStart: data.observedAt - 731 * DAY },
     ].map((patch) => unsupported({ ...data, ...patch })),

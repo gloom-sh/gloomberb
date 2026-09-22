@@ -45,16 +45,22 @@ test("Cloud metadata methods keep one acquisition, source observation time and s
   expect(calls).toHaveLength(4);
 });
 
-test("absent Cloud metadata remains compatible but contradictory declarations reject the acquisition", async () => {
+test("absent or unreadable Cloud metadata remains compatible but contradictory declarations reject the acquisition", async () => {
   setSystemTime(NOW);
   const provider = new GloomberbCloudProvider();
   wire(() => ({ status: "success", data: points }));
   const legacy = await provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m");
   expect(legacy.session).toBeUndefined();
   expect(legacy.points[0]?.close).toBe(points[0]!.close);
-  for (const patch of [null, {}, { ...session(), symbol: "MSFT" }, { ...session(), exchange: "NYSE" },
-    { ...session(), interval: "5min" }, { ...session(), observedAt: NOW + 1 },
+  // A newer format or a far-off clock is not a claim this client can check.
+  for (const patch of [null, {}, { ...session(), observedAt: NOW + 6 * 60_000 },
     { ...session(), source: "unverified" }, { ...session(), calendar: "crypto" }]) {
+    wire(() => ({ status: "success", data: points, historySession: patch }));
+    const result = await provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m");
+    expect(result.session).toBeUndefined();
+    expect(result.points[0]?.close).toBe(points[0]!.close);
+  }
+  for (const patch of [{ ...session(), symbol: "MSFT" }, { ...session(), exchange: "NYSE" }, { ...session(), interval: "5min" }]) {
     wire(() => ({ status: "success", data: points, historySession: patch }));
     await expect(provider.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m"))
       .rejects.toThrow("session metadata does not match");

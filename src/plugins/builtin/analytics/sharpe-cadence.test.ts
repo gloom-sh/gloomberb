@@ -31,8 +31,8 @@ test("unknown venue and year cannot borrow a supported calendar", () => {
   expect(qualify(["2026-06-01", "2026-06-02"], "SMART").issue?.kind).toBe("unsupported-venue");
   expect(qualify(["2026-06-01", "2026-06-02"], "LSE").issue?.kind).toBe("unsupported-venue");
   expect(qualify(["2024-12-30", "2024-12-31"]).issue?.kind).toBe("unsupported-year");
-  expect(qualify(["2027-06-01", "2027-06-02"], "NASDAQ").issue?.kind).toBe("unsupported-year");
-  expect(qualify(["2027-06-01", "2027-06-02"], "NYSE").supported).toBe(true);
+  expect(qualify(["2029-06-01", "2029-06-04"], "NASDAQ").issue?.kind).toBe("unsupported-year");
+  expect(qualify(["2027-06-01", "2027-06-02"], "NASDAQ").supported).toBe(true);
 });
 
 test("Carter closure is included and Saturday New Year's Day does not invent a Friday closure", () => {
@@ -54,7 +54,7 @@ test("intraday endpoint observations do not establish daily closes; exact timest
   const result = qualifySharpeCadence(computeDatedReturns(corrected), [{ symbol: "CONTROL", exchange: "NYSE", history: corrected }]);
   expect(result.supported).toBe(true);
   expect(result.basis.checkedAt).toBe("2026-09-12");
-  expect(result.basis.nasdaq.years).not.toContain(2027);
+  expect(result.basis.nasdaq.years).not.toContain(2029);
 });
 
 test("daily source timestamps preserve date labels and exchange-open DST while rejecting cross-midnight and mixed conventions", () => {
@@ -65,12 +65,12 @@ test("daily source timestamps preserve date labels and exchange-open DST while r
   expect(qualify(["2026-11-25T14:30:00Z", "2026-11-27T14:30:00Z", "2026-11-30T14:30:00Z"]).supported).toBe(true);
 });
 
-test("verified actual session closes retain early-close returns without borrowing unverified venue coverage", () => {
+test("verified actual session closes retain early-close returns", () => {
   const dates = ["2026-11-25T21:00:00Z", "2026-11-27T18:00:00Z", "2026-11-30T21:00:00Z"];
   expect(qualify(dates, "NYSE").sourceConventions?.[0]?.convention).toBe("published-session-close");
   expect(qualify(dates, "NASDAQ").supported).toBe(true);
   expect(qualify(["2025-11-26T21:00:00Z", "2025-11-28T18:00:00Z", "2025-12-01T21:00:00Z"], "NYSE").supported).toBe(true);
-  expect(qualify(["2025-11-26T21:00:00Z", "2025-11-28T18:00:00Z", "2025-12-01T21:00:00Z"], "NASDAQ").supported).toBe(false);
+  expect(qualify(["2025-11-26T21:00:00Z", "2025-11-28T18:00:00Z", "2025-12-01T21:00:00Z"], "NASDAQ").supported).toBe(true);
 });
 
 test("beta timestamp eligibility does not borrow a calendar or a missing benchmark venue", () => {

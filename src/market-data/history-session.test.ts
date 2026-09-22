@@ -27,9 +27,11 @@ test("session metadata binds a canonical listing, supported cadence and source c
     { exchange: "SMART" }, { exchange: "CCC" }, { exchange: "LSE" }, { source: "ibkr" }, { source: "unknown" },
     { interval: "2m" }, { interval: "60m" }, { interval: "1d" }, { interval: "1wk" }, { interval: "auto" },
     { timestampConvention: "bar-close" }, { barAlignment: undefined }, { barAlignment: "unknown" }, { source: "alpaca", timestampConvention: "bar-open-with-final-observation" },
-    { observedAt: NOW + 1 }, { observedAt: 0 }, { observedAt: -1 }, { observedAt: NaN },
+    { observedAt: NOW + 5 * 60_000 + 1 }, { observedAt: 0 }, { observedAt: -1 }, { observedAt: NaN },
     { observedAt: Infinity }, { observedAt: NOW - 0.5 }, { observedAt: String(NOW) },
   ]) expect(parseHistorySession({ ...original, ...override }, undefined, NOW)).toBeNull();
+  // A source clock slightly ahead of this machine is accepted at receipt time.
+  expect(parseHistorySession({ ...original, observedAt: NOW + 2_000 }, undefined, NOW)?.observedAt).toBe(NOW);
   expect(parseHistorySession(metadata({ timestampConvention: "bar-open-with-final-observation" }), undefined, NOW)?.timestampConvention)
     .toBe("bar-open-with-final-observation");
   for (const value of [undefined, null, [], "regular"]) expect(parseHistorySession(value, undefined, NOW)).toBeNull();
@@ -141,8 +143,7 @@ test("unsupported calendars, intervals and continuous-market contracts cannot ga
   for (const exchange of ["SMART", "BATS", "", "CCC", "CCY", "CME", "LSE"]) {
     expect(stale("2026-09-18T19:45:00Z", "2026-09-20T18:00:00Z", { exchange })).toBeNull();
   }
-  expect(stale("2025-11-28T17:45:00Z", "2025-12-01T13:42:00Z")).toBeNull();
-  expect(stale("2027-11-26T17:45:00Z", "2027-11-29T13:42:00Z")).toBeNull();
+  expect(stale("2029-01-02T19:45:00Z", "2029-01-03T12:42:00Z")).toBeNull();
   expect(stale("2024-12-31T20:45:00Z", "2025-01-02T13:42:00Z", { exchange: "NYSE" })).toBeNull();
   expect(regularHistorySessionStaleness(NaN, NOW, metadata())).toBeNull();
   expect(regularHistorySessionStaleness(time("2026-09-21T19:45:00Z"), NOW, { ...metadata(), kind: "continuous" } as unknown as HistorySession)).toBeNull();

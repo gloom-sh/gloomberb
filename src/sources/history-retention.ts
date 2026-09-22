@@ -1,6 +1,8 @@
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 
 export const HISTORY_RETENTION_MAX_AGE_MS = 5 * 60_000;
+// The record carries the server's clock; the server revalidates it on retry.
+const HISTORY_RETENTION_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** A source-proven Yahoo retention boundary, not an inferred range failure. */
 export interface HistoryRetention {
@@ -68,7 +70,7 @@ export function parseHistoryRetention(value: unknown, now = Date.now()): History
     || target.exchange || target.symbol !== value.symbol
     || exchange !== value.exchange || value.requestedStart >= value.availableStart
     || value.requestedStart >= value.requestedEnd || value.availableStart > value.observedAt
-    || value.observedAt > now || now - value.observedAt > HISTORY_RETENTION_MAX_AGE_MS
+    || value.observedAt > now + HISTORY_RETENTION_CLOCK_SKEW_MS || now - value.observedAt > HISTORY_RETENTION_MAX_AGE_MS
     || [value.requestedStart, value.requestedEnd, value.observedAt, value.availableStart].some((time) => time % 1000 !== 0)) return null;
   return Object.freeze({ version: 1, source: "yahoo", symbol: target.symbol, exchange, interval,
     requestedStart: value.requestedStart, requestedEnd: value.requestedEnd,

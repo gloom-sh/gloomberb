@@ -10,6 +10,9 @@ const NY_CLOCK = new Intl.DateTimeFormat("en-CA", {
 });
 const DAY = 86_400_000;
 const FEED_DELAY = 15 * 60_000;
+// Sources stamp observedAt with their own clock; a desktop clock a little
+// behind the server must not turn fresh history into invalid metadata.
+export const HISTORY_CLOCK_SKEW_MS = 5 * 60_000;
 
 /** Untrusted wire/cache metadata must match the actual requested listing and interval. */
 export function parseHistorySession(
@@ -28,7 +31,7 @@ export function parseHistorySession(
     || (record.timestampConvention !== "bar-open"
       && !(record.timestampConvention === "bar-open-with-final-observation" && record.source === "yahoo"))
     || typeof record.observedAt !== "number" || !Number.isSafeInteger(record.observedAt)
-    || record.observedAt <= 0 || record.observedAt > now) return null;
+    || record.observedAt <= 0 || record.observedAt > now + HISTORY_CLOCK_SKEW_MS) return null;
   const target = parsePublicTickerKey(record.symbol);
   const exchange = canonicalExchange(record.exchange);
   const interval = canonicalHistoryInterval(record.interval);
@@ -43,7 +46,7 @@ export function parseHistorySession(
   }
   return { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
     symbol: target.symbol, exchange, interval, source: record.source as HistorySession["source"],
-    timestampConvention: record.timestampConvention, barAlignment: record.barAlignment, observedAt: record.observedAt };
+    timestampConvention: record.timestampConvention, barAlignment: record.barAlignment, observedAt: Math.min(record.observedAt, now) };
 }
 
 function localDate(time: number): string {

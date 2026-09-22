@@ -85,7 +85,7 @@ test("native metadata requires exact source identity, cadence, calendar and fina
   const extended = await fetchYahooChart(http, "AAPL", "1mo", "15m", true);
   expect((await loadYahooPriceHistoryForResolutionWithMetadata({ ticker: "AAPL", exchange: "NASDAQ",
     bufferRange: "1M", resolution: "15m", fetchChart: async () => extended })).session).toBeUndefined();
-  setSystemTime(Date.parse("2027-01-05T12:00:00Z"));
+  setSystemTime(Date.parse("2029-01-05T12:00:00Z"));
   expect((await source().provider.getPriceHistoryWithMetadata("AAPL", "NASDAQ", "1M")).session).toBeUndefined();
 });
 

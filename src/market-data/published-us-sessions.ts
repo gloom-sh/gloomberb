@@ -7,7 +7,6 @@ const NYSE_EARLY_CLOSES = new Set([
   "2025-07-03", "2025-11-28", "2025-12-24", "2026-11-27", "2026-12-24",
   "2027-11-26", "2028-07-03", "2028-11-24",
 ]);
-const NASDAQ_EARLY_CLOSES = new Set(["2026-11-27", "2026-12-24"]);
 // Published full closures, not a holiday-rule engine. Early closes are sessions.
 const CLOSURES: Record<number, readonly string[]> = {
   2025: ["01-01", "01-09", "01-20", "02-17", "04-18", "05-26", "06-19", "07-04", "09-01", "11-27", "12-25"],
@@ -27,8 +26,9 @@ export const PUBLISHED_US_EQUITY_SESSION_BASIS = {
       "https://ir.theice.com/press/news-details/2024/The-New-York-Stock-Exchange-Will-Close-Markets-on-January-9-to-Honor-the-Passing-of-Former-President-Jimmy-Carter-on-National-Day-of-Mourning/default.aspx",
     ],
   },
+  // Nasdaq publishes the same full closures and 13:00 early closes as NYSE.
   nasdaq: {
-    years: [2025, 2026],
+    years: [2025, 2026, 2027, 2028],
     sources: [
       "https://www.nasdaq.com/docs/2025/01/06/2025holidayandtradinghours.pdf",
       "https://www.nasdaqtrader.com/Trader.aspx?id=Calendar",
@@ -36,7 +36,7 @@ export const PUBLISHED_US_EQUITY_SESSION_BASIS = {
     ],
   },
   limitation: "Published schedules only; no live exceptional-closure feed or coverage for other venues/years.",
-  actualCloseCoverage: "NYSE venues 2025–2028; Nasdaq 2026 only. Regular close 16:00 and listed early close 13:00 New York time.",
+  actualCloseCoverage: "NYSE venues and Nasdaq 2025 to 2028. Regular close 16:00 and listed early close 13:00 New York time.",
 } as const;
 
 /** Calendar-day coverage is broader than verified actual-close coverage. */
@@ -62,16 +62,26 @@ export function getPublishedUsEquityCalendarDay(exchange: string, date: string):
 
 export type PublishedUsEquitySession = { kind: "session"; open: number; close: number } | { kind: "closed" };
 
+const sessionCache = new Map<string, PublishedUsEquitySession | null>();
+
 /** Published regular equity hours only; unknown venue/date/close coverage is null. */
 export function getPublishedUsEquitySession(exchange: string, date: string): PublishedUsEquitySession | null {
   const venue = canonicalExchange(exchange);
+  const key = `${venue}:${date}`;
+  if (sessionCache.has(key)) return sessionCache.get(key)!;
+  const session = publishedSession(venue, date);
+  // The calendar is static, and callers look up the same few dates per bar.
+  if (sessionCache.size < 4096) sessionCache.set(key, session);
+  return session;
+}
+
+function publishedSession(venue: string, date: string): PublishedUsEquitySession | null {
   const day = calendarDate(date);
-  if (!day || (venue === "NASDAQ" && day.getUTCFullYear() !== 2026)) return null;
+  if (!day) return null;
   const kind = getPublishedUsEquityCalendarDay(venue, date);
   if (!kind) return null;
-  if (kind === "closed") return { kind };
-  const earlyCloses = venue === "NASDAQ" ? NASDAQ_EARLY_CLOSES : NYSE_EARLY_CLOSES;
+  if (kind === "closed") return Object.freeze({ kind });
   const at = (hour: number, minute = 0) => zonedWallClockToUtcMs("America/New_York",
     day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(), hour, minute, 0);
-  return { kind, open: at(9, 30), close: at(earlyCloses.has(date) ? 13 : 16) };
+  return Object.freeze({ kind, open: at(9, 30), close: at(NYSE_EARLY_CLOSES.has(date) ? 13 : 16) });
 }
