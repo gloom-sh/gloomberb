@@ -161,6 +161,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `EM <ticker>` / `EEO <ticker>` / `GUID <ticker>` | EPS estimate revisions, current analyst breadth, surprises and cited guidance; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
 | `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
+| `BT <ticker>` / `BTST <ticker>` | Backtest a long-only indicator rule on daily history against buy-and-hold |
 | `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
 | `CRYP` | Crypto USD pairs: latest trades, UTC daily change, completed seven-day returns, base-asset volume and percentiles |
 | `ECO` | Economic events and releases |
@@ -482,4 +483,39 @@ versioned JSON with `criteria`, `currency` and `sort`, for example:
 
 ```sh
 gloomberb fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
+```
+
+## Backtest
+
+`BT AAPL` (or `BTST AAPL`) tests a long-only rule on the ticker's daily history
+against buy-and-hold. **Strategy** picks a preset: golden cross (50/200), above
+the 200-day average, RSI 30/50 reversion, MACD signal cross, Bollinger
+reversion, or a 55/20-day breakout. `e` opens the rules, where **Custom rules**
+takes an entry and an exit written as `<operand> <comparison> <operand>`,
+joined with `and`:
+
+```
+close > sma(200)
+sma(50) crosses above sma(200) and rsi(14) < 70
+close > highest(55)
+```
+
+Operands are `close`, `open`, `high`, `low`, a number, `sma(n)`, `ema(n)`,
+`rsi(n)`, `macd(fast,slow,signal)`, `macd_signal(fast,slow,signal)`,
+`bb_upper(n,k)`, `bb_lower(n,k)`, `highest(n)` and `lowest(n)`. Comparisons are
+`>`, `<`, `>=`, `<=`, `crosses above` and `crosses below`. Settings also choose
+the lookback (5 years, 10 years or all history) and the cost per side in basis
+points.
+
+**Summary** plots the strategy and buy-and-hold as growth multiples on a log
+scale with the strategy's drawdown below, beside return, CAGR, volatility,
+Sharpe, drawdown, time in market, the share of rolling one-year windows in which
+the rule beat buy-and-hold, and trade statistics. **Trades** lists each trade;
+an open position is marked at the last close. `v` switches views and `r`
+refreshes history.
+
+```sh
+gloomberb fn BT AAPL --json
+gloomberb fn BT SPY --preset custom --entry 'close > sma(200)' --exit 'close < sma(200)' --lookback max --cost 2
+gloomberb shot BT NVDA --preset breakout-55-20 --output nvda-breakout.png
 ```

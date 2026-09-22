@@ -253,6 +253,7 @@
       "contributes": {
         "panes": [
           "analyst-research",
+          "backtest",
           "chart-composer",
           "corporate-actions",
           "data-catalog",

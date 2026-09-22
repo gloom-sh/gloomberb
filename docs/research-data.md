@@ -702,3 +702,32 @@ clears the previous result immediately, aborts pending pagination and rejects it
 late response. Export pins the displayed snapshot and is capped at 5,000 matches;
 refine a broader screen before exporting. An absent endpoint or migration has an
 explicit unavailable state.
+
+## Backtests (BT)
+
+BT runs on the ticker's daily history from the market data coordinator (all
+available sessions, one bar per UTC date). Indicators use the chart studies'
+formulas: simple and exponential moving averages seeded by a simple average,
+Wilder RSI, MACD as the fast minus slow EMA with an EMA signal line, and
+Bollinger bands from the simple average plus or minus k population standard
+deviations. `highest(n)` and `lowest(n)` use the n sessions before the current
+one, so a close can break out of its own range. An undefined value (warmup)
+never satisfies a comparison, and a cross needs both sessions defined.
+
+Evaluation starts after the longest indicator warmup and within the chosen
+lookback. The strategy is long or flat and fully invested when long. A rule
+true at a session's close fills at the next session's open, or its close when
+no open is recorded, so no signal trades on the bar that produced it. Entry is
+checked when flat and exit when long. Each fill pays the cost per side on its
+price. Cash earns nothing. Buy-and-hold buys at the same first fill with the
+same entry cost and is never sold. An open position is marked at the last
+close, net of an exit cost, in the trade list and at the last close in equity.
+
+Returns are price returns: dividends, splits beyond the provider's adjusted
+history, borrow, taxes and slippage beyond the stated cost are not modelled.
+CAGR needs at least half a year. Volatility and Sharpe use daily returns
+annualised with 252 sessions and a zero cash rate. The rolling comparison
+counts 252-session windows ending on each session after the first year and
+needs 20 windows. Fewer than ten closed trades are flagged as too few to judge
+a hit rate. Presets use states (`>`, `<`), so a test that begins inside a
+regime is invested from the first fill; `crosses` waits for a fresh signal.

@@ -15,6 +15,7 @@ import { optionsScenarioModule } from "./options-scenario";
 import { optionsCalculatorModule } from "./options-calculator";
 import { volSurfaceModule } from "./vol-surface";
 import { realizedVolModule } from "./realized-vol";
+import { backtestModule } from "./backtest";
 import { composeBuiltinPlugin } from "./plugin-module";
 import { researchModule } from "./research";
 import { riskFactorsModule } from "./risk-factors";
@@ -38,6 +39,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
+    backtestModule,
     estimateRevisionsModule,
     researchModule,
     shortVolumeModule,

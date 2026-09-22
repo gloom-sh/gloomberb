@@ -25,7 +25,7 @@ interface NumericSample {
   value: number;
 }
 
-interface IndexedValue {
+export interface IndexedValue {
   index: number;
   value: number;
 }
@@ -103,7 +103,8 @@ function outputSeries(
   };
 }
 
-function sma(values: readonly number[], period: number): IndexedValue[] {
+/** Exported so backtest rules and chart studies share identical math. */
+export function sma(values: readonly number[], period: number): IndexedValue[] {
   if (values.length < period) return [];
   const result: IndexedValue[] = [];
   let sum = 0;
@@ -115,7 +116,7 @@ function sma(values: readonly number[], period: number): IndexedValue[] {
   return result;
 }
 
-function ema(values: readonly number[], period: number): IndexedValue[] {
+export function ema(values: readonly number[], period: number): IndexedValue[] {
   if (values.length < period) return [];
   const result: IndexedValue[] = [];
   let current = values.slice(0, period).reduce((sum, value) => sum + value, 0) / period;
@@ -128,7 +129,7 @@ function ema(values: readonly number[], period: number): IndexedValue[] {
   return result;
 }
 
-function rsi(values: readonly number[], period: number): IndexedValue[] {
+export function rsi(values: readonly number[], period: number): IndexedValue[] {
   if (values.length < period + 1) return [];
   let averageGain = 0;
   let averageLoss = 0;
