@@ -15,6 +15,8 @@ import { PluginRenderProvider } from "../../runtime";
 import { cloneLayout, createDefaultConfig } from "../../../types/config";
 import { OPTIONS_CALCULATOR_PANE_ID } from "./model";
 import { OptionsCalculatorPane } from "./pane";
+import { valueBinomialOption } from "./binomial";
+import { draftFromParams, valueOption } from "./model";
 
 const TEST_PANE_ID = "options-calculator:test";
 
@@ -135,7 +137,7 @@ test("shows the remaining fraction of a day for a live near-expiry contract", as
   await render({ days: "0.25" });
   const frame = testSetup!.captureCharFrame();
   expect(frame).toMatch(/Days\s+0\.25\s*d/);
-  expect(frame).toMatch(/Implied IV\s+—/);
+  expect(frame).toMatch(/Implied IV\s+--/);
 });
 
 test("displays fractional strikes and spot prices without rounding them to whole dollars", async () => {
@@ -167,4 +169,50 @@ test("tabs into fields and edits them from the keyboard", async () => {
   });
 
   expect(testSetup!.captureCharFrame()).toMatch(/Spot\s+120/);
+});
+
+test("model switching restores the cash schedule and reprices under the selected exercise rule", async () => {
+  const params = { side: "put", spot: "100", strike: "100", days: "365", rate: "0.05", volatility: "0.2",
+    model: "american", dividends: "30:1;120:1", steps: "100" };
+  await render(params);
+  const draft = draftFromParams(params);
+  const american = valueBinomialOption(draft, { steps: 100, dividends: [{ days: 30, amount: 1 }, { days: 120, amount: 1 }] }).price.toFixed(4);
+  expect(testSetup!.captureCharFrame()).toMatch(new RegExp(`Model\\s+${american.replace(".", "\\.")}`));
+  await emitKeypress(testSetup!, { name: "m", sequence: "m" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame()).toMatch(new RegExp(`Model\\s+${valueOption(draft).price.toFixed(4).replace(".", "\\.")}`));
+  await emitKeypress(testSetup!, { name: "m", sequence: "m" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame()).toMatch(new RegExp(`Model\\s+${american.replace(".", "\\.")}`));
+  expect(testSetup!.captureCharFrame()).toContain("30:1;120:1");
+
+  // Moving expiry ahead of a stored payment invalidates the American schedule.
+  for (let i = 0; i < 3; i++) await emitKeypress(testSetup!, { name: "tab", sequence: "\t" });
+  await act(async () => { await testSetup!.mockInput.typeText("10"); testSetup!.mockInput.pressEnter(); });
+  await act(async () => { await testSetup!.renderOnce(); });
+  expect(testSetup!.captureCharFrame()).toMatch(/Model\s+--/);
+  await emitKeypress(testSetup!, { name: "escape", sequence: "\u001B" }, { afterCommit: true });
+  await emitKeypress(testSetup!, { name: "m", sequence: "m" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame()).toMatch(/Model\s+\d+\.\d+/);
+});
+
+test("surface selection without an underlying hides input-IV prices and recovers when input is selected", async () => {
+  await render({ spot: "100", strike: "100", volatility: "0.2" });
+  const before = testSetup!.captureCharFrame().match(/Model\s+(\d+\.\d+)/)?.[1];
+  expect(before).toBeDefined();
+  await emitKeypress(testSetup!, { name: "v", sequence: "v" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame()).toMatch(/Fit IV\s+--/);
+  expect(testSetup!.captureCharFrame()).toMatch(/Model\s+--/);
+  await emitKeypress(testSetup!, { name: "escape", sequence: "\u001B" }, { afterCommit: true });
+  await emitKeypress(testSetup!, { name: "v", sequence: "v" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame().match(/Model\s+(\d+\.\d+)/)?.[1]).toBe(before);
+});
+
+test("an invalid seeded cash schedule stays editable and only blocks its active model", async () => {
+  await render({ model: "american", dividends: "30:1;bad", days: "365" });
+  expect(testSetup!.captureCharFrame()).toContain("30:1;bad");
+  expect(testSetup!.captureCharFrame()).toMatch(/Model\s+--/);
+  await emitKeypress(testSetup!, { name: "m", sequence: "m" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame()).toMatch(/Model\s+\d+\.\d+/);
+  await emitKeypress(testSetup!, { name: "m", sequence: "m" }, { afterCommit: true });
+  expect(testSetup!.captureCharFrame()).toContain("30:1;bad");
+  expect(testSetup!.captureCharFrame()).toMatch(/Model\s+--/);
 });

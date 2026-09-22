@@ -62,7 +62,7 @@ for (const side of ["call", "put"] as const) {
         expect(frame).toMatch(/Implied IV\s+0\.00%/);
         expect(footer.info).toEqual([]);
       } else {
-        expect(frame).toMatch(/Implied IV\s+—/);
+        expect(frame).toMatch(/Implied IV\s+--/);
         expect(frame).toContain("too close to a model bound");
       }
     });
@@ -80,7 +80,7 @@ test("the model maximum stays unavailable when the numerical price curve saturat
   // Numerical-domain boundary, not a claim that this duration is a listed LEAPS contract.
   await mount({ spot: "100", strike: "100", days: "36500", rate: "0", marketPrice: "100" });
   const frame = capture("model-maximum");
-  expect(frame).toMatch(/Implied IV\s+—/);
+  expect(frame).toMatch(/Implied IV\s+--/);
   expect(frame).toContain("no finite IV at the model maximum");
 });
 

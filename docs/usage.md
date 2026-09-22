@@ -104,6 +104,8 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `OSA <ticker>` | Multi-leg option positions, scenario P&L, payoff charts and aggregate Greeks |
 | `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
+
+| `OVME` | European or American option pricing, discrete dividends, Greeks and surface volatility |
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
@@ -402,3 +404,16 @@ gloomberb shot OSA AAPL --legs 'call,100,2026-12-18,1,5,25;call,110,2026-12-18,-
 ```
 
 The leg format is `call|put,strike,YYYY-MM-DD,signed contracts,entry price,IV percent[,multiplier]`, separated by semicolons. `--tab` accepts `payoff`, `grid` and `legs`; `--spot-range` is the percentage range either side of spot. Omit market overrides to use current sources, or request `--strategy vertical` or `--strategy straddle` to build an explicit example from complete two-sided quotes. `--expiration` selects that chain's expiry in Unix seconds. Screenshot JSON includes the rendered position and numerical observations, with readiness validated against the shared model. No position is invented when no legs or strategy are supplied.
+
+## Option valuation models
+
+`OVME` starts with the European Black-Scholes model. Choose **American CRR** or use `m` to value early exercise. Set the tree step count and enter cash dividends as `days:amount`, separated by semicolons, for example `30:0.25;90:0.25`. Days are calendar days from valuation and cash is per underlying unit. `d` focuses the dividend schedule; `u` edits the underlying ticker. The model, tree settings and schedule resume with the pane.
+
+Choose **Surface IV** or use `v` to source the strike/tenor volatility from OVDV. The surface is fitted using the current observed underlying quote; changing the calculator's spot changes the scenario price, not the source surface. Its quote dates and fit methods appear in the footer, with source failures and coverage limitations in warnings. Editing the IV field returns to entered volatility. `r` refreshes the source. Switching back to European BS deactivates the American cash schedule while preserving it for later use.
+
+```sh
+gloomberb fn OVME --model american --side put --spot 100 --strike 100 --days 365 --volatility 20 --rate 5 --dividend-yield 0 --dividends '30:1;120:1' --steps 800 --json
+gloomberb fn OVME --model american --symbol AAPL --spot 340 --strike 340 --days 90 --rate 4 --dividend-yield 0 --vol-source surface --json
+```
+
+CLI rates and IV are percentages; `--market-price` is a per-unit premium and uses the selected model's IV solver. Explicit input-volatility calculations run without market access. The European closed form rejects an explicit cash schedule in the CLI. Cash dividends are entered by the user; the surface source supplies volatility and does not infer or replace that schedule.

@@ -1,5 +1,6 @@
 import { zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
 import { optionMarketReference, parseOptionMarketReference, type OptionMarketReference } from "../options/market-reference";
+import type { CashDividend } from "./binomial";
 
 export const OPTIONS_CALCULATOR_PANE_ID = "options-calculator";
 export const OPTIONS_CALCULATOR_TEMPLATE_ID = "options-calculator-pane";
@@ -25,6 +26,10 @@ export interface OptionCalcDraft {
   marketPrice: number;
   marketPriceSource?: "mid" | "last";
   marketReference?: OptionMarketReference;
+  pricingModel?: "european" | "american";
+  steps?: number;
+  dividends?: CashDividend[];
+  volSource?: "input" | "surface";
 }
 
 /** Edited contracts retain numeric what-if inputs, but lose the old contract's market attribution. */
