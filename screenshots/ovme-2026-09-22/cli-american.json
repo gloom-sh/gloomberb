@@ -1,0 +1,195 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "bundle",
+    "target": "OVME",
+    "capabilityId": "options-calculator-pane",
+    "symbols": [],
+    "options": {
+      "model": "american",
+      "side": "put",
+      "spot": "100",
+      "strike": "100",
+      "days": "30",
+      "volatility": "25",
+      "rate": "4",
+      "dividendYield": "0",
+      "dividends": "10:1;20:1",
+      "steps": 400,
+      "volSource": "input",
+      "symbol": "AAPL"
+    },
+    "rowCount": 19,
+    "empty": false,
+    "complete": true,
+    "unavailableSymbols": [],
+    "errors": [],
+    "metadata": {
+      "model": "american",
+      "inputs": {
+        "symbol": "AAPL",
+        "side": "put",
+        "spot": 100,
+        "strike": 100,
+        "daysToExpiry": 30,
+        "rate": 0.04,
+        "volatility": 0.25,
+        "dividendYield": 0,
+        "marketPrice": 0,
+        "pricingModel": "american",
+        "volSource": "input",
+        "steps": 400,
+        "dividends": [
+          {
+            "days": 10,
+            "amount": 1
+          },
+          {
+            "days": 20,
+            "amount": 1
+          }
+        ]
+      },
+      "valuation": {
+        "price": 3.795285362719802,
+        "delta": -0.5832209312830818,
+        "gamma": 0.055613525420017317,
+        "thetaPerDay": -0.04112591135611392,
+        "vegaPerPoint": 0.11137302385547279,
+        "rhoPerPoint": -0.04195272221978463
+      },
+      "impliedVolatility": {
+        "volatility": null,
+        "note": null
+      },
+      "surface": null,
+      "warnings": [],
+      "method": "CRR American tree with discrete cash dividends",
+      "greekUnits": {
+        "delta": "underlying units per option unit",
+        "gamma": "delta per underlying price unit",
+        "theta": "currency per calendar day",
+        "vega": "currency per 1 percentage point of volatility",
+        "rho": "currency per 1 percentage point of annual rate"
+      },
+      "methodology": "docs/research-data.md#options-valuation-models"
+    },
+    "sections": [
+      {
+        "title": "Inputs",
+        "entries": [
+          {
+            "label": "Underlying",
+            "value": "AAPL"
+          },
+          {
+            "label": "Model",
+            "value": "american"
+          },
+          {
+            "label": "Side",
+            "value": "put"
+          },
+          {
+            "label": "Spot",
+            "value": 100,
+            "formatted": "100.000000"
+          },
+          {
+            "label": "Strike",
+            "value": 100,
+            "formatted": "100.000000"
+          },
+          {
+            "label": "Days to expiry",
+            "value": 30,
+            "formatted": "30.000000"
+          },
+          {
+            "label": "Volatility",
+            "value": 0.25,
+            "formatted": "0.250000 decimal"
+          },
+          {
+            "label": "Annual rate",
+            "value": 0.04,
+            "formatted": "0.040000 decimal"
+          },
+          {
+            "label": "Annual dividend yield",
+            "value": 0,
+            "formatted": "0.000000 decimal"
+          },
+          {
+            "label": "Requested tree steps",
+            "value": 400
+          },
+          {
+            "label": "Volatility source",
+            "value": "input assumptions"
+          }
+        ]
+      },
+      {
+        "title": "Cash dividends",
+        "columns": [
+          {
+            "key": "days",
+            "header": "Days"
+          },
+          {
+            "key": "amount",
+            "header": "Cash / unit"
+          }
+        ],
+        "rows": [
+          {
+            "days": 10,
+            "amount": 1
+          },
+          {
+            "days": 20,
+            "amount": 1
+          }
+        ]
+      },
+      {
+        "title": "Valuation",
+        "entries": [
+          {
+            "label": "Value / unit",
+            "value": 3.795285362719802,
+            "formatted": "3.795285"
+          },
+          {
+            "label": "Delta",
+            "value": -0.5832209312830818,
+            "formatted": "-0.583221"
+          },
+          {
+            "label": "Gamma",
+            "value": 0.055613525420017317,
+            "formatted": "0.055614"
+          },
+          {
+            "label": "Theta / day",
+            "value": -0.04112591135611392,
+            "formatted": "-0.041126"
+          },
+          {
+            "label": "Vega / vol point",
+            "value": 0.11137302385547279,
+            "formatted": "0.111373"
+          },
+          {
+            "label": "Rho / rate point",
+            "value": -0.04195272221978463,
+            "formatted": "-0.041953"
+          }
+        ]
+      }
+    ],
+    "source": "headless",
+    "elapsedMs": 81
+  }
+}

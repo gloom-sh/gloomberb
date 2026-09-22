@@ -1,0 +1,22 @@
+  > Search or run a command  Ctrl+P                                          OPEN SPY 773.58 +0.01% USD 
+┌─:: OVME AAPL─────────────────────────────────────────────────────────────────────────────────── ... ─┐
+   Call  Put  AAPL                                                                                      
+   European BS  American CRR     Input IV  Surface IV                                                   
+  Spot     100              Strike   100              Days     30          d                            
+  Vol      25.0        %    Rate     4.00        %    Div yld  0.00        %                            
+  Market   0                Steps    400                                                                
+  Cash dividends (day:amount)                                                                           
+  10:1;20:1                                                                                             
+                                                                                                        
+  Model       3.7953              per unit         Implied IV  --                                       
+  Delta       -0.5832                              Gamma       0.0556                                   
+  Theta       -0.0411             per day          Vega        0.1114               per vol pt          
+  Rho         -0.0420             per rate pt                                                           
+                                                                                                        
+                                                                                                        
+                                                                                                        
+                                                                                                        
+                                                                                                        
+                                                                                                        
+└                                                         [m]odel [v]ol source [u]nderlying [d]ividends┘
+                                                                                       v0.14.1 ☁ Log In

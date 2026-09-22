@@ -1,0 +1,154 @@
+{
+  "ok": true,
+  "data": {
+    "kind": "bundle",
+    "target": "OVME",
+    "capabilityId": "options-calculator-pane",
+    "symbols": [],
+    "options": {
+      "model": "european",
+      "side": "call",
+      "spot": "100",
+      "strike": "100",
+      "days": "365",
+      "volatility": "20",
+      "rate": "5",
+      "dividendYield": "0",
+      "dividends": "",
+      "steps": 400,
+      "volSource": "input"
+    },
+    "rowCount": 15,
+    "empty": false,
+    "complete": true,
+    "unavailableSymbols": [],
+    "errors": [],
+    "metadata": {
+      "model": "european",
+      "inputs": {
+        "symbol": "",
+        "side": "call",
+        "spot": 100,
+        "strike": 100,
+        "daysToExpiry": 365,
+        "rate": 0.05,
+        "volatility": 0.2,
+        "dividendYield": 0,
+        "marketPrice": 0,
+        "pricingModel": "european",
+        "volSource": "input",
+        "steps": 400,
+        "dividends": []
+      },
+      "valuation": {
+        "price": 10.450575415435083,
+        "delta": 0.6368305860070302,
+        "gamma": 0.018762017345846895,
+        "thetaPerDay": -0.017572678434062402,
+        "vegaPerPoint": 0.3752403469169379,
+        "rhoPerPoint": 0.5323248318526794
+      },
+      "impliedVolatility": {
+        "volatility": null,
+        "note": null
+      },
+      "surface": null,
+      "warnings": [],
+      "method": "European Black-Scholes",
+      "greekUnits": {
+        "delta": "underlying units per option unit",
+        "gamma": "delta per underlying price unit",
+        "theta": "currency per calendar day",
+        "vega": "currency per 1 percentage point of volatility",
+        "rho": "currency per 1 percentage point of annual rate"
+      },
+      "methodology": "docs/research-data.md#options-valuation-models"
+    },
+    "sections": [
+      {
+        "title": "Inputs",
+        "entries": [
+          {
+            "label": "Model",
+            "value": "european"
+          },
+          {
+            "label": "Side",
+            "value": "call"
+          },
+          {
+            "label": "Spot",
+            "value": 100,
+            "formatted": "100.000000"
+          },
+          {
+            "label": "Strike",
+            "value": 100,
+            "formatted": "100.000000"
+          },
+          {
+            "label": "Days to expiry",
+            "value": 365,
+            "formatted": "365.000000"
+          },
+          {
+            "label": "Volatility",
+            "value": 0.2,
+            "formatted": "0.200000 decimal"
+          },
+          {
+            "label": "Annual rate",
+            "value": 0.05,
+            "formatted": "0.050000 decimal"
+          },
+          {
+            "label": "Annual dividend yield",
+            "value": 0,
+            "formatted": "0.000000 decimal"
+          },
+          {
+            "label": "Volatility source",
+            "value": "input assumptions"
+          }
+        ]
+      },
+      {
+        "title": "Valuation",
+        "entries": [
+          {
+            "label": "Value / unit",
+            "value": 10.450575415435083,
+            "formatted": "10.450575"
+          },
+          {
+            "label": "Delta",
+            "value": 0.6368305860070302,
+            "formatted": "0.636831"
+          },
+          {
+            "label": "Gamma",
+            "value": 0.018762017345846895,
+            "formatted": "0.018762"
+          },
+          {
+            "label": "Theta / day",
+            "value": -0.017572678434062402,
+            "formatted": "-0.017573"
+          },
+          {
+            "label": "Vega / vol point",
+            "value": 0.3752403469169379,
+            "formatted": "0.375240"
+          },
+          {
+            "label": "Rho / rate point",
+            "value": 0.5323248318526794,
+            "formatted": "0.532325"
+          }
+        ]
+      }
+    ],
+    "source": "headless",
+    "elapsedMs": 3
+  }
+}
