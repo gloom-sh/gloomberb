@@ -25,8 +25,7 @@ export function subtractTimeRange(endDate: Date, range: TimeRange): Date {
     case "5Y":
       return calendarMonthsBefore(endDate, 60);
     case "ALL":
-      startDate.setUTCFullYear(startDate.getUTCFullYear() - 50);
-      break;
+      return calendarMonthsBefore(endDate, 600);
   }
   return startDate;
 }
