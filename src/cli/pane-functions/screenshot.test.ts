@@ -14,9 +14,12 @@ import {
   shotUnavailableSymbols,
   stripDesktopShotCredentials,
   volSurfaceEvidenceMismatchesFor,
+  realizedVolEvidenceMismatchesFor,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
+import { realizedVolSemanticEvidence } from "../../plugins/builtin/realized-vol/evidence";
+import { coneChartSeries, realizedChartSeries } from "../../plugins/builtin/realized-vol/chart-model";
 import { collectShotSymbols } from "./data";
 import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
@@ -125,6 +128,55 @@ describe("volatility surface screenshot evidence", () => {
       grid: { ...metadata.grid, values: [[null, null], [null, null]] } });
     expect(shotSemanticRowCount(request, source, empty)).toBe(0);
     expect(shotDataEvidenceFor(request, source, empty)).toBeNull();
+  });
+});
+
+describe("realized volatility screenshot evidence", () => {
+  const source = payload([["AAPL", { quote: { price: 100 } }]]);
+  const status = { symbol: "AAPL", view: "graph" as const, estimator: "close-to-close", windows: [10],
+    lookbackYears: 1, showIv: true, loading: false, stale: false, source: "test", asOf: "2026-09-22T00:00:00Z", errors: [],
+    currentIv: { value: 22, date: "2026-09-22T14:30:00.000Z", label: "ATM IV 24d", source: "test", expiration: 1_800_000_000 } };
+  const dates = [new Date("2026-09-21"), new Date("2026-09-22")];
+  const series = realizedChartSeries({ history: dates.map((date) => ({ date, close: 100 })),
+    rolling: dates.map((date, index) => ({ date, values: { 10: index ? 0.2 : null } })), windows: [10], currency: "USD",
+    iv: { value: 0.22, date: new Date(status.currentIv.date), label: status.currentIv.label } }, ["green"], "white");
+  const evidence = realizedVolSemanticEvidence(series, status);
+  const request = { ...resolved("realized-vol-graph-pane", { tab: "graph", windows: "10", showIv: true }),
+    pane: { id: "realized-vol" }, capability: { id: "realized-vol-graph-pane", screenshotReadiness: "live-dom" } } as ResolvedPaneFunction;
+  const nodes = (metadata: object = evidence): RemoteUiNodeSnapshot[] => [
+    { id: "hvg-data", role: "chart-data", actions: [], metadata: { ...metadata } },
+  ];
+
+  test("certifies actual HVG values and one dated IV point without table rows", () => {
+    expect(shotSemanticRowCount(request, source, nodes())).toBe(4);
+    expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
+    expect(realizedVolEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
+    expect(shotDataEvidenceFor(request, source, nodes())).toMatchObject({ series: [
+      { id: "hv-10", points: [{ date: dates[0]!.toISOString(), value: null }, { date: dates[1]!.toISOString(), value: 20 }] },
+      { id: "current-iv", points: [{ date: status.currentIv.date, value: 22 }] },
+      { id: "price", points: dates.map((date) => ({ date: date.toISOString(), value: 100 })) },
+    ] });
+  });
+
+  test("certifies HVT numeric session coordinates independently of history dates", () => {
+    const cone = realizedVolSemanticEvidence(coneChartSeries([{ window: 10, current: 0.2, min: 0.1, max: 0.4,
+      mean: 0.25, median: 0.22, percentile: 40, sampleSize: 250 }], ["a", "b", "c", "d"]), { ...status, view: "cone" });
+    const hvt = { ...request, options: { ...request.options, tab: "cone" } };
+    expect(shotSemanticRowCount(hvt, source, nodes(cone))).toBe(4);
+    expect(realizedVolEvidenceMismatchesFor(hvt, source, nodes(cone))).toEqual([]);
+    expect(shotUnavailableSymbols(hvt, source, nodes(cone))).toEqual([]);
+  });
+
+  test("rejects invented counts, price-only charts, mismatched settings and stale or pending data", () => {
+    expect(shotDataEvidenceFor(request, source, [])).toBeNull();
+    expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, plottedValueCount: 200 }))).toBeNull();
+    expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, series: evidence.series.slice(-1), plottedValueCount: 2 }))).toBeNull();
+    expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, currentIv: { ...status.currentIv, value: 99 } }))).toBeNull();
+    expect(realizedVolEvidenceMismatchesFor(request, source, nodes({ ...evidence, symbol: "SPY", estimator: "parkinson", view: "cone" }))).not.toEqual([]);
+    for (const state of [{ stale: true }, { loading: true }, { errors: ["History unavailable"] }]) {
+      expect(shotUnavailableSymbols(request, source, nodes({ ...evidence, ...state, complete: false }))).toEqual(["AAPL"]);
+      expect(shotDataEvidenceFor(request, source, nodes({ ...evidence, ...state }))).toBeNull();
+    }
   });
 });
 

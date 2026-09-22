@@ -13,7 +13,7 @@ export interface RealizedChartInput {
   iv: IvChartReference | null;
 }
 
-export function realizedChartSeries(input: RealizedChartInput, colors: readonly string[]): ResolvedSeries[] {
+export function realizedChartSeries(input: RealizedChartInput, colors: readonly string[], priceColor = colors[0]!): ResolvedSeries[] {
   const series = input.windows.map((window, index): ResolvedSeries => ({
     ...staticSeries(input.rolling.map((point) => ({ date: point.date, observedAt: point.date,
       value: point.values[window] == null ? null : point.values[window]! * 100 })),
@@ -27,7 +27,7 @@ export function realizedChartSeries(input: RealizedChartInput, colors: readonly 
     unit: "%", unitGroup: "volatility", panelId: "vol", observationKind: "market" });
   }
   series.push(pricePointsToResolvedSeries(input.history, {
-    id: "price", label: "Price", unit: input.currency, color: colors[0]!, panelId: "price", style: "line",
+    id: "price", label: "Price", unit: input.currency, color: priceColor, panelId: "price", style: "line",
     timeBasis: { kind: "market", timeZone: "UTC", cadenceMs: 86_400_000 },
   }));
   return series;

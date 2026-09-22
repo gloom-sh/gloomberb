@@ -89,8 +89,12 @@ function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency }:
     { label: "1σ fit", value: move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
   ];
   const skew: SummaryMetric = { label: "25d P-C", value: `${points(enrichment?.skew25)} pp` };
-  const slope: SummaryMetric = { label: "Slope", value: `${points(enrichment?.termSlope)} pp/y${enrichment?.neighbourExpiration
-    ? ` to ${formatExpDate(enrichment.neighbourExpiration)}` : ""}` };
+  const slopeAnnualized = enrichment?.termSlopeAnnualized === true;
+  const slopeDates = enrichment?.neighbourExpiration == null ? ""
+    : slopeAnnualized ? ` to ${formatExpDate(enrichment.neighbourExpiration)}`
+      : ` ${new Date(enrichment.expiration * 1000).getUTCFullYear() === new Date(enrichment.neighbourExpiration * 1000).getUTCFullYear()
+        ? formatExpDate(enrichment.expiration).replace(/ '\d{2}$/, "") : formatExpDate(enrichment.expiration)} to ${formatExpDate(enrichment.neighbourExpiration)}`;
+  const slope: SummaryMetric = { label: "Slope", value: `${points(enrichment?.termSlope)} ${slopeAnnualized ? "pp/y" : "pts"}${slopeDates}` };
   const flow: SummaryMetric[] = [
     { label: "EXP VOL", value: formatCompact(summary?.expirationVolume ?? undefined) },
     { label: "P/C VOL", value: formatRatio(summary?.putCallVolumeRatio) },

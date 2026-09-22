@@ -13,6 +13,7 @@ import type { RealizedVolatilityEstimator, VolatilityConeStatistics } from "../s
 import { loadCurrentAtmIv, loadRealizedVolatilityHistory } from "./client";
 import { projectRealizedVolatility } from "./model";
 import { RealizedVolGraph, VolatilityConeChart } from "./charts";
+import type { RealizedVolEvidenceStatus } from "./evidence";
 import { DEFAULT_WINDOWS, ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 
 const TABS = [{ value: "graph", label: "History" }, { value: "cone", label: "Cone" }];
@@ -105,6 +106,19 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     { id: "iv", key: "i", label: showIv ? "v off" : "v on", onPress: () => setShowIv(!showIv) },
     ...(symbol ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
   ] }), [history.loading, history.data, model?.asOf, iv.loading, showIv, view, symbol, iv.data]);
+  const evidence: RealizedVolEvidenceStatus = {
+    symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator,
+    windows, lookbackYears: Number(lookback) === 2 ? 2 : 1, showIv,
+    loading: history.loading || (showIv && iv.loading),
+    stale: history.data?.stale ?? false, source: history.data?.source ?? null,
+    asOf: model?.asOf?.toISOString() ?? null,
+    errors: [...new Set([history.error, history.data?.error, ...(model?.warnings ?? []),
+      ...(showIv ? [iv.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null] : []),
+    ].filter((value): value is string => !!value))],
+    currentIv: showIv && iv.data?.reference ? { value: iv.data.reference.value * 100,
+      date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
+      source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,
+  };
   const contentHeight = Math.max(4, height - 3);
   const coneTableHeight = Math.min(10, Math.max(4, Math.floor(contentHeight * 0.42)));
   const sortedCone = [...(model?.cone ?? [])].sort((left, right) => {
@@ -118,7 +132,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
       <SelectButton label="Lookback" value={String(lookback)} options={[{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }]} onChange={setLookback} />
     </Box>
     <Box height={1} paddingX={1} overflow="hidden"><Text fg={colors.textDim}>{showIv && iv.data?.reference
-      ? `Current ${iv.data.reference.label} ${percent(iv.data.reference.value)} · ${iv.data.reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC · ${iv.data.reference.source ?? "options"}`
+      ? `${view === "cone" ? `Current ${iv.data.reference.label} ${percent(iv.data.reference.value)} ·` : "ATM IV observed"} ${iv.data.reference.date.toISOString().slice(0, 16).replace("T", " ")} UTC · ${iv.data.reference.source ?? "options"}`
       : `Annualized % · ${Number(lookback) === 2 ? "2Y" : "1Y"} history`}</Text></Box>
     {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="realized volatility" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.history.length}>
@@ -136,8 +150,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
               : column.id === "percentile" ? row.percentile == null ? "--" : `${row.percentile.toFixed(1)}%`
                 : percent(row[column.id as "current" | "min" | "max" | "mean" | "median"]),
             color: column.id === "current" ? colors.warning : colors.text })} />
-        <VolatilityConeChart rows={model.cone} width={width} height={Math.max(3, contentHeight - coneTableHeight)} />
-      </> : chartInput && windows.length ? <RealizedVolGraph input={chartInput} width={width} height={contentHeight} />
+        <VolatilityConeChart evidence={evidence} rows={model.cone} width={width} height={Math.max(3, contentHeight - coneTableHeight)} />
+      </> : chartInput && windows.length ? <RealizedVolGraph evidence={evidence} input={chartInput} width={width} height={contentHeight} />
         : <EmptyState title="Select graph windows in pane settings." />}
     </PaneStatusBody>}
   </Box>;

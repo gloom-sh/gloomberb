@@ -7,7 +7,7 @@ import type { OptionsChain } from "../../../types/financials";
 import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
 import { selectSurfaceExpiries } from "../vol-surface/client";
 import { loadOptionsEnrichment } from "./enrichment-client";
-import { optionsEnrichmentNeighbour, projectOptionsEnrichment, type OptionsEnrichmentSelection,
+import { optionsEnrichmentNeighbour, optionsEnrichmentTermSlope, projectOptionsEnrichment, type OptionsEnrichmentSelection,
   type OptionsEnrichmentSnapshot } from "./enrichment-model";
 
 const now = Date.UTC(2026, 8, 22, 14);
@@ -49,6 +49,28 @@ function deferred<T>() {
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
 describe("options enrichment projection", () => {
+  test("annualizes only at the far expiry's 30-day boundary, independently of the expiry gap", () => {
+    const front = { years: 1 / 365, volatility: 0.3 };
+    expect(optionsEnrichmentTermSlope(front, { years: 3 / 365, volatility: 0.312 }))
+      .toMatchObject({ termSlopeAnnualized: false, termSlope: expect.closeTo(0.012, 10) });
+    expect(optionsEnrichmentTermSlope(front, { years: (30 - 1 / 86400) / 365, volatility: 0.312 }).termSlopeAnnualized).toBe(false);
+    const atBoundary = optionsEnrichmentTermSlope({ years: 29 / 365, volatility: 0.3 }, { years: 30 / 365, volatility: 0.312 });
+    expect(atBoundary.termSlopeAnnualized).toBe(true);
+    expect(atBoundary.termSlope).toBeCloseTo(0.012 * 365, 10);
+    expect(optionsEnrichmentTermSlope(front, { years: (30 + 1 / 86400) / 365, volatility: 0.312 }).termSlopeAnnualized).toBe(true);
+    expect(optionsEnrichmentTermSlope(front, { years: front.years, volatility: 0.312 }).termSlope).toBeNull();
+  });
+
+  test("short-tenor enrichment retains raw IV change and both expiry identities", () => {
+    const near = expiry(24), far = expiry(29);
+    const result = projectOptionsEnrichment({ ...selection({ expiration: near, selectedEntry: ready(chain(near)), catalogue: [near, far] }),
+      curve, neighbourEntry: ready(chain(far, 0.312)), now });
+    expect(result.termSlopeAnnualized).toBe(false);
+    expect(result.termSlope).toBeCloseTo(0.012, 4);
+    expect(result.expiration).toBe(near);
+    expect(result.neighbourExpiration).toBe(far);
+  });
+
   test("matches a provider's bare underlying to a public listing key while retaining its cache scope", () => {
     const scoped = { ...instrument, symbol: "AAPL:XNAS" };
     const result = projectOptionsEnrichment({ ...selection({ instrument: scoped }), curve, neighbourEntry: ready(chain(next)), now });

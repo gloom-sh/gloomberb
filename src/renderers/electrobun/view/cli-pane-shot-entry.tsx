@@ -273,10 +273,11 @@ function hasUnresolvedChartData(): boolean {
       node.metadata?.kind === "stock-price"
       || node.metadata?.kind === "price-comparison"
       || node.metadata?.kind === "chart-composer"
+      || node.metadata?.kind === "realized-volatility"
     )
     && (
       node.metadata.loading === true
-      || (node.metadata.kind !== "chart-composer" && (
+      || (!["chart-composer", "realized-volatility"].includes(String(node.metadata.kind)) && (
         typeof node.metadata.projectedPointCount !== "number"
         || node.metadata.projectedPointCount <= 0
       ))

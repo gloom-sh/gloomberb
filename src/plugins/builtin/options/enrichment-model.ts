@@ -26,8 +26,10 @@ export interface OptionsEnrichmentSnapshot {
   expectedMove: ExpectedMove;
   /** Decimal IV difference: 25-delta put minus 25-delta call. */
   skew25: number | null;
-  /** Decimal IV change per year to the immediately later listed expiry. */
+  /** Decimal IV change to the immediately later listed expiry; see termSlopeAnnualized for its time basis. */
   termSlope: number | null;
+  /** Annualize only when the later expiry is at least 30 calendar days away. */
+  termSlopeAnnualized: boolean;
   neighbourExpiration: number | null;
   source: string | null;
   asOf: string | null;
@@ -61,6 +63,15 @@ export function optionsEnrichmentNeighbour(catalogue: readonly number[], expirat
     .sort((left, right) => left - right)[0] ?? null;
 }
 
+export function optionsEnrichmentTermSlope(
+  front: { years: number; volatility: number }, back: { years: number; volatility: number },
+): Pick<OptionsEnrichmentSnapshot, "termSlope" | "termSlopeAnnualized"> {
+  const annualized = volatilityTermSlope(front, back);
+  const termSlopeAnnualized = back.years >= 30 / 365;
+  return { termSlopeAnnualized, termSlope: annualized == null ? null
+    : termSlopeAnnualized ? annualized : back.volatility - front.volatility };
+}
+
 function chainIssue(entry: QueryEntry<OptionsChain> | null | undefined, instrument: InstrumentRef, expiration: number, now: number): string | null {
   if (entry?.error) return entry.error.message;
   const chain = resolveEntryData(entry);
@@ -91,7 +102,7 @@ export function projectOptionsEnrichment(input: OptionsEnrichmentProjection): Op
   const neighbourExpiration = optionsEnrichmentNeighbour(input.catalogue, input.expiration, input.now);
   const result: OptionsEnrichmentSnapshot = {
     key: buildOptionsKey({ instrument: input.instrument, expirationDate: input.expiration }),
-    expiration: input.expiration, phase: "unavailable", expectedMove: emptyExpectedMove(), skew25: null, termSlope: null,
+    expiration: input.expiration, phase: "unavailable", expectedMove: emptyExpectedMove(), skew25: null, termSlope: null, termSlopeAnnualized: false,
     neighbourExpiration, source: chain?.providerId ?? input.selectedEntry.source, asOf: chain?.asOf ?? null,
     neighbourSource: null, neighbourAsOf: null, rateAsOf: [], spot: input.spot, spotAsOf: input.spotAsOf ?? null,
     warnings: [], error: optionsEnrichmentSelectionIssue(input, input.now), fetchedAt: input.now,
@@ -120,8 +131,8 @@ export function projectOptionsEnrichment(input: OptionsEnrichmentProjection): Op
         .filter((warning) => !(input.curveLoading && warning === "Treasury rate unavailable"))
         .map((warning) => `Adjacent expiry: ${warning}`));
       if (selected.atmIV != null && neighbour.atmIV != null) {
-        result.termSlope = volatilityTermSlope({ years: selected.years, volatility: selected.atmIV },
-          { years: neighbour.years, volatility: neighbour.atmIV });
+        Object.assign(result, optionsEnrichmentTermSlope({ years: selected.years, volatility: selected.atmIV },
+          { years: neighbour.years, volatility: neighbour.atmIV }));
         if (new Date(selected.asOf!).toISOString().slice(0, 10) !== new Date(neighbour.asOf!).toISOString().slice(0, 10)) {
           result.warnings.push("Term slope uses option observations from different dates");
         }

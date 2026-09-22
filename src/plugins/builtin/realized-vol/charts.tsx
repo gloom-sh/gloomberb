@@ -1,3 +1,4 @@
+import { useRealizedVolEvidence, type RealizedVolEvidenceStatus } from "./evidence";
 import { useMemo } from "react";
 import { CompositeChart } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
@@ -13,17 +14,19 @@ function useChartColors() {
     text: colors.text, textDim: palette.axisColor, negative: colors.negative } };
 }
 
-export function RealizedVolGraph({ input, width, height }: { input: RealizedChartInput; width: number; height: number }) {
+export function RealizedVolGraph({ input, width, height, evidence }: { input: RealizedChartInput; width: number; height: number; evidence: RealizedVolEvidenceStatus }) {
   const { colors, chart } = useChartColors();
   const series = useMemo(() => realizedChartSeries(input, [colors.positive, colors.borderFocused, colors.negative,
-    colors.text, colors.textDim, blendHex(colors.positive, colors.borderFocused, 0.5), colors.warning, colors.warning]), [input, colors]);
+    colors.text, colors.textDim, blendHex(colors.positive, colors.borderFocused, 0.5), colors.warning, colors.warning], colors.textBright), [input, colors]);
+  useRealizedVolEvidence(series, evidence);
   return <CompositeChart series={series} panels={[{ id: "vol", height: 2 }, { id: "price", height: 1 }]}
     width={width} height={height} navigable={false} showLegend showTimeAxis colors={chart} remoteKind="realized-volatility" />;
 }
 
-export function VolatilityConeChart({ rows, width, height }: { rows: readonly VolatilityConeStatistics[]; width: number; height: number }) {
+export function VolatilityConeChart({ rows, width, height, evidence }: { rows: readonly VolatilityConeStatistics[]; width: number; height: number; evidence: RealizedVolEvidenceStatus }) {
   const { colors, chart } = useChartColors();
   const series = useMemo(() => coneChartSeries(rows, [colors.textDim, colors.borderFocused, colors.positive, colors.warning]), [rows, colors]);
+  useRealizedVolEvidence(series, evidence);
   const min = rows[0]?.window ?? 10, max = rows.at(-1)?.window ?? 260;
   const tickRows = rows.filter((row) => width >= 90 || (row.window !== 20 && (width >= 60 || row.window !== 30)));
   // Composite charts leave a small right margin; the explicit viewport makes numeric ticks exact.
