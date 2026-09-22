@@ -8,6 +8,8 @@ export function tapeTimeKey(value: string): string {
 }
 export const tapeTime = (value: string | null) => value ? value.replace("T", " ").replace(/Z$/, "") : "--";
 export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
+/** Tape rows read at millisecond precision; the row detail keeps the exact SIP nanoseconds. */
+export const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
 export const tapePrice = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 export const tapeQuantity = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
 const tradeDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });

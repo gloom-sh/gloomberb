@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import { tapeFixture } from "./test-fixture";
 import { fetchTape, validateTape } from "./client";
-import { newestFirst, quoteKey, quoteSpread, tapeStatistics, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, tapeClock, tapeClockMs, tapeStatistics, tradeKey } from "./model";
 
 
 test("lossless IDs and nanosecond order determine latest print and weighted observed statistics", () => {
@@ -58,4 +58,10 @@ test("absent endpoint is recoverable and access errors remain access errors", as
   await expect(fetchTape("AAPL", "NASDAQ", undefined, { getCloudTape: async () => { throw new ApiRequestError("missing", 404); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchTape("AAPL", "NASDAQ", undefined, { getCloudTape: async () => { throw denied; } })).rejects.toBe(denied);
+});
+
+test("tape rows read at millisecond precision while the exact stamp survives for the detail", () => {
+  expect(tapeClockMs("2026-09-22T16:59:58.545074403Z")).toBe("16:59:58.545");
+  expect(tapeClockMs("2026-09-22T16:59:58Z")).toBe("16:59:58");
+  expect(tapeClock("2026-09-22T16:59:58.545074403Z")).toBe("16:59:58.545074403");
 });

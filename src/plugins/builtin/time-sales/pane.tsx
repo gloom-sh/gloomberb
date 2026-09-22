@@ -8,12 +8,12 @@ import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tap
 import { canonicalExchange } from "../../../utils/exchanges";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { newestFirst, quoteKey, quoteSpread, tapeClock, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tradeKey } from "./model";
+import { newestFirst, quoteKey, quoteSpread, tapeClockMs, tapePrice, tapeQuantity, tapeStatistics, tapeTime, tradeKey } from "./model";
 import { useTape } from "./use-tape";
 
 const TABS = [{ value: "trades", label: "Trades" }, { value: "quotes", label: "NBBO" }];
 const TRADES: DataTableColumn[] = [
-  { id: "time", label: "TIME UTC", width: 19, align: "left" },
+  { id: "time", label: "TIME UTC", width: 13, align: "left" },
   { id: "price", label: "PRICE", width: 12, align: "right" },
   { id: "size", label: "SHARES", width: 12, align: "right" },
   { id: "venue", label: "VENUE", width: 6, align: "left" },
@@ -21,7 +21,7 @@ const TRADES: DataTableColumn[] = [
   { id: "tape", label: "TAPE", width: 4, align: "left" },
 ];
 const QUOTES: DataTableColumn[] = [
-  { id: "time", label: "TIME UTC", width: 19, align: "left" },
+  { id: "time", label: "TIME UTC", width: 13, align: "left" },
   { id: "bid", label: "BID", width: 11, align: "right" },
   { id: "bidSize", label: "LOTS", width: 8, align: "right" },
   { id: "bidExchange", label: "VENUE", width: 6, align: "left" },
@@ -83,20 +83,20 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
         detailOpen={!!detail && !!resource.data} onBack={() => setDetail(null)} detailTitle={detail?.trade ? `Trade ${detail.trade.id}` : "Quote"}
         detailContent={detail && resource.data ? <TapeDetail row={detail} data={data} width={width} /> : null}
         rootBefore={<Box flexDirection="column" flexShrink={0} paddingX={1}>
-          <KeyValueRow labelWidth={16} label="Last trade" value={tapePrice(stats.latest?.price ?? null)} detail={`${rank(stats.pricePercentile)} / ${stats.count} prints · ${stats.asOf ? tapeClock(stats.asOf) : "--"} UTC`} />
-          <KeyValueRow labelWidth={16} label="Observed VWAP" value={tapePrice(stats.vwap)} detail={`${tapeQuantity(stats.volume)} shares · ${stats.from ? tapeClock(stats.from) : "--"} to ${stats.asOf ? tapeClock(stats.asOf) : "--"}`} />
+          <KeyValueRow labelWidth={16} label="Last trade" value={tapePrice(stats.latest?.price ?? null)} detail={`${rank(stats.pricePercentile)} / ${stats.count} prints · ${stats.asOf ? tapeClockMs(stats.asOf) : "--"} UTC`} />
+          <KeyValueRow labelWidth={16} label="Observed VWAP" value={tapePrice(stats.vwap)} detail={`${tapeQuantity(stats.volume)} shares · ${stats.from ? tapeClockMs(stats.from) : "--"} to ${stats.asOf ? tapeClockMs(stats.asOf) : "--"}`} />
           <KeyValueRow labelWidth={16} label="Observed range" value={`${tapePrice(stats.low)} to ${tapePrice(stats.high)}`} detail={data.session.high != null && data.session.low != null ? `Session ${tapePrice(data.session.low)} to ${tapePrice(data.session.high)} · ${tapeTime(data.session.asOf)} UTC` : undefined} />
         </Box>}
         renderCell={(row, column) => {
           if (row.trade) {
             const trade = row.trade;
-            return { text: column.id === "time" ? tapeClock(trade.timestamp) : column.id === "price" ? tapePrice(trade.price)
+            return { text: column.id === "time" ? tapeClockMs(trade.timestamp) : column.id === "price" ? tapePrice(trade.price)
               : column.id === "size" ? tapeQuantity(trade.size) : column.id === "venue" ? trade.exchange
               : column.id === "conditions" ? trade.conditions.join(" ") : trade.tape,
               color: trade.size >= 10_000 ? colors.warning : column.id === "price" ? colors.text : colors.textMuted };
           }
           const quote = row.quote!, spread = quoteSpread(quote);
-          return { text: column.id === "time" ? tapeClock(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid) : column.id === "ask" ? tapePrice(quote.ask)
+          return { text: column.id === "time" ? tapeClockMs(quote.timestamp) : column.id === "bid" ? tapePrice(quote.bid) : column.id === "ask" ? tapePrice(quote.ask)
             : column.id === "bidSize" ? tapeQuantity(quote.bidSize) : column.id === "askSize" ? tapeQuantity(quote.askSize)
             : column.id === "bidExchange" ? quote.bidExchange : column.id === "askExchange" ? quote.askExchange
             : spread.bps == null ? "--" : spread.bps.toFixed(2), color: spread.state === "normal" ? colors.text : colors.warning };
