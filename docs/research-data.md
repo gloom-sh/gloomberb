@@ -174,6 +174,16 @@ The optional Treasury comparison reuses GC's Gloom Cloud endpoint and its existi
 
 Math checks include the published Excel PRICE example (94.63436162), independent QuantLib 1.43 ACT/ACT ICMA references across leap-year and month-end schedules, price/yield round trips including negative yields, and finite-difference sensitivity checks. The reference package is not an application dependency.
 
+## Central bank rates
+
+`CBR`, `ECFC` and `CBRT` use one Gloom Cloud request for G20 policy observations. FRED supplies the US target bounds (DFEDTARL/DFEDTARU) and the ECB deposit facility rate (ECBDFR); official BIS central-bank policy-rate data supplies the other covered jurisdictions in one batch. The older OECD/FRED policy-rate series were discontinued and are not current inputs. BIS publishes daily observations weekly, so each row retains its actual date and calendar-day lag. US bounds must share a date and form a valid range. The board shows the range; its history and percentile use the midpoint, distinct from the effective Fed funds rate.
+
+Policy instruments differ. China is the BIS one-year loan prime rate, not its seven-day reverse repo rate. The euro-area row covers France, Germany and Italy and represents euro-area policy within the EU; non-euro EU countries have separate policies. Argentina has had no adopted policy rate since July 10, 2025 according to BIS metadata, so its last historical 29% value is not carried forward. The African Union has no unified policy rate. These jurisdictions retain unavailable rows rather than invented values.
+
+Last move compares the latest level with the preceding distinct observed rate, not yesterday's unchanged observation. Its date is the first source observation at the new level and need not be the announcement or effective date. A missing change within fetched history remains unknown. The one-year percentile uses daily observations in the twelve calendar months ending on that row's own latest date, midpoint ranks for ties, and a minimum of twenty observations. This measures time spent at historical levels, not a distribution of policy decisions. The detail retains sample count, range and window. Source gaps break the history chart; the compact sparkline connects reported observations. Published histories may contain revisions and do not reconstruct release-time vintages.
+
+Cloud caches BIS for six hours and FRED for one hour with shared in-flight requests and independent stale fallback. BIS observations more than fourteen days old and FRED observations more than seven days old are stale; expired fallback data remains stale regardless of observation date. A refresh failure preserves the last usable response and its source dates with a warning. An absent endpoint is explicitly unavailable. The source check on September 22, 2026 found delayed India, Indonesia and South Korea observations; the board displays their real dates. Only the maintained, source-verified US FOMC schedule supplies next-meeting dates. Missing dates elsewhere do not mean that no meeting is scheduled. No migration is required.
+
 ## Portfolio analytics
 
 P&L for manual portfolios covers current holdings. Manual portfolios have no cash-flow performance history; reconcile corporate actions through **PF → Set position**. Distributions are not automatically credited.

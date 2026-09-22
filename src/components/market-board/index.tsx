@@ -12,6 +12,8 @@ export interface MarketBoardRow {
   valueText: string;
   change: number | null;
   changeText: string;
+  /** Date of the displayed move, independent from the latest observation. */
+  changeAsOf?: string | null;
   percentile: number | null;
   asOf: string | null;
   history: PricePoint[];
@@ -30,6 +32,7 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
   renderDetail: (row: T) => ReactNode;
   /** Domain-specific interval, such as 1D or previous published observation. */
   changeLabel?: string;
+  valueWidth?: number;
   rootBefore?: ReactNode;
   emptyTitle?: string;
 }
@@ -37,12 +40,12 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
 /** Funding, policy, volume and price boards share sorting, date context,
  * native sparklines, stable selection and a mouse/keyboard detail stack. */
 export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height, focused,
-  selectedId, onSelectedIdChange, openId, onOpenIdChange, renderDetail, changeLabel = "1D",
+  selectedId, onSelectedIdChange, openId, onOpenIdChange, renderDetail, changeLabel = "1D", valueWidth = 12,
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
   const [sort, setSort] = useState({ id: "", direction: "asc" as "asc" | "desc" });
   const items = useMemo(() => sort.id ? [...rows].sort((a, b) => {
-    const key = sort.id as "label" | "value" | "change" | "percentile" | "asOf";
+    const key = sort.id as "label" | "value" | "change" | "percentile" | "asOf" | "changeAsOf";
     const left = a[key], right = b[key];
     if (left == null) return right == null ? 0 : 1;
     if (right == null) return -1;
@@ -52,8 +55,9 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
   const open = rows.find((row) => row.id === openId);
   const columns: DataTableColumn[] = [
     { id: "label", label: "INSTRUMENT", width: 18, align: "left", flexGrow: 1 },
-    { id: "value", label: "LEVEL", width: 12, align: "right" },
+    { id: "value", label: "LEVEL", width: valueWidth, align: "right" },
     { id: "change", label: changeLabel, width: 10, align: "right" },
+    ...(rows.some((row) => row.changeAsOf !== undefined) ? [{ id: "changeAsOf", label: "LAST CHANGE", width: 11, align: "left" as const }] : []),
     { id: "percentile", label: "PCTL 1Y", width: 8, align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
     { id: "asOf", label: "AS OF", width: 10, align: "left" },
@@ -63,6 +67,7 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "label") return { text: row.label, color: muted };
     if (column.id === "value") return { text: row.valueText, color: muted };
     if (column.id === "change") return { text: row.changeText, color: colors.textMuted };
+    if (column.id === "changeAsOf") return { text: row.changeAsOf ?? "--", color: colors.textDim };
     if (column.id === "percentile") return { text: row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
     return { text: row.asOf ?? "--", color: row.status === "stale" ? colors.warning : colors.textDim };

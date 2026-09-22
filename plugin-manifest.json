@@ -124,6 +124,7 @@
         "panes": [
           "bond-calculator",
           "cds",
+          "central-bank-rates",
           "credit-conditions",
           "earnings-calendar",
           "earnings-calls",
