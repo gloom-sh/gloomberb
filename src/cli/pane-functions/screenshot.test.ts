@@ -841,3 +841,14 @@ function renderedComparisonChart(): RemoteUiNodeSnapshot[] {
     },
   }];
 }
+
+test("screenshot bridge fetches tape through Bun with the exact listing identity", async () => {
+  const calls:string[][]=[];
+  const bridge=createDesktopShotBridge({dataProvider:{} as any},async(symbol,exchange)=>{
+    calls.push([symbol,exchange]);
+    return {symbol,exchange,trades:[{id:"18446744073709551615",timestamp:"2026-09-22T16:59:58.545074403Z"}]} as any;
+  });
+  expect(await bridge.marketData("getCloudTape",["AAPL","NASDAQ"])).toMatchObject({trades:[{id:"18446744073709551615",timestamp:"2026-09-22T16:59:58.545074403Z"}]});
+  expect(calls).toEqual([["AAPL","NASDAQ"]]);
+  await expect(bridge.marketData("getCloudTape",["AAPL"])).rejects.toThrow("listing exchange");
+});

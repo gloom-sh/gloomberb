@@ -299,6 +299,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb plugin link <path>` | Load a plugin from a local checkout while developing it |
 | `gloomberb plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
 
+`gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
+
 ## Plugins pane
 
 Open it with `PL` in the command bar. It lists what you have installed, what the registry offers, and, behind `b`, the built-in modules that can be switched off. Every row has a version and a status: `enabled`, `disabled`, `update` when the registry has something newer, `needs setup` when the plugin is missing a required setting, `errors (n)` when it has logged failures this session, and `failed` when it did not load at all, with the reason in the detail view.

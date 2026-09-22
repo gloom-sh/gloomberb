@@ -513,6 +513,8 @@ The observed buffer contains at most 1,000 trades and 500 quotes. Observed VWAP 
 
 Space pauses/resumes the display while the bounded subscription continues. Opening a row freezes its details; leaving that detail preserves the paused window until resumed. The structured report exposes observations, session range, capacity, dropped counts, corrections/cancels and source dates. `gloomberb fn TAS AAPL --limit 100 --json` returns the latest Cloud snapshot. Quote venue/condition dictionaries and Level 2 order-book depth are not inferred.
 
+`gloomberb shot TAS AAPL` and `shot QR AAPL` capture one dated tape bootstrap in the Bun process using the same session as the report. The desktop screenshot consumes that captured snapshot through its tape client without opening a browser-owned live socket. Source IDs, exact timestamps and access delays are unchanged; the footer marks the still image as a snapshot.
+
 ### Options scenario analysis
 
 OSA sums the existing European Black-Scholes-Merton value and Greeks for each signed option leg. All premiums are per underlying unit; position values and sensitivities multiply each leg by its signed contract count and user-specified contract multiplier. P&L is marked position value less nominal entry cash flow. Theta is currency per calendar day, vega per volatility percentage point, rho per rate percentage point, delta underlying units and gamma delta change per one-unit spot change. Entry financing, transaction costs, exercise, assignment and adjusted deliverables are not inferred.

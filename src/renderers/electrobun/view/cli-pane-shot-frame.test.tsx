@@ -25,15 +25,15 @@ function Source({ warning }: { warning: boolean }) {
   return <div>Research data</div>;
 }
 
-test("pane screenshots retain active warning indicators and reclaim space when warnings clear", async () => {
+test("pane screenshots retain warnings, optionally preserve source status and reclaim empty footers", async () => {
   const ui = createDomUiHost();
-  let update: (value: { warning: boolean; active: boolean }) => void = () => {};
+  let update: (value: { warning: boolean; active: boolean; preserveStatus?: boolean }) => void = () => {};
   function Harness() {
-    const [state, setState] = useState({ warning: false, active: true });
+    const [state, setState] = useState<{ warning: boolean; active: boolean; preserveStatus?: boolean }>({ warning: false, active: true });
     update = setState;
     return <UiHostProvider ui={ui} renderer={renderer}>
       <WebInputHostProvider><WebDialogHostProvider>
-        <PaneShotFrame paneId="shot" title="Research" width={40} height={24}>
+        <PaneShotFrame paneId="shot" title="Research" width={40} height={24} preserveStatus={state.preserveStatus}>
           {(frame) => <div data-body-height={frame.height}>
             <PaneFooterScope active={state.active}><Source warning={state.warning} /></PaneFooterScope>
           </div>}
@@ -64,4 +64,9 @@ test("pane screenshots retain active warning indicators and reclaim space when w
   await act(async () => update({ warning: false, active: true }));
   expect(root.querySelector('[data-gloom-role="pane-footer"]')).toBeNull();
   expect(bodyHeight()).toBe("23");
+
+  await act(async () => update({ warning: false, active: true, preserveStatus: true }));
+  expect(root.textContent).toContain("Loading a normal source");
+  expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
+  expect(bodyHeight()).toBe("22");
 });

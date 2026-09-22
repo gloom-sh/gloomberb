@@ -1,3 +1,4 @@
+import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, resolve, sep } from "path";
@@ -50,6 +51,7 @@ export interface DesktopPaneShotPayload {
   instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
   intradayHistories: DesktopPaneShotIntradayHistory[];
   optionsChains: NonNullable<SnapshotMarketData["optionsChains"]>;
+  tapeSnapshots?: TapeCapture[];
   valuationSeries: Array<[string, DatedObservation[]]>;
   statSeries: Array<[string, DatedObservation[]]>;
   chartModel?: ChartResolutionResult;

@@ -4,7 +4,8 @@ import { testRender } from "../../../renderers/opentui/test-utils";
 import { Text } from "../../../ui";
 import type { TapeFeedEvent, TapeSnapshot } from "../../../api-client/tape";
 import { tapeFixture } from "./test-fixture";
-import { useTape } from "./use-tape";
+import { TapeClientContext, useTape } from "./use-tape";
+import { createSnapshotTapeClient } from "./snapshot-client";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 afterEach(async () => { if (setup) await act(async () => setup!.renderer.destroy()); setup = undefined; });
@@ -19,6 +20,27 @@ function clientHarness() {
   }, emit: (event: TapeFeedEvent) => { for (const listener of listeners) listener(event); } };
 }
 async function settle(action?: () => void) { await act(async () => { action?.(); await setup!.renderOnce(); }); }
+
+test("the screenshot context supplies one dated snapshot without a live bootstrap", async () => {
+  const initial = tapeFixture();
+  let bootstrapCalls = 0;
+  const client = createSnapshotTapeClient([["AAPL", "NASDAQ", initial]], async () => {
+    bootstrapCalls++;
+    throw new Error("Captured tape must not refetch");
+  });
+  let latest: ReturnType<typeof useTape>;
+  function Probe() {
+    latest = useTape("AAPL", "NASDAQ", "screenshot", 0);
+    return <Text>{latest.data?.generatedAt ?? "empty"}</Text>;
+  }
+  setup = await testRender(<TapeClientContext.Provider value={client}><Probe /></TapeClientContext.Provider>, { width: 50, height: 3 });
+  await settle();
+  expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
+  expect(latest!.data?.trades).toEqual(initial.trades);
+  expect(latest!.snapshotOnly).toBe(true);
+  expect(latest!.loading).toBe(false);
+  expect(bootstrapCalls).toBe(0);
+});
 
 test("live tape wins an older bootstrap, auth reset rejects its pending response, and unmount releases resources", async () => {
   const harness = clientHarness();

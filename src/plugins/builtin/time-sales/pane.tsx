@@ -70,7 +70,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
     info: data ? [{ id: "feed", parts: [{ text: `Alpaca ${data.feed === "sip" ? "SIP" : "SIP 15m delayed"} · ${tapeTime(data.asOf)} UTC`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
-      ...(!data.connected ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
+      ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     <Tabs tabs={TABS} activeValue={tab} onSelect={(value) => { setTab(value); setDetail(null); setSelected(null); }} focused={focused && !detail} dense />

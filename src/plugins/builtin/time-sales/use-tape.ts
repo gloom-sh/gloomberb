@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { TapeSnapshot } from "../../../api-client/tape";
 import { fetchTape, validateTape } from "./client";
 
-type TapeClient = Pick<typeof apiClient, "subscribeTape" | "getCloudTape">;
-export function useTape(symbol: string, exchange: string, sessionKey: unknown, refresh: number, client: TapeClient = apiClient) {
+export type TapeClient = Pick<typeof apiClient, "subscribeTape" | "getCloudTape"> & { snapshotOnly?: boolean };
+export const TapeClientContext = createContext<TapeClient | null>(null);
+export function useTape(symbol: string, exchange: string, sessionKey: unknown, refresh: number, suppliedClient?: TapeClient) {
+  const contextualClient = useContext(TapeClientContext);
+  const client = suppliedClient ?? contextualClient ?? apiClient;
   const epoch = useRef(0);
   const identity = useRef<{ symbol: string; exchange: string; sessionKey: unknown } | null>(null);
   const [state, setState] = useState<{ data: TapeSnapshot | null; loading: boolean; error: string | null; transport: string | null; epoch: number }>({ data: null, loading: true, error: null, transport: null, epoch: 0 });
@@ -46,5 +49,5 @@ export function useTape(symbol: string, exchange: string, sessionKey: unknown, r
     if (requestEpoch === epoch.current) bootstrap(requestEpoch);
     return () => { active = false; abort.abort(); unsubscribe(); };
   }, [symbol, exchange, sessionKey, refresh, client]);
-  return state;
+  return { ...state, snapshotOnly: "snapshotOnly" in client && client.snapshotOnly === true };
 }

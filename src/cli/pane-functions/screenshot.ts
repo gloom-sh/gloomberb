@@ -1,3 +1,5 @@
+import { fetchTape } from "../../plugins/builtin/time-sales/client";
+import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
 import { apiClient } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
 import { toMarketDataContext } from "../../market-data/selectors";
@@ -159,6 +161,7 @@ const SHOT_BRIDGE_MARKET_OPERATIONS = new Set([
   "getEarningsCalendar",
   "getHolders",
   "getOptionsChain",
+  "getCloudTape",
   "getPriceHistory",
   "getPriceHistoryForResolution",
   "getQuote",
@@ -171,11 +174,17 @@ const SHOT_BRIDGE_HTTP_TIMEOUT_MS = 20_000;
 
 export function createDesktopShotBridge(
   context: Pick<MarketContext, "dataProvider">,
+  tapeBootstrap: typeof fetchTape = fetchTape,
 ): DesktopPaneShotBridge {
   return {
     async marketData(operation, args) {
       if (!SHOT_BRIDGE_MARKET_OPERATIONS.has(operation)) {
         throw new Error(`Screenshot market bridge does not serve "${operation}".`);
+      }
+      if (operation === "getCloudTape") {
+        const [symbol, exchange] = args;
+        if (typeof symbol !== "string" || typeof exchange !== "string") throw new Error("Tape screenshots require a symbol and listing exchange.");
+        return tapeBootstrap(symbol, exchange);
       }
       const provider = context.dataProvider as unknown as Record<string, unknown>;
       const handler = provider[operation];
@@ -488,6 +497,7 @@ export async function buildDesktopShotPayload(
   const intradayHistories: DesktopPaneShotIntradayHistory[] = [];
   let instrumentFinancials: SnapshotMarketData["instrumentFinancials"];
   const optionsChains: Array<[string, OptionsChain]> = [];
+  const tapeSnapshots: TapeCapture[] = [];
   const [valuationSeries, statSeries] = await Promise.all([
     collectShotValuationSeries(resolved),
     collectShotStatSeries(resolved),
@@ -585,6 +595,9 @@ export async function buildDesktopShotPayload(
     }
     tickers.push(entry.tickerFile ?? createFallbackTicker(symbol, data, context));
     financials.push([symbol, data]);
+    if (resolved.pane.id === "time-sales") {
+      tapeSnapshots.push([entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)]);
+    }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
       const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange);
       optionsChains.push([symbol, chain]);
@@ -609,6 +622,7 @@ export async function buildDesktopShotPayload(
     ...(instrumentFinancials?.length ? { instrumentFinancials } : {}),
     intradayHistories,
     optionsChains,
+    ...(tapeSnapshots.length ? { tapeSnapshots } : {}),
     valuationSeries,
     statSeries,
     paneState,

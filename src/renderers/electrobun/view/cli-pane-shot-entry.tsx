@@ -1,6 +1,9 @@
 /** @jsxImportSource react */
 import { createRoot } from "react-dom/client";
 import { useEffect, type ReactNode } from "react";
+import { TapeClientContext } from "../../../plugins/builtin/time-sales/use-tape";
+import { createSnapshotTapeClient } from "../../../plugins/builtin/time-sales/snapshot-client";
+import type { TapeSnapshot } from "../../../api-client/tape";
 import { AppProvider, useAppDispatch } from "../../../state/app/context";
 import { createCliPaneShotConnectionHealth } from "./cli-pane-shot-health";
 import { ChartSnapshotContext } from "../../../time-series/hooks";
@@ -484,7 +487,7 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   const width = payload.widthCells;
   const height = payload.heightCells;
   return (
-    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height}>
+    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={pane.id === "time-sales"}>
       {(bodyFrame) => <PaneContent
         component={pane.component}
         paneId={instance.instanceId}
@@ -521,31 +524,35 @@ async function render() {
   // Restore the proxied cloud session only after registration is complete.
   await restoreShotCloudSession();
 
+  const tapeClient = createSnapshotTapeClient(payload.tapeSnapshots ?? [],
+    (symbol, exchange) => requestShotMarketData<TapeSnapshot>("getCloudTape", [symbol, exchange]));
   createRoot(rootElement).render(
-    <RemoteUiRegistryProvider>
-      <CaptureShotSemanticUi />
-      <UiHostProvider ui={webUiHost} renderer={rendererHost} nativeRenderer={webNativeRenderer}>
-        <WebInputHostProvider>
-          <WebToastHostProvider>
-            <WebDialogHostProvider>
-              <AppProvider config={payload.config} desktopSnapshot={{
-                config: payload.config,
-                paneState: payload.paneState,
-                focusedPaneId: payload.paneId,
-                activePanel: "right",
-                statusBarVisible: false,
-              }}>
-                <HydratePayload payload={payload}>
-                  <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
-                    <ShotPane payload={payload} registry={services.pluginRegistry} />
-                  </ChartSnapshotContext.Provider>
-                </HydratePayload>
-              </AppProvider>
-            </WebDialogHostProvider>
-          </WebToastHostProvider>
-        </WebInputHostProvider>
-      </UiHostProvider>
-    </RemoteUiRegistryProvider>,
+    <TapeClientContext.Provider value={tapeClient}>
+      <RemoteUiRegistryProvider>
+        <CaptureShotSemanticUi />
+        <UiHostProvider ui={webUiHost} renderer={rendererHost} nativeRenderer={webNativeRenderer}>
+          <WebInputHostProvider>
+            <WebToastHostProvider>
+              <WebDialogHostProvider>
+                <AppProvider config={payload.config} desktopSnapshot={{
+                  config: payload.config,
+                  paneState: payload.paneState,
+                  focusedPaneId: payload.paneId,
+                  activePanel: "right",
+                  statusBarVisible: false,
+                }}>
+                  <HydratePayload payload={payload}>
+                    <ChartSnapshotContext.Provider value={payload.chartModel ?? null}>
+                      <ShotPane payload={payload} registry={services.pluginRegistry} />
+                    </ChartSnapshotContext.Provider>
+                  </HydratePayload>
+                </AppProvider>
+              </WebDialogHostProvider>
+            </WebToastHostProvider>
+          </WebInputHostProvider>
+        </UiHostProvider>
+      </RemoteUiRegistryProvider>
+    </TapeClientContext.Provider>,
   );
 }
 
