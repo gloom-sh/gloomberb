@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
-import { CURVE_ROOTS, normalizeCurveRoot } from "./model";
+import { CURVE_HORIZONS, CURVE_ROOTS, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 import { FuturesCurvePane } from "./pane";
 
 export const futuresCurveModule: PluginModule = {
@@ -9,8 +9,11 @@ export const futuresCurveModule: PluginModule = {
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 98, height: 30 },
     tableExport: true, headless: futuresCurveHeadless,
     settings: (context) => ({ title: "Futures Curve Settings",
-      values: { root: context.settings.root ?? context.pane.params?.root ?? "ES" },
-      fields: [{ key: "root", label: "Contract root", type: "select", options: CURVE_ROOTS }],
+      values: { root: context.settings.root ?? context.pane.params?.root ?? "ES", horizon: context.settings.horizon ?? DEFAULT_CURVE_HORIZON },
+      fields: [
+        { key: "root", label: "Contract root", type: "select", options: CURVE_ROOTS },
+        { key: "horizon", label: "Chart horizon", type: "select", options: [...CURVE_HORIZONS] },
+      ],
     }),
   }],
   paneTemplates: [{ id: "futures-curve-pane", paneId: "futures-curve", label: "Futures Curve",

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
-import { curveRank, futuresCurveSeries } from "./model";
+import { curveRank, futuresCurveSeries, newestQuote } from "./model";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
   price: 80, asOf: "2026-09-22T15:00:00Z", currency: "USD", quoteUnit: "USD", volume: 0, openInterest: 0, delayMinutes: 10,
@@ -51,4 +51,21 @@ test("normalizes FUT aliases before cloud request and handles missing endpoints 
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw denied; } })).rejects.toBe(denied);
+});
+
+test("charts the strip within the horizon and dates it by its freshest quote, not the oldest", () => {
+  const data = payload();
+  data.asOf = "2020-04-07T17:14:00Z";
+  data.contracts = [first, { ...first, symbol: "CLZ28.NYM", expiration: "2028-11-20", asOf: "2020-04-07T17:14:00Z", stale: true },
+    { ...first, symbol: "CLZ36.NYM", expiration: "2036-11-20", asOf: "2026-09-16T19:24:47Z", stale: true }];
+  data.ghosts[0]!.points = data.contracts.map((row) => ({ symbol: row.symbol, expiration: row.expiration, price: 70, asOf: "2026-09-15" }));
+  const now = Date.parse("2026-09-22T16:00:00Z");
+  const near = futuresCurveSeries(data, undefined, "24", now);
+  expect(near[0]!.points.map((point) => point.id)).toEqual(["CLX26.NYM"]);
+  expect(near[0]!.asOf).toBe(first.asOf);
+  expect(near[1]!.points.map((point) => point.id)).toEqual(["CLX26.NYM"]);
+  const all = futuresCurveSeries(data, undefined, "all", now);
+  expect(all[0]!.points).toHaveLength(3);
+  expect(all[0]!.asOf).toBe(first.asOf);
+  expect(newestQuote([])).toBeNull();
 });

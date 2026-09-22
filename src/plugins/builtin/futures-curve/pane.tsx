@@ -2,7 +2,7 @@ import { useCallback, useMemo, useState } from "react";
 import { CurveSurface, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn } from "../../../components";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
-import { useAsyncResource, usePluginPaneState, useShortcut } from "gloomberb/react";
+import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "gloomberb/react";
 import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -10,7 +10,7 @@ import { Box } from "gloomberb/ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { getCachedFuturesCurve, loadFuturesCurve } from "./client";
-import { curvePrice, curveRank, curveTimestamp, futuresCurveSeries, normalizeCurveRoot, sortCurveContracts } from "./model";
+import { curvePrice, curveRank, curveTimestamp, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 const COLUMNS: DataTableColumn[] = [
@@ -42,9 +42,12 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const [tab, setTab] = usePluginPaneState("tab", "curve");
   const [selected, setSelected] = usePluginPaneState<string | null>("contract", null);
   const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });
+  const [horizon] = usePaneSettingValue("horizon", DEFAULT_CURVE_HORIZON);
   const data = resource.data;
   usePaneTitle(`CTM ${root}`);
-  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }) : [], [data, colors]);
+  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }, horizon) : [], [data, colors, horizon]);
+  const staleCount = data?.contracts.filter((row) => row.stale).length ?? 0;
+  const newest = data ? newestQuote(data.contracts) : null;
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
   const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
   const bodyHeight = Math.max(9, height - 3);
@@ -60,8 +63,8 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const delay = Math.max(0, ...(data?.contracts.map((row) => row.delayMinutes ?? 0) ?? []));
   usePaneStatusFooter({ registrationId: "futures-curve", loading: resource.loading, error: resource.error,
     info: data ? [
-      { id: "source", parts: [{ text: `${data.source === "cboe" ? "Cboe settlement" : `Yahoo ${delay > 0 ? `${delay}m delayed` : "dated quotes"}`} · ${data.quoteUnit ?? data.currency ?? "units unavailable"} · ${curveTimestamp(data.asOf)}${data.asOf?.includes("T") ? " UTC" : ""}`, tone: "muted" }] },
-      ...(data.stale ? [{ id: "stale", parts: [{ text: "stale", tone: "warning" as const }] }] : []),
+      { id: "source", parts: [{ text: `${data.source === "cboe" ? "Cboe settlement" : `Yahoo ${delay > 0 ? `${delay}m delayed` : "dated quotes"}`} · ${data.quoteUnit ?? data.currency ?? "units unavailable"} · ${curveTimestamp(newest)}${newest?.includes("T") ? " UTC" : ""}`, tone: "muted" }] },
+      ...(staleCount ? [{ id: "stale", parts: [{ text: `${staleCount} of ${data.contracts.length} stale`, tone: "warning" as const }] }] : []),
       ...(data.status !== "available" ? [{ id: "partial", parts: [{ text: data.status, tone: "warning" as const }] }] : []),
     ] : [],
   });

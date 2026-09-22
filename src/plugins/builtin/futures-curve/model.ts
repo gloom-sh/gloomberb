@@ -26,13 +26,38 @@ export function curveRank(value: number | null, samples: number, start: string |
   return `${value.toFixed(0)} pctl · ${samples} obs · ${start ?? "--"} to ${end ?? "--"}`;
 }
 
-export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette): CurveSeries[] {
+export const CURVE_HORIZONS = [
+  { value: "12", label: "12 months" }, { value: "24", label: "24 months" }, { value: "36", label: "36 months" }, { value: "all", label: "Every listed contract" },
+] as const;
+export const DEFAULT_CURVE_HORIZON = "36";
+
+/** The payload's asOf is its oldest quote. The freshest quote is what "latest" means to a reader. */
+export function newestQuote(contracts: readonly { asOf: string | null }[]): string | null {
+  return contracts.reduce<string | null>((newest, row) => row.asOf && (!newest || row.asOf > newest) ? row.asOf : newest, null);
+}
+
+/**
+ * Chart the contracts expiring within the horizon. A crude strip lists ten
+ * years of months; drawn end to end, the liquid front two years collapse into
+ * a sliver while contracts quoted years ago shape the curve. The table keeps
+ * every contract.
+ */
+export function charted<T extends { expiration: string }>(rows: readonly T[], horizon: string, now: number): T[] {
+  const months = Number(horizon);
+  if (!Number.isFinite(months) || months <= 0) return [...rows];
+  const end = new Date(now);
+  end.setUTCMonth(end.getUTCMonth() + months);
+  return rows.filter((row) => Date.parse(row.expiration) <= end.getTime());
+}
+
+export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette, horizon = DEFAULT_CURVE_HORIZON, now = Date.now()): CurveSeries[] {
+  const contracts = charted(data.contracts, horizon, now);
   return [{
-    id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: data.asOf, color: palette?.current,
-    points: data.contracts.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
+    id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: newestQuote(contracts), color: palette?.current,
+    points: contracts.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
   }, ...data.ghosts.map((ghost) => ({
     id: ghost.label, label: ghost.asOf ? ghost.label : `${ghost.label} unavailable`, asOf: ghost.asOf, color: palette?.ghosts[ghost.label], chartVisible: ghost.label !== "1Y",
-    points: ghost.points.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
+    points: charted(ghost.points, horizon, now).map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
   }))];
 }
 
