@@ -157,6 +157,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [YYYY-MM-DD]` | Treasury yield curve for the latest session or a historical date; CLI also accepts `--date YYYY-MM-DD` |
+| `WIRP` / `FFIP` | Fed funds futures implied FOMC path, conditional target probabilities, SOFR contracts and Fed projections |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 30-day/3-month implied-volatility curve |
 | `CRD` | Credit spreads |

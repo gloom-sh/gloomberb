@@ -1,32 +1,23 @@
 import { expect, test } from "bun:test";
-import { buildStaticChartSeries } from "../../../components/chart/static/chart-surface";
+import { buildCurveChart } from "../../../components/chart/curve/model";
 import { buildCompositeChartScene } from "../../../components/chart/composite/scene";
-import { buildYieldCurveChart } from "./chart";
-import { TREASURY_MATURITIES } from "./treasury-data";
+import { buildYieldCurveSeries } from "./chart";
 
-test("curve projection preserves maturity distances, including missing tenors", () => {
-  const source = TREASURY_MATURITIES.map(({ maturity, years }, index) => ({
-    maturity, maturityYears: years, yield: 4 + index / 10,
-  }));
-  for (const data of [source, source.filter(({ maturity }) => maturity !== "6M")]) {
-    const chart = buildYieldCurveChart(data, 62);
-    const scene = buildCompositeChartScene(buildStaticChartSeries(chart.points, "line", "green", [], true),
-      [{ id: "main" }], { width: 70, height: 12, rightOffsetRatio: 0 })!;
-    expect(scene.timeScale.kind).toBe("calendar");
-    const projected = scene.panels[0]!.series[0]!.points;
-    for (let index = 0; index < data.length; index++) {
-      expect(projected[index]!.xRatio).toBeCloseTo((data[index]!.maturityYears - 1 / 12) / (30 - 1 / 12), 10);
-      expect(projected[index]!.value).toBe(data[index]!.yield);
-    }
-    expect(chart.formatCursor(0)).toBe("1.0M");
-    expect(chart.formatCursor(1)).toBe("30.0Y");
-  }
-});
-
-test("partial curve ticks stay in range and readable at narrow widths", () => {
-  const source = [{ maturity: "5Y", maturityYears: 5, yield: 4 }, { maturity: "10Y", maturityYears: 10, yield: 4.3 }];
-  const chart = buildYieldCurveChart(source, 20);
-  expect(chart.ticks).toEqual([{ label: "5Y", ratio: 0 }, { label: "10Y", ratio: 1 }]);
-  expect(chart.formatCursor(0.5)).toBe("7.5Y");
-  expect(buildYieldCurveChart([], 20).points).toEqual([]);
+test("Treasury migration retains missing tenors as gaps and every node's observation date", () => {
+  const points = [
+    { maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" },
+    { maturity: "6M", maturityYears: 0.5, yield: null, asOf: null },
+    { maturity: "2Y", maturityYears: 2, yield: 3.5, asOf: "2026-09-21" },
+    { maturity: "10Y", maturityYears: 10, yield: 4.5, asOf: "2026-09-21" },
+  ];
+  const curve = buildYieldCurveSeries(points);
+  expect(curve.points[1]?.value).toBeNull();
+  expect(curve.points[2]?.asOf).toBe("2026-09-21");
+  const chart = buildCurveChart([curve], 70, ["green"]);
+  const scene = buildCompositeChartScene(chart.series, [{ id: "main" }], { width: 70, height: 12, rightOffsetRatio: 0 })!;
+  expect(scene.timeScale.kind).toBe("calendar");
+  const projected = scene.panels[0]!.series[0]!.points;
+  expect(projected[1]?.breakBefore).toBe(true);
+  expect(projected[1]?.xRatio).toBeCloseTo((2 - 1 / 12) / (10 - 1 / 12), 10);
+  expect(buildYieldCurveSeries([...points, { maturity: "30Y", maturityYears: 30, yield: 4.7, asOf: "2026-09-20" }]).asOf).toBeNull();
 });

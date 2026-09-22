@@ -1,4 +1,5 @@
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
+import type { RatePathPayload } from "./rates";
 import type { TickerFinancials } from "../types/financials";
 import type { InstrumentSearchResult } from "../types/instrument";
 import {
@@ -330,6 +331,10 @@ export class CloudDataApi {
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {
     return this.request<CloudYieldPointPayload[]>("/cloud/econ/yield-curve");
+  }
+
+  async getCloudRatePath(): Promise<RatePathPayload> {
+    return this.request<RatePathPayload>("/cloud/econ/rate-path", { signal: AbortSignal.timeout(45_000) });
   }
 
   async getCloudCds(params: CloudCdsParams = {}): Promise<CloudCdsResponse> {

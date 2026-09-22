@@ -1,6 +1,8 @@
 
 export { PriceSelectorDialog } from "./price-selector-dialog";
 export { StaticChartSurface } from "./chart/static";
+export { CurveSurface, curveSlope, historyStatistics } from "./chart/curve";
+export type { CurveSurfaceProps, CurveSlopeReadout, CurvePoint, CurveSeries, HistoryObservation, HistoryStatistics } from "./chart/curve";
 export type { StaticChartOverlay } from "./chart/static/chart-surface";
 // The time-series chart: one or more panels of resolved series with axes,
 // a cursor, and range selection. Ticker overview, polls, econ statistics,
