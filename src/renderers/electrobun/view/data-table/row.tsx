@@ -240,7 +240,7 @@ function WebDataTableRowInner<
           event.preventDefault();
         }}
       >
-        <span
+        <div
           title={sectionHeader.text}
           style={{
             ...cellTextStyle(
@@ -259,7 +259,7 @@ function WebDataTableRowInner<
             <DisclosureMarker expanded={sectionHeader.expanded} color={sectionHeader.color ?? CSS_TEXT_BRIGHT} />
           )}
           {sectionHeader.text}
-        </span>
+        </div>
       </div>
     );
   }
