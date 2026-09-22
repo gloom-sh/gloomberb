@@ -1,4 +1,5 @@
 import type { ResolvedSeries, SeriesTransform, TimeSeriesPoint } from "./types";
+import { calendarMonthsBefore } from "../utils/calendar-date";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 // Volume is separate supporting data, not another price. A volume series has
@@ -37,20 +38,6 @@ function growthValue(value: number | null | undefined, previous: number | null |
   return ((value - previous) / Math.abs(previous)) * 100;
 }
 
-function shiftUtcMonths(date: Date, months: number): Date {
-  const shifted = new Date(date);
-  const originalDay = shifted.getUTCDate();
-  shifted.setUTCDate(1);
-  shifted.setUTCMonth(shifted.getUTCMonth() - months);
-  const lastDay = new Date(Date.UTC(
-    shifted.getUTCFullYear(),
-    shifted.getUTCMonth() + 1,
-    0,
-  )).getUTCDate();
-  shifted.setUTCDate(Math.min(originalDay, lastDay));
-  return shifted;
-}
-
 function referencePoint(
   points: readonly TimeSeriesPoint[],
   currentIndex: number,
@@ -61,7 +48,7 @@ function referencePoint(
   const current = points[currentIndex];
   if (!current) return null;
   const currentTime = current.observedAt.getTime();
-  const target = shiftUtcMonths(current.observedAt, months).getTime();
+  const target = calendarMonthsBefore(current.observedAt, months).getTime();
   const maxDistance = toleranceDays * DAY_MS;
   let best: { point: TimeSeriesPoint; distance: number; date: number; index: number } | null = null;
   const consider = (index: number) => {

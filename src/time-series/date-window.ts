@@ -1,4 +1,5 @@
 import { TIME_RANGES, type ChartDateWindow, type TimeRange } from "./range";
+import { calendarMonthsBefore } from "../utils/calendar-date";
 
 export interface DateWindowRange extends ChartDateWindow {}
 
@@ -14,20 +15,15 @@ export function subtractTimeRange(endDate: Date, range: TimeRange): Date {
       startDate.setUTCDate(startDate.getUTCDate() - 7);
       break;
     case "1M":
-      startDate.setUTCMonth(startDate.getUTCMonth() - 1);
-      break;
+      return calendarMonthsBefore(endDate, 1);
     case "3M":
-      startDate.setUTCMonth(startDate.getUTCMonth() - 3);
-      break;
+      return calendarMonthsBefore(endDate, 3);
     case "6M":
-      startDate.setUTCMonth(startDate.getUTCMonth() - 6);
-      break;
+      return calendarMonthsBefore(endDate, 6);
     case "1Y":
-      startDate.setUTCFullYear(startDate.getUTCFullYear() - 1);
-      break;
+      return calendarMonthsBefore(endDate, 12);
     case "5Y":
-      startDate.setUTCFullYear(startDate.getUTCFullYear() - 5);
-      break;
+      return calendarMonthsBefore(endDate, 60);
     case "ALL":
       startDate.setUTCFullYear(startDate.getUTCFullYear() - 50);
       break;

@@ -4,6 +4,8 @@ Historical-price table CSVs retain the selected listing, requested range, UTC da
 
 Preset research ranges and return cutoffs use UTC dates and times. Changing the computer's timezone does not change the selected observations or correlation samples; source request timestamps still use the source's required exchange timezone.
 
+Finite month/year ranges preserve the UTC time and clamp dates absent from the target month: March 31 minus one month reaches February 28, or February 29 in a leap year. Price returns use the latest observation on or before that cutoff; history beginning after it cannot supply the requested return.
+
 [User guide](usage.md) · [Price comparisons](price-comparisons.md) · [Economic statistics](economics-reference.md) · [Market valuation](valuation-reference.md)
 
 This reference describes how the terminal calculates and labels research data. Pane bodies show data, units, source dates and blocking failures; recurring methodology belongs here. Active data limitations appear as an amber warning indicator in the existing pane footer. Click it or press `!` in the focused pane to read the details; Escape or Close returns to the research view. The indicator disappears when its warnings clear. Headless reports and shared chart metadata retain source details and limitations.
