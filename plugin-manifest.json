@@ -4,7 +4,7 @@
     {
       "id": "alerts",
       "name": "Alerts",
-      "description": "Price and filing event alerts",
+      "description": "Price, market and filing event alerts",
       "categories": [
         "alerts"
       ],
