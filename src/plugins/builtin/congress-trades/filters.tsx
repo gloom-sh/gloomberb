@@ -11,7 +11,7 @@ export function CongressFilterBar({ filters, onChange, mine, onMine, width, cont
   filters: CongressFilters; onChange: (filters: CongressFilters) => void;
   mine: boolean; onMine: (mine: boolean) => void; width: number; controls: CongressFilterRefs;
 }) {
-  return <Box flexDirection={width < 100 ? "column" : "row"}>
+  return <Box flexDirection={width < 100 ? "column" : "row"} gap={width < 100 ? 0 : 1}>
     <Box flexDirection="row" gap={1}>
       <SelectButton label="Side" value={filters.side ?? "all"} controlRef={controls.side}
         options={[{ value: "all", label: "All" }, ...["BUY", "SELL", "EXCHANGE", "OTHER"].map((value) => ({ value, label: value }))]}

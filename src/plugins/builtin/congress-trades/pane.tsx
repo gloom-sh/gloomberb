@@ -10,6 +10,8 @@ import {
   useTableLoadMore,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
+import { useShortcut } from "../../../react/input";
+import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
@@ -196,6 +198,13 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const refresh = useCallback(() => {
     load(true);
   }, [load]);
+  useShortcut((event) => {
+    if (!focused || event.targetEditable) return;
+    if (tickerFilter && detailMode && isDetailBackNavigationKey(event)) {
+      event.preventDefault?.(); event.stopPropagation?.(); setDetailMode(null); return;
+    }
+    if (!payload && isPlainKey(event, "r")) { event.preventDefault?.(); event.stopPropagation?.(); refresh(); }
+  }, { phase: "before" });
   useAutoRefresh(lastLoadedAt, refresh);
 
   const trades = payload?.trades ?? [];
