@@ -205,6 +205,7 @@ export function createThirteenFHeadless(
       optional: true,
     },
     options: [
+      { key: "rank", description: "Crowding order.", type: "enum", values: [{ value: "new" }, { value: "exits" }, { value: "increases" }, { value: "decreases" }], defaultValue: "new" },
       { key: "compare", description: "Second fund name or CIK for overlap.", type: "string" },
       { key: "offset", description: "Fund offset for ticker-holdings.", type: "integer", defaultValue: 0, minimum: 0, maximum: 100000 },
       {
@@ -250,8 +251,16 @@ export function createThirteenFHeadless(
         return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight" }, { key: "comparedWeight", header: "Second weight" }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!samePeriod ? ["The funds have different latest reporting quarters."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, truncated: rows.length > limit } };
       }
       if (view === "crowding") {
-        const { rows, ...metadata } = await loadCrowding(ctx.signal);
-        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds" }, { key: "newCount", header: "New" }, { key: "exitCount", header: "Exits" }, { key: "weightChange", header: "Weight change" }, { key: "comparedFunds", header: "Compared" }, { key: "totalValue", header: "Value" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
+        const { rows: sourceRows, ...metadata } = await loadCrowding(ctx.signal);
+        const rank = String(args.options.rank ?? "new");
+        const rows = [...sourceRows].sort((left, right) => {
+          if (rank === "new") return right.newCount - left.newCount;
+          if (rank === "exits") return right.exitCount - left.exitCount;
+          if (left.weightChange == null) return right.weightChange == null ? 0 : 1;
+          if (right.weightChange == null) return -1;
+          return (left.weightChange - right.weightChange) * (rank === "decreases" ? 1 : -1);
+        });
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds" }, { key: "newCount", header: "New" }, { key: "exitCount", header: "Exits" }, { key: "weightChange", header: "Weight change" }, { key: "comparedFunds", header: "Compared" }, { key: "totalValue", header: "Value" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, rank, truncated: rows.length > limit }, errors: metadata.warnings };
       }
       if (view === "ticker-holdings") {
         if (!query) throw new Error("13F ticker holdings requires a ticker.");
