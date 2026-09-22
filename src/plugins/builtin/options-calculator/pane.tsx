@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { KeyValueRow, SegmentedControl, TextField, usePaneFooter, usePaneNoticeFooter } from "../../../components";
-import { useAsyncResource, useInputCapture } from "gloomberb/react";
+import { useAsyncResource, useInputCapture } from "../../../public/react";
 import { useShortcut } from "../../../react/input";
 import { usePaneInstance, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
