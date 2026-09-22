@@ -244,7 +244,6 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
             valueLabel="USD"
             valueWidth={13}
             changeLabel="UTC DAY"
-            percentileLabel="PCTL"
             asOfWidth={12}
             extraColumns={EXTRA_COLUMNS}
             rootBefore={
