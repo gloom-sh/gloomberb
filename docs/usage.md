@@ -364,3 +364,5 @@ symbols, which are highlighted in the tables. A `!` beside lag marks disclosures
 filed more than 45 days after the transaction. CLI examples:
 `gloomberb fn CG --tab tickers --side BUY --minAmount 50001 --json` and
 `gloomberb fn CG AAPL --owner spouse --assetType option --json`.
+
+Congress Trades includes returns since the transaction and filing close; Members includes party, median stock return and buy hit rate. Open a member for current committee assignments and the return denominators. Missing prices remain blank. See research data for the close-to-latest-close basis and the source access limit that keeps Senate coverage deferred.

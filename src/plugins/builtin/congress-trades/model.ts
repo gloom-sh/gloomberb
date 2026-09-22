@@ -27,6 +27,8 @@ export type DetailMode =
   | null;
 
 export type TradeColumnId =
+  | "returnSinceTx"
+  | "returnSinceFiling"
   | "filed"
   | "tx"
   | "lag"
@@ -38,6 +40,9 @@ export type TradeColumnId =
   | "owner";
 export type TradeColumn = DataTableColumn & { id: TradeColumnId };
 export type MemberColumnId =
+  | "party"
+  | "medianReturn"
+  | "buyHitRate"
   | "member"
   | "district"
   | "trades"
@@ -111,12 +116,21 @@ function compareText(left: string, right: string): number {
   return left.localeCompare(right, "en-US", { sensitivity: "base" });
 }
 
+function compareOptionalNumber(left: number | null | undefined, right: number | null | undefined): number {
+  if (left == null) return right == null ? 0 : -1;
+  if (right == null) return 1;
+  return left - right;
+}
+
 function compareTrade(
   left: CloudCongressTradePayload,
   right: CloudCongressTradePayload,
   columnId: TradeColumnId,
 ): number {
   switch (columnId) {
+    case "returnSinceTx":
+    case "returnSinceFiling":
+      return compareOptionalNumber(left[columnId], right[columnId]);
     case "filed":
       return dateValue(left.filingDate) - dateValue(right.filingDate);
     case "tx":
@@ -144,6 +158,11 @@ function compareMember(
   columnId: MemberColumnId,
 ): number {
   switch (columnId) {
+    case "party":
+      return compareText(left.party ?? "", right.party ?? "");
+    case "medianReturn":
+    case "buyHitRate":
+      return compareOptionalNumber(left[columnId], right[columnId]);
     case "member":
       return compareText(left.memberName, right.memberName);
     case "district":
@@ -187,7 +206,7 @@ export function buildTradeColumns(width: number, tickerView = false): TradeColum
   const ownerWidth = 8;
   const memberWidth = Math.max(
     14,
-    width - filedWidth - txWidth - lagWidth - sideWidth - tickerWidth - amountWidth - ownerWidth - 10,
+    width - filedWidth - txWidth - lagWidth - sideWidth - tickerWidth - amountWidth - ownerWidth - 36,
   );
   return [
     { id: "filed", label: "FILED", width: filedWidth, align: "left" },
@@ -198,6 +217,8 @@ export function buildTradeColumns(width: number, tickerView = false): TradeColum
     ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: tickerWidth, align: "left" as const }] : []),
     { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
     { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
+    { id: "returnSinceTx", label: "TX RET%", width: 10, align: "right" },
+    { id: "returnSinceFiling", label: "FILE RET%", width: 10, align: "right" },
   ];
 }
 
@@ -235,17 +256,20 @@ export function buildMemberColumns(width: number): MemberColumn[] {
   const lagWidth = 6;
   const memberWidth = Math.max(
     18,
-    width - districtWidth - tradesWidth - buysWidth - sellsWidth - rangeWidth - lastWidth - lagWidth - 9,
+    width - districtWidth - tradesWidth - buysWidth - sellsWidth - rangeWidth - lastWidth - lagWidth - 47,
   );
   return [
     { id: "member", label: "MEMBER", width: memberWidth, align: "left" },
     { id: "district", label: "DIST", width: districtWidth, align: "left" },
+    { id: "party", label: "PARTY", width: 11, align: "left" },
     { id: "trades", label: "TRADES", width: tradesWidth, align: "right" },
     { id: "buys", label: "BUY", width: buysWidth, align: "right" },
     { id: "sells", label: "SELL", width: sellsWidth, align: "right" },
     { id: "range", label: "EST RANGE", width: rangeWidth, align: "right" },
     { id: "last", label: "LAST", width: lastWidth, align: "left" },
     { id: "lag", label: "AVG", width: lagWidth, align: "right" },
+    { id: "medianReturn", label: "MED RET%", width: 9, align: "right" },
+    { id: "buyHitRate", label: "BUY HIT%", width: 9, align: "right" },
   ];
 }
 
@@ -351,4 +375,8 @@ export function mergeCongressPages(
     members.push(member);
   }
   return { ...next, trades: [...byTradeId.values()], members };
+}
+
+export function formatCongressReturn(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }

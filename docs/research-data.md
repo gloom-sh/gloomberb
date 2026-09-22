@@ -444,3 +444,13 @@ when its minimum meets the threshold. A lag above 45 days is flagged from the
 transaction and filing dates; it is not a determination of a legal violation.
 Stock, option, and other categories use the disclosed asset code and description.
 **Mine** reads existing portfolio/watchlist membership; it does not add a holding.
+
+### Congress returns and member context
+
+TX RET% and FILE RET% compare the first available daily close on or within seven days after the transaction or filing date with the latest completed daily close. Current-day prices enter after 5 p.m. New York time. These are hindsight stock-price changes, excluding dividends, fees, execution prices, and option-contract performance. Missing prices and non-stock disclosures stay unknown. The server caches ticker/date results for one hour and retries unavailable prices sooner.
+
+The Members median uses priced transaction-date stock returns across all sides. Buy hit rate uses priced buys with a positive return, with the priced trade and buy denominators available in detail and structured output. These are not realized returns or portfolio performance. Pane summaries use the loaded trades, including appended years; headless summaries retain the server's filtered filing-window scope.
+
+Party and current committee assignments come from the public unitedstates/congress-legislators YAML, cached server-side for 24 hours. Matching requires name, state/district and a House term covering the filing date. Party follows that term; committees are the current source snapshot. Ambiguous matches remain unknown.
+
+Senate coverage remains deferred. On September 22, 2026, the eFD root, search, home and report-data endpoints returned HTTP 403 from Akamai before exposing an agreement or search form. Requests with standard browser headers returned the same result, leaving no accessible index or representative report to validate a parser. Paper filings and HTML Senate trades are not represented as House data.

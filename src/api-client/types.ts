@@ -474,6 +474,11 @@ export interface CloudCongressTradePayload {
   subholdingOf: string | null;
   description: string | null;
   sourceUrl: string;
+  returnSinceTx?: number | null;
+  returnSinceFiling?: number | null;
+  returnAsOf?: string | null;
+  party?: string | null;
+  committees?: string[];
 }
 
 export interface CloudCongressMemberPayload {
@@ -489,6 +494,12 @@ export interface CloudCongressMemberPayload {
   estimatedHigh: number | null;
   lastFilingDate: string | null;
   avgLagDays: number | null;
+  medianReturn?: number | null;
+  buyHitRate?: number | null;
+  pricedTradeCount?: number;
+  pricedBuyCount?: number;
+  party?: string | null;
+  committees?: string[];
 }
 
 export interface CloudCongressTickerPayload {

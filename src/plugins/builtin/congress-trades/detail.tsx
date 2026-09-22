@@ -1,3 +1,4 @@
+import { aggregateLoadedCongress } from "./aggregates";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
 import {
@@ -27,6 +28,7 @@ import {
   previousCongressYearPage,
   buildMemberTradeColumns,
   formatAmountRange,
+  formatCongressReturn,
   formatLag,
   nextSort,
   sortedTrades,
@@ -76,10 +78,14 @@ export function TradeDetail({
       <Box flexDirection="column" width={lineWidth}>
         {/* The detail title already carries the member and ticker. */}
         <DetailLine label="district" value={trade.stateDistrict || "--"} tone="muted" />
+        <DetailLine label="party" value={trade.party ?? "--"} />
         <DetailLine label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : "warning"} />
         <DetailLine label="asset" value={truncate(trade.assetName, Math.max(10, lineWidth - 16))} />
         <DetailLine label="amount" value={trade.amount} tone="value" />
         <DetailLine label="owner" value={trade.owner} />
+        <DetailLine label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
+        <DetailLine label="filed return" value={formatCongressReturn(trade.returnSinceFiling)} />
+        <DetailLine label="price as of" value={trade.returnAsOf ?? "--"} />
         <DetailLine label="tx date" value={trade.transactionDate ?? "--"} />
         <DetailLine label="notification" value={trade.notificationDate ?? "--"} />
         <DetailLine label="filed" value={trade.filingDate} />
@@ -224,13 +230,9 @@ export function MemberTradesDetail({
     sortedRows.find((trade) => trade.id === selectedTradeId) ?? sortedRows[0] ?? null
   ), [selectedTradeId, sortedRows]);
   const summaryMember = useMemo(() => (
-    detailPayload?.members.find((entry) => entry.id === member.id)
-    ?? detailPayload?.members.find((entry) => (
-      entry.memberName === member.memberName
-      && entry.stateDistrict === member.stateDistrict
-    ))
-    ?? member
-  ), [detailPayload?.members, member]);
+    aggregateLoadedCongress(trades, detailPayload?.members ?? [member]).members
+      .find((entry) => entry.id === member.id) ?? member
+  ), [detailPayload?.members, member, trades]);
   const maybeTruncated = status === "loaded" && trades.length >= CONGRESS_MEMBER_TRADE_LIMIT;
   const scanNotice = detailPayload ? congressScanNotice(detailPayload) : null;
 
@@ -328,6 +330,10 @@ export function MemberTradesDetail({
 
   const summary = (
     <Box flexDirection="column" paddingX={1} paddingTop={1} paddingBottom={1}>
+      <KeyValueRow label="Party" value={summaryMember.party ?? "--"} />
+      <KeyValueRow label="Median return" value={formatCongressReturn(summaryMember.medianReturn)} detail={`${summaryMember.pricedTradeCount ?? 0} priced trades`} />
+      <KeyValueRow label="Buy hit rate" value={summaryMember.buyHitRate == null ? "--" : `${summaryMember.buyHitRate.toFixed(0)}%`} detail={`${summaryMember.pricedBuyCount ?? 0} priced buys`} />
+      {(summaryMember.committees ?? []).map(committee => <KeyValueRow key={committee} label="Committee" value={committee} />)}
       <Box height={1} flexDirection="row">
         <Text fg={colors.textDim}>
           {`${summaryMember.stateDistrict || "--"}  ${summaryMember.tradeCount} trades  ${summaryMember.buyCount} buys  ${summaryMember.sellCount} sells  ${formatAmountRange(summaryMember.estimatedLow, summaryMember.estimatedHigh)}`}

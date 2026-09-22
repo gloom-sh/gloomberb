@@ -8,6 +8,7 @@ import type {
 } from "../../../api-client";
 import {
   formatAmountRange,
+  formatCongressReturn,
   formatLag,
   formatShortDate,
   type MemberColumn,
@@ -31,6 +32,7 @@ export function renderCongressTradeCell(
 ): DataTableCell {
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
+    case "returnSinceTx": case "returnSinceFiling": return { text: formatCongressReturn(trade[column.id]), color: selectedColor ?? (trade[column.id] == null ? colors.textDim : trade[column.id]! >= 0 ? colors.positive : colors.negative) };
     case "filed":
       return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate), color: selectedColor ?? colors.textDim };
     case "tx":
@@ -82,6 +84,8 @@ export function renderCongressMemberCell(
 ): DataTableCell {
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
+    case "party": return { text: member.party ?? "--", color: selectedColor ?? colors.textDim };
+    case "medianReturn": case "buyHitRate": return { text: column.id === "buyHitRate" ? member.buyHitRate == null ? "--" : `${member.buyHitRate.toFixed(0)}%` : formatCongressReturn(member.medianReturn), color: selectedColor ?? colors.text };
     case "member":
       return { text: member.memberName, color: selectedColor ?? colors.text };
     case "district":

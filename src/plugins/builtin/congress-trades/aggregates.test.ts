@@ -15,3 +15,13 @@ test("unbounded and missing reported ranges remain unknown through aggregation",
   expect(result.tickers[0]).toMatchObject({ estimatedLow: null, estimatedHigh: null });
   expect(result.members[0]).toMatchObject({ estimatedLow: null, estimatedHigh: null });
 });
+test("member return summaries use priced trades and priced buys as separate denominators", () => {
+  const result = aggregateLoadedCongress([
+    trade("one", { returnSinceTx: 20, party: "Democrat", committees: ["Budget"] }),
+    trade("two", { returnSinceTx: -10 }),
+    trade("three", { returnSinceTx: 40, side: "SELL" }),
+    trade("four", { returnSinceTx: null }),
+  ]);
+  expect(result.members[0]).toMatchObject({ medianReturn: 20, buyHitRate: 50, pricedTradeCount: 3, pricedBuyCount: 2, party: "Democrat", committees: ["Budget"] });
+  expect(aggregateLoadedCongress([trade("one", { returnSinceTx: 0 }), trade("two", { returnSinceTx: 10 })]).members[0]).toMatchObject({ medianReturn: 5, buyHitRate: 50 });
+});

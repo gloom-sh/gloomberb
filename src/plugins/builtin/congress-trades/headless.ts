@@ -10,6 +10,7 @@ import {
   CONGRESS_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
   formatAmountRange,
+  formatCongressReturn,
   formatLag,
   formatShortDate,
   sortedMembers,
@@ -36,11 +37,14 @@ const TRADE_COLUMNS: HeadlessPaneColumn[] = [
     ),
   },
   { key: "owner", header: "Owner" },
+  { key: "returnSinceTx", header: "Tx return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
+  { key: "returnSinceFiling", header: "Filed return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
 ];
 
 const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "memberName", header: "Member" },
   { key: "stateDistrict", header: "Dist" },
+  { key: "party", header: "Party" },
   { key: "tradeCount", header: "Trades", align: "right" },
   { key: "buyCount", header: "Buy", align: "right" },
   { key: "sellCount", header: "Sell", align: "right" },
@@ -55,6 +59,10 @@ const MEMBER_COLUMNS: HeadlessPaneColumn[] = [
   },
   { key: "lastFilingDate", header: "Last", format: (value) => formatShortDate(typeof value === "string" ? value : null) },
   { key: "avgLagDays", header: "Avg", align: "right", format: (value) => formatLag(typeof value === "number" ? value : null) },
+  { key: "medianReturn", header: "Median return", format: value => formatCongressReturn(typeof value === "number" ? value : null) },
+  { key: "pricedTradeCount", header: "Priced trades" },
+  { key: "buyHitRate", header: "Buy hit", align: "right", format: value => typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "--" },
+  { key: "pricedBuyCount", header: "Priced buys" },
 ];
 
 export interface CongressHeadlessDependencies {

@@ -5,6 +5,8 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
   const members = new Map<string, CloudCongressMemberPayload>();
   const tickers = new Map<string, CloudCongressTickerPayload>();
   const lags = new Map<string, number[]>();
+  const returns = new Map<string, number[]>();
+  const buys = new Map<string, number[]>();
   const known = new Map(metadata.map((member) => [member.id, member]));
   const seen = new Set<string>();
   for (const trade of trades) {
@@ -18,6 +20,8 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
         estimatedLow: 0, estimatedHigh: 0, lastFilingDate: null, avgLagDays: null };
       members.set(memberId, member);
       lags.set(memberId, []);
+      returns.set(memberId, []);
+      buys.set(memberId, []);
     }
     const summaries: (CloudCongressMemberPayload | CloudCongressTickerPayload)[] = [member];
     if (trade.ticker) {
@@ -30,6 +34,14 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
       if (!ticker.memberIds.includes(memberId)) ticker.memberIds.push(memberId);
       ticker.memberCount = ticker.memberIds.length;
       summaries.push(ticker);
+    }
+    if (trade.returnSinceTx != null && Number.isFinite(trade.returnSinceTx)) {
+      returns.get(memberId)!.push(trade.returnSinceTx);
+      if (trade.side === "BUY") buys.get(memberId)!.push(trade.returnSinceTx);
+    }
+    if (!member.lastFilingDate || trade.filingDate >= member.lastFilingDate) {
+      member.party = trade.party ?? member.party ?? null;
+      member.committees = trade.committees ?? member.committees ?? [];
     }
     if (trade.lagDays != null) lags.get(memberId)!.push(trade.lagDays);
     for (const summary of summaries) {
@@ -45,6 +57,12 @@ export function aggregateLoadedCongress(trades: CloudCongressTradePayload[], met
   }
   for (const [id, member] of members) {
     const values = lags.get(id)!;
+    const priced = returns.get(id)!.sort((a, b) => a - b);
+    const pricedBuys = buys.get(id)!;
+    member.pricedTradeCount = priced.length;
+    member.pricedBuyCount = pricedBuys.length;
+    member.medianReturn = priced.length ? (priced[Math.floor((priced.length - 1) / 2)]! + priced[Math.floor(priced.length / 2)]!) / 2 : null;
+    member.buyHitRate = pricedBuys.length ? 100 * pricedBuys.filter(value => value > 0).length / pricedBuys.length : null;
     member.avgLagDays = values.length ? Math.round(values.reduce((a, b) => a + b, 0) / values.length) : null;
   }
   return { members: [...members.values()], tickers: [...tickers.values()] };
