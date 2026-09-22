@@ -1,3 +1,4 @@
+import { cryptoBoardModule } from "./crypto-board";
 import {
   attachFredSeriesPersistence,
   resetFredSeriesPersistence,
@@ -95,6 +96,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     futuresModule,
     futuresCurveModule,
     cotModule,
+    cryptoBoardModule,
   ],
 });
 

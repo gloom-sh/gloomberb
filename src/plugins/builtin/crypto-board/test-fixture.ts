@@ -1,0 +1,95 @@
+import type { CryptoBoardPayload, CryptoBoardRow, CryptoPercentile } from "../../../api-client/crypto-board";
+export function cryptoFixture(): CryptoBoardPayload {
+  const history = Array.from({ length: 25 }, (_, i) => ({
+    date: new Date(Date.parse("2026-09-22") - (25 - i) * 86_400_000).toISOString().slice(0, 10),
+    close: 100 + i,
+    volume: 10 + i,
+    tradeCount: 1,
+    status: "observed" as const,
+  }));
+  const percentile: CryptoPercentile = {
+    value: 60,
+    rank: 15,
+    sampleCount: 25,
+    windowStart: history[0]!.date,
+    windowEnd: "2026-09-21",
+    historyStart: history[0]!.date,
+    historyEnd: "2026-09-21",
+    completeWindow: false,
+    min: 100,
+    max: 124,
+    mean: 112,
+  };
+  const asOf = "2026-09-22T12:00:00.000Z";
+  const row: CryptoBoardRow = {
+    symbol: "BTC-USD",
+    providerSymbol: "BTC/USD",
+    name: "Bitcoin",
+    baseCurrency: "BTC",
+    quoteCurrency: "USD",
+    status: "partial",
+    asOf,
+    price: {
+      value: 125,
+      asOf,
+      freshness: "current",
+      basis: "latest-trade",
+      percentile: { ...percentile, referenceBasis: "completed-utc-bars-with-quote-midpoints" },
+    },
+    dailyChange: {
+      valuePercent: 0.8,
+      asOf,
+      referenceDate: "2026-09-21",
+      referenceClose: 124,
+      basis: "since-prior-utc-close",
+      percentile,
+    },
+    return7d: {
+      valuePercent: 5.98,
+      asOf: "2026-09-22T00:00:00.000Z",
+      startDate: "2026-09-14",
+      endDate: "2026-09-21",
+      basis: "completed-utc-closes",
+      percentile,
+    },
+    volume: {
+      value: 34,
+      unit: "BTC",
+      asOf: "2026-09-22T00:00:00.000Z",
+      periodStart: "2026-09-21T00:00:00.000Z",
+      periodEnd: "2026-09-22T00:00:00.000Z",
+      basis: "completed-utc-day",
+      percentile,
+    },
+    history,
+    coverage: {
+      windowStart: history[0]!.date,
+      windowEnd: "2026-09-21",
+      expectedDays: 25,
+      observedDays: 25,
+      missingDays: 0,
+      quoteOnlyDays: 0,
+      completeWindow: false,
+    },
+    warnings: [],
+  };
+  return {
+    version: 1,
+    generatedAt: asOf,
+    asOf,
+    freshness: { currentPrices: 1, stalePrices: 0, unavailablePrices: 0 },
+    status: "partial",
+    source: {
+      name: "Alpaca US crypto",
+      venue: "us",
+      url: "https://docs.alpaca.markets/us/reference/cryptobars-1",
+      methodologyUrl: "https://docs.alpaca.markets/us/docs/real-time-crypto-pricing-data",
+      priceBasis: "Latest trade; bars include quote midpoints",
+      volumeBasis: "Base volume",
+      snapshotsFetchedAt: asOf,
+      historyFetchedAt: asOf,
+    },
+    rows: [row],
+    warnings: [],
+  };
+}

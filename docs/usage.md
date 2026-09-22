@@ -160,6 +160,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `TAS <ticker>` / `QR <ticker>` | Time and sales, observed-window VWAP, large prints and NBBO history |
 | `EM <ticker>` / `EEO <ticker>` / `GUID <ticker>` | EPS estimate revisions, current analyst breadth, surprises and cited guidance; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
+| `CRYP` | Crypto USD pairs: latest trades, UTC daily change, completed seven-day returns, base-asset volume and percentiles |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
 | `GC [YYYY-MM-DD]` | Treasury yield curve for the latest session or a historical date; CLI also accepts `--date YYYY-MM-DD` |
@@ -205,6 +206,8 @@ additional windows and trades.
 `BTMM` opens Rates, Bills and Liquidity views. Select a row and press Enter or click it for its dated history, one-year range and source; Back returns to the board. The Bills curve compares common-date discount yields with one week, one month and one year earlier. Liquidity plots the net-liquidity proxy above the component board. `h` and `l` switch views; `o` opens the selected FRED series and `r` refreshes. Reports support `gloomberb fn BTMM --tab rates|bills|liquidity` and `--json`.
 
 `CBR`, `ECFC` and `CBRT` open the same Central Bank Rates board. Each row shows its policy rate or target range, last observed move and date, one-year percentile, history and latest observation date. Select a row and press Enter or click for the source instrument, reporting lag, one-year range and history; Back returns to the board. `o` opens its official source and `r` refreshes. The US detail includes its verified next FOMC meeting; other meeting dates remain unavailable. Reports support `gloomberb fn CBR --json` and its aliases.
+
+`CRYP` opens the twelve-pair crypto board. Select a row with Enter or click for its dated Price and Volume charts; `h` and `l` switch the detail view, and Escape returns to the board. Column headers sort, narrow panes scroll horizontally, and CSV export retains all columns. UTC DAY is the latest trade versus the prior UTC close; 7D CLOSED and BASE VOL use the completed date above the board. A percentile marked `*` uses an incomplete historical sample. `gloomberb fn CRYP --json` returns the board and all dated daily observations.
 
 ### Workspace and App Controls
 

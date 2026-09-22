@@ -689,6 +689,7 @@ class GloomApiClient {
   getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
   getCloudEquityDiagnostic = this.data.getCloudEquityDiagnostic.bind(this.data);
   getCloudFredSeries = this.data.getCloudFredSeries.bind(this.data);
+  getCloudCryptoBoard = this.data.getCloudCryptoBoard.bind(this.data);
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);

@@ -1,4 +1,5 @@
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
+import { cryptoBoardModule } from "./builtin/crypto-board";
 import { shortVolumeModule } from "./builtin/short-volume";
 import { timeSalesModule } from "./builtin/time-sales";
 import { estimateRevisionsModule } from "./builtin/estimate-revisions";
@@ -137,6 +138,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
     futuresModule,
     futuresCurveModule,
     cotModule,
+    cryptoBoardModule,
   ],
 });
 

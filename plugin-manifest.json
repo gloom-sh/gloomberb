@@ -155,6 +155,7 @@
         "panes": [
           "correlation",
           "cot",
+          "crypto-board",
           "futures",
           "futures-curve",
           "fx-matrix",
