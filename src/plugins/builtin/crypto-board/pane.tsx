@@ -47,10 +47,10 @@ const EXTRA_COLUMNS: MarketBoardStackProps<CryptoMarketBoardRow>["extraColumns"]
   {
     column: { id: "return7d", label: "7D CLOSED", width: 11, align: "right" },
     sortValue: (row) => row.observation.return7d.valuePercent,
-    renderCell: (row) => ({
-      text: cryptoReturn(row.observation.return7d.valuePercent),
-      color: colors.textMuted,
-    }),
+    renderCell: (row) => {
+      const value = row.observation.return7d.valuePercent;
+      return { text: cryptoReturn(value), color: value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative };
+    },
   },
   {
     column: { id: "baseVolume", label: "BASE VOL", width: 15, align: "right" },
@@ -235,6 +235,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
             width={width}
             height={height}
             focused={focused}
+            signedChange
             selectedId={selectedId}
             onSelectedIdChange={setSelectedId}
             openId={openId}

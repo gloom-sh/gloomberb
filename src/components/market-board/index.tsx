@@ -39,6 +39,8 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
   valueLabel?: string;
   percentileLabel?: string;
   asOfWidth?: number;
+  /** Colour the change by sign. Off by default: a rate moving up is not good news. */
+  signedChange?: boolean;
   extraColumns?: Array<{ column: DataTableColumn; sortValue: (row: T) => string | number | null; renderCell: (row: T) => DataTableCell }>;
   rootBefore?: ReactNode;
   emptyTitle?: string;
@@ -48,7 +50,7 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
  * native sparklines, stable selection and a mouse/keyboard detail stack. */
 export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height, focused,
   selectedId, onSelectedIdChange, openId, onOpenIdChange, renderDetail, changeLabel = "1D", valueWidth = 12,
-  labelWidth = 18, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, extraColumns,
+  labelWidth = 18, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
   rootBefore, emptyTitle = "No observations." }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
   const [sort, setSort] = useState({ id: "", direction: "asc" as "asc" | "desc" });
@@ -78,7 +80,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     const muted = row.status === "unavailable" ? colors.textDim : colors.text;
     if (column.id === "label") return { text: row.label, color: muted };
     if (column.id === "value") return { text: row.valueText, color: muted };
-    if (column.id === "change") return { text: row.changeText, color: colors.textMuted };
+    if (column.id === "change") return { text: row.changeText, color: signedChange && row.change != null && row.change !== 0
+      ? row.change > 0 ? colors.positive : colors.negative : colors.textMuted };
     if (column.id === "changeAsOf") return { text: row.changeAsOf ?? "--", color: colors.textDim };
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };

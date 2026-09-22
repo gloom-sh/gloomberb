@@ -59,7 +59,8 @@ export function cryptoBoardRow(input: CryptoBoardRow, now = Date.now()): CryptoM
     percentileText:
       percentile.value == null
         ? "--"
-        : `${percentile.value.toFixed(0)}${percentile.completeWindow ? " 1Y" : "*"}`,
+        // The column header already says 1Y; only a partial sample needs a mark.
+        : `${percentile.value.toFixed(0)}${percentile.completeWindow ? "" : "*"}`,
     asOf: row.price.asOf,
     asOfText: row.price.asOf ? `${row.price.asOf.slice(5, 10)} ${row.price.asOf.slice(11, 16)}` : "--",
     status: row.price.freshness === "current" ? "available" : row.price.freshness,
