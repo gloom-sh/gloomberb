@@ -155,6 +155,7 @@
         "panes": [
           "correlation",
           "futures",
+          "futures-curve",
           "fx-matrix",
           "market-movers",
           "relationship-graph",

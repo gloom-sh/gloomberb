@@ -162,6 +162,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `BTMM` | Money markets: funding rates, Treasury bill curves and Federal Reserve liquidity |
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
 | `CBR` / `ECFC` / `CBRT` | G20 central bank policy rates, last observed moves and one-year history |
+| `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 9D through 1Y cash-tenor curve, FRED history and 3M/30D ratio |
 | `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |

@@ -1,6 +1,7 @@
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { MoneyMarketsPayload } from "./money-markets";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
+import type { FuturesCurvePayload } from "./futures-curve";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { TickerFinancials } from "../types/financials";
@@ -347,6 +348,10 @@ export class CloudDataApi {
   async getCloudShortVolume(symbol: string, scope: ShortVolumeScope = "nms"): Promise<ShortVolumePayload> {
     const params = new URLSearchParams({ symbol, scope });
     return this.request<ShortVolumePayload>(`/cloud/short-volume?${params}`, { signal: AbortSignal.timeout(20_000) });
+  }
+
+  async getCloudFuturesCurve(root: string): Promise<FuturesCurvePayload> {
+    return this.request<FuturesCurvePayload>(`/cloud/futures/curve/${encodeURIComponent(root)}`, { signal: AbortSignal.timeout(60_000) });
   }
 
   async getCloudRatePath(): Promise<RatePathPayload> {

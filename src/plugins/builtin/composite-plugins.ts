@@ -16,6 +16,7 @@ import { econStatisticsModule } from "./econ-statistics";
 import { earningsModule } from "./earnings";
 import { earningsCallsModule } from "./earnings-calls";
 import { futuresModule } from "./futures";
+import { futuresCurveModule } from "./futures-curve";
 import { fxMatrixModule } from "./fx-matrix";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
@@ -91,6 +92,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
     sectorsModule,
     fxMatrixModule,
     futuresModule,
+    futuresCurveModule,
   ],
 });
 

@@ -74,6 +74,7 @@ Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker.
 | `TOP` | Market stories |
 | `WIRP` / `FFIP` | US rate path and conditional FOMC probabilities |
 | `BTMM` | Funding rates, bill curves and Federal Reserve liquidity |
+| `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` |
 | `PF` | Portfolios and watchlists |
 | `HELP` | Commands and keyboard shortcuts |
 

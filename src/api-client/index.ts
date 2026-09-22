@@ -691,6 +691,7 @@ class GloomApiClient {
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
+  getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
   getCloudRatePath = this.data.getCloudRatePath.bind(this.data);
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
@@ -724,3 +725,5 @@ class GloomApiClient {
 }
 
 export const apiClient = new GloomApiClient();
+
+export type { FuturesCurvePayload, FuturesContract } from "./futures-curve";
