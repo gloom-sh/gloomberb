@@ -187,15 +187,21 @@ export function renderVolatilitySurface(
   const tenors = grid.tenors.filter((value) => Number.isFinite(value) && value > 0);
   const moneyness = grid.moneyness.filter((value) => Number.isFinite(value) && value > 0);
   if (!samples.length || !tenors.length || !moneyness.length) return scene;
-  const minTenor = Math.min(...tenors), maxTenor = Math.max(...tenors);
   const minMoney = Math.min(...moneyness), maxMoney = Math.max(...moneyness);
-  const minimum = Math.min(...samples), maximum = Math.max(...samples);
+  // The axis range follows the bulk of the surface; a few wild short-dated wing
+  // cells poke above the box instead of flattening every other row.
+  const sorted = [...samples].sort((a, b) => a - b);
+  const quantile = (fraction: number) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * fraction)))]!;
+  const minimum = quantile(0.02), maximum = quantile(0.98);
   const step = Math.max(0.01, 10 ** Math.floor(Math.log10(Math.max(0.02, maximum - minimum))) / 2);
   const lowVol = Math.max(0, Math.floor((minimum - Math.max(0.02, (maximum - minimum) * 0.14)) / step) * step);
   const highVol = Math.max(lowVol + 0.05, Math.ceil((maximum + Math.max(0.02, (maximum - minimum) * 0.08)) / step) * step);
   const worldX = (value: number) => maxMoney === minMoney ? 0 : (value - minMoney) / (maxMoney - minMoney) * 2.7 - 1.35;
-  const worldY = (value: number) => maxTenor === minTenor ? 0 : 1.1 - (value - minTenor) / (maxTenor - minTenor) * 2.2;
-  const worldZ = (value: number) => (value - lowVol) / (highVol - lowVol) * 1.65 - 0.65;
+  // Listed expiries are evenly spaced rows, as on a Bloomberg surface, so daily
+  // front-month listings do not collapse into one ridge of the mesh.
+  const rowCount = grid.tenors.length;
+  const worldRow = (index: number) => rowCount <= 1 ? 0 : 1.1 - index / (rowCount - 1) * 2.2;
+  const worldZ = (value: number) => clamp((value - lowVol) / (highVol - lowVol), -0.12, 1.22) * 1.65 - 0.65;
   const cameraState = clampSurfaceCamera(camera);
   const axisX = Math.cos(cameraState.azimuth) >= 0 ? -1.35 : 1.35;
   const axisY = Math.sin(cameraState.azimuth) >= 0 ? 1.1 : -1.1;
@@ -203,7 +209,7 @@ export function renderVolatilitySurface(
     volatility != null && Number.isFinite(volatility) && volatility >= 0
       && Number.isFinite(grid.tenors[r]) && grid.tenors[r]! > 0
       && Number.isFinite(grid.moneyness[c]) && grid.moneyness[c]! > 0
-      ? [{ x: worldX(grid.moneyness[c]!), y: worldY(grid.tenors[r]!), z: worldZ(volatility) }] : []));
+      ? [{ x: worldX(grid.moneyness[c]!), y: worldRow(r), z: worldZ(volatility) }] : []));
   bounds.push(...[-1.35, 1.35].flatMap((x) => [-1.1, 1.1].map((y) => ({ x, y, z: -0.65 }))));
   bounds.push({ x: axisX, y: axisY, z: 1 });
   const projectPoint = surfaceProjector(width, height, cameraState, bounds);
@@ -251,9 +257,11 @@ export function renderVolatilitySurface(
     addLabel(`${Math.round(money * 100)}%`, point, 0, 10 * fontScale);
   }
   addLabel("FORWARD MONEYNESS %", project(0, moneySide, floor), 10 * fontScale, 31 * fontScale, parseHex(palette.activeRangeColor));
-  for (let index = 0; index <= 4; index += 1) {
-    const tenor = minTenor + (maxTenor - minTenor) * index / 4;
-    addLabel(tenorLabel(tenor), project(tenorSide, worldY(tenor), floor), -19 * fontScale, 8 * fontScale);
+  const tenorRows = [...new Set(Array.from({ length: Math.min(5, rowCount) }, (_, index) =>
+    Math.round(index * (rowCount - 1) / Math.max(1, Math.min(5, rowCount) - 1))))]
+    .filter((index) => Number.isFinite(grid.tenors[index]) && grid.tenors[index]! > 0);
+  for (const index of tenorRows) {
+    addLabel(tenorLabel(grid.tenors[index]!), project(tenorSide, worldRow(index), floor), -19 * fontScale, 8 * fontScale);
   }
   addLabel("TENOR", project(tenorSide, 0, floor), -55 * fontScale, 14 * fontScale, parseHex(palette.activeRangeColor));
 
@@ -262,7 +270,7 @@ export function renderVolatilitySurface(
     if (volatility == null || !Number.isFinite(volatility) || volatility < 0
       || tenor == null || !Number.isFinite(tenor) || tenor <= 0
       || money == null || !Number.isFinite(money) || money <= 0) return null;
-    const world = { x: worldX(money), y: worldY(tenor), z: worldZ(volatility) };
+    const world = { x: worldX(money), y: worldRow(tenorIndex), z: worldZ(volatility) };
     const cell = { ...projectPoint(world), tenorIndex, moneynessIndex, volatility };
     scene.projectedCells.push(cell);
     return { ...cell, world, color: surfaceVolatilityColor(volatility, lowVol, highVol, palette) };
@@ -280,7 +288,7 @@ export function renderVolatilitySurface(
   scene.faceCount = faces.length;
   const wire = parseHex(blendHex(palette.bgColor, palette.activeRangeColor, 0.28), 0.72);
   const wireStep = Math.max(1, Math.round(grid.moneyness.length / 20));
-  const surfacedEdges = new Set<string>();
+  const surfacedRows = new Set<number>();
   for (const face of faces) {
     const [a, b, c, d] = face.points as [SurfaceVertex, SurfaceVertex, SurfaceVertex, SurfaceVertex];
     const shade = shadeForFace(face.points);
@@ -290,17 +298,19 @@ export function renderVolatilitySurface(
     line(d, c, wire, 0.65);
     if (face.column % wireStep === 0) line(a, d, wire, 0.65);
     if (face.column === grid.moneyness.length - 2) line(b, c, wire, 0.85);
-    surfacedEdges.add(`${face.row}:${face.column}`);
-    surfacedEdges.add(`${face.row + 1}:${face.column}`);
+    surfacedRows.add(face.row);
+    surfacedRows.add(face.row + 1);
   }
 
   // Isolated loaded expiries remain curves while their neighbors load or fail.
+  // A row that already joins the mesh keeps its wider wings as mesh edges only.
   for (let rowIndex = 0; rowIndex < vertices.length; rowIndex += 1) {
+    if (surfacedRows.has(rowIndex)) continue;
     const row = vertices[rowIndex]!;
     for (let column = 0; column < row.length; column += 1) {
       const point = row[column], next = row[column + 1];
       if (!point) continue;
-      if (next && !surfacedEdges.has(`${rowIndex}:${column}`)) line(point, next, point.color, 1.5 * fontScale);
+      if (next) line(point, next, point.color, 1.5 * fontScale);
       if (!row[column - 1] && !next) drawCircle(bitmap.pixels, width, height, point.x, point.y, 2 * fontScale, point.color);
     }
   }

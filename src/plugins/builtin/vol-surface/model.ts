@@ -349,6 +349,30 @@ export interface SurfaceGrid {
   volatilities: (number | null)[][];
 }
 
+/** Default 3D window: strikes within this many ATM standard deviations of the forward. */
+export const SURFACE_SIGMA_WINDOW = 2.5;
+
+/**
+ * Restrict each listed expiry to strikes within `sigmas` ATM standard
+ * deviations of its forward. A one-day 90% put is quoted, but its IV describes a
+ * strike with no probability mass; drawing it as a wall beside a one-year smile
+ * misrepresents the surface. Rows without an ATM IV are left untouched.
+ */
+export function windowSurfaceGrid(grid: SurfaceGrid, snapshot: SurfaceSnapshot, sigmas = SURFACE_SIGMA_WINDOW): SurfaceGrid {
+  if (!(sigmas > 0)) return grid;
+  const rows = grid.rows.map((row) => {
+    const expiry = row.expiration == null ? null : snapshot.expiries.find((entry) => entry.expiration === row.expiration);
+    const forward = row.forward ?? expiry?.forward ?? null;
+    if (!expiry?.atmIV || !positive(forward) || !(row.years > 0)) return row;
+    const width = sigmas * expiry.atmIV * Math.sqrt(row.years);
+    return { ...row, cells: row.cells.map((cell) => {
+      const k = positive(cell.strike) ? Math.abs(Math.log(cell.strike / forward)) : null;
+      return k == null || k <= width + 1e-12 ? cell : { ...cell, volatility: null, fitResidual: null };
+    }) };
+  });
+  return { ...grid, rows, volatilities: rows.map((row) => row.cells.map((cell) => cell.volatility)) };
+}
+
 /** A sparse far-wing fit cannot stand in for an observed near-ATM smile. */
 export function evaluateSurfaceSmile(expiry: SurfaceExpiry, strike: number): number | null {
   const first = expiry.points[0], last = expiry.points.at(-1);

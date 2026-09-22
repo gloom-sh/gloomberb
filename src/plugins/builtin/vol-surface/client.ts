@@ -13,6 +13,29 @@ import {
 
 export const DEFAULT_SURFACE_EXPIRY_LIMIT = 18;
 export const SURFACE_LOAD_CONCURRENCY = 4;
+/** Each kept expiry must be at least this much further out than the previous one. */
+export const SURFACE_TENOR_RATIO = 1.35;
+
+/**
+ * Daily and weekly listings are thinned geometrically so a bounded request spans
+ * the term structure instead of the front month. Every expiry within the limit is
+ * still loaded when the catalogue is short; a larger limit adds the skipped
+ * expiries starting from the longest tenor.
+ */
+export function selectSurfaceExpiries(catalogue: readonly number[], limit: number, now: number): number[] {
+  const sorted = [...new Set(catalogue)].sort((a, b) => a - b);
+  const kept: number[] = [];
+  const skipped: number[] = [];
+  let lastDays = 0;
+  for (const expiration of sorted) {
+    const days = daysToExpiryFrom(expiration, now);
+    if (kept.length === 0 || days >= lastDays * SURFACE_TENOR_RATIO) {
+      kept.push(expiration);
+      lastDays = days;
+    } else skipped.push(expiration);
+  }
+  return [...kept, ...skipped.reverse()].slice(0, Math.max(0, limit)).sort((a, b) => a - b);
+}
 
 export interface SurfaceLoaderDependencies {
   loadOptions(request: OptionsRequest, options?: { forceRefresh?: boolean }): Promise<QueryEntry<OptionsChain>>;
@@ -150,7 +173,7 @@ export async function loadVolatilitySurface(
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
     catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
       Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
-    selected = catalogue.slice(0, limit);
+    selected = selectSurfaceExpiries(catalogue, limit, now);
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {
     if (request.signal?.aborted) throw abortError();

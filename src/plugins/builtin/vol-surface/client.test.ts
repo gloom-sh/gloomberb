@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { MarketDataCoordinator } from "../../../market-data/coordinator";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { OptionsChain } from "../../../types/financials";
-import { createSurfaceDependencies, loadVolatilitySurface, type SurfaceLoaderDependencies } from "./client";
+import { createSurfaceDependencies, loadVolatilitySurface, selectSurfaceExpiries, type SurfaceLoaderDependencies } from "./client";
 import type { SurfaceSnapshot } from "./model";
 
 const now = Date.UTC(2026, 8, 22, 14);
@@ -20,6 +20,28 @@ function deferred<T>() {
 }
 async function settle() { await new Promise((resolve) => setTimeout(resolve, 0)); }
 
+describe("surface expiry selection", () => {
+  const daily = Array.from({ length: 40 }, (_, index) => Date.UTC(2026, 8, 23 + index) / 1000);
+  const days = (expiration: number) => (expiration * 1000 - now) / 86_400_000;
+
+  test("thins daily listings geometrically before filling from the longest skipped tenor", () => {
+    const selected = selectSurfaceExpiries(daily, 12, now);
+    expect(selected).toHaveLength(12);
+    expect(selected).toEqual([...selected].sort((a, b) => a - b));
+    // Nearest-first would stop inside two weeks; thinning reaches the end of the listing.
+    expect(days(selected.at(-1)!)).toBeGreaterThan(38);
+    expect(selected.slice(0, 4).map(days).every((value, index, all) => index === 0 || value >= all[index - 1]! * 1.35)).toBe(true);
+  });
+
+  test("a short catalogue is requested completely and a larger limit is a superset", () => {
+    const monthly = Array.from({ length: 10 }, (_, index) => Date.UTC(2026, 9 + index, 15) / 1000);
+    expect(selectSurfaceExpiries(monthly, 18, now)).toEqual(monthly);
+    const narrow = selectSurfaceExpiries(daily, 12, now), wide = selectSurfaceExpiries(daily, 24, now);
+    expect(narrow.every((expiration) => wide.includes(expiration))).toBe(true);
+    expect(wide).toHaveLength(24);
+  });
+});
+
 describe("surface loader", () => {
   test("caps default catalogue, publishes partial failures and bounds concurrency at four", async () => {
     const outstanding = new Map<number, ReturnType<typeof deferred<QueryEntry<OptionsChain>>>>();
@@ -36,12 +58,13 @@ describe("surface loader", () => {
     const loading = loadVolatilitySurface({ instrument: { symbol: "AAPL" }, spot: 100, onSnapshot: (value) => snapshots.push(value) }, deps);
     await settle();
     expect(outstanding.size).toBe(4);
-    outstanding.get(expirations[0]!)!.resolve(ready(emptyChain()));
-    outstanding.get(expirations[1]!)!.reject(new Error("one expiry failed"));
+    const [first, second] = [...outstanding.keys()].sort((a, b) => a - b) as [number, number];
+    outstanding.get(first)!.resolve(ready(emptyChain()));
+    outstanding.get(second)!.reject(new Error("one expiry failed"));
     await settle();
     expect(snapshots.some((snapshot) => snapshot.loaded === 1 && snapshot.phase === "partial")).toBe(true);
-    expect(snapshots.at(-1)!.failures[0]!.expiration).toBe(expirations[1]);
-    const completed = new Set([expirations[0]!, expirations[1]!]);
+    expect(snapshots.at(-1)!.failures[0]!.expiration).toBe(second);
+    const completed = new Set([first, second]);
     while (completed.size < 18) {
       for (const [expiry, gate] of outstanding) {
         if (completed.has(expiry)) continue;

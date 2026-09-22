@@ -4,7 +4,7 @@ import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../opt
 import { optionDelta } from "../shared/volatility";
 import {
   buildSurfaceExpiry, buildSurfaceGrid, cleanSurfaceQuotes, DEFAULT_SURFACE_SETTINGS,
-  evaluateSurfaceSmile, surfaceTreasuryRate, type SurfaceSnapshot,
+  evaluateSurfaceSmile, surfaceTreasuryRate, windowSurfaceGrid, type SurfaceSnapshot,
 } from "./model";
 
 const now = Date.UTC(2026, 8, 22, 14);
@@ -138,6 +138,22 @@ describe("surface grids", () => {
     expect(grid.rows[0]!.cells[2]!.point?.contract.contractSymbol).toContain("100");
     expect(grid.volatilities[0]![2]).toBeCloseTo(0.3, 5);
     expect(grid.volatilities[1]![2]).toBeCloseTo(0.4, 5);
+  });
+
+  test("the sigma window widens with tenor and leaves rows without an ATM IV alone", () => {
+    const data = snapshot();
+    const coordinates = Array.from({ length: 41 }, (_, i) => 0.8 + i * 0.01);
+    const grid = buildSurfaceGrid(data, { axis: "forward", coordinates });
+    const windowed = windowSurfaceGrid(grid, data, 1);
+    const count = (row: (number | null)[]) => row.filter((value) => value != null).length;
+    // One standard deviation at 30% and 40% IV: roughly +/-17% and +/-35% of the forward.
+    expect(count(windowed.volatilities[0]!)).toBeLessThan(count(grid.volatilities[0]!));
+    expect(count(windowed.volatilities[1]!)).toBeGreaterThan(count(windowed.volatilities[0]!));
+    expect(windowed.volatilities[0]![20]).toBe(grid.volatilities[0]![20]);
+    expect(windowed.rows[0]!.cells[0]!.strike).toBe(grid.rows[0]!.cells[0]!.strike);
+    const blind = { ...data, expiries: data.expiries.map((expiry) => ({ ...expiry, atmIV: null })) };
+    expect(windowSurfaceGrid(buildSurfaceGrid(blind, { axis: "forward", coordinates }), blind).volatilities)
+      .toEqual(buildSurfaceGrid(blind, { axis: "forward", coordinates }).volatilities);
   });
 
   test("fixed tenors interpolate total variance at common forward moneyness", () => {

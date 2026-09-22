@@ -16,7 +16,7 @@ import { formatStrikeLabel } from "../options/table";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadVolatilitySurface } from "./client";
 import { useVolSurfaceEvidence } from "./evidence";
-import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, type SurfaceExpiry, type SurfaceGridRow,
+import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, windowSurfaceGrid, type SurfaceExpiry, type SurfaceGridRow,
   type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import { DEFAULT_SURFACE_CAMERA, rotateSurfaceCamera, zoomSurfaceCamera, type SurfaceCamera } from "./raster";
 import { VolatilitySurface } from "./surface";
@@ -28,6 +28,9 @@ const TABS = [
   { value: "skew", label: "Skew" }, { value: "forwards", label: "Forwards" },
 ];
 type Axis = "spot" | "forward" | "delta" | "strike";
+const DEFAULT_EXPIRY_MIN_DAYS = 28;
+/** Annualising a few days of parity carry produces meaningless yields. */
+const DIVIDEND_YIELD_MIN_DAYS = 30;
 
 export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
@@ -80,9 +83,12 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
   const snapshot = incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data;
   const grid = useMemo(() => snapshot ? buildSurfaceGrid(snapshot, { axis, tenors }) : null, [axis, snapshot, tenors]);
-  const denseGrid = useMemo(() => snapshot ? buildSurfaceGrid(snapshot, { axis: "forward", tenors: "listed",
-    coordinates: Array.from({ length: 41 }, (_, i) => 0.8 + i * 0.01) }) : null, [snapshot]);
-  const selectedExpiry = snapshot?.expiries.find((entry) => entry.expiration === (expiration ?? snapshot.expiries[0]?.expiration)) ?? null;
+  const denseGrid = useMemo(() => snapshot ? windowSurfaceGrid(buildSurfaceGrid(snapshot, { axis: "forward", tenors: "listed",
+    coordinates: Array.from({ length: 41 }, (_, i) => 0.8 + i * 0.01) }), snapshot) : null, [snapshot]);
+  // A one-day front expiry is the noisiest smile on the board; the default
+  // selection is the first expiry at least four weeks out.
+  const defaultExpiry = snapshot?.expiries.find((entry) => entry.years * 365 >= DEFAULT_EXPIRY_MIN_DAYS) ?? snapshot?.expiries[0];
+  const selectedExpiry = snapshot?.expiries.find((entry) => entry.expiration === (expiration ?? defaultExpiry?.expiration)) ?? null;
   useVolSurfaceEvidence({ snapshot, view: activeTab, grid: activeTab === "surface" && bitmapAvailable ? denseGrid : grid,
     selectedExpiry, loading: resource.loading, bitmapAvailable, axis: activeTab === "surface" && bitmapAvailable ? "forward" : axis,
     tenors: activeTab === "surface" && bitmapAvailable ? "listed" : tenors, overlaySmiles });
@@ -229,10 +235,12 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
   forwards: boolean; width: number; height: number; focused: boolean;
   onKey: (event: DataTableKeyEvent) => boolean; metadata: () => unknown[][];
 }) {
-  const fields = forwards ? ["Forward", "Dividend %", "Rate %", "Pairs", "As of"] : ["25d put", "25d call", "RR pts", "BF pts", "90/110 pts", "Slope/yr"];
+  const fields = forwards ? ["Forward", "Basis", "Div %", "Rate %", "Pairs", "As of"] : ["25d put", "25d call", "RR pts", "BF pts", "90/110 pts", "Slope/yr"];
+  const integerColumn = forwards ? "4" : null;
   const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });
   const value = (entry: SurfaceExpiry, id: string): number | string | null => id === "expiry" ? entry.expiration
-    : forwards ? [entry.forward, entry.dividendYield == null ? null : entry.dividendYield * 100,
+    : forwards ? [entry.forward, entry.forward == null ? null : entry.forward - snapshot.spot,
+      entry.dividendYield == null || entry.years * 365 < DIVIDEND_YIELD_MIN_DAYS ? null : entry.dividendYield * 100,
       entry.rate == null ? null : entry.rate * 100, entry.parity.pairs.length, entry.asOf?.slice(0, 10) ?? null][Number(id)] ?? null
       : [entry.skew.put25, entry.skew.call25, entry.skew.riskReversal, entry.skew.butterfly, entry.skew.moneynessSkew, entry.termSlope][Number(id)] ?? null;
   const rows = [...snapshot.expiries].sort((a, b) => {
@@ -246,5 +254,6 @@ function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, fo
     onActivate={onSelect} onRootKeyDown={onKey} getExportMetadata={metadata} freezeFirstColumn
     sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={(id) => setSort({ id, direction: sort.id === id && sort.direction === "asc" ? "desc" : "asc" })}
     renderCell={(entry, column) => { const raw = value(entry, column.id); return { text: column.id === "expiry" ? expiryLabel(entry.expiration)
-      : raw == null ? "--" : typeof raw === "string" ? raw : forwards ? formatPrice(raw) : `${(raw * 100).toFixed(2)}` }; }} emptyStateTitle="No expiry observations." />;
+      : raw == null ? "--" : typeof raw === "string" ? raw : column.id === integerColumn ? String(raw)
+        : forwards ? (column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : `${(raw * 100).toFixed(2)}` }; }} emptyStateTitle="No expiry observations." />;
 }

@@ -59,7 +59,7 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height }: {
     }
     const left = observations[0]?.x ?? 0, right = observations.at(-1)?.x ?? 1;
     return { points: observations.map((entry) => point(entry.x, entry.iv * 100)), overlays,
-      ticks: Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: (left + (right - left) * i / 4).toFixed(axis === "strike" ? 2 : 0) })),
+      ticks: Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: `${(left + (right - left) * i / 4).toFixed(axis === "strike" ? 2 : 0)}${axis === "spot" || axis === "forward" ? "%" : ""}` })),
       left, right };
   }, [axis, colors, expiry, overlay, snapshot]);
   if (!model) return <EmptyState title="Smile unavailable." hint="No clean quoted smile for this expiry." />;
@@ -80,8 +80,14 @@ export function TermChart({ snapshot, width, height }: { snapshot: SurfaceSnapsh
   const colors = useThemeColors();
   const rows = snapshot.expiries.filter((expiry) => expiry.atmIV != null).sort((a, b) => a.years - b.years);
   if (!rows.length) return <EmptyState title="Term structure unavailable." hint="No clean ATM observations." />;
-  const first = rows[0]!.years * 365, last = rows.at(-1)!.years * 365;
-  const points = rows.map((expiry) => point(expiry.years * 365, expiry.atmIV! * 100));
+  // Log tenor spacing keeps daily front expiries readable next to LEAPS.
+  const scale = (days: number) => Math.log(Math.max(days, 0.25));
+  const first = scale(rows[0]!.years * 365), last = scale(rows.at(-1)!.years * 365);
+  const dayLabel = (ratio: number) => {
+    const days = Math.exp(first + (last - first) * ratio);
+    return days < 10 ? `${days.toFixed(1)}d` : `${Math.round(days)}d`;
+  };
+  const points = rows.map((expiry) => point(scale(expiry.years * 365), expiry.atmIV! * 100));
   const overlays: StaticChartOverlay[] = [
     { id: "25d put", color: colors.warning, points: rows.flatMap((expiry, index) => expiry.skew.put25 == null ? [] : [{ index, value: expiry.skew.put25 * 100 }]) },
     { id: "25d call", color: colors.negative, points: rows.flatMap((expiry, index) => expiry.skew.call25 == null ? [] : [{ index, value: expiry.skew.call25 * 100 }]) },
@@ -92,9 +98,9 @@ export function TermChart({ snapshot, width, height }: { snapshot: SurfaceSnapsh
       <Text fg={colors.positive}>ATM spot</Text><Text fg={colors.warning}>25d put</Text><Text fg={colors.negative}>25d call</Text>
     </Box>
     <StaticChartSurface points={points} overlays={overlays} calendarSpaced width={width} height={Math.max(3, height - moveHeight - 1)}
-      colors={resolveChartPalette(colors)} yAxisLabel="IV % · calendar days" formatYAxisValue={(value) => `${value.toFixed(1)}%`}
-      xAxisTicks={Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: `${Math.round(first + (last - first) * i / 4)}d` }))}
-      formatXAxisCursorValue={(ratio) => `${(first + ratio * (last - first)).toFixed(1)} days`} />
+      colors={resolveChartPalette(colors)} yAxisLabel="IV % · calendar days (log)" formatYAxisValue={(value) => `${value.toFixed(1)}%`}
+      xAxisTicks={Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: dayLabel(i / 4) }))}
+      formatXAxisCursorValue={(ratio) => `${dayLabel(ratio)} to expiry`} />
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} scrollY focusable={false}>
       {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
         label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}
