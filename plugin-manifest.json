@@ -92,7 +92,7 @@
       ],
       "toggleable": true,
       "featured": true,
-      "icon": "plugin-icons/gloomberb-cloud.svg",
+      "icon": "plugin-icons/gloomberb-cloud.webp",
       "contributes": {
         "panes": [
           "account-management",

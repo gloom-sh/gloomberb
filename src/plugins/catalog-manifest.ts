@@ -39,7 +39,7 @@ const EDITORIAL: Record<
   "gloomberb-cloud": {
     categories: ["data", "cloud"],
     featured: true,
-    icon: "plugin-icons/gloomberb-cloud.svg",
+    icon: "plugin-icons/gloomberb-cloud.webp",
   },
   alerts: { categories: ["alerts"] },
   application: { categories: ["core"] },
