@@ -154,6 +154,8 @@ Each board shows the latest available value, source date, one-year percentile an
 
 Cloud verifies series identity, units, frequency and seasonal adjustment before aggregating. Unknown or contradictory metadata leaves the source unavailable. Daily sources older than seven days and weekly sources older than twenty-one days are stale. The app caches for one hour, retains last good data after a refresh failure, and displays source failures through the existing warning disclosure. An absent endpoint has an explicit unavailable state. All twelve source series resolved during the September 22, 2026 source check; observations retain their individual publication cadence and dates. No database migration is required.
 
+BTMM plots the latest bills curve with one-week and one-month comparisons. The one-year curve remains in tenor cursor values and the shared table fallback with its observation date; it does not set the chart axes. Current, weekly and monthly series have explicit theme colours. The board reserves space for its actual rows and gives remaining space to the chart.
+
 ## Portfolio analytics
 
 P&L for manual portfolios covers current holdings. Manual portfolios have no cash-flow performance history; reconcile corporate actions through **PF → Set position**. Distributions are not automatically credited.

@@ -3,6 +3,7 @@ import { Box } from "gloomberb/ui";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "gloomberb/react";
 import { CompositeChart, CurveSurface, EmptyState, KeyValueRow, MarketBoardStack, PaneStatusBody, Tabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow } from "gloomberb/components";
 import { colors } from "gloomberb/theme";
+import { useThemeColors } from "../../../theme/theme-context";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -49,6 +50,7 @@ function ObservationDetail({ row, width, height }: { row: MoneyMarketRow; width:
 }
 
 export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
+  const colors = useThemeColors();
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadMoneyMarkets(force), [session.requestKey]);
   const resource = useAsyncResource(loader, { initialData: getCachedMoneyMarkets, clearOnError: clearDenied });
@@ -57,10 +59,11 @@ export function MoneyMarketsPane({ width, height, focused }: PaneProps) {
   const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
   const data = resource.data?.payload;
   const rows = useMemo(() => data ? moneyMarketRows(data, tab).map(boardRow) : [], [data, tab]);
-  const curves = useMemo(() => data ? moneyMarketCurves(data) : [], [data]);
+  const curves = useMemo(() => data ? moneyMarketCurves(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }) : [], [data, colors]);
   const selected = rows.find((row) => row.id === openId) ?? rows.find((row) => row.id === selectedId);
   const updatedAgo = useUpdatedAgo(resource.updatedAt);
-  const curveHeight = Math.max(8, Math.min(16, height - 8));
+  const boardHeight = Math.max(3, Math.min(rows.length + 2, Math.floor((height - 1) * 0.45)));
+  const curveHeight = Math.max(8, height - 1 - boardHeight);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => { if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); } });
   usePaneNoticeFooter({ registrationId: "money-markets:notices", focused,

@@ -14,8 +14,15 @@ export interface CurveSeries {
   label: string;
   asOf?: string | null;
   color?: string;
+  /** Keep dated table/cursor context without changing chart axes. */
+  chartVisible?: boolean;
   style?: "line" | "points";
   points: readonly CurvePoint[];
+}
+
+export interface CurvePalette {
+  current: string;
+  ghosts: Readonly<Record<string, string>>;
 }
 
 export interface HistoryObservation {
@@ -119,13 +126,14 @@ export function curveTableRows(series: readonly CurveSeries[]): CurveTableRow[] 
 const COORDINATE_SPAN = 1_000_000_000_000;
 
 export function buildCurveChart(series: readonly CurveSeries[], width: number, colors: readonly string[]) {
-  const coordinates = series.flatMap((entry) => entry.points.map((point) => point.x).filter(Number.isFinite));
+  const plotted = series.filter((entry) => entry.chartVisible !== false);
+  const coordinates = plotted.flatMap((entry) => entry.points.map((point) => point.x).filter(Number.isFinite));
   const min = coordinates.length ? Math.min(...coordinates) : 0;
   const max = coordinates.length ? Math.max(...coordinates) : min;
   const span = max - min;
   const toDate = (x: number) => new Date(Math.round(span > 0 ? (x - min) / span * COORDINATE_SPAN : 0));
   const fromDate = (date: Date) => min + date.getTime() / COORDINATE_SPAN * span;
-  const resolved: ResolvedSeries[] = series.map((entry, index) => staticSeries(
+  const resolved: ResolvedSeries[] = plotted.map((entry, index) => staticSeries(
     entry.points.filter((point) => Number.isFinite(point.x)).toSorted((a, b) => a.x - b.x).map((point) => ({
       date: toDate(point.x),
       observedAt: toDate(point.x),
@@ -134,7 +142,7 @@ export function buildCurveChart(series: readonly CurveSeries[], width: number, c
     { id: entry.id, label: entry.label, color: entry.color ?? colors[index % Math.max(1, colors.length)] ?? "#ffffff",
       style: entry.style, calendarSpaced: true },
   ));
-  const candidates = [...new Map(series.flatMap((entry) => entry.points)
+  const candidates = [...new Map(plotted.flatMap((entry) => entry.points)
     .filter((point) => Number.isFinite(point.x)).map((point) => [point.x, point])).values()].sort((a, b) => a.x - b.x);
   const ticks: Array<{ label: string; ratio: number }> = [];
   const addTick = (point: CurvePoint | undefined) => {

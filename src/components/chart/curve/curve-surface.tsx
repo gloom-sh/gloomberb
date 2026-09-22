@@ -56,8 +56,9 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   const selected = rows.find((row) => row.id === activeId);
   const plottedCount = chart.series.reduce((sum, entry) => sum + entry.points.filter((point) => point.value != null).length, 0);
   const legendRows: Array<Array<{ id: string; text: string; color: string | undefined }>> = [];
-  for (const [index, entry] of series.entries()) {
-    const item = { id: entry.id, text: `${entry.label}${entry.asOf ? ` · ${sourceTime(entry.asOf)}` : ""}`, color: chart.series[index]?.color };
+  for (const entry of series) {
+    if (entry.chartVisible === false) continue;
+    const item = { id: entry.id, text: `${entry.label}${entry.asOf ? ` · ${sourceTime(entry.asOf)}` : ""}`, color: chart.series.find((row) => row.id === entry.id)?.color };
     const last = legendRows.at(-1);
     const used = last?.reduce((sum, cell) => sum + displayWidth(cell.text) + 3, 0) ?? 0;
     if (last && used + displayWidth(item.text) <= totalWidth - 2) last.push(item);
@@ -69,7 +70,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
   const slopeHeight = slope && totalHeight > 5 ? 1 : 0;
   const cursorHeight = showChart ? 1 : 0;
   const contentHeight = Math.max(1, totalHeight - legendHeight - slopeHeight - cursorHeight);
-  const tableHeight = showTable ? showChart ? Math.max(3, Math.floor(contentHeight * 0.4)) : contentHeight : 0;
+  const tableHeight = showTable ? showChart ? Math.min(rows.length + 2, Math.max(3, Math.floor(contentHeight * 0.4))) : contentHeight : 0;
   const chartHeight = showChart ? Math.max(3, contentHeight - tableHeight) : 0;
   const select = useCallback((row: CurveTableRow) => {
     setLocalSelection(row.id);
@@ -121,7 +122,8 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
     {showChart ? <Box height={1} flexShrink={0} paddingX={1}>
       <Text fg={colors.textMuted}>{cursorRow ? `${cursorRow.label} · ${series.map((entry) => {
         const point = cursorRow.points[entry.id];
-        return `${entry.label} ${point?.value == null ? "--" : formatValue(point.value)}`;
+        const date = entry.chartVisible === false ? point?.asOf ?? entry.asOf : null;
+        return `${entry.label}${date ? ` (${sourceTime(date)})` : ""} ${point?.value == null ? "--" : formatValue(point.value)}`;
       }).join(" · ")}` : " "}</Text>
     </Box> : null}
     {showTable ? <DataTableView columns={columns} items={rows} focused={focused}

@@ -1,5 +1,5 @@
 import type { MoneyMarketRow, MoneyMarketsPayload } from "../../../api-client/money-markets";
-import type { CurveSeries } from "../../../components/chart/curve/model";
+import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
 
 export const moneyMarketValue = (value: number | null, unit: MoneyMarketRow["unit"]) => value == null
   ? "--" : unit === "percent" ? `${value.toFixed(2)}%` : `$${value.toLocaleString("en-US", { minimumFractionDigits: Math.abs(value) < 10 ? 3 : 1, maximumFractionDigits: Math.abs(value) < 10 ? 3 : 1 })}B`;
@@ -14,11 +14,12 @@ export function moneyMarketNotices(data: MoneyMarketsPayload): string[] {
   for (const ghost of data.billsCurve.comparisons) if (!ghost.points.length) notices.push(`Bills ${ghost.period}: no common observation within seven days before ${ghost.targetDate ?? "the comparison date"}.`);
   return notices;
 }
-export function moneyMarketCurves(data: MoneyMarketsPayload): CurveSeries[] {
+export function moneyMarketCurves(data: MoneyMarketsPayload, palette?: CurvePalette): CurveSeries[] {
   const curve = data.billsCurve;
   return [{ id: "today", label: "Latest", ...curve }, ...curve.comparisons.map((ghost) => ({ id: ghost.period, label: ghost.period, ...ghost }))]
     .filter((snapshot) => snapshot.points.length > 0)
     .map((snapshot) => ({ id: snapshot.id, label: snapshot.label, asOf: snapshot.asOf,
+      chartVisible: snapshot.id !== "1Y", color: snapshot.id === "today" ? palette?.current : palette?.ghosts[snapshot.id],
       points: snapshot.points.map((point) => ({ id: point.tenor, label: point.tenor, x: point.maturityYears, value: point.value, asOf: snapshot.asOf })),
     }));
 }

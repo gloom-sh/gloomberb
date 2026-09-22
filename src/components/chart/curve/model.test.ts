@@ -92,3 +92,15 @@ test("history corrections remove observations and invalid calendar dates never o
   expect(result.startDate).toBe("2026-03-01");
   expect(historyStatistics(history, 4, { asOf: "2026-02-30" }).count).toBe(0);
 });
+
+
+test("off-chart comparisons retain table context without expanding either chart axis", () => {
+  const series: CurveSeries[] = [
+    { id: "now", label: "Latest", points: [{ id: "one", label: "1Y", x: 1, value: 4 }, { id: "two", label: "2Y", x: 2, value: 3.9 }] },
+    { id: "old", label: "1Y", chartVisible: false, points: [{ id: "one", label: "1Y", x: 1, value: 15 }, { id: "ten", label: "10Y", x: 10, value: 16 }] },
+  ];
+  const chart = buildCurveChart(series, 80, ["green", "gray"]);
+  expect(chart.series.map((row) => row.id)).toEqual(["now"]);
+  expect([chart.min, chart.max]).toEqual([1, 2]);
+  expect(curveTableRows(series)[0]?.points.old?.value).toBe(15);
+});
