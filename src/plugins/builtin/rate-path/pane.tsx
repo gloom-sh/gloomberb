@@ -19,14 +19,14 @@ const MEETING_COLUMNS: DataTableColumn[] = [
   { id: "rate", label: "EFFR", width: 9, align: "right" },
   { id: "change", label: "VS NOW", width: 9, align: "right" },
   { id: "percentile", label: "PCTL 1Y", width: 10, align: "right" },
-  { id: "asOf", label: "AS OF", width: 20, align: "left" },
+  { id: "asOf", label: "AS OF UTC", width: 20, align: "left" },
 ];
 const CONTRACT_COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "CONTRACT", width: 16, align: "left" },
   { id: "price", label: "PRICE", width: 10, align: "right" },
   { id: "rate", label: "IMPLIED", width: 10, align: "right" },
   { id: "percentile", label: "PCTL 1Y", width: 10, align: "right" },
-  { id: "asOf", label: "AS OF", width: 20, align: "left" },
+  { id: "asOf", label: "AS OF UTC", width: 20, align: "left" },
 ];
 
 function timestamp(value: string | null): string { return value?.replace("T", " ").slice(0, 16) ?? "--"; }
@@ -54,7 +54,9 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   const [selected, setSelected] = usePluginPaneState<string | null>("meeting", null);
   const [sort, setSort] = useState({ id: "date", direction: "asc" as "asc" | "desc" });
   const data = resource.data;
-  const curves = useMemo(() => data ? ratePathCurves(data) : [], [data]);
+  const curves = useMemo(() => data ? ratePathCurves(data, {
+    path: colors.positive, ghosts: [colors.textMuted, colors.textDim], band: colors.warning, projection: colors.negative,
+  }) : [], [data]);
   const meetings = useMemo(() => [...(data?.meetings ?? [])].sort((a, b) => {
     const key = { date: "date", rate: "impliedRate", change: "changeBps", percentile: "percentile", asOf: "asOf" }[sort.id] as keyof RateMeeting | undefined;
     const left = key ? a[key] : null, right = key ? b[key] : null;
@@ -65,7 +67,10 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
   }), [data, sort]);
   const targets = useMemo(() => probabilityTargets(data?.meetings ?? []), [data]);
   const selectedMeeting = data?.meetings.find((meeting) => meeting.date === selected);
-  const pathHeight = Math.max(6, Math.floor((height - 5) * 0.5));
+  // The meeting table only needs its rows; the chart takes whatever is left.
+  const bodyHeight = Math.max(9, height - 4);
+  const meetingTableHeight = Math.max(3, Math.min((data?.meetings.length ?? 0) + 2, Math.floor(bodyHeight * 0.5)));
+  const pathHeight = Math.max(6, bodyHeight - meetingTableHeight);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && event.name === "r") { event.preventDefault(); void resource.reload(); }
@@ -93,7 +98,7 @@ export function RatePathPane({ width, height, focused }: PaneProps) {
         {tab === "path" ? <>
           <CurveSurface series={curves} width={width} height={pathHeight} display="chart" valueLabel="Rate (%)" formatValue={rateText} formatX={(value) => new Date(value).toISOString().slice(0, 10)} selectedPointId={selected} onSelectedPointChange={setSelected}
             slope={data.slope ? { label: "Last-first", value: data.slope.valueBps, percentile: data.slope.percentile, window: "1Y", asOf: data.slope.asOf, formatValue: (value) => `${value > 0 ? "+" : ""}${value.toFixed(1)}bp` } : undefined} />
-          <DataTableView columns={MEETING_COLUMNS} items={meetings} selection={selection} focused={focused} sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={(row) => row.date} renderCell={meetingCell} rootHeight={Math.max(3, height - pathHeight - 4)} emptyStateTitle="No scheduled FOMC meetings" />
+          <DataTableView columns={MEETING_COLUMNS} items={meetings} selection={selection} focused={focused} sortColumnId={sort.id} sortDirection={sort.direction} onHeaderClick={onHeaderClick} getItemKey={(row) => row.date} renderCell={meetingCell} rootHeight={meetingTableHeight} emptyStateTitle="No scheduled FOMC meetings" />
         </> : tab === "probabilities" ? <DataTableView
           columns={[MEETING_COLUMNS[0]!, ...targets.map((target) => {
             const halfWidth = data.current.targetLower.value != null && data.current.targetUpper.value != null

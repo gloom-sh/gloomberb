@@ -23,6 +23,16 @@ describe("rate-path integration boundary", () => {
     expect(meetingProbability(result.meetings[0]!, 4.25)).toBe(0);
   });
 
+  test("charts only near ghosts and labels the SEP dot as a date on the meeting axis", () => {
+    const data = payload();
+    data.meetings.push({ ...meeting, date: "2027-01-27", impliedRate: 4.3 });
+    data.ghosts.push({ label: "1Y", requestedDate: "2025-09-22", asOf: "2025-09-22", points: [{ date: meeting.date, impliedRate: 2.9 }] });
+    data.dotPlot.points = [{ year: 2026, rate: 4.1 }, { year: 2028, rate: 3.9 }, { year: "longer-run", rate: 3.2 }];
+    const curves = ratePathCurves(validateRatePath(data));
+    expect(curves.map((entry) => entry.id)).toEqual(["implied", "1W", "targetLower", "targetUpper", "sep"]);
+    expect(curves.at(-1)!.points).toEqual([{ id: "sep-2026", label: "12-31", x: Date.parse("2026-12-31"), value: 4.1, asOf: "2026-09-16" }]);
+  });
+
   test("rejects broken endpoint probabilities and impossible decision dates", () => {
     const invalid = payload();
     invalid.meetings = [{ ...meeting, probabilities: [{ targetMidpoint: 4, probability: 0.4 }] }];
