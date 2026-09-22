@@ -4,7 +4,7 @@ import { join, resolve, sep } from "path";
 import { encodeRpcValue } from "../renderers/electrobun/view/rpc-codec";
 import type { AppConfig } from "../types/config";
 import type { ChartResolutionResult } from "../time-series/types";
-import type { OptionsChain, PricePoint, TickerFinancials } from "../types/financials";
+import type { PricePoint, TickerFinancials } from "../types/financials";
 import type { ManualChartResolution } from "../time-series/resolution";
 import type { SnapshotMarketData } from "../market-data/snapshot-provider";
 import type { InstrumentRef } from "../market-data/request-types";
@@ -47,7 +47,7 @@ export interface DesktopPaneShotPayload {
   financials: Array<[string, TickerFinancials]>;
   instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
   intradayHistories: DesktopPaneShotIntradayHistory[];
-  optionsChains: Array<[string, OptionsChain]>;
+  optionsChains: NonNullable<SnapshotMarketData["optionsChains"]>;
   valuationSeries: Array<[string, DatedObservation[]]>;
   statSeries: Array<[string, DatedObservation[]]>;
   chartModel?: ChartResolutionResult;

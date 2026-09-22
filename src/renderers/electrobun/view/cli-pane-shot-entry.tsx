@@ -40,6 +40,7 @@ import type {
   AnalystResearchData,
   CorporateActionsData,
   HolderData,
+  OptionsChain,
   PricePoint,
   Quote,
   QuoteMetadata,
@@ -335,6 +336,7 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     getQuoteMetadata: (symbol, exchange, context) => requestShotMarketData<QuoteMetadata | null>("getQuoteMetadata", [symbol, exchange, context]),
     getQuotesBatch: (targets) => requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [targets])
       .catch(() => targets.map((target) => ({ target, quote: null }))),
+    getOptionsChain: (symbol, exchange, expirationDate, context) => requestShotMarketData<OptionsChain>("getOptionsChain", [symbol, exchange, expirationDate, context]),
     getPriceHistory: (symbol, exchange, range, context) => requestShotMarketData<PricePoint[]>("getPriceHistory", [symbol, exchange, range, context])
       .then(revivePricePoints).catch(() => []),
     async getExchangeRate(fromCurrency) {

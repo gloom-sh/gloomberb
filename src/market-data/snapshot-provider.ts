@@ -7,6 +7,9 @@ import type { InstrumentRef } from "./request-types";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { quoteMetadataFromQuote } from "./quotes/metadata";
 
+/** Omitted expiry retains a legacy/default slice; the catalogue is not its identity. */
+export type SnapshotOptionsChain = readonly [symbol: string, chain: OptionsChain, expirationDate?: number];
+
 export interface SnapshotMarketData {
   financials: ReadonlyArray<readonly [string, TickerFinancials]>;
   instrumentFinancials?: ReadonlyArray<{ instrument: InstrumentRef; financials: TickerFinancials }>;
@@ -20,7 +23,7 @@ export interface SnapshotMarketData {
     /** Metadata already fetched to validate the captured history's price domain. */
     quote?: Quote;
   }>;
-  optionsChains?: ReadonlyArray<readonly [string, OptionsChain]>;
+  optionsChains?: ReadonlyArray<SnapshotOptionsChain>;
 }
 
 /** Exact captured identity, retaining the snapshot API's public venue alias matching. */
@@ -55,6 +58,37 @@ function lookup<T>(entries: ReadonlyArray<readonly [string, T]>) {
   );
 }
 
+function optionsLookup(entries: ReadonlyArray<SnapshotOptionsChain>) {
+  const values = new Map<string, Map<number | undefined, OptionsChain>>();
+  for (const [key, chain, expirationDate] of entries) {
+    const { symbol, exchange } = parsePublicTickerKey(key);
+    const identity = canonicalTickerKey(symbol, exchange);
+    const expiries = values.get(identity) ?? new Map<number | undefined, OptionsChain>();
+    values.set(identity, expiries);
+    if (expirationDate === undefined) expiries.set(undefined, chain);
+    // Legacy OMON captures have no requested-expiry field. Their contracts can
+    // establish a slice, but expirationDates lists every available slice.
+    const contractExpiries = new Set([...chain.calls, ...chain.puts].map((contract) => contract.expiration));
+    const representedExpiry = expirationDate ?? (contractExpiries.size === 1 ? [...contractExpiries][0] : undefined);
+    if (representedExpiry !== undefined && Number.isFinite(representedExpiry) && representedExpiry > 0) {
+      expiries.set(representedExpiry, chain);
+    }
+  }
+  return (symbol: string, exchange?: string, expirationDate?: number) => {
+    for (const key of [canonicalTickerKey(symbol, exchange), canonicalTickerKey(symbol)]) {
+      const expiries = values.get(key);
+      if (!expiries) continue;
+      const exact = expiries.get(expirationDate);
+      if (exact) return exact;
+      if (expirationDate === undefined) {
+        const firstExpiry = [...expiries.keys()].filter((value): value is number => value !== undefined).sort((a, b) => a - b)[0];
+        if (firstExpiry !== undefined) return expiries.get(firstExpiry);
+      }
+    }
+    return undefined;
+  };
+}
+
 async function seededBatch<T, R>(targets: T[], find: (target: T) => R | undefined, load: (missing: T[]) => Promise<R[]>): Promise<R[]> {
   const results = targets.map(find);
   const missing = targets.filter((_, index) => results[index] === undefined);
@@ -71,7 +105,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
   const financials = (symbol: string, exchange?: string, context?: MarketDataRequestContext) =>
     exactFinancials.get(snapshotInstrumentKey({ symbol, exchange, ...context }))
       ?? (context?.instrument ? undefined : publicFinancials(symbol, exchange));
-  const options = lookup(snapshot.optionsChains ?? []);
+  const options = optionsLookup(snapshot.optionsChains ?? []);
   const publicIntraday = lookup((snapshot.intradayHistories ?? []).filter(history => !history.target?.instrument)
     .map(history => [canonicalTickerKey(history.symbol, history.exchange), history]));
   const exactIntraday = new Map((snapshot.intradayHistories ?? []).flatMap(history => history.target ? [[snapshotInstrumentKey(history.target), history] as const] : []));
@@ -138,7 +172,7 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
       }))));
     },
     async getOptionsChain(symbol, exchange, expirationDate, context) {
-      const captured = context?.instrument ? undefined : options(symbol, exchange);
+      const captured = context?.instrument ? undefined : options(symbol, exchange, expirationDate);
       if (captured) return captured;
       if (!fallback.getOptionsChain) throw new Error(`No options data available for ${symbol}.`);
       return fallback.getOptionsChain(symbol, exchange, expirationDate, context);

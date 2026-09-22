@@ -95,6 +95,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const { ticker, financials } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const liveStreaming = useLiveStreamingSetting();
+  const [seededExpiration] = usePaneSettingValue<number | undefined>("expiration", undefined);
   const [expirySelection, setExpirySelection] = useState<{ targetKey: string; expiration: number } | null>(null);
   const [calcSide, setCalcSide] = useState<OptionSide | null>(null);
   const [strikeIdx, setStrikeIdx] = useState(0);
@@ -150,7 +151,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     parsed && Math.abs(expiration - parsed.expTs) < Math.abs(best - parsed.expTs) ? expiration : best
   ), initialChain.expirationDates[0]!);
   const selectedExpiration = expirySelection?.targetKey === selectionTargetKey
-    ? expirySelection.expiration : initialExpiration;
+    ? expirySelection.expiration : seededExpiration ?? initialExpiration;
   const viewportKey = `${effectiveTicker}:${selectedExpiration ?? "initial"}`;
   const strikeSelectionKey = `${selectionTargetKey}|${selectedExpiration ?? "initial"}`;
   const selectedContract = contractSelection?.context === strikeSelectionKey ? contractSelection : null;

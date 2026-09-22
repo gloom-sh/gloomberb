@@ -99,6 +99,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `DIAG <ticker>` | Equity Diagnostic with cited flags and anomalies |
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options monitor |
+| `OVDV <ticker>` | Rotatable implied-volatility surface, smiles, term structure, skew and forwards |
 | `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |

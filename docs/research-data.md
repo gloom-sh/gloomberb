@@ -220,7 +220,7 @@ Smiles fit raw SVI total variance, `w(k) = a + b [rho (k-m) + sqrt((k-m)^2 + sig
 
 ### Volatility source coverage
 
-Live checks on 2026-09-22 distinguished symbol publication from actual app routing:
+Live checks at 13:37 UTC on 2026-09-22 distinguished symbol publication from actual app routing:
 
 | Source | Verified coverage and limitation |
 |---|---|
@@ -232,9 +232,21 @@ Live checks on 2026-09-22 distinguished symbol publication from actual app routi
 | Treasury curve | Ten nodes resolved from 1M through 30Y, dated September 18, in percentage units. Divide yields by 100 for decimal rate inputs; short option tenors have no separate 1W Treasury node. |
 | VIX futures | `FUT` has no VX alias or monthly VX catalogue. Yahoo `VX=F` returned 404. The cash volatility tenor curve is not a futures curve. |
 
+By 14:08 UTC on the same date, new chain snapshots contained usable two-sided markets. Subsequent captures of AAPL, SPY, NVDA and TSLA each loaded 18 fitted expiry slices, including near-ATM smiles. Availability is time-dependent; the earlier zero-quote responses remain relevant partial/empty-state cases.
+
 Dated daily-close histories can support a volatility board without bypassing quote freshness. Missing chain quotes remain unavailable in both recomputed and provider-IV comparison modes. These checks establish observed coverage at the stated time, not future availability. Implied-volatility and surface history require a separate snapshot service and are not supplied by these sources.
 
 ### Option monitor and calculator
+
+`OVDV <ticker>` loads the nearest 18 unexpired listed expiries with four concurrent requests. Its catalogue and per-expiry requests use the same options coordinator as OMON. Scrolling the table near its end or choosing the footer's more-expiries action extends the request by 12 expiries. Each expiry publishes independently; an error in one slice remains visible beside successful slices. A refresh retains the prior view while new requests start. A removed explicitly selected expiry stays unavailable until another is chosen, preventing a calculator from silently switching contracts.
+
+The default surface recomputes European IV from quoted midpoints using the shared solver. Cleaning excludes zero bids, crossed markets, spreads greater than 50% of midpoint, missing or zero open interest, mismatched expirations, and stale duplicate contracts when a fresher observation exists at the same strike. The default stale threshold is five weekdays, a session proxy that does not infer exchange holidays. Bid/ask price choice, spread threshold, stale threshold and provider-IV comparison are pane settings. Provider comparison applies the same quote cleaning and requires a measured parity forward; unavailable markets do not become provider-IV surfaces. Puts below the measured forward and calls above it form a single OTM smile.
+
+Rates linearly interpolate available Treasury maturity yields, divided by 100 and used as a continuous-rate approximation. This is a proxy curve, not a bootstrapped zero-coupon curve. Boundary tenors retain the nearest published rate with a warning; unavailable rates are never silently replaced with a fixed default. Parity-derived forward and dividend carry, contributing contracts, source dates, fit residuals and rejected-quote counts remain in exports. Equity and ETF options can have American exercise effects that this European IV convention does not remove.
+
+The 3D view uses listed expiries and forward moneyness from 80% to 120%, with an ATM-forward ridge and selected-cell marker. It uses the same software bitmap in Kitty-compatible terminals and desktop canvas. Arrow keys or h/j/k/l rotate, + and - zoom, 0 resets the view, and desktop dragging rotates. Without bitmap support the shaded table remains keyboard- and mouse-selectable. The table and smile axis can show spot %, forward %, signed delta wings or strikes. Fixed table tenors interpolate total variance at fixed forward moneyness and show I; time extrapolation shows E. Strike extrapolation is withheld in every view, including ATM and delta-wing metrics, so a few far-wing quotes cannot manufacture a near-ATM surface.
+
+Use the tabs or the footer's view action to switch surface, table, smile, term, skew and forwards. The expiry selector and [ / ] select an expiry. Smile overlays identify nearby expiries on the same chosen coordinate axis. Term structure shows ATM at spot (distinct from the forward-ATM ridge) and 25-delta wings with each expiry's straddle and one-sigma move below. The price action seeds OVME with the selected fitted strike, tenor, rate and carry; a nearby contract's premium is not borrowed for an off-strike cell. The chain action opens OMON at the same expiry. CSV exports from tables include method, filters, rates, source dates and warnings; `gloomberb fn OVDV AAPL --json` preserves the complete model metadata. Pane sharing uses the standard pane menu.
 
 OVME uses a European-exercise Black–Scholes model. It does not model early exercise or discrete dividends. Theta is per day; vega is per volatility percentage point; rho is per rate percentage point. The UI keeps these units beside their values. A positive input exactly at the model’s discounted zero-volatility payoff has a 0% boundary solution. Nearby prices within the cumulative-normal approximation’s price-error bound cannot resolve IV and remain unavailable; this is not an estimate of quote precision or realized volatility. The asymptotic maximum has no finite IV, and the solver retains its 500% ceiling. Submitted calculator inputs retain their entered precision while editing.
 

@@ -12,6 +12,7 @@ import {
   shotSemanticRowCount,
   shotUnavailableSymbols,
   stripDesktopShotCredentials,
+  volSurfaceEvidenceMismatchesFor,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
 } from "./screenshot";
@@ -20,6 +21,50 @@ import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
 import { CHART_COMPOSER_PANE_ID } from "../../types/config";
+
+describe("volatility surface screenshot evidence", () => {
+  const request = { ...resolved("vol-surface-pane", { tab: "surface", axis: "spot", tenors: "listed", ivSource: "recomputed", priceSide: "mid" }),
+    pane: { id: "vol-surface" }, capability: { id: "vol-surface-pane", screenshotReadiness: "live-dom" } } as ResolvedPaneFunction;
+  const source = payload([["AAPL", { quote: { price: 100 } }]]);
+  const metadata = {
+    kind: "volatility-surface", version: 1, symbol: "AAPL", view: "surface", renderer: "bitmap", axis: "forward", tenors: "listed",
+    ivSource: "recomputed", priceSide: "mid", spot: 100, spotAsOf: "2026-09-22T14:00:00Z", loading: false, complete: true,
+    requestedExpiries: 2, loadedExpiries: 2, failedExpiries: 0, sourcePointCount: 4, plottedValueCount: 4, validQuadCount: 1,
+    selectedExpiration: 1_800_000_000, overlaySmiles: false, failures: [], smile: null, term: [], table: [],
+    expiries: [1_800_000_000, 1_810_000_000].map((expiration) => ({ expiration, years: 0.5, state: "ready", stale: false,
+      error: null, source: "test", asOf: "2026-09-22T13:45:00Z", rate: 0.04, rateAsOf: ["2026-09-21"],
+      forward: 100, fitMethod: "monotone-cubic", sourcePointCount: 2 })),
+    grid: { tenors: [0.25, 0.5], coordinates: [0.9, 1], values: [[0.3, 0.25], [0.32, 0.27]] },
+  };
+  const nodes = (value: Record<string, unknown> = metadata): RemoteUiNodeSnapshot[] => [
+    { id: "surface-data", role: "chart-data", actions: [], metadata: value },
+  ];
+
+  test("verifies numeric surface cells and provenance despite a live-dom capability with no table rows", () => {
+    expect(shotSemanticRowCount(request, source, nodes())).toBe(4);
+    expect(shotUnavailableSymbols(request, source, nodes())).toEqual([]);
+    expect(volSurfaceEvidenceMismatchesFor(request, source, nodes())).toEqual([]);
+    expect(shotDataEvidenceFor(request, source, nodes())).toMatchObject({
+      kind: "volatility-surface", grid: metadata.grid, spotAsOf: "2026-09-22T14:00:00Z", plottedValueCount: 4,
+    });
+    expect(shotSemanticRowCount(request, source, [])).toBe(0);
+    expect(shotDataEvidenceFor(request, source, [])).toBeNull();
+  });
+
+  test("does not certify canvas-only, wrong-view, partial or empty captures", () => {
+    expect(shotUnavailableSymbols(request, source, [])).toEqual(["AAPL"]);
+    const partial = nodes({ ...metadata, complete: false, failedExpiries: 1, failures: [{ expiration: 1_800_000_000, message: "offline" }] });
+    expect(shotUnavailableSymbols(request, source, partial)).toEqual(["AAPL"]);
+    expect(shotSemanticRowCount(request, source, partial)).toBe(4);
+    expect(volSurfaceEvidenceMismatchesFor({ ...request, options: { ...request.options, tab: "smile" } }, source, nodes())).toContain("rendered volatility view does not match");
+    expect(volSurfaceEvidenceMismatchesFor(request, source, nodes({ ...metadata, symbol: "TSLA" }))).toContain("rendered volatility symbol does not match");
+    expect(volSurfaceEvidenceMismatchesFor(request, source, nodes({ ...metadata, ivSource: "provider" }))).toContain("rendered volatility source does not match");
+    const empty = nodes({ ...metadata, plottedValueCount: 0, validQuadCount: 0,
+      grid: { ...metadata.grid, values: [[null, null], [null, null]] } });
+    expect(shotSemanticRowCount(request, source, empty)).toBe(0);
+    expect(shotDataEvidenceFor(request, source, empty)).toBeNull();
+  });
+});
 
 describe("pane screenshot rendered readiness", () => {
   const rendered = {
@@ -116,7 +161,28 @@ describe("pane screenshot market bridge", () => {
       ratings: [{ currentPriceTarget: 42 }],
     });
     expect(calls).toEqual([["getAnalystResearch", ["NKE", "NYSE"]]]);
-    await expect(bridge.marketData("getOptionsChain", ["NKE"])).rejects.toThrow(/does not serve/);
+    await expect(bridge.marketData("getCachedQuery", ["NKE"])).rejects.toThrow(/does not serve/);
+  });
+
+  test("routes distinct option expiries with their listing and request context intact", async () => {
+    const calls: unknown[][] = [];
+    const provider = {
+      async getOptionsChain(...args: unknown[]) {
+        expect(this).toBe(provider);
+        calls.push(args);
+        return { underlyingSymbol: args[0], expirationDates: [args[2]], calls: [], puts: [], asOf: "2026-09-21T20:00:00Z" };
+      },
+    };
+    const bridge = createDesktopShotBridge({ dataProvider: provider as any });
+    const context = { cacheMode: "refresh" };
+    for (const expiry of [1_790_121_600, 1_792_108_800]) {
+      const result = await bridge.marketData("getOptionsChain", ["AAPL", "NASDAQ", expiry, context]);
+      expect(result).toMatchObject({ expirationDates: [expiry], asOf: "2026-09-21T20:00:00Z" });
+    }
+    expect(calls).toEqual([
+      ["AAPL", "NASDAQ", 1_790_121_600, context],
+      ["AAPL", "NASDAQ", 1_792_108_800, context],
+    ]);
   });
 });
 

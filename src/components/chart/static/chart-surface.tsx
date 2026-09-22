@@ -13,6 +13,8 @@ export type StaticChartXMarker = CompositeChartXMarker;
 export interface StaticChartOverlay {
   id: string;
   color: string;
+  /** Discrete observations can share a fitted primary curve without joining the dots. */
+  style?: "line" | "points";
   points: ReadonlyArray<{ index: number; value: number }>;
 }
 
@@ -84,7 +86,7 @@ export function buildStaticChartSeries(
       const anchor = points[index];
       return anchor && Number.isFinite(value) ? [scalarPoint(anchor.date, value)] : [];
     }),
-    { id: overlay.id, color: overlay.color, calendarSpaced },
+    { id: overlay.id, color: overlay.color, style: overlay.style, calendarSpaced },
   ));
   return [primary, ...overlaySeries];
 }

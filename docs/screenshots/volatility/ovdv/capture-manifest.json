@@ -1,0 +1,2257 @@
+{
+  "description": "Observed option markets rendered by the production OVDV pane. No illustrative inputs or image alterations.",
+  "capturedDate": "2026-09-22",
+  "source": "Gloomberb Cloud through AssetDataRouter and the shared options coordinator",
+  "screenshots": [
+    {
+      "file": "desktop-AAPL-surface.png",
+      "symbol": "AAPL",
+      "renderer": "desktop",
+      "view": "surface",
+      "sha256": "d221227e025cdb0e37ee05efe65ac713a3825f8f7acb500aca00920aac8f94c6",
+      "bytes": 532985,
+      "capturedAt": "2026-09-22T14:13:57.629Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 341.08,
+      "spotAsOf": 1790085448353,
+      "chainAsOf": [
+        "2026-09-22T13:53:15.000Z",
+        "2026-09-22T13:53:14.000Z",
+        "2026-09-22T13:52:18.000Z",
+        "2026-09-22T13:53:05.000Z",
+        "2026-09-22T13:52:53.000Z",
+        "2026-09-22T13:52:26.000Z",
+        "2026-09-22T13:53:04.000Z",
+        "2026-09-22T13:52:09.000Z",
+        "2026-09-22T13:52:49.000Z",
+        "2026-09-22T13:52:55.000Z",
+        "2026-09-22T13:52:51.000Z",
+        "2026-09-22T13:53:11.000Z",
+        "2026-09-22T13:47:19.000Z",
+        "2026-09-22T13:51:13.000Z",
+        "2026-09-22T13:51:27.000Z",
+        "2026-09-22T13:53:02.000Z",
+        "2026-09-22T13:53:16.000Z",
+        "2026-09-22T13:51:35.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-AAPL-smile.png",
+      "symbol": "AAPL",
+      "renderer": "desktop",
+      "view": "smile",
+      "sha256": "e2a570639cf9fa6d0096a0b0b117b91931cba70fe22e1135564ece4a1284416b",
+      "bytes": 146290,
+      "capturedAt": "2026-09-22T14:13:59.741Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 341.08,
+      "spotAsOf": 1790085448353,
+      "chainAsOf": [
+        "2026-09-22T13:53:15.000Z",
+        "2026-09-22T13:53:14.000Z",
+        "2026-09-22T13:52:18.000Z",
+        "2026-09-22T13:53:05.000Z",
+        "2026-09-22T13:52:53.000Z",
+        "2026-09-22T13:52:26.000Z",
+        "2026-09-22T13:53:04.000Z",
+        "2026-09-22T13:52:09.000Z",
+        "2026-09-22T13:52:49.000Z",
+        "2026-09-22T13:52:55.000Z",
+        "2026-09-22T13:52:51.000Z",
+        "2026-09-22T13:53:11.000Z",
+        "2026-09-22T13:47:19.000Z",
+        "2026-09-22T13:51:13.000Z",
+        "2026-09-22T13:51:27.000Z",
+        "2026-09-22T13:53:02.000Z",
+        "2026-09-22T13:53:16.000Z",
+        "2026-09-22T13:51:35.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-AAPL-term.png",
+      "symbol": "AAPL",
+      "renderer": "desktop",
+      "view": "term",
+      "sha256": "82b19eb6ab1b7fc10946f3d93b46da3050a1166a009dc77d16660f46589bc45f",
+      "bytes": 326154,
+      "capturedAt": "2026-09-22T14:18:26.829Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 341.08,
+      "spotAsOf": 1790085448353,
+      "chainAsOf": [
+        "2026-09-22T13:53:15.000Z",
+        "2026-09-22T13:53:14.000Z",
+        "2026-09-22T13:52:18.000Z",
+        "2026-09-22T13:53:05.000Z",
+        "2026-09-22T13:52:53.000Z",
+        "2026-09-22T13:52:26.000Z",
+        "2026-09-22T13:53:04.000Z",
+        "2026-09-22T13:52:09.000Z",
+        "2026-09-22T13:52:49.000Z",
+        "2026-09-22T13:52:55.000Z",
+        "2026-09-22T13:52:51.000Z",
+        "2026-09-22T13:53:11.000Z",
+        "2026-09-22T13:47:19.000Z",
+        "2026-09-22T13:51:13.000Z",
+        "2026-09-22T13:51:27.000Z",
+        "2026-09-22T13:53:02.000Z",
+        "2026-09-22T13:53:16.000Z",
+        "2026-09-22T13:51:35.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "terminal-AAPL-surface.png",
+      "symbol": "AAPL",
+      "renderer": "terminal",
+      "view": "surface",
+      "sha256": "a0b281c13410789265756e73e9f96a2b84e1ee5ad01d789f4d1b19fd467f00b1",
+      "bytes": 211897,
+      "capturedAt": "2026-09-22T14:12:37.213Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 341.065,
+      "spotAsOf": 1790085424650,
+      "chainAsOf": [
+        "2026-09-22T13:53:57.000Z",
+        "2026-09-22T13:54:00.000Z",
+        "2026-09-22T13:53:46.000Z",
+        "2026-09-22T13:53:05.000Z",
+        "2026-09-22T13:57:28.000Z",
+        "2026-09-22T13:56:33.000Z",
+        "2026-09-22T13:57:13.000Z",
+        "2026-09-22T13:56:27.000Z",
+        "2026-09-22T13:57:01.000Z",
+        "2026-09-22T13:57:10.000Z",
+        "2026-09-22T13:56:46.000Z",
+        "2026-09-22T13:57:03.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:55:03.000Z",
+        "2026-09-22T13:56:26.000Z",
+        "2026-09-22T13:57:20.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-AAPL-smile.png",
+      "symbol": "AAPL",
+      "renderer": "terminal",
+      "view": "smile",
+      "sha256": "953afda3da2ddfeb1eaebc3cced50934e33fc66cbee2157f87266477427a6156",
+      "bytes": 81099,
+      "capturedAt": "2026-09-22T14:12:38.433Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 341.065,
+      "spotAsOf": 1790085424650,
+      "chainAsOf": [
+        "2026-09-22T13:53:57.000Z",
+        "2026-09-22T13:54:00.000Z",
+        "2026-09-22T13:53:46.000Z",
+        "2026-09-22T13:53:05.000Z",
+        "2026-09-22T13:57:28.000Z",
+        "2026-09-22T13:56:33.000Z",
+        "2026-09-22T13:57:13.000Z",
+        "2026-09-22T13:56:27.000Z",
+        "2026-09-22T13:57:01.000Z",
+        "2026-09-22T13:57:10.000Z",
+        "2026-09-22T13:56:46.000Z",
+        "2026-09-22T13:57:03.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:55:03.000Z",
+        "2026-09-22T13:56:26.000Z",
+        "2026-09-22T13:57:20.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-AAPL-term.png",
+      "symbol": "AAPL",
+      "renderer": "terminal",
+      "view": "term",
+      "sha256": "f65d8cca690122883091d691fce0af8bce5822dc19ed63abeb20721416035b10",
+      "bytes": 139145,
+      "capturedAt": "2026-09-22T14:12:39.661Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 341.065,
+      "spotAsOf": 1790085424650,
+      "chainAsOf": [
+        "2026-09-22T13:53:57.000Z",
+        "2026-09-22T13:54:00.000Z",
+        "2026-09-22T13:53:46.000Z",
+        "2026-09-22T13:53:05.000Z",
+        "2026-09-22T13:57:28.000Z",
+        "2026-09-22T13:56:33.000Z",
+        "2026-09-22T13:57:13.000Z",
+        "2026-09-22T13:56:27.000Z",
+        "2026-09-22T13:57:01.000Z",
+        "2026-09-22T13:57:10.000Z",
+        "2026-09-22T13:56:46.000Z",
+        "2026-09-22T13:57:03.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:55:03.000Z",
+        "2026-09-22T13:56:26.000Z",
+        "2026-09-22T13:57:20.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "desktop-SPY-surface.png",
+      "symbol": "SPY",
+      "renderer": "desktop",
+      "view": "surface",
+      "sha256": "85ac3443713b9f74bc8d7eaa7639330af09747e4f2e650c87fc3fd2b8c1b6b91",
+      "bytes": 541224,
+      "capturedAt": "2026-09-22T14:14:06.441Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 773.94,
+      "spotAsOf": 1790085450854,
+      "chainAsOf": [
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:25.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:56:20.000Z",
+        "2026-09-22T13:55:45.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:56.000Z",
+        "2026-09-22T13:56:11.000Z",
+        "2026-09-22T13:55:38.000Z",
+        "2026-09-22T13:56:04.000Z",
+        "2026-09-22T13:55:36.000Z",
+        "2026-09-22T13:55:17.000Z",
+        "2026-09-22T13:55:22.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-SPY-smile.png",
+      "symbol": "SPY",
+      "renderer": "desktop",
+      "view": "smile",
+      "sha256": "40fae18f8de15c0ac02e93848d6412f742eb4bcc9fc55c254d0c248f61282708",
+      "bytes": 164509,
+      "capturedAt": "2026-09-22T14:14:10.549Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 773.94,
+      "spotAsOf": 1790085450854,
+      "chainAsOf": [
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:25.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:56:20.000Z",
+        "2026-09-22T13:55:45.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:56.000Z",
+        "2026-09-22T13:56:11.000Z",
+        "2026-09-22T13:55:38.000Z",
+        "2026-09-22T13:56:04.000Z",
+        "2026-09-22T13:55:36.000Z",
+        "2026-09-22T13:55:17.000Z",
+        "2026-09-22T13:55:22.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-SPY-term.png",
+      "symbol": "SPY",
+      "renderer": "desktop",
+      "view": "term",
+      "sha256": "b0a67f0eab3f9e2af23152167e30e054df7d98127f6c672b942683ee3da196e2",
+      "bytes": 318148,
+      "capturedAt": "2026-09-22T14:18:29.081Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 773.94,
+      "spotAsOf": 1790085450854,
+      "chainAsOf": [
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:25.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:56:20.000Z",
+        "2026-09-22T13:55:45.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:56.000Z",
+        "2026-09-22T13:56:11.000Z",
+        "2026-09-22T13:55:38.000Z",
+        "2026-09-22T13:56:04.000Z",
+        "2026-09-22T13:55:36.000Z",
+        "2026-09-22T13:55:17.000Z",
+        "2026-09-22T13:55:22.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "terminal-SPY-surface.png",
+      "symbol": "SPY",
+      "renderer": "terminal",
+      "view": "surface",
+      "sha256": "b7704d7cd7645e45c3a18a54b4fac2bbd03e767b34b1e683814030916a351d7c",
+      "bytes": 214101,
+      "capturedAt": "2026-09-22T14:12:47.941Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 773.94,
+      "spotAsOf": 1790085450854,
+      "chainAsOf": [
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:25.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:56:20.000Z",
+        "2026-09-22T13:55:45.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:56.000Z",
+        "2026-09-22T13:56:11.000Z",
+        "2026-09-22T13:55:38.000Z",
+        "2026-09-22T13:56:04.000Z",
+        "2026-09-22T13:55:36.000Z",
+        "2026-09-22T13:55:17.000Z",
+        "2026-09-22T13:55:22.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-SPY-smile.png",
+      "symbol": "SPY",
+      "renderer": "terminal",
+      "view": "smile",
+      "sha256": "5cb537412bb6ca782f6aa1770aea1aa81684e444e303020b94f7e9ae292b85e5",
+      "bytes": 92672,
+      "capturedAt": "2026-09-22T14:12:49.161Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 773.94,
+      "spotAsOf": 1790085450854,
+      "chainAsOf": [
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:25.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:56:20.000Z",
+        "2026-09-22T13:55:45.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:56.000Z",
+        "2026-09-22T13:56:11.000Z",
+        "2026-09-22T13:55:38.000Z",
+        "2026-09-22T13:56:04.000Z",
+        "2026-09-22T13:55:36.000Z",
+        "2026-09-22T13:55:17.000Z",
+        "2026-09-22T13:55:22.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-SPY-term.png",
+      "symbol": "SPY",
+      "renderer": "terminal",
+      "view": "term",
+      "sha256": "4e80c7bff2a0e9d278051cf7200a4f9b83a4a72a373435a30aeb7ef3cbeead12",
+      "bytes": 140605,
+      "capturedAt": "2026-09-22T14:12:50.397Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 773.94,
+      "spotAsOf": 1790085450854,
+      "chainAsOf": [
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:25.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:56:20.000Z",
+        "2026-09-22T13:55:45.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:56.000Z",
+        "2026-09-22T13:56:11.000Z",
+        "2026-09-22T13:55:38.000Z",
+        "2026-09-22T13:56:04.000Z",
+        "2026-09-22T13:55:36.000Z",
+        "2026-09-22T13:55:17.000Z",
+        "2026-09-22T13:55:22.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "desktop-NVDA-surface.png",
+      "symbol": "NVDA",
+      "renderer": "desktop",
+      "view": "surface",
+      "sha256": "342ed87f160660e55912f1df678bef8bc58262050187b3dd9fdfa4181d2b2e03",
+      "bytes": 538896,
+      "capturedAt": "2026-09-22T14:14:16.537Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 227.405,
+      "spotAsOf": 1790085464719,
+      "chainAsOf": [
+        "2026-09-22T13:56:23.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:55:37.000Z",
+        "2026-09-22T13:56:16.000Z",
+        "2026-09-22T13:55:41.000Z",
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:55:47.000Z",
+        "2026-09-22T13:55:54.000Z",
+        "2026-09-22T13:54:06.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:55:32.000Z",
+        "2026-09-22T13:54:38.000Z",
+        "2026-09-22T13:55:40.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-NVDA-smile.png",
+      "symbol": "NVDA",
+      "renderer": "desktop",
+      "view": "smile",
+      "sha256": "b9dc7d51bfe7c8bf77cfa15aa0433f3d3b39f604c3fe8c12da38e8b08bf4c746",
+      "bytes": 156238,
+      "capturedAt": "2026-09-22T14:14:18.541Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 227.405,
+      "spotAsOf": 1790085464719,
+      "chainAsOf": [
+        "2026-09-22T13:56:23.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:55:37.000Z",
+        "2026-09-22T13:56:16.000Z",
+        "2026-09-22T13:55:41.000Z",
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:55:47.000Z",
+        "2026-09-22T13:55:54.000Z",
+        "2026-09-22T13:54:06.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:55:32.000Z",
+        "2026-09-22T13:54:38.000Z",
+        "2026-09-22T13:55:40.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-NVDA-term.png",
+      "symbol": "NVDA",
+      "renderer": "desktop",
+      "view": "term",
+      "sha256": "9322ae1feba7a3fd421077a0150a3250c49174f9cd0da40ab55d09adda4d5cae",
+      "bytes": 295220,
+      "capturedAt": "2026-09-22T14:18:31.225Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 227.405,
+      "spotAsOf": 1790085464719,
+      "chainAsOf": [
+        "2026-09-22T13:56:23.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:55:37.000Z",
+        "2026-09-22T13:56:16.000Z",
+        "2026-09-22T13:55:41.000Z",
+        "2026-09-22T13:56:24.000Z",
+        "2026-09-22T13:55:47.000Z",
+        "2026-09-22T13:55:54.000Z",
+        "2026-09-22T13:54:06.000Z",
+        "2026-09-22T13:56:22.000Z",
+        "2026-09-22T13:55:32.000Z",
+        "2026-09-22T13:54:38.000Z",
+        "2026-09-22T13:55:40.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "terminal-NVDA-surface.png",
+      "symbol": "NVDA",
+      "renderer": "terminal",
+      "view": "surface",
+      "sha256": "bbafc360096b10b1f5f49263fca9f235570ab845547f7c466c23031a601760a4",
+      "bytes": 212417,
+      "capturedAt": "2026-09-22T14:12:58.629Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 227.455,
+      "spotAsOf": 1790085460244,
+      "chainAsOf": [
+        "2026-09-22T13:57:43.000Z",
+        "2026-09-22T13:57:50.000Z",
+        "2026-09-22T13:57:41.000Z",
+        "2026-09-22T13:57:26.000Z",
+        "2026-09-22T13:57:25.000Z",
+        "2026-09-22T13:57:40.000Z",
+        "2026-09-22T13:56:37.000Z",
+        "2026-09-22T13:56:52.000Z",
+        "2026-09-22T13:57:27.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:57:48.000Z",
+        "2026-09-22T13:55:32.000Z",
+        "2026-09-22T13:54:38.000Z",
+        "2026-09-22T13:55:40.000Z",
+        "2026-09-22T13:56:42.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-NVDA-smile.png",
+      "symbol": "NVDA",
+      "renderer": "terminal",
+      "view": "smile",
+      "sha256": "4a4427d8dede700f1ce4a402699ad48490e01e6fd1852ff74dc6124022816697",
+      "bytes": 86306,
+      "capturedAt": "2026-09-22T14:12:59.861Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 227.455,
+      "spotAsOf": 1790085460244,
+      "chainAsOf": [
+        "2026-09-22T13:57:43.000Z",
+        "2026-09-22T13:57:50.000Z",
+        "2026-09-22T13:57:41.000Z",
+        "2026-09-22T13:57:26.000Z",
+        "2026-09-22T13:57:25.000Z",
+        "2026-09-22T13:57:40.000Z",
+        "2026-09-22T13:56:37.000Z",
+        "2026-09-22T13:56:52.000Z",
+        "2026-09-22T13:57:27.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:57:48.000Z",
+        "2026-09-22T13:55:32.000Z",
+        "2026-09-22T13:54:38.000Z",
+        "2026-09-22T13:55:40.000Z",
+        "2026-09-22T13:56:42.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-NVDA-term.png",
+      "symbol": "NVDA",
+      "renderer": "terminal",
+      "view": "term",
+      "sha256": "8ac72842517e7400c6752717977e156927fdfc332780b661fafee467280ff653",
+      "bytes": 128840,
+      "capturedAt": "2026-09-22T14:13:01.133Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 227.455,
+      "spotAsOf": 1790085460244,
+      "chainAsOf": [
+        "2026-09-22T13:57:43.000Z",
+        "2026-09-22T13:57:50.000Z",
+        "2026-09-22T13:57:41.000Z",
+        "2026-09-22T13:57:26.000Z",
+        "2026-09-22T13:57:25.000Z",
+        "2026-09-22T13:57:40.000Z",
+        "2026-09-22T13:56:37.000Z",
+        "2026-09-22T13:56:52.000Z",
+        "2026-09-22T13:57:27.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:57:48.000Z",
+        "2026-09-22T13:55:32.000Z",
+        "2026-09-22T13:54:38.000Z",
+        "2026-09-22T13:55:40.000Z",
+        "2026-09-22T13:56:42.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "desktop-TSLA-surface.png",
+      "symbol": "TSLA",
+      "renderer": "desktop",
+      "view": "surface",
+      "sha256": "885b2f885e04b2562f7dc418b1a4d76b5a5a0fa8e046d85591c37904f36fd285",
+      "bytes": 554838,
+      "capturedAt": "2026-09-22T14:14:25.813Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 375.63,
+      "spotAsOf": 1790085475328,
+      "chainAsOf": [
+        "2026-09-22T13:56:23.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:55.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:56:16.000Z",
+        "2026-09-22T13:55:47.000Z",
+        "2026-09-22T13:56:18.000Z",
+        "2026-09-22T13:55:52.000Z",
+        "2026-09-22T13:56:02.000Z",
+        "2026-09-22T13:54:04.000Z",
+        "2026-09-22T13:55:06.000Z",
+        "2026-09-22T13:53:30.000Z",
+        "2026-09-22T13:53:46.000Z",
+        "2026-09-22T13:54:32.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-TSLA-smile.png",
+      "symbol": "TSLA",
+      "renderer": "desktop",
+      "view": "smile",
+      "sha256": "bb7ce3655803e66e5f4790a9a5192a223000fece8f7ff325432be9fa4342f363",
+      "bytes": 164352,
+      "capturedAt": "2026-09-22T14:14:27.997Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 375.345,
+      "spotAsOf": 1790085560987,
+      "chainAsOf": [
+        "2026-09-22T13:56:23.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:55.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:56:16.000Z",
+        "2026-09-22T13:55:47.000Z",
+        "2026-09-22T13:56:18.000Z",
+        "2026-09-22T13:55:52.000Z",
+        "2026-09-22T13:56:02.000Z",
+        "2026-09-22T13:54:04.000Z",
+        "2026-09-22T13:55:06.000Z",
+        "2026-09-22T13:53:30.000Z",
+        "2026-09-22T13:53:46.000Z",
+        "2026-09-22T13:54:32.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "desktop-TSLA-term.png",
+      "symbol": "TSLA",
+      "renderer": "desktop",
+      "view": "term",
+      "sha256": "f66aba1c65c109edb29b89d7592630b0de830ecafd0afe035bad79a5e94ee6f4",
+      "bytes": 328501,
+      "capturedAt": "2026-09-22T14:18:33.577Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 375.345,
+      "spotAsOf": 1790085560987,
+      "chainAsOf": [
+        "2026-09-22T13:56:23.000Z",
+        "2026-09-22T13:56:19.000Z",
+        "2026-09-22T13:56:09.000Z",
+        "2026-09-22T13:55:55.000Z",
+        "2026-09-22T13:56:07.000Z",
+        "2026-09-22T13:56:16.000Z",
+        "2026-09-22T13:55:47.000Z",
+        "2026-09-22T13:56:18.000Z",
+        "2026-09-22T13:55:52.000Z",
+        "2026-09-22T13:56:02.000Z",
+        "2026-09-22T13:54:04.000Z",
+        "2026-09-22T13:55:06.000Z",
+        "2026-09-22T13:53:30.000Z",
+        "2026-09-22T13:53:46.000Z",
+        "2026-09-22T13:54:32.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": true,
+      "semanticMismatch": false
+    },
+    {
+      "file": "terminal-TSLA-surface.png",
+      "symbol": "TSLA",
+      "renderer": "terminal",
+      "view": "surface",
+      "sha256": "cc921acea9f23bb9d4ad70d2166776e1b2cdbcea0c81ee8001eda699a79e8c41",
+      "bytes": 217113,
+      "capturedAt": "2026-09-22T14:13:09.541Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 375.6799,
+      "spotAsOf": 1790085474417,
+      "chainAsOf": [
+        "2026-09-22T13:58:00.000Z",
+        "2026-09-22T13:57:53.000Z",
+        "2026-09-22T13:57:51.000Z",
+        "2026-09-22T13:57:46.000Z",
+        "2026-09-22T13:57:54.000Z",
+        "2026-09-22T13:57:45.000Z",
+        "2026-09-22T13:57:49.000Z",
+        "2026-09-22T13:57:39.000Z",
+        "2026-09-22T13:57:33.000Z",
+        "2026-09-22T13:57:26.000Z",
+        "2026-09-22T13:55:55.000Z",
+        "2026-09-22T13:53:30.000Z",
+        "2026-09-22T13:55:08.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-TSLA-smile.png",
+      "symbol": "TSLA",
+      "renderer": "terminal",
+      "view": "smile",
+      "sha256": "24ca7c9967d99224b1ff64ef3b428f9e1d32f5e6f9f70c3fa874fddc957c5fbd",
+      "bytes": 88989,
+      "capturedAt": "2026-09-22T14:13:10.769Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 375.6799,
+      "spotAsOf": 1790085474417,
+      "chainAsOf": [
+        "2026-09-22T13:58:00.000Z",
+        "2026-09-22T13:57:53.000Z",
+        "2026-09-22T13:57:51.000Z",
+        "2026-09-22T13:57:46.000Z",
+        "2026-09-22T13:57:54.000Z",
+        "2026-09-22T13:57:45.000Z",
+        "2026-09-22T13:57:49.000Z",
+        "2026-09-22T13:57:39.000Z",
+        "2026-09-22T13:57:33.000Z",
+        "2026-09-22T13:57:26.000Z",
+        "2026-09-22T13:55:55.000Z",
+        "2026-09-22T13:53:30.000Z",
+        "2026-09-22T13:55:08.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    },
+    {
+      "file": "terminal-TSLA-term.png",
+      "symbol": "TSLA",
+      "renderer": "terminal",
+      "view": "term",
+      "sha256": "f4930d5d624122482bf540d2d5afaae97c8bd6d3668fa6f9358bbd4a07185212",
+      "bytes": 137765,
+      "capturedAt": "2026-09-22T14:13:12.009Z",
+      "observedMarketData": true,
+      "selectedExpiration": 1797552000,
+      "spot": 375.6799,
+      "spotAsOf": 1790085474417,
+      "chainAsOf": [
+        "2026-09-22T13:58:00.000Z",
+        "2026-09-22T13:57:53.000Z",
+        "2026-09-22T13:57:51.000Z",
+        "2026-09-22T13:57:46.000Z",
+        "2026-09-22T13:57:54.000Z",
+        "2026-09-22T13:57:45.000Z",
+        "2026-09-22T13:57:49.000Z",
+        "2026-09-22T13:57:39.000Z",
+        "2026-09-22T13:57:33.000Z",
+        "2026-09-22T13:57:26.000Z",
+        "2026-09-22T13:55:55.000Z",
+        "2026-09-22T13:53:30.000Z",
+        "2026-09-22T13:55:08.000Z"
+      ],
+      "rateAsOf": [
+        "2026-09-18"
+      ],
+      "loadedExpiries": 18,
+      "failedExpiries": 0,
+      "usable": null,
+      "semanticMismatch": null
+    }
+  ],
+  "verification": {
+    "desktop": "All 12 screenshot results usable:true, complete:true, semanticMismatch:false",
+    "terminal": "Direct Kitty under Xvfb, negotiated bitmap support, inspected all 12 frames",
+    "interaction": "Direct Kitty keyboard rotation and zoom, mouse drag, scroll zoom, cell selection; tmux fallback table, cell/expiry navigation and 15 repeated six-tab cycles",
+    "runtime": "No app hook, update-depth or listener warnings. Extended tmux RSS settled at 279-306 MB after initial 367 MB peak over 51 seconds. Short smoke does not establish long-duration leak absence.",
+    "environmentWarnings": "Kitty reports missing desktop DBus services and unsupported CSI mode 2027 during negotiation; no visual failures observed.",
+    "cleanup": "All owned Kitty, Xvfb, fixture servers, screenshot servers and tmux sessions stopped."
+  },
+  "sourceAudit": [
+    {
+      "symbol": "AAPL",
+      "fetchedAt": "2026-09-22T14:11:27.031Z",
+      "requested": 18,
+      "loaded": 18,
+      "failed": 0,
+      "rateAsOf": "2026-09-18",
+      "warnings": [
+        "Treasury 1M rate held outside the published tenor range",
+        "Parity forward quote intervals disagree"
+      ],
+      "failures": [],
+      "expiryStates": [
+        {
+          "expiration": 1790121600,
+          "state": "ready",
+          "points": 15,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 25,
+            "crossed": 0,
+            "wide-spread": 6,
+            "no-interest": 4,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 29,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790294400,
+          "state": "ready",
+          "points": 22,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 38,
+            "crossed": 0,
+            "wide-spread": 9,
+            "no-interest": 9,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 52,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790553600,
+          "state": "ready",
+          "points": 16,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 10,
+            "crossed": 0,
+            "wide-spread": 12,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 26,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790726400,
+          "state": "ready",
+          "points": 16,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 8,
+            "crossed": 0,
+            "wide-spread": 21,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 23,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790899200,
+          "state": "ready",
+          "points": 25,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 24,
+            "crossed": 0,
+            "wide-spread": 17,
+            "no-interest": 1,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 45,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1791504000,
+          "state": "ready",
+          "points": 19,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 12,
+            "crossed": 0,
+            "wide-spread": 17,
+            "no-interest": 3,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 33,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792108800,
+          "state": "ready",
+          "points": 24,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 35,
+            "crossed": 0,
+            "wide-spread": 20,
+            "no-interest": 9,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 50,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792713600,
+          "state": "ready",
+          "points": 21,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 9,
+            "crossed": 0,
+            "wide-spread": 16,
+            "no-interest": 4,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 37,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1793318400,
+          "state": "ready",
+          "points": 24,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 4,
+            "crossed": 0,
+            "wide-spread": 11,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 33,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1795132800,
+          "state": "ready",
+          "points": 38,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 24,
+            "crossed": 0,
+            "wide-spread": 21,
+            "no-interest": 1,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 60,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1797552000,
+          "state": "ready",
+          "points": 35,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 34,
+            "crossed": 1,
+            "wide-spread": 24,
+            "no-interest": 6,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 69,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1799971200,
+          "state": "ready",
+          "points": 43,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 28,
+            "crossed": 0,
+            "wide-spread": 28,
+            "no-interest": 7,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 76,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1802995200,
+          "state": "ready",
+          "points": 27,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 14,
+            "crossed": 0,
+            "wide-spread": 35,
+            "no-interest": 1,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 45,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1805414400,
+          "state": "ready",
+          "points": 30,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 8,
+            "crossed": 0,
+            "wide-spread": 34,
+            "no-interest": 4,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 50,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1807833600,
+          "state": "ready",
+          "points": 49,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 0,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 38,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1813190400,
+          "state": "ready",
+          "points": 42,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 13,
+            "crossed": 0,
+            "wide-spread": 27,
+            "no-interest": 6,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 57,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1821139200,
+          "state": "ready",
+          "points": 68,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 4,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 62,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1829001600,
+          "state": "ready",
+          "points": 75,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 7,
+            "crossed": 0,
+            "wide-spread": 20,
+            "no-interest": 5,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 83,
+            "iv-unavailable": 0
+          }
+        }
+      ]
+    },
+    {
+      "symbol": "SPY",
+      "fetchedAt": "2026-09-22T14:11:26.893Z",
+      "requested": 18,
+      "loaded": 18,
+      "failed": 0,
+      "rateAsOf": "2026-09-18",
+      "warnings": [
+        "Treasury 1M rate held outside the published tenor range",
+        "Parity forward quote intervals disagree",
+        "1 calendar arbitrage warning"
+      ],
+      "failures": [],
+      "expiryStates": [
+        {
+          "expiration": 1790035200,
+          "state": "ready",
+          "points": 29,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 88,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 23,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 76,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790121600,
+          "state": "ready",
+          "points": 68,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 37,
+            "crossed": 0,
+            "wide-spread": 24,
+            "no-interest": 16,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 74,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790208000,
+          "state": "ready",
+          "points": 94,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 26,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 25,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 70,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790294400,
+          "state": "ready",
+          "points": 111,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 48,
+            "crossed": 0,
+            "wide-spread": 11,
+            "no-interest": 35,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 90,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790553600,
+          "state": "ready",
+          "points": 102,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 17,
+            "crossed": 0,
+            "wide-spread": 11,
+            "no-interest": 22,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 54,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790640000,
+          "state": "ready",
+          "points": 102,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 9,
+            "crossed": 0,
+            "wide-spread": 9,
+            "no-interest": 11,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 41,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790726400,
+          "state": "ready",
+          "points": 227,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 46,
+            "crossed": 0,
+            "wide-spread": 48,
+            "no-interest": 140,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 119,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790812800,
+          "state": "ready",
+          "points": 94,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 1,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 35,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790899200,
+          "state": "ready",
+          "points": 141,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 13,
+            "crossed": 0,
+            "wide-spread": 16,
+            "no-interest": 30,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 89,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1791504000,
+          "state": "ready",
+          "points": 157,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 2,
+            "crossed": 0,
+            "wide-spread": 4,
+            "no-interest": 33,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 99,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792108800,
+          "state": "ready",
+          "points": 166,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 43,
+            "crossed": 0,
+            "wide-spread": 14,
+            "no-interest": 41,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 154,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792713600,
+          "state": "ready",
+          "points": 162,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 4,
+            "no-interest": 6,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 106,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1793318400,
+          "state": "ready",
+          "points": 243,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 3,
+            "crossed": 0,
+            "wide-spread": 2,
+            "no-interest": 16,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 186,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1795132800,
+          "state": "ready",
+          "points": 131,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 2,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 12,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 89,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1795996800,
+          "state": "ready",
+          "points": 270,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 1,
+            "crossed": 0,
+            "wide-spread": 0,
+            "no-interest": 13,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 165,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1797552000,
+          "state": "ready",
+          "points": 156,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 4,
+            "crossed": 0,
+            "wide-spread": 1,
+            "no-interest": 20,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 122,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1798675200,
+          "state": "ready",
+          "points": 181,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 9,
+            "crossed": 0,
+            "wide-spread": 0,
+            "no-interest": 14,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 147,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1799971200,
+          "state": "ready",
+          "points": 181,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 48,
+            "crossed": 0,
+            "wide-spread": 17,
+            "no-interest": 25,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 142,
+            "iv-unavailable": 0
+          }
+        }
+      ]
+    },
+    {
+      "symbol": "NVDA",
+      "fetchedAt": "2026-09-22T14:11:27.015Z",
+      "requested": 18,
+      "loaded": 18,
+      "failed": 0,
+      "rateAsOf": "2026-09-18",
+      "warnings": [
+        "Treasury 1M rate held outside the published tenor range",
+        "Parity forward quote intervals disagree",
+        "Parity strikes do not bracket spot"
+      ],
+      "failures": [],
+      "expiryStates": [
+        {
+          "expiration": 1790121600,
+          "state": "ready",
+          "points": 8,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 24,
+            "crossed": 0,
+            "wide-spread": 9,
+            "no-interest": 23,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 21,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790294400,
+          "state": "ready",
+          "points": 18,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 45,
+            "crossed": 0,
+            "wide-spread": 7,
+            "no-interest": 47,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 29,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790553600,
+          "state": "ready",
+          "points": 24,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 10,
+            "crossed": 0,
+            "wide-spread": 8,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 26,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790726400,
+          "state": "ready",
+          "points": 27,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 6,
+            "crossed": 0,
+            "wide-spread": 11,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 19,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790899200,
+          "state": "ready",
+          "points": 40,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 26,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 9,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 45,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1791504000,
+          "state": "ready",
+          "points": 24,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 14,
+            "crossed": 0,
+            "wide-spread": 11,
+            "no-interest": 27,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 19,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792108800,
+          "state": "ready",
+          "points": 41,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 42,
+            "crossed": 0,
+            "wide-spread": 8,
+            "no-interest": 16,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 54,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792713600,
+          "state": "ready",
+          "points": 23,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 10,
+            "crossed": 0,
+            "wide-spread": 15,
+            "no-interest": 30,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 15,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1793318400,
+          "state": "ready",
+          "points": 25,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 10,
+            "crossed": 0,
+            "wide-spread": 19,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 30,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1795132800,
+          "state": "ready",
+          "points": 57,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 5,
+            "crossed": 0,
+            "wide-spread": 15,
+            "no-interest": 11,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 51,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1797552000,
+          "state": "ready",
+          "points": 116,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 62,
+            "crossed": 0,
+            "wide-spread": 82,
+            "no-interest": 21,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 344,
+            "iv-unavailable": 151
+          }
+        },
+        {
+          "expiration": 1799971200,
+          "state": "ready",
+          "points": 36,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 11,
+            "crossed": 0,
+            "wide-spread": 17,
+            "no-interest": 47,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 40,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1802995200,
+          "state": "ready",
+          "points": 27,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 4,
+            "crossed": 0,
+            "wide-spread": 29,
+            "no-interest": 44,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 38,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1805414400,
+          "state": "ready",
+          "points": 34,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 11,
+            "crossed": 0,
+            "wide-spread": 20,
+            "no-interest": 54,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 45,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1807833600,
+          "state": "ready",
+          "points": 54,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 3,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 4,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 26,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1813190400,
+          "state": "ready",
+          "points": 37,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 7,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 60,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 38,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1821139200,
+          "state": "ready",
+          "points": 36,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 3,
+            "crossed": 0,
+            "wide-spread": 11,
+            "no-interest": 45,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 40,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1829001600,
+          "state": "ready",
+          "points": 41,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 2,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 52,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 40,
+            "iv-unavailable": 0
+          }
+        }
+      ]
+    },
+    {
+      "symbol": "TSLA",
+      "fetchedAt": "2026-09-22T14:11:27.018Z",
+      "requested": 18,
+      "loaded": 18,
+      "failed": 0,
+      "rateAsOf": "2026-09-18",
+      "warnings": [
+        "Treasury 1M rate held outside the published tenor range",
+        "Parity forward quote intervals disagree"
+      ],
+      "failures": [],
+      "expiryStates": [
+        {
+          "expiration": 1790121600,
+          "state": "ready",
+          "points": 39,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 5,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 3,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 45,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790294400,
+          "state": "ready",
+          "points": 62,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 38,
+            "crossed": 0,
+            "wide-spread": 23,
+            "no-interest": 12,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 74,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790553600,
+          "state": "ready",
+          "points": 54,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 0,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 34,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790726400,
+          "state": "ready",
+          "points": 55,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 0,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 35,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1790899200,
+          "state": "ready",
+          "points": 101,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 9,
+            "crossed": 0,
+            "wide-spread": 16,
+            "no-interest": 3,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 70,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1791504000,
+          "state": "ready",
+          "points": 81,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 5,
+            "crossed": 0,
+            "wide-spread": 6,
+            "no-interest": 7,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 46,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792108800,
+          "state": "ready",
+          "points": 90,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 21,
+            "crossed": 0,
+            "wide-spread": 33,
+            "no-interest": 22,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 79,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1792713600,
+          "state": "ready",
+          "points": 84,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 3,
+            "crossed": 0,
+            "wide-spread": 6,
+            "no-interest": 2,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 49,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1793318400,
+          "state": "ready",
+          "points": 78,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 2,
+            "crossed": 0,
+            "wide-spread": 7,
+            "no-interest": 0,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 40,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1795132800,
+          "state": "ready",
+          "points": 136,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 25,
+            "crossed": 0,
+            "wide-spread": 7,
+            "no-interest": 36,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 90,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1797552000,
+          "state": "ready",
+          "points": 124,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 22,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 24,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 102,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1799971200,
+          "state": "ready",
+          "points": 107,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 19,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 26,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 86,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1802995200,
+          "state": "ready",
+          "points": 94,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 0,
+            "crossed": 0,
+            "wide-spread": 14,
+            "no-interest": 3,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 66,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1805414400,
+          "state": "ready",
+          "points": 112,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 8,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 24,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 88,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1813190400,
+          "state": "ready",
+          "points": 109,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 15,
+            "crossed": 0,
+            "wide-spread": 13,
+            "no-interest": 20,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 93,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1821139200,
+          "state": "ready",
+          "points": 89,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 6,
+            "crossed": 0,
+            "wide-spread": 0,
+            "no-interest": 5,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 67,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1829001600,
+          "state": "ready",
+          "points": 105,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 10,
+            "crossed": 0,
+            "wide-spread": 12,
+            "no-interest": 17,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 94,
+            "iv-unavailable": 0
+          }
+        },
+        {
+          "expiration": 1832025600,
+          "state": "ready",
+          "points": 97,
+          "fit": "svi",
+          "filterCounts": {
+            "invalid-contract": 0,
+            "expiry-mismatch": 0,
+            "zero-bid": 8,
+            "crossed": 0,
+            "wide-spread": 10,
+            "no-interest": 14,
+            "stale-duplicate": 0,
+            "duplicate": 0,
+            "itm": 88,
+            "iv-unavailable": 0
+          }
+        }
+      ]
+    }
+  ]
+}

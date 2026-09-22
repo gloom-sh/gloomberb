@@ -38,6 +38,7 @@ import { insiderModule } from "./builtin/insider";
 import { jobsModule } from "./builtin/jobs";
 import { optionsModule } from "./builtin/options";
 import { optionsCalculatorModule } from "./builtin/options-calculator";
+import { volSurfaceModule } from "./builtin/vol-surface";
 import { composeBuiltinPlugin, type PluginModule } from "./builtin/plugin-module";
 import { portfolioListModule } from "./builtin/portfolio-list";
 import { researchModule } from "./builtin/research";
@@ -78,6 +79,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     chartComposerModule,
     optionsModule,
     optionsCalculatorModule,
+    volSurfaceModule,
     researchModule,
     browserDividendYieldModule,
     earningsCallsModule,

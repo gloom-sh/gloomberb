@@ -30,11 +30,13 @@ import {
 import { MarketDataCoordinatorEvents } from "./events";
 import {
   CHART_CACHE_TTL_MS,
+  OPTIONS_CACHE_TTL_MS,
   EXPECTED_EMPTY,
   classifyError,
   createAttempt,
   errorEntry,
   hasFreshEntryData,
+  hasFreshReadyEntry,
   readyEntry,
   readyChartEntry,
   readyQuoteEntry,
@@ -76,6 +78,7 @@ function sameQueryEntry<T>(left: QueryEntry<T>, right: QueryEntry<T>): boolean {
 export class MarketDataCoordinator {
   private readonly events = new MarketDataCoordinatorEvents();
   private readonly inFlight = new Map<string, Promise<unknown>>();
+  private readonly optionsLoads = new Map<string, Promise<QueryEntry<OptionsChain>>>();
   private readonly chartRequests = new Map<string, ChartRequest>();
   private readonly quoteSubscriptionManager: QuoteSubscriptionManager;
   private destroyed = false;
@@ -360,13 +363,46 @@ export class MarketDataCoordinator {
     request: OptionsRequest,
     options: { forceRefresh?: boolean } = {},
   ): Promise<QueryEntry<OptionsChain>> {
-    return this.loadCachedQuery("getOptionsChain", [request.instrument.symbol, request.instrument.exchange, request.expirationDate, toMarketDataContext(request.instrument)], buildOptionsKey(request), this.optionsStore, options.forceRefresh, (value) => value.expirationDates.length === 0) ?? loadOptionsEntry({
-      dataProvider: this.dataProvider,
-      forceRefresh: options.forceRefresh,
-      request,
-      store: this.optionsStore,
-      runSingleFlight: (key, task) => this.runSingleFlight(key, task),
-    });
+    const key = buildOptionsKey(request);
+    const loadingKey = options.forceRefresh ? `${key}|refresh` : key;
+    const existing = this.optionsLoads.get(loadingKey);
+    if (existing) return existing;
+    const load = async (): Promise<QueryEntry<OptionsChain>> => {
+      if (request.expirationDate != null && !options.forceRefresh) {
+        const defaultKey = buildOptionsKey({ instrument: request.instrument });
+        // A concurrent OMON catalogue request already contains one actual slice.
+        // Wait for its identity before requesting the same expiry again.
+        await (this.optionsLoads.get(`${defaultKey}|refresh`) ?? this.optionsLoads.get(defaultKey));
+        const catalogue = this.optionsStore.get(defaultKey);
+        const contracts = catalogue.data ? [...catalogue.data.calls, ...catalogue.data.puts] : [];
+        const now = Date.now();
+        const fresh = (entry: QueryEntry<OptionsChain>) => hasFreshReadyEntry(entry, OPTIONS_CACHE_TTL_MS, now)
+          && !entry.error && (entry.staleAt == null || entry.staleAt > now);
+        if (fresh(catalogue) && contracts.length > 0
+          && catalogue.data!.expirationDates.includes(request.expirationDate)
+          && contracts.every((contract) => contract.expiration === request.expirationDate)) {
+          const current = this.optionsStore.get(key);
+          const currentNewer = current.fetchedAt != null && (current.fetchedAt > (catalogue.fetchedAt ?? 0)
+            || (current.fetchedAt === catalogue.fetchedAt && (current.responseSequence ?? 0) >= (catalogue.responseSequence ?? 0)));
+          if (fresh(current) && currentNewer) return current;
+          if (!currentNewer && !current.error && current.phase !== "loading" && current.phase !== "refreshing") {
+            this.optionsStore.set(key, catalogue);
+            return catalogue;
+          }
+        }
+      }
+      return this.loadCachedQuery("getOptionsChain", [request.instrument.symbol, request.instrument.exchange, request.expirationDate, toMarketDataContext(request.instrument)], key, this.optionsStore, options.forceRefresh, (value) => value.expirationDates.length === 0) ?? loadOptionsEntry({
+        dataProvider: this.dataProvider,
+        forceRefresh: options.forceRefresh,
+        request,
+        store: this.optionsStore,
+        runSingleFlight: (flightKey, task) => this.runSingleFlight(flightKey, task),
+      });
+    };
+    const loading = load();
+    this.optionsLoads.set(loadingKey, loading);
+    try { return await loading; }
+    finally { if (this.optionsLoads.get(loadingKey) === loading) this.optionsLoads.delete(loadingKey); }
   }
 
   async loadSecFilings(request: SecFilingsRequest, options: { forceRefresh?: boolean } = {}): Promise<QueryEntry<SecFilingItem[]>> {

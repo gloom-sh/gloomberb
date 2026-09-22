@@ -66,6 +66,7 @@ export const optionsModule: PluginModule = {
       description: "Options chain for the selected ticker.",
       keywords: ["options", "chain", "calls", "puts", "omon"],
       shortcut: "OMON",
+      settings: (_symbol, _context, options) => options?.values?.expiration ? { expiration: Number(options.values.expiration) } : {},
       publicShare: true,
     }),
   ],

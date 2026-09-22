@@ -265,7 +265,8 @@
           "sec",
           "short-interest",
           "thirteenf-funds",
-          "ticker-research"
+          "ticker-research",
+          "vol-surface"
         ],
         "capabilities": [],
         "broker": false

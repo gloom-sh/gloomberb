@@ -7,6 +7,7 @@ import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
 import { optionsModule } from "./options";
 import { optionsCalculatorModule } from "./options-calculator";
+import { volSurfaceModule } from "./vol-surface";
 import { composeBuiltinPlugin } from "./plugin-module";
 import { researchModule } from "./research";
 import { riskFactorsModule } from "./risk-factors";
@@ -26,6 +27,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     chartComposerModule,
     optionsModule,
     optionsCalculatorModule,
+    volSurfaceModule,
     researchModule,
     dividendYieldModule,
     holdersModule,

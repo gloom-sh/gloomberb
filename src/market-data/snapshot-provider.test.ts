@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { DataProvider } from "../types/data-provider";
-import type { PricePoint, TickerFinancials } from "../types/financials";
+import type { OptionsChain, PricePoint, TickerFinancials } from "../types/financials";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { createSnapshotDataProvider } from "./snapshot-provider";
 
@@ -60,6 +60,60 @@ test("snapshot matching respects exchanges and delegated methods retain their re
   expect(await summary("https://example.com")).toBe("live summary");
   expect(await provider.getOptionsChain!("AAPL", "NASDAQ")).toBe(options);
   expect(provider.getCachedQuery).toBeUndefined();
+});
+
+function optionsChain(expiration: number, expirationDates = [expiration]): OptionsChain {
+  return {
+    underlyingSymbol: "AAPL", expirationDates, puts: [],
+    calls: [{
+      contractSymbol: `AAPL-${expiration}`, strike: 200, currency: "USD",
+      lastPrice: 5, change: 0, percentChange: 0, bid: 4.9, ask: 5.1,
+      impliedVolatility: 0.3, inTheMoney: false, expiration, lastTradeDate: 1,
+    }],
+  };
+}
+
+test("options snapshots retain every expiry and an explicit empty slice", async () => {
+  const expiries = [1_790_121_600, 1_792_108_800, 1_797_552_000];
+  const near = optionsChain(expiries[0]!, expiries);
+  const far = optionsChain(expiries[1]!, expiries);
+  const empty = { ...optionsChain(expiries[2]!, expiries), calls: [] };
+  let fallbackCalls = 0;
+  const provider = createSnapshotDataProvider({
+    financials: [],
+    optionsChains: [["AAPL:NMS", far, expiries[1]], ["AAPL:NASDAQ", empty, expiries[2]], ["AAPL:NASDAQ", near, expiries[0]]],
+  }, createTestDataProvider({
+    async getOptionsChain() { fallbackCalls++; throw new Error("Unexpected live fetch"); },
+  }));
+  expect(await provider.getOptionsChain!("AAPL", "NASDAQ")).toBe(near);
+  expect(await provider.getOptionsChain!("aapl", "NMS", expiries[0])).toBe(near);
+  expect(await provider.getOptionsChain!("AAPL", "NASDAQ", expiries[1])).toBe(far);
+  expect(await provider.getOptionsChain!("AAPL", "NASDAQ", expiries[2])).toBe(empty);
+  expect(fallbackCalls).toBe(0);
+});
+
+test("legacy options catalogue cannot substitute its slice for another expiry or listing", async () => {
+  const nearExpiry = 1_790_121_600;
+  const farExpiry = 1_792_108_800;
+  const near = optionsChain(nearExpiry, [nearExpiry, farExpiry]);
+  const far = optionsChain(farExpiry, [nearExpiry, farExpiry]);
+  const requests: unknown[][] = [];
+  const provider = createSnapshotDataProvider({ financials: [], optionsChains: [["AAPL:NASDAQ", near]] }, createTestDataProvider({
+    async getOptionsChain(...args) { requests.push(args); return far; },
+  }));
+  expect(await provider.getOptionsChain!("AAPL", "NASDAQ")).toBe(near);
+  expect(await provider.getOptionsChain!("AAPL", "NASDAQ", nearExpiry)).toBe(near);
+  const context = { cacheMode: "refresh" as const };
+  expect(await provider.getOptionsChain!("AAPL", "NASDAQ", farExpiry, context)).toBe(far);
+  expect(await provider.getOptionsChain!("AAPL", "NYSE", nearExpiry)).toBe(far);
+  expect(requests).toEqual([["AAPL", "NASDAQ", farExpiry, context], ["AAPL", "NYSE", nearExpiry, undefined]]);
+
+  const unknownSlice = { ...near, calls: [] };
+  const unknown = createSnapshotDataProvider({ financials: [], optionsChains: [["AAPL", unknownSlice]] }, createTestDataProvider({
+    async getOptionsChain() { return far; },
+  }));
+  expect(await unknown.getOptionsChain!("AAPL")).toBe(unknownSlice);
+  expect(await unknown.getOptionsChain!("AAPL", undefined, nearExpiry)).toBe(far);
 });
 
 test("captured intraday data rejects other intervals and clips explicit windows without refetching", async () => {
