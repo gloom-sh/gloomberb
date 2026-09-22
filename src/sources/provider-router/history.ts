@@ -341,10 +341,15 @@ export class ProviderRouterHistoryRoutes {
     barSize: string,
     context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
+    const intervalMs = priceHistoryIntervalMs(barSize);
+    const calendarBounds = intervalMs !== null
+      && /^\d+\s*(d|day|days|w|wk|week|weeks|mo|month|months)$/i.test(barSize.trim());
+    // Intraday requests forward exact times. Date-only keys could reuse another
+    // window or suppress its refresh; ISO bounds also bypass those legacy keys.
     const primaryParts: Array<[string, string | number | undefined | null]> = [
       ["exchange", canonicalExchange(exchange)],
-      ["start", compactDate(startDate)],
-      ["end", compactDate(endDate)],
+      ["start", calendarBounds ? compactDate(startDate) : startDate.toISOString()],
+      ["end", calendarBounds ? compactDate(endDate) : endDate.toISOString()],
       ["bar", barSize],
     ];
     const fallbackParts = primaryParts.slice(1);
@@ -357,7 +362,6 @@ export class ProviderRouterHistoryRoutes {
       fallbackVariantParts: fallbackParts,
     });
     const currentWindowAtLookup = isCurrentHistoryWindow(endDate);
-    const intervalMs = priceHistoryIntervalMs(barSize);
     return this.executeHistoryRequest({
       ...identity,
       requestedStart: startDate.getTime(),

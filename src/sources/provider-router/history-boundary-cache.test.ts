@@ -63,7 +63,7 @@ test("monthly cache is refreshed independently of unaffected daily and weekly va
 test("the inception repair leaves historical JEPQ intraday caches reusable", async () => {
   const store = new AppPersistence(createTempDbPath("jepq-intraday-control"));
   try {
-    store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "JEPQ", variantKey: "exchange=NASDAQ;start=2026-08-01;end=2026-08-31;bar=1h;version=5", sourceKey: "provider:gloomberb-cloud" }, good, { cachePolicy: policy });
+    store.resources.set({ namespace: "market", kind: "detailed-price-history", entityKey: "JEPQ", variantKey: "exchange=NASDAQ;start=2026-08-01T00:00:00.000Z;end=2026-08-31T00:00:00.000Z;bar=1h;version=5", sourceKey: "provider:gloomberb-cloud" }, good, { cachePolicy: policy });
     let calls = 0;
     const router = new AssetDataRouter({ ...fallbackProvider, id: "gloomberb-cloud", async getDetailedPriceHistory() { calls++; return []; } }, [], store.resources);
     equalHistory(await router.getDetailedPriceHistory("JEPQ", "NASDAQ", new Date("2026-08-01"), new Date("2026-08-31"), "1h"));
