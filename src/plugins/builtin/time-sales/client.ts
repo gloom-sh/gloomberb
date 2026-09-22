@@ -28,16 +28,17 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
     || !data.dropped || !count(data.dropped.trades) || !count(data.dropped.quotes) || !count(data.corrections) || !count(data.cancels)) {
     throw new Error("Gloom Cloud returned an invalid tape snapshot");
   }
-  const cutoff = Date.parse(data.generatedAt) - data.delaySeconds * 1000;
+  const cutoffDate = new Date(Date.parse(data.generatedAt) - data.delaySeconds * 1000).toISOString();
+  const cutoff = `${cutoffDate.slice(0, 19)}.${tapeTimeKey(data.generatedAt).slice(20, 29)}Z`;
   const seen = new Set<string>();
   for (const row of data.trades) {
-    if (!row || !text(row.id) || !/^\d+$/.test(row.id) || !timestamp(row.timestamp) || Date.parse(row.timestamp) > cutoff
+    if (!row || !text(row.id) || !/^\d+$/.test(row.id) || !timestamp(row.timestamp) || tapeTimeKey(row.timestamp) > cutoff
       || !positive(row.price) || !positive(row.size) || !text(row.exchange) || !text(row.tape) || !conditions(row.conditions)
       || seen.has(tradeKey(row))) throw new Error("Gloom Cloud returned invalid tape trades");
     seen.add(tradeKey(row));
   }
   for (const row of data.quotes) {
-    if (!row || !timestamp(row.timestamp) || Date.parse(row.timestamp) > cutoff || row.bid !== null && !positive(row.bid)
+    if (!row || !timestamp(row.timestamp) || tapeTimeKey(row.timestamp) > cutoff || row.bid !== null && !positive(row.bid)
       || row.ask !== null && !positive(row.ask) || !quantity(row.bidSize) || !quantity(row.askSize)
       || !text(row.bidExchange) || !text(row.askExchange) || !text(row.tape) || !conditions(row.conditions)) {
       throw new Error("Gloom Cloud returned invalid NBBO history");
@@ -45,8 +46,9 @@ export function validateTape(data: TapeSnapshot, symbol: string, exchange: strin
   }
   if (!data.session || !nullableTime(data.session.asOf)
     || data.session.date !== null && !day(data.session.date)
-    || data.session.asOf !== null && Date.parse(data.session.asOf) > cutoff
-    || (data.session.high === null || data.session.low === null) !== (data.session.asOf === null)
+    || data.session.asOf !== null && tapeTimeKey(data.session.asOf) > cutoff
+    || (data.session.high === null) !== (data.session.asOf === null)
+    || (data.session.low === null) !== (data.session.asOf === null)
     || (data.session.date === null) !== (data.session.asOf === null) || data.session.high !== null && !positive(data.session.high)
     || data.session.low !== null && !positive(data.session.low)
     || data.session.high != null && data.session.low != null && data.session.low > data.session.high) throw new Error("Gloom Cloud returned invalid session context");

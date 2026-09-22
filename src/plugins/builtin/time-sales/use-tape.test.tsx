@@ -11,10 +11,10 @@ afterEach(async () => { if (setup) await act(async () => setup!.renderer.destroy
 
 // Keep promises under test control to reproduce a bootstrap overtaken by a socket or auth event.
 function clientHarness() {
-  const requests: Array<{ signal?: AbortSignal; resolve: (data: TapeSnapshot) => void }> = [];
+  const requests: Array<{ signal?: AbortSignal; resolve: (data: TapeSnapshot) => void; reject: (error: Error) => void }> = [];
   const listeners = new Set<(event: TapeFeedEvent) => void>();
   return { requests, listeners, client: {
-    getCloudTape: (_symbol: string, _exchange: string, signal?: AbortSignal) => new Promise<TapeSnapshot>((resolve) => requests.push({ signal, resolve })),
+    getCloudTape: (_symbol: string, _exchange: string, signal?: AbortSignal) => new Promise<TapeSnapshot>((resolve, reject) => requests.push({ signal, resolve, reject })),
     subscribeTape: (_symbol: string, _exchange: string, listener: (event: TapeFeedEvent) => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   }, emit: (event: TapeFeedEvent) => { for (const listener of listeners) listener(event); } };
 }
@@ -48,6 +48,9 @@ test("live tape wins an older bootstrap, auth reset rejects its pending response
   expect(harness.requests[1]!.signal?.aborted).toBe(true);
   await settle(() => harness.requests[1]!.resolve(newer));
   expect(latest!.data).toBeNull();
+  expect(harness.requests).toHaveLength(3);
+  await settle(() => harness.requests[2]!.resolve(initial));
+  expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
   await settle(() => harness.emit({ type: "data", payload: initial }));
   expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
   await settle(() => harness.emit({ type: "disconnected", reason: "Stream disconnected" }));
@@ -57,6 +60,34 @@ test("live tape wins an older bootstrap, auth reset rejects its pending response
   await settle(() => changeSession(2));
   await act(async () => setup!.renderer.destroy()); setup = undefined;
   expect(harness.listeners.size).toBe(0);
-  expect(harness.requests[2]!.signal?.aborted).toBe(true);
-  harness.requests[2]!.resolve(newer);
+  expect(harness.requests[3]!.signal?.aborted).toBe(true);
+  harness.requests[3]!.resolve(newer);
+});
+
+test("failed manual refresh keeps the dated tape while a changed account clears it", async () => {
+  const harness = clientHarness();
+  let latest: ReturnType<typeof useTape>;
+  let refresh: () => void = () => {};
+  let changeSession: () => void = () => {};
+  function Probe() {
+    const [session, setSession] = useState(0);
+    const [revision, setRevision] = useState(0);
+    refresh = () => setRevision((value) => value + 1);
+    changeSession = () => setSession((value) => value + 1);
+    latest = useTape("AAPL", "NASDAQ", session, revision, harness.client);
+    return <Text>{latest.data?.generatedAt ?? "empty"}</Text>;
+  }
+  setup = await testRender(<Probe />, { width: 50, height: 3 });
+  await settle();
+  const initial = tapeFixture();
+  await settle(() => harness.requests[0]!.resolve(initial));
+  await settle(refresh);
+  expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
+  expect(latest!.loading).toBe(true);
+  await settle(() => harness.requests[1]!.reject(new Error("Refresh unavailable")));
+  expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
+  expect(latest!.error).toBe("Refresh unavailable");
+  expect(latest!.loading).toBe(false);
+  await settle(changeSession);
+  expect(latest!.data).toBeNull();
 });

@@ -10,8 +10,9 @@ export const tapeTime = (value: string | null) => value ? value.replace("T", " "
 export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
 export const tapePrice = (value: number | null) => value == null ? "--" : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 export const tapeQuantity = (value: number) => value.toLocaleString("en-US", { maximumFractionDigits: 6 });
-export const tradeKey = (row: TapeTrade) => `${row.timestamp.slice(0, 10)}:${row.exchange}:${row.id}`;
-export const quoteKey = (row: TapeQuote) => `${tapeTimeKey(row.timestamp)}:${row.bidExchange}:${row.askExchange}:${row.bid}:${row.ask}:${row.bidSize}:${row.askSize}`;
+const tradeDate = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+export const tradeKey = (row: TapeTrade) => `${tradeDate.format(new Date(row.timestamp))}:${row.exchange}:${row.id}`;
+export const quoteKey = (row: TapeQuote) => JSON.stringify([tapeTimeKey(row.timestamp), row.bidExchange, row.askExchange, row.bid, row.ask, row.bidSize, row.askSize, row.conditions, row.tape]);
 export function newestFirst<T extends { timestamp: string }>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => tapeTimeKey(b.timestamp).localeCompare(tapeTimeKey(a.timestamp)));
 }
