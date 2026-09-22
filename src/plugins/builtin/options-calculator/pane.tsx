@@ -220,7 +220,9 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
 
   return (
     <Box flexDirection="column" width={width} height={height}>
-      {surfaceSource && <SurfaceNotices notices={surface?.warnings ?? []} focused={focused} />}
+      <SurfaceNotices notices={[...(surfaceSource ? surface?.warnings ?? [] : []),
+        // A schedule entered under the tree model stays in the pane state; the closed form cannot use it.
+        ...(!american && dividendInput.dividends.length ? ["Cash dividend schedule is ignored by the European model; continuous yield applies."] : [])]} focused={focused} />
       <Box height={1} paddingX={1} flexDirection="row" gap={1}>
         <SegmentedControl
           options={SIDE_OPTIONS}
