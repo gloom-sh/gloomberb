@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Checkbox,
   DataTableStackView,
   DataTableView,
   EmptyState, InputSearchBar, KeyValueRow, PaneStatusBody, Tabs, usePaneNoticeFooter, useTableLoadMore, type DataTableKeyEvent,
@@ -22,8 +23,11 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
+import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
 import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
+import { ThirteenFCrowdingPane } from "./signals-pane";
+import { PaneFooterScope } from "../../../components/layout/pane/footer";
 import {
   DEFAULT_BROWSER_SORT,
   DEFAULT_FILING_POSITION_SORT,
@@ -94,7 +98,7 @@ function appendUniqueRows(currentRows: FundBrowserRow[], nextRows: FundBrowserRo
   return merged;
 }
 
-export function ThirteenFPane({ focused, width, height }: PaneProps) {
+function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PaneProps & { onDetailChange: (open: boolean) => void }) {
   const [storedQuery] = usePaneSettingValue("query", "");
   const [initialCik] = usePaneSettingValue("initialCik", "");
   const normalizedQuery = String(storedQuery ?? "").trim();
@@ -118,6 +122,7 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
   const [detailSeed, setDetailSeed] = useState<FundSeed | null>(() => (
     initialCik ? { cik: String(initialCik), name: normalizedQuery || String(initialCik) } : null
   ));
+  useEffect(() => { onDetailChange(!!detailSeed); return () => onDetailChange(false); }, [detailSeed, onDetailChange]);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const searchInputRef = useRef<InputRenderable | null>(null);
@@ -376,7 +381,7 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
   );
 }
 
-function FundDetailView({
+export function FundDetailView({
   focused,
   seed,
   width,
@@ -386,6 +391,8 @@ function FundDetailView({
   width: number;
 }) {
   const rendererHost = useRendererHost();
+  const mine = useMineTickers();
+  const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("13f:mine", false);
   const { pinTicker } = usePluginTickerActions();
   const [storedTab, setStoredTab] = usePluginPaneState<ThirteenFDetailTab>("detailTab", "holdings");
   const activeTab: ThirteenFDetailTab = storedTab === "filings" ? "filings" : "holdings";
@@ -432,8 +439,8 @@ function FundDetailView({
 
   const holdingRows = useMemo(() => buildFundHoldingRows(data), [data]);
   const visibleHoldingRows = useMemo(() => (
-    sortHoldingRows(holdingRows, holdingSort)
-  ), [holdingRows, holdingSort]);
+    sortHoldingRows(holdingRows.filter(row => !mineOnly || mine.has(row.ticker)).map(row => ({ ...row, mine: mine.has(row.ticker) })), holdingSort)
+  ), [holdingRows, holdingSort, mineOnly, mine]);
   const filingRows = useMemo(() => sortTimelineRows(buildTimelineRows(data?.forms ?? []), filingSort), [data?.forms, filingSort]);
   const selectedHoldingIndex = selectedIndexById(visibleHoldingRows, holdingSelectedId);
   const selectedFilingIndex = selectedIndexById(filingRows, filingSelectedId);
@@ -518,6 +525,9 @@ function FundDetailView({
       refresh();
       return;
     }
+    if (isPlainKey(event, "m") && activeTab === "holdings") {
+      event.preventDefault?.(); event.stopPropagation?.(); setMineOnly(value => !value); return;
+    }
     if (isPlainKey(event, "f") && filingTarget) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -552,6 +562,7 @@ function FundDetailView({
     error,
     info: detailStatusInfo,
     showOpenHint: true,
+    hints: activeTab === "holdings" ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", onPress: () => setMineOnly(value => !value) }] : [],
   });
 
   if ((status === "loading" || status === "idle") && !data) {
@@ -638,6 +649,7 @@ function FundDetailView({
           rootWidth={width}
           rootBefore={(
             <Box flexDirection="column" paddingX={1}>
+              <Checkbox label="Mine" checked={mineOnly} onChange={setMineOnly} />
               <KeyValueRow label="Reported" value={data?.latestForm?.periodOfReport ?? "--"} detail={`Filed ${data?.latestForm?.filedAsOfDate || "--"}`} width={Math.max(1, width - 2)} />
               <KeyValueRow label="Compared with" value={data && hasComparable13FQuarter(data) ? data.previousForm!.periodOfReport : "Prior quarter unavailable"} width={Math.max(1, width - 2)} />
               {data?.latestReport && data.latestReport.filings.length > 1 ? (
@@ -645,7 +657,7 @@ function FundDetailView({
               ) : null}
             </Box>
           )}
-          columns={buildHoldingColumns(width)}
+          columns={[{ id: "mine", label: "MINE", width: 5, align: "left" }, ...buildHoldingColumns(width - 6)]}
           items={visibleHoldingRows}
           sortColumnId={holdingSort.columnId}
           sortDirection={holdingSort.direction}
@@ -660,7 +672,7 @@ function FundDetailView({
           onActivate={(row) => {
             if (row.ticker) pinTicker(row.ticker, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
           }}
-          renderCell={renderHoldingCell}
+          renderCell={(row, column, index, state) => column.id === "mine" ? { text: mine.has(row.ticker) ? "yes" : "", color: state.selected ? colors.selectedText : colors.positive } : renderHoldingCell(row, column, index, state)}
           emptyStateTitle="No 13F holdings."
         />
       )}
@@ -850,4 +862,15 @@ function FilingDetailView({
       />
     </Box>
   );
+}
+
+export function ThirteenFPane(props: PaneProps) {
+  const [tab, setTab] = usePluginPaneState<string>("browserTab", "funds");
+  const [detailOpen, setDetailOpen] = useState(false);
+  return <Box flexDirection="column" width={props.width} height={props.height}>
+    <Tabs tabs={[{ label: "Funds", value: "funds" }, { label: "Crowding", value: "crowding" }]} activeValue={tab} onSelect={setTab} focused={props.focused && !detailOpen} compact />
+    <PaneFooterScope active>
+      {tab === "crowding" ? <ThirteenFCrowdingPane {...props} height={Math.max(1, props.height - 1)} /> : <ThirteenFBrowserPane {...props} onDetailChange={setDetailOpen} height={Math.max(1, props.height - 1)} />}
+    </PaneFooterScope>
+  </Box>;
 }

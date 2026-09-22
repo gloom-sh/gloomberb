@@ -64,6 +64,7 @@ export function renderHoldingCell(
 ): DataTableCell {
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
+    case "mine": return { text: "" };
     case "ticker":
       if (row.ticker) {
         return {

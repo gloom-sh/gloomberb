@@ -5,6 +5,7 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { normalizeCik } from "./api";
+import { loadCrowding, loadTickerHoldings } from "./signals";
 import {
   loadBrowserRows,
   loadFundDetail,
@@ -126,6 +127,8 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 type HeadlessThirteenFView =
+  | "crowding"
+  | "ticker-holdings"
   | "auto"
   | "performance"
   | "funds"
@@ -200,12 +203,15 @@ export function createThirteenFHeadless(
       optional: true,
     },
     options: [
+      { key: "offset", description: "Fund offset for ticker-holdings.", type: "integer", defaultValue: 0, minimum: 0, maximum: 100000 },
       {
         key: "view",
         description: "Fund browser mode or detail tab.",
         type: "enum",
         values: [
           { value: "auto" },
+          { value: "crowding" },
+          { value: "ticker-holdings" },
           { value: "performance" },
           { value: "funds" },
           { value: "by-ticker", aliases: ["ticker", "byTicker"] },
@@ -231,6 +237,15 @@ export function createThirteenFHeadless(
       const requestedView = String(args.options.view) as HeadlessThirteenFView;
       const view = requestedView === "auto" && isCikQuery(query) ? "holdings" : requestedView;
       const limit = Number(args.options.limit);
+      if (view === "crowding") {
+        const { rows, ...metadata } = await loadCrowding(ctx.signal);
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds" }, { key: "newCount", header: "New" }, { key: "exitCount", header: "Exits" }, { key: "weightChange", header: "Weight change" }, { key: "comparedFunds", header: "Compared" }, { key: "totalValue", header: "Value" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
+      }
+      if (view === "ticker-holdings") {
+        if (!query) throw new Error("13F ticker holdings requires a ticker.");
+        const { rows, ...metadata } = await loadTickerHoldings(query.toUpperCase(), Number(args.options.offset ?? 0), ctx.signal);
+        return { columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value" }, { key: "shares", header: "Shares" }, { key: "weight", header: "13F weight" }, { key: "action", header: "Action" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
+      }
 
       if (view === "holdings" || view === "filings") {
         const fund = await resolveFund(query, args, ctx, dependencies);

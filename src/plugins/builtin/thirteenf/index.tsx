@@ -12,6 +12,7 @@ import {
   resetThirteenFApiPersistence,
 } from "./api";
 import { thirteenFHeadless } from "./headless";
+import { ThirteenFTickerPane } from "./signals-pane";
 
 export { thirteenFHeadless } from "./headless";
 
@@ -26,6 +27,7 @@ function initialCikFromQuery(query: string): string | undefined {
 export const thirteenFModule: PluginModule = {
   setup(ctx) {
     attachThirteenFApiPersistence(ctx.persistence);
+    ctx.registerTickerResearchTab({ id: "thirteenf", name: "13F", order: 39, component: ThirteenFTickerPane, isVisible: ({ ticker }) => !!ticker });
   },
 
   dispose() {

@@ -446,6 +446,7 @@ function browserSortValue(row: FundBrowserRow, columnId: FundBrowserColumnId): s
 
 function holdingSortValue(row: FundHoldingRow, columnId: FundHoldingColumnId): string | number | null {
   switch (columnId) {
+    case "mine": return row.mine ? 1 : 0;
     case "ticker":
       return row.ticker || row.cusip;
     case "type":

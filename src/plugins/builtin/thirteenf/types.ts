@@ -107,6 +107,7 @@ export interface ThirteenFPeriodReport {
 export type HoldingAction = "held" | "new" | "add" | "trim" | "exit" | "unknown";
 
 export interface FundHoldingRow {
+  mine?: boolean;
   id: string;
   ticker: string;
   issuer: string;
@@ -128,6 +129,7 @@ export interface FundHoldingRow {
 }
 
 export type FundHoldingColumnId =
+  | "mine"
   | "ticker"
   | "type"
   | "issuer"
