@@ -106,6 +106,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |
 | `SI <ticker>` | Short interest |
+| `SIV <ticker>` | FINRA daily off-exchange short-volume ratio, history and percentile |
 | `13F [fund/ticker/CIK]` | 13F fund filings and holdings |
 | `INS <ticker>` | Insider activity |
 | `EVT <ticker>` | Corporate actions, earnings, and estimates |

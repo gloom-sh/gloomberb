@@ -6,7 +6,8 @@ import {
   YAHOO_SHORT_INTEREST_CONNECTION_ID,
 } from "./client";
 import { shortInterestHeadless } from "./headless";
-import { ShortInterestView } from "./pane";
+import { ShortInterestSurface } from "./surface";
+import { shortVolumeSettings } from "../short-volume";
 
 export { shortInterestHeadless } from "./headless";
 
@@ -28,7 +29,7 @@ export const shortInterestModule: PluginModule = {
       id: "short-interest",
       name: "Short Interest",
       order: 36,
-      component: ShortInterestView,
+      component: ShortInterestSurface,
       isVisible: ({ ticker }) => !!ticker,
     });
   },
@@ -44,11 +45,12 @@ export const shortInterestModule: PluginModule = {
       id: "short-interest",
       name: "Short Interest",
       icon: "S",
-      component: ShortInterestView,
+      component: ShortInterestSurface,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 90, height: 25 },
       tableExport: true,
+      settings: { title: "Short Interest", fields: shortVolumeSettings },
     },
   ],
 

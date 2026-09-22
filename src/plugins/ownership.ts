@@ -18,6 +18,7 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   "filing-events": "ticker-research",
   "risk-factors": "ticker-research",
   "short-interest": "ticker-research",
+  "short-volume": "ticker-research",
   "kelly-sizer": "portfolio",
   "layout-manager": "application",
   "macro-tv": "macro",
