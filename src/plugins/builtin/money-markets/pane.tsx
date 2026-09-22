@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from "react";
-import { Box } from "gloomberb/ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "gloomberb/react";
-import { CompositeChart, CurveSurface, EmptyState, KeyValueRow, MarketBoardStack, PaneStatusBody, Tabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow } from "gloomberb/components";
-import { colors } from "gloomberb/theme";
+import { Box } from "../../../ui";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
+import { CompositeChart, CurveSurface, EmptyState, KeyValueRow, MarketBoardStack, PaneStatusBody, Tabs, usePaneNoticeFooter, usePaneStatusLinkFooter, type MarketBoardRow } from "../../../components";
+import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { MoneyMarketRow } from "../../../api-client/money-markets";

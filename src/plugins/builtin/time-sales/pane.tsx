@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Box } from "gloomberb/ui";
-import { usePaneSettingValue, useShortcut } from "gloomberb/react";
+import { Box } from "../../../ui";
+import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { DataTableStackView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTicker, type DataTableColumn } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";

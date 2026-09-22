@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from "react";
-import { Box, ScrollBox } from "gloomberb/ui";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState, useShortcut, useUpdatedAgo } from "gloomberb/react";
-import { CompositeChart, KeyValueRow, MarketBoardStack, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter } from "gloomberb/components";
-import { colors } from "gloomberb/theme";
+import { Box, ScrollBox } from "../../../ui";
+import { useAsyncResource, useAutoRefresh, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
+import { CompositeChart, KeyValueRow, MarketBoardStack, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter } from "../../../components";
+import { colors } from "../../../theme/colors";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CentralBankRow } from "../../../api-client/central-bank-rates";
 import { staticSeries } from "../../../components/chart/static/series";

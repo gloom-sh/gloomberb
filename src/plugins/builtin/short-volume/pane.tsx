@@ -1,8 +1,8 @@
 import { useCallback, useMemo } from "react";
-import { Box, ScrollBox } from "gloomberb/ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "gloomberb/react";
-import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, usePaneTicker, type DataTableCell } from "gloomberb/components";
-import { colors } from "gloomberb/theme";
+import { Box, ScrollBox } from "../../../ui";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
+import { CompositeChart, DataTableStackView, EmptyState, KeyValueRow, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, usePaneTicker, type DataTableCell } from "../../../components";
+import { colors } from "../../../theme/colors";
 import type { ShortVolumeObservation } from "../../../api-client/short-volume";
 import { ApiRequestError } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";

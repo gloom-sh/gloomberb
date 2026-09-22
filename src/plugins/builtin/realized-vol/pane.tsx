@@ -4,7 +4,7 @@ import { DataTableView, EmptyState, PaneStatusBody, SelectButton, Tabs, usePaneF
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
-import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "gloomberb/react";
+import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";

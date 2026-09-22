@@ -3,7 +3,7 @@ import { Badge, DataTableView, KeyValueRow, PaneStatusBody, Tabs, usePaneFooter,
   type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
-import { usePaneSettingValue, usePluginPaneState } from "gloomberb/react";
+import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";

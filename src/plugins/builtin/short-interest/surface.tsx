@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Box } from "gloomberb/ui";
-import { PaneFooterScope, Tabs } from "gloomberb/components";
-import { usePluginPaneState } from "gloomberb/react";
+import { Box } from "../../../ui";
+import { PaneFooterScope, Tabs } from "../../../components";
+import { usePluginPaneState } from "../../../public/react";
 import type { PaneProps } from "../../../types/plugin";
 import { ShortVolumePane } from "../short-volume/pane";
 import { ShortInterestView } from "./pane";

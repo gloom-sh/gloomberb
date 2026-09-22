@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "gloomberb/ui";
-import { Checkbox, DataTableView, KeyValueRow, Notice, NumberField, Section, SegmentedControl, SelectButton, Tabs, TextField, usePaneNoticeFooter, type SelectControl } from "gloomberb/components";
-import { usePaneSettingValue, usePaneStateValue, useShortcut } from "gloomberb/react";
+import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
+import { Checkbox, DataTableView, KeyValueRow, Notice, NumberField, Section, SegmentedControl, SelectButton, Tabs, TextField, usePaneNoticeFooter, type SelectControl } from "../../../components";
+import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";

@@ -1,12 +1,12 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { CompositeChart, DataTableStackView, DataTableView, InputSearchBar, KeyValueRow, PaneStatusBody, SelectButton, Tabs, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, type DataTableColumn, type SelectControl } from "../../../components";
-import { useAsyncResource, usePluginPaneState, useShortcut } from "gloomberb/react";
+import { useAsyncResource, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { CotBoardRow, CotClass, CotClassSummary, CotFamily } from "../../../api-client/cot";
 import { ApiRequestError } from "../../../api-client/errors";
-import { Box, type InputRenderable } from "gloomberb/ui";
+import { Box, type InputRenderable } from "../../../ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";

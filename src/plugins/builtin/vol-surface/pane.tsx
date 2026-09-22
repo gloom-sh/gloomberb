@@ -6,7 +6,7 @@ import { useStaticChartBitmapSize } from "../../../components/chart/composite/bi
 import { useAsyncResource } from "../../../react/async-resource";
 import { useTickerFinancials } from "../../../market-data/hooks";
 import { useShortcut } from "../../../react/input";
-import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "gloomberb/react";
+import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
