@@ -81,6 +81,8 @@ type CompanyFactsStatementField = {
   units: string[];
   periodType: "duration" | "instant";
   transform?: (value: number) => number;
+  /** Last tag, used only while it measures the same thing as the filer's other tags. */
+  sameMeasureFallback?: string;
 };
 
 export type SecCompanyFactsStatements = {
@@ -92,9 +94,10 @@ export type SecCompanyFactsStatements = {
 const COMPANY_FACTS_STATEMENT_FIELDS: CompanyFactsStatementField[] = [
   {
     field: "totalRevenue",
-    tags: ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet"],
+    tags: ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "RevenuesNetOfInterestExpense"],
     units: ["USD"],
     periodType: "duration",
+    sameMeasureFallback: "RevenuesNetOfInterestExpense",
   },
   { field: "grossProfit", tags: ["GrossProfit"], units: ["USD"], periodType: "duration" },
   { field: "operatingExpense", tags: ["OperatingExpenses"], units: ["USD"], periodType: "duration" },
@@ -513,6 +516,16 @@ function isQuarterlyCompanyFact(entry: CompanyFactsEntry, periodType: "duration"
         && /^Q[1-3]$/.test(normalize(entry.fp ?? undefined))
       );
   }
+  if (entry.concept === "RevenuesNetOfInterestExpense") {
+    // A quarterly frame cannot turn bank revenue reported year-to-date into
+    // a direct quarter. Keep the source's net-of-interest amount unchanged.
+    const start = Date.parse(`${entry.start}T00:00:00Z`);
+    const end = Date.parse(`${entry.end}T00:00:00Z`);
+    const days = (end - start) / 86_400_000;
+    if (!Number.isFinite(days) || days < 60 || days > 120
+      || new Date(start).toISOString().slice(0, 10) !== entry.start
+      || new Date(end).toISOString().slice(0, 10) !== entry.end) return false;
+  }
   if (/^CY\d{4}Q[1-4]$/.test(entry.frame ?? "")) return true;
   const form = normalize(entry.form);
   const fiscalPeriod = normalize(entry.fp ?? undefined);
@@ -658,6 +671,20 @@ function finalizeCompanyFactsStatements(rows: Map<string, FinancialStatement>, s
   return statements;
 }
 
+// Filling gaps per period from a concept with another definition mixes two
+// measures in one series (AXP fee revenue next to total net revenue). A filing
+// that reports both for one period with different values proves they differ.
+function withoutDifferentMeasureFallback(field: CompanyFactsStatementField, entries: CompanyFactsEntry[]): CompanyFactsEntry[] {
+  const fallback = field.sameMeasureFallback;
+  if (!fallback) return entries;
+  const periodKey = (entry: CompanyFactsEntry) => `${entry.accn}:${entry.start}:${entry.end}`;
+  const fallbackValues = new Map(entries.filter((entry) => entry.concept === fallback)
+    .map((entry) => [periodKey(entry), entry.val]));
+  const differs = entries.some((entry) => entry.concept !== fallback
+    && fallbackValues.has(periodKey(entry)) && fallbackValues.get(periodKey(entry)) !== entry.val);
+  return differs ? entries.filter((entry) => entry.concept !== fallback) : entries;
+}
+
 export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompanyFactsStatements {
   const annualRows = new Map<string, FinancialStatement>();
   const quarterlyRows = new Map<string, FinancialStatement>();
@@ -665,8 +692,8 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
   const quarterlySelectedFacts = new Map<string, CompanyFactsEntry>();
   const fieldEntries = COMPANY_FACTS_STATEMENT_FIELDS.map((field) => ({
     field,
-    entries: field.tags.flatMap((tag, tagPriority) => companyFactsEntries(payload, tag, field.units)
-      .map((entry) => ({ ...entry, tagPriority, concept: tag }))),
+    entries: withoutDifferentMeasureFallback(field, field.tags.flatMap((tag, tagPriority) => companyFactsEntries(payload, tag, field.units)
+      .map((entry) => ({ ...entry, tagPriority, concept: tag })))),
   }));
   // Balance-sheet facts have no duration. Anchor their dates to actual annual
   // periods, so quarterly comparative snapshots in a 10-K stay quarterly.
