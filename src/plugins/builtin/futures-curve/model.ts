@@ -1,5 +1,5 @@
 import type { FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
-import type { CurveSeries } from "../../../components/chart/curve/model";
+import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
 import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
 
 export const CURVE_ROOTS = [...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: `${row.code} ${row.name}` })), { value: "VX", label: "VX VIX Futures" }];
@@ -26,12 +26,12 @@ export function curveRank(value: number | null, samples: number, start: string |
   return `${value.toFixed(0)} pctl · ${samples} obs · ${start ?? "--"} to ${end ?? "--"}`;
 }
 
-export function futuresCurveSeries(data: FuturesCurvePayload): CurveSeries[] {
+export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePalette): CurveSeries[] {
   return [{
-    id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: data.asOf,
+    id: "current", label: data.source === "cboe" ? "Settlement" : "Latest", asOf: data.asOf, color: palette?.current,
     points: data.contracts.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
   }, ...data.ghosts.map((ghost) => ({
-    id: ghost.label, label: ghost.asOf ? ghost.label : `${ghost.label} unavailable`, asOf: ghost.asOf,
+    id: ghost.label, label: ghost.asOf ? ghost.label : `${ghost.label} unavailable`, asOf: ghost.asOf, color: palette?.ghosts[ghost.label], chartVisible: ghost.label !== "1Y",
     points: ghost.points.map((row) => ({ id: row.symbol, label: row.expiration.slice(2), x: Date.parse(row.expiration), value: row.price, asOf: row.asOf })),
   }))];
 }

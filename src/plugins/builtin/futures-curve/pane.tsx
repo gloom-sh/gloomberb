@@ -20,7 +20,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "percentile", label: "PCTL", width: 5, align: "right" },
   { id: "oi", label: "OPEN INT", width: 10, align: "right" },
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
-  { id: "asOf", label: "AS OF", width: 16, align: "left" },
+  { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
 const clearDenied = (error: unknown) => error instanceof ApiRequestError && [401, 403].includes(error.status ?? 0);
 const signedPercent = (value: number | null) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toFixed(2)}%`;
@@ -44,10 +44,12 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
   const [sort, setSort] = useState({ id: "expiry", direction: "asc" as "asc" | "desc" });
   const data = resource.data;
   usePaneTitle(`CTM ${root}`);
-  const curves = useMemo(() => data ? futuresCurveSeries(data) : [], [data]);
+  const curves = useMemo(() => data ? futuresCurveSeries(data, { current: colors.positive, ghosts: { "1W": colors.textMuted, "1M": colors.warning, "1Y": colors.textDim } }) : [], [data, colors]);
   const rows = useMemo(() => sortCurveContracts(data?.contracts ?? [], sort.id, sort.direction), [data, sort]);
   const selectedRow = data?.contracts.find((row) => row.symbol === selected) ?? data?.contracts[0];
-  const curveHeight = tab === "curve" ? Math.max(8, Math.floor((height - 4) * 0.6)) : 0;
+  const bodyHeight = Math.max(9, height - 3);
+  const tableHeight = tab === "curve" ? Math.max(3, Math.min(rows.length + 2, Math.floor(bodyHeight * 0.4))) : bodyHeight;
+  const curveHeight = tab === "curve" ? Math.max(6, bodyHeight - tableHeight) : 0;
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (focused && !event.targetEditable && !event.ctrl && !event.meta && event.name === "r") {
@@ -90,7 +92,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
             percentile: data.slope.samples < 2 ? null : data.slope.percentile, window: `${data.slope.samples} obs`,
             asOf: data.slope.asOf, formatValue: (value) => curvePrice(value, root) }} /> : null}
         <DataTableView columns={COLUMNS} items={rows} focused={focused}
-          rootWidth={width} rootHeight={Math.max(3, height - curveHeight - 3)}
+          rootWidth={width} rootHeight={tableHeight}
           selection={{ kind: "id", selectedId: selectedRow?.symbol ?? null, getId: (row) => row.symbol, onChange: setSelected }}
           onActivate={(row) => setSelected(row.symbol)} getItemKey={(row) => row.symbol} renderCell={renderCell}
           sortColumnId={sort.id} sortDirection={sort.direction}
