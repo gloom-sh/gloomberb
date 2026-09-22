@@ -5,6 +5,7 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { normalizeCik } from "./api";
+import { buildFundOverlap } from "./overlap";
 import { loadCrowding, loadTickerHoldings } from "./signals";
 import {
   loadBrowserRows,
@@ -127,6 +128,7 @@ const FILING_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 type HeadlessThirteenFView =
+  | "overlap"
   | "crowding"
   | "ticker-holdings"
   | "auto"
@@ -203,6 +205,7 @@ export function createThirteenFHeadless(
       optional: true,
     },
     options: [
+      { key: "compare", description: "Second fund name or CIK for overlap.", type: "string" },
       { key: "offset", description: "Fund offset for ticker-holdings.", type: "integer", defaultValue: 0, minimum: 0, maximum: 100000 },
       {
         key: "view",
@@ -211,6 +214,7 @@ export function createThirteenFHeadless(
         values: [
           { value: "auto" },
           { value: "crowding" },
+          { value: "overlap" },
           { value: "ticker-holdings" },
           { value: "performance" },
           { value: "funds" },
@@ -237,6 +241,14 @@ export function createThirteenFHeadless(
       const requestedView = String(args.options.view) as HeadlessThirteenFView;
       const view = requestedView === "auto" && isCikQuery(query) ? "holdings" : requestedView;
       const limit = Number(args.options.limit);
+      if (view === "overlap") {
+        const fund = await resolveFund(query, args, ctx, dependencies);
+        const other = await resolveFund(String(args.options.compare ?? ""), args, ctx, dependencies);
+        const [first, second] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadDetail(other.cik, other.name, args, ctx)]);
+        const samePeriod = !!first.latestForm && first.latestForm.periodOfReport === second.latestForm?.periodOfReport;
+        const rows = buildFundOverlap(first, second);
+        return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "issuer", header: "Issuer" }, { key: "weight", header: "First weight" }, { key: "comparedWeight", header: "Second weight" }], rows: rows.slice(0, limit).map(row => ({ ...row })), errors: [...(first.warnings ?? []), ...(second.warnings ?? []), ...(!samePeriod ? ["The funds have different latest reporting quarters."] : [])], metadata: { firstFund: first.name, secondFund: second.name, firstPeriod: first.latestForm?.periodOfReport ?? null, secondPeriod: second.latestForm?.periodOfReport ?? null, truncated: rows.length > limit } };
+      }
       if (view === "crowding") {
         const { rows, ...metadata } = await loadCrowding(ctx.signal);
         return { columns: [{ key: "ticker", header: "Ticker" }, { key: "type", header: "Type" }, { key: "holderCount", header: "Funds" }, { key: "newCount", header: "New" }, { key: "exitCount", header: "Exits" }, { key: "weightChange", header: "Weight change" }, { key: "comparedFunds", header: "Compared" }, { key: "totalValue", header: "Value" }], rows: rows.slice(0, limit).map(row => ({ ...row })), metadata: { ...metadata, view, truncated: rows.length > limit }, errors: metadata.warnings };
@@ -300,10 +312,10 @@ export function createThirteenFHeadless(
       const tab = browserTab(view, query);
       const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
       return {
-        columns: BROWSER_COLUMNS,
+        columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))] : BROWSER_COLUMNS,
         rows: sortBrowserRows(result.rows, DEFAULT_BROWSER_SORT)
           .slice(0, limit)
-          .map((row) => ({ ...row })),
+          .map((row) => ({ ...row, ...Object.fromEntries((row.priorReturns ?? []).map((point, index) => [`return${index + 1}`, point.value])) })),
         ...(result.warning ? { errors: [result.warning] } : {}),
         metadata: {
           view: tab,

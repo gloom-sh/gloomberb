@@ -32,6 +32,10 @@ export function renderBrowserCell(
 ): DataTableCell {
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
+    case "return1": case "return2": case "return3": {
+      const value = row.priorReturns?.[Number(column.id.at(-1)) - 1]?.value;
+      return { text: formatRawPercentMaybe(value), color: selectedColor ?? (value == null ? colors.textDim : priceColor(value)) };
+    }
     case "fund":
       return {
         text: row.name,

@@ -1,7 +1,7 @@
 import type { DataTableColumn } from "../../../components";
 
 export type ThirteenFBrowserTab = "funds" | "performance" | "byTicker" | "latest";
-export type ThirteenFDetailTab = "holdings" | "filings";
+export type ThirteenFDetailTab = "holdings" | "filings" | "overlap";
 export type LoadStatus = "idle" | "loading" | "loaded" | "error";
 export type SortDirection = "asc" | "desc";
 
@@ -69,6 +69,7 @@ export interface FundBrowserRow {
   tableValueTotal?: number | null;
   tableEntryTotal?: number | null;
   estQuarterReturn?: number | null;
+  priorReturns?: Array<{ quarter: string; value: number | null }>;
   source: "funds" | "performance" | "ticker" | "latest";
 }
 
@@ -79,7 +80,8 @@ export type FundBrowserColumnId =
   | "filed"
   | "value"
   | "rows"
-  | "estQuarterReturn";
+  | "estQuarterReturn"
+  | "return1" | "return2" | "return3";
 export type FundBrowserColumn = DataTableColumn & { id: FundBrowserColumnId };
 
 export interface FundDetailData {

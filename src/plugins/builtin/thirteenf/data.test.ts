@@ -269,3 +269,23 @@ test("browser, reconciled report and individual filing expose failed-refresh cac
   expect((await loadFundDetail("1067983", "Fund")).warnings).toEqual([]);
   expect((await loadFilingPositions("1067983", "0001067983-26-000001")).warnings).toEqual([]);
 });
+
+test("performance history joins by CIK, rejects mismatched periods and leaves absent ranks unknown", async () => {
+  const requested: string[] = [];
+  setHttpFetchTransport(async url => {
+    const request = new URL(String(url));
+    if (!request.pathname.endsWith("/topfunds")) return json([]);
+    const quarter = request.searchParams.get("quarter")!;
+    requested.push(quarter);
+    const year = Number(quarter.slice(0, 4));
+    const q = Number(quarter.at(-1));
+    const period = new Date(Date.UTC(year, q * 3, 0)).toISOString().slice(0, 10);
+    if (requested.length === 1) return json([{ cik: "1", name: "First", period_of_report: period, pnl: 10 }, { cik: "2", name: "Second", period_of_report: period, pnl: 20 }]);
+    if (requested.length === 2) return json([{ cik: "2", name: "Second", period_of_report: period, pnl: -5 }]);
+    return json([{ cik: "1", name: "First", period_of_report: "2000-03-31", pnl: 90 }]);
+  });
+  const result = await loadBrowserRows("performance", "");
+  expect(requested).toHaveLength(4);
+  expect(result.rows[0]?.priorReturns?.map(point => point.value)).toEqual([null, null, null]);
+  expect(result.rows[1]?.priorReturns?.map(point => point.value)).toEqual([-5, null, null]);
+});

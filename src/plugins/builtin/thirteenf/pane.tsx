@@ -26,6 +26,7 @@ import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
 import { usePaneStatusFooter, usePaneStatusLinkFooter } from "../shared/pane-footer";
 import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
+import { FundOverlapView } from "./overlap-pane";
 import { ThirteenFCrowdingPane } from "./signals-pane";
 import { PaneFooterScope } from "../../../components/layout/pane/footer";
 import {
@@ -234,7 +235,11 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, { allowEditable: true });
 
   const sortedRows = useMemo(() => sortBrowserRows(rows, sortPreference), [rows, sortPreference]);
-  const columns = useMemo(() => buildBrowserColumns(width), [width]);
+  const columns = useMemo(() => {
+    if (browserMode !== "performance") return buildBrowserColumns(width);
+    const history = rows[0]?.priorReturns ?? [];
+    return [...buildBrowserColumns(width - history.length * 10).filter(column => !["rows", "filed"].includes(column.id)), ...history.map((point, index) => ({ id: `return${index + 1}` as FundBrowserColumnId, label: point.quarter, width: 10, align: "right" as const }))];
+  }, [width, browserMode, rows]);
 
   useEffect(() => {
     if (selectedId && sortedRows.some((row) => row.id === selectedId)) return;
@@ -395,7 +400,7 @@ export function FundDetailView({
   const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("13f:mine", false);
   const { pinTicker } = usePluginTickerActions();
   const [storedTab, setStoredTab] = usePluginPaneState<ThirteenFDetailTab>("detailTab", "holdings");
-  const activeTab: ThirteenFDetailTab = storedTab === "filings" ? "filings" : "holdings";
+  const activeTab: ThirteenFDetailTab = storedTab === "filings" || storedTab === "overlap" ? storedTab : "holdings";
   const [holdingSort, setHoldingSort] = usePluginPaneState<FundSortPreference<FundHoldingColumnId>>("holdingSort", DEFAULT_HOLDING_SORT);
   const [filingSort, setFilingSort] = usePluginPaneState<FundSortPreference<FundTimelineColumnId>>("filingSort", DEFAULT_TIMELINE_SORT);
   // Selections and the open filing are pane state, so a reload or a shared
@@ -518,7 +523,7 @@ export function FundDetailView({
 
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped) return;
-    if (!focused || event.targetEditable) return;
+    if (!focused || event.targetEditable || activeTab === "overlap") return;
     if (isPlainKey(event, "r") && !openFiling) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -545,7 +550,7 @@ export function FundDetailView({
     registrationId: "thirteenf-holdings-notices",
     notices: data?.warnings ?? [],
     focused,
-    enabled: !openFiling,
+    enabled: !openFiling && activeTab !== "overlap",
   });
 
   const detailStatusInfo = useMemo<PaneFooterSegment[]>(() => (
@@ -558,9 +563,9 @@ export function FundDetailView({
     focused,
     url: openFiling ? currentSourceUrl : null,
     source: openFiling ? "SEC 13F" : null,
-    loading: status === "loading",
-    error,
-    info: detailStatusInfo,
+    loading: activeTab !== "overlap" && status === "loading",
+    error: activeTab === "overlap" ? null : error,
+    info: activeTab === "overlap" ? [] : detailStatusInfo,
     showOpenHint: true,
     hints: activeTab === "holdings" ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", onPress: () => setMineOnly(value => !value) }] : [],
   });
@@ -598,7 +603,7 @@ export function FundDetailView({
           focused={focused}
         />
       </Box>
-      {activeTab === "filings" ? (
+      {activeTab === "overlap" && data ? <FundOverlapView data={data} focused={focused} width={width} /> : activeTab === "filings" ? (
         <DataTableStackView<FundTimelineRow, FundTimelineColumn>
           focused={focused}
           detailOpen={!!openFiling}

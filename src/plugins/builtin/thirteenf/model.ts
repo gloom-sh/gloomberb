@@ -32,6 +32,7 @@ export const THIRTEENF_OPTIONS_NOTE = "Option values and shares refer to the und
 export const FUND_DETAIL_TABS: Array<{ label: string; value: ThirteenFDetailTab }> = [
   { label: "Holdings", value: "holdings" },
   { label: "Filings", value: "filings" },
+  { label: "Overlap", value: "overlap" },
 ];
 
 export const DEFAULT_BROWSER_SORT: FundSortPreference<FundBrowserColumnId> = {
@@ -427,6 +428,9 @@ export function buildTimelineRows(forms: ThirteenFFormSummary[]): FundTimelineRo
 
 function browserSortValue(row: FundBrowserRow, columnId: FundBrowserColumnId): string | number | null {
   switch (columnId) {
+    case "return1": return row.priorReturns?.[0]?.value ?? null;
+    case "return2": return row.priorReturns?.[1]?.value ?? null;
+    case "return3": return row.priorReturns?.[2]?.value ?? null;
     case "fund":
       return row.name;
     case "cik":

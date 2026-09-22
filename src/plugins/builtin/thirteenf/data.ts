@@ -97,13 +97,22 @@ async function loadBrowserPage(
 
   if (tab === "performance") {
     const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, pageApiOptions);
+    const quarters = [1, 2, 3].map(back => {
+      const year = Number(quarter.slice(0, 4));
+      const index = Number(quarter.at(-1)) - 1 - back;
+      return `${year + Math.floor(index / 4)}Q${((index % 4) + 4) % 4 + 1}`;
+    });
+    const history = await Promise.all(quarters.map(async previous => {
+      try { return new Map((await listTopThirteenFFunds(previous, 100, signal, apiOptions)).filter(fund => fund.periodOfReport === quarterToPeriod(previous)).map(fund => [fund.cik, fund.pnl])); }
+      catch (error) { if (signal?.aborted) throw error; options.onWarning?.(`${previous}: performance ranking unavailable.`); return new Map<string, number | null>(); }
+    }));
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
     const { reports, warning } = await loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), {
       from, to, signal, ...apiOptions,
       periods: new Map(topFunds.map((fund) => [fund.cik, fund.periodOfReport])),
     });
     return {
-      rows: buildBrowserRows({ topFunds, reports, source: "performance" }),
+      rows: buildBrowserRows({ topFunds, reports, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) })),
       warning,
       quarter,
       period: topFunds[0]?.periodOfReport,
