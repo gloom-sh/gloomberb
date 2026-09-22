@@ -221,6 +221,25 @@ function expandedHistoryCacheVariantKeys(
   return [...new Set(keys)];
 }
 
+const HOUR_MS = 3_600_000;
+const DAY_MS = 86_400_000;
+// A broader cached range can answer a narrower range only at a bar size the
+// narrower range uses itself. Weekly 5Y bars clipped to 1M hide the current
+// week, and a weekly series is never judged stale.
+const MAX_RANGE_BAR_MS: Record<TimeRange, number> = {
+  "1D": 15 * 60_000, "1W": HOUR_MS, "1M": DAY_MS, "3M": DAY_MS, "6M": DAY_MS, "1Y": DAY_MS, "5Y": 7 * DAY_MS, ALL: Infinity,
+};
+
+function hasRangeBarSize(points: PricePoint[], range: TimeRange): boolean {
+  const limit = MAX_RANGE_BAR_MS[range];
+  if (limit === undefined || limit === Infinity) return true;
+  const times = [...new Set(points.slice(-40).map(getPricePointTimestamp).filter(Number.isFinite))].sort((a, b) => a - b);
+  let shortest = Infinity;
+  for (let index = 1; index < times.length; index++) shortest = Math.min(shortest, times[index]! - times[index - 1]!);
+  // Daily and weekly labels at exchange opens move by an hour across DST.
+  return shortest <= (limit >= DAY_MS ? limit + HOUR_MS : limit);
+}
+
 function normalizeRequestHistory(
   points: PricePoint[],
   request: Pick<HistoryRequestDescriptor, "cachePolicyKey">,
@@ -518,6 +537,8 @@ export class ProviderRouterHistoryRoutes {
         && /(?:^|;)range=ALL(?:;|$)/.test(record.variantKey)
         && !/(?:^|;)granularity=1(?:;|$)/.test(record.variantKey);
       if (unverifiedAllInterval || hasCircleOfferingPriceHistory(record.value.points, request.target, record.sourceKey)) return false;
+      if (request.requestedRange && !request.interval && !request.exactCacheVariantKeys.includes(record.variantKey)
+        && !hasRangeBarSize(record.value.points, request.requestedRange)) return false;
       return request.cachePolicyKey === "priceHistoryIntraday"
         || !hasUnverifiedShellHistory(record.value.points, request.target, record.sourceKey, request.requestedStart);
     });

@@ -152,6 +152,30 @@ describe("AssetDataRouter chart history", () => {
     persistence.close();
   });
 
+  test("a broader cached range answers a narrower one only at that range's bar size", async () => {
+    const persistence = new AppPersistence(createTempDbPath("range-bar-size-cache"));
+    const DAY = 86_400_000, now = Date.now(), today = now - (now % DAY);
+    const bars = (count: number, step: number) => Array.from({ length: count }, (_, index) =>
+      ({ date: new Date(today - (count - 1 - index) * step), close: 100 + index }));
+    const calls: string[] = [];
+    const provider: DataProvider = { ...fallbackProvider, id: "gloomberb-cloud", name: "Cloud",
+      async getPriceHistory(_symbol, _exchange, range) {
+        calls.push(range);
+        return range === "5Y" ? bars(12, 7 * DAY) : bars(60, DAY);
+      } };
+    try {
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      await router.getPriceHistory("AAPL", "NASDAQ", "5Y");
+      // Weekly bars clipped to 1M would hide the current week.
+      expect((await router.getPriceHistory("AAPL", "NASDAQ", "1M")).length).toBeGreaterThan(12);
+      expect(calls).toEqual(["5Y", "1M"]);
+      // Daily bars from a broader range still answer 1M without a fetch.
+      await router.getPriceHistory("MSFT", "NASDAQ", "3M");
+      expect((await router.getPriceHistory("MSFT", "NASDAQ", "1M")).length).toBeGreaterThan(20);
+      expect(calls).toEqual(["5Y", "1M", "3M"]);
+    } finally { persistence.close(); }
+  });
+
   test("sorts reversed chart history into chronological order", async () => {
     const router = new AssetDataRouter({
       ...fallbackProvider,
