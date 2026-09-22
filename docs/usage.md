@@ -215,7 +215,7 @@ additional windows and trades.
 |----------|----------|
 | `PF` | Portfolio and watchlist workspace |
 | `PORT` | Portfolio risk and sector exposure |
-| `ALRT` | Price and filing event alerts |
+| `ALRT` | Price, filing, news, earnings and market event alerts, with delivery history |
 | `SA <symbol condition price>` | Create a price alert |
 | `AI <prompt>` | AI screener ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `AGENT` | Local AI research workspace ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
@@ -258,6 +258,17 @@ numeric SEC CIK. Use **Add Event Alert** in the command bar, or the pane's add
 action. Enter or the pause action toggles a rule; delete removes it. Rules sync
 with your price alerts. The phone's notification settings have separate Congress
 and 13F switches. Cloud sync and a registered mobile device are required for push.
+
+**Add Event Alert** also creates market and research rules for a US-listed symbol:
+confirmed earnings date (days before), SEC filing type (8-K, 10-K, 10-Q, S-1,
+SC 13D/G, 6-K, 20-F), news keyword (symbol optional), analyst upgrade or
+downgrade, new 52-week high or low, unusual volume (multiple of the prior
+20-session average), short interest change (percent between FINRA settlements),
+open-market insider buy or sell, and an option IV spike for one OCC contract
+(Pro). The **Events** tab shows each rule's last checked value with its one-year
+percentile and date when the pane is wide enough. **History** lists the alerts
+delivered to your phone over the last 90 days; `r` refreshes it. The phone's
+notification settings have one switch for these market and research alerts.
 
 ## CLI
 

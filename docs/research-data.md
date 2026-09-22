@@ -374,6 +374,25 @@ forms13f cache. Delivery therefore follows source availability and parsing, not
 the transaction date or a guaranteed real-time schedule. Price alerts continue
 to use their existing price conditions.
 
+Market and research rules come in two families. Event rules (earnings date,
+filing type, news keyword, analyst change, insider trade) fire once per dated
+source event inside the 14-day window: a confirmed, non-estimated earnings date,
+an SEC acceptance instant with an explicit timezone, a story first seen by the
+news pipeline, an explicit upgrade or downgrade action, or an open-market P or
+S Form 4 row. Free accounts receive a news keyword match once the story passes
+the delayed-news cutoff. Observed rules (52-week, unusual volume, short interest
+change, IV spike) keep one dated reading per rule. A new, edited or resumed rule
+records a baseline and cannot fire on it; an alert needs a strictly newer
+observation whose condition is true after one that was false. A crossing held by
+the cooldown or daily cap waits up to a day. The 52-week test compares a
+completed session's high or low with the prior 252 completed sessions; unusual
+volume divides a completed session's share volume by the prior 20 sessions'
+mean; short interest change compares consecutive FINRA settlements; IV spike
+compares OPRA implied volatility for one contract and requires Pro. Readings
+carry their unit, date and a percentile of the same statistic over up to one
+year of readings, shown once at least 20 readings exist. Delivery history records what the push service
+accepted, not what the phone displayed.
+
 ## Annual risk-factor reports (RISK)
 
 Risk reports use the filing year of a company's Form 10-K, rather than an assumed fiscal year. The filing date identifies the source document; “Report updated” identifies the derived risk report. Risk headings and source excerpts come from the filing, while the overview and notes are analysis. The available comparison is the report's supplied change analysis; a missing annual filing is not synthesized. Foreign issuers filing Form 20-F are not covered by this 10-K report service.

@@ -20,10 +20,18 @@ import {
   type EventAlertRule,
 } from "./events";
 import { relativeTime } from "./format";
+import { alertKindLabel, fetchAlertHistory, ruleStateText } from "./history";
+import { isResearchAlertKind } from "./research-rules";
+import { useAsyncResource } from "../../../public/react";
+import { usePlanAccess } from "../shared/plan-access";
+import { useResearchCloudSession } from "../shared/research-cloud-session";
 
-const COLUMNS: DataTableColumn[] = [
-  { id: "kind", label: "Event", width: 12, align: "left" },
-  { id: "target", label: "Following", width: 31, align: "left" },
+const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
+  { id: "kind", label: "Event", width: 15, align: "left" },
+  { id: "target", label: "Following", width: 28, flexGrow: 1, align: "left" },
+  ...(lastCheck && width >= 96
+    ? [{ id: "last", label: "Last check", width: 34, align: "left" as const }]
+    : []),
   { id: "status", label: "State", width: 8, align: "left" },
   { id: "created", label: "Since", width: 10, align: "left" },
 ];
@@ -54,6 +62,17 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     [rules, sort],
   );
   const selectedRule = items[Math.min(selected, Math.max(0, items.length - 1))];
+  // Research rules keep a dated observation in the Cloud; show its value and percentile.
+  const access = usePlanAccess();
+  const session = useResearchCloudSession();
+  const hasResearch = rules.some((rule) => isResearchAlertKind(rule.kind));
+  const stateLoader = useCallback(() => fetchAlertHistory(0), [session.requestKey]);
+  const history = useAsyncResource(access.signedIn && hasResearch ? stateLoader : null);
+  const states = useMemo(
+    () => new Map((history.data?.states ?? []).map((state) => [state.ruleId, state])),
+    [history.data],
+  );
+  const columns = columnsFor(width, hasResearch && !!history.data);
   const add = useCallback(
     () => openPluginCommandWorkflow("set-event-alert"),
     [openPluginCommandWorkflow],
@@ -148,7 +167,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       focused={focused}
       rootWidth={width}
       rootHeight={height}
-      columns={COLUMNS}
+      columns={columns}
       items={items}
       selection={{
         kind: "index",
@@ -169,10 +188,12 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       renderCell={(rule, column, _index, row) => ({
         text:
           column.id === "kind"
-            ? rule.kind === "congress_trade"
-              ? "Congress"
-              : "13F filing"
-            : column.id === "target"
+            ? alertKindLabel(rule.kind)
+            : column.id === "last"
+              ? isResearchAlertKind(rule.kind)
+                ? ruleStateText(states.get(rule.id))
+                : ""
+              : column.id === "target"
               ? eventAlertTarget(rule)
               : column.id === "status"
                 ? rule.status === "active"
@@ -186,7 +207,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
             : colors.text,
       })}
       emptyStateTitle={error ?? "No event alerts"}
-      emptyStateHint={error ? undefined : "Follow a member, fund, or your watched tickers."}
+      emptyStateHint={error ? undefined : "Follow filings, news, earnings, members, funds or market moves."}
     />
   );
 }

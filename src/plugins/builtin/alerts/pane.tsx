@@ -2,6 +2,7 @@ import { Box } from "../../../ui";
 import { Tabs, PaneFooterScope } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
+import { AlertHistoryPane } from "./history-pane";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ConfirmDialog,
@@ -73,6 +74,7 @@ export function AlertsPane(props: PaneProps) {
         tabs={[
           { label: "Prices", value: "prices" },
           { label: "Events", value: "events" },
+          { label: "History", value: "history" },
         ]}
         activeValue={tab}
         onSelect={setTab}
@@ -82,6 +84,8 @@ export function AlertsPane(props: PaneProps) {
       <PaneFooterScope active>
         {tab === "events" ? (
           <EventAlertsPane {...props} height={Math.max(1, props.height - 1)} />
+        ) : tab === "history" ? (
+          <AlertHistoryPane {...props} height={Math.max(1, props.height - 1)} />
         ) : (
           <PriceAlertsPane {...props} height={Math.max(1, props.height - 1)} />
         )}

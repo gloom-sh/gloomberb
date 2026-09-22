@@ -1,10 +1,12 @@
+import { isResearchAlertKind, normalizeResearchRule, type ResearchAlertKind } from "./research-rules";
+import { researchAlertDescription } from "./research-builder";
 export const EVENT_ALERTS_KEY = "eventAlerts";
 export const MAX_EVENT_ALERTS = 40;
 
 export interface EventAlertRule {
   id: string;
-  kind: "congress_trade" | "thirteenf_filing";
-  target: "watched" | "member" | "fund";
+  kind: "congress_trade" | "thirteenf_filing" | ResearchAlertKind;
+  target: "watched" | "member" | "fund" | "rule";
   value: string;
   createdAt: number;
   status: "active" | "paused";
@@ -82,8 +84,9 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
       const template = EVENT_ALERT_TEMPLATES.find(
         (entry) => entry.kind === value.kind && entry.target === value.target,
       );
+      const research = isResearchAlertKind(value.kind) && value.target === "rule";
       if (
-        !template ||
+        (!template && !research) ||
         typeof value.value !== "string" ||
         (value.status !== "active" && value.status !== "paused") ||
         !Number.isFinite(value.createdAt) ||
@@ -91,12 +94,12 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
         value.createdAt <= 0
       )
         throw new Error();
-      const normalized = template.normalize(value.value);
-      if (template.field && !normalized) throw new Error();
+      const normalized = research ? normalizeResearchRule(value.kind, value.value) : template!.normalize(value.value);
+      if (normalized == null || (template?.field && !normalized)) throw new Error();
       rules.push({
         id: value.id,
-        kind: template.kind,
-        target: template.target,
+        kind: value.kind,
+        target: value.target,
         value: normalized,
         status: value.status,
         createdAt: value.createdAt,
@@ -118,6 +121,7 @@ export function toggleEventAlert(rule: EventAlertRule, now = Date.now()): EventA
 }
 
 export function eventAlertTarget(rule: EventAlertRule): string {
+  if (rule.target === "rule") return researchAlertDescription(rule);
   return rule.target === "watched"
     ? "Portfolio and watchlist"
     : rule.target === "fund"

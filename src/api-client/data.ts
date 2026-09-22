@@ -371,6 +371,10 @@ export class CloudDataApi {
     return this.request<CentralBankRatesPayload>("/cloud/econ/central-bank-rates", { signal: AbortSignal.timeout(45_000) });
   }
 
+  getMobileAlertHistory<T>(offset = 0) {
+    return this.request<T>(`/mobile/alerts/history?offset=${offset}`);
+  }
+
   async getCloudMoneyMarkets(): Promise<MoneyMarketsPayload> {
     return this.request<MoneyMarketsPayload>("/cloud/econ/money-markets", { signal: AbortSignal.timeout(45_000) });
   }

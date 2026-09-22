@@ -1,3 +1,5 @@
+import { RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
+import { isResearchAlertKind } from "./research-rules";
 import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
@@ -31,7 +33,7 @@ export const alertsPlugin: GloomPlugin = {
   id: "alerts",
   name: "Alerts",
   version: "1.0.0",
-  description: "Price and filing event alerts",
+  description: "Price, market and filing event alerts",
   toggleable: true,
 
   setup(ctx) {
@@ -97,7 +99,7 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-event-alert",
       label: "Add Event Alert",
-      description: "Follow Congress trades or new fund filings",
+      description: "Create a filing, news, earnings or market alert",
       keywords: ["alert", "event", "congress", "13f", "fund", "member", "follow"],
       category: "data",
       wizardLayout: "form",
@@ -107,7 +109,7 @@ export const alertsPlugin: GloomPlugin = {
           label: "Event",
           type: "select",
           defaultValue: "congress-watched",
-          options: EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id })),
+          options: [...Object.entries(RESEARCH_LABELS).map(([value,label]) => ({value,label})), ...EVENT_ALERT_TEMPLATES.map((entry) => ({ label: entry.label, value: entry.id }))],
         },
         ...EVENT_ALERT_TEMPLATES.filter((entry) => entry.field != null).map((entry) => ({
           key: entry.id,
@@ -117,6 +119,7 @@ export const alertsPlugin: GloomPlugin = {
           required: true,
           dependsOn: { key: "event", value: entry.id },
         })),
+        ...researchWizardFields,
       ],
       execute(values = {}) {
         const event = values?.event || "congress-watched";
@@ -124,7 +127,7 @@ export const alertsPlugin: GloomPlugin = {
         if (result.error) throw new Error(result.error);
         if (result.rules.length >= MAX_EVENT_ALERTS)
           throw new Error("Keep at most 40 event alerts.");
-        const rule = createEventAlert(event, values?.[event] || "");
+        const rule = isResearchAlertKind(event) ? createResearchAlert(event, values) : createEventAlert(event, values?.[event] || "");
         if (
           result.rules.some(
             (existing) =>
@@ -243,7 +246,7 @@ export const alertsPlugin: GloomPlugin = {
       id: "alerts-pane",
       paneId: "alerts",
       label: "Alerts",
-      description: "Price and filing event alerts",
+      description: "Price, market and filing event alerts",
       keywords: ["alerts", "price", "trigger", "alarm", "watch", "notify"],
       shortcut: { prefix: "ALRT" },
     });
