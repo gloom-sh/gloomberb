@@ -68,9 +68,9 @@ export function appendQuoteToPriceReturnHistory(
 function subtractHorizon(date: Date, horizon: PriceReturnHorizon): Date {
   const target = new Date(date);
   if (horizon.unit === "month") {
-    target.setMonth(target.getMonth() - horizon.amount);
+    target.setUTCMonth(target.getUTCMonth() - horizon.amount);
   } else {
-    target.setFullYear(target.getFullYear() - horizon.amount);
+    target.setUTCFullYear(target.getUTCFullYear() - horizon.amount);
   }
   return target;
 }

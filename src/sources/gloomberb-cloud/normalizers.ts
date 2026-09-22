@@ -1,4 +1,5 @@
 import type { TimeRange } from "../../time-series/range";
+import { subtractTimeRange } from "../../time-series/date-window";
 import { verifiedPriceHistorySource } from "../history-coverage";
 import type {
   OptionsChain,
@@ -324,34 +325,7 @@ export function getRangeStartDate(
   range: TimeRange,
   endDate = new Date(),
 ): Date {
-  const startDate = new Date(endDate);
-  switch (range) {
-    case "1D":
-      startDate.setDate(startDate.getDate() - 1);
-      break;
-    case "1W":
-      startDate.setDate(startDate.getDate() - 7);
-      break;
-    case "1M":
-      startDate.setMonth(startDate.getMonth() - 1);
-      break;
-    case "3M":
-      startDate.setMonth(startDate.getMonth() - 3);
-      break;
-    case "6M":
-      startDate.setMonth(startDate.getMonth() - 6);
-      break;
-    case "1Y":
-      startDate.setFullYear(startDate.getFullYear() - 1);
-      break;
-    case "5Y":
-      startDate.setFullYear(startDate.getFullYear() - 5);
-      break;
-    case "ALL":
-      startDate.setFullYear(startDate.getFullYear() - 50);
-      break;
-  }
-  return startDate;
+  return subtractTimeRange(endDate, range);
 }
 
 export function toHistoryRequest(range: TimeRange): {
