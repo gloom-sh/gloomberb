@@ -1,6 +1,7 @@
 import { debtMaturitiesModule } from "./debt-maturities";
 import { shortVolumeModule } from "./short-volume";
 import { timeSalesModule } from "./time-sales";
+import { estimateRevisionsModule } from "./estimate-revisions";
 import { chartComposerModule } from "./chart-composer";
 import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
@@ -37,6 +38,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
+    estimateRevisionsModule,
     researchModule,
     shortVolumeModule,
     debtMaturitiesModule,

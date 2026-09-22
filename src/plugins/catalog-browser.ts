@@ -1,6 +1,7 @@
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { shortVolumeModule } from "./builtin/short-volume";
 import { timeSalesModule } from "./builtin/time-sales";
+import { estimateRevisionsModule } from "./builtin/estimate-revisions";
 import {
   attachFredSeriesPersistence,
   resetFredSeriesPersistence,
@@ -94,6 +95,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     volSurfaceModule,
     realizedVolModule,
     timeSalesModule,
+    estimateRevisionsModule,
     researchModule,
     shortVolumeModule,
     debtMaturitiesModule,
