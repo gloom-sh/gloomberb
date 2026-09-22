@@ -1,0 +1,72 @@
+{
+  "name": "Rates desk",
+  "schemaVersion": 2,
+  "sourceConfigVersion": 22,
+  "layout": {
+    "dockRoot": {
+      "kind": "split",
+      "axis": "horizontal",
+      "ratio": 0.5,
+      "first": {
+        "kind": "split",
+        "axis": "vertical",
+        "ratio": 0.5,
+        "first": {
+          "kind": "pane",
+          "instanceId": "p1"
+        },
+        "second": {
+          "kind": "pane",
+          "instanceId": "p2"
+        }
+      },
+      "second": {
+        "kind": "split",
+        "axis": "vertical",
+        "ratio": 0.5,
+        "first": {
+          "kind": "pane",
+          "instanceId": "p3"
+        },
+        "second": {
+          "kind": "pane",
+          "instanceId": "p4"
+        }
+      }
+    },
+    "instances": [
+      {
+        "instanceId": "p1",
+        "paneId": "rate-path",
+        "title": "US Rate Path"
+      },
+      {
+        "instanceId": "p2",
+        "paneId": "money-markets",
+        "title": "Money Markets",
+        "settings": {
+          "tab": "bills"
+        }
+      },
+      {
+        "instanceId": "p3",
+        "paneId": "central-bank-rates",
+        "title": "Central Bank Rates"
+      },
+      {
+        "instanceId": "p4",
+        "paneId": "futures-curve",
+        "title": "CTM ZN",
+        "params": {
+          "root": "ZN"
+        },
+        "settings": {
+          "root": "ZN"
+        }
+      }
+    ],
+    "floating": [],
+    "detached": []
+  },
+  "paneState": {}
+}
