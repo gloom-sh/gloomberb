@@ -1,3 +1,4 @@
+import type { ScreenDefinition, ScreenQuery, ScreenPayload, ScreenFieldsResponse, ScreenExportResponse, SavedScreen } from "./equity-screener";
 import type { DebtMaturitiesPayload } from "./debt-maturities";
 import type { CryptoBoardPayload } from "./crypto-board";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
@@ -137,6 +138,44 @@ export class CloudDataApi {
     return this.request<CloudMarketResponse<CloudMarketBatchPayload<T>>>(path, {
       method: "POST",
       body: JSON.stringify({ targets, mode }),
+    });
+  }
+
+  getCloudEquityScreenFields(options?: { signal?: AbortSignal }) {
+    return this.request<ScreenFieldsResponse>("/cloud/equity-screener/fields", options);
+  }
+
+  queryCloudEquityScreen(query: ScreenQuery, options?: { signal?: AbortSignal }) {
+    return this.request<ScreenPayload>("/cloud/equity-screener/query", {
+      method: "POST", body: JSON.stringify(query), signal: options?.signal,
+    });
+  }
+
+  exportCloudEquityScreen(definition: ScreenDefinition, snapshotId: string, options?: { signal?: AbortSignal }) {
+    return this.request<ScreenExportResponse>("/cloud/equity-screener/export", {
+      method: "POST", headers: { Accept: "application/json" }, body: JSON.stringify({ ...definition, snapshotId }), signal: options?.signal,
+    });
+  }
+
+  async getCloudSavedEquityScreens(options?: { signal?: AbortSignal }) {
+    return (await this.request<{ screens: SavedScreen[] }>("/cloud/equity-screener/saved", options)).screens;
+  }
+
+  async createCloudSavedEquityScreen(name: string, definition: ScreenDefinition) {
+    return (await this.request<{ screen: SavedScreen }>("/cloud/equity-screener/saved", {
+      method: "POST", body: JSON.stringify({ name, definition }),
+    })).screen;
+  }
+
+  async updateCloudSavedEquityScreen(id: string, revision: number, name: string, definition: ScreenDefinition) {
+    return (await this.request<{ screen: SavedScreen }>(`/cloud/equity-screener/saved/${encodeURIComponent(id)}`, {
+      method: "PATCH", body: JSON.stringify({ revision, name, definition }),
+    })).screen;
+  }
+
+  async deleteCloudSavedEquityScreen(id: string, revision: number) {
+    await this.request<{ deleted: true }>(`/cloud/equity-screener/saved/${encodeURIComponent(id)}`, {
+      method: "DELETE", body: JSON.stringify({ revision }),
     });
   }
 

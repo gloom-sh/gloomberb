@@ -653,3 +653,44 @@ Single-period Brinson-Fachler attribution uses declared beginning sector weights
 PORT reuses OSA's European pricing and Greeks. Broker-held options require one exact broker conId, local option symbol, expiry, strike, side, multiplier and currency, plus matching dated Cloud spot, option contract/IV, Treasury rate and dividend yield. Missing or ambiguous contract inputs remain unavailable and prevent a complete option-book total. Requests are confined to the Cloud provider; no app-side third-party fallback is introduced.
 
 Alternatively, add `options: {"scope":"imported","positions":[...]}` to local evidence, with fully specified OSA `ScenarioPosition` snapshots (`symbol`, optional `exchange`, `currency`, `spot`, decimal `rate`/`dividendYield`, millisecond `asOf`, and `legs` containing `id`, `side`, signed integer `quantity`, `strike`, Unix-second `expiration`, `price`, decimal `volatility`, and explicit `multiplier`). The imported option book remains separate from broker holdings. Snapshots older than four calendar days or with future timestamps/mismatched currency are unavailable. Dollar delta multiplies share delta by spot; gamma P&L is one half gamma times a uniform one-percent spot move squared; vega is currency per volatility point, theta currency per calendar day and rho currency per rate point. Share deltas are not added across different underlyings. Exercise, assignment, American exercise premium and adjusted deliverables are not inferred. Imported snapshots are assumptions, not current market quotes.
+## Equity criteria screener (EQS)
+
+EQS queries an indexed snapshot of the Cloud's covered, stored financial listings.
+It does not claim to enumerate every listed security. The backend projects existing
+financial, statement, FINRA, insider and 13F observations in bounded batches;
+a screen query does not fan out to upstream providers. Snapshots refresh every
+15 minutes and expire after two hours. Cursors bind the exact query, sort and
+snapshot; rows from different generations cannot be combined. Saved definitions
+are account-owned and use revision checks for concurrent edits.
+
+Every numerical observation retains native unit, source date, collection date,
+known filing availability date, source and availability state. The displayed
+percentile is cross-sectional within the covered universe, never a historical
+percentile. Observation dates vary between metrics and issuers. Monetary fields
+require a single currency for filtering and ordering; no implied FX conversion
+is performed. Missing values fail numeric comparisons. `Unavailable` means the
+field lacks evidence; it does not mean the financial quantity is zero. Provider
+multiples, market capitalization and dividend yield carry no observation date; the
+pane shows their collection date in the muted colour instead of inventing a source
+date.
+
+US primary listings are named by their SEC conformed name; other listings keep the
+provider name. Symbols differing only by share-class separator are one listing, and
+OTC or foreign order-book lines of an issuer with a US primary line in the same
+currency are omitted. Sector and industry come from stored provider profiles and
+are missing for many smaller listings, so a sector criterion covers only listings
+with a stored profile.
+
+Growth compares matching annual periods with compatible currency and a positive
+base. Margins use reported revenue and their corresponding profit measure.
+Insider purchase/sale counts reflect observed filings and are lower bounds;
+partial cache coverage cannot establish zero activity. Therefore these counts
+support positive lower-bound or availability conditions, not equality or upper
+bounds. FINRA quantities and changes retain the source's reporting period, and
+13F activity retains its filing period and coverage limitations.
+
+Results can remain dated after a failed refresh. Changing the query or account
+clears the previous result immediately, aborts pending pagination and rejects its
+late response. Export pins the displayed snapshot and is capped at 5,000 matches;
+refine a broader screen before exporting. An absent endpoint or migration has an
+explicit unavailable state.

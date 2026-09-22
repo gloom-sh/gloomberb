@@ -22,6 +22,7 @@ import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
 import { connectionsModule } from "./builtin/connections";
 import { relativeRotationModule } from "./builtin/relative-rotation";
+import { equityScreenerModule } from "./builtin/equity-screener";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
 import { creditConditionsModule } from "./builtin/credit-conditions";
@@ -132,6 +133,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
   modules: [
     correlationModule,
     relativeRotationModule,
+    equityScreenerModule,
     worldIndicesModule,
     worldVenueMapModule,
     scannerModule,

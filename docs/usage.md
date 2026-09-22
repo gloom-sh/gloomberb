@@ -160,6 +160,8 @@ Correlation uses matching observation times when inputs have different frequenci
 | `TAS <ticker>` / `QR <ticker>` | Time and sales, observed-window VWAP, large prints and NBBO history |
 | `EM <ticker>` / `EEO <ticker>` / `GUID <ticker>` | EPS estimate revisions, current analyst breadth, surprises and cited guidance; `--period YYYY-MM-DD --frequency quarterly` pins a fiscal period |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
+| `RRG` / `GRR` | Weekly relative rotation of sectors or a watchlist against a benchmark, with dated trails |
+| `EQS` | Equity screener over the stored Cloud universe: valuation, growth, margins, short interest, insider and 13F criteria, saved screens and export |
 | `CRYP` | Crypto USD pairs: latest trades, UTC daily change, completed seven-day returns, base-asset volume and percentiles |
 | `ECO` | Economic events and releases |
 | `ECST [statistic]` | Economic statistics: inflation, labour, growth, consumer, housing, rates |
@@ -169,8 +171,6 @@ Correlation uses matching observation times when inputs have different frequenci
 | `YAS` | Fixed-coupon bond calculator: price/yield, accrued interest, duration, convexity, DV01 and Treasury spread |
 | `CBR` / `ECFC` / `CBRT` | G20 central bank policy rates, last observed moves and one-year history |
 | `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` |
-
-
 | `COT [code or root]` / `CFTC [code or root]` | CFTC positioning extremes, weekly changes and historical percentiles |
 | `AUCT` | Treasury auction results: high rate, bid-to-cover, indirect share, and size |
 | `VIX` | VIX 9D through 1Y cash-tenor curve, FRED history and 3M/30D ratio |
@@ -453,3 +453,33 @@ gloomberb shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 ```
 
 `--evidence` accepts the same JSON text as the clipboard import. Account-return and attribution examples in the methodology are illustrative inputs, not sample market data. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings; screenshots freeze that same local model.
+
+## Equity criteria screener
+
+`EQS` screens the stored Cloud equity universe. It starts with USD companies above
+$10 billion in market capitalization. **Criteria** edits typed numeric ranges,
+category lists and available/unavailable data conditions. All criteria are ANDed.
+Thresholds accept `k`, `M`, `B` and `T` suffixes, so `10B` is ten billion. The
+currency selector is required for price and market-cap comparisons.
+
+**Results** leads with the chosen metric, its covered-universe percentile and its
+date, then one column per numeric criterion and context columns (market cap, price,
+change, P/E, revenue growth, operating margin, dividend yield) as width allows. Click
+a metric header to sort by it and make it the focus; click again to reverse. Dates in
+the muted colour are collection dates for provider values that carry no observation
+date. The footer shows matches, covered listings, currency and the snapshot time.
+Enter opens a company's dated observations; `o` opens it in Ticker Research.
+
+`s` saves a named screen to your Cloud account; **Saved** restores one. Saving an
+existing screen updates its revision; **Save copy** creates another. Conflicting
+edits from another device are reported. `x` exports all matches from the displayed
+snapshot, up to 5,000 rows. The normal pane CSV menu exports currently loaded rows.
+Expired snapshots ask for a refresh before continuing or exporting.
+
+`gloomberb fn EQS --metric trailingPE --json` returns the first page with its
+snapshot, coverage, per-field dates and pagination cursor. `--definition` accepts
+versioned JSON with `criteria`, `currency` and `sort`, for example:
+
+```sh
+gloomberb fn EQS --definition '{"version":1,"currency":"USD","criteria":[{"field":"trailingPE","op":"between","value":[0,25]},{"field":"revenueGrowthPercent","op":"gte","value":10}],"sort":{"field":"marketCap","direction":"desc"}}' --json
+```

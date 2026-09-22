@@ -9,6 +9,7 @@ import { changelogModule } from "./changelog";
 import { connectionsModule } from "./connections";
 import { pluginMarketplaceModule } from "./plugin-marketplace";
 import { relativeRotationModule } from "./relative-rotation";
+import { equityScreenerModule } from "./equity-screener";
 import { correlationModule } from "./correlation";
 import { cdsModule } from "./cds";
 import { creditConditionsModule } from "./credit-conditions";
@@ -89,6 +90,7 @@ export const marketOverviewPlugin = composeBuiltinPlugin({
   modules: [
     correlationModule,
     relativeRotationModule,
+    equityScreenerModule,
     worldIndicesModule,
     worldVenueMapModule,
     marketMoversModule,
