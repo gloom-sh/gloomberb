@@ -48,6 +48,7 @@ import { CriterionEditor } from "./criterion-editor";
 import {
   fetchSavedScreens,
   fetchScreenFields,
+  screenerApi,
   validateSavedScreen,
 } from "./client";
 import {
@@ -307,13 +308,13 @@ function EquityScreenView({
     try {
       const entry = validateSavedScreen(
         currentSaved && !copy
-          ? await apiClient.updateCloudSavedEquityScreen(
+          ? await screenerApi.update(
               currentSaved.id,
               currentSaved.revision,
               name.trim(),
               definition,
             )
-          : await apiClient.createCloudSavedEquityScreen(
+          : await screenerApi.create(
               name.trim(),
               definition,
             ),
@@ -356,7 +357,7 @@ function EquityScreenView({
     if (!confirmed) return;
     setSaving(true);
     try {
-      await apiClient.deleteCloudSavedEquityScreen(entry.id, entry.revision);
+      await screenerApi.remove(entry.id, entry.revision);
       await saved.reload();
       if (currentSavedId === entry.id) setCurrentSavedId(null);
       notify({ body: "Screen deleted", type: "success" });
@@ -373,7 +374,7 @@ function EquityScreenView({
     try {
       if (!host.saveTextFile)
         throw new Error("File export is unavailable in this renderer.");
-      const file = await apiClient.exportCloudEquityScreen(
+      const file = await screenerApi.export(
         data.definition,
         data.snapshot.id,
       );

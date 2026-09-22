@@ -693,14 +693,7 @@ class GloomApiClient {
   getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
   getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
   getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
-  getCloudEquityScreenFields = this.data.getCloudEquityScreenFields.bind(this.data);
-  queryCloudEquityScreen = this.data.queryCloudEquityScreen.bind(this.data);
-  exportCloudEquityScreen = this.data.exportCloudEquityScreen.bind(this.data);
-  getCloudSavedEquityScreens = this.data.getCloudSavedEquityScreens.bind(this.data);
-  createCloudSavedEquityScreen = this.data.createCloudSavedEquityScreen.bind(this.data);
-  updateCloudSavedEquityScreen = this.data.updateCloudSavedEquityScreen.bind(this.data);
-  deleteCloudSavedEquityScreen = this.data.deleteCloudSavedEquityScreen.bind(this.data);
-
+  equityScreener = this.data.equityScreener.bind(this.data);
   getCloudDebtMaturities = this.data.getCloudDebtMaturities.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
