@@ -10,7 +10,7 @@ import { Box, type InputRenderable } from "gloomberb/ui";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCotBoard, loadCotDetail } from "./client";
-import { COT_CLASSES, cotChartSeries, cotClass, cotInteger, cotRank } from "./model";
+import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotRank, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
 const BOARD_COLUMNS: DataTableColumn[] = [
@@ -50,17 +50,22 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const traderClass = cotClass(family, storedClass);
   const [selected, setSelected] = usePluginPaneState<string | null>("selected", initialCode);
   const [open, setOpen] = usePluginPaneState<string | null>("open", initialCode);
+  const [storedScope, setScope] = usePluginPaneState<CotScope>("scope", "major");
+  const scope = cotScope(storedScope);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [searchFocus, setSearchFocus] = useState(0);
   const [sort, setSort] = useState({ id: "", direction: "desc" as "asc" | "desc" });
   const control = useRef<SelectControl>(null);
+  const scopeControl = useRef<SelectControl>(null);
   const searchInput = useRef<InputRenderable | null>(null);
   const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force), [family, traderClass, session.requestKey]);
   const resource = useAsyncResource(loader, { clearOnError: clearDenied });
   const data = resource.data?.traderClass === traderClass ? resource.data : null;
   const rows = useMemo(() => {
-    const result = (data?.rows ?? []).filter((row) => `${row.marketName} ${row.contractCode}`.toLowerCase().includes(query.toLowerCase()));
+    // A typed query searches every market; the scope only shapes the unsearched board.
+    const result = (data?.rows ?? []).filter((row) => query ? `${row.marketName} ${row.contractCode}`.toLowerCase().includes(query.toLowerCase())
+      : scope === "all" || COT_MAJOR_CODES.has(row.contractCode));
     if (!sort.id) return result;
     const value = (row: CotBoardRow) => ({ name: row.marketName, code: row.contractCode, net: row.position.net, change: row.position.weeklyChange,
       one: row.position.percentile1Y.value, three: row.position.percentile3Y.value, asOf: row.reportDate })[sort.id as "name"];
@@ -71,16 +76,18 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       const order = typeof left === "number" && typeof right === "number" ? left - right : String(left).localeCompare(String(right));
       return sort.direction === "asc" ? order : -order;
     });
-  }, [data, query, sort]);
+  }, [data, query, scope, sort]);
   useAutoRefresh(resource.updatedAt, resource.load);
   useShortcut((event) => {
     if (!focused || open || event.targetEditable || event.ctrl || event.meta) return;
     if (event.name === "r") { event.preventDefault(); void resource.reload(); }
     if (event.name === "c") { event.preventDefault(); control.current?.open(); }
+    if (event.name === "s") { event.preventDefault(); scopeControl.current?.open(); }
     if (event.name === "/") { event.preventDefault(); setSearching(true); setSearchFocus((value) => value + 1); }
   });
   usePaneFooter("cot:actions", () => ({ hints: open ? [] : [
     { id: "class", key: "c", label: "class", onPress: () => control.current?.open() },
+    { id: "scope", key: "s", label: "cope", onPress: () => scopeControl.current?.open() },
     { id: "search", key: "/", label: "search", onPress: () => { setSearching(true); setSearchFocus((value) => value + 1); } },
   ] }), [open]);
   usePaneNoticeFooter({ registrationId: "cot:board-notices", focused, enabled: !open, notices: data?.gaps ?? [] });
@@ -101,11 +108,14 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
       return { text: row.reportDate, color: colors.textMuted };
     }}
     rootBefore={<Box flexDirection="column" flexShrink={0}>
-      <Box paddingX={1} height={1}><SelectButton label="Class" value={traderClass} options={COT_CLASSES[family]} onChange={setClass} controlRef={control} /></Box>
+      <Box paddingX={1} height={1} flexDirection="row" gap={2}>
+        <SelectButton label="Class" value={traderClass} options={COT_CLASSES[family]} onChange={setClass} controlRef={control} />
+        <SelectButton label="Scope" value={scope} options={[...COT_SCOPES]} onChange={setScope} controlRef={scopeControl} />
+      </Box>
       <InputSearchBar value={query} focused={focused} active={searching} width={width} focusToken={searchFocus} inputRef={searchInput} debounceMs={80} placeholder="market or CFTC code"
         onFocus={() => setSearching(true)} onBlur={() => setSearching(false)} onNavigateDown={() => setSearching(false)} onQueryChange={setQuery} />
     </Box>}
-    emptyStateTitle={data ? "No matching COT markets." : ""} detailOpen={!!open} onBack={() => setOpen(null)}
+    emptyStateTitle={data ? query ? "No matching COT markets." : "No major markets in this report; switch the scope to all markets." : ""} detailOpen={!!open} onBack={() => setOpen(null)}
     detailTitle={data?.rows.find((row) => row.contractCode === open)?.marketName ?? open ?? undefined}
     detailContent={open ? <CotDetail key={`${family}:${open}`} width={width} height={Math.max(3, height - 2)} focused={focused}
       code={open} family={family} traderClass={traderClass} onClassChange={setClass} /> : null} />;

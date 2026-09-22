@@ -17,6 +17,33 @@ const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: strin
   SR3: { code: "134741", exchange: "CME", priceSymbol: null },
   ES: { code: "13874A", exchange: "CME", priceSymbol: "ES=F" },
 };
+/**
+ * The markets most readers mean by "positioning", verified against the live
+ * CFTC boards on 2026-09-22. A code missing from a report family simply does
+ * not appear; nothing is substituted. Everything else is one scope switch away.
+ */
+export const COT_MAJOR_CODES: ReadonlySet<string> = new Set([
+  // Equity index and volatility
+  "13874A", "209742", "239742", "124603", "1170E1",
+  // Rates
+  "042601", "044601", "043602", "043607", "020601", "020604", "045601", "134741",
+  // Currencies
+  "099741", "097741", "096742", "090741", "232741", "092741", "095741", "098662",
+  // Crypto
+  "133741", "146021",
+  // Energy
+  "067651", "023651", "111659", "022651", "06765T",
+  // Metals
+  "088691", "084691", "085692", "076651", "075651",
+  // Grains and softs
+  "002602", "005602", "001602", "001612", "007601", "026603", "083731", "080732", "033661", "073732",
+  // Livestock
+  "057642", "054642", "061641",
+]);
+export const COT_SCOPES = [{ value: "major", label: "Major markets" }, { value: "all", label: "All markets" }] as const;
+export type CotScope = typeof COT_SCOPES[number]["value"];
+export function cotScope(value: unknown): CotScope { return value === "all" ? "all" : "major"; }
+
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const input = value.trim().toUpperCase().replace(/=F$/, "");

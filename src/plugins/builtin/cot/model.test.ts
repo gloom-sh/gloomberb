@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { cotContractCode, cotNetPoints } from "./model";
+import { COT_MAJOR_CODES, cotContractCode, cotNetPoints, cotScope } from "./model";
 
 function position(): CotClassSummary {
   const percentile = { value: null, rank: null, sampleCount: 2, windowStart: "2025-09-15", windowEnd: "2026-09-15",
@@ -59,4 +59,12 @@ test("missing migration gives unavailable state; access failures remain access f
   await expect(fetchCotBoard("legacy", "noncommercial", { getCloudCotBoard: async () => { throw new ApiRequestError("not ready", 503); } })).rejects.toThrow("not available on this Gloom Cloud server yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchCotBoard("legacy", "noncommercial", { getCloudCotBoard: async () => { throw denied; } })).rejects.toBe(denied);
+});
+
+test("major scope keeps only verified codes and never invents a market", () => {
+  expect(cotScope("all")).toBe("all");
+  expect(cotScope(undefined)).toBe("major");
+  expect(COT_MAJOR_CODES.has("13874A")).toBe(true);
+  expect(COT_MAJOR_CODES.has("0063DB")).toBe(false);
+  expect([...COT_MAJOR_CODES].every((code) => /^[0-9A-Z]{5}[0-9A-Z+]$/.test(code))).toBe(true);
 });
