@@ -3,7 +3,7 @@ import { apiClient, type CloudWorldVenueMapPayload, type CloudWorldVenuePayload 
 import {
   DataTableView,
   EmptyState,
-  InputSearchBar, PaneStatusBody, usePaneFooter,
+  InputSearchBar, PaneStatusBody, SectionHeading, usePaneFooter,
   type DataTableCell,
   type DataTableColumn,
   type DataTableKeyEvent
@@ -167,7 +167,6 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
     return false;
   }, [focusSearch, refresh]);
 
-  const openCount = venues.reduce((count, venue) => count + Number(venue.isOpen), 0);
   usePaneFooter(WORLD_VENUE_MAP_PANE_ID, () => ({
     info: [
       ...(loading && !data ? [{ id: "loading", parts: [{ text: "LOADING", tone: "muted" as const }] }] : []),
@@ -213,12 +212,8 @@ export function WorldVenueMapPane({ focused, width, height }: PaneProps) {
 
   const sidebarHeader = (
     <Box flexDirection="column" width={sidebarWidth} height={2}>
-      <Box flexDirection="row" justifyContent="space-between" width="100%" paddingX={1}>
-        <Text fg={colors.textDim}>VENUES</Text>
-        <Box flexDirection="row">
-          <Text fg={colors.positive}>{`${openCount} OPEN`}</Text>
-          <Text fg={colors.textDim}>{` · ${venues.length - openCount} CLOSED`}</Text>
-        </Box>
+      <Box width="100%" paddingX={1}>
+        <SectionHeading title="Venues" />
       </Box>
       <InputSearchBar
         value={query}

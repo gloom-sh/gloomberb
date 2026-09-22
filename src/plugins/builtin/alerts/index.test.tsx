@@ -266,7 +266,7 @@ describe("AlertsPane", () => {
     expect(workflowCalls).toEqual(["set-alert", "set-alert"]);
   });
 
-  test("updates alerts from table action clicks", async () => {
+  test("re-arms the selected triggered alert from its footer action and deletes after confirming", async () => {
     testSetup = await testRender(
       <AlertsHarness
         alerts={[
@@ -278,13 +278,30 @@ describe("AlertsPane", () => {
     );
 
     await renderSettled();
-    await clickFrameText("Re-arm");
+    // Only a triggered alert offers re-arm, so the hint appears once it is selected.
+    expect(testSetup.captureCharFrame()).not.toContain("[m]");
+    await act(async () => {
+      testSetup!.mockInput.pressArrow("down");
+      await testSetup!.renderOnce();
+    });
+    await renderSettled();
+    await clickFrameText("[m]");
 
     expect(storedAlerts().find((alert) => alert.id === "alert-msft")?.status).toBe("active");
 
-    await clickFrameText("[d]");
+    await act(async () => {
+      await testSetup!.mockInput.typeText("d");
+      await testSetup!.renderOnce();
+    });
+    await renderSettled();
+    expect(testSetup.captureCharFrame()).toContain("Delete alert?");
+    await act(async () => {
+      testSetup!.mockInput.pressEnter();
+      await testSetup!.renderOnce();
+      await testSetup!.renderOnce();
+    });
 
-    expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-msft"]);
+    expect(storedAlerts().map((alert) => alert.id)).toEqual(["alert-aapl"]);
   });
 });
 

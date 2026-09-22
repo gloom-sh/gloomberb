@@ -47,7 +47,7 @@ function TermChart({ data, width, height }: { data: VolatilityData; width: numbe
     volume: 0,
   }]);
   if (points.length < 2) {
-    return <Box paddingX={1}><Text fg={colors.warning}>VIX curve partial: aligned closes unavailable.</Text></Box>;
+    return <Box paddingX={1}><EmptyState title="VIX curve unavailable." message="Not enough aligned closes to draw the term structure." /></Box>;
   }
   const colWidth = Math.max(10, Math.floor((width - 2) / data.termPoints.length));
   return (

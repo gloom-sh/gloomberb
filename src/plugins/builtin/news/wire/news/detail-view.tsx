@@ -184,18 +184,13 @@ function TextLines({
 
 function NewsStoryTimelineItemView({
   item,
-  index,
-  total,
   width,
   nativePaneChrome,
 }: {
   item: NewsStoryItem;
-  index: number;
-  total: number;
   width: number;
   nativePaneChrome: boolean;
 }) {
-  const marker = total <= 1 ? "*" : index === 0 || index === total - 1 ? "+" : "|";
   const time = formatDetailDate(storyItemDate(item.publishedAt));
   const summary = item.summary && item.summary.trim() !== item.title.trim() ? item.summary : "";
   const source = item.sourceName || item.sourceKey;
@@ -205,7 +200,7 @@ function NewsStoryTimelineItemView({
   return (
     <Box flexDirection="column" width={nativePaneChrome ? "100%" : width} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
       <Box height={nativePaneChrome ? undefined : 1} flexDirection="row" flexWrap={nativePaneChrome ? "wrap" : undefined} gap={nativePaneChrome ? 1 : undefined} width={nativePaneChrome ? "100%" : undefined} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
-        <Text fg={colors.textDim}>{nativePaneChrome ? `${marker} ${time}` : `${marker} ${time}  `}</Text>
+        <Text fg={colors.textDim}>{nativePaneChrome ? time : `${time}  `}</Text>
         <ExternalLinkText url={item.url} label={sourceLabel} color={colors.textBright} />
       </Box>
       <Box flexDirection="column" paddingLeft={2} width={nativePaneChrome ? "100%" : undefined} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
@@ -336,12 +331,10 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
           )}
           {timelineItems.length > 0 && (
             <Box flexDirection="column" gap={1} width={contentWidth} style={contentStyle}>
-              {timelineItems.map((timelineItem, index) => (
+              {timelineItems.map((timelineItem) => (
                 <NewsStoryTimelineItemView
                   key={timelineItem.id}
                   item={timelineItem}
-                  index={index}
-                  total={timelineItems.length}
                   width={innerW}
                   nativePaneChrome={nativePaneChrome === true}
                 />

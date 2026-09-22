@@ -393,7 +393,7 @@ function CompanyView({
   const barsWidth = wide ? width - chartWidth - 1 : width;
 
   const tabs = [
-    { label: `Roles ${postings.length < summary.openCount ? `${postings.length} of ${formatCompact(summary.openCount)}` : summary.openCount}`, value: "roles" },
+    { label: "Roles", value: "roles" },
     { label: "Locations", value: "locations" },
     { label: "Seniority", value: "seniority" },
     { label: "Pay", value: "salary" },
@@ -604,7 +604,6 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
           ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
           ...(more.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more companies", tone: "muted" as const }] }] : []),
           ...(error ? [{ id: "error", parts: [{ text: error.slice(0, 60), tone: "warning" as const }] }] : []),
-          ...(data ? [{ id: "covered", parts: [{ text: `${formatNumber(data.covered, 0)} companies covered`, tone: "muted" as const }] }] : []),
         ],
     hints: open || selected
       ? [{ id: "ticker", key: "t", label: "icker", onPress: () => navigateTicker((open ?? selected?.ticker)!) }]

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ConfirmDialog,
   DataTableView,
   usePaneFooter,
   type DataTableCell,
@@ -9,12 +10,13 @@ import {
 import { TextFieldDialog } from "../../../components/pane-settings-dialog/field-dialogs";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { useDialog, type AlertContext } from "../../../ui/dialog";
+import { useDialog, type AlertContext, type PromptContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import {
   deserializeAlerts,
   editAlert,
+  formatAlertDescription,
   rearmAlert as rebuildAlert,
   readAlertsStoreError,
   serializeAlerts,
@@ -39,8 +41,7 @@ type AlertColumnId =
   | "away"
   | "condition"
   | "quote"
-  | "triggered"
-  | "rearm";
+  | "triggered";
 
 type AlertColumn = DataTableColumn & { id: AlertColumnId };
 
@@ -53,7 +54,6 @@ const ALERT_COLUMNS: AlertColumn[] = [
   { id: "condition", label: "Trigger", width: 7, align: "left" },
   { id: "quote", label: "Quote", width: 8, align: "left" },
   { id: "triggered", label: "Alerted", width: 8, align: "left" },
-  { id: "rearm", label: "", width: 6, align: "left" },
 ];
 
 const ALERT_TABLE_CONTENT_WIDTH = ALERT_COLUMNS.reduce(
@@ -91,10 +91,24 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     });
   }, [setAlertsJson]);
 
-  const deleteAlert = useCallback((id: string) => {
+  const deleteAlert = useCallback(async (id: string) => {
+    const alert = alerts.find((a) => a.id === id);
+    if (!alert) return;
+    const confirmed = await dialog.prompt<boolean>({
+      closeOnClickOutside: true,
+      content: (ctx: PromptContext<boolean>) => (
+        <ConfirmDialog
+          {...ctx}
+          title="Delete alert?"
+          body={[`${formatAlertDescription(alert)} will no longer be watched.`]}
+          confirmLabel="Delete"
+        />
+      ),
+    }).catch(() => false);
+    if (confirmed !== true) return;
     savePaneAlerts(alerts.filter((a) => a.id !== id));
     setSelectedIdx((prev) => Math.max(0, Math.min(prev, rows.length - 2)));
-  }, [alerts, rows.length, savePaneAlerts]);
+  }, [alerts, dialog, rows.length, savePaneAlerts]);
 
   const rearmAlert = useCallback((id: string) => {
     savePaneAlerts(
@@ -108,8 +122,13 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
 
   const deleteSelectedAlert = useCallback(() => {
     const selected = rows[selectedIdx];
-    if (selected) deleteAlert(selected.id);
+    if (selected) void deleteAlert(selected.id);
   }, [deleteAlert, rows, selectedIdx]);
+
+  const rearmSelectedAlert = useCallback(() => {
+    const selected = rows[selectedIdx];
+    if (selected?.status === "triggered") rearmAlert(selected.id);
+  }, [rearmAlert, rows, selectedIdx]);
 
   const editSelectedAlert = useCallback(() => {
     const selected = rows[selectedIdx];
@@ -166,10 +185,16 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
         onPress: deleteSelectedAlert,
         disabled: rows.length === 0,
       },
+      ...(rows[selectedIdx]?.status === "triggered"
+        ? [{ id: "rearm", key: "m", label: "re-arm", onPress: rearmSelectedAlert }]
+        : []),
     ],
   }), [
     deleteSelectedAlert,
     editSelectedAlert,
+    rearmSelectedAlert,
+    rows,
+    selectedIdx,
     quoteError,
     rows.length,
     startAddAlert,
@@ -196,13 +221,18 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
       editSelectedAlert();
       return true;
     }
+    if (event.name === "m") {
+      event.preventDefault?.();
+      rearmSelectedAlert();
+      return true;
+    }
     if (event.name === "escape") {
       event.preventDefault?.();
       close?.();
       return true;
     }
     return false;
-  }, [close, deleteSelectedAlert, editSelectedAlert, startAddAlert]);
+  }, [close, deleteSelectedAlert, editSelectedAlert, rearmSelectedAlert, startAddAlert]);
 
   const renderCell = useCallback((
     alert: AlertRule,
@@ -211,14 +241,6 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
     rowState: { selected: boolean },
   ): DataTableCell => {
     const selectedColor = rowState.selected ? colors.selectedText : undefined;
-    const actionMouseDown = (handler: () => void) => (
-      event: { preventDefault?: () => void; stopPropagation?: () => void },
-    ) => {
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      handler();
-    };
-
     switch (column.id) {
       case "status":
         return {
@@ -259,16 +281,8 @@ export function AlertsPane({ focused, width, height, close }: PaneProps) {
           text: alert.triggeredAt ? relativeTime(alert.triggeredAt) : "-",
           color: selectedColor ?? colors.textDim,
         };
-      case "rearm":
-        return alert.status === "triggered"
-          ? {
-              text: "Re-arm",
-              color: selectedColor ?? colors.textBright,
-              onMouseDown: actionMouseDown(() => rearmAlert(alert.id)),
-            }
-          : { text: "-", color: selectedColor ?? colors.textDim };
     }
-  }, [rearmAlert]);
+  }, []);
 
   return (
     <DataTableView<AlertRule, AlertColumn>
