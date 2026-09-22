@@ -56,8 +56,8 @@ test("Treasury curve axis and cursor use maturity rather than synthetic calendar
   latestSpy = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue(TREASURY_MATURITIES.map(({ maturity, years }, index) => ({ maturity, maturityYears: years, yield: 4 + index / 10, asOf: "2026-09-10" })));
   await act(async () => { setup = await testRender(<RemoteUiRegistryProvider><RegistryProbe /><Harness /></RemoteUiRegistryProvider>, { width: 70, height: 30 }); });
   await frame(); await frame();
-  expect(setup!.captureCharFrame()).toMatch(/1M.*5Y.*10Y.*20Y.*30Y/);
-  const chart = registry!.snapshot().find((node) => node.metadata?.kind === "static-chart")!;
+  expect(setup!.captureCharFrame()).toMatch(/1M.*10Y.*20Y.*30Y/);
+  const chart = registry!.snapshot().find((node) => node.metadata?.kind === "curve-chart")!;
   await act(async () => { await registry!.invoke(chart.id, "moveCursor", { x: 30, y: 4 }); });
   await frame(); await frame();
   expect(setup!.captureCharFrame()).toMatch(/\d+\.\dY/);

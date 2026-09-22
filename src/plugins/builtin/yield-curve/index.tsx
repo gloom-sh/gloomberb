@@ -1,22 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, DataTableView, Notice, PaneStatusBody, StaticChartSurface, TextField, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
-import { resolveChartPalette } from "../../../components/chart/core/palette";
+import { Button, CurveSurface, Notice, PaneStatusBody, TextField, usePaneNoticeFooter, type PaneFooterSegment } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
-import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, type InputRenderable } from "../../../ui";
+import { Box, type InputRenderable } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { yieldCurveHeadless } from "./headless";
-import { buildYieldCurveChart } from "./chart";
+import { buildYieldCurveSeries, formatMaturityYears } from "./chart";
 import { completeYieldCurve, loadHistoricalYieldCurve, yieldCurveDate } from "./history";
 import {
   curveAsOf,
   loadYieldCurve,
-  parseYieldPoints,
   spreadBasisPoints,
   type YieldPoint,
   yieldCurveErrors,
@@ -25,29 +22,8 @@ import {
 export { yieldCurveHeadless } from "./headless";
 
 const EMPTY_POINTS: YieldPoint[] = [];
-const TABLE_COLUMNS = [
-  { id: "maturity", label: "Maturity", width: 9, align: "left" as const },
-  { id: "yield", label: "Yield", width: 8, align: "right" as const },
-  { id: "asOf", label: "As of", width: 11, align: "left" as const },
-];
-
-function formatYield(y: number | null): string {
-  if (y == null) return "—";
-  return `${y.toFixed(2)}%`;
-}
-
 function formatYieldAxis(value: number): string {
   return `${value.toFixed(2)}%`;
-}
-
-const pointKey = (point: YieldPoint) => point.maturity;
-const noop = () => {};
-function renderPointCell(point: YieldPoint, column: { id: string }) {
-  return {
-    text: column.id === "yield"
-      ? formatYield(point.yield)
-      : column.id === "asOf" ? point.asOf ?? "—" : point.maturity,
-  };
 }
 
 export function YieldCurvePane({ focused, width, height }: PaneProps) {
@@ -131,14 +107,7 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
     ],
   });
 
-  const validPoints = asOf ? parseYieldPoints(points) : [];
-
-  const chartWidth = Math.max(10, width - 2);
-  const chartHeight = Math.min(12, Math.max(6, height - 18));
-
-  const palette = resolveChartPalette(colors, "positive");
-
-  const chart = buildYieldCurveChart(validPoints, Math.max(1, chartWidth - 8));
+  const series = useMemo(() => [buildYieldCurveSeries(points)], [points]);
 
   return (
     <Box flexDirection="column" width={width} height={height}>
@@ -155,40 +124,9 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       {dateError ? <Notice tone="negative">{dateError}</Notice> : null}
       <PaneStatusBody loading={loading && points.length === 0} error={points.length === 0 ? error : null}
         loadingLabel="Loading yield curve..." subject="yield curve">
-      {/* Scrollable chart + table */}
-      <ScrollBox flexGrow={1} scrollY focusable={false}>
-        <Box flexDirection="column">
-          {/* Chart */}
-          {chart.points.length >= 2 ? (
-            <Box flexDirection="column" paddingX={1} marginTop={1}>
-              <StaticChartSurface
-                points={chart.points}
-                calendarSpaced
-                xAxisTicks={chart.ticks}
-                formatXAxisCursorValue={chart.formatCursor}
-                width={chartWidth}
-                height={chartHeight}
-                mode="line"
-                colors={palette}
-                yAxisLabel="Yield (%)"
-                yAxisColor={colors.textDim}
-                formatYAxisValue={formatYieldAxis}
-              />
-            </Box>
-          ) : (
-            <Box paddingX={1} marginTop={1}>
-              <Text fg={colors.textMuted}>{points.length && !asOf ? "A curve requires matching observation dates" : "Not enough data for chart"}</Text>
-            </Box>
-          )}
-
-          <Box marginTop={1} height={12}>
-            <DataTableView columns={TABLE_COLUMNS} items={points} selection={{ kind: "none" }}
-              focused={focused && !editing} sortColumnId={null} sortDirection="asc" onHeaderClick={noop}
-              getItemKey={pointKey} rootHeight={12} emptyStateTitle="No Treasury observations"
-              renderCell={renderPointCell} />
-          </Box>
-        </Box>
-      </ScrollBox>
+        <CurveSurface series={series} width={width} height={Math.max(1, height - (editing ? 3 : 0) - (dateError ? 1 : 0))}
+          focused={focused && !editing} display={asOf ? "both" : "table"} valueLabel="Yield (%)"
+          formatValue={formatYieldAxis} formatX={formatMaturityYears} />
       </PaneStatusBody>
     </Box>
   );

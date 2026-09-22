@@ -50,6 +50,7 @@ import { volatilityModule } from "./builtin/volatility";
 import { worldIndicesModule } from "./builtin/world-indices";
 import { worldVenueMapModule } from "./builtin/world-venue-map";
 import { yieldCurveModule } from "./builtin/yield-curve";
+import { ratePathModule } from "./builtin/rate-path";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
   id: "application",
@@ -142,6 +143,7 @@ const browserMacroPlugin = composeBuiltinPlugin({
     economicCalendarModule,
     econStatisticsModule,
     yieldCurveModule,
+    ratePathModule,
     volatilityModule,
     creditConditionsModule,
     marketValuationModule,

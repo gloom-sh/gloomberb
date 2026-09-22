@@ -30,6 +30,7 @@ import { treasuryAuctionsModule } from "./treasury-auctions";
 import { worldIndicesModule } from "./world-indices";
 import { worldVenueMapModule } from "./world-venue-map";
 import { yieldCurveModule } from "./yield-curve";
+import { ratePathModule } from "./rate-path";
 import {
   attachValuationPersistence,
   resetValuationPersistence,
@@ -101,6 +102,7 @@ export const macroPlugin = composeBuiltinPlugin({
     economicCalendarModule,
     econStatisticsModule,
     yieldCurveModule,
+    ratePathModule,
     volatilityModule,
     creditConditionsModule,
     marketValuationModule,
