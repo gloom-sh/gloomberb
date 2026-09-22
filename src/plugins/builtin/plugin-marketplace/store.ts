@@ -75,6 +75,14 @@ export interface PluginManager {
    */
   load(directory: string): Promise<LoadedExternalPlugin | null>;
   /**
+   * Where each folder's remote default branch is now, keyed by folder. This is
+   * how a plugin the registry does not list can report an update: there is no
+   * reviewed commit to compare against, and `update` follows that branch.
+   * Absent for a host that cannot run git, and silent about folders it could
+   * not reach.
+   */
+  remoteHeads?(directories: readonly string[]): Promise<Record<string, string>>;
+  /**
    * Registers the plugin wherever its capabilities and brokers execute when
    * that is not this renderer. The desktop view renders panes, but forwards
    * data calls to its Bun process, which keeps its own registry; without this

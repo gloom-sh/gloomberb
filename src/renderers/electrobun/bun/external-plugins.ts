@@ -214,6 +214,12 @@ export function updateExternalPlugin(directory: string, pin?: DesktopPluginPin):
   });
 }
 
+/** The view cannot run git, so the update check for unlisted plugins happens here. */
+export async function readExternalPluginRemoteHeads(directories: readonly string[]): Promise<Record<string, string>> {
+  const { readPluginRemoteHeads } = await import("../../../cli/commands/plugins");
+  return readPluginRemoteHeads(directories);
+}
+
 export function removeExternalPlugin(directory: string): Promise<DesktopPluginOperationResult> {
   return attempt(async () => {
     const { removePlugin } = await import("../../../cli/commands/plugins");

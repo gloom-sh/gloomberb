@@ -1,6 +1,7 @@
 import { basename, join, resolve } from "path";
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync } from "fs";
-import { execFileSync } from "child_process";
+import { execFile as execFileCallback, execFileSync } from "child_process";
+import { promisify } from "util";
 import {
   getPluginsDir,
   isDirectoryOrLink,
@@ -21,6 +22,8 @@ import {
 import { fail } from "../errors";
 
 const PLUGINS_DIR = getPluginsDir();
+
+const execFile = promisify(execFileCallback);
 
 function ensurePluginsDir() {
   if (!existsSync(PLUGINS_DIR)) {
@@ -264,6 +267,58 @@ export function readPluginRemote(pluginDir: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** The sha from `git ls-remote origin HEAD`; null when the answer is not one. */
+export function parseRemoteHead(output: string): string | null {
+  const sha = output.trim().split(/\s+/)[0] ?? "";
+  return COMMIT_PATTERN.test(sha) ? sha : null;
+}
+
+/** A slow remote is a missing answer, not a hung pane. */
+const REMOTE_HEAD_TIMEOUT_MS = 8_000;
+
+/**
+ * Where the remote's default branch is now.
+ *
+ * This is the only way to answer "is there an update" for a plugin the
+ * registry does not list: there is no reviewed commit to compare against, and
+ * `update` lands exactly here. Network, so it never runs on a startup path,
+ * and a private repository without credentials must fail rather than sit on a
+ * credential prompt, hence `GIT_TERMINAL_PROMPT=0`.
+ */
+export async function readPluginRemoteHead(name: string): Promise<string | null> {
+  const dir = join(PLUGINS_DIR, validatePluginDirectoryName(name));
+  if (!existsSync(join(dir, ".git"))) return null;
+  if (lstatSync(dir, { throwIfNoEntry: false })?.isSymbolicLink()) return null;
+  try {
+    const { stdout } = await execFile("git", ["ls-remote", "origin", "HEAD"], {
+      cwd: dir,
+      timeout: REMOTE_HEAD_TIMEOUT_MS,
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_ASKPASS: "echo" },
+    });
+    return parseRemoteHead(stdout.toString());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remote heads for the given plugin folders, or every installed clone. Folders
+ * that are linked, not git, or unreachable are simply absent from the result.
+ */
+export async function readPluginRemoteHeads(names?: readonly string[]): Promise<Record<string, string>> {
+  const dirs = names?.length ? [...names] : installedPluginDirectories();
+  const heads: Record<string, string> = {};
+  await Promise.all(dirs.map(async (dir) => {
+    try {
+      const head = await readPluginRemoteHead(dir);
+      if (head) heads[dir] = head;
+    } catch {
+      // An invalid folder name is not worth failing the whole check over.
+    }
+  }));
+  return heads;
 }
 
 export async function updatePlugin(name: string, options: PluginCommandOptions = {}): Promise<PluginUpdateResult> {
@@ -558,7 +613,7 @@ export async function doctorPlugins(nameOrPath?: string): Promise<PluginDoctorRe
   return reports;
 }
 
-export function listPlugins() {
+export async function listPlugins(options: { check?: boolean } = {}) {
   const entries = installedPluginDirectories();
 
   if (entries.length === 0) {
@@ -566,6 +621,11 @@ export function listPlugins() {
     console.log(cliStyles.muted("Install one with: gloomberb install <github-user/repo>"));
     return;
   }
+
+  // Off by default: this is a local listing, and asking every remote turns it
+  // into a network call that can hang behind a credential prompt.
+  const pins = options.check ? await loadRegistryPins() : new Map<string, PluginPin>();
+  const heads = options.check ? await readPluginRemoteHeads(entries) : {};
 
   const rows = entries.map((name) => {
     const dir = join(PLUGINS_DIR, name);
@@ -583,7 +643,16 @@ export function listPlugins() {
     }
     const linked = lstatSync(dir).isSymbolicLink();
     const commit = readPluginCommit(dir);
-    return [name, version, linked ? "linked" : commit ? commit.slice(0, 7) : "—", description];
+    const row = [name, version, linked ? "linked" : commit ? commit.slice(0, 7) : "—", description];
+    if (!options.check) return row;
+    const remote = readPluginRemote(dir);
+    // A registry-listed plugin moves between reviewed commits, so what its
+    // branch holds today says nothing about whether an update is waiting.
+    const reviewed = remote ? pins.get(remote.toLowerCase())?.commit : undefined;
+    const target = reviewed ?? heads[name];
+    const behind = !linked && !!target && !!commit && !commit.toLowerCase().startsWith(target.toLowerCase());
+    row.splice(3, 0, linked ? "—" : behind ? target!.slice(0, 7) : "up to date");
+    return row;
   });
 
   console.log(renderSection("Installed Plugins"));
@@ -592,6 +661,7 @@ export function listPlugins() {
       { header: "Plugin" },
       { header: "Version" },
       { header: "Commit" },
+      ...(options.check ? [{ header: "Update" }] : []),
       { header: "Description" },
     ],
     rows,

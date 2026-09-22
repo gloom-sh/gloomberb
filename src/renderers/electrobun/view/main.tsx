@@ -140,6 +140,7 @@ async function boot() {
     install: (repo, pin) => backendRequest("plugins.install", { ref: repo, ...(pin ? { pin } : {}) }),
     update: (directory, pin) => backendRequest("plugins.update", { directory, ...(pin ? { pin } : {}) }),
     remove: (directory) => backendRequest("plugins.remove", { directory }),
+    remoteHeads: (directories) => backendRequest("plugins.remoteHeads", { directories: [...directories] }),
     load: async (directory) => {
       const bundle = await backendRequest("plugins.bundle", { directory });
       return bundle ? loadDesktopExternalPlugin(bundle) : null;

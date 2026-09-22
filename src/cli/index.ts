@@ -186,10 +186,14 @@ function createCoreCliCommands(
       aliases: ["list"],
       description: "List installed plugins",
       help: {
-        usage: ["plugins"],
+        usage: ["plugins [--check]"],
+        sections: [{
+          title: "Options",
+          lines: ["--check  ask each plugin's remote whether an update is waiting"],
+        }],
       },
-      execute: () => {
-        listPlugins();
+      execute: async (args) => {
+        await listPlugins({ check: args.includes("--check") });
       },
     },
     apiCliCommand,

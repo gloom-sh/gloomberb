@@ -8,6 +8,7 @@ import {
   isInstallable,
   isManaged,
   mergeCatalog,
+  needsRemoteCheck,
   registryPin,
   sortEntries,
   statusOf,
@@ -268,6 +269,79 @@ describe("hasUpdate", () => {
     });
 
     expect(hasUpdate(entry!)).toBe(false);
+  });
+
+  test("compares an unlisted plugin against its own remote", () => {
+    // Nothing in the registry to pin it, so the default branch is the answer,
+    // which is where `update` would land it.
+    const [behind] = mergeCatalog({
+      registry: [],
+      installed: [installedPlugin({ id: "social", directory: "gloomberb-social", commit: "1111111aaa" })],
+      remoteHeads: { "gloomberb-social": "2222222bbb" },
+      target: "desktop",
+    });
+    expect(behind!.remoteCommit).toBe("2222222bbb");
+    expect(hasUpdate(behind!)).toBe(true);
+    expect(versionLabel(behind!)).toBe("1.0.0 → 2222222");
+    expect(statusOf(behind!).kind).toBe("update");
+
+    const [current] = mergeCatalog({
+      registry: [],
+      installed: [installedPlugin({ id: "social", directory: "gloomberb-social", commit: "2222222bbb0000000000" })],
+      remoteHeads: { "gloomberb-social": "2222222bbb" },
+      target: "desktop",
+    });
+    expect(hasUpdate(current!)).toBe(false);
+  });
+
+  test("leaves a registry-pinned plugin on the reviewed commit, whatever its branch holds", () => {
+    const [entry] = mergeCatalog({
+      registry: [registryPlugin({ id: "a", commit: "abc1234" })],
+      installed: [installedPlugin({ id: "a", commit: "abc1234000" })],
+      remoteHeads: { a: "9999999" },
+      target: "tui",
+    });
+
+    expect(hasUpdate(entry!)).toBe(false);
+  });
+
+  test("says nothing until the remote has answered", () => {
+    const [entry] = mergeCatalog({
+      registry: [],
+      installed: [installedPlugin({ id: "social", directory: "gloomberb-social", commit: "1111111" })],
+      target: "desktop",
+    });
+
+    expect(hasUpdate(entry!)).toBe(false);
+    expect(versionLabel(entry!)).toBe("1.0.0");
+  });
+});
+
+describe("needsRemoteCheck", () => {
+  test("asks only for installed clones the registry does not pin", () => {
+    const [listed, unlisted, linked] = mergeCatalog({
+      registry: [registryPlugin({ id: "listed", ref: "v1.0.0" })],
+      installed: [
+        installedPlugin({ id: "listed" }),
+        installedPlugin({ id: "unlisted", directory: "gloomberb-social" }),
+        installedPlugin({ id: "linked", directory: "dev", linked: true }),
+      ],
+      target: "desktop",
+    });
+
+    expect(needsRemoteCheck(listed!)).toBe(false);
+    expect(needsRemoteCheck(unlisted!)).toBe(true);
+    expect(needsRemoteCheck(linked!)).toBe(false);
+  });
+
+  test("leaves built-ins alone", () => {
+    const [builtin] = mergeCatalog({
+      registry: [registryPlugin({ id: "portfolio", bundled: true })],
+      installed: [installedPlugin({ id: "portfolio", source: "builtin", directory: undefined })],
+      target: "tui",
+    });
+
+    expect(needsRemoteCheck(builtin!)).toBe(false);
   });
 });
 

@@ -33,6 +33,7 @@ import {
   isInstallable,
   isManaged,
   mergeCatalog,
+  needsRemoteCheck,
   registryPin,
   SECTION_LABELS,
   sortEntries,
@@ -217,6 +218,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [localRevision, setLocalRevision] = useState(0);
   const [busy, setBusy] = useState<Busy>(null);
   const [lastError, setLastError] = useState<string | null>(null);
+  // Remote heads for plugins the registry does not pin, so a private or
+  // side-loaded install can report an update like every other row.
+  const [remoteHeads, setRemoteHeads] = useState<Record<string, string>>({});
+  const [checkingRemotes, setCheckingRemotes] = useState(false);
   const busyId = busy?.id ?? null;
   const renderRow = useCallback((
     row: MarketplaceRow,
@@ -243,8 +248,36 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const entries = useMemo(() => {
     void localRevision;
     const installed = host?.listInstalled() ?? [];
-    return sortEntries(mergeCatalog({ registry, installed, target }));
-  }, [host, registry, target, localRevision]);
+    return sortEntries(mergeCatalog({ registry, installed, target, remoteHeads }));
+  }, [host, registry, target, localRevision, remoteHeads]);
+
+  // Keyed by the folders themselves: the entries array is rebuilt whenever an
+  // answer lands, and re-running the check on its own result would never stop.
+  const unlistedDirectories = useMemo(
+    () => entries.filter(needsRemoteCheck).map((entry) => entry.directory!).sort(),
+    [entries],
+  );
+  const unlistedKey = unlistedDirectories.join(",");
+
+  useEffect(() => {
+    const check = manager?.remoteHeads;
+    if (!check || unlistedKey.length === 0) return;
+    let cancelled = false;
+    setCheckingRemotes(true);
+    void check(unlistedKey.split(","))
+      // Offline, or a private repository this machine has no credentials for:
+      // the row keeps whatever it knew, without an error in the way.
+      .catch(() => ({}))
+      .then((heads) => {
+        if (cancelled) return;
+        setRemoteHeads(heads);
+        setCheckingRemotes(false);
+      });
+    return () => {
+      cancelled = true;
+      setCheckingRemotes(false);
+    };
+  }, [manager, unlistedKey, localRevision]);
 
   const visible = useMemo(
     () => filterEntries(entries, { query, category, showBuiltin }),
@@ -495,6 +528,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (status === "loading") info.push({ id: "loading", parts: [{ text: "loading", tone: "muted" }] });
   if (status === "error") info.push({ id: "error", parts: [{ text: "catalog unavailable", tone: "warning" }] });
   if (stale) info.push({ id: "stale", parts: [{ text: "stale catalog", tone: "warning" }] });
+  if (checkingRemotes) info.push({ id: "remote-check", parts: [{ text: "checking unlisted plugins", tone: "muted" }] });
   if (busy) {
     const name = entries.find((entry) => entry.id === busy.id)?.name ?? busy.id;
     info.push({ id: "busy", parts: [{ text: `${busy.verb} ${name}`, tone: "muted" }] });

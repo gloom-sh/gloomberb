@@ -45,6 +45,7 @@ import {
   deactivateExternalPlugin,
   installExternalPlugin,
   removeExternalPlugin,
+  readExternalPluginRemoteHeads,
   updateExternalPlugin,
 } from "./external-plugins";
 import { handleDesktopPluginStateRequest } from "./desktop/plugin-state";
@@ -517,6 +518,8 @@ async function handleBackendRequest(
       return updateExternalPlugin(request.payload.directory, request.payload.pin);
     case "plugins.remove":
       return removeExternalPlugin(request.payload.directory);
+    case "plugins.remoteHeads":
+      return readExternalPluginRemoteHeads(request.payload.directories);
     case "plugins.bundle":
       return bundleExternalPluginDirectory(request.payload.directory);
     case "plugins.activate":

@@ -87,6 +87,11 @@ export interface MarketplaceEntry {
   /** The registry's tag, when the plugin is installable. */
   availableVersion?: string;
   availableCommit?: string;
+  /**
+   * Where the checkout's own remote is, for a plugin the registry does not
+   * pin. Filled in by a check the pane runs; absent until it answers.
+   */
+  remoteCommit?: string;
   minGloomberb?: string;
   contributes?: RegistryPlugin["contributes"];
   loadError?: string;
@@ -128,10 +133,15 @@ function repoDirectory(repo: string | undefined): string | null {
 
 export function mergeCatalog(options: {
   registry: readonly RegistryPlugin[];
+  /** Remote default-branch heads by plugin folder, from `PluginManager.remoteHeads`. */
+  remoteHeads?: Readonly<Record<string, string>>;
   installed: readonly InstalledPlugin[];
   target: PluginTarget;
 }): MarketplaceEntry[] {
-  const { registry, installed, target } = options;
+  const { registry, installed, target, remoteHeads } = options;
+  const remoteHeadFor = (local: InstalledPlugin | undefined) => (
+    local?.directory ? remoteHeads?.[local.directory] : undefined
+  );
   const installedById = new Map(installed.map((entry) => [entry.id, entry]));
   const entries: MarketplaceEntry[] = [];
 
@@ -191,6 +201,7 @@ export function mergeCatalog(options: {
       installedCommit: local?.commit,
       availableVersion: plugin.ref,
       availableCommit: plugin.commit,
+      remoteCommit: remoteHeadFor(local),
       minGloomberb: plugin.minGloomberb,
       contributes: plugin.contributes,
       loadError: local?.loadError,
@@ -236,6 +247,7 @@ export function mergeCatalog(options: {
       linked: local.linked === true,
       installedVersion: local.version,
       installedCommit: local.commit,
+      remoteCommit: remoteHeadFor(local),
       loadError: local.loadError,
       needsSetup: local.needsSetup === true,
       hasSetup: local.hasSetup === true,
@@ -250,21 +262,46 @@ export function mergeCatalog(options: {
   return entries;
 }
 
+/** The commit an update would land on: the reviewed one, or the remote's head. */
+function targetCommit(entry: MarketplaceEntry): string | undefined {
+  // A registry-listed plugin moves between reviewed commits, never to whatever
+  // its default branch holds today, so its own remote does not get a say.
+  if (entry.availableVersion || entry.availableCommit) return entry.availableCommit;
+  return entry.remoteCommit;
+}
+
 /**
- * Whether the registry has something newer than what is installed.
+ * Whether there is something newer than what is installed.
  *
- * Versions decide when both sides have one; otherwise the reviewed commit is
- * compared with the checked-out one. A linked dev checkout is never "behind":
- * the developer's working copy is the source of truth there.
+ * Versions decide when both sides have one; otherwise the commit an update
+ * would land on is compared with the checked-out one. For a plugin the
+ * registry lists that is the reviewed commit, and for one it does not it is
+ * the remote's default branch, which is exactly where `update` goes. A linked
+ * dev checkout is never "behind": the developer's working copy is the source
+ * of truth there.
  */
 export function hasUpdate(entry: MarketplaceEntry): boolean {
   if (!entry.installed || entry.bundled || entry.linked) return false;
   const byVersion = compareSemver(entry.installedVersion, entry.availableVersion);
   if (byVersion !== null) return byVersion < 0;
-  if (entry.availableCommit && entry.installedCommit) {
-    return !entry.installedCommit.toLowerCase().startsWith(entry.availableCommit.toLowerCase());
+  const target = targetCommit(entry);
+  if (target && entry.installedCommit) {
+    return !entry.installedCommit.toLowerCase().startsWith(target.toLowerCase());
   }
   return false;
+}
+
+/**
+ * Whether this row's update state can only be answered by asking its remote:
+ * installed from git, managed by the host, and not pinned by the registry.
+ */
+export function needsRemoteCheck(entry: MarketplaceEntry): boolean {
+  return entry.installed
+    && !entry.bundled
+    && !entry.linked
+    && !!entry.directory
+    && !entry.availableVersion
+    && !entry.availableCommit;
 }
 
 /** `1.2.0`, or `1.2.0 → 1.3.0` when an update is waiting. */
@@ -273,7 +310,7 @@ export function versionLabel(entry: MarketplaceEntry): string {
   const available = formatVersion(entry.availableVersion);
   if (!entry.installed) return available ?? "";
   if (hasUpdate(entry)) {
-    const next = available ?? entry.availableCommit?.slice(0, 7) ?? "";
+    const next = available ?? targetCommit(entry)?.slice(0, 7) ?? "";
     return `${installed ?? entry.installedCommit?.slice(0, 7) ?? "?"} → ${next}`;
   }
   return installed ?? entry.installedCommit?.slice(0, 7) ?? "";

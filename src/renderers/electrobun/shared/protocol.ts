@@ -199,6 +199,8 @@ export interface DesktopBackendRequestMap {
   "plugins.install": { request: { ref: string; pin?: DesktopPluginPin }; response: DesktopPluginOperationResult };
   "plugins.update": { request: { directory: string; pin?: DesktopPluginPin }; response: DesktopPluginOperationResult };
   "plugins.remove": { request: { directory: string }; response: DesktopPluginOperationResult };
+  /** Remote default-branch heads by folder, for plugins the registry does not pin. */
+  "plugins.remoteHeads": { request: { directories: string[] }; response: Record<string, string> };
   /** Compiles one plugin directory, fresh, for activation in the view. */
   "plugins.bundle": { request: { directory: string }; response: DesktopExternalPluginBundle | null };
   /**

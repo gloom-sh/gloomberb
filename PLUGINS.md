@@ -33,6 +33,14 @@ holds that day, and `update` moves it to the next reviewed one. A plugin
 installed from a repository the registry does not list follows the remote's
 default branch instead.
 
+Either way the Plugins pane says when an update is waiting. For a listed
+plugin that is the reviewed commit; for an unlisted one, including a private
+repository, the pane asks the checkout's own remote where its default branch
+is, which is exactly where `update` would land it. `gloomberb plugins --check`
+answers the same question from the terminal. The check needs whatever
+credentials the clone needs: a private repository without them is reported as
+nothing new rather than as an error, and it never blocks on a prompt.
+
 ## Developing a plugin
 
 Work on a plugin from its own checkout rather than editing under

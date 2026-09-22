@@ -37,5 +37,9 @@ export function createNodePluginManager(target: PluginTarget): PluginManager {
     load: (directory): Promise<LoadedExternalPlugin | null> => (
       loadExternalPlugin(join(getPluginsDir(), directory), target, { fresh: true })
     ),
+    remoteHeads: async (directories) => {
+      const { readPluginRemoteHeads } = await import("../cli/commands/plugins");
+      return readPluginRemoteHeads(directories);
+    },
   };
 }
