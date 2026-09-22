@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { Button, NumberField, TextField, SelectButton, Notice, type SelectControl } from "../../../components";
 import { useInputCapture, useShortcut } from "../../../public/react";
 import { Box, ScrollBox } from "../../../ui";
+import { useDialogState } from "../../../ui/dialog";
 import { parseScenarioInputFields } from "./state";
 import { parseLegs, type ScenarioLeg, type ScenarioPosition, type ScenarioControls } from "./model";
 
@@ -20,6 +21,9 @@ export function ScenarioLegEditor({ leg, focused, width, onSave, onCancel }: {
   const focusIds = [...fieldIds, "side", "direction"] as const;
   const sideControl = useRef<SelectControl>(null), directionControl = useRef<SelectControl>(null);
   const [error, setError] = useState<string | null>(null);
+  // While the Option or Position choice dialog is open it owns Escape, Enter and
+  // Tab; the form must not cancel itself or move focus underneath it.
+  const dialogOpen = useDialogState((state) => state.isOpen);
   useInputCapture(focused);
   const submit = () => {
     try {
@@ -38,7 +42,7 @@ export function ScenarioLegEditor({ leg, focused, width, onSave, onCancel }: {
     } else if (event.name === "escape") {
       event.preventDefault(); event.stopPropagation(); onCancel();
     }
-  }, { enabled: focused, phase: "before", allowEditable: true, scope: "osa-leg-form" });
+  }, { enabled: focused && !dialogOpen, phase: "before", allowEditable: true, scope: "osa-leg-form" });
   const labels: Record<Field, string> = { strike: "Strike", expiration: "Expiry (YYYY-MM-DD)",
     quantity: "Contracts", price: "Entry price / unit", volatility: "IV %", multiplier: "Units / contract" };
   const fieldWidth = Math.max(16, Math.min(32, Math.floor((width - 5) / 2)));

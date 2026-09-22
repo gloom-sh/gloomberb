@@ -52,7 +52,14 @@ export interface ScenarioExpiryRisk {
   reason: string | null;
 }
 
-export interface ScenarioGridRow { spot: number; move: number | null; values: number[] }
+export interface ScenarioGridRow {
+  spot: number;
+  move: number | null;
+  values: number[];
+  /** A strike or terminal breakeven inserted between the even steps. */
+  landmark?: "strike" | "breakeven";
+}
+export const SCENARIO_GRID_STEPS = 20;
 
 export interface ScenarioModel {
   position: ScenarioPosition;
@@ -283,11 +290,20 @@ export function buildScenario(position: ScenarioPosition, input: Partial<Scenari
   const low = Math.max(0, position.spot * (1 - spotRange));
   const high = anchor * (1 + spotRange);
   if (!finite(high)) throw new Error("Spot range exceeds model precision.");
-  const grid = Array.from({ length: 11 }, (_, index): ScenarioGridRow => {
-    const spot = low + (high - low) * index / 10;
-    return { spot, move: position.spot > 0 ? spot / position.spot - 1 : null,
-      values: dates.map((date) => aggregate(prepared, spot, date, volShift).pnl) };
-  });
+  // Even steps put spot on its own row; strikes and breakevens inside the range
+  // are rows too, so the profit zone of a spread is never hidden between steps.
+  const row = (spot: number, landmark?: ScenarioGridRow["landmark"]): ScenarioGridRow => ({
+    spot, move: position.spot > 0 ? spot / position.spot - 1 : null, ...(landmark ? { landmark } : {}),
+    values: dates.map((date) => aggregate(prepared, spot, date, volShift).pnl) });
+  const steps = Array.from({ length: SCENARIO_GRID_STEPS + 1 }, (_, index) => low + (high - low) * index / SCENARIO_GRID_STEPS);
+  // Only a landmark that coincides with a step is skipped; a strike a fraction
+  // of a percent away still gets its own row, since it is the number a reader
+  // wants to find.
+  const near = (spot: number) => steps.some((step) => Math.abs(step - spot) <= Math.max(spot, 1) * 1e-6);
+  const grid = [...steps.map((spot) => row(spot)),
+    ...[...new Set(position.legs.map((leg) => leg.strike))].filter((spot) => spot > low && spot < high && !near(spot)).map((spot) => row(spot, "strike")),
+    ...risk.breakevens.filter((spot) => spot > low && spot < high && !near(spot)).map((spot) => row(spot, "breakeven"))]
+    .sort((a, b) => a.spot - b.spot);
   // Include all kinks and roots so strikes outside the spot grid remain visible.
   const landmarks = [...position.legs.map((leg) => leg.strike), ...risk.breakevens];
   const chartLow = Math.max(0, Math.min(low, ...landmarks.map((spot) => spot * 0.95)));

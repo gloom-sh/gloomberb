@@ -134,10 +134,14 @@ describe("exact terminal risk", () => {
 describe("scenario controls and dates", () => {
   test("grid dates span through the first 16:00 ET close, with uniform tenor spacing", () => {
     const scenario = buildScenario(position());
-    expect(scenario.grid).toHaveLength(11);
+    // Twenty even steps, spot on its own row, plus the 105 breakeven as a landmark row;
+    // the 100 strike coincides with the spot step and is not duplicated.
+    expect(scenario.grid).toHaveLength(22);
     expect(scenario.grid[0]!.spot).toBe(80);
-    expect(scenario.grid[5]!.move).toBe(0);
+    expect(scenario.grid[10]!.move).toBe(0);
     expect(scenario.grid.at(-1)!.spot).toBe(120);
+    expect(scenario.grid.filter((row) => row.landmark)).toEqual([expect.objectContaining({ spot: 105, landmark: "breakeven" })]);
+    expect(scenario.grid.map((row) => row.spot)).toEqual([...scenario.grid.map((row) => row.spot)].sort((a, b) => a - b));
     expect(scenario.dates).toHaveLength(5);
     expect(scenario.dates[0]).toBe(AS_OF);
     expect(scenario.expiryDate).toBe(Date.UTC(2026, 11, 18, 21));

@@ -4,6 +4,7 @@ import { Button, ChoiceDialog, ConfirmDialog, DataTableView, EmptyState, KeyValu
 import { useAsyncResource, useInputCapture, usePaneInstance, usePaneSettingValue, usePaneTicker,
   usePluginAppActions, usePluginPaneState, usePluginState, useShortcut } from "../../../public/react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
+import { useDialogState } from "../../../ui/dialog";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import type { PaneProps } from "../../../types/plugin";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -152,8 +153,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     ...(position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ?? "input assumptions"}`, tone: "muted" as const }] }] : []),
   ], hints }), [hints, position, market?.source, resource.loading, error]);
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
+  // A choice dialog (scenario date, saved strategies) owns the keys while open.
+  const dialogOpen = useDialogState((state) => state.isOpen);
   useShortcut((event) => {
-    if (event.defaultPrevented || event.propagationStopped) return;
+    if (event.defaultPrevented || event.propagationStopped || dialogOpen) return;
     if (volActive) {
       if (["escape", "tab", "enter", "return"].includes(event.name ?? "")) {
         event.preventDefault(); event.stopPropagation(); shiftVol(volText); setVolActive(false);
@@ -167,7 +170,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     const hint = hints.find((hint) => hint.key === event.name);
     if (hint) { event.preventDefault(); event.stopPropagation(); hint.onPress(); }
     else if (event.name === "r") void resource.reload();
-  }, { enabled: focused, phase: "before", scope: "osa-actions", allowEditable: true });
+  }, { enabled: focused && !dialogOpen, phase: "before", scope: "osa-actions", allowEditable: true });
   const controlsHeight = useUiCapabilities().nativePaneChrome ? 3 : 2;
   const bodyHeight = Math.max(3, height - 8 - controlsHeight);
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
@@ -179,15 +182,20 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
       rootHeight={Math.min(bodyHeight, scenario.grid.length + 1)} items={scenario.grid.toSorted((a, b) => { const value = (row: typeof a) => gridSort.id === "spot" ? row.spot : gridSort.id === "move" ? row.move ?? 0 : row.values[Number(gridSort.id)] ?? 0; return (value(a) - value(b)) * (gridSort.direction === "asc" ? 1 : -1); })}
       sortColumnId={gridSort.id} sortDirection={gridSort.direction} onHeaderClick={(id) => setGridSort({ id, direction: gridSort.id === id && gridSort.direction === "asc" ? "desc" : "asc" })}
-      emptyStateTitle="No scenario values." getItemKey={(row) => String(row.spot)}
+      emptyStateTitle="No scenario values." getItemKey={(row) => `${row.landmark ?? "step"}:${row.spot}`}
       columns={[{ id: "spot", label: `Spot ${position?.currency ?? ""}`, width: 14, align: "right" }, { id: "move", label: "Move %", width: 10, align: "right" },
+        { id: "mark", label: "", width: 10, align: "left" },
         ...scenario.dates.map((date, i) => ({ id: String(i), label: dateLabel(date).slice(5), width: 13, align: "right" as const }))]}
       renderCell={(row, column) => {
-        if (column.id === "spot") return { text: money(row.spot) };
-        if (column.id === "move") return { text: row.move == null ? "--" : (row.move * 100).toFixed(1) };
+        const atSpot = row.move != null && Math.abs(row.move) < 1e-9;
+        if (column.id === "spot") return { text: money(row.spot), color: row.landmark ? colors.warning : atSpot ? colors.textBright : colors.text };
+        if (column.id === "move") return { text: row.move == null ? "--" : `${row.move > 0 ? "+" : ""}${(row.move * 100).toFixed(1)}`, color: colors.textMuted };
+        if (column.id === "mark") return { text: row.landmark ?? (atSpot ? "spot" : ""), color: row.landmark ? colors.warning : colors.textMuted };
         const value = row.values[Number(column.id)] ?? 0;
+        // Shade by size so the profit zone and the wings read at a glance.
+        const peak = Math.max(1, ...scenario.grid.flatMap((entry) => entry.values.map(Math.abs)));
         return { text: money(value), color: value >= 0 ? colors.positive : colors.negative,
-          backgroundColor: blendHex(colors.bg, value >= 0 ? colors.positive : colors.negative, .12) };
+          backgroundColor: blendHex(colors.bg, value >= 0 ? colors.positive : colors.negative, 0.06 + 0.3 * Math.min(1, Math.abs(value) / peak)) };
       }} selection={{ kind: "index", selectedIndex: gridIndex, onChange: setGridIndex }} onActivate={() => {}} />
     : <DataTableView<ScenarioLeg> focused={focused && !volActive} rootWidth={width} rootHeight={Math.min(bodyHeight, (position?.legs.length ?? 0) + 1)}
       items={(position?.legs ?? []).toSorted((a, b) => { const x = a[sort.id as keyof ScenarioLeg], y = b[sort.id as keyof ScenarioLeg]; return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * (sort.direction === "asc" ? 1 : -1); })}
