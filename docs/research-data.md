@@ -118,6 +118,13 @@ Amendment status uses the existing footer. Headless reports retain the candidate
 
 For 13F option positions, reported values and shares refer to the underlying security. The 13F percentage is the share of reported value, not an option premium or portfolio delta. The position type remains identified in the holdings table, and exports retain this value basis.
 
+Congress research uses House Clerk periodic transaction reports. Ticker searches
+filter the trades extracted from each filing window, not the filing index itself.
+An empty window therefore does not mean that the ticker has no disclosures in
+that year. The Congress tab and `CG` keep the next window available, and earlier
+years are requested explicitly. Pending document processing and failed source
+reads are reported in the footer warning and in structured pagination metadata.
+
 Incomplete filing coverage and unreconciled amendments appear in the pane’s warning indicator; open it to inspect the affected reporting periods and filings.
 
 ## Treasury auctions

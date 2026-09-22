@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { CloudCongressHousePayload } from "../../../api-client";
 import {
   canLoadMoreCongress,
-  congressPageAfterEmpty,
   congressScanNotice,
   mergeCongressPages,
   nextCongressPage,
@@ -58,11 +57,10 @@ describe("congress paging", () => {
     // Each earlier year is a fresh set of source documents to read.
     expect(nextCongressPage(payload({ hasMore: false, hasMoreFilings: false }))).toBeNull();
     expect(canLoadMoreCongress(payload({ hasMore: false, hasMoreFilings: false }))).toBe(false);
-    expect(nextCongressPage(congressPageAfterEmpty(payload({
-      hasMore: true,
-      filingsScanned: 20,
-      filingCount: 80,
-    })))).toBeNull();
+    // A filtered filing window can be empty while a later window has matches.
+    expect(nextCongressPage(mergeCongressPages(payload(), payload({
+      filingOffset: 20, nextFilingOffset: 40, trades: [],
+    })))).toEqual({ year: 2026, offset: 0, filingOffset: 40 });
   });
 
   test("offers the earlier year only when asked, and only back to 2008", () => {

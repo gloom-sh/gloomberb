@@ -22,7 +22,6 @@ import {
   CONGRESS_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
   canLoadMoreCongress,
-  congressPageAfterEmpty,
   mergeCongressPages,
   nextCongressPage,
   buildMemberColumns,
@@ -53,7 +52,7 @@ import { loadCongressHouse } from "./client";
 
 export { CONGRESS_TRADES_PANE_ID } from "./model";
 
-export function CongressTradesPane({ focused, width, height }: PaneProps) {
+export function CongressTradesPane({ focused, width, height, tickerFilter }: PaneProps & { tickerFilter?: string }) {
   const rendererHost = useRendererHost();
   const [payload, setPayload] = useState<CloudCongressHousePayload | null>(null);
   const [status, setStatus] = useState<LoadStatus>("idle");
@@ -61,7 +60,8 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const [activeTab, setActiveTab] = usePluginPaneState<CongressTab>("activeTab", "trades");
+  const [savedTab, setActiveTab] = usePluginPaneState<CongressTab>("activeTab", "trades");
+  const activeTab = tickerFilter ? "trades" : savedTab;
   const [selectedTradeId, setSelectedTradeId] = useDebouncedPluginPaneState<string | null>("selectedTradeId", null);
   const [selectedMemberId, setSelectedMemberId] = useDebouncedPluginPaneState<string | null>("selectedMemberId", null);
   const [detailMode, setDetailMode] = useState<DetailMode>(null);
@@ -85,6 +85,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
       limit: CONGRESS_TRADE_LIMIT,
       filingLimit: CONGRESS_FILING_LIMIT,
       refresh,
+      ticker: tickerFilter,
     })
       .then((nextPayload) => {
         if (fetchGenRef.current !== gen) return;
@@ -99,7 +100,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
         setError(loadError instanceof Error ? loadError.message : String(loadError));
         setStatus("error");
       });
-  }, []);
+  }, [tickerFilter]);
 
   const loadPage = useCallback((request: ReturnType<typeof nextCongressPage>) => {
     if (!request || !payload) return;
@@ -109,15 +110,13 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
       ...request,
       limit: CONGRESS_TRADE_LIMIT,
       filingLimit: CONGRESS_FILING_LIMIT,
+      ticker: tickerFilter,
     })
       .then((nextPayload) => {
         if (fetchGenRef.current !== gen) return;
         setPayload((current) => {
           if (!current) return nextPayload;
-          const merged = mergeCongressPages(current, nextPayload);
-          return merged.trades.length > current.trades.length
-            ? merged
-            : congressPageAfterEmpty(merged);
+          return mergeCongressPages(current, nextPayload);
         });
       })
       .catch((loadError) => {
@@ -128,7 +127,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
         if (fetchGenRef.current !== gen) return;
         setLoadingMore(false);
       });
-  }, [payload]);
+  }, [payload, tickerFilter]);
 
   const loadMore = useCallback(() => {
     if (!payload || loadingMore || status !== "loaded") return;
@@ -152,6 +151,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
 
   useEffect(() => {
     load(false);
+    return () => { fetchGenRef.current += 1; };
   }, [load]);
 
   // Filings would otherwise age indefinitely in an open pane.
@@ -164,7 +164,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
   const members = payload?.members ?? [];
   const tradeRows = useMemo(() => sortedTrades(trades, tradeSort), [trades, tradeSort]);
   const memberRows = useMemo(() => sortedMembers(members, memberSort), [members, memberSort]);
-  const tradeColumns = useMemo(() => buildTradeColumns(width), [width]);
+  const tradeColumns = useMemo(() => buildTradeColumns(width, !!tickerFilter), [width, tickerFilter]);
   const memberColumns = useMemo(() => buildMemberColumns(width), [width]);
   const selectedTradeIndex = selectedIndexById(tradeRows, selectedTradeId);
   const selectedMemberIndex = selectedIndexById(memberRows, selectedMemberId);
@@ -243,10 +243,11 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     focused,
     load,
     loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
+    loadMore: payload && canLoadMoreCongress(payload) ? loadMore : null,
     openSelectedTicker,
     openSelectedTradeMember,
     openSelectedTradeSource,
-    selectTab,
+    selectTab: tickerFilter ? () => {} : selectTab,
   });
 
   // Filings the scan has not read yet are a gap in the window on screen, so
@@ -264,6 +265,8 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     detailTrade,
     error,
     loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
+    loadMore: payload && canLoadMoreCongress(payload) ? loadMore : null,
+    loadingMore,
     openSelectedTicker,
     openSelectedTradeMember,
     openSelectedTradeSource,
@@ -290,7 +293,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
       ? detailMember.memberName
       : undefined;
 
-  const tabs = (
+  const tabs = tickerFilter ? null : (
     <Box height={1}>
       <Tabs
         tabs={[
@@ -300,7 +303,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
         activeValue={activeTab}
         onSelect={selectTab}
         compact
-        variant="pill"
+        variant="underline"
         focused={focused && !detailMode}
       />
     </Box>
@@ -338,7 +341,7 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
           onRootKeyDown={handleRootKeyDown}
           onDetailKeyDown={handleDetailKeyDown}
           rootWidth={width}
-          rootHeight={Math.max(1, height - 1)}
+          rootHeight={Math.max(1, height - (tickerFilter ? 0 : 1))}
           columns={tradeColumns}
           items={tradeRows}
           sortColumnId={tradeSort.columnId}

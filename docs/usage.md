@@ -151,6 +151,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `TWIT <query>` | Ticker-related market posts |
 | `TBO` | TheBuildout infrastructure intelligence |
 | `CG` | Congress trading disclosures |
+
 | `WEI` | Global equity indices |
 | `MAP` | Live world venue map with local market status and clocks |
 | `FUT` | Futures quote aliases across index, rates, energy, metals, grains, and FX |
@@ -171,6 +172,16 @@ Correlation uses matching observation times when inputs have different frequenci
 | `BI` / `SP` | S&P 500 sector performance |
 | `FXC` | Major FX cross rates |
 | `FNG` | Fear and greed market gauge ([Fear & Greed plugin](https://github.com/gloom-sh/gloom-fear-greed)) |
+Ticker Research includes a **Congress** tab for House transactions in the selected
+ticker. Scroll to append filing windows; `n` or its footer action continues a
+window with no matching transactions. After the year's filings, `p` appends the
+previous year. Select a trade for its disclosure details; `m`, `t`, and `o` open
+the member, ticker, and source filing. Dates include the year when comparing
+transactions across years.
+
+The same feed is available through `gloomberb fn CG AAPL --year 2026 --json`.
+Use `--filingOffset` and `--offset` with the returned pagination metadata to read
+additional windows and trades.
 
 `FUT` keeps each rolling quote alias as its symbol and displays the provider's contract name when available. Search also matches that name. A month in this label describes the captured quote; the app does not derive an expiry date or establish the roll-adjustment basis of the alias's historical series.
 

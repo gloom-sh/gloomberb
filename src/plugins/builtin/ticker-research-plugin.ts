@@ -1,4 +1,5 @@
 import { chartComposerModule } from "./chart-composer";
+import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
 import { executivesModule } from "./executives";
 import { filingEventsModule } from "./filing-events";
@@ -26,6 +27,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
   modules: [
     tickerDetailModule,
     chartComposerModule,
+    congressResearchModule,
     optionsModule,
     optionsCalculatorModule,
     volSurfaceModule,

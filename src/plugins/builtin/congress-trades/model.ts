@@ -151,12 +151,12 @@ export function nextSort<TColumn extends string>(
   };
 }
 
-export function buildTradeColumns(width: number): TradeColumn[] {
-  const filedWidth = 7;
-  const txWidth = 7;
+export function buildTradeColumns(width: number, tickerView = false): TradeColumn[] {
+  const filedWidth = 10;
+  const txWidth = 10;
   const lagWidth = 5;
   const sideWidth = 5;
-  const tickerWidth = 12;
+  const tickerWidth = tickerView ? 0 : 12;
   const amountWidth = 14;
   const ownerWidth = 8;
   const memberWidth = Math.max(
@@ -169,7 +169,7 @@ export function buildTradeColumns(width: number): TradeColumn[] {
     { id: "lag", label: "LAG", width: lagWidth, align: "right" },
     { id: "member", label: "MEMBER", width: memberWidth, align: "left" },
     { id: "side", label: "SIDE", width: sideWidth, align: "left" },
-    { id: "ticker", label: "TICKER", width: tickerWidth, align: "left" },
+    ...(!tickerView ? [{ id: "ticker" as const, label: "TICKER", width: tickerWidth, align: "left" as const }] : []),
     { id: "amount", label: "AMOUNT", width: amountWidth, align: "right" },
     { id: "owner", label: "OWNER", width: ownerWidth, align: "left" },
   ];
@@ -307,16 +307,6 @@ export function congressScanNotice(payload: CloudCongressHousePayload): string |
   if (pending > 0) return `${pending + failed} filings not read yet, retrying later`;
   if (failed > 0) return `${failed} filings unavailable`;
   return null;
-}
-
-export function congressPageAfterEmpty(payload: CloudCongressHousePayload): CloudCongressHousePayload {
-  return {
-    ...payload,
-    hasMore: false,
-    hasMoreFilings: false,
-    filingCount: payload.filingsScanned,
-    nextFilingOffset: congressFilingOffset(payload) + payload.filingsScanned,
-  };
 }
 
 export function mergeCongressPages(

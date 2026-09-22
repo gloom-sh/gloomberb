@@ -21,7 +21,6 @@ import {
   CONGRESS_MEMBER_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
   canLoadMoreCongress,
-  congressPageAfterEmpty,
   congressScanNotice,
   mergeCongressPages,
   nextCongressPage,
@@ -177,14 +176,12 @@ export function MemberTradesDetail({
           trade.memberName === member.memberName
           && trade.stateDistrict === member.stateDistrict
         ));
-        // A member filter often yields nothing new; without this the table would
-        // keep asking for the next window until it ran out of years.
-        setDetailPayload(
-          merged.trades.length > (detailPayload?.trades.length ?? 0)
-            ? merged
-            : congressPageAfterEmpty(merged),
-        );
+        setDetailPayload(merged);
         setTrades(exactMemberTrades.length > 0 ? exactMemberTrades : merged.trades);
+      })
+      .catch((loadError) => {
+        if (fetchGenRef.current !== gen) return;
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
       })
       .finally(() => {
         if (fetchGenRef.current !== gen) return;
@@ -223,6 +220,7 @@ export function MemberTradesDetail({
 
   useEffect(() => {
     load(false);
+    return () => { fetchGenRef.current += 1; };
   }, [load]);
 
   const sortedRows = useMemo(() => sortedTrades(trades, sortPreference), [sortPreference, trades]);
@@ -259,6 +257,12 @@ export function MemberTradesDetail({
   }, [rendererHost, selectedTrade?.sourceUrl]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => {
+    if (isPlainKey(event, "n") && detailPayload && canLoadMoreCongress(detailPayload)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      loadMore();
+      return true;
+    }
     if (isPlainKey(event, "r")) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -284,7 +288,7 @@ export function MemberTradesDetail({
       return true;
     }
     return false;
-  }, [loadPreviousYear, openSelectedSource, openSelectedTicker, previousYearRequest, refresh, selectedTrade?.sourceUrl, selectedTrade?.ticker]);
+  }, [detailPayload, loadMore, loadPreviousYear, openSelectedSource, openSelectedTicker, previousYearRequest, refresh, selectedTrade?.sourceUrl, selectedTrade?.ticker]);
 
   usePaneNoticeFooter({
     registrationId: `${CONGRESS_TRADES_PANE_ID}:member-notices`,
@@ -298,9 +302,13 @@ export function MemberTradesDetail({
   usePaneFooter(`${CONGRESS_TRADES_PANE_ID}:member-detail`, () => ({
     info: [
       ...(status === "loading" ? [{ id: "member-loading", parts: [{ text: "loading member trades", tone: "muted" as const }] }] : []),
+      ...(loadingMore ? [{ id: "member-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "member-error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
+      ...(detailPayload && canLoadMoreCongress(detailPayload)
+        ? [{ id: "member-next", key: "n", label: "ext filings", onPress: loadMore, disabled: loadingMore }]
+        : []),
       { id: "member-ticker", key: "t", label: "icker", onPress: openSelectedTicker, disabled: !selectedTrade?.ticker },
       { id: "member-open", key: "o", label: "pen", onPress: openSelectedSource, disabled: !selectedTrade?.sourceUrl },
       ...(previousYearRequest
@@ -309,6 +317,9 @@ export function MemberTradesDetail({
     ],
   }), [
     error,
+    detailPayload,
+    loadMore,
+    loadingMore,
     loadPreviousYear,
     maybeTruncated,
     openSelectedSource,

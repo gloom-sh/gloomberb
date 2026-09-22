@@ -17,6 +17,8 @@ export function useCongressTradesFooter({
   detailTrade,
   error,
   loadPreviousYear,
+  loadMore,
+  loadingMore,
   openSelectedTicker,
   openSelectedTradeMember,
   openSelectedTradeSource,
@@ -30,6 +32,8 @@ export function useCongressTradesFooter({
   detailTrade: CloudCongressTradePayload | null;
   error: string | null;
   loadPreviousYear: (() => void) | null;
+  loadMore: (() => void) | null;
+  loadingMore: boolean;
   openSelectedTicker: () => void;
   openSelectedTradeMember: () => void;
   openSelectedTradeSource: () => void;
@@ -44,9 +48,11 @@ export function useCongressTradesFooter({
         { id: "asof", parts: [{ text: `updated ${formatTimeAgo(payload.asOf)}`, tone: "muted" as const }] },
       ] : []),
       ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
+      ...(loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
+      ...(!detailMode && loadMore ? [{ id: "next-filings", key: "n", label: "ext filings", onPress: loadMore, disabled: loadingMore }] : []),
       ...(detailMode?.kind !== "member" && activeTab === "trades" && (detailTrade ?? selectedTrade)
         ? [
             { id: "member", key: "m", label: "ember", onPress: openSelectedTradeMember },
@@ -64,6 +70,8 @@ export function useCongressTradesFooter({
     detailTrade,
     error,
     loadPreviousYear,
+    loadMore,
+    loadingMore,
     openSelectedTicker,
     openSelectedTradeMember,
     openSelectedTradeSource,

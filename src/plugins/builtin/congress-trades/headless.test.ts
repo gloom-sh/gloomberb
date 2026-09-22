@@ -74,6 +74,21 @@ function args(tab: "trades" | "members", limit = 50): HeadlessPaneLoadArgs {
 }
 
 describe("congress headless model", () => {
+  test("passes ticker and both cursors to the server without hiding source gaps", async () => {
+    let requested: unknown;
+    const ctx = context();
+    ctx.apiClient = { getCloudCongressHouse: async (params: unknown) => {
+      requested = params;
+      return { ...payload, filingsPending: 3, hasMoreFilings: true, nextFilingOffset: 120 };
+    } } as HeadlessPaneContext["apiClient"];
+    const result = await createCongressHeadless().load({
+      ...args("trades"), argument: "NVDA", symbols: ["NVDA"],
+      options: { ...args("trades").options, offset: 20, filingOffset: 60 },
+    }, ctx);
+    expect(requested).toMatchObject({ ticker: "NVDA", offset: 20, filingOffset: 60 });
+    expect(result.metadata).toMatchObject({ filingsPending: 3, hasMoreFilings: true, nextFilingOffset: 120 });
+  });
+
   test("projects the active tab and applies its row limit", async () => {
     const headless = createCongressHeadless({ loadHouse: async () => payload });
 

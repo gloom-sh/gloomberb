@@ -67,6 +67,9 @@ const defaultDependencies: CongressHeadlessDependencies = {
     year: Number(args.options.year),
     limit: CONGRESS_TRADE_LIMIT,
     filingLimit: CONGRESS_FILING_LIMIT,
+    ticker: args.symbols[0],
+    offset: Number(args.options.offset ?? 0),
+    filingOffset: Number(args.options.filingOffset ?? 0),
   }, ctx.apiClient),
 };
 
@@ -76,10 +79,13 @@ export function createCongressHeadless(
   return {
     shape: "rows",
     argument: {
-      kind: "none",
-      description: "The House PTR feed does not require an argument.",
+      kind: "ticker",
+      optional: true,
+      description: "Optional ticker to filter House PTR trades.",
     },
     options: [
+      { key: "offset", description: "Trade offset within the filing window.", type: "integer", defaultValue: 0, minimum: 0 },
+      { key: "filingOffset", description: "Offset into the year's filing index.", type: "integer", defaultValue: 0, minimum: 0 },
       {
         key: "tab",
         description: "Congress pane tab.",
@@ -122,6 +128,12 @@ export function createCongressHeadless(
             chamber: payload.chamber,
             source: payload.source,
             year: payload.year,
+            nextOffset: payload.nextOffset,
+            nextFilingOffset: payload.nextFilingOffset,
+            hasMore: payload.hasMore,
+            hasMoreFilings: payload.hasMoreFilings,
+            filingsPending: payload.filingsPending,
+            filingsFailed: payload.filingsFailed,
           },
         };
       }
@@ -136,6 +148,12 @@ export function createCongressHeadless(
           chamber: payload.chamber,
           source: payload.source,
           year: payload.year,
+          nextOffset: payload.nextOffset,
+          nextFilingOffset: payload.nextFilingOffset,
+          hasMore: payload.hasMore,
+          hasMoreFilings: payload.hasMoreFilings,
+          filingsPending: payload.filingsPending,
+          filingsFailed: payload.filingsFailed,
         },
       };
     },

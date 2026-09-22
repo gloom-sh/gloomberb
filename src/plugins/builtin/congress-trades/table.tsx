@@ -30,9 +30,9 @@ export function renderCongressTradeCell(
   const selectedColor = rowState.selected ? colors.selectedText : undefined;
   switch (column.id) {
     case "filed":
-      return { text: formatShortDate(trade.filingDate), color: selectedColor ?? colors.textDim };
+      return { text: column.width >= 10 ? trade.filingDate : formatShortDate(trade.filingDate), color: selectedColor ?? colors.textDim };
     case "tx":
-      return { text: formatShortDate(trade.transactionDate), color: selectedColor ?? colors.textDim };
+      return { text: column.width >= 10 ? trade.transactionDate ?? "--" : formatShortDate(trade.transactionDate), color: selectedColor ?? colors.textDim };
     case "lag":
       return { text: formatLag(trade.lagDays), color: selectedColor ?? colors.textDim };
     case "member":
