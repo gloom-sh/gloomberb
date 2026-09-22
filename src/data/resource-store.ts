@@ -11,6 +11,8 @@ const RESOURCE_CACHE_MAINTENANCE_BYTE_INTERVAL = Math.floor(
   RESOURCE_CACHE_SOFT_SIZE_LIMIT / RESOURCE_CACHE_MAINTENANCE_WRITE_INTERVAL,
 );
 const RESOURCE_CACHE_MAINTENANCE_TIME_INTERVAL_MS = 5 * 60_000;
+/** Rows read per eviction pass, so a full cache is evicted in slices. */
+const RESOURCE_CACHE_PRUNE_BATCH_SIZE = 512;
 const DEFAULT_RESOURCE_SCHEMA_VERSION = 1;
 const EMPTY_VARIANT_KEY = "";
 const EMPTY_SOURCE_KEY = "";
@@ -161,78 +163,78 @@ export class ResourceStore {
     return result;
   }
 
-  private pruneIfNeeded(): void {
-    const stats = withSqliteBusyRetry("read resource cache size", () => (
+  private readCacheFootprint(operationName: string): { count: number; totalSize: number } {
+    const stats = withSqliteBusyRetry(operationName, () => (
       this.db
         .query<{ count: number; total_size: number }, []>(
           "SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM resource_cache",
         )
         .get()
     ));
-    const count = stats?.count ?? 0;
-    const totalSize = stats?.total_size ?? 0;
-    if (count <= RESOURCE_CACHE_SOFT_ROW_LIMIT && totalSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT) return;
+    return { count: stats?.count ?? 0, totalSize: stats?.total_size ?? 0 };
+  }
+
+  private withinSoftLimits(count: number, totalSize: number): boolean {
+    return count <= RESOURCE_CACHE_SOFT_ROW_LIMIT && totalSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT;
+  }
+
+  private pruneIfNeeded(): void {
+    const { count, totalSize } = this.readCacheFootprint("read resource cache size");
+    if (this.withinSoftLimits(count, totalSize)) return;
 
     withSqliteBusyRetry("prune expired cached resources", () => {
       this.db.query("DELETE FROM resource_cache WHERE expires_at < ?").run(Date.now());
     });
 
-    const remaining = withSqliteBusyRetry("read pruned resource cache size", () => (
-      this.db
-        .query<{ count: number; total_size: number }, []>(
-          "SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM resource_cache",
-        )
-        .get()
-    ));
-    const remainingCount = remaining?.count ?? 0;
-    const remainingSize = remaining?.total_size ?? 0;
-    if (remainingCount <= RESOURCE_CACHE_SOFT_ROW_LIMIT && remainingSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT) return;
+    let { count: remainingCount, totalSize: remainingSize } = this.readCacheFootprint("read pruned resource cache size");
+    if (this.withinSoftLimits(remainingCount, remainingSize)) return;
 
-    const pruneCandidates = withSqliteBusyRetry("select cached resources to prune", () => (
-      this.db
-        .query<{
-          namespace: string;
-          kind: string;
-          entity_key: string;
-          variant_key: string;
-          source_key: string;
-          size_bytes: number;
-        }, []>(
-          `SELECT namespace, kind, entity_key, variant_key, source_key, size_bytes
-           FROM resource_cache
-           ORDER BY last_accessed_at ASC, fetched_at ASC`,
-        )
-        .all()
-    ));
+    const candidates = this.db.query<{
+      namespace: string;
+      kind: string;
+      entity_key: string;
+      variant_key: string;
+      source_key: string;
+      size_bytes: number;
+    }, [number]>(
+      `SELECT namespace, kind, entity_key, variant_key, source_key, size_bytes
+       FROM resource_cache
+       ORDER BY last_accessed_at ASC, fetched_at ASC
+       LIMIT ?`,
+    );
+    const remove = this.db.query(
+      `DELETE FROM resource_cache
+       WHERE namespace = ? AND kind = ? AND entity_key = ? AND variant_key = ? AND source_key = ?`,
+    );
 
-    let projectedCount = remainingCount;
-    let projectedSize = remainingSize;
-    const rowsToDelete = [] as typeof pruneCandidates;
-    for (const row of pruneCandidates) {
-      if (
-        projectedCount <= RESOURCE_CACHE_SOFT_ROW_LIMIT
-        && projectedSize <= RESOURCE_CACHE_SOFT_SIZE_LIMIT
-      ) {
-        break;
+    // A cache at its limit holds tens of thousands of rows, so eviction reads
+    // the oldest batch, deletes what the budget needs from it, and comes back
+    // for more only if it is still over. Reading every row first turned the
+    // moment the cache filled up into a multi-second pause.
+    while (!this.withinSoftLimits(remainingCount, remainingSize)) {
+      const batch = withSqliteBusyRetry("select cached resources to prune", () => (
+        candidates.all(RESOURCE_CACHE_PRUNE_BATCH_SIZE)
+      ));
+      if (batch.length === 0) return;
+
+      const rowsToDelete = [] as typeof batch;
+      for (const row of batch) {
+        if (this.withinSoftLimits(remainingCount, remainingSize)) break;
+        rowsToDelete.push(row);
+        remainingCount -= 1;
+        remainingSize -= row.size_bytes;
       }
-      rowsToDelete.push(row);
-      projectedCount -= 1;
-      projectedSize -= row.size_bytes;
-    }
+      if (rowsToDelete.length === 0) return;
 
-    if (rowsToDelete.length === 0) return;
-    withSqliteBusyRetry("prune least recently used cached resources", () => {
-      const remove = this.db.query(
-        `DELETE FROM resource_cache
-         WHERE namespace = ? AND kind = ? AND entity_key = ? AND variant_key = ? AND source_key = ?`,
-      );
-      const tx = this.db.transaction(() => {
-        for (const row of rowsToDelete) {
-          remove.run(row.namespace, row.kind, row.entity_key, row.variant_key, row.source_key);
-        }
+      withSqliteBusyRetry("prune least recently used cached resources", () => {
+        const tx = this.db.transaction(() => {
+          for (const row of rowsToDelete) {
+            remove.run(row.namespace, row.kind, row.entity_key, row.variant_key, row.source_key);
+          }
+        });
+        tx();
       });
-      tx();
-    });
+    }
   }
 
   private maintainCacheAfterWrite(now: number, sizeBytes: number): void {

@@ -143,6 +143,81 @@ describe("AppPersistence", () => {
     }
   });
 
+  // Reading the footprint is on a timer while the app runs, and the payloads
+  // are large enough that scanning the table for it reads the whole cache off
+  // disk: half a second of frozen UI on a 30MB cache.
+  test("reads the cache footprint without touching the payloads", () => {
+    const dbPath = createTempDbPath("resource-footprint-plan");
+    const persistence = new AppPersistence(dbPath);
+    try {
+      persistence.resources.set({
+        namespace: "market",
+        kind: "price-history",
+        entityKey: "NVDA",
+      }, "x".repeat(64 * 1024), { cachePolicy: { staleMs: 60_000, expireMs: 120_000 } });
+
+      const plan = persistence.database.connection
+        .query<{ detail: string }, []>(
+          `EXPLAIN QUERY PLAN
+           SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as total_size FROM resource_cache`,
+        )
+        .all()
+        .map((row) => row.detail)
+        .join(" ");
+
+      expect(plan).toContain("COVERING INDEX");
+    } finally {
+      persistence.close();
+    }
+  });
+
+  test("evicts a full cache in batches instead of reading every row", () => {
+    const dbPath = createTempDbPath("resource-batched-pruning");
+    const persistence = new AppPersistence(dbPath);
+    const connection = persistence.database.connection;
+    try {
+      // More rows than the soft limit allows, each accounted at 8KB: the
+      // shape of a cache that has been in use for months. The stored payload
+      // stays small so the test does not write a quarter of a gigabyte.
+      const insert = connection.query(
+        `INSERT INTO resource_cache (
+           namespace, kind, entity_key, variant_key, source_key, schema_version,
+           payload, provenance, fetched_at, stale_at, expires_at, last_accessed_at, size_bytes
+         ) VALUES ('market', 'filler', ?, '', '', 1, '"filler"', NULL, ?, ?, ?, ?, ?)`,
+      );
+      const now = Date.now();
+      connection.transaction(() => {
+        for (let index = 0; index < 26_000; index += 1) {
+          insert.run(`filler-${index}`, now, now + 600_000, now + 600_000, now - 600_000 + index, 8 * 1024);
+        }
+      })();
+
+      const selects: string[] = [];
+      const query = connection.query.bind(connection);
+      (connection as { query: typeof query }).query = ((sql: string) => {
+        if (sql.includes("FROM resource_cache") && sql.includes("ORDER BY last_accessed_at")) selects.push(sql);
+        return query(sql);
+      }) as typeof query;
+
+      persistence.resources.set({
+        namespace: "market",
+        kind: "filler",
+        entityKey: "trigger",
+      }, "x".repeat(8 * 1024), { cachePolicy: { staleMs: 60_000, expireMs: 600_000 } });
+
+      const remaining = connection
+        .query<{ count: number }, []>("SELECT COUNT(*) as count FROM resource_cache")
+        .get();
+      expect(remaining?.count).toBeLessThanOrEqual(25_000);
+      // The oldest rows go first, and the row that triggered the pass stays.
+      expect(connection.query("SELECT 1 FROM resource_cache WHERE entity_key = 'filler-0'").get()).toBeNull();
+      expect(connection.query("SELECT 1 FROM resource_cache WHERE entity_key = 'trigger'").get()).not.toBeNull();
+      expect(selects.every((sql) => sql.includes("LIMIT"))).toBe(true);
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("prunes only enough least-recently-used resources to restore the byte budget", () => {
     const dbPath = createTempDbPath("resource-byte-pruning");
     const persistence = new AppPersistence(dbPath);

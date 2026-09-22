@@ -31,6 +31,18 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_resource_cache_lru
     ON resource_cache (expires_at, last_accessed_at);
 
+  -- The cache footprint is read on a schedule while the app is running, and
+  -- the payloads make a table scan read the whole cache from disk: half a
+  -- second of frozen UI on a 30MB cache. Covering the aggregate keeps the
+  -- check to the size column alone.
+  CREATE INDEX IF NOT EXISTS idx_resource_cache_size
+    ON resource_cache (size_bytes);
+
+  -- Least-recently-used order, so eviction reads candidates in batches
+  -- instead of sorting every row in the cache.
+  CREATE INDEX IF NOT EXISTS idx_resource_cache_recency
+    ON resource_cache (last_accessed_at, fetched_at);
+
   CREATE TABLE IF NOT EXISTS plugin_state (
     plugin_id TEXT NOT NULL,
     key TEXT NOT NULL,
