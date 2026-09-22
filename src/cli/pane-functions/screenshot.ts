@@ -1,5 +1,6 @@
 import { apiClient } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
+import { toMarketDataContext } from "../../market-data/selectors";
 import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
 import { loadResolvedHeadlessPaneModel } from "./headless";
 import { dirname, resolve } from "path";
@@ -518,7 +519,18 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
-    if (requestedRange) {
+    if (resolved.pane.id === "realized-vol") {
+      // Generic 5Y snapshots can contain weekly bars. The snapshot provider
+      // treats captured history as authoritative, even for a later 1d request.
+      // Preserve the pane's daily buffer and warmup before the renderer clips it.
+      if (!context.dataProvider.getPriceHistoryForResolution) {
+        throw new Error("Realized volatility screenshots require daily history resolution support.");
+      }
+      const priceHistory = await context.dataProvider.getPriceHistoryForResolution(
+        entry.instrument.symbol, exchange, "5Y", "1d", toMarketDataContext(entry.instrument),
+      );
+      data = { ...data, priceHistory };
+    } else if (requestedRange) {
       try {
         const priceHistory = await context.dataProvider.getPriceHistory(entry.instrument.symbol, exchange, requestedRange);
         data = { ...data, priceHistory: clipPriceHistoryToRange(priceHistory, requestedRange) };

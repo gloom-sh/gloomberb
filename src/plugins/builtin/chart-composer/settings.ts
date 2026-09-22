@@ -14,6 +14,7 @@ import type {
   SeriesStyle,
 } from "../../../time-series/types";
 import { isOhlcSeriesStyle } from "../../../time-series/spec";
+import { REALIZED_VOLATILITY_ESTIMATORS, isRealizedVolatilityEstimator } from "../shared/volatility/realized";
 import {
   applySeriesStyle,
   buildCustomChartPreset,
@@ -45,6 +46,7 @@ export const CHART_STUDY_OPTIONS: Array<PaneSettingOption & { value: BuiltinStud
   { value: "bollinger20", label: "Bollinger 20", description: "20-bar Bollinger Bands at two standard deviations." },
   { value: "rsi14", label: "RSI 14", description: "14-bar Relative Strength Index in a lower panel." },
   { value: "macd", label: "MACD", description: "12/26/9 MACD in a lower panel." },
+  { value: "realized-vol", label: "Realized Volatility", description: "Annualized daily volatility in a lower panel." },
 ];
 
 export const CHART_FORMULA_OPTIONS: Array<PaneSettingOption & { value: PairStudySelection }> = [
@@ -61,6 +63,8 @@ export const CHART_SETTING_KEYS = {
   range: "chartRange",
   resolution: "chartResolution",
   mode: "chartMode",
+  realizedVolWindow: "chartRealizedVolWindow",
+  realizedVolEstimator: "chartRealizedVolEstimator",
 } as const;
 
 function fallbackSpec(symbol: string | null | undefined): ChartSpec {
@@ -92,10 +96,6 @@ export function getChartInlineStyles(spec: ChartSpec): SeriesStyle[] {
   return getCompatibleSeriesStyles(fieldId).filter((style) => (
     !anotherOhlcSeriesSharesPanel || !isOhlcSeriesStyle(style)
   ));
-}
-
-function managedStudy(study: ChartStudySpec): boolean {
-  return study.id.startsWith("builtin:") || study.id.startsWith("pair:");
 }
 
 function reconcileBasePanels(
@@ -134,17 +134,16 @@ function replaceChartSeriesFromExpression(
     return matches?.shift() ?? entry;
   });
   const seriesIds = new Set(series.map((entry) => entry.id));
-  const customStudies = spec.studies.filter((study) => (
-    !managedStudy(study)
-    && study.inputSeriesIds.every((seriesId) => seriesIds.has(seriesId))
+  const retainedStudies = spec.studies.filter((study) => (
+    study.inputSeriesIds.every((seriesId) => seriesIds.has(seriesId))
   ));
   const builtinStudies = getSelectedBuiltinStudies(spec);
   const pairStudies = getSelectedPairStudies(spec);
-  const panels = reconcileBasePanels(spec.panels, authored.panels, series, customStudies);
+  const panels = reconcileBasePanels(spec.panels, authored.panels, series, retainedStudies);
   const base: ChartSpec = {
     ...spec,
     series,
-    studies: customStudies,
+    studies: retainedStudies,
     panels,
   };
   return setPairStudies(setBuiltinStudies(base, builtinStudies), pairStudies);
@@ -248,6 +247,22 @@ export function applyChartComposerPaneSetting(
         ),
       );
       break;
+    case CHART_SETTING_KEYS.realizedVolWindow:
+    case CHART_SETTING_KEYS.realizedVolEstimator: {
+      const editingWindow = field.key === CHART_SETTING_KEYS.realizedVolWindow;
+      const parameter = editingWindow ? "window" : "estimator";
+      const parsed = editingWindow ? Number(requireString(value, "Realized volatility window")) : value;
+      if (editingWindow && (typeof parsed !== "number" || !Number.isInteger(parsed) || parsed < 2)) {
+        throw new Error("Choose a whole volatility window of at least two sessions.");
+      }
+      if (!editingWindow && !isRealizedVolatilityEstimator(parsed)) throw new Error("Choose a supported volatility estimator.");
+      nextSpec = {
+        ...spec,
+        studies: spec.studies.map((study) => study.kind === "realized-vol" && study.id.startsWith("builtin:")
+          ? { ...study, parameters: { ...study.parameters, [parameter]: parsed as number | string } } : study),
+      };
+      break;
+    }
     case CHART_SETTING_KEYS.dateWindow: {
       const dateWindow = parseDateWindow(requireString(value, "Date window"));
       nextSpec = {
@@ -313,6 +328,7 @@ export function buildChartComposerPaneSettingsDef(
   const spec = parseChartSpecOr(settings[CHART_SPEC_SETTING_KEY], fallbackSpec(activeTicker));
   const inlineStyleTarget = getChartInlineStyleTarget(spec);
   const modes = getChartInlineStyles(spec);
+  const realizedVol = spec.studies.find((study) => study.kind === "realized-vol" && study.id.startsWith("builtin:"));
 
   return {
     title: "Chart Settings",
@@ -324,6 +340,10 @@ export function buildChartComposerPaneSettingsDef(
       [CHART_SETTING_KEYS.range]: spec.viewport.range,
       [CHART_SETTING_KEYS.resolution]: spec.viewport.resolution,
       [CHART_SETTING_KEYS.mode]: inlineStyleTarget?.style ?? "",
+      ...(realizedVol ? {
+        [CHART_SETTING_KEYS.realizedVolWindow]: String(realizedVol.parameters.window ?? 30),
+        [CHART_SETTING_KEYS.realizedVolEstimator]: realizedVol.parameters.estimator ?? "close-to-close",
+      } : {}),
     },
     fields: [
       {
@@ -347,6 +367,23 @@ export function buildChartComposerPaneSettingsDef(
         type: "multi-select",
         options: CHART_FORMULA_OPTIONS,
       },
+      ...(realizedVol ? [
+        {
+          key: CHART_SETTING_KEYS.realizedVolWindow,
+          label: "RV Window (sessions)",
+          type: "text" as const,
+          placeholder: "30",
+        },
+        {
+          key: CHART_SETTING_KEYS.realizedVolEstimator,
+          label: "RV Estimator",
+          type: "select" as const,
+          options: REALIZED_VOLATILITY_ESTIMATORS.map((estimator) => ({
+            value: estimator,
+            label: estimator.split("-").map((word) => word[0]!.toUpperCase() + word.slice(1)).join("-"),
+          })),
+        },
+      ] : []),
       {
         key: CHART_SETTING_KEYS.dateWindow,
         label: "Date Window",

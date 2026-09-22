@@ -55,6 +55,7 @@ export type ChartStudyKind =
   | "bollinger"
   | "rsi"
   | "macd"
+  | "realized-vol"
   | "ratio"
   | "spread"
   | "correlation";
@@ -63,7 +64,7 @@ export interface ChartStudySpec {
   id: string;
   kind: ChartStudyKind;
   inputSeriesIds: string[];
-  parameters: Record<string, number>;
+  parameters: Record<string, number | string>;
   panelId: string;
   axis: SeriesAxis;
   color?: string;

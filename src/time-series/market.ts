@@ -55,6 +55,9 @@ function aggregatePriceHistory(
     })
     .sort((left, right) => left.date.getTime() - right.date.getTime());
   if (period === "auto") return sorted.map((point) => ({ ...point, date: new Date(point.date) }));
+  // Already-daily bars need no aggregation. Keep missing O/H/L fields missing
+  // so range-based studies cannot mistake a close-only feed for real OHLC.
+  if (period === "daily" && new Set(sorted.map((point) => utcDay(point.date))).size === sorted.length) return sorted;
   if (period === "ttm") return [];
 
   const buckets = new Map<string, AggregatedPricePoint>();

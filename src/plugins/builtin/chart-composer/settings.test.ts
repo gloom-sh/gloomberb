@@ -5,6 +5,7 @@ import {
   buildPriceChartPreset,
   getSelectedBuiltinStudies,
   getSelectedPairStudies,
+  setBuiltinStudies,
   setPairStudies,
 } from "./presets";
 import { CHART_SPEC_SETTING_KEY } from "./chart-spec";
@@ -53,31 +54,37 @@ describe("chart composer pane settings", () => {
     ]) defaults(apply(edited, ["spread", "correlation"]));
   });
 
-  test("exposes every authored chart control through the native pane settings model", () => {
-    const spec = buildPriceChartPreset("AAPL");
-    const definition = buildChartComposerPaneSettingsDef({
-      [CHART_SPEC_SETTING_KEY]: spec,
-    });
-
-    expect(definition.fields.map((entry) => entry.key)).toEqual([
-      CHART_SETTING_KEYS.series,
-      CHART_SETTING_KEYS.indicators,
-      CHART_SETTING_KEYS.formulas,
-      CHART_SETTING_KEYS.dateWindow,
-      CHART_SETTING_KEYS.range,
-      CHART_SETTING_KEYS.resolution,
-      CHART_SETTING_KEYS.mode,
-    ]);
+  test("volatility settings persist independently through other indicators and source edits", () => {
+    const original = setBuiltinStudies(buildPriceChartPreset("AAPL"), ["sma20", "realized-vol"]);
+    const sma = original.studies.find((study) => study.kind === "sma")!;
+    sma.parameters = { period: 17 };
+    sma.color = "#abcdef";
+    let settings: Record<string, unknown> = { chartSpec: original };
+    const apply = (key: string, value: unknown) => {
+      settings = applyChartComposerPaneSetting(settings, field(key), value);
+    };
+    apply(CHART_SETTING_KEYS.realizedVolWindow, "60");
+    apply(CHART_SETTING_KEYS.realizedVolEstimator, "yang-zhang");
+    apply(CHART_SETTING_KEYS.indicators, ["sma20", "realized-vol", "rsi14"]);
+    apply(CHART_SETTING_KEYS.series, "AAPL:price, MSFT:price");
+    const restored = JSON.parse(JSON.stringify(settings));
+    const definition = buildChartComposerPaneSettingsDef(restored);
     expect(definition.values).toMatchObject({
-      [CHART_SETTING_KEYS.series]: "AAPL:market.ohlcv",
-      [CHART_SETTING_KEYS.indicators]: ["volume"],
-      [CHART_SETTING_KEYS.formulas]: [],
-      [CHART_SETTING_KEYS.range]: "5Y",
-      [CHART_SETTING_KEYS.resolution]: "auto",
-      [CHART_SETTING_KEYS.mode]: "candles",
+      [CHART_SETTING_KEYS.realizedVolWindow]: "60",
+      [CHART_SETTING_KEYS.realizedVolEstimator]: "yang-zhang",
     });
-    expect(definition.fields.at(-1)?.label).toBe("Style (AAPL Price)");
-    expect(definition.applyValue).toBe(applyChartComposerPaneSetting);
+    const spec = restored.chartSpec as typeof original;
+    expect(spec.studies.find((study) => study.kind === "realized-vol")!.parameters).toEqual({ window: 60, estimator: "yang-zhang" });
+    expect(spec.studies.find((study) => study.kind === "sma")).toMatchObject({ parameters: { period: 17 }, color: "#abcdef" });
+    expect(restored).not.toHaveProperty(CHART_SETTING_KEYS.realizedVolWindow);
+    expect(restored).not.toHaveProperty(CHART_SETTING_KEYS.realizedVolEstimator);
+    for (const value of ["", "1", "2.5", "NaN"]) expect(() => apply(CHART_SETTING_KEYS.realizedVolWindow, value)).toThrow();
+    expect(() => apply(CHART_SETTING_KEYS.realizedVolEstimator, "unknown")).toThrow();
+    apply(CHART_SETTING_KEYS.indicators, ["sma20"]);
+    expect((settings.chartSpec as typeof original).panels.some((panel) => panel.id === "realized-vol")).toBe(false);
+    apply(CHART_SETTING_KEYS.indicators, ["sma20", "realized-vol"]);
+    expect((settings.chartSpec as typeof original).studies.find((study) => study.kind === "realized-vol")!.parameters)
+      .toEqual({ window: 30, estimator: "close-to-close" });
   });
 
   test("routes multi-series styling through the series editor", () => {

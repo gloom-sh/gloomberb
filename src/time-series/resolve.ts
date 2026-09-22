@@ -306,6 +306,13 @@ function requestResolution(
   provisionalSupport = false,
 ): ManualChartResolution {
   const duration = rangeDurationBounds(spec, bounds);
+  if (spec.viewport.resolution === "auto" && spec.studies.some((study) => study.kind === "realized-vol" && study.visible !== false)) {
+    // A 252-session estimator must see daily observations even on a long chart.
+    const maxRange = getSupportMaxRange(sharedSupport, "1d");
+    if (sharedSupport.length === 0 || provisionalSupport || maxRange === "ALL"
+      || (maxRange !== null && duration.start !== null && duration.end !== null
+        && isDateWindowWithinTimeRange(new Date(duration.start), new Date(duration.end), maxRange))) return "1d";
+  }
   if (spec.viewport.resolution !== "auto") {
     const maxRange = getSupportMaxRange(sharedSupport, spec.viewport.resolution);
     // A placeholder list cannot rule out a manual pick; the real list decides
@@ -489,7 +496,7 @@ export function seedChartResolutionResult(
   const baseSeries = series.map((entry) => prepareBaseSeriesForStudies(entry, priceComparisonBoundsForSeries(entry, priceComparison) ?? comparisonBounds));
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
-  const studies = resolveStudies(series, spec.studies);
+  const studies = resolveStudies(series, spec.studies, resolution);
   const bufferedSeries = [
     ...baseSeries,
     ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds, undefined, priceComparison),
@@ -1283,6 +1290,9 @@ export async function resolveChartSpecData(
     return pending;
   };
 
+  const realizedVolInputs = new Set(spec.studies.filter((study) => study.kind === "realized-vol" && study.visible !== false)
+    .flatMap((study) => study.inputSeriesIds));
+  const historicalPriceSeries = new Map<string, ResolvedSeries>();
   const loaded = await Promise.all(spec.series.map(async (seriesSpec, index) => {
     if (!calculationSeriesIds.has(seriesSpec.id)) return null;
     try {
@@ -1398,7 +1408,10 @@ export async function resolveChartSpecData(
         warnings.push(SEC_EPS_BASIS_NOTICE);
       }
       const resolvedSpec = resolvedSource === source ? seriesSpec : { ...seriesSpec, source: resolvedSource };
-      sources.onSecurityData?.(resolvedSpec, merged, history !== null);
+      // Keep provider history separate from quote-extended display bars. A live
+      // mark is not a daily closing observation, including on snapshot replay.
+      const historical = history ? { ...merged, priceHistory: history } : merged;
+      sources.onSecurityData?.(resolvedSpec, realizedVolInputs.has(seriesSpec.id) ? historical : merged, history !== null);
       const result = baseSecuritySeries(
         resolvedSpec,
         merged,
@@ -1407,6 +1420,10 @@ export async function resolveChartSpecData(
         quoteMetadata,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
+      if (realizedVolInputs.has(seriesSpec.id)) {
+        const historicalResult = baseSecuritySeries(resolvedSpec, historical, index, initialResolution, quoteMetadata);
+        if (historicalResult) historicalPriceSeries.set(seriesSpec.id, historicalResult);
+      }
       const reportedForwardPE = merged.fundamentals?.forwardPE;
       if (source.fieldId === "valuation.forwardPE" && merged.epsEstimates) {
         warnings.push(FORWARD_PE_BASIS_NOTICE);
@@ -1456,7 +1473,7 @@ export async function resolveChartSpecData(
 
   // Study outputs are appended by the pure engine before the final viewport clip.
   if (spec.studies.length > 0) {
-    const studyResult = resolveStudies(calculationSeries, spec.studies);
+    const studyResult = resolveStudies(calculationSeries, spec.studies, initialResolution, historicalPriceSeries);
     resolved = [
       ...resolved,
       ...applyStudyPresentationTransforms(

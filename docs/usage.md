@@ -100,6 +100,8 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `SEC <ticker>` | SEC filings and company disclosures |
 | `OMON <ticker>` | Options monitor |
 | `OVDV <ticker>` | Rotatable implied-volatility surface, smiles, term structure, skew and forwards |
+| `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
+| `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |
 | `OVME` | Black-Scholes option calculator with Greeks and implied volatility |
 | `HDS <ticker>` | Institutional holders |
 | `DVD <ticker>` | Dividend yield and history |
@@ -121,7 +123,7 @@ G AAPL:price, MSFT:revenue, FRED:CPIAUCSL
 
 Open **Series** to add, remove, reorder, or hide series and choose each series' field, chart style, transform, axis, panel, period, and panel scale. Price data supports candles, OHLC, HLC, line, and area; scalar data supports its compatible line, area, step, column, and point modes. Panels can use independent left/right axes and linear or logarithmic scales.
 
-The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, RSI, and MACD; formulas include ratio, spread, and rolling correlation. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`).
+The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, RSI, MACD, and Realized Volatility; formulas include ratio, spread, and rolling correlation. Realized Volatility has window and estimator controls in pane settings. Auto resolution requests daily bars for that indicator; explicit weekly or intraday bars cannot be annualized as daily sessions. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`).
 
 Spread calculates the first input minus the second input times its configured multiplier. It requires matching known input dimensions, currencies, and scales; an incompatible formula is unavailable and appears in the existing chart/report errors while usable series remain available. Market prices also require a declared per-unit basis: two bare USD futures quotes do not establish comparable physical quantities. A multiplier does not supply missing units or establish a conversion. No implicit FX conversion occurs. Studies use source values before chart presentation transforms, so selecting a percent or index display does not convert foreign-currency inputs before subtraction. Ratios retain derived units such as USD/EUR or 1/share and have no value at a zero denominator. As-of alignment can combine observations from different dates; the source dates do not establish a synchronized executable price.
 

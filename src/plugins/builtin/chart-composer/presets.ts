@@ -511,6 +511,7 @@ function panelsForSeries(series: readonly ChartSeriesSpec[], studies: readonly C
     ...(id === "rsi" || id === "macd" ? { label: id.toUpperCase(), height: 0.28 } : {}),
     ...(id === "formula" ? { label: "Formula", height: 0.3 } : {}),
     ...(id === "correlation" ? { label: "Correlation", height: 0.3 } : {}),
+    ...(id === "realized-vol" ? { label: "Realized Volatility", height: 0.3 } : {}),
     ...(/^panel-\d+$/.test(id) ? { label: `Panel ${id.slice("panel-".length)}`, height: 0.35 } : {}),
   }));
 }
@@ -589,7 +590,7 @@ function reconcilePanels(
 ): ChartPanelSpec[] {
   const defaults = panelsForSeries(series, studies);
   const requiredIds = new Set(defaults.map((panel) => panel.id));
-  const managedStudyPanelIds = new Set(["volume", "rsi", "macd", "formula", "correlation"]);
+  const managedStudyPanelIds = new Set(["volume", "rsi", "macd", "formula", "correlation", "realized-vol"]);
   const retained = existing.filter((panel) => (
     requiredIds.has(panel.id) || !managedStudyPanelIds.has(panel.id)
   ));
@@ -740,10 +741,11 @@ const STUDY_DEFAULTS = {
   bollinger20: { kind: "bollinger", panelId: "main", parameters: { period: 20, stdDev: 2 } },
   rsi14: { kind: "rsi", panelId: "rsi", parameters: { period: 14 } },
   macd: { kind: "macd", panelId: "macd", parameters: { fast: 12, slow: 26, signal: 9 } },
+  "realized-vol": { kind: "realized-vol", panelId: "realized-vol", parameters: { window: 30, estimator: "close-to-close" } },
 } as const satisfies Record<string, {
   kind: Exclude<ChartStudyKind, "ratio" | "spread" | "correlation">;
   panelId: string;
-  parameters: Record<string, number>;
+  parameters: ChartStudySpec["parameters"];
 }>;
 
 export type BuiltinStudySelection = keyof typeof STUDY_DEFAULTS;
@@ -773,14 +775,20 @@ export function setBuiltinStudies(spec: ChartSpec, selected: readonly BuiltinStu
       ...customStudies,
       ...(Object.entries(STUDY_DEFAULTS) as Array<[BuiltinStudySelection, typeof STUDY_DEFAULTS[BuiltinStudySelection]]>)
         .filter(([selection]) => selectedSet.has(selection))
-        .map(([selection, defaults]) => ({
-          id: `${BUILTIN_STUDY_ID_PREFIX}${selection}:${input.id}`,
-          kind: defaults.kind,
-          inputSeriesIds: [input.id],
-          parameters: defaults.parameters,
-          panelId: defaults.panelId,
-          axis: "auto" as const,
-        })),
+        .map(([selection, defaults]): ChartStudySpec => {
+          const id = `${BUILTIN_STUDY_ID_PREFIX}${selection}:${input.id}`;
+          const previous = spec.studies.find((study) => study.id === id && study.kind === defaults.kind
+            && study.inputSeriesIds.length === 1 && study.inputSeriesIds[0] === input.id);
+          if (previous) return { ...previous, inputSeriesIds: [input.id], parameters: { ...previous.parameters } };
+          return {
+            id,
+            kind: defaults.kind,
+            inputSeriesIds: [input.id],
+            parameters: { ...defaults.parameters },
+            panelId: defaults.panelId,
+            axis: "auto",
+          };
+        }),
     ]
     : customStudies;
   return { ...spec, studies, panels: reconcilePanels(spec.panels, spec.series, studies) };

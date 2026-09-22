@@ -8,12 +8,14 @@ import {
 export const VOLATILITY_TRADING_DAYS = 252;
 export const REALIZED_VOLATILITY_WINDOWS = [10, 20, 30, 60, 90, 180, 260] as const;
 
-export type RealizedVolatilityEstimator =
-  | "close-to-close"
-  | "parkinson"
-  | "garman-klass"
-  | "rogers-satchell"
-  | "yang-zhang";
+export const REALIZED_VOLATILITY_ESTIMATORS = [
+  "close-to-close", "parkinson", "garman-klass", "rogers-satchell", "yang-zhang",
+] as const;
+export type RealizedVolatilityEstimator = typeof REALIZED_VOLATILITY_ESTIMATORS[number];
+
+export function isRealizedVolatilityEstimator(value: unknown): value is RealizedVolatilityEstimator {
+  return REALIZED_VOLATILITY_ESTIMATORS.some((estimator) => estimator === value);
+}
 
 export type RealizedVolatilityUnavailableReason =
   | "invalid-window"
@@ -57,6 +59,35 @@ export interface VolatilityConeStatistics {
   /** Midrank percentile on a 0 to 100 scale; a constant history has rank 50. */
   percentile: number | null;
   sampleSize: number;
+}
+
+/**
+ * Consumer guard for daily-data requests whose provider may have fallen back to
+ * intraday or weekly bars. The estimators themselves remain general n-session
+ * calculations. This detects cadence contradictions, not missing market sessions.
+ */
+export function realizedVolatilityCadenceIssue(points: readonly Pick<PricePoint, "date">[]): string | null {
+  const timestamps = new Set<number>();
+  for (const point of points) {
+    const time = new Date(point.date).getTime();
+    if (!Number.isFinite(time)) return "Realized volatility unavailable: invalid history date";
+    timestamps.add(time);
+  }
+  const history = [...timestamps].sort((a, b) => a - b);
+  const days = new Set<number>();
+  const gaps: number[] = [];
+  for (let index = 0; index < history.length; index += 1) {
+    const time = history[index]!;
+    const day = Math.floor(time / 86_400_000);
+    if (days.has(day)) return "Daily history unavailable: intraday observations returned";
+    days.add(day);
+    if (index > 0) gaps.push(time - history[index - 1]!);
+  }
+  if (gaps.length === 0) return null;
+  gaps.sort((a, b) => a - b);
+  const middle = Math.floor(gaps.length / 2);
+  const median = gaps.length % 2 ? gaps[middle]! : (gaps[middle - 1]! + gaps[middle]!) / 2;
+  return median >= 5 * 86_400_000 ? "Daily history unavailable: observed cadence is weekly or slower" : null;
 }
 
 interface Observation {
@@ -121,18 +152,17 @@ function estimateWindow(
   const previousCloseRequired = estimator === "close-to-close" || estimator === "yang-zhang";
   const start = end - window + 1;
   const first = start - (previousCloseRequired ? 1 : 0);
-  if (first < 0) return unavailable("insufficient-history");
-
   // Validate selected observations before calculating. Removing one would bridge a gap.
+  // Even an incomplete window retains diagnostics for its rejected source rows.
   const rejected: PriceHistoryIntegrity[] = [];
-  for (let index = first; index <= end; index += 1) {
+  for (let index = Math.max(0, first); index <= end; index += 1) {
     const integrity = history[index]!.integrity;
     if (integrity) rejected.push(integrity);
   }
   if (rejected.length > 0) {
     return { value: null, reason: "inconsistent-ohlc", integrity: mergePriceHistoryIntegrity(...rejected) };
   }
-  for (let index = first; index <= end; index += 1) {
+  for (let index = Math.max(0, first); index <= end; index += 1) {
     const point = history[index]!;
     if (point.close === null) return unavailable("missing-close");
     // The predecessor supplies only its close, including for Yang-Zhang.
@@ -141,6 +171,7 @@ function estimateWindow(
       return unavailable("missing-ohlc");
     }
   }
+  if (first < 0) return unavailable("insufficient-history");
 
   const returns: number[] = [];
   const overnightReturns: number[] = [];

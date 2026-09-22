@@ -1,4 +1,5 @@
 import { CHART_RESOLUTIONS, TIME_RANGES, type ChartResolution, type TimeRange } from "./range";
+import { isRealizedVolatilityEstimator } from "../plugins/builtin/shared/volatility/realized";
 import { getChartResolutionLabel } from "./resolution";
 import {
   canonicalTimeSeriesFieldId,
@@ -46,6 +47,7 @@ const STUDIES = new Set<ChartStudyKind>([
   "bollinger",
   "rsi",
   "macd",
+  "realized-vol",
   "ratio",
   "spread",
   "correlation",
@@ -253,10 +255,11 @@ function normalizeStudy(
 ): ChartStudySpec | null {
   const study = record(value);
   if (!study || !STUDIES.has(study.kind as ChartStudyKind)) return null;
-  const parameters: Record<string, number> = {};
+  const parameters: ChartStudySpec["parameters"] = {};
   const rawParameters = record(study.parameters);
   for (const [key, parameter] of Object.entries(rawParameters ?? {})) {
     if (typeof parameter === "number" && Number.isFinite(parameter)) parameters[key] = parameter;
+    else if (study.kind === "realized-vol" && key === "estimator" && typeof parameter === "string") parameters[key] = parameter;
   }
   return {
     id: uniqueId(study.id, "study", index, seen),
@@ -503,15 +506,25 @@ export function validateChartSpec(spec: ChartSpec): ChartSpecValidationResult {
       }
     }
     for (const [name, value] of Object.entries(study.parameters)) {
-      if (!Number.isFinite(value)) errors.push(issue(`${path}.parameters.${name}`, "invalid-parameter", "Study parameters must be finite."));
-      if ((name === "period" || name === "fast" || name === "slow" || name === "signal") && value <= 0) {
+      if (study.kind === "realized-vol" && name === "estimator") {
+        if (!isRealizedVolatilityEstimator(value)) errors.push(issue(`${path}.parameters.${name}`, "invalid-estimator", "Choose a supported realized volatility estimator."));
+        continue;
+      }
+      if (typeof value !== "number" || !Number.isFinite(value)) errors.push(issue(`${path}.parameters.${name}`, "invalid-parameter", "Numeric study parameters must be finite."));
+      if ((name === "period" || name === "fast" || name === "slow" || name === "signal") && typeof value === "number" && value <= 0) {
         errors.push(issue(`${path}.parameters.${name}`, "invalid-period", "Study periods must be positive."));
+      }
+    }
+    if (study.kind === "realized-vol") {
+      const window = study.parameters.window ?? 30;
+      if (typeof window !== "number" || !Number.isInteger(window) || window < 2) {
+        errors.push(issue(`${path}.parameters.window`, "invalid-window", "Realized volatility needs a whole window of at least two sessions."));
       }
     }
     if (study.kind === "macd") {
       const fast = study.parameters.fast ?? 12;
       const slow = study.parameters.slow ?? 26;
-      if (fast >= slow) errors.push(issue(`${path}.parameters`, "invalid-macd-periods", "MACD fast period must be shorter than slow period."));
+      if (typeof fast === "number" && typeof slow === "number" && fast >= slow) errors.push(issue(`${path}.parameters`, "invalid-macd-periods", "MACD fast period must be shorter than slow period."));
     }
   });
 

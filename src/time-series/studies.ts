@@ -1,6 +1,8 @@
 import { alignTimeSeries, effectiveTimeSeriesPointTime, scalarPointValue } from "./alignment";
 import { mergePriceHistoryIntegrity } from "../utils/price-history-integrity";
 import { resolveCurrencyUnit } from "../utils/currency-units";
+import { isRealizedVolatilityEstimator, realizedVolatilityCadenceIssue, rollingRealizedVolatility } from "../plugins/builtin/shared/volatility/realized";
+import type { ManualChartResolution } from "./resolution";
 import type {
   ChartStudyKind,
   ChartStudySpec,
@@ -34,7 +36,7 @@ function finiteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-function positiveInteger(value: number | undefined, fallback: number): number {
+function positiveInteger(value: unknown, fallback: number): number {
   return finiteNumber(value) && value > 0 ? Math.max(1, Math.floor(value)) : fallback;
 }
 
@@ -162,6 +164,11 @@ function studyPeriod(spec: ChartStudySpec, fallback: number): number {
 }
 
 function studyWarmupPoints(spec: ChartStudySpec): number {
+  if (spec.kind === "realized-vol") {
+    const window = positiveInteger(spec.parameters.window, 30);
+    return spec.parameters.estimator === undefined || spec.parameters.estimator === "close-to-close" || spec.parameters.estimator === "yang-zhang"
+      ? window : window - 1;
+  }
   if (spec.kind === "sma" || spec.kind === "ema" || spec.kind === "bollinger") {
     return studyPeriod(spec, 20) - 1;
   }
@@ -177,6 +184,43 @@ function studyWarmupPoints(spec: ChartStudySpec): number {
 
 export function maxStudyWarmupPoints(specs: readonly ChartStudySpec[]): number {
   return Math.max(0, ...specs.filter((spec) => spec.visible !== false).map(studyWarmupPoints));
+}
+
+function resolveRealizedVolatility(spec: ChartStudySpec, input: ResolvedSeries, color: string): ResolvedSeries[] {
+  const window = positiveInteger(spec.parameters.window, 30);
+  const estimator = isRealizedVolatilityEstimator(spec.parameters.estimator) ? spec.parameters.estimator : "close-to-close";
+  // Retain invalid rows and the last correction for each date. Dropping one
+  // would turn two separated returns into adjacent observations.
+  const byDate = new Map(input.points.map((point) => [point.date.getTime(), point]));
+  const source = [...byDate.values()].sort((a, b) => a.date.getTime() - b.date.getTime());
+  const calculated = rollingRealizedVolatility(source.map((point) => ({
+    date: point.date,
+    close: point.provenance?.priceHistoryIntegrity || point.provenance?.valuationPriceIssues?.length
+      ? Number.NaN : (point.close === undefined ? point.value : point.close) ?? Number.NaN,
+    open: point.open ?? undefined,
+    high: point.high ?? undefined,
+    low: point.low ?? undefined,
+  })), { windows: [window], estimator });
+  const warmup = studyWarmupPoints(spec);
+  const points = calculated.map((point, index): TimeSeriesPoint => {
+    const original = source[index]!;
+    const value = point.values[window];
+    const derived = derivedPoint({ point: original, value: 0 }, value == null ? null : value * 100);
+    if (value == null) {
+      const affected = source.slice(Math.max(0, index - warmup), index + 1);
+      const integrity = affected.flatMap((entry) => entry.provenance?.priceHistoryIntegrity ? [entry.provenance.priceHistoryIntegrity] : []);
+      if (integrity.length) derived.provenance!.priceHistoryIntegrity = mergePriceHistoryIntegrity(...integrity);
+    }
+    return derived;
+  });
+  return [outputSeries(spec, input, {
+    label: `RV(${window}, ${estimator}) ${input.label}`,
+    points,
+    color,
+    unit: "%",
+    unitGroup: "percent",
+    axis: "left",
+  })];
 }
 
 function resolveMovingAverage(
@@ -629,6 +673,8 @@ export function activeStudyInputSeriesIds(
 export function resolveStudies(
   baseSeries: readonly ResolvedSeries[],
   studySpecs: readonly ChartStudySpec[],
+  marketResolution?: ManualChartResolution,
+  historicalPriceSeries?: ReadonlyMap<string, ResolvedSeries>,
 ): StudyResolutionResult {
   const byId = new Map(baseSeries.map((series) => [series.id, series]));
   const resolved: ResolvedSeries[] = [];
@@ -638,7 +684,8 @@ export function resolveStudies(
   studySpecs.forEach((spec, index) => {
     if (spec.visible === false) return;
     const required = requiredInputs(spec.kind);
-    const inputs = spec.inputSeriesIds.map((id) => byId.get(id));
+    const inputs = spec.inputSeriesIds.map((id) => spec.kind === "realized-vol"
+      ? historicalPriceSeries?.get(id) ?? byId.get(id) : byId.get(id));
     if (inputs.length !== required || inputs.some((input) => !input)) {
       errors.push(`${spec.id}: ${spec.kind} requires ${required} valid input series.`);
       return;
@@ -653,6 +700,32 @@ export function resolveStudies(
       }
     }
     const color = spec.color ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
+    if (spec.kind === "realized-vol") {
+      const window = spec.parameters.window ?? 30;
+      if (typeof window !== "number" || !Number.isInteger(window) || window < 2
+        || (spec.parameters.estimator !== undefined && !isRealizedVolatilityEstimator(spec.parameters.estimator))) {
+        errors.push(`${spec.id}: choose a supported volatility estimator and a whole window of at least two sessions.`);
+        return;
+      }
+      if (input.nativeFrequency !== "daily"
+        || (marketResolution !== undefined && marketResolution !== "1d")
+        || (input.timeBasis?.cadenceMs !== undefined && input.timeBasis.cadenceMs !== 86_400_000)
+        || !(input.unitGroup === "price" || input.unitGroup.startsWith("price:"))) {
+        errors.push(`${spec.id}: realized volatility requires daily prices. Choose Auto or 1D resolution and a daily price source.`);
+        return;
+      }
+      const cadenceIssue = realizedVolatilityCadenceIssue(input.points);
+      if (cadenceIssue) {
+        errors.push(`${spec.id}: ${cadenceIssue}`);
+        return;
+      }
+      const outputs = resolveRealizedVolatility(spec, input, color);
+      if (outputs.every((output) => output.points.every((point) => point.value === null))) {
+        warnings.push(`${spec.id}: not enough valid daily history to calculate ${spec.parameters.estimator ?? "close-to-close"} realized volatility.`);
+      }
+      resolved.push(...outputs);
+      return;
+    }
     const interrupted = resolveInterruptedStudy(inputs as ResolvedSeries[], { ...spec, color });
     if (interrupted) {
       resolved.push(...interrupted.series);

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { RemoteUiNodeSnapshot } from "../../remote/types";
 import {
+  buildDesktopShotPayload,
   chartSeriesEvidenceWithinRange,
   chartEvidenceMismatchesFor,
   createDesktopShotBridge,
@@ -20,7 +21,50 @@ import { collectShotSymbols } from "./data";
 import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildCustomChartPreset } from "../../plugins/builtin/chart-composer/presets";
-import { CHART_COMPOSER_PANE_ID } from "../../types/config";
+import { CHART_COMPOSER_PANE_ID, createDefaultConfig } from "../../types/config";
+import type { MarketContext } from "../types";
+import { createSnapshotDataProvider } from "../../market-data/snapshot-provider";
+
+describe("realized volatility screenshot history", () => {
+  const request = {
+    pane: { id: "realized-vol" }, capability: { id: "realized-vol-graph-pane", options: [] },
+    instance: { instanceId: "hvg:test", paneId: "realized-vol", binding: { kind: "fixed", symbol: "AAPL" }, settings: { lookbackYears: 1 } },
+    createOptions: { symbol: "AAPL" }, options: {},
+  } as unknown as ResolvedPaneFunction;
+  const weekly = [{ date: new Date("2026-09-14"), close: 90 }];
+  const financials = { quote: { symbol: "AAPL", listingExchangeName: "NASDAQ" },
+    annualStatements: [], quarterlyStatements: [], priceHistory: weekly };
+  const capture = (provider: object) => buildDesktopShotPayload(request, {
+    config: createDefaultConfig("/tmp/realized-vol-shot-test"),
+    store: { loadTicker: async () => null },
+    dataProvider: { getTickerFinancials: async () => financials, ...provider },
+  } as unknown as MarketContext, "AAPL", {}, 800, 600, null, 1, null);
+
+  test("replaces a weekly financial snapshot with daily OHLC and preserves warmup", async () => {
+    const daily = Array.from({ length: 800 }, (_, index) => ({
+      date: new Date(Date.UTC(2023, 0, index + 1)), open: 100, high: 102, low: 99, close: 101,
+    }));
+    const calls: unknown[][] = [];
+    const shot = await capture({
+      async getPriceHistoryForResolution(...args: unknown[]) { calls.push(args); return daily; },
+      async getPriceHistory() { throw new Error("Range-only history must not supply daily volatility"); },
+    });
+    expect(calls).toEqual([["AAPL", "NASDAQ", "5Y", "1d", {
+      brokerId: undefined, brokerInstanceId: undefined, instrument: null,
+    }]]);
+    expect(shot.financials[0]![1].priceHistory).toEqual(daily);
+    const captured = createSnapshotDataProvider(shot, {} as MarketContext["dataProvider"]);
+    expect(await captured.getPriceHistoryForResolution!("AAPL", "NASDAQ", "5Y", "1d")).toEqual(daily);
+  });
+
+  test("does not substitute weekly prices when daily history is empty or fails", async () => {
+    const empty = await capture({ getPriceHistoryForResolution: async () => [] });
+    expect(empty.financials[0]![1].priceHistory).toEqual([]);
+    await expect(capture({ getPriceHistoryForResolution: async () => { throw new Error("Daily source unavailable"); } }))
+      .rejects.toThrow("Daily source unavailable");
+    await expect(capture({})).rejects.toThrow(/daily history resolution/);
+  });
+});
 
 describe("volatility surface screenshot evidence", () => {
   const request = { ...resolved("vol-surface-pane", { tab: "surface", axis: "spot", tenors: "listed", ivSource: "recomputed", priceSide: "mid" }),

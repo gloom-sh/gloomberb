@@ -146,3 +146,16 @@ test("validates chronology without requiring full OHLC and handles finite extrem
   expect(historicalVolatility30d(good.map((point, i) => ({ ...point, close: i % 2 ? 1e300 : 1e-300 })))).toBeFinite();
   expect(historicalVolatility30d(good.map((point) => ({ ...point, close: 100 })))).toBe(0);
 });
+
+test("retains rejected-source diagnostics before enough history exists for HV30", () => {
+  const chain = { underlyingSymbol: "AAPL", expirationDates: [], calls: [], puts: [] };
+  const bad = { date: new Date("2026-09-22"), close: 100, high: 90, low: 110 };
+  const summary = calculateOptionsSummary(chain, 100, [bad]);
+  expect(summary.historicalVolatility30d).toBeNull();
+  expect(summary.historicalVolatilityIntegrity!.sourcePoints).toHaveLength(1);
+  expect(summary.historicalVolatilityUnavailableReason).toContain("inconsistent OHLC");
+  bad.high = 120;
+  expect(summary.historicalVolatilityIntegrity!.sourcePoints[0]!.high).toBe(90);
+  const missing = calculateOptionsSummary(chain, 100, [{ date: bad.date, close: 0 }]);
+  expect(missing.historicalVolatilityUnavailableReason).toContain("nonpositive close");
+});

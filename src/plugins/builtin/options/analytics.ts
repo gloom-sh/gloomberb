@@ -1,5 +1,6 @@
-import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
+import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
+import { realizedVolatilityResult } from "../shared/volatility";
 import {
   DEFAULT_OPTION_CALC_DRAFT,
   daysToExpiryFrom,
@@ -8,7 +9,6 @@ import {
   type OptionValuation,
 } from "../options-calculator/model";
 
-const TRADING_DAYS_PER_YEAR = 252;
 const HISTORICAL_VOLATILITY_SESSIONS = 30;
 
 export interface OptionsSummary {
@@ -57,42 +57,15 @@ interface HistoricalVolatilityResult {
   integrity?: PriceHistoryIntegrity;
 }
 
-/** Select observations before validating prices; a rejected close must never be bridged. */
 function historicalVolatilityResult(points: readonly PricePoint[]): HistoricalVolatilityResult {
-  const observations = new Map<number, PricePoint>();
-  for (const point of points) {
-    const time = new Date(point.date).getTime();
-    if (!Number.isFinite(time)) {
-      return { value: null, unavailableReason: "HV30 unavailable: invalid history date" };
-    }
-    // Persisted corrections replace the same observation, not an extra return.
-    observations.set(time, point);
-  }
-  const selected = [...observations.entries()]
-    .sort(([a], [b]) => a - b)
-    .slice(-(HISTORICAL_VOLATILITY_SESSIONS + 1))
-    .map(([, point]) => point);
-  const rejected = selected.flatMap((point) => {
-    const integrity = pricePointIntegrity(point);
-    return integrity ? [integrity] : [];
-  });
-  if (rejected.length > 0) {
-    return {
-      value: null,
-      unavailableReason: "HV30 unavailable: inconsistent OHLC history",
-      integrity: mergePriceHistoryIntegrity(...rejected),
-    };
-  }
-  if (selected.some((point) => !positive(point.close))) {
-    return { value: null, unavailableReason: "HV30 unavailable: missing or nonpositive close" };
-  }
-  if (selected.length < HISTORICAL_VOLATILITY_SESSIONS + 1) return { value: null };
-  // Subtract logs instead of taking a ratio that can overflow for finite prices.
-  const logs = selected.map((point) => Math.log(point.close));
-  const returns = logs.slice(1).map((log, index) => log - logs[index]!);
-  const mean = returns.reduce((total, value) => total + value, 0) / returns.length;
-  const variance = returns.reduce((total, value) => total + (value - mean) ** 2, 0) / (returns.length - 1);
-  return { value: Math.sqrt(variance * TRADING_DAYS_PER_YEAR) };
+  const result = realizedVolatilityResult(points, HISTORICAL_VOLATILITY_SESSIONS, "close-to-close");
+  const reason = result.reason === "invalid-date" ? "invalid history date"
+    : result.reason === "inconsistent-ohlc" ? "inconsistent OHLC history"
+    : result.reason === "missing-close" ? "missing or nonpositive close"
+    : result.reason && result.reason !== "insufficient-history" ? result.reason.replaceAll("-", " ") : null;
+  return { value: result.value,
+    ...(reason ? { unavailableReason: `HV30 unavailable: ${reason}` } : {}),
+    ...(result.integrity ? { integrity: result.integrity } : {}) };
 }
 
 /** Annualized sample standard deviation of the latest 30 daily log returns. */

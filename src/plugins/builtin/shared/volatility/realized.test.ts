@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../../types/financials";
 import {
   realizedVolatility,
+  realizedVolatilityCadenceIssue,
   realizedVolatilityResult,
   rollingRealizedVolatility,
   volatilityCone,
@@ -82,6 +83,17 @@ describe("realized volatility estimators", () => {
 });
 
 describe("history integrity and rolling windows", () => {
+  test("daily cadence guard recognizes corrected chronology and rejects contradictory fallback bars", () => {
+    const daily = rangeHistory(10);
+    expect(realizedVolatilityCadenceIssue([...daily, daily[4]!].reverse())).toBeNull();
+    const weekly = daily.map((point, index) => ({ ...point, date: new Date(Date.UTC(2025, 0, 1 + index * 7)) }));
+    expect(realizedVolatilityCadenceIssue(weekly)).toContain("weekly");
+    expect(realizedVolatilityCadenceIssue([...daily, { date: new Date(Date.UTC(2025, 0, 1, 14)) }])).toContain("intraday");
+    expect(realizedVolatilityCadenceIssue([...daily, { date: new Date(NaN) }])).toContain("invalid history date");
+    // One holiday gap in otherwise daily observations does not imply weekly data.
+    expect(realizedVolatilityCadenceIssue([...daily, { date: new Date(Date.UTC(2025, 0, 15)) }])).toBeNull();
+  });
+
   test("preserves invalid observations as gaps and recovers after they leave the window", () => {
     const points = history([0.01, -0.01, 0.02, -0.02, 0.01, -0.01]);
     const broken = { ...points[2]!, high: 80, low: 120 };

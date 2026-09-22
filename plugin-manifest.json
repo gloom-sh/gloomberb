@@ -260,6 +260,7 @@
           "options",
           "options-calculator",
           "quote-monitor",
+          "realized-vol",
           "relative-valuation",
           "risk-factors",
           "sec",
