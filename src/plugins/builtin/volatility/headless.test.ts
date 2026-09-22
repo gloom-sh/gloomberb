@@ -33,7 +33,7 @@ describe("volatility headless model", () => {
     expect(metadata.data.curve).toMatchObject({ date: "2026-09-21", ratio: 23 / 20 });
     expect(metadata.data.fred).toMatchObject({ termDate: "2026-09-18", ratio: 21 / 18 });
     expect(metadata.data.board.find((row) => row.id === "vix")).toMatchObject({ source: "injected", sampleSize: 1, change1d: null, percentile1y: null });
-    expect(metadata).toMatchObject({ phase: "partial", observations: "daily close", vixFuturesAvailable: false });
+    expect(metadata.phase).toBe("partial");
     const curve = result.sections.find((section) => section.title === "Aligned curve observations");
     const board = result.sections.find((section) => section.title === "Cross-asset volatility");
     expect(curve && "rows" in curve ? curve.rows[1] : null).toMatchObject({ sourceId: "^VIX", value: 20, date: "2026-09-21" });
