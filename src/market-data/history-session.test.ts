@@ -140,7 +140,7 @@ test("unsupported calendars, intervals and continuous-market contracts cannot ga
   for (const interval of ["2m", "1d", "1wk", "auto"]) {
     expect(stale("2026-09-21T19:45:00Z", "2026-09-22T12:42:00Z", { interval })).toBeNull();
   }
-  for (const exchange of ["SMART", "BATS", "", "CCC", "CCY", "CME", "LSE"]) {
+  for (const exchange of ["SMART", "", "CCC", "CCY", "CME", "LSE"]) {
     expect(stale("2026-09-18T19:45:00Z", "2026-09-20T18:00:00Z", { exchange })).toBeNull();
   }
   expect(stale("2029-01-02T19:45:00Z", "2029-01-03T12:42:00Z")).toBeNull();

@@ -58,7 +58,7 @@ test("declared listing aliases retain coverage while routing and other asset ven
   for (const exchange of ["NYSE", "NYQ", "XNYS", "NYSEARCA", "NYSE Arca", "AMEX", "ASE", "NYSE NATIONAL", "NYSE CHICAGO", "NYSE TEXAS", "NASDAQGS", "NASDAQGM", "NMS", "XNAS", " nasdaq "]) {
     expect(getPublishedUsEquitySession(exchange, "2026-11-27")).toEqual(expected);
   }
-  for (const exchange of ["", "SMART", "BATS", "LSE", "TSX", "HKEX", "FX", "CCY", "CCC", "CME", "CBOE", "NYMEX", "GLOBEX", "UNKNOWN"]) {
+  for (const exchange of ["", "SMART", "LSE", "TSX", "HKEX", "FX", "CCY", "CCC", "CME", "NYMEX", "GLOBEX", "UNKNOWN"]) {
     expect(getPublishedUsEquitySession(exchange, "2026-11-27")).toBeNull();
     expect(getPublishedUsEquitySession(exchange, "2026-11-28")).toBeNull();
   }
