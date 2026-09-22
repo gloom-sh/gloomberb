@@ -145,7 +145,7 @@ Correlation uses matching observation times when inputs have different frequenci
 | `HM` | Market heatmap for large US stocks and ETFs ([Market Heatmap plugin](https://github.com/gloom-sh/gloom-market-heatmap)) |
 | `MOST` | Top gainers, losers, most active, and trending tickers |
 | `HILO` | Session new highs and new lows with 30s/1m/5m momentum |
-| `FLOW` | Unusual options activity: sweeps, blocks, and large premium |
+| `FLOW` | Unusual options activity: sweeps, blocks, and large premium; Vol/OI divides the contract's day volume by its latest reported open interest |
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |

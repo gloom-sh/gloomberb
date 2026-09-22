@@ -50,4 +50,7 @@ test("a report response for another ticker or year cannot be cached under the re
  await expect(loadRiskReportWithClient(api,"CONTROL",2025)).rejects.toThrow("does not match CONTROL 2025");
  expect(store.getResource("report","CONTROL:2025",options)).toBeNull();api.getRiskReport=async()=>({...report(2025),ticker:"OTHER"});
  await expect(loadRiskReportWithClient(api,"CONTROL",2025)).rejects.toThrow("does not match CONTROL 2025");
+ // The server spells share classes the SEC way; BRK.B and BRK-B are one filer.
+ api.getRiskReport=async()=>({...report(2025),ticker:"BRK-B"});
+ await expect(loadRiskReportWithClient(api,"BRK.B",2025)).resolves.toMatchObject({ticker:"BRK-B"});
 });

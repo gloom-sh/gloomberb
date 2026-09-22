@@ -3,9 +3,9 @@ import type { PluginModule } from "../plugin-module";
 import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS } from "./flow-model";
 import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
-import { hiloHeadless } from "./headless";
+import { flowHeadless, hiloHeadless } from "./headless";
 
-export { hiloHeadless } from "./headless";
+export { flowHeadless, hiloHeadless } from "./headless";
 
 export const HILO_PANE_ID = "scanner-hilo";
 export const FLOW_PANE_ID = "scanner-flow";
@@ -109,6 +109,7 @@ export const scannerModule: PluginModule = {
       description: "Unusual options activity: sweeps, blocks, and large premium prints.",
       keywords: ["flow", "options", "sweep", "block", "unusual", "premium", "scanner"],
       shortcut: { prefix: "FLOW" },
+      headless: flowHeadless,
       createInstance: () => ({ settings: { ...DEFAULT_FLOW_FILTERS } }),
     },
   ],

@@ -69,7 +69,8 @@ export function seriesToChartPoints(summary: Pick<CloudJobsSummaryPayload, "seri
     high: point.open,
     low: point.open,
     close: point.open,
-    volume: point.new,
+    // The first observed day has no meaningful "new" count; draw no bar.
+    volume: point.new ?? 0,
   }));
 }
 

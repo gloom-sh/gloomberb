@@ -559,7 +559,8 @@ export interface CloudEarningsCallPayload {
 export interface CloudJobsSeriesPoint {
   day: string;
   open: number;
-  new: number;
+  /** Null on the first observed day, when the whole board is seen for the first time. */
+  new: number | null;
   closed: number;
   /** Open standing roles the company hires for continuously. */
   evergreen?: number;

@@ -106,7 +106,9 @@ export function loadRiskReportWithClient(client: RiskApiClient, ticker: string, 
   const symbol = ticker.trim().toUpperCase();
   return loadCached(client, REPORT_KIND, `${symbol}:${year}`, activeReportFetches, REPORT_CACHE_POLICY, options?.force ?? false, async () => {
     const payload = await client.getRiskReport(symbol, year);
-    if (!payload || payload.ticker?.toUpperCase() !== symbol || payload.reportYear !== year) {
+    // SEC rows spell share classes BRK-B; a BRK.B request is the same company.
+    const sameTicker = (value: string | undefined) => value?.toUpperCase().replace(/\./g, "-") === symbol.replace(/\./g, "-");
+    if (!payload || !sameTicker(payload.ticker) || payload.reportYear !== year) {
       throw new Error(`Risk report response does not match ${symbol} ${year}.`);
     }
     return payload;
