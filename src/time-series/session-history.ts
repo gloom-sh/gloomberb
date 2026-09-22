@@ -11,6 +11,8 @@ import { resolveExchangeTimeZone } from "../utils/exchanges";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrity } from "../utils/price-history-integrity";
 import { zonedWallClockToUtcMs } from "../utils/zoned-date-time";
+import { fetchHistoryResult } from "../sources/history-result";
+import type { PriceHistoryResult } from "../types/price-history";
 
 export type IntradayRangePreset = "1D" | "1W";
 
@@ -39,6 +41,8 @@ export interface LoadedIntradayWindow extends IntradayWindow {
   unavailableReason: string | null;
   quote?: Quote;
   priceDomainFailure?: IntradayPriceDomainFailure;
+  session?: PriceHistoryResult["session"];
+  sourceKey?: string;
 }
 
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -228,20 +232,16 @@ async function loadTrailingHistory(
   exchange: string,
   request: IntradayRequest,
   context?: MarketDataRequestContext,
-): Promise<PricePoint[]> {
-  if (!provider.getPriceHistoryForResolution) return [];
+): Promise<PriceHistoryResult> {
   const fetchRange: TimeRange = request.rangePreset === "1W" && request.resolution !== "1m"
     ? "1M"
     : "1W";
   try {
-    return await provider.getPriceHistoryForResolution(
-      symbol,
-      exchange,
-      fetchRange,
-      request.resolution, context,
-    );
+    return await fetchHistoryResult(provider, symbol, exchange,
+      { kind: "resolution", range: fetchRange, resolution: request.resolution }, context)
+      ?? { points: [], resolution: request.resolution };
   } catch {
-    return [];
+    return { points: [], resolution: request.resolution };
   }
 }
 
@@ -252,29 +252,19 @@ async function loadHistoricalFallback(
   request: IntradayRequest,
   now: Date,
   context?: MarketDataRequestContext,
-): Promise<PricePoint[]> {
-  if (!provider.getDetailedPriceHistory) return [];
+): Promise<PriceHistoryResult> {
+  const empty = { points: [], resolution: request.resolution };
   if (request.session) {
     const timeZone = resolveExchangeTimeZone(exchange) ?? "UTC";
     const bounds = sessionUtcBounds(request.session, timeZone);
-    return provider.getDetailedPriceHistory(
-      symbol,
-      exchange,
-      bounds.start,
-      bounds.end,
-      request.resolution, context,
-    ).catch(() => []);
+    return await fetchHistoryResult(provider, symbol, exchange,
+      { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(() => null) ?? empty;
   }
   const end = new Date(now.getTime() - HISTORICAL_RETRY_DELAY_MS);
   const lookbackDays = request.rangePreset === "1W" ? 35 : 8;
   const start = new Date(end.getTime() - lookbackDays * DAY_MS);
-  return provider.getDetailedPriceHistory(
-    symbol,
-    exchange,
-    start,
-    end,
-    request.resolution, context,
-  ).catch(() => []);
+  return await fetchHistoryResult(provider, symbol, exchange,
+    { kind: "detail", start, end, interval: request.resolution }, context).catch(() => null) ?? empty;
 }
 
 export async function loadIntradayWindow(options: {
@@ -286,7 +276,7 @@ export async function loadIntradayWindow(options: {
   context?: MarketDataRequestContext;
 }): Promise<LoadedIntradayWindow> {
   const timeZone = resolveExchangeTimeZone(options.exchange) ?? "UTC";
-  let raw = options.request.session
+  let acquisition = options.request.session
     ? await loadHistoricalFallback(
         options.provider,
         options.symbol,
@@ -300,6 +290,7 @@ export async function loadIntradayWindow(options: {
         options.exchange,
         options.request, options.context,
       );
+  let raw = acquisition.points;
   let window = resolveIntradaySessionWindow(raw, {
     rangePreset: options.request.rangePreset,
     session: options.request.session,
@@ -308,7 +299,7 @@ export async function loadIntradayWindow(options: {
   let sawNonIntradayData = window.points.length > 0 && !hasIntradayBars(window, timeZone);
 
   if (!hasIntradayBars(window, timeZone)) {
-    raw = options.request.session
+    acquisition = options.request.session
       ? await loadTrailingHistory(
           options.provider,
           options.symbol,
@@ -322,6 +313,7 @@ export async function loadIntradayWindow(options: {
           options.request,
           options.now ?? new Date(), options.context,
         );
+    raw = acquisition.points;
     window = resolveIntradaySessionWindow(raw, {
       rangePreset: options.request.rangePreset,
       session: options.request.session,
@@ -371,7 +363,7 @@ export async function loadIntradayWindow(options: {
       ? reportedQuote : undefined;
     const instrumentType = quote?.instrumentType?.trim().toUpperCase() || null;
     if (instrumentType === "FUTURE" || instrumentType === "FUTURES" || instrumentType === "FUT") {
-      return { ...window, bufferedPoints, unavailableReason: null, quote };
+      return { ...window, bufferedPoints, unavailableReason: null, quote, session: acquisition.session, sourceKey: acquisition.sourceKey };
     }
     const priceDomainFailure: IntradayPriceDomainFailure = Object.freeze({
       reason: "nonpositive-price",
@@ -387,5 +379,5 @@ export async function loadIntradayWindow(options: {
       unavailableReason: `Intraday history for ${options.symbol} is unavailable: ${nonpositive.length} nonpositive close${nonpositive.length === 1 ? "" : "s"} in the selected window or its calculation buffer require verified futures metadata (type: ${instrumentType ?? "unknown"}).`,
     };
   }
-  return { ...window, bufferedPoints, unavailableReason: null };
+  return { ...window, bufferedPoints, unavailableReason: null, session: acquisition.session, sourceKey: acquisition.sourceKey };
 }

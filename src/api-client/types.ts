@@ -1231,6 +1231,8 @@ export interface CloudMarketResponse<T> {
   currency?: string;
   /** Untrusted history-only failure evidence, validated by the history adapter. */
   historyRetention?: unknown;
+  /** Source-declared history semantics; validated separately from quote metadata. */
+  historySession?: unknown;
   coverage?: {
     inceptionDate: string;
     firstAllowedBarDate: string;

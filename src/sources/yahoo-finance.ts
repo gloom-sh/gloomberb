@@ -2,6 +2,7 @@ import { hasAsmlEarningsIdentity, promoteReportedEarningsResults } from "../util
 import { exchangeRateMetadata } from "../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { Quote, PricePoint, TickerFinancials, OptionsChain, CompanyProfile, HolderData, AnalystResearchData, CorporateActionsData } from "../types/financials";
+import type { PriceHistoryResult } from "../types/price-history";
 import type { DataProvider, EarningsEvent, MarketDataRequestContext, NewsItem, SecFilingItem } from "../types/data-provider";
 import type { TimeRange } from "../time-series/range";
 import {
@@ -30,8 +31,8 @@ import {
 import {
   getYahooChartResolutionCapabilities,
   getYahooChartResolutionSupport,
-  loadYahooPriceHistory,
-  loadYahooPriceHistoryForResolution,
+  loadYahooPriceHistoryWithMetadata,
+  loadYahooPriceHistoryForResolutionWithMetadata,
 } from "./yahoo-finance/history";
 import {
   getYahooOptionQuote,
@@ -386,7 +387,11 @@ export class YahooFinanceClient implements DataProvider {
   }
 
   async getPriceHistory(ticker: string, exchange = "", range: TimeRange, _context?: MarketDataRequestContext): Promise<PricePoint[]> {
-    return loadYahooPriceHistory({
+    return (await this.getPriceHistoryWithMetadata(ticker, exchange, range, _context)).points;
+  }
+
+  async getPriceHistoryWithMetadata(ticker: string, exchange = "", range: TimeRange, _context?: MarketDataRequestContext): Promise<PriceHistoryResult> {
+    return loadYahooPriceHistoryWithMetadata({
       ticker,
       exchange,
       range,
@@ -401,7 +406,14 @@ export class YahooFinanceClient implements DataProvider {
     resolution: ManualChartResolution,
     _context?: MarketDataRequestContext,
   ): Promise<PricePoint[]> {
-    return loadYahooPriceHistoryForResolution({
+    return (await this.getPriceHistoryForResolutionWithMetadata(ticker, exchange, bufferRange, resolution, _context)).points;
+  }
+
+  async getPriceHistoryForResolutionWithMetadata(
+    ticker: string, exchange = "", bufferRange: TimeRange, resolution: ManualChartResolution,
+    _context?: MarketDataRequestContext,
+  ): Promise<PriceHistoryResult> {
+    return loadYahooPriceHistoryForResolutionWithMetadata({
       ticker,
       exchange,
       bufferRange,

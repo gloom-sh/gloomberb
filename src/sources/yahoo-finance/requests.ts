@@ -31,6 +31,8 @@ export async function fetchYahooChart(
   meta: NonNullable<ChartResult["meta"]>;
   history: PricePoint[];
   events: ChartResult["events"];
+  observedAt: number;
+  regularHoursOnly: boolean;
 }> {
   const params = new URLSearchParams({
     interval,
@@ -40,6 +42,7 @@ export async function fetchYahooChart(
   });
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${params}`;
   const data = await http.fetchJson<ChartResponse>(url);
+  const observedAt = Date.now();
   const result = data.chart?.result?.[0];
   if (!result?.timestamp?.length) {
     throw new Error(data.chart?.error?.description || `No chart data for ${symbol}`);
@@ -65,7 +68,7 @@ export async function fetchYahooChart(
   }
   return { meta: result.meta || {},
     history: applyYahooHistoryCoverage(symbol, result.meta || {}, interval, history),
-    events: result.events };
+    events: result.events, observedAt, regularHoursOnly: !includePrePost };
 }
 
 export async function fetchYahooExtendedHoursData(

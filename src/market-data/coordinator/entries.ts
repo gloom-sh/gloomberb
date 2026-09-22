@@ -98,10 +98,15 @@ export function readyEntry<T>(
 /** Keep all-missing observation dates while marking price coverage unavailable. */
 export function readyChartEntry(
   current: QueryEntry<PricePoint[]>, data: PricePoint[] | null, source: string, attempts: ProviderAttempt[],
+  history?: QueryEntry<PricePoint[]>["history"],
 ): QueryEntry<PricePoint[]> {
   const entry = readyEntry(current, data, source, attempts, { keepLastGoodOnEmpty: true });
-  return data && !hasUsablePriceHistory(data)
-    ? { ...entry, error: { reasonCode: "NO_DATA", message: EMPTY_MESSAGE } } : entry;
+  if (data == null && current.lastGoodData != null) {
+    return { ...entry, source: current.source, fetchedAt: current.fetchedAt, staleAt: current.staleAt,
+      history: current.history };
+  }
+  return { ...entry, ...(history ? { history } : {}),
+    ...(data && !hasUsablePriceHistory(data) ? { error: { reasonCode: "NO_DATA", message: EMPTY_MESSAGE } } : {}) };
 }
 
 export function readyQuoteEntry(

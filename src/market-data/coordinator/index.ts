@@ -1,5 +1,6 @@
 import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider, SecFilingDocument, SecFilingItem } from "../../types/data-provider";
 import type { OptionsChain, PricePoint, Quote, TickerFinancials } from "../../types/financials";
+import { fetchHistoryResult, type HistoryResultRequest } from "../../sources/history-result";
 import type { ChartRequest, InstrumentRef, OptionsRequest, SecFilingsRequest } from "../request-types";
 import { QueryStore } from "../query-store";
 import type { QueryEntry } from "../result-types";
@@ -21,10 +22,11 @@ import {
 import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
 import { measurePerf } from "../../utils/perf-marks";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
-import { hasUsablePriceHistory, normalizePriceHistory } from "../../utils/price-history";
+import { hasUsablePriceHistory } from "../../utils/price-history";
 import {
   createBaselineChartRequest,
   createChartLoadingEntry,
+  freshChartFallback,
   normalizeFreshChartData,
 } from "./chart";
 import { MarketDataCoordinatorEvents } from "./events";
@@ -293,11 +295,11 @@ export class MarketDataCoordinator {
     const key = buildChartKey(request);
     this.chartRequests.set(key, request);
     const current = this.chartStore.get(key);
-    const currentData = normalizeFreshChartData(resolveEntryData(current), request);
+    const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history);
     if (!options.forceRefresh && currentData.length > 0 && hasFreshEntryData(current, CHART_CACHE_TTL_MS)) {
       if (currentData !== resolveEntryData(current)) {
         return this.chartStore.update(key, (entry) =>
-          readyChartEntry(entry, currentData, entry.source ?? this.dataProvider.id, entry.attempts)
+          ({ ...entry, data: currentData, lastGoodData: currentData })
         );
       }
       return current;
@@ -314,47 +316,27 @@ export class MarketDataCoordinator {
       }));
       const startedAt = Date.now();
       try {
-        const data = normalizePriceHistory(
-          request.granularity === "detail" && request.startDate && request.endDate && request.barSize && this.dataProvider.getDetailedPriceHistory
-            ? await this.dataProvider.getDetailedPriceHistory(
-              request.instrument.symbol,
-              request.instrument.exchange ?? "",
-              request.startDate,
-              request.endDate,
-              request.barSize,
-              {
-                ...toMarketDataContext(request.instrument),
-                cacheMode: options.forceRefresh ? "refresh" : "default",
-              },
-            )
-            : request.granularity === "resolution" && request.resolution && this.dataProvider.getPriceHistoryForResolution
-              ? await this.dataProvider.getPriceHistoryForResolution(
-                request.instrument.symbol,
-                request.instrument.exchange ?? "",
-                request.bufferRange,
-                request.resolution,
-                {
-                  ...toMarketDataContext(request.instrument),
-                  cacheMode: options.forceRefresh ? "refresh" : "default",
-                },
-              )
-            : await this.dataProvider.getPriceHistory(
-              request.instrument.symbol,
-              request.instrument.exchange ?? "",
-              request.bufferRange,
-              {
-                ...toMarketDataContext(request.instrument),
-                cacheMode: options.forceRefresh ? "refresh" : "default",
-              },
-            ),
-        );
+        const requested: HistoryResultRequest = request.granularity === "detail" && request.startDate && request.endDate && request.barSize
+          ? { kind: "detail", start: request.startDate, end: request.endDate, interval: request.barSize }
+          : request.granularity === "resolution" && request.resolution
+            ? { kind: "resolution", range: request.bufferRange, resolution: request.resolution }
+            : { kind: "range", range: request.bufferRange };
+        const context = { ...toMarketDataContext(request.instrument),
+          cacheMode: options.forceRefresh ? "refresh" as const : "default" as const };
+        const load = (historyRequest: HistoryResultRequest) => fetchHistoryResult(this.dataProvider,
+          request.instrument.symbol, request.instrument.exchange ?? "", historyRequest, context);
+        const result = await load(requested) ?? await load({ kind: "range", range: request.bufferRange });
+        if (!result) throw new Error("No chart history method is available");
+        const { points, ...history } = result;
+        const data = normalizeFreshChartData(points, request, history);
+        const source = result.sourceKey ?? this.dataProvider.id;
         const status = hasUsablePriceHistory(data) ? "success" : "empty";
-        const attempts = [createAttempt(this.dataProvider.id, startedAt, status, status === "empty" ? "NO_DATA" : undefined)];
-        return this.chartStore.update(key, (current) => readyChartEntry(current, data.length > 0 ? data : null, this.dataProvider.id, attempts));
+        const attempts = [createAttempt(source, startedAt, status, status === "empty" ? "NO_DATA" : undefined)];
+        return this.chartStore.update(key, (current) => readyChartEntry(freshChartFallback(current, request), data.length > 0 ? data : null, source, attempts, history));
       } catch (error) {
         const classified = classifyError(error);
         const attempt = createAttempt(this.dataProvider.id, startedAt, EXPECTED_EMPTY.test(classified.message) ? "empty" : "fatal_error", classified.reasonCode, classified.message);
-        return this.chartStore.update(key, (current) => errorEntry(current, attempt));
+        return this.chartStore.update(key, (current) => errorEntry(freshChartFallback(current, request), attempt));
       }
     });
   }

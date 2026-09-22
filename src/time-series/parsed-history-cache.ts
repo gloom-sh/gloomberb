@@ -1,11 +1,12 @@
 import type { PricePoint } from "../types/financials";
+import type { PriceHistoryResult } from "../types/price-history";
 import type { InstrumentRef } from "../market-data/request-types";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import type { TimeRange } from "./range";
 import type { ManualChartResolution } from "./resolution";
 
 const MAX_PARSED_HISTORY = 32;
-const parsedHistory = new Map<string, PricePoint[]>();
+const parsedHistory = new Map<string, PriceHistoryResult>();
 
 export function parsedPriceHistoryKey(
   instrument: InstrumentRef,
@@ -25,10 +26,15 @@ export function parsedPriceHistoryKey(
   ]);
 }
 
-export function rememberParsedPriceHistory(key: string, points: PricePoint[]): void {
+export function rememberParsedPriceHistory(
+  key: string, points: PricePoint[], metadata?: Omit<PriceHistoryResult, "points">,
+): void {
   if (points.length === 0) return;
   if (parsedHistory.has(key)) parsedHistory.delete(key);
-  parsedHistory.set(key, points);
+  parsedHistory.set(key, { points, resolution: metadata?.resolution ?? null,
+    ...(metadata?.session ? { session: { ...metadata.session } } : {}),
+    ...(metadata?.sourceKey ? { sourceKey: metadata.sourceKey } : {}),
+  });
   while (parsedHistory.size > MAX_PARSED_HISTORY) {
     const oldest = parsedHistory.keys().next().value;
     if (oldest === undefined) break;
@@ -37,5 +43,9 @@ export function rememberParsedPriceHistory(key: string, points: PricePoint[]): v
 }
 
 export function readParsedPriceHistory(key: string): PricePoint[] | undefined {
+  return readParsedHistoryResult(key)?.points;
+}
+
+export function readParsedHistoryResult(key: string): PriceHistoryResult | undefined {
   return parsedHistory.get(key);
 }

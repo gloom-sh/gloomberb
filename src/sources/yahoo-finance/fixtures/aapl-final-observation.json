@@ -1,0 +1,20 @@
+{
+  "sourceCapture": "retention-AAPL-1mo.json",
+  "sourceSha256": "405696f80d6914226a3c79fdfd97173e83b7f0f5d04791f4c771ff8e73978352",
+  "observedAt": "2026-09-22T12:42:12Z",
+  "chart": { "result": [{
+    "meta": {
+      "symbol": "AAPL", "exchangeName": "NMS", "fullExchangeName": "NasdaqGS",
+      "currency": "USD", "instrumentType": "EQUITY", "exchangeTimezoneName": "America/New_York",
+      "regularMarketTime": 1790020801, "regularMarketPrice": 338.98, "dataGranularity": "15m"
+    },
+    "timestamp": [1790018100, 1790019000, 1790019900, 1790020800],
+    "indicators": { "quote": [{
+      "close": [339.4383850097656, 339.2049865722656, 338.8900146484375, 338.9800109863281],
+      "high": [339.55999755859375, 339.4599914550781, 339.6400146484375, 338.9800109863281],
+      "low": [338.67999267578125, 339.0, 338.80999755859375, 338.9800109863281],
+      "volume": [825521, 849990, 2218511, 0],
+      "open": [338.92999267578125, 339.45001220703125, 339.19000244140625, 338.9800109863281]
+    }] }
+  }] }
+}

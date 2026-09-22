@@ -5,6 +5,8 @@ import { canonicalHistoryInterval, HistoryRetentionError, isHistoryRetentionErro
 import type { BrokerCandidate } from "./brokers";
 import { withBrokerTimeout } from "./brokers";
 import type { DataProvider, MarketDataRequestContext } from "../../types/data-provider";
+import type { PriceHistoryResult } from "../../types/price-history";
+import { fetchHistoryResult, historyResolutionForInterval, InvalidHistoryResultError, normalizeHistoryResult } from "../history-result";
 import type { PricePoint } from "../../types/financials";
 import type { TimeRange } from "../../time-series/range";
 import {
@@ -27,7 +29,6 @@ import {
   compactDate,
   isCurrentHistoryWindow,
   isIntradayRange,
-  isStaleIntradayHistory,
   listCachedResources,
   type ProviderRouterCachePolicyKey,
 } from "./cache";
@@ -53,10 +54,10 @@ interface HistoryRequestDescriptor {
   context?: MarketDataRequestContext;
   cachePolicyKey: PriceHistoryCachePolicyKey;
   missingProviderError?: string;
-  isCachedValueStale(value: PricePoint[]): boolean;
-  isFetchedValueStale(value: PricePoint[]): boolean;
+  isCachedValueStale(value: PriceHistoryResult): boolean;
+  isFetchedValueStale(value: PriceHistoryResult): boolean;
   fetchBroker(candidate: BrokerCandidate): Promise<PricePoint[] | null>;
-  fetchProvider(provider: DataProvider): Promise<PricePoint[] | null>;
+  fetchProvider(provider: DataProvider): Promise<PriceHistoryResult | null>;
 }
 
 interface HistoryAttempts {
@@ -102,7 +103,9 @@ function candidateForRequest(request: HistoryRequestDescriptor, sourceKey: strin
 
 function recordHistoryError(attempts: HistoryAttempts | undefined, request: HistoryRequestDescriptor, sourceKey: string, error: unknown): void {
   if (!attempts) return;
-  if (isHistoryRetentionError(error)) {
+  if (error instanceof InvalidHistoryResultError) {
+    recordHistoryOutcome(attempts, sourceKey, "malformed");
+  } else if (isHistoryRetentionError(error)) {
     recordHistoryOutcome(attempts, sourceKey, "retention");
     attempts.retention ??= retentionForRequest(request, sourceKey, error) ?? undefined;
     const candidate = candidateForRequest(request, sourceKey, error);
@@ -138,6 +141,7 @@ function priceHistoryVariantParts(
   const versionedParts: Array<[string, string | number | undefined | null]> = [
     ...parts,
     ["version", PRICE_HISTORY_CACHE_VERSION],
+    ["historyData", 1],
     ["inception", inceptionVersion],
     ["calendar", monthly ? 1 : undefined],
     // Old Yahoo/cloud ALL responses could serve weekly/quarterly bars under
@@ -174,7 +178,9 @@ function makeHistoryRequestIdentity(
     // Broker and independent-provider records did not use the affected Yahoo
     // request. Keep their old keys readable, then filter by source below.
     const legacy = key.replace(/;granularity=1(?=;|$)/, "");
-    return legacy === key ? [key] : [key, legacy];
+    const keys = legacy === key ? [key] : [key, legacy];
+    // New result envelopes never overwrite array payloads used by older clients.
+    return keys.flatMap(value => [value, value.replace(/;historyData=1(?=;|$)/, "")]);
   });
   return {
     target: { symbol: input.ticker, exchange: input.exchange },
@@ -240,10 +246,24 @@ function mergeRequestHistoryGaps(
   })));
 }
 
+function normalizeRequestResult(value: PriceHistoryResult, request: HistoryRequestDescriptor): PriceHistoryResult {
+  return { ...value, points: normalizeRequestHistory(value.points, request),
+    // A public equity response cannot establish a broker contract's session.
+    ...(request.context?.instrument ? { session: undefined } : {}),
+  };
+}
+
+function resultIsStale(value: PriceHistoryResult, exchange: string, intervalMs?: number | null): boolean {
+  return isPriceHistoryStaleForCurrentWindow(value.points, Date.now(), {
+    exchange, intervalMs: intervalMs ?? (value.resolution ? priceHistoryIntervalMs(value.resolution) : undefined), session: value.session,
+  });
+}
+
 function historyCoverage(request: HistoryRequestDescriptor) {
   return {
-    isUsable: (value: PricePoint[]) => hasUsablePriceHistory(value),
-    merge: (value: PricePoint[], unavailable: PricePoint[][]) => mergeRequestHistoryGaps(value, unavailable, request.requestedRange),
+    isUsable: (value: PriceHistoryResult) => hasUsablePriceHistory(value.points),
+    merge: (value: PriceHistoryResult, unavailable: PriceHistoryResult[]) => ({ ...value,
+      points: mergeRequestHistoryGaps(value.points, unavailable.map(result => result.points), request.requestedRange) }),
   };
 }
 
@@ -251,12 +271,16 @@ export class ProviderRouterHistoryRoutes {
   constructor(private readonly deps: ProviderRouterCoreDeps) {}
   private readonly historyRefreshInFlight = new Map<string, Promise<unknown>>();
 
-  async getPriceHistory(
+  async getPriceHistory(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PricePoint[]> {
+    return (await this.getPriceHistoryWithMetadata(ticker, exchange, range, context)).points;
+  }
+
+  async getPriceHistoryWithMetadata(
     ticker: string,
     exchange: string,
     range: TimeRange,
     context?: MarketDataRequestContext,
-  ): Promise<PricePoint[]> {
+  ): Promise<PriceHistoryResult> {
     if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
     const identity = makeHistoryRequestIdentity(this.deps, {
       kind: "price-history",
@@ -276,8 +300,8 @@ export class ProviderRouterHistoryRoutes {
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No history provider available for ${ticker}`,
-      isCachedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange),
-      isFetchedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange),
+      isCachedValueStale: (value) => intraday && resultIsStale(value, exchange),
+      isFetchedValueStale: (value) => intraday && resultIsStale(value, exchange),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistory
         ? candidate.broker.getPriceHistory(
           ticker,
@@ -287,17 +311,21 @@ export class ProviderRouterHistoryRoutes {
           context?.instrument ?? null,
         )
         : null,
-      fetchProvider: (provider) => provider.getPriceHistory(ticker, exchange, range, context),
+      fetchProvider: (provider) => fetchHistoryResult(provider, ticker, exchange, { kind: "range", range }, context),
     });
   }
 
-  async getPriceHistoryForResolution(
+  async getPriceHistoryForResolution(ticker: string, exchange: string, bufferRange: TimeRange, resolution: ManualChartResolution, context?: MarketDataRequestContext): Promise<PricePoint[]> {
+    return (await this.getPriceHistoryForResolutionWithMetadata(ticker, exchange, bufferRange, resolution, context)).points;
+  }
+
+  async getPriceHistoryForResolutionWithMetadata(
     ticker: string,
     exchange: string,
     bufferRange: TimeRange,
     resolution: ManualChartResolution,
     context?: MarketDataRequestContext,
-  ): Promise<PricePoint[]> {
+  ): Promise<PriceHistoryResult> {
     if (context?.historyRecovery) throw new Error("History recovery requires an exact detailed request");
     const identity = makeHistoryRequestIdentity(this.deps, {
       kind: "price-history",
@@ -329,8 +357,8 @@ export class ProviderRouterHistoryRoutes {
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No resolution-aware history provider available for ${ticker}`,
-      isCachedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange, intervalMs),
-      isFetchedValueStale: (value) => isStaleIntradayHistory(value, intraday, exchange, intervalMs),
+      isCachedValueStale: (value) => intraday && resultIsStale(value, exchange, intervalMs),
+      isFetchedValueStale: (value) => intraday && resultIsStale(value, exchange, intervalMs),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistoryForResolution
         ? candidate.broker.getPriceHistoryForResolution(
           ticker,
@@ -341,9 +369,7 @@ export class ProviderRouterHistoryRoutes {
           context?.instrument ?? null,
         )
         : null,
-      fetchProvider: async (provider) => provider.getPriceHistoryForResolution
-        ? provider.getPriceHistoryForResolution(ticker, exchange, bufferRange, resolution, context)
-        : null,
+      fetchProvider: (provider) => fetchHistoryResult(provider, ticker, exchange, { kind: "resolution", range: bufferRange, resolution }, context),
     });
   }
 
@@ -375,7 +401,7 @@ export class ProviderRouterHistoryRoutes {
     }));
     if (brokerSupport) return brokerSupport.value;
 
-    const providerSupport = await this.firstProviderArrayResult(async (provider) => {
+    const providerSupport = await this.firstProviderResult(async (provider) => {
       if (provider.canProvide && !await provider.canProvide(ticker, exchange, context)) {
         return null;
       }
@@ -402,14 +428,18 @@ export class ProviderRouterHistoryRoutes {
     return support.map((entry) => entry.resolution);
   }
 
-  async getDetailedPriceHistory(
+  async getDetailedPriceHistory(ticker: string, exchange: string, startDate: Date, endDate: Date, barSize: string, context?: MarketDataRequestContext): Promise<PricePoint[]> {
+    return (await this.getDetailedPriceHistoryWithMetadata(ticker, exchange, startDate, endDate, barSize, context)).points;
+  }
+
+  async getDetailedPriceHistoryWithMetadata(
     ticker: string,
     exchange: string,
     startDate: Date,
     endDate: Date,
     barSize: string,
     context?: MarketDataRequestContext,
-  ): Promise<PricePoint[]> {
+  ): Promise<PriceHistoryResult> {
     const intervalMs = priceHistoryIntervalMs(barSize);
     const calendarBounds = intervalMs !== null
       && /^\d+\s*(d|day|days|w|wk|week|weeks|mo|month|months)$/i.test(barSize.trim());
@@ -443,9 +473,9 @@ export class ProviderRouterHistoryRoutes {
       context,
       cachePolicyKey: intervalMs != null && intervalMs >= 24 * 60 * 60 * 1000 ? "priceHistoryDaily" : "priceHistoryIntraday",
       isCachedValueStale: (value) => currentWindowAtLookup
-        && isPriceHistoryStaleForCurrentWindow(value, Date.now(), { exchange, intervalMs }),
+        && resultIsStale(value, exchange, intervalMs),
       isFetchedValueStale: (value) => isCurrentHistoryWindow(endDate)
-        && isPriceHistoryStaleForCurrentWindow(value, Date.now(), { exchange, intervalMs }),
+        && resultIsStale(value, exchange, intervalMs),
       fetchBroker: async (candidate) => candidate.broker.getDetailedPriceHistory
         ? candidate.broker.getDetailedPriceHistory(
           ticker,
@@ -457,42 +487,50 @@ export class ProviderRouterHistoryRoutes {
           context?.instrument ?? null,
         )
         : null,
-      fetchProvider: async (provider) => provider.getDetailedPriceHistory
-        ? provider.getDetailedPriceHistory(ticker, exchange, startDate, endDate, barSize, context)
-        : null,
+      fetchProvider: (provider) => fetchHistoryResult(provider, ticker, exchange, { kind: "detail", start: startDate, end: endDate, interval: barSize }, context),
     });
   }
 
-  private async executeHistoryRequest(request: HistoryRequestDescriptor): Promise<PricePoint[]> {
+  private async executeHistoryRequest(request: HistoryRequestDescriptor): Promise<PriceHistoryResult> {
     const recovery = this.validateRecovery(request);
     const brokerCandidates = recovery ? [] : this.deps.getBrokerCandidatesForContext(request.context, false);
     const sourceKeys = recovery ? [recovery.sourceKey] : [
       ...brokerCandidates.map((candidate) => this.deps.brokerSourceKey(candidate)),
       ...this.deps.getProviderSourceKeys(),
     ];
-    const cachedRecords = listCachedResources<PricePoint[]>(
+    const cachedRecords = listCachedResources<unknown>(
       this.deps.resources,
       request.identity.kind,
       request.identity.entityKey,
       request.cacheVariantKeys,
       sourceKeys,
       false,
-    ).filter((record) => {
+    ).flatMap((record) => {
+      const legacy = !/(?:^|;)historyData=1(?:;|$)/.test(record.variantKey);
+      const value = legacy && Array.isArray(record.value)
+        ? { points: record.value as PricePoint[], resolution: historyResolutionForInterval(request.interval) }
+        : !legacy ? normalizeHistoryResult(record.value, request.target, request.interval) : null;
+      if (!value) return [];
+      // Source identity belongs to the selected cache record, not its payload.
+      return [{ ...record, value: normalizeRequestResult({ ...value, sourceKey: record.sourceKey }, request) }];
+    }).filter((record) => {
       const unverifiedAllInterval = ["provider:yahoo", "provider:gloomberb-cloud"].includes(record.sourceKey)
         && /(?:^|;)range=ALL(?:;|$)/.test(record.variantKey)
         && !/(?:^|;)granularity=1(?:;|$)/.test(record.variantKey);
-      if (unverifiedAllInterval || hasCircleOfferingPriceHistory(record.value, request.target, record.sourceKey)) return false;
+      if (unverifiedAllInterval || hasCircleOfferingPriceHistory(record.value.points, request.target, record.sourceKey)) return false;
       return request.cachePolicyKey === "priceHistoryIntraday"
-        || !hasUnverifiedShellHistory(record.value, request.target, record.sourceKey, request.requestedStart);
+        || !hasUnverifiedShellHistory(record.value.points, request.target, record.sourceKey, request.requestedStart);
     });
-    const cached = cachedRecords.find((record) => hasUsablePriceHistory(record.value)) ?? cachedRecords[0] ?? null;
-    const cachedValue = cached ? normalizeRequestHistory(cached.value, request) : [];
-    const reportedGaps = cachedRecords.map((record) => normalizeRequestHistory(record.value, request))
-      .filter((value) => !hasUsablePriceHistory(value));
-    const withReportedGaps = (value: PricePoint[]) => mergeRequestHistoryGaps(value, reportedGaps, request.requestedRange);
+    const cached = cachedRecords.find((record) => hasUsablePriceHistory(record.value.points)) ?? cachedRecords[0] ?? null;
+    const cachedValue: PriceHistoryResult = cached?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) };
+    const reportedGaps = cachedRecords.map((record) => record.value)
+      .filter((value) => !hasUsablePriceHistory(value.points));
+    const withReportedGaps = (value: PriceHistoryResult) => historyCoverage(request).merge(value, reportedGaps);
+    const clip = (value: PriceHistoryResult) => request.requestedRange
+      ? { ...value, points: clipPriceHistoryToRange(value.points, request.requestedRange) } : value;
     const cachedHistoryStale = request.isCachedValueStale(cachedValue);
     const forceRefresh = request.context?.cacheMode === "refresh";
-    const usableCached = hasUsablePriceHistory(cachedValue) && cached && !cached.expired && !cachedHistoryStale;
+    const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale;
     if (usableCached && !forceRefresh) {
       const exactHit = request.exactCacheVariantKeys.includes(cached.variantKey);
       if (cached.stale) {
@@ -500,17 +538,17 @@ export class ProviderRouterHistoryRoutes {
       }
       return exactHit || !request.requestedRange
         ? withReportedGaps(cachedValue)
-        : clipPriceHistoryToRange(withReportedGaps(cachedValue), request.requestedRange);
+        : clip(withReportedGaps(cachedValue));
     }
 
     const supersededCacheSources = new Set<string>();
-    const onUnavailable = (sourceKey: string, value: PricePoint[]) => {
-      if (value.length && !hasUsablePriceHistory(value)) supersededCacheSources.add(sourceKey);
+    const onUnavailable = (sourceKey: string, value: PriceHistoryResult) => {
+      if (value.points.length && !hasUsablePriceHistory(value.points)) supersededCacheSources.add(sourceKey);
     };
     const attempts: HistoryAttempts = { outcomes: new Map(), candidates: new Map(), pending: new Set() };
     const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates, onUnavailable, attempts));
     for (const sourceKey of [...attempts.pending]) recordHistoryOutcome(attempts, sourceKey, "timeout");
-    if (brokerResult && hasUsablePriceHistory(brokerResult.value)) return withReportedGaps(brokerResult.value);
+    if (brokerResult && hasUsablePriceHistory(brokerResult.value.points)) return withReportedGaps(brokerResult.value);
     if (brokerResult) reportedGaps.push(brokerResult.value);
 
     let coverageError: HistoryCoverageError | null = null;
@@ -519,30 +557,30 @@ export class ProviderRouterHistoryRoutes {
       coverageError = error;
       return null;
     });
-    if (providerResult && hasUsablePriceHistory(providerResult.value)) return withReportedGaps(providerResult.value);
+    if (providerResult && hasUsablePriceHistory(providerResult.value.points)) return withReportedGaps(providerResult.value);
     if (providerResult) reportedGaps.push(providerResult.value);
     const fallbackValue = cachedRecords
       .filter((record) => !supersededCacheSources.has(record.sourceKey))
-      .map((record) => normalizeRequestHistory(record.value, request))
-      .find((value) => hasUsablePriceHistory(value) && !request.isCachedValueStale(value));
+      .map((record) => record.value)
+      .find((value) => hasUsablePriceHistory(value.points) && !request.isCachedValueStale(value));
     if (fallbackValue) {
       return request.requestedRange
-        ? clipPriceHistoryToRange(withReportedGaps(fallbackValue), request.requestedRange)
+        ? clip(withReportedGaps(fallbackValue))
         : withReportedGaps(fallbackValue);
     }
     if (coverageError) throw coverageError;
     if (attempts.coverageError) throw attempts.coverageError;
     // Explicit reported gaps and usable original caches retain their existing
     // precedence. Only original source exhaustion exposes a recovery candidate.
-    if (!reportedGaps.some((value) => value.length > 0) && !recovery && attempts.retention) {
+    if (!reportedGaps.some((value) => value.points.length > 0) && !recovery && attempts.retention) {
       const sourceOrder = this.deps.getProviderSourceKeys();
       const candidates = [...attempts.candidates.values()].sort((a, b) => sourceOrder.indexOf(a.sourceKey) - sourceOrder.indexOf(b.sourceKey));
       throw new HistoryRetentionError(candidates[0]?.retention ?? attempts.retention, { candidates, outcomes: [...attempts.outcomes.values()] });
     }
-    if (!providerResult && request.missingProviderError && !reportedGaps.some((value) => value.length > 0)) {
+    if (!providerResult && request.missingProviderError && !reportedGaps.some((value) => value.points.length > 0)) {
       throw new Error(request.missingProviderError);
     }
-    return withReportedGaps(providerResult?.value ?? []);
+    return withReportedGaps(providerResult?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) });
   }
 
   private validateRecovery(request: HistoryRequestDescriptor): HistoryRecoveryCandidate | null {
@@ -557,7 +595,7 @@ export class ProviderRouterHistoryRoutes {
       || candidate.request.brokerInstanceId !== brokerInstanceId || candidate.request.interval !== canonicalHistoryInterval(request.interval)
       || request.requestedStart < candidate.retention.availableStart || request.requestedStart >= Number(request.requestedEnd)
       || Number(request.requestedEnd) > candidate.retention.requestedEnd
-      || !this.deps.providersInPriorityOrder().some((provider) => this.deps.providerSourceKey(provider) === candidate.sourceKey && typeof provider.getDetailedPriceHistory === "function")) {
+      || !this.deps.providersInPriorityOrder().some((provider) => this.deps.providerSourceKey(provider) === candidate.sourceKey && (typeof provider.getDetailedPriceHistory === "function" || typeof provider.getDetailedPriceHistoryWithMetadata === "function"))) {
       throw new Error("Invalid or unavailable history recovery source");
     }
     return candidate;
@@ -568,7 +606,7 @@ export class ProviderRouterHistoryRoutes {
       const recovery = this.validateRecovery(request);
       const brokerCandidates = recovery ? [] : this.deps.getBrokerCandidatesForContext(request.context, false);
       const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates));
-      if (brokerResult && hasUsablePriceHistory(brokerResult.value)) return;
+      if (brokerResult && hasUsablePriceHistory(brokerResult.value.points)) return;
       await this.fetchProviderHistory(request);
     } catch {
       // Background refresh is best-effort; callers already have cached points.
@@ -578,9 +616,9 @@ export class ProviderRouterHistoryRoutes {
   private fetchBrokerHistory(
     request: HistoryRequestDescriptor,
     candidates: BrokerCandidate[],
-    onUnavailable?: (sourceKey: string, value: PricePoint[]) => void,
+    onUnavailable?: (sourceKey: string, value: PriceHistoryResult) => void,
     attempts?: HistoryAttempts,
-  ): Promise<SourceResult<PricePoint[]> | null> {
+  ): Promise<SourceResult<PriceHistoryResult> | null> {
     return this.firstBrokerResult(candidates, async (candidate) => {
       const sourceKey = this.deps.brokerSourceKey(candidate);
       if (typeof candidate.broker[request.method] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
@@ -589,9 +627,9 @@ export class ProviderRouterHistoryRoutes {
         const fetched = await request.fetchBroker(candidate);
         if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
         if (!Array.isArray(fetched)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
-        const value = normalizeRequestHistory(fetched, request);
-        if (hasUsablePriceHistory(value) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
-        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value) ? "success" : value.length ? "reported-gaps" : "empty");
+        const value = normalizeRequestResult({ points: fetched, resolution: historyResolutionForInterval(request.interval), sourceKey }, request);
+        if (hasUsablePriceHistory(value.points) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
+        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value.points) ? "success" : value.points.length ? "reported-gaps" : "empty");
         onUnavailable?.(this.deps.brokerSourceKey(candidate), value);
         this.deps.cacheResource(
           request.identity.kind,
@@ -608,23 +646,23 @@ export class ProviderRouterHistoryRoutes {
 
   private fetchProviderHistory(
     request: HistoryRequestDescriptor,
-    onUnavailable?: (sourceKey: string, value: PricePoint[]) => void,
+    onUnavailable?: (sourceKey: string, value: PriceHistoryResult) => void,
     attempts?: HistoryAttempts,
-  ): Promise<SourceResult<PricePoint[]> | null> {
-    return this.firstProviderArrayResult(async (provider) => {
+  ): Promise<SourceResult<PriceHistoryResult> | null> {
+    return this.firstProviderResult(async (provider) => {
       const sourceKey = this.deps.providerSourceKey(provider);
-      if (typeof provider[request.method] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
+      if (typeof provider[request.method] !== "function" && typeof provider[`${request.method}WithMetadata`] !== "function") { recordHistoryOutcome(attempts, sourceKey, "missing-method"); return null; }
       attempts?.pending.add(sourceKey);
       try {
         const fetched = await request.fetchProvider(provider);
         if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
-        if (!Array.isArray(fetched)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
-        assertTradingPriceHistory(fetched, request.target, this.deps.providerSourceKey(provider));
+        if (!Array.isArray(fetched.points)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
+        assertTradingPriceHistory(fetched.points, request.target, this.deps.providerSourceKey(provider));
         if (request.cachePolicyKey !== "priceHistoryIntraday"
-          && hasUnverifiedShellHistory(fetched, request.target, this.deps.providerSourceKey(provider))) { recordHistoryOutcome(attempts, sourceKey, "coverage"); return null; }
-        const value = normalizeRequestHistory(fetched, request);
-        if (hasUsablePriceHistory(value) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
-        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value) ? "success" : value.length ? "reported-gaps" : "empty");
+          && hasUnverifiedShellHistory(fetched.points, request.target, this.deps.providerSourceKey(provider))) { recordHistoryOutcome(attempts, sourceKey, "coverage"); return null; }
+        const value = normalizeRequestResult({ ...fetched, sourceKey }, request);
+        if (hasUsablePriceHistory(value.points) && request.isFetchedValueStale(value)) { recordHistoryOutcome(attempts, sourceKey, "stale"); return null; }
+        recordHistoryOutcome(attempts, sourceKey, hasUsablePriceHistory(value.points) ? "success" : value.points.length ? "reported-gaps" : "empty");
         onUnavailable?.(this.deps.providerSourceKey(provider), value);
         this.deps.cacheResource(
           request.identity.kind,
@@ -664,19 +702,19 @@ export class ProviderRouterHistoryRoutes {
       ? { ...firstUnavailable, value: coverage.merge(firstUnavailable.value, unavailable) } : firstUnavailable;
   }
 
-  private async firstProviderArrayResult<T>(
-    fetch: (provider: DataProvider) => Promise<T[] | null>,
-    coverage?: { isUsable(value: T[]): boolean; merge(value: T[], unavailable: T[][]): T[] },
+  private async firstProviderResult<T>(
+    fetch: (provider: DataProvider) => Promise<T | null>,
+    coverage?: { isUsable(value: T): boolean; merge(value: T, unavailable: Array<T>): T },
     scopedProviders?: DataProvider[],
-  ): Promise<SourceResult<T[]> | null> {
-    const unavailable: T[][] = [];
-    const usable = coverage?.isUsable ?? ((value: T[]) => value.length > 0);
-    const withUnavailable = (result: SourceResult<T[]> | null) => result && coverage
+  ): Promise<SourceResult<T> | null> {
+    const unavailable: Array<T> = [];
+    const usable = coverage?.isUsable ?? ((value: T) => Array.isArray(value) && value.length > 0);
+    const withUnavailable = (result: SourceResult<T> | null) => result && coverage
       ? { ...result, value: coverage.merge(result.value, unavailable) } : result;
     const providers = scopedProviders ?? this.deps.providersInPriorityOrder();
-    let firstEmptyResult: SourceResult<T[]> | null = null;
+    let firstEmptyResult: SourceResult<T> | null = null;
     let coverageError: HistoryCoverageError | null = null;
-    const tryProvider = async (provider: DataProvider): Promise<SourceResult<T[]> | null> => {
+    const tryProvider = async (provider: DataProvider): Promise<SourceResult<T> | null> => {
       try {
         const value = await fetch(provider);
         if (value === null) return null;
@@ -711,7 +749,7 @@ export class ProviderRouterHistoryRoutes {
     const remaining = providers.slice(1).map((provider) => tryProvider(provider));
     return await new Promise((resolve, reject) => {
       let settled = false;
-      const finish = (result: SourceResult<T[]> | null) => {
+      const finish = (result: SourceResult<T> | null) => {
         if (settled || !result || !usable(result.value)) return;
         settled = true;
         resolve(withUnavailable(result));

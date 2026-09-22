@@ -26,6 +26,8 @@ export interface QueryEntry<T> {
   data: T | null;
   lastGoodData: T | null;
   source: string | null;
+  /** Chart-only provenance paired with resolved data, including retained lastGoodData. */
+  history?: Omit<import("../types/price-history").PriceHistoryResult, "points">;
   fetchedAt: number | null;
   /** Accepted source response order in this runtime, preserved through cache projections. */
   responseSequence?: number;

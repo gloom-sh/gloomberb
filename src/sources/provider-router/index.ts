@@ -1,3 +1,4 @@
+import type { PriceHistoryResult } from "../../types/price-history";
 import type { ResourceStore } from "../../data/resource-store";
 import type { ConnectionHealthRegistry } from "../../core/connection-health";
 import type { PluginRegistry } from "../../plugins/registry";
@@ -286,6 +287,11 @@ export class AssetDataRouter implements DataProvider {
     return this.historyRoutes.getPriceHistory(ticker, exchange, range, context);
   }
 
+  async getPriceHistoryWithMetadata(ticker: string, exchange: string, range: TimeRange, context?: MarketDataRequestContext): Promise<PriceHistoryResult> {
+    exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
+    return this.historyRoutes.getPriceHistoryWithMetadata(ticker, exchange, range, context);
+  }
+
   async getPriceHistoryForResolution(
     ticker: string,
     exchange: string,
@@ -295,6 +301,17 @@ export class AssetDataRouter implements DataProvider {
   ): Promise<PricePoint[]> {
     exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
     return this.historyRoutes.getPriceHistoryForResolution(ticker, exchange, bufferRange, resolution, context);
+  }
+
+  async getPriceHistoryForResolutionWithMetadata(
+    ticker: string,
+    exchange: string,
+    bufferRange: TimeRange,
+    resolution: ManualChartResolution,
+    context?: MarketDataRequestContext,
+  ): Promise<PriceHistoryResult> {
+    exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
+    return this.historyRoutes.getPriceHistoryForResolutionWithMetadata(ticker, exchange, bufferRange, resolution, context);
   }
 
   async getChartResolutionSupport(
@@ -325,6 +342,18 @@ export class AssetDataRouter implements DataProvider {
   ): Promise<PricePoint[]> {
     exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
     return this.historyRoutes.getDetailedPriceHistory(ticker, exchange, startDate, endDate, barSize, context);
+  }
+
+  async getDetailedPriceHistoryWithMetadata(
+    ticker: string,
+    exchange: string,
+    startDate: Date,
+    endDate: Date,
+    barSize: string,
+    context?: MarketDataRequestContext,
+  ): Promise<PriceHistoryResult> {
+    exchange = this.resolvePublicExchange(ticker, exchange, context) ?? "";
+    return this.historyRoutes.getDetailedPriceHistoryWithMetadata(ticker, exchange, startDate, endDate, barSize, context);
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, context?: MarketDataRequestContext): Promise<OptionsChain> {

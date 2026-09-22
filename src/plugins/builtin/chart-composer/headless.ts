@@ -4,11 +4,12 @@ import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-s
 import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessSeriesResult } from "../../../types/headless";
 import type { ChartResolutionResult, ChartSeriesSpec, ChartSpec } from "../../../time-series/types";
-import { mergePriceHistoryWindows, resolveChartSpecData } from "../../../time-series/resolve";
+import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
 import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
 import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "../../../time-series/session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
+import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint } from "../../../types/financials";
 import { createChartSeriesResolver } from "../../../capabilities";
 import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
@@ -23,7 +24,7 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
     financials: Array<[string, TickerFinancials]>;
     instrumentFinancials?: SnapshotMarketData["instrumentFinancials"];
     historyVariants?: SnapshotMarketData["historyVariants"];
-    intradayHistories: Array<IntradayWindow & Pick<LoadedIntradayWindow, "quote" | "priceDomainFailure"> & {
+    intradayHistories: Array<IntradayWindow & Pick<LoadedIntradayWindow, "quote" | "priceDomainFailure" | "session" | "sourceKey"> & {
       symbol: string;
       exchange: string;
       target?: InstrumentRef;
@@ -40,7 +41,7 @@ export async function loadChartPaneModel(
   context: HeadlessPaneContext,
 ): Promise<ChartPaneModel> {
   const financials = new Map<string, TickerFinancials>();
-  type CapturedHistory = { resolution: ManualChartResolution | null | undefined; requestKey?: string; points: PricePoint[] };
+  type CapturedHistory = { resolution: ManualChartResolution | null | undefined; requestKey?: string; points: PricePoint[]; session?: HistorySession; sourceKey?: string };
   const histories = new Map<string, Map<string, CapturedHistory>>();
   const primaryHistories = new Map<string, { key: string; rank: number }>();
   const instruments = new Map<string, InstrumentRef>();
@@ -69,11 +70,15 @@ export async function loadChartPaneModel(
         const variants = histories.get(key) ?? new Map();
         const resolution = data.priceHistoryResolution;
         const requestKey = data.priceHistoryRequestKey;
-        const variantKey = JSON.stringify([resolution === undefined ? "legacy" : resolution, resolution === null ? requestKey ?? null : null]);
+        const incoming: CapturedHistory = { resolution, requestKey, points: data.priceHistory,
+          session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey };
+        const variantKey = JSON.stringify([resolution === undefined ? "legacy" : resolution, resolution === null ? requestKey ?? null : null,
+          priceHistoryAcquisitionIdentity(incoming)]);
         const previous = variants.get(variantKey);
         // Opaque defaults can change cadence between acquisitions. Preserve
         // one acquired array; only compatible known bars can be accumulated.
-        variants.set(variantKey, { resolution, requestKey,
+        const tail = priceHistoryTailAcquisition(previous, incoming);
+        variants.set(variantKey, { resolution, requestKey, session: tail.session, sourceKey: tail.sourceKey,
           points: resolution === null ? previous?.points ?? data.priceHistory
             : mergePriceHistoryWindows(previous?.points ?? [], data.priceHistory, resolution ?? "1m") });
         histories.set(key, variants);
@@ -105,10 +110,11 @@ export async function loadChartPaneModel(
     const variants = histories.get(key);
     const primary = primaryHistories.get(key);
     const history = primary && variants?.get(primary.key);
-    return history ? { ...data, priceHistory: history.points, priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey } : data;
+    return history ? { ...data, priceHistory: history.points, priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
+      priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey } : data;
   };
   const historyVariants = [...histories].flatMap(([key, variants]) => variants.size > 1
-    ? [...variants.values()].flatMap(({ resolution, requestKey, points }) => resolution === undefined ? [] : [{ target: instruments.get(key)!, resolution, requestKey, points }]) : []);
+    ? [...variants.values()].flatMap(({ resolution, requestKey, points, session, sourceKey }) => resolution === undefined ? [] : [{ target: instruments.get(key)!, resolution, requestKey, points, session, sourceKey }]) : []);
   return {
     chart,
     spec,
@@ -232,7 +238,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
           const { symbol, exchange = "" } = target;
           const points = data.priceHistory.filter(({ date }) => date >= start && date <= end);
           intradayHistories.push({
-            target, symbol, exchange, points, start, end,
+            target, symbol, exchange, points, start, end, session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey,
             rangePreset: spec.viewport.range === "1W" ? "1W" : "1D",
             resolution: historyResolution, requestedSession: null,
             sessionDates: intradaySessionDates(points, resolveExchangeTimeZone(exchange) ?? "UTC"),

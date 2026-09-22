@@ -1,20 +1,23 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { testRender } from "../renderers/opentui/test-utils";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createIdleEntry } from "../market-data/result-types";
-import { parsedPriceHistoryKey, rememberParsedPriceHistory } from "./parsed-history-cache";
+import { parsedPriceHistoryKey, readParsedHistoryResult, readParsedPriceHistory, rememberParsedPriceHistory } from "./parsed-history-cache";
 import { useChartResolution, type UseChartResolutionResult } from "./use-chart-resolution";
 import { CHART_SPEC_VERSION, type ChartSpec } from "./types";
 import type { PricePoint } from "../types/financials";
 import type { ChartRequest } from "../market-data/request-types";
+import type { HistorySession, PriceHistoryResult } from "../types/price-history";
+import type { ChartResolveOptions } from "./resolve";
 
 let setup: Awaited<ReturnType<typeof testRender>> | undefined;
 afterEach(async () => {
   if (setup) await act(async () => setup!.renderer.destroy());
   setup = undefined;
   setSharedMarketDataCoordinator(null);
+  setSystemTime();
 });
 
 const weekly: PricePoint[] = [
@@ -26,13 +29,13 @@ const daily: PricePoint[] = [
   { date: new Date("2026-09-21"), close: 86_000, volume: 59_000_000_000 },
 ];
 
-async function mount(spec: ChartSpec) {
+async function mount(spec: ChartSpec, now = new Date("2026-09-22T12:00:00Z"), options: ChartResolveOptions = {}) {
   let resolve!: (points: PricePoint[]) => void;
   const waiting = new Promise<PricePoint[]>(done => { resolve = done; });
   let requested = false;
   let latest!: UseChartResolutionResult;
   const sources = {
-    now: new Date("2026-09-22T12:00:00Z"),
+    now,
     dataProvider: createTestDataProvider({
       getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
       getPriceHistoryForResolution: async () => { requested = true; return waiting; },
@@ -41,7 +44,7 @@ async function mount(spec: ChartSpec) {
     loadFredSeries: async () => { throw new Error("Unexpected FRED request"); },
   };
   function Harness() {
-    latest = useChartResolution(spec, sources, { liveStreaming: false, liveRefreshIntervalMs: 0 });
+    latest = useChartResolution(spec, sources, { ...options, liveStreaming: false, liveRefreshIntervalMs: 0 });
     return <text>{JSON.stringify({ loading: latest.loading, resolution: latest.resolution,
       series: latest.series.map(s => [s.id, s.points.map(p => p.value)]) })}</text>;
   }
@@ -145,7 +148,7 @@ test("Auto honors a daily market period when choosing a seed for a long range", 
 test("Auto date-window seeds use the authored duration instead of the ALL preset", async () => {
   const spec = specFor("AUTO-EXPLICIT", { range: "ALL", resolution: "auto", dateWindow: { start: "2026-08-22", end: "2026-09-22" } });
   const instrument = { symbol: "AUTO-EXPLICIT", exchange: "CCC" };
-  const intraday = [0, 1].map(index => ({ date: new Date(Date.UTC(2026, 8, 21, 10, index * 15)), close: 85_001 + index, volume: 1_000 + index }));
+  const intraday = [0, 1].map(index => ({ date: new Date(Date.UTC(2026, 8, 22, 11, 30 + index * 15)), close: 85_001 + index, volume: 1_000 + index }));
   rememberParsedPriceHistory(parsedPriceHistoryKey(instrument, "ALL", "1wk"), weekly);
   rememberParsedPriceHistory(parsedPriceHistoryKey(instrument, "ALL", "15m"), intraday);
   const view = await mount(spec);
@@ -154,4 +157,61 @@ test("Auto date-window seeds use the authored duration instead of the ALL preset
   expect(view.current().series.find(s => s.id === "volume")?.points.map(p => p.value)).toEqual([1_000, 1_001]);
   await view.finish(intraday);
   expect(view.current().resolution).toBe("15m");
+});
+
+const sessionPoints: PricePoint[] = [30, 45].map(minute => ({
+  date: new Date(Date.UTC(2026, 8, 21, 19, minute)), close: 100 + minute, volume: minute,
+}));
+const PREOPEN = Date.parse("2026-09-22T12:42:00Z");
+
+for (const cache of ["parsed", "coordinator"] as const) {
+  for (const scenario of ["preopen", "first-bar-due", "unknown", "wrong-target", "wrong-cadence", "historical", "historical-pan"] as const) {
+    test(`${cache} loading seeds validate acquisition metadata before rendering ${scenario}`, async () => {
+      const now = scenario === "first-bar-due" ? Date.parse("2026-09-22T14:00:00Z") : PREOPEN;
+      setSystemTime(now);
+      const symbol = `SESSION-${cache}-${scenario}`.toUpperCase();
+      const instrument = { symbol, exchange: "NASDAQ" };
+      const spec = specFor(symbol, { range: "1M", resolution: "15m",
+        ...(scenario === "historical" ? { dateWindow: { start: "2026-09-21", end: "2026-09-21" } } : {}),
+      });
+      if (spec.series[0]!.source.kind === "security") spec.series[0]!.source.instrument = instrument;
+      const session: HistorySession = { version: 1, kind: "regular", calendar: "us-equity", timeZone: "America/New_York",
+        symbol: scenario === "wrong-target" ? "MSFT" : symbol, exchange: "NASDAQ", interval: "15min", source: "yahoo",
+        timestampConvention: "bar-open", barAlignment: "session-open",
+        observedAt: scenario.startsWith("historical") ? Date.parse("2026-09-21T19:50:00Z") : PREOPEN,
+      };
+      const metadata: Omit<PriceHistoryResult, "points"> = { resolution: scenario === "wrong-cadence" ? "1h" : "15m",
+        ...(scenario === "unknown" ? {} : { session }), sourceKey: "provider:actual-source" };
+      if (cache === "parsed") rememberParsedPriceHistory(parsedPriceHistoryKey(instrument, "1M", "15m"), sessionPoints, metadata);
+      else {
+        // A stale first cache must not mask a fresh coordinator acquisition.
+        if (scenario === "preopen") rememberParsedPriceHistory(parsedPriceHistoryKey(instrument, "1M", "15m"), sessionPoints,
+          { ...metadata, session: { ...session, observedAt: Date.parse("2026-09-21T19:50:00Z") } });
+        setSharedMarketDataCoordinator({ subscribe: () => () => {}, getVersion: () => 1,
+          getChartEntry: () => ({ ...createIdleEntry<PricePoint[]>(), phase: "ready", data: sessionPoints,
+            lastGoodData: sessionPoints, history: metadata }),
+        } as never);
+      }
+      const view = await mount(spec, new Date(now), scenario === "historical-pan"
+        ? { requestViewport: { start: new Date("2026-09-21T19:30:00Z"), end: new Date("2026-09-21T19:45:00Z") } } : {});
+      expect(view.current().loading).toBe(true);
+      const expected = scenario === "preopen" || scenario.startsWith("historical") ? [130, 145] : [];
+      expect(view.current().series.find(series => series.id === "price")?.points.map(point => point.value) ?? []).toEqual(expected);
+      expect(view.current().series.find(series => series.id === "volume")?.points.map(point => point.value) ?? [])
+        .toEqual(expected.length ? [30, 45] : []);
+      await view.finish([]);
+    });
+  }
+}
+
+test("parsed cache replaces provenance together with points and keeps its existing 32-entry bound", () => {
+  const key = "paired-history-regression";
+  rememberParsedPriceHistory(key, sessionPoints, { resolution: "15m", sourceKey: "provider:first" });
+  expect(readParsedHistoryResult(key)?.sourceKey).toBe("provider:first");
+  rememberParsedPriceHistory(key, daily);
+  expect(readParsedHistoryResult(key)).toEqual({ points: daily, resolution: null });
+  expect(readParsedPriceHistory(key)).toBe(daily);
+  for (let i = 0; i < 32; i++) rememberParsedPriceHistory(`bounded-history-${i}`, daily, { resolution: "1d" });
+  expect(readParsedHistoryResult(key)).toBeUndefined();
+  expect(readParsedPriceHistory("bounded-history-0")).toBe(daily);
 });

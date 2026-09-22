@@ -606,6 +606,8 @@ export interface TickerFinancials {
   priceHistoryResolution?: import("../time-series/resolution").ManualChartResolution | null;
   /** Stable original acquisition identity, used to replay distinct opaque history windows. */
   priceHistoryRequestKey?: string;
+  priceHistorySession?: import("./price-history").HistorySession;
+  priceHistorySourceKey?: string;
   /** Present on extended statement history from the cloud. */
   epsEstimates?: EpsEstimateHistory;
 }

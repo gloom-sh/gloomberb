@@ -206,7 +206,22 @@ export interface AssetDataProvider {
     exchange: string,
     range: TimeRange,
     context?: MarketDataRequestContext,
-  ): Promise<{ points: PricePoint[]; resolution: ManualChartResolution | null }>;
+  ): Promise<import("./price-history").PriceHistoryResult>;
+  getPriceHistoryForResolutionWithMetadata?(
+    ticker: string,
+    exchange: string,
+    bufferRange: TimeRange,
+    resolution: ManualChartResolution,
+    context?: MarketDataRequestContext,
+  ): Promise<import("./price-history").PriceHistoryResult>;
+  getDetailedPriceHistoryWithMetadata?(
+    ticker: string,
+    exchange: string,
+    startDate: Date,
+    endDate: Date,
+    barSize: string,
+    context?: MarketDataRequestContext,
+  ): Promise<import("./price-history").PriceHistoryResult>;
   getPriceHistoryForResolution?(
     ticker: string,
     exchange: string,

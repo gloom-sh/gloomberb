@@ -1,6 +1,8 @@
 import { isIntradayResolution, TIME_RANGE_ORDER } from "../../time-series/resolution";
 import type { PricePoint } from "../../types/financials";
-import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "../../utils/price-history";
+import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs } from "../../utils/price-history";
+import { parseHistorySession } from "../history-session";
+import { publicListingTarget } from "../../sources/listing-target";
 import type { ChartRequest, InstrumentRef } from "../request-types";
 import type { QueryEntry } from "../result-types";
 import { buildInstrumentKey } from "../selectors";
@@ -31,8 +33,10 @@ function isCurrentHistoryWindow(endDate?: Date): boolean {
   return Number.isFinite(endMs) && Date.now() - endMs < 60 * 60_000;
 }
 
-function isIntradayChartRequest(request: ChartRequest): boolean {
+function isIntradayChartRequest(request: ChartRequest, history?: QueryEntry<PricePoint[]>["history"]): boolean {
   const granularity = getChartGranularity(request);
+  if (granularity === "detail" && !isCurrentHistoryWindow(request.endDate)) return false;
+  if (history?.resolution) return isIntradayResolution(history.resolution);
   if (granularity === "detail") return isCurrentHistoryWindow(request.endDate);
   if (granularity === "resolution") {
     return request.resolution ? isIntradayResolution(request.resolution) : false;
@@ -40,15 +44,31 @@ function isIntradayChartRequest(request: ChartRequest): boolean {
   return request.bufferRange === "1D" || request.bufferRange === "1W" || request.bufferRange === "1M" || request.bufferRange === "3M";
 }
 
-export function normalizeFreshChartData(points: PricePoint[] | null | undefined, request: ChartRequest): PricePoint[] {
+export function normalizeFreshChartData(
+  points: PricePoint[] | null | undefined, request: ChartRequest, history?: QueryEntry<PricePoint[]>["history"],
+): PricePoint[] {
   const normalized = normalizePriceHistory(points ?? []);
+  const target = publicListingTarget(request.instrument.symbol, request.instrument.exchange);
+  // An opaque fallback remains opaque even when the requested method named a cadence.
+  const interval = history ? history.resolution : request.granularity === "resolution" ? request.resolution
+    : request.granularity === "detail" ? request.barSize : undefined;
+  const session = parseHistorySession(history?.session, { symbol: target.symbol, exchange: target.exchange ?? "",
+    interval: interval ?? undefined }) ?? undefined;
   if (
-    isIntradayChartRequest(request)
-    && isPriceHistoryStaleForCurrentWindow(normalized, Date.now(), { exchange: request.instrument.exchange })
+    isIntradayChartRequest(request, history)
+    && isPriceHistoryStaleForCurrentWindow(normalized, Date.now(), { exchange: target.exchange,
+      intervalMs: interval ? priceHistoryIntervalMs(interval) : undefined, session })
   ) {
     return [];
   }
   return normalized;
+}
+
+/** A request can cross a session/bar boundary while its upstream call is pending. */
+export function freshChartFallback(entry: QueryEntry<PricePoint[]>, request: ChartRequest): QueryEntry<PricePoint[]> {
+  const data = normalizeFreshChartData(entry.lastGoodData, request, entry.history);
+  return data.length ? { ...entry, lastGoodData: data }
+    : { ...entry, data: null, lastGoodData: null, history: undefined };
 }
 
 function isSeedableChartRequest(
@@ -84,7 +104,7 @@ function findChartSeedEntry({
     if (candidateKey === key) continue;
     if (!isSeedableChartRequest(request, candidateRequest)) continue;
     const entry = getEntry(candidateKey);
-    const data = resolveEntryData(entry);
+    const data = normalizeFreshChartData(resolveEntryData(entry), request, entry.history);
     if (!data?.length) continue;
     const score = getTimeRangeIndex(candidateRequest.bufferRange);
     if (!best || score > best.score) {
@@ -104,7 +124,7 @@ export function createChartLoadingEntry({
 }: ChartSeedLookupArgs & {
   current: QueryEntry<PricePoint[]>;
 }): QueryEntry<PricePoint[]> {
-  const currentData = normalizeFreshChartData(resolveEntryData(current), request);
+  const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history);
   if (currentData.length) {
     return loadingEntry<PricePoint[]>({
       ...current,
@@ -119,23 +139,16 @@ export function createChartLoadingEntry({
       ...current,
       data: null,
       lastGoodData: null,
-    });
-  }
-
-  const seedData = normalizeFreshChartData(seed.data, request);
-  if (!seedData.length) {
-    return loadingEntry<PricePoint[]>({
-      ...current,
-      data: null,
-      lastGoodData: null,
+      history: undefined,
     });
   }
 
   return loadingEntry({
     ...current,
-    data: seedData,
-    lastGoodData: seedData,
+    data: seed.data,
+    lastGoodData: seed.data,
     source: seed.entry.source,
+    history: seed.entry.history,
     fetchedAt: seed.entry.fetchedAt,
     staleAt: seed.entry.staleAt,
   });

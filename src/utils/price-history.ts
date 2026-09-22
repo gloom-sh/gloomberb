@@ -1,6 +1,8 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
-import { resolveExchangeTimeZone } from "./exchanges";
+import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
 import { isTimestampStaleForExchangeSession } from "../market-data/market/freshness";
+import { regularHistorySessionStaleness } from "../market-data/history-session";
+import type { HistorySession } from "../types/price-history";
 
 const MAX_CURRENT_INTRADAY_HISTORY_LAG_MS = 18 * 60 * 60 * 1000;
 const MAX_SAME_SESSION_HISTORY_LAG_MS = 30 * 60 * 1000;
@@ -10,6 +12,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 interface PriceHistoryFreshnessOptions {
   exchange?: string;
   intervalMs?: number | null;
+  session?: HistorySession;
 }
 
 export function priceHistoryIntervalMs(interval: string): number | null {
@@ -152,13 +155,20 @@ export function isPriceHistoryStaleForCurrentWindow(
   const latest = normalized.findLast(hasFiniteClose);
   if (!latest) return false;
 
-  const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized);
+  const session = options.session?.exchange === canonicalExchange(options.exchange)
+    ? options.session : undefined;
+  const sessionInterval = session ? priceHistoryIntervalMs(session.interval) : null;
+  const intervalMs = options.intervalMs ?? sessionInterval ?? inferredHistoryIntervalMs(normalized);
   // Daily/weekly/monthly labels are period starts, not live observation times.
   // Their cache policy controls refresh; an intraday lag test is inapplicable.
   if (intervalMs != null && intervalMs >= DAY_MS) return false;
 
   const latestTime = getPricePointTimestamp(latest);
   if (!Number.isFinite(latestTime)) return false;
+  if (session && (options.intervalMs == null || options.intervalMs === sessionInterval)) {
+    const regularStale = regularHistorySessionStaleness(latestTime, now, session);
+    if (regularStale !== null) return regularStale;
+  }
   const age = now - latestTime;
   // Completed bars are timestamped at their opening time. Before the next
   // completed bar is delivered, the newest bar may be almost two intervals

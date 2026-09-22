@@ -75,6 +75,12 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
       }, "query"),
       getArticleSummary: op((input: any) => provider.getArticleSummary(input.url), "query"),
       getPriceHistory: op((input: any) => provider.getPriceHistory(input.ticker, input.exchange, input.range, input.context), "query"),
+      ...(provider.getPriceHistoryWithMetadata ? { getPriceHistoryWithMetadata: op((input: any) =>
+        provider.getPriceHistoryWithMetadata!(input.ticker, input.exchange, input.range, input.context), "query") } : {}),
+      ...(provider.getPriceHistoryForResolutionWithMetadata ? { getPriceHistoryForResolutionWithMetadata: op((input: any) =>
+        provider.getPriceHistoryForResolutionWithMetadata!(input.ticker, input.exchange, input.bufferRange, input.resolution, input.context), "query") } : {}),
+      ...(provider.getDetailedPriceHistoryWithMetadata ? { getDetailedPriceHistoryWithMetadata: op((input: any) =>
+        provider.getDetailedPriceHistoryWithMetadata!(input.ticker, input.exchange, input.startDate, input.endDate, input.barSize, input.context), "query") } : {}),
       getPriceHistoryForResolution: op((input: any) => {
         if (!provider.getPriceHistoryForResolution) throw new Error(`${provider.name} does not provide resolution price history.`);
         return provider.getPriceHistoryForResolution(input.ticker, input.exchange, input.bufferRange, input.resolution, input.context);

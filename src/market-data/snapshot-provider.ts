@@ -7,6 +7,8 @@ import type { InstrumentRef } from "./request-types";
 import { instrumentIdentityKey } from "../utils/instrument-identity";
 import { quoteMetadataFromQuote } from "./quotes/metadata";
 import { getPricePointTimestamp } from "../utils/price-history";
+import type { HistorySession } from "../types/price-history";
+import { fetchHistoryResult, historyResolutionForInterval, normalizeHistoryResult } from "../sources/history-result";
 
 /** Omitted expiry retains a legacy/default slice; the catalogue is not its identity. */
 export type SnapshotOptionsChain = readonly [symbol: string, chain: OptionsChain, expirationDate?: number];
@@ -15,13 +17,15 @@ export interface SnapshotMarketData {
   financials: ReadonlyArray<readonly [string, TickerFinancials]>;
   instrumentFinancials?: ReadonlyArray<{ instrument: InstrumentRef; financials: TickerFinancials }>;
   /** Separate acquired cadences for an instrument used by more than one research series. */
-  historyVariants?: ReadonlyArray<{ target: InstrumentRef; resolution: ManualChartResolution | null; requestKey?: string; points: PricePoint[] }>;
+  historyVariants?: ReadonlyArray<{ target: InstrumentRef; resolution: ManualChartResolution | null; requestKey?: string; points: PricePoint[]; session?: HistorySession; sourceKey?: string }>;
   intradayHistories?: ReadonlyArray<{
     target?: InstrumentRef;
     symbol: string;
     exchange: string;
     resolution: ManualChartResolution;
     points: PricePoint[];
+    session?: HistorySession;
+    sourceKey?: string;
     unavailableReason: string | null;
     /** Metadata already fetched to validate the captured history's price domain. */
     quote?: Quote;
@@ -131,8 +135,8 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
   }
   const historyVariants = (symbol: string, exchange?: string, context?: MarketDataRequestContext) =>
     variants.get(snapshotInstrumentKey({ symbol, exchange, ...context }));
-  type CapturedHistory = { points: PricePoint[]; resolution: ManualChartResolution | null | undefined };
-  const history = (symbol: string, exchange?: string, resolution?: string, context?: MarketDataRequestContext): CapturedHistory | undefined => {
+  type CapturedHistory = { points: PricePoint[]; resolution: ManualChartResolution | null | undefined; session?: HistorySession; sourceKey?: string };
+  const capturedHistory = (symbol: string, exchange?: string, resolution?: string, context?: MarketDataRequestContext): CapturedHistory | undefined => {
     const missing: CapturedHistory = { points: [], resolution: null };
     const captured = intraday(symbol, exchange, context);
     if (captured?.unavailableReason) throw new SnapshotHistoryUnavailableError(captured.unavailableReason);
@@ -155,7 +159,15 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     if (data && resolution && data.priceHistoryResolution !== undefined && data.priceHistoryResolution !== resolution) return missing;
     if (data?.priceHistoryResolution === null && data.priceHistoryRequestKey && context?.historyRequestKey
       && data.priceHistoryRequestKey !== context.historyRequestKey) return missing;
-    return data ? { points: data.priceHistory, resolution: data.priceHistoryResolution } : undefined;
+    return data ? { points: data.priceHistory, resolution: data.priceHistoryResolution,
+      session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey } : undefined;
+  };
+  const history = (symbol: string, exchange?: string, interval?: string, context?: MarketDataRequestContext): CapturedHistory | undefined => {
+    const captured = capturedHistory(symbol, exchange, interval ? historyResolutionForInterval(interval) ?? interval : undefined, context);
+    if (!captured) return undefined;
+    const valid = normalizeHistoryResult({ ...captured, resolution: captured.resolution ?? null }, { symbol, exchange: exchange ?? "" });
+    if (!valid) throw new SnapshotHistoryUnavailableError("Captured price history has invalid acquisition metadata.");
+    return { ...valid, resolution: captured.resolution };
   };
   const overrides: Partial<DataProvider> = {
     async getTickerFinancials(symbol, exchange, context) {
@@ -218,22 +230,36 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
     },
     async getPriceHistory(symbol, exchange, range, context) {
       const captured = history(symbol, exchange, undefined, context);
-      return captured ? clipPriceHistoryToRange(captured.points, range) : fallback.getPriceHistory(symbol, exchange, range, context);
+      return captured ? clipPriceHistoryToRange(captured.points, range)
+        : (await fetchHistoryResult(fallback, symbol, exchange, { kind: "range", range }, context))!.points;
     },
     async getPriceHistoryWithMetadata(symbol, exchange, range, context) {
       const captured = history(symbol, exchange, undefined, context);
-      if (captured) return { points: clipPriceHistoryToRange(captured.points, range), resolution: captured.resolution ?? null };
-      if (fallback.getPriceHistoryWithMetadata) return fallback.getPriceHistoryWithMetadata(symbol, exchange, range, context);
-      return { points: await fallback.getPriceHistory(symbol, exchange, range, context), resolution: null };
+      if (captured) return { ...captured, points: clipPriceHistoryToRange(captured.points, range), resolution: captured.resolution ?? null };
+      return (await fetchHistoryResult(fallback, symbol, exchange, { kind: "range", range }, context))!;
+    },
+    async getPriceHistoryForResolutionWithMetadata(symbol, exchange, range, resolution, context) {
+      const captured = history(symbol, exchange, resolution, context);
+      if (captured) return { ...captured, points: clipPriceHistoryToRange(captured.points, range), resolution };
+      return await fetchHistoryResult(fallback, symbol, exchange, { kind: "resolution", range, resolution }, context)
+        ?? { points: [], resolution };
+    },
+    async getDetailedPriceHistoryWithMetadata(symbol, exchange, start, end, interval, context) {
+      const resolution = historyResolutionForInterval(interval);
+      const captured = history(symbol, exchange, resolution ?? interval, context);
+      if (captured) return { ...captured, resolution,
+        points: captured.points.filter(point => getPricePointTimestamp(point) >= +start && getPricePointTimestamp(point) < +end) };
+      return await fetchHistoryResult(fallback, symbol, exchange, { kind: "detail", start, end, interval }, context)
+        ?? { points: [], resolution };
     },
     async getPriceHistoryForResolution(symbol, exchange, range, resolution, context) {
       const captured = history(symbol, exchange, resolution, context);
       return captured ? clipPriceHistoryToRange(captured.points, range)
-        : fallback.getPriceHistoryForResolution?.(symbol, exchange, range, resolution, context) ?? [];
+        : (await fetchHistoryResult(fallback, symbol, exchange, { kind: "resolution", range, resolution }, context))?.points ?? [];
     },
     async getDetailedPriceHistory(symbol, exchange, start, end, resolution, context) {
       const captured = history(symbol, exchange, resolution, context);
-      if (!captured) return fallback.getDetailedPriceHistory?.(symbol, exchange, start, end, resolution, context) ?? [];
+      if (!captured) return (await fetchHistoryResult(fallback, symbol, exchange, { kind: "detail", start, end, interval: resolution }, context))?.points ?? [];
       return captured.points.filter((point) => getPricePointTimestamp(point) >= start.getTime() && getPricePointTimestamp(point) < end.getTime());
     },
     getChartResolutionSupport(symbol, exchange, context) {

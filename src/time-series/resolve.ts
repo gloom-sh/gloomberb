@@ -6,6 +6,8 @@ import { HistoryCoverageError, historyCoverageNotice, isShellLondonTarget } from
 import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, isHistoryRetentionError, parseHistoryRecoveryCandidate, type HistoryRecoveryCandidate, type HistoryRetentionError } from "../sources/history-retention";
 import { getRouterEntityKey } from "../sources/provider-router/cache";
 import { publicListingTarget } from "../sources/listing-target";
+import { fetchHistoryResult } from "../sources/history-result";
+import type { PriceHistoryResult } from "../types/price-history";
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../utils/financial-statements";
 import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "./chart-data";
 import {
@@ -72,7 +74,7 @@ import {
   publicTickerKey,
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
-import { getPricePointTimestamp } from "../utils/price-history";
+import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
 import type {
   ChartResolutionResult,
   ChartSeriesSpec,
@@ -134,7 +136,8 @@ export class ChartResolveCache {
   readonly quoteMetadataByInstrument = new Map<string, Promise<QuoteMetadata | null>>();
   readonly priceHistoryByRequest = new Map<string, Promise<LoadedPriceHistory>>();
   readonly priceHistoryExpiryByRequest = new Map<string, number>();
-  readonly accumulatedPriceHistory = new Map<string, TickerFinancials["priceHistory"]>();
+  readonly priceHistoryRefreshAfter = new Map<string, number>();
+  readonly accumulatedPriceHistory = new Map<string, LoadedPriceHistory>();
   readonly resolutionSupportByInstrument = new Map<string, Promise<ChartResolutionSupport[]>>();
   readonly settledResolutionSupport = new Map<string, ChartResolutionSupport[]>();
   readonly rejectedResolutionSupport = new Set<string>();
@@ -160,10 +163,7 @@ interface PriceHistoryRequest {
   historyRequestKey?: string;
 }
 
-interface LoadedPriceHistory {
-  points: TickerFinancials["priceHistory"];
-  /** null means the provider chose an interval without declaring it. */
-  resolution: ManualChartResolution | null;
+interface LoadedPriceHistory extends PriceHistoryResult {
   expiresAt?: number;
   requestKey?: string;
   recovery?: {
@@ -177,6 +177,21 @@ interface LoadedPriceHistory {
 
 class PriceHistoryAcquisitionError extends Error {
   constructor(message: string, readonly retryAt: number) { super(message); }
+}
+
+/** Compatible intervals from different source/session contracts cannot share a capture. */
+export function priceHistoryAcquisitionIdentity(result: Pick<PriceHistoryResult, "session" | "sourceKey">): string {
+  const { observedAt: _observedAt, ...session } = result.session ?? {};
+  return JSON.stringify([result.sourceKey ?? null, result.session ? session : null]);
+}
+
+/** Merged history keeps the actual acquisition clock belonging to its finite tail. */
+export function priceHistoryTailAcquisition<T extends { points: TickerFinancials["priceHistory"] }>(previous: T | undefined, incoming: T): T {
+  const latest = (value: T) => value.points.reduce((last, point) => {
+    const time = getPricePointTimestamp(point);
+    return Number.isFinite(point.close) && Number.isFinite(time) ? Math.max(last, time) : last;
+  }, Number.NEGATIVE_INFINITY);
+  return previous && latest(previous) > latest(incoming) ? previous : incoming;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -743,25 +758,26 @@ async function loadPriceHistory(
   };
   const accepted = (points: TickerFinancials["priceHistory"]) => points.length > 0
     && (!request.explicitWindow || historyIntersectsBounds(points, request.visibleBounds));
-  const known = (points: TickerFinancials["priceHistory"], resolution = request.resolution): LoadedPriceHistory => ({ points, resolution });
   const detailStart = request.bounds.start === null ? null : new Date(request.bounds.start);
   const detailEnd = exclusiveEnd(request.bounds);
-  if (request.explicitWindow && detailStart && detailEnd && provider.getDetailedPriceHistory) {
+  if (request.explicitWindow && detailStart && detailEnd && (provider.getDetailedPriceHistoryWithMetadata || provider.getDetailedPriceHistory)) {
     try {
-      const points = await provider.getDetailedPriceHistory(source.instrument.symbol,
-        source.instrument.exchange ?? "", detailStart, detailEnd, request.resolution, context);
+      const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
+        { kind: "detail", start: detailStart, end: detailEnd, interval: request.resolution }, context))!;
+      const { points } = result;
       observeCoverage(points);
-      if (accepted(points)) return known(points);
+      if (accepted(points)) return result;
     } catch (error) { observeFailure(error); }
   }
-  if (provider.getPriceHistoryForResolution) {
+  if (provider.getPriceHistoryForResolutionWithMetadata || provider.getPriceHistoryForResolution) {
     try {
-      const points = await provider.getPriceHistoryForResolution(source.instrument.symbol,
-        source.instrument.exchange ?? "", request.fallbackRange, request.resolution, context);
+      const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
+        { kind: "resolution", range: request.fallbackRange, resolution: request.resolution }, context))!;
+      const { points } = result;
       observeCoverage(points);
       if (accepted(points)) {
-        rememberParsedPriceHistory(parsedPriceHistoryKey(source.instrument, request.fallbackRange, request.resolution), points);
-        return known(points);
+        rememberParsedPriceHistory(parsedPriceHistoryKey(source.instrument, request.fallbackRange, request.resolution), points, result);
+        return result;
       }
     } catch (error) { observeFailure(error); }
   }
@@ -772,7 +788,7 @@ async function loadPriceHistory(
   const retainedFailure = retentionError as HistoryRetentionError | null;
   let recoveryAttempted = false;
   const retryAt = retainedFailure ? retainedFailure.retention.observedAt + HISTORY_RETENTION_MAX_AGE_MS : undefined;
-  if (retainedFailure && !coverageNotice && provider.getDetailedPriceHistory) {
+  if (retainedFailure && !coverageNotice && (provider.getDetailedPriceHistoryWithMetadata || provider.getDetailedPriceHistory)) {
     const step = CHART_RESOLUTION_STEP_MS[request.resolution];
     const target = publicListingTarget(source.instrument.symbol, source.instrument.exchange);
     const candidate = recoveryCandidates(retainedFailure, provider, source).map((value) => parseHistoryRecoveryCandidate(value))
@@ -790,10 +806,11 @@ async function loadPriceHistory(
       if (request.visibleBounds.start >= start && visibleEnd <= end && start < end) {
         recoveryAttempted = true;
         try {
-          const points = await provider.getDetailedPriceHistory(source.instrument.symbol, source.instrument.exchange ?? "",
-            new Date(start), new Date(end), request.resolution, { ...context, historyRecovery: candidate });
+          const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
+            { kind: "detail", start: new Date(start), end: new Date(end), interval: request.resolution }, { ...context, historyRecovery: candidate }))!;
+          const { points } = result;
           observeCoverage(points);
-          if (accepted(points)) return { points, resolution: request.resolution, expiresAt: retryAt,
+          if (accepted(points)) return { ...result, expiresAt: retryAt,
             recovery: { sourceKey: candidate.sourceKey, start, end, requiredWarmupPoints: request.requiredWarmupPoints,
               usableWarmupPoints: retainedWarmup(points, request.visibleBounds.start) } };
         } catch (error) { observeFailure(error); }
@@ -812,7 +829,7 @@ async function loadPriceHistory(
   // After a proved retention failure, one explicit calendar fallback can retain
   // the familiar broader chart with known cadence. Never substitute coarser bars
   // for an authored financial/market period that requires finer observations.
-  const coarser = retainedFailure && provider.getPriceHistoryForResolution
+  const coarser = retainedFailure && (provider.getPriceHistoryForResolutionWithMetadata || provider.getPriceHistoryForResolution)
     ? (["1d", "1wk", "1mo"] as const).find((resolution) =>
       CHART_RESOLUTION_STEP_MS[resolution] > CHART_RESOLUTION_STEP_MS[request.resolution]
       && isResolutionFineEnoughForMarketPeriod(resolution, source.period)
@@ -820,34 +837,29 @@ async function loadPriceHistory(
         && TIME_RANGE_ORDER.indexOf(entry.maxRange) >= TIME_RANGE_ORDER.indexOf(request.fallbackRange))) : undefined;
   if (coarser) {
     try {
-      const points = await provider.getPriceHistoryForResolution!(source.instrument.symbol, source.instrument.exchange ?? "",
-        request.fallbackRange, coarser, context);
+      const result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
+        { kind: "resolution", range: request.fallbackRange, resolution: coarser }, context))!;
+      const { points } = result;
       observeCoverage(points);
       if (accepted(points)) {
-        rememberParsedPriceHistory(parsedPriceHistoryKey(source.instrument, request.fallbackRange, coarser), points);
-        return { points, resolution: coarser, expiresAt: retryAt };
+        rememberParsedPriceHistory(parsedPriceHistoryKey(source.instrument, request.fallbackRange, coarser), points, result);
+        return { ...result, expiresAt: retryAt };
       }
     } catch (error) { observeFailure(error); }
     return fail(unavailable());
   }
   if (retainedFailure) return fail(unavailable());
   if (!provider.getPriceHistoryWithMetadata && source.period && source.period !== "auto" && isMarketFieldId(source.fieldId)) return fail(unavailable());
-  let defaultResolution: ManualChartResolution | null = null;
-  let points: TickerFinancials["priceHistory"];
+  let result: PriceHistoryResult;
   try {
-    if (provider.getPriceHistoryWithMetadata) {
-      const result = await provider.getPriceHistoryWithMetadata(source.instrument.symbol, source.instrument.exchange ?? "", request.fallbackRange, context);
-      points = result.points;
-      defaultResolution = result.resolution;
-      if (defaultResolution !== null && !Object.hasOwn(CHART_RESOLUTION_STEP_MS, defaultResolution)) return fail(unavailable());
-      if (source.period && source.period !== "auto" && isMarketFieldId(source.fieldId)
-        && (defaultResolution === null || !isResolutionFineEnoughForMarketPeriod(defaultResolution, source.period))) return fail(unavailable());
-    } else {
-      points = await provider.getPriceHistory(source.instrument.symbol, source.instrument.exchange ?? "", request.fallbackRange, context);
-    }
+    result = (await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
+      { kind: "range", range: request.fallbackRange }, context))!;
+    if (source.period && source.period !== "auto" && isMarketFieldId(source.fieldId)
+      && (result.resolution === null || !isResolutionFineEnoughForMarketPeriod(result.resolution, source.period))) return fail(unavailable());
   } catch (error) {
     return fail(coverageNotice ?? (error instanceof Error ? error.message : String(error)));
   }
+  const { points } = result;
   observeCoverage(points);
   if (points.length === 0 && coverageNotice) return fail(coverageNotice);
   if (request.explicitWindow && points.length > 0 && !historyIntersectsBounds(points, request.visibleBounds)) {
@@ -855,7 +867,7 @@ async function loadPriceHistory(
   }
   // A default-only provider remains usable, but its bare array cannot establish
   // an interval for live-bar merging, annualization or a requested-cadence cache.
-  return { points, resolution: defaultResolution, expiresAt: retryAt ?? Date.now() + HISTORY_RETENTION_MAX_AGE_MS };
+  return { ...result, expiresAt: retryAt ?? Date.now() + HISTORY_RETENTION_MAX_AGE_MS };
 }
 
 function baseSecuritySeries(
@@ -1354,34 +1366,61 @@ export async function resolveChartSpecData(
       cache.priceHistoryExpiryByRequest.delete(key);
     }
     let pending = cache.priceHistoryByRequest.get(key);
-    if (!pending) {
-      pending = loadPriceHistory(sources.dataProvider!, source, request);
-      cache.priceHistoryByRequest.set(key, pending);
-      // A settled retention result survives quote ticks, but can be retried once
-      // its bounded source evidence expires. Other failures retain normal retry.
-      void pending.then((loaded) => {
-        if (cache.priceHistoryByRequest.get(key) === pending && loaded.expiresAt !== undefined) {
-          cache.priceHistoryExpiryByRequest.set(key, loaded.expiresAt);
-        }
+    const reused = pending !== undefined;
+    const acquire = () => {
+      const next = loadPriceHistory(sources.dataProvider!, source, request);
+      cache.priceHistoryByRequest.set(key, next);
+      // Retention expiry is independent of the current session/bar boundary.
+      void next.then((value) => {
+        if (cache.priceHistoryByRequest.get(key) !== next) return;
+        if (value.expiresAt !== undefined) cache.priceHistoryExpiryByRequest.set(key, value.expiresAt);
+        else cache.priceHistoryExpiryByRequest.delete(key);
       }, (error: unknown) => {
-        if (cache.priceHistoryByRequest.get(key) !== pending) return;
-        if (error instanceof PriceHistoryAcquisitionError) {
-          cache.priceHistoryExpiryByRequest.set(key, error.retryAt);
-        } else {
-          cache.priceHistoryByRequest.delete(key);
-          cache.priceHistoryExpiryByRequest.delete(key);
-        }
+        if (cache.priceHistoryByRequest.get(key) !== next) return;
+        if (error instanceof PriceHistoryAcquisitionError) cache.priceHistoryExpiryByRequest.set(key, error.retryAt);
+        else if ((cache.priceHistoryRefreshAfter.get(key) ?? 0) > Date.now()) {
+          cache.priceHistoryExpiryByRequest.set(key, cache.priceHistoryRefreshAfter.get(key)!);
+        } else cache.priceHistoryByRequest.delete(key);
       });
+      return next;
+    };
+    pending ??= acquire();
+    let loaded = await pending;
+    const now = () => referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt);
+    const currentWindow = () => !request.explicitWindow
+      || (request.bounds.end !== null && now() - (request.bounds.end + 1) < 60 * 60_000);
+    const staleCurrent = (value: LoadedPriceHistory) => currentWindow() && !!value.session
+      && isPriceHistoryStaleForCurrentWindow(value.points, now(), {
+        exchange: source.instrument.exchange, session: value.session,
+        ...(value.resolution ? { intervalMs: CHART_RESOLUTION_STEP_MS[value.resolution] } : {}),
+      });
+    if (staleCurrent(loaded)) {
+      if (reused && (cache.priceHistoryRefreshAfter.get(key) ?? 0) <= Date.now()) {
+        // Claim the refresh before awaiting it so price/volume/studies share one attempt.
+        cache.priceHistoryRefreshAfter.set(key, Date.now() + 30_000);
+        if (cache.priceHistoryByRequest.get(key) === pending) pending = acquire();
+        else pending = cache.priceHistoryByRequest.get(key)!;
+        loaded = await pending;
+      } else if (cache.priceHistoryByRequest.get(key) !== pending) {
+        loaded = await cache.priceHistoryByRequest.get(key)!;
+      }
+      if (staleCurrent(loaded)) {
+        const previousDeadline = cache.priceHistoryRefreshAfter.get(key) ?? 0;
+        const retryAt = previousDeadline > Date.now() ? previousDeadline : Date.now() + 30_000;
+        cache.priceHistoryRefreshAfter.set(key, retryAt);
+        throw new PriceHistoryAcquisitionError(`Current price history is unavailable for ${instrumentLabel(source)}.`, retryAt);
+      }
     }
-    const loaded = await pending;
+    cache.priceHistoryRefreshAfter.delete(key);
     const history = loaded.points;
     const coverageNotice = isShellLondonTarget(source.instrument.symbol, source.instrument.exchange)
       ? historyCoverageNotice(history, request.visibleBounds.start) : null;
     if (coverageNotice) priorityWarnings.push(coverageNotice);
     // Only proven equal cadences can share an accumulated observation window.
     // An opaque default result stays attached to its original acquisition.
-    const accumulationKey = loaded.resolution === null ? null : `${instrumentKey(source)}|${loaded.resolution}`;
-    const previousHistory = accumulationKey ? cache.accumulatedPriceHistory.get(accumulationKey) ?? [] : [];
+    const accumulationKey = loaded.resolution === null ? null : `${instrumentKey(source)}|${loaded.resolution}|${priceHistoryAcquisitionIdentity(loaded)}`;
+    const previous = accumulationKey ? cache.accumulatedPriceHistory.get(accumulationKey) : undefined;
+    const previousHistory = previous?.points ?? [];
     if (
       request.explicitWindow
       && !historyIntersectsBounds(history, request.visibleBounds)
@@ -1394,8 +1433,10 @@ export async function resolveChartSpecData(
     const accumulated = loaded.resolution === null ? history : mergePriceHistoryWindows(
       previousHistory, history, loaded.resolution,
     );
-    if (accumulationKey) cache.accumulatedPriceHistory.set(accumulationKey, accumulated);
-    return { ...loaded, points: accumulated, requestKey: key,
+    const tail = priceHistoryTailAcquisition(previous, loaded);
+    const combined = { ...loaded, session: tail.session, sourceKey: tail.sourceKey, points: accumulated };
+    if (accumulationKey) cache.accumulatedPriceHistory.set(accumulationKey, combined);
+    return { ...combined, requestKey: key,
       ...(loaded.recovery ? { recovery: { ...loaded.recovery,
         requiredWarmupPoints: request.requiredWarmupPoints,
         usableWarmupPoints: retainedWarmup(accumulated, request.visibleBounds.start),
@@ -1525,7 +1566,8 @@ export async function resolveChartSpecData(
         merged = { ...mergeHistory(merged, history.points, undefined, observationNow,
           liveBarResolution ?? undefined, resolvedSource.instrument.exchange,
           liveBarResolution != null && !comparedSeriesIds.has(seriesSpec.id), resolvedSource.instrument.instrument?.secType),
-          priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey };
+          priceHistoryResolution: history.resolution, priceHistoryRequestKey: history.requestKey,
+          priceHistorySession: history.session, priceHistorySourceKey: history.sourceKey };
       }
       if ((source.fieldId === "fundamental.eps" || source.fieldId === "valuation.trailingPE")
         && [...merged.annualStatements, ...merged.quarterlyStatements].some((row) => row.epsBasis)) {
@@ -1535,7 +1577,7 @@ export async function resolveChartSpecData(
       // Keep provider history separate from quote-extended display bars. A live
       // mark is not a daily closing observation, including on snapshot replay.
       const historical = history ? { ...merged, priceHistory: history.points } : merged;
-      sources.onSecurityData?.(resolvedSpec, realizedVolInputs.has(seriesSpec.id) ? historical : merged, history !== null);
+      sources.onSecurityData?.(resolvedSpec, history?.session || realizedVolInputs.has(seriesSpec.id) ? historical : merged, history !== null);
       const result = baseSecuritySeries(
         resolvedSpec,
         merged,

@@ -261,7 +261,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "META") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=NASDAQ;range=1M;resolution=5m;version=4",
-      "exchange=NASDAQ;range=1M;resolution=5m;version=5",
+      "exchange=NASDAQ;range=1M;resolution=5m;version=5;historyData=1",
     ]);
 
     persistence.close();
@@ -312,7 +312,7 @@ describe("AssetDataRouter chart history", () => {
       .all("market", "price-history", "FTC") as Array<{ variant_key: string }>;
     expect(cachedRows.map((row) => row.variant_key)).toEqual([
       "exchange=LSE;range=ALL;resolution=1wk",
-      "exchange=LSE;range=ALL;resolution=1wk;version=5;granularity=1;unit=GBP",
+      "exchange=LSE;range=ALL;resolution=1wk;version=5;historyData=1;granularity=1;unit=GBP",
     ]);
 
     persistence.close();

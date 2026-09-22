@@ -15,13 +15,18 @@ import {
   subscribeToLiveChartQuotes,
 } from "./live-quotes";
 import type { PricePoint, Quote } from "../types/financials";
+import type { PriceHistoryResult } from "../types/price-history";
+import type { InstrumentRef } from "../market-data/request-types";
 import { getSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { resolveEntryData } from "../market-data/selectors";
 import { isMarketFieldId } from "./field-catalog";
-import { getNextBufferRange } from "./resolution";
+import { CHART_RESOLUTION_STEP_MS, getNextBufferRange, isIntradayResolution, type ManualChartResolution } from "./resolution";
+import { normalizeHistoryResult } from "../sources/history-result";
+import { publicListingTarget } from "../sources/listing-target";
+import { isPriceHistoryStaleForCurrentWindow, normalizePriceHistory } from "../utils/price-history";
 import {
   parsedPriceHistoryKey,
-  readParsedPriceHistory,
+  readParsedHistoryResult,
 } from "./parsed-history-cache";
 
 export interface UseChartResolutionResult extends ChartResolutionResult {
@@ -52,10 +57,42 @@ function hasRenderableData(result: ChartResolutionResult): boolean {
   return (result.bufferedSeries ?? result.series).some((series) => series.points.length > 0);
 }
 
+function seedWindowIsCurrent(spec: ChartSpec, now: number, options: ChartResolveOptions): boolean {
+  const requestStart = options.requestViewport?.start.getTime();
+  const requestEnd = options.requestViewport?.end.getTime();
+  if (typeof requestStart === "number" && Number.isFinite(requestStart)
+    && typeof requestEnd === "number" && Number.isFinite(requestEnd) && requestStart <= requestEnd) {
+    return now - (requestEnd + 1) < 3_600_000;
+  }
+  const window = spec.viewport.dateWindow;
+  if (!window) return true;
+  const start = Date.parse(window.start);
+  const end = Date.parse(window.end) + (/^\d{4}-\d{2}-\d{2}$/.test(window.end.trim()) ? 86_400_000 - 1 : 0);
+  return !Number.isFinite(start) || !Number.isFinite(end) || start > end || now - (end + 1) < 3_600_000;
+}
+
+function freshSeedPoints(
+  value: PriceHistoryResult | undefined, instrument: InstrumentRef,
+  resolution: ManualChartResolution, now: number, currentWindow: boolean,
+): PricePoint[] | null {
+  if (!value || (value.resolution !== null && value.resolution !== resolution)) return null;
+  const target = publicListingTarget(instrument.symbol, instrument.exchange);
+  const result = normalizeHistoryResult(value, { symbol: target.symbol, exchange: target.exchange ?? "" });
+  if (!result) return null;
+  const points = normalizePriceHistory(result.points);
+  // Broker contract/session interpretation remains unproven, as at acquisition.
+  const session = instrument.instrument ? undefined : result.session;
+  if (currentWindow && isIntradayResolution(resolution) && isPriceHistoryStaleForCurrentWindow(points, now, {
+    exchange: target.exchange, intervalMs: CHART_RESOLUTION_STEP_MS[resolution], session,
+  })) return null;
+  return points.length ? points : null;
+}
+
 function collectSeedHistory(spec: ChartSpec, now: Date, options: ChartResolveOptions): Map<string, PricePoint[]> {
   const history = new Map<string, PricePoint[]>();
   const coordinator = getSharedMarketDataCoordinator();
   const resolution = chartSeedResolution(spec, now, options);
+  const currentWindow = seedWindowIsCurrent(spec, now.getTime(), options);
   const ranges = [...new Set([spec.viewport.range, getNextBufferRange(spec.viewport.range), "ALL"] as const)];
   for (const series of spec.series) {
     if (series.source.kind !== "security" || !isMarketFieldId(series.source.fieldId)) continue;
@@ -65,10 +102,15 @@ function collectSeedHistory(spec: ChartSpec, now: Date, options: ChartResolveOpt
     // Cached bars retain their acquisition cadence. An ALL/weekly baseline
     // cannot supply daily prices, volume or study inputs under daily controls.
     for (const range of ranges) {
-      const data = readParsedPriceHistory(parsedPriceHistoryKey(source.instrument, range, resolution))
-        ?? (coordinator ? resolveEntryData(coordinator.getChartEntry({
-          instrument: source.instrument, bufferRange: range, granularity: "resolution", resolution,
-        })) : null);
+      const parsed = readParsedHistoryResult(parsedPriceHistoryKey(source.instrument, range, resolution));
+      let data = freshSeedPoints(parsed, source.instrument, resolution, now.getTime(), currentWindow);
+      if (!data && coordinator) {
+        const entry = coordinator.getChartEntry({ instrument: source.instrument, bufferRange: range,
+          granularity: "resolution", resolution });
+        const points = resolveEntryData(entry);
+        if (points) data = freshSeedPoints({ ...entry.history, points, resolution: entry.history?.resolution ?? null },
+          source.instrument, resolution, now.getTime(), currentWindow);
+      }
       if (data?.length) {
         history.set(key, data);
         break;
