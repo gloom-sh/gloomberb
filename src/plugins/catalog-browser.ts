@@ -21,6 +21,7 @@ import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
 import { chartComposerModule } from "./builtin/chart-composer";
 import { connectionsModule } from "./builtin/connections";
+import { relativeRotationModule } from "./builtin/relative-rotation";
 import { correlationModule } from "./builtin/correlation";
 import { cdsModule } from "./builtin/cds";
 import { creditConditionsModule } from "./builtin/credit-conditions";
@@ -130,6 +131,7 @@ const browserMarketOverviewPlugin = composeBuiltinPlugin({
   toggleable: true,
   modules: [
     correlationModule,
+    relativeRotationModule,
     worldIndicesModule,
     worldVenueMapModule,
     scannerModule,

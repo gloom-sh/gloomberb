@@ -161,6 +161,7 @@
           "fx-matrix",
           "market-movers",
           "relationship-graph",
+          "relative-rotation",
           "scanner-flow",
           "scanner-hilo",
           "sectors",

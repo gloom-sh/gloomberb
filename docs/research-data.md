@@ -564,3 +564,39 @@ Alpaca bars include trades and quote midpoint prices. A day with no trades can h
 Each price, daily-change, completed seven-day return and volume statistic has its own historical percentile and source date in the detail and JSON report. Percentiles use midpoint ranks over the trailing calendar year, require at least twenty observations, and retain actual sample dates and counts. The board marks an incomplete price sample with `*`. Source checks on September 22, 2026 found 366 daily observations for eleven default pairs; ADA had 221 from February 13, 2026. ADA included eight quote-only days and SHIB two. BNB was absent and TRX returned stale 2023 data despite HTTP 200, so both are excluded from the default list.
 
 Cloud caches snapshots for thirty seconds and daily history for thirty minutes, expiring history at UTC midnight. Source failures, stale cached data and incomplete windows remain in the existing warning disclosure. Historical data may contain later revisions. There is no market-cap ranking, consolidated exchange volume or Level 2 surface in this pane.
+### Relative rotation (RRG / GRR)
+
+The default universe is the eleven US sector ETFs versus SPY. All prices come
+through Gloom Cloud daily history and listing currency endpoints. History requests
+are bounded to four concurrent calls; the app caches the assembled result for
+30 minutes. Three years of daily closes support the warmup and one-year ranks.
+
+This is a transparent relative-strength model, not the proprietary JdK indices.
+At each completed week, let R be the asset close divided by the benchmark close.
+Strength is `100 * R / SMA13(R)`; momentum is `100 * strength / strength[4 weeks ago]`.
+The 100/100 intersection defines Leading (both above), Weakening (strength above,
+momentum below), Lagging (both below) and Improving (strength below, momentum
+above). Values on an axis are Neutral. Trails default to six completed weeks;
+longer histories never expand the plotted axes. Each path retains its chronological
+edges even when strength reverses direction.
+
+The latest eligible benchmark daily observation in each completed Friday-ending
+week defines the required date for peers. The current week is excluded. A final
+Monday-Wednesday observation cannot establish a week close; Thursday is accepted
+for a Friday holiday. This conservative US-week rule can leave non-US calendars
+unavailable. Missing or contradictory closes break continuity; no forward-fill,
+zero price or cross-currency comparison is allowed. Seventeen consecutive matched
+weekly closes are needed for momentum. Returned history identity and currency are
+checked against the requested listing and quote metadata. Stale histories keep
+explicit source warnings and observation dates.
+
+Percentiles use the shared midrank helper over the preceding 365 days through the
+metric date, require 20 valid weekly values and report sample counts; fewer than
+52 are flagged. Identical observations rank at 50, and future observations cannot
+enter a rank. Provider closes are price observations; dividend reinvestment is not
+assumed, so this is not a total-return ranking. Delisted instruments, long gaps,
+calendar mismatches and missing listing currency remain unavailable.
+
+Live source verification on September 22, 2026 returned USD identities for SPY and
+all eleven sector ETFs and 765 daily observations per instrument, September 1,
+2023 through September 21, 2026. The last completed rotation week was September 18.

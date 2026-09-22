@@ -426,3 +426,16 @@ gloomberb shot OVME --model american --side put --spot 100 --strike 100 --days 3
 CLI rates and IV are percentages; `--market-price` is a per-unit premium and uses the selected model's IV solver. Explicit input-volatility calculations run without market access. The European closed form rejects an explicit cash schedule in `fn`; the pane and `shot` preserve it with an ignored-schedule notice. Cash dividends are entered by the user; the surface source supplies volatility and does not infer or replace that schedule.
 
 `shot OVME` accepts the same valuation flags and returns the captured inputs, price, Greeks, IV result and source metadata as numerical evidence. It verifies the rendered calculation against the requested inputs. Missing surface data, invalid values or a pane too short to show the metrics do not produce usable evidence. `shot HVG AAPL` and `shot HVT AAPL` also verify their plotted observations; use `--show-iv false` when only realized volatility is wanted.
+
+### Relative rotation
+
+`RRG` or `GRR` opens US sector ETFs versus SPY. `RRG AAPL:NASDAQ,MSFT:NASDAQ`
+uses an explicit universe. Pane settings choose the benchmark, a linked watchlist
+or portfolio, custom symbols and a 2/4/6/8/12-week trail (six by default). The
+maximum is 24 instruments; a larger collection asks for a smaller scope.
+
+Select a coloured table row to locate its trail; open it for dated strength and
+momentum history. Click column headers to sort. Missing aligned histories remain
+in the table with unavailable values and a footer notice. CSV export uses the
+pane menu. `gloomberb fn RRG --benchmark SPY:NYSEARCA --trail 6 --json` returns
+metrics, dated trails, rank sample counts and data limitations.
