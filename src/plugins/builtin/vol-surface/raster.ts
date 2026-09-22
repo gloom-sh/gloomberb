@@ -4,6 +4,7 @@ import {
   blendPixel, clamp, drawCircle, drawLine, fillOpaque, fillRect, parseHex, type RgbaColor,
 } from "../../../components/chart/native/raster/primitives";
 import { blendHex } from "../../../theme/color-utils";
+import { buildSurfaceMesh, surfaceMeshBoundary, surfaceMeshEdgeKey } from "./mesh";
 
 /** Row-major decimal IV. Missing cells remain holes, including across tenors. */
 export interface VolatilitySurfaceGrid {
@@ -129,7 +130,7 @@ function paintLabel(bitmap: NativeChartBitmap, text: string, x: number, y: numbe
 }
 
 function shadeForFace(vertices: readonly SurfaceVertex[]): number {
-  const [a, b, , d] = vertices as [SurfaceVertex, SurfaceVertex, SurfaceVertex, SurfaceVertex];
+  const a = vertices[0]!, b = vertices[1]!, d = vertices.at(-1)!;
   const u = { x: b.world.x - a.world.x, y: b.world.y - a.world.y, z: b.world.z - a.world.z };
   const v = { x: d.world.x - a.world.x, y: d.world.y - a.world.y, z: d.world.z - a.world.z };
   const normal = { x: u.y * v.z - u.z * v.y, y: u.z * v.x - u.x * v.z, z: u.x * v.y - u.y * v.x };
@@ -166,7 +167,7 @@ function tenorLabel(years: number): string {
   return `${Number(years.toFixed(1))}Y`;
 }
 
-/** Painter-sorted shaded quads with a sparse wireframe and an explicit ATM ridge. */
+/** Painter-sorted shaded faces with a sparse wireframe and an explicit ATM ridge. */
 export function renderVolatilitySurface(
   grid: VolatilitySurfaceGrid,
   requestedWidth: number,
@@ -275,31 +276,31 @@ export function renderVolatilitySurface(
     scene.projectedCells.push(cell);
     return { ...cell, world, color: surfaceVolatilityColor(volatility, lowVol, highVol, palette) };
   }));
-  const faces: { points: SurfaceVertex[]; depth: number; row: number; column: number }[] = [];
-  for (let row = 0; row < vertices.length - 1; row += 1) {
-    for (let column = 0; column < grid.moneyness.length - 1; column += 1) {
-      const points = [vertices[row]?.[column], vertices[row]?.[column + 1], vertices[row + 1]?.[column + 1], vertices[row + 1]?.[column]];
-      if (points.some((point) => !point)) continue;
-      const valid = points as SurfaceVertex[];
-      faces.push({ points: valid, depth: valid.reduce((sum, point) => sum + point.depth, 0) / 4, row, column });
-    }
-  }
+  const mesh = buildSurfaceMesh(vertices.map((row) => row.map((point) => point != null)));
+  const boundaryEdges = surfaceMeshBoundary(mesh);
+  const faces = mesh.map((face) => {
+    const points = face.vertices.map(({ row, column }) => vertices[row]![column]!);
+    return { ...face, points, depth: points.reduce((sum, point) => sum + point.depth, 0) / points.length };
+  });
   faces.sort((a, b) => a.depth - b.depth);
   scene.faceCount = faces.length;
   const wire = parseHex(blendHex(palette.bgColor, palette.activeRangeColor, 0.28), 0.72);
+  const boundary = parseHex(blendHex(palette.bgColor, palette.activeRangeColor, 0.4), 0.75);
   const wireStep = Math.max(1, Math.round(grid.moneyness.length / 20));
   const surfacedRows = new Set<number>();
   for (const face of faces) {
-    const [a, b, c, d] = face.points as [SurfaceVertex, SurfaceVertex, SurfaceVertex, SurfaceVertex];
+    const [a, b, c] = face.points as [SurfaceVertex, SurfaceVertex, SurfaceVertex];
+    const d = face.points[3];
     const shade = shadeForFace(face.points);
     fillTriangle(bitmap, a, b, c, shade);
-    fillTriangle(bitmap, a, c, d, shade);
-    line(a, b, wire, 0.65);
-    line(d, c, wire, 0.65);
-    if (face.column % wireStep === 0) line(a, d, wire, 0.65);
-    if (face.column === grid.moneyness.length - 2) line(b, c, wire, 0.85);
-    surfacedRows.add(face.row);
-    surfacedRows.add(face.row + 1);
+    if (d) fillTriangle(bitmap, a, c, d, shade);
+    for (let index = 0; index < face.vertices.length; index += 1) {
+      const from = face.vertices[index]!, to = face.vertices[(index + 1) % face.vertices.length]!;
+      const start = face.points[index]!, end = face.points[(index + 1) % face.points.length]!;
+      if (boundaryEdges.has(surfaceMeshEdgeKey(from, to))) line(start, end, boundary, 0.65 * fontScale);
+      else if (from.row === to.row || from.column === to.column && from.column % wireStep === 0 && from.row > to.row) line(start, end, wire, 0.65);
+      surfacedRows.add(from.row);
+    }
   }
 
   // Isolated loaded expiries remain curves while their neighbors load or fail.
