@@ -21,3 +21,8 @@ test("resuming starts a new window without changing the dedupe identity", () => 
   const resumed = toggleEventAlert(paused, 3000);
   expect(resumed).toMatchObject({ id: original.id, status: "active", createdAt: 3000 });
 });
+
+test("rejects out-of-range synced timestamps before rendering a date", () => {
+  const rule = createEventAlert("congress-watched", "", 1000);
+  expect(readEventAlerts(JSON.stringify([{...rule, createdAt: 1e300}]))).toEqual({rules:[],error:"Saved event alerts could not be read."});
+});

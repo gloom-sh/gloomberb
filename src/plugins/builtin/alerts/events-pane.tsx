@@ -1,3 +1,4 @@
+import { isPlainKey } from "../../../utils/keyboard";
 import { useCallback, useMemo, useState } from "react";
 import {
   ConfirmDialog,
@@ -133,9 +134,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   );
   const onKey = useCallback(
     (event: DataTableKeyEvent) => {
-      if (event.name === "a" && !error) add();
-      else if (event.name === "p") toggle(selectedRule);
-      else if (event.name === "d") void remove();
+      if (isPlainKey(event, "a") && !error) add();
+      else if (isPlainKey(event, "p")) toggle(selectedRule);
+      else if (isPlainKey(event, "d")) void remove();
       else return false;
       event.preventDefault?.();
       return true;

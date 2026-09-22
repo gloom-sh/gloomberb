@@ -87,6 +87,7 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
         typeof value.value !== "string" ||
         (value.status !== "active" && value.status !== "paused") ||
         !Number.isFinite(value.createdAt) ||
+        !Number.isFinite(new Date(value.createdAt).getTime()) ||
         value.createdAt <= 0
       )
         throw new Error();
