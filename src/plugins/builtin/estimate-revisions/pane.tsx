@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { Box, ScrollBox } from "gloomberb/ui";
+import { Box, ScrollBox } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
   useShortcut,
-} from "gloomberb/react";
+} from "../../../public/react";
 import {
   CompositeChart,
   DataTableStackView,
