@@ -1,4 +1,5 @@
 import { shortVolumeModule } from "./short-volume";
+import { timeSalesModule } from "./time-sales";
 import { chartComposerModule } from "./chart-composer";
 import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
@@ -38,6 +39,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     dividendYieldModule,
     holdersModule,
     shortInterestModule,
+    timeSalesModule,
     thirteenFModule,
     secModule,
     insiderModule,

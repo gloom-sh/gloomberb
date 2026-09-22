@@ -1,4 +1,5 @@
 import { shortVolumeModule } from "./builtin/short-volume";
+import { timeSalesModule } from "./builtin/time-sales";
 import {
   attachFredSeriesPersistence,
   resetFredSeriesPersistence,
@@ -89,6 +90,7 @@ const browserTickerResearchPlugin = composeBuiltinPlugin({
     optionsCalculatorModule,
     volSurfaceModule,
     realizedVolModule,
+    timeSalesModule,
     researchModule,
     shortVolumeModule,
     browserDividendYieldModule,

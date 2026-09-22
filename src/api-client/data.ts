@@ -3,6 +3,7 @@ import type { MoneyMarketsPayload } from "./money-markets";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
+import type { TapeSnapshot } from "./tape";
 import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import type { RatePathPayload } from "./rates";
 import type { TickerFinancials } from "../types/financials";
@@ -340,6 +341,10 @@ export class CloudDataApi {
 
   async getCloudCotContract(code: string, report: CotFamily): Promise<CotContractPayload> {
     return this.request<CotContractPayload>(`/cloud/cot/contracts/${encodeURIComponent(code)}?${new URLSearchParams({ report })}`);
+  }
+
+  async getCloudTape(symbol: string, exchange: string, signal?: AbortSignal): Promise<TapeSnapshot> {
+    return this.request<TapeSnapshot>(`/cloud/tape/${encodeURIComponent(symbol)}?exchange=${encodeURIComponent(exchange)}`, { signal: signal ?? AbortSignal.timeout(30_000) });
   }
 
   async getCloudYieldCurve(): Promise<CloudYieldPointPayload[]> {

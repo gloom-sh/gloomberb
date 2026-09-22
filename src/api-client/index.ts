@@ -660,6 +660,7 @@ class GloomApiClient {
   deleteTeamPluginState = this.views.deleteTeamPluginState.bind(this.views);
 
   /** Subscribes to a shared scanner feed; all panes of one kind share one upstream subscription. */
+  subscribeTape = this.socket.subscribeTape.bind(this.socket);
   subscribeScanner = this.socket.subscribeScanner.bind(this.socket);
 
   dispose(): void {
@@ -696,6 +697,7 @@ class GloomApiClient {
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
   getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
+  getCloudTape = this.data.getCloudTape.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
   getCloudCds = this.data.getCloudCds.bind(this.data);
   getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);

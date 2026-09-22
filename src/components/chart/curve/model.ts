@@ -74,18 +74,25 @@ export function historyStatistics(
   const points = [...dated].filter((point): point is [number, number] => point[1] != null && Number.isFinite(point[1]))
     .sort((a, b) => a[0] - b[0]);
   const values = points.map(([, value]) => value);
+  return {
+    ...sampleStatistics(values, current),
+    startDate: points.length ? new Date(points[0]![0]).toISOString().slice(0, 10) : null,
+    endDate: points.length ? new Date(points.at(-1)![0]).toISOString().slice(0, 10) : null,
+  };
+}
+
+/** Midrank statistics for observations whose identities are not calendar timestamps. */
+export function sampleStatistics(sample: readonly number[], current: number | null): Omit<HistoryStatistics, "startDate" | "endDate"> {
+  const values = sample.filter(Number.isFinite);
   const count = values.length;
   const rank = current != null && Number.isFinite(current) && count
     ? values.reduce((sum, value) => sum + (value < current ? 1 : value === current ? 0.5 : 0), 0) : null;
   return {
     percentile: rank == null ? null : 100 * rank / count,
-    rank,
-    count,
+    rank, count,
     min: count ? Math.min(...values) : null,
     max: count ? Math.max(...values) : null,
     mean: count ? values.reduce((sum, value) => sum + value / count, 0) : null,
-    startDate: points.length ? new Date(points[0]![0]).toISOString().slice(0, 10) : null,
-    endDate: points.length ? new Date(points.at(-1)![0]).toISOString().slice(0, 10) : null,
   };
 }
 

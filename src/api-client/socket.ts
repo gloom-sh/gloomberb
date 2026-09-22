@@ -1,3 +1,4 @@
+import type { TapeFeedEvent } from "./tape";
 import type {
   AuthUser,
   ChatMessage,
@@ -112,6 +113,7 @@ export class CloudApiSocket {
   >();
   private quoteSubscriptionFlushTimer: ReturnType<typeof setTimeout> | null =
     null;
+  private readonly tapeListeners = new Map<string, { symbol: string; exchange: string; listeners: Set<(event: TapeFeedEvent) => void> }>();
   private readonly scannerListeners = new Map<
     ScannerKind,
     Set<ScannerListener>
@@ -136,6 +138,7 @@ export class CloudApiSocket {
   }
 
   teardown(): void {
+    this.emitTapeStatus({ type: "reset", reason: "Stream session changed" });
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -301,6 +304,30 @@ export class CloudApiSocket {
     };
   }
 
+  subscribeTape(symbol: string, exchange: string, listener: (event: TapeFeedEvent) => void): () => void {
+    const target = { symbol: normalizeSymbol(symbol), exchange: canonicalExchange(exchange) };
+    const key = marketKey(target.symbol, target.exchange);
+    const existing = this.tapeListeners.get(key);
+    const entry = existing ?? { ...target, listeners: new Set<(event: TapeFeedEvent) => void>() };
+    entry.listeners.add(listener);
+    this.tapeListeners.set(key, entry);
+    this.ensureSocket();
+    if (!existing) this.sendSocketMessage({ type: "tape.subscribe", ...target });
+    return () => {
+      const current = this.tapeListeners.get(key);
+      if (!current?.listeners.delete(listener)) return;
+      if (!current.listeners.size) {
+        this.tapeListeners.delete(key);
+        this.sendSocketMessage({ type: "tape.unsubscribe", ...target });
+      }
+      if (!this.shouldKeepSocketOpen()) this.teardown();
+    };
+  }
+
+  private emitTapeStatus(event: Exclude<TapeFeedEvent, { type: "data" }>): void {
+    for (const entry of this.tapeListeners.values()) for (const listener of entry.listeners) listener(event);
+  }
+
   subscribeQuotes(
     targets: QuoteStreamTarget[],
     onQuote: (target: QuoteStreamTarget, quote: CloudQuotePayload) => void,
@@ -427,6 +454,7 @@ export class CloudApiSocket {
     this.quoteTargets.clear();
     this.pendingQuoteSubscribes.clear();
     this.pendingQuoteUnsubscribes.clear();
+    this.tapeListeners.clear();
     this.scannerListeners.clear();
     this.scannerSnapshots.clear();
     if (this.quoteSubscriptionFlushTimer) {
@@ -470,7 +498,7 @@ export class CloudApiSocket {
         return;
       }
       this.delegate.markCurrentUserUnverified();
-      if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0) {
+      if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0 || this.tapeListeners.size > 0) {
         return;
       }
       this.teardown();
@@ -517,6 +545,12 @@ export class CloudApiSocket {
       for (const listener of this.chatPresenceListeners) {
         listener(parsed.onlineCount);
       }
+      return;
+    }
+
+    if (parsed?.type === "tape.snapshot" && parsed.data && typeof parsed.data.symbol === "string" && typeof parsed.data.exchange === "string") {
+      const entry = this.tapeListeners.get(marketKey(parsed.data.symbol, parsed.data.exchange));
+      for (const listener of entry?.listeners ?? []) listener({ type: "data", payload: parsed.data });
       return;
     }
 
@@ -590,7 +624,7 @@ export class CloudApiSocket {
   }
 
   private shouldKeepSocketOpen(): boolean {
-    if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0)
+    if (this.quoteTargets.size > 0 || this.scannerListeners.size > 0 || this.tapeListeners.size > 0)
       return true;
     return (
       this.delegate.hasSessionCredential() &&
@@ -654,6 +688,7 @@ export class CloudApiSocket {
       const activeSocket = this.ws === ws;
       if (this.ws === ws) {
         this.ws = null;
+      this.emitTapeStatus({ type: "disconnected", reason: "Stream disconnected; observed window may contain gaps" });
       }
       const closeEvent = event as CloseEvent | undefined;
       cloudApiLog.warn("websocket closed", {
@@ -731,6 +766,10 @@ export class CloudApiSocket {
 
     for (const channelId of this.channelListeners.keys()) {
       this.sendSocketMessage({ type: "chat.subscribe", channelId });
+    }
+
+    for (const entry of this.tapeListeners.values()) {
+      this.sendSocketMessage({ type: "tape.subscribe", symbol: entry.symbol, exchange: entry.exchange });
     }
 
     for (const scanner of this.scannerListeners.keys()) {
