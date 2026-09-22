@@ -279,6 +279,34 @@ describe("ThirteenFPane", () => {
     expect(filingsFrame).toContain("Back Alpha Capital");
     expect(filingsFrame).not.toContain("Accession");
   });
+  test("back from an overlap keeps the first fund open and returns to the second fund picker", async () => {
+    installAlpha13FTransport();
+    await act(async () => { testSetup = await testRender(<Harness />, { width: 110, height: 26 }); });
+    await renderFrames();
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderFrames(6);
+    await emitKeypress({ name: "right", sequence: "\u001B[C" });
+    await renderFrames(2);
+    await emitKeypress({ name: "right", sequence: "\u001B[C" });
+    await renderFrames(2);
+    await emitKeypress({ name: "/", sequence: "/" });
+    await act(async () => { await testSetup!.mockInput.typeText("0000000001"); });
+    await renderFrames(2);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    await renderFrames(4);
+    await emitKeypress({ name: "down", sequence: "\u001B[B" });
+    await renderFrames(2);
+    await emitKeypress({ name: "enter", sequence: "\r" });
+    await renderFrames(6);
+    expect(testSetup!.captureCharFrame()).toContain("SECOND %");
+    await emitKeypress({ name: "backspace", sequence: "\u007f" });
+    await renderFrames(2);
+    const frame = testSetup!.captureCharFrame();
+    expect(frame).toContain("Back Alpha Capital");
+    expect(frame).toContain("Overlap");
+    expect(frame).not.toContain("SECOND %");
+  });
+
 });
 
 function json(value: unknown): Response {

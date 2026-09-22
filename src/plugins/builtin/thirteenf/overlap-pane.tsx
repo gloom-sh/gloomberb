@@ -3,6 +3,7 @@ import { Checkbox, DataTableStackView, DataTableView, InputSearchBar, KeyValueRo
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
+import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { isPlainKey } from "../../../utils/keyboard";
 import { usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
@@ -63,6 +64,10 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   }, [hasMore, loadingMore, loading, target, query, offset, data.cik]);
   const onScroll = useTableLoadMore(scrollRef, hasMore && !loadingMore && !loading && !target, loadMore);
   const refreshData = useCallback(() => setRefresh(value => value + 1), []);
+  useShortcut(event => {
+    if (!focused || !target || event.targetEditable || !isDetailBackNavigationKey(event)) return;
+    event.preventDefault?.(); event.stopPropagation?.(); setTarget(null);
+  }, { phase: "before" });
   useShortcut(event => {
     if (!focused || event.targetEditable) return;
     if (isPlainKey(event, "r")) { event.preventDefault?.(); event.stopPropagation?.(); refreshData(); }
