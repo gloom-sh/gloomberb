@@ -13,7 +13,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/relative-time";
-import { useConnectionHealth } from "../../runtime";
+import { useConnectionHealth, usePluginPaneState } from "../../runtime";
 
 interface ConnectionColumn extends DataTableColumn {
   id: "service" | "status" | "request" | "latency" | "last";
@@ -119,8 +119,10 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
 export function ConnectionsPane({ focused, width, height }: PaneProps) {
   const health = useConnectionHealth();
   const [snapshot, setSnapshot] = useState(() => health.getSnapshot());
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  // Selection and the open source are pane state, so a reload or a shared
+  // layout comes back to the same connection.
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState("detailOpen", false);
   const [sort, setSort] = useState<{ columnId: ConnectionColumn["id"]; direction: "asc" | "desc" }>({
     columnId: "status",
     direction: "asc",

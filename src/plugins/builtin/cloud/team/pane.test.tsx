@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
 import { testRender } from "../../../../renderers/opentui/test-utils";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../../state/app/context";
+import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
-import { PluginRenderProvider } from "../../../runtime";
 import { cleanupChatTest, installChatApiTestDefaults } from "../../chat/test-harness";
 import { TeamPane } from "./pane";
 import { requestTeamPaneView } from "./pane-request";
@@ -58,11 +59,27 @@ async function flush() {
   }
 }
 
+const PANE_INSTANCE_ID = "team:test";
+const paneRuntime = createTestPluginRuntime();
+
 function Pane({ focused = true }: { focused?: boolean }) {
+  // The open section is pane state, so the harness needs a real reducer.
+  const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+  const state = createInitialState(createTestPaneConfig("/tmp/team-pane-test", {
+    paneId: "team", instanceId: PANE_INSTANCE_ID,
+  }));
+  state.paneState = paneState;
+  const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
   return (
-    <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
+    <TestPaneProvider
+      state={state}
+      dispatch={dispatch}
+      paneId={PANE_INSTANCE_ID}
+      pluginId="gloomberb-cloud"
+      runtime={paneRuntime}
+    >
       <TeamPane paneId="team" paneType="team" focused={focused} width={84} height={24} />
-    </PluginRenderProvider>
+    </TestPaneProvider>
   );
 }
 

@@ -22,7 +22,7 @@ import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { pluginSetupCommandId } from "../../registry/setup-command";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID } from "../debug/template";
 import { loadRegistry, registryPluginUrl } from "./feed";
 import {
@@ -201,10 +201,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const dialog = useDialog();
   const { createPaneFromTemplate, showPane, openPluginCommandWorkflow, notify } = usePluginAppActions();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<string | null>(null);
+  const [category, setCategory] = usePluginPaneState<string | null>("category", null);
   const [showBuiltin, setShowBuiltin] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchFocusToken, setSearchFocusToken] = useState(0);
   const searchInputRef = useRef<InputRenderable | null>(null);

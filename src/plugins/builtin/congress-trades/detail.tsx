@@ -3,6 +3,7 @@ import { Box, ScrollBox, Text, TextAttributes, useRendererHost, type ScrollBoxRe
 import {
   DataTableView,
   usePaneFooter,
+  usePaneNoticeFooter,
   useTableLoadMore,
   type DataTableKeyEvent,
 } from "../../../components";
@@ -285,12 +286,19 @@ export function MemberTradesDetail({
     return false;
   }, [loadPreviousYear, openSelectedSource, openSelectedTicker, previousYearRequest, refresh, selectedTrade?.sourceUrl, selectedTrade?.ticker]);
 
+  usePaneNoticeFooter({
+    registrationId: `${CONGRESS_TRADES_PANE_ID}:member-notices`,
+    notices: [
+      scanNotice,
+      maybeTruncated ? `Only the most recent ${CONGRESS_MEMBER_TRADE_LIMIT} trades for this member are shown.` : null,
+    ].filter((notice): notice is string => !!notice),
+    focused,
+  });
+
   usePaneFooter(`${CONGRESS_TRADES_PANE_ID}:member-detail`, () => ({
     info: [
       ...(status === "loading" ? [{ id: "member-loading", parts: [{ text: "loading member trades", tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "member-error", parts: [{ text: error, tone: "warning" as const }] }] : []),
-      ...(scanNotice ? [{ id: "member-scan", parts: [{ text: scanNotice, tone: "muted" as const }] }] : []),
-      ...(maybeTruncated ? [{ id: "member-truncated", parts: [{ text: `limited to ${CONGRESS_MEMBER_TRADE_LIMIT} trades`, tone: "warning" as const }] }] : []),
     ],
     hints: [
       { id: "member-ticker", key: "t", label: "icker", onPress: openSelectedTicker, disabled: !selectedTrade?.ticker },

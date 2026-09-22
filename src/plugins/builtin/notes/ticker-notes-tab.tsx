@@ -6,7 +6,7 @@ import { usePaneTicker } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { EmptyState, usePaneFooter } from "../../../components";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { useDialog } from "../../../ui/dialog";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
@@ -25,7 +25,10 @@ export function createNotesTab(registry: NotesStoreRegistry) {
     const { notify } = usePluginAppActions();
     const dialog = useDialog();
     const teams = useNoteTeams();
-    const [owner, setOwner] = useState<NoteOwner>(defaultNoteOwner);
+    // The fallback is read once, so it keeps one identity for the whole life
+    // of the tab the way the lazy initial state it replaces did.
+    const initialOwner = useMemo(defaultNoteOwner, []);
+    const [owner, setOwner] = usePluginPaneState<NoteOwner>("noteOwner", initialOwner);
     // A team the account left falls back to personal notes.
     const effectiveOwner = owner.kind === "team" && !teams.some((team) => team.id === owner.teamId)
       ? { kind: "user" as const }

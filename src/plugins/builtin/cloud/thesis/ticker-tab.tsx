@@ -1,14 +1,14 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { apiClient } from "../../../../api-client";
 import { Button, EmptyState, Tabs, usePaneFooter } from "../../../../components";
 import { useShortcut } from "../../../../react/input";
 import { usePaneTicker } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
 import type { TickerResearchTabProps } from "../../../../types/plugin";
-import { Box, Text } from "../../../../ui";
+import { Box } from "../../../../ui";
 import { useDialog } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
-import { usePluginAppActions } from "../../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../shared/plan-access";
@@ -32,14 +32,20 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
   const snapshot = useSyncExternalStore((onChange) => thesisStore.subscribe(onChange), () => thesisStore.getSnapshot());
   const teams = useSyncExternalStore((onChange) => teamStore.subscribe(onChange), () => teamStore.getSnapshot()).teams;
   const signedIn = useSyncExternalStore((onChange) => apiClient.subscribeCurrentUser(onChange), () => apiClient.isVerified());
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveId] = usePluginPaneState<string | null>("activeThesisId", null);
   const [busy, setBusy] = useState(false);
 
   const symbol = ticker?.metadata.ticker ?? null;
   const covering = useMemo(() => thesesCovering(snapshot.theses, symbol), [snapshot.theses, symbol]);
   const active = covering.find((thesis) => thesis.id === activeId) ?? covering[0] ?? null;
 
+  // A restored thesis survives the first run; only a later ticker change clears it.
+  const seenSymbolRef = useRef(true);
   useEffect(() => {
+    if (seenSymbolRef.current) {
+      seenSymbolRef.current = false;
+      return;
+    }
     setActiveId(null);
   }, [symbol]);
 
@@ -89,7 +95,7 @@ export function ThesisTickerTab({ focused, width, height }: TickerResearchTabPro
     hints: [{ id: "start", key: "n", label: "ew thesis", onPress: () => void start() }],
   }), [active, signedIn, start]);
 
-  if (!ticker) return <Text fg={colors.textDim}>Select a ticker to see its thesis.</Text>;
+  if (!ticker) return <EmptyState title="No ticker selected." hint="Select a ticker to see its thesis." />;
   if (!signedIn) {
     return <SignInWall action="keep a thesis on this ticker" hint="Theses are stored in Gloom Cloud so they follow you and your team." />;
   }

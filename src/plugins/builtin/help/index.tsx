@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { formatActionChords, hasKeybindingCaptureRequest, subscribeKeybindingCapture, useKeybindings } from "../../../app/keybindings";
 import { Button, Section, SectionHeading, Tabs, type TableSection } from "../../../components";
 import { ExternalLinkText } from "../../../components/ui";
@@ -8,7 +8,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { FunctionsTable } from "./functions-table";
 import { KeybindingsEditor } from "./keybindings-editor";
@@ -37,7 +37,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const { openCommandBar, showPane } = usePluginAppActions();
   // A key capture requested from the command bar belongs to the Shortcuts
   // tab, whether the pane is already open or is being opened for it.
-  const [activeTabId, setActiveTabId] = useState<HelpTabId>(() => (hasKeybindingCaptureRequest() ? "shortcuts" : "basics"));
+  const [activeTabId, setActiveTabId] = usePluginPaneState<HelpTabId>("activeTab", "basics");
+  useEffect(() => {
+    if (hasKeybindingCaptureRequest()) setActiveTabId("shortcuts");
+  }, []);
   const commandShortcuts = resolveCommandShortcuts(registry);
   const windowTemplates = resolveWindowTemplates(registry);
   const uiHost = useUiHost();

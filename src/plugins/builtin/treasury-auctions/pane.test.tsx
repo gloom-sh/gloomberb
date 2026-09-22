@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { emitKeypress as emitTuiKeypress, testRender, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
-import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
-import { createDefaultConfig } from "../../../types/config";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
+import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
   attachTreasuryAuctionsPersistence,
@@ -80,20 +81,36 @@ afterEach(async () => {
   testSetup = undefined;
 });
 
+const PANE_INSTANCE_ID = "treasury-auctions:test";
+const paneRuntime = createTestPluginRuntime();
+
 function Harness() {
-  const state = createInitialState(createDefaultConfig("/tmp/gloomberb-auctions-pane-test"));
+  // The filter tab and the open auction are pane state, so the harness needs a
+  // reducer; filtering dispatches both in the same batch.
+  const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+  const state = createInitialState(createTestPaneConfig("/tmp/gloomberb-auctions-pane-test", {
+    paneId: "treasury-auctions", instanceId: PANE_INSTANCE_ID,
+  }));
+  state.paneState = paneState;
+  const dispatch = (action: AppAction) => setPaneState(
+    (current) => appReducer({ ...state, paneState: current }, action).paneState,
+  );
   return (
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId="treasury-auctions">
-        <TreasuryAuctionsPane
-          paneId="treasury-auctions"
-          paneType="treasury-auctions"
-          focused
-          width={92}
-          height={20}
-        />
-      </PaneInstanceProvider>
-    </AppContext>
+    <TestPaneProvider
+      state={state}
+      dispatch={dispatch}
+      paneId={PANE_INSTANCE_ID}
+      pluginId="macro"
+      runtime={paneRuntime}
+    >
+      <TreasuryAuctionsPane
+        paneId="treasury-auctions"
+        paneType="treasury-auctions"
+        focused
+        width={92}
+        height={20}
+      />
+    </TestPaneProvider>
   );
 }
 

@@ -20,6 +20,7 @@ import {
   type ScrollBoxRenderable,
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
+import { usePluginPaneState } from "../../runtime";
 import { useBoundTicker } from "../shared/ticker-request";
 import { discardRiskData, loadRiskReport, loadRiskReports } from "./data";
 
@@ -84,13 +85,16 @@ export function RiskFactorsPane({
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
-  const [selection, setSelection] = useState<{ ticker: string | null; year: number | null }>({ ticker: null, year: null });
+  // The year is remembered with the pane; the ticker it was chosen on is the
+  // one the pane opened with, so a restored year applies to it.
+  const [selectedYear, setSelectedYear] = usePluginPaneState<number | null>("filingYear", null);
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(ticker);
   const listLoader = useCallback((force: boolean) => loadRiskReports(ticker!, { force }), [ticker]);
   const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: discardRiskData });
   const years = useMemo(() => [...(list.data?.reports ?? [])].sort((a, b) => b.reportYear - a.reportYear), [list.data]);
   // Null follows the newest discovered filing; an explicit choice stays on that year.
-  const year = selection.ticker === ticker && selection.year !== null
-    ? selection.year : years[0]?.reportYear ?? null;
+  const year = selectedTicker === ticker && selectedYear !== null
+    ? selectedYear : years[0]?.reportYear ?? null;
   const reportLoader = useCallback((force: boolean) => loadRiskReport(ticker!, year!, { force }), [ticker, year]);
   const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: discardRiskData });
   const report = detail.data;
@@ -186,7 +190,7 @@ export function RiskFactorsPane({
               value: String(entry.reportYear),
             }))}
             activeValue={year === null ? "" : String(year)}
-            onSelect={(value) => setSelection({ ticker, year: Number(value) })}
+            onSelect={(value) => { setSelectedTicker(ticker); setSelectedYear(Number(value)); }}
             compact
             variant="bare"
             focused={focused}

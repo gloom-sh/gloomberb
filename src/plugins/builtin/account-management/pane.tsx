@@ -61,6 +61,7 @@ import {
 } from "./navigation";
 import { openCloudUpgrade } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../shared/plan-access";
+import { usePluginPaneState } from "../../runtime";
 
 type AccountBusy = "profile" | "password" | "alerts" | "billing" | "delete" | null;
 const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = [
@@ -365,16 +366,20 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const [profile, setProfile] = useState<AccountProfile | null>(null);
   const [pricing, setPricing] = useState<CloudPricing | null>(null);
   const [draft, setDraft] = useState<AccountDraft>(() => profileToDraft(null));
-  const [initialTab] = useState<AccountManagementTab>(
-    () => consumeRequestedAccountManagementTab() ?? "profile",
-  );
+  const [activeTab, setActiveTab] = usePluginPaneState<AccountManagementTab>("activeTab", "profile");
   const [activeField, setActiveField] = useState<AccountFieldKey>(
-    () => ACCOUNT_TAB_FIELD_ORDER[initialTab][0] ?? "username",
+    () => ACCOUNT_TAB_FIELD_ORDER[activeTab][0] ?? "username",
   );
   const [message, setMessage] = useState<{ tone: "info" | "success" | "error"; text: string } | null>(null);
   const [busy, setBusy] = useState<AccountBusy>(null);
-  const [activeTab, setActiveTab] = useState<AccountManagementTab>(initialTab);
 
+  // A tab requested before the pane mounted wins over the restored one, but only once.
+  useEffect(() => {
+    const requested = consumeRequestedAccountManagementTab();
+    if (!requested) return;
+    setActiveTab(requested);
+    setActiveField(ACCOUNT_TAB_FIELD_ORDER[requested][0] ?? "username");
+  }, []);
   useEffect(() => subscribeRequestedAccountManagementTab((tab) => {
     setActiveTab(tab);
     setActiveField(ACCOUNT_TAB_FIELD_ORDER[tab][0] ?? "username");

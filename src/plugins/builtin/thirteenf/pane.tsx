@@ -104,7 +104,8 @@ export function ThirteenFPane({ focused, width, height }: PaneProps) {
     DEFAULT_BROWSER_SORT,
   );
   const browserMode = useMemo(() => inferBrowserTabFromQuery(query), [query]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Selection is pane state, so a reload or a shared layout keeps the row.
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [rows, setRows] = useState<FundBrowserRow[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);
@@ -390,9 +391,11 @@ function FundDetailView({
   const activeTab: ThirteenFDetailTab = storedTab === "filings" ? "filings" : "holdings";
   const [holdingSort, setHoldingSort] = usePluginPaneState<FundSortPreference<FundHoldingColumnId>>("holdingSort", DEFAULT_HOLDING_SORT);
   const [filingSort, setFilingSort] = usePluginPaneState<FundSortPreference<FundTimelineColumnId>>("filingSort", DEFAULT_TIMELINE_SORT);
-  const [holdingSelectedId, setHoldingSelectedId] = useState<string | null>(null);
-  const [filingSelectedId, setFilingSelectedId] = useState<string | null>(null);
-  const [openFilingId, setOpenFilingId] = useState<string | null>(null);
+  // Selections and the open filing are pane state, so a reload or a shared
+  // layout comes back to the same rows.
+  const [holdingSelectedId, setHoldingSelectedId] = usePluginPaneState<string | null>("holdingSelectedId", null);
+  const [filingSelectedId, setFilingSelectedId] = usePluginPaneState<string | null>("filingSelectedId", null);
+  const [openFilingId, setOpenFilingId] = usePluginPaneState<string | null>("openFilingId", null);
   const [filingReturnTab, setFilingReturnTab] = useState<ThirteenFDetailTab | null>(null);
   const [data, setData] = useState<FundDetailData | null>(null);
   const [status, setStatus] = useState<LoadStatus>("loading");
@@ -681,7 +684,7 @@ function FilingDetailView({
     "filingPositionSort",
     DEFAULT_FILING_POSITION_SORT,
   );
-  const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
+  const [selectedPositionId, setSelectedPositionId] = usePluginPaneState<string | null>("selectedPositionId", null);
   const [holdings, setHoldings] = useState<ThirteenFHoldingRecord[]>([]);
   const [status, setStatus] = useState<LoadStatus>("loading");
   const [error, setError] = useState<string | null>(null);

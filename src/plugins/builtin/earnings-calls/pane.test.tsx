@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { act, useState } from "react";
 import { apiClient, setCloudApiFetchTransport, type CloudEarningsCallPayload, type CloudEarningsTranscriptPayload } from "../../../api-client";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -19,12 +19,21 @@ const restorers: Array<() => void> = [];
 function Harness({ width = 80, initialSymbol = "FIRST" }: { width?: number; initialSymbol?: string | null }) {
   const [symbol, set] = useState<string | null>(initialSymbol);
   setSymbol = set;
+  // The selected call, the reader tab, and whether it is open are pane state,
+  // so the harness needs a reducer.
+  const [paneState, setPaneState] = useState<AppState["paneState"]>({});
   const config = createTestPaneConfig("/tmp/gloom-transcript-pane-test/unused-data", {
     instanceId: "calls:test", paneId: "earnings-calls", binding: symbol ? { kind: "fixed", symbol } : { kind: "none" },
   });
   const state = createInitialState(config);
+  state.paneState = paneState;
   state.focusedPaneId = "calls:test";
-  return <TestPaneProvider state={state} paneId="calls:test" pluginId="research" runtime={runtime}>
+  // Folded onto the latest pane state: opening a call dispatches its selection
+  // and the open flag in the same batch.
+  const dispatch = (action: AppAction) => setPaneState(
+    (current) => appReducer({ ...state, paneState: current }, action).paneState,
+  );
+  return <TestPaneProvider state={state} dispatch={dispatch} paneId="calls:test" pluginId="research" runtime={runtime}>
     <PaneFooterProvider>{footer => <Box width={width} height={21} flexDirection="column">
       <Box width={width} height={20}><EarningsCallsPane focused width={width} height={20} /></Box>
       <PaneFooterBar footer={footer} focused width={width} />

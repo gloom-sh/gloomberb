@@ -16,6 +16,7 @@ import { fetchChangelogReleases, type ChangelogRelease } from "../../../updater/
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { usePluginPaneState } from "../../runtime";
 import { isPlainKey } from "../../../utils/keyboard";
 import {
   DEFAULT_CHANGELOG_SORT,
@@ -119,9 +120,11 @@ function ChangelogPane({ focused, width, height }: PaneProps) {
   // spinner and never "No changelog entries found".
   const [status, setStatus] = useState<LoadStatus>(() => (cachedReleases ? "loaded" : "loading"));
   const [error, setError] = useState<string | null>(null);
-  const [selectedReleaseId, setSelectedReleaseId] = useState<string | null>(null);
+  // The selected row and the open release are pane state, so a reload or a
+  // shared layout comes back to the same release.
+  const [selectedReleaseId, setSelectedReleaseId] = usePluginPaneState<string | null>("selectedReleaseId", null);
   const [sortPreference, setSortPreference] = useState(DEFAULT_CHANGELOG_SORT);
-  const [openReleaseId, setOpenReleaseId] = useState<string | null>(null);
+  const [openReleaseId, setOpenReleaseId] = usePluginPaneState<string | null>("openReleaseId", null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const abortRef = useRef<AbortController | null>(null);
   const requestedVersionOpenedRef = useRef(false);

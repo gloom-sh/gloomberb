@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Box, ScrollBox, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
@@ -21,7 +21,7 @@ import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
 import { isUsEquityTicker } from "../../../utils/sec";
-import { useAssetData } from "../../runtime";
+import { useAssetData, usePluginPaneState } from "../../runtime";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../shared/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -357,8 +357,11 @@ export function CorporateActionsView({
         estimatesError: analystError,
       })
   ), [actionsData, actionsError, actionsLoading, analystData, analystError, analystLoading, symbol, variant]);
-  const [selectedIdx, setSelectedIdx] = useState(0);
-  const [openRowId, setOpenRowId] = useState<string | null>(null);
+  // Keyed by row id, not by position, so a reload or a shared layout comes
+  // back to the same event.
+  const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
+  const selectedIdx = Math.max(0, rows.findIndex((row) => eventRowKey(row) === selectedKey));
+  const [openRowId, setOpenRowId] = usePluginPaneState<string | null>("openRowId", null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
   const todayKey = todayDateKey();
   const futureRowBackground = blendHex(colors.bg, colors.positive, 0.16);
@@ -422,12 +425,6 @@ export function CorporateActionsView({
     && !documentsLoading
     && !hasInlineExhibits
     && !inlineContent.has(matchedFiling.accessionNumber);
-
-  useEffect(() => {
-    if (rows.length > 0 && selectedIdx >= rows.length) {
-      setSelectedIdx(Math.max(0, rows.length - 1));
-    }
-  }, [rows.length, selectedIdx]);
 
   useEffect(() => {
     if (openRowId && !rows.some((row) => row.id === openRowId)) {
@@ -571,7 +568,7 @@ export function CorporateActionsView({
       selection={{
         kind: "index",
         selectedIndex: selectedIdx,
-        onChange: (index) => setSelectedIdx(index),
+        onChange: (_index, row) => setSelectedKey(eventRowKey(row)),
       }}
       onActivate={(row) => setOpenRowId(row.id)}
       onDetailKeyDown={handleDetailKeyDown}

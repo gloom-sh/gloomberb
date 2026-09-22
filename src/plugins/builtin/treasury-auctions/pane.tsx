@@ -19,6 +19,7 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/relative-time";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { cycleSortPreference } from "../../../utils/sort-values";
+import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
 import {
@@ -175,9 +176,9 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [fetchedAt, setFetchedAt] = useState<number | null>(null);
-  const [filter, setFilter] = useState<AuctionFilter>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [filter, setFilter] = usePluginPaneState<AuctionFilter>("activeTab", "all");
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [sortPreference, setSortPreference] = useState<AuctionSortPreference>(DEFAULT_AUCTION_SORT);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
@@ -224,6 +225,9 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
   const selected = rows.find((auction) => auction.id === selectedId) ?? null;
 
   useEffect(() => {
+    // Before the first answer there is nothing to match a restored selection
+    // against, so leave it alone rather than clear it.
+    if (auctions.length === 0 && (status === "idle" || status === "loading")) return;
     if (rows.length === 0) {
       if (selectedId !== null) setSelectedId(null);
       setDetailOpen(false);
@@ -232,7 +236,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     if (!selectedId || !rows.some((auction) => auction.id === selectedId)) {
       setSelectedId(rows[0]!.id);
     }
-  }, [rows, selectedId]);
+  }, [auctions.length, rows, selectedId, status]);
 
   const selectFilter = useCallback((next: AuctionFilter) => {
     setFilter(next);

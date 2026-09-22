@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useAppendedPages } from "./pages";
 import type { CloudJobsMoverPayload, CloudJobsPosting, CloudJobsSummaryPayload } from "../../../api-client/types";
 import {
@@ -300,7 +300,8 @@ function CompanyView({
   const rendererHost = useRendererHost();
   const [tab, setTab] = usePluginPaneState<DetailTab>("jobs:tab", "roles");
   const [sort, setSort] = usePluginPaneState<PostingSort>("jobs:sort", DEFAULT_POSTING_SORT);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  // Keyed by posting, not by position, so a reload or a shared layout keeps the row.
+  const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("rolesSelectedKey", null);
   const rolesScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   // The summary carries the newest 40 roles; the rest page in on scroll.
@@ -324,7 +325,8 @@ function CompanyView({
   const countryRows = useMemo(() => buildShareBars(summary.countries, 12), [summary]);
   const seniorityRows = useMemo(() => buildShareBars(summary.seniority, 8), [summary]);
 
-  const selected = rows[Math.min(selectedIdx, rows.length - 1)] ?? null;
+  const selectedIdx = Math.max(0, rows.findIndex((row) => row.key === selectedKey));
+  const selected = rows[selectedIdx] ?? null;
   const openSelected = useCallback(() => {
     if (selected?.posting.url) void rendererHost.openExternal(selected.posting.url);
   }, [rendererHost, selected]);
@@ -421,7 +423,7 @@ function CompanyView({
             focused={focused}
             scrollRef={rolesScrollRef}
             onBodyScrollActivity={loadMoreFromScroll}
-            selection={{ kind: "index", selectedIndex: rows.length ? Math.min(selectedIdx, rows.length - 1) : -1, onChange: setSelectedIdx }}
+            selection={{ kind: "index", selectedIndex: rows.length ? selectedIdx : -1, onChange: (_index, row) => setSelectedKey(row.key) }}
             onActivate={() => openSelected()}
             rootWidth={width}
             rootHeight={lowerHeight}
@@ -554,7 +556,8 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   const resource = useAsyncResource(request);
   const { data, status, error, reload } = resource;
   const [sort, setSort] = usePluginPaneState<MoverSort>("jobs:movers-sort", DEFAULT_MOVER_SORT);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  // Keyed by company, not by position, so a reload or a shared layout keeps the row.
+  const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("moversSelectedKey", null);
   const [open, setOpen] = usePluginPaneState<string | null>("jobs:open", null);
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
@@ -575,7 +578,8 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   const hasHistory = rows.some((row) => row.mover.change30d != null);
   const hasWeek = moversHaveWeekHistory(rows);
   const columns = useMemo(() => buildMoverColumns(width, hasHistory, hasWeek), [width, hasHistory, hasWeek]);
-  const selected = rows[Math.min(selectedIdx, rows.length - 1)] ?? null;
+  const selectedIdx = Math.max(0, rows.findIndex((row) => row.key === selectedKey));
+  const selected = rows[selectedIdx] ?? null;
   const openMover: CloudJobsMoverPayload | null = useMemo(
     () => (open ? (movers.find((mover) => mover.ticker === open) ?? null) : null),
     [open, movers],
@@ -655,7 +659,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
             registrationId={registrationId}
           />
         ) : null}
-        selection={{ kind: "index", selectedIndex: rows.length ? Math.min(selectedIdx, rows.length - 1) : -1, onChange: setSelectedIdx }}
+        selection={{ kind: "index", selectedIndex: rows.length ? selectedIdx : -1, onChange: (_index, row) => setSelectedKey(row.key) }}
         onActivate={(row) => setOpen(row.ticker)}
         rootWidth={width}
         rootHeight={tableHeight}

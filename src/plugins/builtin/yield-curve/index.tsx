@@ -109,7 +109,7 @@ export function YieldCurvePane({ focused, width, height }: PaneProps) {
       ...(requestedDate && requestedDate !== asOf ? [{ id: "requested", parts: [{ text: `requested ${requestedDate}`, tone: "muted" as const }] }] : []),
   ], [asOf, bp, requestedDate]);
   // Limitations of a curve that is still drawn sit behind one warning indicator.
-  const missingTenors = points.filter((point) => point.yield == null).map((point) => point.tenor);
+  const missingTenors = points.filter((point) => point.yield == null).map((point) => point.maturity);
   usePaneNoticeFooter({
     registrationId: "yield-curve:notices",
     notices: [

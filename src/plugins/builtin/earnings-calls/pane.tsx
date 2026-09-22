@@ -28,6 +28,7 @@ import {
 } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../shared/plan-access";
@@ -196,8 +197,8 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
   const [nextOffset, setNextOffset] = useState(0);
   const tableScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const [transcript, setTranscript] = useState<CloudEarningsTranscriptPayload | null>(null);
   useEffect(() => {
     if (focused && transcript && detailOpen) recordResearchActivity("pro_feature_used", "transcripts");
@@ -207,7 +208,7 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     message: string;
     status?: number;
   } | null>(null);
-  const [readerTab, setReaderTab] = useState<ReaderTab>("summary");
+  const [readerTab, setReaderTab] = usePluginPaneState<ReaderTab>("readerTab", "summary");
   // A layout or `gloomberb shot CALLS NVDA --quarter latest --reader summary`
   // can land straight on a transcript instead of the shelf. `quarter` takes
   // the same tokens as the headless option; only transcribed calls qualify,
@@ -307,7 +308,12 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     loadMoreCalls,
   );
 
+  // The call restored with the pane survives the first run; only a later
+  // binding change closes the reader and clears the selection.
+  const firstShelfLoadRef = useRef(true);
   useEffect(() => {
+    const keepRestoredCall = firstShelfLoadRef.current;
+    firstShelfLoadRef.current = false;
     setCalls([]);
     setHasMore(false);
     setLoadingMore(false);
@@ -319,14 +325,16 @@ export function EarningsCallsPane({ focused, width, height }: EarningsCallsViewP
     setListError(null);
     setLookup(null);
     setLookupRefresh(null);
-    setSelectedId(null);
-    setDetailOpen(false);
+    if (!keepRestoredCall) {
+      setSelectedId(null);
+      setDetailOpen(false);
+    }
     setTranscript(null);
     setTranscriptLoading(false);
     setTranscriptError(null);
     setProducing(false);
     setSearchQuery("");
-    setReaderTab("summary");
+    if (!keepRestoredCall) setReaderTab("summary");
     fetchCalls(false);
     return () => { listRequestVersion.current++; };
   }, [fetchCalls]);

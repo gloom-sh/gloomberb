@@ -4,6 +4,7 @@ import {
   DataTableStackView,
   PaneStatusBody,
   Tabs,
+  usePaneNoticeFooter,
   useTableLoadMore,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
@@ -19,6 +20,7 @@ import {
   CONGRESS_FILING_LIMIT,
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
+  CONGRESS_TRADES_PANE_ID,
   canLoadMoreCongress,
   congressPageAfterEmpty,
   mergeCongressPages,
@@ -247,13 +249,21 @@ export function CongressTradesPane({ focused, width, height }: PaneProps) {
     selectTab,
   });
 
+  // Filings the scan has not read yet are a gap in the window on screen, so
+  // they sit behind the footer's warning indicator rather than beside status.
+  usePaneNoticeFooter({
+    registrationId: `${CONGRESS_TRADES_PANE_ID}:scan`,
+    notices: [payload ? congressScanNotice(payload) : null].filter((notice): notice is string => !!notice),
+    focused,
+    enabled: !detailMode,
+  });
+
   useCongressTradesFooter({
     activeTab,
     detailMode,
     detailTrade,
     error,
     loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
-    notice: payload ? congressScanNotice(payload) : null,
     openSelectedTicker,
     openSelectedTradeMember,
     openSelectedTradeSource,

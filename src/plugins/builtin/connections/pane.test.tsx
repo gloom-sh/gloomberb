@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { ConnectionHealthRegistry } from "../../../core/connection-health";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import { Box } from "../../../ui";
@@ -25,18 +25,27 @@ function harness() {
   const runtime = createTestPluginRuntime({ getConnectionHealth: () => health });
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-connections-pane-test"));
 
-  return (
-    <TestPaneProvider state={state} paneId="connections:test" pluginId="application" runtime={runtime}>
-      <PaneFooterProvider>
-        {(footer) => (
-          <Box flexDirection="column" width={80} height={12}>
-            <ConnectionsPane paneId="connections:test" paneType="connections" focused width={80} height={11} />
-            <PaneFooterBar footer={footer} focused width={80} />
-          </Box>
-        )}
-      </PaneFooterProvider>
-    </TestPaneProvider>
-  );
+  function Harness() {
+    // The selected source and the open detail are pane state, so the harness
+    // needs a reducer.
+    const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+    state.paneState = paneState;
+    const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
+    return (
+      <TestPaneProvider state={state} dispatch={dispatch} paneId="connections:test" pluginId="application" runtime={runtime}>
+        <PaneFooterProvider>
+          {(footer) => (
+            <Box flexDirection="column" width={80} height={12}>
+              <ConnectionsPane paneId="connections:test" paneType="connections" focused width={80} height={11} />
+              <PaneFooterBar footer={footer} focused width={80} />
+            </Box>
+          )}
+        </PaneFooterProvider>
+      </TestPaneProvider>
+    );
+  }
+
+  return <Harness />;
 }
 
 async function renderSettled() {

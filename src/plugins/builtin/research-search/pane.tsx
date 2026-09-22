@@ -96,8 +96,10 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const [nextOffset, setNextOffset] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const [selectedHitId, setSelectedHitId] = useState<string | null>(null);
-  const [openHit, setOpenHit] = useState<CloudSearchHit | null>(null);
+  // The selected row and the open document are kept by hit id, so a reload or
+  // a shared layout comes back to the same document.
+  const [selectedHitId, setSelectedHitId] = usePluginPaneState<string | null>("selectedHitId", null);
+  const [openHitId, setOpenHitId] = usePluginPaneState<string | null>("openHitId", null);
   const [document, setDocument] = useState<CloudSearchDocument | null>(null);
   const [documentLoading, setDocumentLoading] = useState(false);
   const [documentFailure, setDocumentFailure] = useState<RequestFailure | null>(null);
@@ -105,7 +107,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const [saved, setSaved] = useState<CloudSavedSearch[]>([]);
   const [savedStatus, setSavedStatus] = useState<LoadStatus>("idle");
   const [savedFailure, setSavedFailure] = useState<RequestFailure | null>(null);
-  const [savedSelectedId, setSavedSelectedId] = useState<string | null>(null);
+  const [savedSelectedId, setSavedSelectedId] = usePluginPaneState<string | null>("savedSelectedId", null);
   const [savedBusy, setSavedBusy] = useState(false);
 
   const [activeField, setActiveField] = useState<ActiveField>(null);
@@ -118,6 +120,10 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const moreAbortRef = useRef<AbortController | null>(null);
 
   const trimmedQuery = query.trim();
+  const openHit = useMemo(
+    () => (openHitId ? hits.find((hit) => hit.id === openHitId) ?? null : null),
+    [hits, openHitId],
+  );
 
   const focusField = useCallback((field: Exclude<ActiveField, null>) => {
     setActiveField(field);
@@ -325,7 +331,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     setFilters(filtersFromSaved(search));
     setSelectedHitId(null);
     setMode("results");
-  }, [setFilters, setMode, setQuery]);
+  }, [setFilters, setMode, setQuery, setSelectedHitId]);
 
   const columns = useMemo(() => buildResultColumns(width), [width]);
 
@@ -377,13 +383,13 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     }
   }, []);
 
-  const closeDetail = useCallback(() => setOpenHit(null), []);
+  const closeDetail = useCallback(() => setOpenHitId(null), [setOpenHitId]);
 
   // Opened straight onto a hit from the command bar, ahead of its own results.
   const focusRequestedHit = useCallback((hit: CloudSearchHit) => {
     setSelectedHitId(hit.id);
-    setOpenHit(hit);
-  }, []);
+    setOpenHitId(hit.id);
+  }, [setOpenHitId, setSelectedHitId]);
   useDocumentFocusRequest(paneId, focusRequestedHit);
 
   const handleRootKeyDown = useCallback((
@@ -476,18 +482,17 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   ]);
 
   // The stack title already names the open document, so the footer carries what
-  // the title cannot: which company, when, what kind, and how long it is.
+  // the title cannot: which company, when, and what kind. Not how long: a
+  // section count is the kind of number the reader scrolls past anyway.
   const documentIdentity = useMemo(() => {
     if (!openHit) return null;
-    const sections = document?.chunks.length ?? 0;
     return [
       formatHitDate(openHit.publishedAt),
       // The type leads the footer when the document has no ticker, so repeating
       // it here would say the same thing twice on one row.
       openHit.ticker ? hitTypeLabel(openHit) : null,
-      sections ? `${sections} section${sections === 1 ? "" : "s"}` : null,
-    ].filter((part): part is string => !!part).join(" \u00b7 ");
-  }, [document, openHit]);
+    ].filter((part): part is string => !!part).join(" · ");
+  }, [openHit]);
 
   useExternalLinkFooter({
     registrationId: RESEARCH_SEARCH_PANE_ID,
@@ -652,7 +657,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         }}
         onActivate={(hit) => {
           blurField();
-          setOpenHit(hit);
+          setOpenHitId(hit.id);
         }}
         sortColumnId={filters.sort === "relevance" ? "match" : "date"}
         sortDirection={filters.sort === "oldest" ? "asc" : "desc"}

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { testRender } from "../../../renderers/opentui/test-utils";
-import { AppContext, createInitialState, PaneInstanceProvider } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
+import { TestPaneProvider } from "../../../test-support/pane";
+import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import type { CdsActivity } from "./client";
 import { normalizeCdsTrades } from "./model";
@@ -68,10 +70,14 @@ async function settle() {
 
 async function renderPane() {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-cds-test"));
-  await act(async () => {
-    setup = await testRender(
-    <AppContext value={{ state, dispatch: () => {} }}>
-      <PaneInstanceProvider paneId="cds:market">
+  const runtime = createTestPluginRuntime();
+  function Harness() {
+    // Selection and the open issuer are pane state, so the harness needs a reducer.
+    const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+    state.paneState = paneState;
+    const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
+    return (
+      <TestPaneProvider state={state} dispatch={dispatch} paneId="cds:market" pluginId="macro" runtime={runtime}>
         <PaneFooterProvider>
           {() => (
             <CdsPane
@@ -84,10 +90,11 @@ async function renderPane() {
             />
           )}
         </PaneFooterProvider>
-      </PaneInstanceProvider>
-    </AppContext>,
-      { width: 92, height: 16 },
+      </TestPaneProvider>
     );
+  }
+  await act(async () => {
+    setup = await testRender(<Harness />, { width: 92, height: 16 });
   });
   await settle();
 }

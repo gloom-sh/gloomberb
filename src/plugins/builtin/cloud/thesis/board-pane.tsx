@@ -126,7 +126,8 @@ export function ThesisBoardPane({ focused, width, height }: PaneProps) {
   const [scopeId, setScopeId] = usePaneStateValue<string | null>("scope", null);
   const exposure = useBookExposure(scopeId);
   const [openId, setOpenId] = usePaneStateValue<string | null>("openId", null);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Kept beside the open thesis so a reload or a shared layout keeps the row.
+  const [selectedId, setSelectedId] = usePaneStateValue<string | null>("selectedId", null);
   const [mode, setMode] = usePaneStateValue<"board" | "weights">("mode", "board");
   const [busy, setBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");

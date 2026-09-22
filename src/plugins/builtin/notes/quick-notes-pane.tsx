@@ -6,7 +6,7 @@ import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { ConfirmDialog, EmptyState, Tabs, TextField, usePaneFooter } from "../../../components";
 import { type PromptContext, useDialog } from "../../../ui/dialog";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
   formatDeleteNoteTitle,
@@ -44,7 +44,7 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
     const [tabs, setTabs] = useState<OwnedQuickNote[]>([]);
     const tabsRef = useRef<OwnedQuickNote[]>([]);
     tabsRef.current = tabs;
-    const [activeTabId, setActiveTabId] = useState<string | null>(null);
+    const [activeTabId, setActiveTabId] = usePluginPaneState<string | null>("activeNoteId", null);
     const [renaming, setRenaming] = useState(false);
     const [renameValue, setRenameValue] = useState("");
     const [loadError, setLoadError] = useState<string | null>(null);

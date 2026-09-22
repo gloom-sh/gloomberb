@@ -2,9 +2,10 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { TestDialogProvider, testRender } from "../../../renderers/opentui/test-utils";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
+import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box, Text } from "../../../ui";
-import { PluginRenderProvider } from "../../runtime";
 import { createQuickNotesPane } from "./quick-notes-pane";
 import type { NotesFiles } from "./files";
 import { NotesStoreRegistry } from "./store";
@@ -57,16 +58,34 @@ function createMockNotesFiles(options?: { loadDelayMs?: number }) {
   } as unknown as NotesFiles & { saves: Array<{ key: string; text: string }> };
 }
 
+const PANE_INSTANCE_ID = "quick-notes:test";
+const paneRuntime = createTestPluginRuntime();
+
 function QuickNotesHarness({
   QuickNotesPane,
 }: {
   QuickNotesPane: ReturnType<typeof createQuickNotesPane>;
 }) {
   const [focused, setFocused] = useState(true);
+  // The open note is pane state, so the harness needs a reducer.
+  const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+  const state = createInitialState(createTestPaneConfig("/tmp/quick-notes-test", {
+    paneId: "quick-notes", instanceId: PANE_INSTANCE_ID,
+  }));
+  state.paneState = paneState;
+  const dispatch = (action: AppAction) => setPaneState(
+    (current) => appReducer({ ...state, paneState: current }, action).paneState,
+  );
 
   return (
     <TestDialogProvider>
-      <PluginRenderProvider pluginId="notes" runtime={createTestPluginRuntime()}>
+      <TestPaneProvider
+        state={state}
+        dispatch={dispatch}
+        paneId={PANE_INSTANCE_ID}
+        pluginId="notes"
+        runtime={paneRuntime}
+      >
         <Box flexDirection="column" width={80} height={24}>
           <PaneFooterProvider>
             {() => (
@@ -77,7 +96,7 @@ function QuickNotesHarness({
             )}
           </PaneFooterProvider>
         </Box>
-      </PluginRenderProvider>
+      </TestPaneProvider>
     </TestDialogProvider>
   );
 }

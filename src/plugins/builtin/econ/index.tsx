@@ -51,11 +51,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(initialCache?.stale ?? false);
   const [fetchedAt, setFetchedAt] = useState<number | null>(initialCache?.fetchedAt ?? null);
-  const [selectedIdx, setSelectedIdx] = useState(0);
+  // The selected row and the open event are remembered by event id, so a
+  // reload or a shared layout comes back to the same release.
+  const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
   const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", "all");
   const [countryFilter, setCountryFilter] = usePluginPaneState<CountryFilter>("countryFilter", "all");
   const [now, setNow] = useState(Date.now());
-  const [detailEvent, setDetailEvent] = useState<EconEvent | null>(null);
+  const [openKey, setOpenKey] = usePluginPaneState<string | null>("openKey", null);
 
   const fetchGenRef = useRef(0);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -74,7 +76,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       setFetchedAt(result.fetchedAt);
       setStale(result.stale);
       setError(result.refreshError ?? null);
-      if (force) setSelectedIdx(0);
+      if (force) setSelectedKey(null);
     } catch (err) {
       if (fetchGenRef.current !== gen) return;
       setError(err instanceof Error ? err.message : String(err));
@@ -84,7 +86,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         setSettled(true);
       }
     }
-  }, []);
+  }, [setSelectedKey]);
 
   // loadCalendar serves a fresh cache without a request, so the pane can always
   // ask and still follow the global cadence once the cache goes stale.
@@ -102,6 +104,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     .filter((ev) => matchesImpact(ev, impactFilter) && matchesCountry(ev, countryFilter))
     .sort((a, b) => b.date.getTime() - a.date.getTime()),
   [countryFilter, events, impactFilter]);
+  const selectedIdx = Math.max(0, filtered.findIndex((ev) => ev.id === selectedKey));
+  const detailEvent = useMemo(
+    () => (openKey ? events.find((ev) => ev.id === openKey) ?? null : null),
+    [events, openKey],
+  );
 
   // Build display rows with separator headers and NOW marker
   const today = new Date(now);
@@ -154,7 +161,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     if (initialScrollDone.current || filtered.length === 0) return;
     if (nextUpcomingEventIdx >= 0) {
-      setSelectedIdx(nextUpcomingEventIdx);
+      setSelectedKey(filtered[nextUpcomingEventIdx]?.id ?? null);
     }
     const sb = scrollRef.current;
     if (sb?.viewport && nowRowIdx >= 0) {
@@ -170,20 +177,20 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const nextCountdown = nextEvent ? formatCountdown(nextEvent.date.getTime() - now) : null;
   const selectImpactFilter = useCallback((value: ImpactFilter) => {
     setImpactFilter(value);
-    setSelectedIdx(0);
-  }, [setImpactFilter]);
+    setSelectedKey(null);
+  }, [setImpactFilter, setSelectedKey]);
   const selectCountryFilter = useCallback((value: CountryFilter) => {
     setCountryFilter(value);
-    setSelectedIdx(0);
-  }, [setCountryFilter]);
+    setSelectedKey(null);
+  }, [setCountryFilter, setSelectedKey]);
   const cycleImpactFilter = useCallback(() => {
     setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + 1) % FILTER_CYCLE.length]!);
-    setSelectedIdx(0);
-  }, [setImpactFilter]);
+    setSelectedKey(null);
+  }, [setImpactFilter, setSelectedKey]);
   const cycleCountryFilter = useCallback(() => {
     setCountryFilter((prev) => COUNTRY_CYCLE[(COUNTRY_CYCLE.indexOf(prev) + 1) % COUNTRY_CYCLE.length]!);
-    setSelectedIdx(0);
-  }, [setCountryFilter]);
+    setSelectedKey(null);
+  }, [setCountryFilter, setSelectedKey]);
 
   const handleRootKeyDown = useCallback((event: {
     name?: string;
@@ -256,8 +263,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const handleHeaderClick = useCallback(() => {}, []);
   const openDisplayRow = useCallback((row: DisplayRow) => {
     if (row.kind !== "event") return;
-    setDetailEvent(row.event);
-  }, []);
+    setOpenKey(row.event.id);
+  }, [setOpenKey]);
   const renderSectionHeader = useCallback((row: DisplayRow) => {
     if (row.kind === "separator") {
       return {
@@ -358,7 +365,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     <DataTableStackView<DisplayRow, EconCalendarColumn>
       focused={focused}
       detailOpen={!!detailEvent}
-      onBack={() => setDetailEvent(null)}
+      onBack={() => setOpenKey(null)}
       detailContent={detailContent}
       rootWidth={width}
       rootHeight={Math.max(1, height - 1)}
@@ -368,7 +375,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         kind: "index",
         selectedIndex: eventIdxToRowIdx.get(selectedIdx) ?? selectedIdx,
         onChange: (_index, row) => {
-          if (row.kind === "event") setSelectedIdx(row.eventIdx);
+          if (row.kind === "event") setSelectedKey(row.event.id);
         },
       }}
       columns={columns}

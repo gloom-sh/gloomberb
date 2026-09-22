@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { testRender, emitKeypress } from "../../../renderers/opentui/test-utils";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -28,15 +28,22 @@ async function render(actions: CorporateActionsData, variant: "corporate-actions
     getCorporateActions: async () => actions,
     getAnalystResearch: async () => ({ symbol: "TEST", recommendations: [], ratings: [], earningsEstimates: [], revenueEstimates: [] }),
   });
-  await act(async () => {
-    setup = await testRender(
-      <TestPaneProvider state={state} paneId={paneId} pluginId="ticker-research" runtime={createTestPluginRuntime({ getMarketData: () => provider })}>
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
+  function Harness() {
+    // The selected row is pane state, so the harness needs a reducer.
+    const [paneState, setPaneState] = useState<AppState["paneState"]>({});
+    state.paneState = paneState;
+    const dispatch = (action: AppAction) => setPaneState(appReducer(state, action).paneState);
+    return (
+      <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
         <Box width={width} height={24} flexDirection="column">
           <CorporateActionsView focused width={width} height={24} variant={variant} footerPaneId={variant} />
         </Box>
-      </TestPaneProvider>,
-      { width, height: 24 },
+      </TestPaneProvider>
     );
+  }
+  await act(async () => {
+    setup = await testRender(<Harness />, { width, height: 24 });
   });
   for (let index = 0; index < 4; index++) await frame();
 }

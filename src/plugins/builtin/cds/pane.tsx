@@ -13,6 +13,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
 import { cycleSortPreference } from "../../../utils/sort-values";
+import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../shared/auto-refresh";
 import { usePaneStatusFooter } from "../shared/pane-footer";
 import { loadCdsActivity, type CdsActivityLoader } from "./client";
@@ -181,9 +182,11 @@ export function CdsPane({
 
   const [issuerSort, setIssuerSort] = useState<IssuerSortPreference>(DEFAULT_ISSUER_SORT);
   const [tradeSort, setTradeSort] = useState<TradeSortPreference>(DEFAULT_TRADE_SORT);
-  const [selectedIssuerKey, setSelectedIssuerKey] = useState<string | null>(null);
-  const [selectedTradeId, setSelectedTradeId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  // Selection and the open issuer live in pane state so a reload or a shared
+  // layout comes back to the same row.
+  const [selectedIssuerKey, setSelectedIssuerKey] = usePluginPaneState<string | null>("selectedIssuerKey", null);
+  const [selectedTradeId, setSelectedTradeId] = usePluginPaneState<string | null>("selectedTradeId", null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState("detailOpen", false);
   // Held in a ref so an inline loader prop cannot turn every render into a fetch.
   const loadActivityRef = useRef(loadActivity);
   loadActivityRef.current = loadActivity;

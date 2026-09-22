@@ -17,7 +17,6 @@ export function useCongressTradesFooter({
   detailTrade,
   error,
   loadPreviousYear,
-  notice,
   openSelectedTicker,
   openSelectedTradeMember,
   openSelectedTradeSource,
@@ -31,8 +30,6 @@ export function useCongressTradesFooter({
   detailTrade: CloudCongressTradePayload | null;
   error: string | null;
   loadPreviousYear: (() => void) | null;
-  /** Set when the window came back incomplete, so the gap is visible. */
-  notice: string | null;
   openSelectedTicker: () => void;
   openSelectedTradeMember: () => void;
   openSelectedTradeSource: () => void;
@@ -47,7 +44,6 @@ export function useCongressTradesFooter({
         { id: "asof", parts: [{ text: `updated ${formatTimeAgo(payload.asOf)}`, tone: "muted" as const }] },
       ] : []),
       ...(status === "loading" ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-      ...(notice ? [{ id: "scan", parts: [{ text: notice, tone: "muted" as const }] }] : []),
       ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
@@ -68,7 +64,6 @@ export function useCongressTradesFooter({
     detailTrade,
     error,
     loadPreviousYear,
-    notice,
     openSelectedTicker,
     openSelectedTradeMember,
     openSelectedTradeSource,

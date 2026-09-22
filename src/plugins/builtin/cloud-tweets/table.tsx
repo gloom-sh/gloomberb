@@ -12,7 +12,7 @@ import {
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
 import { RemoteImage } from "../../../components/ui";
 import { useInlineTickers } from "../../../state/hooks/inline-tickers";
-import { usePluginAppActions } from "../../runtime";
+import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { formatTimeAgo } from "../../../utils/format";
 import { colors } from "../../../theme/colors";
@@ -256,8 +256,10 @@ export function TweetSearchTable({
   const { data, loading, error, loadingMore, hasMore, reload, loadMore } = useTweetSearchData(requestKey, load, onResult, onError, enabled);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const onBodyScrollActivity = useTableLoadMore(scrollRef, hasMore && !loadingMore, loadMore);
-  const [selectedTweetId, setSelectedTweetId] = useState<string | null>(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  // Keyed by footer id because two panes share this table, and held in pane
+  // state so a reload or a shared layout comes back to the same tweet.
+  const [selectedTweetId, setSelectedTweetId] = usePluginPaneState<string | null>(`${footerId}:selectedTweetId`, null);
+  const [detailOpen, setDetailOpen] = usePluginPaneState(`${footerId}:detailOpen`, false);
   const [sort, setSort] = useState<{ columnId: TweetSortColumnId; direction: TweetSortDirection }>({
     columnId: "views",
     direction: "desc",
