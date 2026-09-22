@@ -750,3 +750,20 @@ counts 252-session windows ending on each session after the first year and
 needs 20 windows. Fewer than ten closed trades are flagged as too few to judge
 a hit rate. Presets use states (`>`, `<`), so a test that begins inside a
 regime is invested from the first fill; `crosses` waits for a fresh signal.
+
+## Known coverage gaps
+
+These Bloomberg functions have no Gloomberb pane yet because the free or
+licensed sources behind the platform cannot support them honestly:
+
+- Corporate bond monitor: FINRA TRACE prints are public, but mapping issuers to
+  CUSIPs needs a security master the platform does not hold.
+- Swap curve: DTCC SDR publishes swap trades, not a dated par curve; building one
+  needs curve fitting and instrument conventions that are not in place.
+- World government bond monitor: FRED carries other sovereigns' long rates only
+  monthly (OECD), too coarse for a daily monitor. `GC` covers US Treasuries.
+- ETF holdings and flows: issuers publish holdings in per-issuer files with no
+  common format; creation and redemption flows are not published freely.
+- Supply chain and M&A databases: no free structured source.
+- Level 2 order book: the market data plan supplies trades and NBBO only; `TAS`
+  and `QR` show what is available.
