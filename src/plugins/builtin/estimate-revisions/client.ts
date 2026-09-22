@@ -230,7 +230,7 @@ export async function fetchEstimates(
     );
     if (venues.size !== 1)
       throw new Error(
-        "Choose a listing exchange for estimate revisions, for example NASDAQ:AAPL.",
+        "Choose a listing exchange for estimate revisions, for example AAPL:NASDAQ.",
       );
     venue = [...venues][0]!;
   }
