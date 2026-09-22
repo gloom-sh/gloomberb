@@ -234,12 +234,13 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   if (!(result.years > 0)) { result.error = "Expiration has no remaining time value"; return result; }
   const cleaned = cleanSurfaceQuotes(chain, expiration, settings, now);
   result.filterCounts = cleaned.filterCounts;
+  // The quoted straddle needs no rate or parity estimate. Preserve it in partial models.
+  result.expectedMove = expectedMove(cleaned.calls, cleaned.puts, spot, result.years, null);
   if (rate.rate === null) return result;
   result.parity = extractImpliedForward(cleaned.calls, cleaned.puts, spot, result.years, rate.rate);
   result.forward = result.parity.forward;
   result.dividendYield = result.parity.dividendYield;
   result.warnings.push(...result.parity.warnings);
-  result.expectedMove = expectedMove(cleaned.calls, cleaned.puts, spot, result.years, null);
   if (result.forward === null || result.dividendYield === null) return result;
   const forward = result.forward;
   for (const [side, contracts] of [["put", cleaned.puts], ["call", cleaned.calls]] as const) {

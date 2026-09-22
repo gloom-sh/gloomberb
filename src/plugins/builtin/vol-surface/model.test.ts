@@ -103,6 +103,17 @@ describe("surface cleaning and midpoint model", () => {
     expect(evaluateSurfaceSmile(result, 100)).toBeNull();
     expect(evaluateSurfaceSmile(result, 115)).not.toBeNull();
   });
+
+  test("preserves quoted ATM straddle when Treasury is unavailable without inventing modeled IV", () => {
+    const result = buildSurfaceExpiry({ chain: chain(), expiration, spot: 100, curve: [], now });
+    const complete = buildSurfaceExpiry({ chain: chain(), expiration, spot: 100, curve, now });
+    expect(result.expectedMove.straddle).toBe(complete.expectedMove.straddle);
+    expect(result.expectedMove.straddle).toBeGreaterThan(0);
+    expect(result.expectedMove.sigma).toBeNull();
+    expect(result.atmIV).toBeNull();
+    expect(result.fit).toBeNull();
+    expect(result.warnings).toContain("Treasury rate unavailable");
+  });
 });
 
 test("Treasury rates use percent conversion, explicit boundaries, dates and valid negative yields", () => {

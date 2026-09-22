@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useReducer } from "react";
 import { CachedQuery } from "../../../data/cached-query";
 import type { DataProvider } from "../../../types/data-provider";
 import { Box } from "../../../ui";
@@ -7,13 +7,14 @@ import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pa
 import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable } from "../../../state/pane-table-export-registry";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import type { OptionContract, OptionsChain, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { OptionsView } from "./view";
+import { optionsModule } from "./index";
 import { draftFromParams } from "../options-calculator/model";
 
 const PANE_ID = "options:expiry-selection";
@@ -36,7 +37,7 @@ async function settle() {
   });
 }
 
-async function fixture(width = 80, heldExpiry = 0, cached = false) {
+async function fixture(width = 80, heldExpiry = 0, cached = false, delayedSeed?: number) {
   let now = Date.UTC(2026, 8, 17, 16);
   Date.now = () => now;
   let catalogue = [...EXPIRIES];
@@ -92,19 +93,39 @@ async function fixture(width = 80, heldExpiry = 0, cached = false) {
   });
   await coordinator.loadSnapshot({ symbol: "AAPL", exchange: "" });
   let switchTicker: (ticker: TickerRecord) => void = () => {};
+  let seedExpiration: (expiration: number) => void = () => {};
+  let currentState: AppState;
+  const initialTicker = ticker("AAPL", heldExpiry);
+  const config = createTestPaneConfig("/tmp/options-expiry-test", {
+    instanceId: PANE_ID, paneId: "options", binding: { kind: "fixed", symbol: initialTicker.metadata.ticker },
+    ...(delayedSeed == null ? {} : { settings: { expiration: delayedSeed } }),
+  });
+  const initial = createInitialState(config);
+  initial.focusedPaneId = PANE_ID;
+  initial.tickers = delayedSeed == null ? new Map([[initialTicker.metadata.ticker, initialTicker]]) : new Map();
   const runtime = createTestPluginRuntime({
     createPaneFromTemplate: (_id, options) => { launches.push(draftFromParams(options?.values)); },
   });
   function Harness() {
-    const [selected, setSelected] = useState(ticker("AAPL", heldExpiry));
-    switchTicker = setSelected;
-    const config = createTestPaneConfig("/tmp/options-expiry-test", {
-      instanceId: PANE_ID, paneId: "options", binding: { kind: "fixed", symbol: selected.metadata.ticker },
-    });
-    const state = createInitialState(config);
-    state.focusedPaneId = PANE_ID;
-    state.tickers = new Map([[selected.metadata.ticker, selected]]);
-    return <TestPaneProvider state={state} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
+    const [state, dispatch] = useReducer(appReducer, currentState ?? initial);
+    currentState = state;
+    switchTicker = (selected) => {
+      dispatch({ type: "SET_TICKERS", tickers: new Map([[selected.metadata.ticker, selected]]) });
+      dispatch({ type: "UPDATE_LAYOUT", layout: { ...state.config.layout,
+        instances: state.config.layout.instances.map((instance) => ({ ...instance,
+          binding: { kind: "fixed", symbol: selected.metadata.ticker } })) } });
+    };
+    seedExpiration = (expiration) => {
+      const pane = state.config.layout.instances[0]!;
+      const symbol = pane.binding?.kind === "fixed" ? pane.binding.symbol : "AAPL";
+      const incoming = optionsModule.paneTemplates![0]!.createInstance({
+        config: state.config, layout: state.config.layout, focusedPaneId: PANE_ID,
+        activeTicker: symbol, activeCollectionId: null,
+      }, { symbol, values: { expiration: String(expiration) } })!;
+      dispatch({ type: "UPDATE_LAYOUT", layout: { ...state.config.layout,
+        instances: [{ ...pane, settings: { ...pane.settings, ...incoming.settings } }] } });
+    };
+    return <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
       <PaneFooterProvider>{(footer) => <Box width={width} height={18} flexDirection="column">
         <Box width={width} height={17}><OptionsView width={width} height={17} focused /></Box>
         <PaneFooterBar footer={footer} focused width={width} />
@@ -144,6 +165,9 @@ async function fixture(width = 80, heldExpiry = 0, cached = false) {
   }
   const request = (expiration?: number) => ({ instrument: { symbol: "AAPL", exchange: "" }, expirationDate: expiration });
   return { capture, key, refresh, pending, chain, requests,
+    get state() { return currentState; },
+    async handoff(expiration: number) { await act(async () => seedExpiration(expiration)); await settle(); },
+    async hydrateTicker() { await act(async () => switchTicker(initialTicker)); await settle(); },
     setFailure: (value: boolean) => { failure = value; },
     async reread(expiration?: number) {
       await act(async () => { await coordinator.loadOptions(request(expiration)); }); await settle();
@@ -216,6 +240,32 @@ test("a new underlying initializes its held expiry after a researcher chose anot
   expect(changed.launch?.symbol).toBe("MSFT");
   expect(changed.launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
   expect(changed.frame).not.toContain("AAPL");
+});
+
+test("repeated surface handoffs override persisted local choices without resetting ordinary selection", async () => {
+  const f = await fixture();
+  await f.handoff(EXPIRIES[1]!);
+  expect((await f.capture("first-handoff")).launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
+  await f.key("enter"); await f.key("right");
+  expect(f.state.config.layout.instances[0]!.settings?.expiration).toBe(EXPIRIES[2]);
+  await f.refresh(EXPIRIES);
+  expect((await f.capture("local-after-handoff")).launch?.marketReference?.expiration).toBe(EXPIRIES[2]);
+  await f.remount();
+  expect((await f.capture("persisted-local-choice")).launch?.marketReference?.expiration).toBe(EXPIRIES[2]);
+  await f.handoff(EXPIRIES[1]!);
+  expect((await f.capture("repeated-handoff")).launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
+  await f.handoff(EXPIRIES[0]!);
+  expect((await f.capture("changed-handoff")).launch?.marketReference?.expiration).toBe(EXPIRIES[0]);
+  await f.switchUnderlying();
+  expect((await f.capture("handoff-target-changed")).launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
+});
+
+test("a saved surface seed waits for ticker hydration before claiming its instrument scope", async () => {
+  const f = await fixture(80, 0, false, EXPIRIES[2]);
+  expect(f.state.config.layout.instances[0]!.settings?.expirationTargetKey).toBeUndefined();
+  await f.hydrateTicker();
+  expect((await f.capture("hydrated-handoff")).launch?.marketReference?.expiration).toBe(EXPIRIES[2]);
+  expect(f.state.config.layout.instances[0]!.settings?.expirationTargetKey).toContain("AAPL");
 });
 
 test("late and wrong-expiry responses cannot replace a newly selected contract", async () => {

@@ -98,7 +98,7 @@ Use `HELP` inside Gloomberb for the live shortcut list. The common command-bar p
 | `ANR <ticker>` | Analyst targets and ratings |
 | `DIAG <ticker>` | Equity Diagnostic with cited flags and anomalies |
 | `SEC <ticker>` | SEC filings and company disclosures |
-| `OMON <ticker>` | Options monitor |
+| `OMON <ticker>` | Options chain, expected moves, 25-delta skew and adjacent-expiry term slope |
 | `OVDV <ticker>` | Rotatable implied-volatility surface, smiles, term structure, skew and forwards |
 | `HVG <ticker>` | Realized volatility by estimator and window, price, and current ATM IV |
 | `HVT <ticker>` | Volatility cone, current estimates and historical percentiles |

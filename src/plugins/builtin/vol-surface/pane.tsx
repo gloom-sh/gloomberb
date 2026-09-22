@@ -4,6 +4,7 @@ import { DataTableView, EmptyState, PaneStatusBody, SelectButton, Tabs, usePaneF
 import { useTableLoadMore } from "../../../components/table-view-shared";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useTickerFinancials } from "../../../market-data/hooks";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "gloomberb/react";
 import { blendHex } from "../../../theme/color-utils";
@@ -39,6 +40,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const { symbol, ticker, financials } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const target = resolveOptionsTarget(ticker);
+  const underlyingFinancials = useTickerFinancials(target?.isOptionTicker ? target.effectiveTicker : null, null);
   const [activeTab, setActiveTab] = usePluginPaneState("activeTabId", "surface");
   const [axis] = usePaneSettingValue<Axis>("axis", "spot");
   const [tenors] = usePaneSettingValue<"listed" | "fixed">("tenors", "listed");
@@ -48,6 +50,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const [age] = usePaneSettingValue("maxStaleSessions", "5");
   const [overlaySmiles] = usePaneSettingValue("overlaySmiles", false);
   const [expiration, setExpiration] = usePaneSettingValue<number | null>("expiration", null);
+  const [requestedExpiration, setRequestedExpiration] = useState(expiration);
+  const expirationRef = useRef(expiration);
+  expirationRef.current = expiration;
   const [surfaceCoordinate, setSurfaceCoordinate] = usePluginPaneState("surfaceCoordinate", 1);
   const [coordinate, setCoordinate] = usePluginPaneState("coordinate", 1);
   const [limit, setLimit] = usePluginPaneState("expiryLimit", 18);
@@ -56,13 +61,13 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const [sort, setSort] = useState<{ id: string; direction: "asc" | "desc" }>({ id: "tenor", direction: "asc" });
   const controller = useRef<AbortController | null>(null);
   const [partial, setPartial] = useState<{ key: string; snapshot: SurfaceSnapshot } | null>(null);
-  const quote = financials?.quote;
+  const quote = (target?.isOptionTicker ? underlyingFinancials : financials)?.quote;
   const spotAvailable = !!quote && quote.price > 0 && Number.isFinite(quote.price) && !quote.stale;
   const spotAsOfRef = useRef(quote?.lastUpdated ?? null);
   spotAsOfRef.current = quote?.lastUpdated ?? null;
   const spotRef = useRef(quote?.price ?? 0);
   spotRef.current = quote?.price ?? 0;
-  const requestKey = JSON.stringify([target?.cacheKey, symbol, axis, tenors, ivSource, priceSide, spread, age, limit, spotAvailable]);
+  const requestKey = JSON.stringify([target?.cacheKey, symbol, axis, tenors, ivSource, priceSide, spread, age, limit, spotAvailable, requestedExpiration]);
   const request = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController();
@@ -72,6 +77,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       instrument: { symbol: target?.effectiveTicker ?? symbol!, exchange: target?.effectiveExchange ?? "",
         brokerId: instrument?.brokerId, brokerInstanceId: instrument?.brokerInstanceId, instrument },
       spot: spotRef.current, spotAsOf: spotAsOfRef.current, limit, forceRefresh: force, signal: abort.signal,
+      requiredExpiries: expirationRef.current == null ? [] : [expirationRef.current],
       settings: { ...DEFAULT_SURFACE_SETTINGS, ivSource, priceSide, maxRelativeSpread: Number(spread), maxStaleSessions: Number(age) },
       onSnapshot: (snapshot) => { if (!abort.signal.aborted) setPartial({ key: requestKey, snapshot }); },
     });
@@ -82,6 +88,14 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   const incremental = partial?.key === requestKey ? partial.snapshot : null;
   const snapshot = incremental && (incremental.loaded > 0 || !resource.data) ? incremental : resource.data;
+  useEffect(() => {
+    // Existing slices only change selection. A new pin causes one load and then
+    // remains in the request identity after its partial snapshots arrive.
+    if (expiration == null || expiration === requestedExpiration || resource.loading || !snapshot
+      || snapshot.expiries.some((entry) => entry.expiration === expiration)
+      || !snapshot.catalogue.includes(expiration)) return;
+    setRequestedExpiration(expiration);
+  }, [expiration, requestedExpiration, resource.loading, snapshot]);
   const grid = useMemo(() => snapshot ? buildSurfaceGrid(snapshot, { axis, tenors }) : null, [axis, snapshot, tenors]);
   const denseGrid = useMemo(() => snapshot ? windowSurfaceGrid(buildSurfaceGrid(snapshot, { axis: "forward", tenors: "listed",
     coordinates: Array.from({ length: 41 }, (_, i) => 0.8 + i * 0.01) }), snapshot) : null, [snapshot]);
@@ -89,6 +103,15 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // selection is the first expiry at least four weeks out.
   const defaultExpiry = snapshot?.expiries.find((entry) => entry.years * 365 >= DEFAULT_EXPIRY_MIN_DAYS) ?? snapshot?.expiries[0];
   const selectedExpiry = snapshot?.expiries.find((entry) => entry.expiration === (expiration ?? defaultExpiry?.expiration)) ?? null;
+  const openChain = useCallback(() => {
+    if (!snapshot) return;
+    const selected = expiration ?? selectedExpiry?.expiration;
+    createPaneFromTemplate("options-pane", { symbol: symbol ?? snapshot.symbol, ticker, instrument: target?.instrument,
+      ...(ticker ? { listing: { name: ticker.metadata.name, exchange: ticker.metadata.exchange,
+        currency: ticker.metadata.currency, type: ticker.metadata.assetCategory ?? "STK" } } : {}),
+      values: selected == null ? {} : { expiration: String(selected) },
+    });
+  }, [createPaneFromTemplate, expiration, selectedExpiry?.expiration, snapshot?.symbol, symbol, ticker, target?.instrument]);
   useVolSurfaceEvidence({ snapshot, view: activeTab, grid: activeTab === "surface" && bitmapAvailable ? denseGrid : grid,
     selectedExpiry, loading: resource.loading, bitmapAvailable, axis: activeTab === "surface" && bitmapAvailable ? "forward" : axis,
     tenors: activeTab === "surface" && bitmapAvailable ? "listed" : tenors, overlaySmiles });
@@ -136,7 +159,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     else if (key === "m" && canLoadMore) loadMore();
     else if (key === "[") nextExpiry(-1);
     else if (key === "]") nextExpiry(1);
-    else if (key === "c" && snapshot) createPaneFromTemplate("options-pane", { symbol: snapshot.symbol, values: selectedExpiry ? { expiration: String(selectedExpiry.expiration) } : {} });
+    else if (key === "c" && snapshot) openChain();
     else if (activeTab === "surface" && bitmapAvailable && ["left", "right", "up", "down", "h", "j", "k", "l", "+", "=", "-", "0"].includes(key ?? "")) {
       setCamera((value) => key === "0" ? DEFAULT_SURFACE_CAMERA : ["+", "=", "-"].includes(key!)
         ? zoomSurfaceCamera(value, key === "-" ? 1 / 1.08 : 1.08)
@@ -153,6 +176,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const notices = [...(snapshot?.warnings ?? []), ...failures,
     ...(snapshot?.expiries.flatMap((entry) => entry.warnings.map((warning) => `${expiryLabel(entry.expiration)}: ${warning}`)) ?? []),
     ...(!spotAvailable && symbol ? ["Underlying price unavailable or stale"] : []),
+    ...(expiration != null && snapshot && !resource.loading && !snapshot.catalogue.includes(expiration)
+      ? [`${expiryLabel(expiration)}: selected expiration unavailable`] : []),
     ...(resource.error ? [resource.error] : [])];
   const arbitrageWarnings = snapshot?.warnings.filter((warning) => /calendar|butterfly/i.test(warning)).length ?? 0;
   usePaneNoticeFooter({ registrationId: "ovdv-notices", notices: [...new Set(notices)], focused });
@@ -167,12 +192,12 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ],
     hints: [
       { id: "view", key: "v", label: "iew", onPress: cycleTab },
-      ...(snapshot ? [{ id: "chain", key: "c", label: "hain", onPress: () => createPaneFromTemplate("options-pane", { symbol: snapshot.symbol, values: selectedExpiry ? { expiration: String(selectedExpiry.expiration) } : {} }) }] : []),
+      ...(snapshot ? [{ id: "chain", key: "c", label: "hain", onPress: openChain }] : []),
       ...(selectedCell?.volatility ? [{ id: "pricer", key: "p", label: "rice", onPress: openPricer }] : []),
       ...(canLoadMore ? [{ id: "more", key: "m", label: "ore expiries", onPress: loadMore }] : []),
       ...(activeTab === "surface" && bitmapAvailable ? [{ id: "reset", key: "0", label: "reset view", onPress: () => setCamera(DEFAULT_SURFACE_CAMERA) }] : []),
     ],
-  }), [snapshot, resource.loading, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings]);
+  }), [snapshot, resource.loading, selectedExpiry, activeTab, selectedCell, canLoadMore, camera, bitmapAvailable, arbitrageWarnings, openChain]);
   const exportMetadata = () => [["method", ivSource, priceSide], ["filters", JSON.stringify(snapshot?.settings)],
     ["underlying", snapshot?.symbol, snapshot?.spot], ["rate source", "Treasury", snapshot?.rateAsOf],
     ["warnings", ...notices], ...(snapshot?.expiries.map((expiry) => ["expiry", expiryLabel(expiry.expiration), expiry.asOf,
@@ -218,7 +243,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={resource.loading && !snapshot}
       error={!snapshot ? resource.error : null} empty={!snapshot && !resource.loading} subject="volatility surface">
       <Box height={1} flexDirection="row" paddingX={1} gap={2}>
-        <SelectButton label="Expiry" value={String(selectedExpiry?.expiration ?? "")} options={snapshot?.expiries.map((entry) => ({ value: String(entry.expiration), label: expiryLabel(entry.expiration) })) ?? []}
+        <SelectButton label="Expiry" value={String(expiration ?? selectedExpiry?.expiration ?? "")} options={snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? []}
           onChange={(value) => setExpiration(Number(value))} />
         <Text fg={colors.textDim}>{`Spot ${formatPrice(snapshot?.spot)} ${quote?.currency ?? ""} · ${ivSource === "provider" ? "provider IV" : `${priceSide} IV`}${selectedExpiry?.asOf ? ` · ${selectedExpiry.asOf.slice(0, 10)}` : ""}`}</Text>
       </Box>

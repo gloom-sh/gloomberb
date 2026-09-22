@@ -2,12 +2,12 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useState } from "react";
 import { Tabs } from "./tabs";
 import { testRender } from "../../renderers/opentui/test-utils";
-import type { ScrollBoxRenderable } from "../../ui";
+import { Box, type ScrollBoxRenderable } from "../../ui";
 
 let testSetup: Awaited<ReturnType<typeof testRender>> | undefined;
 
-afterEach(() => {
-  testSetup?.renderer.destroy();
+afterEach(async () => {
+  if (testSetup) await act(async () => testSetup!.renderer.destroy());
   testSetup = undefined;
 });
 
@@ -18,18 +18,22 @@ const TAB_LABELS = [
 
 let rerender: (() => void) | undefined;
 let selectTab: ((value: string) => void) | undefined;
+let resizeTabs: ((width: number) => void) | undefined;
 
 /**
  * Rebuilds the tab array on every render, the way a pane does: its props are
  * derived from the ticker and its quote, so a tick hands `Tabs` a new array
  * with identical content.
  */
-function TabsHarness() {
+function TabsHarness({ initialWidth }: { initialWidth?: number } = {}) {
   const [, setTick] = useState(0);
+  const [width, setWidth] = useState<number | "100%">(initialWidth ?? "100%");
   const [activeValue, setActiveValue] = useState("overview");
   rerender = () => setTick((tick) => tick + 1);
   selectTab = setActiveValue;
+  resizeTabs = setWidth;
   return (
+    <Box width={width} height={1}>
     <Tabs
       tabs={TAB_LABELS.map((label) => ({ label, value: label.toLowerCase() }))}
       activeValue={activeValue}
@@ -37,6 +41,7 @@ function TabsHarness() {
       scrollId="test-tabs-scroll"
       focused
     />
+    </Box>
   );
 }
 
@@ -84,4 +89,26 @@ test("selecting a tab outside the viewport still reveals it", async () => {
 
   expect(tabsScroll().scrollLeft).toBeGreaterThan(0);
   expect(testSetup!.captureCharFrame()).toContain("Notes");
+});
+
+test("resizing a floating viewport keeps the selected tab visible without snapping ordinary scrolls", async () => {
+  await act(async () => {
+    testSetup = await testRender(<TabsHarness initialWidth={112} />, { width: 130, height: 4 });
+  });
+  await act(async () => { selectTab?.("notes"); });
+  await testSetup!.renderOnce();
+  expect(testSetup!.captureCharFrame()).toContain("Notes");
+  const originalScroll = tabsScroll();
+  for (const width of [80, 48, 112, 30]) {
+    await act(async () => { resizeTabs?.(width); });
+    await testSetup!.renderOnce();
+    await testSetup!.renderOnce();
+    expect(tabsScroll()).toBe(originalScroll);
+    expect(tabsScroll().viewport?.width).toBe(width);
+    expect(testSetup!.captureCharFrame()).toContain("Notes");
+  }
+  await act(async () => { tabsScroll().scrollTo({ x: 0, y: 0 }); });
+  await act(async () => { rerender?.(); });
+  await testSetup!.renderOnce();
+  expect(tabsScroll().scrollLeft).toBe(0);
 });

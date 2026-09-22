@@ -12,6 +12,7 @@ import type { OptionContract, OptionsChain, TickerFinancials } from "../../../ty
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import { DEFAULT_OPTION_CALC_DRAFT, daysToExpiryFrom, valueOption } from "../options-calculator/model";
 import { VolSurfacePane } from "./pane";
+import { selectSurfaceExpiries } from "./client";
 
 const PANE_ID = "vol-surface:interaction-test";
 const SYMBOL = "VOLTEST";
@@ -53,20 +54,27 @@ async function settle(frames = 7) {
   }
 }
 
-async function mount({ missingSelection = false, holdSecond = false } = {}) {
+async function mount({ missingSelection = false, holdSecond = false, pinnedSelection = false, optionTicker = false } = {}) {
   const now = Date.now();
   const date = new Date(now);
-  const expirations = [45, 120].map((days) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days) / 1000);
+  const expirations = (pinnedSelection ? Array.from({ length: 40 }, (_, index) => index + 1) : [45, 120])
+    .map((days) => Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + days) / 1000);
+  const sample = selectSurfaceExpiries(expirations, 18, now);
+  const pins = expirations.filter((expiration) => !sample.includes(expiration));
+  const paneSymbol = optionTicker ? `${SYMBOL} ${new Date(expirations[0]! * 1000).toISOString().slice(2, 10).replaceAll("-", "")}C00100000` : SYMBOL;
   const held = deferred<OptionsChain>();
   const calls: (number | undefined)[] = [];
   const opened: { id: string; options: PaneTemplateCreateOptions | undefined }[] = [];
   let currentState!: AppState;
+  let changeExpiration: (expiration: number) => void = () => {};
   let commits = 0;
   const financials: TickerFinancials = { quote: { symbol: SYMBOL, price: 100, currency: "USD",
     change: 0, changePercent: 0, lastUpdated: now, stale: false },
     annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+  const paneFinancials = optionTicker ? { ...financials, quote: { ...financials.quote!, symbol: paneSymbol, price: 5 } } : financials;
   const provider = createTestDataProvider({ id: "surface-pane-fixture",
-    getTickerFinancials: async () => financials, getQuote: async () => financials.quote!,
+    getTickerFinancials: async (symbol) => symbol === paneSymbol ? paneFinancials : financials,
+    getQuote: async (symbol) => symbol === paneSymbol ? paneFinancials.quote! : financials.quote!,
     getOptionsChain: async (_symbol, _exchange, expiration) => {
       calls.push(expiration);
       return holdSecond && expiration === expirations[1] ? held.promise
@@ -76,21 +84,23 @@ async function mount({ missingSelection = false, holdSecond = false } = {}) {
   previousCoordinator = getSharedMarketDataCoordinator();
   coordinator = new MarketDataCoordinator(provider);
   setSharedMarketDataCoordinator(coordinator);
-  await coordinator.loadSnapshot({ symbol: SYMBOL, exchange: "NASDAQ" });
+  await coordinator.loadSnapshot({ symbol: SYMBOL, exchange: optionTicker ? "" : "NASDAQ" });
   treasury = spyOn(apiClient, "getCloudYieldCurve").mockResolvedValue([
     { maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: date.toISOString().slice(0, 10) },
     { maturity: "1Y", maturityYears: 1, yield: 4, asOf: date.toISOString().slice(0, 10) },
   ]);
   const absentExpiry = expirations[1]! + 7 * 86400;
   const config = createTestPaneConfig("/tmp/gloom-vol-surface-interaction-test", {
-    instanceId: PANE_ID, paneId: "vol-surface", binding: { kind: "fixed", symbol: SYMBOL },
-    ...(missingSelection ? { settings: { expiration: absentExpiry } } : {}),
+    instanceId: PANE_ID, paneId: "vol-surface", binding: { kind: "fixed", symbol: paneSymbol },
+    ...(missingSelection || pinnedSelection ? { settings: { expiration: missingSelection ? absentExpiry : pins[0] } } : {}),
   });
   config.chartPreferences.renderer = "braille";
   config.refreshIntervalMinutes = 0;
   const initial = createInitialState(config);
-  initial.tickers.set(SYMBOL, createTestTicker(SYMBOL));
-  initial.financials.set(SYMBOL, financials);
+  initial.tickers.set(paneSymbol, createTestTicker(paneSymbol, paneSymbol, {
+    exchange: "NASDAQ", currency: "USD", assetCategory: optionTicker ? "OPT" : "STK",
+  }));
+  initial.financials.set(paneSymbol, paneFinancials);
   initial.focusedPaneId = PANE_ID;
   const runtime = createStatefulTestPluginRuntime({ getMarketData: () => provider,
     createPaneFromTemplate: (id, options) => { opened.push({ id, options }); },
@@ -98,6 +108,9 @@ async function mount({ missingSelection = false, holdSecond = false } = {}) {
   function Harness() {
     const [state, dispatch] = useReducer(appReducer, initial);
     currentState = state;
+    changeExpiration = (expiration) => dispatch({ type: "UPDATE_LAYOUT", layout: { ...state.config.layout,
+      instances: state.config.layout.instances.map((instance) => instance.instanceId === PANE_ID
+        ? { ...instance, settings: { ...instance.settings, expiration } } : instance) } });
     return <TestPaneProvider state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="ticker-research" runtime={runtime}>
       <Profiler id="surface" onRender={() => { commits += 1; }}>
         <PaneFooterProvider>{() => <VolSurfacePane focused width={WIDTH} height={HEIGHT} />}</PaneFooterProvider>
@@ -106,7 +119,7 @@ async function mount({ missingSelection = false, holdSecond = false } = {}) {
   }
   await act(async () => { setup = await testRender(<Harness />, { width: WIDTH, height: HEIGHT }); });
   await settle();
-  return { now, expirations, absentExpiry, calls, opened, get state() { return currentState; },
+  return { now, expirations, absentExpiry, pins, paneSymbol, calls, opened, changeExpiration: (value: number) => changeExpiration(value), get state() { return currentState; },
     get commits() { return commits; }, finishSecond: () => held.resolve(quotedChain(expirations, expirations[1]!, now)) };
 }
 
@@ -116,6 +129,40 @@ afterEach(async () => {
   coordinator?.destroy(); coordinator = undefined;
   setSharedMarketDataCoordinator(previousCoordinator ?? null);
   treasury?.mockRestore(); treasury = undefined;
+});
+
+test("a pinned unsampled expiry survives handback and loaded selections do not restart the surface", async () => {
+  const context = await mount({ pinnedSelection: true });
+  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  expect(context.opened.at(-1)).toMatchObject({ id: "options-pane", options: {
+    symbol: SYMBOL, values: { expiration: String(context.pins[0]) }, listing: { exchange: "NASDAQ", currency: "USD" },
+    ticker: { metadata: { ticker: SYMBOL } },
+  } });
+  expect(context.calls.filter((value) => value === context.pins[0])).toHaveLength(1);
+  expect(treasury).toHaveBeenCalledTimes(1);
+  await act(async () => { context.changeExpiration(context.pins[1]!); });
+  await settle();
+  expect(context.calls.filter((value) => value === context.pins[1])).toHaveLength(1);
+  expect(treasury).toHaveBeenCalledTimes(2);
+  await act(async () => { context.changeExpiration(context.expirations[0]!); });
+  await settle();
+  expect(treasury).toHaveBeenCalledTimes(2);
+  const completedCommits = context.commits;
+  await settle();
+  expect(context.commits).toBe(completedCommits);
+  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  expect(context.opened.at(-1)!.options!.values!.expiration).toBe(String(context.expirations[0]));
+});
+
+test("an option holding uses its underlying spot and retains its original scope on handback", async () => {
+  const context = await mount({ optionTicker: true });
+  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  expect(context.opened.at(-1)!.options!.values!.spot).toBe("100");
+  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  expect(context.opened.at(-1)!.options).toMatchObject({ symbol: context.paneSymbol,
+    ticker: { metadata: { ticker: context.paneSymbol, assetCategory: "OPT" } },
+    values: { expiration: String(context.expirations[0]) },
+  });
 });
 
 test("surface text fallback navigates cells and expiries and seeds the selected fitted contract", async () => {
@@ -146,6 +193,20 @@ test("an explicitly saved missing expiry cannot silently seed a different expiry
   await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
   expect(context.opened).toHaveLength(1);
   expect(Number(context.opened[0]!.options!.values!.days)).toBeCloseTo(daysToExpiryFrom(context.expirations[0]!, context.now), 3);
+});
+
+test("a missing handoff after loading warns and cannot reuse the previous selected contract", async () => {
+  const context = await mount();
+  await act(async () => context.changeExpiration(context.absentExpiry));
+  await settle();
+  expect(treasury).toHaveBeenCalledTimes(1);
+  await emitKeypress(setup!, { name: "p", sequence: "p" }, { trackPropagation: true });
+  expect(context.opened).toEqual([]);
+  await emitKeypress(setup!, { name: "c", sequence: "c" }, { trackPropagation: true });
+  expect(context.opened.at(-1)!.options!.values!.expiration).toBe(String(context.absentExpiry));
+  await emitKeypress(setup!, { name: "!", sequence: "!" }, { trackPropagation: true });
+  await settle();
+  expect(setup!.captureCharFrame()).toContain("selected expiration unavailable");
 });
 
 test("partial expiry progress settles without reloading or rendering indefinitely", async () => {

@@ -1,12 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { act, useState } from "react";
+import { act, useReducer, useState } from "react";
 import { Box } from "../../../ui";
 import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import type { ScrollBoxRenderable } from "@opentui/core";
 import { takeSavedTextFile, testRender } from "../../../renderers/opentui/test-utils";
 import { exportPaneTable, hasPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
-import { createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
@@ -100,7 +100,11 @@ function OptionsHarness({
     binding: { kind: "fixed", symbol: ticker.metadata.ticker },
   });
 
-  const state = createInitialState(config);
+  const [persistedState, dispatch] = useReducer(appReducer, config, createInitialState);
+  const state = { ...persistedState, config: { ...persistedState.config, layout: { ...persistedState.config.layout,
+    instances: persistedState.config.layout.instances.map((instance) => ({ ...instance,
+      binding: { kind: "fixed" as const, symbol: ticker.metadata.ticker } })),
+  } } };
   state.focusedPaneId = TEST_PANE_ID;
   state.tickers = new Map([[ticker.metadata.ticker, ticker]]);
   if (quotePrice != null) {
@@ -111,7 +115,7 @@ function OptionsHarness({
   }
 
   return (
-    <TestPaneProvider state={state} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
+    <TestPaneProvider state={state} dispatch={dispatch} paneId={TEST_PANE_ID} pluginId="ticker-research" runtime={createTestPluginRuntime()}>
       {showFooter ? <PaneFooterProvider>{(footer) => <Box width={width} height={height} flexDirection="column">
         <Box width={width} height={height - 1}><OptionsView width={width} height={height - 1} focused onCapture={onCapture} /></Box>
         <PaneFooterBar footer={footer} focused width={width} />
@@ -625,12 +629,19 @@ test("stale underlying preserves contract observations but cannot seed current G
 
 
 test("rejected history disables HV and IV/HV without discarding healthy chain analytics", async () => {
-  const provider = createTestDataProvider({ getOptionsChain: async () => makeChain([100, 101], 101) });
-  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   const history = Array.from({ length: 31 }, (_, i) => ({
     date: new Date(Date.UTC(2026, 0, i + 1)), close: 100 + i % 2,
     ...(i === 15 ? { high: 90, low: 110 } : {}),
   }));
+  const historyRequests: Array<{ range: string; resolution: string }> = [];
+  const provider = createTestDataProvider({
+    getOptionsChain: async () => makeChain([100, 101], 101),
+    getPriceHistoryForResolution: async (_symbol, _exchange, range, resolution) => {
+      historyRequests.push({ range, resolution });
+      return history;
+    },
+  });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
   await act(async () => {
     testSetup = await testRender(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} history={history} showFooter height={20} width={160} />, { width: 160, height: 20 });
   });
@@ -639,7 +650,8 @@ test("rejected history disables HV and IV/HV without discarding healthy chain an
   if (process.env.OPTIONS_AUDIT_EVIDENCE) await Bun.write(`${process.env.OPTIONS_AUDIT_EVIDENCE}/rejected-history.txt`, frame);
   expect(frame).toContain("ATM IV 20.0%");
   expect(frame).toContain("HV30 —");
-  expect(frame).toContain("IV/HV —");
+  expect(frame).toContain("IV/HV --");
+  expect(historyRequests).toContainEqual({ range: "1Y", resolution: "1d" });
   expect(frame).toContain("HV30 unavailable: inconsistent OHLC history");
   expect(frame).toContain("[c]alc");
 });

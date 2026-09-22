@@ -12,7 +12,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "priceSide", type: "enum", values: [{ value: "mid" }, { value: "bid" }, { value: "ask" }], defaultValue: "mid", description: "Quote side used by the IV solver" },
     { key: "axis", type: "enum", values: ["spot", "forward", "delta", "strike"].map((value) => ({ value })), defaultValue: "spot", description: "Surface coordinates" },
     { key: "tenors", type: "enum", values: [{ value: "listed" }, { value: "fixed" }], defaultValue: "listed", description: "Listed or interpolated tenors" },
-    { key: "limit", type: "integer", minimum: 1, maximum: 100, defaultValue: 18, description: "Maximum expiry requests", pluginState: { pluginId: "ticker-research", key: "expiryLimit" } },
+    { key: "limit", type: "integer", minimum: 1, maximum: 100, defaultValue: 18, description: "Representative expiry request limit; selected expiry may add one", pluginState: { pluginId: "ticker-research", key: "expiryLimit" } },
     { key: "expiration", type: "integer", minimum: 1, description: "Selected expiry in Unix seconds", settingKey: "expiration" },
   ],
   async load(args, ctx) {
@@ -25,6 +25,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     const snapshot = await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
       settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
       limit: Number(args.options.limit), signal: ctx.signal,
+      requiredExpiries: typeof args.options.expiration === "number" ? [args.options.expiration] : [],
     }, createSurfaceDependencies(ctx.marketData, ctx.apiClient));
     const grid = buildSurfaceGrid(snapshot, { axis: args.options.axis as "spot" | "forward" | "delta" | "strike", tenors: args.options.tenors as "listed" | "fixed" });
     const available = snapshot.expiries.some((expiry) => expiry.fit);
@@ -41,7 +42,7 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "rate", header: "Rate" }, { key: "fit", header: "Fit" }, { key: "asOf", header: "As of" },
         ], rows: snapshot.expiries.map((expiry) => ({ ...expiry, expiry: new Date(expiry.expiration * 1000).toISOString().slice(0, 10), fit: expiry.fit?.method ?? null })) },
       ],
-      complete: available && snapshot.failed === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
+      complete: available && snapshot.failures.length === 0 && snapshot.expiries.every((expiry) => expiry.state === "ready"),
       unavailableSymbols: available ? [] : [symbol], errors: snapshot.failures.map((failure) => failure.message),
       metadata: { ...snapshot, underlyingQuote: quote, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations" },
     };

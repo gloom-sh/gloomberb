@@ -63,6 +63,8 @@ export interface SurfaceLoadRequest {
   spotAsOf?: string | number | null;
   settings?: Partial<SurfaceSettings>;
   limit?: number;
+  /** Listed expiries required by a selection, added to the representative sample. */
+  requiredExpiries?: readonly number[];
   signal?: AbortSignal;
   onSnapshot?: (snapshot: SurfaceSnapshot) => void;
   forceRefresh?: boolean;
@@ -108,6 +110,7 @@ export async function loadVolatilitySurface(
   let curvePending = true;
   let cataloguePending = true;
   let catalogueError: string | null = null;
+  let requiredFailures: SurfaceFailure[] = [];
   let catalogueExpiration: number | null = null;
   let treasuryError: string | null = null;
   let finished = false;
@@ -115,6 +118,7 @@ export async function loadVolatilitySurface(
   const snapshot = (): SurfaceSnapshot => {
     const failures: SurfaceFailure[] = [];
     if (catalogueError) failures.push({ expiration: null, message: catalogueError });
+    failures.push(...requiredFailures);
     if (treasuryError) failures.push({ expiration: null, message: treasuryError });
     const projected = selected.map((expiration) => {
       const entry = entries.get(expiration);
@@ -173,7 +177,13 @@ export async function loadVolatilitySurface(
     if (!chain) catalogueError ??= "Options expiry catalogue unavailable";
     catalogue = [...new Set((chain?.expirationDates ?? []).filter((expiration) =>
       Number.isFinite(expiration) && expiration > 0 && daysToExpiryFrom(expiration, now) > 0))].sort((a, b) => a - b);
-    selected = selectSurfaceExpiries(catalogue, limit, now);
+    const required = [...new Set((request.requiredExpiries ?? []).filter((expiration) => Number.isFinite(expiration) && expiration > 0))];
+    const listed = new Set(catalogue);
+    selected = [...new Set([...selectSurfaceExpiries(catalogue, limit, now), ...required.filter((expiration) => listed.has(expiration))])]
+      .sort((a, b) => a - b);
+    requiredFailures = required.filter((expiration) => !listed.has(expiration)).map((expiration) => ({
+      expiration, message: "Selected expiration unavailable in the current option catalogue",
+    }));
     if (chain && catalogue.length === 0) catalogueError ??= "No unexpired option expiries available";
   } catch (error) {
     if (request.signal?.aborted) throw abortError();

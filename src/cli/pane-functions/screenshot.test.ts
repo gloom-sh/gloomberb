@@ -34,7 +34,7 @@ describe("realized volatility screenshot history", () => {
   const weekly = [{ date: new Date("2026-09-14"), close: 90 }];
   const financials = { quote: { symbol: "AAPL", listingExchangeName: "NASDAQ" },
     annualStatements: [], quarterlyStatements: [], priceHistory: weekly };
-  const capture = (provider: object) => buildDesktopShotPayload(request, {
+  const capture = (provider: object, pane = request) => buildDesktopShotPayload(pane, {
     config: createDefaultConfig("/tmp/realized-vol-shot-test"),
     store: { loadTicker: async () => null },
     dataProvider: { getTickerFinancials: async () => financials, ...provider },
@@ -63,6 +63,24 @@ describe("realized volatility screenshot history", () => {
     await expect(capture({ getPriceHistoryForResolution: async () => { throw new Error("Daily source unavailable"); } }))
       .rejects.toThrow("Daily source unavailable");
     await expect(capture({})).rejects.toThrow(/daily history resolution/);
+  });
+
+  test("captures daily history for options monitor HV30 instead of reusing weekly financials", async () => {
+    const daily = Array.from({ length: 252 }, (_, index) => ({
+      date: new Date(Date.UTC(2025, 9, index + 1)), close: 100 + index / 10,
+    }));
+    const calls: unknown[][] = [];
+    const options = { ...request, pane: { ...request.pane, id: "options" },
+      instance: { ...request.instance, paneId: "options" } };
+    const shot = await capture({
+      async getPriceHistoryForResolution(...args: unknown[]) { calls.push(args); return daily; },
+      async getPriceHistory() { throw new Error("Weekly history cannot supply HV30"); },
+    }, options);
+    expect(calls).toEqual([["AAPL", "NASDAQ", "1Y", "1d", {
+      brokerId: undefined, brokerInstanceId: undefined, instrument: null,
+    }]]);
+    const captured = createSnapshotDataProvider(shot, {} as MarketContext["dataProvider"]);
+    expect(await captured.getPriceHistoryForResolution!("AAPL", "NASDAQ", "1Y", "1d")).toEqual(daily);
   });
 });
 

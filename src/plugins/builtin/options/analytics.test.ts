@@ -159,3 +159,15 @@ test("retains rejected-source diagnostics before enough history exists for HV30"
   const missing = calculateOptionsSummary(chain, 100, [{ date: bad.date, close: 0 }]);
   expect(missing.historicalVolatilityUnavailableReason).toContain("nonpositive close");
 });
+
+// Range-only history requests can return weekly observations even for a daily metric.
+test("HV30 rejects weekly and intraday bars instead of applying daily annualization", () => {
+  const daily = priceHistory();
+  for (const step of [7 * 86_400_000, 3_600_000]) {
+    const points = daily.map((point, index) => ({ ...point, date: new Date(Date.UTC(2026, 0, 1) + index * step) }));
+    const summary = calculateOptionsSummary({ underlyingSymbol: "TEST", expirationDates: [], calls: [], puts: [] }, 100, points);
+    expect(summary.historicalVolatility30d).toBeNull();
+    expect(summary.impliedHistoricalRatio).toBeNull();
+    expect(summary.historicalVolatilityUnavailableReason).toContain(step > 86_400_000 ? "weekly" : "intraday");
+  }
+});

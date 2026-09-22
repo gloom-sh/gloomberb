@@ -1,6 +1,6 @@
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
-import { realizedVolatilityResult } from "../shared/volatility";
+import { realizedVolatilityCadenceIssue, realizedVolatilityResult } from "../shared/volatility";
 import {
   DEFAULT_OPTION_CALC_DRAFT,
   daysToExpiryFrom,
@@ -58,6 +58,8 @@ interface HistoricalVolatilityResult {
 }
 
 function historicalVolatilityResult(points: readonly PricePoint[]): HistoricalVolatilityResult {
+  const cadenceIssue = realizedVolatilityCadenceIssue(points);
+  if (cadenceIssue) return { value: null, unavailableReason: `HV30 unavailable: ${cadenceIssue}` };
   const result = realizedVolatilityResult(points, HISTORICAL_VOLATILITY_SESSIONS, "close-to-close");
   const reason = result.reason === "invalid-date" ? "invalid history date"
     : result.reason === "inconsistent-ohlc" ? "inconsistent OHLC history"

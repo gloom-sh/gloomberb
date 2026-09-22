@@ -5,6 +5,7 @@ import { PANE_LOCK_SETTING_KEY } from "../../../pane-settings";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { applyPaneSettingFieldValue, createPaneTemplateOrThrow, resolveTickerInput, resolveTickerInputOrThrow, resolveTickerListInput } from "./ops";
 import type { TickerRecord } from "../../../types/ticker";
+import { bringToFront } from "../../../plugins/pane-manager/floating-actions";
 import { JsonTickerRepository } from "../../../data/json-ticker-repository";
 
 function makeDataProvider() {
@@ -323,6 +324,7 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
   async function runTemplate(
     spec: Record<string, unknown>,
     existing: Array<Record<string, unknown>>,
+    batchedFloating = false,
   ): Promise<{
     focused: string[];
     created: number;
@@ -332,6 +334,9 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
     const config = createDefaultConfig("/tmp/gloomberb-workflow-ops-reuse");
     const layout = cloneLayout(config.layout);
     layout.instances = existing as never;
+    if (batchedFloating) layout.floating = existing.map((instance, index) => ({
+      instanceId: instance.instanceId as string, x: 0, y: 0, width: 80, height: 24, zIndex: index,
+    }));
     const state = createInitialState({ ...config, layout });
     const focused: string[] = [];
     const layouts: LayoutConfig[] = [];
@@ -355,10 +360,13 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
         ]),
         panes: new Map([["chat", { id: "chat", name: "Chat", component: () => null }]]),
         getPaneTemplatePluginId: () => undefined,
-        focusPaneFn: (paneId: string) => focused.push(paneId),
+        focusPaneFn: (paneId: string, nextLayout?: LayoutConfig) => {
+          focused.push(paneId);
+          if (batchedFloating) layouts.push(bringToFront(nextLayout ?? state.config.layout, paneId));
+        },
         updateLayoutFn: (next: LayoutConfig) => {
           layouts.push(next);
-          state.config.layout = next;
+          if (!batchedFloating) state.config.layout = next;
         },
         events: { emit: () => {} },
       } as any,
@@ -392,6 +400,21 @@ describe("createPaneTemplateOrThrow pane reuse", () => {
       title: "#general",
       settings: { channelId: "general", fontScale: 2 },
     });
+  });
+
+  test("batched focus keeps a reused floating pane's newly requested settings and unrelated layout state", async () => {
+    const result = await runTemplate(
+      { instanceId: "chat:general", title: "#general", settings: { channelId: "general" } },
+      [{ instanceId: "chat:general", paneId: "chat", settings: { channelId: "random", fontScale: 2 } },
+        { instanceId: "chat:other", paneId: "chat", settings: { channelId: "other" } }],
+      true,
+    );
+    const focusedLayout = result.layouts.at(-1)!;
+    expect(findPaneInstance(focusedLayout, "chat:general")?.settings).toEqual({ channelId: "general", fontScale: 2 });
+    expect(findPaneInstance(focusedLayout, "chat:other")?.settings).toEqual({ channelId: "other" });
+    expect(focusedLayout.floating.find((entry) => entry.instanceId === "chat:general")!.zIndex)
+      .toBeGreaterThan(focusedLayout.floating.find((entry) => entry.instanceId === "chat:other")!.zIndex);
+    expect(result.created).toBe(0);
   });
 
   test("focuses a matching stable-id pane without rewriting the layout", async () => {

@@ -43,6 +43,29 @@ describe("surface expiry selection", () => {
 });
 
 describe("surface loader", () => {
+  test("required expiry pins extend the geometric sample and reuse the exact chain cache", async () => {
+    const sample = selectSurfaceExpiries(expirations, 3, now);
+    const pin = expirations.find((expiration) => !sample.includes(expiration))!;
+    const missing = expirations.at(-1)! + 7 * 86400;
+    const calls: (number | undefined)[] = [];
+    const provider = { id: "pinned-expiry", getOptionsChain: async (_symbol: string, _exchange: string, expiration?: number) => {
+      calls.push(expiration); return emptyChain();
+    } } as unknown as ConstructorParameters<typeof MarketDataCoordinator>[0];
+    const coordinator = new MarketDataCoordinator(provider);
+    const instrument = { symbol: "AAPL", exchange: "NASDAQ" };
+    const deps = { now: () => now, loadYieldCurve: async () => curve, loadOptions: coordinator.loadOptions.bind(coordinator) };
+    await coordinator.loadOptions({ instrument, expirationDate: pin });
+    const result = await loadVolatilitySurface({ instrument, spot: 100, limit: 3, requiredExpiries: [pin, pin, missing, NaN] }, deps);
+    expect(result.expiries.map((expiry) => expiry.expiration)).toEqual([...sample, pin].sort((a, b) => a - b));
+    expect(result.requested).toBe(4);
+    expect(result.loaded).toBe(4);
+    expect(result.failures).toContainEqual({ expiration: missing, message: "Selected expiration unavailable in the current option catalogue" });
+    expect(calls.filter((expiration) => expiration === pin)).toHaveLength(1);
+    expect(calls).not.toContain(missing);
+    expect(calls.some((expiration) => Number.isNaN(expiration))).toBe(false);
+    coordinator.destroy();
+  });
+
   test("caps default catalogue, publishes partial failures and bounds concurrency at four", async () => {
     const outstanding = new Map<number, ReturnType<typeof deferred<QueryEntry<OptionsChain>>>>();
     let active = 0, maximum = 0;

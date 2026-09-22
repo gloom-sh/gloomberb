@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, Text } from "../../../ui";
-import { usePaneSettingValue, usePaneTicker } from "../../../state/app/context";
+import { usePaneSettingValue, usePaneTicker, useUpdatePaneSettings } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact } from "../../../utils/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
-import { useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
+import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
 import {
   DataTableView,
   EmptyState,
+  KeyValueRow,
+  usePaneFooter,
+  usePaneNoticeFooter,
   Spinner,
   Tabs,
   type DataTableKeyEvent,
@@ -16,6 +19,8 @@ import {
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { useLiveQuoteEntries, useQuoteUpdates } from "../../../state/hooks/quote-streaming";
+import { buildChartKey } from "../../../market-data/selectors";
+import type { ChartRequest } from "../../../market-data/request-types";
 import { quoteSubscriptionTargetFromTicker } from "../../../market-data/request-types";
 import { usePluginAppActions } from "../../runtime";
 import {
@@ -48,47 +53,55 @@ import { useOptionsAccessFooter } from "./footer";
 import { useLiveStreamingSetting } from "../shared/live-streaming";
 import { signedPositionDirection } from "../portfolio-list/position-metrics";
 import { optionMarketReference } from "./market-reference";
+import { useOptionsEnrichment } from "./enrichment";
+import type { OptionsEnrichmentSnapshot } from "./enrichment-model";
 
 type SummaryMetric = { label: string; value: string };
 
 function formatRatio(value: number | null | undefined): string {
-  return value == null || !Number.isFinite(value) ? "—" : value.toFixed(2);
+  return value == null || !Number.isFinite(value) ? "--" : value.toFixed(2);
 }
 
 function SummaryRow({ metrics }: { metrics: SummaryMetric[] }) {
-  return (
-    <Box flexDirection="row" height={1} gap={3} overflow="hidden">
-      {metrics.map((metric) => (
-        <Box key={metric.label} flexDirection="row" flexShrink={0}>
-          <Text fg={colors.textDim}>{`${metric.label} `}</Text>
-          <Text fg={colors.textBright}>{metric.value}</Text>
-        </Box>
-      ))}
-    </Box>
-  );
+  return <Box flexDirection="row" height={1} gap={3} overflow="hidden">
+    {metrics.map((metric) => <KeyValueRow key={metric.label} label={metric.label}
+      labelWidth={metric.label.length + 1} value={metric.value} color={colors.textBright} />)}
+  </Box>;
 }
 
-function OptionsSummaryStrip({ summary, secondary }: {
+function OptionsSummaryStrip({ summary, enrichment, width, rowCount, currency }: {
   summary: OptionsSummary | null;
-  secondary: boolean;
+  enrichment: OptionsEnrichmentSnapshot | null;
+  width: number;
+  rowCount: number;
+  currency: string;
 }) {
   const volatility: SummaryMetric[] = [
     { label: "ATM IV", value: formatIv(summary?.atmImpliedVolatility ?? undefined) },
     { label: "HV30", value: formatIv(summary?.historicalVolatility30d ?? undefined) },
     { label: "IV/HV", value: formatRatio(summary?.impliedHistoricalRatio) },
   ];
-  return (
-    <Box flexDirection="column" height={secondary ? 2 : 1}>
-      <SummaryRow metrics={volatility} />
-      {secondary && (
-        <SummaryRow metrics={[
-          { label: "EXP VOL", value: formatCompact(summary?.expirationVolume ?? undefined) },
-          { label: "P/C VOL", value: formatRatio(summary?.putCallVolumeRatio) },
-          { label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
-        ]} />
-      )}
-    </Box>
-  );
+  const move = (amount: number | null | undefined, percent: number | null | undefined) =>
+    amount == null || percent == null ? "--" : `${amount.toFixed(2)} ${currency} (${percent.toFixed(2)}%)`;
+  const points = (value: number | null | undefined) => value == null ? "--" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(2)}`;
+  const moves: SummaryMetric[] = [
+    { label: "Straddle", value: move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
+    { label: "1σ fit", value: move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
+  ];
+  const skew: SummaryMetric = { label: "25d P-C", value: `${points(enrichment?.skew25)} pp` };
+  const slope: SummaryMetric = { label: "Slope", value: `${points(enrichment?.termSlope)} pp/y${enrichment?.neighbourExpiration
+    ? ` to ${formatExpDate(enrichment.neighbourExpiration)}` : ""}` };
+  const flow: SummaryMetric[] = [
+    { label: "EXP VOL", value: formatCompact(summary?.expirationVolume ?? undefined) },
+    { label: "P/C VOL", value: formatRatio(summary?.putCallVolumeRatio) },
+    { label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
+  ];
+  const rows = width >= 110 ? [[...volatility, skew], [...moves, slope], flow]
+    : width >= 65 ? [volatility, moves, [skew, slope], flow]
+      : [volatility, [moves[0]!], [moves[1]!], [skew], [slope], flow];
+  return <Box flexDirection="column" height={rowCount}>
+    {rows.slice(0, rowCount).map((metrics, index) => <SummaryRow key={index} metrics={metrics} />)}
+  </Box>;
 }
 
 export function OptionsView({ width, height, focused, onCapture = () => {} }: OptionsViewProps) {
@@ -96,7 +109,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const { createPaneFromTemplate } = usePluginAppActions();
   const liveStreaming = useLiveStreamingSetting();
   const [seededExpiration] = usePaneSettingValue<number | undefined>("expiration", undefined);
-  const [expirySelection, setExpirySelection] = useState<{ targetKey: string; expiration: number } | null>(null);
+  const [expirationTargetKey] = usePaneSettingValue<string | null>("expirationTargetKey", null);
+  const updatePaneSettings = useUpdatePaneSettings();
   const [calcSide, setCalcSide] = useState<OptionSide | null>(null);
   const [strikeIdx, setStrikeIdx] = useState(0);
   const [contractSelection, setContractSelection] = useState<{
@@ -142,6 +156,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       },
     }
     : null;
+  const dailyHistoryRequest: ChartRequest | null = baseRequest
+    ? { instrument: baseRequest.instrument, bufferRange: "1Y", granularity: "resolution", resolution: "1d" } : null;
+  const historyEntries = useChartQueries(dailyHistoryRequest ? [dailyHistoryRequest] : []);
+  const dailyHistoryEntry = dailyHistoryRequest ? historyEntries.get(buildChartKey(dailyHistoryRequest)) ?? null : null;
+  const dailyHistory = useResolvedEntryValue(dailyHistoryEntry);
   const [chainRefreshMinutes] = usePaneSettingValue<string>("chainRefreshMinutes", "");
   const [storedOptionFieldIds] = usePaneSettingValue<OptionFieldId[]>("optionColumnIds", DEFAULT_OPTION_FIELD_IDS);
   const optionFieldIds = useMemo(() => resolveOptionFieldIds(storedOptionFieldIds), [storedOptionFieldIds]);
@@ -150,8 +169,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   const initialExpiration = initialChain?.expirationDates.reduce((best, expiration) => (
     parsed && Math.abs(expiration - parsed.expTs) < Math.abs(best - parsed.expTs) ? expiration : best
   ), initialChain.expirationDates[0]!);
-  const selectedExpiration = expirySelection?.targetKey === selectionTargetKey
-    ? expirySelection.expiration : seededExpiration ?? initialExpiration;
+  const selectedExpiration = expirationTargetKey == null || expirationTargetKey === selectionTargetKey
+    ? seededExpiration ?? initialExpiration : initialExpiration;
   const viewportKey = `${effectiveTicker}:${selectedExpiration ?? "initial"}`;
   const strikeSelectionKey = `${selectionTargetKey}|${selectedExpiration ?? "initial"}`;
   const selectedContract = contractSelection?.context === strikeSelectionKey ? contractSelection : null;
@@ -218,8 +237,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   }, [interactive]);
 
   const selectExpiration = useCallback((expiration: number) => {
-    setExpirySelection({ targetKey: selectionTargetKey, expiration });
-  }, [selectionTargetKey]);
+    updatePaneSettings({ expiration, expirationTargetKey: selectionTargetKey });
+  }, [selectionTargetKey, updatePaneSettings]);
   const selectAdjacentExpiration = useCallback((offset: -1 | 1) => {
     if (expirationDates.length === 0) return;
     const index = expirationDates.indexOf(selectedExpiration!);
@@ -237,10 +256,11 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   }, [selectionTargetKey]);
 
   useEffect(() => {
-    if (expirySelection?.targetKey === selectionTargetKey || selectedExpiration == null) return;
-    // The holding/default chooses the date only on entering a new context.
+    if (!target || !initialChain || expirationTargetKey === selectionTargetKey || selectedExpiration == null) return;
+    // Persist local choices in the same field as incoming handoffs, scoped to
+    // this holding and instrument. A new target starts at its own held date.
     selectExpiration(selectedExpiration);
-  }, [expirySelection?.targetKey, selectExpiration, selectedExpiration, selectionTargetKey]);
+  }, [expirationTargetKey, initialChain, selectExpiration, selectedExpiration, selectionTargetKey, target?.cacheKey]);
 
   useEffect(() => {
     userSelectedStrikeRef.current = false;
@@ -273,10 +293,29 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   }, [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes]);
   const summary = useMemo(
     () => strikeChain
-      ? calculateOptionsSummary(strikeChain, spot, underlying?.priceHistory ?? [])
+      ? calculateOptionsSummary(strikeChain, spot, dailyHistory ?? [])
       : null,
-    [spot, strikeChain, underlying?.priceHistory],
+    [spot, strikeChain, dailyHistory],
   );
+  const enrichmentState = useOptionsEnrichment({
+    instrument: baseRequest?.instrument ?? null, expiration: selectedExpiration,
+    selectedEntry: strikeChain === expirationChain ? expirationChainEntry
+      : strikeChain === initialChain ? initialChainEntry : null,
+    catalogue: availableExpirations, spot, spotAsOf: underlying?.quote?.lastUpdated,
+  });
+  const enrichment = expirationUnavailable ? null : enrichmentState.snapshot;
+  usePaneNoticeFooter({ registrationId: "options-enrichment-warnings", focused,
+    notices: [...(enrichment?.warnings ?? []), enrichmentState.error, enrichment?.error]
+      .filter((value): value is string => !!value) });
+  usePaneFooter("options-enrichment", () => ({ info: [
+    ...(enrichmentState.loading ? [{ id: "enrichment-loading", parts: [{ text: "loading analytics", tone: "muted" as const }] }] : []),
+    ...(enrichment?.asOf ? [{ id: "enrichment-asof",
+      title: [`Selected: ${enrichment.asOf} (${enrichment.source ?? "options"})`,
+        `Adjacent: ${enrichment.neighbourAsOf ?? "unavailable"} (${enrichment.neighbourSource ?? "options"})`,
+        `Treasury: ${enrichment.rateAsOf.join(", ") || "unavailable"}`,
+        `Underlying mark: ${enrichment.spot} as of ${enrichment.spotAsOf ?? "unavailable"}`].join("\n"),
+      parts: [{ text: `Analytics ${enrichment.asOf.slice(0, 16).replace("T", " ")} UTC`, tone: "muted" as const }] }] : []),
+  ] }), [enrichmentState.loading, enrichment]);
   const visibleStrikeRange = visibleStrikeViewport?.key === viewportKey
     ? visibleStrikeViewport.range
     : null;
@@ -352,10 +391,17 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     createPaneFromTemplate(OPTIONS_CALCULATOR_TEMPLATE_ID, { values: calcParams });
   }, [calcParams, createPaneFromTemplate]);
 
-  const footerHints = useMemo(
-    () => (calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : undefined),
-    [calcParams, openCalculator],
-  );
+  const openSurface = useCallback(() => {
+    if (!ticker || selectedExpiration == null) return;
+    createPaneFromTemplate("vol-surface-pane", { symbol: ticker.metadata.ticker, ticker, instrument,
+      listing: { name: ticker.metadata.name, exchange: ticker.metadata.exchange,
+        currency: ticker.metadata.currency, type: ticker.metadata.assetCategory ?? "STK" },
+      values: { expiration: String(selectedExpiration) } });
+  }, [createPaneFromTemplate, ticker, instrument, selectedExpiration]);
+  const footerHints = useMemo(() => [
+    ...(calcParams ? [{ id: "calc", key: "c", label: "alc", onPress: openCalculator }] : []),
+    ...(ticker && selectedExpiration != null ? [{ id: "surface", key: "s", label: "urface", onPress: openSurface }] : []),
+  ], [calcParams, openCalculator, ticker, selectedExpiration, openSurface]);
 
   const selectContract = useCallback((row: OptionTableRow, index: number, side?: OptionSide, preservePointer = false) => {
     userSelectedStrikeRef.current = true;
@@ -396,7 +442,7 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     error: [error, underlyingStale ? "Underlying quote stale: Greeks and calculator unavailable" : null,
       selectedContract && strikeChain && !selectedContractAvailable
         ? `Selected ${formatStrikeLabel(selectedContract.strike)} ${selectedContract.side} unavailable` : null,
-      summary?.historicalVolatilityUnavailableReason].filter(Boolean).join(" · ") || null,
+      summary?.historicalVolatilityUnavailableReason, dailyHistoryEntry?.error?.message].filter(Boolean).join(" · ") || null,
     focused,
     hints: footerHints,
     loading,
@@ -451,6 +497,12 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       selectAdjacentExpiration(1);
       return;
     }
+    if (isPlainKey(event, "s") && ticker && selectedExpiration != null) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      openSurface();
+      return true;
+    }
     if (isPlainKey(event, "c") && calcParams) {
       event.preventDefault();
       event.stopPropagation();
@@ -486,6 +538,12 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
       return true;
     }
 
+    if (isPlainKey(event, "s") && ticker && selectedExpiration != null) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      openSurface();
+      return true;
+    }
     if (isPlainKey(event, "c") && calcParams) {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -500,6 +558,9 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     exitInteractive,
     interactive,
     openCalculator,
+    openSurface,
+    ticker,
+    selectedExpiration,
     selectAdjacentExpiration,
   ]);
 
@@ -516,7 +577,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
     ? ticker.metadata.positions.reduce((sum, p) => sum + Math.abs(p.shares) * signedPositionDirection(p), 0)
     : 0;
   const expirationTabsWidth = Math.max(width - 9 - (loading ? 2 : 0), 8);
-  const summaryRowCount = height >= 10 ? 2 : height >= 7 ? 1 : 0;
+  const desiredSummaryRows = width >= 110 ? 3 : width >= 65 ? 4 : 6;
+  const summaryRowCount = Math.min(desiredSummaryRows, Math.max(0, height - 6));
   // No term here follows the selection or the load, so an empty cold-expiry
   // response cannot resize the table: growing it during loading would turn a
   // clamped scroll into apparent user navigation.
@@ -528,7 +590,8 @@ export function OptionsView({ width, height, focused, onCapture = () => {} }: Op
   return (
     <Box flexDirection="column" flexGrow={1} paddingX={1} onMouseDown={() => { if (!interactive) enterInteractive(); }}>
       {summaryRowCount > 0 && (
-        <OptionsSummaryStrip summary={summary} secondary={summaryRowCount > 1} />
+        <OptionsSummaryStrip summary={summary} enrichment={enrichment} width={width}
+          rowCount={summaryRowCount} currency={underlying?.quote?.currency ?? ticker.metadata.currency ?? ""} />
       )}
 
       <Box flexDirection="row" height={1} gap={1}>

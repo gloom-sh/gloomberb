@@ -219,7 +219,7 @@ test("preserves missing activity through source, summaries, CSV and CLI", async 
     const cli = await f.cli("missing-activity");
     expect(cli.data.calls[0].openInterest).toBeUndefined();
     expect(cli.data.puts[0].volume).toBeUndefined();
-    expect(result.frame).toMatch(/EXP VOL —\s+P\/C VOL —\s+P\/C OI —/);
+    expect(result.frame).toMatch(/EXP VOL \S+\s+P\/C VOL --\s+P\/C OI --/);
     expect(result.csv).toContain(",—,");
     expect(cli.rows[0].volume).toBe(10);
     expect(cli.rows[1].openInterest).toBe(20);

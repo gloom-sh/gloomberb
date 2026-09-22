@@ -137,7 +137,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   createPaneFromTemplateAsyncFn: ((templateId: string, options?: PaneTemplateCreateOptions) => Promise<void>) = async () => {};
   openPortablePaneShareAsyncFn: ((layout: LayoutMarketplacePayload) => Promise<void>) = async () => {};
   hidePaneFn: ((paneId: string) => void) = () => {};
-  focusPaneFn: ((paneId: string) => void) = () => {};
+  focusPaneFn: ((paneId: string, layout?: LayoutConfig) => void) = () => {};
   pinTickerFn: ((symbol: string, options?: PinTickerOptions) => void) = () => {};
   navigateTickerFn: ((symbol: string, options?: { sourcePaneId?: string | null }) => void) = () => {};
   getMarketData = () => this.marketData;

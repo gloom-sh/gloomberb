@@ -335,3 +335,15 @@ Financial tables abbreviate large growth percentages (for example, `+163k%`) so 
 Refresh (`r`) reloads the covered years and selected statement. A temporary failure retains available data; the footer warning gives the failed request and original retrieval time. Missing or denied statements are cleared. A successful refresh removes the warning without changing the filing’s reported dates.
 
 13F research rechecks stale source responses when opened. If both hosted and public reads fail, retained cached rows carry the original retrieval time in the existing warning disclosure; filing and reporting dates are unchanged. A failed refresh is retried on reopening, even inside the normal cache lifetime. Filing reports preserve these warnings in their structured output.
+
+### OMON expiry analytics
+
+HV30 in OMON requests a separate daily one-year history buffer from the shared coordinator and rejects detectable weekly or intraday cadence. It does not annualize the generic financial snapshot, which can contain weekly bars.
+
+The options monitor reuses its selected cached chain and OVDV cleaning, Treasury interpolation, put-call parity and smile fitting. The straddle move is the nearest clean call-plus-put midpoint at the same strike within 5% of spot, shown in quote currency and as a percentage of the frozen underlying mark. It is a premium measure, not a probability interval. The separate one-sigma move is spot times fitted ATM IV times the square root of time to expiry. A rates or parity failure can leave the quoted straddle available while model-based metrics remain unavailable.
+
+The 25-delta P-C skew is put IV minus call IV, displayed in volatility percentage points. Term slope is the change in fitted ATM IV divided by the year fraction between the selected expiry and the immediately later listed expiry, displayed in percentage points per year with the destination date. A missing or stale adjacent chain leaves a gap; the monitor never substitutes a farther tenor. Short intervals can produce large annualized slopes. Selected-chain, adjacent-chain, spot and rate observation dates remain in the model; source-date differences and cleaning limitations appear through the pane warning disclosure.
+
+The selected chain is never fetched again for enrichment. A new accepted chain response updates the calculation; streaming underlying ticks do not refetch chains or silently rebase the frozen analytics mark. Failed, stale, undated, removed or mismatched expiry snapshots cannot provide current enrichment. There is no historical IV rank or percentile.
+
+The OMON surface shortcut and OVDV chain shortcut preserve ticker scope and selected expiry. A selected listed expiry is pinned in addition to OVDV's representative geometric sample, so daily listings omitted from the default sample still open at the requested date. Removed catalogue dates remain unavailable.

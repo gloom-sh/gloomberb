@@ -200,7 +200,7 @@ export function bindAppPanePluginRegistry({
     if (!instanceId || !isPaneInLayout(layout, instanceId)) return;
     persistLayout(removePane(layout, instanceId));
   };
-  pluginRegistry.focusPaneFn = (paneId) => {
+  pluginRegistry.focusPaneFn = (paneId, layout) => {
     if (isDetachedWindow) {
       if (paneId === detachedPaneId) {
         dispatch({ type: "FOCUS_PANE", paneId });
@@ -213,7 +213,7 @@ export function bindAppPanePluginRegistry({
       return;
     }
 
-    focusVisiblePane(instanceId);
+    focusVisiblePane(instanceId, layout);
   };
   pluginRegistry.pinTickerFn = (symbol, options) => {
     if (isDetachedWindow) return;

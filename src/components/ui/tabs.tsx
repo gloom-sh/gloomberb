@@ -9,6 +9,7 @@ import { useAppLanguage } from "../../i18n/react";
 import { displayWidth } from "../../utils/format";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { capturePointerDrag } from "../../ui/pointer-drag";
+import { observeScrollBoxContentSize, observeScrollBoxViewportSize } from "../../renderers/opentui/scrollbox-layout";
 
 type TabPointerEvent = {
   button?: number;
@@ -331,7 +332,7 @@ function OpenTuiTabs({
     totalWidth,
     activeIndex: tabs.findIndex((tab) => tab.value === activeValue),
   };
-  useEffect(() => {
+  const revealActiveTab = useCallback(() => {
     const scrollBox = scrollRef.current;
     const { tabWidths: widths, totalWidth: stripWidth, activeIndex } = revealRef.current;
     const viewportWidth = scrollBox?.viewport?.width || scrollBox?.width || 0;
@@ -352,7 +353,12 @@ function OpenTuiTabs({
     } else if (activeRight > currentRight) {
       scrollToLeft(Math.min(activeRight - viewportWidth, maxScrollLeft));
     }
-  }, [revealKey]);
+  }, []);
+  useEffect(revealActiveTab, [revealActiveTab, revealKey]);
+  // React effects can run before a floating pane's native viewport has its
+  // new width. Retry after computed layout, preserving ScrollBox's range update.
+  useEffect(() => observeScrollBoxViewportSize(scrollRef.current, revealActiveTab), [revealActiveTab, scrollable]);
+  useEffect(() => observeScrollBoxContentSize(scrollRef.current, revealActiveTab), [revealActiveTab, scrollable]);
 
   const handleMouseScroll = (event?: {
     preventDefault?: () => void;
