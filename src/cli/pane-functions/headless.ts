@@ -158,6 +158,12 @@ export async function loadResolvedHeadlessPaneModel(
     signal,
     settings: resolved.instance.settings,
     capabilities: getSharedRegistry() ?? undefined,
+    async resolvePortfolio(id) {
+      const portfolio = context.config.portfolios.find(row => row.id === id);
+      if (!portfolio) return null;
+      const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(id));
+      return { portfolio, tickers };
+    },
     async resolveInstrument(key) {
       const parsed = parsePublicTickerKey(key);
       const ticker = await context.store.loadTicker(key)

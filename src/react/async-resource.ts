@@ -20,7 +20,9 @@ export function useAsyncResource<T>(
     updatedAt: null,
   }));
   const generation = useRef(0);
-  const clearOnError = options.clearOnError ?? false;
+  // Read at failure time so an inline predicate cannot recreate load and refetch every render.
+  const clearOnErrorRef = useRef(options.clearOnError ?? false);
+  clearOnErrorRef.current = options.clearOnError ?? false;
   const load = useCallback(async (force = false) => {
     const currentGeneration = ++generation.current;
     if (!loader) {
@@ -37,6 +39,7 @@ export function useAsyncResource<T>(
       }
     } catch (error) {
       if (generation.current === currentGeneration) {
+        const clearOnError = clearOnErrorRef.current;
         const discardData = typeof clearOnError === "function" ? clearOnError(error) : clearOnError;
         const message = error instanceof Error ? error.message : String(error);
         setState((current) => ({
@@ -48,7 +51,7 @@ export function useAsyncResource<T>(
         }));
       }
     }
-  }, [clearOnError, loader]);
+  }, [loader]);
 
   useEffect(() => {
     void load();

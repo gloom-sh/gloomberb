@@ -5,7 +5,8 @@ import type { DatedReturn } from "./metrics";
 
 const DAY_MS = 86_400_000;
 const sessionClocks = new Map<string, Intl.DateTimeFormat>();
-const NYSE_VENUES = new Set(["NYSE", "AMEX", "ARCA", "NYSE NATIONAL", "NYSE CHICAGO", "NYSE TEXAS"]);
+// Cboe's US equity exchanges (BZX/BATS) close on the same published US equity holidays and early closes.
+const NYSE_VENUES = new Set(["NYSE", "AMEX", "ARCA", "NYSE NATIONAL", "NYSE CHICAGO", "NYSE TEXAS", "BATS", "CBOE"]);
 const NYSE_EARLY_CLOSES = new Set([
   "2025-07-03", "2025-11-28", "2025-12-24", "2026-11-27", "2026-12-24",
   "2027-11-26", "2028-07-03", "2028-11-24",
@@ -26,6 +27,7 @@ export const SHARPE_SESSION_BASIS = {
     sources: [
       "https://ir.theice.com/press/news-details/2024/NYSE-Group-Announces-2025-2026-and-2027-Holiday-and-Early-Closings-Calendar/default.aspx",
       "https://www.nyse.com/trade/hours-calendars",
+      "https://www.cboe.com/about/hours/us-equities/",
       "https://ir.theice.com/press/news-details/2024/The-New-York-Stock-Exchange-Will-Close-Markets-on-January-9-to-Honor-the-Passing-of-Former-President-Jimmy-Carter-on-National-Day-of-Mourning/default.aspx",
     ],
   },

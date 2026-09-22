@@ -1,3 +1,7 @@
+import { usePaneSettingValue } from "../../../public/react";
+import { PortfolioRiskPane } from "./risk-pane";
+import { portfolioRiskHeadless } from "./risk-headless";
+import { portfolioRiskCache } from "./risk-client";
 import { Box, Text } from "../../../ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { TextAttributes } from "../../../ui";
@@ -55,7 +59,7 @@ import {
   SectorAllocationTable,
 } from "./view";
 
-function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
+function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   const focusedCollectionId = useAppSelector((state) => getFocusedCollectionId(state));
   const portfolios = useAppSelector((state) => state.config.portfolios);
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
@@ -369,6 +373,11 @@ function PortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
   );
 }
 
+function PortfolioAnalyticsPane(props: PaneProps) {
+  const [view] = usePaneSettingValue("analyticsView", "overview");
+  return view === "risk" ? <PortfolioRiskPane {...props} /> : <LegacyPortfolioAnalyticsPane {...props} />;
+}
+
 export const portfolioAnalyticsModule: PluginModule = {
   panes: [
     {
@@ -376,6 +385,15 @@ export const portfolioAnalyticsModule: PluginModule = {
       name: "Portfolio Analytics",
       icon: "R",
       component: PortfolioAnalyticsPane,
+      headless: portfolioRiskHeadless,
+      tableExport: true,
+      settings: { fields: [
+        { key: "analyticsView", label: "View", type: "select", options: [{ value: "overview", label: "Overview" }, { value: "risk", label: "Risk depth" }] },
+        { key: "riskEvidence", label: "Local evidence JSON", type: "text" },
+        { key: "equityShift", label: "Index shift (%)", type: "text" },
+        { key: "rateShift", label: "10Y shift (bp)", type: "text" },
+        { key: "volShift", label: "VIX shift (points)", type: "text" },
+      ] },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 80, height: 30 },
@@ -385,19 +403,20 @@ export const portfolioAnalyticsModule: PluginModule = {
     },
   ],
 
-  paneTemplates: [
-    {
-      id: "analytics-pane",
+  setup(ctx) { portfolioRiskCache.attach(ctx.persistence); },
+  dispose() { portfolioRiskCache.reset(); },
+  paneTemplates: ["PORT", "MARS"].map(prefix => ({
+      id: prefix === "PORT" ? "analytics-pane" : "analytics-mars-pane",
       paneId: "analytics",
-      label: "Portfolio Analytics",
-      description: "Sharpe ratio, beta vs S&P 500, and sector allocation for your portfolio.",
+      label: prefix === "PORT" ? "Portfolio Analytics" : "Portfolio Market Risk",
+      description: "Benchmark-relative risk, factor betas, stress shifts and local account evidence.",
       keywords: ["risk", "analytics", "sharpe", "beta", "sector", "allocation", "portfolio"],
-      shortcut: { prefix: "PORT" },
+      shortcut: { prefix, argKind: "text", argOptional: true, argPlaceholder: "portfolio-id" },
+      headless: portfolioRiskHeadless,
       canCreate: (context) => context.config.portfolios.length > 0,
-      createInstance: (context) => {
-        const portfolioId = resolveTemplatePortfolioId(context.config.portfolios, context.activeCollectionId);
-        return portfolioId ? { params: { portfolioId } } : null;
+      createInstance: (context, options) => {
+        const portfolioId = resolvePortfolioId(context.config.portfolios, options?.arg) ?? resolveTemplatePortfolioId(context.config.portfolios, context.activeCollectionId);
+        return portfolioId ? { params: { portfolioId }, settings: { analyticsView: "risk" } } : null;
       },
-    },
-  ],
+    })),
 };

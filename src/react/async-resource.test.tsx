@@ -104,3 +104,21 @@ test("error policy retains the original retrieval time through an outage and cle
   expect(resource).toMatchObject({ data: null, updatedAt: null, error: denial.message });
   expect(seen).toEqual([outage, denial]);
 });
+
+test("an inline error predicate neither reloads nor loops across renders", async () => {
+  let calls = 0;
+  let rerender: () => void = () => {};
+  const request = async () => { calls++; return "loaded"; };
+  function Probe() {
+    const [, setTick] = useState(0);
+    rerender = () => setTick((tick) => tick + 1);
+    resource = useAsyncResource(request, { clearOnError: (error) => error instanceof Error });
+    return null;
+  }
+  setup = await testRender(<Probe />, { width: 20, height: 5 });
+  await act(async () => { await setup.renderOnce(); });
+  await act(async () => { rerender(); await setup.renderOnce(); });
+  await act(async () => { rerender(); await setup.renderOnce(); });
+  expect(calls).toBe(1);
+  expect(resource.data).toBe("loaded");
+});

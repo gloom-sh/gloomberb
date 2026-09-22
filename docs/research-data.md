@@ -600,3 +600,56 @@ calendar mismatches and missing listing currency remain unavailable.
 Live source verification on September 22, 2026 returned USD identities for SPY and
 all eleven sector ETFs and 765 daily observations per instrument, September 1,
 2023 through September 21, 2026. The last completed rotation week was September 18.
+## Portfolio risk depth (PORT, MARS)
+
+`PORT` and `MARS` open risk depth for a local portfolio. Previously saved Analytics panes retain their overview; switch the pane's View setting to Risk depth. Current holdings and imported evidence stay local. Cloud receives listing symbols for batch quotes and daily histories, plus the existing FRED requests. The market cache refreshes after two minutes and retains dated data for up to one day after a failed refresh. An absent Cloud endpoint preserves explicit unavailable states. Screenshots freeze the same model used by the report.
+
+The default market analysis is a daily rebalanced basket at fixed current equity weights, denominated in USD. It is a price-return estimate of the current composition, not the account's historical performance. Every holding must have a USD listing mark and complete, calendar-qualified daily prices. The mark is the current quote; when no current quote arrives or the quote is stale, it is the latest completed daily close, and the holding's evidence says so (`at 2026-09-21 close`). A US listing venue (NASDAQ, NYSE, NYSE American, Arca, Cboe) establishes USD when no quote confirms it. Factor proxies use their own listing venues; MTUM lists on Cboe BZX. Missing prices do not disappear from concentration weights; missing history blocks basket estimates without renormalizing surviving positions. Shorts, derivatives, foreign currency and leveraged financing are outside this basket model. Cash balances and dated account leverage are not inferred from current lots. Current concentration covers held equities, using absolute gross marked exposure for HHI, effective holdings and largest-one/five shares; signed net values remain available in the report.
+
+Daily returns match both interval endpoints. Published exchange-session calendars reject missing trading days, unsupported years/venues and ambiguous timestamps. The loader requests an eighteen-month buffer, omits today's incomplete observation and requires a recent completed day. Current market inputs were verified through Gloom Cloud on September 22, 2026: SPY, IWM, IWD, IWF, MTUM, IEF and HYG each returned 265 dated closes through September 21. The quoted listing and currency must match any metadata returned with history. Daily prices do not establish total returns including distributions or corporate-action reinvestment.
+
+Risk uses 60 consecutive matched sessions: compounded basket/SPY returns, their arithmetic difference, maximum drawdown from a unit wealth of one, sample annualized volatility and tracking error using square root of 252, one-day historical VaR 95%, and expected shortfall. VaR is the nonnegative loss at the nearest-rank fifth percentile of daily returns; expected shortfall averages the worst ceiling(5% times sample size) observations. Neither is scaled to another horizon or fitted to a normal distribution. One-year percentiles compare the latest statistic with same-horizon rolling estimates using the shared midrank helper, requiring at least 20 valid rolling observations. Overlapping samples are not independent. Current-composition concentration, pair correlations, user scenarios, imported account periods and Greeks have no comparable stored history, so their percentiles remain unavailable.
+
+Factor regressions independently estimate an intercept and beta against these ETF price-return proxies: market SPY, size IWM minus SPY, value IWD minus IWF, momentum MTUM minus SPY, rates IEF and credit HYG minus IEF. They are not academic factor portfolios or a joint explanatory model. Beta uses 60 matched daily returns and reports sample count and R-squared. Holdings correlation also matches daily interval endpoints. Independent stress scenarios multiply empirical beta by an index return, a DGS10 change in percentage points (100 basis points equals one point), or a VIXCLS point change. Stress regressions use up to 126 equity sessions, require 60 matched observations and preserve the last matching source date. They are linear scenarios, not forecasts, and cannot be added together as a joint stress. FRED DGS10 and VIXCLS were verified with latest usable dates September 18 and September 21 respectively.
+
+### Local account evidence
+
+Current lots, broker fills and generic broker cumulative-return fields cannot establish complete deposits, withdrawals, dated sector weights or an unambiguous TWR/MWR series. Import explicit version 1 JSON through the pane's `i` action (clipboard), its Local evidence JSON setting, or the CLI `--evidence` option. Evidence is private pane configuration and must match the selected portfolio ID and currency. All amounts use that currency; returns and weights are fractions, not percentages. A minimal illustrative ledger and attribution book are:
+
+```json
+{
+  "version": 1,
+  "portfolioId": "main",
+  "currency": "USD",
+  "source": "Dated account statement",
+  "performance": {
+    "flowTiming": "end-of-day",
+    "externalFlowsComplete": true,
+    "observations": [
+      {"date": "2025-01-02", "value": 100, "externalFlow": 0},
+      {"date": "2025-07-01", "value": 160, "externalFlow": 50},
+      {"date": "2026-01-02", "value": 180, "externalFlow": 0}
+    ]
+  },
+  "attribution": {
+    "method": "brinson-fachler",
+    "startDate": "2025-01-02",
+    "endDate": "2026-01-02",
+    "benchmark": "Declared sector benchmark",
+    "sectors": [
+      {"sector": "Technology", "portfolioWeight": 0.6, "benchmarkWeight": 0.4, "portfolioReturn": 0.15, "benchmarkReturn": 0.10},
+      {"sector": "Industrials", "portfolioWeight": 0.4, "benchmarkWeight": 0.6, "portfolioReturn": -0.05, "benchmarkReturn": -0.02}
+    ]
+  }
+}
+```
+
+Positive external flow means a deposit and negative means a withdrawal. Opening NAV is the starting investment and has zero flow. Include every flow with its after-flow valuation, using the declared end-of-day convention; an omitted or intraperiod unvalued flow invalidates that evidence. TWR links `(closing NAV - closing flow) / previous NAV`; drawdown uses its unitized wealth, so deposits cannot manufacture performance. Annualized MWR solves dated investor cashflows on actual/365, including starting NAV and terminal liquidation. Only a conventional single sign change is accepted, with a unique root in the supported -99.99% to 10,000% range; ambiguous roots leave MWR unavailable without discarding TWR. Dates must increase, NAV/pre-flow NAV must be positive, and input is bounded to 10,000 valuations, twenty years and one MB.
+
+Single-period Brinson-Fachler attribution uses declared beginning sector weights and matching period returns for both books, including cash and unclassified sectors so each weight sum is one. Allocation is `(portfolio weight - benchmark weight) * (sector benchmark return - total benchmark return)`; selection is `benchmark weight * (portfolio sector return - benchmark sector return)`; interaction is the product of weight and return differences. Effects reconcile to arithmetic active return. This is the declared benchmark book; no SPY sector holdings or historical account weights are invented.
+
+### Option exposure
+
+PORT reuses OSA's European pricing and Greeks. Broker-held options require one exact broker conId, local option symbol, expiry, strike, side, multiplier and currency, plus matching dated Cloud spot, option contract/IV, Treasury rate and dividend yield. Missing or ambiguous contract inputs remain unavailable and prevent a complete option-book total. Requests are confined to the Cloud provider; no app-side third-party fallback is introduced.
+
+Alternatively, add `options: {"scope":"imported","positions":[...]}` to local evidence, with fully specified OSA `ScenarioPosition` snapshots (`symbol`, optional `exchange`, `currency`, `spot`, decimal `rate`/`dividendYield`, millisecond `asOf`, and `legs` containing `id`, `side`, signed integer `quantity`, `strike`, Unix-second `expiration`, `price`, decimal `volatility`, and explicit `multiplier`). The imported option book remains separate from broker holdings. Snapshots older than four calendar days or with future timestamps/mismatched currency are unavailable. Dollar delta multiplies share delta by spot; gamma P&L is one half gamma times a uniform one-percent spot move squared; vega is currency per volatility point, theta currency per calendar day and rho currency per rate point. Share deltas are not added across different underlyings. Exercise, assignment, American exercise premium and adjusted deliverables are not inferred. Imported snapshots are assumptions, not current market quotes.

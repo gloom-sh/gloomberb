@@ -68,6 +68,8 @@ export interface HeadlessPaneContext {
   /** Effective instance settings, after template creation and option normalization. */
   settings?: Record<string, unknown>;
   capabilities?: CapabilityInvoker;
+  /** Read one local portfolio without passing holdings through a remote endpoint. */
+  resolvePortfolio?: (id: string) => Promise<{ portfolio: import("./ticker").Portfolio; tickers: import("./ticker").TickerRecord[] } | null>;
   /** Resolve locally remembered exchange identities without coupling plugins to storage. */
   resolveInstrument?: (symbol: string) => Promise<{ symbol: string; exchange?: string }>;
 }
